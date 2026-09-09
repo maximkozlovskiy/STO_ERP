@@ -7,6 +7,7 @@ import { SettingsService } from './settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
+import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UI_FEATURES_DEFAULTS } from './settings.dto';
@@ -125,6 +126,7 @@ describe('Settings — HTTP Contract', () => {
           provide: NbuFetchScheduler,
           useValue: { triggerManualFetch: vi.fn(), fetchDaily: vi.fn() },
         },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

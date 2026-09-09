@@ -1,9 +1,10 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
+import { AuditService } from '../audit/audit.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
 import {
   BranchSettingsResponseDto,
@@ -24,11 +25,32 @@ const WORK_HOURS_TTL_SECONDS = 60;
 
 @Injectable()
 export class SettingsService {
+  private readonly logger = new Logger(SettingsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly nbuFetchScheduler: NbuFetchScheduler,
+    private readonly audit: AuditService,
   ) {}
+
+  /** C1b: best-effort аудит зміни налаштувань (post-commit, не блокує). */
+  private auditSettings(
+    orgId: string,
+    entityType: string,
+    entityId: string,
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    userId: string | undefined,
+    oldData?: Record<string, unknown>,
+    newData?: Record<string, unknown>,
+  ): void {
+    if (!userId) return;
+    this.audit
+      .record(orgId, entityType, entityId, action, userId, oldData, newData)
+      .catch((e: unknown) =>
+        this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+      );
+  }
 
   async getOrganisationSettings(orgId: string): Promise<OrganisationSettingsResponseDto> {
     const cacheKey = `settings:org:${orgId}`;
@@ -67,6 +89,7 @@ export class SettingsService {
   async updateOrganisationSettings(
     orgId: string,
     dto: UpdateOrganisationSettingsDto,
+    userId?: string,
   ): Promise<OrganisationSettingsResponseDto> {
     // Validate currency code belongs to this org (tenant-safe + prevents typos).
     if (dto.currency !== undefined) {
@@ -105,6 +128,11 @@ export class SettingsService {
     if (dto.nbuFetchHour !== undefined) {
       await this.nbuFetchScheduler.rescheduleForOrg(orgId, dto.nbuFetchHour);
     }
+
+    // C1b: аудит зміни org-налаштувань (хто змінив ПДВ/валюту/config). new = поля dto.
+    this.auditSettings(orgId, 'OrganisationSettings', orgId, 'UPDATE', userId, undefined, {
+      ...dto,
+    });
 
     return this.mapOrgSettings(settings);
   }
@@ -204,6 +232,7 @@ export class SettingsService {
     orgId: string,
     branchId: string,
     dto: UpdateBranchSettingsDto,
+    userId?: string,
   ): Promise<BranchSettingsResponseDto> {
     // sto-optimize: tenant guard only — narrow projection.
     const branch = await this.prisma.garageBranch.findFirst({
@@ -243,6 +272,8 @@ export class SettingsService {
     if (dto.workStartTime !== undefined || dto.workEndTime !== undefined) {
       await this.invalidateWorkHoursCache(orgId);
     }
+
+    this.auditSettings(orgId, 'BranchSettings', branchId, 'UPDATE', userId, undefined, { ...dto });
 
     return this.mapBranchSettings(settings);
   }
@@ -497,6 +528,7 @@ export class SettingsService {
   async createTaxRate(
     orgId: string,
     dto: { name: string; rate: number; isDefault?: boolean; isActive?: boolean },
+    userId?: string,
   ) {
     // When isDefault=true: atomically unset previous defaults in the same orgId scope.
     // No unique index on [orgId, isDefault] in schema → multiple defaults possible without this;
@@ -529,6 +561,11 @@ export class SettingsService {
             isActive: dto.isActive ?? true,
           },
         });
+    this.auditSettings(orgId, 'TaxRate', rate.id, 'CREATE', userId, undefined, {
+      name: dto.name,
+      rate: dto.rate,
+      isDefault: dto.isDefault ?? false,
+    });
     return {
       id: rate.id,
       name: rate.name,
@@ -542,6 +579,7 @@ export class SettingsService {
     orgId: string,
     id: string,
     dto: { name?: string; rate?: number; isDefault?: boolean; isActive?: boolean },
+    userId?: string,
   ) {
     // When setting isDefault=true: atomically unset previous defaults in orgId scope (excluding current id).
     if (dto.isDefault === true) {
@@ -579,6 +617,7 @@ export class SettingsService {
       if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
     }
     const updated = await this.prisma.taxRate.findFirstOrThrow({ where: { id, orgId } });
+    this.auditSettings(orgId, 'TaxRate', id, 'UPDATE', userId, undefined, { ...dto });
     return {
       id: updated.id,
       name: updated.name,
@@ -588,7 +627,7 @@ export class SettingsService {
     };
   }
 
-  async deleteTaxRate(orgId: string, id: string) {
+  async deleteTaxRate(orgId: string, id: string, userId?: string) {
     // TaxRate referenced indirectly through invoices/lines — hard delete loses audit trail.
     // Soft-deactivate via isActive=false instead.
     const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
@@ -601,6 +640,7 @@ export class SettingsService {
       data: { isActive: false },
     });
     if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+    this.auditSettings(orgId, 'TaxRate', id, 'DELETE', userId, { name: existing.name }, undefined);
   }
 
   private readonly orgSelect = {

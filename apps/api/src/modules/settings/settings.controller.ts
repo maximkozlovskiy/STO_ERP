@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
   BranchSettingsResponseDto,
   OrganisationResponseDto,
@@ -99,8 +100,12 @@ export class SettingsController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Оновити налаштування організації' })
   @ApiResponse({ status: 200, type: OrganisationSettingsResponseDto })
-  updateOrganisation(@OrgContext() orgId: string, @Body() dto: UpdateOrganisationSettingsDto) {
-    return this.service.updateOrganisationSettings(orgId, dto);
+  updateOrganisation(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpdateOrganisationSettingsDto,
+  ) {
+    return this.service.updateOrganisationSettings(orgId, dto, user?.id);
   }
 
   @Get('branch/:branchId')
@@ -125,10 +130,11 @@ export class SettingsController {
   @ApiResponse({ status: 200, type: BranchSettingsResponseDto })
   updateBranch(
     @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
     @Param('branchId', ParseUUIDPipe) branchId: string,
     @Body() dto: UpdateBranchSettingsDto,
   ) {
-    return this.service.updateBranchSettings(orgId, branchId, dto);
+    return this.service.updateBranchSettings(orgId, branchId, dto, user?.id);
   }
 
   // Verify робить зовнішній HTTP-виклик до Checkbox — тротлимо (5/хв), креди не логуються.
@@ -180,8 +186,12 @@ export class SettingsController {
   @Post('tax-rates')
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Створити ставку ПДВ' })
-  createTaxRate(@OrgContext() orgId: string, @Body() dto: CreateTaxRateDto) {
-    return this.service.createTaxRate(orgId, dto);
+  createTaxRate(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateTaxRateDto,
+  ) {
+    return this.service.createTaxRate(orgId, dto, user?.id);
   }
 
   @Patch('tax-rates/:id')
@@ -189,17 +199,22 @@ export class SettingsController {
   @ApiOperation({ summary: 'Оновити ставку ПДВ' })
   updateTaxRate(
     @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTaxRateDto,
   ) {
-    return this.service.updateTaxRate(orgId, id, dto);
+    return this.service.updateTaxRate(orgId, id, dto, user?.id);
   }
 
   @Delete('tax-rates/:id')
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Видалити ставку ПДВ' })
-  deleteTaxRate(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.deleteTaxRate(orgId, id);
+  deleteTaxRate(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.deleteTaxRate(orgId, id, user?.id);
   }
 
   @Get('org-info')

@@ -5,6 +5,7 @@ import { SettingsService } from './settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Bug #665 — regression guard для SettingsService.verifyFiscal
@@ -40,6 +41,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
       providers: [
         SettingsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         {
           provide: REDIS_CLIENT,
           useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() },
