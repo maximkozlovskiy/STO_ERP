@@ -77,6 +77,25 @@ describe('ReconciliationProcessor', () => {
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('DRIFT paidAmount'));
   });
 
+  it('keyset-пагінація: повний батч (=RECON_BATCH_SIZE) → другий findMany-виклик з cursor (немає silent truncation)', async () => {
+    // Перший батч рівно RECON_BATCH_SIZE (1000) рядків → скан МУСИТЬ дозапросити наступну сторінку.
+    // Якщо хтось відкотить пагінацію на одиничний findMany — 1001-й рядок з дрейфом лишиться непоміченим.
+    const fullBatch = Array.from({ length: 1000 }, (_, i) => ({
+      id: `inv-${i}`,
+      paidAmount: 0,
+    }));
+    prisma.invoice.findMany
+      .mockResolvedValueOnce(fullBatch) // сторінка 1 (повна) → триггерить наступний запит
+      .mockResolvedValueOnce([{ id: 'inv-last', paidAmount: 0 }]); // сторінка 2 (неповна) → стоп
+    prisma.payment.groupBy.mockResolvedValue([]);
+    await processor.process(job);
+    expect(prisma.invoice.findMany).toHaveBeenCalledTimes(2);
+    // 2-й виклик має cursor+skip (keyset), а не повторний скан з початку.
+    const secondCall = prisma.invoice.findMany.mock.calls[1][0];
+    expect(secondCall.cursor).toEqual({ id: 'inv-999' });
+    expect(secondCall.skip).toBe(1);
+  });
+
   it('READ-ONLY: жоден prisma-метод не є write (create/update/delete/upsert)', () => {
     // Структурна гарантія: processor тримає лише read-методи. Якщо хтось додасть write —
     // цей список треба свідомо оновити (сигнал у рев'ю).

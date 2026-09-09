@@ -345,6 +345,7 @@ grep -rn "findMany(" apps/api/src/ --include="*.ts" | grep -v "take:\|spec"
 ```
 
 - [ ] `findMany` без `take` — потенційний OOM
+- [ ] **Full-scan job (reconciliation / audit / drift-detection / per-org invariant-check), що МУСИТЬ покрити ВСІ рядки → keyset-пагінація, НЕ голий `take: N`.** У звичайному list-endpoint `take: N` коректний (користувач бачить сторінку). Але у job-і, що звіряє інваріанти по всій орг, `take: N` тихо ОБРІЗАЄ скан → дрейф за рядком N лишається непоміченим = хибна впевненість «розбіжностей немає» (гірше за OOM). Fix: keyset-loop по `id` (еталон `forEachActiveOrg`, Bug #107): `orderBy:{id:'asc'}, take: BATCH, ...(cursor ? {skip:1, cursor:{id}} : {})`, `if (rows.length < BATCH) break`. Агрегати (`groupBy`/`_sum`) — SQL-side, обмежені к-стю груп → пагінація НЕ потрібна, лишати як є. Sample: A3 reconciliation.processor — 3× `stockItem/settlementAccount/invoice.findMany` без take. Grep: `grep -rn "findMany(" apps/api/src/**/*.processor.ts apps/api/src/**/*.scheduler.ts | grep -v take`
 - [ ] Немає `new PrismaClient()` поза `PrismaService`
 - [ ] `$transaction` має `{ timeout: N }` (5000–15000ms)
 - [ ] Prisma `include` без циклічних зв'язків (A → B → A)
