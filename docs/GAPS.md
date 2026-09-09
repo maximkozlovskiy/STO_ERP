@@ -49,13 +49,16 @@
 **Закриті блокери (fdb468df):** T-B1 api MINIO-env crash · T-B2 offline-update (docker load) · T-H1
 frontend E2E auth-hatch build-gate · T-M-tsc mobile experimentalDecorators · T-H3 Stop-Stack ярлик.
 
-**Опрацьовано (2026-09-09, «робимо все окрім інсталу», коміти 4cc9d156…e282e091):** 🟢 закрито
+**Опрацьовано (2026-09-09, «робимо все окрім інсталу», коміти 4cc9d156…a1318072):** 🟢 закрито
 T1/T2 (ESLint api/web/mobile + CI-гейти), T6/T7/T8 (SSE revocation, MinIO policy, apiKey поза Redis),
 T3/T9/T10 (offline-меседж, dashboard-помилки, supplier-return invalidate), T5/T14 (sync-індекси,
-partial-unique номерів), T13 (maintenanceForecastDays у settings). 🟡 частково: T12 (cap-warn уже є,
-cursor-пагінація — scale-time), T19 (Kyiv-TZ форматери зроблено; ₴/грн + tabular-nums sweep лишається).
-🔴 Deploy-борг (T4/T15/T16/T23) — свідомо поза scope цього проходу (installer). Лишається: T11 (client
-Zod), T17 (E2E money-flow), T18 (docs нових фіч), T20/T21/T22/T24 (LOW).
+partial-unique номерів), T13 (maintenanceForecastDays у settings), T11 (client-side Zod), T18 (docs
+дос'є loyalty/maintenance/payments), T19 (Kyiv-TZ + ₴ + tabular-nums), T17 (E2E money-flow, 9 тестів),
+T24 (loyalty.processor spec). 🟡 частково: T12 (cap-warn уже є, cursor-пагінація — scale-time, наявний TODO).
+🔴 Deploy-борг (T4/T15/T16/T23) — свідомо поза scope цього проходу (installer). Свідомі non-fix:
+T20 (документовані recoverable tx-tradeoff), T21 (login MinLength — підняття залокаутило б наявних
+юзерів; refresh TTL/sessionStorage — design-tradeoff з security-аудиту), T22 (Float→Decimal — важка
+міграція; historical DROP INDEX — безпечний у лінійній історії).
 
 | ID  | Область  | Прогалина / ризик                                                                                      | Пріор.   | Статус |
 | --- | -------- | ------------------------------------------------------------------------------------------------------ | -------- | ------ |
@@ -69,20 +72,20 @@ Zod), T17 (E2E money-flow), T18 (docs нових фіч), T20/T21/T22/T24 (LOW).
 | T8  | Security | apiKey розшифрований plaintext у Redis job payload; Redis без пароля                                   | Середній | 🟢     |
 | T9  | Frontend | Dashboard проковтує помилки → 0/«нема даних» замість реального стану (silent wrong number)             | Середній | 🟢     |
 | T10 | Frontend | Supplier-return confirm не інвалідує склад+баланс → застарілі дані                                     | Середній | 🟢     |
-| T11 | Frontend | Client-side Zod-валідація відсутня — shared-схеми не імпортуються                                      | Середній | 🔴     |
+| T11 | Frontend | Client-side Zod-валідація відсутня — shared-схеми не імпортуються                                      | Середній | 🟢     |
 | T12 | Backend  | followup-processor cap 1000 → тиха втрата ТО-нагадувань для автопарків >1000                           | Середній | 🟡     |
 | T13 | Backend  | MAINTENANCE_FORECAST_DAYS=14 хардкод — не в OrganisationSettings                                       | Середній | 🟢     |
 | T14 | DB       | Немає DB-unique (orgId, number) на документах → дублі номерів у offline/restore (юрид. ризик)          | Середній | 🟢     |
 | T15 | Deploy   | New-RandomBase64 некоректна PS-логіка → секрети можуть виходити слабкими                               | Середній | 🔴     |
 | T16 | Deploy   | compose prod: нема resource-limits/non-root; web+caddy без healthcheck                                 | Середній | 🔴     |
-| T17 | Quality  | E2E-прогалина money-flow: нема UI-тесту оплати/каси/фіскал-чека                                        | Середній | 🔴     |
-| T18 | Docs     | Нові фічі (loyalty/ТО-нагадування/payments-об'єкт) без досьє в docs/objects                            | Середній | 🔴     |
-| T19 | Frontend | Дати не прив'язані до Kyiv-TZ · ₴ vs грн · tabular-nums відсутній · Escape закриває вкладені модалки   | Низький  | 🟡     |
+| T17 | Quality  | E2E-прогалина money-flow: нема UI-тесту оплати/каси/фіскал-чека                                        | Середній | 🟢     |
+| T18 | Docs     | Нові фічі (loyalty/ТО-нагадування/payments-об'єкт) без досьє в docs/objects                            | Середній | 🟢     |
+| T19 | Frontend | Дати не прив'язані до Kyiv-TZ · ₴ vs грн · tabular-nums відсутній · Escape закриває вкладені модалки   | Низький  | 🟢     |
 | T20 | Backend  | online-payment polling без auto-recovery · WO INVOICED→PAID поза tx · post-commit side-effects поза tx | Низький  | 🔴     |
 | T21 | Security | login MinLength(4) · refresh TTL 30d · access у sessionStorage · secure-cookie на LAN-HTTP             | Низький  | 🔴     |
 | T22 | DB       | Кількості на Float (drift у FIFO/FEFO) · DROP INDEX без IF EXISTS у червневій міграції                 | Низький  | 🔴     |
 | T23 | Deploy   | Backup UTF-8 BOM · Restore без DROP/CREATE · VERSION=latest ламає rollback · базові образи без @sha256 | Низький  | 🔴     |
-| T24 | Quality  | loyalty.processor без spec · E2E seed #564 крихкий · 3 змістовні TODO (autoArchive/cursor/XLSX)        | Низький  | 🔴     |
+| T24 | Quality  | loyalty.processor без spec · E2E seed #564 крихкий · 3 змістовні TODO (autoArchive/cursor/XLSX)        | Низький  | 🟢     |
 
 **npm audit:** 51 vuln (2 crit, 25 high) — переважно transitive DoS (tar/js-yaml/image-size/find-my-way)
 
