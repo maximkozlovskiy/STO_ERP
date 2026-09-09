@@ -70,6 +70,7 @@ import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module
 import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
 import { UserPreferencesModule } from './modules/user-preferences/user-preferences.module';
 import { SystemTemplatesModule } from './modules/system-templates/system-templates.module';
+import { BullBoardModule } from './modules/bull-board/bull-board.module';
 
 @Module({
   imports: [
@@ -214,6 +215,9 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     CashRegistersModule,
     UserPreferencesModule,
     SystemTemplatesModule,
+    // D3 — bull-board admin UI для BullMQ-черг. register() повертає порожній модуль у production
+    // (роут не існує на проді, як Swagger); non-prod — /api/admin/queues за auth-middleware (OWNER/ADMIN).
+    BullBoardModule.register(),
   ],
   providers: [
     // Apply ThrottlerGuard globally — routes can override with @Throttle() or @SkipThrottle()

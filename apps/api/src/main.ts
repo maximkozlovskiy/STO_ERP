@@ -13,6 +13,7 @@ import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { validationExceptionFactory } from './common/pipes/validation-error.factory';
+import { registerBullBoardGuard } from './modules/bull-board/bull-board.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -46,6 +47,12 @@ async function bootstrap() {
   await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
   app.setGlobalPrefix('api');
+
+  // D3 — bull-board (BullBoardModule) монтується як Fastify-plugin і власні роути `/api/admin/queues/*`
+  // обробляє повз Nest-middleware/guards. Тож захищаємо їх глобальним Fastify onRequest-хуком (bearer-JWT
+  // + OWNER/ADMIN), який спрацьовує для КОЖНОГО запиту незалежно від того, який plugin володіє роутом.
+  // No-op у production (модуль там не монтується). Реєструємо ДО app.listen, у контексті DI-контейнера.
+  await registerBullBoardGuard(app);
 
   app.useGlobalPipes(
     new ValidationPipe({
