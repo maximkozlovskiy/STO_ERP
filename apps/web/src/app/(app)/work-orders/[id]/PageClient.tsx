@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
 import { WorkOrderPartsSection } from './WorkOrderPartsSection';
 import { WorkOrderMediaSection } from './WorkOrderMediaSection';
+import { WarrantySection } from './WarrantySection';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { WorkOrderAuditSection } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
@@ -1006,6 +1007,15 @@ export default function WorkOrderCardPage() {
           workOrderStatus={wo.status}
           invoiceRef={invoiceRef}
           onChange={setInvoiceRef}
+        />
+      </SectionErrorBoundary>
+
+      {/* Гарантії наряду (by-work-order + claim + ручний create). Гейт за статусом усередині секції. */}
+      <SectionErrorBoundary label="Гарантії">
+        <WarrantySection
+          workOrderId={id}
+          counterpartyId={wo.counterpartyId}
+          workOrderStatus={wo.status}
         />
       </SectionErrorBoundary>
 

@@ -16,6 +16,7 @@ export const dashboardKeys = {
   revenue: (weekStart: string, today: string) =>
     ['dashboard-data', 'revenue', weekStart, today] as const,
   maintenance: () => ['dashboard-data', 'maintenance'] as const,
+  expiringWarranties: () => ['dashboard-data', 'expiring-warranties'] as const,
 };
 
 const OPTS = { staleTime: 60_000, gcTime: 5 * 60_000 } as const;
@@ -62,6 +63,15 @@ export function useDashboardMaintenance(enabled: boolean) {
   return useQuery({
     queryKey: dashboardKeys.maintenance(),
     queryFn: ({ signal }) => apiFetch('/maintenance-schedules/upcoming?days=30', { signal }),
+    enabled,
+    ...OPTS,
+  });
+}
+
+export function useDashboardExpiringWarranties(enabled: boolean) {
+  return useQuery({
+    queryKey: dashboardKeys.expiringWarranties(),
+    queryFn: ({ signal }) => apiFetch('/warranties/expiring?days=30', { signal }),
     enabled,
     ...OPTS,
   });

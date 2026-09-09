@@ -9,7 +9,9 @@ import {
   useDashboardInvoices,
   useDashboardRevenue,
   useDashboardMaintenance,
+  useDashboardExpiringWarranties,
 } from '@/hooks/api/useDashboardData';
+import { type Warranty as ExpiringWarranty } from '@/hooks/api/useWarranties';
 import { useDashboardStream } from '@/hooks/useDashboardStream';
 import Link from 'next/link';
 import {
@@ -24,6 +26,7 @@ import {
   ShoppingCart,
   Receipt,
   CalendarClock,
+  ShieldCheck,
   Settings2,
   Check,
 } from 'lucide-react';
@@ -155,6 +158,7 @@ export default function DashboardPage() {
   const { data: invoicesData, isLoading: invoicesLoading } = useDashboardInvoices(enabled);
   const { data: revenueData, isLoading: revenueLoading } = useDashboardRevenue(enabled);
   const { data: maintenanceData } = useDashboardMaintenance(enabled);
+  const { data: expiringWarrantiesData } = useDashboardExpiringWarranties(enabled);
   const loading = ordersLoading || lowStockLoading || invoicesLoading || revenueLoading;
 
   const [error] = useState('');
@@ -201,6 +205,9 @@ export default function DashboardPage() {
   const upcomingTO: MaintenanceSchedule[] = Array.isArray(maintenanceData)
     ? (maintenanceData as MaintenanceSchedule[])
     : (EMPTY_MAINTENANCE as MaintenanceSchedule[]);
+  // Гарантії, що закінчуються (30 днів) — endpoint повертає {items,total}.
+  const expiringWarranties: ExpiringWarranty[] =
+    (expiringWarrantiesData as { items?: ExpiringWarranty[] } | undefined)?.items ?? [];
   // sto-optimize: kyivToday() обчислюється раз для всього компонента (mount-stable).
   // Раніше викликалась всередині .map() для upcomingTO → kyivToday() inside hot-path
   // (new Date() + Intl.format() per row). Empty deps — поточна дата на mount достатня
@@ -414,6 +421,48 @@ export default function DashboardPage() {
                             className={`text-[12px] font-medium px-2 py-0.5 rounded-md ${isOverdue ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}
                           >
                             {isOverdue ? 'Прострочено' : dateStr}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Гарантії, що закінчуються (30 днів) — клон «Наближається ТО» */}
+          {expiringWarranties.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-warning" />
+                  Гарантії, що закінчуються ({expiringWarranties.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="divide-y divide-border">
+                  {expiringWarranties.slice(0, 8).map(w => {
+                    const dateStr = w.expiresAt ? fmtDate(w.expiresAt) : null;
+                    const daysLeft = Math.ceil(
+                      (new Date(w.expiresAt).getTime() - Date.now()) / 86_400_000,
+                    );
+                    const soon = daysLeft <= 7;
+                    return (
+                      <div key={w.id} className="flex items-center justify-between py-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-foreground truncate">
+                            {w.counterpartyName ?? 'Клієнт'}
+                          </p>
+                          <p className="text-[12px] text-muted-foreground truncate">
+                            {w.description || `Наряд №${w.workOrderNumber ?? ''}`}
+                          </p>
+                        </div>
+                        {dateStr && (
+                          <span
+                            className={`text-[12px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap ${soon ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}
+                          >
+                            {dateStr}
                           </span>
                         )}
                       </div>

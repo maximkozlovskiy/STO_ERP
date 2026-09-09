@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { type Warranty } from '@/hooks/api/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -115,22 +116,8 @@ interface LoyaltyTransaction {
   createdAt: string;
   notes?: string | null;
 }
-interface Warranty {
-  id: string;
-  orgId: string;
-  workOrderId: string;
-  workOrderLineId?: string | null;
-  workOrderPartId?: string | null;
-  counterpartyId: string;
-  workOrderNumber?: string;
-  counterpartyName?: string;
-  expiresAt: string;
-  description: string;
-  claimedAt?: string | null;
-  claimWoId?: string | null;
-  isActive: boolean;
-  createdAt: string;
-}
+// B6 (dedup): тип Warranty підіймається у спільний хук useWarranties (єдине джерело правди,
+// усуває drift локальної копії — клас Bug #715). Data-flow тут лишається imperative (loadWarranties).
 
 interface Contract {
   id: string;
