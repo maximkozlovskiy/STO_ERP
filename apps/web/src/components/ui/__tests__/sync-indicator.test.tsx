@@ -21,7 +21,7 @@ describe('SyncIndicator', () => {
   it('показує "Офлайн" коли navigator.onLine=false на mount', () => {
     Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
     render(<SyncIndicator />);
-    expect(screen.getByText('Офлайн')).toBeInTheDocument();
+    expect(screen.getByText('Офлайн — збереження недоступне')).toBeInTheDocument();
   });
 
   it('реагує на window event "offline"', () => {
@@ -29,13 +29,13 @@ describe('SyncIndicator', () => {
     act(() => {
       window.dispatchEvent(new Event('offline'));
     });
-    expect(screen.getByText('Офлайн')).toBeInTheDocument();
+    expect(screen.getByText('Офлайн — збереження недоступне')).toBeInTheDocument();
   });
 
   it('реагує на window event "online" (повертається до idle)', () => {
     Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
     const { container } = render(<SyncIndicator />);
-    expect(screen.getByText('Офлайн')).toBeInTheDocument();
+    expect(screen.getByText('Офлайн — збереження недоступне')).toBeInTheDocument();
     act(() => {
       window.dispatchEvent(new Event('online'));
     });

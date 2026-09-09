@@ -16,8 +16,14 @@ const MONEY_FMT = new Intl.NumberFormat('uk-UA', {
   maximumFractionDigits: 2,
 });
 const INT_FMT = new Intl.NumberFormat('uk-UA');
-const DATE_FMT = new Intl.DateTimeFormat('uk-UA');
+// T19: усі date/time-форматери прив'язані до Europe/Kyiv. Без timeZone Intl рендерить у TZ браузера/ОС
+// → (а) date-only `new Date('YYYY-MM-DD')` (UTC-північ) на UTC-негативних машинах показував би
+// попередній день (off-by-one); (б) UTC-ISO timestamp на неправильно налаштованому ПК давав би невірний
+// час. СТО завжди у Києві, тож фіксуємо зону явно (дзеркалить backend KYIV_DATE_FMT).
+const KYIV_TZ = 'Europe/Kyiv';
+const DATE_FMT = new Intl.DateTimeFormat('uk-UA', { timeZone: KYIV_TZ });
 const DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
@@ -25,12 +31,14 @@ const DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
   minute: '2-digit',
 });
 const SHORT_DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
   day: '2-digit',
   month: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
 });
 const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: KYIV_TZ,
   hour: '2-digit',
   minute: '2-digit',
 });

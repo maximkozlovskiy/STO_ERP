@@ -75,12 +75,9 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await makeRequest(token);
   } catch (networkErr) {
-    // Network failure (offline) — increment pending counter
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      const count = Number(localStorage.getItem('sto_pending_ops') ?? '0');
-      localStorage.setItem('sto_pending_ops', String(count + 1));
-      window.dispatchEvent(new CustomEvent('sto:pending-ops-changed'));
-    }
+    // T3: втрата зв'язку з локальним API → запит НЕ виконано. Черги offline-запису немає (система
+    // працює в LAN, але не накопичує мутації для подальшої синхронізації) — просто прокидаємо помилку,
+    // а SyncIndicator показує «Офлайн — збереження недоступне». Fake pending-ops лічильник прибрано.
     throw networkErr;
   }
 
@@ -99,12 +96,6 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    // Server error (503 etc.) while offline — increment pending counter
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      const count = Number(localStorage.getItem('sto_pending_ops') ?? '0');
-      localStorage.setItem('sto_pending_ops', String(count + 1));
-      window.dispatchEvent(new CustomEvent('sto:pending-ops-changed'));
-    }
     const error = (await res.json().catch(() => ({ message: res.statusText }))) as {
       message: string | string[];
     };
@@ -112,15 +103,6 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       ? error.message.join('; ')
       : (error.message ?? res.statusText);
     throw new Error(msg);
-  }
-
-  // Successful request — decrement pending counter if any were queued
-  if (typeof window !== 'undefined') {
-    const pending = Number(localStorage.getItem('sto_pending_ops') ?? '0');
-    if (pending > 0) {
-      localStorage.setItem('sto_pending_ops', String(pending - 1));
-      window.dispatchEvent(new CustomEvent('sto:pending-ops-changed'));
-    }
   }
 
   // 204 No Content

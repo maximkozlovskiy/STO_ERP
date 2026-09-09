@@ -48,7 +48,8 @@ export default function LoginPage() {
               автосервісом
             </h1>
             <p className="text-[15px] text-sidebar-muted leading-relaxed">
-              Наряди, склад, фінанси, CRM — все в одному місці. Працює повністю офлайн.
+              Наряди, склад, фінанси, CRM — все в одному місці. Працює у локальній мережі СТО без
+              інтернету.
             </p>
           </div>
 

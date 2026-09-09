@@ -7,18 +7,15 @@ import { fmtTime } from '@/lib/format';
 
 type SyncStatus = 'idle' | 'syncing' | 'offline' | 'error';
 
+// T3: STO ERP працює у локальній мережі без інтернету, але НЕ має offline-write-черги — при втраті
+// зв'язку з локальним API запис недоступний (не «накопичується для синхронізації»). Індикатор чесно
+// показує «Офлайн — збереження недоступне», а не фейковий лічильник «N змін очікують».
 export function SyncIndicator() {
   const [status, setStatus] = useState<SyncStatus>('idle');
   const [lastSync, setLastSync] = useState<Date | null>(null);
-  const [pendingOps, setPendingOps] = useState(0);
 
   useEffect(() => {
-    const onOnline = () => {
-      setStatus('idle');
-      // Clear pending counter when back online (ops will be retried by user)
-      localStorage.setItem('sto_pending_ops', '0');
-      setPendingOps(0);
-    };
+    const onOnline = () => setStatus('idle');
     const onOffline = () => setStatus('offline');
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
@@ -39,18 +36,6 @@ export function SyncIndicator() {
     return () => window.removeEventListener('sto:sync-status', onSync);
   }, []);
 
-  // F11: track pending offline operations counter
-  useEffect(() => {
-    const updatePending = () => {
-      setPendingOps(Number(localStorage.getItem('sto_pending_ops') ?? '0'));
-    };
-    updatePending();
-    window.addEventListener('sto:pending-ops-changed', updatePending);
-    return () => {
-      window.removeEventListener('sto:pending-ops-changed', updatePending);
-    };
-  }, []);
-
   if (status === 'idle' && !lastSync) return null;
 
   const isOffline = status === 'offline';
@@ -64,7 +49,13 @@ export function SyncIndicator() {
         status === 'offline' && 'text-warning',
         status === 'error' && 'text-destructive',
       )}
-      title={lastSync ? `Синхронізовано: ${fmtTime(lastSync)}` : undefined}
+      title={
+        isOffline
+          ? 'Немає зв’язку з сервером СТО — збереження недоступне до відновлення мережі'
+          : lastSync
+            ? `Синхронізовано: ${fmtTime(lastSync)}`
+            : undefined
+      }
     >
       {status === 'syncing' ? (
         <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -77,9 +68,7 @@ export function SyncIndicator() {
         {status === 'syncing'
           ? 'Синхронізація...'
           : isOffline
-            ? pendingOps > 0
-              ? `${pendingOps} змін очікують`
-              : 'Офлайн'
+            ? 'Офлайн — збереження недоступне'
             : status === 'error'
               ? 'Помилка'
               : 'Синхронізовано'}

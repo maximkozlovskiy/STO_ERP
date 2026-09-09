@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
+import { invalidateStockAffected, invalidateBalanceAffected } from '@/lib/cache-invalidation';
 
 export interface SupplierReturnLine {
   id?: string;
@@ -96,6 +97,11 @@ export function useConfirmSupplierReturn() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: supplierReturnsKeys.all });
       void qc.invalidateQueries({ queryKey: supplierReturnsKeys.detail(id) });
+      // T10: confirm робить WRITEOFF (склад) + settlement-транзакцію (баланс постачальника) на бекенді
+      // (supplier-returns.service). Без цих invalidate сторінки «Залишки»/«Взаєморозрахунки»/dashboard
+      // low-stock показували б застарілі дані до staleTime.
+      invalidateStockAffected(qc);
+      invalidateBalanceAffected(qc);
     },
   });
 }
@@ -108,6 +114,9 @@ export function useCancelSupplierReturn() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: supplierReturnsKeys.all });
       void qc.invalidateQueries({ queryKey: supplierReturnsKeys.detail(id) });
+      // T10: cancel реверсує рухи складу/балансу (якщо реалізовано на бекенді) — інвалідуємо ті самі кеші.
+      invalidateStockAffected(qc);
+      invalidateBalanceAffected(qc);
     },
   });
 }

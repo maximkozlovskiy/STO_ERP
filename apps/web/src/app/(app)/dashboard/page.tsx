@@ -153,15 +153,38 @@ export default function DashboardPage() {
   const { employee } = useRequireAuth();
   const enabled = !!employee;
 
-  const { data: ordersData, isLoading: ordersLoading } = useDashboardOrders(enabled);
-  const { data: lowStockData, isLoading: lowStockLoading } = useDashboardLowStock(enabled);
-  const { data: invoicesData, isLoading: invoicesLoading } = useDashboardInvoices(enabled);
-  const { data: revenueData, isLoading: revenueLoading } = useDashboardRevenue(enabled);
+  const {
+    data: ordersData,
+    isLoading: ordersLoading,
+    isError: ordersError,
+  } = useDashboardOrders(enabled);
+  const {
+    data: lowStockData,
+    isLoading: lowStockLoading,
+    isError: lowStockError,
+  } = useDashboardLowStock(enabled);
+  const {
+    data: invoicesData,
+    isLoading: invoicesLoading,
+    isError: invoicesError,
+  } = useDashboardInvoices(enabled);
+  const {
+    data: revenueData,
+    isLoading: revenueLoading,
+    isError: revenueError,
+  } = useDashboardRevenue(enabled);
   const { data: maintenanceData } = useDashboardMaintenance(enabled);
   const { data: expiringWarrantiesData } = useDashboardExpiringWarranties(enabled);
   const loading = ordersLoading || lowStockLoading || invoicesLoading || revenueLoading;
 
-  const [error] = useState('');
+  // T9: раніше error ніколи не виставлявся → помилка запиту тихо показувала 0/«нема даних»
+  // (silent wrong number). Тепер піднімаємо реальний стан помилки з хуків: будь-який fail із
+  // core-показників → банер помилки замість оманливих нулів. revenueError окремо не блокує KPI,
+  // але додає банер (щоб revenueMonth=0 не читалось як «виторгу немає»).
+  const error =
+    ordersError || lowStockError || invoicesError || revenueError
+      ? 'Не вдалося завантажити частину показників — дані можуть бути неповними. Оновіть сторінку.'
+      : '';
   const [todayStr, setTodayStr] = useState('');
   const [greeting, setGreeting] = useState('Вітаємо');
   const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
