@@ -54,6 +54,8 @@ function reducer(state: AuthState, action: Action): AuthState {
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** B1: вийти на ВСІХ пристроях — інвалідує всі сесії через bump tokenVersion на бекенді. */
+  logoutAll: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
 }
 
@@ -238,8 +240,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [state.accessToken]);
 
+  const logoutAll = useCallback(async (): Promise<void> => {
+    try {
+      // B1: bump tokenVersion на бекенді → усі раніше видані токени (усіх пристроїв) мертві.
+      await fetch(`${API_URL}/api/auth/logout-all`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${state.accessToken ?? ''}`,
+        },
+      });
+    } finally {
+      sessionStorage.removeItem(TOKEN_KEY);
+      writeCachedEmployee(null);
+      dispatch({ type: 'LOGOUT' });
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:logout'));
+    }
+  }, [state.accessToken]);
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, refreshToken }}>
+    <AuthContext.Provider value={{ ...state, login, logout, logoutAll, refreshToken }}>
       {children}
     </AuthContext.Provider>
   );

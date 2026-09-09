@@ -21,10 +21,12 @@ export class SetupInitDto {
   @MaxLength(254)
   ownerEmail!: string;
 
-  @ApiProperty({ example: 'secret', minLength: 6 })
+  @ApiProperty({ example: 'secret12', minLength: 8 })
   @IsString()
   @IsNotEmpty({ message: 'Пароль не може бути порожнім' })
-  @MinLength(6, { message: 'Пароль має бути не менше 6 символів' })
+  // B2 password policy: мінімум 8 символів для нового власника (початкове налаштування org —
+  // legacy-акаунтів немає, тому підняття порогу нікого не блокує; узгоджено з change-password).
+  @MinLength(8, { message: 'Пароль має бути не менше 8 символів' })
   @MaxLength(128, { message: 'Пароль занадто довгий (максимум 128 символів)' })
   ownerPassword!: string;
 

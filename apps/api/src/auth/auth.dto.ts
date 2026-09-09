@@ -39,4 +39,8 @@ export class JwtPayload {
   orgId!: string;
   role!: string;
   branchId?: string;
+  // B1: версія токена на момент видачі. jwt.strategy порівнює з поточним AuthAccount.tokenVersion —
+  // після logout-all/зміни пароля версія розходиться → 401. Опційне для сумісності зі старими
+  // токенами у польоті (undefined трактується як 0 при порівнянні).
+  tokenVersion?: number;
 }

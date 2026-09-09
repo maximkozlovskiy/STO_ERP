@@ -407,6 +407,13 @@ model AuthAccount {
   employeeId   String    @unique @db.Uuid
   email        String
   passwordHash String
+  // Session revocation (B1): bump-иться при logout-all і зміні пароля. Кладеться у JWT payload;
+  // jwt.strategy порівнює payload.tokenVersion з поточним → mismatch = 401 (усі старі токени мертві).
+  tokenVersion Int       @default(0)
+  // Brute-force lockout (B2): лічильник невдалих спроб + вікно блокування. throttle 10/min прикриває
+  // burst, lockout — стійкі атаки на відомий email на спільному ПК каси.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
   syncVersion  BigInt    @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

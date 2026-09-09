@@ -96,4 +96,18 @@ export class AuthController {
   logout(@Res({ passthrough: true }) res: FastifyReply): void {
     this.authService.logout(res);
   }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Вийти на всіх пристроях (інвалідувати всі сесії)' })
+  @ApiResponse({ status: 204 })
+  logoutAll(
+    @CurrentUser() user: { id: string },
+    @OrgContext() orgId: string,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ): Promise<void> {
+    return this.authService.logoutAll(orgId, user.id, res);
+  }
 }

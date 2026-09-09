@@ -32,10 +32,25 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     const employee = await this.prisma.employee.findFirst({
       where: { id: payload.sub, orgId: payload.orgId, deletedAt: null },
-      select: { id: true, orgId: true, role: true },
+      // B1: tokenVersion живе на пов'язаному AuthAccount — тягнемо nested-select (той самий запит,
+      // без зайвого RTT), щоб порівняти з версією у токені.
+      select: {
+        id: true,
+        orgId: true,
+        role: true,
+        authAccount: { select: { tokenVersion: true } },
+      },
     });
 
     if (!employee) {
+      throw new UnauthorizedException('Сесія недійсна');
+    }
+
+    // B1: revocation-guard. Після logout-all/зміни пароля поточний tokenVersion інкрементовано →
+    // усі раніше видані токени (зі старою версією) відхиляються. undefined у payload (старий токен
+    // до релізу) трактується як 0.
+    const currentVersion = employee.authAccount?.tokenVersion ?? 0;
+    if ((payload.tokenVersion ?? 0) !== currentVersion) {
       throw new UnauthorizedException('Сесія недійсна');
     }
 

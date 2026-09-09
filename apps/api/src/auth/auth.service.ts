@@ -14,6 +14,10 @@ import type { AuthResponseDto, JwtPayload, LoginDto } from './auth.dto';
 
 const REFRESH_COOKIE = 'sto_refresh';
 const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// B2 lockout: N невдалих спроб поспіль → блок на вікно. Прикриває стійкий підбір на відомий email
+// (IP-throttle 10/min ловить burst, але не повільний перебір з одного IP чи розподілений).
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -36,8 +40,27 @@ export class AuthService {
       throw new UnauthorizedException('Невірний email або пароль');
     }
 
+    // B2: rate-based account lockout. Якщо акаунт заблоковано — не перевіряємо пароль зовсім
+    // (не подовжуємо вікно, не витрачаємо bcrypt). Розблокування — по спливу lockedUntil.
+    if (authRecord.lockedUntil && authRecord.lockedUntil.getTime() > Date.now()) {
+      throw new ForbiddenException(
+        'Обліковий запис тимчасово заблоковано через невдалі спроби входу. Спробуйте пізніше',
+      );
+    }
+
     const passwordValid = await bcrypt.compare(dto.password, authRecord.passwordHash);
     if (!passwordValid) {
+      // B2: інкремент лічильника; на порозі — блокуємо на LOCKOUT_WINDOW і скидаємо лічильник.
+      const attempts = authRecord.failedAttempts + 1;
+      const locked = attempts >= MAX_FAILED_ATTEMPTS;
+      await this.prisma.authAccount
+        .update({
+          where: { id: authRecord.id },
+          data: locked
+            ? { failedAttempts: 0, lockedUntil: new Date(Date.now() + LOCKOUT_WINDOW_MS) }
+            : { failedAttempts: attempts },
+        })
+        .catch(() => undefined); // облік невдач не має зривати відповідь 401
       throw new UnauthorizedException('Невірний email або пароль');
     }
 
@@ -51,10 +74,18 @@ export class AuthService {
       throw new ForbiddenException('Обліковий запис заблоковано');
     }
 
+    // B2: успішний вхід скидає лічильник невдач (якщо він був ненульовий).
+    if (authRecord.failedAttempts !== 0 || authRecord.lockedUntil !== null) {
+      await this.prisma.authAccount
+        .update({ where: { id: authRecord.id }, data: { failedAttempts: 0, lockedUntil: null } })
+        .catch(() => undefined);
+    }
+
     const payload: JwtPayload = {
       sub: emp.id,
       orgId: emp.orgId,
       role: emp.role,
+      tokenVersion: authRecord.tokenVersion, // B1
     };
 
     const accessToken = this.signAccess(payload);
@@ -87,8 +118,16 @@ export class AuthService {
 
     const employee = await this.prisma.employee.findFirst({
       where: { id: payload.sub, orgId: payload.orgId, deletedAt: null },
+      include: { authAccount: { select: { tokenVersion: true } } },
     });
     if (!employee) {
+      throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
+    }
+
+    // B1: refresh теж підлягає revocation — якщо tokenVersion наміру не збігається з поточним
+    // (logout-all/зміна пароля вже сталися), відмовляємо у продовженні сесії.
+    const currentVersion = employee.authAccount?.tokenVersion ?? 0;
+    if ((payload.tokenVersion ?? 0) !== currentVersion) {
       throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
     }
 
@@ -96,6 +135,7 @@ export class AuthService {
       sub: employee.id,
       orgId: employee.orgId,
       role: employee.role,
+      tokenVersion: currentVersion,
     };
 
     const accessToken = this.signAccess(newPayload);
@@ -116,6 +156,19 @@ export class AuthService {
   }
 
   logout(res: FastifyReply): void {
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+  }
+
+  /**
+   * B1: «Вийти на всіх пристроях» — інкремент tokenVersion робить НЕДІЙСНИМИ усі раніше видані
+   * access+refresh токени цього користувача (jwt.strategy та refresh порівнюють версію). Також
+   * чистить refresh-cookie поточного пристрою. Використовується при підозрі на компрометацію.
+   */
+  async logoutAll(orgId: string, employeeId: string, res: FastifyReply): Promise<void> {
+    await this.prisma.authAccount.updateMany({
+      where: { employeeId, orgId, deletedAt: null },
+      data: { tokenVersion: { increment: 1 } },
+    });
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
   }
 
@@ -145,7 +198,12 @@ export class AuthService {
     const valid = await bcrypt.compare(currentPassword, auth.passwordHash);
     if (!valid) throw new UnauthorizedException('Поточний пароль невірний');
     const hash = await bcrypt.hash(newPassword, 12);
-    await this.prisma.authAccount.update({ where: { id: auth.id }, data: { passwordHash: hash } });
+    // B1: зміна пароля інвалідовує усі інші сесії (bump tokenVersion) — стандартна безпекова
+    // поведінка: якщо пароль змінено через компрометацію, старі токени на інших пристроях мертві.
+    await this.prisma.authAccount.update({
+      where: { id: auth.id },
+      data: { passwordHash: hash, tokenVersion: { increment: 1 } },
+    });
   }
 
   generateAccessToken(payload: JwtPayload): string {

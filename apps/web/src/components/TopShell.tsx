@@ -11,7 +11,16 @@ const CreateWorkOrderModal = dynamic(
   () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
   { ssr: false },
 );
-import { Wrench, LogOut, ChevronLeft, Menu, Star, Search, type LucideIcon } from 'lucide-react';
+import {
+  Wrench,
+  LogOut,
+  MonitorSmartphone,
+  ChevronLeft,
+  Menu,
+  Star,
+  Search,
+  type LucideIcon,
+} from 'lucide-react';
 import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem } from '@/lib/nav';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
@@ -369,7 +378,7 @@ function isActive(pathname: string, href: string): boolean {
 // тут, що ризикувало drift при додаванні нового public route (`/forgot-password` тощо).
 
 export function TopShell({ children }: { children: ReactNode }) {
-  const { employee, isLoading, logout } = useAuth();
+  const { employee, isLoading, logout, logoutAll } = useAuth();
   const { confirm, dialogProps } = useConfirm();
   const pathname = usePathname();
   const router = useRouter();
@@ -527,6 +536,20 @@ export function TopShell({ children }: { children: ReactNode }) {
   const handleLogout = async () => {
     if (await confirm({ title: 'Вийти з системи?' })) {
       logout();
+      router.push('/login');
+    }
+  };
+
+  // B1: «Вийти на всіх пристроях» — інвалідує всі сесії (напр. після втрати планшета/підозри на
+  // компрометацію). Окреме підтвердження, бо дія глобальна для всіх пристроїв користувача.
+  const handleLogoutAll = async () => {
+    if (
+      await confirm({
+        title: 'Вийти на всіх пристроях?',
+        message: 'Усі активні сесії цього користувача (на всіх пристроях) буде завершено.',
+      })
+    ) {
+      await logoutAll();
       router.push('/login');
     }
   };
@@ -720,6 +743,13 @@ export function TopShell({ children }: { children: ReactNode }) {
             {uiFeatures.notificationCenterEnabled && (
               <NotificationCenter enabled={uiFeatures.notificationCenterEnabled} />
             )}
+            <button
+              onClick={handleLogoutAll}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+              title="Вийти на всіх пристроях"
+            >
+              <MonitorSmartphone className="h-3.5 w-3.5" />
+            </button>
             <button
               onClick={handleLogout}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
