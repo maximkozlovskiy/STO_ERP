@@ -5,7 +5,7 @@ import { Modal, ModalFooter } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
-import { kyivToday } from '@/lib/format';
+import { kyivToday, addDaysISO } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useCreateWarranty } from '@/hooks/api/useWarranties';
@@ -37,12 +37,9 @@ export function WarrantyCreateModal({
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
 
-  // min = завтра (Kyiv) — гарантія лише у майбутнє.
-  const tomorrow = (() => {
-    const t = new Date(`${kyivToday()}T00:00:00`);
-    t.setDate(t.getDate() + 1);
-    return t.toISOString().slice(0, 10);
-  })();
+  // min = завтра (Kyiv) — гарантія лише у майбутнє. addDaysISO: UTC-арифметика, без залежності
+  // від часового поясу браузера (local-parse + toISOString давав off-by-one на межі дня).
+  const tomorrow = addDaysISO(kyivToday(), 1);
 
   const reset = () => {
     setExpiresAt('');
@@ -65,8 +62,10 @@ export function WarrantyCreateModal({
       await createWarranty.mutateAsync({
         workOrderId,
         counterpartyId,
-        // expiresAt як ISO-datetime (бекенд парсить дату; беремо кінець дня Kyiv-нейтрально).
-        expiresAt: new Date(`${expiresAt}T00:00:00`).toISOString(),
+        // Кінець вибраного дня в UTC (`T23:59:59Z`) — покриває весь день незалежно від
+        // часового поясу браузера. Local-parse `T00:00:00`.toISOString() зсував дату на -1
+        // у браузерах із додатнім offset (Kyiv UTC+3): 10-09 00:00 → 09-09 21:00Z (off-by-one).
+        expiresAt: `${expiresAt}T23:59:59Z`,
         description: description.trim() || undefined,
       });
       if (features.toastEnabled) toast.success('Гарантію створено');
