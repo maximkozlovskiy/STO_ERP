@@ -23,6 +23,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderShareService } from './work-order-share.service';
 import {
   CreateWorkOrderDto,
   UpdateWorkOrderDto,
@@ -41,7 +42,10 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class WorkOrdersController {
-  constructor(private readonly service: WorkOrdersService) {}
+  constructor(
+    private readonly service: WorkOrdersService,
+    private readonly shareService: WorkOrderShareService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
@@ -161,7 +165,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Отримати або створити share-токен для кошторису' })
   getShareToken(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getOrCreateShareToken(orgId, id);
+    return this.shareService.getOrCreateShareToken(orgId, id);
   }
 
   @Post(':id/send-estimate-sms')
@@ -174,7 +178,7 @@ export class WorkOrdersController {
     // DTO залишено порожнім + ValidationPipe whitelist=true → зайві поля 400.
     @Body() _dto: SendEstimateSmsDto,
   ) {
-    return this.service.sendEstimateSms(orgId, id);
+    return this.shareService.sendEstimateSms(orgId, id);
   }
 
   // ─── Lines ───────────────────────────────────────────────

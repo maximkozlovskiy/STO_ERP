@@ -35,12 +35,10 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     prisma,
     null as never, // inventory
     null as never, // settlements
-    null as never, // notifications
     null as never, // docNumbers
     null as never, // pdf
     null as never, // audit
     null as never, // settingsService
-    null as never, // config
     { emit: vi.fn() } as never, // events (EventEmitter2)
   );
 }
@@ -385,18 +383,15 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     const settlements = { createTransaction: vi.fn() } as unknown as InstanceType<
       typeof WorkOrdersService
     >['settlements'];
-    // Constructor: prisma, inventory, settlements, notifications, docNumbers,
-    //   pdf, audit, settingsService, config, events (EventEmitter2)
+    // Constructor: prisma, inventory, settlements, docNumbers, pdf, audit, settingsService, events
     return new WorkOrdersService(
       prisma,
       inventory,
       settlements,
-      null as never, // notifications
       null as never, // docNumbers
       null as never, // pdf
       null as never, // audit
       null as never, // settingsService
-      null as never, // config
       { emit: vi.fn() } as never, // events — transition() емітить події
     );
   }
@@ -535,15 +530,13 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     } as unknown as PrismaService;
     const svc = new WorkOrdersService(
       prisma,
-      { createMovement } as never,
-      { createTransaction: vi.fn() } as never,
-      null as never,
-      null as never,
-      null as never,
-      null as never,
-      null as never,
-      null as never,
-      null as never,
+      { createMovement } as never, // inventory
+      { createTransaction: vi.fn() } as never, // settlements
+      null as never, // docNumbers
+      null as never, // pdf
+      null as never, // audit
+      null as never, // settingsService
+      null as never, // events
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (svc as any).writeOffPartsAndCharge(
@@ -693,12 +686,10 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
       prisma,
       inventory,
       settlements,
-      null as never, // notifications
       null as never, // docNumbers
       null as never, // pdf
       null as never, // audit
       null as never, // settingsService
-      null as never, // config
       { emit: vi.fn() } as never, // events — transition() емітить події
     );
   }

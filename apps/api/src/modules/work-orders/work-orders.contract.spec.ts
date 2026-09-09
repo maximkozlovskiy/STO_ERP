@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WorkOrdersController } from './work-orders.controller';
 import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderShareService } from './work-order-share.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -45,8 +46,13 @@ const serviceMock = {
   getLinkedCounts: vi.fn(),
   clone: vi.fn(),
   generatePdf: vi.fn(),
+};
+
+// A3: share/public-кошторис винесено у WorkOrderShareService.
+const shareServiceMock = {
   getOrCreateShareToken: vi.fn(),
   sendEstimateSms: vi.fn(),
+  findByShareToken: vi.fn(),
 };
 
 // Стан guards — змінюється у тестах для перевірки 401
@@ -70,6 +76,7 @@ describe('WorkOrders — HTTP Contract', () => {
       controllers: [WorkOrdersController],
       providers: [
         { provide: WorkOrdersService, useValue: serviceMock },
+        { provide: WorkOrderShareService, useValue: shareServiceMock },
         { provide: PrismaService, useValue: prismaMock },
         IdempotencyInterceptor, // create-POST несе @UseInterceptors — DI має резолвити
       ],

@@ -2,7 +2,7 @@ import { Controller, Get, Param, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiProduces } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
-import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderShareService } from './work-order-share.service';
 import { EstimateExportService } from './work-orders-export.service';
 
 /**
@@ -21,7 +21,7 @@ import { EstimateExportService } from './work-orders-export.service';
 @Controller('public/work-orders')
 export class WorkOrdersPublicController {
   constructor(
-    private readonly service: WorkOrdersService,
+    private readonly shareService: WorkOrderShareService,
     private readonly exportService: EstimateExportService,
   ) {}
 
@@ -75,6 +75,6 @@ export class WorkOrdersPublicController {
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @ApiOperation({ summary: 'Публічний перегляд кошторису за share-токеном' })
   getPublicEstimate(@Param('token') token: string) {
-    return this.service.findByShareToken(token);
+    return this.shareService.findByShareToken(token);
   }
 }

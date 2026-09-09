@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { WorkOrdersService } from './work-orders.service';
+// A3: findByShareToken винесено з WorkOrdersService у WorkOrderShareService.
+import { WorkOrderShareService } from './work-order-share.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 // ─── Regression spec: findByShareToken — public DTO leak guards ────────────
@@ -99,22 +100,12 @@ function makePrismaForPublicShare(opts: { hasUoMIds: boolean; partsCount?: numbe
   return { prisma, woFindFirst, organisationFindFirst, goodUoMFindMany };
 }
 
-function makeService(prisma: PrismaService): WorkOrdersService {
-  return new WorkOrdersService(
-    prisma,
-    null as never, // inventory
-    null as never, // settlements
-    null as never, // notifications
-    null as never, // docNumbers
-    null as never, // pdf
-    null as never, // audit
-    null as never, // settingsService
-    null as never, // config
-    null as never, // events (EventEmitter2)
-  );
+function makeService(prisma: PrismaService): WorkOrderShareService {
+  // findByShareToken торкається лише prisma; config/notifications не потрібні на цьому шляху.
+  return new WorkOrderShareService(prisma, null as never, null as never);
 }
 
-describe('WorkOrdersService.findByShareToken — public DTO leak guards', () => {
+describe('WorkOrderShareService.findByShareToken — public DTO leak guards', () => {
   // ─── 1. costPrice ВІДСУТНІЙ у parts[] ─────────────────────────────────────
 
   it('parts[] МАЄ НЕ МІСТИТИ costPrice (key absent, not undefined/null)', async () => {
