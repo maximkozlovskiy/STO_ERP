@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  # A4.1 — guard проти деструктивних міграцій. Prisma-міграції у цьому репо мають бути ADDITIVE
+  # (rollback інсталятора спирається на additive-only: image-rollback ≠ DB-rollback). DROP COLUMN/TABLE
+  # або звужувальний ALTER TYPE призводять до втрати даних на деплої (прецедент: phase17 DROP COLUMN).
+  # Перевіряємо ЛИШЕ НОВІ міграції (git-diff проти базового коміту) — історичні вже застосовані й
+  # не мають перевірятись (їхні checksum-и заморожені Prisma). Дозволено з маркером `-- destructive-ok:`.
+  migration-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # потрібна історія для diff
+
+      - name: Guard against destructive migrations (changed files only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # База для diff: цільова гілка PR, або попередній коміт push.
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            base="origin/${GITHUB_BASE_REF}"
+            git fetch --quiet origin "${GITHUB_BASE_REF}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # Порожня база (перший push гілки) → нема з чим порівнювати, пропускаємо.
+          if [ -z "$base" ] || ! git rev-parse --verify --quiet "$base" >/dev/null; then
+            echo "Немає валідної бази для diff — пропускаємо перевірку."
+            exit 0
+          fi
+          changed=$(git diff --name-only --diff-filter=A "$base" HEAD -- \
+            'packages/database/prisma/migrations/**/migration.sql' || true)
+          if [ -z "$changed" ]; then
+            echo "OK: нових міграцій у цьому diff немає."
+            exit 0
+          fi
+          echo "Нові міграції для перевірки:"; echo "$changed"
+          bad=""
+          for f in $changed; do
+            hits=$(grep -niE 'DROP[[:space:]]+(COLUMN|TABLE)|ALTER[[:space:]]+COLUMN[[:space:]].*[[:space:]]TYPE[[:space:]]' "$f" 2>/dev/null \
+              | grep -vi 'destructive-ok' || true)
+            if [ -n "$hits" ]; then
+              bad="${bad}\n${f}:\n${hits}"
+            fi
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::Деструктивні DDL у НОВИХ міграціях без маркера '-- destructive-ok: <причина>':"
+            echo -e "$bad"
+            echo "Міграції мають бути additive. Якщо втрата даних свідома — додайте на той самий рядок"
+            echo "коментар '-- destructive-ok: <причина>'."
+            exit 1
+          fi
+          echo "OK: нові міграції additive."
