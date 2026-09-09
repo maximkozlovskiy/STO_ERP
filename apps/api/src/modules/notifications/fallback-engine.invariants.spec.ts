@@ -32,7 +32,12 @@ async function runChain(outcomes: Outcome[]): Promise<{
     logCalls.push(arg.data.status);
     return Promise.resolve({});
   });
-  const prisma = { notificationLog: { create: logCreate } } as unknown as PrismaService;
+  // T8: apiKey резолвиться у processor — мокаємо джерело (config завжди повертає ключ).
+  const prisma = {
+    notificationLog: { create: logCreate },
+    notificationChannelConfig: { findFirst: vi.fn().mockResolvedValue({ apiKey: 'tok' }) },
+    branchSettings: { findFirst: vi.fn().mockResolvedValue({ smsApiKey: 'tok' }) },
+  } as unknown as PrismaService;
 
   // queue.add імітує BullMQ: збирає майбутні job.data для послідовного прогону.
   const pending: Array<{ chainIndex: number }> = [];

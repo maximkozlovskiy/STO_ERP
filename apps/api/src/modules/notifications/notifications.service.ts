@@ -14,7 +14,8 @@ const EMAIL_CHANNELS = new Set<NotificationChannel>([NotificationChannel.EMAIL])
 export interface ChannelStep {
   channel: NotificationChannel;
   provider: string;
-  apiKey: string;
+  // T8: apiKey НЕ передається у job.data (Redis) — resolver у sms.processor читає+розшифровує його
+  // за (orgId, branchId, channel, provider) у point-of-use.
   senderName: string;
   message: string;
   /** Тема (лише EMAIL); відрендерена. */
@@ -203,7 +204,6 @@ export class NotificationsService {
         return {
           channel: c.channel,
           provider: c.provider,
-          apiKey: c.apiKey,
           senderName: c.senderName,
           message: this.renderTemplate(c.templateBody, vars),
           subject: c.templateSubject ? this.renderTemplate(c.templateSubject, vars) : undefined,
@@ -221,9 +221,8 @@ export class NotificationsService {
         attempts: 10,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: true,
-        // §2.4: job.data.chain містить apiKey у відкритому вигляді. Без removeOnFail
-        // невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст пам'яті.
-        // Тримаємо обмежене вікно для діагностики (як webhooks queue).
+        // T8: apiKey у job.data ВЖЕ НЕМАЄ (резолвиться у processor). removeOnFail тримаємо як
+        // обмежене діагностичне вікно + захист від безмежного росту Redis (як webhooks queue).
         removeOnFail: 200,
       },
     );

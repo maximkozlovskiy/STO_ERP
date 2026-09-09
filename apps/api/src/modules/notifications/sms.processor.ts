@@ -9,7 +9,6 @@ import { NotificationProviderRegistry } from './providers/provider-registry';
 interface ChannelStep {
   channel: NotificationChannel;
   provider: string;
-  apiKey: string;
   senderName: string;
   message: string;
   subject?: string;
@@ -81,12 +80,23 @@ export class SmsProcessor extends WorkerHost {
       return;
     }
 
+    // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
+    const apiKey = await this.resolveApiKey(orgId, branchId, step.channel, step.provider);
+    if (!apiKey) {
+      await this.log(orgId, branchId, event, step, 'FAILED', {
+        error: `Не знайдено активний apiKey для ${step.channel}/${step.provider}`,
+        attempt: job.attemptsMade + 1,
+      });
+      await this.tryNext(job);
+      return;
+    }
+
     const result = await impl.send({
       channel: step.channel,
       recipient: step.recipient,
       message: step.message,
       subject: step.subject,
-      creds: { apiKey: step.apiKey, senderName: step.senderName },
+      creds: { apiKey, senderName: step.senderName },
       externalTemplateId: step.externalTemplateId,
     });
 
@@ -133,10 +143,40 @@ export class SmsProcessor extends WorkerHost {
         attempts: 10,
         backoff: { type: 'exponential', delay: 60_000 },
         removeOnComplete: true,
-        // §2.4: job.data.chain містить apiKey → обмежуємо утримання невдалих jobs у Redis.
+        // Обмежуємо утримання невдалих jobs у Redis (діагностика). T8: apiKey у payload вже НЕМАЄ.
         removeOnFail: 200,
       },
     );
+  }
+
+  /**
+   * T8: резолвимо apiKey у point-of-use (не тримаємо у Redis job.data). Prisma field-encryption
+   * extension автоматично розшифровує apiKey/smsApiKey при читанні. Джерело — те саме, що у
+   * NotificationsService.resolveConfig: спершу NotificationChannelConfig (@@unique([branchId,channel])),
+   * далі legacy BranchSettings.smsApiKey для SMS.
+   */
+  private async resolveApiKey(
+    orgId: string,
+    branchId: string | undefined,
+    channel: NotificationChannel,
+    provider: string,
+  ): Promise<string | null> {
+    if (!branchId) return null;
+    const cfg = await this.prisma.notificationChannelConfig.findFirst({
+      where: { orgId, branchId, channel, provider, enabled: true, deletedAt: null },
+      select: { apiKey: true },
+    });
+    if (cfg?.apiKey) return cfg.apiKey;
+
+    // Legacy SMS-шлях (BranchSettings.smsApiKey) — лише для каналу SMS.
+    if (channel === NotificationChannel.SMS) {
+      const bs = await this.prisma.branchSettings.findFirst({
+        where: { orgId, branchId },
+        select: { smsApiKey: true },
+      });
+      if (bs?.smsApiKey) return bs.smsApiKey;
+    }
+    return null;
   }
 
   /** Append-only NotificationLog. Помилка логу не має зривати відправку. */

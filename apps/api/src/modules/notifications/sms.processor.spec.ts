@@ -13,7 +13,14 @@ describe('SmsProcessor (fallback engine)', () => {
   const send = vi.fn();
   const registry = { get: vi.fn() } as unknown as NotificationProviderRegistry;
   const logCreate = vi.fn().mockResolvedValue({});
-  const prisma = { notificationLog: { create: logCreate } } as unknown as PrismaService;
+  // T8: apiKey резолвиться у processor (не в job.data) — мокаємо джерело (NotificationChannelConfig).
+  const channelConfigFindFirst = vi.fn().mockResolvedValue({ apiKey: 'tok' });
+  const branchSettingsFindFirst = vi.fn().mockResolvedValue({ smsApiKey: 'tok' });
+  const prisma = {
+    notificationLog: { create: logCreate },
+    notificationChannelConfig: { findFirst: channelConfigFindFirst },
+    branchSettings: { findFirst: branchSettingsFindFirst },
+  } as unknown as PrismaService;
   const queueAdd = vi.fn().mockResolvedValue({});
   const queue = { add: queueAdd } as unknown as Queue;
 
@@ -28,7 +35,6 @@ describe('SmsProcessor (fallback engine)', () => {
   const step = (channel: NotificationChannel) => ({
     channel,
     provider: 'turbosms',
-    apiKey: 'tok',
     senderName: 'STO',
     message: `msg-${channel}`,
     recipient: '380671112233',
@@ -154,7 +160,6 @@ describe('SmsProcessor (fallback engine)', () => {
     const templateStep = {
       channel: NotificationChannel.VIBER,
       provider: 'esputnik',
-      apiKey: 'tok',
       senderName: 'STO',
       message: '', // порожній inline-текст — джерело тексту у шаблоні провайдера
       recipient: '380671112233',
@@ -176,7 +181,6 @@ describe('SmsProcessor (fallback engine)', () => {
     const templateStep = {
       channel: NotificationChannel.TELEGRAM,
       provider: 'esputnik',
-      apiKey: 'tok',
       senderName: 'STO',
       message: '', // renderTemplate('') === '' — валідний стан для template-каналу
       recipient: '380671112233',
@@ -214,7 +218,6 @@ describe('SmsProcessor (fallback engine)', () => {
   const emailStep = (recipient: string) => ({
     channel: NotificationChannel.EMAIL,
     provider: 'smtp',
-    apiKey: 'k',
     senderName: 'STO',
     message: 'body',
     subject: 'subj',

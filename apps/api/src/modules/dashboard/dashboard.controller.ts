@@ -18,10 +18,12 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { PrismaService } from '../../prisma/prisma.service';
 
 interface JwtPayload {
   sub: string;
   orgId: string;
+  tokenVersion?: number;
 }
 
 @ApiTags('Dashboard')
@@ -31,6 +33,7 @@ export class DashboardController {
     private readonly dashboardService: DashboardService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -51,6 +54,13 @@ export class DashboardController {
    * Оскільки EventSource не підтримує custom headers.
    * Verify токену відбувається вручну тут — на цей endpoint @UseGuards не вішається,
    * бо JwtAuthGuard очікує Bearer header.
+   *
+   * БЕЗПЕКА (T6): окрім підпису+expiry, звіряємо tokenVersion проти AuthAccount (як jwt.strategy) —
+   * інакше відкликаний токен (logout-all / зміна пароля) продовжував би стрімити до свого expiry.
+   * Перевірка — при ВІДКРИТТІ з'єднання; вже-відкритий стрім живе до reconnect (EventSource
+   * перепідключається кожні ~кілька сек при обриві → revocation спрацює на найближчому reconnect).
+   * ЗАСТЕРЕЖЕННЯ: токен у query-param потрапляє в access-log (Caddy) — прийнятно для короткоживучого
+   * (15хв) access-токена на internal LAN; EventSource не дає передати Authorization-заголовок.
    */
   @Get('stream')
   @Sse()
@@ -60,23 +70,37 @@ export class DashboardController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({ summary: 'SSE stream дашборду (JWT через query param)' })
   @ApiQuery({ name: 'token', description: 'JWT access token' })
-  stream(@Query('token') token: string): Observable<MessageEvent> {
+  async stream(@Query('token') token: string): Promise<Observable<MessageEvent>> {
     if (!token) {
       throw new UnauthorizedException('Token не надано');
     }
 
-    let orgId: string;
+    let payload: JwtPayload;
     try {
-      const payload = this.jwtService.verify<JwtPayload>(token, {
+      payload = this.jwtService.verify<JwtPayload>(token, {
         secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
       if (!payload.orgId || !payload.sub) {
         throw new UnauthorizedException('Невірний токен (відсутні claims)');
       }
-      orgId = payload.orgId;
     } catch {
       throw new UnauthorizedException('Невірний або минулий токен');
     }
+
+    // T6: revocation-guard + liveness — той самий контракт, що jwt.strategy.validate.
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: payload.sub, orgId: payload.orgId, deletedAt: null },
+      select: { id: true, authAccount: { select: { tokenVersion: true } } },
+    });
+    if (!employee) {
+      throw new UnauthorizedException('Сесія недійсна');
+    }
+    const currentVersion = employee.authAccount?.tokenVersion ?? 0;
+    if ((payload.tokenVersion ?? 0) !== currentVersion) {
+      throw new UnauthorizedException('Сесія недійсна');
+    }
+
+    const orgId = payload.orgId;
 
     // Емітувати snapshot одразу при підключенні + кожні 30 сек.
     return interval(30_000).pipe(

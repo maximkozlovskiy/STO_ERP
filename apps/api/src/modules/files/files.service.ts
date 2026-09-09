@@ -81,8 +81,10 @@ export class FilesService implements OnModuleInit {
     try {
       const exists = await this.client.bucketExists(this.bucket);
       if (!exists) await this.client.makeBucket(this.bucket, 'eu-central-1');
-      // Allow public read for org assets (logos) and work-order media so browsers
-      // can load <img src="..."> directly without presigned URLs.
+      // T7: публічний read ЛИШЕ для `org/*/public/*` (логотипи — грузяться прямим <img src>).
+      // Раніше було `org/*` → УСІ файли (фото авто клієнтів, документи наряду) world-readable за
+      // передбачуваним шляхом. Медіа наряду й так віддається через presigned URL (getSignedUrl,
+      // work-order-media.service), тож публічний read для них не потрібен — звужуємо до public-префікса.
       const policy = JSON.stringify({
         Version: '2012-10-17',
         Statement: [
@@ -90,7 +92,7 @@ export class FilesService implements OnModuleInit {
             Effect: 'Allow',
             Principal: { AWS: ['*'] },
             Action: ['s3:GetObject'],
-            Resource: [`arn:aws:s3:::${this.bucket}/org/*`],
+            Resource: [`arn:aws:s3:::${this.bucket}/org/*/public/*`],
           },
         ],
       });
@@ -119,7 +121,9 @@ export class FilesService implements OnModuleInit {
     }
 
     const fileId = crypto.randomUUID();
-    const folder = workOrderId ? `org/${orgId}/work-orders/${workOrderId}` : `org/${orgId}`;
+    // T7: файли без workOrderId (логотипи org) кладемо у `public/` підпапку — саме її (і лише її)
+    // покриває public-read bucket-policy. Медіа наряду (workOrderId) — приватне, віддається presigned.
+    const folder = workOrderId ? `org/${orgId}/work-orders/${workOrderId}` : `org/${orgId}/public`;
     const objectName = `${folder}/${fileId}.${ext}`;
 
     try {
