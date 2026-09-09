@@ -49,27 +49,35 @@
 **Закриті блокери (fdb468df):** T-B1 api MINIO-env crash · T-B2 offline-update (docker load) · T-H1
 frontend E2E auth-hatch build-gate · T-M-tsc mobile experimentalDecorators · T-H3 Stop-Stack ярлик.
 
+**Опрацьовано (2026-09-09, «робимо все окрім інсталу», коміти 4cc9d156…e282e091):** 🟢 закрито
+T1/T2 (ESLint api/web/mobile + CI-гейти), T6/T7/T8 (SSE revocation, MinIO policy, apiKey поза Redis),
+T3/T9/T10 (offline-меседж, dashboard-помилки, supplier-return invalidate), T5/T14 (sync-індекси,
+partial-unique номерів), T13 (maintenanceForecastDays у settings). 🟡 частково: T12 (cap-warn уже є,
+cursor-пагінація — scale-time), T19 (Kyiv-TZ форматери зроблено; ₴/грн + tabular-nums sweep лишається).
+🔴 Deploy-борг (T4/T15/T16/T23) — свідомо поза scope цього проходу (installer). Лишається: T11 (client
+Zod), T17 (E2E money-flow), T18 (docs нових фіч), T20/T21/T22/T24 (LOW).
+
 | ID  | Область  | Прогалина / ризик                                                                                      | Пріор.   | Статус |
 | --- | -------- | ------------------------------------------------------------------------------------------------------ | -------- | ------ |
-| T1  | Tooling  | Backend (api/mobile) не лінтиться — немає ESLint-конфігу; 57 модулів без статичного лінту              | Високий  | 🔴     |
-| T2  | CI       | CI = лише migration-safety; type-check/lint/unit/e2e не в CI → регресії не ловляться до релізу         | Високий  | 🔴     |
-| T3  | Frontend | Offline-first для ЗАПИСУ не реалізований — SW не чергує /api, pending_ops обнуляється без replay       | Високий  | 🔴     |
+| T1  | Tooling  | Backend (api/mobile) не лінтиться — немає ESLint-конфігу; 57 модулів без статичного лінту              | Високий  | 🟢     |
+| T2  | CI       | CI = лише migration-safety; type-check/lint/unit/e2e не в CI → регресії не ловляться до релізу         | Високий  | 🟢     |
+| T3  | Frontend | Offline-first для ЗАПИСУ не реалізований — SW не чергує /api, pending_ops обнуляється без replay       | Високий  | 🟢     |
 | T4  | Deploy   | Install ↔ ADR-002/003 розрив: Docker Desktop замість WSL2-engine; port-proxy скрипти відсутні          | Високий  | 🔴     |
-| T5  | DB       | 3 PULL-таблиці (WorkOrderLine/WorkOrderPart/Payment) без @@index([orgId,syncVersion]) → sort у sync    | Високий  | 🔴     |
-| T6  | Security | Dashboard SSE: токен у query-log + revocation-bypass (не перевіряє tokenVersion)                       | Середній | 🔴     |
-| T7  | Security | MinIO публічний anonymous read на org/* (фото/документи клієнтів) — висить 2 цикли                     | Середній | 🔴     |
-| T8  | Security | apiKey розшифрований plaintext у Redis job payload; Redis без пароля                                   | Середній | 🔴     |
-| T9  | Frontend | Dashboard проковтує помилки → 0/«нема даних» замість реального стану (silent wrong number)             | Середній | 🔴     |
-| T10 | Frontend | Supplier-return confirm не інвалідує склад+баланс → застарілі дані                                     | Середній | 🔴     |
+| T5  | DB       | 3 PULL-таблиці (WorkOrderLine/WorkOrderPart/Payment) без @@index([orgId,syncVersion]) → sort у sync    | Високий  | 🟢     |
+| T6  | Security | Dashboard SSE: токен у query-log + revocation-bypass (не перевіряє tokenVersion)                       | Середній | 🟢     |
+| T7  | Security | MinIO публічний anonymous read на org/* (фото/документи клієнтів) — висить 2 цикли                     | Середній | 🟢     |
+| T8  | Security | apiKey розшифрований plaintext у Redis job payload; Redis без пароля                                   | Середній | 🟢     |
+| T9  | Frontend | Dashboard проковтує помилки → 0/«нема даних» замість реального стану (silent wrong number)             | Середній | 🟢     |
+| T10 | Frontend | Supplier-return confirm не інвалідує склад+баланс → застарілі дані                                     | Середній | 🟢     |
 | T11 | Frontend | Client-side Zod-валідація відсутня — shared-схеми не імпортуються                                      | Середній | 🔴     |
-| T12 | Backend  | followup-processor cap 1000 → тиха втрата ТО-нагадувань для автопарків >1000                           | Середній | 🔴     |
-| T13 | Backend  | MAINTENANCE_FORECAST_DAYS=14 хардкод — не в OrganisationSettings                                       | Середній | 🔴     |
-| T14 | DB       | Немає DB-unique (orgId, number) на документах → дублі номерів у offline/restore (юрид. ризик)          | Середній | 🔴     |
+| T12 | Backend  | followup-processor cap 1000 → тиха втрата ТО-нагадувань для автопарків >1000                           | Середній | 🟡     |
+| T13 | Backend  | MAINTENANCE_FORECAST_DAYS=14 хардкод — не в OrganisationSettings                                       | Середній | 🟢     |
+| T14 | DB       | Немає DB-unique (orgId, number) на документах → дублі номерів у offline/restore (юрид. ризик)          | Середній | 🟢     |
 | T15 | Deploy   | New-RandomBase64 некоректна PS-логіка → секрети можуть виходити слабкими                               | Середній | 🔴     |
 | T16 | Deploy   | compose prod: нема resource-limits/non-root; web+caddy без healthcheck                                 | Середній | 🔴     |
 | T17 | Quality  | E2E-прогалина money-flow: нема UI-тесту оплати/каси/фіскал-чека                                        | Середній | 🔴     |
 | T18 | Docs     | Нові фічі (loyalty/ТО-нагадування/payments-об'єкт) без досьє в docs/objects                            | Середній | 🔴     |
-| T19 | Frontend | Дати не прив'язані до Kyiv-TZ · ₴ vs грн · tabular-nums відсутній · Escape закриває вкладені модалки   | Низький  | 🔴     |
+| T19 | Frontend | Дати не прив'язані до Kyiv-TZ · ₴ vs грн · tabular-nums відсутній · Escape закриває вкладені модалки   | Низький  | 🟡     |
 | T20 | Backend  | online-payment polling без auto-recovery · WO INVOICED→PAID поза tx · post-commit side-effects поза tx | Низький  | 🔴     |
 | T21 | Security | login MinLength(4) · refresh TTL 30d · access у sessionStorage · secure-cookie на LAN-HTTP             | Низький  | 🔴     |
 | T22 | DB       | Кількості на Float (drift у FIFO/FEFO) · DROP INDEX без IF EXISTS у червневій міграції                 | Низький  | 🔴     |
