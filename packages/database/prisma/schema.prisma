@@ -737,6 +737,7 @@ model CounterpartyContract {
   // не використовує counterpartyId — існуючий базовий індекс не покривав.
   @@index([orgId, contractType, deletedAt])
   @@index([orgId, syncVersion])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("counterparty_contracts")
 }
 
@@ -1173,6 +1174,7 @@ model WorkOrder {
   // Same convention as Invoice/PurchaseOrder/StockDocument — eliminates the in-memory Sort node
   // for the most common list query (no filters applied).
   @@index([orgId, deletedAt, createdAt])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("work_orders")
 }
 
@@ -1204,6 +1206,7 @@ model WorkOrderLine {
   @@index([orgId, workOrderId, deletedAt])
   @@index([orgId, employeeId])
   @@index([workOrderId, deletedAt])
+  @@index([orgId, syncVersion]) // T5: delta-pull курсор (sync.service where orgId+syncVersion>since)
   @@map("work_order_lines")
 }
 
@@ -1241,6 +1244,7 @@ model WorkOrderPart {
   unitOfMeasure UnitOfMeasure? @relation("WorkOrderPartUoM", fields: [unitOfMeasureId], references: [id])
 
   @@index([orgId, workOrderId, deletedAt])
+  @@index([orgId, syncVersion]) // T5: delta-pull курсор
   @@map("work_order_parts")
 }
 
@@ -1479,6 +1483,7 @@ model PurchaseOrder {
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
   @@index([orgId, deliveryStatus, deletedAt])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("purchase_orders")
 }
 
@@ -1536,6 +1541,7 @@ model SupplierReturn {
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
   @@index([orgId, purchaseOrderId, deletedAt, createdAt])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("supplier_returns")
 }
 
@@ -1592,6 +1598,7 @@ model SupplierPayment {
   // + groupBy(purchaseOrderId=null) — FK PO axis не було покрито.
   @@index([orgId, purchaseOrderId, deletedAt])
   @@index([orgId, syncVersion])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("supplier_payments")
 }
 
@@ -1626,6 +1633,7 @@ model StockDocument {
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
   @@index([orgId, purchaseOrderId, deletedAt, createdAt])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("stock_documents")
 }
 
@@ -1952,6 +1960,7 @@ model Invoice {
   // createdAt DESC. Без цього індекса Postgres ішов через (orgId, status, deletedAt)
   // partial scan + per-row workOrderId filter — O(N) на кожен WO у groupBy.
   @@index([orgId, workOrderId, deletedAt, createdAt])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
   @@map("invoices")
 }
 
@@ -2012,6 +2021,7 @@ model Payment {
   // fiscalStatus equality leftmost, createdAt sort/range у tail → index-range scan + готовий
   // порядок (без external sort). fiscalStatus nullable ('none'→IS NULL теж покрито).
   @@index([orgId, fiscalStatus, createdAt])
+  @@index([orgId, syncVersion]) // T5: delta-pull курсор (Payment — append-only high-volume)
   @@map("payments")
 }
 
