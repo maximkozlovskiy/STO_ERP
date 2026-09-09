@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 param(
     [string]$BundlePath = "$env:TEMP\sto-erp-bundle"
 )

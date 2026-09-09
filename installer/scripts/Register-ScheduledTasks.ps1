@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 param(
     [string]$AppDir  = 'C:\Program Files\STO-ERP',
     [string]$DataDir = 'C:\ProgramData\STO-ERP'

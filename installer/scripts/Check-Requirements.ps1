@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 param()
 
 Add-Type -AssemblyName System.Windows.Forms
