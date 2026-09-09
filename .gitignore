@@ -57,3 +57,7 @@ apps/web/e2e/.auth/
 apps/web/.env.e2e.local
 .claude/worktrees/
 .turbo/cache/
+# Next.js 16 dev-server авто-генерує ці файли у apps/web (self-documented «auto-generated»);
+# turbopack також переписує tsconfig.json/next-env.d.ts на `next dev` — не комітимо цю dev-churn.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
