@@ -97,6 +97,25 @@ T6/T7/T8 (security fast-fixes) → T4/T15/T16 (deploy) → T9/T10/T11 (frontend 
 
 ---
 
+## Архітектурний борг — OOP-аудит 2026-09-09 (3 незалежні аудити, оцінка 7/10)
+
+> Погляд архітектора коду. Зріла service-layer ООП вище середнього: Registry+Strategy для 4 провайдерів,
+> aspect-oriented Prisma-extensions, інкапсульовані грошові/складські інваріанти, майже ациклічний граф.
+> Борг зростання — не концептуальні помилки. Дашборд: артефакт «STO ERP — Архітектурна зрілість».
+
+| ID  | Покращення                                                                                             | Пріор.   | Статус |
+| --- | ------------------------------------------------------------------------------------------------------ | -------- | ------ |
+| A1  | Tenant-ізоляція + soft-delete як Prisma-extension (AsyncLocalStorage) — прибрати 1828 ручних orgId     | Високий  | 🔴     |
+| A2  | Доменні events для lifecycle side-effects (WorkOrderCompleted + @OnEvent, +outbox)                     | Високий  | 🔴     |
+| A3  | Розбити God-об'єкти (WorkOrdersService 2124р → +StockEffects/Share/Totals; CreateWorkOrderModal 3708р) | Високий  | 🔴     |
+| A4  | Provider-registry через multi-provider DI-токен замість конкретних класів (OCP+DIP)                    | Середній | 🟢     |
+| A5  | Спільний DTO/FSM-контракт у @sto/shared (Zod через nestjs-zod) — усунути ручне дзеркалення             | Середній | 🔴     |
+
+**A4 закрито (1e427074):** 4 registry (fiscal/gateway/notification/delivery) → DI-токен + single-factory
+масив singleton-ів (NestJS 10 не має Angular-style `multi:true`). Live-verified усі 4 endpoint-и.
+
+---
+
 ## Порядок опрацювання (рекомендований)
 
 1. **ADR-012** — унікальні секрети + аварійне відновлення (G1, G2, G12). Дешево, блокує запуск.
