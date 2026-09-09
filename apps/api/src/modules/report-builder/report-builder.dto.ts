@@ -19,7 +19,7 @@ const ENTITY_KEYS = Object.keys(REGISTRY);
 
 export class ReportFilterDto {
   @ApiProperty() @IsString() field!: string;
-  @ApiProperty({ enum: ALLOWED_OPS }) @IsIn(ALLOWED_OPS as unknown as string[]) op!: string;
+  @ApiProperty({ enum: ALLOWED_OPS }) @IsIn(ALLOWED_OPS) op!: string;
   @ApiPropertyOptional() @IsOptional() value?: unknown;
 }
 
@@ -30,7 +30,7 @@ export class ReportSortDto {
 
 export class ReportAggDto {
   @ApiProperty() @IsString() field!: string;
-  @ApiProperty({ enum: ALLOWED_AGGS }) @IsIn(ALLOWED_AGGS as unknown as string[]) agg!: string;
+  @ApiProperty({ enum: ALLOWED_AGGS }) @IsIn(ALLOWED_AGGS) agg!: string;
 }
 
 export class ReportDateRangeDto {

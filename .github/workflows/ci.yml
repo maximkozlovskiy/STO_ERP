@@ -7,6 +7,39 @@ on:
       - main
 
 jobs:
+  # Якісні гейти — type-check + lint + unit-тести на кожен PR/push. Раніше CI мав ЛИШЕ
+  # migration-safety, тож зламаний type-check/lint/тест не ловився до релізу (напр. mobile-tsc,
+  # відсутній backend-lint). Юніт-тести замокані (без реальних БД/Redis), тож зовнішні сервіси
+  # не потрібні; лише prisma generate для типів @prisma/client.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @sto/database exec prisma generate
+
+      - name: Type-check (api · web · shared · mobile)
+        run: pnpm run type-check
+
+      - name: Lint (api · web · mobile)
+        run: pnpm run lint
+
+      - name: Unit tests
+        run: pnpm run test
+
   # A4.1 — guard проти деструктивних міграцій. Prisma-міграції у цьому репо мають бути ADDITIVE
   # (rollback інсталятора спирається на additive-only: image-rollback ≠ DB-rollback). DROP COLUMN/TABLE
   # або звужувальний ALTER TYPE призводять до втрати даних на деплої (прецедент: phase17 DROP COLUMN).

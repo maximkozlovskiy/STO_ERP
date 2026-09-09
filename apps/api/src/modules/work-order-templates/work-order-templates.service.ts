@@ -41,7 +41,9 @@ export class WorkOrderTemplatesService {
       data: {
         orgId,
         name: dto.name,
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- каст потрібен tsc для Prisma InputJsonValue (ESLint хибно вважає зайвим)
         lines: (dto.lines ?? []) as object[],
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- каст потрібен tsc для Prisma InputJsonValue
         parts: (dto.parts ?? []) as object[],
       },
     });
@@ -61,7 +63,9 @@ export class WorkOrderTemplatesService {
       where: { id, orgId, deletedAt: null },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- каст потрібен tsc для Prisma InputJsonValue
         ...(dto.lines !== undefined && { lines: dto.lines as object[] }),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- каст потрібен tsc для Prisma InputJsonValue
         ...(dto.parts !== undefined && { parts: dto.parts as object[] }),
       },
     });

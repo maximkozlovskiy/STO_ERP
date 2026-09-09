@@ -1,4 +1,5 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import type { ExecutionContext } from '@nestjs/common';
+import { createParamDecorator } from '@nestjs/common';
 import type { AuthenticatedUser } from '../strategies/jwt.strategy';
 
 /** Extracts orgId from the authenticated user — use instead of @CurrentUser() for tenant isolation */

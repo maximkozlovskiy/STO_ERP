@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -27,7 +27,6 @@ import {
   CreateInvoiceDto,
   UpdateInvoiceDto,
   TransitionInvoiceDto,
-  InvTransitionStatus,
   CreateInvoiceLineDto,
   UpdateInvoiceLineDto,
   InvoiceQueryDto,
@@ -147,7 +146,7 @@ export class InvoicesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionInvoiceDto,
   ) {
-    return this.service.transition(orgId, id, dto.status as InvTransitionStatus);
+    return this.service.transition(orgId, id, dto.status);
   }
 
   @Post(':id/clone')

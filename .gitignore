@@ -56,3 +56,4 @@ apps/web/.playwright/
 apps/web/e2e/.auth/
 apps/web/.env.e2e.local
 .claude/worktrees/
+.turbo/cache/

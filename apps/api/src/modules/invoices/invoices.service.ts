@@ -391,7 +391,7 @@ export class InvoicesService {
     });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
 
-    assertFsmTransition(INV_TRANSITIONS, inv.status as InvStatus, newStatus);
+    assertFsmTransition(INV_TRANSITIONS, inv.status, newStatus);
 
     // FIN-C2: борг (CHARGE) для STANDALONE-рахунку (без наряду) створюється при виставленні
     // (DRAFT→SENT). WO-рахунок НЕ чіпаємо — там CHARGE вже нараховано при COMPLETED наряду

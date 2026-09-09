@@ -53,6 +53,7 @@ export class VchasnoProvider implements FiscalProvider {
   }
 
   /** Вчасно використовує токен напряму — sign-in лише повертає його (без окремого обміну). */
+  // eslint-disable-next-line @typescript-eslint/require-await -- async за FiscalProvider-інтерфейсом (інші провайдери роблять мережевий sign-in)
   async signIn(cfg: FiscalConfig): Promise<FiscalToken> {
     // Токен довготривалий (керується у кабінеті Вчасно) — expiresAt не задаємо, клієнт-код
     // виставить дефолтний TTL. Реальна валідація — у verifyCredentials.
@@ -129,6 +130,7 @@ export class VchasnoProvider implements FiscalProvider {
     timeoutMs: number,
     accessToken: string,
     fiscal: Record<string, unknown>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const apiUrl = this.apiUrl(cfg).replace(/\/$/, '');
     const urlError = validatePublicUrl(apiUrl);

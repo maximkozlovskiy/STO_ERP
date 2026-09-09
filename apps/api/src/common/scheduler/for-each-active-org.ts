@@ -36,7 +36,7 @@ export async function forEachActiveOrg(
 
     await handleBatch(batch.map(o => o.id));
     total += batch.length;
-    cursor = batch[batch.length - 1]!.id;
+    cursor = batch[batch.length - 1].id;
 
     // Останній (неповний) батч → більше сторінок немає.
     if (batch.length < batchSize) break;

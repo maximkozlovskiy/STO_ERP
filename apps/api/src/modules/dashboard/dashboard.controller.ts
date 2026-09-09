@@ -83,7 +83,7 @@ export class DashboardController {
       startWith(0),
       switchMap(async () => {
         const data = await this.dashboardService.getSummary(orgId);
-        return { data: JSON.stringify(data) } as MessageEvent;
+        return { data: JSON.stringify(data) };
       }),
     );
   }

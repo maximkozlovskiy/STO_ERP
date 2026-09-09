@@ -114,7 +114,7 @@ export class EmployeesService {
             firstName: dto.firstName,
             lastName: dto.lastName,
             role: dto.role,
-            rateScheme: dto.rateScheme as object,
+            rateScheme: dto.rateScheme,
             phone: dto.phone,
             email: dto.email,
             // Apply status/dateOfFire if provided — create() used to silently ignore them
@@ -193,7 +193,7 @@ export class EmployeesService {
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
         ...(dto.role !== undefined && { role: dto.role }),
         ...(dto.status !== undefined && { status: dto.status }),
-        ...(dto.rateScheme !== undefined && { rateScheme: dto.rateScheme as object }),
+        ...(dto.rateScheme !== undefined && { rateScheme: dto.rateScheme }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.email !== undefined && { email: dto.email }),
         ...(dto.dateOfHire !== undefined && {

@@ -71,6 +71,6 @@ export class UserPreferencesController {
     if (dto.key && dto.key !== key) {
       throw new BadRequestException('Ключ у URL та тілі запиту мають збігатися');
     }
-    await this.service.upsert(orgId, user.id, key, dto.value as Record<string, unknown>);
+    await this.service.upsert(orgId, user.id, key, dto.value);
   }
 }

@@ -205,7 +205,7 @@ export class InventoryService {
           costPrice: resolvedCostPrice ?? 0,
           unitOfMeasureId: dto.unitOfMeasureId ?? null,
         },
-        db as Prisma.TransactionClient,
+        db,
       );
     }
 
@@ -294,7 +294,7 @@ export class InventoryService {
           orgId,
           dto.goodId,
           dto.warehouseId,
-          db as Prisma.TransactionClient,
+          db,
         );
         consumed = await this.batchService.consumeBatch(
           orgId,
@@ -305,7 +305,7 @@ export class InventoryService {
           dto.documentId ?? movement.id,
           dto.documentLineId,
           'FIFO',
-          db as Prisma.TransactionClient,
+          db,
         );
       } else {
         consumed = await this.batchService.consumeBatch(
@@ -317,7 +317,7 @@ export class InventoryService {
           dto.documentId ?? movement.id,
           dto.documentLineId,
           costMethod,
-          db as Prisma.TransactionClient,
+          db,
         );
         weightedCostPrice = weightedFromConsumed(consumed);
       }

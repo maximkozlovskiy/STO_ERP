@@ -89,7 +89,7 @@ export class ReconciliationProcessor extends WorkerHost {
           );
         }
       }
-      cursor = items[items.length - 1]!.id;
+      cursor = items[items.length - 1].id;
       if (items.length < RECON_BATCH_SIZE) break;
     }
     return drift;
@@ -135,7 +135,7 @@ export class ReconciliationProcessor extends WorkerHost {
           );
         }
       }
-      cursor = accounts[accounts.length - 1]!.id;
+      cursor = accounts[accounts.length - 1].id;
       if (accounts.length < RECON_BATCH_SIZE) break;
     }
     return drift;
@@ -177,7 +177,7 @@ export class ReconciliationProcessor extends WorkerHost {
           );
         }
       }
-      cursor = invoices[invoices.length - 1]!.id;
+      cursor = invoices[invoices.length - 1].id;
       if (invoices.length < RECON_BATCH_SIZE) break;
     }
     return drift;

@@ -81,6 +81,7 @@ export class MonobankClient {
     path: string,
     token: string,
     body?: unknown,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const apiUrl = apiUrlRaw || DEFAULT_BASE;
     const urlError = validatePublicUrl(apiUrl);

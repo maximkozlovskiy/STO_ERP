@@ -49,6 +49,7 @@ export class LiqpayGateway implements PaymentGateway {
     return { data, signature };
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- async за PaymentGateway-інтерфейсом (LiqPay формує URL синхронно, інші гейтвеї роблять мережевий виклик)
   async createInvoice(
     cfg: GatewayConfig,
     params: CreateInvoiceParams,
@@ -134,6 +135,7 @@ export class LiqpayGateway implements PaymentGateway {
     apiUrlRaw: string | null | undefined,
     privateKey: string,
     payload: Record<string, unknown>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const base = (apiUrlRaw || DEFAULT_BASE).replace(/\/$/, '');
     const urlError = validatePublicUrl(base);

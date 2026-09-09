@@ -1,8 +1,9 @@
 /** @type {import("eslint").Linter.Config} */
-// STO ERP sprint A2: rules-of-hooks + exhaustive-deps enforced via shared @sto/config
-// rules. eslint-config-next is intentionally NOT extended — keeps deps minimal
-// (no eslint-config-next install required) and the canonical lint command is
-// `pnpm exec next lint`, which still applies Next's recommended rules on its own.
+// STO ERP web lint. Next 16 ПРИБРАВ `next lint` (падало «Invalid project directory ... /lint»), тож
+// канонічна команда тепер `eslint src --ext .ts,.tsx` (як api/mobile). Реєструємо @typescript-eslint
+// (щоб `no-explicit-any` реально лінтився + inline-disable з ним резолвились) + react-hooks.
+// НЕ вмикаємо type-checked-пресет тут (потребує parserOptions.project на всьому web) — базові
+// react-hooks + no-explicit-any ловлять головні класи; поглиблення — окремий крок.
 module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
@@ -11,14 +12,14 @@ module.exports = {
     sourceType: 'module',
     ecmaFeatures: { jsx: true },
   },
-  // Sprint A2: enable ONLY the canonical react-hooks rules.
-  // The eslint-plugin-react-hooks 7.x `recommended` preset adds experimental rules
-  // (`set-state-in-effect`, `immutability`) that would flood husky pre-commit;
-  // those can be enabled in a future sprint after dedicated cleanup.
-  plugins: ['react-hooks'],
+  plugins: ['react-hooks', '@typescript-eslint'],
   rules: {
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',
+    '@typescript-eslint/no-explicit-any': 'error',
+    // web ніколи не лінтився no-unused-vars → 53 накопичених dead-import/var. Це cleanliness, не bug —
+    // тримаємо як warn (не блокує CI), підтягнути до error окремим cleanup-проходом.
+    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
   },
   ignorePatterns: [
     '.next/',

@@ -54,6 +54,7 @@
   "devDependencies": {
     "@nestjs/cli": "^10.4.0",
     "@nestjs/testing": "^10.4.0",
+    "@sto/config": "workspace:*",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.15.33",
     "@types/bcrypt": "^5.0.2",

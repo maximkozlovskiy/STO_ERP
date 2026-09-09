@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb';
-import { field, date, readonly } from '@nozbe/watermelondb/decorators';
+import { field } from '@nozbe/watermelondb/decorators';
 
 export class WorkOrderModel extends Model {
   static table = 'work_orders';

@@ -184,10 +184,11 @@ export class EstimateExportService {
     if (!robotoDir) throw new Error('Roboto fonts not found for PDF generation');
 
     // pdfkit uses `export =` so require() returns the constructor directly
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+    /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
     const PDFDocumentCtor: new (
       opts: Record<string, unknown>,
     ) => PDFKit.PDFDocument = require('pdfkit');
+    /* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment */
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     const doc: PDFKit.PDFDocument = new PDFDocumentCtor({
       size: 'A4',
@@ -410,11 +411,6 @@ export class EstimateExportService {
     const titleFont = { name: 'Calibri', bold: true, size: 14 } as const;
     const headerFont = { name: 'Calibri', bold: true, size: 10 } as const;
     const bodyFont = { name: 'Calibri', size: 10 } as const;
-    const labelFill: ExcelJS.Fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFF2F2F2' },
-    };
     const headerFill: ExcelJS.Fill = {
       type: 'pattern',
       pattern: 'solid',
@@ -489,7 +485,7 @@ export class EstimateExportService {
         const cols = [line.name, line.normoHours, Number(line.price), Number(line.amount)];
         (['A', 'B', 'C', 'D'] as const).forEach((col, i) => {
           const cell = ws.getCell(`${col}${row}`);
-          cell.value = xlsxSafe(cols[i]) as string | number;
+          cell.value = xlsxSafe(cols[i]);
           cell.font = bodyFont;
           cell.border = allBorders;
           cell.alignment = { horizontal: i === 0 ? 'left' : 'right' };
@@ -534,7 +530,7 @@ export class EstimateExportService {
         const cols = [part.name, part.quantity, part.unit, Number(part.price), Number(part.amount)];
         (['A', 'B', 'C', 'D', 'E'] as const).forEach((col, i) => {
           const cell = ws.getCell(`${col}${row}`);
-          cell.value = xlsxSafe(cols[i]) as string | number;
+          cell.value = xlsxSafe(cols[i]);
           cell.font = bodyFont;
           cell.border = allBorders;
           cell.alignment = { horizontal: i === 0 ? 'left' : 'right' };

@@ -172,7 +172,7 @@ export class SyncService {
                 } else if (
                   v !== null &&
                   typeof v === 'object' &&
-                  'toNumber' in (v as object) &&
+                  'toNumber' in v &&
                   typeof (v as { toNumber?: unknown }).toNumber === 'function'
                 ) {
                   // Prisma.Decimal
@@ -251,7 +251,7 @@ export class SyncService {
 
     // Strip protected fields — only allow whitelisted fields through
     const whitelist = PUSH_FIELD_WHITELIST[rec.table];
-    const rawPayload = rec.payload as Record<string, unknown>;
+    const rawPayload = rec.payload;
     const safePayload: Record<string, unknown> = {};
     if (whitelist) {
       for (const key of whitelist) {
@@ -268,7 +268,7 @@ export class SyncService {
       // calendar_slots with an active work order must not be deleted via sync
       // — the operator must cancel the slot through the proper API
       if (rec.table === 'calendar_slots' && existing) {
-        const slot = existing as Record<string, unknown>;
+        const slot = existing;
         if (slot.workOrderId) {
           throw new Error("Видалення слоту з прив'язаним нарядом через синхронізацію заборонено");
         }

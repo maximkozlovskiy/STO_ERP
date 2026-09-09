@@ -764,6 +764,7 @@ export class XlsxService {
 
     if (fileType === 'csv') {
       const text = buffer.toString('utf-8').replace(/^﻿/, ''); // strip BOM
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- parseCSV повертає unknown[]; каст потрібен tsc (ESLint хибно вважає зайвим)
       const records = parseCSV(text, {
         columns: true,
         skip_empty_lines: true,

@@ -219,7 +219,7 @@ export class PurchaseOrdersService {
 
     return {
       items: items.map(item => {
-        const dto = this.toDto(item as Parameters<typeof this.toDto>[0]);
+        const dto = this.toDto(item);
         dto.outstanding = Math.max(0, dto.totalAmount - (paidByPo.get(item.id) ?? 0));
         return dto;
       }),
@@ -540,7 +540,7 @@ export class PurchaseOrdersService {
         });
         if (!po) throw new NotFoundException('Замовлення не знайдено');
 
-        assertFsmTransition(PO_TRANSITIONS, po.status as POStatus, newStatus);
+        assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
         await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
       },

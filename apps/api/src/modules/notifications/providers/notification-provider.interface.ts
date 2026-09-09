@@ -1,4 +1,4 @@
-import { NotificationChannel } from '@prisma/client';
+import type { NotificationChannel } from '@prisma/client';
 
 /** Креди провайдера (write-only, зберігаються per-branch/channel). */
 export interface ProviderCredentials {

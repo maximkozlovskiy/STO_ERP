@@ -197,7 +197,7 @@ export class SettingsService {
     // Fallbacks aligned with BranchSettings Prisma defaults (09:00 / 18:00) to match booking.service.ts.
     const parseHour = (t: string | undefined, fallback: number) => {
       if (!t) return fallback;
-      const h = parseInt(t.split(':')[0]!, 10);
+      const h = parseInt(t.split(':')[0], 10);
       return Number.isFinite(h) && h >= 0 && h <= 23 ? h : fallback;
     };
     const workStartHour = parseHour(settings?.workStartTime, 9);
@@ -770,8 +770,7 @@ export class SettingsService {
         return { valid: false, error: `Checkbox: ${res.status}` };
       }
       const data = (await res.json()) as
-        | { results?: Array<{ title?: string }> }
-        | Array<{ title?: string }>;
+        { results?: Array<{ title?: string }> } | Array<{ title?: string }>;
       const list = Array.isArray(data) ? data : (data.results ?? []);
       return { valid: true, cashRegisterName: list[0]?.title };
     } catch (e) {

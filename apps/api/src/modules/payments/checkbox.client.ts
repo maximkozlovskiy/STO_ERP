@@ -104,6 +104,7 @@ export class CheckboxClient {
       body?: unknown;
       redact?: (string | null | undefined)[];
     },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const apiUrl = apiUrlRaw || DEFAULT_BASE;
     const urlError = validatePublicUrl(apiUrl);

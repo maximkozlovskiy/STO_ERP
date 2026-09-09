@@ -23,6 +23,7 @@ const ALLOWED_ROLES = ['OWNER', 'ADMIN'];
  * Монтується лише non-prod (BullBoardModule.register() у prod повертає порожній модуль, роут відсутній),
  * тож у prod цей хук — no-op (жоден запит не матчить префікс, бо самого UI немає).
  */
+// eslint-disable-next-line @typescript-eslint/require-await -- async за контрактом (bootstrap-хелпер, викликається через await у main.ts перед app.listen)
 export async function registerBullBoardGuard(app: NestFastifyApplication): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
     return; // bull-board не монтується на проді — гард не потрібен.

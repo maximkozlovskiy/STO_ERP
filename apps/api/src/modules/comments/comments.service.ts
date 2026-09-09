@@ -68,7 +68,7 @@ export class CommentsService {
     ]);
 
     return {
-      items: items.map(c => this.toDto(c as CommentWithAuthor)),
+      items: items.map(c => this.toDto(c)),
       total,
     };
   }
@@ -86,7 +86,7 @@ export class CommentsService {
       data: { orgId, entityType: dto.entityType, entityId: dto.entityId, body: dto.body, authorId },
       include: { author: { select: { firstName: true, lastName: true } } },
     });
-    return this.toDto(comment as CommentWithAuthor);
+    return this.toDto(comment);
   }
 
   /**

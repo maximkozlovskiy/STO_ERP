@@ -17,8 +17,7 @@ import {
   PaginatedStockDocumentsDto,
 } from './stock-documents.dto';
 
-const DOC_STATUSES = ['DRAFT', 'CONFIRMED', 'CANCELLED'] as const;
-type DocStatus = (typeof DOC_STATUSES)[number];
+type DocStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
 
 const DOC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   DRAFT: ['CONFIRMED', 'CANCELLED'],
@@ -349,7 +348,7 @@ export class StockDocumentsService {
     });
     if (!doc) throw new NotFoundException('Документ не знайдено');
 
-    assertFsmTransition(DOC_TRANSITIONS, doc.status as DocStatus, newStatus);
+    assertFsmTransition(DOC_TRANSITIONS, doc.status, newStatus);
 
     if (newStatus === 'CONFIRMED') {
       if (!doc.lines.length) {

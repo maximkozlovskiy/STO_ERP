@@ -158,6 +158,9 @@ importers:
       '@nestjs/testing':
         specifier: ^10.4.0
         version: 10.4.22(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))
+      '@sto/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@swc/cli':
         specifier: ^0.8.1
         version: 0.8.1(@swc/core@1.16.2(@swc/helpers@0.5.23))(chokidar@3.6.0)
@@ -255,6 +258,9 @@ importers:
       '@babel/core':
         specifier: ^7.25.0
         version: 7.29.7
+      '@sto/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18

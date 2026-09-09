@@ -120,6 +120,7 @@ export class EsputnikProvider implements NotificationProvider {
     path: string,
     apiKey: string,
     body?: Record<string, unknown>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const urlError = validatePublicUrl(ESPUTNIK_BASE);
     if (urlError) throw new Error(`Невалідний eSputnik API URL: ${urlError}`);

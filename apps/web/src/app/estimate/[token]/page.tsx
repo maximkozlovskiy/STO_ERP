@@ -132,7 +132,7 @@ export default function EstimatePage() {
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
             {data.orgLogoUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
+              // раст-логотип org за довільним URL — next/image тут не підходить; звичайний <img>
               <img
                 src={data.orgLogoUrl}
                 alt={data.orgName ?? 'Логотип'}

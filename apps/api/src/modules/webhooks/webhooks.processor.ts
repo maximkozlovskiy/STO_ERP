@@ -151,6 +151,7 @@ export class OutboundWebhookProcessor extends WorkerHost {
     }
 
     // Re-throw original error so BullMQ retries with exponential backoff.
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- re-throw спійманого delivery-error (unknown) для BullMQ-retry; тип збережено навмисно
     if (deliveryError) throw deliveryError;
   }
 }

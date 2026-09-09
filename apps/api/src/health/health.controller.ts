@@ -58,10 +58,7 @@ export class HealthController {
         minio: { status: minio },
         queue: {
           status: queue,
-          waiting:
-            queueRes.status === 'fulfilled'
-              ? (queueRes as PromiseFulfilledResult<number>).value
-              : -1,
+          waiting: queueRes.status === 'fulfilled' ? queueRes.value : -1,
         },
       },
     };

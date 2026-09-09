@@ -61,6 +61,7 @@ export class NovaPoshtaClient {
     apiUrlRaw: string | null | undefined,
     body: unknown,
     secret?: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- зовнішній API-response (валідація/narrow нижче за викликом)
   ): Promise<any> {
     const apiUrl = (apiUrlRaw || DEFAULT_BASE).replace(/\/$/, '');
     const urlError = validatePublicUrl(apiUrl);

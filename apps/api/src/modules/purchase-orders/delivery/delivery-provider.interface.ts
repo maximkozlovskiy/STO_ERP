@@ -1,4 +1,4 @@
-import { DeliveryStatus } from '@prisma/client';
+import type { DeliveryStatus } from '@prisma/client';
 
 /** Креди + база API служби доставки (per-branch, write-only, шифруються at-rest). */
 export interface DeliveryConfig {

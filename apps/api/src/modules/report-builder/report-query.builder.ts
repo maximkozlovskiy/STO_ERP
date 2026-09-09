@@ -1,8 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
+import type { ReportEntityDef, FilterOp } from './report-registry';
 import {
-  ReportEntityDef,
-  FilterOp,
   getEntity,
   getField,
   assertRelationPath,

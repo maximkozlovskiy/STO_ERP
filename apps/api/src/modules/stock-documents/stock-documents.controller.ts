@@ -13,7 +13,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -25,7 +25,6 @@ import {
   CreateStockDocumentDto,
   UpdateStockDocumentDto,
   TransitionStockDocumentDto,
-  DocTransitionStatus,
   StockDocumentQueryDto,
   LinkedCountsDto,
 } from './stock-documents.dto';
@@ -115,6 +114,6 @@ export class StockDocumentsController {
     @CurrentUser() user: { id: string },
   ) {
     // jwt.strategy.ts повертає { id, orgId, role }. Поле `sub` живе тільки у JWT payload, не в request.user.
-    return this.service.transition(orgId, id, dto.status as DocTransitionStatus, user?.id);
+    return this.service.transition(orgId, id, dto.status, user?.id);
   }
 }

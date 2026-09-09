@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { Agg, ReportEntityDef, getField } from './report-registry';
+import type { Agg, ReportEntityDef } from './report-registry';
+import { getField } from './report-registry';
 import { REPORT_TAKE_CAP } from './report-query.builder';
 
 export interface ReportAggInput {

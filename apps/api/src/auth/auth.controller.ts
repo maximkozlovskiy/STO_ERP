@@ -17,7 +17,6 @@ import {
   ApiBearerAuth,
   ApiCookieAuth,
   ApiProperty,
-  ApiPropertyOptional,
 } from '@nestjs/swagger';
 import { IsString, MinLength } from 'class-validator';
 import type { FastifyReply, FastifyRequest } from 'fastify';

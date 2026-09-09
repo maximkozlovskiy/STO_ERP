@@ -129,7 +129,7 @@ export class PricingService {
           : rule.goodType
             ? { goodType: rule.goodType as GoodType }
             : {};
-    const where = { orgId, deletedAt: null as null, ...scope };
+    const where = { orgId, deletedAt: null, ...scope };
 
     // Parallel: goods scope + active rules — обидва незалежні fetch'і, можуть виконуватись одночасно.
     // Раніше було послідовно (goods → allRules), хоча allRules не залежить від goods.
@@ -241,7 +241,7 @@ export class PricingService {
     if (supplierId) {
       const supplierRules = rules.filter(r => r.supplierId === supplierId);
       if (supplierRules.length > 0) {
-        const rule = supplierRules[0]!;
+        const rule = supplierRules[0];
         return { price: this._applyRule(rule, costPrice), ruleName: rule.name };
       }
     }
@@ -263,7 +263,7 @@ export class PricingService {
       candidates.find(r => !r.goodId && !r.brandId && r.goodCategory === goodCategory) ??
       candidates.find(r => !r.goodId && !r.brandId && !r.goodCategory && r.goodType === goodType) ??
       candidates.find(r => !r.goodId && !r.brandId && !r.goodCategory && !r.goodType) ??
-      candidates[0]!;
+      candidates[0];
 
     return { price: this._applyRule(rule, costPrice), ruleName: rule.name };
   }

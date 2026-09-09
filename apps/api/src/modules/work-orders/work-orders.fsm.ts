@@ -1,4 +1,4 @@
-import { WorkOrderStatus } from '@prisma/client';
+import type { WorkOrderStatus } from '@prisma/client';
 
 export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
