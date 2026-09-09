@@ -63,6 +63,19 @@ export class FilesService implements OnModuleInit {
     }
   }
 
+  /**
+   * D1: readiness-перевірка MinIO для /health/ready. bucketExists — легкий round-trip до сховища.
+   * false якщо клієнт не сконфігурований або MinIO недоступний.
+   */
+  async healthCheck(): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      return await this.client.bucketExists(this.bucket);
+    } catch {
+      return false;
+    }
+  }
+
   async onModuleInit() {
     if (!this.client) return;
     try {
