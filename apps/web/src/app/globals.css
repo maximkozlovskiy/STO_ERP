@@ -224,6 +224,14 @@ body {
   background-color: var(--color-surface);    /* rows stay white */
 }
 
+/* T19: моноширинні цифри у ПРАВОвирівняних комірках таблиць (конвенція грошових/числових колонок —
+   th/td з text-right). Без цього пропорційні цифри Geist не вирівнюються порозрядно у сумах. Один
+   глобальний rule закриває неконсистентність по 20+ таблицях замість per-site tabular-nums. */
+.table-scroll-container td.text-right,
+.table-scroll-container th.text-right {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Column drag-and-drop ─── */
 th[draggable="true"] { cursor: grab; user-select: none; }
 th[draggable="true"]:active { cursor: grabbing; }

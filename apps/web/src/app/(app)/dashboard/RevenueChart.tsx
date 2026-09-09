@@ -10,11 +10,17 @@ interface RevenuePoint {
 
 // Module-level Intl singleton for chart axis ticks (day + short-month label).
 // Replaces per-tick Intl.DateTimeFormat construction inside recharts tickFormatter callback.
-const TICK_DATE_FMT = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short' });
+// T19: Kyiv-TZ, щоб tick-дата не зсувалась на UTC-негативних машинах.
+const TICK_DATE_FMT = new Intl.DateTimeFormat('uk-UA', {
+  timeZone: 'Europe/Kyiv',
+  day: 'numeric',
+  month: 'short',
+});
 
 // Thin proxy to lib/format singleton — replaces per-tooltip Intl.NumberFormat.
+// T19: суфікс валюти уніфіковано на ₴ (домінантна конвенція у застосунку, 46 файлів проти прозового «грн»).
 function fmt(v: number) {
-  return fmtMoney(v) + ' грн';
+  return fmtMoney(v) + ' ₴';
 }
 
 function yFmt(v: number): string {
