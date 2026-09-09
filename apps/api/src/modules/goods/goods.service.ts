@@ -178,6 +178,22 @@ export class GoodsService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // A2: soft-delete guard — не видаляти товар із ненульовими залишками/резервом на будь-якому
+    // складі (той самий клас, що warehouses guard: інакше StockItem осиротіє на мертвий good, а
+    // рухи/резерви посилаються на нього). Дзеркалить warehouses.remove stockItem-balance guard.
+    const stockWithBalance = await this.prisma.stockItem.findFirst({
+      where: {
+        orgId,
+        goodId: id,
+        deletedAt: null,
+        OR: [{ quantity: { not: 0 } }, { reserved: { not: 0 } }],
+      },
+      select: { id: true },
+    });
+    if (stockWithBalance) {
+      throw new BadRequestException('Неможливо видалити: товар має ненульові залишки або резерв');
+    }
+
     // sto-optimize (2026-05-31 pattern): `findOne + update` 2-RTT → atomic `updateMany`
     // with full compound where (id+orgId+NOT deletedAt) — eliminates the race window
     // between guard and write, and saves one round-trip per delete.

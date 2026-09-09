@@ -84,6 +84,23 @@ export class VehiclesService {
   }
 
   async remove(orgId: string, id: string): Promise<void> {
+    // A2: soft-delete guard — не можна видаляти авто з активними нарядами (інакше наряди лишаються
+    // «живими» на видалене авто = orphaned records; FK Postgres не бачать deletedAt). Дзеркалить
+    // counterparties.remove active-children guard. Активні = не ARCHIVED/CANCELLED.
+    const activeWo = await this.prisma.workOrder.count({
+      where: {
+        orgId,
+        vehicleId: id,
+        deletedAt: null,
+        status: { notIn: ['ARCHIVED', 'CANCELLED'] },
+      },
+    });
+    if (activeWo > 0) {
+      throw new BadRequestException(
+        `Неможливо видалити: автомобіль має активні наряди (${activeWo})`,
+      );
+    }
+
     // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
     // where (id+orgId+deletedAt:null). -1 RTT per delete.
     const result = await this.prisma.vehicle.updateMany({

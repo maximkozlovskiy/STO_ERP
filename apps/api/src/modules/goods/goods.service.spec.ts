@@ -91,6 +91,8 @@ describe('GoodsService', () => {
       stockItem: {
         groupBy: vi.fn().mockResolvedValue([]),
         findMany: vi.fn().mockResolvedValue([]),
+        // A2: remove-guard шукає ненульовий залишок/резерв. За замовч. null (немає балансу).
+        findFirst: vi.fn().mockResolvedValue(null),
       },
       $transaction: vi.fn(),
     };
@@ -213,6 +215,26 @@ describe('GoodsService', () => {
     it('кидає NotFound коли видалений товар не знайдено', async () => {
       prisma.good.findFirst.mockResolvedValueOnce(null);
       await expect(service.restore('org-1', 'missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('remove — A2 soft-delete guard (ненульовий залишок)', () => {
+    it('товар із ненульовим залишком/резервом → BadRequest, updateMany НЕ викликається', async () => {
+      prisma.stockItem.findFirst.mockResolvedValueOnce({ id: 'si-1' }); // є баланс
+      await expect(service.remove('org-1', 'good-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.good.updateMany).not.toHaveBeenCalled();
+      // guard tenant-scoped + шукає quantity≠0 OR reserved≠0.
+      const where = prisma.stockItem.findFirst.mock.calls[0][0].where;
+      expect(where).toMatchObject({ orgId: 'org-1', goodId: 'good-1', deletedAt: null });
+      expect(where.OR).toEqual([{ quantity: { not: 0 } }, { reserved: { not: 0 } }]);
+      // MUTATION-VERIFY: прибрати guard → updateMany викликається → StockItem осиротіє на мертвий good.
+    });
+
+    it('товар без залишку → soft-delete проходить', async () => {
+      prisma.stockItem.findFirst.mockResolvedValueOnce(null);
+      prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
+      await service.remove('org-1', 'good-1');
+      expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
     });
   });
 

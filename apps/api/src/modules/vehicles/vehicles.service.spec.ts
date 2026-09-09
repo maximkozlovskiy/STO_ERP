@@ -70,6 +70,10 @@ describe('VehiclesService', () => {
         update: vi.fn(),
         updateMany: vi.fn(),
       },
+      // A2: guard рахує активні наряди перед видаленням авто. За замовч. 0 (немає активних).
+      workOrder: {
+        count: vi.fn().mockResolvedValue(0),
+      },
       customerGarage: {
         findFirst: vi.fn(),
       },
@@ -134,6 +138,20 @@ describe('VehiclesService', () => {
     it('count===0 → NotFoundException (авто немає / чужа org / вже видалене)', async () => {
       prisma.vehicle.updateMany.mockResolvedValueOnce({ count: 0 });
       await expect(service.remove('org-1', 'veh-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('A2: авто з активними нарядами → BadRequest, updateMany НЕ викликається', async () => {
+      prisma.workOrder.count.mockResolvedValueOnce(2); // 2 активні наряди на це авто
+      await expect(service.remove('org-1', 'veh-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.vehicle.updateMany).not.toHaveBeenCalled();
+      // guard рахує наряди не-термінальних статусів (tenant-scoped orgId + vehicleId).
+      expect(prisma.workOrder.count.mock.calls[0][0].where).toMatchObject({
+        orgId: 'org-1',
+        vehicleId: 'veh-1',
+        deletedAt: null,
+        status: { notIn: ['ARCHIVED', 'CANCELLED'] },
+      });
+      // MUTATION-VERIFY: прибрати guard → updateMany викликається → перший assert впаде (orphaned WO).
     });
   });
 
