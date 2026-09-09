@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-09-09 — Backlog-фічі: Warranties UI + Loyalty config tab (frontend-only)
+
+Закриття 2 backlog-пунктів (backend-готові, без UI). Обидва frontend-only, 0 змін API/схеми.
+
+**Loyalty config** (461e06df): settings-таб «Лояльність» — toggle `loyaltyEnabled` + умовні числові поля
+earnPer/earnPoints/redeemRate з clamp + inline-семантикою; PATCH /settings/organisation (лише 4 поля).
+Шаблон FollowupTab.
+
+**Warranties UI** (6b7b9317):
+
+- useWarranties.ts — спільний тип Warranty (усунуто локальний дубль у counterparties, B6) + хуки
+  byWorkOrder/byCounterparty/expiring (useQuery) + create/claim (mutation).
+- WarrantySection у картці наряду (гейт від COMPLETED): список by-work-order з 3-стан бейджами
+  (Активна/Пред'явлена/Закінчилась), «Пред'явити» (claim у поточний наряд), «+ Гарантія».
+- WarrantyCreateModal — POST /warranties (expiresAt DatePickerInput, description).
+- Dashboard-widget «Гарантії, що закінчуються» (30 днів).
+
+QA: review 1 IMPORTANT (abe63125 — WarrantyCreateModal date TZ off-by-one: local-parse `T00:00:00`
+.toISOString() зсував дату на -1 у UTC+3 → `T23:59:59Z` + addDaysISO). Tester Bug #718 MEDIUM
+(deb037ec — create/claim не інвалідували dashboard expiring-widget, окреме key-дерево →
+invalidateWarrantyAffected хелпер). Live-verified проти реальної БД: create→claim→400-reclaim,
+loyalty PATCH persist, expiring endpoint. web 710 тестів (+10). tsc web 0.
+
+**Міграції хардненингу застосовано** (Docker піднято): add_auth_token_version_and_lockout +
+add_idempotency_key. Live-verified: session-revocation (logout-all→401), idempotency (same-key→same-payment).
+
+---
+
 ## 2026-09-09 — Технічний хардненинг-бэклог (пост-QA): data-integrity / auth / observability / security / installer
 
 Реалізація затвердженого бэклогу (окрім over-engineering + 2 великих спірних L). Per-секція QA

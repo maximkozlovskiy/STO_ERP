@@ -11,11 +11,11 @@
 **Природа:** `TX_COLORS` фарбував `REFUND: text-warning` (амбер) і `CREDIT_NOTE: text-muted-foreground` (сірий), але бековий `BALANCE_SIGN` дає обом −1 (гасять борг клієнта, як PAYMENT). Той самий тип транзакції показувався ЗЕЛЕНИМ на картці контрагента (PageClient CHARGE_LIKE→destructive/решта→success) і амбер/сірим у вкладці «Взаєморозрахунки» — cross-page неузгодженість кольору знаку балансу (клас WEB-R3-5). Знак «−»/«+» (`BALANCE_UP_TYPES`) уже був коректний → колір суперечив знаку.
 **Фікс:** REFUND/CREDIT_NOTE → `text-success` (дзеркалить BALANCE_SIGN −1). tsc web 0.
 
-### Backlog (НЕ баги — feature-completeness gaps, поза QA-scope, потребують plan-mode + узгодження)
+### Backlog (НЕ баги — feature-completeness gaps)
 
-- **Warranties UI неповний:** endpoints `POST /warranties` (create), `GET /warranties/expiring`, `GET /warranties/by-work-order/:id`, `POST /warranties/:id/claim` НЕ мають frontend-споживача (лише `by-counterparty` read wired). Немає warranty-tab у наряді, немає «протерміновані гарантії» widget. Backend готовий — це net-new UI.
-- **Loyalty config UI відсутній:** `loyaltyEnabled/loyaltyEarnPer/loyaltyEarnPoints/loyaltyRedeemRate` типізовані у settings DTO (backend) + frontend shared.ts, але жоден settings-tab не рендерить інпути для них. Програму лояльності не налаштувати через UI (лише перегляд балансу/транзакцій на картці). Net-new UI.
-  > Обидва — pre-existing (warranties/loyalty-config UI ніколи не було), НЕ регреси цієї сесії. Винесено власнику як окрему фічу.
+- ✅ **Warranties UI** — РЕАЛІЗОВАНО 2026-09-09: секція у наряді (by-work-order + claim + ручний create),
+  dashboard-widget «Гарантії, що закінчуються», спільний хук useWarranties. Bug #718 (dashboard-invalidate) виправлено.
+- ✅ **Loyalty config UI** — РЕАЛІЗОВАНО 2026-09-09: settings-таб «Лояльність» (toggle + earnPer/earnPoints/redeemRate).
 
 ## Session 2026-09-08 — Bug hunt: tech-debt closure batch (2d7c672e..4f811ec3, backend+DB) — laborCostRatio / dueDate / calendar work-hours / forEachActiveOrg / followup C3
 
