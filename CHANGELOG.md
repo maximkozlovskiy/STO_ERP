@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-09-09 — Технічний хардненинг-бэклог (пост-QA): data-integrity / auth / observability / security / installer
+
+Реалізація затвердженого бэклогу (окрім over-engineering + 2 великих спірних L). Per-секція QA
+(review→tester), автономно. 13 feature-комітів + review/tester фікси. tsc api+web+shared 0.
+
+**B — auth** (575875db): session revocation через AuthAccount.tokenVersion (JWT payload + jwt.strategy/
+refresh порівнюють → mismatch=401); POST /auth/logout-all (bump version = вийти всюди); changePassword
+bump; brute-force lockout (failedAttempts/lockedUntil, 5 спроб→15хв, перевірка ПЕРЕД bcrypt); password
+policy min 8 (setup); web logoutAll + кнопка. review CLEAN.
+
+**A — data-integrity:**
+
+- A1 (410e1b77/24f0cd23/193c79f6): IdempotencyKey таблиця + RESERVE-FIRST interceptor на 6 create-POST
+  (insert перед handler; P2002→replay/422/409; release-on-throw) → дедуплікація offline-retry без дублів;
+  global purge scheduler. review CLEAN.
+- A2 (71f0fdc6): soft-delete guard gap-fill (vehicles active-WO / goods stock-balance; counterparties/
+  warehouses/employees уже мали) → 0 orphaned records.
+- A3 (2883553f + fix 124b0795): per-org reconciliation scheduler (read-only drift-detection: stock/
+  balance×BALANCE_SIGN/paidAmount, keyset-пагінація проти OOM). review-фікс: unbounded findMany→keyset.
+- A4 (bd57a70e/7e1a373f): mileage max-wins у sync (монотонний пробіг, обидві LWW-гілки); CI-guard
+  проти деструктивних міграцій (лише нові файли, `-- destructive-ok:` escape).
+
+**C1a — audit** (96796b17): AuditService.record() у payments+invoices create (userId уже threaded).
+C1b (counterparties/inventory/settings) відкладено — потребує controller+signature плумбінг.
+
+**D — observability** (a7bb97c0): health /live (без залежностей — container-healthcheck б'є сюди,
+уникає cascade) vs /ready (DB+Redis+MinIO+черга→degraded); docker-compose log rotation (x-logging
+10m×5 на 6 сервісів). D3 bull-board відкладено (потребує Docker для auth-тесту).
+
+**E — security/UX** (6545b48e): CSP prod (main.ts default-src 'none' + Caddyfile SPA-CSP); focus-trap
+useFocusTrap у Modal (Tab-cycle+restore, WCAG); SectionErrorBoundary (money/media секції ізольовані).
+next/image+bundle-analyzer свідомо пропущено (static-export+unoptimized+signed-URL / dev-only).
+
+**F — installer** (e98d3324 + fix 98f8f115/36a1e4a7): Update.ps1 rollback (fix VERSION перед pull,
+migrate через run --rm поки старі живі, health /live→таймаут→rollback+exit 1, усі fail-гілки exit 1);
+Register-ScheduledTasks (backup УВІМК/update ВИМК opt-in). Закриває ADR-007. Tester-фікси: #716
+same-tag rollback no-op guard, #717 UTF-8 BOM на всі 10 скриптів (PS 5.1 мохібейк).
+
+Tester фінальний: 2 MEDIUM (#716/#717 installer) виправлено; D/E/C1a/A CLEAN. Broader infra-mismatch
+(release.yml :version-теги vs compose/.env :latest) — задокументовано для наступного проходу.
+
+---
+
 ## 2026-09-09 — review Цикл 1 Фаза 2: повний pre-prod code review (R1-R3 scope)
 
 Повний чекліст sto-review по scope R1-R3 (payments/purchase-orders/work-orders/suppliers/
