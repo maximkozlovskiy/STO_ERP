@@ -16,7 +16,21 @@ import { AuditService } from './audit.service';
 // Whitelist підтримуваних entityType — захист від випадкового сканування довільних таблиць
 // та сюрпризів якщо хтось згодом передасть SQL-щось через DB. Тримати в синхроні з
 // місцями де викликається `audit.record(orgId, '<EntityType>', ...)`.
-const AUDIT_ENTITY_TYPES = ['WorkOrder', 'Invoice', 'Counterparty', 'Vehicle'] as const;
+// Типи сутностей, для яких пишеться AuditEvent (whitelist для read-endpoint). Мусить включати
+// КОЖЕН entityType, який передається у AuditService.record — інакше журнал пишеться, але його не
+// прочитати через API (400). C1a додав Payment; C1b — OrganisationSettings/BranchSettings/TaxRate/
+// PricingRule. WorkOrder/Invoice/Counterparty/Vehicle — з попередніх ітерацій.
+const AUDIT_ENTITY_TYPES = [
+  'WorkOrder',
+  'Invoice',
+  'Counterparty',
+  'Vehicle',
+  'Payment',
+  'OrganisationSettings',
+  'BranchSettings',
+  'TaxRate',
+  'PricingRule',
+] as const;
 
 @ApiTags('audit')
 @Controller('audit')
