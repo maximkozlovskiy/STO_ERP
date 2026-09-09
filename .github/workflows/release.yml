@@ -44,12 +44,10 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:3000
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # ghcr-login прибрано: offline-модель бандлить образи через docker save→tar→docker load
+      # (compose тягне ЛОКАЛЬНІ теги sto-api:$version). App-образи у ghcr не пушаться, тож login
+      # був безцільним (базові образи йдуть з Docker Hub). Якщо колись знадобиться online-оновлення
+      # через ghcr — повернути login + push + ghcr-префікс у compose (окрема опція).
 
       - name: Build and save Docker images
         shell: pwsh
@@ -72,8 +70,10 @@ jobs:
           docker pull redis:7-alpine
           docker save redis:7-alpine | gzip > installer/bundle/images/redis-7.tar.gz
 
-          docker pull minio/minio
-          docker save minio/minio | gzip > installer/bundle/images/minio.tar.gz
+          # Пінований тег — має збігатися з docker-compose.yml (minio/minio:RELEASE.2024-01-16...),
+          # інакше compose шукав би тег, якого немає у завантаженому tar.
+          docker pull minio/minio:RELEASE.2024-01-16T16-07-38Z
+          docker save minio/minio:RELEASE.2024-01-16T16-07-38Z | gzip > installer/bundle/images/minio.tar.gz
 
           docker pull caddy:2-alpine
           docker save caddy:2-alpine | gzip > installer/bundle/images/caddy.tar.gz

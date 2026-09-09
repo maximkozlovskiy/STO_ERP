@@ -1,7 +1,10 @@
 ﻿#Requires -RunAsAdministrator
 param(
     [string]$DataDir   = 'C:\ProgramData\STO-ERP',
-    [string]$ImagesDir = ''
+    [string]$ImagesDir = '',
+    # Версія релізу = тег bundled-образів (docker save sto-api:$Version у CI). compose тягне саме
+    # цей тег (image: sto-api:${VERSION}). Дефолт 'latest' — сумісність зі старими викликами.
+    [string]$Version   = 'latest'
 )
 
 Set-StrictMode -Version Latest
@@ -73,11 +76,19 @@ NOTIFICATION_ENC_KEY=$encKey
 
 NODE_ENV=production
 TZ=Europe/Kyiv
-VERSION=latest
+VERSION=$Version
 "@ | Set-Content $envFile -Encoding UTF8
-    Write-Log "Файл .env створено."
+    Write-Log "Файл .env створено (версія $Version)."
 } else {
-    Write-Log "Файл .env вже існує — використовуємо наявні налаштування."
+    Write-Log "Файл .env вже існує — секрети зберігаємо, оновлюємо лише VERSION=$Version."
+    # Секрети НЕ регенеруємо (enc-ключ/JWT перевикористовуються), але VERSION мусить збігатися з
+    # тегом щойно-завантажених образів — інакше compose шукатиме старий тег. Оновлюємо лише цей рядок.
+    $content = Get-Content $envFile
+    if ($content -match '^VERSION=') {
+        ($content -replace '^VERSION=.*', "VERSION=$Version") | Set-Content $envFile -Encoding UTF8
+    } else {
+        Add-Content $envFile "VERSION=$Version" -Encoding UTF8
+    }
 }
 
 # 4. Write URL shortcut for browser access

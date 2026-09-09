@@ -43,10 +43,18 @@ function Invoke-Rollback {
     }
     try {
         $env:VERSION = $previousVersion
-        & docker compose pull api web
-        if ($LASTEXITCODE -ne 0) { throw "docker compose pull попередньої версії ($previousVersion) впав" }
+        # OFFLINE-FIRST: образ попередньої версії (sto-api:$previousVersion) уже завантажений
+        # локально з попереднього install/update-бандла (docker load). Тому rollback = просто
+        # `up -d` на цьому локальному тезі. `pull` НЕ роблять першим (offline → провал; онлайн-pull
+        # лишаємо fallback-ом, якщо локального образу раптом немає).
         & docker compose up -d api web
-        if ($LASTEXITCODE -ne 0) { throw "docker compose up попередньої версії ($previousVersion) впав" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "Локальний образ $previousVersion не піднявся — пробуємо pull (потрібен інтернет)..."
+            & docker compose pull api web
+            if ($LASTEXITCODE -ne 0) { throw "docker compose pull попередньої версії ($previousVersion) впав" }
+            & docker compose up -d api web
+            if ($LASTEXITCODE -ne 0) { throw "docker compose up попередньої версії ($previousVersion) впав" }
+        }
         Write-Log "Відкат до $previousVersion виконано. Перевірте стан сервісу вручну."
     } catch {
         Write-Log "ВІДКАТ ТЕЖ ВПАВ: $($_.Exception.Message). Потрібне ручне втручання."

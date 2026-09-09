@@ -57,7 +57,7 @@ Name: "{userdesktop}\{#AppName}"; Filename: "{#DataDir}\STO ERP.url"; Tasks: des
 [Run]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Check-Requirements.ps1"""; Flags: runhidden waituntilterminated; StatusMsg: "Перевірка системних вимог..."; Check: not WizardSilent
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Install-Docker.ps1"" -BundlePath ""{tmp}"""; Flags: runhidden waituntilterminated; StatusMsg: "Встановлення Docker Desktop..."
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Setup-Stack.ps1"" -DataDir ""{#DataDir}"" -ImagesDir ""{tmp}\images"""; Flags: runhidden waituntilterminated; StatusMsg: "Розгортання STO ERP..."
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Setup-Stack.ps1"" -DataDir ""{#DataDir}"" -ImagesDir ""{tmp}\images"" -Version ""{#AppVersion}"""; Flags: runhidden waituntilterminated; StatusMsg: "Розгортання STO ERP..."
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\First-Run.ps1"" -DataDir ""{#DataDir}"""; Flags: runhidden waituntilterminated; StatusMsg: "Перший запуск системи..."
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Register-Service.ps1"" -AppDir ""{app}"" -DataDir ""{#DataDir}"""; Flags: runhidden waituntilterminated; StatusMsg: "Реєстрація Windows Service..."; Tasks: autostart
 

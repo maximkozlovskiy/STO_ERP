@@ -52,7 +52,12 @@ services:
       interval: 15s
 
   api:
-    image: ghcr.io/your-org/sto-api:${VERSION:-latest}
+    # Локальний image-ref (без ghcr-префікса): offline-модель бандлить образи через `docker save`
+    # у CI (sto-api:$version) → `docker load` в інсталяторі під ТИМ САМИМ тегом. Раніше стояв
+    # ghcr.io/your-org/sto-api:latest — інший registry-префікс І тег → compose ніколи не матчив
+    # завантажений локальний образ і намагався pull-ити з ghcr (offline → fail на install/update).
+    # VERSION приходить з .env (конкретна версія релізу, не latest — щоб rollback мав окремий тег).
+    image: sto-api:${VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     depends_on:
@@ -84,7 +89,8 @@ services:
       start_period: 60s
 
   web:
-    image: ghcr.io/your-org/sto-web:${VERSION:-latest}
+    # Локальний image-ref (див. коментар до api).
+    image: sto-web:${VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
     depends_on:
