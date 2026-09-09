@@ -1700,6 +1700,7 @@ model OrganisationSettings {
   costMethod                       BatchCostMethod @default(FIFO)
   followUpActive                   Boolean         @default(false)
   followUpDays                     Int             @default(90)
+  maintenanceForecastDays          Int             @default(14) // T13: горизонт прогнозу нагадувань про ТО
   nbuFetchHour                     Int             @default(12)
   // Інтервал опитування служби доставки (хв). Читається polling-процесором (НЕ hardcoded). clamp [5,1440].
   deliveryPollIntervalMinutes      Int             @default(30)

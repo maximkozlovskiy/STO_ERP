@@ -8,11 +8,12 @@ export interface FollowUpJob {
   orgId: string;
 }
 
-// Hard caps — prevent OOM on large fleets.
-// TODO: switch to cursor pagination when single org has > 1000 vehicles or schedules.
+// Hard caps — prevent OOM on large fleets. T12: при досягненні cap логуємо warn (див. process),
+// щоб тиха втрата нагадувань для автопарків >1000 була видимою в логах до переходу на cursor-пагінацію.
 const MAX_SCHEDULES_PER_RUN = 1000;
 const MAX_VEHICLES_PER_RUN = 1000;
-const MAINTENANCE_FORECAST_DAYS = 14;
+// T13: дефолт горизонту прогнозу ТО, якщо OrganisationSettings.maintenanceForecastDays не задано.
+const MAINTENANCE_FORECAST_DEFAULT_DAYS = 14;
 
 // Module-level Intl singleton — `.toLocaleDateString('uk-UA')` allocates a new formatter
 // per call. Used in hot loop через `for (const schedule of upcomingMaintenance)` × N schedules
@@ -57,8 +58,10 @@ export class FollowUpProcessor extends WorkerHost {
     const today = new Date();
     today.setUTCHours(9, 0, 0, 0);
 
+    // T13: горизонт прогнозу ТО з налаштувань (було hardcoded 14). Різні СТО хочуть різний обрій.
+    const forecastDays = settings.maintenanceForecastDays ?? MAINTENANCE_FORECAST_DEFAULT_DAYS;
     const todayPlusForecast = new Date(today);
-    todayPlusForecast.setDate(todayPlusForecast.getDate() + MAINTENANCE_FORECAST_DAYS);
+    todayPlusForecast.setDate(todayPlusForecast.getDate() + forecastDays);
 
     const cutoffDate = new Date(today);
     cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));

@@ -338,6 +338,7 @@ export class SettingsService {
     costMethod: BatchCostMethod;
     followUpActive: boolean;
     followUpDays: number;
+    maintenanceForecastDays: number;
     nbuFetchHour: number;
     deliveryPollIntervalMinutes: number;
     integrationLogRetentionDays: number;
@@ -368,6 +369,7 @@ export class SettingsService {
       costMethod: s.costMethod,
       followUpActive: s.followUpActive,
       followUpDays: s.followUpDays,
+      maintenanceForecastDays: s.maintenanceForecastDays,
       nbuFetchHour: s.nbuFetchHour,
       deliveryPollIntervalMinutes: s.deliveryPollIntervalMinutes,
       integrationLogRetentionDays: s.integrationLogRetentionDays,

@@ -139,6 +139,17 @@ export class UpdateOrganisationSettingsDto {
   followUpDays?: number;
 
   @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 90,
+    description: 'Горизонт прогнозу нагадувань про ТО (днів наперед)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  maintenanceForecastDays?: number;
+
+  @ApiPropertyOptional({
     description: 'Р“РѕРґРёРЅР° Р°РІС‚РѕР·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєСѓСЂСЃС–РІ РќР‘РЈ (0вЂ“23)',
     minimum: 0,
     maximum: 23,
@@ -350,6 +361,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty({ enum: BatchCostMethod }) costMethod!: BatchCostMethod;
   @ApiProperty() followUpActive!: boolean;
   @ApiProperty() followUpDays!: number;
+  @ApiProperty() maintenanceForecastDays!: number;
   @ApiProperty({
     description: 'Р“РѕРґРёРЅР° Р°РІС‚РѕР·Р°РІР°РЅС‚Р°Р¶РµРЅРЅСЏ РєСѓСЂСЃС–РІ РќР‘РЈ (0вЂ“23)',
   })
