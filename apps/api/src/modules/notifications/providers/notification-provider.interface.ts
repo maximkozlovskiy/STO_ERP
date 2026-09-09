@@ -68,3 +68,10 @@ export interface NotificationProvider {
   /** Перевірити креди (валідність токена + баланс) — БЕЗ відправки повідомлення. */
   verifyCredentials(creds: ProviderCredentials): Promise<VerifyResult>;
 }
+
+/**
+ * DI-токен для мульти-провайдер реєстрації (Open/Closed + DIP). Кожен NotificationProvider
+ * реєструється у notifications.module як `{ provide: NOTIFICATION_PROVIDERS, useExisting: <Impl>,
+ * multi: true }`, а NotificationProviderRegistry інжектить `NotificationProvider[]`.
+ */
+export const NOTIFICATION_PROVIDERS = Symbol('NOTIFICATION_PROVIDERS');

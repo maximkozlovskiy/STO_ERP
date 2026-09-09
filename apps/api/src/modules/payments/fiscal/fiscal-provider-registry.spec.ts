@@ -11,7 +11,7 @@ import { FiscalUnauthorizedError } from './fiscal-provider.interface';
  */
 describe('FiscalProviderRegistry', () => {
   const make = () =>
-    new FiscalProviderRegistry(new CheckboxProvider(new CheckboxClient()), new VchasnoProvider());
+    new FiscalProviderRegistry([new CheckboxProvider(new CheckboxClient()), new VchasnoProvider()]);
 
   it('get() повертає зареєстрований провайдер; невідомий → null', () => {
     const r = make();

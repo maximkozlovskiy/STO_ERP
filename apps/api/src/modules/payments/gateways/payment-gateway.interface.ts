@@ -59,3 +59,10 @@ export interface PaymentGateway {
   /** Перевірити креди (валідність) — БЕЗ створення реального рахунку. */
   verifyCredentials(cfg: GatewayConfig): Promise<GatewayVerifyResult>;
 }
+
+/**
+ * DI-токен для мульти-провайдер реєстрації (Open/Closed + DIP). Кожен PaymentGateway реєструється у
+ * payments.module як `{ provide: PAYMENT_GATEWAYS, useExisting: <Impl>, multi: true }`, а
+ * PaymentGatewayRegistry інжектить `PaymentGateway[]` — новий шлюз не потребує зміни реєстру.
+ */
+export const PAYMENT_GATEWAYS = Symbol('PAYMENT_GATEWAYS');

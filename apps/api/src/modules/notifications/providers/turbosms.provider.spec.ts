@@ -133,11 +133,11 @@ describe('TurboSmsProvider', () => {
 
 describe('NotificationProviderRegistry', () => {
   it('get() повертає turbosms/esputnik; невідомий → null; list() без кредів', () => {
-    const registry = new NotificationProviderRegistry(
+    const registry = new NotificationProviderRegistry([
       new TurboSmsProvider(),
       new EsputnikProvider(),
       new EmailProvider(),
-    );
+    ]);
     expect(registry.get('turbosms')?.code).toBe('turbosms');
     expect(registry.get('esputnik')?.code).toBe('esputnik');
     expect(registry.get('smtp')?.code).toBe('smtp');

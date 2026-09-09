@@ -9,6 +9,7 @@ import { ProviderConfigService } from '../payments/provider-config.service';
 import { NovaPoshtaClient } from './delivery/nova-poshta.client';
 import { NovaPoshtaProvider } from './delivery/nova-poshta.provider';
 import { DeliveryProviderRegistry } from './delivery/delivery-provider-registry';
+import { DELIVERY_PROVIDERS } from './delivery/delivery-provider.interface';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { NovaPoshtaPollingProcessor } from './delivery/nova-poshta-polling.processor';
 import { DeliveryProvidersController } from './delivery/delivery-providers.controller';
@@ -30,6 +31,13 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     ProviderConfigService,
     NovaPoshtaClient,
     NovaPoshtaProvider,
+    // Multi-provider реєстрація: реєстр інжектить DELIVERY_PROVIDERS як DeliveryProvider[].
+    // ОДИН factory повертає масив singleton-ів (NestJS 10 не має Angular-style multi:true).
+    {
+      provide: DELIVERY_PROVIDERS,
+      useFactory: (novaPoshta: NovaPoshtaProvider) => [novaPoshta],
+      inject: [NovaPoshtaProvider],
+    },
     DeliveryProviderRegistry,
     DeliveryTrackingService,
     NovaPoshtaPollingProcessor,

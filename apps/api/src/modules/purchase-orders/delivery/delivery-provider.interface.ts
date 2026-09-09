@@ -36,3 +36,10 @@ export interface DeliveryProvider {
   /** Перевірити креди (валідність API-ключа) — БЕЗ побічних ефектів. */
   verifyCredentials(cfg: DeliveryConfig): Promise<DeliveryVerifyResult>;
 }
+
+/**
+ * DI-токен для мульти-провайдер реєстрації (Open/Closed + DIP). Кожна DeliveryProvider реєструється
+ * у purchase-orders.module як `{ provide: DELIVERY_PROVIDERS, useExisting: <Impl>, multi: true }`,
+ * а DeliveryProviderRegistry інжектить `DeliveryProvider[]`.
+ */
+export const DELIVERY_PROVIDERS = Symbol('DELIVERY_PROVIDERS');

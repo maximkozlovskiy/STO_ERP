@@ -64,3 +64,11 @@ export interface FiscalProvider {
   /** Перевірити креди (валідність) — БЕЗ пробиття чеку. */
   verifyCredentials(cfg: FiscalConfig): Promise<FiscalVerifyResult>;
 }
+
+/**
+ * DI-токен для мульти-провайдер реєстрації (Open/Closed + DIP). Кожен FiscalProvider реєструється у
+ * payments.module як `{ provide: FISCAL_PROVIDERS, useExisting: <Impl>, multi: true }`, а
+ * FiscalProviderRegistry інжектить масив `FiscalProvider[]` — додавання нового провайдера більше НЕ
+ * потребує зміни самого реєстру (лише +провайдер-клас і один рядок у модулі).
+ */
+export const FISCAL_PROVIDERS = Symbol('FISCAL_PROVIDERS');

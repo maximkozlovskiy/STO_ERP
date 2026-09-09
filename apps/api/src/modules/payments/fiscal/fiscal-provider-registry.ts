@@ -1,25 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { FiscalProvider } from './fiscal-provider.interface';
-import { CheckboxProvider } from './checkbox.provider';
-import { VchasnoProvider } from './vchasno.provider';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { type FiscalProvider, FISCAL_PROVIDERS } from './fiscal-provider.interface';
 
 /**
- * Реєстр провайдерів ПРРО (фіскалізація). Додати нового провайдера = додати impl у конструктор.
- * cash-shift.service та fiscal.processor звертаються сюди через `get(code)` / `list()`,
- * тож жоден хардкод 'checkbox' більше не потрібен.
+ * Реєстр провайдерів ПРРО (фіскалізація). Провайдери інжектяться масивом через multi-provider
+ * DI-токен FISCAL_PROVIDERS — додати нового = зареєструвати impl у payments.module
+ * (`{ provide: FISCAL_PROVIDERS, useExisting: <Impl>, multi: true }`), сам реєстр НЕ чіпається
+ * (Open/Closed + DIP: реєстр залежить від абстракції FiscalProvider[], не від конкретних класів).
+ * cash-shift.service та fiscal.processor звертаються сюди через `get(code)` / `list()`.
  */
 @Injectable()
 export class FiscalProviderRegistry {
   private readonly logger = new Logger(FiscalProviderRegistry.name);
   private readonly providers = new Map<string, FiscalProvider>();
 
-  constructor(checkbox: CheckboxProvider, vchasno: VchasnoProvider) {
-    this.register(checkbox);
-    this.register(vchasno);
-  }
-
-  private register(p: FiscalProvider): void {
-    this.providers.set(p.code, p);
+  constructor(@Inject(FISCAL_PROVIDERS) providers: FiscalProvider[]) {
+    for (const p of providers) this.providers.set(p.code, p);
   }
 
   /** Провайдер за кодом або null (невідомий код — логуємо, не кидаємо). */

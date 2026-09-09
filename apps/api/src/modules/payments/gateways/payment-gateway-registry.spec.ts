@@ -10,7 +10,7 @@ import { MonobankClient } from '../monobank.client';
  */
 describe('PaymentGatewayRegistry', () => {
   const make = () =>
-    new PaymentGatewayRegistry(new MonobankGateway(new MonobankClient()), new LiqpayGateway());
+    new PaymentGatewayRegistry([new MonobankGateway(new MonobankClient()), new LiqpayGateway()]);
 
   it('get() повертає зареєстрований шлюз; невідомий → null (не кидає)', () => {
     const r = make();

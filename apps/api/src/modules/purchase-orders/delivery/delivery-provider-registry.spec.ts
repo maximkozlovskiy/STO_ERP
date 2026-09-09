@@ -8,7 +8,7 @@ import { NovaPoshtaClient } from './nova-poshta.client';
  * Доводимо: registry get/list; NovaPoshtaClient (SSRF/3xx/timeout/JSON-shape); mapStatus усіх кодів.
  */
 describe('DeliveryProviderRegistry', () => {
-  const make = () => new DeliveryProviderRegistry(new NovaPoshtaProvider(new NovaPoshtaClient()));
+  const make = () => new DeliveryProviderRegistry([new NovaPoshtaProvider(new NovaPoshtaClient())]);
 
   it('get() повертає зареєстровану службу; невідома → null', () => {
     const r = make();

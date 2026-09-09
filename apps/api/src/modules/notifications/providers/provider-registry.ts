@@ -1,27 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { NotificationProvider } from './notification-provider.interface';
-import { TurboSmsProvider } from './turbosms.provider';
-import { EsputnikProvider } from './esputnik.provider';
-import { EmailProvider } from './email.provider';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import {
+  type NotificationProvider,
+  NOTIFICATION_PROVIDERS,
+} from './notification-provider.interface';
 
 /**
- * Реєстр провайдерів сповіщень. Додати нового провайдера = додати impl у конструктор.
- * `sms.processor` та settings-endpoints звертаються сюди через `get(code)` / `list()`,
- * тож жоден switch по коду провайдера більше не потрібен.
+ * Реєстр провайдерів сповіщень. Провайдери інжектяться масивом через multi-provider DI-токен
+ * NOTIFICATION_PROVIDERS — додати нового = зареєструвати impl у notifications.module
+ * (`{ provide: NOTIFICATION_PROVIDERS, useExisting: <Impl>, multi: true }`), сам реєстр НЕ чіпається
+ * (Open/Closed + DIP). `sms.processor` та settings-endpoints звертаються через `get(code)` / `list()`.
  */
 @Injectable()
 export class NotificationProviderRegistry {
   private readonly logger = new Logger(NotificationProviderRegistry.name);
   private readonly providers = new Map<string, NotificationProvider>();
 
-  constructor(turbosms: TurboSmsProvider, esputnik: EsputnikProvider, email: EmailProvider) {
-    this.register(turbosms);
-    this.register(esputnik);
-    this.register(email);
-  }
-
-  private register(p: NotificationProvider): void {
-    this.providers.set(p.code, p);
+  constructor(@Inject(NOTIFICATION_PROVIDERS) providers: NotificationProvider[]) {
+    for (const p of providers) this.providers.set(p.code, p);
   }
 
   /** Провайдер за кодом або null (невідомий код — логуємо, не кидаємо). */

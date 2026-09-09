@@ -16,11 +16,11 @@ describe('NotificationProviderRegistry', () => {
   let registry: NotificationProviderRegistry;
 
   beforeEach(() => {
-    registry = new NotificationProviderRegistry(
+    registry = new NotificationProviderRegistry([
       new TurboSmsProvider(),
       new EsputnikProvider(),
       new EmailProvider(),
-    );
+    ]);
   });
 
   it('get() повертає зареєстрований провайдер за кодом', () => {
