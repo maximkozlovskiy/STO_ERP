@@ -119,12 +119,11 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // settlements
     null as never, // notifications
     null as never, // docNumbers
-    null as never, // maintenanceSchedules
     null as never, // pdf
     null as never, // audit
-    null as never, // warranties
     settingsService, // settingsService (Bug #536)
     null as never, // config
+    null as never, // events (EventEmitter2)
   );
 }
 

@@ -2,6 +2,7 @@ import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
@@ -110,6 +111,9 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     }),
     // Global rate limiting: 200 req/min per IP; stricter limits on specific routes
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
+    // A2: доменні події (in-process EventEmitter2). WorkOrdersService.transition емітить події,
+    // @OnEvent-хендлери реагують lifecycle-side-effects — decoupling God-service.
+    EventEmitterModule.forRoot(),
     // Structured JSON logging via pino — production: JSON, development: pretty-print
     LoggerModule.forRoot({
       pinoHttp: {

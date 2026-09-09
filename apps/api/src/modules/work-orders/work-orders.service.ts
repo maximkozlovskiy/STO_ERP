@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 
@@ -11,7 +12,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { MaintenanceSchedulesService } from '../maintenance-schedules/maintenance-schedules.service';
 import { InvoiceStatus, RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -26,8 +26,12 @@ import {
   SHAREABLE_STATUSES,
 } from './work-orders.fsm';
 import { AuditService } from '../audit/audit.service';
-import { WarrantiesService } from '../warranties/warranties.service';
 import { SettingsService } from '../settings/settings.service';
+import {
+  WORK_ORDER_EVENTS,
+  WorkOrderCompletedEvent,
+  WorkOrderTransitionedEvent,
+} from './events/work-order.events';
 import {
   CreateWorkOrderDto,
   UpdateWorkOrderDto,
@@ -97,12 +101,14 @@ export class WorkOrdersService {
     private readonly settlements: SettlementsService,
     private readonly notifications: NotificationsService,
     private readonly docNumbers: DocumentNumberService,
-    private readonly maintenanceSchedules: MaintenanceSchedulesService,
     private readonly pdf: PdfService,
     private readonly audit: AuditService,
-    private readonly warranties: WarrantiesService,
     private readonly settingsService: SettingsService,
     private readonly config: ConfigService,
+    // A2: transition() емітить доменні події; lifecycle-side-effects (пробіг/ТО/гарантія/нотифікація/
+    // аудит) — у WorkOrderEventHandlers через @OnEvent. maintenanceSchedules/warranties більше НЕ
+    // інжектяться сюди (fan-out 11→9) — реакції на завершення наряду це не обов'язки самого наряду.
+    private readonly events: EventEmitter2,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -756,84 +762,39 @@ export class WorkOrdersService {
       { timeout: 10_000 },
     );
 
-    // Sync Vehicle.currentMileage from outMileage when WO completes.
-    // Prisma `lt` filter EXCLUDES NULL rows — vehicles without an initial mileage
-    // stay NULL forever. Match both "lower mileage" and "NULL" explicitly.
-    if (newStatus === 'COMPLETED' && wo.outMileage) {
-      this.prisma.vehicle
-        .updateMany({
-          where: {
-            id: wo.vehicleId,
-            orgId,
-            OR: [{ currentMileage: null }, { currentMileage: { lt: wo.outMileage } }],
-          },
-          data: { currentMileage: wo.outMileage },
-        })
-        .catch((e: unknown) =>
-          this.logger.warn(`Помилка оновлення пробігу авто: ${e instanceof Error ? e.message : e}`),
-        );
-    }
+    // A2: lifecycle-side-effects — через доменні події (пробіг/ТО/гарантія/нотифікація/аудит
+    // винесені у WorkOrderEventHandlers через @OnEvent). Емітимо ПІСЛЯ коміту транзакції. Семантика
+    // збережена: best-effort, post-commit, in-process (як були inline .catch). EventEmitter2.emit
+    // синхронний — async-хендлери запускаються без await, не блокують і не зривають перехід/return.
 
-    // Auto-update maintenance schedules when MAINTENANCE WO completes
-    if (newStatus === 'COMPLETED' && wo.repairCategory === RepairCategory.MAINTENANCE) {
-      this.maintenanceSchedules
-        .updateAfterWorkOrder(orgId, wo.vehicleId, updates.completedAt!, wo.outMileage ?? undefined)
-        .catch((e: unknown) =>
-          this.logger.warn(`Помилка оновлення ТО: ${e instanceof Error ? e.message : e}`),
-        );
-    }
+    // Аудит — на КОЖЕН перехід (хендлер сам гейтить userId).
+    this.events.emit(
+      WORK_ORDER_EVENTS.TRANSITIONED,
+      new WorkOrderTransitionedEvent(orgId, id, wo.status, newStatus, userId),
+    );
 
-    // Auto-create warranty after COMPLETED if warrantyDays > 0
+    // Завершення — несе повний контекст для хендлерів без re-fetch.
     if (newStatus === 'COMPLETED') {
-      this.settingsService
-        .getOrganisationSettings(orgId)
-        .then(settings => {
-          const warrantyDays = settings.defaultWarrantyDays ?? 0;
-          if (warrantyDays > 0) {
-            return this.warranties.autoCreate(orgId, id, warrantyDays);
-          }
-        })
-        .catch((e: unknown) =>
-          this.logger.warn(`Warranty auto-create failed: ${e instanceof Error ? e.message : e}`),
-        );
-    }
-
-    // Send notifications (fire-and-forget via BullMQ queue — offline safe)
-    if (newStatus === 'COMPLETED') {
-      this.notifications
-        .send(orgId, 'WO_COMPLETED', {
-          branchId: updated.branchId,
-          phone: updated.counterparty.phone,
-          email: updated.counterparty.email,
-          workOrderNumber: updated.number,
-          clientName: formatPersonName(
-            updated.counterparty.lastName,
-            updated.counterparty.firstName,
-            updated.counterparty.companyName,
-          ),
-        })
-        .catch((e: unknown) =>
-          this.logger.warn(
-            `Помилка сповіщення WO_COMPLETED: ${e instanceof Error ? e.message : e}`,
-          ),
-        );
-    }
-
-    // Audit log for status transition
-    if (userId) {
-      this.audit
-        .record(
+      this.events.emit(
+        WORK_ORDER_EVENTS.COMPLETED,
+        new WorkOrderCompletedEvent(
           orgId,
-          'WorkOrder',
           id,
-          'UPDATE',
-          userId,
-          { status: wo.status },
-          { status: newStatus },
-        )
-        .catch((e: unknown) =>
-          this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
-        );
+          wo.vehicleId,
+          updates.completedAt!,
+          wo.repairCategory,
+          wo.outMileage ?? null,
+          updated.number,
+          updated.branchId,
+          {
+            phone: updated.counterparty.phone,
+            email: updated.counterparty.email,
+            firstName: updated.counterparty.firstName,
+            lastName: updated.counterparty.lastName,
+            companyName: updated.counterparty.companyName,
+          },
+        ),
+      );
     }
 
     return this.toDto(updated);

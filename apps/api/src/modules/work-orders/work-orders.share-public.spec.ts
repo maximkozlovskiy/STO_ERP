@@ -102,16 +102,15 @@ function makePrismaForPublicShare(opts: { hasUoMIds: boolean; partsCount?: numbe
 function makeService(prisma: PrismaService): WorkOrdersService {
   return new WorkOrdersService(
     prisma,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
-    null as never,
+    null as never, // inventory
+    null as never, // settlements
+    null as never, // notifications
+    null as never, // docNumbers
+    null as never, // pdf
+    null as never, // audit
+    null as never, // settingsService
+    null as never, // config
+    null as never, // events (EventEmitter2)
   );
 }
 

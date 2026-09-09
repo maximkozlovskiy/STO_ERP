@@ -3,6 +3,7 @@ import { WorkOrdersController } from './work-orders.controller';
 import { WorkOrdersPublicController } from './work-orders-public.controller';
 import { WorkOrdersService } from './work-orders.service';
 import { EstimateExportService } from './work-orders-export.service';
+import { WorkOrderEventHandlers } from './events/work-order.handlers';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SettlementsModule } from '../settlements/settlements.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -26,7 +27,10 @@ import { SettingsModule } from '../settings/settings.module';
     SettingsModule,
   ],
   controllers: [WorkOrdersController, WorkOrdersPublicController],
-  providers: [WorkOrdersService, EstimateExportService],
+  // A2: WorkOrderEventHandlers — @OnEvent-хендлери lifecycle-side-effects (реагують на події з
+  // WorkOrdersService.transition). MaintenanceSchedulesModule/WarrantiesModule лишаються імпортовані —
+  // тепер їх споживає хендлер, а не сам сервіс.
+  providers: [WorkOrdersService, EstimateExportService, WorkOrderEventHandlers],
   exports: [WorkOrdersService],
 })
 export class WorkOrdersModule {}
