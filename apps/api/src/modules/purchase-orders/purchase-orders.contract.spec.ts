@@ -11,6 +11,8 @@ import { PurchaseOrdersController } from './purchase-orders.controller';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { PrismaService } from '../../prisma/prisma.service';
 
 // Bug #189: regression-захист для POST /:id/apply-pricing HTTP-contract
 const serviceMock = {
@@ -43,7 +45,13 @@ describe('PurchaseOrders — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [PurchaseOrdersController],
-      providers: [{ provide: PurchaseOrdersService, useValue: serviceMock }],
+      providers: [
+        { provide: PurchaseOrdersService, useValue: serviceMock },
+        // create-POST несе @UseInterceptors(IdempotencyInterceptor); у contract-тесті ключ не
+        // передається → interceptor pass-through, але DI має його резолвити (з mock-Prisma).
+        IdempotencyInterceptor,
+        { provide: PrismaService, useValue: { idempotencyKey: { create: vi.fn() } } },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)

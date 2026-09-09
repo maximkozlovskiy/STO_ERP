@@ -7,6 +7,7 @@ import { StockDocumentsService } from './stock-documents.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 
@@ -45,6 +46,7 @@ describe('StockDocuments — HTTP Contract', () => {
         { provide: StockDocumentsService, useValue: serviceMock },
         { provide: PrismaService, useValue: {} },
         { provide: InventoryService, useValue: {} },
+        IdempotencyInterceptor, // create-POST несе @UseInterceptors — DI має резолвити
         { provide: DocumentNumberService, useValue: {} },
       ],
     })

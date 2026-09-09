@@ -7,6 +7,7 @@ import { InvoicesService } from './invoices.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 
@@ -52,6 +53,7 @@ describe('Invoices — HTTP Contract', () => {
       providers: [
         { provide: InvoicesService, useValue: serviceMock },
         { provide: PrismaService, useValue: {} },
+        IdempotencyInterceptor, // create-POST несе @UseInterceptors — DI має резолвити
         { provide: DocumentNumberService, useValue: {} },
         { provide: PdfService, useValue: {} },
       ],

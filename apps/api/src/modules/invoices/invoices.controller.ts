@@ -9,11 +9,13 @@ import {
   Query,
   Res,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -84,6 +86,7 @@ export class InvoicesController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити рахунок вручну' })
   create(
     @OrgContext() orgId: string,

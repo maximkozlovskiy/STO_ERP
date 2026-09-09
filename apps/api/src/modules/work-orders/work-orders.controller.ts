@@ -10,10 +10,12 @@ import {
   Query,
   Res,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -80,6 +82,7 @@ export class WorkOrdersController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити наряд' })
   create(
     @OrgContext() orgId: string,

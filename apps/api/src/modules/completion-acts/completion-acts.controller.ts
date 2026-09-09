@@ -9,11 +9,13 @@ import {
   Query,
   Res,
   UseGuards,
+  UseInterceptors,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -53,6 +55,7 @@ export class CompletionActsController {
 
   @Post('from-work-order/:workOrderId')
   @Roles(UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.OWNER)
+  @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Generate completion act from work order' })
   @ApiResponse({ status: 201, type: CompletionActResponseDto })
   createFromWorkOrder(

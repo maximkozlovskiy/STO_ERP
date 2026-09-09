@@ -11,6 +11,7 @@ import {
   CorrelationIdMiddleware,
 } from './common/middleware/correlation-id.middleware';
 import { PrismaModule } from './prisma/prisma.module';
+import { CommonModule } from './common/common.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -154,6 +155,7 @@ import { SystemTemplatesModule } from './modules/system-templates/system-templat
     }),
     CryptoModule,
     PrismaModule,
+    CommonModule,
     RedisModule,
     HealthModule,
     AuthModule,

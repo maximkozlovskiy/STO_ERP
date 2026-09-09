@@ -7,9 +7,11 @@ import {
   ParseUUIDPipe,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -65,6 +67,7 @@ export class PaymentsController {
 
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry (money-critical)
   @ApiOperation({ summary: 'Зареєструвати оплату' })
   create(
     @OrgContext() orgId: string,

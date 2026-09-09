@@ -5,6 +5,7 @@ import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WorkOrdersController } from './work-orders.controller';
 import { WorkOrdersService } from './work-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -70,6 +71,7 @@ describe('WorkOrders — HTTP Contract', () => {
       providers: [
         { provide: WorkOrdersService, useValue: serviceMock },
         { provide: PrismaService, useValue: prismaMock },
+        IdempotencyInterceptor, // create-POST несе @UseInterceptors — DI має резолвити
       ],
     })
       .overrideGuard(JwtAuthGuard)
