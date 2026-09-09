@@ -296,14 +296,48 @@ export class SyncService {
       return;
     }
 
+    // A4: Vehicle mileage — MONOTONIC (max-wins), не LWW (ADR-006 §74). Пробіг лічильника лише
+    // зростає; offline-планшет зі СТАРИМ показником не має відкотити його назад, навіть якщо
+    // виграє LWW за іншими полями. Обчислюємо max ПЕРЕД LWW-гейтом і застосовуємо в ОБОХ гілках:
+    //   - LWW-winner → пишемо max замість вхідного currentMileage;
+    //   - LWW-loser з БІЛЬШИМ пробігом → окремий targeted-update лише mileage (інакше «загубився б»).
+    let mileageToWrite: number | undefined;
+    if (rec.table === 'vehicles' && 'currentMileage' in safePayload) {
+      const incoming = Number(safePayload.currentMileage ?? 0);
+      const current = await this.getVehicleMileage(orgId, rec.id);
+      mileageToWrite = Math.max(incoming, current);
+    }
+
     // last-write-wins by syncVersion — also validate FKs on update to prevent cross-tenant FK injection
     if (
       BigInt(rec.syncVersion) >
       BigInt((existing as { syncVersion: bigint | number | string }).syncVersion ?? 0)
     ) {
       await this.validateForeignKeys(orgId, rec.table, safePayload);
-      await model.update({ where: { id: rec.id, orgId }, data: safePayload });
+      const data =
+        mileageToWrite !== undefined
+          ? { ...safePayload, currentMileage: mileageToWrite }
+          : safePayload;
+      await model.update({ where: { id: rec.id, orgId }, data });
+    } else if (mileageToWrite !== undefined) {
+      // LWW програв, АЛЕ пробіг більший за поточний → пишемо лише mileage (монотонність).
+      const current = await this.getVehicleMileage(orgId, rec.id);
+      if (mileageToWrite > current) {
+        await model.update({
+          where: { id: rec.id, orgId },
+          data: { currentMileage: mileageToWrite },
+        });
+      }
     }
+  }
+
+  /** Поточний пробіг авто (для монотонного mileage max-wins). 0 якщо null/не знайдено. */
+  private async getVehicleMileage(orgId: string, id: string): Promise<number> {
+    const v = await this.prisma.vehicle.findFirst({
+      where: { id, orgId },
+      select: { currentMileage: true },
+    });
+    return Number(v?.currentMileage ?? 0);
   }
 
   // FK fields that must belong to the same org, keyed by table name

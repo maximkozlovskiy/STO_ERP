@@ -286,5 +286,73 @@ describe('Sync — HTTP Contract', () => {
         }),
       );
     });
+
+    // A4.2: Vehicle mileage — монотонний max-wins (не LWW).
+    it('A4: LWW-winner з МЕНШИМ пробігом → пише max (не відкочує пробіг назад)', async () => {
+      const VID = '770e8400-e29b-41d4-a716-446655440333';
+      // Server: version 1, mileage 50000. existing-lookup (LWW) + getVehicleMileage.
+      prismaMock.vehicle.findFirst
+        .mockResolvedValueOnce({ id: VID, syncVersion: 1n, deletedAt: null, workOrderId: null })
+        .mockResolvedValueOnce({ currentMileage: 50000 });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'vehicles',
+              id: VID,
+              operation: 'UPDATE',
+              syncVersion: 2, // виграє LWW
+              payload: { currentMileage: 40000 }, // МЕНШЕ за серверне 50000
+            },
+          ],
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      // Записано max(40000, 50000) = 50000, НЕ вхідні 40000.
+      expect(prismaMock.vehicle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ currentMileage: 50000 }),
+        }),
+      );
+      // MUTATION-VERIFY: прибрати max-wins → записалось би 40000 (пробіг відкотився) → assert впаде.
+    });
+
+    it('A4: LWW-loser з БІЛЬШИМ пробігом → все одно оновлює mileage', async () => {
+      const VID = '770e8400-e29b-41d4-a716-446655440444';
+      // Server: version 10 (новіше за вхідне 5 → LWW програє), mileage 30000.
+      prismaMock.vehicle.findFirst
+        .mockResolvedValueOnce({ id: VID, syncVersion: 10n, deletedAt: null, workOrderId: null })
+        .mockResolvedValueOnce({ currentMileage: 30000 }) // getVehicleMileage (max-calc)
+        .mockResolvedValueOnce({ currentMileage: 30000 }); // getVehicleMileage (loser re-check)
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sync/push',
+        payload: {
+          records: [
+            {
+              table: 'vehicles',
+              id: VID,
+              operation: 'UPDATE',
+              syncVersion: 5, // програє LWW
+              payload: { currentMileage: 60000 }, // але пробіг БІЛЬШИЙ
+            },
+          ],
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      // Хоч LWW програв — пробіг 60000 > 30000 → targeted mileage-update.
+      expect(prismaMock.vehicle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { currentMileage: 60000 },
+        }),
+      );
+      // MUTATION-VERIFY: прибрати loser-гілку → mileage 60000 «загубився б» (LWW пропустив update).
+    });
   });
 });
