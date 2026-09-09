@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { invalidateWarrantyAffected } from '@/lib/cache-invalidation';
 
 /**
  * Гарантії наряду. Backend: /warranties (by-work-order / by-counterparty / expiring / create / claim).
@@ -82,8 +83,9 @@ export function useCreateWarranty() {
   return useMutation({
     mutationFn: (body: CreateWarrantyBody) =>
       apiFetch<Warranty>('/warranties', { method: 'POST', body: JSON.stringify(body) }),
-    // Нова гарантія впливає на список наряду + expiring-віджет + список контрагента.
-    onSuccess: () => qc.invalidateQueries({ queryKey: warrantiesKeys.all }),
+    // Нова гарантія впливає на список наряду + список контрагента + дашборд-віджет
+    // «Гарантії, що закінчуються» (окремий ключ dashboardKeys.expiringWarranties).
+    onSuccess: () => invalidateWarrantyAffected(qc),
   });
 }
 
@@ -95,6 +97,9 @@ export function useClaimWarranty() {
         method: 'POST',
         body: JSON.stringify({ claimWoId }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: warrantiesKeys.all }),
+    // Claim переводить гарантію з isActive→claimed: списки гарантій І дашборд-віджет
+    // (expiring читає лише claimedAt=null) мають оновитись, інакше claimed-гарантія
+    // висить у віджеті до staleTime (Bug #718).
+    onSuccess: () => invalidateWarrantyAffected(qc),
   });
 }

@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { warrantiesKeys } from '@/hooks/api/useWarranties';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { inventoryKeys } from '@/hooks/api/useInventory';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
@@ -60,6 +61,18 @@ export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
   qc.invalidateQueries({ queryKey: invoicesKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
+}
+
+/**
+ * Гарантія (create / claim): рухає списки гарантій ПЛЮС дашборд-віджет «Гарантії, що
+ * закінчуються». Віджет читає окремий ключ `dashboardKeys.expiringWarranties()`, а не
+ * `warrantiesKeys` — тому інвалідація лише `warrantiesKeys.all` лишала його застарілим до
+ * staleTime (claimed/нова гарантія не зникала/не з'являлась на дашборді). Один хелпер — щоб
+ * КОЖНА точка мутації гарантії чіпала обидва дерева ключів (WEB-Bug #718).
+ */
+export function invalidateWarrantyAffected(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: warrantiesKeys.all });
+  qc.invalidateQueries({ queryKey: dashboardKeys.expiringWarranties() });
 }
 
 /** Складський документ (RECEIPT/WRITEOFF/TRANSFER) → власний список + рух складу. */
