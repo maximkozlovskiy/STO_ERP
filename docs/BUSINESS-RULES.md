@@ -307,6 +307,18 @@ await this.smsQueue.add(
 // ПРРО: attempts: 288 (24 год)
 ```
 
+**Реальні застосування** (детальні правила — у дос'є):
+
+- **Фіскалізація (ПРРО)** — черга `checkbox`, `attempts: 288`, backoff 5 хв (≈24 год). `fiscalStatus`
+  FSM `QUEUED → DONE/FAILED/SKIPPED`. Онлайн-оплата (QR-еквайринг) — черга `payment-polling`
+  (PENDING→PAID через CAS + idempotency по `onlinePaymentIntentId`). Каса — cash-shift open/close з
+  CAS-claim проти подвійного Z-звіту. Провайдери: Checkbox/Вчасно (FISCAL), monobank/LiqPay (PAYMENT).
+  → [objects/payments.md](objects/payments.md)
+- **Лояльність (earn)** — черга `loyalty`, `attempts: 10`; idempotency «один EARN на документ»
+  (partial-unique + read-then-write); redeem — атомарний check-and-decrement. → [objects/loyalty.md](objects/loyalty.md)
+- **Нагадування про ТО** — follow-up cron 09:00 Kyiv; горизонт `maintenanceForecastDays`;
+  графіки авто-оновлюються при завершенні MAINTENANCE-наряду. → [objects/maintenance-schedules.md](objects/maintenance-schedules.md)
+
 ---
 
 ## Kyiv Timezone
