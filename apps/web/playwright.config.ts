@@ -50,6 +50,9 @@ export default defineConfig({
         timeout: 60_000,
         env: {
           NEXT_PUBLIC_API_URL: API_URL,
+          // Вмикає E2E-auth-hatch у context.tsx (hydrate токена з localStorage + skip refresh).
+          // Гейт build-time — у прод-збірці (без цієї змінної) hatch tree-shake-иться геть.
+          NEXT_PUBLIC_E2E: '1',
         },
       },
 

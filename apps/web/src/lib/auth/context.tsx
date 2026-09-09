@@ -13,6 +13,13 @@ import type { AuthEmployee, AuthState } from './types';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TOKEN_KEY = 'sto_access_token';
 
+// БЕЗПЕКА: E2E-hatch (hydrate access-токена з localStorage + пропуск background-refresh) призначений
+// ВИКЛЮЧНО для Playwright. Гейтимо build-time env NEXT_PUBLIC_E2E — Next.js inline-ить його на збірці,
+// тож у прод-бандлі (env не заданий) весь блок згортається у `false` і tree-shake його видаляє. Раніше
+// гейт був лише runtime-localStorage → hatch потрапляв у прод-код: XSS/локальний доступ до localStorage
+// дозволяв інжектнути довільний access-токен і обійти refresh-валідацію сесії (auth-bypass вектор).
+const E2E_HATCH_ENABLED = process.env.NEXT_PUBLIC_E2E === '1';
+
 // публічні роути НЕ повинні робити refresh-запит на mount —
 // браузер логує 401 у console, що ламає console-errors.spec.ts і шумить у Sentry.
 // експортується тут як SSOT, TopShell використовує isPublicRoute з цього модуля.
@@ -99,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let stored: string | null = null;
       if (typeof window !== 'undefined') {
         stored = sessionStorage.getItem(TOKEN_KEY);
-        if (!stored && localStorage.getItem('sto_e2e_skip_refresh') === '1') {
+        if (E2E_HATCH_ENABLED && !stored && localStorage.getItem('sto_e2e_skip_refresh') === '1') {
           const fromLocal = localStorage.getItem('sto_e2e_access_token');
           if (fromLocal) {
             sessionStorage.setItem(TOKEN_KEY, fromLocal);
@@ -163,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // redirect, even though the access token cached in sessionStorage is still valid.
       const cached = readCachedEmployee();
       const e2eSkipRefresh =
+        E2E_HATCH_ENABLED &&
         typeof window !== 'undefined' &&
         localStorage.getItem('sto_e2e_skip_refresh') === '1' &&
         !!cached;

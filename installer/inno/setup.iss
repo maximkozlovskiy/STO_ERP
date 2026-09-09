@@ -51,7 +51,7 @@ Source: "..\assets\icon.ico";              DestDir: "{app}"
 
 [Icons]
 Name: "{group}\{#AppName}";       Filename: "{#DataDir}\STO ERP.url"; IconFilename: "{app}\icon.ico"
-Name: "{group}\Зупинити STO ERP"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Update.ps1"""; IconFilename: "{app}\icon.ico"
+Name: "{group}\Зупинити STO ERP"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\scripts\Stop-Stack.ps1"" -DataDir ""{#DataDir}"""; IconFilename: "{app}\icon.ico"
 Name: "{userdesktop}\{#AppName}"; Filename: "{#DataDir}\STO ERP.url"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
 
 [Run]

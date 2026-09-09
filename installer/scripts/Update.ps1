@@ -1,7 +1,11 @@
 ﻿#Requires -RunAsAdministrator
 param(
     [string]$DataDir = 'C:\ProgramData\STO-ERP',
-    [string]$Version = 'latest'
+    [string]$Version = 'latest',
+    # OFFLINE-FIRST: каталог із tar-бандлом нових образів (sto-api/sto-web:$Version .tar.gz), як у
+    # Setup-Stack.ps1. Якщо заданий — образи завантажуються `docker load` локально (БЕЗ інтернету).
+    # Порожній → fallback на `docker compose pull` (онлайн-сценарій).
+    [string]$ImagesDir = ''
 )
 
 Set-StrictMode -Version Latest
@@ -67,11 +71,23 @@ Write-Log "Створення резервної копії перед онов�
 & "$PSScriptRoot\Backup.ps1" -DataDir $DataDir
 if ($LASTEXITCODE -ne 0) { Write-Log "Бекап завершився з помилкою"; exit 1 }
 
-# 2. Pull new images
-Write-Log "Завантаження нових образів..."
+# 2. Завантаження нових образів — OFFLINE-FIRST через `docker load` з бандла (як Setup-Stack.ps1).
+#    Онлайн `docker compose pull` лишається fallback-ом лише коли -ImagesDir не заданий.
 $env:VERSION = $Version
-& docker compose pull api web
-if ($LASTEXITCODE -ne 0) { Write-Log "docker compose pull завершився з помилкою"; exit 1 }
+if ($ImagesDir -and (Test-Path $ImagesDir)) {
+    Write-Log "Завантаження нових образів з бандла (offline): $ImagesDir"
+    $tars = Get-ChildItem "$ImagesDir\*.tar.gz" -ErrorAction SilentlyContinue
+    if (-not $tars) { Write-Log "У $ImagesDir немає *.tar.gz образів"; exit 1 }
+    foreach ($tar in $tars) {
+        Write-Log "  docker load $($tar.Name)"
+        & docker load -i $tar.FullName
+        if ($LASTEXITCODE -ne 0) { Write-Log "docker load $($tar.Name) впав"; exit 1 }
+    }
+} else {
+    Write-Log "Завантаження нових образів (online pull — -ImagesDir не заданий)..."
+    & docker compose pull api web
+    if ($LASTEXITCODE -ne 0) { Write-Log "docker compose pull завершився з помилкою"; exit 1 }
+}
 
 # 3. Run migrations FIRST — one-off `run --rm` контейнер, СТАРІ api/web ще працюють і обслуговують.
 #    Якщо міграція впала — старі контейнери живі, просто виходимо (без відкату образів, бо нові ще

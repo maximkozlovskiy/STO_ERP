@@ -67,7 +67,15 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      # MinIO — FilesService читає MINIO_PORT/ACCESS_KEY/SECRET_KEY через config.getOrThrow (crash на
+      # bootstrap якщо відсутні). Раніше прокидався лише MINIO_ENDPOINT → api падав у crash-loop →
+      # web+caddy (depends_on healthy) не стартували → повний провал offline-install. Усі значення з .env.
       MINIO_ENDPOINT: minio
+      MINIO_PORT: ${MINIO_PORT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      MINIO_USE_SSL: ${MINIO_USE_SSL}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       NOTIFICATION_ENC_KEY: ${NOTIFICATION_ENC_KEY}
