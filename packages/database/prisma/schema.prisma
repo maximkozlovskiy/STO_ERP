@@ -1845,6 +1845,28 @@ model IntegrationLog {
   @@map("integration_logs")
 }
 
+/// Idempotency-Key (A1): дедуплікація create-документів під offline-retry. Клієнт шле заголовок
+/// `Idempotency-Key: <uuid>`; interceptor РЕЗЕРВУЄ рядок ПЕРЕД викликом handler (unique(orgId,key)
+/// як лок проти конкурентних дублів), потім кешує 2xx-відповідь для replay. Server-local infra:
+/// БЕЗ syncVersion/deletedAt (не sync-иться на mobile — не додавати до PULL/PUSH_SAFE_TABLES).
+/// TTL-очищення scheduler-ом (expiresAt). requestHash — детект reuse ключа з іншим тілом → 422.
+model IdempotencyKey {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  key            String // клієнтський UUID із заголовка Idempotency-Key
+  method         String // HTTP-метод (POST)
+  path           String // маршрут запиту
+  requestHash    String // хеш тіла — reuse того самого key з іншим тілом → 422
+  responseStatus Int? // статус закешованої відповіді (null поки резервація не завершена успіхом)
+  responseBody   Json? // тіло закешованої 2xx-відповіді (null у резервації/на fail)
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime // TTL: старіші purge-иться scheduler-ом
+
+  @@unique([orgId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
 model TaxRate {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId       String   @db.Uuid
