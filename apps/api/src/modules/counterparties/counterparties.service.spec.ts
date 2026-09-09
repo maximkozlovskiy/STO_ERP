@@ -4,6 +4,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CounterpartiesService } from './counterparties.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { AuditService } from '../audit/audit.service';
 import { CounterpartyQueryDto } from './counterparties.dto';
 
 /**
@@ -51,6 +52,7 @@ describe('CounterpartiesService', () => {
           provide: DocumentNumberService,
           useValue: { next: vi.fn().mockResolvedValue('CON-2026-000001') },
         },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -292,6 +294,7 @@ describe('CounterpartiesService — contract flows', () => {
         CounterpartiesService,
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: docNumbers },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get(CounterpartiesService);
@@ -817,6 +820,7 @@ describe('CounterpartiesService — linked documents (Phase C)', () => {
         CounterpartiesService,
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get(CounterpartiesService);

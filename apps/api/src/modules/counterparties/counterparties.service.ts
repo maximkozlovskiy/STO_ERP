@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContractType, CounterpartyType, LegalForm, Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { calculatePagination } from '../../common/utils/pagination';
 import { initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { AuditService } from '../audit/audit.service';
 import {
   ContractResponseDto,
   CounterpartyQueryDto,
@@ -30,9 +31,12 @@ function hasCounterpartyName(v: {
 
 @Injectable()
 export class CounterpartiesService {
+  private readonly logger = new Logger(CounterpartiesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly documentNumberService: DocumentNumberService,
+    private readonly audit: AuditService,
   ) {}
 
   async findAll(orgId: string, query: CounterpartyQueryDto): Promise<PaginatedCounterpartiesDto> {
@@ -108,7 +112,11 @@ export class CounterpartiesService {
     return this.toDto(item, true);
   }
 
-  async create(orgId: string, dto: CreateCounterpartyDto): Promise<CounterpartyResponseDto> {
+  async create(
+    orgId: string,
+    dto: CreateCounterpartyDto,
+    userId?: string,
+  ): Promise<CounterpartyResponseDto> {
     if (!hasCounterpartyName(dto)) {
       throw new BadRequestException('Вкажіть назву компанії або ім’я/прізвище контрагента');
     }
@@ -170,6 +178,19 @@ export class CounterpartiesService {
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
+    // C1b: аудит створення контрагента («хто завів клієнта/постачальника»). Best-effort post-commit.
+    if (userId) {
+      this.audit
+        .record(orgId, 'Counterparty', item.id, 'CREATE', userId, undefined, {
+          type: dto.type,
+          companyName: dto.companyName ?? null,
+          firstName: dto.firstName ?? null,
+          lastName: dto.lastName ?? null,
+        })
+        .catch((e: unknown) =>
+          this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+        );
+    }
     return this.toDto(item);
   }
 
@@ -177,6 +198,7 @@ export class CounterpartiesService {
     orgId: string,
     id: string,
     dto: UpdateCounterpartyDto,
+    userId?: string,
   ): Promise<CounterpartyResponseDto> {
     // sto-optimize: narrow tenant guard — тягнемо лише existence + name-поля (не всі
     // 15+ колонок) для cross-field name-guard. Update нижче все одно повертає DTO.
@@ -200,10 +222,26 @@ export class CounterpartiesService {
       data: dto,
       include: { settlementAccount: { select: { balance: true } } },
     });
+    // C1b: аудит редагування — diff обчислює AuditService (old=existing name-поля, new=dto).
+    if (userId) {
+      this.audit
+        .record(
+          orgId,
+          'Counterparty',
+          id,
+          'UPDATE',
+          userId,
+          existing,
+          dto as Record<string, unknown>,
+        )
+        .catch((e: unknown) =>
+          this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+        );
+    }
     return this.toDto(item, true);
   }
 
-  async remove(orgId: string, id: string): Promise<void> {
+  async remove(orgId: string, id: string, userId?: string): Promise<void> {
     // MD-H1: не видаляти контрагента з непогашеним боргом або активними документами —
     // інакше борг «зникає» зі списку, а наряди/PO осиротіють на soft-deleted контрагента.
     const cp = await this.prisma.counterparty.findFirst({
@@ -262,6 +300,14 @@ export class CounterpartiesService {
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Контрагента не знайдено');
+    // C1b: аудит видалення (soft-delete) контрагента.
+    if (userId) {
+      this.audit
+        .record(orgId, 'Counterparty', id, 'DELETE', userId, { deletedAt: null }, undefined)
+        .catch((e: unknown) =>
+          this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+        );
+    }
   }
 
   // ─── Garages ─────────────────────────────────────────────

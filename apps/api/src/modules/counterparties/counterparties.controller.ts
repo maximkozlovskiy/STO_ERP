@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
   ContractResponseDto,
   CounterpartyQueryDto,
@@ -67,25 +68,34 @@ export class CounterpartiesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Створити контрагента (автоматично створює розрахунковий рахунок)' })
   @ApiResponse({ status: 201, type: CounterpartyResponseDto })
-  create(@OrgContext() orgId: string, @Body() dto: CreateCounterpartyDto) {
-    return this.service.create(orgId, dto);
+  create(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateCounterpartyDto,
+  ) {
+    return this.service.create(orgId, dto, user?.id);
   }
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   update(
     @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCounterpartyDto,
   ) {
-    return this.service.update(orgId, id, dto);
+    return this.service.update(orgId, id, dto, user?.id);
   }
 
   @Delete(':id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.remove(orgId, id);
+  remove(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.remove(orgId, id, user?.id);
   }
 
   // ─── Garages ─────────────────────────────────────────────
