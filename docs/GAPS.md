@@ -107,9 +107,12 @@ T6/T7/T8 (security fast-fixes) → T4/T15/T16 (deploy) → T9/T10/T11 (frontend 
 | --- | ------------------------------------------------------------------------------------------------------ | -------- | ------ |
 | A1  | Tenant-ізоляція + soft-delete як Prisma-extension (AsyncLocalStorage) — прибрати 1828 ручних orgId     | Високий  | 🔴     |
 | A2  | Доменні events для lifecycle side-effects (WorkOrderCompleted + @OnEvent, +outbox)                     | Високий  | 🟢     |
-| A3  | Розбити God-об'єкти (WorkOrdersService 2124р → +StockEffects/Share/Totals; CreateWorkOrderModal 3708р) | Високий  | 🔴     |
+| A3  | Розбити God-об'єкти (WorkOrdersService 2124р → +StockEffects/Share/Totals; CreateWorkOrderModal 3708р) | Високий  | 🟡     |
 | A4  | Provider-registry через multi-provider DI-токен замість конкретних класів (OCP+DIP)                    | Середній | 🟢     |
 | A5  | Спільний DTO/FSM-контракт у @sto/shared (Zod через nestjs-zod) — усунути ручне дзеркалення             | Середній | 🔴     |
+
+**A3 частково (dcb413b3):** WorkOrderShareService винесено (share/public-кошторис); WorkOrdersService
+2085→1850 рядків, fan-out 11→7. Лишається: StockEffects + TotalsCalculator екстракції.
 
 **A2 закрито (cc446ba7):** transition() емітить WorkOrderTransitioned/Completed події; 5 inline
 side-effects → @OnEvent-хендлери. Fan-out WorkOrdersService 11→9. Live-verified (audit-count 3→4).
