@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
+import { validateContactFields } from '@/lib/validation';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -420,6 +421,12 @@ export function CounterpartyEditModal({
       setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
       return;
     }
+    // T11: клієнтська Zod-валідація email (телефон уже нормалізує PhoneInput-маска, тож не чіпаємо).
+    const contactError = validateContactFields({ email: form.email });
+    if (contactError) {
+      setError(contactError);
+      return;
+    }
     setSavingBoth(true);
     setError('');
     try {
@@ -455,6 +462,12 @@ export function CounterpartyEditModal({
     if (!counterparty) return;
     if (!hasCounterpartyName(form)) {
       setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
+      return;
+    }
+    // T11: клієнтська Zod-валідація контактних полів.
+    const contactError = validateContactFields({ phone: form.phone, email: form.email });
+    if (contactError) {
+      setError(contactError);
       return;
     }
     setSavingBoth(true);
