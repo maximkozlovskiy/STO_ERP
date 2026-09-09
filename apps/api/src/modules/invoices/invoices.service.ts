@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 
@@ -15,6 +15,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PdfService } from '../pdf/pdf.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
+import { AuditService } from '../audit/audit.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import {
   CreateInvoiceDto,
@@ -83,12 +84,15 @@ function lineVatTotals(
 
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly docNumbers: DocumentNumberService,
     private readonly pdf: PdfService,
     private readonly settlements: SettlementsService,
     private readonly settingsService: SettingsService,
+    private readonly audit: AuditService,
   ) {}
 
   async findAll(
@@ -322,6 +326,19 @@ export class InvoicesService {
         workOrder: { select: { number: true } },
       },
     });
+
+    // C1: аудит створення рахунку («хто виставив»). Best-effort post-commit.
+    if (userId) {
+      this.audit
+        .record(orgId, 'Invoice', inv.id, 'CREATE', userId, undefined, {
+          number: inv.number,
+          counterpartyId: dto.counterpartyId,
+          amount: Number(inv.amount),
+        })
+        .catch((e: unknown) =>
+          this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+        );
+    }
 
     return this.toDto(inv);
   }

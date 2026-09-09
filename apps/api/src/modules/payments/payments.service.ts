@@ -8,6 +8,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { AuditService } from '../audit/audit.service';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -35,6 +36,7 @@ export class PaymentsService {
     private readonly notifications: NotificationsService,
     private readonly workOrders: WorkOrdersService,
     private readonly loyalty: LoyaltyService,
+    private readonly audit: AuditService,
     @InjectQueue('checkbox') private readonly checkboxQueue: Queue,
   ) {}
 
@@ -416,6 +418,21 @@ export class PaymentsService {
           `Loyalty earn enqueue failed: ${err instanceof Error ? err.message : err}`,
         ),
       );
+
+    // C1: аудит створення платежу (money-critical — «хто зареєстрував оплату»). Best-effort
+    // post-commit (як work-orders): помилка аудиту не відкочує вже-створений платіж.
+    if (userId) {
+      this.audit
+        .record(orgId, 'Payment', payment.id, 'CREATE', userId, undefined, {
+          amount: Number(dto.amount),
+          method: dto.method,
+          counterpartyId: dto.counterpartyId,
+          invoiceId: dto.invoiceId ?? null,
+        })
+        .catch((e: unknown) =>
+          this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
+        );
+    }
 
     return this.toDto(payment);
   }

@@ -24,6 +24,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkOrdersModule } from '../work-orders/work-orders.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
+import { AuditModule } from '../audit/audit.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
@@ -37,6 +38,7 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     // PaymentsService queues loyalty earn (queueEarn → BullMQ → LoyaltyProcessor → loyaltyService.earn)
     // — without this import queueEarn was dead code and loyalty points were never accrued.
     LoyaltyModule,
+    AuditModule, // C1: аудит створення платежу
   ],
   controllers: [
     PaymentsController,

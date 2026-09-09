@@ -7,6 +7,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PdfService } from '../pdf/pdf.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * Bug #413: Service-level spec для guards що додані review-фіксами #403, #406, #407, #412.
@@ -67,6 +68,7 @@ describe('InvoicesService — business logic guards', () => {
         { provide: PdfService, useValue: pdf },
         { provide: SettlementsService, useValue: settlementsMock },
         { provide: SettingsService, useValue: settingsMock },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -905,6 +907,7 @@ describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
         },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -991,6 +994,7 @@ describe('InvoicesService — linked-documents edge cases', () => {
             getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
           },
         },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get(InvoicesService);

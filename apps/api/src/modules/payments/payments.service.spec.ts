@@ -8,6 +8,7 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * FIN-C1: ідемпотентність оплати рахунку. Перехід SENT→PAID виконується ПЕРШИМ у tx через
@@ -83,6 +84,8 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
           useValue: { transition: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: LoyaltyService, useValue: { queueEarn: vi.fn().mockResolvedValue(undefined) } },
+        // C1: аудит best-effort — мок record() (no-op).
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -390,6 +393,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
           useValue: { transition: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: LoyaltyService, useValue: loyalty },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -554,6 +558,8 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
           useValue: { transition: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: LoyaltyService, useValue: { queueEarn: vi.fn().mockResolvedValue(undefined) } },
+        // C1: аудит best-effort — мок record() (no-op).
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -871,6 +877,8 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
           useValue: { transition: vi.fn().mockResolvedValue(undefined) },
         },
         { provide: LoyaltyService, useValue: { queueEarn: vi.fn().mockResolvedValue(undefined) } },
+        // C1: аудит best-effort — мок record() (no-op).
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
