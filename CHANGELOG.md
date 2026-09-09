@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-09-09 — 3 backlog-пункти закрито: Docker tag-mismatch + C1b audit + D3 bull-board
+
+### c4f38c1c feat(bull-board): D3 — admin UI черг BullMQ за auth (OWNER/ADMIN, non-prod)
+
+bull-board для перегляду/ретраю BullMQ-джобів. Fastify-plugin через `@bull-board/nestjs`; 12 черг
+(sms, followup, idempotency-purge, nbu-fetch, loyalty, invoice-overdue, reconciliation,
+nova-poshta-polling, integration-log-purge, outbound-webhook, checkbox, payment-polling) реєструються
+локально в модулі (forFeature резолвить Queue-токен; registerQueue ідемпотентний).
+
+- **Безпека, 2 шари**: (1) монтується ЛИШЕ non-prod — `register()` повертає порожній модуль у prod
+  (роут відсутній, як Swagger; prod-CSP `default-src 'none'` зламав би UI); (2) non-prod роут
+  `/api/admin/queues` захищено глобальним Fastify `onRequest`-хуком `registerBullBoardGuard` (main.ts):
+  bearer-JWT + OWNER/ADMIN, звірка як у JwtStrategy (secret, tokenVersion-revocation, роль). Nest
+  middleware/@UseGuards не працюють — plugin-роути обходять Nest-pipeline (live: 200 без токена).
+- **Версії**: `@bull-board/*@5.23.0` — остання Fastify-4-сумісна лінійка (`@fastify/view@^8`,
+  `@fastify/static@^6`); v6+/v9 → `@fastify/static@^8` → Fastify 5 → FST_ERR на старті. + override
+  `fastify:4.28.1` (свіжий resolve дублював 4.29.1 → TS2345 у main.ts).
+- Live-verified: no-token→401, bad→401, MECHANIC→403, OWNER→200 (UI+API), prod→404. api-suite 2008/2008.
+
+### 8fd24a04 / 21fa5423 / a64f6913 / 2be5adbf feat(audit): C1b — аудит counterparties/settings/pricing
+
+Розширення C1a-патерну (AuditService.record) на головні сутності + фікс read-whitelist:
+
+- **Counterparty** (service): create/update/remove +`userId?` + best-effort record (update передає
+  `existing` як old-data). Controller +`@CurrentUser`. Module +AuditModule.
+- **Settings**: helper `auditSettings`; updateOrganisation/updateBranch/createTaxRate/updateTaxRate/
+  deleteTaxRate +record (entityType OrganisationSettings/BranchSettings/TaxRate).
+- **Pricing-rules**: AuditService прямо в контролері (inline CRUD не рефакторено), helper `auditRule`.
+- **Whitelist-фікс** (audit.controller): `AUDIT_ENTITY_TYPES` +Payment/OrganisationSettings/
+  BranchSettings/TaxRate/PricingRule — read-endpoint GET /audit віддавав 400 на ці типи (запис
+  працював, читання блокувалось; латентно й для C1a Payment).
+- Live-verified: Counterparty CREATE + OrganisationSettings PATCH audit (diff/user/timestamp),
+  TaxRate query 400→200.
+
+### 1e1aca97 fix(docker): tag-mismatch — offline-install падав
+
+Розрив image-ref між CI/compose/installer: compose шукав `ghcr.io/your-org/sto-api:${VERSION:-latest}`,
+installer `docker load`-ив `sto-api:<version>` (без префікса, інший тег), app-образи в ghcr не пушились
+→ offline `docker compose up` не знаходив образ.
+
+- **docker-compose.yml**: `image: sto-api:${VERSION:-latest}` / `sto-web:…` (прибрано ghcr-префікс).
+- **Setup-Stack.ps1**: +`-Version` param → `.env VERSION=$Version`; при наявному .env оновлює лише
+  VERSION без регенерації секретів. **setup.iss**: +`-Version "{#AppVersion}"`. **Update.ps1**:
+  rollback `up -d` локального тега першою спробою, `pull` — лише fallback.
+- **release.yml**: прибрано безцільний docker/login-action; minio пінований `RELEASE.2024-01-16…`.
+- Live-verified (WSL): `VERSION=1.2.3 docker compose config` → локальні теги.
+
 ## 2026-09-09 — Backlog-фічі: Warranties UI + Loyalty config tab (frontend-only)
 
 Закриття 2 backlog-пунктів (backend-готові, без UI). Обидва frontend-only, 0 змін API/схеми.
