@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-10 — T26: E2E-діагностика + A1-gap fix (WO detail)
+
+### 52a34fc4 fix(work-orders): findOne goodUoM.findMany без orgId → tenant-guard 500
+
+E2E (estimate-share+work-orders-features) виявив 13 фейлів. Діагноз: **12 = env** (web-сервер без
+`NEXT_PUBLIC_E2E=1` → auth-hatch off → login-redirect; dev-setup, не баг), **1 = реальний backend-баг**:
+`GET /work-orders/:id` 500-ив на наряді з UoM-запчастиною — A1 tenant-guard ловив `goodUoM.findMany` БЕЗ
+orgId у detail/toDto (3-й екземпляр гапу після fetchPartCoefficients). Наслідок: edit-модал застрягав у
+create-стані (нема «Виставити рахунок»). Fix +orgId. Share/export — у runUnscoped, не зачеплені.
+tsc api 0 · work-orders 130 · live 500→200 · E2E 16/16 green. Skill +2 gotcha (NEXT_PUBLIC_E2E-hatch, UoM-detail-500).
+
+---
+
 ## 2026-09-10 — A3-modal: 2 low-risk хуки з CreateWorkOrderModal (3708р God-компонент)
 
 ### 684f60b2 refactor(work-orders): винести useReferenceData
