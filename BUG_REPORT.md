@@ -3,6 +3,52 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-11 — Тест фічі «Кастомізація бокової панелі» (FULL, HEAD dc59edaa) — ЧИСТО, 0 багів
+
+**Scope:** frontend-only фіча per-user reorder/hide/custom-sections бокового меню (commit `027b47f0`).
+Файли: `apps/web/src/lib/nav-layout.ts` (+test 14), `apps/web/src/hooks/useNavConfig.ts` (+test 8),
+`apps/web/src/components/ui/NavEditor.tsx`, `apps/web/src/components/TopShell.tsx`, `apps/web/src/lib/nav.ts`.
+Backend/DB — без змін (наявний generic user-preferences key/value `nav_layout`).
+
+**Результат: жодного бага не знайдено.** Логіка resolveNav + useNavConfig надійна на всіх edge-cases.
+
+**Верифіковано (докази):**
+
+- **TS:** `tsc --noEmit` web → 0 errors (exit 0).
+- **Існуючі тести фічі:** `nav-layout.test.ts` 14/14 + `useNavConfig.test.tsx` 8/8 = 22/22 green.
+- **Повний web suite (регресія Scenario 5):** 77 файлів, **739/739 green** — TopShell-споживачі,
+  bookmarks/collapsed/nav-mode не зламані. `NAV_GROUPS_FUNCTIONS` (functions-режим) лишається плоским.
+- **Scenario 1 (дефолт):** «Каса» тепер остання у `settlements` (`nav.ts` порядок invoices→payments→
+  supplier-payments→cash). role-filter: OWNER бачить усе; MECHANIC — обмежено. Пункти поза роллю
+  НЕ показуються навіть з кастомним itemSection-override (`resolveNav`: `if (!roleOk) continue` ПЕРЕД
+  hidden/visible split — перевірено пробним тестом P3/P4). ✅
+- **Scenario 2 (resolveNav edge-cases):** порожній layout=дефолт; itemOrder без пункту → FAIL-SAFE
+  (пункт у master-порядку в кінці); hiddenItems/hiddenSections; кастом-розділ + itemSection-перенесення;
+  removeSection повертає пункти у дефолт (прибирає override); normalizeNavLayout відкидає сміття
+  (`'garbage'`/`42`/`null`/`[]` → EMPTY; version 999 → 1; нерядкові елементи масивів). 8 пробних
+  тестів (P1-P8) — всі зелені. ✅
+- **Scenario 3 (useNavConfig):** lost-update (2 мутації/tick чейняться через layoutRef); addSection+move
+  same-tick; move cleans phantom order; removeSection cleans sectionOrder; reset; optimistic localStorage;
+  PUT body `{key:'nav_layout', value}`; offline GET-fail → loading=false + порожній layout; offline
+  PUT-fail → state все одно оновлюється. 9 пробних тестів (H1-H9) — всі зелені. ✅
+- **Scenario 4 (персистентність, live curl):** PUT `/user-preferences/nav_layout` → **204**;
+  GET → повертає збережений layout 1-в-1 (version/hiddenItems/customSections/itemSection/itemOrder/
+  sectionOrder), Cyrillic label round-trip коректний. Cleanup PUT `{}` → 204. ✅
+- **Scenario 5 (регресія TopShell):** див. повний suite вище — 739 green, 0 регресій.
+
+**Дизайн-рішення (не баги, підтверджено відповідність вимогам):**
+
+- `.catch(() => {})` у GET/PUT `useNavConfig` — **навмисна offline-first толерантність** (CLAUDE.md
+  правило 3: система не зупиняється без інтернету). Панель рендериться з EMPTY_NAV_LAYOUT/localStorage.
+  Це НЕ «required select gate» (§1.3 Bug #159) — nav завжди має fallback. Прийнятно.
+- **Мобільне меню:** commit-повідомлення каже «кастом read-only», але `renderSidebarContent()`
+  (mobile aside) показує кнопку «Налаштувати меню» + повний `NavEditor` (gated лише `!collapsed`;
+  на мобільному `collapsed=false` за замовчуванням). Тобто редагування на мобільному **функціональне**,
+  а не read-only. Це розбіжність ОПИСУ (commit overstates обмеження), НЕ дефект коду: фіча працює,
+  користувач досягає результату. Не потребує коду-фіксу. Зафіксовано для точності документації.
+
+Статус: [x] перевірено — 0 багів, фіча готова.
+
 ## Session 2026-09-09 — QA Цикл 2 Фаза 1 (sync, HEAD 543d82ff)
 
 ### Bug #715 (MEDIUM → виправлено) — SettlementsTabContent TX_COLORS не збігається з BALANCE_SIGN — [x]
