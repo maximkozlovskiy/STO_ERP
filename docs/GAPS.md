@@ -65,9 +65,11 @@
 | R4  | Security | .env.dev закомічено в git з реальним Sentry DSN (write-only, мінімальний ризик) → git rm --cached         | Низький  | 🟢     |
 | R5  | Deploy   | PS-скрипти без лінту/Pester у CI (причина пропуску T15) — додати windows smoke                            | Низький  | 🟢     |
 
-**Підтверджено відкритими (deploy-борг, поза scope):** T4 (Docker Desktop↔WSL2 ADR-розрив),
-T16 (compose resource-limits/non-root/healthcheck), T23 (Backup BOM + Restore без --clean — шлях
-відновлення непротестований). Комерційні GAPS G1-G7 — блокують легальний запуск, не технічний MVP.
+**Закрито після цього огляду (34e2fb63):** 🟢 T16 (compose mem_limit/cpus + web/caddy healthcheck),
+🟢 T23 (Backup/Restore docker cp + --clean --if-exists — без BOM, шлях відновлення протестований),
+🟢 T12 (followup cursor-пагінація). **Лишається (deploy-борг, поза scope):** T4 (Docker Desktop↔WSL2
+ADR-розрив), Docker tag-mismatch (VERSION/rollback — окремий план). Комерційні GAPS G1-G7 — блокують
+легальний запуск, не технічний MVP.
 
 ---
 
