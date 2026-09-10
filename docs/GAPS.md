@@ -40,6 +40,37 @@
 
 ---
 
+## Pre-prod ПОВТОРНИЙ огляд 2026-09-10 (5 складових, HEAD 4b74730e)
+
+> Наскрізна перевірка після T-боргу + архітектури (A2/A3/A4/A5). Регресій від рефакторів НЕ виявлено
+> (events behavior-preserving, VAT math-identical, registry/share live-verified). 2 блокери знайдено
+> й ВИПРАВЛЕНО цим проходом. Дашборд: артефакт «STO ERP — Pre-Prod Re-Review».
+
+**Виправлено:**
+
+- 🟢 **T15 CRITICAL (fe91475e):** New-RandomBase64 крашив clean install на Windows PowerShell 5.1
+  (статичний RandomNumberGenerator::GetBytes відсутній у .NET Framework) → .env не створювався.
+  Fix: інстансний CSPRNG API. Verified на PS 5.1.26100.
+- 🟢 **Frontend HIGH (4b74730e):** CreateWorkOrderModal FSM-transition інвалідував лише workOrdersKeys,
+  не склад/баланс → після завершення наряду з модалки Залишки/Взаєморозрахунки stale. Fix: обидва
+  call-site → invalidateWorkOrderSideEffects.
+
+**Нові відкриті (не блокують запуск):**
+
+| ID  | Область  | Знахідка                                                                                                  | Пріор.   | Статус |
+| --- | -------- | --------------------------------------------------------------------------------------------------------- | -------- | ------ |
+| R1  | DB       | CompletionAct пропущено в T14 partial-unique — plain @@unique блокує переюз номера після soft-delete      | Середній | 🔴     |
+| R2  | Backend  | resolveApiKey where містить provider/enabled → тиха невідправка при зміні конфігу у вікні enqueue↔process | Середній | 🔴     |
+| R3  | Frontend | SyncIndicator не бачить «локальний API down при browser online» (найімовірніший LAN-збій)                 | Середній | 🔴     |
+| R4  | Security | .env.dev закомічено в git з реальним Sentry DSN (write-only, мінімальний ризик) → git rm --cached         | Низький  | 🔴     |
+| R5  | Deploy   | PS-скрипти без лінту/Pester у CI (причина пропуску T15) — додати windows smoke                            | Низький  | 🔴     |
+
+**Підтверджено відкритими (deploy-борг, поза scope):** T4 (Docker Desktop↔WSL2 ADR-розрив),
+T16 (compose resource-limits/non-root/healthcheck), T23 (Backup BOM + Restore без --clean — шлях
+відновлення непротестований). Комерційні GAPS G1-G7 — блокують легальний запуск, не технічний MVP.
+
+---
+
 ## Технічний борг — pre-prod аудит 2026-09-09 (6 складових, HEAD fdb468df)
 
 > Наскрізний аудит backend/frontend/DB/security/deploy/quality. Ядро (гроші/склад/FSM/tenant/безпека/БД)
@@ -76,7 +107,7 @@ T20 (документовані recoverable tx-tradeoff), T21 (login MinLength �
 | T12 | Backend  | followup-processor cap 1000 → тиха втрата ТО-нагадувань для автопарків >1000                           | Середній | 🟡     |
 | T13 | Backend  | MAINTENANCE_FORECAST_DAYS=14 хардкод — не в OrganisationSettings                                       | Середній | 🟢     |
 | T14 | DB       | Немає DB-unique (orgId, number) на документах → дублі номерів у offline/restore (юрид. ризик)          | Середній | 🟢     |
-| T15 | Deploy   | New-RandomBase64 некоректна PS-логіка → секрети можуть виходити слабкими                               | Середній | 🔴     |
+| T15 | Deploy   | New-RandomBase64 некоректна PS-логіка → секрети можуть виходити слабкими                               | Середній | 🟢     |
 | T16 | Deploy   | compose prod: нема resource-limits/non-root; web+caddy без healthcheck                                 | Середній | 🔴     |
 | T17 | Quality  | E2E-прогалина money-flow: нема UI-тесту оплати/каси/фіскал-чека                                        | Середній | 🟢     |
 | T18 | Docs     | Нові фічі (loyalty/ТО-нагадування/payments-об'єкт) без досьє в docs/objects                            | Середній | 🟢     |
