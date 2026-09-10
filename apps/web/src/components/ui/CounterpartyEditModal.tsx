@@ -24,6 +24,8 @@ import {
   CONTRACT_TYPE_LABELS,
 } from '@sto/shared';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth';
+import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,6 +135,9 @@ export function CounterpartyEditModal({
   const router = useRouter();
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
   const dirty = useDirtyForm();
+  const { employee } = useAuth();
+  // Призначати/знімати статуси — OWNER/ADMIN/RECEPTIONIST (паритет з assign-endpoint @Roles).
+  const canManageStatuses = ['OWNER', 'ADMIN', 'RECEPTIONIST'].includes(employee?.role ?? '');
 
   const isEdit = !!counterparty;
 
@@ -944,6 +949,16 @@ export function CounterpartyEditModal({
                 <span className="text-sm text-foreground">Платник ПДВ</span>
               </label>
             </div>
+
+            {/* Статуси-мітки (лише при редагуванні наявного контрагента) */}
+            {isEdit && counterparty && (
+              <div className="mt-5 pt-4 border-t border-border">
+                <label className="block text-[13px] font-medium text-foreground mb-2">
+                  Статуси
+                </label>
+                <StatusManager counterpartyId={counterparty.id} canManage={canManageStatuses} />
+              </div>
+            )}
           </div>
         )}
 

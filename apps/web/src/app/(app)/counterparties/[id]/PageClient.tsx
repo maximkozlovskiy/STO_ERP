@@ -7,7 +7,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import { StatusManager } from './StatusManager';
+import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
 import { type Warranty } from '@/hooks/api/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, X, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -13,17 +13,26 @@ interface StatusBadge {
 
 interface StatusManagerProps {
   counterpartyId: string;
-  assigned: StatusBadge[];
+  /**
+   * Призначені статуси. Якщо передано — компонент керований (батько сам їх завантажує/оновлює,
+   * `onChange` викликається після мутації). Якщо `undefined` — компонент self-fetch-ить власний
+   * список призначень через `GET /counterparties/:id` (для модалки, яка не тримає statuses).
+   */
+  assigned?: StatusBadge[];
   /** Чи має користувач право призначати/знімати мітки (OWNER/ADMIN/RECEPTIONIST). */
   canManage: boolean;
-  /** Викликається після успішного assign/unassign — перезавантажити контрагента. */
-  onChange: () => void;
+  /** Викликається після успішного assign/unassign (керований режим) — перезавантажити контрагента. */
+  onChange?: () => void;
 }
 
 /**
  * Керування статусами-мітками контрагента: колірні badge-и призначених статусів (× — зняти)
  * + dropdown «+ Статус» для призначення з довідника. Мутації йдуть через
- * POST/DELETE /counterparties/:id/statuses, після кожної викликається onChange (loadCp).
+ * POST/DELETE /counterparties/:id/statuses.
+ *
+ * Два режими:
+ *  - керований (`assigned` передано): батько володіє списком, після мутації → `onChange()`.
+ *  - self-fetch (`assigned` не передано): сам тягне `GET /counterparties/:id` → statuses[].
  */
 export function StatusManager({
   counterpartyId,
@@ -31,11 +40,32 @@ export function StatusManager({
   canManage,
   onChange,
 }: StatusManagerProps) {
+  const controlled = assigned !== undefined;
   const [directory, setDirectory] = useState<StatusBadge[]>([]);
+  const [selfAssigned, setSelfAssigned] = useState<StatusBadge[]>([]);
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  const effectiveAssigned = controlled ? (assigned ?? []) : selfAssigned;
+
+  // Self-fetch режим: тягнемо власні призначення контрагента (керований режим це робить батько).
+  const reloadSelf = useCallback(() => {
+    if (controlled) return;
+    apiFetch<{ statuses?: StatusBadge[] }>(`/counterparties/${counterpartyId}`)
+      .then(cp => setSelfAssigned(cp.statuses ?? []))
+      .catch(() => undefined);
+  }, [controlled, counterpartyId]);
+
+  useEffect(() => {
+    reloadSelf();
+  }, [reloadSelf]);
+
+  const afterMutation = () => {
+    if (controlled) onChange?.();
+    else reloadSelf();
+  };
 
   // Довідник вантажимо лениво — лише коли користувач відкриває dropdown.
   const loadDirectory = () => {
@@ -54,7 +84,7 @@ export function StatusManager({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const assignedIds = new Set(assigned.map(s => s.id));
+  const assignedIds = new Set(effectiveAssigned.map(s => s.id));
   const available = directory.filter(s => !assignedIds.has(s.id));
 
   const assign = async (statusId: string) => {
@@ -65,7 +95,7 @@ export function StatusManager({
         method: 'POST',
         body: JSON.stringify({ statusId }),
       });
-      onChange();
+      afterMutation();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка призначення');
     } finally {
@@ -80,7 +110,7 @@ export function StatusManager({
       await apiFetch(`/counterparties/${counterpartyId}/statuses/${statusId}`, {
         method: 'DELETE',
       });
-      onChange();
+      afterMutation();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка зняття');
     } finally {
@@ -90,7 +120,7 @@ export function StatusManager({
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap" ref={wrapRef}>
-      {assigned.map(s => (
+      {effectiveAssigned.map(s => (
         <span
           key={s.id}
           className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-[12px] font-medium text-white"
