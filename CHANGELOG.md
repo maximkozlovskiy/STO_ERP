@@ -23,6 +23,15 @@ settlement fan-out. Винесено у окремий bounded context (дзер
 tsc 0 · suite 2101/2101 green (136 files) · lint 0 · LIVE FSM-smoke (clone→ESTIMATE→APPROVED→IN_PROGRESS→
 COMPLETED→CANCELLED усі 201, 0 TenantIsolationError, side-effects застосовані — behavior-identical наживо).
 
+### 13f4a474 test(work-orders): A3 QA gap-closure
+
+QA (review→tester). Review: 0 проблем (byte-identity незалежно підтверджено). Tester: 0 A3-багів + закрив
+unit-only-прогалину — NEW work-order-stock-effects.integration.spec.ts (real guarded client vs dev-БД,
+mutation-verified: реверс orgId-фіксу відтворює оригінальний баг наживо для writeOff І reserve) + 4 unit
+(zero-total throw на COMPLETED, coeff=0 safeCoeff→1 division-guard) + LIVE UoM-transition (WO з alt-UoM part
+coeff=10 → COMPLETED усі 201, coeff-конвертовані рухи, 0 TenantIsolationError). Suite 2101→2109. **T25 (новий,
+не A3):** GoodUoM.coefficient напрямок конверсії потребує продуктового уточнення (pre-existing).
+
 ---
 
 ## 2026-09-10 — A1: tenant-isolation GUARD (fail-closed) увімкнено
