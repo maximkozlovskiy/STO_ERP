@@ -1,6 +1,17 @@
-import type { Warehouse, Unit } from '@/hooks/useReferenceData';
+import type { Warehouse, Unit, Employee } from '@/hooks/useReferenceData';
 
-export type { Warehouse, Unit };
+export type { Warehouse, Unit, Employee };
+
+export interface LocalLine {
+  _key: string;
+  id?: string; // present for rows already persisted in DB (edit mode)
+  workId: string;
+  workName: string;
+  employeeId: string;
+  normoHours: string;
+  actualHours: string;
+  price: string;
+}
 
 export interface LocalPart {
   _key: string;
