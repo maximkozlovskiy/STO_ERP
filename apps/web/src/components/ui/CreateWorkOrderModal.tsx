@@ -31,6 +31,7 @@ import { useConflictCheck } from '@/hooks/useConflictCheck';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
+import { useStockTotals } from '@/hooks/useStockTotals';
 import { getCached } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { cn, displayCounterpartyName, calcVatTotals } from '@/lib/utils';
@@ -528,10 +529,8 @@ export function CreateWorkOrderModal({
   // Accumulated pre-save rows
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [parts, setParts] = useState<LocalPart[]>([]);
-  const [stockTotalsMap, setStockTotalsMap] = useState<Map<string, number>>(new Map());
-  // key = `${goodId}:${warehouseId}` → quantity on that specific warehouse
-  const [stockWarehouseMap, setStockWarehouseMap] = useState<Map<string, number>>(new Map());
-
+  // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено). Виклик — після
+  // оголошення parts/newPart/editingPart нижче.
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
   // A3-modal: vehicleReqRef/contractReqRef перенесено у useReferenceData (race-guard там же).
@@ -845,64 +844,12 @@ export function CreateWorkOrderModal({
     [],
   );
 
-  // Fetch total stock across all warehouses for each unique good in the parts list,
-  // including any good currently being added/edited (so the column shows while typing).
-  // Goods with no StockItem rows are explicitly mapped to 0 (groupBy omits empty buckets,
-  // but UX-wise "no stock" should read as 0, not '—' which we reserve for "unknown goodId").
-  //
-  // derive a *stable string key* from the set of goodId-s. The previous
-  // dep array `[parts, newPart.goodId, editingPart.goodId]` re-fired the effect on
-  // ANY parts mutation — including typing in quantity/price — issuing a fresh
-  // /goods/stock-totals request per keystroke even when the set of goods had not
-  // changed. We memoize a sorted-comma-joined fingerprint so the effect re-runs
-  // ONLY when the actual set of goodIds changes.
-  const stockGoodIdsKey = useMemo(() => {
-    const ids = new Set<string>();
-    for (const p of parts) if (p.goodId) ids.add(p.goodId);
-    if (newPart.goodId) ids.add(newPart.goodId);
-    if (editingPart.goodId) ids.add(editingPart.goodId);
-    // Sort for stability — Set iteration order is insertion-based, but reordering
-    // parts (move/delete + re-add) would yield a different key while the *set*
-    // is unchanged. Sorting kills that false positive.
-    return [...ids].sort().join(',');
-  }, [parts, newPart.goodId, editingPart.goodId]);
-
-  useEffect(() => {
-    if (!stockGoodIdsKey) {
-      setStockTotalsMap(new Map());
-      setStockWarehouseMap(new Map());
-      return;
-    }
-    const goodIds = stockGoodIdsKey.split(',');
-    let cancelled = false;
-    void apiFetch<
-      {
-        goodId: string;
-        totalQuantity: number;
-        byWarehouse: { warehouseId: string; quantity: number }[];
-      }[]
-    >(`/goods/stock-totals?ids=${stockGoodIdsKey}`)
-      .then(rows => {
-        if (cancelled) return;
-        const nextTotals = new Map<string, number>(goodIds.map(id => [id, 0]));
-        const nextWh = new Map<string, number>();
-        for (const r of rows) {
-          nextTotals.set(r.goodId, r.totalQuantity);
-          for (const w of r.byWarehouse) {
-            nextWh.set(`${r.goodId}:${w.warehouseId}`, w.quantity);
-          }
-        }
-        setStockTotalsMap(nextTotals);
-        setStockWarehouseMap(nextWh);
-      })
-      .catch(err => {
-        if (cancelled) return;
-        console.error('[stock-totals] fetch failed', err);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [stockGoodIdsKey]);
+  // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено ДОСЛІВНО).
+  const { stockTotalsMap, stockWarehouseMap } = useStockTotals(
+    parts,
+    newPart.goodId,
+    editingPart.goodId,
+  );
 
   // Counterparty search for the header picker.
   // Wrapped in useCallback so EntityPickerField's outside-click listener
