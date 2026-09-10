@@ -116,9 +116,10 @@ model CounterpartyStatusLink {
 | DELETE | `/api/counterparty-statuses/:id`         | Soft-delete (links лишаються) — OWNER/ADMIN      |
 | POST   | `/api/counterparty-statuses/:id/restore` | Відновити (active-dup → 409) — OWNER/ADMIN       |
 
-> `GET /api/counterparties/:id` (detail) повертає `statuses: {id,name,color}[]` (лише активні, `deletedAt:null`).
-> Список (`findAll`) `statuses` НЕ включає (perf). `counterpartyCount` рахує лише активних контрагентів
-> (`_count.links where counterparty.deletedAt:null` — Bug #723).
+> `GET /api/counterparties` (список) і `/:id` (detail) обидва повертають `statuses: {id,name,color}[]`
+> (лише активні, `deletedAt:null`) — badge-и у таблиці списку + у картці. `edrpou` лишається detail-only
+> (toDto без `includeEdrpou`-прапора мапить statuses, але НЕ edrpou). `counterpartyCount` рахує лише
+> активних контрагентів (`_count.links where counterparty.deletedAt:null` — Bug #723).
 
 > Restore авто — `POST /api/vehicles/:id/restore` (OWNER/ADMIN). Перевіряє ланцюг parent'ів:
 > `BadRequest` якщо гараж або контрагент авто видалені (спочатку відновити їх — Bug #601/#602).
