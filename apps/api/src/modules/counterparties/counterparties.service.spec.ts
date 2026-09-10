@@ -29,6 +29,7 @@ describe('CounterpartiesService', () => {
   let service: CounterpartiesService;
   let prisma: {
     counterparty: { findMany: any; count: any; findFirst: any; updateMany: any };
+    counterpartyStatusLink: { findFirst: any };
     workOrder: { count: any };
     purchaseOrder: { count: any };
     invoice: { count: any };
@@ -46,6 +47,8 @@ describe('CounterpartiesService', () => {
         findFirst: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      // remove() інвалідує кеш статусів лише коли контрагент має мітку. За замовч. null (без мітки).
+      counterpartyStatusLink: { findFirst: vi.fn().mockResolvedValue(null) },
       workOrder: { count: vi.fn().mockResolvedValue(0) },
       purchaseOrder: { count: vi.fn().mockResolvedValue(0) },
       invoice: { count: vi.fn().mockResolvedValue(0) },

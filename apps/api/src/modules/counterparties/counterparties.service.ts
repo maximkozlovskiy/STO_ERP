@@ -402,6 +402,9 @@ export class CounterpartiesService {
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Контрагента не знайдено');
+    // goodCount-паритет (Bug #725-клас): soft-delete контрагента з міткою міняє
+    // counterpartyCount (_count.links filtered by counterparty.deletedAt:null) → скидаємо кеш довідника.
+    await this.invalidateStatusesCacheIfLabeled(orgId, id);
     // C1b: аудит видалення (soft-delete) контрагента.
     if (userId) {
       this.audit
@@ -410,6 +413,18 @@ export class CounterpartiesService {
           this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : e}`),
         );
     }
+  }
+
+  /** Скидає кеш довідника статусів лише коли контрагент має мітку (уникнення зайвої cache-churn). */
+  private async invalidateStatusesCacheIfLabeled(
+    orgId: string,
+    counterpartyId: string,
+  ): Promise<void> {
+    const hasLabel = await this.prisma.counterpartyStatusLink.findFirst({
+      where: { orgId, counterpartyId },
+      select: { id: true },
+    });
+    if (hasLabel) await this.counterpartyStatuses.invalidateCache(orgId);
   }
 
   // ─── Garages ─────────────────────────────────────────────
