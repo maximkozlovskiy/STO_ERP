@@ -40,6 +40,48 @@ jobs:
       - name: Unit tests
         run: pnpm run test
 
+  # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
+  # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
+  # відсутній у .NET Framework) прослизнув повз усі аудити. Цей job на windows-latest (Windows
+  # PowerShell 5.1 Desktop — цільова платформа інсталятора) AST-парсить усі .ps1 + smoke-тестить
+  # генератор секретів на РЕАЛЬНОМУ 5.1-рантаймі, щоб такі регреси ловились на CI.
+  installer-scripts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell AST parse (усі installer .ps1)
+        shell: powershell # Windows PowerShell 5.1 Desktop (не pwsh) — цільовий рантайм інсталятора
+        run: |
+          $failed = $false
+          Get-ChildItem installer/scripts -Filter *.ps1 -Recurse | ForEach-Object {
+            $errors = $null; $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              Write-Host "::error::AST parse failed: $($_.Name)"
+              $errors | ForEach-Object { Write-Host "  $($_.Message)" }
+              $failed = $true
+            } else { Write-Host "OK: $($_.Name)" }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Smoke-test генератора секретів на PS 5.1
+        shell: powershell
+        run: |
+          # Витягуємо і виконуємо New-RandomBase64 з Setup-Stack.ps1 (dot-source усього скрипта
+          # має side-effects, тож беремо лише функцію через AST) — перевіряємо, що не кидає на 5.1
+          # і дає непорожні унікальні alnum-секрети очікуваної довжини.
+          $errors = $null; $tokens = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path installer/scripts/Setup-Stack.ps1), [ref]$tokens, [ref]$errors)
+          $fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'New-RandomBase64' }, $true)
+          if (-not $fn) { Write-Host "::error::New-RandomBase64 not found"; exit 1 }
+          Invoke-Expression $fn.Extent.Text
+          $a = New-RandomBase64 -bytes 24; $b = New-RandomBase64 -bytes 48
+          if (-not $a -or -not $b -or $a -eq $b -or $a -notmatch '^[a-zA-Z0-9]+$') {
+            Write-Host "::error::New-RandomBase64 produced invalid secret (a.len=$($a.Length) b.len=$($b.Length))"; exit 1
+          }
+          Write-Host "OK: New-RandomBase64 24b=$($a.Length) 48b=$($b.Length) chars, unique, alnum"
+
   # A4.1 — guard проти деструктивних міграцій. Prisma-міграції у цьому репо мають бути ADDITIVE
   # (rollback інсталятора спирається на additive-only: image-rollback ≠ DB-rollback). DROP COLUMN/TABLE
   # або звужувальний ALTER TYPE призводять до втрати даних на деплої (прецедент: phase17 DROP COLUMN).

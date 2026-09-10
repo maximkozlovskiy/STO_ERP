@@ -7,6 +7,15 @@ function getToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
 }
 
+// R3 (pre-prod re-review): сигналимо SyncIndicator про доступність ЛОКАЛЬНОГО API. navigator.onLine
+// ловить лише browser-offline, але найімовірніший LAN-збій — «сервер СТО впав, робоча станція онлайн»:
+// тоді navigator.onLine=true, а кожен запит кидає network-error. Тут при мережевій помилці шлемо
+// 'offline', при успішній відповіді — 'idle' (відновлення). Індикатор слухає 'sto:sync-status'.
+function emitSyncStatus(status: 'idle' | 'offline'): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status } }));
+}
+
 function setToken(token: string): void {
   if (typeof window !== 'undefined') sessionStorage.setItem(TOKEN_KEY, token);
 }
@@ -78,8 +87,12 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     // T3: втрата зв'язку з локальним API → запит НЕ виконано. Черги offline-запису немає (система
     // працює в LAN, але не накопичує мутації для подальшої синхронізації) — просто прокидаємо помилку,
     // а SyncIndicator показує «Офлайн — збереження недоступне». Fake pending-ops лічильник прибрано.
+    // R3: сигналимо indicator, що локальний API недосяжний (навіть якщо navigator.onLine=true).
+    emitSyncStatus('offline');
     throw networkErr;
   }
+  // R3: успішна відповідь від локального API → відновлення зв'язку (скидає 'offline' у indicator).
+  emitSyncStatus('idle');
 
   // Silent token refresh on 401
   if (res.status === 401) {
