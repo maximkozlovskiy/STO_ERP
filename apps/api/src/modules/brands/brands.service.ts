@@ -100,12 +100,12 @@ export class BrandsService {
       // Resurrect soft-deleted brand. Include is omitted: we re-fetch after
       // syncSynonyms() below, so the returned row would be stale anyway.
       await this.prisma.brand.update({
-        where: { id: anyExisting.id },
+        where: { id: anyExisting.id, orgId },
         data: { name: dto.name, deletedAt: null },
       });
       await this.syncSynonyms(orgId, anyExisting.id, synonyms);
       const item = await this.prisma.brand.findFirstOrThrow({
-        where: { id: anyExisting.id },
+        where: { id: anyExisting.id, orgId },
         include: SYNONYMS_INCLUDE,
       });
       await this.cache.del(cacheKey(orgId));

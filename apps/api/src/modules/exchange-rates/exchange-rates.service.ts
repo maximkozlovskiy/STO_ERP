@@ -74,7 +74,7 @@ export class ExchangeRatesService {
       if (!anyExisting.deletedAt) throw new ConflictException('Курс на цю дату вже існує');
       // Soft-deleted row occupies the unique index — resurrect it
       const restored = await this.prisma.exchangeRate.update({
-        where: { id: anyExisting.id },
+        where: { id: anyExisting.id, orgId },
         data: { rate: dto.rate, coefficient: dto.coefficient ?? 1, deletedAt: null },
         include: { currency: { select: { code: true, name: true } } },
       });

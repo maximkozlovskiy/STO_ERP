@@ -149,7 +149,7 @@ export class EmployeesService {
             }
             // soft-deleted row — resurrection
             await tx.authAccount.update({
-              where: { id: soft.id },
+              where: { id: soft.id, orgId },
               data: {
                 employeeId: employee.id,
                 passwordHash,

@@ -173,7 +173,7 @@ export class LoyaltyService {
             if (existing) return; // already accrued for this document — skip
           }
           await tx.loyaltyAccount.update({
-            where: { id: acc.id },
+            where: { id: acc.id, orgId },
             data: { balance: { increment: points } },
           });
           await tx.loyaltyTransaction.create({

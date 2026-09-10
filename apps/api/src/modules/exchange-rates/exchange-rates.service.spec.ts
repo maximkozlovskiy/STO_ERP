@@ -69,7 +69,7 @@ describe('ExchangeRatesService', () => {
       await service.create('org-1', { currencyId: CURRENCY_ID, date: '2026-05-28', rate: 42 });
       expect(prisma.exchangeRate.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'er-deleted' },
+          where: { id: 'er-deleted', orgId: 'org-1' },
           data: expect.objectContaining({ deletedAt: null }),
         }),
       );

@@ -459,7 +459,7 @@ export class SettingsService {
     });
     if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
     const updated = await this.prisma.documentNumberConfig.update({
-      where: { id: cfg.id },
+      where: { id: cfg.id, orgId },
       data: {
         prefix: dto.prefix !== undefined ? dto.prefix : undefined,
         includeDate: dto.includeDate !== undefined ? dto.includeDate : undefined,
@@ -487,7 +487,7 @@ export class SettingsService {
     });
     if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
     await this.prisma.documentNumberConfig.update({
-      where: { id: cfg.id },
+      where: { id: cfg.id, orgId },
       data: { currentSeq: 0 },
     });
     return { message: 'Лічильник скинуто' };

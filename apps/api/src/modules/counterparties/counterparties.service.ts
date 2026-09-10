@@ -695,7 +695,7 @@ export class CounterpartiesService {
           });
           if (next) {
             await tx.counterpartyContract.update({
-              where: { id: next.id },
+              where: { id: next.id, orgId },
               data: { isPrimary: true },
             });
           }

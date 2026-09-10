@@ -930,7 +930,7 @@ export class PurchaseOrdersService {
           await Promise.all(
             chunk.map(u =>
               tx.purchaseOrderLine.update({
-                where: { id: u.lineId },
+                where: { id: u.lineId, orgId },
                 data: { pricedSalePrice: u.newSalePrice, pricingRuleName: u.ruleName },
               }),
             ),

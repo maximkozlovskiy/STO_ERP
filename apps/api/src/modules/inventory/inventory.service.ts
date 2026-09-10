@@ -326,7 +326,7 @@ export class InventoryService {
       const singleBatchId = consumed.length === 1 ? consumed[0].batchId : null;
       if (singleBatchId) {
         await db.stockMovement.update({
-          where: { id: movement.id },
+          where: { id: movement.id, orgId },
           data: { batchId: singleBatchId },
         });
       }

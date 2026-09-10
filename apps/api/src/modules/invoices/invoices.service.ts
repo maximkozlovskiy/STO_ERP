@@ -636,7 +636,7 @@ export class InvoicesService {
     const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
 
     const updated = await this.prisma.invoiceLine.update({
-      where: { id: lineId },
+      where: { id: lineId, orgId },
       data: {
         description: dto.description ?? undefined,
         quantity,

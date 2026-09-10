@@ -57,7 +57,7 @@ export class CurrenciesService {
       }
       // Soft-deleted row occupies the unique index — resurrect it
       const restored = await this.prisma.currency.update({
-        where: { id: anyExisting.id },
+        where: { id: anyExisting.id, orgId },
         data: { ...dto, deletedAt: null },
       });
       await this.cache.del(cacheKey(orgId));

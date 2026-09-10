@@ -421,7 +421,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     expect(partUpdate).toHaveBeenCalledTimes(1);
     expect(partUpdate.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        where: { id: PART1_ID },
+        where: { id: PART1_ID, orgId: 'org-1' },
         data: { batchCostPrice: 120, batchId: BATCH1_ID },
       }),
     );
@@ -453,7 +453,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     );
     expect(partUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: PART1_ID },
+        where: { id: PART1_ID, orgId: 'org-1' },
         data: { batchCostPrice: 140, batchId: null },
       }),
     );
@@ -487,7 +487,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     );
     expect(partUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: PART1_ID },
+        where: { id: PART1_ID, orgId: 'org-1' },
         data: { batchCostPrice: 130, batchId: null },
       }),
     );

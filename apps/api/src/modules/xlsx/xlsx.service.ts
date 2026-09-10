@@ -451,7 +451,7 @@ export class XlsxService {
     const updateResults = await Promise.allSettled(
       updatesPlan.map(u =>
         this.prisma.purchaseOrderLine.update({
-          where: { id: u.id },
+          where: { id: u.id, orgId },
           data: { quantity: u.quantity, price: u.price },
         }),
       ),
@@ -556,7 +556,7 @@ export class XlsxService {
     const updateResults = await Promise.allSettled(
       updatesPlan.map(u =>
         this.prisma.stockDocumentLine.update({
-          where: { id: u.id },
+          where: { id: u.id, orgId },
           data: { quantity: u.quantity, price: u.price },
         }),
       ),
@@ -677,7 +677,7 @@ export class XlsxService {
     const updateResults = await Promise.allSettled(
       updatesPlan.map(u =>
         this.prisma.workOrderPart.update({
-          where: { id: u.id },
+          where: { id: u.id, orgId },
           data: { quantity: u.quantity, price: u.price, amount: u.amount },
         }),
       ),

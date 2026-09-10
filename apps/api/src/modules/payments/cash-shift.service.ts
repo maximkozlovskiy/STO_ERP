@@ -179,7 +179,7 @@ export class CashShiftService {
     }
 
     const updated = await this.prisma.cashShift.update({
-      where: { id: shift.id },
+      where: { id: shift.id, orgId },
       data: { zReportId: zReportId ?? null },
       include: { cashRegister: { select: { name: true } } },
     });
@@ -237,7 +237,7 @@ export class CashShiftService {
       () => provider.signIn(cfg),
     );
     await this.prisma.cashShift.update({
-      where: { id: shiftId },
+      where: { id: shiftId, orgId },
       data: {
         checkboxAccessToken: token.accessToken,
         tokenExpiresAt: this.tokenExpiry(token.expiresAt),

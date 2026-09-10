@@ -85,7 +85,7 @@ export class UnitsService {
       if (!anyExisting.deletedAt)
         throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
       const restored = await this.prisma.unitOfMeasure.update({
-        where: { id: anyExisting.id },
+        where: { id: anyExisting.id, orgId },
         data: { ...dto, deletedAt: null },
       });
       await this.cache.del(cacheKey(orgId));

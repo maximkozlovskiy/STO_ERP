@@ -62,7 +62,7 @@ describe('InspectionService.create', () => {
       orgId,
       status: 'DRAFT',
     });
-    prisma.inspectionReport.findUnique.mockResolvedValueOnce(null);
+    prisma.inspectionReport.findFirst.mockResolvedValueOnce(null);
     prisma.inspectionReport.create.mockResolvedValueOnce({
       id: 'rep-1',
       orgId,
@@ -87,7 +87,7 @@ describe('InspectionService.create', () => {
       orgId,
       status: 'DRAFT',
     });
-    prisma.inspectionReport.findUnique.mockResolvedValueOnce({ id: 'existing-rep' });
+    prisma.inspectionReport.findFirst.mockResolvedValueOnce({ id: 'existing-rep' });
 
     await expect(service.create(orgId, workOrderId, dtoNoCritical, userId)).rejects.toBeInstanceOf(
       ConflictException,
@@ -99,7 +99,7 @@ describe('InspectionService.create', () => {
 
   it('cross-tenant WO → NotFoundException', async () => {
     prisma.workOrder.findFirst.mockResolvedValueOnce(null);
-    prisma.inspectionReport.findUnique.mockResolvedValueOnce(null);
+    prisma.inspectionReport.findFirst.mockResolvedValueOnce(null);
 
     await expect(service.create(orgId, workOrderId, dtoNoCritical, userId)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -114,7 +114,7 @@ describe('InspectionService.create', () => {
       orgId,
       status: 'COMPLETED',
     });
-    prisma.inspectionReport.findUnique.mockResolvedValueOnce(null);
+    prisma.inspectionReport.findFirst.mockResolvedValueOnce(null);
 
     await expect(
       service.create(orgId, workOrderId, dtoWithCritical, userId),
@@ -132,7 +132,7 @@ describe('InspectionService.create', () => {
       orgId,
       status: 'DRAFT',
     });
-    prisma.inspectionReport.findUnique.mockResolvedValueOnce(null);
+    prisma.inspectionReport.findFirst.mockResolvedValueOnce(null);
     prisma.work.findMany.mockResolvedValueOnce([
       {
         id: 'work-1',

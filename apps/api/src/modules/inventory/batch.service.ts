@@ -126,7 +126,7 @@ export class BatchService {
       dto.costPrice > 0 && salePrice > 0 && Math.abs(salePrice - currentSalePrice) > 0.001;
     if (canUpdateSalePrice) {
       await db.good.update({
-        where: { id: dto.goodId },
+        where: { id: dto.goodId, orgId },
         data: { salePrice },
       });
       await db.priceHistory.create({

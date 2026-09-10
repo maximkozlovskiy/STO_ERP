@@ -221,7 +221,7 @@ export class PaymentPollingProcessor extends WorkerHost {
           onlinePaymentIntentId: intentId,
         }));
       await this.prisma.onlinePaymentIntent.update({
-        where: { id: intentId },
+        where: { id: intentId, orgId },
         data: { paymentId: payment.id, error: null },
       });
       this.logger.log(
@@ -241,7 +241,7 @@ export class PaymentPollingProcessor extends WorkerHost {
           .catch(() => null);
         if (dup) {
           await this.prisma.onlinePaymentIntent
-            .update({ where: { id: intentId }, data: { paymentId: dup.id, error: null } })
+            .update({ where: { id: intentId, orgId }, data: { paymentId: dup.id, error: null } })
             .catch(() => undefined);
           this.logger.log(`Онлайн-оплата ${intentId} → Payment ${dup.id} (dedup P2002-relink)`);
           return;
@@ -251,7 +251,7 @@ export class PaymentPollingProcessor extends WorkerHost {
       // НЕ відкочуємо PAID, щоб retry не подвоїв. Записуємо причину для касира/оператора.
       await this.prisma.onlinePaymentIntent
         .update({
-          where: { id: intentId },
+          where: { id: intentId, orgId },
           data: {
             error: `Payment не створено: ${e instanceof Error ? e.message.slice(0, 400) : e}`,
           },

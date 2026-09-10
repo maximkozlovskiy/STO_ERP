@@ -121,7 +121,7 @@ export class OnlinePaymentService {
       );
       const pageUrl = checkoutUrl;
       const updated = await this.prisma.onlinePaymentIntent.update({
-        where: { id: intent.id },
+        where: { id: intent.id, orgId },
         data: { gatewayInvoiceId, pageUrl },
         select: {
           id: true,
@@ -159,7 +159,7 @@ export class OnlinePaymentService {
       // gateway не створив рахунок → намір FAILED, кидаємо (касир бачить помилку).
       await this.prisma.onlinePaymentIntent
         .update({
-          where: { id: intent.id },
+          where: { id: intent.id, orgId },
           data: {
             status: 'FAILED',
             error: e instanceof Error ? e.message.slice(0, 500) : 'Помилка',

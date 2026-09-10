@@ -550,7 +550,7 @@ export class GoodsService {
 
     await this.prisma.$transaction([
       this.prisma.goodUoM.updateMany({ where: { orgId, goodId }, data: { isDefault: false } }),
-      this.prisma.goodUoM.update({ where: { id: uomId }, data: { isDefault: true } }),
+      this.prisma.goodUoM.update({ where: { id: uomId, orgId }, data: { isDefault: true } }),
       // Defense-in-depth — updateMany with orgId+deletedAt guard.
       this.prisma.good.updateMany({
         where: { id: goodId, orgId, deletedAt: null },
@@ -632,7 +632,7 @@ export class GoodsService {
     if (!uom) throw new NotFoundException('Одиницю виміру товару не знайдено');
 
     const updated = await this.prisma.goodUoM.update({
-      where: { id: uomId },
+      where: { id: uomId, orgId },
       data: dto,
       select: {
         id: true,

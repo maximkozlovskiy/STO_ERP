@@ -507,7 +507,7 @@ describe('CounterpartiesService — contract flows', () => {
 
       // промотує наступний у primary
       expect(txInner.counterpartyContract.update).toHaveBeenCalledWith({
-        where: { id: 'con-next' },
+        where: { id: 'con-next', orgId: 'org-1' },
         data: { isPrimary: true },
       });
     });

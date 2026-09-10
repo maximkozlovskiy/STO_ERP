@@ -129,7 +129,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
     // paymentId залінковано.
     expect(prisma.onlinePaymentIntent.update).toHaveBeenCalledWith({
-      where: { id: INTENT_ID },
+      where: { id: INTENT_ID, orgId: ORG },
       data: { paymentId: 'pay-1', error: null },
     });
   });
@@ -161,7 +161,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     // Payment створено (гроші у gateway є — не можна лишати без Payment).
     expect(payments.create).toHaveBeenCalledTimes(1);
     expect(prisma.onlinePaymentIntent.update).toHaveBeenCalledWith({
-      where: { id: INTENT_ID },
+      where: { id: INTENT_ID, orgId: ORG },
       data: { paymentId: 'pay-1', error: null },
     });
     // MUTATION-VERIFY: якщо прибрати reconcile-гілку (рядок `if (intent.status === 'PAID')`) —
@@ -193,7 +193,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     expect(payments.create).not.toHaveBeenCalled();
     // існуючий Payment до-лінковано.
     expect(prisma.onlinePaymentIntent.update).toHaveBeenCalledWith({
-      where: { id: INTENT_ID },
+      where: { id: INTENT_ID, orgId: ORG },
       data: { paymentId: 'pay-existing', error: null },
     });
     // MUTATION-VERIFY: прибрати pre-create `payment.findFirst` guard → create викликається →
@@ -225,7 +225,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
 
     // намір залінковано на winner, error очищено — не re-enqueue, не термінальна помилка.
     expect(prisma.onlinePaymentIntent.update).toHaveBeenCalledWith({
-      where: { id: INTENT_ID },
+      where: { id: INTENT_ID, orgId: ORG },
       data: { paymentId: 'pay-race-winner', error: null },
     });
     expect(pollQueue.add).not.toHaveBeenCalled();

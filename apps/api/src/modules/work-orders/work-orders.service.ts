@@ -916,7 +916,7 @@ export class WorkOrdersService {
         // трасування). Нижче NULL коректно лягає у nullable uuid WorkOrderPart.batchId.
         const singleBatchId = writeoff.consumed.length === 1 ? writeoff.consumed[0].batchId : null;
         await db.workOrderPart.update({
-          where: { id: part.id },
+          where: { id: part.id, orgId },
           data: {
             batchCostPrice: writeoff.weightedCostPrice,
             batchId: singleBatchId,

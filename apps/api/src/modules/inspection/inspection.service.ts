@@ -62,8 +62,8 @@ export class InspectionService {
         where: { id: workOrderId, orgId, deletedAt: null },
         select: { status: true },
       }),
-      this.prisma.inspectionReport.findUnique({
-        where: { workOrderId },
+      this.prisma.inspectionReport.findFirst({
+        where: { workOrderId, orgId },
         select: { id: true },
       }),
     ]);

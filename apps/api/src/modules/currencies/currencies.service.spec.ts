@@ -79,7 +79,7 @@ describe('CurrenciesService.create', () => {
     await service.create('org-1', { name: 'Долар США', code: 'USD' });
     expect(prisma.currency.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'c-deleted' },
+        where: { id: 'c-deleted', orgId: 'org-1' },
         data: expect.objectContaining({ deletedAt: null }),
       }),
     );

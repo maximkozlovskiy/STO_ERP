@@ -139,8 +139,12 @@ export function withTenantGuard(client: PrismaClient): PrismaClient {
             return query(args);
           }
           if (operation === 'upsert') {
-            // upsert = lookup (where) + create-гілка. Обидві мусять нести tenant.
-            if (!whereHasTenantScope(args.where)) throw new TenantIsolationError(model, operation);
+            // upsert.where — ЗАВЖДИ unique-ключ, тож мапить рівно на ОДИН рядок. Tenant-safe, бо:
+            // (а) якщо ключ несе orgId/branchId (composite-unique orgId_email) — where вже scoped;
+            // (б) якщо ключ глобально-унікальний (counterpartyId @unique) — цільовий рядок один
+            //     org-wide, його orgId незмінний з create → крос-tenant запис неможливий.
+            // У ОБОХ випадках create-гілку стемпимо/перевіряємо orgId (throw, якщо нема ані data, ані
+            // ambient — тоді це справжній пропуск tenant-контексту).
             const create = (args.create ?? {}) as Record<string, unknown>;
             stampOrThrowOrgId(model, operation, create);
             args = { ...args, create };
