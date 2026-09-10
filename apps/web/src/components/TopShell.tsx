@@ -19,9 +19,13 @@ import {
   Menu,
   Star,
   Search,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
-import { NAV_GROUPS, NAV_GROUPS_FUNCTIONS, type NavItem } from '@/lib/nav';
+import { NAV_GROUPS_FUNCTIONS, MASTER_NAV_ITEMS, type NavItem } from '@/lib/nav';
+import { resolveNav } from '@/lib/nav-layout';
+import { useNavConfig } from '@/hooks/useNavConfig';
+import { NavEditor } from '@/components/ui/NavEditor';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, isPublicRoute } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -74,13 +78,11 @@ type NavMode = 'sections' | 'functions';
 // Flat list of all nav items for bookmark lookup (deduplicated by href)
 const ALL_NAV_ITEMS: NavItem[] = (() => {
   const seen = new Set<string>();
-  return [...NAV_GROUPS, ...NAV_GROUPS_FUNCTIONS]
-    .flatMap(g => g.items)
-    .filter(item => {
-      if (seen.has(item.href)) return false;
-      seen.add(item.href);
-      return true;
-    });
+  return MASTER_NAV_ITEMS.filter(item => {
+    if (seen.has(item.href)) return false;
+    seen.add(item.href);
+    return true;
+  });
 })();
 
 // Module-level Kyiv date formatter — лише для weekStart (today → централізований kyivToday).
@@ -389,6 +391,8 @@ export function TopShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [navMode, setNavMode] = useState<NavMode>('sections');
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [navEditMode, setNavEditMode] = useState(false);
+  const navConfig = useNavConfig();
   // Bookmarks: start empty to avoid SSR mismatch; hydrated via useEffect
   const [bookmarks, setBookmarks] = useState<string[]>([]);
 
@@ -610,7 +614,16 @@ export function TopShell({ children }: { children: ReactNode }) {
   const bookmarkedItems = ALL_NAV_ITEMS.filter(
     item => bookmarks.includes(item.href) && (!item.roles || item.roles.includes(role)),
   );
-  const activeGroups = navMode === 'sections' ? NAV_GROUPS : NAV_GROUPS_FUNCTIONS;
+  // Режим 'sections' застосовує per-user кастомізацію (порядок/приховані/кастомні розділи) через
+  // resolveNav. Режим 'functions' лишається плоским некастомним. resolveNav сам робить role-filter,
+  // тож нижче у renderSidebarNav фільтр стає no-op для sections (лишаємо для functions).
+  const activeGroups =
+    navMode === 'sections'
+      ? resolveNav(MASTER_NAV_ITEMS, navConfig.layout, role).map(s => ({
+          label: s.label || undefined,
+          items: s.items,
+        }))
+      : NAV_GROUPS_FUNCTIONS;
 
   const renderSidebarNav = () => (
     <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
@@ -703,7 +716,27 @@ export function TopShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {renderSidebarNav()}
+      {/* Налаштувати меню — тригер режиму редагування (лише розгорнута панель) */}
+      {!collapsed && !navEditMode && (
+        <div className="px-2 pb-1">
+          <button
+            onClick={() => setNavEditMode(true)}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sidebar-muted hover:bg-sidebar-hover hover:text-white transition-colors text-[12px]"
+            title="Переставити, приховати або згрупувати пункти меню"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 text-left">Налаштувати меню</span>
+          </button>
+        </div>
+      )}
+
+      {navEditMode && !collapsed ? (
+        <div className="flex-1 min-h-0">
+          <NavEditor role={role} nav={navConfig} onClose={() => setNavEditMode(false)} />
+        </div>
+      ) : (
+        renderSidebarNav()
+      )}
 
       {/* User footer */}
       <div className="border-t border-sidebar-border px-2 py-2.5 shrink-0">

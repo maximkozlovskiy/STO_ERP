@@ -80,18 +80,19 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
   },
   {
-    href: '/cash',
-    label: 'Каса',
-    icon: DoorOpen,
-    section: 'settlements',
-    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
-  },
-  {
     href: '/supplier-payments',
     label: 'Оплати постачальникам',
     icon: Wallet,
     section: 'settlements',
     roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+  },
+  // «Каса» — остання у Взаєморозрахунках за замовчуванням (кастомний порядок може перекрити).
+  {
+    href: '/cash',
+    label: 'Каса',
+    icon: DoorOpen,
+    section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
   },
 
   // ─── Звіти ────────────────────────────────────────────────────────
@@ -171,8 +172,18 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
  * Згрупований вигляд для sidebar у режимі 'sections'.
  * Автогенерується з MASTER_NAV_ITEMS — не редагувати вручну.
  */
+/** Дефолтний порядок дефолтних розділів (використовується resolveNav як база). */
+export const NAV_SECTION_ORDER: NavSection[] = [
+  'top',
+  'documents',
+  'settlements',
+  'reports',
+  'refs',
+  'settings',
+];
+
 export const NAV_GROUPS: NavGroup[] = (() => {
-  const order: NavSection[] = ['top', 'documents', 'settlements', 'reports', 'refs', 'settings'];
+  const order = NAV_SECTION_ORDER;
   return order
     .map(section => ({
       label: NAV_SECTION_LABELS[section] || undefined,
