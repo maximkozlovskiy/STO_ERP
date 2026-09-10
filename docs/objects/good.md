@@ -46,6 +46,18 @@ model GoodUoM {
   width/height/depth/volume/weight Float?
   // @@unique([orgId, goodId, unitOfMeasureId])
 }
+
+// Кастомні мітки-статуси товарів (Акція / Новинка / Хіт / Розпродаж). Per-org довідник,
+// керований вкладкою «Статуси товарів» у Каталозі. M:N із Good через GoodStatusLink.
+model GoodStatus {
+  id String; orgId String; name String; color String @default("#6b7280")
+  syncVersion BigInt; createdAt; updatedAt; deletedAt DateTime?
+  // @@unique([orgId, name]); @@index([orgId, deletedAt]); @@index([orgId, syncVersion])
+}
+model GoodStatusLink {   // junction M:N, без syncVersion/deletedAt
+  id String; orgId String; goodId String; statusId String; createdAt
+  // @@unique([goodId, statusId]); @@index([orgId, goodId]); @@index([orgId, statusId])
+}
 ```
 
 **Відносини:**
@@ -61,6 +73,7 @@ model GoodUoM {
 - ← `StockBatch[]` (партії FIFO/LIFO)
 - ← `PricingRule[]` (правила ціноутворення)
 - ← `PriceHistory[]` (журнал цін)
+- ← `GoodStatusLink[]` (statusLinks — M:N до `GoodStatus`, кастомні мітки)
 - ← `WorkOrderPart[]`, `PurchaseOrderLine[]`, `StockDocumentLine[]`, `InvoiceLine[]`
 
 **Індекси:**
@@ -73,37 +86,56 @@ model GoodUoM {
 
 ## API Endpoints (`/api/goods`)
 
-| Метод  | URL                                      | Дія                                                |
-| ------ | ---------------------------------------- | -------------------------------------------------- |
-| GET    | `/api/goods`                             | Список (фільтри: q, goodType, brandId, categoryId) |
-| GET    | `/api/goods/stock-totals`                | Залишки по всіх складах (агрегат)                  |
-| GET    | `/api/goods/:id`                         | Деталь                                             |
-| POST   | `/api/goods`                             | Створити                                           |
-| PATCH  | `/api/goods/:id`                         | Оновити                                            |
-| DELETE | `/api/goods/:id`                         | Soft-delete                                        |
-| POST   | `/api/goods/:id/restore`                 | Відновити (знімає deletedAt)                       |
-| GET    | `/api/goods/:goodId/uoms`                | Одиниці виміру                                     |
-| POST   | `/api/goods/:goodId/uoms`                | Додати UoM                                         |
-| PATCH  | `/api/goods/:goodId/uoms/:uomId`         | Оновити UoM                                        |
-| PATCH  | `/api/goods/:goodId/uoms/:uomId/default` | Встановити UoM по замовчуванню                     |
-| DELETE | `/api/goods/:goodId/uoms/:uomId`         | Видалити UoM                                       |
-| GET    | `/api/goods/:goodId/barcodes`            | Штрихкоди                                          |
-| POST   | `/api/goods/:goodId/barcodes`            | Додати штрихкод                                    |
-| DELETE | `/api/goods/:goodId/barcodes/:barcodeId` | Видалити штрихкод                                  |
-| GET    | `/api/goods/:id/batches`                 | Партії (StockBatch)                                |
-| GET    | `/api/goods/:id/price-history`           | Журнал цін                                         |
+| Метод  | URL                                      | Дія                                                                           |
+| ------ | ---------------------------------------- | ----------------------------------------------------------------------------- |
+| GET    | `/api/goods`                             | Список (фільтри: q, goodType, brandId, categoryId)                            |
+| GET    | `/api/goods/stock-totals`                | Залишки по всіх складах (агрегат)                                             |
+| GET    | `/api/goods/:id`                         | Деталь                                                                        |
+| POST   | `/api/goods`                             | Створити                                                                      |
+| PATCH  | `/api/goods/:id`                         | Оновити                                                                       |
+| DELETE | `/api/goods/:id`                         | Soft-delete                                                                   |
+| POST   | `/api/goods/:id/restore`                 | Відновити (знімає deletedAt)                                                  |
+| GET    | `/api/goods/:goodId/uoms`                | Одиниці виміру                                                                |
+| POST   | `/api/goods/:goodId/uoms`                | Додати UoM                                                                    |
+| PATCH  | `/api/goods/:goodId/uoms/:uomId`         | Оновити UoM                                                                   |
+| PATCH  | `/api/goods/:goodId/uoms/:uomId/default` | Встановити UoM по замовчуванню                                                |
+| DELETE | `/api/goods/:goodId/uoms/:uomId`         | Видалити UoM                                                                  |
+| GET    | `/api/goods/:goodId/barcodes`            | Штрихкоди                                                                     |
+| POST   | `/api/goods/:goodId/barcodes`            | Додати штрихкод                                                               |
+| DELETE | `/api/goods/:goodId/barcodes/:barcodeId` | Видалити штрихкод                                                             |
+| GET    | `/api/goods/:id/batches`                 | Партії (StockBatch)                                                           |
+| GET    | `/api/goods/:id/price-history`           | Журнал цін                                                                    |
+| POST   | `/api/goods/:goodId/statuses`            | Призначити статус-мітку `{statusId}` (ідемпотентно) — OWNER/ADMIN/STOREKEEPER |
+| DELETE | `/api/goods/:goodId/statuses/:statusId`  | Зняти статус-мітку — OWNER/ADMIN/STOREKEEPER                                  |
+
+**Довідник статусів** (`/api/good-statuses`, окремий модуль — дзеркалить counterparty-statuses):
+
+| Метод  | URL                              | Дія                                         |
+| ------ | -------------------------------- | ------------------------------------------- |
+| GET    | `/api/good-statuses`             | Список (?showDeleted=true) + `goodCount`    |
+| POST   | `/api/good-statuses`             | Створити `{name, color?}` — OWNER/ADMIN     |
+| PATCH  | `/api/good-statuses/:id`         | Rename/recolor — OWNER/ADMIN                |
+| DELETE | `/api/good-statuses/:id`         | Soft-delete (links лишаються) — OWNER/ADMIN |
+| POST   | `/api/good-statuses/:id/restore` | Відновити (active-dup → 409) — OWNER/ADMIN  |
+
+> `GET /api/goods` (список) і `/:id` (detail) обидва повертають `statuses: {id,name,color}[]` (активні,
+> `deletedAt:null`) — badge-и у таблиці + у картці. `goodCount` рахує лише активні товари
+> (`_count.links where good.deletedAt:null`); soft-delete/restore товару з міткою скидає кеш довідника (Bug #725).
 
 ---
 
 ## UI (Web)
 
-| Компонент / сторінка     | Файл                                         |
-| ------------------------ | -------------------------------------------- |
-| Каталог (вкладка Товари) | `app/(app)/catalog/page.tsx`                 |
-| Edit Modal (з вкладками) | `components/ui/GoodEditModal.tsx` (GoodsTab) |
-| Hook (TanStack Query)    | `hooks/api/useInventory.ts`                  |
+| Компонент / сторінка     | Файл                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| Каталог (вкладка Товари) | `app/(app)/catalog/page.tsx`                                                      |
+| Довідник статусів (таб)  | `app/(app)/catalog/GoodStatusesTab.tsx` (вкладка «Статуси товарів»)               |
+| Керування мітками        | `components/ui/GoodStatusManager.tsx` (badge-и + dropdown; controlled/self-fetch) |
+| Edit Modal (з вкладками) | `components/ui/GoodEditModal.tsx` (GoodsTab; секція «Статуси» у формі)            |
+| Hook (TanStack Query)    | `hooks/api/useInventory.ts`                                                       |
 
 **Вкладки GoodEditModal:** info / barcodes / batches
+**Вкладки Каталогу:** Роботи / Товари / Комплексні послуги / Одиниці / Бренди / **Статуси товарів**
 
 ---
 
@@ -130,6 +162,7 @@ model GoodUoM {
 - Pошук по `name + sku + barcode` через GIN trgm індекс (не LIKE — повільно без індексу)
 - `preferredSupplierId` — підказка для PO, не обов'язковий
 - Партії `StockBatch` — FIFO за замовчуванням (найстаріша `createdAt` першою)
+- **Статуси-мітки (кастомні, M:N):** per-org довідник `GoodStatus` (name+color, configuration-over-hardcode — не enum), M:N через `GoodStatusLink`. Assign/unassign валідують good+status належать org (tenant-isolation); assign ідемпотентний (`@@unique[goodId,statusId]`, P2002→no-op); unassign неіснуючого → 404. Soft-delete статусу лишає links — `toDto` фільтрує `status.deletedAt:null`, restore відновлює призначення. Кеш довідника (`ref:good-statuses`, TTL 300с) скидається на assign/unassign І на soft-delete/restore товару з міткою (Bug #725). Права: assign/unassign — OWNER/ADMIN/STOREKEEPER; CRUD довідника — OWNER/ADMIN.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (ціноутворення, deduplicateBy)
 → [docs/objects/inventory.md](inventory.md) (StockItem, StockMovement)

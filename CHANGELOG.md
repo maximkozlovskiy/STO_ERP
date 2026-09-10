@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-09-11 — Фіча: Статуси (кастомні мітки) товарів
+
+Дзеркало статусів контрагентів — для товарів (Good). Окремий довідник, вкладка в Каталозі,
+мітки у картці товару (M:N) та у списку.
+
+- **DB:** `GoodStatus` (name+color+soft-delete+syncVersion, `@@unique[orgId,name]`) + junction
+  `GoodStatusLink` (`@@unique[goodId,statusId]`); міграція `20260911120000` (additive); `SYNC_VERSION_MODELS += GoodStatus`.
+- **Backend:** NEW модуль `good-statuses` (CRUD, cache, resurrect/restore-409-guard, `goodCount` filtered
+  `_count.links where good.deletedAt:null`); assign/unassign на GoodsController; `GoodResponseDto += statuses[]`
+  у findAll+findOne; spec 13 (+3 регресії goods DI). Ролі: read OWNER/ADMIN/STOREKEEPER/ACCOUNTANT, write
+  OWNER/ADMIN, assign OWNER/ADMIN/STOREKEEPER.
+- **Frontend:** вкладка «Статуси товарів» у Каталозі (`GoodStatusesTab`, color-picker); `GoodStatusManager`
+  (controlled/self-fetch) у секції «Статуси» `GoodEditModal`; колонка «Статуси» у списку товарів (`GoodsTab`);
+  ref-cache-ключ.
+- **QA:** sync/review CLEAN; tester Bug #725 (MEDIUM) — soft-delete/restore товару з міткою не скидав кеш
+  довідника → `goodCount` завищений; фікс `invalidateStatusesCacheIfLabeled` + сіблінг-фікс у counterparties.
+
+Verify: tsc api+web 0 · api goods+good-statuses 95 green · counterparties 65 · web UI 294 · live curl усі сценарії.
+
+---
+
 ## 2026-09-10 — Фіча: Статуси (кастомні мітки) контрагентів
 
 ### db2ef061 / 1440bf22 / 7d44da65 feat(counterparties): статуси-мітки (M:N, per-org)
