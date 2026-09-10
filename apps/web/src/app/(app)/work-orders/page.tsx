@@ -1157,7 +1157,11 @@ function WorkOrdersPageInner() {
         open={!!editWoId}
         onClose={() => setEditWoId(null)}
         workOrderId={editWoId ?? undefined}
-        onUpdated={() => queryClient.invalidateQueries({ queryKey: workOrdersKeys.all })}
+        // Модалка вміє FSM-перехід (→COMPLETED списує склад + CHARGE-баланс), тож інвалідуємо ВСІ
+        // side-effect-кеші (склад/баланс/звіти/dashboard), а не лише workOrdersKeys — інакше після
+        // завершення наряду з модалки Залишки/Взаєморозрахунки лишались би застарілими (той самий
+        // контракт, що inline-transition-шлях вище).
+        onUpdated={() => invalidateWorkOrderSideEffects(queryClient)}
       />
 
       <ConfirmDialog {...confirmDialogProps} />

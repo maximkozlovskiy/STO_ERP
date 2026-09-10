@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-client';
 import { kyivToday } from '@/lib/format';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
+import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { invoicesKeys } from '@/hooks/api/useInvoices';
 import { purchaseOrdersKeys } from '@/hooks/api/usePurchaseOrders';
@@ -788,9 +789,10 @@ export function TopShell({ children }: { children: ReactNode }) {
             minimizingRestoredRef.current = true;
           }}
           onUpdated={() => {
-            // інвалідація списку work-orders + linked queries — без цього сторінка
-            // /work-orders залишиться зі stale кешем після save/transition через restored modal.
-            queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+            // Restored-модалка вміє FSM-перехід (→COMPLETED списує склад + CHARGE-баланс), тож
+            // інвалідуємо ВСІ side-effect-кеші (склад/баланс/звіти/dashboard), не лише work-orders —
+            // інакше після завершення наряду з модалки Залишки/Взаєморозрахунки лишались би stale.
+            invalidateWorkOrderSideEffects(queryClient);
           }}
         />
       )}
