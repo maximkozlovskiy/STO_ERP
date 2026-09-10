@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import type { InventoryService } from '../inventory/inventory.service';
+import type { SettlementsService } from '../settlements/settlements.service';
 import type { WorkOrderQueryDto } from './work-orders.dto';
 
 // ─── Query-shape regression spec (Bug #163 / #171 pattern) ────────────────────
@@ -31,10 +34,19 @@ function makePrismaSpy() {
 function makeService(prisma: PrismaService): WorkOrdersService {
   // findAll only touches `this.prisma`; інші deps null. events — мок з emit (transition-тести
   // double-CHARGE через цей же helper емітять доменні події після коміту).
+  // A3: transition() делегує stock-ефекти у WorkOrderStockEffectsService — будуємо РЕАЛЬНИЙ на тому ж
+  // prisma-моку з no-op inventory/settlements, щоб reserveParts/writeOff справді читали workOrderPart
+  // (transition-тести перевіряють делегацію за фактом workOrderPart.findMany).
+  const stockEffects = new WorkOrderStockEffectsService(
+    prisma,
+    {
+      createMovement: vi.fn().mockResolvedValue({ consumed: [], weightedCostPrice: null }),
+    } as never,
+    { createTransaction: vi.fn().mockResolvedValue({}) } as never,
+  );
   return new WorkOrdersService(
     prisma,
-    null as never, // inventory
-    null as never, // settlements
+    stockEffects,
     null as never, // docNumbers
     null as never, // pdf
     null as never, // audit
@@ -355,11 +367,12 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
   const WH_ID = '55555555-5555-4555-8555-555555555555';
   const BATCH1_ID = '66666666-6666-4666-8666-666666666666';
 
+  // A3: writeOffPartsAndCharge живе у WorkOrderStockEffectsService — тестуємо його напряму.
   function makeSvc(
     inventoryCreateMovement: ReturnType<typeof vi.fn>,
     partsToProcess: Array<{ id: string; quantity: number }>,
     partUpdate: ReturnType<typeof vi.fn>,
-  ): WorkOrdersService {
+  ): WorkOrderStockEffectsService {
     const prisma = {
       workOrderPart: {
         findMany: vi.fn().mockResolvedValue(
@@ -377,23 +390,11 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
-    const inventory = { createMovement: inventoryCreateMovement } as unknown as InstanceType<
-      typeof WorkOrdersService
-    >['inventory'];
-    const settlements = { createTransaction: vi.fn() } as unknown as InstanceType<
-      typeof WorkOrdersService
-    >['settlements'];
-    // Constructor: prisma, inventory, settlements, docNumbers, pdf, audit, settingsService, events
-    return new WorkOrdersService(
-      prisma,
-      inventory,
-      settlements,
-      null as never, // docNumbers
-      null as never, // pdf
-      null as never, // audit
-      null as never, // settingsService
-      { emit: vi.fn() } as never, // events — transition() емітить події
-    );
+    const inventory = {
+      createMovement: inventoryCreateMovement,
+    } as unknown as InventoryService;
+    const settlements = { createTransaction: vi.fn() } as unknown as SettlementsService;
+    return new WorkOrderStockEffectsService(prisma, inventory, settlements);
   }
 
   it('single-batch WRITEOFF → part.batchCostPrice + part.batchId проставляються', async () => {
@@ -411,7 +412,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     });
     const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -444,7 +445,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     });
     const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 5 }], partUpdate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -478,7 +479,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     });
     const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -528,28 +529,23 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
       goodUoM: { findMany: goodUoMFindMany },
     } as unknown as PrismaService;
-    const svc = new WorkOrdersService(
+    // A3: writeOffPartsAndCharge живе у WorkOrderStockEffectsService — викликаємо на ньому напряму.
+    const svc = new WorkOrderStockEffectsService(
       prisma,
-      { createMovement } as never, // inventory
-      { createTransaction: vi.fn() } as never, // settlements
-      null as never, // docNumbers
-      null as never, // pdf
-      null as never, // audit
-      null as never, // settingsService
-      null as never, // events
+      { createMovement } as unknown as InventoryService,
+      { createTransaction: vi.fn() } as unknown as SettlementsService,
     );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
       'user-1',
       undefined,
     );
-    // Lookup йде за unitOfMeasureId (не за GoodUoM.id).
+    // Lookup йде за unitOfMeasureId (не за GoodUoM.id) + orgId (A3 tenant-scope).
     expect(goodUoMFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ unitOfMeasureId: { in: [UOM_ID] } }),
+        where: expect.objectContaining({ orgId: 'org-1', unitOfMeasureId: { in: [UOM_ID] } }),
       }),
     );
     // 20 / coeff(10) = 2 базових одиниці у WRITEOFF (а не 20 без коефіцієнта).
@@ -571,7 +567,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     });
     const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -604,7 +600,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       partUpdate,
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -632,7 +628,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
     });
     const svc = makeSvc(createMovement, [{ id: PART1_ID, quantity: 2 }], partUpdate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).writeOffPartsAndCharge(
+    await svc.writeOffPartsAndCharge(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -664,7 +660,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
     createTransaction: ReturnType<typeof vi.fn>,
     totalAmount: number,
     goodUoM: Array<{ goodId: string; unitOfMeasureId: string; coefficient: number }> = [],
-  ): WorkOrdersService {
+  ): WorkOrderStockEffectsService {
     const prisma = {
       workOrderPart: {
         findMany: vi.fn().mockResolvedValue(
@@ -682,16 +678,8 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
     } as unknown as PrismaService;
     const inventory = { createMovement } as never;
     const settlements = { createTransaction } as never;
-    return new WorkOrdersService(
-      prisma,
-      inventory,
-      settlements,
-      null as never, // docNumbers
-      null as never, // pdf
-      null as never, // audit
-      null as never, // settingsService
-      { emit: vi.fn() } as never, // events — transition() емітить події
-    );
+    // A3: returnPartsAndCredit живе у WorkOrderStockEffectsService — тестуємо його напряму.
+    return new WorkOrderStockEffectsService(prisma, inventory, settlements);
   }
 
   const RETURN_OK = { movementId: 'm-ret', consumed: [], weightedCostPrice: null };
@@ -709,7 +697,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
       500,
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).returnPartsAndCredit(
+    await svc.returnPartsAndCredit(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 500 as any },
@@ -763,7 +751,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
       [{ goodId: GOOD_ID, unitOfMeasureId: UOM_ID, coefficient: 6 }],
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).returnPartsAndCredit(
+    await svc.returnPartsAndCredit(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 100 as any },
@@ -779,7 +767,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
     const createTransaction = vi.fn().mockResolvedValue({});
     const svc = makeSvc([{ id: PART1_ID, quantity: 1 }], createMovement, createTransaction, 0);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).returnPartsAndCredit(
+    await svc.returnPartsAndCredit(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 0 as any },
@@ -795,7 +783,7 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
     const createTransaction = vi.fn().mockResolvedValue({});
     const svc = makeSvc([], createMovement, createTransaction, 300);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (svc as any).returnPartsAndCredit(
+    await svc.returnPartsAndCredit(
       'org-1',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { id: WO_ID, counterpartyId: 'cp-1', totalAmount: 300 as any },

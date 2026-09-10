@@ -8,8 +8,7 @@ import { calcVatOnBase } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
-import { InventoryService } from '../inventory/inventory.service';
-import { SettlementsService } from '../settlements/settlements.service';
+import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { InvoiceStatus, RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
 import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -93,16 +92,16 @@ export class WorkOrdersService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly inventory: InventoryService,
-    private readonly settlements: SettlementsService,
+    private readonly stockEffects: WorkOrderStockEffectsService,
     private readonly docNumbers: DocumentNumberService,
     private readonly pdf: PdfService,
     private readonly audit: AuditService,
     private readonly settingsService: SettingsService,
     // A2: transition() емітить доменні події; lifecycle-side-effects (пробіг/ТО/гарантія/нотифікація/
     // аудит) — у WorkOrderEventHandlers через @OnEvent.
-    // A3: share/public-кошторис винесено у WorkOrderShareService (тому notifications/config більше не
-    // тут). Fan-out WorkOrdersService: 11 → 7.
+    // A3: share/public-кошторис винесено у WorkOrderShareService; transaction-critical stock+settlement
+    // side-effects переходів — у WorkOrderStockEffectsService (тому inventory/settlements більше не тут).
+    // Fan-out WorkOrdersService: 11 → 7 → 6.
     private readonly events: EventEmitter2,
   ) {}
 
@@ -714,15 +713,15 @@ export class WorkOrdersService {
         // резерв (RESERVATION_ACTIVE_STATUSES), тож ON_HOLD→IN_PROGRESS НЕ має резервувати
         // повторно — інакше кожен цикл пауза/повернення подвоює reserved (WO-C1, фантомна нестача).
         if (newStatus === 'IN_PROGRESS' && wo.status === 'APPROVED') {
-          await this.reserveParts(orgId, id, userId, tx);
+          await this.stockEffects.reserveParts(orgId, id, userId, tx);
         }
 
         if (newStatus === 'COMPLETED') {
-          await this.writeOffPartsAndCharge(orgId, wo, userId, tx);
+          await this.stockEffects.writeOffPartsAndCharge(orgId, wo, userId, tx);
         }
 
         if (newStatus === 'CANCELLED' && RESERVATION_ACTIVE_STATUSES.includes(wo.status)) {
-          await this.releasePartReservations(orgId, id, userId, tx);
+          await this.stockEffects.releasePartReservations(orgId, id, userId, tx);
         }
 
         // C2: скасування ЗАВЕРШЕНОГО наряду — реверс складу+боргу. На COMPLETED резерв уже
@@ -732,7 +731,7 @@ export class WorkOrdersService {
         // (ті не списували запчастин). Single-shot: CAS-flip (вище) + термінальний CANCELLED →
         // емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
         if (newStatus === 'CANCELLED' && wo.status === 'COMPLETED') {
-          await this.returnPartsAndCredit(orgId, wo, userId, tx);
+          await this.stockEffects.returnPartsAndCredit(orgId, wo, userId, tx);
         }
 
         // Статус/completedAt уже застосовані CAS-updateMany вище — тут лише fetch з include.
@@ -793,225 +792,6 @@ export class WorkOrdersService {
     }
 
     return this.toDto(updated);
-  }
-
-  private async reserveParts(
-    orgId: string,
-    workOrderId: string,
-    userId?: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId, orgId, deletedAt: null },
-      take: 1000,
-    });
-    // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty / coefficient
-    const coeffMap = await this.fetchPartCoefficients(parts, db);
-
-    for (const part of parts) {
-      const coeff = coeffMap[part.id] ?? 1;
-      await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION',
-          quantity: part.quantity / coeff,
-          documentType: 'WorkOrder',
-          documentId: workOrderId,
-          createdBy: userId,
-        },
-        db,
-      );
-    }
-  }
-
-  private async releasePartReservations(
-    orgId: string,
-    workOrderId: string,
-    userId?: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await this.fetchPartCoefficients(parts, db);
-
-    for (const part of parts) {
-      const coeff = coeffMap[part.id] ?? 1;
-      await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION_RELEASE',
-          quantity: -(part.quantity / coeff),
-          documentType: 'WorkOrder',
-          documentId: workOrderId,
-          createdBy: userId,
-        },
-        db,
-      );
-    }
-  }
-
-  private async writeOffPartsAndCharge(
-    orgId: string,
-    wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null },
-    userId?: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId: wo.id, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await this.fetchPartCoefficients(parts, db);
-
-    for (const part of parts) {
-      const coeff = coeffMap[part.id] ?? 1;
-      const baseQty = part.quantity / coeff;
-      // Logic-bug fix: release the reservation BEFORE writeoff. InventoryService.createMovement
-      // gates WRITEOFF on `available = quantity - reserved >= |qty|`. Якщо весь фізичний
-      // залишок зарезервовано саме цим нарядом (квантитет = резерв = baseQty), available=0
-      // і WRITEOFF падає з "Недостатньо товару на складі" попри те, що фізичні запчастини
-      // на складі присутні. Послідовність RELEASE → WRITEOFF: спочатку звільняємо резерв
-      // (reserved -= baseQty), потім списуємо (тепер available = quantity > 0).
-      await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION_RELEASE',
-          quantity: -baseQty,
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          createdBy: userId,
-        },
-        db,
-      );
-      // WRITEOFF списує партії (FIFO/costMethod з налаштувань) і повертає реальну
-      // собівартість (COGS). НЕ передаємо price=part.price (то ЦІНА ПРОДАЖУ) — собівартість
-      // визначається партіями. Фіксуємо batchCostPrice/batchId у part для звіту рентабельності.
-      const writeoff = await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'WRITEOFF',
-          quantity: -baseQty,
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          documentLineId: part.id,
-          createdBy: userId,
-        },
-        db,
-      );
-      if (writeoff.weightedCostPrice != null) {
-        // batchId лише коли списано рівно з однієї реальної партії. AVG_COST-агрегат
-        // повертає batchId=null, span — length>1 → обидва дають null (нема single-batch
-        // трасування). Нижче NULL коректно лягає у nullable uuid WorkOrderPart.batchId.
-        const singleBatchId = writeoff.consumed.length === 1 ? writeoff.consumed[0].batchId : null;
-        await db.workOrderPart.update({
-          where: { id: part.id, orgId },
-          data: {
-            batchCostPrice: writeoff.weightedCostPrice,
-            batchId: singleBatchId,
-          },
-        });
-      }
-    }
-    // WO-H1: сума боргу — з IN-TX re-read totalAmount (не зі stale pre-tx знімка wo). Concurrent
-    // addLine/updatePart міг змінити суму через recalcTotals між pre-tx read і цією транзакцією.
-    const freshWo = await db.workOrder.findFirst({
-      where: { id: wo.id, orgId },
-      select: { totalAmount: true },
-    });
-    const chargeAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
-    if (chargeAmount <= 0)
-      throw new BadRequestException('Загальна сума наряду дорівнює нулю — завершення неможливе');
-    await this.settlements.createTransaction(
-      orgId,
-      {
-        counterpartyId: wo.counterpartyId,
-        type: 'CHARGE',
-        amount: chargeAmount,
-        documentType: 'WorkOrder',
-        documentId: wo.id,
-        createdBy: userId,
-      },
-      db,
-    );
-  }
-
-  /**
-   * C2 — реверс writeOffPartsAndCharge при COMPLETED→CANCELLED. Дзеркалить його per-part:
-   * замість WRITEOFF(−q) робимо RETURN(+q) (InventoryService інкрементує StockItem + повертає
-   * у ті самі партії через returnToBatch), замість CHARGE — один CREDIT_NOTE на суму боргу
-   * → баланс документа нетиться до нуля. Резерв НЕ відновлюємо (на COMPLETED його вже знято).
-   * Викликається лише з CANCELLED-гілки transition() під wo.status==='COMPLETED' → single-shot
-   * (in-tx status re-read + термінальний CANCELLED, як double-CHARGE guard).
-   */
-  private async returnPartsAndCredit(
-    orgId: string,
-    wo: { id: string; counterpartyId: string; totalAmount: Prisma.Decimal | null },
-    userId?: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    const db = tx ?? this.prisma;
-    const parts = await db.workOrderPart.findMany({
-      where: { workOrderId: wo.id, orgId, deletedAt: null },
-      take: 1000,
-    });
-    const coeffMap = await this.fetchPartCoefficients(parts, db);
-
-    for (const part of parts) {
-      const coeff = coeffMap[part.id] ?? 1;
-      const baseQty = part.quantity / coeff;
-      // RETURN дзеркалить WRITEOFF: та сама baseQty, той самий (documentType, documentId,
-      // documentLineId). InventoryService інкрементує StockItem і повертає партії (агрегує по
-      // batchId у межах документа). batchCostPrice/batchId у WorkOrderPart НЕ чистимо —
-      // історичний COGS-запис.
-      await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RETURN',
-          quantity: baseQty,
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          documentLineId: part.id,
-          createdBy: userId,
-        },
-        db,
-      );
-    }
-
-    // Сторно боргу: сума з IN-TX re-read totalAmount (дзеркалить charge-логіку). COMPLETED поза
-    // EDITABLE_STATUSES → totalAmount не змінюється, але re-read гарантує точну симетрію з CHARGE.
-    const freshWo = await db.workOrder.findFirst({
-      where: { id: wo.id, orgId },
-      select: { totalAmount: true },
-    });
-    const creditAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
-    if (creditAmount > 0) {
-      await this.settlements.createTransaction(
-        orgId,
-        {
-          counterpartyId: wo.counterpartyId,
-          type: 'CREDIT_NOTE',
-          amount: creditAmount,
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          createdBy: userId,
-        },
-        db,
-      );
-    }
   }
 
   // ─── Lines ───────────────────────────────────────────────
@@ -1631,38 +1411,6 @@ export class WorkOrdersService {
       notes: line.notes ?? null,
       createdAt: line.createdAt instanceof Date ? line.createdAt.toISOString() : line.createdAt,
     };
-  }
-
-  // Batch-fetches GoodUoM coefficients for a list of parts.
-  // Returns map: partId → coefficient (1 if no UoM or not found).
-  private async fetchPartCoefficients(
-    parts: { id: string; unitOfMeasureId?: string | null; goodId: string }[],
-    db: Prisma.TransactionClient | typeof this.prisma,
-  ): Promise<Record<string, number>> {
-    const uomIds = parts.map(p => p.unitOfMeasureId).filter((id): id is string => !!id);
-    if (uomIds.length === 0) return {};
-    // WO-C2: WorkOrderPart.unitOfMeasureId — це FK на UnitOfMeasure.id (addPart зберігає
-    // uomJunction.unitOfMeasureId), а НЕ GoodUoM.id (PK). Тож коефіцієнт беремо з GoodUoM за
-    // парою (unitOfMeasureId, goodId) — унікальною у @@unique([orgId,goodId,unitOfMeasureId]).
-    // Раніше lookup йшов по GoodUoM.id → мапа завжди порожня → coeff=1 → невірні кількості.
-    const goodIds = parts.map(p => p.goodId);
-    const uoms = await (db as typeof this.prisma).goodUoM.findMany({
-      where: { unitOfMeasureId: { in: uomIds }, goodId: { in: goodIds } },
-      select: { unitOfMeasureId: true, goodId: true, coefficient: true },
-    });
-    // Ключ = goodId|unitOfMeasureId (коефіцієнт специфічний для товару).
-    const coeffByGoodUom = new Map<string, number>(
-      uoms.map(u => [`${u.goodId}|${u.unitOfMeasureId}`, u.coefficient]),
-    );
-    const result: Record<string, number> = {};
-    for (const part of parts) {
-      if (part.unitOfMeasureId) {
-        // DTO @Min(0.000001) blocks coefficient=0 on write-path, but legacy/seed/direct-SQL
-        // data may have 0. safeCoeff() handles 0/NaN/negative/undefined → 1.
-        result[part.id] = safeCoeff(coeffByGoodUom.get(`${part.goodId}|${part.unitOfMeasureId}`));
-      }
-    }
-    return result;
   }
 
   private toPartDto(

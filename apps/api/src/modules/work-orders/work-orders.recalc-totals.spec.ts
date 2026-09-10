@@ -89,8 +89,7 @@ function makeService(prisma: PrismaService): WorkOrdersService {
   } as never;
   return new WorkOrdersService(
     prisma,
-    null as never, // inventory
-    null as never, // settlements
+    null as never, // stockEffects (A3 — не задіяний у recalc-шляху)
     null as never, // docNumbers
     null as never, // pdf
     null as never, // audit
