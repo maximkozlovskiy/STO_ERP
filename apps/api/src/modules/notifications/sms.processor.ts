@@ -81,7 +81,7 @@ export class SmsProcessor extends WorkerHost {
     }
 
     // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
-    const apiKey = await this.resolveApiKey(orgId, branchId, step.channel, step.provider);
+    const apiKey = await this.resolveApiKey(orgId, branchId, step.channel);
     if (!apiKey) {
       await this.log(orgId, branchId, event, step, 'FAILED', {
         error: `Не знайдено активний apiKey для ${step.channel}/${step.provider}`,
@@ -154,16 +154,21 @@ export class SmsProcessor extends WorkerHost {
    * extension автоматично розшифровує apiKey/smsApiKey при читанні. Джерело — те саме, що у
    * NotificationsService.resolveConfig: спершу NotificationChannelConfig (@@unique([branchId,channel])),
    * далі legacy BranchSettings.smsApiKey для SMS.
+   *
+   * R2 (pre-prod re-review): lookup за унікальним ключем {orgId, branchId, channel} — БЕЗ `provider`/
+   * `enabled` у where. Провайдера вже обрано на enqueue (він у step.provider); а `enabled:true` у
+   * where давав тиху невідправку, якщо адмін перемкнув провайдера чи тимчасово вимкнув канал у вікні
+   * між постановкою job і його обробкою (BullMQ backoff до 60с × 10). Ключ беремо з поточного рядка
+   * каналу; deletedAt:null лишаємо (видалений конфіг = справді немає ключа).
    */
   private async resolveApiKey(
     orgId: string,
     branchId: string | undefined,
     channel: NotificationChannel,
-    provider: string,
   ): Promise<string | null> {
     if (!branchId) return null;
     const cfg = await this.prisma.notificationChannelConfig.findFirst({
-      where: { orgId, branchId, channel, provider, enabled: true, deletedAt: null },
+      where: { orgId, branchId, channel, deletedAt: null },
       select: { apiKey: true },
     });
     if (cfg?.apiKey) return cfg.apiKey;

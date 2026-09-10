@@ -2262,7 +2262,10 @@ model CompletionAct {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id])
 
-  @@unique([orgId, number])
+  // R1: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260910120000.
+  // Було plain @@unique([orgId, number]), яке рахувало й soft-deleted → після видалення акта номер
+  // не переюзувався (P2002). Тепер узгоджено з 7 документними таблицями T14 (Prisma не виражає
+  // partial-unique у @@unique).
   // Covering: findAll(orgId, workOrderId?) sorted by createdAt DESC + take 100.
   // Замінює `(orgId, workOrderId, deletedAt)` → робить Index Scan + sort node у 0.
   @@index([orgId, workOrderId, deletedAt, createdAt])
