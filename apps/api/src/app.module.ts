@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
 import { resolve } from 'node:path';
@@ -14,6 +14,7 @@ import {
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { CryptoModule } from './common/crypto/crypto.module';
+import { TenantContextInterceptor } from './common/tenant/tenant-context.interceptor';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
@@ -226,6 +227,10 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
   providers: [
     // Apply ThrottlerGuard globally — routes can override with @Throttle() or @SkipThrottle()
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // A1 — tenant-scope ALS: входить у scope з request.user.orgId на весь ланцюг handler+service+prisma.
+    // Global interceptor фаєрить ПІСЛЯ global guards, тож user вже populate-нутий. Guard-extension
+    // ([tenant-guard.extension.ts]) читає цей scope для create-стемпу й bypass.
+    { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
   ],
 })
 export class AppModule implements NestModule {
