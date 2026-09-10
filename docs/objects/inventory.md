@@ -2,6 +2,10 @@
 
 > Товар (Good) + залишки (StockItem) + рухи (StockMovement) + партії (StockBatch) + собівартість.
 
+> **UI:** сторінка залишків тепер — вкладка **«Залишки»** на сторінці «Склад»
+> (`/stock-documents?tab=stock`), компонент `app/(app)/inventory/InventoryTab.tsx`. Маршрут
+> `/inventory` — redirect на цю вкладку. Деталі — `docs/objects/stock-document.md` (секція UI).
+
 ## Ключові факти
 
 - `StockItem` — агрегат поточного залишку по (orgId, goodId, warehouseId): `quantity`, `reserved`.

@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-09-11 — Навігація: «Склад» + вкладка «Залишки»
+
+- Пункт меню «Документи складу» → **«Склад»**; пункт «Склад» (`/inventory`) прибрано з меню.
+- Сторінка `/stock-documents` — таб-обгортка «Склад»: вкладки «Документи складу» + **«Залишки»**
+  (колишня сторінка `/inventory` як `InventoryTab`, без власного page-shell). `?tab=stock`.
+- `/inventory` → redirect на `/stock-documents?tab=stock` (закладки/command-palette/shortcuts не ламаються).
+- Guard обгортки OWNER/ADMIN/STOREKEEPER/RECEPTIONIST; для RECEPTIONIST вкладка «Документи складу»
+  прихована (backend @Roles без RECEPTIONIST) → default форсується на «Залишки» (review-фікс).
+- commands.ts: навігаційні команди оновлено.
+
+QA: review 1 Important (RECEPTIONIST-tab guard) + tester 2 LOW (dead code) — усі виправлено.
+Verify: tsc web 0 · eslint 0 · web unit 739 green · routes 200 (+redirect).
+
+---
+
 ## 2026-09-11 — Фіча: Кастомізація бокової панелі (per-user)
 
 Користувач може переставляти пункти меню (у межах розділу й між розділами), приховувати пункти й

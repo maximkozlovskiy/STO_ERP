@@ -78,12 +78,22 @@ DRAFT → CONFIRMED
 
 ## UI (Web)
 
-| Компонент / сторінка  | Файл                                             |
-| --------------------- | ------------------------------------------------ |
-| Список                | `app/(app)/stock-documents/page.tsx`             |
-| Модалка створення     | `components/ui/StockDocumentCreateModal.tsx`     |
-| Detail Panel schema   | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA` |
-| Hook (TanStack Query) | `hooks/api/useStockDocuments.ts`                 |
+Сторінка меню **«Склад»** (`/stock-documents`) — таб-обгортка з двома вкладками:
+**«Документи складу»** (список складських документів) + **«Залишки»** (колишня сторінка
+`/inventory` як `InventoryTab`). `?tab=stock` відкриває «Залишки». Guard обгортки —
+OWNER/ADMIN/STOREKEEPER/RECEPTIONIST; вкладка «Документи складу» прихована для RECEPTIONIST
+(backend `@Roles` без RECEPTIONIST → default форсується на «Залишки»). Маршрут `/inventory`
+лишається як **redirect** на `/stock-documents?tab=stock` (старі посилання не ламаються).
+
+| Компонент / сторінка  | Файл                                                            |
+| --------------------- | --------------------------------------------------------------- |
+| Таб-обгортка «Склад»  | `app/(app)/stock-documents/page.tsx` (StockTabsShell)           |
+| Список документів     | `app/(app)/stock-documents/page.tsx` (StockDocumentsPageClient) |
+| Вкладка «Залишки»     | `app/(app)/inventory/InventoryTab.tsx`                          |
+| Redirect /inventory   | `app/(app)/inventory/page.tsx`                                  |
+| Модалка створення     | `components/ui/StockDocumentCreateModal.tsx`                    |
+| Detail Panel schema   | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA`                |
+| Hook (TanStack Query) | `hooks/api/useStockDocuments.ts`                                |
 
 ---
 
