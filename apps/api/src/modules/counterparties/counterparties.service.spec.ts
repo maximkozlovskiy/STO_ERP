@@ -5,6 +5,15 @@ import { CounterpartiesService } from './counterparties.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { AuditService } from '../audit/audit.service';
+import { CounterpartyStatusesService } from '../counterparty-statuses/counterparty-statuses.service';
+
+// Bug #724: CounterpartiesService отримав 4-ту залежність (CounterpartyStatusesService)
+// у фічі статусів-міток, але цей spec не оновили → Nest не міг зарезолвити DI (46 тестів
+// падали на wiring). Assign/unassign кличуть лише invalidateCache — достатньо мок-заглушки.
+const statusesMock = {
+  provide: CounterpartyStatusesService,
+  useValue: { invalidateCache: vi.fn() },
+};
 import { CounterpartyQueryDto } from './counterparties.dto';
 
 /**
@@ -53,6 +62,7 @@ describe('CounterpartiesService', () => {
           useValue: { next: vi.fn().mockResolvedValue('CON-2026-000001') },
         },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        statusesMock,
       ],
     }).compile();
 
@@ -295,6 +305,7 @@ describe('CounterpartiesService — contract flows', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: docNumbers },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        statusesMock,
       ],
     }).compile();
     service = module.get(CounterpartiesService);
@@ -821,6 +832,7 @@ describe('CounterpartiesService — linked documents (Phase C)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        statusesMock,
       ],
     }).compile();
     service = module.get(CounterpartiesService);
@@ -970,6 +982,7 @@ describe('CounterpartiesService — Bug #719: коректність audit-зн�
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: AuditService, useValue: { record: auditRecord } },
+        statusesMock,
       ],
     }).compile();
 

@@ -11,7 +11,11 @@ const TTL = 300;
 const cacheKey = (orgId: string) => `ref:counterparty-statuses:${orgId}`;
 const DEFAULT_COLOR = '#6b7280';
 
-const COUNT_INCLUDE = { _count: { select: { links: true } } };
+// counterpartyCount рахує лише активних контрагентів: link на soft-deleted контрагента
+// НЕ інкрементує (інакше видалення контрагента з міткою залишало б лічильник завищеним).
+const COUNT_INCLUDE = {
+  _count: { select: { links: { where: { counterparty: { deletedAt: null } } } } },
+};
 
 /**
  * Довідник кастомних статусів-міток контрагентів (per-org). Дзеркалить BrandsService:

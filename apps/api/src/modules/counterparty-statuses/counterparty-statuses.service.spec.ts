@@ -98,7 +98,8 @@ describe('CounterpartyStatusesService.create', () => {
 
     expect(mocks.prisma.counterpartyStatus.create).toHaveBeenCalledWith({
       data: { name: 'VIP', color: DEFAULT_COLOR, orgId: ORG },
-      include: { _count: { select: { links: true } } },
+      // counterpartyCount рахує лише активних контрагентів (link на soft-deleted cp не рахується).
+      include: { _count: { select: { links: { where: { counterparty: { deletedAt: null } } } } } },
     });
     expect(result.color).toBe(DEFAULT_COLOR);
     expect(mocks.cache.del).toHaveBeenCalled();
@@ -202,6 +203,24 @@ describe('CounterpartyStatusesService.findAll — cache + counterpartyCount', ()
 
     expect(result.items[0].counterpartyCount).toBe(3);
     expect(mocks.cache.set).toHaveBeenCalled();
+  });
+
+  it('counterpartyCount рахує лише активних контрагентів (_count.links фільтрує soft-deleted cp)', async () => {
+    // Регресія Bug: link на soft-deleted контрагента завищував лічильник (видалення cp
+    // з міткою залишало counterpartyCount без змін). Include має нести where-фільтр.
+    mocks.cache.get.mockResolvedValueOnce(null);
+    mocks.prisma.counterpartyStatus.findMany.mockResolvedValueOnce([]);
+    mocks.prisma.counterpartyStatus.count.mockResolvedValueOnce(0);
+
+    await service.findAll(ORG);
+
+    expect(mocks.prisma.counterpartyStatus.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          _count: { select: { links: { where: { counterparty: { deletedAt: null } } } } },
+        },
+      }),
+    );
   });
 
   it('showDeleted=true → кеш не читається і не пишеться', async () => {

@@ -4078,3 +4078,73 @@ Scope: 3 закритих backlog-пункти (HEAD~4..HEAD). ФОКУС за �
 - NEW `apps/api/src/modules/work-orders/work-order-stock-effects.integration.spec.ts` (+4 live-DB тести)
 - `apps/api/src/modules/work-orders/work-order-stock-effects.service.spec.ts` (+4 unit gap-closure тести)
 - tsc 0, повна suite 2109/2109 (137 файлів). Джерело `work-order-stock-effects.service.ts` НЕ змінювалось (0 нових багів — лише тести).
+
+## Session 2026-09-10 — Фіча «Статуси (кастомні мітки) контрагентів»
+
+Тестування комітів db2ef061 (DB) / 1440bf22 (backend) / 7d44da65 (frontend) / 37dc5e1e (review-фікс).
+Метод: 13 unit-тестів (spec), tsc API+web green, живі curl-сценарії (login admin@sto.local),
+перевірка tenant-isolation, resurrect/restore, ідемпотентності, кеш-інвалідації.
+
+Результат: 6 з 7 сценаріїв CLEAN. Знайдено 1 MEDIUM баг (counterpartyCount), виправлено+регресія.
+
+### Bug #723 — [MEDIUM] counterpartyCount завищений: рахує link на soft-deleted контрагента
+
+**Файл:** `apps/api/src/modules/counterparty-statuses/counterparty-statuses.service.ts:14` (`COUNT_INCLUDE`)
+
+**Симптом:** У списку статусів колонка «Контрагентів» (`counterpartyCount`) показує завищене
+число після soft-delete контрагента, який мав мітку. `CounterpartyStatusLink` не має `deletedAt`
+і не видаляється при `CounterpartiesService.remove()` (link лишається, щоб restore контрагента
+відновив призначення) → `_count.links` рахує «мертві» призначення.
+
+**Живий доказ (curl):**
+
+```
+assign статусу контрагенту → counterpartyCount = 1  ✓
+DELETE /counterparties/:id (soft, 204)
+GET /counterparty-statuses/:id → counterpartyCount = 1  ✗ (мало б 0)
+```
+
+**Причина:** `_count: { select: { links: true } }` рахує ВСІ link-рядки без урахування
+стану батьківського контрагента. Розробник резонно припустив, що link=контрагент-з-міткою,
+але soft-delete контрагента не чіпає junction.
+
+**Фікс:** фільтрований `_count` (Prisma 5 підтримує, патерн вже в purchase-orders/stock-documents):
+
+```ts
+const COUNT_INCLUDE = {
+  _count: { select: { links: { where: { counterparty: { deletedAt: null } } } } },
+};
+```
+
+Після фіксу живий curl: count 1 → 0 після soft-delete контрагента. ✓
+
+**Регресія:** `counterparty-statuses.service.spec.ts` — новий тест перевіряє, що `findMany`
+викликається з фільтрованим include; оновлено assertion у `create`-тесті. 13/13 green.
+
+**Де шукати ще:** будь-який `_count.links`/`_count.<junction>` де junction без `deletedAt`,
+а батько має soft-delete — той самий клас (напр. лічильники на інших M:N довідниках).
+
+Статус: [x] виправлено
+
+### Bug #724 — [HIGH] Червоний baseline: counterparties.service.spec не оновлено після нової DI-залежності
+
+**Файл:** `apps/api/src/modules/counterparties/counterparties.service.spec.ts` (4 блоки `Test.createTestingModule`)
+
+**Симптом:** Повний `pnpm --filter @sto/api test` → 46 тестів падають:
+`Nest can't resolve dependencies of the CounterpartiesService (PrismaService,
+DocumentNumberService, AuditService, ?). ... CounterpartyStatusesService at index [3]`.
+Запуск лише spec статусів (12/13) цього НЕ виявляв — червоний ховався у повному прогоні.
+
+**Причина:** backend-коміт фічі (1440bf22) додав `CounterpartyStatusesService` 4-ю залежністю
+конструктора `CounterpartiesService` (потрібна для invalidateCache при assign/unassign),
+але жоден із 4 `createTestingModule({ providers: [...] })` не отримав провайдера-заглушки.
+Класична пастка: нова DI-залежність у сервісі → всі тест-модулі того сервіса треба оновити.
+
+**Фікс:** спільний мок `statusesMock = { provide: CounterpartyStatusesService,
+useValue: { invalidateCache: vi.fn() } }` додано у всі 4 providers-масиви.
+Після фіксу: 46/46 counterparties тестів green; повний API suite 2122/2122 green.
+
+**Де шукати ще:** будь-який `*.service.spec.ts` з ручним `createTestingModule` після додавання
+нового constructor-параметра у відповідний сервіс — grep конструктора vs providers-масив.
+
+Статус: [x] виправлено
