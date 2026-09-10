@@ -128,15 +128,16 @@ done
 ```
 
 **Автофікси:**
-| Помилка | Фікс |
-|---|---|
-| `React.ReactNode` | `import type { ReactNode } from 'react'` → `ReactNode` |
-| `React.ChangeEvent<T>` / `React.FormEvent<T>` | `import type { ChangeEvent, FormEvent } from 'react'` |
-| `bg-(--color-X)` / `border-(--color-X)` | Canonical token: `bg-X` / `border-X` |
-| `w-[Npx]` | Tailwind scale: M = N/4 (52px→w-13) |
-| `flex-shrink-0` | `shrink-0` |
-| `URL.revokeObjectURL(url)` після `a.click()` | `setTimeout(() => URL.revokeObjectURL(url), 100)` |
-| `findMany` без `take` | `take: 200` (list endpoints) або `take: 500` (sub-resources) |
+
+| Помилка                                       | Фікс                                                         |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `React.ReactNode`                             | `import type { ReactNode } from 'react'` → `ReactNode`       |
+| `React.ChangeEvent<T>` / `React.FormEvent<T>` | `import type { ChangeEvent, FormEvent } from 'react'`        |
+| `bg-(--color-X)` / `border-(--color-X)`       | Canonical token: `bg-X` / `border-X`                         |
+| `w-[Npx]`                                     | Tailwind scale: M = N/4 (52px→w-13)                          |
+| `flex-shrink-0`                               | `shrink-0`                                                   |
+| `URL.revokeObjectURL(url)` після `a.click()`  | `setTimeout(() => URL.revokeObjectURL(url), 100)`            |
+| `findMany` без `take`                         | `take: 200` (list endpoints) або `take: 500` (sub-resources) |
 
 - [ ] `tsc --noEmit` → 0 errors (web `--incremental false`, api, shared)
 - [ ] Немає `React.X` — тільки named imports з `'react'`
@@ -617,7 +618,14 @@ grep -rn "localStorage\|sessionStorage\|window\.\|document\." apps/web/src/ \
 
 #### §8.4 Routing & Auth
 
+```bash
+# Таб-обгортка з розширеним useRequireAuth (union ролей заради ОДНОГО табу) — інші таби
+# можуть 403-ити для доданої ролі. Знайти сторінки з >3 ролей у guard + кілька inner-табів.
+grep -rnE "useRequireAuth\(\[[^]]*,[^]]*,[^]]*,[^]]*\]" apps/web/src/app --include="*.tsx"
+```
+
 - [ ] Захищені сторінки → `useRequireAuth(roles)` або redirect
+- [ ] **Таб-обгортка що РОЗШИРЮЄ `useRequireAuth` guard заради одного табу → кожен інший таб мусить бути gated за роллю, а default-таб форсуватись на дозволений.** Патерн (audit 305ee759): сторінка «Склад» об'єднала «Документи складу» (backend `@Roles=OWNER/ADMIN/STOREKEEPER`) + «Залишки» (backend дозволяє RECEPTIONIST) під одним guard-ом `['OWNER','ADMIN','STOREKEEPER','RECEPTIONIST']`. Наслідок: RECEPTIONIST проходить guard, але default-таб «Документи складу» 403-ить на КОЖНОМУ виклику → банер помилки + порожні таблиці + create-кнопка що 403-ить. Не витік (backend 403-ить коректно) — broken UX. Fix: `canSeeTab = ROLES.includes(employee.role)` дзеркалить `@Roles` backend-контролера кожного табу; приховати недозволені таби (`.filter`) + форсувати `activeTab` на дозволений коли `!canSee`. Звірити ролі кожного inner-таба з `@Roles` його backend-endpoints (`grep "@Roles" <controller>`)
 - [ ] `/setup` має окремий `layout.tsx` без `AuthProvider`/`TopShell`
 - [ ] PUBLIC_ROUTES (`/booking`, `/setup`, `/login`, `/403`) → `publicFetch`, не `apiFetch`
 
@@ -1434,8 +1442,8 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 ### 2026-09-09 — date-picker YYYY-MM-DD → ISO через local-parse → off-by-one на межі дня — §8.6
 
 **Сигнал:** `new Date(`${d}T00:00:00`).toISOString()` де `d` — рядок з date-picker. Парсинг `T00:00:00` (без `Z`) відбувається у TZ **браузера**, `.toISOString()` конвертує в UTC. У браузерах з додатнім offset (Kyiv UTC+3) `2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z` → збережена/відправлена дата на **-1 день**. Той самий баг у ручній min/max-date арифметиці (`new Date(...); setDate(getDate()+1); toISOString().slice(0,10)`).
-**Grep:** `grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src` + `grep -rnE "\.setDate\(.*getDate\(\) ?[+-]" apps/web/src/app apps/web/src/components`.
-**Фікс:** day-арифметика → канонічний `addDaysISO(kyivToday(), N)` (UTC-математика, `lib/format.ts`); payload «кінець дня» → `${d}T23:59:59Z` (UTC end-of-day, покриває весь вибраний день незалежно від TZ браузера).
+**Grep:** `grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src`+`grep -rnE "\.setDate\(.*getDate\(\) ?[+-]" apps/web/src/app apps/web/src/components`.
+**Фікс:** day-арифметика → канонічний `addDaysISO(kyivToday(), N)`(UTC-математика,`lib/format.ts`); payload «кінець дня» → `${d}T23:59:59Z` (UTC end-of-day, покриває весь вибраний день незалежно від TZ браузера).
 **Severity:** IMPORTANT — німа data-corruption (дата на день раніше), tsc зелений; проявляється лише у певних TZ. Sample: WarrantyCreateModal (abe63125).
 
 ## Карта секцій (quick reference)
