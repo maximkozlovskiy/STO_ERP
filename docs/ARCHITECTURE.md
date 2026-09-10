@@ -85,6 +85,22 @@ sto-erp/
 
 ---
 
+## Prisma-розширення (aspect-шар)
+
+`PrismaService.onModuleInit` композує три `$extends` query-hooks (OUTERMOST→INNERMOST):
+
+1. **tenant-guard** (`prisma/tenant-guard.extension.ts`, A1) — fail-closed tenant-ізоляція. Кидає
+   `TenantIsolationError`, якщо запит на tenant-модель іде без orgId/branchId у `where`, або create без
+   orgId. Читає ambient orgId з AsyncLocalStorage (`common/tenant/tenant-context.ts`; interceptor кладе
+   `request.user.orgId` на весь request; процесори — з `job.data.orgId`). Легітимні глобальні запити
+   (login/setup/public-share/cross-org) обгортаються `runUnscoped`. **⚠️ await Prisma-запит ВСЕРЕДИНІ**
+   `runUnscoped`/`runWithTenant` — ALS-scope тримається лише поки триває callback. Exempt-моделі (без
+   orgId): 6 junction + PricingRuleTier/WebhookDelivery/LoyaltyTransaction/SystemTemplate + Organisation
+   (self-tenant). Raw-SQL (`$queryRaw`) — поза guard (має orgId у SQL-тексті). Покриття: інтеграційний
+   spec проти живої БД (юніти мокають Prisma → guard у них не фаєрить).
+2. **syncVersion** — авто-інкремент `syncVersion` на write (delta-sync).
+3. **field-encryption** (H-2) — AES-256-GCM шифрування секретних полів at-rest.
+
 ## Prisma моделі та міграції
 
 ### Обов'язкові поля кожної таблиці

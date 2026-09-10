@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-09-10 — A1: tenant-isolation GUARD (fail-closed) увімкнено
+
+### c6a1a9eb feat(tenant): A1 — ALS + Prisma $extends guard проти крос-tenant витоку
+
+Захист tenant-ізоляції як defense-in-depth (НЕ заміна 1828 ручних where:{orgId} — вони коректні).
+Prisma-запит на tenant-модель без orgId/branchId-фільтра тепер КИДАЄ `TenantIsolationError` (тихий
+крос-tenant витік → гучний 500). Ловить МАЙБУТНІ пропуски.
+
+- **ALS-міст** (`common/tenant/tenant-context.ts` + global interceptor): request.user.orgId → scope на
+  весь ланцюг handler→service→prisma. `runUnscoped`/`runWithTenant` (await ВСЕРЕДИНІ — lazy-PrismaPromise
+  назовні виконався б поза scope).
+- **Guard** (`prisma/tenant-guard.extension.ts`, OUTERMOST у prisma.service): `whereHasTenantScope`
+  приймає top-level orgId/branchId + composite-ключ з вкладеним токеном (branchId_channel тощо) +
+  AND-рекурсію; OR без sibling → throw. create без orgId → стемп з ambient або throw. Exempt: 6 junction
+  - PricingRuleTier/WebhookDelivery/LoyaltyTransaction/SystemTemplate + Organisation.
+- **Allowlist**: login/setup/share/for-each-active-org + 12 BullMQ-процесорів обгорнуто (10 org-scoped
+  через runWithTenant({orgId: job.data.orgId}), 2 глобальні через runUnscoped).
+- **http-exception.filter**: TenantIsolationError → лог model+op server-side, клієнту generic 500.
+- **Реальне покриття**: `tenant-guard.integration.spec.ts` (12 тестів проти живої dev-БД — юніти мокають
+  Prisma, guard у них не виконується). +interceptor unit (4) +whereHasTenantScope unit (15).
+
+tsc api 0 · suite 2079/2079 green · lint 0 · boot-smoke чистий (login→CRUD→reports→payments 200,
+0 TenantIsolationError; interceptor→service ALS-propagation підтверджено наживо).
+
+---
+
 ## 2026-09-10 — GAPS deploy+reliability пакет: T16 + T23 + T12
 
 ### 34e2fb63 perf/fix(deploy+followup): T16 compose-ліміти + T23 backup BOM-фікс + T12 cursor-пагінація

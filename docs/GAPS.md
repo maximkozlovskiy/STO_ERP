@@ -143,7 +143,7 @@ T12 (followup scale) + Docker tag-mismatch (1e1aca97). **Лишається:** T
 
 | ID  | Покращення                                                                                             | Пріор.   | Статус |
 | --- | ------------------------------------------------------------------------------------------------------ | -------- | ------ |
-| A1  | Tenant-ізоляція + soft-delete як Prisma-extension (AsyncLocalStorage) — прибрати 1828 ручних orgId     | Високий  | 🔴     |
+| A1  | Tenant-ізоляція: ALS + Prisma-guard (fail-closed) — ловить пропуски orgId, тихий витік→гучний збій     | Високий  | 🟢     |
 | A2  | Доменні events для lifecycle side-effects (WorkOrderCompleted + @OnEvent, +outbox)                     | Високий  | 🟢     |
 | A3  | Розбити God-об'єкти (WorkOrdersService 2124р → +StockEffects/Share/Totals; CreateWorkOrderModal 3708р) | Високий  | 🟡     |
 | A4  | Provider-registry через multi-provider DI-токен замість конкретних класів (OCP+DIP)                    | Середній | 🟢     |
@@ -151,6 +151,17 @@ T12 (followup scale) + Docker tag-mismatch (1e1aca97). **Лишається:** T
 
 **A5-money закрито (a465f20b):** формула ПДВ (calcVatOnBase) — єдине джерело у common/utils/vat;
 WO.recalcTotals + invoices.lineVatTotals делегують. Прибрано 3-ю inline-копію (drift-ризик грошей).
+
+**A1 закрито (c6a1a9eb, guard-підхід замість повної заміни):** обрано defense-in-depth, а не переписування
+1828 ручних where:{orgId}. AsyncLocalStorage-міст (interceptor кладе request.user.orgId у scope) + Prisma
+$extends guard (OUTERMOST), що КИДАЄ TenantIsolationError, якщо запит на tenant-модель іде без orgId/branchId
+у where, або create без orgId. Ручні where лишились (коректні) — guard ловить МАЙБУТНІ пропуски (тихий
+крос-tenant витік → гучний 500). Exempt: 6 junction + PricingRuleTier/WebhookDelivery/LoyaltyTransaction/
+SystemTemplate + Organisation (self-tenant). branchId = валідний tenant-токен (FK→branch→org). Легітимні
+глобальні запити (login/setup/share/cross-org) + 12 процесорів обгорнуто у runUnscoped/runWithTenant (await
+ВСЕРЕДИНІ scope — lazy-PrismaPromise назовні виконався б поза scope). Реальне покриття — інтеграційний spec
+проти живої БД (юніти мокають Prisma → guard не фаєрить). Raw-SQL (~17) поза guard (мають orgId у SQL-тексті).
+Boot-smoke чистий (login→CRUD→reports→payments 200, 0 TenantIsolationError).
 
 **A5 закрито (98bbe7a8):** gate-множини (EDITABLE/SHAREABLE/INVOICEABLE) з єдиним джерелом у
 @sto/shared (backend імпортує); FSM-transition-мапа під regression-guard (fsm.contract.spec). nestjs-zod DTO-міграція — окремий фоллоу (більший обсяг).
