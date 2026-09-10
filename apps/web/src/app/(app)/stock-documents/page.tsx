@@ -898,14 +898,26 @@ const STOCK_TABS: { key: StockTab; label: string }[] = [
   { key: 'stock', label: 'Залишки' },
 ];
 
+// Ролі, яким backend /stock-documend* endpoints дозволяють «Документи складу»
+// (stock-documents.controller.ts @Roles). RECEPTIONIST сюди НЕ входить — на цій
+// вкладці всі виклики повертають 403 → приховуємо її, лишаючи лише «Залишки».
+const DOCS_TAB_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+
 // Таб-обгортка сторінки «Склад»: вкладка «Документи складу» (наявний список) + «Залишки»
 // (колишня сторінка /inventory як InventoryTab). Обидві вкладки — без власного page-shell.
 function StockTabsShell() {
   // Ширший guard — «Залишки» доступні і RECEPTIONIST (як була сторінка /inventory).
-  useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
+  const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = (searchParams.get('tab') === 'stock' ? 'stock' : 'documents') as StockTab;
+
+  // RECEPTIONIST допущений до обгортки заради «Залишків», але backend /stock-documents
+  // 403-ить для нього → вкладку «Документи складу» приховуємо і форсуємо активну «stock».
+  const canSeeDocuments = !!employee && DOCS_TAB_ROLES.includes(employee.role);
+  const visibleTabs = canSeeDocuments ? STOCK_TABS : STOCK_TABS.filter(t => t.key === 'stock');
+  const requestedTab: StockTab = searchParams.get('tab') === 'stock' ? 'stock' : 'documents';
+  const tab: StockTab = canSeeDocuments ? requestedTab : 'stock';
+
   const setTab = (t: StockTab) =>
     router.replace(t === 'documents' ? '/stock-documents' : `/stock-documents?tab=${t}`, {
       scroll: false,
@@ -920,7 +932,7 @@ function StockTabsShell() {
       </div>
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {STOCK_TABS.map(t => (
+        {visibleTabs.map(t => (
           <button
             key={t.key}
             onMouseEnter={() => {
