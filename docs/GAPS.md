@@ -111,6 +111,9 @@ T6/T7/T8 (security fast-fixes) → T4/T15/T16 (deploy) → T9/T10/T11 (frontend 
 | A4  | Provider-registry через multi-provider DI-токен замість конкретних класів (OCP+DIP)                    | Середній | 🟢     |
 | A5  | Спільний DTO/FSM-контракт у @sto/shared (Zod через nestjs-zod) — усунути ручне дзеркалення             | Середній | 🟢     |
 
+**A5-money закрито (a465f20b):** формула ПДВ (calcVatOnBase) — єдине джерело у common/utils/vat;
+WO.recalcTotals + invoices.lineVatTotals делегують. Прибрано 3-ю inline-копію (drift-ризик грошей).
+
 **A5 закрито (98bbe7a8):** gate-множини (EDITABLE/SHAREABLE/INVOICEABLE) з єдиним джерелом у
 @sto/shared (backend імпортує); FSM-transition-мапа під regression-guard (fsm.contract.spec). nestjs-zod DTO-міграція — окремий фоллоу (більший обсяг).
 
