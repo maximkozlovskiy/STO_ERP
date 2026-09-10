@@ -257,6 +257,8 @@ export function NavEditor({ role, nav, onClose }: NavEditorProps) {
           <button
             onClick={addSection}
             disabled={!newSectionName.trim()}
+            title="Додати розділ"
+            aria-label="Додати розділ"
             className="h-7 px-2 flex items-center gap-1 rounded-md bg-primary hover:bg-primary-hover text-white text-[12px] disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
