@@ -6,6 +6,7 @@ import { initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { AuditService } from '../audit/audit.service';
+import { CounterpartyStatusesService } from '../counterparty-statuses/counterparty-statuses.service';
 import {
   ContractResponseDto,
   CounterpartyQueryDto,
@@ -37,6 +38,7 @@ export class CounterpartiesService {
     private readonly prisma: PrismaService,
     private readonly documentNumberService: DocumentNumberService,
     private readonly audit: AuditService,
+    private readonly counterpartyStatuses: CounterpartyStatusesService,
   ) {}
 
   async findAll(orgId: string, query: CounterpartyQueryDto): Promise<PaginatedCounterpartiesDto> {
@@ -106,10 +108,77 @@ export class CounterpartiesService {
   async findOne(orgId: string, id: string): Promise<CounterpartyResponseDto> {
     const item = await this.prisma.counterparty.findFirst({
       where: { id, orgId, deletedAt: null },
-      include: { settlementAccount: { select: { balance: true } } },
+      include: {
+        settlementAccount: { select: { balance: true } },
+        statusLinks: {
+          select: { status: { select: { id: true, name: true, color: true, deletedAt: true } } },
+        },
+      },
     });
     if (!item) throw new NotFoundException('Контрагента не знайдено');
     return this.toDto(item, true);
+  }
+
+  /** Призначити статус-мітку контрагенту (M:N). Валідує, що обидва належать org. Ідемпотентно (P2002→no-op). */
+  async assignStatus(
+    orgId: string,
+    counterpartyId: string,
+    statusId: string,
+    userId?: string,
+  ): Promise<CounterpartyResponseDto> {
+    const [cp, status] = await Promise.all([
+      this.prisma.counterparty.findFirst({
+        where: { id: counterpartyId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.counterpartyStatus.findFirst({
+        where: { id: statusId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!status) throw new NotFoundException('Статус не знайдено');
+
+    // Ідемпотентно: @@unique[counterpartyId,statusId] → повторний assign не дублює (P2002 ловимо як no-op).
+    await this.prisma.counterpartyStatusLink
+      .create({ data: { orgId, counterpartyId, statusId } })
+      .catch((e: unknown) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return;
+        throw e;
+      });
+    // counterpartyCount у кешованому довіднику статусів застаріває → скидаємо.
+    await this.counterpartyStatuses.invalidateCache(orgId);
+    if (userId) {
+      this.audit
+        .record(orgId, 'Counterparty', counterpartyId, 'UPDATE', userId, undefined, {
+          assignedStatusId: statusId,
+        })
+        .catch(() => undefined);
+    }
+    return this.findOne(orgId, counterpartyId);
+  }
+
+  /** Зняти статус-мітку з контрагента. */
+  async unassignStatus(
+    orgId: string,
+    counterpartyId: string,
+    statusId: string,
+    userId?: string,
+  ): Promise<CounterpartyResponseDto> {
+    const result = await this.prisma.counterpartyStatusLink.deleteMany({
+      where: { orgId, counterpartyId, statusId },
+    });
+    if (result.count === 0) throw new NotFoundException('Статус не призначено цьому контрагенту');
+    // counterpartyCount у кешованому довіднику статусів застаріває → скидаємо.
+    await this.counterpartyStatuses.invalidateCache(orgId);
+    if (userId) {
+      this.audit
+        .record(orgId, 'Counterparty', counterpartyId, 'UPDATE', userId, undefined, {
+          unassignedStatusId: statusId,
+        })
+        .catch(() => undefined);
+    }
+    return this.findOne(orgId, counterpartyId);
   }
 
   async create(
@@ -763,6 +832,9 @@ export class CounterpartiesService {
       updatedAt: Date;
       deletedAt?: Date | null;
       settlementAccount: { balance: Prisma.Decimal } | null;
+      statusLinks?: {
+        status: { id: string; name: string; color: string; deletedAt: Date | null };
+      }[];
     },
     includeEdrpou = false,
   ): CounterpartyResponseDto {
@@ -790,6 +862,13 @@ export class CounterpartiesService {
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
       deletedAt: item.deletedAt instanceof Date ? item.deletedAt.toISOString() : item.deletedAt,
+      // Статуси-мітки лише коли include-нуто (detail view). Фільтр deletedAt:null — soft-deleted
+      // статус приховується, але link лишається (restore відновлює призначення).
+      statuses: item.statusLinks
+        ? item.statusLinks
+            .filter(l => l.status.deletedAt === null)
+            .map(l => ({ id: l.status.id, name: l.status.name, color: l.status.color }))
+        : undefined,
     };
   }
 

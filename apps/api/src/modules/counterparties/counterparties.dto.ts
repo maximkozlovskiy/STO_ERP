@@ -155,6 +155,12 @@ export class CounterpartyResponseDto {
   @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when soft-deleted (showDeleted=true)' })
   deletedAt?: string | null;
+  @ApiPropertyOptional({
+    description: 'Призначені статуси-мітки (лише у detail view)',
+    type: 'array',
+    items: { type: 'object', properties: { id: {}, name: {}, color: {} } },
+  })
+  statuses?: { id: string; name: string; color: string }[];
 }
 
 export class PaginatedCounterpartiesDto {

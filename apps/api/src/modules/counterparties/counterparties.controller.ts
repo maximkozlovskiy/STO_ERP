@@ -31,6 +31,7 @@ import {
   UpdateCounterpartyDto,
 } from './counterparties.dto';
 import { CounterpartiesService } from './counterparties.service';
+import { AssignCounterpartyStatusDto } from '../counterparty-statuses/counterparty-statuses.dto';
 
 @ApiTags('Контрагенти')
 @Controller('counterparties')
@@ -129,6 +130,34 @@ export class CounterpartiesController {
     @Param('garageId', ParseUUIDPipe) garageId: string,
   ) {
     return this.service.removeGarage(orgId, id, garageId);
+  }
+
+  // ─── Statuses (кастомні мітки) ───────────────────────────
+
+  @Post(':id/statuses')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Призначити статус-мітку контрагенту' })
+  @ApiResponse({ status: 201, type: CounterpartyResponseDto })
+  assignStatus(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignCounterpartyStatusDto,
+  ) {
+    return this.service.assignStatus(orgId, id, dto.statusId, user?.id);
+  }
+
+  @Delete(':id/statuses/:statusId')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Зняти статус-мітку з контрагента' })
+  @ApiResponse({ status: 200, type: CounterpartyResponseDto })
+  unassignStatus(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('statusId', ParseUUIDPipe) statusId: string,
+  ) {
+    return this.service.unassignStatus(orgId, id, statusId, user?.id);
   }
 
   // ─── Contracts ───────────────────────────────────────────
