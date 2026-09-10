@@ -98,6 +98,7 @@ interface Good {
   goodType?: string | null;
   preferredSupplierId?: string | null;
   preferredSupplierName?: string | null;
+  statuses?: { id: string; name: string; color: string }[];
   deletedAt?: string | null;
 }
 interface Supplier {
@@ -146,6 +147,7 @@ const GOODS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolea
   { key: 'code', label: 'Код', defaultVisible: true },
   { key: 'sku', label: 'Артикул', defaultVisible: true },
   { key: 'name', label: 'Назва', defaultVisible: true },
+  { key: 'statuses', label: 'Статуси', defaultVisible: true },
   { key: 'brand', label: 'Бренд', defaultVisible: true },
   { key: 'category', label: 'Категорія', defaultVisible: true },
   { key: 'unit', label: 'Одиниця', defaultVisible: false },
@@ -655,6 +657,26 @@ export default function GoodsTab() {
                                 </p>
                                 {isDeleted && <Badge variant="secondary">видалено</Badge>}
                               </div>
+                            </TableCell>
+                          );
+                        if (col.key === 'statuses')
+                          return (
+                            <TableCell key="statuses">
+                              {g.statuses && g.statuses.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {g.statuses.map(s => (
+                                    <span
+                                      key={s.id}
+                                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
+                                      style={{ backgroundColor: s.color }}
+                                    >
+                                      {s.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-[13px]">—</span>
+                              )}
                             </TableCell>
                           );
                         if (col.key === 'code')

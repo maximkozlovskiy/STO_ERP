@@ -12,8 +12,9 @@ const GoodsTab = dynamic(() => import('./GoodsTab'), { ssr: false });
 const ServicesTab = dynamic(() => import('./ServicesTab'), { ssr: false });
 const UnitsTab = dynamic(() => import('./UnitsTab'), { ssr: false });
 const BrandsTab = dynamic(() => import('./BrandsTab'), { ssr: false });
+const GoodStatusesTab = dynamic(() => import('./GoodStatusesTab'), { ssr: false });
 
-type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands';
+type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands' | 'good-statuses';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'works', label: 'Роботи' },
@@ -21,6 +22,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'services', label: 'Комплексні послуги' },
   { key: 'units', label: 'Одиниці виміру' },
   { key: 'brands', label: 'Бренди' },
+  { key: 'good-statuses', label: 'Статуси товарів' },
 ];
 
 // Preload JS bundle + first API request for heavy tabs on hover
@@ -36,6 +38,9 @@ const PRELOAD_MAP: Partial<Record<Tab, () => void>> = {
   },
   brands: () => {
     void import('./BrandsTab');
+  },
+  'good-statuses': () => {
+    void import('./GoodStatusesTab');
   },
 };
 
@@ -78,6 +83,7 @@ function CatalogPageClient() {
       {tab === 'services' && <ServicesTab />}
       {tab === 'units' && <UnitsTab />}
       {tab === 'brands' && <BrandsTab />}
+      {tab === 'good-statuses' && <GoodStatusesTab />}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import { GoodBarcodeTab } from '@/components/ui/GoodBarcodeTab';
 import { GoodBatchesTab } from '@/components/ui/GoodBatchesTab';
 import { GoodUoMTab } from '@/components/ui/GoodUoMTab';
 import { GoodPriceHistoryTab } from '@/components/ui/GoodPriceHistoryTab';
+import { GoodStatusManager } from '@/components/ui/GoodStatusManager';
+import { useAuth } from '@/lib/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +121,9 @@ export function GoodEditModal({
   const isEdit = !!good;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+  const { employee } = useAuth();
+  // Призначати/знімати статуси-мітки — OWNER/ADMIN/STOREKEEPER (паритет з assign-endpoint @Roles).
+  const canManageStatuses = ['OWNER', 'ADMIN', 'STOREKEEPER'].includes(employee?.role ?? '');
 
   // ── Form state ─────────────────────────────────────────────────────────────
   const [form, setForm] = useState(EMPTY_FORM);
@@ -487,6 +492,14 @@ export function GoodEditModal({
               dirty.markDirty();
             }}
           />
+
+          {/* Статуси-мітки (лише при редагуванні наявного товару) */}
+          {isEdit && good && (
+            <div className="pt-1">
+              <label className="block text-[13px] font-medium text-foreground mb-2">Статуси</label>
+              <GoodStatusManager goodId={good.id} canManage={canManageStatuses} />
+            </div>
+          )}
         </div>
 
         {/* Tabs — only in edit mode */}
