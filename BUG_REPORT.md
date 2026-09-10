@@ -4229,3 +4229,63 @@ live curl-сценарії 1–6 ✅. Знайдено 1 баг (MEDIUM, кеш-
   тест «скидає кеш» падає.
 
 Статус: [x] виправлено
+
+## Session 2026-09-11 — Навігація: «Документи складу»→«Склад», /inventory як вкладка «Залишки»
+
+Scope: frontend-only nav-зміна (5 файлів: `nav.ts`, `stock-documents/page.tsx` таб-обгортка
+`StockTabsShell`, `inventory/InventoryTab.tsx` NEW, `inventory/page.tsx` redirect, `commands.ts`).
+Перевірено 7 сценаріїв ТЗ. tsc web ✅ 0 · eslint ✅ 0 errors · web unit 739 ✅ (baseline збережено) ·
+Playwright MCP недоступний (CONNECT_TIMEOUT) → браузерна частина **skipped**.
+
+**Логіка навігації коректна** (перевірено статично + за вихідним кодом):
+
+- Сценарій 1: default `tab='documents'` для OWNER/ADMIN/STOREKEEPER; `?tab=stock`→«Залишки». ✅
+- Сценарій 2: RECEPTIONIST — `canSeeDocuments=false` → `visibleTabs`=лише «Залишки», `tab` форсується
+  на `stock`; `StockDocumentsPageClient` (і його `useStockDocuments` запит) НЕ монтується → 403-банера
+  немає. Backend `/stock-documents` @Roles=OWNER/ADMIN/STOREKEEPER підтверджено. ✅
+- Сценарій 3: `/inventory` → `router.replace('/stock-documents?tab=stock')` у useEffect. ✅
+- Сценарій 4: InventoryTab — 3 view-режими gated через `enabled`, «Нижче мінімуму» у рядку фільтрів,
+  DetailPanel goods-only (`viewMode==='goods' && detailPanel.enabled`). ✅
+- Сценарій 5: `?type=` (inner setTypeFilter) співіснує з `?tab` (shell читає лише `tab`). ✅
+- Сценарій 6: web unit 739 зелений; tsc 0. ✅
+- Сценарій 7: command-palette `nav:stock-documents`(«Склад»)→`/stock-documents`;
+  `nav:inventory`(«Залишки на складах»)→`/stock-documents?tab=stock`. ✅
+
+Знайдено 2 баги (обидва LOW — dead code / lint), внесені сплітом файлу.
+
+### Bug #726 — dead import `fmtMoney` у stock-documents/page.tsx після виносу InventoryTab
+
+- **Severity:** LOW (lint-warning, dead code; runtime не зачеплено)
+- **Файл:** `apps/web/src/app/(app)/stock-documents/page.tsx:63`
+- **Симптом:** `import { fmtMoney, ... } from '@/lib/format'` — `fmtMoney` більше не використовується
+  у docs-клієнті. До спліту `/inventory`-вміст жив у цьому ж файлі й використовував `fmtMoney`
+  (через локальний `fmt()`); винос вмісту в `InventoryTab.tsx` лишив import мертвим.
+  ESLint: `'fmtMoney' is defined but never used`.
+- **Корінь:** split-of-file без чистки imports — класичний side-effect винесення частини компонента
+  в окремий файл (символи, що переїхали, лишаються в import старого файлу).
+- **Fix:** прибрано `fmtMoney` з import (сусіди `fmtDate`/`fmtDateTime`/`kyivToday` лишились — 5 ужитків).
+
+Статус: [x] виправлено
+
+### Bug #727 — мертвий interface `Paginated` у stock-documents/page.tsx
+
+- **Severity:** LOW (dead type, lint-warning)
+- **Файл:** `apps/web/src/app/(app)/stock-documents/page.tsx:101`
+- **Симптом:** `interface Paginated { items; total; page; limit }` оголошений, ніде не використовується
+  (пагінація йде через `useStockDocuments` hook, який має власні типи). ESLint:
+  `'Paginated' is defined but never used`. Був мертвим і до nav-зміни, але файл у scope — прибрано.
+- **Fix:** видалено невживаний interface.
+
+Статус: [x] виправлено
+
+> **Позаскоупні спостереження (НЕ виправлено — файли поза цією зміною):**
+>
+> - `TopShell.tsx:165` `PREFETCH_MAP['/inventory']` став недосяжним (map keyed по `item.href`,
+>   а `/inventory` більше не пункт nav) — мертвий, але нешкідливий; `/stock-documents` має власний prefetch.
+> - `useGlobalShortcuts.ts:69` Alt+I → `/inventory` та `dashboard/page.tsx:146,360` лінки на `/inventory`
+>   працюють через redirect (подвійний hop, не поломка). Redirect навмисне лишений сумісним із закладками/
+>   shortcuts (коментар у `inventory/page.tsx`).
+> - `/stock-items/low` @Roles НЕ включає RECEPTIONIST, а `useLowStockItems()` фаєриться eager при mount
+>   вкладки «Залишки» → 403 у фоні для RECEPTIONIST. АЛЕ помилка `low`-запиту не деструктуризується
+>   (не банериться) → UI-регресії немає; поведінка ідентична колишній сторінці `/inventory` (не введена
+>   цією зміною). Якщо потрібно — окремим тікетом gate `useLowStockItems` по ролі або дозволити RECEPTIONIST.

@@ -60,7 +60,7 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
 import { cn, UUID_RE } from '@/lib/utils';
-import { fmtMoney, fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
+import { fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -97,12 +97,6 @@ interface StockDoc {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
-}
-interface Paginated {
-  items: StockDoc[];
-  total: number;
-  page: number;
-  limit: number;
 }
 
 interface StockDocFilters extends Record<string, unknown> {
