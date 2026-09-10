@@ -44,8 +44,15 @@ E2E 16/16 · lint 0. Лишається WorksTable/PartsTable (moderate).
 
 Parts-секція (Товари/Запчастини, ~541р inline JSX) → презентаційний PartsTable з explicit typed props-bundle
 (~28 полів). JSX byte-identical (whitespace-normalized 12409 chars). Уся state/pickers/addPart лишились у модалі.
-NEW work-order/types.ts (LocalPart). Модал 3325→2802р (усього −906). tsc 0 · web-suite 717/717 · LIVE E2E 16/16
-· browser-smoke 0 console-errors. Лишається WorksTable (той самий патерн).
+NEW work-order/types.ts (LocalPart). Модал 3325→2802р. tsc 0 · web-suite 717/717 · LIVE E2E 16/16 · browser-smoke.
+
+### fe5e57d1 refactor(work-orders): винести <WorksTable> — A3-modal ПОВНІСТЮ розкладено
+
+Works-секція (Роботи, ~500р) → WorksTable з props-bundle (~31 поле). JSX byte-identical (12051 chars). Особливість:
+line-delete recalc form.plannedHours → setForm+calc-helpers threaded як props (WorkOrderFormState під модальну shape).
+types.ts +LocalLine. Модал 2802→2322р. **A3-modal: 3708→2322р (−1386): 3 хуки + PartsTable + WorksTable.**
+tsc 0 · web-suite 717/717 · LIVE E2E 16/16 · browser-smoke (Works+Parts, 0 console-errors). **A3 🟢 — обидва
+God-об'єкти (WO-service + CreateWorkOrderModal) розкладено.**
 
 ---
 
