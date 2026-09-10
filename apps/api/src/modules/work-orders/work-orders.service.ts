@@ -232,6 +232,7 @@ export class WorkOrdersService {
     if (partUomPairs.length > 0) {
       const goodUoMs = await this.prisma.goodUoM.findMany({
         where: {
+          orgId,
           unitOfMeasureId: { in: partUomPairs.map(x => x.uomId) },
           goodId: { in: partUomPairs.map(x => x.goodId) },
         },
