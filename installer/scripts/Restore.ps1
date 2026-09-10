@@ -35,9 +35,19 @@ try {
 
     $sqlFile = Get-ChildItem $tempDir -Filter 'database.sql' | Select-Object -First 1
     if ($sqlFile) {
-        Get-Content $sqlFile.FullName |
-            & docker compose exec -T postgres psql -U sto -d sto_erp
-        if ($LASTEXITCODE -ne 0) { throw "psql відновлення завершилось з помилкою" }
+        # T23: копіюємо дамп У контейнер і виконуємо psql на файлі ВСЕРЕДИНІ — БЕЗ PowerShell-pipe
+        #   (`Get-Content | psql` читав порядково й спотикався на BOM першого рядка).
+        #   Дамп зроблено з `--clean --if-exists` (Backup.ps1) → DROP ... IF EXISTS перед CREATE, тож
+        #   restore у непорожню БД не конфліктує. `-v ON_ERROR_STOP=1` → psql падає на першій помилці
+        #   (інакше часткове відновлення тихо «успішне»).
+        $pgId = (& docker compose ps -q postgres).Trim()
+        if (-not $pgId) { throw "Не знайдено контейнер postgres" }
+        & docker cp $sqlFile.FullName "${pgId}:/tmp/sto_restore.sql"
+        if ($LASTEXITCODE -ne 0) { throw "docker cp дампу у контейнер завершився з помилкою" }
+        & docker compose exec -T postgres psql -U sto -d sto_erp -v ON_ERROR_STOP=1 -f /tmp/sto_restore.sql
+        $psqlExit = $LASTEXITCODE
+        & docker compose exec -T postgres rm -f /tmp/sto_restore.sql
+        if ($psqlExit -ne 0) { throw "psql відновлення завершилось з помилкою (код $psqlExit)" }
     }
 
     # 4. Restore MinIO

@@ -20,10 +20,19 @@ New-Item -ItemType Directory -Force -Path $backupPath | Out-Null
 Set-Location $DataDir
 
 # 1. PostgreSQL dump
+# T23: pg_dump ВСЕРЕДИНІ контейнера у файл, потім docker cp — БЕЗ PowerShell-pipe.
+#   Причини: (а) `| Set-Content -Encoding UTF8` на PS 5.1 додавав BOM → psql спотикався на першому
+#   рядку при restore; (б) pipe через PowerShell псував потік (CRLF/кодування).
+#   `--clean --if-exists` → дамп містить DROP ... IF EXISTS перед CREATE → restore у непорожню БД
+#   не дає duplicate-key конфліктів (див. Restore.ps1).
 Write-Log "Резервне копіювання бази даних..."
-& docker compose exec -T postgres pg_dump -U sto sto_erp |
-    Set-Content "$backupPath\database.sql" -Encoding UTF8
+& docker compose exec -T postgres sh -c 'pg_dump -U sto --clean --if-exists sto_erp > /tmp/sto_backup.sql'
 if ($LASTEXITCODE -ne 0) { throw "pg_dump завершився з помилкою" }
+$pgId = (& docker compose ps -q postgres).Trim()
+if (-not $pgId) { throw "Не знайдено контейнер postgres" }
+& docker cp "${pgId}:/tmp/sto_backup.sql" "$backupPath\database.sql"
+if ($LASTEXITCODE -ne 0) { throw "docker cp дампу бази завершився з помилкою" }
+& docker compose exec -T postgres rm -f /tmp/sto_backup.sql
 
 # 2. .env (encrypt sensitive data)
 Write-Log "Збереження конфігурації..."

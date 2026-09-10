@@ -8,10 +8,14 @@ export interface FollowUpJob {
   orgId: string;
 }
 
-// Hard caps — prevent OOM on large fleets. T12: при досягненні cap логуємо warn (див. process),
-// щоб тиха втрата нагадувань для автопарків >1000 була видимою в логах до переходу на cursor-пагінацію.
-const MAX_SCHEDULES_PER_RUN = 1000;
-const MAX_VEHICLES_PER_RUN = 1000;
+// T12: cursor-пагінація замість hard-cap 1000. Раніше `take: 1000` ТИХО губив нагадування для
+// автопарків >1000 (лише warn). Тепер сторінкуємо по PAGE_SIZE через keyset-cursor (id), будуючи
+// дедуплікований recipients-список ІНКРЕМЕНТАЛЬНО — у пам'яті тримаємо лише одну сторінку raw-рядків
+// + унікальні-за-телефоном recipients (набагато менше), тож OOM-захист збережено без втрати даних.
+const PAGE_SIZE = 500;
+// Запобіжник від нескінченного циклу/патологічних обсягів (напр. пошкоджені дані): жорстка стеля
+// сторінок на прогін. 200 × 500 = 100k рядків/джерело — недосяжно для реального СТО; досягнення = warn.
+const MAX_PAGES = 200;
 // T13: дефолт горизонту прогнозу ТО, якщо OrganisationSettings.maintenanceForecastDays не задано.
 const MAINTENANCE_FORECAST_DEFAULT_DAYS = 14;
 
@@ -66,95 +70,9 @@ export class FollowUpProcessor extends WorkerHost {
     const cutoffDate = new Date(today);
     cutoffDate.setDate(cutoffDate.getDate() - (settings.followUpDays ?? 90));
 
-    // Maintenance schedules due within forecast window — exclude already-overdue ones
-    // (previously sent SMS daily for missed maintenance months in the past).
-    // Parallel: upcomingMaintenance + inactiveVehicles — independent reads on різні таблиці
-    // (maintenanceSchedule vs vehicle), без cross-deps. -1 RTT на кожен daily tick.
-    const [upcomingMaintenanceRaw, inactiveVehiclesRaw] = await Promise.all([
-      this.prisma.maintenanceSchedule.findMany({
-        where: {
-          orgId,
-          deletedAt: null,
-          isActive: true,
-          nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
-        },
-        include: {
-          vehicle: {
-            include: {
-              customerGarage: {
-                include: { counterparty: true },
-              },
-              // last WO branchId → per-branch SMS-конфіг (multi-branch orgs).
-              workOrders: {
-                where: { deletedAt: null },
-                orderBy: { completedAt: 'desc' },
-                take: 1,
-                select: { branchId: true },
-              },
-            },
-          },
-        },
-        take: MAX_SCHEDULES_PER_RUN,
-      }),
-      // "Inactive" vehicles — had a completed WO before cutoff but none after.
-      // Vehicles that NEVER had a completed WO are excluded — they were never our customers
-      // for that vehicle, so a "we miss you" SMS would be misleading.
-      this.prisma.vehicle.findMany({
-        where: {
-          orgId,
-          deletedAt: null,
-          workOrders: {
-            some: {
-              deletedAt: null,
-              completedAt: { not: null, lt: cutoffDate },
-            },
-            none: {
-              deletedAt: null,
-              completedAt: { gte: cutoffDate },
-            },
-          },
-        },
-        include: {
-          customerGarage: {
-            include: { counterparty: true },
-          },
-          workOrders: {
-            where: { deletedAt: null, completedAt: { not: null } },
-            orderBy: { completedAt: 'desc' },
-            take: 1,
-          },
-        },
-        take: MAX_VEHICLES_PER_RUN,
-      }),
-    ]);
-
-    const upcomingMaintenance = upcomingMaintenanceRaw.filter(
-      s =>
-        !s.vehicle.deletedAt &&
-        !s.vehicle.customerGarage.deletedAt &&
-        !s.vehicle.customerGarage.counterparty.deletedAt,
-    );
-
-    if (upcomingMaintenance.length >= MAX_SCHEDULES_PER_RUN) {
-      this.logger.warn(
-        `FollowUp org=${orgId}: maintenance schedules ліміт ${MAX_SCHEDULES_PER_RUN} досягнуто — потрібна пагінація`,
-      );
-    }
-
-    const inactiveVehicles = inactiveVehiclesRaw.filter(
-      v => !v.customerGarage.deletedAt && !v.customerGarage.counterparty.deletedAt,
-    );
-
-    if (inactiveVehicles.length >= MAX_VEHICLES_PER_RUN) {
-      this.logger.warn(
-        `FollowUp org=${orgId}: inactive vehicles ліміт ${MAX_VEHICLES_PER_RUN} досягнуто — потрібна пагінація`,
-      );
-    }
-
-    // Build deduplicated recipient list first (sync), THEN fan-out sends in parallel.
-    // Previously: 2 sequential for-await loops × N sends × ~SMS RTT = N × RTT wall-clock.
-    // Now: collectee → Promise.allSettled — limited by SMS provider connection count,
-    // not by sequential RTT. Дедуплікація phone збережена через sentTo Set.
+    // T12: cursor-пагінація. Обидва джерела (maintenanceSchedule / vehicle) сторінкуємо по PAGE_SIZE
+    // через keyset-cursor (id, orderBy id asc) і будуємо дедуплікований recipients-список
+    // ІНКРЕМЕНТАЛЬНО — без утримання всіх raw-рядків у пам'яті й без тихої втрати понад 1000.
     type Recipient = {
       phone: string;
       clientName: string;
@@ -168,40 +86,129 @@ export class FollowUpProcessor extends WorkerHost {
     const sentTo = new Set<string>();
     const recipients: Recipient[] = [];
 
-    for (const schedule of upcomingMaintenance) {
-      const phone = schedule.vehicle.customerGarage.counterparty.phone;
-      if (!phone || sentTo.has(phone)) continue;
-      sentTo.add(phone);
-      recipients.push({
-        phone,
-        clientName: this.formatName(schedule.vehicle.customerGarage.counterparty),
-        vehicleMake: schedule.vehicle.make,
-        vehicleModel: schedule.vehicle.model,
-        licensePlate: schedule.vehicle.licensePlate ?? '',
-        nextMaintenanceDate: schedule.nextMaintenanceDate
-          ? ` ${UA_DATE_FMT.format(schedule.nextMaintenanceDate)}`
-          : '',
-        branchId: schedule.vehicle.workOrders[0]?.branchId ?? null,
+    // 1) Графіки ТО у вікні прогнозу — виключаємо вже-прострочені.
+    let mCursor: string | undefined;
+    let mPages = 0;
+    for (;;) {
+      const page = await this.prisma.maintenanceSchedule.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          isActive: true,
+          nextMaintenanceDate: { gte: today, lte: todayPlusForecast },
+        },
+        include: {
+          vehicle: {
+            include: {
+              customerGarage: { include: { counterparty: true } },
+              // last WO branchId → per-branch SMS-конфіг (multi-branch orgs).
+              workOrders: {
+                where: { deletedAt: null },
+                orderBy: { completedAt: 'desc' },
+                take: 1,
+                select: { branchId: true },
+              },
+            },
+          },
+        },
+        orderBy: { id: 'asc' },
+        take: PAGE_SIZE,
+        ...(mCursor ? { cursor: { id: mCursor }, skip: 1 } : {}),
       });
+      if (page.length === 0) break;
+      mCursor = page[page.length - 1].id;
+
+      for (const schedule of page) {
+        // soft-delete guards на пов'язаних сутностях (Prisma include не фільтрує per-relation deletedAt).
+        if (
+          schedule.vehicle.deletedAt ||
+          schedule.vehicle.customerGarage.deletedAt ||
+          schedule.vehicle.customerGarage.counterparty.deletedAt
+        ) {
+          continue;
+        }
+        const phone = schedule.vehicle.customerGarage.counterparty.phone;
+        if (!phone || sentTo.has(phone)) continue;
+        sentTo.add(phone);
+        recipients.push({
+          phone,
+          clientName: this.formatName(schedule.vehicle.customerGarage.counterparty),
+          vehicleMake: schedule.vehicle.make,
+          vehicleModel: schedule.vehicle.model,
+          licensePlate: schedule.vehicle.licensePlate ?? '',
+          nextMaintenanceDate: schedule.nextMaintenanceDate
+            ? ` ${UA_DATE_FMT.format(schedule.nextMaintenanceDate)}`
+            : '',
+          branchId: schedule.vehicle.workOrders[0]?.branchId ?? null,
+        });
+      }
+
+      if (page.length < PAGE_SIZE) break;
+      if (++mPages >= MAX_PAGES) {
+        this.logger.warn(
+          `FollowUp org=${orgId}: досягнуто MAX_PAGES(${MAX_PAGES}) для maintenance — можливі пошкоджені дані`,
+        );
+        break;
+      }
     }
 
-    for (const vehicle of inactiveVehicles) {
-      const phone = vehicle.customerGarage.counterparty.phone;
-      if (!phone || sentTo.has(phone)) continue;
-      // Defensive: only proceed if last completed WO is actually before cutoff (DB filter guarantees this,
-      // but we double-check in case workOrders include was overridden).
-      const lastWO = vehicle.workOrders[0];
-      if (!lastWO?.completedAt || lastWO.completedAt >= cutoffDate) continue;
-      sentTo.add(phone);
-      recipients.push({
-        phone,
-        clientName: this.formatName(vehicle.customerGarage.counterparty),
-        vehicleMake: vehicle.make,
-        vehicleModel: vehicle.model,
-        licensePlate: vehicle.licensePlate ?? '',
-        nextMaintenanceDate: '',
-        branchId: lastWO.branchId ?? null,
+    // 2) "Inactive" авто — мали завершений наряд ДО cutoff, але жодного ПІСЛЯ. Авто, що НІКОЛИ не
+    //    мали завершеного наряду, виключено (не наші клієнти для цього авто).
+    let vCursor: string | undefined;
+    let vPages = 0;
+    for (;;) {
+      const page = await this.prisma.vehicle.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          workOrders: {
+            some: { deletedAt: null, completedAt: { not: null, lt: cutoffDate } },
+            none: { deletedAt: null, completedAt: { gte: cutoffDate } },
+          },
+        },
+        include: {
+          customerGarage: { include: { counterparty: true } },
+          workOrders: {
+            where: { deletedAt: null, completedAt: { not: null } },
+            orderBy: { completedAt: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: { id: 'asc' },
+        take: PAGE_SIZE,
+        ...(vCursor ? { cursor: { id: vCursor }, skip: 1 } : {}),
       });
+      if (page.length === 0) break;
+      vCursor = page[page.length - 1].id;
+
+      for (const vehicle of page) {
+        if (vehicle.customerGarage.deletedAt || vehicle.customerGarage.counterparty.deletedAt) {
+          continue;
+        }
+        const phone = vehicle.customerGarage.counterparty.phone;
+        if (!phone || sentTo.has(phone)) continue;
+        // Defensive: last completed WO дійсно до cutoff (DB-фільтр гарантує, але подвійна перевірка).
+        const lastWO = vehicle.workOrders[0];
+        if (!lastWO?.completedAt || lastWO.completedAt >= cutoffDate) continue;
+        sentTo.add(phone);
+        recipients.push({
+          phone,
+          clientName: this.formatName(vehicle.customerGarage.counterparty),
+          vehicleMake: vehicle.make,
+          vehicleModel: vehicle.model,
+          licensePlate: vehicle.licensePlate ?? '',
+          nextMaintenanceDate: '',
+          branchId: lastWO.branchId ?? null,
+        });
+      }
+
+      if (page.length < PAGE_SIZE) break;
+      if (++vPages >= MAX_PAGES) {
+        this.logger.warn(
+          `FollowUp org=${orgId}: досягнуто MAX_PAGES(${MAX_PAGES}) для inactive vehicles — можливі пошкоджені дані`,
+        );
+        break;
+      }
     }
 
     let sendErrors = 0;

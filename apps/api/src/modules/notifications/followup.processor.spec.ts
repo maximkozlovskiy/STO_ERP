@@ -246,6 +246,52 @@ describe('FollowUpProcessor.handleSendReminders', () => {
     );
   });
 
+  it('cursor-пагінація: збирає отримувачів з КІЛЬКОХ сторінок maintenance (>PAGE_SIZE)', async () => {
+    // T12: раніше `take: 1000` тихо губив нагадування для автопарків >1000. Тепер keyset-cursor.
+    // Мок поважає cursor-аргумент: повна сторінка (PAGE_SIZE=500) → друга (коротка) сторінка → break.
+    const PAGE_SIZE = 500;
+    prisma.organisationSettings.findFirst.mockResolvedValue({
+      followUpActive: true,
+      followUpDays: 90,
+    });
+    prisma.garageBranch.findFirst.mockResolvedValue({ id: 'br-1' });
+
+    const mkSchedule = (n: number) =>
+      schedule({
+        id: `sch-${String(n).padStart(4, '0')}`,
+        vehicle: vehicle({
+          id: `veh-${n}`,
+          licensePlate: `PLATE-${n}`,
+          customerGarage: {
+            id: `cg-${n}`,
+            deletedAt: null,
+            // Унікальний phone на кожен запис → без дедуплікації.
+            counterparty: cp({ id: `cp-${n}`, phone: `+38067${String(n).padStart(7, '0')}` }),
+          },
+        }),
+      });
+    // Сторінка 1: рівно PAGE_SIZE (0..499) → тригерить наступний fetch. Сторінка 2: 3 записи (500..502).
+    const page1 = Array.from({ length: PAGE_SIZE }, (_, i) => mkSchedule(i));
+    const page2 = Array.from({ length: 3 }, (_, i) => mkSchedule(PAGE_SIZE + i));
+    const lastIdPage1 = page1[page1.length - 1]!.id;
+
+    prisma.maintenanceSchedule.findMany.mockImplementation(
+      async (args: { cursor?: { id: string } }) => (args.cursor ? page2 : page1),
+    );
+    prisma.vehicle.findMany.mockResolvedValue([]);
+
+    await processor.process(makeJob());
+
+    // Друга сторінка запитана з правильним keyset-cursor (останній id 1-ї сторінки, skip:1).
+    expect(prisma.maintenanceSchedule.findMany).toHaveBeenCalledTimes(2);
+    const secondCall = prisma.maintenanceSchedule.findMany.mock.calls[1][0];
+    expect(secondCall).toMatchObject({ cursor: { id: lastIdPage1 }, skip: 1, take: PAGE_SIZE });
+    // Усі 503 унікальні отримувачі (500 + 3) отримали SMS — жоден не загублений на межі сторінки.
+    expect(notifications.sendWithConfig).toHaveBeenCalledTimes(PAGE_SIZE + 3);
+    // resolveConfig — 1 раз на весь batch (спільна філія), не per-recipient/per-page.
+    expect(notifications.resolveConfig).toHaveBeenCalledTimes(1);
+  });
+
   it('дедуплікує phone — один клієнт з кількома авто отримує лише 1 SMS', async () => {
     prisma.organisationSettings.findFirst.mockResolvedValue({
       followUpActive: true,

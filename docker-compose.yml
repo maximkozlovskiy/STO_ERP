@@ -6,11 +6,19 @@ x-logging: &default-logging
     max-size: '10m'
     max-file: '5'
 
+# T16: ліміти пам'яті на КОЖЕН сервіс. Single-PC СТО (мін. 8 ГБ per Check-Requirements) — без лімітів
+# витік/сплеск у будь-якому контейнері може задушити хост. Compose v2 (не swarm) читає top-level
+# mem_limit/cpus (deploy.resources ігнорується поза swarm), тож застосовуємо їх per-service.
+# Сума лімітів (~3.4 ГБ) лишає запас під ОС+WSL2 на 8 ГБ машині; сервіси беруть менше під нормальним
+# навантаженням — це стеля, не резервування.
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     logging: *default-logging
+    mem_limit: 1g
+    cpus: 1.0
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -27,9 +35,13 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     logging: *default-logging
+    mem_limit: 512m
+    cpus: 0.5
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    # T16: maxmemory нижче mem_limit + noeviction — BullMQ-черги НЕ можна тихо витісняти
+    # (ПРРО/SMS retry — критичні), краще OOM-помилка на write, ніж мовчазна втрата job.
+    command: redis-server --appendonly yes --maxmemory 400mb --maxmemory-policy noeviction
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
 
@@ -37,6 +49,8 @@ services:
     image: minio/minio:RELEASE.2024-01-16T16-07-38Z
     restart: unless-stopped
     logging: *default-logging
+    mem_limit: 512m
+    cpus: 0.5
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
@@ -60,6 +74,8 @@ services:
     image: sto-api:${VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
+    mem_limit: 1g
+    cpus: 1.5
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -101,22 +117,41 @@ services:
     image: sto-web:${VERSION:-latest}
     restart: unless-stopped
     logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
     depends_on:
       api: { condition: service_healthy }
+    # T16: nginx:alpine віддає статику на :80; busybox wget присутній у образі.
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:80/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     logging: *default-logging
+    mem_limit: 256m
+    cpus: 0.5
     ports:
       - '80:80'
       - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
+    # T16: caddy proxy — depends_on з condition:service_healthy, щоб не приймати трафік до готовності
+    # web/api (раніше — простий list без condition → 502 у вікні старту). caddy:2-alpine має wget.
     depends_on:
-      - web
-      - api
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:80/']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres_data:
