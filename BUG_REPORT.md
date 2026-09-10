@@ -4148,3 +4148,38 @@ useValue: { invalidateCache: vi.fn() } }` додано у всі 4 providers-м�
 нового constructor-параметра у відповідний сервіс — grep конструктора vs providers-масив.
 
 Статус: [x] виправлено
+
+---
+
+## Session 2026-09-11 — Фіча «Статуси (кастомні мітки) товарів» (GoodStatus M:N)
+
+Scope: `good-statuses` модуль + `goods` assign/unassign + frontend (Каталог вкладка,
+GoodEditModal, список товарів). Backend TS ✅, web TS ✅, 95 unit-тестів ✅ (було 92, +3 регресії),
+live curl-сценарії 1–6 ✅. Знайдено 1 баг (MEDIUM, кеш-когерентність).
+
+### Bug #725 — goodCount у довіднику good-statuses завищений після soft-delete товару з міткою (stale cache)
+
+- **Severity:** MEDIUM (user-visible лічильник, не гроші/не FSM; вікно розсинхрону до TTL=300с)
+- **Файл:** `apps/api/src/modules/goods/goods.service.ts` — `remove()` та `restore()`
+- **Симптом:** `GoodStatusResponseDto.goodCount` рахується як `_count.links where good.deletedAt:null`
+  (правильно на рівні запиту), АЛЕ список `GET /good-statuses` кешується (`ref:good-statuses:<orgId>`,
+  TTL 300с). `GoodsService.remove()` (soft-delete товару) і `restore()` міняють `good.deletedAt`,
+  що зсуває значення `_count.links`, але НЕ інвалідують кеш довідника. Наслідок: після видалення
+  товару з міткою `goodCount` лишається завищеним до 5 хв (або доки assign/unassign/CRUD-статусу
+  випадково не скине кеш). `restore()` — дзеркально занижує.
+- **Доказ (live curl):** assign статусу товару → `goodCount=2`; soft-delete товару (204) →
+  `goodCount` ЛИШАВСЯ `2` (справжнє DB-значення `1`). Після фіксу: soft-delete → `goodCount`
+  одразу коректний.
+- **Корінь:** cache-write-path (`invalidateCache`) підключений лише до `assign/unassign` у
+  GoodsService, але не до `remove/restore`, хоча всі чотири операції змінюють `_count.links`
+  (assign/unassign — через сам link; remove/restore — через `good.deletedAt` у WHERE-фільтрі `_count`).
+  Той самий латентний патерн існує у CounterpartyStatuses (counterparties.remove/restore теж не
+  інвалідують) — зафіксовано як «де шукати ще», не чіпав поза scope цієї фічі.
+- **Fix:** приватний `invalidateStatusesCacheIfLabeled(orgId, goodId)` — після успішного
+  soft-delete/restore перевіряє `goodStatusLink.findFirst({orgId, goodId})`; якщо товар має мітку —
+  `goodStatuses.invalidateCache(orgId)`. Guard уникає зайвої churn на товарах без міток (спільний випадок).
+- **Регресії:** +3 unit (goods.service.spec): «товар з міткою → remove скидає кеш», «без мітки →
+  не чіпає кеш», «restore лабельованого → скидає кеш». Mutation-verify: прибрати виклик у remove →
+  тест «скидає кеш» падає.
+
+Статус: [x] виправлено

@@ -260,6 +260,10 @@ export class GoodsService {
       data: { deletedAt: new Date() },
     });
     if (result.count === 0) throw new NotFoundException('Товар не знайдено');
+    // Soft-delete товару прибирає його з goodCount (_count.links where good.deletedAt:null),
+    // але кешований довідник good-statuses тримає старе значення до TTL → скидаємо, якщо
+    // товар мав мітки (інакше лічильники завищені до 5 хв).
+    await this.invalidateStatusesCacheIfLabeled(orgId, id);
   }
 
   async restore(orgId: string, id: string, userRole?: string): Promise<GoodResponseDto> {
@@ -299,6 +303,8 @@ export class GoodsService {
       data: { deletedAt: null },
     });
     if (result.count === 0) throw new NotFoundException('Видалений товар не знайдено');
+    // Restore повертає товар у goodCount (_count.links) → скидаємо кеш довідника, якщо мав мітки.
+    await this.invalidateStatusesCacheIfLabeled(orgId, id);
     const item = await this.prisma.good.findFirstOrThrow({
       where: { id, orgId },
       include: {
@@ -307,6 +313,19 @@ export class GoodsService {
       },
     });
     return this.toDto(item, userRole);
+  }
+
+  /**
+   * Скидає кеш довідника good-statuses, якщо товар має призначені мітки. remove()/restore()
+   * змінюють `good.deletedAt`, а goodCount у довіднику рахує лише `_count.links where good.deletedAt:null`
+   * → без інвалідації кешований лічильник завищений/занижений до TTL (300с).
+   */
+  private async invalidateStatusesCacheIfLabeled(orgId: string, goodId: string): Promise<void> {
+    const hasLabel = await this.prisma.goodStatusLink.findFirst({
+      where: { orgId, goodId },
+      select: { id: true },
+    });
+    if (hasLabel) await this.goodStatuses.invalidateCache(orgId);
   }
 
   /**

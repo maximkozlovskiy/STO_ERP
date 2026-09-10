@@ -37,11 +37,14 @@ describe('GoodsService', () => {
       delete: any;
     };
     stockItem: { groupBy: any; findMany: any };
+    goodStatusLink: { findFirst: any };
     $transaction: ReturnType<typeof vi.fn>;
   };
   // Bug #534: docNumbers.next mock — без нього DI Nest падає на compile усіх 30 тестів.
   // Bug #535: дозволяє асерти на виклик з 'GOOD_INTERNAL_CODE' у create-тестах.
   let docNumbersMock: { next: ReturnType<typeof vi.fn> };
+  // Кеш-інвалідатор довідника good-statuses — remove()/restore() лабельованого товару має його викликати.
+  let goodStatusesMock: { invalidateCache: ReturnType<typeof vi.fn> };
 
   const goodRow = {
     id: 'good-1',
@@ -95,11 +98,15 @@ describe('GoodsService', () => {
         // A2: remove-guard шукає ненульовий залишок/резерв. За замовч. null (немає балансу).
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      // remove()/restore() інвалідують кеш good-statuses лише коли товар має мітку.
+      // За замовч. null (товар без міток) → cache-інвалідація не викликається.
+      goodStatusLink: { findFirst: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(),
     };
     // Bug #534: docNumbers — нова DI у GoodsService constructor з commit 9ea58b9e.
     // Default повертає 'T-000001' відповідно seed.ts (prefix='T', padding=6).
     docNumbersMock = { next: vi.fn().mockResolvedValue('T-000001') };
+    goodStatusesMock = { invalidateCache: vi.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -107,7 +114,7 @@ describe('GoodsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: docNumbersMock },
         // GoodStatusesService — DI у GoodsService для assign/unassign кеш-інвалідації.
-        { provide: GoodStatusesService, useValue: { invalidateCache: vi.fn() } },
+        { provide: GoodStatusesService, useValue: goodStatusesMock },
       ],
     }).compile();
 
@@ -219,6 +226,19 @@ describe('GoodsService', () => {
       prisma.good.findFirst.mockResolvedValueOnce(null);
       await expect(service.restore('org-1', 'missing')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    // Bug: restore лабельованого товару повертає його у goodCount → кеш good-statuses треба скинути.
+    it('відновлення товару з міткою → скидає кеш good-statuses', async () => {
+      prisma.good.findFirst
+        .mockResolvedValueOnce({ sku: 'OIL', internalCode: 'T-000001' })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.good.findFirstOrThrow.mockResolvedValueOnce(goodRow);
+      prisma.goodStatusLink.findFirst.mockResolvedValueOnce({ id: 'link-1' }); // товар має мітку
+      await service.restore('org-1', 'good-1');
+      expect(goodStatusesMock.invalidateCache).toHaveBeenCalledWith('org-1');
+    });
   });
 
   describe('remove — A2 soft-delete guard (ненульовий залишок)', () => {
@@ -238,6 +258,24 @@ describe('GoodsService', () => {
       prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
       await service.remove('org-1', 'good-1');
       expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    // Bug: soft-delete лабельованого товару має скинути кеш good-statuses, бо goodCount
+    // (_count.links where good.deletedAt:null) падає, а кешований довідник тримає старе значення до TTL.
+    it('товар з міткою → soft-delete скидає кеш good-statuses', async () => {
+      prisma.stockItem.findFirst.mockResolvedValueOnce(null);
+      prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.goodStatusLink.findFirst.mockResolvedValueOnce({ id: 'link-1' }); // товар має мітку
+      await service.remove('org-1', 'good-1');
+      expect(goodStatusesMock.invalidateCache).toHaveBeenCalledWith('org-1');
+    });
+
+    it('товар без мітки → soft-delete НЕ чіпає кеш good-statuses (без зайвої churn)', async () => {
+      prisma.stockItem.findFirst.mockResolvedValueOnce(null);
+      prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.goodStatusLink.findFirst.mockResolvedValueOnce(null); // мітки немає
+      await service.remove('org-1', 'good-1');
+      expect(goodStatusesMock.invalidateCache).not.toHaveBeenCalled();
     });
   });
 
