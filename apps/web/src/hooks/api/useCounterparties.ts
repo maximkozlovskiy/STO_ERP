@@ -4,6 +4,12 @@ import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export type CpType = 'CLIENT' | 'SUPPLIER' | 'BOTH';
 
+export interface CounterpartyStatusBadge {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface Counterparty {
   id: string;
   orgId?: string;
@@ -24,6 +30,8 @@ export interface Counterparty {
   bankName?: string | null;
   contactPerson?: string | null;
   taxNumber?: string | null;
+  // Кастомні статуси-мітки (M:N) — присутні лише у detail-відповіді (GET :id), не у списку.
+  statuses?: CounterpartyStatusBadge[];
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

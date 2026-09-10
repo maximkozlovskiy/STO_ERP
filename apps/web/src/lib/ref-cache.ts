@@ -31,7 +31,8 @@ export type RefCacheKey =
   | 'cache:bank-accounts'
   | 'cache:cash-registers'
   | 'cache:works'
-  | 'cache:good-categories';
+  | 'cache:good-categories'
+  | 'cache:counterparty-statuses';
 
 export function getCached<T>(key: RefCacheKey): T | null {
   if (typeof window === 'undefined') return null;

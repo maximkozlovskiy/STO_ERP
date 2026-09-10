@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'rea
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { Plus, Search, Users, Eye, EyeOff, Trash2, Pencil, X } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -80,11 +81,62 @@ const CRM_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean 
 const CRM_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(CRM_COLUMNS.map(c => c.key));
 
 // Suspense обгортка для useSearchParams — Next.js static-export вимога.
+// Верхній рівень = таб-роутер: список контрагентів + довідник статусів-міток.
 export default function CrmPage() {
   return (
     <Suspense fallback={null}>
-      <CrmPageInner />
+      <CrmTabsShell />
     </Suspense>
+  );
+}
+
+const CounterpartyStatusesTab = dynamic(() => import('./CounterpartyStatusesTab'), { ssr: false });
+
+type CrmTab = 'list' | 'statuses';
+const CRM_TABS: { key: CrmTab; label: string }[] = [
+  { key: 'list', label: 'Контрагенти' },
+  { key: 'statuses', label: 'Статуси' },
+];
+
+function CrmTabsShell() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') ?? 'list') as CrmTab;
+  const setTab = (t: CrmTab) =>
+    router.replace(t === 'list' ? '/counterparties' : `/counterparties?tab=${t}`, {
+      scroll: false,
+    });
+
+  return (
+    <div className="page-fill p-4 md:p-6">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Контрагенти</h1>
+        </div>
+      </div>
+
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
+        {CRM_TABS.map(t => (
+          <button
+            key={t.key}
+            onMouseEnter={() => {
+              if (t.key === 'statuses') void import('./CounterpartyStatusesTab');
+            }}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+              tab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'statuses' ? <CounterpartyStatusesTab /> : <CrmPageInner />}
+    </div>
   );
 }
 
@@ -365,13 +417,7 @@ function CrmPageInner() {
   ];
 
   return (
-    <div className="page-fill p-4 md:p-6">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Контрагенти</h1>
-        </div>
-      </div>
-
+    <>
       {!modal && queryError && (
         <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {queryError instanceof Error ? queryError.message : ''}
@@ -704,6 +750,6 @@ function CrmPageInner() {
         }}
       />
       <ConfirmDialog {...dialogProps} />
-    </div>
+    </>
   );
 }

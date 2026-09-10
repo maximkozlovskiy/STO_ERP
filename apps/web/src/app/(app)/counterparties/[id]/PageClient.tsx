@@ -5,8 +5,9 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
-import { useRequireAuth } from '@/lib/auth';
+import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { StatusManager } from './StatusManager';
 import { type Warranty } from '@/hooks/api/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -52,9 +53,15 @@ interface Counterparty {
   bankName?: string | null;
   contactPerson?: string | null;
   taxNumber?: string | null;
+  statuses?: CounterpartyStatusBadge[];
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string | null;
+}
+interface CounterpartyStatusBadge {
+  id: string;
+  name: string;
+  color: string;
 }
 interface Garage {
   id: string;
@@ -204,6 +211,9 @@ const CHARGE_LIKE_TX_TYPES = SETTLEMENT_TX_CHARGE_LIKE_TYPES;
 
 export default function CounterpartyCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
+  const { employee } = useAuth();
+  // Призначати/знімати статуси можуть OWNER/ADMIN/RECEPTIONIST (як assign-endpoint @Roles).
+  const canManageStatuses = ['OWNER', 'ADMIN', 'RECEPTIONIST'].includes(employee?.role ?? '');
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -600,6 +610,15 @@ export default function CounterpartyCardPage() {
               {TYPE_LABELS[cp.type] ?? cp.type}
             </Badge>
             {cp.vatPayer && <Badge variant="secondary">Платник ПДВ</Badge>}
+          </div>
+          {/* Кастомні статуси-мітки (M:N) — badge-и + керування */}
+          <div className="mt-2">
+            <StatusManager
+              counterpartyId={cp.id}
+              assigned={cp.statuses ?? []}
+              canManage={canManageStatuses}
+              onChange={loadCp}
+            />
           </div>
         </div>
         <div
