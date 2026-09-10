@@ -40,6 +40,13 @@ Footer-JSX + conflict-діалог у модалі. Верифіковано **L
 CreateWorkOrderModal 3708→3325р (усього −383, 3 хуки). tsc web 0 · 11 modal-тестів + повна web-suite 717/717 ·
 E2E 16/16 · lint 0. Лишається WorksTable/PartsTable (moderate).
 
+### 0501a8a2 refactor(work-orders): винести <PartsTable>
+
+Parts-секція (Товари/Запчастини, ~541р inline JSX) → презентаційний PartsTable з explicit typed props-bundle
+(~28 полів). JSX byte-identical (whitespace-normalized 12409 chars). Уся state/pickers/addPart лишились у модалі.
+NEW work-order/types.ts (LocalPart). Модал 3325→2802р (усього −906). tsc 0 · web-suite 717/717 · LIVE E2E 16/16
+· browser-smoke 0 console-errors. Лишається WorksTable (той самий патерн).
+
 ---
 
 ## 2026-09-10 — A3: винесено stock+settlement side-effects у WorkOrderStockEffectsService
