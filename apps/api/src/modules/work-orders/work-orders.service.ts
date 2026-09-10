@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
+import { calcVatOnBase } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1402,13 +1403,9 @@ export class WorkOrdersService {
     const totalParts = Number(partsAgg._sum.amount ?? 0);
     const totalBase = totalActualLabor + totalParts;
 
+    // A5-money: ПДВ через єдине джерело формули (common/utils/vat) — та сама математика, що в invoices.
     const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
-    const totalVat =
-      vatMode !== 'NONE' && vatRate > 0
-        ? vatMode === 'INCLUSIVE'
-          ? totalBase - totalBase / (1 + vatRate / 100)
-          : (totalBase * vatRate) / 100
-        : 0;
+    const totalVat = calcVatOnBase(totalBase, vatRate, vatMode);
 
     // WO-H2: квантуємо всі грошові суми до копійки перед записом у Decimal(12,2) —
     // інакше float-дрейф дає Σ(рядки)≠total і невірну базу для CHARGE при COMPLETED.

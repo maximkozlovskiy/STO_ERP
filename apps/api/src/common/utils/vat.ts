@@ -38,6 +38,18 @@ export function calcLineVat(
 }
 
 /**
+ * A3/A5-money: ЄДИНЕ джерело формули ПДВ на ДОКУМЕНТ-БАЗІ (сумарна база, не per-line). Раніше цю
+ * саму формулу WorkOrdersService.recalcTotals інлайнив окремо → VAT-математика не мала одного власника.
+ * INCLUSIVE → ПДВ уже в базі (виділяємо); EXCLUSIVE → ПДВ зверху; NONE/0 → 0. Результат квантовано.
+ */
+export function calcVatOnBase(base: number, vatRate: number, vatMode: VatMode): number {
+  if (vatMode === 'NONE' || vatRate === 0) return 0;
+  if (vatMode === 'INCLUSIVE') return roundMoney(base - base / (1 + vatRate / 100));
+  // EXCLUSIVE
+  return roundMoney((base * vatRate) / 100);
+}
+
+/**
  * Сумує ВЖЕ-ОБЧИСЛЕНІ per-line значення ПДВ у підсумки документа (single-pass).
  * На відміну від `calcDocVat` (перераховує з raw price/qty/vatRate/vatMode) — тут рядки
  * несуть готові `priceWithoutVat`/`vatAmount`/`priceWithVat` (напр. InvoiceLine у БД).

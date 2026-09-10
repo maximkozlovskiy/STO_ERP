@@ -4,7 +4,7 @@ import { formatPersonName } from '@sto/shared';
 
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
-import { sumLineTotals } from '../../common/utils/vat';
+import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
 import type { VatMode } from '@prisma/client';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -50,36 +50,17 @@ const INV_SORT_FIELDS: Record<string, string> = {
 };
 
 /**
- * ПДВ на РІВНІ РЯДКА (сума=qty×price), з урахуванням vatMode org. NONE→без ПДВ;
- * EXCLUSIVE→ПДВ зверху; INCLUSIVE→ПДВ уже в сумі (виділяємо). Усі суми квантуються до копійки.
- * Line-total семантика (не per-unit) — консистентно з попередньою логікою refreshFromWorkOrder.
+ * A5-money: ПДВ на РІВНІ РЯДКА (line-total семантика) через ЄДИНЕ джерело формули common/utils/vat.
+ * `calcLineVat(price=lineSum, qty=1)` — вхід трактується як готова сума рядка (не per-unit), тож
+ * priceWithoutVat/vatAmount/priceWithVat рахуються на цій сумі. Раніше формула дублювалась inline тут.
  */
 function lineVatTotals(
   lineSum: number,
   vatRate: number,
   vatMode: VatMode,
 ): { priceWithoutVat: number; vatAmount: number; priceWithVat: number } {
-  if (vatMode === 'NONE' || vatRate === 0) {
-    const s = roundMoney(lineSum);
-    return { priceWithoutVat: s, vatAmount: 0, priceWithVat: s };
-  }
-  if (vatMode === 'INCLUSIVE') {
-    const withoutVat = roundMoney(lineSum / (1 + vatRate / 100));
-    const withVat = roundMoney(lineSum);
-    return {
-      priceWithoutVat: withoutVat,
-      vatAmount: roundMoney(withVat - withoutVat),
-      priceWithVat: withVat,
-    };
-  }
-  // EXCLUSIVE
-  const withoutVat = roundMoney(lineSum);
-  const vatAmount = roundMoney(lineSum * (vatRate / 100));
-  return {
-    priceWithoutVat: withoutVat,
-    vatAmount,
-    priceWithVat: roundMoney(withoutVat + vatAmount),
-  };
+  const { priceWithoutVat, vatAmount, priceWithVat } = calcLineVat(lineSum, 1, vatRate, vatMode);
+  return { priceWithoutVat, vatAmount, priceWithVat };
 }
 
 @Injectable()
