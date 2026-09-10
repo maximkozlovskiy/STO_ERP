@@ -28,3 +28,21 @@ export interface LocalPart {
   unitOfMeasureId: string;
   unitShortName: string;
 }
+
+// Форма-стан модалки наряду. Єдине джерело правди для CreateWorkOrderModal.useState<WorkOrderFormState>
+// та WorksTable (delete-handler мутує через setForm). Раніше дублювався у WorksTable — drift-ризик.
+export interface WorkOrderFormState {
+  branchId: string;
+  vehicleId: string;
+  counterpartyId: string;
+  contractId: string;
+  liftId: string;
+  description: string;
+  priority: string;
+  repairCategory: string;
+  documentDate: string;
+  plannedStartAt: string;
+  plannedEndAt: string;
+  plannedHours: string;
+  actualHours: string;
+}

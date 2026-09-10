@@ -55,7 +55,7 @@ import { ServicePickerModal, type ServicePickerItem } from '@/components/ui/Serv
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { PartsTable } from './work-order/PartsTable';
 import { WorksTable } from './work-order/WorksTable';
-import type { LocalPart, LocalLine } from './work-order/types';
+import type { LocalPart, LocalLine, WorkOrderFormState } from './work-order/types';
 import { Tooltip } from '@/components/ui/tooltip';
 import {
   LinkedDocumentsPanel,
@@ -316,7 +316,7 @@ export function CreateWorkOrderModal({
   onMinimize,
 }: Props) {
   const isEditMode = !!workOrderId;
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<WorkOrderFormState>({
     branchId: '',
     vehicleId: '',
     counterpartyId: '',

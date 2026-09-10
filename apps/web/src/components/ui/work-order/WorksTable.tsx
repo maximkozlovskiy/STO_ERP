@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type WorkPickerItem } from '@/components/ui/WorkPickerModal';
-import type { LocalLine, Employee } from './types';
+import type { LocalLine, Employee, WorkOrderFormState } from './types';
 
 export interface WorksTableProps {
   // Lines state
@@ -43,24 +43,6 @@ export interface WorksTableProps {
   setWorkPickerOpen: (v: boolean) => void;
   setEditWorkPickerOpen: (v: boolean) => void;
   setServicePickerOpen: (v: boolean) => void;
-}
-
-// Structural shape of the modal's `form` state (only the fields this table's
-// delete-side-effect touches are read; the full object is spread through).
-interface WorkOrderFormState {
-  branchId: string;
-  vehicleId: string;
-  counterpartyId: string;
-  contractId: string;
-  liftId: string;
-  description: string;
-  priority: string;
-  repairCategory: string;
-  documentDate: string;
-  plannedStartAt: string;
-  plannedEndAt: string;
-  plannedHours: string;
-  actualHours: string;
 }
 
 export function WorksTable(props: WorksTableProps) {
