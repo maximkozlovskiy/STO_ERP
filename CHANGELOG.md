@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-09-11 — Фіча: Кастомізація бокової панелі (per-user)
+
+Користувач може переставляти пункти меню (у межах розділу й між розділами), приховувати пункти й
+розділи, створювати власні розділи й наповнювати їх. «Каса» тепер остання у «Взаєморозрахунках» за
+замовчуванням. Зберігання per-user через наявний user-preferences (key `nav_layout`) — без міграції.
+
+- **nav.ts:** «Каса» → кінець розділу settlements; export `NAV_SECTION_ORDER`.
+- **nav-layout.ts (NEW):** модель `NavLayout` (hiddenItems/hiddenSections/customSections/sectionOrder/
+  itemSection/itemOrder) + `resolveNav(master, layout, role, includeHidden)` — застосовує overlay поверх
+  `MASTER_NAV_ITEMS` з FAIL-SAFE (нові master-пункти завжди зʼявляються) + `normalizeNavLayout`
+  (захист від сміття). Role-filter завжди зберігається (кастом не дає доступу).
+- **useNavConfig.ts (NEW):** хук (PUT user-preferences + localStorage TTL, configRef проти lost-update,
+  abort-dedup, offline-tolerant) — hide/show/reorder/move-between-sections/add/rename/removeSection/reset.
+- **NavEditor.tsx (NEW):** режим редагування в панелі (drag-and-drop, око-toggle, «+ Новий розділ»,
+  rename/delete, «Скинути»).
+- **TopShell:** sections-режим через `resolveNav`; кнопка «Налаштувати меню».
+
+QA: review 1 Important (a11y на add-кнопці) фікс; tester 0 багів.
+Verify: tsc web 0 · eslint 0 · web unit 739 green (22 нові) · live curl PUT/GET nav_layout round-trip.
+
+---
+
 ## 2026-09-11 — Фіча: Статуси (кастомні мітки) товарів
 
 Дзеркало статусів контрагентів — для товарів (Good). Окремий довідник, вкладка в Каталозі,

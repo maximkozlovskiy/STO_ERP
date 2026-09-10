@@ -24,17 +24,29 @@
 
 ## Hooks (apps/web/src/hooks/)
 
-| Hook                   | Файл                      | Що робить                                       |
-| ---------------------- | ------------------------- | ----------------------------------------------- |
-| `useDetailPanel`       | `useDetailPanel.ts`       | localStorage toggle для бокової панелі          |
-| `useDetailPanelConfig` | `useDetailPanelConfig.ts` | Offline-first конфіг полів (localStorage + API) |
-| `useDirtyForm`         | `useDirtyForm.ts`         | `confirmClose(): Promise<boolean>`              |
-| `useBulkSelect`        | `useBulkSelect.ts`        | Множинний вибір, auto-prune stale IDs           |
-| `useInlineEdit`        | `useInlineEdit.ts`        | Inline editing з savingRef race guard           |
-| `useSavedFilters`      | `useSavedFilters.ts`      | Пресети фільтрів в localStorage                 |
-| `useUiFeatures`        | `useUiFeatures.ts`        | 10 UX-прапорців, module-level cache + TTL       |
-| `useConflictCheck`     | `useConflictCheck.ts`     | Conflict probe для calendar slots               |
-| `useTabBar`            | `useTabBar.ts`            | activateTab/closeTab                            |
+| Hook                   | Файл                      | Що робить                                                                    |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------------------- |
+| `useDetailPanel`       | `useDetailPanel.ts`       | localStorage toggle для бокової панелі                                       |
+| `useDetailPanelConfig` | `useDetailPanelConfig.ts` | Offline-first конфіг полів (localStorage + API)                              |
+| `useDirtyForm`         | `useDirtyForm.ts`         | `confirmClose(): Promise<boolean>`                                           |
+| `useBulkSelect`        | `useBulkSelect.ts`        | Множинний вибір, auto-prune stale IDs                                        |
+| `useInlineEdit`        | `useInlineEdit.ts`        | Inline editing з savingRef race guard                                        |
+| `useSavedFilters`      | `useSavedFilters.ts`      | Пресети фільтрів в localStorage                                              |
+| `useUiFeatures`        | `useUiFeatures.ts`        | 10 UX-прапорців, module-level cache + TTL                                    |
+| `useConflictCheck`     | `useConflictCheck.ts`     | Conflict probe для calendar slots                                            |
+| `useTabBar`            | `useTabBar.ts`            | activateTab/closeTab                                                         |
+| `useNavConfig`         | `useNavConfig.ts`         | Per-user кастомізація sidebar (user-preferences `nav_layout` + localStorage) |
+
+### Патерн: per-user overlay-resolver поверх статичних дефолтів
+
+Коли треба дозволити користувачу кастомізувати статичний конфіг (порядок/приховані/групування), НЕ
+мутуючи дефолт: тримай **дефолт як єдине джерело** (напр. `MASTER_NAV_ITEMS`), а per-user зміни — як
+тонкий **overlay** (`NavLayout`: order/hidden/custom-groups/moves), і застосовуй чистою функцією
+`resolve(master, overlay, ...)`. Взірець — `lib/nav-layout.ts` (`resolveNav`). **Ключове правило —
+FAIL-SAFE:** будь-який дефолтний елемент, відсутній в overlay, ЗАВЖДИ зʼявляється (нові пункти після
+апдейту застосунку не губляться) — overlay лише перевпорядковує/ховає, ніколи не є whitelist-ом.
+Зберігати через `useDetailPanelConfig`-патерн (user-preferences generic key/value + localStorage-кеш).
+Безпекові фільтри (roles) застосовуй у resolver-і завжди — overlay не має обходити доступ.
 
 ### API Hooks (apps/web/src/hooks/api/) — вже мігровані на TanStack Query
 
