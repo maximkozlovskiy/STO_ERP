@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Plus, X, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { cn } from '@/lib/utils';
 
 interface StatusBadge {
@@ -41,6 +43,7 @@ export function StatusManager({
   onChange,
 }: StatusManagerProps) {
   const controlled = assigned !== undefined;
+  const queryClient = useQueryClient();
   const [directory, setDirectory] = useState<StatusBadge[]>([]);
   const [selfAssigned, setSelfAssigned] = useState<StatusBadge[]>([]);
   const [open, setOpen] = useState(false);
@@ -65,6 +68,8 @@ export function StatusManager({
   const afterMutation = () => {
     if (controlled) onChange?.();
     else reloadSelf();
+    // Список контрагентів показує badge-и статусів — інвалідуємо, щоб оновилися одразу.
+    queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
   };
 
   // Довідник вантажимо лениво — лише коли користувач відкриває dropdown.

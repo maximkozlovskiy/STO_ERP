@@ -84,7 +84,14 @@ export class CounterpartiesService {
     const [items, total] = await Promise.all([
       this.prisma.counterparty.findMany({
         where,
-        include: { settlementAccount: { select: { balance: true } } },
+        include: {
+          settlementAccount: { select: { balance: true } },
+          // Статуси-мітки у списку (badge-и у таблиці). edrpou лишається прихованим —
+          // toDto без includeEdrpou-прапора мапить лише statuses, не edrpou.
+          statusLinks: {
+            select: { status: { select: { id: true, name: true, color: true, deletedAt: true } } },
+          },
+        },
         orderBy:
           query.sortBy === 'createdAt'
             ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]

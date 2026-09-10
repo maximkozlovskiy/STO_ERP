@@ -74,6 +74,7 @@ const TYPE_FILTER_OPTIONS = [
 const CRM_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
   { key: 'name', label: 'Контрагент', defaultVisible: true },
   { key: 'type', label: 'Тип', defaultVisible: true },
+  { key: 'statuses', label: 'Статуси', defaultVisible: true },
   { key: 'phone', label: 'Телефон', defaultVisible: true },
   { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
   { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
@@ -652,6 +653,26 @@ function CrmPageInner() {
                               >
                                 {TYPE_LABELS[cp.type]}
                               </Badge>
+                            </TableCell>
+                          );
+                        if (col.key === 'statuses')
+                          return (
+                            <TableCell key="statuses">
+                              {cp.statuses && cp.statuses.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {cp.statuses.map(s => (
+                                    <span
+                                      key={s.id}
+                                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium text-white"
+                                      style={{ backgroundColor: s.color }}
+                                    >
+                                      {s.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-[13px]">—</span>
+                              )}
                             </TableCell>
                           );
                         if (col.key === 'phone')
