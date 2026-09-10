@@ -461,10 +461,19 @@ done
 ### §1.2 — TypeScript / API якість
 
 ```bash
-# Dead imports after page/module split (Bug #204-#205)
+# Dead imports/declarations after page/module split (Bug #204-#205, #726-#727)
 # tsconfig зазвичай має noUnusedLocals: false → tsc мовчить про неіснуючий runtime impact,
-# але мертві імпорти псують tree-shaking + плутають code review + ламаються коли helper переноситься
+# але мертві імпорти/типи псують tree-shaking + плутають code review + ламаються коли helper переноситься
 # у privately-renamed export. Шукати кожен imported symbol чи реально вживається у файлі-споживачі.
+#
+# ПЕРВИННИЙ детектор (швидший і повніший за grep нижче): `eslint <changed files>` ловить І мертві
+# imports (Bug #726 fmtMoney), І мертві ЛОКАЛЬНІ декларації — interface/type/const (Bug #727 unused
+# `interface Paginated`), яких grep-по-import нижче НЕ бачить. Патерн split-файлу (винесення частини
+# компонента у новий файл, напр. /inventory-вміст → InventoryTab.tsx) ЗАКОНОМІРНО лишає у старому
+# файлі і мертвий import (символ переїхав), і мертвий локальний тип (більше не потрібен). Після
+# будь-якого refactor(split)/«винести … у <NewFile>» — обов'язково `eslint` на ОБИДВА файли (донор+новий),
+# 0 warnings; будь-який `is defined but never used` у файлі-донорі = dead code внесений сплітом → прибрати.
+# Severity LOW (lint-only, runtime не зачеплено), але файл-донор у scope зміни → чистити одразу.
 for f in $(git diff HEAD --name-only | grep -E "\.(ts|tsx)$"); do
   [ -f "$f" ] || continue
   # extract imported names from { ... } imports
