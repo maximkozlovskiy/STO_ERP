@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { withTenantGuard } from './tenant-guard.extension';
 
 // Секретні поля що шифруються at-rest (Phase 4, H-2). Ключ — модель Prisma, значення —
 // список полів-секретів. Prisma-розширення шифрує їх на write і дешифрує на read.
@@ -221,8 +222,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleInit() {
     await this.$connect();
     // Apply extensions via $extends (Prisma 5 — $use was removed).
-    // syncVersion спершу (мутує write-args), потім шифрування секретних полів (H-2).
-    Object.assign(this, withFieldEncryption(withSyncVersion(this), this.encryption));
+    // A1: tenant-guard застосовується ОСТАННІМ → OUTERMOST hook (у $extends останній-застосований
+    // виконується першим): судить ОРИГІНАЛЬНІ args (orgId у where/data) ДО того, як syncVersion/encryption
+    // їх мутують; throw → inner-hooks не виконуються. Далі syncVersion (мутує write-args), тоді шифрування (H-2).
+    Object.assign(
+      this,
+      withTenantGuard(withFieldEncryption(withSyncVersion(this), this.encryption)),
+    );
   }
 
   async onModuleDestroy() {

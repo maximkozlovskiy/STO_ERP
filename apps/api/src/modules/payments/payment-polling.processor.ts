@@ -3,6 +3,7 @@ import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
 import { ProviderConfigService } from './provider-config.service';
 import { PaymentsService } from './payments.service';
@@ -50,118 +51,131 @@ export class PaymentPollingProcessor extends WorkerHost {
   }
 
   async process(job: Job<PollJob>): Promise<void> {
-    const { intentId, orgId, finalizeAttempts = 0, pollAttempts = 0 } = job.data;
+    return runWithTenant({ orgId: job.data.orgId }, async () => {
+      const { intentId, orgId, finalizeAttempts = 0, pollAttempts = 0 } = job.data;
 
-    const intent = await this.prisma.onlinePaymentIntent.findFirst({
-      where: { id: intentId, orgId, deletedAt: null },
-      select: {
-        status: true,
-        gateway: true,
-        gatewayInvoiceId: true,
-        expiresAt: true,
-        counterpartyId: true,
-        invoiceId: true,
-        amount: true,
-        workOrderId: true,
-        paymentId: true,
-      },
-    });
-    if (!intent) return; // видалено — стоп
+      const intent = await this.prisma.onlinePaymentIntent.findFirst({
+        where: { id: intentId, orgId, deletedAt: null },
+        select: {
+          status: true,
+          gateway: true,
+          gatewayInvoiceId: true,
+          expiresAt: true,
+          counterpartyId: true,
+          invoiceId: true,
+          amount: true,
+          workOrderId: true,
+          paymentId: true,
+        },
+      });
+      if (!intent) return; // видалено — стоп
 
-    // РЕКОНСИЛЯЦІЯ (MONEY-CRITICAL): якщо намір уже PAID, але Payment так і не створено
-    // (paymentId=null) — це «вікно збою»: CAS PENDING→PAID закомітився, а потім процес упав
-    // ДО payments.create (або create кинув і ми лишили PAID+error). Гроші у monobank є, а
-    // Payment/settlement — ні. Без цього блоку наступний poll робив би early-return на
-    // `status !== PENDING` і Payment не створився б НІКОЛИ. jobId-дедуп (`payment-poll-<id>`)
-    // гарантує single-flight на намір → повторний create того ж наміру не подвоїться.
-    if (intent.status === 'PAID') {
-      if (intent.paymentId) return; // Payment уже є — намір повністю завершено, стоп
-      await this.finalizePayment(intentId, orgId, intent, finalizeAttempts, /* reconcile */ true);
-      return;
-    }
-    if (intent.status !== 'PENDING') return; // FAILED/EXPIRED — термінальний, стоп
-    if (!intent.gatewayInvoiceId) return; // немає gateway-рахунку — нема що опитувати
+      // РЕКОНСИЛЯЦІЯ (MONEY-CRITICAL): якщо намір уже PAID, але Payment так і не створено
+      // (paymentId=null) — це «вікно збою»: CAS PENDING→PAID закомітився, а потім процес упав
+      // ДО payments.create (або create кинув і ми лишили PAID+error). Гроші у monobank є, а
+      // Payment/settlement — ні. Без цього блоку наступний poll робив би early-return на
+      // `status !== PENDING` і Payment не створився б НІКОЛИ. jobId-дедуп (`payment-poll-<id>`)
+      // гарантує single-flight на намір → повторний create того ж наміру не подвоїться.
+      if (intent.status === 'PAID') {
+        if (intent.paymentId) return; // Payment уже є — намір повністю завершено, стоп
+        await this.finalizePayment(intentId, orgId, intent, finalizeAttempts, /* reconcile */ true);
+        return;
+      }
+      if (intent.status !== 'PENDING') return; // FAILED/EXPIRED — термінальний, стоп
+      if (!intent.gatewayInvoiceId) return; // немає gateway-рахунку — нема що опитувати
 
-    // Жорсткий wall-clock таймаут → EXPIRED (не опитуємо вічно).
-    if (intent.expiresAt && intent.expiresAt.getTime() < Date.now()) {
-      await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
-      return;
-    }
-    // F2: запобіжник для наміру БЕЗ expiresAt — wall-clock guard вище його б не закрив, тож
-    // шлюз що ніколи не резолвиться крутив би 5с-цикл вічно. Стеля опитувань → EXPIRED.
-    if (pollAttempts >= MAX_POLL_ATTEMPTS) {
-      await this.transition(
-        intentId,
-        orgId,
-        'EXPIRED',
-        'Час на оплату вичерпано (стеля опитувань)',
-      );
-      return;
-    }
+      // Жорсткий wall-clock таймаут → EXPIRED (не опитуємо вічно).
+      if (intent.expiresAt && intent.expiresAt.getTime() < Date.now()) {
+        await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
+        return;
+      }
+      // F2: запобіжник для наміру БЕЗ expiresAt — wall-clock guard вище його б не закрив, тож
+      // шлюз що ніколи не резолвиться крутив би 5с-цикл вічно. Стеля опитувань → EXPIRED.
+      if (pollAttempts >= MAX_POLL_ATTEMPTS) {
+        await this.transition(
+          intentId,
+          orgId,
+          'EXPIRED',
+          'Час на оплату вичерпано (стеля опитувань)',
+        );
+        return;
+      }
 
-    // Резолвимо конкретний шлюз наміру (intent.gateway) + його креди per-branch (legacy-fallback).
-    const branchId = intent.workOrderId
-      ? (
-          await this.prisma.workOrder.findFirst({
-            where: { id: intent.workOrderId, orgId },
-            select: { branchId: true },
-          })
-        )?.branchId
-      : undefined;
-    const cfg = await this.providerConfig.resolveByCode(orgId, branchId, 'PAYMENT', intent.gateway);
-    const gateway = this.gateways.get(intent.gateway);
-    if (!cfg || !gateway) {
-      await this.transition(intentId, orgId, 'FAILED', 'Платіжний шлюз більше не налаштовано');
-      return;
-    }
-
-    const { status } = await this.integrationLog.wrap(
-      {
+      // Резолвимо конкретний шлюз наміру (intent.gateway) + його креди per-branch (legacy-fallback).
+      const branchId = intent.workOrderId
+        ? (
+            await this.prisma.workOrder.findFirst({
+              where: { id: intent.workOrderId, orgId },
+              select: { branchId: true },
+            })
+          )?.branchId
+        : undefined;
+      const cfg = await this.providerConfig.resolveByCode(
         orgId,
         branchId,
-        provider: intent.gateway,
-        operation: 'getStatus',
-        documentType: 'OnlinePaymentIntent',
-        documentId: intentId,
-      },
-      () =>
-        gateway.getStatus(
-          { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
-          intent.gatewayInvoiceId!,
-        ),
-    );
+        'PAYMENT',
+        intent.gateway,
+      );
+      const gateway = this.gateways.get(intent.gateway);
+      if (!cfg || !gateway) {
+        await this.transition(intentId, orgId, 'FAILED', 'Платіжний шлюз більше не налаштовано');
+        return;
+      }
 
-    if (status === 'paid') {
-      // CAS PENDING→PAID: рівно один poll виграє → створює Payment. Конкурентні → count=0 → стоп.
-      const won = await this.prisma.onlinePaymentIntent.updateMany({
-        where: { id: intentId, orgId, status: 'PENDING' },
-        data: { status: 'PAID' },
-      });
-      if (won.count === 0) return; // інший poll уже провів
-      await this.finalizePayment(intentId, orgId, intent, finalizeAttempts, /* reconcile */ false);
-      return;
-    }
+      const { status } = await this.integrationLog.wrap(
+        {
+          orgId,
+          branchId,
+          provider: intent.gateway,
+          operation: 'getStatus',
+          documentType: 'OnlinePaymentIntent',
+          documentId: intentId,
+        },
+        () =>
+          gateway.getStatus(
+            { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
+            intent.gatewayInvoiceId!,
+          ),
+      );
 
-    if (status === 'failed') {
-      await this.transition(intentId, orgId, 'FAILED', 'Оплату відхилено');
-      return;
-    }
-    if (status === 'expired') {
-      await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
-      return;
-    }
+      if (status === 'paid') {
+        // CAS PENDING→PAID: рівно один poll виграє → створює Payment. Конкурентні → count=0 → стоп.
+        const won = await this.prisma.onlinePaymentIntent.updateMany({
+          where: { id: intentId, orgId, status: 'PENDING' },
+          data: { status: 'PAID' },
+        });
+        if (won.count === 0) return; // інший poll уже провів
+        await this.finalizePayment(
+          intentId,
+          orgId,
+          intent,
+          finalizeAttempts,
+          /* reconcile */ false,
+        );
+        return;
+      }
 
-    // pending → опитати знову (з інкрементом лічильника опитувань для F2-стелі).
-    await this.pollQueue.add(
-      'poll',
-      { intentId, orgId, pollAttempts: pollAttempts + 1 },
-      {
-        delay: POLL_INTERVAL_MS,
-        jobId: `payment-poll-${intentId}`,
-        removeOnComplete: true,
-        removeOnFail: 200,
-      },
-    );
+      if (status === 'failed') {
+        await this.transition(intentId, orgId, 'FAILED', 'Оплату відхилено');
+        return;
+      }
+      if (status === 'expired') {
+        await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
+        return;
+      }
+
+      // pending → опитати знову (з інкрементом лічильника опитувань для F2-стелі).
+      await this.pollQueue.add(
+        'poll',
+        { intentId, orgId, pollAttempts: pollAttempts + 1 },
+        {
+          delay: POLL_INTERVAL_MS,
+          jobId: `payment-poll-${intentId}`,
+          removeOnComplete: true,
+          removeOnFail: 200,
+        },
+      );
+    });
   }
 
   /**

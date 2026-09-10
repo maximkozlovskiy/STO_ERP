@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 export interface PurgeJob {
@@ -27,24 +28,26 @@ export class IntegrationLogPurgeProcessor extends WorkerHost {
   }
 
   async process(job: Job<PurgeJob>): Promise<void> {
-    const { orgId } = job.data;
-    const settings = await this.prisma.organisationSettings.findUnique({
-      where: { orgId },
-      select: { integrationLogRetentionDays: true },
-    });
-    const raw = Number(settings?.integrationLogRetentionDays ?? DEFAULT_RETENTION_DAYS);
-    const days = Number.isFinite(raw)
-      ? Math.min(Math.max(Math.trunc(raw), MIN_RETENTION_DAYS), MAX_RETENTION_DAYS)
-      : DEFAULT_RETENTION_DAYS;
+    return runWithTenant({ orgId: job.data.orgId }, async () => {
+      const { orgId } = job.data;
+      const settings = await this.prisma.organisationSettings.findUnique({
+        where: { orgId },
+        select: { integrationLogRetentionDays: true },
+      });
+      const raw = Number(settings?.integrationLogRetentionDays ?? DEFAULT_RETENTION_DAYS);
+      const days = Number.isFinite(raw)
+        ? Math.min(Math.max(Math.trunc(raw), MIN_RETENTION_DAYS), MAX_RETENTION_DAYS)
+        : DEFAULT_RETENTION_DAYS;
 
-    const cutoff = addDaysKyiv(kyivToday(), -days);
-    const { count } = await this.prisma.integrationLog.deleteMany({
-      where: { orgId, createdAt: { lt: cutoff } },
+      const cutoff = addDaysKyiv(kyivToday(), -days);
+      const { count } = await this.prisma.integrationLog.deleteMany({
+        where: { orgId, createdAt: { lt: cutoff } },
+      });
+      if (count > 0) {
+        this.logger.log(
+          `IntegrationLog purge org=${orgId}: видалено ${count} (старші за ${days} дн.)`,
+        );
+      }
     });
-    if (count > 0) {
-      this.logger.log(
-        `IntegrationLog purge org=${orgId}: видалено ${count} (старші за ${days} дн.)`,
-      );
-    }
   }
 }

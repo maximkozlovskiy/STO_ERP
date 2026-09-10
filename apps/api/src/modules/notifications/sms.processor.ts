@@ -3,6 +3,7 @@ import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationChannel, NotificationEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 
 /** Один канал у fallback-ланцюзі (див. NotificationsService.ChannelStep). */
@@ -62,74 +63,76 @@ export class SmsProcessor extends WorkerHost {
    *    chain[chainIndex] (chainIndex у job.data), не рестартуючи ланцюг з нуля.
    */
   async process(job: Job<SendSmsJob>): Promise<void> {
-    const { orgId, branchId, event, chain, chainIndex } = job.data;
-    const step = chain?.[chainIndex];
-    if (!step) {
-      this.logger.warn(`SMS job без валідного кроку (chainIndex=${chainIndex}) — пропущено`);
-      return;
-    }
+    return runWithTenant({ orgId: job.data.orgId }, async () => {
+      const { orgId, branchId, event, chain, chainIndex } = job.data;
+      const step = chain?.[chainIndex];
+      if (!step) {
+        this.logger.warn(`SMS job без валідного кроку (chainIndex=${chainIndex}) — пропущено`);
+        return;
+      }
 
-    const impl = this.registry.get(step.provider);
-    if (!impl) {
-      // Невідомий провайдер — конфіг-помилка, не транзієнт. Логуємо FAILED, пробуємо наступний.
-      await this.log(orgId, branchId, event, step, 'FAILED', {
-        error: `Невідомий провайдер "${step.provider}"`,
+      const impl = this.registry.get(step.provider);
+      if (!impl) {
+        // Невідомий провайдер — конфіг-помилка, не транзієнт. Логуємо FAILED, пробуємо наступний.
+        await this.log(orgId, branchId, event, step, 'FAILED', {
+          error: `Невідомий провайдер "${step.provider}"`,
+          attempt: job.attemptsMade + 1,
+        });
+        await this.tryNext(job);
+        return;
+      }
+
+      // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
+      const apiKey = await this.resolveApiKey(orgId, branchId, step.channel);
+      if (!apiKey) {
+        await this.log(orgId, branchId, event, step, 'FAILED', {
+          error: `Не знайдено активний apiKey для ${step.channel}/${step.provider}`,
+          attempt: job.attemptsMade + 1,
+        });
+        await this.tryNext(job);
+        return;
+      }
+
+      const result = await impl.send({
+        channel: step.channel,
+        recipient: step.recipient,
+        message: step.message,
+        subject: step.subject,
+        creds: { apiKey, senderName: step.senderName },
+        externalTemplateId: step.externalTemplateId,
+      });
+
+      if (result.accepted) {
+        await this.log(orgId, branchId, event, step, 'SENT', {
+          providerMessageId: result.providerMessageId,
+          attempt: job.attemptsMade + 1,
+        });
+        this.logger.log(
+          `${step.channel} надіслано на ${maskRecipient(step.recipient)} через ${step.provider} ` +
+            `(id=${result.providerMessageId ?? '—'})`,
+        );
+        return;
+      }
+
+      // Відхилено провайдером — лог REJECTED і спроба наступного каналу.
+      await this.log(orgId, branchId, event, step, 'REJECTED', {
+        error: result.error,
         attempt: job.attemptsMade + 1,
       });
-      await this.tryNext(job);
-      return;
-    }
 
-    // T8: apiKey НЕ зберігається у job.data (Redis plaintext) — резолвимо+розшифровуємо у point-of-use.
-    const apiKey = await this.resolveApiKey(orgId, branchId, step.channel);
-    if (!apiKey) {
-      await this.log(orgId, branchId, event, step, 'FAILED', {
-        error: `Не знайдено активний apiKey для ${step.channel}/${step.provider}`,
-        attempt: job.attemptsMade + 1,
-      });
-      await this.tryNext(job);
-      return;
-    }
+      const hasNext = chainIndex + 1 < chain.length;
+      if (hasNext) {
+        this.logger.warn(
+          `${step.channel} відхилено (${result.error ?? '—'}) → fallback на ` +
+            `${chain[chainIndex + 1].channel} для ${maskRecipient(step.recipient)}`,
+        );
+        await this.tryNext(job);
+        return;
+      }
 
-    const result = await impl.send({
-      channel: step.channel,
-      recipient: step.recipient,
-      message: step.message,
-      subject: step.subject,
-      creds: { apiKey, senderName: step.senderName },
-      externalTemplateId: step.externalTemplateId,
+      // Останній канал відхилено → BullMQ retry (транзієнтна помилка провайдера/мережі).
+      throw new Error(result.error ?? `${step.channel} відхилено провайдером`);
     });
-
-    if (result.accepted) {
-      await this.log(orgId, branchId, event, step, 'SENT', {
-        providerMessageId: result.providerMessageId,
-        attempt: job.attemptsMade + 1,
-      });
-      this.logger.log(
-        `${step.channel} надіслано на ${maskRecipient(step.recipient)} через ${step.provider} ` +
-          `(id=${result.providerMessageId ?? '—'})`,
-      );
-      return;
-    }
-
-    // Відхилено провайдером — лог REJECTED і спроба наступного каналу.
-    await this.log(orgId, branchId, event, step, 'REJECTED', {
-      error: result.error,
-      attempt: job.attemptsMade + 1,
-    });
-
-    const hasNext = chainIndex + 1 < chain.length;
-    if (hasNext) {
-      this.logger.warn(
-        `${step.channel} відхилено (${result.error ?? '—'}) → fallback на ` +
-          `${chain[chainIndex + 1].channel} для ${maskRecipient(step.recipient)}`,
-      );
-      await this.tryNext(job);
-      return;
-    }
-
-    // Останній канал відхилено → BullMQ retry (транзієнтна помилка провайдера/мережі).
-    throw new Error(result.error ?? `${step.channel} відхилено провайдером`);
   }
 
   /** Ставить наступний канал ланцюга окремим job (chainIndex+1). */

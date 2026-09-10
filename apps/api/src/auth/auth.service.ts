@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import type { FastifyReply } from 'fastify';
 import { PrismaService } from '../prisma/prisma.service';
+import { runUnscoped } from '../common/tenant/tenant-context';
 import type { AuthResponseDto, JwtPayload, LoginDto } from './auth.dto';
 
 const REFRESH_COOKIE = 'sto_refresh';
@@ -30,79 +31,84 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto, res: FastifyReply): Promise<AuthResponseDto> {
-    // Find by email first; then validate orgId matches the employee's org to prevent cross-tenant auth
-    const authRecord = await this.prisma.authAccount.findFirst({
-      where: { email: dto.email, deletedAt: null },
-      include: { employee: true },
-    });
+    // A1: login здійснюється ДО автентифікації — orgId невідомий. Пошук по email та lockout-update по id
+    // легітимно без orgId-фільтра (акаунт ідентифікується email/id, tenant звіряється вручну нижче на :73).
+    // Обгортаємо весь метод у runUnscoped, щоб tenant-guard пропустив ці глобальні запити.
+    return runUnscoped(async () => {
+      // Find by email first; then validate orgId matches the employee's org to prevent cross-tenant auth
+      const authRecord = await this.prisma.authAccount.findFirst({
+        where: { email: dto.email, deletedAt: null },
+        include: { employee: true },
+      });
 
-    if (!authRecord) {
-      throw new UnauthorizedException('Невірний email або пароль');
-    }
+      if (!authRecord) {
+        throw new UnauthorizedException('Невірний email або пароль');
+      }
 
-    // B2: rate-based account lockout. Якщо акаунт заблоковано — не перевіряємо пароль зовсім
-    // (не подовжуємо вікно, не витрачаємо bcrypt). Розблокування — по спливу lockedUntil.
-    if (authRecord.lockedUntil && authRecord.lockedUntil.getTime() > Date.now()) {
-      throw new ForbiddenException(
-        'Обліковий запис тимчасово заблоковано через невдалі спроби входу. Спробуйте пізніше',
-      );
-    }
+      // B2: rate-based account lockout. Якщо акаунт заблоковано — не перевіряємо пароль зовсім
+      // (не подовжуємо вікно, не витрачаємо bcrypt). Розблокування — по спливу lockedUntil.
+      if (authRecord.lockedUntil && authRecord.lockedUntil.getTime() > Date.now()) {
+        throw new ForbiddenException(
+          'Обліковий запис тимчасово заблоковано через невдалі спроби входу. Спробуйте пізніше',
+        );
+      }
 
-    const passwordValid = await bcrypt.compare(dto.password, authRecord.passwordHash);
-    if (!passwordValid) {
-      // B2: інкремент лічильника; на порозі — блокуємо на LOCKOUT_WINDOW і скидаємо лічильник.
-      const attempts = authRecord.failedAttempts + 1;
-      const locked = attempts >= MAX_FAILED_ATTEMPTS;
-      await this.prisma.authAccount
-        .update({
-          where: { id: authRecord.id },
-          data: locked
-            ? { failedAttempts: 0, lockedUntil: new Date(Date.now() + LOCKOUT_WINDOW_MS) }
-            : { failedAttempts: attempts },
-        })
-        .catch(() => undefined); // облік невдач не має зривати відповідь 401
-      throw new UnauthorizedException('Невірний email або пароль');
-    }
+      const passwordValid = await bcrypt.compare(dto.password, authRecord.passwordHash);
+      if (!passwordValid) {
+        // B2: інкремент лічильника; на порозі — блокуємо на LOCKOUT_WINDOW і скидаємо лічильник.
+        const attempts = authRecord.failedAttempts + 1;
+        const locked = attempts >= MAX_FAILED_ATTEMPTS;
+        await this.prisma.authAccount
+          .update({
+            where: { id: authRecord.id },
+            data: locked
+              ? { failedAttempts: 0, lockedUntil: new Date(Date.now() + LOCKOUT_WINDOW_MS) }
+              : { failedAttempts: attempts },
+          })
+          .catch(() => undefined); // облік невдач не має зривати відповідь 401
+        throw new UnauthorizedException('Невірний email або пароль');
+      }
 
-    const emp = authRecord.employee;
-    if (!emp || emp.deletedAt !== null) {
-      throw new ForbiddenException('Обліковий запис заблоковано');
-    }
+      const emp = authRecord.employee;
+      if (!emp || emp.deletedAt !== null) {
+        throw new ForbiddenException('Обліковий запис заблоковано');
+      }
 
-    // Tenant guard: authAccount.orgId must match the employee's orgId
-    if (authRecord.orgId !== emp.orgId) {
-      throw new ForbiddenException('Обліковий запис заблоковано');
-    }
+      // Tenant guard: authAccount.orgId must match the employee's orgId
+      if (authRecord.orgId !== emp.orgId) {
+        throw new ForbiddenException('Обліковий запис заблоковано');
+      }
 
-    // B2: успішний вхід скидає лічильник невдач (якщо він був ненульовий).
-    if (authRecord.failedAttempts !== 0 || authRecord.lockedUntil !== null) {
-      await this.prisma.authAccount
-        .update({ where: { id: authRecord.id }, data: { failedAttempts: 0, lockedUntil: null } })
-        .catch(() => undefined);
-    }
+      // B2: успішний вхід скидає лічильник невдач (якщо він був ненульовий).
+      if (authRecord.failedAttempts !== 0 || authRecord.lockedUntil !== null) {
+        await this.prisma.authAccount
+          .update({ where: { id: authRecord.id }, data: { failedAttempts: 0, lockedUntil: null } })
+          .catch(() => undefined);
+      }
 
-    const payload: JwtPayload = {
-      sub: emp.id,
-      orgId: emp.orgId,
-      role: emp.role,
-      tokenVersion: authRecord.tokenVersion, // B1
-    };
-
-    const accessToken = this.signAccess(payload);
-    const refreshToken = this.signRefresh(payload);
-
-    this.setRefreshCookie(res, refreshToken);
-
-    return {
-      accessToken,
-      employee: {
-        id: emp.id,
+      const payload: JwtPayload = {
+        sub: emp.id,
         orgId: emp.orgId,
-        firstName: emp.firstName,
-        lastName: emp.lastName,
         role: emp.role,
-      },
-    };
+        tokenVersion: authRecord.tokenVersion, // B1
+      };
+
+      const accessToken = this.signAccess(payload);
+      const refreshToken = this.signRefresh(payload);
+
+      this.setRefreshCookie(res, refreshToken);
+
+      return {
+        accessToken,
+        employee: {
+          id: emp.id,
+          orgId: emp.orgId,
+          firstName: emp.firstName,
+          lastName: emp.lastName,
+          role: emp.role,
+        },
+      };
+    });
   }
 
   async refresh(refreshToken: string, res: FastifyReply): Promise<AuthResponseDto> {

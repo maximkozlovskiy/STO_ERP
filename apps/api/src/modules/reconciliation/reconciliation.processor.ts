@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 import { BALANCE_SIGN } from '../settlements/settlements.service';
 
 export interface ReconcileJob {
@@ -35,20 +36,22 @@ export class ReconciliationProcessor extends WorkerHost {
   private readonly logger = new Logger(ReconciliationProcessor.name);
 
   async process(job: Job<ReconcileJob>): Promise<void> {
-    const { orgId } = job.data;
-    const [stockDrift, balanceDrift, paidDrift] = await Promise.all([
-      this.checkStock(orgId),
-      this.checkBalances(orgId),
-      this.checkInvoicePaid(orgId),
-    ]);
-    const total = stockDrift + balanceDrift + paidDrift;
-    if (total === 0) {
-      this.logger.log(`Reconciliation org=${orgId}: інваріанти консистентні (0 розбіжностей)`);
-    } else {
-      this.logger.warn(
-        `Reconciliation org=${orgId}: знайдено ${total} розбіжностей (stock=${stockDrift}, balance=${balanceDrift}, paid=${paidDrift}) — див. error-логи вище`,
-      );
-    }
+    return runWithTenant({ orgId: job.data.orgId }, async () => {
+      const { orgId } = job.data;
+      const [stockDrift, balanceDrift, paidDrift] = await Promise.all([
+        this.checkStock(orgId),
+        this.checkBalances(orgId),
+        this.checkInvoicePaid(orgId),
+      ]);
+      const total = stockDrift + balanceDrift + paidDrift;
+      if (total === 0) {
+        this.logger.log(`Reconciliation org=${orgId}: інваріанти консистентні (0 розбіжностей)`);
+      } else {
+        this.logger.warn(
+          `Reconciliation org=${orgId}: знайдено ${total} розбіжностей (stock=${stockDrift}, balance=${balanceDrift}, paid=${paidDrift}) — див. error-логи вище`,
+        );
+      }
+    });
   }
 
   constructor(private readonly prisma: PrismaService) {

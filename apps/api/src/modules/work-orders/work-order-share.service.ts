@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { formatPersonName } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { runUnscoped } from '../../common/tenant/tenant-context';
 import { SHAREABLE_STATUSES } from './work-orders.fsm';
 import type { EstimatePublicDto } from './work-orders.dto';
 
@@ -68,129 +69,134 @@ export class WorkOrderShareService {
    * після переходу у CLOSED-статус посилання перестає працювати (404).
    */
   async findByShareToken(token: string): Promise<EstimatePublicDto> {
-    const wo = await this.prisma.workOrder.findFirst({
-      where: {
-        shareToken: token,
-        deletedAt: null,
-        status: { in: [...SHAREABLE_STATUSES] },
-      },
-      include: {
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        branch: { select: { name: true } },
-        lines: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          take: 500,
-          select: {
-            id: true,
-            normoHours: true,
-            price: true,
-            amount: true,
-            notes: true,
-            work: { select: { name: true } },
-          },
+    // A1: публічний неавтентифікований доступ — orgId відсутній; наряд ідентифікується за унікальним
+    // shareToken (16 байт), а не за tenant. GoodUoM-lookup нижче теж без orgId. Обгортаємо весь метод у
+    // runUnscoped, щоб tenant-guard пропустив ці легітимні tenant-less запити публічного кошторису.
+    return runUnscoped(async () => {
+      const wo = await this.prisma.workOrder.findFirst({
+        where: {
+          shareToken: token,
+          deletedAt: null,
+          status: { in: [...SHAREABLE_STATUSES] },
         },
-        parts: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          take: 500,
-          select: {
-            id: true,
-            goodId: true,
-            quantity: true,
-            price: true,
-            amount: true,
-            unitOfMeasureId: true,
-            good: {
-              select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true } } },
-            },
-          },
-        },
-      },
-    });
-    if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
-
-    // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
-    // від wo (orgId + parts.unitOfMeasureId), один від одного — ні. Раніше:
-    // sequential 2 RTT після головного findFirst. Тепер: 1 RTT паралельно.
-    // На public endpoint (share-token, без auth) це 50% TTFB save.
-    // WO-C3: lookup за (unitOfMeasureId, goodId), не за GoodUoM.id (part.unitOfMeasureId = FK на
-    // UnitOfMeasure.id). Раніше збіг був неможливий → у публічному кошторисі показувалась базова
-    // одиниця замість обраної.
-    const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
-    const partGoodIds = wo.parts.map(p => p.goodId);
-    const [org, goodUoMs] = await Promise.all([
-      this.prisma.organisation.findFirst({
-        where: { id: wo.orgId },
-        select: { name: true, logoUrl: true },
-      }),
-      uomIds.length > 0
-        ? this.prisma.goodUoM.findMany({
-            where: { unitOfMeasureId: { in: uomIds }, goodId: { in: partGoodIds } },
+        include: {
+          vehicle: { select: { make: true, model: true, licensePlate: true } },
+          counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+          branch: { select: { name: true } },
+          lines: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            take: 500,
             select: {
-              unitOfMeasureId: true,
-              goodId: true,
-              unitOfMeasure: { select: { shortName: true } },
+              id: true,
+              normoHours: true,
+              price: true,
+              amount: true,
+              notes: true,
+              work: { select: { name: true } },
             },
-          })
-        : Promise.resolve(
-            [] as {
-              unitOfMeasureId: string;
-              goodId: string;
-              unitOfMeasure: { shortName: string };
-            }[],
-          ),
-    ]);
-    const uomMap: Record<string, string> = {};
-    for (const u of goodUoMs)
-      uomMap[`${u.goodId}|${u.unitOfMeasureId}`] = u.unitOfMeasure.shortName;
+          },
+          parts: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            take: 500,
+            select: {
+              id: true,
+              goodId: true,
+              quantity: true,
+              price: true,
+              amount: true,
+              unitOfMeasureId: true,
+              good: {
+                select: { name: true, unit: true, unitOfMeasure: { select: { shortName: true } } },
+              },
+            },
+          },
+        },
+      });
+      if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
 
-    const cp = wo.counterparty;
-    const counterpartyName =
-      formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
-    const vehicleSummary = wo.vehicle
-      ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
-      : undefined;
+      // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
+      // від wo (orgId + parts.unitOfMeasureId), один від одного — ні. Раніше:
+      // sequential 2 RTT після головного findFirst. Тепер: 1 RTT паралельно.
+      // На public endpoint (share-token, без auth) це 50% TTFB save.
+      // WO-C3: lookup за (unitOfMeasureId, goodId), не за GoodUoM.id (part.unitOfMeasureId = FK на
+      // UnitOfMeasure.id). Раніше збіг був неможливий → у публічному кошторисі показувалась базова
+      // одиниця замість обраної.
+      const uomIds = wo.parts.map(p => p.unitOfMeasureId).filter((x): x is string => !!x);
+      const partGoodIds = wo.parts.map(p => p.goodId);
+      const [org, goodUoMs] = await Promise.all([
+        this.prisma.organisation.findFirst({
+          where: { id: wo.orgId },
+          select: { name: true, logoUrl: true },
+        }),
+        uomIds.length > 0
+          ? this.prisma.goodUoM.findMany({
+              where: { unitOfMeasureId: { in: uomIds }, goodId: { in: partGoodIds } },
+              select: {
+                unitOfMeasureId: true,
+                goodId: true,
+                unitOfMeasure: { select: { shortName: true } },
+              },
+            })
+          : Promise.resolve(
+              [] as {
+                unitOfMeasureId: string;
+                goodId: string;
+                unitOfMeasure: { shortName: string };
+              }[],
+            ),
+      ]);
+      const uomMap: Record<string, string> = {};
+      for (const u of goodUoMs)
+        uomMap[`${u.goodId}|${u.unitOfMeasureId}`] = u.unitOfMeasure.shortName;
 
-    return {
-      number: wo.number,
-      status: wo.status,
-      orgName: org?.name,
-      orgLogoUrl: org?.logoUrl ?? null,
-      branchName: wo.branch?.name,
-      counterpartyName,
-      vehicleSummary,
-      documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
-      description: wo.description ?? null,
-      inMileage: wo.inMileage ?? null,
-      totalLabor: Number(wo.totalLabor),
-      totalParts: Number(wo.totalParts),
-      // Public estimate shows PLANNED total: wo.totalAmount = totalActualLabor + totalParts
-      // (uses actual hours when entered). For SHAREABLE_STATUSES this is semantically wrong —
-      // the client sees an estimate, not a completion act. Compute locally as totalLabor + totalParts
-      // so row math (normoHours × price) matches the grand total.
-      totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
-      lines: wo.lines.map(l => ({
-        id: l.id,
-        workName: l.work?.name,
-        normoHours: l.normoHours,
-        price: Number(l.price),
-        amount: Number(l.amount),
-        notes: l.notes ?? null,
-      })),
-      parts: wo.parts.map(p => ({
-        id: p.id,
-        goodName: p.good?.name,
-        quantity: p.quantity,
-        unitShortName:
-          (p.unitOfMeasureId && uomMap[`${p.goodId}|${p.unitOfMeasureId}`]) ??
-          p.good?.unitOfMeasure?.shortName ??
-          p.good?.unit,
-        price: Number(p.price),
-        amount: Number(p.amount),
-      })),
-    };
+      const cp = wo.counterparty;
+      const counterpartyName =
+        formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
+      const vehicleSummary = wo.vehicle
+        ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
+        : undefined;
+
+      return {
+        number: wo.number,
+        status: wo.status,
+        orgName: org?.name,
+        orgLogoUrl: org?.logoUrl ?? null,
+        branchName: wo.branch?.name,
+        counterpartyName,
+        vehicleSummary,
+        documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
+        description: wo.description ?? null,
+        inMileage: wo.inMileage ?? null,
+        totalLabor: Number(wo.totalLabor),
+        totalParts: Number(wo.totalParts),
+        // Public estimate shows PLANNED total: wo.totalAmount = totalActualLabor + totalParts
+        // (uses actual hours when entered). For SHAREABLE_STATUSES this is semantically wrong —
+        // the client sees an estimate, not a completion act. Compute locally as totalLabor + totalParts
+        // so row math (normoHours × price) matches the grand total.
+        totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
+        lines: wo.lines.map(l => ({
+          id: l.id,
+          workName: l.work?.name,
+          normoHours: l.normoHours,
+          price: Number(l.price),
+          amount: Number(l.amount),
+          notes: l.notes ?? null,
+        })),
+        parts: wo.parts.map(p => ({
+          id: p.id,
+          goodName: p.good?.name,
+          quantity: p.quantity,
+          unitShortName:
+            (p.unitOfMeasureId && uomMap[`${p.goodId}|${p.unitOfMeasureId}`]) ??
+            p.good?.unitOfMeasure?.shortName ??
+            p.good?.unit,
+          price: Number(p.price),
+          amount: Number(p.amount),
+        })),
+      };
+    });
   }
 
   /**

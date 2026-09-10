@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { NbuFetchService } from './nbu-fetch.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 
 export interface NbuFetchJob {
   orgId: string;
@@ -17,8 +18,10 @@ export class NbuFetchProcessor extends WorkerHost {
   }
 
   async process(job: Job<NbuFetchJob>): Promise<void> {
-    const { orgId } = job.data;
-    const result = await this.nbuFetchService.fetchAndUpsertForOrg(orgId);
-    this.logger.log(`NBU fetch завершено org=${orgId}: ${JSON.stringify(result)}`);
+    return runWithTenant({ orgId: job.data.orgId }, async () => {
+      const { orgId } = job.data;
+      const result = await this.nbuFetchService.fetchAndUpsertForOrg(orgId);
+      this.logger.log(`NBU fetch завершено org=${orgId}: ${JSON.stringify(result)}`);
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { getTenantOrgId, isTenantBypassed } from '../common/tenant/tenant-context';
 import { TenantIsolationError } from './tenant-isolation.error';
 

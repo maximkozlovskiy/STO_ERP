@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { TenantIsolationError } from '../../prisma/tenant-isolation.error';
 
 /**
  * Маппінг відомих Prisma error codes у HTTP-статуси.
@@ -86,7 +87,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Внутрішня помилка сервера';
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof TenantIsolationError) {
+      // A1: забутий tenant-фільтр на tenant-моделі — це СЕРВЕРНИЙ баг (не client-error). Логуємо
+      // повну діагностику (model+operation — НІКОЛИ where/data: PII/секрети), клієнту generic 500.
+      this.logger.error(
+        `TenantIsolationError: ${exception.operation} на ${exception.model} без tenant-фільтра — ${request.method} ${request.url}`,
+        exception.stack,
+      );
+      status = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Внутрішня помилка сервера';
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const response = exception.getResponse();
       if (typeof response === 'object' && response !== null && 'message' in response) {

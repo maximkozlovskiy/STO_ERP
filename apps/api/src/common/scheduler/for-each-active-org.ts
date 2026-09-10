@@ -1,5 +1,6 @@
 import type { Logger } from '@nestjs/common';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { runUnscoped } from '../tenant/tenant-context';
 
 /**
  * Cursor-пагінований обхід усіх активних (не soft-deleted) організацій батчами.
@@ -25,13 +26,17 @@ export async function forEachActiveOrg(
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const batch = await prisma.organisation.findMany({
-      where: { deletedAt: null },
-      select: { id: true },
-      orderBy: { id: 'asc' },
-      take: batchSize,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    });
+    // A1: cross-org обхід — легітимно tenant-less (Organisation exempt, але явний runUnscoped
+    // самодокументує крос-tenant намір і прикриває майбутні tenant-моделі у цьому шляху).
+    const batch = await runUnscoped(async () =>
+      prisma.organisation.findMany({
+        where: { deletedAt: null },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+        take: batchSize,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      }),
+    );
     if (batch.length === 0) break;
 
     await handleBatch(batch.map(o => o.id));

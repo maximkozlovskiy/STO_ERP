@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runUnscoped } from '../tenant/tenant-context';
 
 /**
  * A1.3 — видаляє протерміновані IdempotencyKey (expiresAt < now). Глобальний hard-delete: рядки
@@ -18,11 +19,13 @@ export class IdempotencyPurgeProcessor extends WorkerHost {
   }
 
   async process(_job: Job): Promise<void> {
-    const { count } = await this.prisma.idempotencyKey.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
+    return runUnscoped(async () => {
+      const { count } = await this.prisma.idempotencyKey.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      });
+      if (count > 0) {
+        this.logger.log(`IdempotencyKey purge: видалено ${count} протермінованих`);
+      }
     });
-    if (count > 0) {
-      this.logger.log(`IdempotencyKey purge: видалено ${count} протермінованих`);
-    }
   }
 }

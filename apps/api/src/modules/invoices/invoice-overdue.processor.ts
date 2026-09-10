@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runWithTenant } from '../../common/tenant/tenant-context';
 import { kyivToday } from '../../common/utils/kyiv-date';
 
 interface OverdueJob {
@@ -24,21 +25,23 @@ export class InvoiceOverdueProcessor extends WorkerHost {
   }
 
   async process(job: Job<OverdueJob>): Promise<void> {
-    const { orgId } = job.data;
-    const today = kyivToday(); // UTC-північ Kyiv-дати; dueDate — @db.Date
+    return runWithTenant({ orgId: job.data.orgId }, async () => {
+      const { orgId } = job.data;
+      const today = kyivToday(); // UTC-північ Kyiv-дати; dueDate — @db.Date
 
-    const res = await this.prisma.invoice.updateMany({
-      where: {
-        orgId,
-        deletedAt: null,
-        status: { in: ['SENT', 'PARTIALLY_PAID'] },
-        dueDate: { not: null, lt: today },
-      },
-      data: { status: 'OVERDUE' },
+      const res = await this.prisma.invoice.updateMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          status: { in: ['SENT', 'PARTIALLY_PAID'] },
+          dueDate: { not: null, lt: today },
+        },
+        data: { status: 'OVERDUE' },
+      });
+
+      if (res.count > 0) {
+        this.logger.log(`Прострочено ${res.count} рахунк(ів) для org=${orgId}`);
+      }
     });
-
-    if (res.count > 0) {
-      this.logger.log(`Прострочено ${res.count} рахунк(ів) для org=${orgId}`);
-    }
   }
 }

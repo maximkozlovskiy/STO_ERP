@@ -24,7 +24,15 @@ export interface TenantContext {
 
 const tenantStore = new AsyncLocalStorage<TenantContext>();
 
-/** Виконує `fn` у межах tenant-scope. Вкладені виклики наслідують/перекривають зовнішній контекст. */
+/**
+ * Виконує `fn` у межах tenant-scope. Вкладені виклики наслідують/перекривають зовнішній контекст.
+ *
+ * ⚠️ КРИТИЧНО: `fn` МУСИТЬ виконати (await) Prisma-запит УСЕРЕДИНІ себе. ALS-scope тримається лише поки
+ * триває `fn` — якщо повернути lazy-PrismaPromise назовні й await-нути ПІСЛЯ, реальний запит виконається
+ * ПОЗА scope (Prisma-запити ліниві: `.findMany()` планує, а не виконує). Тому:
+ *   ✅ `runWithTenant(ctx, async () => await prisma.x.findMany(...))`
+ *   ❌ `runWithTenant(ctx, () => prisma.x.findMany(...))`  // scope вийде до виконання
+ */
 export function runWithTenant<T>(ctx: TenantContext, fn: () => T): T {
   return tenantStore.run(ctx, fn);
 }
@@ -43,6 +51,8 @@ export function isTenantBypassed(): boolean {
  * Виконує `fn` з bypass=true — guard НЕ перевіряє tenant-scope для запитів усередині.
  * Обгортати ЛИШЕ явні легітимні глобальні запити (login by email, setup, public share, cross-org).
  * Зберігає наявний orgId (щоб create-стемп усередині все ще працював, якщо orgId відомий).
+ *
+ * ⚠️ Те саме застереження, що й runWithTenant: await Prisma-запит УСЕРЕДИНІ `fn` (не повертати lazy назовні).
  */
 export function runUnscoped<T>(fn: () => T): T {
   const current = tenantStore.getStore();
