@@ -45,6 +45,48 @@ describe('whereHasTenantScope', () => {
     it('AND як одиночний обʼєкт (не масив)', () => {
       expect(whereHasTenantScope({ AND: { orgId: 'o1' } })).toBe(true);
     });
+    it('orgId як {in:[...]} — легіт cross-org batch (nbu-fetch.scheduler)', () => {
+      expect(whereHasTenantScope({ orgId: { in: ['o1', 'o2'] } })).toBe(true);
+    });
+    it('orgId як {equals:v} — позитивна рівність', () => {
+      expect(whereHasTenantScope({ orgId: { equals: 'o1' } })).toBe(true);
+    });
+    it('orgId-scalar із sibling NOT:{deletedAt} — scope дає orgId, не NOT', () => {
+      expect(whereHasTenantScope({ orgId: 'o1', NOT: { deletedAt: null } })).toBe(true);
+    });
+    it('orgId-scalar із sibling NOT:{id} (unique-recheck pattern)', () => {
+      expect(whereHasTenantScope({ orgId: 'o1', name: 'a', NOT: { id: 'z' } })).toBe(true);
+    });
+  });
+
+  // A1 leak-fix (Bug: guard приймав НЕГАТИВНІ/діапазонні orgId-фільтри як scope → крос-tenant витік).
+  // Позитивна рівність (scalar/in/equals) прив'язує рядок до орендаря; негація/діапазон — матчить ЧУЖІ.
+  describe('leak-вектори (НЕГАТИВНИЙ orgId-фільтр → guard МУСИТЬ кинути)', () => {
+    it('orgId:{not:X} — негація матчить УСІ інші tenant-и', () => {
+      expect(whereHasTenantScope({ orgId: { not: 'other-org' } })).toBe(false);
+    });
+    it('orgId:{notIn:[...]} — негація множини', () => {
+      expect(whereHasTenantScope({ orgId: { notIn: ['a'] } })).toBe(false);
+    });
+    it('orgId:{gt/lt/gte/lte} — діапазон охоплює чужі tenant-и', () => {
+      expect(whereHasTenantScope({ orgId: { gt: '0' } })).toBe(false);
+      expect(whereHasTenantScope({ orgId: { lte: 'z' } })).toBe(false);
+    });
+    it('NOT:{orgId:X} — негований tenant-фільтр (матчить УСІ інші org)', () => {
+      expect(whereHasTenantScope({ NOT: { orgId: 'x' } })).toBe(false);
+    });
+    it('branchId:{not:X} — те саме для branchId', () => {
+      expect(whereHasTenantScope({ branchId: { not: 'b' } })).toBe(false);
+    });
+    it('orgId:null — NOT NULL колонка, {null} матчить 0 рядків, не scope', () => {
+      expect(whereHasTenantScope({ orgId: null })).toBe(false);
+    });
+    it('orgId:{in:[]} — порожня множина не є позитивним tenant-binding', () => {
+      expect(whereHasTenantScope({ orgId: { in: [] } })).toBe(false);
+    });
+    it('nested composite key з orgId:undefined (забутий tenant-токен у ключі)', () => {
+      expect(whereHasTenantScope({ orgId_email: { orgId: undefined, email: 'x' } })).toBe(false);
+    });
   });
 
   describe('відхиляє (немає tenant-scope → guard кине)', () => {

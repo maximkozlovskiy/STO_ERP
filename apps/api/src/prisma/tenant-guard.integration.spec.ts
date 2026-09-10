@@ -108,6 +108,70 @@ describe('tenant-guard extension (integration, live DB)', () => {
     ).rejects.toBeInstanceOf(TenantIsolationError);
   });
 
+  it('DELETE по {id} БЕЗ orgId → кидає (fail-closed на видаленні)', async () => {
+    if (!dbAvailable) return;
+    await expect(guarded.workOrder.delete({ where: { id: orgId } })).rejects.toBeInstanceOf(
+      TenantIsolationError,
+    );
+  });
+
+  it('deleteMany БЕЗ orgId → кидає (масове видалення без tenant-scope)', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.workOrder.deleteMany({ where: { deletedAt: null } }),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+
+  it('groupBy БЕЗ orgId → кидає (агрегація крос-tenant заборонена)', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.workOrder.groupBy({ by: ['status'], where: { deletedAt: null }, _count: true }),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+
+  it('groupBy З orgId → проходить', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.workOrder.groupBy({
+        by: ['status'],
+        where: { orgId, deletedAt: null },
+        _count: true,
+      }),
+    ).resolves.toBeInstanceOf(Array);
+  });
+
+  it('leak-вектор: READ orgId:{not:X} → кидає (негація не є tenant-scope)', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.workOrder.findMany({ where: { orgId: { not: orgId }, deletedAt: null }, take: 1 }),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+
+  it('leak-вектор: READ NOT:{orgId} → кидає (негований tenant-фільтр)', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.workOrder.findMany({ where: { NOT: { orgId }, deletedAt: null }, take: 1 }),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+
+  it('cross-org batch: READ orgId:{in:[...]} → проходить (легіт nbu-scheduler patttern)', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.organisationSettings.findMany({ where: { orgId: { in: [orgId] } } }),
+    ).resolves.toBeInstanceOf(Array);
+  });
+
+  it('UPSERT: create БЕЗ orgId + БЕЗ ambient → кидає (справжній пропуск tenant-контексту)', async () => {
+    if (!dbAvailable) return;
+    await expect(
+      guarded.counterparty.upsert({
+        where: { id: '00000000-0000-0000-0000-000000000000' },
+        create: { type: 'CLIENT', firstName: 'upsert-fail', phone: '+380000000003' },
+        update: {},
+      }),
+    ).rejects.toBeInstanceOf(TenantIsolationError);
+  });
+
   it('exempt-модель (Organisation за {id}) → проходить', async () => {
     if (!dbAvailable) return;
     await expect(

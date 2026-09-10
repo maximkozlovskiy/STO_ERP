@@ -3987,3 +3987,48 @@ Scope: 3 закритих backlog-пункти (HEAD~4..HEAD). ФОКУС за �
 - **C1b settings audit (CLEAN):** `auditSettings` best-effort `.catch` (reject лише warn-логується, мутація завершується) + `if (!userId) return` gate — verified тестом (record reject не ламає createTaxRate). createTaxRate/updateTaxRate/deleteTaxRate передають коректні old/new (deleteTaxRate old=`{name}`; update new=`{...dto}` — свідомо без before-snapshot, але diff не хибний бо old=undefined → `{new: dto}`, не фейкове «→undefined» як у #719). updateOrganisationSettings/updateBranchSettings аудитять з коректним entityType/id.
 - **pricing-rules controller (CLEAN):** `auditRule` викликається ПІСЛЯ inline-write у create/update/remove (id з write-результату у create; `if(res.count===0) throw` перед audit у remove — verified тестом що 404 не аудитить). userId завжди gated (`if(!userId) return` у auditRule + `user?.id` у виклику). best-effort `.catch`.
 - **Docker (CLEAN):** `Setup-Stack.ps1` + `Update.ps1` — PowerShell AST parse-check (`[Parser]::ParseFile`) 0 помилок. `-Version` прокидання коректне: обидва ставлять `$env:VERSION = $Version` перед `docker compose up` + пишуть/оновлюють `.env` (`VERSION=$Version`, regex-replace якщо є, Add-Content якщо нема). Update.ps1 rollback-логіка: `$previousVersion` з `.env` ДО оновлення, при провалі health-check → `$env:VERSION = $previousVersion` + up (offline-first: локальний образ, pull лише як fallback). Guard проти self-rollback (previous==target).
+
+## Session 2026-09-10 — bug-hunt A1 tenant-isolation guard (db8f0e64 / 7a382075 / c6a1a9eb / fa2508dd)
+
+Кут: guard-логіка `whereHasTenantScope`, 29 orgId-update-сайтів, upsert-refine, 2 share-token runUnscoped-шляхи, ALS await-inside інваріант у 12 процесорах + 4 глобальних сайтах.
+
+### Bug #721 (CRITICAL — guard приймав НЕГАТИВНИЙ/діапазонний orgId-фільтр як tenant-scope → крос-tenant витік) — [x] виправлено
+
+**Файл:** `apps/api/src/prisma/tenant-guard.extension.ts` (`whereHasTenantScope` + `hasDirectTenantToken`)
+
+**Симптом:** `hasDirectTenantToken` рахував токен присутнім за єдиним критерієм `obj[t] !== undefined`. Тому guard **пропускав** (повертав `true` → НЕ кидав) такі where-shape:
+
+- `{ orgId: { not: 'X' } }` → матчить УСІ ІНШІ tenant-и;
+- `{ orgId: { notIn: [...] } }`, `{ orgId: { gt/gte/lt/lte: ... } }` → негація/діапазон охоплює чужі org;
+- `{ NOT: { orgId: 'x' } }` → частина (2) сканувала `NOT` як «composite-unique ключ з orgId» → негований tenant-фільтр приймався як scope;
+- `{ branchId: { not: 'b' } }` — те саме для branchId;
+- `{ orgId: null }` — `null !== undefined` → приймалось (benign: NOT NULL колонка матчить 0 рядків, але хибно-позитивно).
+
+Це **defeat fail-closed**: увесь сенс A1 — гучний збій на забутому tenant-фільтрі, а негований orgId-фільтр тихо його обходив. Латентний (жоден поточний код не пише `orgId:{not}`/`NOT:{orgId}` — усі наявні `NOT:{...}` мають sibling top-level `orgId`), але майбутній cross-org admin/report-запит `where:{ orgId:{ not: excludedOrg } }` → тихий крос-tenant leak замість throw.
+
+**Root cause:** «токен присутній» ≠ «рядок прив'язаний до конкретного орендаря». Прив'язку дає лише ПОЗИТИВНА рівність (scalar / `{in:[...]}` / `{equals}`), не негація/діапазон. Плюс частина (2) не виключала логічні комбінатори (AND/OR/**NOT**).
+
+**Фікс:**
+
+- Введено `isPositiveTenantBinding(val)`: scalar → true; `{in:[non-empty]}`/`{equals:scalar}` → true; `{not}`/`{notIn}`/`{gt/gte/lt/lte}`/`null`/`{in:[]}`/невідома-форма → false (fail-closed). `hasDirectTenantToken` тепер вимагає `isPositiveTenantBinding(obj[token])`.
+- Частина (2) (composite-key scan) пропускає `LOGICAL_KEYS = {AND, OR, NOT}` → `NOT:{orgId}` більше не рахується як composite-ключ.
+- Легіт cross-org batch `{ orgId: { in: orgIds } }` (nbu-fetch.scheduler.ts — НЕ обгорнутий у runUnscoped, покладається на guard) далі проходить.
+
+**Severity:** CRITICAL (крос-tenant data-leak через defeat fail-closed guard-а; латентний — тригериться лише негованим orgId-фільтром).
+
+**Регресія (mutation-verified):** `tenant-guard.extension.spec.ts` +14 unit (leak-вектори + позитивні in/equals/NOT-sibling кейси) — 7 leak-тестів ПАДАЮТЬ на старому коді, ПРОХОДЯТЬ на фіксі; `tenant-guard.integration.spec.ts` +11 live-DB (leak `orgId:{not}` / `NOT:{orgId}` → throw; `orgId:{in}` → pass).
+
+### Test-gap #722 (guard integration — delete/deleteMany/groupBy/upsert-throw без orgId не покривались) — [x] закрито
+
+**Файл:** `apps/api/src/prisma/tenant-guard.integration.spec.ts`
+
+**Симптом:** integration-spec покривав `findMany`/`updateMany`/`create`/`$transaction`, але НЕ `delete` (одиничне видалення без orgId), `deleteMany`, `groupBy` (агрегація крос-tenant), `upsert` з create-гілкою без orgId+ambient. Поведінка коректна (усі throw TenantIsolationError — live-probe підтвердив), але не зафіксована → тихий refactor GUARDED_WHERE_OPS міг би відкрити leak без падіння тестів.
+
+**Закрито:** +delete/deleteMany/groupBy(без orgId→throw, з orgId→pass)/upsert(create без orgId+ambient→throw). Усі проти живої dev-БД.
+
+### Перевірено ЧИСТИМ (0 дефектів):
+
+- **29 orgId-update-сайтів (CLEAN):** кожен money-critical сайт (payment-polling.processor OnlinePaymentIntent updateMany/update; cash-shift.service; online-payment.service; inventory StockMovement; work-orders WorkOrderPart; invoices InvoiceLine) — id завжди fetched у ТОМУ Ж orgId-scope (`findFirst({id, orgId})` або `job.data.orgId` через `runWithTenant`), тож додавання orgId у where — behaviorally-neutral no-op фільтр, НЕ змінює row-count. Жоден cross-org admin-flow не порушено (усі read-then-write у межах одного orgId).
+- **upsert-refine (CLEAN):** усі 11 `.upsert(` — where-ключ або несе orgId/branchId (`orgId_goodId_warehouseId`, `branchId_channel`, `branchId_kind_provider`, `orgId_employeeId_key`, `orgId`, `branchId`), або globally-unique (`counterpartyId @unique` — LoyaltyAccount; `id`), і create-гілка стемпить/несе orgId. Крос-tenant запис неможливий у жодному.
+- **2 share-token runUnscoped-шляхи (CLEAN):** `WorkOrderShareService.findByShareToken` + `EstimateExportService.getEstimateData` — усередині runUnscoped кожен запит keys off unguessable `shareToken` (16 байт) або off `wo`-derived id (`wo.orgId`, `wo.parts[].unitOfMeasureId`), що вже належать tenant-у знайденого наряду. Жоден інший (не-share) запит у scope не тече крос-tenant.
+- **ALS await-inside інваріант (CLEAN):** усі 12 процесорів (nbu-fetch/integration-log-purge/invoice-overdue/loyalty/sms/checkbox/nova-poshta-polling/reconciliation/payment-polling/followup/webhooks/idempotency-purge) + 4 глобальні сайти (auth.service/setup.service/for-each-active-org/tenant-context.interceptor) — callback є `async` і awaits Prisma-запити УСЕРЕДИНІ; жоден не повертає unawaited lazy-PrismaPromise-ланцюг назовні (що дало б інтермітентний throw у прод поза scope).

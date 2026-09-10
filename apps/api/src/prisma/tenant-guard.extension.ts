@@ -53,20 +53,52 @@ const GUARDED_WHERE_OPS = new Set<string>([
 // напр. NotificationChannelConfig/BranchProviderConfig мають composite-unique по branchId, не orgId.
 const TENANT_TOKENS = ['orgId', 'branchId'] as const;
 
-/** Чи є у переданому об'єкті хоч один прямий tenant-токен (orgId/branchId), != undefined. */
+// Логічні комбінатори Prisma — НЕ композитні unique-ключі. Їх НЕ можна сканувати як
+// composite-key об'єкти (частина (2)): `NOT:{orgId:X}` — це НЕГАЦІЯ tenant-фільтра (матчить УСІ
+// ІНШІ tenant-и), а не scope; `OR/AND` мають власну (рекурсивну) обробку. Пропуск цих ключів у (2)
+// закриває leak-вектор `NOT:{orgId}` (guard раніше приймав його як «composite-ключ з orgId»).
+const LOGICAL_KEYS = new Set(['AND', 'OR', 'NOT']);
+
+/**
+ * Чи є значення tenant-токена ПОЗИТИВНОЮ рівністю (прив'язує рядок до конкретного орендаря)?
+ *  ✅ скаляр (`orgId: 'o1'`) — пряма рівність;
+ *  ✅ `{ in: [...] }` / `{ equals: v }` — обмежена множина/рівність (легіт cross-org batch:
+ *     nbu-fetch.scheduler `where:{ orgId:{ in: orgIds } }`);
+ *  ❌ `{ not }`, `{ notIn }`, `{ gt/gte/lt/lte }` — НЕГАЦІЯ/діапазон: матчить ЧУЖІ tenant-и →
+ *     defeat fail-closed. Такий «токен» scope НЕ дає.
+ * Позиція: невідома форма фільтр-об'єкта (без in/equals) трактується як НЕ-scope (fail-closed).
+ */
+function isPositiveTenantBinding(val: unknown): boolean {
+  if (val === undefined) return false;
+  if (val === null) return false; // orgId — NOT NULL колонка: `null` матчить 0 рядків, не scope
+  if (typeof val !== 'object') return true; // скаляр (string) — пряма рівність
+  if (Array.isArray(val)) return false;
+  const f = val as Record<string, unknown>;
+  // фільтр-об'єкт: scope лише якщо це позитивна рівність/множина (in/equals) БЕЗ негації.
+  if ('not' in f || 'notIn' in f) return false;
+  if ('gt' in f || 'gte' in f || 'lt' in f || 'lte' in f) return false;
+  if (Array.isArray(f.in) && f.in.length > 0) return true;
+  if ('equals' in f && isPositiveTenantBinding(f.equals)) return true;
+  return false;
+}
+
+/** Чи несе об'єкт хоч один ПОЗИТИВНО-зв'язаний tenant-токен (orgId/branchId рівність/in). */
 function hasDirectTenantToken(obj: Record<string, unknown>): boolean {
-  return TENANT_TOKENS.some(t => obj[t] !== undefined);
+  return TENANT_TOKENS.some(t => isPositiveTenantBinding(obj[t]));
 }
 
 /**
  * Чи несе `where` валідний tenant-scope. Приймає:
- *  1) top-level orgId/branchId (`{ orgId, deletedAt }`, `{ id, orgId }`, `{ branchId }`);
+ *  1) top-level orgId/branchId ПОЗИТИВНОЮ рівністю (`{ orgId, deletedAt }`, `{ id, orgId }`,
+ *     `{ branchId }`, `{ orgId:{ in:[...] } }`);
  *  2) composite-unique ключ-об'єкт, що містить orgId/branchId (`{ orgId_email:{...} }`,
  *     `{ branchId_channel:{...} }`) — НЕ покладаємось на назву ключа (branchId-first ключі теж є);
+ *     логічні ключі (AND/OR/NOT) з (2) ВИКЛЮЧЕНО (їх обробка окрема/рекурсивна).
  *  3) `AND`: достатньо scope у будь-якій гілці (рекурсія).
  *
  * Свідома позиція щодо `OR`: top-level `OR` без sibling top-level orgId/branchId → MISS (одна OR-гілка
- * могла б матчити чужий tenant). Форсуємо підняти tenant-токен з OR назовні.
+ * могла б матчити чужий tenant). Форсуємо підняти tenant-токен з OR назовні. `NOT:{orgId}` — теж MISS
+ * (негація tenant-фільтра матчить чужі tenant-и). Негативні/діапазонні orgId-фільтри — теж MISS.
  *
  * Експортовано для прямого unit-тестування (guard-логіка не покривається мокнутими Prisma-юнітами).
  */
@@ -74,11 +106,13 @@ export function whereHasTenantScope(where: unknown): boolean {
   if (where == null || typeof where !== 'object') return false;
   const w = where as Record<string, unknown>;
 
-  // (1) прямий top-level токен
+  // (1) прямий top-level токен (позитивна рівність/in)
   if (hasDirectTenantToken(w)) return true;
 
-  // (2) composite-unique ключ-об'єкт із вкладеним токеном
+  // (2) composite-unique ключ-об'єкт із вкладеним токеном — ЛОГІЧНІ ключі (AND/OR/NOT) пропускаємо
+  //     (інакше `NOT:{orgId}` хибно рахувався б як composite-ключ з orgId → leak-вектор).
   for (const key of Object.keys(w)) {
+    if (LOGICAL_KEYS.has(key)) continue;
     const val = w[key];
     if (val && typeof val === 'object' && !Array.isArray(val)) {
       if (hasDirectTenantToken(val as Record<string, unknown>)) return true;
@@ -92,7 +126,7 @@ export function whereHasTenantScope(where: unknown): boolean {
     if (branches.some(b => whereHasTenantScope(b))) return true;
   }
 
-  // OR свідомо НЕ дає scope сам по собі (див. docstring).
+  // OR/NOT свідомо НЕ дають scope самі по собі (див. docstring).
   return false;
 }
 
