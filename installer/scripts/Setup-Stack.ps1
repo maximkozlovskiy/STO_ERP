@@ -12,9 +12,21 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Log { param([string]$msg) Write-Host "[$(Get-Date -f 'HH:mm:ss')] $msg" }
 function New-RandomBase64 { param([int]$bytes = 32)
-    return [System.Convert]::ToBase64String(
-        [System.Security.Cryptography.RandomNumberGenerator]::GetBytes($bytes)
-    ) -replace '[^a-zA-Z0-9]', '' | Select-Object -First 1
+    # CSPRNG через ІНСТАНСНИЙ API — статичний RandomNumberGenerator::GetBytes НЕ існує у .NET Framework
+    # (Windows PowerShell 5.1, цільова платформа інсталятора) і кидав виняток → .env не створювався,
+    # стек стартував без секретів. Генеруємо із запасом (base64 + strip не-alnum вкорочує рядок),
+    # тоді беремо перші ~4/3·bytes символів → детермінована довжина, повна ентропія $bytes байтів.
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        # +16 байт запасу, щоб після strip-у гарантовано вистачило символів на зріз.
+        $buf = New-Object 'System.Byte[]' ($bytes + 16)
+        $rng.GetBytes($buf)
+        $alnum = [System.Convert]::ToBase64String($buf) -replace '[^a-zA-Z0-9]', ''
+        $len = [Math]::Min($alnum.Length, [int][Math]::Ceiling($bytes * 4 / 3))
+        return $alnum.Substring(0, $len)
+    } finally {
+        $rng.Dispose()
+    }
 }
 
 # 1. Create data directory structure
