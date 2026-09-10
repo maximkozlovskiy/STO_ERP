@@ -32,6 +32,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useReferenceData } from '@/hooks/useReferenceData';
 import type { Branch } from '@/hooks/useReferenceData';
 import { useStockTotals } from '@/hooks/useStockTotals';
+import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
 import { getCached } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
 import { cn, displayCounterpartyName, calcVatTotals } from '@/lib/utils';
@@ -42,8 +43,6 @@ import {
   WO_PRIORITY_LABELS,
   WO_CATEGORY_LABELS,
   WO_EDITABLE_STATUSES,
-  WO_SHAREABLE_STATUSES,
-  WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -425,10 +424,8 @@ export function CreateWorkOrderModal({
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [editModeLoading, setEditModeLoading] = useState(false);
   const [woNumber, setWoNumber] = useState('');
-  const [shareLoading, setShareLoading] = useState(false);
-  const [smsLoading, setSmsLoading] = useState(false);
-  const [invoiceLoading, setInvoiceLoading] = useState(false);
-  const [invoiceConflict, setInvoiceConflict] = useState(false);
+  // A3-modal: shareLoading/smsLoading/invoiceLoading/invoiceConflict + action-handlers у useWorkOrderActions
+  // (виклик нижче, після currentStatus/features/setError/setLinkedDocsRefreshKey).
   // інкрементуємо після успішного invoice create/refresh →
   // LinkedDocumentsPanel ререфетчить без потреби unmount/remount tab.
   const [linkedDocsRefreshKey, setLinkedDocsRefreshKey] = useState(0);
@@ -461,24 +458,7 @@ export function CreateWorkOrderModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
-  // follow-up: onKeyDown на <div role="presentation"> без tabIndex/focus
-  // не спрацьовує — Esc мовчки ігнорувався. Глобальний listener забезпечує закриття
-  // діалогу-конфлікту з клавіатури згідно §14 a11y.
-  //
-  // useCapture + stopImmediatePropagation: батьківський <Modal> теж слухає Esc на document
-  // (bubble-фаза), тож без capture+stop Esc закрив би одразу і conflict-dialog, і WO modal.
-  // Capture-фаза гарантує що наш listener fire-ить ПЕРШИМ; stopImmediatePropagation відсікає
-  // подальші listeners на document (включно з Modal handler).
-  useEffect(() => {
-    if (!invoiceConflict) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      if (!invoiceLoading) setInvoiceConflict(false);
-    };
-    document.addEventListener('keydown', handler, true);
-    return () => document.removeEventListener('keydown', handler, true);
-  }, [invoiceConflict, invoiceLoading]);
+  // A3-modal: invoiceConflict ESC-ефект перенесено у useWorkOrderActions.
 
   // Conflict check when planned period or liftId changes (edit mode only).
   // Backend expects ISO with TZ; DateTimePickerInput emits naive "YYYY-MM-DDTHH:mm"
@@ -1453,214 +1433,35 @@ export function CreateWorkOrderModal({
   );
   const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) : true;
   // Share/print/SMS allowed in DRAFT/ESTIMATE/APPROVED; after IN_PROGRESS the public link is inactive.
-  const canShare = isEditMode && WO_SHAREABLE_STATUSES.includes(currentStatus);
-
-  const [saveAsOpen, setSaveAsOpen] = useState(false);
-
-  const handlePrint = async () => {
-    if (!workOrderId) return;
-    // Open blank window synchronously inside click handler — browsers block window.open after await.
-    const win = window.open('', '_blank');
-    setShareLoading(true);
-    try {
-      const { token } = await apiFetch<{ token: string }>(
-        `/work-orders/${workOrderId}/share-token`,
-        { method: 'POST' },
-      );
-      if (win) {
-        win.location.href = `/estimate/${token}?print=1`;
-      } else {
-        // Popup blocked — fallback: navigate directly (user already in click handler context)
-        window.open(`/estimate/${token}?print=1`, '_blank');
-      }
-    } catch (e: unknown) {
-      win?.close();
-      const msg = e instanceof Error ? e.message : 'Помилка';
-      if (features.toastEnabled) toast.error(msg);
-      else setError(msg);
-    } finally {
-      setShareLoading(false);
-    }
-  };
-
-  const handleSaveAs = async (format: 'pdf' | 'xlsx' | 'docx') => {
-    setSaveAsOpen(false);
-    if (!workOrderId) return;
-    setShareLoading(true);
-    try {
-      const { token } = await apiFetch<{ token: string }>(
-        `/work-orders/${workOrderId}/share-token`,
-        { method: 'POST' },
-      );
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-      const res = await fetch(`${apiBase}/api/public/work-orders/${token}/export/${format}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const disposition = res.headers.get('content-disposition') ?? '';
-      const match =
-        disposition.match(/filename\*=UTF-8''(.+)/i) ?? disposition.match(/filename="?([^"]+)"?/i);
-      const filename = match ? decodeURIComponent(match[1]) : `Кошторис.${format}`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
-      if (features.toastEnabled) toast.error(msg);
-      else setError(msg);
-    } finally {
-      setShareLoading(false);
-    }
-  };
-
-  const handleShare = async () => {
-    if (!workOrderId) return;
-    setShareLoading(true);
-    try {
-      const { token } = await apiFetch<{ token: string }>(
-        `/work-orders/${workOrderId}/share-token`,
-        { method: 'POST' },
-      );
-      await navigator.clipboard.writeText(`${window.location.origin}/estimate/${token}`);
-      if (features.toastEnabled) toast.success('Посилання скопійовано');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
-      if (features.toastEnabled) toast.error(msg);
-      else setError(msg);
-    } finally {
-      setShareLoading(false);
-    }
-  };
-
-  const handleSendSms = async () => {
-    if (!workOrderId) return;
-    setSmsLoading(true);
-    try {
-      // baseUrl формується на сервері з ConfigService('WEB_PUBLIC_URL') —
-      // НЕ передаємо з клієнта (open-redirect/phishing ризик).
-      await apiFetch(`/work-orders/${workOrderId}/send-estimate-sms`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      if (features.toastEnabled) toast.success('SMS відправлено клієнту');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка відправки SMS';
-      if (features.toastEnabled) toast.error(msg);
-      else setError(msg);
-    } finally {
-      setSmsLoading(false);
-    }
-  };
-
-  const canInvoice = isEditMode && WO_INVOICEABLE_STATUSES.includes(currentStatus);
-
-  const handleInvoice = async () => {
-    if (!workOrderId) return;
-    // захоплюємо початковий статус ДО transition, щоб мати куди rollback при failure.
-    const statusBeforeTransition = currentStatus;
-    let transitionedHere = false;
-    setInvoiceLoading(true);
-    try {
-      if (currentStatus === 'COMPLETED') {
-        await apiFetch(`/work-orders/${workOrderId}/transition`, {
-          method: 'POST',
-          body: JSON.stringify({ status: 'INVOICED' }),
-        });
-        setCurrentStatus('INVOICED');
-        transitionedHere = true;
-        onUpdated?.();
-      }
-      const invoice = await apiFetch<{ id: string; number: string }>(
-        `/invoices/from-work-order/${workOrderId}`,
-        { method: 'POST' },
-      );
-      // тригернути перезавантаження LinkedDocumentsPanel, інакше "Документи"
-      // tab не показує щойно створений рахунок без manual tab-switch.
-      setLinkedDocsRefreshKey(k => k + 1);
-      if (features.toastEnabled) {
-        toast.success(`Рахунок ${invoice.number} створено`, 6000, {
-          label: 'Відкрити',
-          onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
-        });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '';
-      if (msg.includes('вже існує')) {
-        setInvoiceConflict(true);
-      } else {
-        // якщо ми щойно перевели COMPLETED→INVOICED і invoice create провалився —
-        // rollback transition назад у COMPLETED, щоб FSM-інваріант не порушувався.
-        if (transitionedHere && statusBeforeTransition === 'COMPLETED') {
-          try {
-            await apiFetch(`/work-orders/${workOrderId}/transition`, {
-              method: 'POST',
-              body: JSON.stringify({ status: 'COMPLETED' }),
-            });
-            setCurrentStatus('COMPLETED');
-            onUpdated?.();
-          } catch {
-            // warn-only: manual recovery потрібен. Original error все одно показуємо нижче.
-          }
-        }
-        if (features.toastEnabled) toast.error(msg || 'Помилка виставлення рахунку');
-        else setError(msg || 'Помилка');
-      }
-    } finally {
-      setInvoiceLoading(false);
-    }
-  };
-
-  const handleInvoiceRefresh = async () => {
-    if (!workOrderId) return;
-    setInvoiceConflict(false);
-    setInvoiceLoading(true);
-    try {
-      const invoice = await apiFetch<{ id: string; number: string }>(
-        `/invoices/from-work-order/${workOrderId}/refresh`,
-        { method: 'POST' },
-      );
-      // refresh змінив totals/lines рахунку → перезавантажити LinkedDocumentsPanel
-      // щоб totals у preview popup були свіжими.
-      setLinkedDocsRefreshKey(k => k + 1);
-      if (features.toastEnabled) {
-        toast.success(`Рахунок ${invoice.number} оновлено`, 6000, {
-          label: 'Відкрити',
-          onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
-        });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка оновлення рахунку';
-      if (features.toastEnabled) toast.error(msg);
-      else setError(msg);
-    } finally {
-      setInvoiceLoading(false);
-    }
-  };
-
-  const handleInvoiceOpen = async () => {
-    if (!workOrderId) return;
-    setInvoiceConflict(false);
-    try {
-      const inv = await apiFetch<{ id: string } | null>(
-        `/invoices/from-work-order/${workOrderId}/find`,
-      );
-      if (inv?.id) {
-        window.open(`/invoices/${inv.id}`, '_blank');
-      } else {
-        // /find повертає null коли рахунку немає (за дизайном — не 404).
-        // Race: інший admin скасував рахунок між POST і кліком. Користувач має знати.
-        if (features.toastEnabled) {
-          toast.warning('Рахунок не знайдено. Можливо, його було скасовано.');
-        } else {
-          setError('Рахунок не знайдено. Можливо, його було скасовано.');
-        }
-      }
-    } catch {
-      window.open(`/invoices?workOrderId=${workOrderId}`, '_blank');
-    }
-  };
+  // A3-modal: action-handlers (print/saveAs/share/sms/invoice+rollback) + loading + invoiceConflict
+  // винесено у useWorkOrderActions. Footer-JSX споживає повернені handlers/флаги.
+  const {
+    shareLoading,
+    smsLoading,
+    invoiceLoading,
+    invoiceConflict,
+    setInvoiceConflict,
+    saveAsOpen,
+    setSaveAsOpen,
+    canShare,
+    canInvoice,
+    handlePrint,
+    handleSaveAs,
+    handleShare,
+    handleSendSms,
+    handleInvoice,
+    handleInvoiceRefresh,
+    handleInvoiceOpen,
+  } = useWorkOrderActions({
+    workOrderId,
+    isEditMode,
+    currentStatus,
+    setCurrentStatus,
+    features,
+    setError,
+    setLinkedDocsRefreshKey,
+    onUpdated,
+  });
 
   // sto-optimize: stable onClose ref для Modal. Modal має useEffect що додає
   // document.addEventListener('keydown') з useCallback([onClose]) — кожен новий
