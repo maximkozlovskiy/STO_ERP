@@ -29,6 +29,19 @@ Prisma-запит на tenant-модель без orgId/branchId-фільтра 
 tsc api 0 · suite 2079/2079 green · lint 0 · boot-smoke чистий (login→CRUD→reports→payments 200,
 0 TenantIsolationError; interceptor→service ALS-propagation підтверджено наживо).
 
+### fa2508dd fix(tenant): review — 29 latent-сайтів + 2-й share-шлях + upsert-refine
+
+sto-review-agent: guard проти всієї бази. 29 `.update({where:{id}})` на tenant-моделях без orgId → +orgId
+(defense-in-depth, id вже org-fetched → no-op). EstimateExportService (DOCX-share) → runUnscoped. Guard
+upsert-refine: upsert.where=unique→1 рядок, create стемпить orgId (закрив loyalty upsert без міграції схеми).
+
+### c36900db fix(tenant): Bug #721 CRITICAL — guard приймав негований orgId-фільтр як scope
+
+sto-tester-agent знайшов defeat fail-closed: `{orgId:{not:X}}`/`{NOT:{orgId}}`/`{orgId:{notIn}}`/діапазони
+матчать ЧУЖІ tenant-и, а guard пропускав їх (leak замість throw). Fix: `isPositiveTenantBinding` — scope
+лише позитивна рівність (scalar/`{in:[non-empty]}`/`{equals}`); негація/діапазон/null → fail-closed.
+LOGICAL_KEYS виключено з composite-scan. +25 mutation-verified тестів. Suite 2099/2099 green.
+
 ---
 
 ## 2026-09-10 — GAPS deploy+reliability пакет: T16 + T23 + T12
