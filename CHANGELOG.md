@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-09-10 — Фіча: Статуси (кастомні мітки) контрагентів
+
+### db2ef061 / 1440bf22 / 7d44da65 feat(counterparties): статуси-мітки (M:N, per-org)
+
+Нова CRM-фіча: кастомні мітки контрагентів (VIP / Постійний / Проблемний / Чорний список) —
+орг сама заводить довідник і призначає мітки контрагентам (M:N).
+
+- **DB (db2ef061):** `CounterpartyStatus` (name+color+soft-delete+syncVersion, `@@unique[orgId,name]`)
+  - junction `CounterpartyStatusLink` (`@@unique[counterpartyId,statusId]`); міграція
+    `20260910130000` (additive: 2 CREATE TABLE + 6 index + 3 FK); `SYNC_VERSION_MODELS += CounterpartyStatus`.
+- **Backend (1440bf22):** NEW модуль `counterparty-statuses` (CRUD, дзеркалить brands — resurrect/
+  restore-409-guard/atomic soft-delete/cache); assign/unassign на CounterpartiesController
+  (tenant-валідація, ідемпотентність, audit); `CounterpartyResponseDto += statuses[]` (лише detail);
+  assign/unassign скидають кеш довідника (counterpartyCount). service-spec 12→13.
+- **Frontend (7d44da65):** таб-роутер на сторінці контрагентів (`?tab=statuses`); `CounterpartyStatusesTab`
+  (CRUD + color-picker); `StatusManager` у картці (badge-и + dropdown assign/unassign); `canManage`
+  за роллю (OWNER/ADMIN/RECEPTIONIST); `Counterparty += statuses?`; ref-cache-ключ.
+
+### 37dc5e1e / 7f8d7eb3 fix: review + tester
+
+- **review (37dc5e1e):** `@IsUUID` на `AssignCounterpartyStatusDto.statusId` (defence-in-depth).
+- **tester (7f8d7eb3):** **#723 MEDIUM** — `counterpartyCount` рахував link на soft-deleted контрагентів
+  (junction без deletedAt, cp.remove лишає link для restore) → filtered `_count.links where
+counterparty.deletedAt:null`. **#724 HIGH** — `counterparties.service.spec` не оновлено після 4-ї DI-
+  залежності → 46 тестів падали у повному прогоні → statusesMock у 4 createTestingModule.
+
+Verify: tsc api+web 0 · api 2122 / web 717 green · live curl 6 сценаріїв · sync/review/tester CLEAN.
+
+---
+
 ## 2026-09-10 — T26: E2E-діагностика + A1-gap fix (WO detail)
 
 ### 52a34fc4 fix(work-orders): findOne goodUoM.findMany без orgId → tenant-guard 500
