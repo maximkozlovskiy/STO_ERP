@@ -374,6 +374,7 @@ model Organisation {
   bankAccounts          BankAccount[]
   cashRegisters         CashRegister[]
   savedReports          SavedReport[]
+  counterpartyStatuses  CounterpartyStatus[]
   primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
@@ -704,11 +705,51 @@ model Counterparty {
   pricingRules       PricingRule[]          @relation("PricingRuleSupplier")
   warranties         Warranty[]
   calendarSlots      CalendarSlot[]
+  statusLinks        CounterpartyStatusLink[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
   @@map("counterparties")
+}
+
+// Кастомні мітки-статуси контрагентів (VIP / Постійний / Проблемний / Чорний список тощо).
+// Per-org довідник, керований через вкладку «Статуси» на сторінці контрагентів. M:N із Counterparty
+// через CounterpartyStatusLink. Дзеркалить патерн Brand (директорія name+soft-delete).
+model CounterpartyStatus {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  color       String    @default("#6b7280") // hex-колір бейджа (дефолт — сірий)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org   Organisation             @relation(fields: [orgId], references: [id])
+  links CounterpartyStatusLink[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("counterparty_statuses")
+}
+
+// Junction M:N: призначення статусу контрагенту. Без syncVersion (як інші junction-таблиці).
+model CounterpartyStatusLink {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @db.Uuid
+  statusId       String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  counterparty Counterparty       @relation(fields: [counterpartyId], references: [id])
+  status       CounterpartyStatus @relation(fields: [statusId], references: [id])
+
+  @@unique([counterpartyId, statusId])
+  @@index([orgId, counterpartyId])
+  @@index([orgId, statusId])
+  @@map("counterparty_status_links")
 }
 
 model CounterpartyContract {
