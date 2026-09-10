@@ -85,8 +85,10 @@ T1/T2 (ESLint api/web/mobile + CI-гейти), T6/T7/T8 (SSE revocation, MinIO p
 T3/T9/T10 (offline-меседж, dashboard-помилки, supplier-return invalidate), T5/T14 (sync-індекси,
 partial-unique номерів), T13 (maintenanceForecastDays у settings), T11 (client-side Zod), T18 (docs
 дос'є loyalty/maintenance/payments), T19 (Kyiv-TZ + ₴ + tabular-nums), T17 (E2E money-flow, 9 тестів),
-T24 (loyalty.processor spec). 🟡 частково: T12 (cap-warn уже є, cursor-пагінація — scale-time, наявний TODO).
-🔴 Deploy-борг (T4/T15/T16/T23) — свідомо поза scope цього проходу (installer). Свідомі non-fix:
+T24 (loyalty.processor spec), T12 (followup cursor-пагінація — прибрано тиху втрату нагадувань >1000),
+T15 (New-RandomBase64 PS 5.1 instance-API), T16 (compose mem_limit/cpus + web/caddy healthcheck),
+T23 (Backup/Restore docker cp + --clean --if-exists — без BOM). 🔴 Deploy-борг, що лишається:
+T4 (Docker Desktop→WSL2 ADR) + Docker tag-mismatch (VERSION/rollback — окремий план). Свідомі non-fix:
 T20 (документовані recoverable tx-tradeoff), T21 (login MinLength — підняття залокаутило б наявних
 юзерів; refresh TTL/sessionStorage — design-tradeoff з security-аудиту), T22 (Float→Decimal — важка
 міграція; historical DROP INDEX — безпечний у лінійній історії).
@@ -104,18 +106,18 @@ T20 (документовані recoverable tx-tradeoff), T21 (login MinLength �
 | T9  | Frontend | Dashboard проковтує помилки → 0/«нема даних» замість реального стану (silent wrong number)             | Середній | 🟢     |
 | T10 | Frontend | Supplier-return confirm не інвалідує склад+баланс → застарілі дані                                     | Середній | 🟢     |
 | T11 | Frontend | Client-side Zod-валідація відсутня — shared-схеми не імпортуються                                      | Середній | 🟢     |
-| T12 | Backend  | followup-processor cap 1000 → тиха втрата ТО-нагадувань для автопарків >1000                           | Середній | 🟡     |
+| T12 | Backend  | followup-processor cap 1000 → тиха втрата ТО-нагадувань для автопарків >1000                           | Середній | 🟢     |
 | T13 | Backend  | MAINTENANCE_FORECAST_DAYS=14 хардкод — не в OrganisationSettings                                       | Середній | 🟢     |
 | T14 | DB       | Немає DB-unique (orgId, number) на документах → дублі номерів у offline/restore (юрид. ризик)          | Середній | 🟢     |
 | T15 | Deploy   | New-RandomBase64 некоректна PS-логіка → секрети можуть виходити слабкими                               | Середній | 🟢     |
-| T16 | Deploy   | compose prod: нема resource-limits/non-root; web+caddy без healthcheck                                 | Середній | 🔴     |
+| T16 | Deploy   | compose: resource-limits ✅ + web/caddy healthcheck ✅ (non-root user контейнерів — окремий hardening) | Середній | 🟢     |
 | T17 | Quality  | E2E-прогалина money-flow: нема UI-тесту оплати/каси/фіскал-чека                                        | Середній | 🟢     |
 | T18 | Docs     | Нові фічі (loyalty/ТО-нагадування/payments-об'єкт) без досьє в docs/objects                            | Середній | 🟢     |
 | T19 | Frontend | Дати не прив'язані до Kyiv-TZ · ₴ vs грн · tabular-nums відсутній · Escape закриває вкладені модалки   | Низький  | 🟢     |
 | T20 | Backend  | online-payment polling без auto-recovery · WO INVOICED→PAID поза tx · post-commit side-effects поза tx | Низький  | 🔴     |
 | T21 | Security | login MinLength(4) · refresh TTL 30d · access у sessionStorage · secure-cookie на LAN-HTTP             | Низький  | 🔴     |
 | T22 | DB       | Кількості на Float (drift у FIFO/FEFO) · DROP INDEX без IF EXISTS у червневій міграції                 | Низький  | 🔴     |
-| T23 | Deploy   | Backup UTF-8 BOM · Restore без DROP/CREATE · VERSION=latest ламає rollback · базові образи без @sha256 | Низький  | 🔴     |
+| T23 | Deploy   | Backup UTF-8 BOM · Restore без DROP/CREATE ✅ · (VERSION-tag/rollback → окремий Docker-tag фікс)       | Низький  | 🟢     |
 | T24 | Quality  | loyalty.processor без spec · E2E seed #564 крихкий · 3 змістовні TODO (autoArchive/cursor/XLSX)        | Низький  | 🟢     |
 
 **npm audit:** 51 vuln (2 crit, 25 high) — переважно transitive DoS (tar/js-yaml/image-size/find-my-way)
@@ -123,8 +125,8 @@ T20 (документовані recoverable tx-tradeoff), T21 (login MinLength �
 - fastify-middleware-bypass advisories. Наш auth — на Nest-guards (не middie), тож middie-bypass прямо
   не застосовний; @nestjs/platform-fastify trailing-slash/URL-encoding bypass потребує окремої оцінки.
 
-**Рекомендований порядок:** T3 (offline-write продуктове рішення) → T1/T2 (tooling+CI, найдешевше) →
-T6/T7/T8 (security fast-fixes) → T4/T15/T16 (deploy) → T9/T10/T11 (frontend cache/error) → решта fast-follow.
+**Рекомендований порядок (закрито):** T3 → T1/T2 → T6/T7/T8 → T15/T16/T23 (deploy) → T9/T10/T11 →
+T12 (followup scale). **Лишається:** T4 (WSL2 ADR), Docker tag-mismatch (окремий план), T20/T21/T22 (LOW).
 
 ---
 

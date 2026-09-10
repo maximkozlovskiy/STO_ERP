@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-10 — GAPS deploy+reliability пакет: T16 + T23 + T12
+
+### 34e2fb63 perf/fix(deploy+followup): T16 compose-ліміти + T23 backup BOM-фікс + T12 cursor-пагінація
+
+- **T16 docker-compose**: `mem_limit`/`cpus` на КОЖЕН сервіс (compose v2 non-swarm читає top-level;
+  `deploy.resources` ігнорується поза swarm). postgres 1g/1.0, redis 512m/0.5 (+`--maxmemory 400mb
+--maxmemory-policy noeviction` — BullMQ-черги не можна тихо витісняти), minio 512m/0.5, api 1g/1.5,
+  web/caddy 256m/0.5. + healthcheck web/caddy (`wget :80`) + caddy `depends_on: condition:service_healthy`.
+- **T23 Backup/Restore.ps1**: pg_dump ВСЕРЕДИНІ контейнера у файл + `docker cp` (без PowerShell-pipe →
+  без UTF-8 BOM на PS 5.1, що спотикав psql на 1-му рядку restore). `--clean --if-exists` → restore у
+  непорожню БД без duplicate-key. Restore: `docker cp` дампу у контейнер + `psql -f -v ON_ERROR_STOP=1`.
+- **T12 followup.processor**: cursor-пагінація (keyset `id`, `PAGE_SIZE=500`, `MAX_PAGES=200`) замість
+  hard-cap `take:1000`, що ТИХО губив ТО-нагадування для автопарків >1000. Recipients дедуплікуються
+  інкрементально (у пам'яті лише одна сторінка raw + унікальні-за-phone → OOM-захист збережено без втрати
+  даних). +новий multi-page тест (сторінка 500 → коротка 3, перевіряє cursor advance + збір усіх 503).
+
+tsc api 0 · api-suite 2048/2048 green (132 files) · lint 0 · PS 5.1 AST-parse OK (Backup/Restore/Setup).
+
+---
+
 ## 2026-09-09 — 3 backlog-пункти закрито: Docker tag-mismatch + C1b audit + D3 bull-board
 
 ### c4f38c1c feat(bull-board): D3 — admin UI черг BullMQ за auth (OWNER/ADMIN, non-prod)
