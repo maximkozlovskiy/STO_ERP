@@ -4032,3 +4032,49 @@ Scope: 3 закритих backlog-пункти (HEAD~4..HEAD). ФОКУС за �
 - **upsert-refine (CLEAN):** усі 11 `.upsert(` — where-ключ або несе orgId/branchId (`orgId_goodId_warehouseId`, `branchId_channel`, `branchId_kind_provider`, `orgId_employeeId_key`, `orgId`, `branchId`), або globally-unique (`counterpartyId @unique` — LoyaltyAccount; `id`), і create-гілка стемпить/несе orgId. Крос-tenant запис неможливий у жодному.
 - **2 share-token runUnscoped-шляхи (CLEAN):** `WorkOrderShareService.findByShareToken` + `EstimateExportService.getEstimateData` — усередині runUnscoped кожен запит keys off unguessable `shareToken` (16 байт) або off `wo`-derived id (`wo.orgId`, `wo.parts[].unitOfMeasureId`), що вже належать tenant-у знайденого наряду. Жоден інший (не-share) запит у scope не тече крос-tenant.
 - **ALS await-inside інваріант (CLEAN):** усі 12 процесорів (nbu-fetch/integration-log-purge/invoice-overdue/loyalty/sms/checkbox/nova-poshta-polling/reconciliation/payment-polling/followup/webhooks/idempotency-purge) + 4 глобальні сайти (auth.service/setup.service/for-each-active-org/tenant-context.interceptor) — callback є `async` і awaits Prisma-запити УСЕРЕДИНІ; жоден не повертає unawaited lazy-PrismaPromise-ланцюг назовні (що дало б інтермітентний throw у прод поза scope).
+
+## Session 2026-09-10 — bug-hunt A3 refactor (e8ae4d70) — WorkOrderStockEffectsService extraction + fetchPartCoefficients orgId-фікс
+
+**Скоуп:** GAPs/edge-cases екстракції (byte-identical extraction / tx-propagation / DI / non-tautological specs УЖЕ підтверджено review — не перевірялось повторно). 3 фокуси: (1) live-verify раніше-зламаного UoM-transition шляху, (2) test-gap перенесених методів, (3) delegation-integrity 4 гілок.
+
+**Результат: 0 нових функціональних багів у A3-рефакторі.** Фікс fetchPartCoefficients працює наживо; закрито 2 test-gap; delegation-integrity — CLEAN. Додано 8 тестів (2109/2109 green, було 2101).
+
+### Фокус 1 — LIVE-verify UoM-transition (раніше unit-only) — ✅ ПІДТВЕРДЖЕНО НАЖИВО
+
+Побудовано наживо на dev-сервері (:3000, admin@sto.local): створено WO → додано part goodId=…070 «Моторна олива» з alt-UoM «Упаковка» (GoodUoM coefficient=10, `unitOfMeasureId` у DTO) → transitions DRAFT→ESTIMATE→APPROVED→IN_PROGRESS→COMPLETED. Усі HTTP **201** (жодного 500). StockMovement записались (RESERVATION / RESERVATION_RELEASE / WRITEOFF), SettlementTransaction CHARGE створено, part.batchCostPrice/batchId проставлено. **0 TenantIsolationError** — раніше-зламаний шлях (goodUoM.findMany без orgId → A1-guard throw на UoM-частині) тепер проходить наживо через реальну tx+guard.
+
+**Закрито unit-only-прогалину інтеграційним тестом:** NEW `work-order-stock-effects.integration.spec.ts` (4 тести, real guarded PrismaClient проти dev-БД, дзеркалить tenant-guard.integration.spec):
+
+- mutation-baseline: `goodUoM.findMany` БЕЗ orgId під guard → кидає TenantIsolationError (доводить, що guard справді ловить — інакше «проходить з orgId» нічого б не гарантувало);
+- A3-фікс: `writeOffPartsAndCharge` + `reserveParts` з засідженою UoM-частиною через guarded `$transaction` → resolve, 0 TenantIsolationError.
+- **Mutation-verified:** реверс A3-фіксу (прибрати `orgId` з goodUoM.findMany-where) → обидва A3-тести ПАДАЮТЬ з точним оригінальним `TenantIsolationError: findMany на моделі GoodUoM виконано без tenant-фільтра`. Це відтворює оригінальний баг наживо → регрес-guard закриває шлях, що лишався unit-only.
+
+### Фокус 2 — Test-gap перенесених методів — 2 прогалини ЗАКРИТО
+
+Аудит edge-cases після переїзду методів у WorkOrderStockEffectsService:
+
+- multi-part writeoff ✓, weightedCostPrice=null (no update) ✓, span>1 batch (batchId=null) ✓, AVG_COST batchId=null ✓ — вже покриті у work-orders.service.spec (викликають методи на реальному StockEffectsService).
+- **ПРОГАЛИНА A — zero-total throw на COMPLETED:** `writeOffPartsAndCharge` `if (chargeAmount <= 0) throw BadRequestException('Загальна сума…дорівнює нулю')` не мав ЖОДНОГО тесту (returnPartsAndCredit мав zero-total no-throw тест, writeOff — ні). +2 тести (totalAmount=0→throw+нема CHARGE; stale pre-tx=500 vs in-tx freshWo=0→throw на freshWo, не на stale-знімку).
+- **ПРОГАЛИНА B — coeff=0/legacy safeCoeff→1 fallback:** конверсія тестувалась лише з coeff=10/6, але safeCoeff(0/NaN/negative)→1 division-by-zero-guard не мав тесту. +2 тести (GoodUoM.coefficient=0→safeCoeff→1→baseQty=quantity/1=скінченне, НЕ Infinity; порожній lookup→safeCoeff(undefined)→1).
+- **Mutation-verified:** прибрати zero-total throw + замінити safeCoeff на `?? 1` → 3 нові тести ПАДАЮТЬ (CHARGE(0) тихо проходить; coeff=0→quantity/0=-Infinity у WRITEOFF).
+
+### Фокус 3 — Delegation integrity (4 гілки stock-effects проти FSM-мапи) — CLEAN
+
+Крос-звірка WORK_ORDER_TRANSITIONS × 4 делегації у transition():
+
+- **reserve** (IN_PROGRESS←APPROVED): guard `newStatus==='IN_PROGRESS' && wo.status==='APPROVED'`. IN_PROGRESS досяжний з APPROVED+ON_HOLD; ON_HOLD→IN_PROGRESS свідомо НЕ резервує (WO-C1 — інакше подвоєння reserved). ✓
+- **writeoff+charge** (COMPLETED←IN_PROGRESS): guard `newStatus==='COMPLETED'`; COMPLETED досяжний лише з IN_PROGRESS. ✓
+- **release** (CANCELLED, reservation-active): guard `CANCELLED && RESERVATION_ACTIVE_STATUSES.includes(wo.status)` = {IN_PROGRESS, ON_HOLD}. Але у мапі CANCELLED НЕ досяжний прямо з IN_PROGRESS (`IN_PROGRESS: ['ON_HOLD','COMPLETED']`) — щоб скасувати зарезервований наряд, треба IN_PROGRESS→ON_HOLD→CANCELLED, а ON_HOLD ∈ RESERVATION_ACTIVE → release спрацьовує. ✓ Жодна reservation-active гілка не втратила release.
+- **return+credit** (CANCELLED←COMPLETED, C2): guard `CANCELLED && wo.status==='COMPLETED'`. ✓
+- DRAFT/ESTIMATE/APPROVED→CANCELLED: жодного side-effect (нічого не резервували/списували) — коректно без делегації.
+- **Висновок:** жодна гілка не втратила side-effect в екстракції; жодна гілка не має «зайвого» ефекту. Множини (RESERVATION_ACTIVE_STATUSES / WORK_ORDER_TRANSITIONS) незмінні цим комітом.
+
+### Спостереження (НЕ A3-баг, поза скоупом — pre-existing, byte-identical до A3)
+
+- **Coeff-напрямок `quantity / coeff` — семантично ймовірно зворотний.** Alt-UoM «Упаковка» має coefficient=10 (1 пак = 10 базових шт). 2 паки → на склад пише `2/10 = 0.2` базових шт замість `2×10 = 20`. Live-тест підтвердив 0.2. АЛЕ: код `part.quantity / coeff` **ідентичний pre- і post-A3** (`git show e8ae4d70^` — рядки 820/851/876/973 ті самі), і review підтвердив byte-identical екстракцію. Тож це **латентний pre-existing** дефект напрямку конверсії, НЕ введений A3 — поза скоупом цього bug-hunt. Той самий `/coeff` вжито узгоджено у addPart/share/export (система внутрішньо консистентна), тож видима поведінка «правильна відносно себе». **Де перевірити далі (окремий тікет):** визначення напрямку GoodUoM.coefficient (base-per-alt vs alt-per-base) наскрізь — inventory createMovement, work-orders addPart/detail/share/export, recalcTotals. Не чіпав у цій сесії (byte-identical constraint).
+
+### Файли
+
+- NEW `apps/api/src/modules/work-orders/work-order-stock-effects.integration.spec.ts` (+4 live-DB тести)
+- `apps/api/src/modules/work-orders/work-order-stock-effects.service.spec.ts` (+4 unit gap-closure тести)
+- tsc 0, повна suite 2109/2109 (137 файлів). Джерело `work-order-stock-effects.service.ts` НЕ змінювалось (0 нових багів — лише тести).

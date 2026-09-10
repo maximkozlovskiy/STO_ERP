@@ -94,3 +94,119 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A
     expect(writeoff?.[1].quantity).toBe(-2);
   });
 });
+
+/**
+ * A3 test-gap closure — дві крайові гілки writeOffPartsAndCharge/fetchPartCoefficients, які після
+ * переїзду методів у WorkOrderStockEffectsService лишились без прямого покриття:
+ *   1) zero-total throw на COMPLETED (chargeAmount <= 0 → BadRequestException);
+ *   2) coeff=0 / legacy → safeCoeff→1 fallback (division-by-zero guard, baseQty=quantity/1).
+ */
+
+function makeGapService(opts: {
+  totalAmount: number | null;
+  parts?: Array<{ id: string; quantity: number; unitOfMeasureId?: string | null }>;
+  goodUoM?: Array<{ goodId: string; unitOfMeasureId: string; coefficient: number }>;
+}) {
+  const parts = opts.parts ?? [{ id: 'part-1', quantity: 20, unitOfMeasureId: UOM_ID }];
+  const prisma = {
+    workOrderPart: {
+      findMany: vi.fn().mockResolvedValue(
+        parts.map(p => ({
+          id: p.id,
+          goodId: GOOD_ID,
+          warehouseId: WH_ID,
+          quantity: p.quantity,
+          unitOfMeasureId: p.unitOfMeasureId ?? null,
+        })),
+      ),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    // WO-H1: chargeAmount береться з IN-TX re-read totalAmount → мок findFirst керує сумою боргу.
+    workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: opts.totalAmount }) },
+    goodUoM: { findMany: vi.fn().mockResolvedValue(opts.goodUoM ?? []) },
+  } as unknown as PrismaService;
+  const createMovement = vi
+    .fn()
+    .mockImplementation((_, dto) =>
+      dto.type === 'WRITEOFF'
+        ? Promise.resolve({ consumed: [{ batchId: 'b1' }], weightedCostPrice: 7 })
+        : Promise.resolve({ consumed: [], weightedCostPrice: null }),
+    );
+  const inventory = { createMovement } as unknown as InventoryService;
+  const createTransaction = vi.fn().mockResolvedValue({});
+  const settlements = { createTransaction } as unknown as SettlementsService;
+  return {
+    svc: new WorkOrderStockEffectsService(prisma, inventory, settlements),
+    createMovement,
+    createTransaction,
+  };
+}
+
+describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — zero-total throw (A3 gap)', () => {
+  it('chargeAmount<=0 (in-tx totalAmount=0) → BadRequestException, CHARGE НЕ створюється — MUTATION-VERIFY', async () => {
+    const { svc, createTransaction } = makeGapService({ totalAmount: 0 });
+    await expect(
+      svc.writeOffPartsAndCharge(
+        ORG,
+        { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 0 as never },
+        'user-1',
+      ),
+    ).rejects.toThrow('Загальна сума наряду дорівнює нулю');
+    // Прибрати `if (chargeAmount <= 0) throw` → цей тест червоний (CHARGE(0) пройшов би тихо).
+    expect(createTransaction).not.toHaveBeenCalled();
+  });
+
+  it('in-tx re-read перекриває stale pre-tx суму: totalAmount pre-tx=500, freshWo=0 → throw', async () => {
+    // Concurrent updatePart обнулив суму між pre-tx read і транзакцією — throw має спиратись
+    // на freshWo (0), а не на stale-знімок wo (500). MUTATION: якщо код читав би wo.totalAmount
+    // замість freshWo → CHARGE(500) на порожній наряд.
+    const { svc, createTransaction } = makeGapService({ totalAmount: 0 });
+    await expect(
+      svc.writeOffPartsAndCharge(
+        ORG,
+        { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+        'user-1',
+      ),
+    ).rejects.toThrow('Загальна сума наряду дорівнює нулю');
+    expect(createTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy safeCoeff→1 (A3 gap)', () => {
+  it('GoodUoM.coefficient=0 (legacy/seed) → safeCoeff→1, baseQty=quantity (без Infinity) — MUTATION-VERIFY', async () => {
+    // DTO @Min(0.000001) блокує 0 на write-path, але legacy/seed/direct-SQL можуть мати 0.
+    // Без safeCoeff → quantity/0 = Infinity → WRITEOFF(-Infinity) отруїв би склад.
+    const { svc, createMovement } = makeGapService({
+      totalAmount: 500,
+      parts: [{ id: 'part-1', quantity: 20, unitOfMeasureId: UOM_ID }],
+      goodUoM: [{ goodId: GOOD_ID, unitOfMeasureId: UOM_ID, coefficient: 0 }],
+    });
+    await svc.writeOffPartsAndCharge(
+      ORG,
+      { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+      'user-1',
+    );
+    const writeoff = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
+    // safeCoeff(0)→1 → baseQty=20/1=20 (скінченне). Замінити safeCoeff на `?? 1` → -Infinity, тест червоний.
+    expect(writeoff?.[1].quantity).toBe(-20);
+    expect(Number.isFinite(writeoff?.[1].quantity)).toBe(true);
+  });
+
+  it('GoodUoM-рядок відсутній (uom set, але lookup порожній) → safeCoeff(undefined)→1, baseQty=quantity', async () => {
+    // part.unitOfMeasureId заданий, але goodUoM.findMany нічого не повернув (видалено/розсинхрон) —
+    // coeffByGoodUom.get() = undefined → safeCoeff→1, а не NaN.
+    const { svc, createMovement } = makeGapService({
+      totalAmount: 500,
+      parts: [{ id: 'part-1', quantity: 15, unitOfMeasureId: UOM_ID }],
+      goodUoM: [], // порожній lookup
+    });
+    await svc.writeOffPartsAndCharge(
+      ORG,
+      { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+      'user-1',
+    );
+    const writeoff = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
+    expect(writeoff?.[1].quantity).toBe(-15);
+    expect(Number.isFinite(writeoff?.[1].quantity)).toBe(true);
+  });
+});
