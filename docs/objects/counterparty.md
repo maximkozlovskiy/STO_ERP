@@ -128,15 +128,15 @@ model CounterpartyStatusLink {
 
 ## UI (Web)
 
-| Компонент / сторінка       | Файл                                                                                   |
-| -------------------------- | -------------------------------------------------------------------------------------- |
-| Список + вкладки           | `app/(app)/counterparties/page.tsx` (таб-роутер `?tab`: список / статуси)              |
-| Картка контрагента         | `app/(app)/counterparties/[id]/page.tsx`                                               |
-| Довідник статусів (таб)    | `app/(app)/counterparties/CounterpartyStatusesTab.tsx`                                 |
-| Керування мітками у картці | `app/(app)/counterparties/[id]/StatusManager.tsx` (badge-и + dropdown assign/unassign) |
-| Edit Modal (з вкладками)   | `components/ui/CounterpartyEditModal.tsx`                                              |
-| Detail Panel schema        | `lib/panel-schema.ts` → `COUNTERPARTY_PANEL_SCHEMA`                                    |
-| Hook (TanStack Query)      | `hooks/api/useCounterparties.ts`                                                       |
+| Компонент / сторінка     | Файл                                                                                                                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Список + вкладки         | `app/(app)/counterparties/page.tsx` (таб-роутер `?tab`: список / статуси)                                                                                              |
+| Картка контрагента       | `app/(app)/counterparties/[id]/page.tsx`                                                                                                                               |
+| Довідник статусів (таб)  | `app/(app)/counterparties/CounterpartyStatusesTab.tsx`                                                                                                                 |
+| Керування мітками        | `components/ui/CounterpartyStatusManager.tsx` (badge-и + dropdown; режими: керований / self-fetch) — у `CounterpartyEditModal` (вкладка «Основне») + `[id]/PageClient` |
+| Edit Modal (з вкладками) | `components/ui/CounterpartyEditModal.tsx`                                                                                                                              |
+| Detail Panel schema      | `lib/panel-schema.ts` → `COUNTERPARTY_PANEL_SCHEMA`                                                                                                                    |
+| Hook (TanStack Query)    | `hooks/api/useCounterparties.ts`                                                                                                                                       |
 
 **Вкладки CounterpartyEditModal:** main / vehicles / contracts / work-orders
 **Вкладки сторінки контрагентів (`?tab`):** список «Контрагенти» / довідник «Статуси» (мітки)
