@@ -59,11 +59,11 @@
 
 | ID  | Область  | Знахідка                                                                                                  | Пріор.   | Статус |
 | --- | -------- | --------------------------------------------------------------------------------------------------------- | -------- | ------ |
-| R1  | DB       | CompletionAct пропущено в T14 partial-unique — plain @@unique блокує переюз номера після soft-delete      | Середній | 🔴     |
-| R2  | Backend  | resolveApiKey where містить provider/enabled → тиха невідправка при зміні конфігу у вікні enqueue↔process | Середній | 🔴     |
-| R3  | Frontend | SyncIndicator не бачить «локальний API down при browser online» (найімовірніший LAN-збій)                 | Середній | 🔴     |
-| R4  | Security | .env.dev закомічено в git з реальним Sentry DSN (write-only, мінімальний ризик) → git rm --cached         | Низький  | 🔴     |
-| R5  | Deploy   | PS-скрипти без лінту/Pester у CI (причина пропуску T15) — додати windows smoke                            | Низький  | 🔴     |
+| R1  | DB       | CompletionAct пропущено в T14 partial-unique — plain @@unique блокує переюз номера після soft-delete      | Середній | 🟢     |
+| R2  | Backend  | resolveApiKey where містить provider/enabled → тиха невідправка при зміні конфігу у вікні enqueue↔process | Середній | 🟢     |
+| R3  | Frontend | SyncIndicator не бачить «локальний API down при browser online» (найімовірніший LAN-збій)                 | Середній | 🟢     |
+| R4  | Security | .env.dev закомічено в git з реальним Sentry DSN (write-only, мінімальний ризик) → git rm --cached         | Низький  | 🟢     |
+| R5  | Deploy   | PS-скрипти без лінту/Pester у CI (причина пропуску T15) — додати windows smoke                            | Низький  | 🟢     |
 
 **Підтверджено відкритими (deploy-борг, поза scope):** T4 (Docker Desktop↔WSL2 ADR-розрив),
 T16 (compose resource-limits/non-root/healthcheck), T23 (Backup BOM + Restore без --clean — шлях
