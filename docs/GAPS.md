@@ -67,9 +67,11 @@
 
 **Закрито після цього огляду (34e2fb63):** 🟢 T16 (compose mem_limit/cpus + web/caddy healthcheck),
 🟢 T23 (Backup/Restore docker cp + --clean --if-exists — без BOM, шлях відновлення протестований),
-🟢 T12 (followup cursor-пагінація). **Лишається (deploy-борг, поза scope):** T4 (Docker Desktop↔WSL2
-ADR-розрив), Docker tag-mismatch (VERSION/rollback — окремий план). Комерційні GAPS G1-G7 — блокують
-легальний запуск, не технічний MVP.
+🟢 T12 (followup cursor-пагінація). **Docker tag-mismatch — вже закрито раніше (1e1aca97):** compose
+локальні теги sto-api/web:${VERSION}, Setup-Stack/-Version, setup.iss -Version {#AppVersion}, Update.ps1
+rollback на локальні теги + Bug #716 same-tag guard, release.yml local build+save (без ghcr push),
+minio pinned tag compose↔release. **Лишається (deploy-борг, поза scope):** T4 (Docker Desktop↔WSL2
+ADR-розрив). Комерційні GAPS G1-G7 — блокують легальний запуск, не технічний MVP.
 
 ---
 
@@ -89,8 +91,9 @@ partial-unique номерів), T13 (maintenanceForecastDays у settings), T11 (
 дос'є loyalty/maintenance/payments), T19 (Kyiv-TZ + ₴ + tabular-nums), T17 (E2E money-flow, 9 тестів),
 T24 (loyalty.processor spec), T12 (followup cursor-пагінація — прибрано тиху втрату нагадувань >1000),
 T15 (New-RandomBase64 PS 5.1 instance-API), T16 (compose mem_limit/cpus + web/caddy healthcheck),
-T23 (Backup/Restore docker cp + --clean --if-exists — без BOM). 🔴 Deploy-борг, що лишається:
-T4 (Docker Desktop→WSL2 ADR) + Docker tag-mismatch (VERSION/rollback — окремий план). Свідомі non-fix:
+T23 (Backup/Restore docker cp + --clean --if-exists — без BOM), Docker tag-mismatch (1e1aca97 —
+локальні теги + rollback + Bug #716 guard). 🔴 Deploy-борг, що лишається: T4 (Docker Desktop→WSL2 ADR).
+Свідомі non-fix:
 T20 (документовані recoverable tx-tradeoff), T21 (login MinLength — підняття залокаутило б наявних
 юзерів; refresh TTL/sessionStorage — design-tradeoff з security-аудиту), T22 (Float→Decimal — важка
 міграція; historical DROP INDEX — безпечний у лінійній історії).
@@ -128,7 +131,7 @@ T20 (документовані recoverable tx-tradeoff), T21 (login MinLength �
   не застосовний; @nestjs/platform-fastify trailing-slash/URL-encoding bypass потребує окремої оцінки.
 
 **Рекомендований порядок (закрито):** T3 → T1/T2 → T6/T7/T8 → T15/T16/T23 (deploy) → T9/T10/T11 →
-T12 (followup scale). **Лишається:** T4 (WSL2 ADR), Docker tag-mismatch (окремий план), T20/T21/T22 (LOW).
+T12 (followup scale) + Docker tag-mismatch (1e1aca97). **Лишається:** T4 (WSL2 ADR), T20/T21/T22 (LOW).
 
 ---
 
