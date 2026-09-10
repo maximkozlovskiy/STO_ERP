@@ -20,6 +20,7 @@ import {
   GoodUoMResponseDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
+import { GoodStatusesService } from '../good-statuses/good-statuses.service';
 
 // §2.1 Auth: purchasePrice (закупівельна ціна) — фінансово чутливе поле.
 // MECHANIC/RECEPTIONIST бачать каталог запчастин (Roles на @Get/findAll/findOne),
@@ -34,11 +35,19 @@ const PURCHASE_PRICE_VISIBLE_ROLES = new Set<string>([
 const canSeePurchasePrice = (role?: string | null): boolean =>
   !!role && PURCHASE_PRICE_VISIBLE_ROLES.has(role);
 
+// Статуси-мітки товару (M:N) для include у findAll/findOne. toDto фільтрує deletedAt:null.
+const STATUS_LINKS_INCLUDE = {
+  statusLinks: {
+    select: { status: { select: { id: true, name: true, color: true, deletedAt: true } } },
+  },
+} as const;
+
 @Injectable()
 export class GoodsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly docNumbers: DocumentNumberService,
+    private readonly goodStatuses: GoodStatusesService,
   ) {}
 
   async findAll(orgId: string, query: GoodQueryDto, userRole?: string): Promise<PaginatedGoodsDto> {
@@ -85,6 +94,7 @@ export class GoodsService {
           goodCategory: goodCategorySelect,
           brand: brandSelect,
           barcodes: { select: { barcode: true } },
+          ...STATUS_LINKS_INCLUDE,
         },
       }),
       this.prisma.good.count({ where }),
@@ -106,10 +116,58 @@ export class GoodsService {
         goodCategory: { select: { id: true, name: true } },
         brand: { select: { name: true } },
         barcodes: { select: { barcode: true } },
+        ...STATUS_LINKS_INCLUDE,
       },
     });
     if (!item) throw new NotFoundException('Товар не знайдено');
     return this.toDto(item, userRole);
+  }
+
+  /** Призначити статус-мітку товару (M:N). Валідує, що обидва належать org. Ідемпотентно (P2002→no-op). */
+  async assignStatus(
+    orgId: string,
+    goodId: string,
+    statusId: string,
+    userRole?: string,
+  ): Promise<GoodResponseDto> {
+    const [good, status] = await Promise.all([
+      this.prisma.good.findFirst({
+        where: { id: goodId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+      this.prisma.goodStatus.findFirst({
+        where: { id: statusId, orgId, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!status) throw new NotFoundException('Статус не знайдено');
+
+    // Ідемпотентно: @@unique[goodId,statusId] → повторний assign не дублює (P2002 ловимо як no-op).
+    await this.prisma.goodStatusLink
+      .create({ data: { orgId, goodId, statusId } })
+      .catch((e: unknown) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return;
+        throw e;
+      });
+    // goodCount у кешованому довіднику статусів застаріває → скидаємо.
+    await this.goodStatuses.invalidateCache(orgId);
+    return this.findOne(orgId, goodId, userRole);
+  }
+
+  /** Зняти статус-мітку з товару. */
+  async unassignStatus(
+    orgId: string,
+    goodId: string,
+    statusId: string,
+    userRole?: string,
+  ): Promise<GoodResponseDto> {
+    const result = await this.prisma.goodStatusLink.deleteMany({
+      where: { orgId, goodId, statusId },
+    });
+    if (result.count === 0) throw new NotFoundException('Статус не призначено цьому товару');
+    await this.goodStatuses.invalidateCache(orgId);
+    return this.findOne(orgId, goodId, userRole);
   }
 
   async create(orgId: string, dto: CreateGoodDto, userRole?: string): Promise<GoodResponseDto> {
@@ -723,6 +781,9 @@ export class GoodsService {
         companyName: string | null;
       } | null;
       goodCategory?: { id: string; name: string } | null;
+      statusLinks?: {
+        status: { id: string; name: string; color: string; deletedAt: Date | null };
+      }[];
       deletedAt?: Date | null;
       createdAt: Date;
       updatedAt: Date;
@@ -762,6 +823,13 @@ export class GoodsService {
         item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
+      // Статуси-мітки лише коли statusLinks include-нуто. Фільтр deletedAt:null —
+      // soft-deleted статус приховується, але link лишається (restore відновлює призначення).
+      statuses: item.statusLinks
+        ? item.statusLinks
+            .filter(l => l.status.deletedAt === null)
+            .map(l => ({ id: l.status.id, name: l.status.name, color: l.status.color }))
+        : undefined,
     };
   }
 

@@ -5,6 +5,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { GoodsService } from './goods.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { GoodStatusesService } from '../good-statuses/good-statuses.service';
 
 /**
  * Bug #162: unit-покриття goods.service.
@@ -105,6 +106,8 @@ describe('GoodsService', () => {
         GoodsService,
         { provide: PrismaService, useValue: prisma },
         { provide: DocumentNumberService, useValue: docNumbersMock },
+        // GoodStatusesService — DI у GoodsService для assign/unassign кеш-інвалідації.
+        { provide: GoodStatusesService, useValue: { invalidateCache: vi.fn() } },
       ],
     }).compile();
 

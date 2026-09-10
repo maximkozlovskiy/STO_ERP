@@ -33,6 +33,7 @@ import {
   GoodUoMResponseDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
+import { AssignGoodStatusDto } from '../good-statuses/good-statuses.dto';
 import { BatchService } from '../inventory/batch.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -130,6 +131,32 @@ export class GoodsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GoodResponseDto> {
     return this.service.restore(orgId, id, user.role);
+  }
+
+  // ─── Статуси-мітки (M:N) ─────────────────────────────────────────────────────
+
+  @Post(':goodId/statuses')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Призначити статус-мітку товару' })
+  assignStatus(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Body() dto: AssignGoodStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GoodResponseDto> {
+    return this.service.assignStatus(orgId, goodId, dto.statusId, user.role);
+  }
+
+  @Delete(':goodId/statuses/:statusId')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Зняти статус-мітку з товару' })
+  unassignStatus(
+    @OrgContext() orgId: string,
+    @Param('goodId', ParseUUIDPipe) goodId: string,
+    @Param('statusId', ParseUUIDPipe) statusId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GoodResponseDto> {
+    return this.service.unassignStatus(orgId, goodId, statusId, user.role);
   }
 
   // ─── UoM Sub-resource ────────────────────────────────────────────────────────

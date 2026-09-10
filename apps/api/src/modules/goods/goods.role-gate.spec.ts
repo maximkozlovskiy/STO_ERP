@@ -77,9 +77,11 @@ function makePrismaWithGood(purchasePrice: number | null) {
 
 function makeService(prisma: unknown): GoodsService {
   const docNumbers = { next: vi.fn().mockResolvedValue('T-000001') };
+  const goodStatuses = { invalidateCache: vi.fn() };
   return new GoodsService(
     prisma as unknown as PrismaService,
     docNumbers as unknown as DocumentNumberService,
+    goodStatuses as unknown as import('../good-statuses/good-statuses.service').GoodStatusesService,
   );
 }
 

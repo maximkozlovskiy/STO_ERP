@@ -138,6 +138,9 @@ export class GoodResponseDto {
   @ApiPropertyOptional({ enum: GoodType }) goodType?: GoodType | null;
   @ApiPropertyOptional() preferredSupplierId?: string | null;
   @ApiPropertyOptional() preferredSupplierName?: string | null;
+  /** Кастомні статуси-мітки товару (M:N) — активні (deletedAt:null). */
+  @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
+  statuses?: { id: string; name: string; color: string }[];
   @ApiPropertyOptional({ type: String, nullable: true }) deletedAt?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
