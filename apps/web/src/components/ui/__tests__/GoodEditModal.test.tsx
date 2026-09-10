@@ -50,6 +50,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// CounterpartyEditModal (вкладений supplier-detail) використовує useAuth (StatusManager gate).
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: { role: 'OWNER' } }),
+}));
+
 describe('GoodEditModal — double-submit guard (Bug #634 / WEB-H3)', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();

@@ -45,6 +45,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// CounterpartyEditModal (вкладений supplier-detail) використовує useAuth (StatusManager gate).
+vi.mock('@/lib/auth', () => ({
+  useAuth: () => ({ employee: { role: 'OWNER' } }),
+}));
+
 vi.mock('@/lib/ref-cache', () => ({
   getCached: () => null,
   setCache: vi.fn(),
