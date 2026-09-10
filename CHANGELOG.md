@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-10 — A3-modal: 2 low-risk хуки з CreateWorkOrderModal (3708р God-компонент)
+
+### 684f60b2 refactor(work-orders): винести useReferenceData
+
+6 довідників + org-settings + *ById-мапи + loadVehicles/loadContracts (race-guard) → self-contained хук.
+vehicle auto-select-single → колбек onSingleVehicle (хук form-agnostic). Логіку перенесено ДОСЛІВНО.
+
+### f3fdb1f5 refactor(work-orders): винести useStockTotals
+
+stock-totals кеш parts-таблиці → хук. Bug #452-454 збережено ДОСЛІВНО (Set-dedup goodId-ів, стабільний
+sort ключа, skip-fetch на порожньому наборі, catch без throw).
+
+CreateWorkOrderModal 3708→3524р (−184). tsc web 0 · 11 modal-тестів green · повна web-suite 717/717 ·
+ref-data+stock-totals endpoints→200 live. Крок 3 (useWorkOrderActions: invoice+rollback) відкладено —
+не покритий тестами + Playwright MCP down → click-верифікація недоступна.
+
+---
+
 ## 2026-09-10 — A3: винесено stock+settlement side-effects у WorkOrderStockEffectsService
 
 ### e8ae4d70 refactor(work-orders): A3 — WorkOrderStockEffectsService
