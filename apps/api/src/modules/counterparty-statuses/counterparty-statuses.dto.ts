@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsHexColor, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsHexColor, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateCounterpartyStatusDto {
   @ApiProperty({ example: 'VIP' })
@@ -41,7 +41,7 @@ export class CounterpartyStatusResponseDto {
 /** Призначення статусу контрагенту (POST /counterparties/:id/statuses). */
 export class AssignCounterpartyStatusDto {
   @ApiProperty({ description: 'ID статусу для призначення' })
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   statusId!: string;
 }
