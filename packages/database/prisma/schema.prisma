@@ -375,6 +375,7 @@ model Organisation {
   cashRegisters         CashRegister[]
   savedReports          SavedReport[]
   counterpartyStatuses  CounterpartyStatus[]
+  goodStatuses          GoodStatus[]
   primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
@@ -752,6 +753,44 @@ model CounterpartyStatusLink {
   @@map("counterparty_status_links")
 }
 
+// Кастомні мітки-статуси товарів. Per-org довідник, керований через вкладку «Статуси» у Каталозі.
+// M:N із Good через GoodStatusLink. Дзеркалить CounterpartyStatus.
+model GoodStatus {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  color       String    @default("#6b7280") // hex-колір бейджа (дефолт — сірий)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org   Organisation     @relation(fields: [orgId], references: [id])
+  links GoodStatusLink[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("good_statuses")
+}
+
+// Junction M:N: призначення статусу товару. Без syncVersion (як інші junction-таблиці).
+model GoodStatusLink {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @db.Uuid
+  goodId    String   @db.Uuid
+  statusId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  good   Good       @relation(fields: [goodId], references: [id])
+  status GoodStatus @relation(fields: [statusId], references: [id])
+
+  @@unique([goodId, statusId])
+  @@index([orgId, goodId])
+  @@index([orgId, statusId])
+  @@map("good_status_links")
+}
+
 model CounterpartyContract {
   id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId            String       @db.Uuid
@@ -1027,6 +1066,7 @@ model Good {
   stockBatches        StockBatch[]
   pricingRules        PricingRule[]
   priceHistory        PriceHistory[]
+  statusLinks         GoodStatusLink[]
 
   @@unique([orgId, internalCode])
   @@index([orgId, deletedAt])

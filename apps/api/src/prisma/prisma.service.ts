@@ -61,6 +61,7 @@ const SYNC_VERSION_MODELS = new Set([
   'SyncJob',
   'BranchProviderConfig',
   'CounterpartyStatus',
+  'GoodStatus',
 ]);
 
 // Prisma 5 requires $extends for query middleware — $use was removed in v5
