@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-10 — A3: винесено stock+settlement side-effects у WorkOrderStockEffectsService
+
+### e8ae4d70 refactor(work-orders): A3 — WorkOrderStockEffectsService
+
+God-об'єкт WorkOrdersService (1847р): transition() змішував FSM-логіку з transaction-critical stock+
+settlement fan-out. Винесено у окремий bounded context (дзеркалить A2-events / A3-Share).
+
+- **NEW WorkOrderStockEffectsService** — reserveParts / releasePartReservations / writeOffPartsAndCharge /
+  returnPartsAndCredit + fetchPartCoefficients. Тіла перенесено ДОСЛІВНО (git-diff: byte-identical окрім
+  fetchPartCoeff orgId-фіксу). Deps prisma+inventory+settlements переїхали сюди.
+- **WorkOrdersService** 1847→1595р, constructor 8→6 (inventory/settlements більше не інжектяться); transition()
+  делегує 4 виклики у this.stockEffects.* (той самий tx). module +provider.
+- **Латентний A1-баг закрито:** fetchPartCoefficients робив goodUoM.findMany БЕЗ orgId → після A1-guard FSM-
+  перехід із UoM-запчастиною 500-ив (TenantIsolationError) + крос-tenant коефіцієнт. +orgId у where. Mutation-verified.
+
+tsc 0 · suite 2101/2101 green (136 files) · lint 0 · LIVE FSM-smoke (clone→ESTIMATE→APPROVED→IN_PROGRESS→
+COMPLETED→CANCELLED усі 201, 0 TenantIsolationError, side-effects застосовані — behavior-identical наживо).
+
+---
+
 ## 2026-09-10 — A1: tenant-isolation GUARD (fail-closed) увімкнено
 
 ### c6a1a9eb feat(tenant): A1 — ALS + Prisma $extends guard проти крос-tenant витоку

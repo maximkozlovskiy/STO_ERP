@@ -141,13 +141,13 @@ T12 (followup scale) + Docker tag-mismatch (1e1aca97). **Лишається:** T
 > aspect-oriented Prisma-extensions, інкапсульовані грошові/складські інваріанти, майже ациклічний граф.
 > Борг зростання — не концептуальні помилки. Дашборд: артефакт «STO ERP — Архітектурна зрілість».
 
-| ID  | Покращення                                                                                             | Пріор.   | Статус |
-| --- | ------------------------------------------------------------------------------------------------------ | -------- | ------ |
-| A1  | Tenant-ізоляція: ALS + Prisma-guard (fail-closed) — ловить пропуски orgId, тихий витік→гучний збій     | Високий  | 🟢     |
-| A2  | Доменні events для lifecycle side-effects (WorkOrderCompleted + @OnEvent, +outbox)                     | Високий  | 🟢     |
-| A3  | Розбити God-об'єкти (WorkOrdersService 2124р → +StockEffects/Share/Totals; CreateWorkOrderModal 3708р) | Високий  | 🟡     |
-| A4  | Provider-registry через multi-provider DI-токен замість конкретних класів (OCP+DIP)                    | Середній | 🟢     |
-| A5  | Спільний DTO/FSM-контракт у @sto/shared (Zod через nestjs-zod) — усунути ручне дзеркалення             | Середній | 🟢     |
+| ID  | Покращення                                                                                                         | Пріор.   | Статус |
+| --- | ------------------------------------------------------------------------------------------------------------------ | -------- | ------ |
+| A1  | Tenant-ізоляція: ALS + Prisma-guard (fail-closed) — ловить пропуски orgId, тихий витік→гучний збій                 | Високий  | 🟢     |
+| A2  | Доменні events для lifecycle side-effects (WorkOrderCompleted + @OnEvent, +outbox)                                 | Високий  | 🟢     |
+| A3  | Розбити God-об'єкти: WO-service 2124→1595р (Share✅+Events✅+StockEffects✅); лишається CreateWorkOrderModal 3708р | Високий  | 🟡     |
+| A4  | Provider-registry через multi-provider DI-токен замість конкретних класів (OCP+DIP)                                | Середній | 🟢     |
+| A5  | Спільний DTO/FSM-контракт у @sto/shared (Zod через nestjs-zod) — усунути ручне дзеркалення                         | Середній | 🟢     |
 
 **A5-money закрито (a465f20b):** формула ПДВ (calcVatOnBase) — єдине джерело у common/utils/vat;
 WO.recalcTotals + invoices.lineVatTotals делегують. Прибрано 3-ю inline-копію (drift-ризик грошей).

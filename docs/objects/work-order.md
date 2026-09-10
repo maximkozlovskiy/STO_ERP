@@ -63,6 +63,11 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD
 
 Файл FSM: `apps/api/src/modules/work-orders/work-orders.fsm.ts`
 
+> **A3:** stock+settlement side-effects переходів винесено з `WorkOrdersService.transition` у
+> `WorkOrderStockEffectsService` (`work-order-stock-effects.service.ts`): `reserveParts` /
+> `releasePartReservations` / `writeOffPartsAndCharge` / `returnPartsAndCredit`. `transition()` делегує їх,
+> передаючи той самий `tx` — ефекти лишаються атомарними зі зміною статусу.
+
 | Перехід                        | Side-effects (у `$transaction`)                                                                                                                                                                                                                                                                                                                   |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | → `IN_PROGRESS`                | `InventoryService.createMovement(RESERVATION)` для кожної запчастини (sequential for-loop)                                                                                                                                                                                                                                                        |
