@@ -17,6 +17,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
+import { InventoryTab } from '../inventory/InventoryTab';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
@@ -150,8 +151,6 @@ const STATUS_FILTERS: readonly string[] = Object.freeze([
 const VALID_TYPES: ReadonlySet<string> = new Set(Object.keys(STOCK_DOC_TYPE_LABELS));
 
 function StockDocumentsPageClient() {
-  useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
-
   const { confirm, dialogProps } = useConfirm();
 
   // useListPage: shared table/panel/filter infrastructure
@@ -410,17 +409,12 @@ function StockDocumentsPageClient() {
   );
 
   return (
-    <div className="page-fill p-4 md:p-6">
+    <>
       {error && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error}
         </div>
       )}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Складські документи</h1>
-        </div>
-      </div>
 
       {/* Saved filters */}
       {features.savedFiltersEnabled && (
@@ -894,6 +888,58 @@ function StockDocumentsPageClient() {
           ariaLabel="Пов'язані документи складського документа"
         />
       )}
+    </>
+  );
+}
+
+type StockTab = 'documents' | 'stock';
+const STOCK_TABS: { key: StockTab; label: string }[] = [
+  { key: 'documents', label: 'Документи складу' },
+  { key: 'stock', label: 'Залишки' },
+];
+
+// Таб-обгортка сторінки «Склад»: вкладка «Документи складу» (наявний список) + «Залишки»
+// (колишня сторінка /inventory як InventoryTab). Обидві вкладки — без власного page-shell.
+function StockTabsShell() {
+  // Ширший guard — «Залишки» доступні і RECEPTIONIST (як була сторінка /inventory).
+  useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') === 'stock' ? 'stock' : 'documents') as StockTab;
+  const setTab = (t: StockTab) =>
+    router.replace(t === 'documents' ? '/stock-documents' : `/stock-documents?tab=${t}`, {
+      scroll: false,
+    });
+
+  return (
+    <div className="page-fill p-4 md:p-6">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Склад</h1>
+        </div>
+      </div>
+
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
+        {STOCK_TABS.map(t => (
+          <button
+            key={t.key}
+            onMouseEnter={() => {
+              if (t.key === 'stock') void import('../inventory/InventoryTab');
+            }}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+              tab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'stock' ? <InventoryTab /> : <StockDocumentsPageClient />}
     </div>
   );
 }
@@ -901,7 +947,7 @@ function StockDocumentsPageClient() {
 export default function StockDocumentsPage() {
   return (
     <Suspense fallback={null}>
-      <StockDocumentsPageClient />
+      <StockTabsShell />
     </Suspense>
   );
 }

@@ -14,7 +14,6 @@ import {
   Wrench,
   CalendarDays,
   Users,
-  Package,
   ShoppingCart,
   FileText,
   Receipt,
@@ -68,7 +67,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   // ─── Документи ────────────────────────────────────────────────────
   { href: '/work-orders', label: 'Наряди', icon: Wrench, section: 'documents' },
   { href: '/purchase-orders', label: 'Купівля', icon: ShoppingCart, section: 'documents' },
-  { href: '/stock-documents', label: 'Документи складу', icon: FileText, section: 'documents' },
+  { href: '/stock-documents', label: 'Склад', icon: FileText, section: 'documents' },
 
   // ─── Взаєморозрахунки ─────────────────────────────────────────────
   { href: '/invoices', label: 'Рахунки клієнтам', icon: Receipt, section: 'settlements' },
@@ -114,7 +113,6 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
 
   // ─── Довідники ────────────────────────────────────────────────────
   { href: '/counterparties', label: 'Контрагенти', icon: Users, section: 'refs' },
-  { href: '/inventory', label: 'Склад', icon: Package, section: 'refs' },
   {
     href: '/catalog',
     label: 'Каталог',

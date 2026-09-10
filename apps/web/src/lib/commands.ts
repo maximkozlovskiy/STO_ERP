@@ -54,10 +54,10 @@ const NAV_COMMANDS: CommandDef[] = [
   },
   {
     id: 'nav:inventory',
-    label: 'Склад',
+    label: 'Залишки на складах',
     group: 'navigation',
-    href: '/inventory',
-    keywords: ['залишки', 'запчастини', 'stock'],
+    href: '/stock-documents?tab=stock',
+    keywords: ['залишки', 'запчастини', 'stock', 'склад'],
   },
   {
     id: 'nav:purchase-orders',
@@ -68,10 +68,10 @@ const NAV_COMMANDS: CommandDef[] = [
   },
   {
     id: 'nav:stock-documents',
-    label: 'Документи складу',
+    label: 'Склад',
     group: 'navigation',
     href: '/stock-documents',
-    keywords: ['прихід', 'списання', 'складський'],
+    keywords: ['прихід', 'списання', 'складський', 'документи складу'],
   },
   {
     id: 'nav:invoices',
