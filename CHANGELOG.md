@@ -30,9 +30,15 @@ vehicle auto-select-single → колбек onSingleVehicle (хук form-agnosti
 stock-totals кеш parts-таблиці → хук. Bug #452-454 збережено ДОСЛІВНО (Set-dedup goodId-ів, стабільний
 sort ключа, skip-fetch на порожньому наборі, catch без throw).
 
-CreateWorkOrderModal 3708→3524р (−184). tsc web 0 · 11 modal-тестів green · повна web-suite 717/717 ·
-ref-data+stock-totals endpoints→200 live. Крок 3 (useWorkOrderActions: invoice+rollback) відкладено —
-не покритий тестами + Playwright MCP down → click-верифікація недоступна.
+### 8936bc0c refactor(work-orders): винести useWorkOrderActions (крок 3/3)
+
+Edit-режим дії (друк/зберегти-як/поділитись/SMS/рахунок): 7 handlers + loading + invoiceConflict + ESC-ефект
+→ хук (git-diff: усі 7 byte-identical; handleInvoice зберігає FSM-rollback COMPLETED→INVOICED→back).
+Footer-JSX + conflict-діалог у модалі. Верифіковано **LIVE E2E 16/16** (estimate-share+work-orders-features —
+Друк/Поділитись/SMS/Виставити рахунок наживо; verification-gap money-потоку закрито після T26-env-фіксу).
+
+CreateWorkOrderModal 3708→3325р (усього −383, 3 хуки). tsc web 0 · 11 modal-тестів + повна web-suite 717/717 ·
+E2E 16/16 · lint 0. Лишається WorksTable/PartsTable (moderate).
 
 ---
 
