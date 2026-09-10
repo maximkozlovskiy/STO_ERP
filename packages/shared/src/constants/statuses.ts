@@ -5,14 +5,7 @@
  */
 
 export type BadgeVariant =
-  | 'default'
-  | 'secondary'
-  | 'outline'
-  | 'success'
-  | 'warning'
-  | 'destructive'
-  | 'info'
-  | 'purple';
+  'default' | 'secondary' | 'outline' | 'success' | 'warning' | 'destructive' | 'info' | 'purple';
 
 // ─── Work Orders ─────────────────────────────────────────────────────────────
 
@@ -55,8 +48,9 @@ export const WO_STATUS_DESCRIPTIONS: Record<string, string> = {
   CANCELLED: 'Скасовано — наряд скасовано',
 };
 
-// Status sets for business-rule gates. Must mirror backend work-orders.fsm.ts constants.
-// Frontend reads these instead of hardcoding inline status arrays.
+// A5: ЄДИНЕ ДЖЕРЕЛО gate-множин для backend і frontend. Backend (work-orders.fsm.ts) ІМПОРТУЄ їх
+// звідси (звужуючи до WorkOrderStatus[]), frontend читає напряму — жодного ручного дзеркалення.
+// (Раніше backend мав власні копії з коментарем «Mirrors …» — drift-ризик усунено.)
 export const WO_EDITABLE_STATUSES: readonly string[] = Object.freeze([
   'DRAFT',
   'ESTIMATE',

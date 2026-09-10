@@ -1,4 +1,12 @@
 import type { WorkOrderStatus } from '@prisma/client';
+import { WO_EDITABLE_STATUSES, WO_SHAREABLE_STATUSES, WO_INVOICEABLE_STATUSES } from '@sto/shared';
+
+// A5: gate-множини мають ЄДИНЕ джерело у @sto/shared (browser-safe string[]) — backend і frontend
+// читають ті самі значення. Тут лише звужуємо тип до WorkOrderStatus[] (значення ідентичні) —
+// жодного ручного дзеркалення коментарем «Must mirror». Backend-специфічні множини (CLOSED/DELETABLE/
+// RESERVATION_ACTIVE/LINE_ACTUAL) лишаються локальними — вони не потрібні фронту.
+const asWoStatuses = (arr: readonly string[]): readonly WorkOrderStatus[] =>
+  Object.freeze(arr as readonly WorkOrderStatus[]);
 
 export const WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   DRAFT: ['ESTIMATE', 'CANCELLED'],
@@ -28,11 +36,8 @@ export const RESERVATION_ACTIVE_STATUSES: readonly WorkOrderStatus[] = Object.fr
   'IN_PROGRESS',
   'ON_HOLD',
 ]);
-export const EDITABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
-  'DRAFT',
-  'ESTIMATE',
-  'APPROVED',
-]);
+// A5: єдине джерело — WO_EDITABLE_STATUSES у @sto/shared.
+export const EDITABLE_STATUSES: readonly WorkOrderStatus[] = asWoStatuses(WO_EDITABLE_STATUSES);
 // For line-level patches that touch ONLY actualHours, also allow IN_PROGRESS/ON_HOLD —
 // a mechanic closing a work line with actual time. Other line fields (workId/employeeId/normoHours/price)
 // are forbidden outside EDITABLE_STATUSES because they alter the approved estimate.
@@ -42,17 +47,11 @@ export const LINE_ACTUAL_EDITABLE_STATUSES: readonly WorkOrderStatus[] = Object.
   'IN_PROGRESS',
   'ON_HOLD',
 ]);
-// Single source for invoice/completion-act gate. Mirrors WO_INVOICEABLE_STATUSES in @sto/shared.
-export const INVOICEABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
-  'COMPLETED',
-  'INVOICED',
-]);
-// Single source for share/print/SMS gate. Mirrors WO_SHAREABLE_STATUSES in @sto/shared.
-export const SHAREABLE_STATUSES: readonly WorkOrderStatus[] = Object.freeze([
-  'DRAFT',
-  'ESTIMATE',
-  'APPROVED',
-]);
+// A5: invoice/completion-act gate — єдине джерело WO_INVOICEABLE_STATUSES у @sto/shared.
+export const INVOICEABLE_STATUSES: readonly WorkOrderStatus[] =
+  asWoStatuses(WO_INVOICEABLE_STATUSES);
+// A5: share/print/SMS gate — єдине джерело WO_SHAREABLE_STATUSES у @sto/shared.
+export const SHAREABLE_STATUSES: readonly WorkOrderStatus[] = asWoStatuses(WO_SHAREABLE_STATUSES);
 
 export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
   DRAFT: 'Чернетка',
