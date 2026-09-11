@@ -98,8 +98,11 @@ export function useComputePayrollPeriod() {
 export function usePayPayrollPeriod() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<PayrollPeriod>(`/payroll/periods/${id}/pay`, { method: 'POST' }),
+    mutationFn: ({ id, cashRegisterId }: { id: string; cashRegisterId?: string }) =>
+      apiFetch<PayrollPeriod>(`/payroll/periods/${id}/pay`, {
+        method: 'POST',
+        body: JSON.stringify(cashRegisterId ? { cashRegisterId } : {}),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.all }),
   });
 }
