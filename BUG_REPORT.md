@@ -4377,3 +4377,54 @@ Baseline: API tsc ✅, web tsc ✅, API unit 2178/2178 ✅, web component 739/73
   Regression-guard: 2 тести у `CashPage.test.tsx` — `canOperate=false` → `enabled=false`, `canOperate=true` → `enabled=true`.
 
 Статус: [x] виправлено
+
+## Session 2026-09-11 — Регресійний E2E-прогін: довести до зеленого (8 fail + 45 did-not-run через abort)
+
+Контекст: `npx playwright test` дав 287 passed / 8 failed / 45 did-not-run (serial-describe abort).
+Причина більшості падінь — НАВМИСНІ UX-зміни (перейменування /stock-documents → «Склад» з вкладками,
+/inventory → redirect на ?tab=stock, /cash → таб-обгортка з блоком зміни лише для фіскальної каси,
+payroll pay → окрема модалка замість ConfirmDialog). Ці тести ОНОВЛЕНО під новий UX (не послаблено).
+Знайдено 1 РЕАЛЬНИЙ баг коду (#730).
+
+### Bug #730 — Публічні booking-ендпоінти 500 (TenantIsolationError): tenant-scoped GarageBranch без runUnscoped
+
+- **Severity:** HIGH (весь публічний online-booking віджет непрацездатний: `GET /api/booking/branches`,
+  `GET /api/booking/availability`, `POST /api/booking/request` — усі падають у 500 до будь-якої бізнес-логіки).
+- **Файли:** `apps/api/src/modules/booking/booking.service.ts` (`findBranchForBooking`, `listBranchesForBooking`)
+- **Симптом:** `GET /api/booking/branches` → 500 `{"message":"Внутрішня помилка сервера"}`. У логах API:
+  `TenantIsolationError: findMany на GarageBranch без tenant-фільтра`. E2E crud-booking.spec:63 падав на
+  `expect(data.branchId).toBeTruthy()` — публічний список філій порожній через 500.
+- **Корінь:** `GarageBranch` — tenant-scoped модель (у TENANT-списку `prisma.service.ts`, НЕ в
+  `TENANT_EXEMPT_MODELS`). Prisma `$extends` tenant-guard (fail-closed) кидає `TenantIsolationError`, якщо
+  `where` не несе `orgId`/`branchId`. Публічні booking-роути НЕ мають auth-контексту (JWT відсутній →
+  ambient `orgId=undefined`), а `orgId` РЕЗОЛВИТЬСЯ САМЕ з цього запиту (branch → orgId). Обидва методи
+  робили `prisma.garageBranch.findMany/findFirst({ where:{ deletedAt:null } })` без orgId і без `runUnscoped`
+  → guard throw → 500. Це легітимний глобальний доступ (як public share-token), який ЗАБУЛИ обгорнути.
+- **Fix:** обидва методи обгорнуто у `runUnscoped(async () => await prisma...)` — bypass tenant-guard для
+  явно-легітимного публічного read. КРИТИЧНО: `await` УСЕРЕДИНІ `runUnscoped` (не повертати lazy PrismaPromise
+  назовні) — інакше DB-виклик (і guard-hook) виконається ПІСЛЯ виходу зі scope, bypass втрачено, throw лишається.
+  Verified live: `GET /api/booking/branches` → 200 `[{id,name,address}]`; E2E crud-booking зелений.
+
+Статус: [x] виправлено
+
+### Оновлені (застарілі) тести під навмисні UX-зміни
+
+1. **stock h1 «Складські документи» → «Склад»** (21 замін у 4 файлах): `stock-documents.spec.ts` (12),
+   `crud-stock-document.spec.ts` (7), `stock-documents-types.spec.ts` (1), `cross-cache-invalidation.spec.ts` (1).
+   Сторінка стала таб-обгорткою «Склад» (вкладки «Документи складу» + «Залишки»).
+2. **inventory.spec** (7 authenticated-тестів): навігація `/inventory` → `/stock-documents?tab=stock`
+   (уникає redirect-хопу), h1 `Залишки на складах` → `Склад`. Auth-guard-тест на /inventory лишено —
+   redirect-ланцюг → /login працює.
+3. **cross-cache-invalidation.spec** (2 навігації): `/inventory` → `/stock-documents?tab=stock` напряму
+   (детермінізм, без гонки client-redirect).
+4. **client-payments.spec /cash (2 тести)**: /cash — таб-обгортка; блок зміни (open/close, «Відкрити зміну»)
+   у вкладці «Операції» лише для обраної ФІСКАЛЬНОЇ каси. Додано `ensureFiscalRegister` (знаходить наявну
+   фіскальну касу у списку, який рендерить UI, або створює) + `selectRegister` (обирає її у <select>).
+   Guard-тест «Фіскалізацію не налаштовано» лишився валідним (branch без ПРРО-провайдера).
+5. **payroll.spec:93 lifecycle**: pay-flow отримав власну модалку «Провести виплату» (вибір каси + футер
+   «Виплатити … ₴») замість ConfirmDialog «Так». Тест обирає «— без каси —» (уникає вимоги фіск. зміни).
+6. **smoke.spec /setup**: на ініціалізованій БД (`/setup/status` → initialized:true) сторінка САМА
+   редіректить на /login (setup-lock, не auth-guard). Тест тепер толерує обидва стани (initialized → /login,
+   fresh → wizard) + перевіряє відсутність error-overlay.
+
+Фінал: **339 passed / 0 failed / 0 did-not-run** (1 flaky — pre-existing hover-timing, зелений на retry).
