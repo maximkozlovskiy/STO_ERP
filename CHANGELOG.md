@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-11 — Фіча: Рух готівки в касах (cash-in/cash-out + статті витрат)
+
+Фінансова частина: внесення та видача готівки, баланс каси, статті витрат, інтеграції з оплатами й ЗП.
+
+- **DB:** CashOperation (append-only, шаблон SettlementTransaction) + ExpenseCategory + enums
+  CashDirection/CashOperationReason + CashRegister.isFiscal/initialBalance; міграція 20260911160000.
+- **Backend:** CashService — ЄДИНА точка руху готівки createOperation (atomic, зовнішній tx, знак
+  CASH_SIGN, фіскальна каса вимагає відкриту зміну → 400); getBalance = initialBalance + Σ (свіжий,
+  не кеш); операції на CashRegistersController; expense-categories CRUD-модуль.
+- **Інтеграції:** payments cash-in (оплата готівкою → SALE_PAYMENT у ту саму транзакцію);
+  payroll cash-out (виплата ЗП з каси reason=PAYROLL по співробітнику; без каси — лише фіксація).
+- **Frontend:** /cash вкладки Операції/Каси/Статті витрат (перемикач кас, баланс, внести/видати,
+  історія, зміна для фіскальної); payroll pay-модалка з вибором каси. Ролі гейтують вкладки/кнопки/fetch.
+
+QA: sync 1 fix (payroll pay body); review 4 (1 Important роль-доступ + 3 suggestion); tester Bug #729
+(role-gated fetch). Verify: tsc api+web 0 · api 2178 + web 741 green · live curl 8 сценаріїв
+(баланс/fiscal/cash-in-atomicity/payroll cash-out/tenant/ролі).
+
+---
+
 ### 56b4466f fix(review): рольовий доступ до вкладок «Каси» + дрібні фікси cash-фічі
 
 - Code review фінансової фічі «Рух готівки в касах» (cash-in/out + статті витрат + payments/payroll).
