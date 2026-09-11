@@ -2773,6 +2773,11 @@ model CashRegister {
   currencyId     String    @db.Uuid
   branchId       String    @db.Uuid
   isFiscal       Boolean   @default(false) // фіскальна каса → операції лише у відкриту зміну + ПРРО
+  // Привʼязка фіскальної каси до ПРРО-провайдера (код 'checkbox'|'vchasno' з BranchProviderConfig
+  // тієї ж філії; не FK — provider там текстовий код). null → фіскалізується активним per-branch
+  // провайдером (зворотна сумісність). CashShift.provider береться звідси при відкритті зміни.
+  fiscalProvider          String? // код ПРРО-провайдера цієї каси
+  providerCashRegisterId  String? // id каси на боці провайдера (Checkbox cashRegisterId; Вчасно — у токені)
   initialBalance Decimal   @default(0) @db.Decimal(12, 2) // стартовий залишок готівки
   syncVersion    BigInt    @default(0)
   createdAt      DateTime  @default(now())
