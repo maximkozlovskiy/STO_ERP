@@ -35,6 +35,8 @@ import { BrandsModule } from './modules/brands/brands.module';
 import { CounterpartyStatusesModule } from './modules/counterparty-statuses/counterparty-statuses.module';
 import { GoodStatusesModule } from './modules/good-statuses/good-statuses.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
+import { ExpenseCategoriesModule } from './modules/expense-categories/expense-categories.module';
+import { CashModule } from './modules/cash/cash.module';
 import { GoodCategoriesModule } from './modules/good-categories/good-categories.module';
 import { UnitsModule } from './modules/units/units.module';
 import { XlsxModule } from './modules/xlsx/xlsx.module';
@@ -186,6 +188,8 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     CounterpartyStatusesModule,
     GoodStatusesModule,
     PayrollModule,
+    ExpenseCategoriesModule,
+    CashModule,
     GoodCategoriesModule,
     UnitsModule,
     XlsxModule,

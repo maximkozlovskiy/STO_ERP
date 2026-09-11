@@ -22,6 +22,7 @@ import { OnlinePaymentController } from './online-payment.controller';
 import { PaymentGatewaysController } from './payment-gateways.controller';
 import { PaymentPollingProcessor } from './payment-polling.processor';
 import { SettlementsModule } from '../settlements/settlements.module';
+import { CashModule } from '../cash/cash.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkOrdersModule } from '../work-orders/work-orders.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
@@ -41,6 +42,7 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     // — without this import queueEarn was dead code and loyalty points were never accrued.
     LoyaltyModule,
     AuditModule, // C1: аудит створення платежу
+    CashModule, // готівкова оплата → cash-in у касу
   ],
   controllers: [
     PaymentsController,

@@ -17,15 +17,21 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CashRegistersService } from './cash-registers.service';
 import { CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-registers.dto';
+import { CashService } from '../cash/cash.service';
+import { CreateCashOperationDto } from '../cash/cash.dto';
 
 @ApiTags('Каса')
 @Controller('cash-registers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class CashRegistersController {
-  constructor(private readonly service: CashRegistersService) {}
+  constructor(
+    private readonly service: CashRegistersService,
+    private readonly cash: CashService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
@@ -66,5 +72,37 @@ export class CashRegistersController {
   @ApiOperation({ summary: 'Видалити касу (soft delete)' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
+  }
+
+  // ─── Рух готівки (операції) ───────────────────────────────────────────────
+
+  @Get(':id/balance')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Поточний залишок каси' })
+  async balance(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return { balance: await this.cash.getBalance(orgId, id) };
+  }
+
+  @Get(':id/operations')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Історія касових операцій' })
+  operations(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.cash.listOperations(orgId, id, limit ? Number(limit) : 100);
+  }
+
+  @Post(':id/operations')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Ручна операція: внести (IN) / видати (OUT) готівку' })
+  createOperation(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: { id: string },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateCashOperationDto,
+  ) {
+    return this.cash.createManual(orgId, id, dto, user?.id);
   }
 }

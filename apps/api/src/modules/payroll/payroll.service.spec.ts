@@ -22,6 +22,7 @@ function makeMocks() {
         create: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      payrollLine: { findMany: vi.fn().mockResolvedValue([]) },
       garageBranch: { findFirst: vi.fn() },
       $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi
@@ -29,6 +30,7 @@ function makeMocks() {
         .mockImplementation(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
     },
     audit: { record: vi.fn().mockResolvedValue(undefined) },
+    cash: { createOperation: vi.fn().mockResolvedValue(undefined) },
   };
 }
 
@@ -36,6 +38,7 @@ function makeService(m: ReturnType<typeof makeMocks>): PayrollService {
   return new PayrollService(
     m.prisma as unknown as PrismaService,
     m.audit as unknown as AuditService,
+    m.cash as unknown as import('../cash/cash.service').CashService,
   );
 }
 

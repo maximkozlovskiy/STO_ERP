@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { CashRegistersController } from './cash-registers.controller';
 import { CashRegistersService } from './cash-registers.service';
+import { CashService } from '../cash/cash.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
@@ -13,6 +14,11 @@ const serviceMock = {
   create: vi.fn(),
   update: vi.fn(),
   remove: vi.fn(),
+};
+const cashMock = {
+  getBalance: vi.fn().mockResolvedValue(0),
+  listOperations: vi.fn().mockResolvedValue([]),
+  createManual: vi.fn().mockResolvedValue({}),
 };
 
 let jwtAllow = true;
@@ -36,7 +42,10 @@ describe('CashRegisters — HTTP Contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [CashRegistersController],
-      providers: [{ provide: CashRegistersService, useValue: serviceMock }],
+      providers: [
+        { provide: CashRegistersService, useValue: serviceMock },
+        { provide: CashService, useValue: cashMock },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue(mockJwtGuard)

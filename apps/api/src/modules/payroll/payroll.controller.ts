@@ -20,6 +20,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PayrollService } from './payroll.service';
 import {
   CreatePayrollPeriodDto,
+  PayPayrollDto,
   PayrollPeriodResponseDto,
   PayrollPreviewDto,
   PayrollQueryDto,
@@ -87,8 +88,9 @@ export class PayrollController {
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PayPayrollDto,
   ) {
-    return this.service.pay(orgId, id, user?.id);
+    return this.service.pay(orgId, id, user?.id, dto?.cashRegisterId);
   }
 
   @Delete('periods/:id')

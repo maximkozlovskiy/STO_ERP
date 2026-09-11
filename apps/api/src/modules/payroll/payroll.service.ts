@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, formatPersonName } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CashService } from '../cash/cash.service';
 import { roundMoney } from '../../common/utils/math';
 import { computeAccrued, parseRateScheme } from './payroll.calculator';
 import {
@@ -48,6 +49,7 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cash: CashService,
   ) {}
 
   /**
@@ -237,8 +239,17 @@ export class PayrollService {
     return this.findOne(orgId, id);
   }
 
-  /** COMPUTED → PAID: фіксує виплату (paidAmount = accruedAmount по всіх рядках). */
-  async pay(orgId: string, id: string, userId?: string): Promise<PayrollPeriodResponseDto> {
+  /**
+   * COMPUTED → PAID: фіксує виплату (paidAmount = accruedAmount по всіх рядках).
+   * Якщо передано cashRegisterId — проводить видачу готівки з каси (cash-out reason=PAYROLL) на кожного
+   * співробітника у ту саму транзакцію. Без cashRegisterId — лише фіксація факту (без руху каси).
+   */
+  async pay(
+    orgId: string,
+    id: string,
+    userId?: string,
+    cashRegisterId?: string,
+  ): Promise<PayrollPeriodResponseDto> {
     const period = await this.prisma.payrollPeriod.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
@@ -246,6 +257,12 @@ export class PayrollService {
     if (!period) throw new NotFoundException('Період не знайдено');
     if (period.status !== 'COMPUTED')
       throw new BadRequestException('Виплатити можна лише розрахований період');
+
+    // Рядки нарахувань (для cash-out по кожному співробітнику).
+    const lines = await this.prisma.payrollLine.findMany({
+      where: { orgId, periodId: id },
+      select: { employeeId: true, accruedAmount: true },
+    });
 
     await this.prisma.$transaction(
       async tx => {
@@ -260,6 +277,27 @@ export class PayrollService {
         UPDATE payroll_lines SET "paidAmount" = "accruedAmount", "updatedAt" = now()
         WHERE "orgId" = ${orgId}::uuid AND "periodId" = ${id}::uuid
       `;
+        // Видача готівки з каси (опційно) — по одній cash-out операції на співробітника.
+        if (cashRegisterId) {
+          for (const l of lines) {
+            const amount = Number(l.accruedAmount);
+            if (amount <= 0) continue;
+            await this.cash.createOperation(
+              orgId,
+              {
+                cashRegisterId,
+                direction: 'OUT',
+                amount,
+                reason: 'PAYROLL',
+                employeeId: l.employeeId,
+                documentType: 'PayrollPeriod',
+                documentId: id,
+                createdBy: userId ?? null,
+              },
+              tx,
+            );
+          }
+        }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );

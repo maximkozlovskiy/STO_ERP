@@ -5,6 +5,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { CashService } from '../cash/cash.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -86,6 +87,10 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
         { provide: LoyaltyService, useValue: { queueEarn: vi.fn().mockResolvedValue(undefined) } },
         // C1: аудит best-effort — мок record() (no-op).
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: CashService,
+          useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -394,6 +399,10 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
         },
         { provide: LoyaltyService, useValue: loyalty },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: CashService,
+          useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -560,6 +569,10 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
         { provide: LoyaltyService, useValue: { queueEarn: vi.fn().mockResolvedValue(undefined) } },
         // C1: аудит best-effort — мок record() (no-op).
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: CashService,
+          useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -879,6 +892,10 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
         { provide: LoyaltyService, useValue: { queueEarn: vi.fn().mockResolvedValue(undefined) } },
         // C1: аудит best-effort — мок record() (no-op).
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: CashService,
+          useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
+        },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();

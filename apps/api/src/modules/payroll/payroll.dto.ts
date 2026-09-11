@@ -16,6 +16,14 @@ export class PayrollQueryDto {
   branchId?: string;
 }
 
+/** Проведення виплати. cashRegisterId — якщо задано, ЗП видається готівкою з каси (cash-out). */
+export class PayPayrollDto {
+  @ApiPropertyOptional({ description: 'Каса для видачі готівкою (без неї — лише фіксація факту)' })
+  @IsOptional()
+  @IsUUID()
+  cashRegisterId?: string;
+}
+
 export class CreatePayrollPeriodDto {
   @ApiProperty({ example: '2026-09-01' })
   @IsDateString()

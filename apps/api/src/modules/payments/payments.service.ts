@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { Prisma, FiscalReceiptStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { CashService } from '../cash/cash.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -37,6 +38,7 @@ export class PaymentsService {
     private readonly workOrders: WorkOrdersService,
     private readonly loyalty: LoyaltyService,
     private readonly audit: AuditService,
+    private readonly cash: CashService,
     @InjectQueue('checkbox') private readonly checkboxQueue: Queue,
   ) {}
 
@@ -318,6 +320,25 @@ export class PaymentsService {
             where: { id: dto.workOrderId, orgId },
             data: { paidAmount: { increment: dto.amount } },
           });
+        }
+
+        // Готівкова оплата → рух готівки у касу (cash-in). У ту саму транзакцію, щоб не розсинхронити
+        // оплату/розрахунок/касу. Фіскальна каса вимагає відкриту зміну (кине 400 → відкат усього).
+        if (resolvedSource.sourceType === 'CASH_REGISTER' && resolvedSource.cashRegisterId) {
+          await this.cash.createOperation(
+            orgId,
+            {
+              cashRegisterId: resolvedSource.cashRegisterId,
+              direction: 'IN',
+              amount: dto.amount,
+              reason: 'SALE_PAYMENT',
+              counterpartyId: dto.counterpartyId,
+              documentType: 'Payment',
+              documentId: created.id,
+              createdBy: userId,
+            },
+            tx,
+          );
         }
 
         return created;

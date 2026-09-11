@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { CashService } from '../cash/cash.service';
 import {
   CashRegisterResponseDto,
   CreateCashRegisterDto,
   UpdateCashRegisterDto,
 } from './cash-registers.dto';
 
+// Кеш НЕ включає balance (він змінюється кожною операцією) — кешується лише статична частина каси;
+// balance рахується свіжим після читання (getBalance по cash_operations).
 const TTL = 300;
 const cacheKey = (orgId: string, branchId?: string) =>
   branchId ? `ref:cash-registers:${orgId}:${branchId}` : `ref:cash-registers:${orgId}`;
@@ -16,6 +19,7 @@ export class CashRegistersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly cash: CashService,
   ) {}
 
   async findAll(
@@ -23,27 +27,33 @@ export class CashRegistersService {
     branchId?: string,
   ): Promise<{ items: CashRegisterResponseDto[]; total: number }> {
     const key = cacheKey(orgId, branchId);
-    const cached = await this.cache.get<{ items: CashRegisterResponseDto[]; total: number }>(key);
-    if (cached) return cached;
-
-    const where: Record<string, unknown> = { orgId, deletedAt: null };
-    if (branchId) where['branchId'] = branchId;
-
-    const [items, total] = await Promise.all([
-      this.prisma.cashRegister.findMany({
-        where,
-        include: {
-          currency: { select: { code: true, symbol: true } },
-          branch: { select: { name: true } },
-        },
-        orderBy: { name: 'asc' },
-        take: 200,
-      }),
-      this.prisma.cashRegister.count({ where }),
-    ]);
-    const result = { items: items.map(i => this.toDto(i)), total };
-    await this.cache.set(key, result, TTL);
-    return result;
+    let payload = await this.cache.get<{ items: CashRegisterResponseDto[]; total: number }>(key);
+    if (!payload) {
+      const where: Record<string, unknown> = { orgId, deletedAt: null };
+      if (branchId) where['branchId'] = branchId;
+      const [items, total] = await Promise.all([
+        this.prisma.cashRegister.findMany({
+          where,
+          include: {
+            currency: { select: { code: true, symbol: true } },
+            branch: { select: { name: true } },
+          },
+          orderBy: { name: 'asc' },
+          take: 200,
+        }),
+        this.prisma.cashRegister.count({ where }),
+      ]);
+      payload = { items: items.map(i => this.toDto(i)), total };
+      await this.cache.set(key, payload, TTL);
+    }
+    // Balance завжди свіжий (поза кешем).
+    const withBalance = await Promise.all(
+      payload.items.map(async i => ({
+        ...i,
+        balance: await this.cash.getBalance(orgId, i.id),
+      })),
+    );
+    return { items: withBalance, total: payload.total };
   }
 
   async findOne(orgId: string, id: string): Promise<CashRegisterResponseDto> {
@@ -55,7 +65,9 @@ export class CashRegistersService {
       },
     });
     if (!item) throw new NotFoundException('Касу не знайдено');
-    return this.toDto(item);
+    const dto = this.toDto(item);
+    dto.balance = await this.cash.getBalance(orgId, id);
+    return dto;
   }
 
   async create(orgId: string, dto: CreateCashRegisterDto): Promise<CashRegisterResponseDto> {
@@ -74,7 +86,14 @@ export class CashRegistersService {
     if (!branch) throw new NotFoundException('Філію не знайдено');
 
     const item = await this.prisma.cashRegister.create({
-      data: { orgId, name: dto.name, currencyId: dto.currencyId, branchId: dto.branchId },
+      data: {
+        orgId,
+        name: dto.name,
+        currencyId: dto.currencyId,
+        branchId: dto.branchId,
+        isFiscal: dto.isFiscal ?? false,
+        initialBalance: dto.initialBalance ?? 0,
+      },
       include: {
         currency: { select: { code: true, symbol: true } },
         branch: { select: { name: true } },
@@ -157,6 +176,8 @@ export class CashRegistersService {
     name: string;
     currencyId: string;
     branchId: string;
+    isFiscal: boolean;
+    initialBalance: unknown; // Prisma.Decimal
     createdAt: Date;
     updatedAt: Date;
     currency: { code: string; symbol: string | null };
@@ -171,6 +192,9 @@ export class CashRegistersService {
       currencySymbol: item.currency.symbol,
       branchId: item.branchId,
       branchName: item.branch.name,
+      isFiscal: item.isFiscal,
+      initialBalance: Number(item.initialBalance),
+      balance: Number(item.initialBalance), // перекривається свіжим getBalance у findAll/findOne
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };

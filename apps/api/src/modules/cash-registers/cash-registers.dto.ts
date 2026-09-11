@@ -1,10 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateCashRegisterDto {
-  @ApiProperty({ example: 'РљР°СЃР° в„–1 Р“РѕР»РѕРІРЅРёР№ РѕС„С–СЃ' })
+  @ApiProperty({ example: 'Каса №1 Головний офіс' })
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -18,6 +26,17 @@ export class CreateCashRegisterDto {
   @IsUUID()
   @IsNotEmpty()
   branchId!: string;
+
+  @ApiPropertyOptional({ description: 'Фіскальна каса (операції лише у відкриту зміну + ПРРО)' })
+  @IsOptional()
+  @IsBoolean()
+  isFiscal?: boolean;
+
+  @ApiPropertyOptional({ description: 'Стартовий залишок готівки' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  initialBalance?: number;
 }
 
 export class UpdateCashRegisterDto {
@@ -38,6 +57,17 @@ export class UpdateCashRegisterDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   branchId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isFiscal?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  initialBalance?: number;
 }
 
 export class CashRegisterResponseDto {
@@ -49,6 +79,10 @@ export class CashRegisterResponseDto {
   @ApiPropertyOptional() currencySymbol?: string | null;
   @ApiProperty() branchId!: string;
   @ApiProperty() branchName!: string;
+  @ApiProperty() isFiscal!: boolean;
+  @ApiProperty() initialBalance!: number;
+  @ApiProperty({ description: 'Поточний залишок = initialBalance + Σ(sign*amount)' })
+  balance!: number;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
 }
