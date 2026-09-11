@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-09-11 — Фіча: Зарплата (payroll) — розрахунок + періоди + виплата
+
+Система тепер рахує й проводить ЗП співробітникам (раніше rateScheme зберігалась, але не обчислювалась).
+
+- **rateScheme** += `per_normo_hour { ratePerHour }` (ставка×нормо-год); зворотно сумісно з
+  percent_normo/fixed_plus_bonus.
+- **DB:** PayrollPeriod (FSM DRAFT→COMPUTED→PAID/CANCELLED) + PayrollLine (нарахування-snapshot);
+  міграція 20260911140000 (additive); SYNC/audit оновлено.
+- **Backend модуль payroll:** calculator (3 режими, roundMoney) + preview/CRUD/compute(atomic claim,
+  фіксує snapshot)/pay(paidAmount←accrued)/remove. Джерело виробітку — ЗАВЕРШЕНІ роботи
+  (wo.status COMPLETED/INVOICED/PAID/ARCHIVED + completedAt-у-періоді), primary employeeId.
+  Ролі: preview/create/compute OWNER/ADMIN/ACCOUNTANT; pay/delete OWNER/ADMIN.
+- **Frontend:** сторінка /payroll (розрахунок за період + періоди + виплата) + usePayroll + пункт меню
+  «Зарплата»; EmployeeEditModal підтримує 3 режими rateScheme.
+- **Обмеження v1:** асистенти не враховуються (лише primary виконавець); виплата не через касу
+  (фіксація у PayrollLine.paidAmount + аудит; cash-out — окремо).
+
+QA: sync 1 fix (findAll employee-include → порожні імена); review CLEAN; tester Bug #728 (HIGH —
+EmployeeEditModal не мав per_normo_hour). Verify: tsc 0 · api 2161 + web 739 green · payroll unit 23 ·
+live curl повний FSM + snapshot-імутабельність + tenant + ролі.
+
+---
+
 ## 2026-09-11 — Навігація: «Склад» + вкладка «Залишки»
 
 - Пункт меню «Документи складу» → **«Склад»**; пункт «Склад» (`/inventory`) прибрано з меню.
