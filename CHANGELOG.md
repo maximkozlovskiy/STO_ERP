@@ -5,6 +5,18 @@
 
 ---
 
+### 56b4466f fix(review): рольовий доступ до вкладок «Каси» + дрібні фікси cash-фічі
+
+- Code review фінансової фічі «Рух готівки в касах» (cash-in/out + статті витрат + payments/payroll).
+- **§8.4 tab-guard drift (IMPORTANT):** /cash пускав RECEPTIONIST/ACCOUNTANT на всю сторінку, але
+  вкладки «Статті витрат» (GET ACCOUNTANT+) і CRUD кас (OWNER/ADMIN) 403-или. Фікс: roles-per-tab
+  дзеркалить @Roles бекенду, недоступні вкладки приховано, default форсується на дозволений,
+  кнопки Внести/Видати/Каса/Стаття/edit/delete під canOperate/canManage, colSpan/TableHead динамічні.
+- cash-registers.update: інвалідація кешу НОВОЇ філії при зміні branchId; payroll.pay take:1000
+  на payrollLine.findMany (§3.2); прибрано dead-const CASH_SIGN.
+- CLEAN: ЄДИНА точка руху (append-only, зовнішній tx), tenant-isolation, фіскальна каса→OPEN-зміна,
+  Decimal(12,2)/roundMoney, баланс свіжий поза кешем. tsc 0; 311 API + 7 CashPage тести.
+
 ## 2026-09-11 — E2E: Playwright-покриття зарплати + delete COMPUTED-періоду
 
 - **e2e/payroll.spec.ts** (6 тестів, стабільні 3× repeat): сторінка/панелі/nav, preview-розрахунок,
