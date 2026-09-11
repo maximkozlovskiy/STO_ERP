@@ -61,7 +61,7 @@ DRAFT → COMPUTED → PAID
 - **compute** (DRAFT→COMPUTED): рахує та ФІКСУЄ PayrollLine[] (snapshot) у `$transaction` з atomic claim
   (`updateMany where status:DRAFT`, count===0 → 400). Після цього зміни нарядів НЕ впливають на період.
 - **pay** (COMPUTED→PAID): `paidAmount ← accruedAmount` по всіх рядках, atomic claim.
-- **remove**: soft-delete, лише DRAFT/CANCELLED.
+- **remove**: soft-delete; заборонено лише для PAID (COMPUTED можна відкинути й перерахувати — ще не виплачено).
 
 ---
 
@@ -75,7 +75,7 @@ DRAFT → COMPUTED → PAID
 | POST   | `/api/payroll/periods`                   | Створити (DRAFT)                       | OWNER/ADMIN/ACCOUNTANT |
 | POST   | `/api/payroll/periods/:id/compute`       | Розрахувати (DRAFT→COMPUTED)           | OWNER/ADMIN/ACCOUNTANT |
 | POST   | `/api/payroll/periods/:id/pay`           | Виплатити (COMPUTED→PAID)              | OWNER/ADMIN            |
-| DELETE | `/api/payroll/periods/:id`               | Видалити (лише DRAFT/CANCELLED)        | OWNER/ADMIN            |
+| DELETE | `/api/payroll/periods/:id`               | Видалити (окрім PAID)                  | OWNER/ADMIN            |
 
 ---
 
@@ -97,6 +97,10 @@ tenant-isolation: orgId у WHERE на wol/wo.
 | rateScheme у формі співробітника | `components/ui/EmployeeEditModal.tsx` (3 режими)                        |
 
 Пункт меню «Зарплата» → `/payroll` (розділ «Звіти», OWNER/ADMIN/ACCOUNTANT).
+
+**E2E:** `apps/web/e2e/payroll.spec.ts` (6 тестів) — сторінка/панелі/nav, preview-розрахунок, повний
+FSM через UI (create→compute→pay з ConfirmDialog), FSM-guard. Рядок періоду має `data-testid`
+`payroll-period-<id>` для стабільного скоупингу статус-badge.
 
 ---
 

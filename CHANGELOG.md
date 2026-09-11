@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-11 — E2E: Playwright-покриття зарплати + delete COMPUTED-періоду
+
+- **e2e/payroll.spec.ts** (6 тестів, стабільні 3× repeat): сторінка/панелі/nav, preview-розрахунок,
+  повний FSM через UI (create→compute→pay з ConfirmDialog), FSM-guard (recompute→400). Рядок періоду
+  отримав `data-testid=payroll-period-<id>` для стабільного скоупингу статус-badge.
+- **Коуплений продуктовий фікс:** дозволено видаляти COMPUTED-період (ще не виплачено — можна відкинути
+  й перерахувати); блокується лише PAID. (frontend delete-кнопка p.status!==PAID; service guard PAID-only.)
+
+---
+
 ## 2026-09-11 — Фіча: Зарплата (payroll) — розрахунок + періоди + виплата
 
 Система тепер рахує й проводить ЗП співробітникам (раніше rateScheme зберігалась, але не обчислювалась).
