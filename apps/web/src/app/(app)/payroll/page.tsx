@@ -233,7 +233,11 @@ export default function PayrollPage() {
         {periods.map(p => {
           const isOpen = expanded === p.id;
           return (
-            <div key={p.id} className="border border-border rounded-lg">
+            <div
+              key={p.id}
+              data-testid={`payroll-period-${p.id}`}
+              className="border border-border rounded-lg"
+            >
               <div className="flex items-center gap-3 px-4 py-2.5">
                 <button
                   onClick={() => setExpanded(isOpen ? null : p.id)}
@@ -275,7 +279,7 @@ export default function PayrollPage() {
                       Виплатити
                     </Button>
                   )}
-                  {(p.status === 'DRAFT' || p.status === 'CANCELLED') && canPay && (
+                  {p.status !== 'PAID' && canPay && (
                     <Button
                       variant="ghost"
                       size="icon-sm"

@@ -279,8 +279,10 @@ export class PayrollService {
       select: { status: true },
     });
     if (!period) throw new NotFoundException('Період не знайдено');
-    if (period.status === 'COMPUTED' || period.status === 'PAID')
-      throw new BadRequestException('Не можна видалити розрахований або виплачений період');
+    // Виплачений період — фінансовий факт, не видаляємо. DRAFT/COMPUTED/CANCELLED можна відкинути
+    // (COMPUTED — це ще не проведена виплата, користувач може перерахувати після виправлення даних).
+    if (period.status === 'PAID')
+      throw new BadRequestException('Не можна видалити виплачений період');
     await this.prisma.payrollPeriod.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },

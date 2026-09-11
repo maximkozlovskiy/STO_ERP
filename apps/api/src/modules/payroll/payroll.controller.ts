@@ -94,7 +94,7 @@ export class PayrollController {
   @Delete('periods/:id')
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Видалити період (лише DRAFT/CANCELLED)' })
+  @ApiOperation({ summary: 'Видалити період (окрім виплаченого)' })
   remove(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },

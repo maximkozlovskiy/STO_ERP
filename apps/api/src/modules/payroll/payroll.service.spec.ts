@@ -227,10 +227,19 @@ describe('PayrollService.remove — guard', () => {
     service = makeService(m);
   });
 
-  it('COMPUTED/PAID не видаляється → BadRequest', async () => {
-    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'COMPUTED' });
+  it('PAID не видаляється → BadRequest', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'PAID' });
     await expect(service.remove(ORG, PID)).rejects.toThrow(BadRequestException);
     expect(m.prisma.payrollPeriod.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('COMPUTED видаляється (ще не виплачено) → soft-delete', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'COMPUTED' });
+    await service.remove(ORG, PID, 'user-1');
+    expect(m.prisma.payrollPeriod.updateMany).toHaveBeenCalledWith({
+      where: { id: PID, orgId: ORG, deletedAt: null },
+      data: { deletedAt: expect.any(Date) },
+    });
   });
 
   it('DRAFT → soft-delete', async () => {
