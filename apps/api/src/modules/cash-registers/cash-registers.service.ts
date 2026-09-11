@@ -144,17 +144,28 @@ export class CashRegistersService {
     const effectiveIsFiscal = dto.isFiscal ?? existing.isFiscal;
     const effectiveProvider =
       dto.fiscalProvider !== undefined ? dto.fiscalProvider : existing.fiscalProvider;
+
+    // Bug #732: зняли «Фіскальна каса» (isFiscal→false) → привʼязку до ПРРО треба АВТО-очистити,
+    // а не кидати 400. Раніше PATCH {isFiscal:false} на привʼязаній касі (без явного стирання
+    // провайдера) валив assertFiscalProvider («лише до фіскальної каси») — коректний перехід
+    // блокувався, а БД лишалась у стані «нефіскальна+провайдер». Тепер реконсилюємо: домішуємо
+    // fiscalProvider/providerCashRegisterId = null у write, guard бачить провайдера вже очищеним.
+    const data: Record<string, unknown> = { ...dto };
+    if (!effectiveIsFiscal && (existing.fiscalProvider || dto.fiscalProvider)) {
+      data.fiscalProvider = null;
+      data.providerCashRegisterId = null;
+    }
     await this.assertFiscalProvider(
       orgId,
       effectiveBranchId,
       effectiveIsFiscal,
-      effectiveProvider ?? undefined,
+      effectiveIsFiscal ? (effectiveProvider ?? undefined) : undefined,
     );
 
     // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
     const updated = await this.prisma.cashRegister.updateMany({
       where: { id, orgId, deletedAt: null },
-      data: dto,
+      data,
     });
     if (updated.count === 0) throw new NotFoundException('Касу не знайдено');
     const item = await this.prisma.cashRegister.findFirstOrThrow({
@@ -213,10 +224,33 @@ export class CashRegistersService {
       where: { orgId, branchId, kind: 'FISCAL', provider: fiscalProvider, deletedAt: null },
       select: { credentials: true },
     });
-    if (!cfg || !cfg.credentials) {
+    // Bug #731: перевірка «є креди» має бути семантично ІДЕНТИЧною runtime-резолверу
+    // (ProviderConfigService.hasCreds(parseCreds)). Сира `!cfg.credentials` пропускала рядок
+    // із порожнім JSON ("{}", '{"k":""}', "null") як «налаштований», але resolveByCode повернув би
+    // null на фіскалізації → чек навічно у QUEUED без жодного корисного провайдера. Парсимо JSON
+    // і вимагаємо хоча б одне непорожнє значення — так само, як резолвер.
+    if (!cfg || !this.hasUsableCredentials(cfg.credentials)) {
       throw new BadRequestException(
         'Провайдера ПРРО не налаштовано для цієї філії — спершу введіть його креди у Налаштуваннях',
       );
+    }
+  }
+
+  /**
+   * Дзеркалить ProviderConfigService.parseCreds+hasCreds (одне джерело правди семантики «є креди»):
+   * credentials — JSON-рядок секретів; провайдер придатний до фіскалізації лише якщо містить
+   * хоча б одне непорожнє строкове значення. Битий JSON / null / "{}" / порожні значення → false.
+   */
+  private hasUsableCredentials(raw: string | null): boolean {
+    if (!raw) return false;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return false;
+      return Object.values(parsed as Record<string, unknown>).some(
+        v => typeof v === 'string' && v !== '',
+      );
+    } catch {
+      return false;
     }
   }
 
