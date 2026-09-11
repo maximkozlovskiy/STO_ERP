@@ -627,6 +627,20 @@ grep -rnE "build[A-Z][A-Za-z]*Scheme|EMPTY_FORM|rateType|===\s*'(percent_normo|p
 # 4 місця мають бути оновлені разом: LABELS-мапа, EMPTY_FORM поле, edit-гідрація (читання rs.params.*),
 # build-функція (гілка+валідація), JSX-input. Пропуск будь-якого = мовчазний write-path gap.
 
+# Bug #729: query-хук фаєрить роль-обмежений GET, бо `enabled` не гейтиться роллю
+# (UI-видимість кнопки/вкладки/модалки гейтнули, а сам data-fetch — ні → фонове 403 × retry).
+# Сигнал: компонент видимий нижчій ролі (вкладка/сторінка з roles включає RECEPTIONIST/MECHANIC),
+# але викликає useQuery-хук БЕЗ enabled-гейта до ендпоінта, чий backend @Roles вимагає вищу роль.
+# Крок 1: знайти безумовні query-хуки у компонентах з рольовим prop (canOperate/canManage/canEdit):
+grep -rnE "use[A-Z][A-Za-z]*\(\)" apps/web/src/app --include="*.tsx" | grep -vE "enabled|useState|useRef|useMemo|useAuth|useRouter|useSearchParams|useEffect|useCallback|useContext" | head -20
+# Крок 2: для компонента з canOperate/canManage/canX — для КОЖНОГО query-хука звірити @Roles ендпоінта:
+grep -rn "canOperate\|canManage\|canEdit\|canView" apps/web/src/app --include="*.tsx" -l | head
+grep -rnE "@Roles\('OWNER'" apps/api/src/modules --include="*.controller.ts" | grep -vE "RECEPTIONIST|ACCOUNTANT" | head -20
+# Якщо хук б'є ендпоінт де RECEPTIONIST відсутній у @Roles, а компонент видимий RECEPTIONIST → 403-fetch.
+# Fix: додати `enabled`-параметр у хук + передати рольовий prop (`useX(false, canOperate)`).
+# Live-доказ: DB-flip ролі (`employee.role=RECEPTIONIST`) → login → curl ендпоінт → 403 = баг.
+# Регресія: component-тест мокає хук і асертить `toHaveBeenCalledWith(..., canOperate)` для обох гілок.
+
 # Мертвий стан/handler після рефактору inline→shared-component (Bug #160)
 # для кожного useState/useCallback з префіксом фічі (woSearch/woOptions...) перевірити чи setter
 # викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
@@ -1194,6 +1208,19 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат нижче: **Сигнал** (як знайти, з grep) / **Фікс** / **Severity** / **Де ще**. Старіші розлогі записи стиснуто до цього ж вигляду; усі bug-номери, grep-детектори та ❌/✅ приклади збережено.
+
+### 2026-09-11 — query-хук фаєрить роль-обмежений GET бо `enabled` не гейтиться роллю (UI-видимість гейтнули, fetch — ні) (Bug #729) — frontend / role-gated-fetch-not-gated / MEDIUM
+
+**Сигнал:** компонент видимий нижчій ролі (вкладка/сторінка з `roles`, що включає RECEPTIONIST/MECHANIC, або отримав `canOperate=false`/`canManage=false` prop), але викликає `useQuery`-хук БЕЗ `enabled`-гейта до ендпоінта, чий backend `@Roles` вимагає ВИЩУ роль. Тут: `CashOperationsTab` (вкладка «Операції» /cash видима RECEPTIONIST для перегляду) безумовно кличе `useExpenseCategories()`, а `GET /expense-categories` = `@Roles(OWNER/ADMIN/ACCOUNTANT)` → RECEPTIONIST фаєрить 403 на кожен перегляд (× 2 через react-query `retry:1`). Нема видимого банера (дані використовуються лише в модалці, недоступній viewer-у), тож tsc/unit/review зелені — але мережевий 403-шум + потенційний Sentry. Grep: `grep -rnE "use[A-Z][A-Za-z]*\(\)" apps/web/src/app --include="*.tsx" | grep -vE "enabled|useState|useAuth|useRouter|useEffect|useMemo"` → для компонентів з `canOperate/canManage`-prop звірити @Roles кожного ендпоінта; `grep -rnE "@Roles\('OWNER'" apps/api/src/modules --include="*.controller.ts" | grep -vE "RECEPTIONIST"` → список «висока роль» ендпоінтів. Live-доказ: DB-flip `employee.role=RECEPTIONIST` → login → curl ендпоінт → 403 = баг.
+
+**Причина виникнення:** «UI-видимість гейтнули (кнопку/вкладку/модалку сховали за роллю) → доступ обмежено». Але data-fetch хука виконується на маунт компонента незалежно від того, чи користувач бачить UI, що споживає ці дані. Review щойно фіксив рольову ВИДИМІСТЬ вкладок, і саме тому легко пропустити, що всередині видимої-для-viewer вкладки лишився безумовний fetch до вищого-роль-ендпоінта. Розробник гейтить те, що видно (кнопки/модалки), а не те, що виконується (хуки).
+
+**Підхід до виявлення:** для будь-якого компонента, що приймає рольовий prop (`canOperate/canManage/canEdit`) або видимий нижчій ролі — перелічити ВСІ `useQuery`-хуки й для кожного звірити @Roles цільового ендпоінта проти ролей, за яких компонент рендериться. Хук без `enabled`, що б'є ендпоінт, у чиєму @Roles немає найнижчої видимої ролі → 403-fetch. Загальний принцип: **гейтити треба сам fetch (`enabled`), а не лише UI, що його споживає.** Емпірика — DB-flip ролі + curl (JwtStrategy бере роль з БД, не з payload, тож форжений токен не спрацює — треба реальний DB-role).
+
+**Підхід до фіксу:** додати `enabled`-параметр у query-хук (`useX(showDeleted=false, enabled=true)` → `useQuery({..., enabled})`) і передати рольовий prop з компонента (`useExpenseCategories(false, canOperate)`). Гейт вимикає fetch для ролі, що не має доступу і не потребує даних. Регресія: component-тест мокає хук і асертить `toHaveBeenCalledWith(..., <roleProp>)` для обох гілок (`canOperate=false`→`enabled=false`; `true`→`true`); mutation-verify: прибрати гейт → тест червоніє.
+
+**Severity:** MEDIUM (заборонений фоновий запит + мережевий/Sentry-шум; не витік даних — 403 захищає). LOW якщо ендпоінт кешується і 403 тихий; HIGH якщо помилка хука рендериться видимим банером/toast для viewer-ролі.
+**Де шукати ще:** прямий родич попередньої сесії — `useLowStockItems` у dashboard (той самий gate-visibility-not-fetch патерн, зафіксовано як TODO). Будь-який `*Tab`/`*Panel` з рольовим prop, що кличе довідниковий хук (`useExpenseCategories`/`useEmployees`/`useBankAccounts`/`useSettings`), чий GET має вужчий @Roles ніж контейнер. Загалом: усі компоненти видимі RECEPTIONIST/MECHANIC, що імпортують хуки до ACCOUNTANT+/ADMIN-ендпоінтів.
 
 ### 2026-09-11 — новий тип discriminated-union/enum доданий у backend+read-модель, але WRITE-форма його не підтримує (Bug #728) — frontend / feature-write-path-incompleteness / HIGH
 
