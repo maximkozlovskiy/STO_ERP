@@ -5,6 +5,8 @@ import { Calculator, Wallet, Trash2, ChevronRight, ChevronDown } from 'lucide-re
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Modal } from '@/components/ui/modal';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -31,6 +33,7 @@ import {
   RATE_SCHEME_LABELS,
   type PayrollPeriod,
 } from '@/hooks/api/usePayroll';
+import { useCashRegisters } from '@/hooks/api/useCash';
 
 const STATUS_BADGE: Record<PayrollPeriod['status'], BadgeVariant> = {
   DRAFT: 'secondary',
@@ -49,6 +52,10 @@ export default function PayrollPage() {
   const [to, setTo] = useState(() => kyivToday());
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Модалка виплати: обрати касу (готівкою) або без каси (лише фіксація).
+  const [payPeriod, setPayPeriod] = useState<PayrollPeriod | null>(null);
+  const [payCashRegisterId, setPayCashRegisterId] = useState('');
+  const { data: cashRegisters } = useCashRegisters();
 
   const preview = usePayrollPreview(from, to, '', previewEnabled);
   const periodsQuery = usePayrollPeriods();
@@ -79,16 +86,19 @@ export default function PayrollPage() {
     }
   };
 
-  const pay = async (p: PayrollPeriod) => {
-    if (
-      !(await confirm({
-        title: 'Провести виплату?',
-        message: `Період ${p.periodStart} — ${p.periodEnd}, до виплати ${fmtMoney(p.totalAccrued)} ₴. Дію не можна скасувати.`,
-      }))
-    )
-      return;
+  const pay = (p: PayrollPeriod) => {
+    setPayCashRegisterId('');
+    setPayPeriod(p);
+  };
+
+  const confirmPay = async () => {
+    if (!payPeriod) return;
     try {
-      await payMut.mutateAsync(p.id);
+      await payMut.mutateAsync({
+        id: payPeriod.id,
+        cashRegisterId: payCashRegisterId || undefined,
+      });
+      setPayPeriod(null);
       toast.success('Виплату проведено');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Помилка виплати');
@@ -274,7 +284,7 @@ export default function PayrollPage() {
                     <Button
                       size="sm"
                       onClick={() => void pay(p)}
-                      loading={payMut.isPending && payMut.variables === p.id}
+                      loading={payMut.isPending && payMut.variables?.id === p.id}
                     >
                       Виплатити
                     </Button>
@@ -339,6 +349,43 @@ export default function PayrollPage() {
           );
         })}
       </div>
+
+      {/* Модалка виплати */}
+      <Modal
+        open={!!payPeriod}
+        onClose={() => setPayPeriod(null)}
+        title="Провести виплату"
+        footer={
+          <Button onClick={confirmPay} loading={payMut.isPending} className="w-full">
+            Виплатити {payPeriod ? fmtMoney(payPeriod.totalAccrued) : ''} ₴
+          </Button>
+        }
+      >
+        {payPeriod && (
+          <div className="space-y-4">
+            <p className="text-[13px] text-muted-foreground">
+              Період {payPeriod.periodStart} — {payPeriod.periodEnd}, до виплати{' '}
+              <b>{fmtMoney(payPeriod.totalAccrued)} ₴</b>. Дію не можна скасувати.
+            </p>
+            <Select
+              label="Виплатити з каси (готівкою)"
+              value={payCashRegisterId}
+              onChange={e => setPayCashRegisterId(e.target.value)}
+            >
+              <option value="">— без каси (лише фіксація) —</option>
+              {cashRegisters?.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.name} — залишок {fmtMoney(r.balance)} {r.currencySymbol ?? r.currencyCode}
+                </option>
+              ))}
+            </Select>
+            <p className="text-[12px] text-muted-foreground">
+              Якщо обрати касу — сума видається з неї (cash-out по кожному співробітнику). Фіскальна
+              каса вимагає відкриту зміну.
+            </p>
+          </div>
+        )}
+      </Modal>
 
       <ConfirmDialog {...dialogProps} />
     </div>

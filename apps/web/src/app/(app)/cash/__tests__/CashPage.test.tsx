@@ -1,46 +1,60 @@
-// Regression-guard для сторінки /cash (ПРРО Крок 2).
+// Regression-guard для вкладки «Операції» сторінки /cash (ПРРО зміна на фіскальній касі).
 //
-// Load-bearing поведінка UI:
-//   - OPEN-зміна → статус «Зміна відкрита» + індикатор (bg-success) + кнопка «Закрити зміну».
-//   - CLOSED (null shift) → «Зміну закрито» + індикатор (bg-muted) + кнопка «Відкрити зміну».
-//   - pendingReceipts>0 → бейдж «Чеків очікує пробиття: N»; 0/undefined → без бейджа.
-//   - клік «Відкрити» → useOpenShift.mutateAsync(branchId); помилка → показує error + не crash.
+// Load-bearing поведінка (перенесено з окремої сторінки у CashOperationsTab):
+//   - Фіскальна каса + OPEN-зміна → «Зміна відкрита» + кнопка «Закрити зміну (Z-звіт)».
+//   - Фіскальна каса + CLOSED (null) → «Зміну закрито» + кнопка «Відкрити зміну».
+//   - pendingReceipts>0 → «Чеків очікує: N»; 0 → без бейджа.
+//   - клік «Відкрити» → useOpenShift.mutateAsync(branchId); помилка → toast.error, не crash.
 //   - клік «Закрити» → useCloseShift.mutateAsync(shift.id).
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
-vi.mock('@/lib/auth', () => ({ useRequireAuth: () => undefined }));
-
-vi.mock('@/lib/api-client', () => ({
-  apiFetch: () => Promise.resolve([{ id: 'br-1', name: 'Філія 1' }]),
-}));
-
-vi.mock('@/lib/ref-cache', () => ({
-  getCached: () => null,
-  setCache: () => undefined,
-}));
-
-vi.mock('@/lib/toast', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-}));
-
+vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/format', () => ({
-  fmtDate: (v: string) => v,
+  fmtMoney: (v: number) => String(v),
+  fmtDateTime: (v: string) => v,
+}));
+
+// Одна фіскальна каса — щоб рендерився блок зміни.
+vi.mock('@/hooks/api/useCash', () => ({
+  useCashRegisters: () => ({
+    data: [
+      {
+        id: 'reg-1',
+        name: 'Каса №1',
+        branchId: 'br-1',
+        currencyCode: 'UAH',
+        currencySymbol: '₴',
+        isFiscal: true,
+        initialBalance: 0,
+        balance: 0,
+      },
+    ],
+    isLoading: false,
+  }),
+  useCashOperations: () => ({ data: [], isLoading: false }),
+  useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  CASH_REASON_LABELS: {},
+  MANUAL_IN_REASONS: ['MANUAL_IN'],
+  MANUAL_OUT_REASONS: ['MANUAL_OUT'],
+}));
+vi.mock('@/hooks/api/useExpenseCategories', () => ({
+  useExpenseCategories: () => ({ data: [] }),
 }));
 
 const useCurrentShiftMock = vi.fn();
 const openMutateAsync = vi.fn().mockResolvedValue(undefined);
 const closeMutateAsync = vi.fn().mockResolvedValue(undefined);
-const openIsPending = { value: false };
 vi.mock('@/hooks/api/useCashShift', () => ({
   useCurrentShift: (...a: unknown[]) => useCurrentShiftMock(...a),
-  useOpenShift: () => ({ mutateAsync: openMutateAsync, isPending: openIsPending.value }),
+  useOpenShift: () => ({ mutateAsync: openMutateAsync, isPending: false }),
   useCloseShift: () => ({ mutateAsync: closeMutateAsync, isPending: false }),
 }));
 
-import CashPage from '../page';
+import CashOperationsTab from '../CashOperationsTab';
+import { toast } from '@/lib/toast';
 
 const openShiftData = (over: Record<string, unknown> = {}) => ({
   id: 'shift-1',
@@ -55,42 +69,37 @@ const openShiftData = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-describe('CashPage — ПРРО Крок 2', () => {
+describe('CashOperationsTab — ПРРО зміна (фіскальна каса)', () => {
   beforeEach(() => {
     useCurrentShiftMock.mockReset();
     openMutateAsync.mockClear();
     closeMutateAsync.mockClear();
-    openIsPending.value = false;
+    (toast.error as ReturnType<typeof vi.fn>).mockClear();
   });
 
-  it('OPEN-зміна → статус «відкрита» + кнопка «Закрити зміну (Z-звіт)»', async () => {
+  it('OPEN-зміна → «Зміна відкрита» + кнопка «Закрити зміну (Z-звіт)»', async () => {
     useCurrentShiftMock.mockReturnValue({ data: openShiftData(), isLoading: false });
-    render(<CashPage />);
+    render(<CashOperationsTab />);
     expect(await screen.findByText('Зміна відкрита')).toBeInTheDocument();
-    expect(screen.getByText('Каса: Каса №1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Закрити зміну/ })).toBeInTheDocument();
-    // Немає кнопки «Відкрити»
     expect(screen.queryByRole('button', { name: /Відкрити зміну/ })).not.toBeInTheDocument();
   });
 
-  it('CLOSED (shift=null) → статус «закрито» + кнопка «Відкрити зміну»', async () => {
+  it('CLOSED (shift=null) → «Зміну закрито» + кнопка «Відкрити зміну»', async () => {
     useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
-    render(<CashPage />);
-    expect(await screen.findByText('Зміну закрито')).toBeInTheDocument();
-    // чекаємо доки selectedBranch виставиться з /branches → кнопка розблокується
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Відкрити зміну/ })).not.toBeDisabled(),
-    );
+    render(<CashOperationsTab />);
+    expect(await screen.findByText(/Зміну закрито/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Відкрити зміну/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Закрити зміну/ })).not.toBeInTheDocument();
   });
 
-  it('pendingReceipts>0 → бейдж «Чеків очікує пробиття: N»', async () => {
+  it('pendingReceipts>0 → «Чеків очікує: N»', async () => {
     useCurrentShiftMock.mockReturnValue({
       data: openShiftData({ pendingReceipts: 4 }),
       isLoading: false,
     });
-    render(<CashPage />);
-    expect(await screen.findByText(/Чеків очікує пробиття: 4/)).toBeInTheDocument();
+    render(<CashOperationsTab />);
+    expect(await screen.findByText(/Чеків очікує: 4/)).toBeInTheDocument();
   });
 
   it('pendingReceipts=0 → без бейджа', async () => {
@@ -98,17 +107,16 @@ describe('CashPage — ПРРО Крок 2', () => {
       data: openShiftData({ pendingReceipts: 0 }),
       isLoading: false,
     });
-    render(<CashPage />);
+    render(<CashOperationsTab />);
     await screen.findByText('Зміна відкрита');
-    expect(screen.queryByText(/Чеків очікує пробиття/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Чеків очікує/)).not.toBeInTheDocument();
   });
 
   it('клік «Відкрити зміну» → useOpenShift.mutateAsync(branchId)', async () => {
     useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
     const user = userEvent.setup();
-    render(<CashPage />);
+    render(<CashOperationsTab />);
     const btn = await screen.findByRole('button', { name: /Відкрити зміну/ });
-    await waitFor(() => expect(btn).not.toBeDisabled());
     await user.click(btn);
     await waitFor(() => expect(openMutateAsync).toHaveBeenCalledWith('br-1'));
   });
@@ -116,20 +124,21 @@ describe('CashPage — ПРРО Крок 2', () => {
   it('клік «Закрити зміну» → useCloseShift.mutateAsync(shift.id)', async () => {
     useCurrentShiftMock.mockReturnValue({ data: openShiftData(), isLoading: false });
     const user = userEvent.setup();
-    render(<CashPage />);
+    render(<CashOperationsTab />);
     const btn = await screen.findByRole('button', { name: /Закрити зміну/ });
     await user.click(btn);
     await waitFor(() => expect(closeMutateAsync).toHaveBeenCalledWith('shift-1'));
   });
 
-  it('помилка відкриття → показує повідомлення, не crash', async () => {
+  it('помилка відкриття → toast.error, не crash', async () => {
     useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
     openMutateAsync.mockRejectedValueOnce(new Error('ПРРО недоступний'));
     const user = userEvent.setup();
-    render(<CashPage />);
+    render(<CashOperationsTab />);
     const btn = await screen.findByRole('button', { name: /Відкрити зміну/ });
-    await waitFor(() => expect(btn).not.toBeDisabled());
     await user.click(btn);
-    expect(await screen.findByText('ПРРО недоступний')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toast.error as ReturnType<typeof vi.fn>).toHaveBeenCalledWith('ПРРО недоступний'),
+    );
   });
 });
