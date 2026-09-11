@@ -46,6 +46,9 @@ describe('CashService.createOperation — єдина точка руху', () =>
   beforeEach(() => {
     m = makeMocks();
     service = makeService(m);
+    // Overdraft-guard читає баланс для OUT: за замовчуванням каса має вдосталь готівки
+    // (initialBalance=100000, нульові агрегати) — конкретні тести перекривають за потреби.
+    m.prisma.cashOperation.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
     m.prisma.cashOperation.create.mockResolvedValue({
       id: 'op-1',
       cashRegisterId: REG,
@@ -103,10 +106,12 @@ describe('CashService.createOperation — єдина точка руху', () =>
   });
 
   it('фіскальна каса з відкритою зміною → cashShiftId проставлено', async () => {
-    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
+    // OUT: findFirst викликається двічі (register-guard + getBalance.initialBalance) → mockResolvedValue.
+    m.prisma.cashRegister.findFirst.mockResolvedValue({
       id: REG,
       isFiscal: true,
       branchId: 'b1',
+      initialBalance: 100000,
     });
     m.prisma.cashShift.findFirst.mockResolvedValueOnce({ id: 'shift-1' });
     await service.createOperation(ORG, {
@@ -195,6 +200,153 @@ describe('CashService.createManual — EXPENSE вимагає статтю', () 
     await expect(
       service.createManual(ORG, REG, { direction: 'OUT', amount: 100, reason: 'EXPENSE' } as never),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('CashService.createOperation — overdraft-guard (OUT не нижче 0)', () => {
+  // Каса з залишком = initialBalance + Σ(IN) − Σ(OUT). Хелпер стаббить register (двічі: guard + getBalance)
+  // + агрегати IN/OUT так, щоб поточний баланс = `balance`.
+  const armBalance = (m: ReturnType<typeof makeMocks>, balance: number, isFiscal = false) => {
+    m.prisma.cashRegister.findFirst.mockResolvedValue({
+      id: REG,
+      isFiscal,
+      branchId: 'b1',
+      initialBalance: balance,
+    });
+    // getBalance: initialBalance=balance, нульові агрегати → поточний баланс = balance.
+    m.prisma.cashOperation.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
+    m.prisma.cashOperation.create.mockResolvedValue({
+      id: 'op',
+      cashRegisterId: REG,
+      cashShiftId: null,
+      direction: 'OUT',
+      amount: 0,
+      reason: 'MANUAL_OUT',
+      expenseCategoryId: null,
+      counterpartyId: null,
+      employeeId: null,
+      documentType: null,
+      documentId: null,
+      notes: null,
+      createdAt: new Date(),
+      expenseCategory: null,
+    });
+  };
+
+  it('OUT перевищує залишок → 400 «Недостатньо готівки», операція не створюється', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 100); // у касі 100
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'OUT',
+        amount: 150,
+        reason: 'MANUAL_OUT',
+      }),
+    ).rejects.toThrow(/Недостатньо готівки/);
+    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
+  });
+
+  it('OUT рівно на залишок → проходить (баланс → 0)', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 100);
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'OUT',
+      amount: 100,
+      reason: 'MANUAL_OUT',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalled();
+  });
+
+  it('IN не перевіряється залишком (готівка додається навіть при 0)', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 0);
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: 500,
+      reason: 'MANUAL_IN',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalled();
+  });
+
+  it('multi-OUT в одній зовнішній tx: другий OUT бачить списане першим → 400', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    m.prisma.cashRegister.findFirst.mockResolvedValue({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+      initialBalance: 100,
+    });
+    // Перший OUT (60) пройшов → у t-aware агрегації OUT-сума стала 60. Другий OUT (60) читає
+    // баланс 100 − 60 = 40 < 60 → блок. Емулюємо це через послідовні OUT-агрегати.
+    let outSum = 0;
+    m.prisma.cashOperation.aggregate.mockImplementation(
+      async (arg: { where: { direction: 'IN' | 'OUT' } }) => ({
+        _sum: { amount: arg.where.direction === 'OUT' ? outSum : 0 },
+      }),
+    );
+    m.prisma.cashOperation.create.mockImplementation(async (arg: { data: { amount: number } }) => {
+      outSum += arg.data.amount; // списання «застосувалось» у цій tx
+      return {
+        id: 'op',
+        cashRegisterId: REG,
+        cashShiftId: null,
+        direction: 'OUT',
+        amount: arg.data.amount,
+        reason: 'PAYROLL',
+        expenseCategoryId: null,
+        counterpartyId: null,
+        employeeId: null,
+        documentType: null,
+        documentId: null,
+        notes: null,
+        createdAt: new Date(),
+        expenseCategory: null,
+      };
+    });
+    const tx = {
+      cashRegister: m.prisma.cashRegister,
+      cashShift: m.prisma.cashShift,
+      expenseCategory: m.prisma.expenseCategory,
+      cashOperation: m.prisma.cashOperation,
+    } as never;
+
+    // Перший OUT 60 — проходить (баланс 100 ≥ 60).
+    await service.createOperation(
+      ORG,
+      { cashRegisterId: REG, direction: 'OUT', amount: 60, reason: 'PAYROLL' },
+      tx,
+    );
+    // Другий OUT 60 — тепер баланс 40 < 60 → блок.
+    await expect(
+      service.createOperation(
+        ORG,
+        { cashRegisterId: REG, direction: 'OUT', amount: 60, reason: 'PAYROLL' },
+        tx,
+      ),
+    ).rejects.toThrow(/Недостатньо готівки/);
+  });
+
+  it('без-tx шлях → Serializable транзакція', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 1000);
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'OUT',
+      amount: 100,
+      reason: 'MANUAL_OUT',
+    });
+    expect(m.prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
   });
 });
 

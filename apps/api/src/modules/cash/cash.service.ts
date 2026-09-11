@@ -81,6 +81,17 @@ export class CashService {
     }
 
     const run = async (client: Prisma.TransactionClient) => {
+      // Overdraft-guard: OUT не може вигнати касу в мінус. Баланс читаємо ТИМ САМИМ client, що й
+      // insert нижче — тож multi-OUT в одній tx (payroll: OUT на співробітника) враховує вже-списане
+      // цієї транзакції. Толеранс −0.001 щоб копійкова похибка roundMoney не давала хибний блок.
+      if (input.direction === 'OUT') {
+        const balance = await this.getBalance(orgId, register.id, client);
+        if (balance - amount < -0.001) {
+          throw new BadRequestException(
+            `Недостатньо готівки в касі: доступно ${roundMoney(balance)} ₴, потрібно ${amount} ₴`,
+          );
+        }
+      }
       const op = await client.cashOperation.create({
         data: {
           orgId,
@@ -102,9 +113,23 @@ export class CashService {
       return op;
     };
 
-    const op = tx
-      ? await run(tx)
-      : await this.prisma.$transaction(run, { timeout: TRANSACTION_TIMEOUT_MS });
+    // Зовнішній tx: guard читає його ж стан (викликач керує isolation). Без tx: власна Serializable
+    // транзакція — Postgres SSI ловить конкурентний OUT, що прочитав той самий залишок (Bug #416
+    // патерн invoices). P2034 (serialization failure) → зрозуміла 400 замість 500.
+    let op: Awaited<ReturnType<typeof run>>;
+    try {
+      op = tx
+        ? await run(tx)
+        : await this.prisma.$transaction(run, {
+            timeout: TRANSACTION_TIMEOUT_MS,
+            isolationLevel: 'Serializable',
+          });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') {
+        throw new BadRequestException('Каса зайнята паралельною операцією — повторіть');
+      }
+      throw e;
+    }
 
     // Аудит (поза tx щоб не подовжувати транзакцію; best-effort).
     if (input.createdBy) {
@@ -140,27 +165,37 @@ export class CashService {
     });
   }
 
-  /** Поточний залишок каси = initialBalance + Σ(sign*amount). */
-  async getBalance(orgId: string, cashRegisterId: string): Promise<number> {
-    const register = await this.prisma.cashRegister.findFirst({
+  /**
+   * Поточний залишок каси = initialBalance + Σ(sign*amount). `db` — опційний tx-client: коли
+   * передано, агрегація бачить незакомічені операції ТІЄЇ Ж транзакції (потрібно overdraft-guard-у
+   * у createOperation, де multi-OUT списуються в одну tx і кожен наступний OUT має враховувати
+   * попередні). Без `db` — звичайне читання поза транзакцією.
+   */
+  async getBalance(
+    orgId: string,
+    cashRegisterId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<number> {
+    const register = await db.cashRegister.findFirst({
       where: { id: cashRegisterId, orgId, deletedAt: null },
       select: { initialBalance: true },
     });
     if (!register) throw new NotFoundException('Касу не знайдено');
-    return this.computeBalance(orgId, cashRegisterId, Number(register.initialBalance));
+    return this.computeBalance(orgId, cashRegisterId, Number(register.initialBalance), db);
   }
 
   private async computeBalance(
     orgId: string,
     cashRegisterId: string,
     initial: number,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<number> {
     const [inAgg, outAgg] = await Promise.all([
-      this.prisma.cashOperation.aggregate({
+      db.cashOperation.aggregate({
         where: { orgId, cashRegisterId, direction: 'IN' },
         _sum: { amount: true },
       }),
-      this.prisma.cashOperation.aggregate({
+      db.cashOperation.aggregate({
         where: { orgId, cashRegisterId, direction: 'OUT' },
         _sum: { amount: true },
       }),
