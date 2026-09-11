@@ -97,6 +97,8 @@ export function useCreateCashRegister() {
       providerCashRegisterId?: string;
       initialBalance?: number;
     }) => apiFetch<CashRegister>('/cash-registers', { method: 'POST', body: JSON.stringify(body) }),
+    // NOTE: create приймає лише "задано або ні" (без null) — порожні '' конвертуються у null лише
+    // на update-стороні бекенду (empty-to-null), де є "існуюче" значення яке можна очистити.
     onSuccess: () => qc.invalidateQueries({ queryKey: cashKeys.registers() }),
   });
 }
@@ -111,7 +113,9 @@ export function useUpdateCashRegister() {
       id: string;
       name?: string;
       isFiscal?: boolean;
+      /** '' очищає прив'язку (бекенд: empty-to-null). */
       fiscalProvider?: string;
+      /** '' очищає значення (бекенд: empty-to-null). */
       providerCashRegisterId?: string;
       initialBalance?: number;
     }) =>

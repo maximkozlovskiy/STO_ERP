@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { emptyToNull } from '../../common/transforms/empty-to-null';
 
 export class CreateCashRegisterDto {
   @ApiProperty({ example: 'Каса №1 Головний офіс' })
@@ -84,18 +85,22 @@ export class UpdateCashRegisterDto {
   initialBalance?: number;
 
   @ApiPropertyOptional({
-    description: 'Код ПРРО-провайдера цієї каси (checkbox|vchasno) — з активних на філії',
+    description:
+      'Код ПРРО-провайдера цієї каси (checkbox|vchasno) — з активних на філії. Порожній рядок ("") очищає прив’язку (null) — напр. коли зняли галочку "Фіскальна каса".',
   })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(emptyToNull)
   @IsString()
-  fiscalProvider?: string;
+  fiscalProvider?: string | null;
 
-  @ApiPropertyOptional({ description: 'ID каси на боці провайдера (Checkbox cashRegisterId)' })
+  @ApiPropertyOptional({
+    description:
+      'ID каси на боці провайдера (Checkbox cashRegisterId). Порожній рядок ("") очищає значення (null).',
+  })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(emptyToNull)
   @IsString()
-  providerCashRegisterId?: string;
+  providerCashRegisterId?: string | null;
 }
 
 export class CashRegisterResponseDto {
