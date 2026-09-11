@@ -614,6 +614,19 @@ grep -rnE "const can(Share|Edit|Delete|Reserve|Transition)\s*=" apps/web/src --i
 grep -rnE "(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES\s*[:=]" apps/api/src/modules --include="*.ts"
 # Звірити масиви: BE — single source of truth, FE має бути дзеркальним підмножиною (або тотожним).
 
+# Bug #728: новий тип discriminated-union / enum доданий у backend Zod + read-модель + labels,
+# але WRITE-форма (create/edit модалка) його НЕ підтримує → значення недоступне користувачу.
+# Сигнал: backend `z.discriminatedUnion('type', [...])` / enum має N варіантів, а форма-білдер
+# (buildRateScheme / buildX / EMPTY_FORM / <Select> опції) — менше.
+# Крок 1: порахувати варіанти у backend union/enum:
+grep -rnE "z\.literal\('|z\.enum\(\[" apps/api/src/modules --include="*.dto.ts" | grep -iE "type|scheme|kind|mode" | head -20
+# Крок 2: для КОЖНОГО union/enum знайти write-форму (модалку) що його будує:
+grep -rnE "build[A-Z][A-Za-z]*Scheme|EMPTY_FORM|rateType|===\s*'(percent_normo|per_normo_hour|fixed_plus_bonus)'" apps/web/src/components --include="*.tsx" | head -20
+# Звірити: чи форма має гілку + input + label + edit-гідрацію для ВСІХ backend-варіантів?
+# Пропущений варіант = HIGH (нова можливість фічі недоступна з UI; edit наявного губить тип).
+# 4 місця мають бути оновлені разом: LABELS-мапа, EMPTY_FORM поле, edit-гідрація (читання rs.params.*),
+# build-функція (гілка+валідація), JSX-input. Пропуск будь-якого = мовчазний write-path gap.
+
 # Мертвий стан/handler після рефактору inline→shared-component (Bug #160)
 # для кожного useState/useCallback з префіксом фічі (woSearch/woOptions...) перевірити чи setter
 # викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
@@ -1181,6 +1194,15 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат нижче: **Сигнал** (як знайти, з grep) / **Фікс** / **Severity** / **Де ще**. Старіші розлогі записи стиснуто до цього ж вигляду; усі bug-номери, grep-детектори та ❌/✅ приклади збережено.
+
+### 2026-09-11 — новий тип discriminated-union/enum доданий у backend+read-модель, але WRITE-форма його не підтримує (Bug #728) — frontend / feature-write-path-incompleteness / HIGH
+
+**Сигнал:** backend Zod `z.discriminatedUnion('type', [...])` (або enum) отримав НОВИЙ варіант; калькулятор/сервіс/preview/read-DTO/labels-мапи всі його підтримують — але create/edit **модалка** (write-форма) — ні. Тут: `rateSchemeSchema` має 3 режими (`percent_normo`/`per_normo_hour`/`fixed_plus_bonus`), калькулятор рахує всі 3, `/payroll` та `/employees` мають мітку «Ставка × нормо-год» — а `EmployeeEditModal` не мав `per_normo_hour` у списку схем, у `buildRateScheme()`, в edit-гідрації (`rs.params.ratePerHour`), ні JSX-input. Наслідок: адмін НЕ може створити співробітника з режимом, а edit наявного (створеного seed-ом/API) мовчки скидає тип на дефолт. tsc/review/тести зелені бо форма — валідний підмножинний union. Grep: порахувати `z.literal('...')` у backend dto → звірити з гілками `build*Scheme`/`=== '...'`/LABELS-мапою у модалці (§1.3 grep Bug #728). Живий доказ: `POST /employees` з payload нового типу проходить (201) — але UI не має способу його згенерувати.
+**Причина виникнення:** «додав enum-значення → оновив Zod + калькулятор + read-модель + labels» — розробник вважає фічу завершеною, бо READ-шлях (відображення) повний. WRITE-шлях (форма що ГЕНЕРУЄ значення) — окремий файл (модалка), його легко забути, а компілятор не сигналить (union-підмножина валідна). Класичний «read-model updated, write-form forgotten».
+**Підхід до виявлення:** для кожного backend discriminated-union/enum з N варіантів — знайти write-форму що його будує і перерахувати гілки. Пропущений варіант = недоступна можливість. 5 місць мають бути повними разом: LABELS-мапа, EMPTY_FORM поле, edit-гідрація, build-функція (гілка+валідація), JSX-input.
+**Підхід до фіксу:** додати відсутній варіант у всі 5 точок модалки. Регресія-guard: тест модалки що для кожного backend-варіанта union рендерить його input і будує коректний payload (revert будь-якої гілки → червоний).
+**Severity:** HIGH (нова headline-можливість фічі недоступна з UI; edit наявного носія губить тип). MEDIUM якщо варіант рідкісний/адмінський.
+**Де шукати ще:** будь-яка модалка/форма що будує discriminated-union payload (`build*Scheme`, `build*Config`, платіжні методи, notification-канали, tax-rate типи, document-number формати) після додавання нового enum/union-варіанта у backend. Парне з Bug #401/#432 (там FE/BE _status whitelist_ symmetry; тут — write-form completeness для value-generating union).
 
 ### 2026-09-10 — кешований `_count.<junction>` завищений: junction без deletedAt, parent soft-delete-иться (Bug #723) — backend / count-accuracy-through-junction / MEDIUM
 
