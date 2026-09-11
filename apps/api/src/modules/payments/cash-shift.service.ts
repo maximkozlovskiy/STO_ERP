@@ -53,7 +53,7 @@ export class CashShiftService {
     const provider = this.registry.get(active.provider);
     if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${active.provider}`);
     const cfg: FiscalConfig = { apiUrl: active.apiUrl, credentials: active.credentials };
-    return { provider, cfg, code: active.provider };
+    return { provider, cfg };
   }
 
   /** Поточна OPEN-зміна філії (+ лічильник QUEUED-чеків) або null. */
