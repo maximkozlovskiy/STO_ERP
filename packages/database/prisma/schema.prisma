@@ -165,6 +165,24 @@ enum CashShiftStatus {
   CLOSED // зміна закрита (Z-звіт зроблено)
 }
 
+// Напрям касової операції.
+enum CashDirection {
+  IN // внесення готівки (+)
+  OUT // видача готівки (−)
+}
+
+// Привід касової операції (визначає семантику й звʼязки).
+enum CashOperationReason {
+  SALE_PAYMENT // оплата клієнта готівкою (авто з payments)
+  REFUND // повернення клієнту
+  PAYROLL // виплата ЗП (авто з payroll)
+  SUPPLIER_PAYMENT // оплата постачальнику готівкою
+  EXPENSE // витрата (стаття витрат)
+  COLLECTION // інкасація / виїмка готівки
+  MANUAL_IN // ручне внесення
+  MANUAL_OUT // ручна видача
+}
+
 enum ShiftMode {
   MANUAL // касир вручну відкриває/закриває зміну
   AUTO_OPEN // зміна авто-відкривається перед першим чеком (Z-звіт усе одно ручний)
@@ -385,6 +403,7 @@ model Organisation {
   counterpartyStatuses  CounterpartyStatus[]
   goodStatuses          GoodStatus[]
   payrollPeriods        PayrollPeriod[]
+  expenseCategories     ExpenseCategory[]
   primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
@@ -2748,15 +2767,17 @@ model BankAccount {
 }
 
 model CashRegister {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String    @db.Uuid
-  name        String
-  currencyId  String    @db.Uuid
-  branchId    String    @db.Uuid
-  syncVersion BigInt    @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  name           String
+  currencyId     String    @db.Uuid
+  branchId       String    @db.Uuid
+  isFiscal       Boolean   @default(false) // фіскальна каса → операції лише у відкриту зміну + ПРРО
+  initialBalance Decimal   @default(0) @db.Decimal(12, 2) // стартовий залишок готівки
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   organisation     Organisation      @relation(fields: [orgId], references: [id])
   currency         Currency          @relation(fields: [currencyId], references: [id])
@@ -2764,10 +2785,59 @@ model CashRegister {
   supplierPayments SupplierPayment[]
   payments         Payment[]
   cashShifts       CashShift[]
+  operations       CashOperation[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("cash_registers")
+}
+
+// Касова операція — рух готівки (append-only, шаблон SettlementTransaction: без deletedAt/updatedAt/
+// syncVersion, ніколи не редагується). Виправлення — сторно-операцією протилежного напряму.
+// ЄДИНА точка руху готівки — CashService.createOperation. Баланс каси = initialBalance + Σ(sign*amount).
+model CashOperation {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String              @db.Uuid
+  cashRegisterId    String              @db.Uuid
+  cashShiftId       String?             @db.Uuid // для фіскальної каси — зміна, у якій проведено
+  direction         CashDirection // IN (внесення) | OUT (видача)
+  amount            Decimal             @db.Decimal(12, 2) // завжди > 0, знак з direction
+  reason            CashOperationReason
+  expenseCategoryId String?             @db.Uuid // стаття витрат (для reason=EXPENSE)
+  counterpartyId    String?             @db.Uuid // клієнт/постачальник (для SALE_PAYMENT/REFUND/SUPPLIER_PAYMENT)
+  employeeId        String?             @db.Uuid // співробітник (для PAYROLL)
+  documentType      String? // 'Payment' | 'PayrollPeriod' | ...
+  documentId        String?             @db.Uuid
+  notes             String?
+  createdBy         String?             @db.Uuid
+  createdAt         DateTime            @default(now())
+
+  cashRegister    CashRegister     @relation(fields: [cashRegisterId], references: [id])
+  expenseCategory ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+
+  @@index([orgId, cashRegisterId, createdAt])
+  @@index([orgId, cashShiftId])
+  @@index([orgId, reason, createdAt])
+  @@map("cash_operations")
+}
+
+// Довідник статей витрат (per-org). Дзеркалить GoodStatus. Прив'язується до касової видачі reason=EXPENSE.
+model ExpenseCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org        Organisation    @relation(fields: [orgId], references: [id])
+  operations CashOperation[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("expense_categories")
 }
 
 // Касова зміна (ПРРО). Чек пробивається лише у відкриту зміну; закриття = Z-звіт (щодня).

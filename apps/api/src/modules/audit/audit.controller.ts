@@ -31,6 +31,7 @@ const AUDIT_ENTITY_TYPES = [
   'TaxRate',
   'PricingRule',
   'PayrollPeriod',
+  'CashOperation',
 ] as const;
 
 @ApiTags('audit')
