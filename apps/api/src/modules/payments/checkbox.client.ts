@@ -30,6 +30,26 @@ export class CheckboxUnauthorizedError extends Error {}
 export class CheckboxClient {
   private readonly logger = new Logger(CheckboxClient.name);
 
+  /**
+   * Інфо про касу за license-key (без входу касира): GET /api/v1/cash-registers/info,
+   * авторизація заголовком X-License-Key (звірено з openapi.json / wiki.checkbox.ua/api/cash-register).
+   * Використовується у verifyCredentials, щоб показати назву каси провайдера. Best-effort — будь-яка
+   * помилка/відсутнє поле → null (verify не має падати через це). `title` — людська назва каси у
+   * Checkbox-моделі; fallback на fiscal_number/id.
+   */
+  async getCashRegisterInfo(apiUrl: string, licenseKey: string): Promise<{ name?: string } | null> {
+    try {
+      const res = await this.call('GET', apiUrl, '/api/v1/cash-registers/info', SYNC_TIMEOUT_MS, {
+        headers: { 'X-License-Key': licenseKey },
+        redact: [licenseKey],
+      });
+      const name = res?.title ?? res?.fiscal_number ?? res?.id;
+      return { name: name != null ? String(name) : undefined };
+    } catch {
+      return null;
+    }
+  }
+
   /** Вхід касира за PIN → access-token. Bearer = license key. */
   async signInPinCode(apiUrl: string, licenseKey: string, pinCode: string): Promise<CashierToken> {
     const res = await this.call('POST', apiUrl, '/api/v1/cashier/signinPinCode', SYNC_TIMEOUT_MS, {
@@ -94,7 +114,7 @@ export class CheckboxClient {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async call(
-    method: 'POST',
+    method: 'POST' | 'GET',
     apiUrlRaw: string | null | undefined,
     path: string,
     timeoutMs: number,

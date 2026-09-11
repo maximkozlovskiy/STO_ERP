@@ -60,7 +60,10 @@ export class CheckboxProvider implements FiscalProvider {
     try {
       // Валідність = успішний PIN sign-in (без пробиття чеку).
       await this.signIn(cfg);
-      return { valid: true };
+      // Best-effort: підтягуємо назву каси провайдера для UI (не впливає на valid).
+      const { licenseKey } = this.creds(cfg);
+      const info = await this.client.getCashRegisterInfo(this.apiUrl(cfg), licenseKey);
+      return { valid: true, cashRegisterName: info?.name };
     } catch (e) {
       if (e instanceof FiscalUnauthorizedError) return { valid: false, error: 'Невірний ключ/PIN' };
       return { valid: false, error: e instanceof Error ? e.message : 'Помилка перевірки' };

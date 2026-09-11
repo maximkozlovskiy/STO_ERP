@@ -74,14 +74,33 @@ describe('CheckboxProvider (обгортка parity)', () => {
     await expect(p.signIn({ apiUrl: null, credentials: {} })).rejects.toThrow(/ключ\/PIN/);
   });
 
-  it('verifyCredentials: успішний signIn → valid; 401 → invalid', async () => {
-    const okClient = { signInPinCode: vi.fn().mockResolvedValue({ accessToken: 't' }) };
-    expect((await new CheckboxProvider(okClient as never).verifyCredentials(cfg)).valid).toBe(true);
+  it('verifyCredentials: успішний signIn → valid + назва каси (getCashRegisterInfo); 401 → invalid', async () => {
+    const okClient = {
+      signInPinCode: vi.fn().mockResolvedValue({ accessToken: 't' }),
+      getCashRegisterInfo: vi.fn().mockResolvedValue({ name: 'Каса №1' }),
+    };
+    const ok = await new CheckboxProvider(okClient as never).verifyCredentials(cfg);
+    expect(ok.valid).toBe(true);
+    // Best-effort: назва каси провайдера підтягується за license-key для UI.
+    expect(ok.cashRegisterName).toBe('Каса №1');
+    expect(okClient.getCashRegisterInfo).toHaveBeenCalledWith('https://api.checkbox.ua', 'LIC');
+
     const badClient = {
       signInPinCode: vi.fn().mockRejectedValue(new CheckboxUnauthorizedError('401')),
+      getCashRegisterInfo: vi.fn(),
     };
     const r = await new CheckboxProvider(badClient as never).verifyCredentials(cfg);
     expect(r.valid).toBe(false);
+  });
+
+  it('verifyCredentials: getCashRegisterInfo → null (best-effort) → valid без назви', async () => {
+    const client = {
+      signInPinCode: vi.fn().mockResolvedValue({ accessToken: 't' }),
+      getCashRegisterInfo: vi.fn().mockResolvedValue(null),
+    };
+    const r = await new CheckboxProvider(client as never).verifyCredentials(cfg);
+    expect(r.valid).toBe(true);
+    expect(r.cashRegisterName).toBeUndefined();
   });
 });
 

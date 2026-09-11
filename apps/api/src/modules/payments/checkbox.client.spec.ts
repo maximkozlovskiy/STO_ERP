@@ -104,6 +104,37 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
     });
   });
 
+  // ── getCashRegisterInfo (best-effort назва каси для verify) ──────────────────
+  describe('getCashRegisterInfo', () => {
+    it('GET /cash-registers/info; X-License-Key header; повертає title як name', async () => {
+      fetchMock.mockResolvedValueOnce(OK({ title: 'Каса Головна', fiscal_number: '4000123' }));
+      const res = await client.getCashRegisterInfo(URL, 'LIC-KEY');
+      expect(res?.name).toBe('Каса Головна');
+
+      const [calledUrl, opts] = fetchMock.mock.calls[0];
+      expect(calledUrl).toBe(`${URL}/api/v1/cash-registers/info`);
+      expect(opts.method).toBe('GET');
+      expect(opts.headers['X-License-Key']).toBe('LIC-KEY');
+      // Авторизація саме license-key (без входу касира) — Bearer НЕ виставляється.
+      expect(opts.headers.Authorization).toBeUndefined();
+    });
+
+    it('немає title → fallback на fiscal_number', async () => {
+      fetchMock.mockResolvedValueOnce(OK({ fiscal_number: '4000123' }));
+      expect((await client.getCashRegisterInfo(URL, 'LIC'))?.name).toBe('4000123');
+    });
+
+    it('best-effort: HTTP-помилка → null (verify не падає)', async () => {
+      fetchMock.mockResolvedValueOnce(OK('kaboom', 500));
+      expect(await client.getCashRegisterInfo(URL, 'LIC')).toBeNull();
+    });
+
+    it('порожня відповідь → {name: undefined} (не кидає)', async () => {
+      fetchMock.mockResolvedValueOnce(OK({}));
+      expect(await client.getCashRegisterInfo(URL, 'LIC')).toEqual({ name: undefined });
+    });
+  });
+
   // ── sellReceipt ────────────────────────────────────────────────────────────
   describe('sellReceipt', () => {
     it('повертає {fiscalReceiptId} з res.id; Bearer=accessToken; cash→CASH', async () => {
