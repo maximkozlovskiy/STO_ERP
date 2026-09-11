@@ -4482,3 +4482,66 @@ payroll pay → окрема модалка замість ConfirmDialog). Ці 
   немає (єдиний `if (willFiscalize)` після коміту транзакції) — усе покрито unit-тестами payments.
 - Зворотна сумісність: каси без `fiscalProvider` (null) → `resolveActiveForRegister` fallback на
   `resolveActive` per-branch; `open` без прив'язки → активний per-branch провайдер (spec існує).
+
+## Session 2026-09-11 — Тестування overdraft-guard (OUT не вижене касу в мінус)
+
+Перевірено фічу `feat(cash): overdraft-guard` (commit e4aecf90). Фокус: обхід guard, округлення,
+tx-aware multi-OUT, concurrency (Serializable/P2034), tenant-isolation, порядок shift/overdraft,
+ЗП «без каси», регресія суміжних модулів.
+
+**Baseline:** tsc api = 0, 2217 unit-тестів зелені до втручання.
+
+**Позитивні перевірки (без дефекту):**
+
+- Єдина точка руху готівки: у всьому коді лише ОДИН `cashOperation.create` (у `CashService`); payroll,
+  payments проходять через `createOperation`. Прямого bypass немає.
+- Округлення: `roundMoney(100.001)=100.00` (не реальна нестача); толеранс −0.001 блокує реальну
+  копійкову нестачу (100.00 vs 100.01) і поглинає IEEE-754 дрейф (0.1+0.2 vs 0.3). amount≤0 та NaN
+  відсікаються (`!(amount>0)` + `roundMoney(NaN)=0`).
+- tx-aware: `getBalance(...,client)` агрегує тим самим tx-client → multi-OUT у payroll бачить власні
+  списання; overdraft на N-му співробітнику кидає → ВЕСЬ період відкат (period лишається COMPUTED).
+- Concurrency без-tx: `isolationLevel:'Serializable'` + `P2034→400` присутні.
+- Tenant-isolation: агрегати балансу scoped по `orgId` — guard не тече між org.
+- Порядок помилок: фіскальний shift-guard (немає відкритої зміни → 400) спрацьовує РАНІШЕ за overdraft.
+- ЗП «без каси» (cashRegisterId відсутній): guard не застосовний, лише фіксація paidAmount, без руху.
+- `CashOperation` append-only (немає `deletedAt`) → агрегат балансу коректно не фільтрує soft-delete.
+
+### Bug #733 [x] виправлено — HIGH (money-integrity + обхід overdraft-guard)
+
+**Файл:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts` — `confirm()`.
+
+**Суть:** Готівкова оплата постачальнику (`sourceType=CASH_REGISTER`, `cashRegisterId` заповнений)
+зберігала `cashRegisterId` на `SupplierPayment`, але при `confirm()` створювала ЛИШЕ settlement
+(`SUPPLIER_PAYMENT`) і **ЖОДНОЇ** касової операції — `CashService.createOperation` не викликався взагалі.
+Наслідки:
+
+1. Готівка, «видана» постачальнику, ніколи не залишала касу → баланс каси завищений (розсинхрон каса↔факт).
+2. Overdraft-guard оминається повністю: можна «провести» cash-оплату постачальнику на будь-яку суму при
+   порожній касі — guard навіть не консультується (немає OUT-операції).
+3. Суперечить заявленому в комміті фічі покриттю «payments (refund/supplier)». Enum `CashOperationReason.
+SUPPLIER_PAYMENT` існував у схемі — інтеграцію просто не дописали.
+
+Це OUT-шлях руху грошей, що не проходить через єдину точку (`createOperation`) — порушення фокусу #1
+(за пропуском, а не прямим `cashOperation.create`).
+
+**Фікс:** У `confirm()` після settlement, у ТІЙ САМІЙ транзакції, для `sourceType===CASH_REGISTER &&
+cashRegisterId` викликаємо `cash.createOperation(orgId, {direction:'OUT', reason:'SUPPLIER_PAYMENT',
+counterpartyId, documentType:'SupplierPayment', documentId}, tx)`. Тепер:
+
+- Cash-out проходить overdraft-guard (нестача → 400, відкат усього confirm разом із settlement).
+- Фіскальна каса вимагатиме відкриту зміну (shift-guard).
+- pre-tx select розширено на `sourceType, cashRegisterId`. `SupplierPaymentsModule` += `CashModule`,
+  конструктор += `CashService`.
+
+**Тести:** +3 у `supplier-payments.service.spec.ts` (BANK→без каси; CASH→OUT/SUPPLIER_PAYMENT у tx з тим
+самим tx-client; overdraft→confirm rejects, помилка не проковтнута). Оновлено provider-масиви обох
+describe-блоків (+CashService).
+
+### Test-gap (закрито, не окремий баг) — payroll rollback + guard edge-cases
+
+- `payroll.service.spec` cash-мок ніколи не кидав → partial-rollback при overdraft mid-loop не перевірявся.
+  Додано 2 тести: multi-employee cash-out (0-сума пропускається) + overdraft на N-му → весь pay rejects
+  (period лишається COMPUTED), помилка пропагується.
+- `cash.service.spec`: +копійкова нестача 100.01, +float-дрейф 0.3, +tenant-isolation orgId у агрегатах.
+
+**Підсумок:** tsc api = 0; 2217+ unit зелені (+8 нових guard/rollback-тестів).
