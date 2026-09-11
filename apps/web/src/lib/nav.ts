@@ -29,6 +29,7 @@ import {
   Zap,
   BookMarked,
   ClipboardList,
+  Banknote,
 } from 'lucide-react';
 
 export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs' | 'settings';
@@ -102,6 +103,13 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     icon: ClipboardList,
     section: 'reports',
     roles: ['OWNER', 'ADMIN', 'RECEPTIONIST'],
+  },
+  {
+    href: '/payroll',
+    label: 'Зарплата',
+    icon: Banknote,
+    section: 'reports',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   },
   {
     href: '/reports',

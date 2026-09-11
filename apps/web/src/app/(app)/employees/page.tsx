@@ -110,7 +110,8 @@ interface EmployeeFilters extends Record<string, unknown> {
 const ROLE_LABELS = EMPLOYEE_ROLE_LABELS;
 const ROLE_BADGE = EMPLOYEE_ROLE_BADGE;
 const RATE_LABELS: Record<string, string> = {
-  percent_normo: '% від норма-год',
+  percent_normo: '% від суми робіт',
+  per_normo_hour: 'Ставка × нормо-год',
   fixed_plus_bonus: 'Ставка + бонус',
 };
 const STATUS_LABELS = EMPLOYEE_STATUS_LABELS;
