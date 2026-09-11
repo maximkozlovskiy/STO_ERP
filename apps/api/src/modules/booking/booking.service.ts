@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, CalendarSlotStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { runUnscoped } from '../../common/tenant/tenant-context';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import {
@@ -59,26 +60,45 @@ export class BookingService {
   /**
    * Single source of truth for branch lookup — soft-deleted branches must NEVER
    * leak to public booking, otherwise customers see slots for a closed location.
+   *
+   * Public booking widget має НУЛЬ auth-контексту (немає JWT → ambient orgId=undefined),
+   * а orgId РЕЗОЛВИТЬСЯ САМЕ З цього запиту (branch → orgId). Тому tenant-guard тут
+   * увімкнув би fail-closed throw (GarageBranch — tenant-scoped модель, а `where` не несе
+   * orgId). Це легітимний глобальний доступ (як public share-token) → runUnscoped.
    */
   async findBranchForBooking(
     branchId: string,
   ): Promise<{ id: string; orgId: string; name: string } | null> {
-    return this.prisma.garageBranch.findFirst({
-      where: { id: branchId, deletedAt: null },
-      select: { id: true, orgId: true, name: true },
-    });
+    // ⚠️ await ВСЕРЕДИНІ runUnscoped: bypass живе у ALS лише поки active scope. Повернути
+    // lazy PrismaPromise назовні → реальний DB-виклик (і guard-hook) виконається ПІСЛЯ
+    // виходу зі scope → bypass втрачено → TenantIsolationError. Тому await тут.
+    return runUnscoped(
+      async () =>
+        await this.prisma.garageBranch.findFirst({
+          where: { id: branchId, deletedAt: null },
+          select: { id: true, orgId: true, name: true },
+        }),
+    );
   }
 
-  /** Public list of branches for booking widget (no auth required). */
+  /**
+   * Public list of branches for booking widget (no auth required).
+   * Як і findBranchForBooking — public-роут без tenant-контексту: orgId ще невідомий
+   * (клієнт саме обирає філію). Легітимний глобальний read → runUnscoped (інакше
+   * tenant-guard кидає TenantIsolationError → 500 на публічному віджеті).
+   */
   async listBranchesForBooking(): Promise<
     { id: string; name: string; address: string | null; orgId: string }[]
   > {
-    return this.prisma.garageBranch.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, address: true, orgId: true },
-      orderBy: { name: 'asc' },
-      take: 100,
-    });
+    return runUnscoped(
+      async () =>
+        await this.prisma.garageBranch.findMany({
+          where: { deletedAt: null },
+          select: { id: true, name: true, address: true, orgId: true },
+          orderBy: { name: 'asc' },
+          take: 100,
+        }),
+    );
   }
 
   /**
