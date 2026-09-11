@@ -4428,3 +4428,57 @@ payroll pay → окрема модалка замість ConfirmDialog). Ці 
    fresh → wizard) + перевіряє відсутність error-overlay.
 
 Фінал: **339 passed / 0 failed / 0 did-not-run** (1 flaky — pre-existing hover-timing, зелений на retry).
+
+## Session 2026-09-11 — Фіскалізація на рівні каси + привʼязка каси до ПРРО-провайдера
+
+Тестування фічі (коміти `bfb47e89`..`ac9f5ee9`): `CashRegister += fiscalProvider/providerCashRegisterId`,
+тригер фіскалізації від фіскальної каси, `resolveActiveForRegister`, `assertFiscalProvider`,
+`cash-shift.open(cashRegisterId?)`. Baseline зелений (API 348 → +9 нових; web 741). tsc api+web = 0.
+
+### Bug #731 [MEDIUM] — `assertFiscalProvider` перевіряє креди сирою truthiness замість `hasCreds(parseCreds)`
+
+- [x] виправлено
+- **Файл:** `apps/api/src/modules/cash-registers/cash-registers.service.ts` (`assertFiscalProvider`)
+- **Опис:** guard прив'язки каси до ПРРО-провайдера робив `if (!cfg || !cfg.credentials)` — де
+  `cfg.credentials` це JSON-**рядок**. Порожній-але-непорожній рядок (`"{}"`, `'{"licenseKey":""}'`,
+  `"null"`, битий JSON `'{битий'`) — truthy → guard пропускав прив'язку як «налаштовану». Але
+  runtime-резолвер (`ProviderConfigService.resolveByCode/resolveActive`) використовує
+  `hasCreds(parseCreds())` — парсить JSON і вимагає ХОЧА Б ОДНЕ непорожнє значення → повернув би
+  `null` на фіскалізації. Наслідок: касу прив'язали до провайдера, який не резолвиться → кожен чек
+  осідає у `fiscalStatus='QUEUED'` НАВІЧНО без корисного провайдера (тихий збій фіскалізації).
+  Семантика guard розходилась з `getBranchConfigs` (UI-дропдаун) і резолвером.
+- **Фікс:** додано приватний `hasUsableCredentials(raw)` що дзеркалить `parseCreds+hasCreds`
+  (JSON.parse → хоча б одне непорожнє строкове значення; битий/null/{}/порожні → false).
+  Guard тепер: `if (!cfg || !this.hasUsableCredentials(cfg.credentials))`.
+- **Тести:** новий `cash-registers.service.spec.ts` — 4 regression-кейси ("{}", порожнє значення,
+  битий JSON → 400; валідні креди → пропуск). Раніше цих тестів не існувало взагалі (test-gap).
+
+### Bug #732 [MEDIUM] — `update()` кидав 400 при знятті «Фіскальна каса» з привʼязаної каси замість авто-очищення
+
+- [x] виправлено
+- **Файл:** `apps/api/src/modules/cash-registers/cash-registers.service.ts` (`update`)
+- **Опис:** PATCH `{ isFiscal: false }` на фіскальній касі з прив'язаним провайдером (коли клієнт
+  НЕ надіслав явно `fiscalProvider: ''`) резолвив `effectiveProvider = existing.fiscalProvider`
+  ('checkbox') + `effectiveIsFiscal = false` → `assertFiscalProvider` кидав 400 «лише до фіскальної
+  каси». Коректний перехід «фіскальна → звичайна» блокувався через API, а БД лишалась у неконсистентному
+  стані (нефіскальна каса з провайдером). UI випадково працював лише тому що завжди шле обидва поля,
+  але прямий API-виклик і будь-який інший клієнт впиралися у 400 з оманливим текстом (просили «увімкніть
+  фіскальну касу» коли її саме вимикають).
+- **Фікс:** коли ефективна каса нефіскальна — АВТО-очищаємо прив'язку (`fiscalProvider`/
+  `providerCashRegisterId = null`) у write-payload і пропускаємо провайдер-guard, замість 400.
+  БД самоузгоджується: нефіскальна каса ніколи не тримає провайдера.
+- **Тест:** `cash-registers.service.spec.ts` — «PATCH {isFiscal:false} → авто-очищення, не 400,
+  writeData.fiscalProvider === null».
+
+### Перевірено — БЕЗ дефектів (tenant isolation, edge cases)
+
+- Tenant-isolation `assertFiscalProvider`: `branchProviderConfig.findFirst` завжди scoped
+  `{orgId, branchId, kind:'FISCAL', provider}` → провайдера чужої org/філії не видно (regression-тест).
+- `resolveActiveForRegister`: `cashRegister.findFirst` scoped `{id, orgId}` → cross-org не тече (spec існує).
+- `cash-shift.open(cashRegisterId)`: `where {orgId, branchId, id}` → каса чужої org/філії → «Немає каси»
+  (400, spec існує). Невалідний UUID `cashRegisterId` → `ParseUUIDPipe({optional:true})` → 400 (не 500);
+  порожній рядок `?cashRegisterId=` теж 400 (isNil не спрацьовує на '').
+- `willFiscalize`: фіскальна каса + requiresFiscal=false → QUEUED; звичайна → null; подвійного enqueue
+  немає (єдиний `if (willFiscalize)` після коміту транзакції) — усе покрито unit-тестами payments.
+- Зворотна сумісність: каси без `fiscalProvider` (null) → `resolveActiveForRegister` fallback на
+  `resolveActive` per-branch; `open` без прив'язки → активний per-branch провайдер (spec існує).
