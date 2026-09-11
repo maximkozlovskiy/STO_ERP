@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { CashService } from '../cash/cash.service';
@@ -85,13 +85,18 @@ export class CashRegistersService {
     if (!currency) throw new NotFoundException('Валюту не знайдено');
     if (!branch) throw new NotFoundException('Філію не знайдено');
 
+    const isFiscal = dto.isFiscal ?? false;
+    await this.assertFiscalProvider(orgId, dto.branchId, isFiscal, dto.fiscalProvider);
+
     const item = await this.prisma.cashRegister.create({
       data: {
         orgId,
         name: dto.name,
         currencyId: dto.currencyId,
         branchId: dto.branchId,
-        isFiscal: dto.isFiscal ?? false,
+        isFiscal,
+        fiscalProvider: dto.fiscalProvider ?? null,
+        providerCashRegisterId: dto.providerCashRegisterId ?? null,
         initialBalance: dto.initialBalance ?? 0,
       },
       include: {
@@ -115,7 +120,7 @@ export class CashRegistersService {
     const [existing, currency, branch] = await Promise.all([
       this.prisma.cashRegister.findFirst({
         where: { id, orgId, deletedAt: null },
-        select: { branchId: true },
+        select: { branchId: true, isFiscal: true, fiscalProvider: true },
       }),
       dto.currencyId
         ? this.prisma.currency.findFirst({
@@ -133,6 +138,18 @@ export class CashRegistersService {
     if (!existing) throw new NotFoundException('Касу не знайдено');
     if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
     if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
+
+    // Ефективні значення після мерджу (dto перекриває наявне) — валідуємо привʼязку до ПРРО.
+    const effectiveBranchId = dto.branchId ?? existing.branchId;
+    const effectiveIsFiscal = dto.isFiscal ?? existing.isFiscal;
+    const effectiveProvider =
+      dto.fiscalProvider !== undefined ? dto.fiscalProvider : existing.fiscalProvider;
+    await this.assertFiscalProvider(
+      orgId,
+      effectiveBranchId,
+      effectiveIsFiscal,
+      effectiveProvider ?? undefined,
+    );
 
     // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
     const updated = await this.prisma.cashRegister.updateMany({
@@ -174,6 +191,35 @@ export class CashRegistersService {
     await this.cache.del(cacheKey(orgId, existing.branchId));
   }
 
+  /**
+   * Валідує привʼязку каси до ПРРО-провайдера:
+   *  - fiscalProvider можна задати лише фіскальній касі (isFiscal=true);
+   *  - провайдер має бути серед налаштованих BranchProviderConfig(kind=FISCAL) тієї ж філії
+   *    (креди введено — hasCredentials). Інакше касу неможливо фіскалізувати.
+   */
+  private async assertFiscalProvider(
+    orgId: string,
+    branchId: string,
+    isFiscal: boolean,
+    fiscalProvider: string | undefined,
+  ): Promise<void> {
+    if (!fiscalProvider) return; // не привʼязано — ок (fallback на per-branch провайдера)
+    if (!isFiscal) {
+      throw new BadRequestException(
+        'Провайдера ПРРО можна привʼязати лише до фіскальної каси (увімкніть «Фіскальна каса»)',
+      );
+    }
+    const cfg = await this.prisma.branchProviderConfig.findFirst({
+      where: { orgId, branchId, kind: 'FISCAL', provider: fiscalProvider, deletedAt: null },
+      select: { credentials: true },
+    });
+    if (!cfg || !cfg.credentials) {
+      throw new BadRequestException(
+        'Провайдера ПРРО не налаштовано для цієї філії — спершу введіть його креди у Налаштуваннях',
+      );
+    }
+  }
+
   private toDto(item: {
     id: string;
     orgId: string;
@@ -181,6 +227,8 @@ export class CashRegistersService {
     currencyId: string;
     branchId: string;
     isFiscal: boolean;
+    fiscalProvider: string | null;
+    providerCashRegisterId: string | null;
     initialBalance: unknown; // Prisma.Decimal
     createdAt: Date;
     updatedAt: Date;
@@ -197,6 +245,8 @@ export class CashRegistersService {
       branchId: item.branchId,
       branchName: item.branch.name,
       isFiscal: item.isFiscal,
+      fiscalProvider: item.fiscalProvider,
+      providerCashRegisterId: item.providerCashRegisterId,
       initialBalance: Number(item.initialBalance),
       balance: Number(item.initialBalance), // перекривається свіжим getBalance у findAll/findOne
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,

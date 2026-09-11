@@ -83,6 +83,26 @@ export class ProviderConfigService {
       : null;
   }
 
+  /**
+   * Активний ПРРО-провайдер ДЛЯ КОНКРЕТНОЇ КАСИ. Якщо каса привʼязана до провайдера
+   * (CashRegister.fiscalProvider) → резолвимо саме його (resolveByCode); інакше fallback на
+   * активний per-branch провайдер (resolveActive) — зворотна сумісність для непривʼязаних кас.
+   */
+  async resolveActiveForRegister(
+    orgId: string,
+    cashRegisterId: string,
+  ): Promise<ResolvedProvider | null> {
+    const register = await this.prisma.cashRegister.findFirst({
+      where: { id: cashRegisterId, orgId, deletedAt: null },
+      select: { branchId: true, fiscalProvider: true },
+    });
+    if (!register) return null;
+    if (register.fiscalProvider) {
+      return this.resolveByCode(orgId, register.branchId, 'FISCAL', register.fiscalProvider);
+    }
+    return this.resolveActive(orgId, register.branchId, 'FISCAL');
+  }
+
   /** Конкретний конфіг провайдера (для processor, що вже знає gateway/provider наміру/зміни). */
   async resolveByCode(
     orgId: string,

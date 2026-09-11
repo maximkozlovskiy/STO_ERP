@@ -22,6 +22,7 @@ describe('ProviderConfigService', () => {
     };
     branchSettings: { findFirst: ReturnType<typeof vi.fn> };
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
+    cashRegister: { findFirst: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -38,6 +39,7 @@ describe('ProviderConfigService', () => {
       },
       branchSettings: { findFirst: vi.fn() },
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
+      cashRegister: { findFirst: vi.fn() },
       $transaction: vi.fn().mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     svc = new ProviderConfigService(prisma as never);
@@ -271,6 +273,52 @@ describe('ProviderConfigService', () => {
       });
       const r = await svc.resolveByCode(ORG, BRANCH, 'FISCAL', 'checkbox');
       expect(r!.provider).toBe('checkbox');
+    });
+  });
+
+  // ── resolveActiveForRegister (провайдер від каси) ──────────────────────────────────
+  describe('resolveActiveForRegister', () => {
+    it('каса привʼязана (fiscalProvider) → resolveByCode(той провайдер)', async () => {
+      prisma.cashRegister.findFirst.mockResolvedValue({
+        branchId: BRANCH,
+        fiscalProvider: 'vchasno',
+      });
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'vchasno',
+        apiUrl: null,
+        credentials: JSON.stringify({ token: 'T' }),
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveActiveForRegister(ORG, 'reg-1');
+      expect(r!.provider).toBe('vchasno');
+      // resolveByCode шукає саме провайдера каси у межах його філії.
+      expect(prisma.branchProviderConfig.findFirst.mock.calls[0][0].where).toMatchObject({
+        orgId: ORG,
+        branchId: BRANCH,
+        kind: 'FISCAL',
+        provider: 'vchasno',
+      });
+    });
+
+    it('каса без привʼязки → fallback на активний per-branch провайдер', async () => {
+      prisma.cashRegister.findFirst.mockResolvedValue({ branchId: BRANCH, fiscalProvider: null });
+      prisma.branchProviderConfig.findFirst.mockResolvedValue({
+        provider: 'checkbox',
+        apiUrl: null,
+        credentials: JSON.stringify({ licenseKey: 'L', pinCode: 'P' }),
+        shiftMode: 'MANUAL',
+      });
+      const r = await svc.resolveActiveForRegister(ORG, 'reg-1');
+      expect(r!.provider).toBe('checkbox');
+      // resolveActive → enabled=true у where (не конкретний provider).
+      expect(prisma.branchProviderConfig.findFirst.mock.calls[0][0].where).toMatchObject({
+        enabled: true,
+      });
+    });
+
+    it('каса не знайдена → null', async () => {
+      prisma.cashRegister.findFirst.mockResolvedValue(null);
+      expect(await svc.resolveActiveForRegister(ORG, 'reg-x')).toBeNull();
     });
   });
 

@@ -29,12 +29,14 @@ export class CashShiftController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Відкрити касову зміну (PIN→token→Checkbox)' })
   @ApiQuery({ name: 'branchId', required: true })
+  @ApiQuery({ name: 'cashRegisterId', required: false })
   open(
     @OrgContext() orgId: string,
     @Query('branchId', ParseUUIDPipe) branchId: string,
     @CurrentUser() user: { id: string },
+    @Query('cashRegisterId') cashRegisterId?: string,
   ) {
-    return this.service.open(orgId, branchId, user?.id);
+    return this.service.open(orgId, branchId, user?.id, cashRegisterId || undefined);
   }
 
   @Post(':id/close')

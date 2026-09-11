@@ -231,9 +231,13 @@ export class PaymentsService {
       throw new BadRequestException(`Наряд у статусі "${workOrder.status}" — оплата неможлива`);
     }
 
-    // Фіскалізуємо лише якщо спосіб оплати цього потребує (requiresFiscal). Невідомий метод
-    // або requiresFiscal=false → чек не ставимо, fiscalStatus лишається null (не застосовно).
-    const willFiscalize = methodConfig?.requiresFiscal === true;
+    // Тригер чека ПРРО = спосіб оплати вимагає (requiresFiscal) АБО оплата йде у ФІСКАЛЬНУ касу
+    // (register.isFiscal). Другий тригер робить фіскальною будь-яку операцію через фіскальну касу,
+    // незалежно від методу. Обидва хибні → чек не ставимо, fiscalStatus=null (не застосовно).
+    const willFiscalize =
+      methodConfig?.requiresFiscal === true ||
+      (resolvedSource.sourceType === 'CASH_REGISTER' &&
+        resolvedSource.cashRegisterIsFiscal === true);
 
     const payment = await this.prisma.$transaction(
       async tx => {
@@ -482,6 +486,8 @@ export class PaymentsService {
     sourceType: 'BANK_ACCOUNT' | 'CASH_REGISTER' | null;
     bankAccountId: string | null;
     cashRegisterId: string | null;
+    /** true → каса фіскальна: будь-яка оплата у неї пробиває чек ПРРО (тригер незалежно від методу). */
+    cashRegisterIsFiscal?: boolean;
   }> {
     // Джерело значень: DTO задав хоч одне поле → explicit; інакше беремо дефолт methodConfig.
     const fromDto = !!(dto.sourceType || dto.bankAccountId || dto.cashRegisterId);
@@ -520,13 +526,13 @@ export class PaymentsService {
     }
     const reg = await this.prisma.cashRegister.findFirst({
       where: { id: cashRegisterId, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, isFiscal: true },
     });
     if (!reg) {
       if (fromDto) throw new NotFoundException('Касу не знайдено');
       return empty; // stale config default → degrade, не валимо платіж
     }
-    return { sourceType, bankAccountId: null, cashRegisterId };
+    return { sourceType, bankAccountId: null, cashRegisterId, cashRegisterIsFiscal: reg.isFiscal };
   }
 
   private toDto(p: {

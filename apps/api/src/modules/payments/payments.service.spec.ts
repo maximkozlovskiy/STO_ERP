@@ -327,6 +327,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     payment: { create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
     paymentMethodConfig: { findFirst: ReturnType<typeof vi.fn> };
+    cashRegister: { findFirst: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let settlements: { createTransaction: ReturnType<typeof vi.fn> };
@@ -336,6 +337,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
   const ORG = 'org-1';
   const CP_ID = '22222222-2222-4222-8222-222222222222';
   const PAY_ID = '44444444-4444-4444-8444-444444444444';
+  const CASH_ID = '55555555-5555-4555-8555-555555555555';
 
   // Захоплюємо data, з яким викликано payment.create — щоб перевірити fiscalStatus.
   let lastCreateData: Record<string, unknown> | undefined;
@@ -378,6 +380,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
         update: vi.fn().mockResolvedValue({}),
       },
       paymentMethodConfig: { findFirst: vi.fn() },
+      cashRegister: { findFirst: vi.fn() },
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return undefined;
@@ -439,6 +442,35 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
     prisma.paymentMethodConfig.findFirst.mockResolvedValue(null);
 
     await service.create(ORG, dto, 'user-1');
+
+    expect(checkboxQueue.add).not.toHaveBeenCalled();
+    expect(lastCreateData?.fiscalStatus).toBeNull();
+  });
+
+  it('тригер каси: оплата у ФІСКАЛЬНУ касу → fiscalStatus="QUEUED" навіть при requiresFiscal=false', async () => {
+    // Метод НЕ вимагає фіскалізації, але каса-призначення фіскальна → чек усе одно ставиться.
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({ requiresFiscal: false });
+    prisma.cashRegister.findFirst.mockResolvedValue({ id: CASH_ID, isFiscal: true });
+
+    await service.create(
+      ORG,
+      { ...dto, sourceType: 'CASH_REGISTER', cashRegisterId: CASH_ID },
+      'user-1',
+    );
+
+    expect(checkboxQueue.add).toHaveBeenCalledTimes(1);
+    expect(lastCreateData?.fiscalStatus).toBe('QUEUED');
+  });
+
+  it('тригер каси: оплата у ЗВИЧАЙНУ касу + requiresFiscal=false → fiscalStatus=null (без чека)', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({ requiresFiscal: false });
+    prisma.cashRegister.findFirst.mockResolvedValue({ id: CASH_ID, isFiscal: false });
+
+    await service.create(
+      ORG,
+      { ...dto, sourceType: 'CASH_REGISTER', cashRegisterId: CASH_ID },
+      'user-1',
+    );
 
     expect(checkboxQueue.add).not.toHaveBeenCalled();
     expect(lastCreateData?.fiscalStatus).toBeNull();

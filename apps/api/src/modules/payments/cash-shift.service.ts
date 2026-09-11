@@ -38,16 +38,22 @@ export class CashShiftService {
     private readonly integrationLog: IntegrationLogService,
   ) {}
 
-  /** Резолвити активний ПРРО-провайдер філії (config + legacy-fallback) або кинути. */
-  private async resolveProvider(orgId: string, branchId: string) {
-    const active = await this.providerConfig.resolveActive(orgId, branchId, 'FISCAL');
+  /**
+   * Резолвити ПРРО-провайдер для зміни. `providerCode` задано (каса привʼязана) → резолвимо саме
+   * його (resolveByCode); інакше — активний per-branch провайдер (resolveActive) + legacy-fallback.
+   * Повертає {provider, cfg, code} або кидає.
+   */
+  private async resolveProvider(orgId: string, branchId: string, providerCode?: string | null) {
+    const active = providerCode
+      ? await this.providerConfig.resolveByCode(orgId, branchId, 'FISCAL', providerCode)
+      : await this.providerConfig.resolveActive(orgId, branchId, 'FISCAL');
     if (!active) {
       throw new BadRequestException('Фіскалізацію не налаштовано (провайдер/креди/увімкнення)');
     }
     const provider = this.registry.get(active.provider);
     if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${active.provider}`);
     const cfg: FiscalConfig = { apiUrl: active.apiUrl, credentials: active.credentials };
-    return { provider, cfg };
+    return { provider, cfg, code: active.provider };
   }
 
   /** Поточна OPEN-зміна філії (+ лічильник QUEUED-чеків) або null. */
@@ -72,16 +78,28 @@ export class CashShiftService {
    * Guard: fiscal увімкнено+креди; немає вже відкритої зміни на касі. Offline → кидаємо (без
    * phantom-зміни: без checkboxShiftId чек не має куди пробитись).
    */
-  async open(orgId: string, branchId: string, userId?: string): Promise<CurrentShiftDto> {
-    const { provider, cfg } = await this.resolveProvider(orgId, branchId);
-
-    // Локальна каса для зміни: беремо активну касу філії.
+  async open(
+    orgId: string,
+    branchId: string,
+    userId?: string,
+    cashRegisterId?: string,
+  ): Promise<CurrentShiftDto> {
+    // Локальна каса для зміни: задана явно (з привʼязкою до провайдера) або перша каса філії.
     const register = await this.prisma.cashRegister.findFirst({
-      where: { orgId, branchId, deletedAt: null },
+      where: {
+        orgId,
+        branchId,
+        deletedAt: null,
+        ...(cashRegisterId ? { id: cashRegisterId } : {}),
+      },
       orderBy: { createdAt: 'asc' },
-      select: { id: true },
+      select: { id: true, fiscalProvider: true },
     });
     if (!register) throw new BadRequestException('Немає каси для цієї філії');
+
+    // Провайдер зміни: якщо каса привʼязана (fiscalProvider) — саме він; інакше активний per-branch.
+    // CashShift.provider = provider.code (нижче) → sell/ensureToken працюють проти правильного ПРРО.
+    const { provider, cfg } = await this.resolveProvider(orgId, branchId, register.fiscalProvider);
 
     // Guard: одна OPEN-зміна на касу.
     const existing = await this.prisma.cashShift.findFirst({

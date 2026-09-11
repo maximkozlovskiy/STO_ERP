@@ -135,6 +135,9 @@ describe('CashShiftService (ПРРО registry)', () => {
     });
 
     it('guard: провайдер не налаштовано (resolveActive→null) → 400, без зовнішнього виклику', async () => {
+      // open() спершу знаходить касу філії, потім резолвить провайдера — тож каса має існувати,
+      // щоб потік дійшов до провайдер-guard (інакше кине «Немає каси»).
+      cashRegisterFindFirst.mockResolvedValueOnce({ id: 'reg-1', fiscalProvider: null });
       resolveActive.mockResolvedValueOnce(null);
       await expect(service.open('org-1', 'br-1')).rejects.toBeInstanceOf(BadRequestException);
       expect(signIn).not.toHaveBeenCalled();
@@ -197,6 +200,35 @@ describe('CashShiftService (ПРРО registry)', () => {
       expect(resolveActive).toHaveBeenCalledWith('org-9', 'br-1', 'FISCAL');
       expect(cashRegisterFindFirst.mock.calls[0][0].where).toMatchObject({ orgId: 'org-9' });
       expect(cashShiftFindFirst.mock.calls[0][0].where).toMatchObject({ orgId: 'org-9' });
+    });
+
+    it('каса привʼязана до провайдера (fiscalProvider) → resolveByCode(той провайдер), не resolveActive', async () => {
+      cashRegisterFindFirst.mockResolvedValueOnce({ id: 'reg-1', fiscalProvider: 'vchasno' });
+      cashShiftFindFirst.mockResolvedValueOnce(null);
+      resolveByCode.mockResolvedValueOnce(activeCfg({ provider: 'vchasno' }));
+      signIn.mockResolvedValueOnce({ accessToken: 'tok' });
+      openShift.mockResolvedValueOnce({ providerShiftId: 'vch-1' });
+      cashShiftCreate.mockResolvedValueOnce(okShiftRow({ provider: 'vchasno' }));
+
+      await service.open('org-1', 'br-1');
+      // Резолвимо саме провайдера каси (не «активний per-branch»).
+      expect(resolveByCode).toHaveBeenCalledWith('org-1', 'br-1', 'FISCAL', 'vchasno');
+      expect(resolveActive).not.toHaveBeenCalled();
+    });
+
+    it('cashRegisterId заданий → open відкриває саме цю касу (where.id)', async () => {
+      cashRegisterFindFirst.mockResolvedValueOnce({ id: 'reg-7', fiscalProvider: null });
+      cashShiftFindFirst.mockResolvedValueOnce(null);
+      signIn.mockResolvedValueOnce({ accessToken: 'tok' });
+      openShift.mockResolvedValueOnce({ providerShiftId: 'cbx' });
+      cashShiftCreate.mockResolvedValueOnce(okShiftRow({ cashRegisterId: 'reg-7' }));
+
+      await service.open('org-1', 'br-1', 'user-1', 'reg-7');
+      expect(cashRegisterFindFirst.mock.calls[0][0].where).toMatchObject({
+        orgId: 'org-1',
+        branchId: 'br-1',
+        id: 'reg-7',
+      });
     });
 
     it('секрет: dto з open() НЕ містить checkboxAccessToken', async () => {

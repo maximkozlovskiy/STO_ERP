@@ -37,6 +37,20 @@ export class CreateCashRegisterDto {
   @IsNumber()
   @Min(0)
   initialBalance?: number;
+
+  @ApiPropertyOptional({
+    description: 'Код ПРРО-провайдера цієї каси (checkbox|vchasno) — з активних на філії',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  fiscalProvider?: string;
+
+  @ApiPropertyOptional({ description: 'ID каси на боці провайдера (Checkbox cashRegisterId)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  providerCashRegisterId?: string;
 }
 
 export class UpdateCashRegisterDto {
@@ -68,6 +82,20 @@ export class UpdateCashRegisterDto {
   @IsNumber()
   @Min(0)
   initialBalance?: number;
+
+  @ApiPropertyOptional({
+    description: 'Код ПРРО-провайдера цієї каси (checkbox|vchasno) — з активних на філії',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  fiscalProvider?: string;
+
+  @ApiPropertyOptional({ description: 'ID каси на боці провайдера (Checkbox cashRegisterId)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  providerCashRegisterId?: string;
 }
 
 export class CashRegisterResponseDto {
@@ -80,6 +108,10 @@ export class CashRegisterResponseDto {
   @ApiProperty() branchId!: string;
   @ApiProperty() branchName!: string;
   @ApiProperty() isFiscal!: boolean;
+  @ApiPropertyOptional({ description: 'Код ПРРО-провайдера цієї каси' })
+  fiscalProvider?: string | null;
+  @ApiPropertyOptional({ description: 'ID каси на боці провайдера' })
+  providerCashRegisterId?: string | null;
   @ApiProperty() initialBalance!: number;
   @ApiProperty({ description: 'Поточний залишок = initialBalance + Σ(sign*amount)' })
   balance!: number;
