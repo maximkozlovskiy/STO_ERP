@@ -11,6 +11,10 @@ export interface CashRegister {
   branchId: string;
   branchName: string;
   isFiscal: boolean;
+  /** Код ПРРО-провайдера цієї каси (checkbox|vchasno) або null. */
+  fiscalProvider?: string | null;
+  /** ID каси на боці провайдера (Checkbox cashRegisterId). */
+  providerCashRegisterId?: string | null;
   initialBalance: number;
   balance: number;
   createdAt: string;
@@ -89,6 +93,8 @@ export function useCreateCashRegister() {
       branchId: string;
       currencyId: string;
       isFiscal?: boolean;
+      fiscalProvider?: string;
+      providerCashRegisterId?: string;
       initialBalance?: number;
     }) => apiFetch<CashRegister>('/cash-registers', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: cashKeys.registers() }),
@@ -105,6 +111,8 @@ export function useUpdateCashRegister() {
       id: string;
       name?: string;
       isFiscal?: boolean;
+      fiscalProvider?: string;
+      providerCashRegisterId?: string;
       initialBalance?: number;
     }) =>
       apiFetch<CashRegister>(`/cash-registers/${id}`, {

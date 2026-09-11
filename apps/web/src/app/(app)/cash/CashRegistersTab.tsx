@@ -37,6 +37,20 @@ interface CurrencyOpt {
   code: string;
 }
 
+interface FiscalProviderCfg {
+  provider: string;
+  enabled: boolean;
+  hasCredentials: boolean;
+}
+
+// Людські назви ПРРО-провайдерів (дзеркалить FiscalTab FISCAL_PROVIDERS).
+const FISCAL_PROVIDER_LABELS: Record<string, string> = {
+  checkbox: 'Checkbox',
+  vchasno: 'Вчасно.Каса',
+};
+const fiscalProviderLabel = (code?: string | null) =>
+  code ? (FISCAL_PROVIDER_LABELS[code] ?? code) : '';
+
 export default function CashRegistersTab({ canManage = false }: { canManage?: boolean }) {
   const { confirm, dialogProps } = useConfirm();
   const { data: registers, isLoading } = useCashRegisters();
@@ -53,9 +67,13 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
     branchId: '',
     currencyId: '',
     isFiscal: false,
+    fiscalProvider: '',
+    providerCashRegisterId: '',
     initialBalance: '0',
   });
   const [error, setError] = useState('');
+  // Налаштовані FISCAL-провайдери філії форми (для Select ПРРО у фіскальній касі).
+  const [fiscalProviders, setFiscalProviders] = useState<FiscalProviderCfg[]>([]);
 
   useEffect(() => {
     const cb = getCached<BranchInfo[]>('cache:branches');
@@ -72,6 +90,18 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
       .catch(() => undefined);
   }, []);
 
+  // Завантажити налаштовані FISCAL-провайдери філії форми (для прив'язки фіскальної каси до ПРРО).
+  // Показуємо лише провайдерів з уведеними кредами (hasCredentials) — інакше касу не фіскалізувати.
+  useEffect(() => {
+    if (!modal || !form.branchId) {
+      setFiscalProviders([]);
+      return;
+    }
+    apiFetch<FiscalProviderCfg[]>(`/fiscal-providers/branch/${form.branchId}`)
+      .then(rows => setFiscalProviders(rows.filter(r => r.hasCredentials)))
+      .catch(() => setFiscalProviders([]));
+  }, [modal, form.branchId]);
+
   const openCreate = () => {
     setEditing(null);
     setForm({
@@ -79,6 +109,8 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
       branchId: branches[0]?.id ?? '',
       currencyId: currencies[0]?.id ?? '',
       isFiscal: false,
+      fiscalProvider: '',
+      providerCashRegisterId: '',
       initialBalance: '0',
     });
     setError('');
@@ -92,6 +124,8 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
       branchId: r.branchId,
       currencyId: r.currencyId,
       isFiscal: r.isFiscal,
+      fiscalProvider: r.fiscalProvider ?? '',
+      providerCashRegisterId: r.providerCashRegisterId ?? '',
       initialBalance: String(r.initialBalance),
     });
     setError('');
@@ -103,12 +137,17 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
       setError("Назва є обов'язковою");
       return;
     }
+    // Прив'язку до ПРРО шлемо лише для фіскальної каси; для звичайної — очищаємо (порожній рядок).
+    const provider = form.isFiscal ? form.fiscalProvider : '';
+    const providerReg = form.isFiscal ? form.providerCashRegisterId.trim() : '';
     try {
       if (editing) {
         await updateMut.mutateAsync({
           id: editing.id,
           name: form.name.trim(),
           isFiscal: form.isFiscal,
+          fiscalProvider: provider,
+          providerCashRegisterId: providerReg,
           initialBalance: Number(form.initialBalance) || 0,
         });
       } else {
@@ -117,6 +156,8 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
           branchId: form.branchId,
           currencyId: form.currencyId,
           isFiscal: form.isFiscal,
+          fiscalProvider: provider,
+          providerCashRegisterId: providerReg,
           initialBalance: Number(form.initialBalance) || 0,
         });
       }
@@ -190,11 +231,18 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
                 <TableCell className="font-medium">{r.name}</TableCell>
                 <TableCell className="text-[13px] text-muted-foreground">{r.branchName}</TableCell>
                 <TableCell>
-                  {r.isFiscal ? (
-                    <Badge variant="warning">Фіскальна</Badge>
-                  ) : (
-                    <Badge variant="secondary">Звичайна</Badge>
-                  )}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {r.isFiscal ? (
+                      <Badge variant="warning">Фіскальна</Badge>
+                    ) : (
+                      <Badge variant="secondary">Звичайна</Badge>
+                    )}
+                    {r.isFiscal && r.fiscalProvider && (
+                      <Badge variant="secondary" title="Підключений провайдер ПРРО">
+                        ПРРО: {fiscalProviderLabel(r.fiscalProvider)}
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums font-semibold">
                   {fmtMoney(r.balance)} {r.currencySymbol ?? r.currencyCode}
@@ -300,6 +348,37 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
             />
             <span className="text-sm text-foreground">Фіскальна каса (ПРРО, вимагає зміну)</span>
           </label>
+          {form.isFiscal && (
+            <div className="space-y-4 border-l-2 border-border pl-3">
+              <div>
+                <Select
+                  label="Провайдер ПРРО"
+                  value={form.fiscalProvider}
+                  onChange={e => setForm(f => ({ ...f, fiscalProvider: e.target.value }))}
+                >
+                  <option value="">Активний провайдер філії (за замовчуванням)</option>
+                  {fiscalProviders.map(p => (
+                    <option key={p.provider} value={p.provider}>
+                      {fiscalProviderLabel(p.provider)}
+                    </option>
+                  ))}
+                </Select>
+                {fiscalProviders.length === 0 && (
+                  <p className="mt-1 text-[12px] text-muted-foreground">
+                    Немає налаштованих провайдерів ПРРО для філії. Додайте їх у Налаштування →
+                    Фіскалізація.
+                  </p>
+                )}
+              </div>
+              <Input
+                label="ID каси провайдера (необовʼязково)"
+                value={form.providerCashRegisterId}
+                onChange={e => setForm(f => ({ ...f, providerCashRegisterId: e.target.value }))}
+                placeholder="Checkbox cashRegisterId; Вчасно — у токені"
+                className="h-8 text-[13px]"
+              />
+            </div>
+          )}
         </div>
       </Modal>
       <ConfirmDialog {...dialogProps} />
