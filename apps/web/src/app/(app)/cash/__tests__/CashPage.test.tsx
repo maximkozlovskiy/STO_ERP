@@ -40,8 +40,12 @@ vi.mock('@/hooks/api/useCash', () => ({
   MANUAL_IN_REASONS: ['MANUAL_IN'],
   MANUAL_OUT_REASONS: ['MANUAL_OUT'],
 }));
+const useExpenseCategoriesMock = vi.fn((_showDeleted?: boolean, _enabled?: boolean) => ({
+  data: [] as unknown[],
+}));
 vi.mock('@/hooks/api/useExpenseCategories', () => ({
-  useExpenseCategories: () => ({ data: [] }),
+  useExpenseCategories: (showDeleted?: boolean, enabled?: boolean) =>
+    useExpenseCategoriesMock(showDeleted, enabled),
 }));
 
 const useCurrentShiftMock = vi.fn();
@@ -74,7 +78,25 @@ describe('CashOperationsTab — ПРРО зміна (фіскальна каса
     useCurrentShiftMock.mockReset();
     openMutateAsync.mockClear();
     closeMutateAsync.mockClear();
+    useExpenseCategoriesMock.mockClear();
     (toast.error as ReturnType<typeof vi.fn>).mockClear();
+  });
+
+  // Bug #729: GET /expense-categories вимагає ACCOUNTANT+ (backend @Roles). RECEPTIONIST бачить вкладку
+  // «Операції» лише для перегляду (canOperate=false) → запит статей витрат мусить бути ВИМКНЕНИЙ (enabled=false),
+  // інакше кожен перегляд каси реєстратором фаєрив би 403 (двічі через retry:1).
+  it('canOperate=false → useExpenseCategories вимкнено (enabled=false) — без 403 у RECEPTIONIST', async () => {
+    useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
+    render(<CashOperationsTab canOperate={false} />);
+    await screen.findByText(/Зміну закрито/);
+    expect(useExpenseCategoriesMock).toHaveBeenCalledWith(false, false);
+  });
+
+  it('canOperate=true → useExpenseCategories увімкнено (enabled=true)', async () => {
+    useCurrentShiftMock.mockReturnValue({ data: null, isLoading: false });
+    render(<CashOperationsTab canOperate />);
+    await screen.findByText(/Зміну закрито/);
+    expect(useExpenseCategoriesMock).toHaveBeenCalledWith(false, true);
   });
 
   it('OPEN-зміна → «Зміна відкрита» + кнопка «Закрити зміну (Z-звіт)»', async () => {

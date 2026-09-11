@@ -15,13 +15,17 @@ export const expenseCategoriesKeys = {
   list: (showDeleted: boolean) => [...expenseCategoriesKeys.all, 'list', showDeleted] as const,
 };
 
-export function useExpenseCategories(showDeleted = false) {
+// `enabled` дозволяє гейтити запит за роллю: GET /expense-categories вимагає ACCOUNTANT+ (backend
+// @Roles OWNER/ADMIN/ACCOUNTANT). RECEPTIONIST, який бачить вкладку «Операції» /cash лише для перегляду,
+// НЕ повинен фаєрити цей запит (інакше 403 у мережі + retry). Гейт: enabled=canOperate у CashOperationsTab.
+export function useExpenseCategories(showDeleted = false, enabled = true) {
   return useQuery({
     queryKey: expenseCategoriesKeys.list(showDeleted),
     queryFn: () =>
       apiFetch<{ items: ExpenseCategory[]; total: number }>(
         `/expense-categories${showDeleted ? '?showDeleted=true' : ''}`,
       ).then(r => r.items),
+    enabled,
   });
 }
 

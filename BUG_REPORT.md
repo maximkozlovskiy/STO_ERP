@@ -4328,3 +4328,52 @@ tenant-isolation (ORG2 період не тече в ORG1, крос-orgId 404) �
   та гідрацію edit; гілку у `buildRateScheme()` (валідація `ratePerHour ≥ 0`); JSX-input.
 
 Статус: [x] виправлено
+
+---
+
+## Session 2026-09-11 — Тестування фічі «Рух готівки в касах» (cash-in/cash-out) backend + frontend
+
+Обсяг: `apps/api/src/modules/cash/*`, `cash-registers/*`, `expense-categories/*`,
+інтеграції `payments.service.ts` (cash-in) + `payroll.service.ts` (cash-out),
+`apps/web/src/app/(app)/cash/*`, `hooks/api/useCash.ts`, `useExpenseCategories.ts`.
+
+Baseline: API tsc ✅, web tsc ✅, API unit 2178/2178 ✅, web component 739/739 ✅.
+Попередній `[x]` Bug #728 — реально у коді (5× `per_normo_hour` у EmployeeEditModal), не хибний маркер.
+
+Реальні curl-тести (API :3000, OWNER + форжені RECEPTIONIST/ACCOUNTANT ролі через DB-flip):
+
+- **Сценарій 1** (fiscal): нефіскальна каса без зміни — ОК; фіскальна без відкритої зміни → 400
+  «Для фіскальної каси відкрийте зміну…»; expenseCategoryId чужого/неіснуючого → 404; каса чужа/неіснуюча → 404 (не 500). ✅
+- **Сценарій 2** (баланс): init=1000 → IN 500 → OUT 200 → **1300** → EXPENSE 300 зі статтею → **1000**;
+  EXPENSE без статті → 400; amount=0 → 400 (DTO `@IsPositive`). Баланс свіжий (SQL-агрегат Σ(IN)−Σ(OUT), поза кешем). ✅
+- **Сценарій 3** (статті): create → dup active 409 → soft-delete 204 → recreate resurrect (той самий id) → restore 201. ✅
+- **Сценарій 4** (payments cash-in): оплата method=cash sourceType=CASH_REGISTER → авто cash-in reason=SALE_PAYMENT
+  (docType=Payment) у ту саму транзакцію, баланс +amount; фіскальна каса без зміни → 400 + **повний відкат Payment+settlement**
+  (payment count 38→38, баланс каси 0). ✅
+- **Сценарій 5** (payroll cash-out): pay з cashRegisterId → 1 cash-out PAYROLL на співробітника, баланс −totalAccrued
+  (10000 → 6860 при 2900+240); pay без каси → лише фіксація (баланс/0 ops незмінні); крос-org cashRegisterId → 404,
+  період лишається COMPUTED (відкат). ✅
+- **Сценарій 6** (tenant): операції/каса іншого org → 404, не 500. ✅
+- **Сценарій 7** (ролі): RECEPTIONIST GET registers/operations 200, POST operations 403, POST register 403;
+  ACCOUNTANT POST operations 201, GET expense-categories 200, POST register 403, payroll pay 403;
+  каси/статті CRUD лише OWNER/ADMIN. ✅
+- **Сценарій 8** (регресія/DI): CashModule експортує CashService, імпортований payments/payroll/cash-registers —
+  DI без дрейфу (2178 API-тестів зелені). ✅
+
+### Bug #729 — CashOperationsTab фаєрить GET /expense-categories для RECEPTIONIST → 403 (роль-гейт відсутній на fetch)
+
+- **Severity:** MEDIUM (нема видимого банера, але RECEPTIONIST на кожному перегляді вкладки «Операції» /cash
+  робить заборонений запит — 403 × 2 через `retry:1`; мережевий шум, зайве навантаження, потенційний Sentry-шум).
+  Review щойно фіксив рольову видимість вкладок, але пропустив, що сам fetch статей витрат не гейтиться роллю.
+- **Файли:** `apps/web/src/app/(app)/cash/CashOperationsTab.tsx` (ряд 57), `apps/web/src/hooks/api/useExpenseCategories.ts`
+- **Симптом:** `useExpenseCategories()` викликається безумовно у `CashOperationsTab`. Вкладка «Операції» видима
+  RECEPTIONIST (roles включають RECEPTIONIST), але `GET /expense-categories` вимагає `OWNER/ADMIN/ACCOUNTANT`
+  (`@Roles`, ряд 37 контролера) → 403. Емпірично підтверджено curl: RECEPTIONIST GET /expense-categories → **403**.
+- **Корінь:** статті витрат потрібні лише для модалки IN/OUT (привід EXPENSE), доступної тим, хто `canOperate`
+  (OWNER/ADMIN/ACCOUNTANT). Хук фаєрив запит незалежно від ролі. Типова прогалина «гейтнули видимість UI/кнопки,
+  але не сам data-fetch».
+- **Fix:** `useExpenseCategories(showDeleted=false, enabled=true)` — доданий `enabled`-параметр (react-query);
+  у `CashOperationsTab` виклик `useExpenseCategories(false, canOperate)` — RECEPTIONIST (canOperate=false) більше не фаєрить запит.
+  Regression-guard: 2 тести у `CashPage.test.tsx` — `canOperate=false` → `enabled=false`, `canOperate=true` → `enabled=true`.
+
+Статус: [x] виправлено

@@ -54,7 +54,9 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
   const { data: operations, isLoading: opsLoading } = useCashOperations(selectedId || null);
-  const { data: expenseCats } = useExpenseCategories();
+  // Статті витрат потрібні лише для модалки IN/OUT (привід EXPENSE), доступної тим, хто canOperate.
+  // GET /expense-categories вимагає ACCOUNTANT+ — RECEPTIONIST (лише перегляд) інакше отримав би 403.
+  const { data: expenseCats } = useExpenseCategories(false, canOperate);
   const createOp = useCreateCashOperation();
 
   const [opModal, setOpModal] = useState<null | 'IN' | 'OUT'>(null);
