@@ -88,7 +88,7 @@ async function createDocApi(
 
 async function gotoStockDocs(page: Page, withClearDateFilter = false) {
   await page.goto('/stock-documents');
-  await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('h1:has-text("Склад")')).toBeVisible({ timeout: 20_000 });
   // Bug #345: stock-documents page has kyivToday() date filter by default
   if (withClearDateFilter) await clearDateFilter(page);
 }
@@ -548,7 +548,7 @@ test.describe('Складські документи — фільтри', () => 
     await page.waitForTimeout(400);
     await page.locator('button:has-text("Всі")').first().click();
     await page.waitForTimeout(400);
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible();
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible();
   });
 
   test('фільтр типу «Поч. залишки» — показує тільки OPENING_BALANCE', async ({ page }) => {

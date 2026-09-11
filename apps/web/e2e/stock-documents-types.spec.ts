@@ -29,7 +29,7 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
 
 async function readyPage(page: Page) {
   await page.goto('/stock-documents');
-  await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('h1:has-text("Склад")')).toBeVisible({ timeout: 20_000 });
 }
 
 async function getWarehouses(page: Page) {

@@ -43,6 +43,61 @@ async function getToken(page: import('@playwright/test').Page): Promise<string> 
   return token as string;
 }
 
+/**
+ * Гарантує наявність фіскальної каси й повертає її id.
+ * /cash → вкладка «Операції» показує блок зміни (open/close) ЛИШЕ для обраної ФІСКАЛЬНОЇ каси
+ * (CashOperationsTab: `selected?.isFiscal`). Автовибір бере registers[0], який може бути
+ * нефіскальним — тож тест мусить створити детерміновану фіскальну касу й обрати саме її.
+ */
+async function ensureFiscalRegister(
+  page: import('@playwright/test').Page,
+  token: string,
+): Promise<{ id: string; name: string; created: boolean }> {
+  return page.evaluate(
+    async ({ token, API }) => {
+      const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      // Спершу шукаємо ГОТОВУ фіскальну касу у списку, який САМЕ рендерить UI
+      // (useCashRegisters → GET /cash-registers → .items). Так гарантуємо, що обрана каса
+      // присутня у <select> (список у dev-БД може бути «роздутий» тестовими записами й
+      // capped, тож щойно створена каса могла б не потрапити у видиму сторінку).
+      const listRes = await fetch(`${API}/cash-registers`, { headers: H });
+      const listData = await listRes.json();
+      const items: { id: string; name: string; isFiscal: boolean }[] = listData.items ?? listData;
+      const existing = items.find(r => r.isFiscal);
+      if (existing) return { id: existing.id, name: existing.name, created: false };
+
+      // Немає жодної фіскальної — створюємо детерміновану.
+      const [cData, bData] = await Promise.all([
+        fetch(`${API}/currencies`, { headers: H }).then(r => r.json()),
+        fetch(`${API}/branches`, { headers: H }).then(r => r.json()),
+      ]);
+      const currency = (cData.items ?? cData)?.[0];
+      const branch = (bData.items ?? bData)?.[0];
+      const name = `E2E Фіскальна ${Date.now()}`;
+      const r = await fetch(`${API}/cash-registers`, {
+        method: 'POST',
+        headers: H,
+        body: JSON.stringify({
+          name,
+          currencyId: currency.id,
+          branchId: branch.id,
+          isFiscal: true,
+        }),
+      });
+      const reg = await r.json();
+      return { id: reg.id, name, created: true };
+    },
+    { token, API },
+  );
+}
+
+/** Обирає касу за id у нативному <Select> вкладки «Операції» та чекає рендер блока зміни. */
+async function selectRegister(page: import('@playwright/test').Page, id: string) {
+  const select = page.locator('select').first();
+  await expect(select).toBeVisible({ timeout: 15_000 });
+  await select.selectOption(id);
+}
+
 /** Клієнт для оплати. */
 async function getClientId(page: import('@playwright/test').Page, token: string): Promise<string> {
   const id = await page.evaluate(
@@ -425,11 +480,53 @@ test.describe('Оплати клієнтів (money-flow)', () => {
   });
 
   // ─── Каса (offline-first guard) ─────────────────────────────────────────────
-  test('/cash рендериться: закрита зміна + кнопка «Відкрити зміну»', async ({ page }) => {
+  // /cash переписано на таб-обгортку (Операції/Каси/Статті витрат). Блок зміни
+  // (open/close, «Відкрити зміну») тепер у вкладці «Операції» і показується ЛИШЕ для
+  // обраної ФІСКАЛЬНОЇ каси. Тож створюємо детерміновану фіскальну касу і обираємо її.
+  let fiscalRegisterId = '';
+  let fiscalRegisterCreated = false;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await p.goto('/cash');
+    const token = await getToken(p);
+    const reg = await ensureFiscalRegister(p, token);
+    fiscalRegisterId = reg.id;
+    fiscalRegisterCreated = reg.created;
+    await ctx.close();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    // Прибираємо лише те, що самі створили (наявну seed/leftover касу не чіпаємо).
+    if (!fiscalRegisterId || !fiscalRegisterCreated) return;
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await p.goto('/cash');
+    const token = await getToken(p);
+    await p
+      .evaluate(
+        async ({ token, API, id }) => {
+          await fetch(`${API}/cash-registers/${id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => {});
+        },
+        { token, API, id: fiscalRegisterId },
+      )
+      .catch(() => {});
+    await ctx.close();
+  });
+
+  test('/cash «Операції»: фіскальна каса без зміни → «Зміну закрито» + «Відкрити зміну»', async ({
+    page,
+  }) => {
     await page.goto('/cash');
     await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+    // Вкладка «Операції» активна за замовчуванням. Обираємо фіскальну касу.
+    await selectRegister(page, fiscalRegisterId);
 
-    // Немає відкритої зміни (cash-shifts/current = null) → стан «Зміну закрито».
+    // Нова каса → немає відкритої зміни → стан «Зміну закрито».
     await expect(page.getByText('Зміну закрито')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: /Відкрити зміну/ })).toBeVisible();
   });
@@ -437,6 +534,7 @@ test.describe('Оплати клієнтів (money-flow)', () => {
   test('«Відкрити зміну» без налаштованого ПРРО → детермінований guard-error', async ({ page }) => {
     await page.goto('/cash');
     await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+    await selectRegister(page, fiscalRegisterId);
 
     const openBtn = page.getByRole('button', { name: /Відкрити зміну/ });
     await expect(openBtn).toBeEnabled({ timeout: 15_000 });

@@ -123,11 +123,15 @@ test.describe('Зарплата — життєвий цикл періоду (FS
     await periodRow.getByRole('button', { name: 'Розрахувати' }).click();
     await expect(periodRow.getByText('Розраховано')).toBeVisible({ timeout: 20_000 });
 
-    // Pay через UI — кнопка «Виплатити» у рядку + підтвердження у ConfirmDialog (role=dialog, «Так»).
+    // Pay через UI — кнопка «Виплатити» у рядку відкриває модалку «Провести виплату»
+    // (вибір каси + футер-кнопка «Виплатити … ₴»). Це НЕ простий ConfirmDialog «Так» —
+    // pay-flow отримав власну модалку з опційним cash-out (page.tsx: payPeriod modal).
     await periodRow.getByRole('button', { name: 'Виплатити' }).click();
-    const dialog = page.locator('[role="dialog"]');
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await dialog.getByRole('button', { name: 'Так' }).click();
+    const payModal = page.locator('[role="dialog"]').filter({ hasText: 'Провести виплату' });
+    await expect(payModal).toBeVisible({ timeout: 10_000 });
+    // Каса за замовчуванням «— без каси (лише фіксація) —» → уникаємо вимоги відкритої
+    // фіскальної зміни; перевіряємо чистий FSM-перехід COMPUTED → PAID.
+    await payModal.getByRole('button', { name: /^Виплатити/ }).click();
     // Чекаємо перехід САМЕ цього рядка у «Виплачено» (scoped) — гарантує, що API вже flip-нув статус.
     await expect(periodRow.getByText('Виплачено')).toBeVisible({ timeout: 20_000 });
 

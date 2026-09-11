@@ -14,7 +14,25 @@ test.describe('Smoke — публічні сторінки', () => {
 
   test('/setup доступний без авторизації', async ({ page }) => {
     await page.goto('/setup');
-    await expect(page).not.toHaveURL(/\/login/);
+    // /setup — публічний роут (без auth-редіректу на login «через відсутність токена»).
+    // АЛЕ якщо систему вже ініціалізовано (є Organisation), сторінка САМА редіректить на
+    // /login (setup-lock: повторний bootstrap заборонено — setup/page.tsx `/setup/status`).
+    // У seed-БД (initialized:true) це коректна поведінка; на чистій БД показується wizard.
+    // Інваріант: сторінка рендериться і НЕ падає в error-overlay у будь-якому зі станів.
+    const status = await page
+      .evaluate(async () => {
+        const r = await fetch('http://localhost:3000/api/setup/status');
+        return (await r.json()) as { initialized: boolean };
+      })
+      .catch(() => ({ initialized: false }));
+    if (status.initialized) {
+      // Ініціалізована система → setup-lock → редірект на /login (не auth-guard, а бізнес-lock).
+      await expect(page).toHaveURL(/\/login/, { timeout: 20_000 });
+    } else {
+      // Чиста система → wizard лишається на /setup.
+      await expect(page).not.toHaveURL(/\/login/);
+    }
+    await expect(page.locator('nextjs-portal, [data-nextjs-dialog]')).not.toBeVisible();
   });
 });
 

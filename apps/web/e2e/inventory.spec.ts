@@ -128,8 +128,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   test.describe.configure({ mode: 'serial' });
 
   test('усі 3 кнопки перемикача присутні на /inventory', async ({ page }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -142,8 +142,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   test('за замовчуванням активний режим "По товарах" — колонка "Бренд" присутня', async ({
     page,
   }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -167,8 +167,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   test('перемикання на "По документах" — з\'являються date-pickers і змінюється таблиця', async ({
     page,
   }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -207,8 +207,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   });
 
   test('акордеон по документах: клік по товару → ChevronRight обертається', async ({ page }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -243,8 +243,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   });
 
   test('перемикання на "По партіях" — accordion для batch-груп видимий', async ({ page }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -278,8 +278,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   });
 
   test('фільтр дат у режимі "По документах" викликає API з from/to params', async ({ page }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -319,8 +319,8 @@ test.describe('Інвентар — 3-режимний перемикач вид
   });
 
   test('фільтр складу: зміна селектора → таблиця перезавантажується', async ({ page }) => {
-    await page.goto('/inventory');
-    await expect(page.locator('h1:has-text("Залишки на складах")')).toBeVisible({
+    await page.goto('/stock-documents?tab=stock');
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 

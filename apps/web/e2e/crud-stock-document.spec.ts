@@ -6,7 +6,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Документи складу — CRUD', () => {
   test('сторінка завантажується', async ({ page }) => {
     await page.goto('/stock-documents');
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
     await expect(
@@ -20,7 +20,7 @@ test.describe('Документи складу — CRUD', () => {
   test('кнопка "Документ" (додати) присутня', async ({ page }) => {
     // Add-button renamed from "Новий документ" to "Документ" (commit 3785721/c3cd333).
     await page.goto('/stock-documents');
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole('button', { name: /^Документ$/ }).first()).toBeVisible({
@@ -35,7 +35,7 @@ test.describe('Документи складу — CRUD', () => {
     // не знайти склад/тип → skip → fake-green). Замінено на API-creation, оскільки модалка
     // тестується окремим тестом "кнопка Документ присутня".
     await page.goto('/stock-documents');
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
@@ -72,7 +72,7 @@ test.describe('Документи складу — CRUD', () => {
     ).toBeTruthy();
 
     await page.reload();
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
@@ -92,7 +92,7 @@ test.describe('Документи складу — CRUD', () => {
 
   test('FSM DRAFT → CONFIRMED через API transition', async ({ page }) => {
     await page.goto('/stock-documents');
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
@@ -152,7 +152,7 @@ test.describe('Документи складу — CRUD', () => {
     ).toBeTruthy();
 
     await page.reload();
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
 
@@ -200,7 +200,7 @@ test.describe('Документи складу — CRUD', () => {
 
   test('статусні фільтри присутні', async ({ page }) => {
     await page.goto('/stock-documents');
-    await expect(page.locator('h1:has-text("Складські документи")')).toBeVisible({
+    await expect(page.locator('h1:has-text("Склад")')).toBeVisible({
       timeout: 20_000,
     });
     await expect(
