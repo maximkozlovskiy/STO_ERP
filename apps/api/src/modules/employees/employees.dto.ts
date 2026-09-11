@@ -31,6 +31,11 @@ export const rateSchemeSchema = z.discriminatedUnion('type', [
     params: z.object({ percent: z.number().min(0).max(100) }),
   }),
   z.object({
+    // Ставка за нормо-годину: accrued = ratePerHour * Σ normoHours завершених робіт.
+    type: z.literal('per_normo_hour'),
+    params: z.object({ ratePerHour: z.number().min(0) }),
+  }),
+  z.object({
     type: z.literal('fixed_plus_bonus'),
     params: z.object({ fixedMonthly: z.number().min(0), bonusPercent: z.number().min(0).max(100) }),
   }),
@@ -59,7 +64,7 @@ export class CreateEmployeeDto {
 
   @ApiProperty({
     example: { type: 'percent_normo', params: { percent: 40 } },
-    description: 'percent_normo | fixed_plus_bonus',
+    description: 'percent_normo | per_normo_hour | fixed_plus_bonus',
   })
   @IsObject()
   rateScheme!: RateScheme;

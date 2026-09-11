@@ -30,6 +30,7 @@ const AUDIT_ENTITY_TYPES = [
   'BranchSettings',
   'TaxRate',
   'PricingRule',
+  'PayrollPeriod',
 ] as const;
 
 @ApiTags('audit')

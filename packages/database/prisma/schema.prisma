@@ -198,6 +198,14 @@ enum SettlementTransactionType {
   SUPPLIER_REFUND
 }
 
+// Зарплатний період (payroll). FSM: DRAFT → COMPUTED (нарахування зафіксовано) → PAID; або CANCELLED.
+enum PayrollPeriodStatus {
+  DRAFT
+  COMPUTED
+  PAID
+  CANCELLED
+}
+
 // ─── PHASE 17 ENUMS ──────────────────────────────────────
 
 enum PurchaseOrderStatus {
@@ -376,6 +384,7 @@ model Organisation {
   savedReports          SavedReport[]
   counterpartyStatuses  CounterpartyStatus[]
   goodStatuses          GoodStatus[]
+  payrollPeriods        PayrollPeriod[]
   primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
 
   @@index([orgId, deletedAt])
@@ -572,6 +581,7 @@ model Employee {
   auditEvents            AuditEvent[]
   inspectionReports      InspectionReport[]
   preferences            UserPreference[]
+  payrollLines           PayrollLine[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -2202,6 +2212,60 @@ model SettlementTransaction {
   // Covering (orgId, type, createdAt): type=equality → leftmost, createdAt=range → tail → index-range scan.
   @@index([orgId, type, createdAt])
   @@map("settlement_transactions")
+}
+
+// ─── Payroll (зарплата) ──────────────────────────────────────────────────────
+// Зарплатний період — контейнер розрахунку нарахувань за проміжок дат. FSM DRAFT→COMPUTED→PAID.
+// На COMPUTED нарахування ФІКСУЮТЬСЯ у PayrollLine[] (snapshot, як фінансовий документ).
+model PayrollPeriod {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @db.Uuid
+  branchId    String?             @db.Uuid // null = усі філії
+  periodStart DateTime            @db.Date
+  periodEnd   DateTime            @db.Date
+  status      PayrollPeriodStatus @default(DRAFT)
+  note        String?
+  computedAt  DateTime?
+  computedBy  String?             @db.Uuid
+  paidAt      DateTime?
+  paidBy      String?             @db.Uuid
+  syncVersion BigInt              @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  org   Organisation  @relation(fields: [orgId], references: [id])
+  lines PayrollLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, status])
+  @@index([orgId, syncVersion])
+  @@map("payroll_periods")
+}
+
+// Нарахування одному співробітнику за період (зафіксоване на момент COMPUTED).
+model PayrollLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  periodId       String   @db.Uuid
+  employeeId     String   @db.Uuid
+  rateSchemeType String // 'percent_normo' | 'per_normo_hour' | 'fixed_plus_bonus' (snapshot типу)
+  baseAmount     Decimal  @db.Decimal(12, 2) // Σ amount завершених робіт (база для %)
+  normoHours     Float // Σ normoHours завершених робіт
+  linesCount     Int // к-сть врахованих ліній нарядів
+  accruedAmount  Decimal  @db.Decimal(12, 2) // нараховано до виплати
+  paidAmount     Decimal  @default(0) @db.Decimal(12, 2) // фактично виплачено
+  syncVersion    BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  period   PayrollPeriod @relation(fields: [periodId], references: [id])
+  employee Employee      @relation(fields: [employeeId], references: [id])
+
+  @@unique([periodId, employeeId])
+  @@index([orgId, employeeId])
+  @@index([orgId, syncVersion])
+  @@map("payroll_lines")
 }
 
 model ReconciliationAct {
