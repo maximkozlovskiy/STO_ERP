@@ -149,6 +149,10 @@ export class CashRegistersService {
     });
     await this.cache.del(cacheKey(orgId));
     await this.cache.del(cacheKey(orgId, existing.branchId));
+    // Якщо змінили філію — інвалідовуємо і кеш НОВОЇ філії (інакше стара per-branch вибірка
+    // показуватиме касу до TTL, а нова — не покаже до TTL).
+    if (dto.branchId && dto.branchId !== existing.branchId)
+      await this.cache.del(cacheKey(orgId, dto.branchId));
     return this.toDto(item);
   }
 

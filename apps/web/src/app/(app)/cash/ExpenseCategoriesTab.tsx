@@ -26,7 +26,7 @@ import {
   type ExpenseCategory,
 } from '@/hooks/api/useExpenseCategories';
 
-export default function ExpenseCategoriesTab() {
+export default function ExpenseCategoriesTab({ canManage = false }: { canManage?: boolean }) {
   const { confirm, dialogProps } = useConfirm();
   const { data: categories, isLoading } = useExpenseCategories();
   const createMut = useCreateExpenseCategory();
@@ -89,9 +89,11 @@ export default function ExpenseCategoriesTab() {
         <p className="text-[13px] text-muted-foreground">
           Статті витрат для касових видач (Оренда, Комунальні, Господарські тощо)
         </p>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-          Стаття
-        </Button>
+        {canManage && (
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+            Стаття
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">
@@ -99,13 +101,13 @@ export default function ExpenseCategoriesTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Назва статті</TableHead>
-              <TableHead />
+              {canManage && <TableHead />}
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={2} className="py-10 text-center">
+                <TableCell colSpan={canManage ? 2 : 1} className="py-10 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -114,7 +116,7 @@ export default function ExpenseCategoriesTab() {
             )}
             {!isLoading && (categories?.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={2} className="p-0">
+                <TableCell colSpan={canManage ? 2 : 1} className="p-0">
                   <EmptyState icon={Tag} title="Статей немає" description="Додайте першу статтю" />
                 </TableCell>
               </TableRow>
@@ -122,27 +124,29 @@ export default function ExpenseCategoriesTab() {
             {categories?.map(c => (
               <TableRow key={c.id} className="group">
                 <TableCell className="font-medium">{c.name}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(c)}
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void remove(c)}
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      title="Видалити"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </TableCell>
+                {canManage && (
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(c)}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void remove(c)}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        title="Видалити"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

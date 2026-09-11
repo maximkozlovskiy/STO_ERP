@@ -37,7 +37,7 @@ interface CurrencyOpt {
   code: string;
 }
 
-export default function CashRegistersTab() {
+export default function CashRegistersTab({ canManage = false }: { canManage?: boolean }) {
   const { confirm, dialogProps } = useConfirm();
   const { data: registers, isLoading } = useCashRegisters();
   const createMut = useCreateCashRegister();
@@ -150,9 +150,11 @@ export default function CashRegistersTab() {
         <p className="text-[13px] text-muted-foreground">
           Каси організації. Фіскальна каса вимагає відкриту зміну для операцій з готівкою.
         </p>
-        <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-          Каса
-        </Button>
+        {canManage && (
+          <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
+            Каса
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">
@@ -163,13 +165,13 @@ export default function CashRegistersTab() {
               <TableHead>Філія</TableHead>
               <TableHead>Тип</TableHead>
               <TableHead className="text-right">Залишок</TableHead>
-              <TableHead />
+              {canManage && <TableHead />}
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center">
+                <TableCell colSpan={canManage ? 5 : 4} className="py-10 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -178,7 +180,7 @@ export default function CashRegistersTab() {
             )}
             {!isLoading && (registers?.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="p-0">
+                <TableCell colSpan={canManage ? 5 : 4} className="p-0">
                   <EmptyState icon={Landmark} title="Кас немає" description="Додайте першу касу" />
                 </TableCell>
               </TableRow>
@@ -197,27 +199,29 @@ export default function CashRegistersTab() {
                 <TableCell className="text-right tabular-nums font-semibold">
                   {fmtMoney(r.balance)} {r.currencySymbol ?? r.currencyCode}
                 </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(r)}
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void remove(r)}
-                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                      title="Видалити"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </TableCell>
+                {canManage && (
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(r)}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void remove(r)}
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                        title="Видалити"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

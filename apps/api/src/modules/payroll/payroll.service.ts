@@ -258,10 +258,12 @@ export class PayrollService {
     if (period.status !== 'COMPUTED')
       throw new BadRequestException('Виплатити можна лише розрахований період');
 
-    // Рядки нарахувань (для cash-out по кожному співробітнику).
+    // Рядки нарахувань (для cash-out по кожному співробітнику). take: 1 рядок = 1 співробітник періоду
+    // (обмежено штатом org), але явний cap як захист від OOM (§3.2).
     const lines = await this.prisma.payrollLine.findMany({
       where: { orgId, periodId: id },
       select: { employeeId: true, accruedAmount: true },
+      take: 1000,
     });
 
     await this.prisma.$transaction(

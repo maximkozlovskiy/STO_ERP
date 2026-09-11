@@ -37,7 +37,7 @@ import {
 } from '@/hooks/api/useCash';
 import { useExpenseCategories } from '@/hooks/api/useExpenseCategories';
 
-export default function CashOperationsTab() {
+export default function CashOperationsTab({ canOperate = false }: { canOperate?: boolean }) {
   const { data: registers, isLoading: regLoading } = useCashRegisters();
   const [selectedId, setSelectedId] = useState('');
   const selected = useMemo(
@@ -164,23 +164,25 @@ export default function CashOperationsTab() {
             </span>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            leftIcon={<ArrowDownCircle className="h-4 w-4" />}
-            onClick={() => openOpModal('IN')}
-            disabled={fiscalBlocked}
-          >
-            Внести
-          </Button>
-          <Button
-            variant="outline"
-            leftIcon={<ArrowUpCircle className="h-4 w-4" />}
-            onClick={() => openOpModal('OUT')}
-            disabled={fiscalBlocked}
-          >
-            Видати
-          </Button>
-        </div>
+        {canOperate && (
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              leftIcon={<ArrowDownCircle className="h-4 w-4" />}
+              onClick={() => openOpModal('IN')}
+              disabled={fiscalBlocked}
+            >
+              Внести
+            </Button>
+            <Button
+              variant="outline"
+              leftIcon={<ArrowUpCircle className="h-4 w-4" />}
+              onClick={() => openOpModal('OUT')}
+              disabled={fiscalBlocked}
+            >
+              Видати
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Зміна (для фіскальної каси) */}

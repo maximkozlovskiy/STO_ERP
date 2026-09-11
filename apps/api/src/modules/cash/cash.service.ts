@@ -6,8 +6,8 @@ import { AuditService } from '../audit/audit.service';
 import { roundMoney } from '../../common/utils/math';
 import { CashOperationResponseDto, CreateCashOperationDto } from './cash.dto';
 
-// Знак операції для балансу: IN додає готівку, OUT — віднімає.
-const CASH_SIGN: Record<CashDirection, 1 | -1> = { IN: 1, OUT: -1 };
+// Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
+// SQL-агрегатами (Σ IN − Σ OUT) у computeBalance для ефективності — ця мапа документує конвенцію.
 
 // Параметри створення операції — спільний вхід для ручних (контролер) і авто (payments/payroll) операцій.
 export interface CreateCashOperationInput {
