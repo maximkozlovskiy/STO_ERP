@@ -6,6 +6,7 @@ import { SupplierPaymentsService } from './supplier-payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { CashService } from '../cash/cash.service';
 
 // Regression-guards для feature "Оплата постачальнику" (SupplierPayment).
 // Ключові business invariants на confirm()/cancel() FSM-step:
@@ -37,6 +38,7 @@ describe('SupplierPaymentsService — regression guards', () => {
   };
   let settlements: { createTransaction: ReturnType<typeof vi.fn> };
   let docNumbers: { next: ReturnType<typeof vi.fn> };
+  let cash: { createOperation: ReturnType<typeof vi.fn> };
 
   const ORG = '00000000-0000-0000-0000-000000000001';
   const SP_ID = '11111111-1111-4111-8111-111111111111';
@@ -91,6 +93,7 @@ describe('SupplierPaymentsService — regression guards', () => {
     };
     settlements = { createTransaction: vi.fn().mockResolvedValue(undefined) };
     docNumbers = { next: vi.fn().mockResolvedValue('ОПП-20260703-000001') };
+    cash = { createOperation: vi.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -98,6 +101,7 @@ describe('SupplierPaymentsService — regression guards', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SettlementsService, useValue: settlements },
         { provide: DocumentNumberService, useValue: docNumbers },
+        { provide: CashService, useValue: cash },
       ],
     }).compile();
     service = module.get(SupplierPaymentsService);
@@ -186,11 +190,13 @@ describe('SupplierPaymentsService — regression guards', () => {
 
   it('confirm(): settlement SUPPLIER_PAYMENT (+1, наш борг ↓) + documentType=SupplierPayment', async () => {
     prisma.supplierPayment.findFirst
-      // pre-tx read: status+supplierId+amount (для settlement).
+      // pre-tx read: status+supplierId+amount+джерело (для settlement + cash-out). BANK_ACCOUNT → без каси.
       .mockResolvedValueOnce({
         status: SupplierPaymentStatus.DRAFT,
         supplierId: SUPPLIER_ID,
         amount: 500,
+        sourceType: PaymentSourceType.BANK_ACCOUNT,
+        cashRegisterId: null,
       })
       .mockResolvedValueOnce(confirmedRow); // findOne у кінці
     prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 1 }); // CAS DRAFT→CONFIRMED
@@ -215,6 +221,58 @@ describe('SupplierPaymentsService — regression guards', () => {
       documentId: SP_ID,
       createdBy: USER_ID,
     });
+    // BANK_ACCOUNT джерело → руху готівки немає.
+    expect(cash.createOperation).not.toHaveBeenCalled();
+  });
+
+  it('confirm(): CASH_REGISTER → cash-out OUT/SUPPLIER_PAYMENT у ту саму tx (Bug — cash-оплата не залишала касу)', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce({
+        status: SupplierPaymentStatus.DRAFT,
+        supplierId: SUPPLIER_ID,
+        amount: 500,
+        sourceType: PaymentSourceType.CASH_REGISTER,
+        cashRegisterId: CASH_ID,
+      })
+      .mockResolvedValueOnce(confirmedRow); // findOne у кінці
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    await service.confirm(ORG, SP_ID, USER_ID);
+
+    expect(cash.createOperation).toHaveBeenCalledTimes(1);
+    const [orgArg, inputArg, txArg] = cash.createOperation.mock.calls[0]!;
+    expect(orgArg).toBe(ORG);
+    expect(inputArg).toMatchObject({
+      cashRegisterId: CASH_ID,
+      direction: 'OUT',
+      amount: 500,
+      reason: 'SUPPLIER_PAYMENT',
+      counterpartyId: SUPPLIER_ID,
+      documentType: 'SupplierPayment',
+      documentId: SP_ID,
+    });
+    // ЄДИНА транзакція: cash-out отримує тот самий tx-client, що й settlement (overdraft-guard бачить її стан).
+    expect(txArg).toBeDefined();
+  });
+
+  it('confirm(): overdraft у касі → createOperation кидає → весь confirm відкат (settlement не «залишається»)', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce({
+      status: SupplierPaymentStatus.DRAFT,
+      supplierId: SUPPLIER_ID,
+      amount: 500,
+      sourceType: PaymentSourceType.CASH_REGISTER,
+      cashRegisterId: CASH_ID,
+    });
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 1 });
+    // Каса не має вдосталь готівки → overdraft-guard у createOperation кидає 400.
+    cash.createOperation.mockRejectedValueOnce(
+      new BadRequestException('Недостатньо готівки в касі'),
+    );
+
+    await expect(service.confirm(ORG, SP_ID, USER_ID)).rejects.toBeInstanceOf(BadRequestException);
+    // settlement викликаний ДО cash-out у тій самій tx → його ефект відкочується разом із помилкою
+    // (тут $transaction-мок прокидає помилку; в БД це реальний ROLLBACK). Головне: помилка не проковтнута.
+    expect(cash.createOperation).toHaveBeenCalledTimes(1);
   });
 
   it('confirm(): CAS програв (updateMany count=0, concurrent) → BadRequest, settlement НЕ пишеться', async () => {
@@ -962,6 +1020,7 @@ describe('SupplierPaymentsService — linked-documents edge cases', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SettlementsService, useValue: {} },
         { provide: DocumentNumberService, useValue: {} },
+        { provide: CashService, useValue: { createOperation: vi.fn() } },
       ],
     }).compile();
     service = module.get(SupplierPaymentsService);

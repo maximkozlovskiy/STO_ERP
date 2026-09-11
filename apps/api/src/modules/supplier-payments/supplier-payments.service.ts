@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { CashService } from '../cash/cash.service';
 import {
   CreateSupplierPaymentDto,
   UpdateSupplierPaymentDto,
@@ -45,6 +46,7 @@ export class SupplierPaymentsService {
     private readonly prisma: PrismaService,
     private readonly settlements: SettlementsService,
     private readonly docNumbers: DocumentNumberService,
+    private readonly cash: CashService,
   ) {}
 
   async findAll(
@@ -722,7 +724,13 @@ export class SupplierPaymentsService {
   async confirm(orgId: string, id: string, userId: string): Promise<SupplierPaymentResponseDto> {
     const pre = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true, supplierId: true, amount: true },
+      select: {
+        status: true,
+        supplierId: true,
+        amount: true,
+        sourceType: true,
+        cashRegisterId: true,
+      },
     });
     if (!pre) throw new NotFoundException('Оплату не знайдено');
 
@@ -762,6 +770,28 @@ export class SupplierPaymentsService {
           },
           tx,
         );
+
+        // Готівкова оплата постачальнику → видача готівки з каси (cash-out) У ТУ САМУ транзакцію,
+        // щоб оплата/розрахунок/каса не розсинхронились. CashService.createOperation — ЄДИНА точка
+        // руху готівки: застосовує overdraft-guard (OUT не вижене касу в мінус → 400 + rollback усього
+        // confirm) і shift-guard для фіскальної каси. Без цього cash-оплата постачальнику ніколи не
+        // залишала касу → баланс завищений, guard оминається.
+        if (pre.sourceType === PaymentSourceType.CASH_REGISTER && pre.cashRegisterId) {
+          await this.cash.createOperation(
+            orgId,
+            {
+              cashRegisterId: pre.cashRegisterId,
+              direction: 'OUT',
+              amount: Number(pre.amount),
+              reason: 'SUPPLIER_PAYMENT',
+              counterpartyId: pre.supplierId,
+              documentType: 'SupplierPayment',
+              documentId: id,
+              createdBy: userId,
+            },
+            tx,
+          );
+        }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );

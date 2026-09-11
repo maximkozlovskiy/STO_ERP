@@ -261,6 +261,35 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     expect(m.prisma.cashOperation.create).toHaveBeenCalled();
   });
 
+  it('копійкова нестача (баланс 100.00, OUT 100.01) → 400 (толеранс −0.001 не пропускає)', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    armBalance(m, 100);
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'OUT',
+        amount: 100.01,
+        reason: 'MANUAL_OUT',
+      }),
+    ).rejects.toThrow(/Недостатньо готівки/);
+    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
+  });
+
+  it('float-дрейф (баланс 0.30, OUT 0.30) → проходить (толеранс поглинає IEEE-754)', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    // 0.1+0.2 = 0.30000000000000004; після roundMoney → 0.3. OUT 0.3 → баланс 0 → ок.
+    armBalance(m, 0.1 + 0.2);
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'OUT',
+      amount: 0.3,
+      reason: 'MANUAL_OUT',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalled();
+  });
+
   it('IN не перевіряється залишком (готівка додається навіть при 0)', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -367,5 +396,16 @@ describe('CashService.getBalance — initial + Σ(sign)', () => {
     const service = makeService(m);
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce(null);
     await expect(service.getBalance(ORG, REG)).rejects.toThrow(NotFoundException);
+  });
+
+  it('агрегати балансу scoped по orgId (tenant-isolation — guard не тече між org)', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({ initialBalance: 0 });
+    m.prisma.cashOperation.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
+    await service.getBalance(ORG, REG);
+    for (const call of m.prisma.cashOperation.aggregate.mock.calls) {
+      expect(call[0].where).toMatchObject({ orgId: ORG, cashRegisterId: REG });
+    }
   });
 });

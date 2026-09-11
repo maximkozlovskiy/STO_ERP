@@ -220,6 +220,64 @@ describe('PayrollService.pay — FSM', () => {
     );
     expect(m.tx.$executeRaw).toHaveBeenCalled();
   });
+
+  it('cashRegisterId → cash-out OUT/PAYROLL по кожному співробітнику (amount>0)', async () => {
+    m.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({ id: PID, status: 'COMPUTED' })
+      .mockResolvedValueOnce({
+        id: PID,
+        orgId: ORG,
+        branchId: null,
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        status: 'PAID',
+        note: null,
+        computedAt: new Date(),
+        paidAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lines: [],
+      });
+    m.prisma.payrollLine.findMany.mockResolvedValueOnce([
+      { employeeId: 'e1', accruedAmount: 300 },
+      { employeeId: 'e2', accruedAmount: 0 }, // 0 → пропускається (amount<=0 continue)
+      { employeeId: 'e3', accruedAmount: 200 },
+    ]);
+
+    await service.pay(ORG, PID, 'user-1', 'reg-1');
+
+    // Дві виплати (e1, e3) — нульова e2 пропущена. Кожна OUT/PAYROLL у ту саму tx.
+    expect(m.cash.createOperation).toHaveBeenCalledTimes(2);
+    const [, firstInput, firstTx] = m.cash.createOperation.mock.calls[0]!;
+    expect(firstInput).toMatchObject({
+      cashRegisterId: 'reg-1',
+      direction: 'OUT',
+      amount: 300,
+      reason: 'PAYROLL',
+      employeeId: 'e1',
+      documentType: 'PayrollPeriod',
+      documentId: PID,
+    });
+    expect(firstTx).toBe(m.tx); // ЄДИНА транзакція — cash-out бачить paidAmount claim
+  });
+
+  it('overdraft на N-му співробітнику → весь період відкат (createOperation throw пропагується, не проковтнутий)', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ id: PID, status: 'COMPUTED' });
+    m.prisma.payrollLine.findMany.mockResolvedValueOnce([
+      { employeeId: 'e1', accruedAmount: 300 },
+      { employeeId: 'e2', accruedAmount: 300 }, // перевищить залишок → guard кине
+    ]);
+    // Перший OUT ок, другий — недостатньо готівки (overdraft-guard у CashService).
+    m.cash.createOperation
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new BadRequestException('Недостатньо готівки в касі'));
+
+    await expect(service.pay(ORG, PID, 'user-1', 'reg-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    // Обидві спроби зроблені; помилка НЕ проковтнута → $transaction відкотить claim (period лишається COMPUTED).
+    expect(m.cash.createOperation).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('PayrollService.remove — guard', () => {
