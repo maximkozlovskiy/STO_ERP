@@ -126,7 +126,9 @@ export class PayrollService {
   async findAll(orgId: string): Promise<PayrollPeriodResponseDto[]> {
     const periods = await this.prisma.payrollPeriod.findMany({
       where: { orgId, deletedAt: null },
-      include: { lines: true },
+      include: {
+        lines: { include: { employee: { select: { firstName: true, lastName: true } } } },
+      },
       orderBy: [{ periodStart: 'desc' }, { createdAt: 'desc' }],
       take: 500,
     });
