@@ -73,6 +73,7 @@ const ROLE_LABELS = EMPLOYEE_ROLE_LABELS;
 const STATUS_LABELS = EMPLOYEE_STATUS_LABELS;
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год',
+  per_normo_hour: 'Ставка × нормо-год',
   fixed_plus_bonus: 'Ставка + бонус',
 };
 
@@ -87,6 +88,7 @@ const EMPTY_FORM = {
   dateOfFire: '',
   rateType: 'percent_normo',
   percent: '40',
+  ratePerHour: '0',
   fixedMonthly: '0',
   bonusPercent: '10',
   grantAccess: false,
@@ -231,6 +233,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         dateOfFire: employee.dateOfFire ? employee.dateOfFire.slice(0, 10) : '',
         rateType: rs?.type ?? 'percent_normo',
         percent: rs?.type === 'percent_normo' ? String(rs.params.percent ?? 40) : '40',
+        ratePerHour: rs?.type === 'per_normo_hour' ? String(rs.params.ratePerHour ?? 0) : '0',
         fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
         bonusPercent: rs?.type === 'fixed_plus_bonus' ? String(rs.params.bonusPercent ?? 10) : '10',
         grantAccess: false,
@@ -298,6 +301,14 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         return null;
       }
       return { type: 'percent_normo', params: { percent: pct } };
+    }
+    if (form.rateType === 'per_normo_hour') {
+      const rate = Number(form.ratePerHour);
+      if (!Number.isFinite(rate) || rate < 0) {
+        setError("Ставка за нормо-годину повинна бути невід'ємним числом");
+        return null;
+      }
+      return { type: 'per_normo_hour', params: { ratePerHour: rate } };
     }
     const fixed = Number(form.fixedMonthly);
     const bonus = Number(form.bonusPercent);
@@ -540,6 +551,18 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               value={form.percent}
               onChange={e => {
                 setForm(f => ({ ...f, percent: e.target.value }));
+                dirty.markDirty();
+              }}
+            />
+          )}
+          {form.rateType === 'per_normo_hour' && (
+            <Input
+              label="Ставка, грн/нормо-год"
+              type="number"
+              min="0"
+              value={form.ratePerHour}
+              onChange={e => {
+                setForm(f => ({ ...f, ratePerHour: e.target.value }));
                 dirty.markDirty();
               }}
             />

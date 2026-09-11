@@ -4289,3 +4289,42 @@ Playwright MCP недоступний (CONNECT_TIMEOUT) → браузерна �
 >   вкладки «Залишки» → 403 у фоні для RECEPTIONIST. АЛЕ помилка `low`-запиту не деструктуризується
 >   (не банериться) → UI-регресії немає; поведінка ідентична колишній сторінці `/inventory` (не введена
 >   цією зміною). Якщо потрібно — окремим тікетом gate `useLowStockItems` по ролі або дозволити RECEPTIONIST.
+
+---
+
+## Session 2026-09-11 — Тестування фічі «Зарплата (payroll)» backend + frontend
+
+Обсяг: `apps/api/src/modules/payroll/*`, `apps/web/src/app/(app)/payroll/page.tsx`,
+`apps/web/src/hooks/api/usePayroll.ts`, `EmployeeEditModal.tsx` (rateScheme per_normo_hour).
+
+Baseline: API tsc ✅, web tsc ✅, shared tsc ✅, payroll unit 23/23 ✅.
+Реальні curl-тести (API :3000, OWNER/ACCOUNTANT/2 org): preview (валід/from>to 400/чужа branch 404/missing 400) ✅;
+FSM create→compute→recompute400→pay→repay400, delete COMPUTED/PAID 400, delete DRAFT 204 ✅;
+snapshot-імутабельність (зміна наряду НЕ рухає порахований період; свіжий preview рухається) ✅;
+findAll employeeName непорожні ✅; ролі ACCOUNTANT preview/create/compute ✅, pay/delete 403 ✅;
+tenant-isolation (ORG2 період не тече в ORG1, крос-orgId 404) ✅.
+
+### Bug #728 — EmployeeEditModal НЕ підтримує rateScheme `per_normo_hour` (headline-режим фічі недоступний з UI)
+
+- **Severity:** HIGH (нова ключова можливість фічі недоступна користувачу; DB-міграція названа
+  саме `payroll ... rateScheme per_normo_hour`, backend/calculator/preview/labels її підтримують — а
+  форма створення/редагування співробітника — ні)
+- **Файл:** `apps/web/src/components/ui/EmployeeEditModal.tsx`
+- **Симптом:** Backend Zod (`employees.dto.ts` `rateSchemeSchema`) приймає 3 режими, калькулятор
+  рахує `per_normo_hour` (`ratePerHour × normoHours`), сторінки `/payroll` та `/employees` мають мітку
+  «Ставка × нормо-год». АЛЕ модалка створення/редагування співробітника:
+  - `RATE_LABELS` (ряд 74–77) має лише `percent_normo` + `fixed_plus_bonus` — немає `per_normo_hour` у select;
+  - `EMPTY_FORM` не має поля `ratePerHour`;
+  - гідрація при edit (ряд 232–235) не читає `rs.params.ratePerHour` — редагування співробітника з
+    цим типом «губить» ставку й мовчки скидає на `percent_normo`;
+  - `buildRateScheme()` (ряд 293–316) не має гілки `per_normo_hour`;
+  - JSX (ряд 535–570) не рендерить input для `ratePerHour`.
+    Результат: адмін не може створити/зберегти співробітника з режимом «Ставка × нормо-год» — його просто
+    немає в списку схем, а редагування наявного (створеного через seed/API) губить тип.
+- **Корінь:** режим `per_normo_hour` доданий у Zod-схему, калькулятор і preview/labels, але форму
+  редагування співробітника не оновили (типова прогалина «додали enum-значення в backend + read-модель,
+  забули write-форму»).
+- **Fix:** додати `per_normo_hour: 'Ставка × нормо-год'` у `RATE_LABELS`; `ratePerHour` у `EMPTY_FORM`
+  та гідрацію edit; гілку у `buildRateScheme()` (валідація `ratePerHour ≥ 0`); JSX-input.
+
+Статус: [x] виправлено
