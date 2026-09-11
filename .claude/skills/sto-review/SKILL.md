@@ -189,8 +189,14 @@ grep -rn "findFirst\|findMany\|findUnique\|\.update(\|\.delete(" apps/api/src/mo
 # Рядкова інтерполяція у queryRaw
 grep -rn "queryRaw\|executeRaw" apps/api/src/ --include="*.ts" | grep -v "Prisma\.sql\|plainto_tsquery\|spec"
 
-# ParseUUIDPipe відсутній
+# ParseUUIDPipe відсутній (@Param)
 grep -rn "@Param('id')\|@Param(\"id\")" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe\|spec"
+
+# @Query('...Id') що є UUID-ідентифікатором але БЕЗ ParseUUIDPipe (той самий 500-vs-400 ризик що @Param)
+# Query-параметр з іменем *Id/*id, який сервіс кладе у Prisma where: { id } на @db.Uuid-колонці:
+# невалідний рядок → Prisma P2023 "invalid input syntax for type uuid" → HTTP 500 (не-i18n, Sentry-шум).
+# Optional query → `new ParseUUIDPipe({ optional: true })`.
+grep -rnE "@Query\((['\"])[a-zA-Z]*[Ii]d\1\s*\)" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe\|spec"
 
 # process.env напряму в сервісах
 grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts\|spec"
@@ -198,6 +204,7 @@ grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts\|spe
 
 - [ ] `$queryRaw` — тільки tagged template або `Prisma.sql` (не рядкова інтерполяція)
 - [ ] `@Param(':id')` → `ParseUUIDPipe` (не `version: '4'` — тести часто мають UUID v0)
+- [ ] **`@Query('xxxId')` що потрапляє у Prisma `where: { id }` на `@db.Uuid`-колонці → `ParseUUIDPipe`** (optional query → `new ParseUUIDPipe({ optional: true })`). Той самий контракт що `@Param`: невалідний UUID (`?cashRegisterId=garbage`) інакше долітає до Prisma → `P2023 invalid input syntax for type uuid` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Sample (cash-shift.controller `open`): `@Query('cashRegisterId') cashRegisterId?: string` без пайпа → `cashRegister.findFirst({ where: { id: cashRegisterId } })`
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
 - [ ] Немає `eval()`, `new Function()`, `child_process.exec()`
 

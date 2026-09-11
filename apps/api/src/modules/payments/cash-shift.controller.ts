@@ -34,7 +34,7 @@ export class CashShiftController {
     @OrgContext() orgId: string,
     @Query('branchId', ParseUUIDPipe) branchId: string,
     @CurrentUser() user: { id: string },
-    @Query('cashRegisterId') cashRegisterId?: string,
+    @Query('cashRegisterId', new ParseUUIDPipe({ optional: true })) cashRegisterId?: string,
   ) {
     return this.service.open(orgId, branchId, user?.id, cashRegisterId || undefined);
   }
