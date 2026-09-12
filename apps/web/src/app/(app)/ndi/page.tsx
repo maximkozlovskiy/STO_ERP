@@ -13,17 +13,11 @@ const TaxRatesTab = dynamic(() => import('./TaxRatesTab'), { ssr: false });
 const CurrenciesTab = dynamic(() => import('./CurrenciesTab'), { ssr: false });
 const ExchangeRatesTab = dynamic(() => import('./ExchangeRatesTab'), { ssr: false });
 const BankAccountsTab = dynamic(() => import('./BankAccountsTab'), { ssr: false });
-const CashRegistersTab = dynamic(() => import('./CashRegistersTab'), { ssr: false });
+// Каси керуються на сторінці «Каса» (вкладка «Каси») — там повна форма (валюта + фіскалізація +
+// стартовий залишок + провайдер ПРРО). Стару НДІ-вкладку «Каса» видалено (дубль неповної форми).
 
 type Tab =
-  | 'org'
-  | 'org-info'
-  | 'payments'
-  | 'taxrates'
-  | 'currencies'
-  | 'exchange-rates'
-  | 'bank-accounts'
-  | 'cash-registers';
+  'org' | 'org-info' | 'payments' | 'taxrates' | 'currencies' | 'exchange-rates' | 'bank-accounts';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'org', label: 'Організація' },
@@ -33,7 +27,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'currencies', label: 'Валюти' },
   { id: 'exchange-rates', label: 'Курси валют' },
   { id: 'bank-accounts', label: 'Банк. рахунки' },
-  { id: 'cash-registers', label: 'Каса' },
 ];
 
 function NdiPageClient() {
@@ -71,7 +64,6 @@ function NdiPageClient() {
       {tab === 'currencies' && <CurrenciesTab />}
       {tab === 'exchange-rates' && <ExchangeRatesTab />}
       {tab === 'bank-accounts' && <BankAccountsTab />}
-      {tab === 'cash-registers' && <CashRegistersTab />}
     </div>
   );
 }
