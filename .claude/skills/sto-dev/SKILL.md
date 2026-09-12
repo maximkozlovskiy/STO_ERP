@@ -247,6 +247,14 @@ export class CreateWorkOrderDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  // ✅ Enum-поле → @IsEnum(TheEnum), НІКОЛИ @IsString.
+  // @IsString пропускає будь-який рядок → долітає до Prisma enum-колонки → Postgres
+  // "invalid input value for enum" → HTTP 500 (не-i18n) замість чистого 400.
+  @ApiPropertyOptional({ enum: WorkOrderStatus })
+  @IsOptional()
+  @IsEnum(WorkOrderStatus)
+  status?: WorkOrderStatus;
 }
 
 export class WorkOrderResponseDto {
@@ -389,9 +397,7 @@ interface UiFeatures {
   notificationCenterEnabled: boolean; // Дзвоник з лічильником непрочитаних
   bulkActionsEnabled: boolean; // Чекбокси + BulkActionsBar у таблицях
 }
-const UI_FEATURES_DEFAULTS: UiFeatures = {
-  /* всі true */
-};
+const UI_FEATURES_DEFAULTS: UiFeatures = {/* всі true */};
 ```
 
 ### useUiFeatures — отримання прапорців

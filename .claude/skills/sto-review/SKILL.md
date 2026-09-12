@@ -200,9 +200,16 @@ grep -rnE "@Query\((['\"])[a-zA-Z]*[Ii]d\1\s*\)" apps/api/src/ --include="*.cont
 
 # process.env напряму в сервісах
 grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts\|spec"
+
+# Enum-DTO поле валідоване як @IsString замість @IsEnum: значення долітає до Prisma enum-колонки
+# → Postgres "invalid input value for enum" → HTTP 500 (не-i18n). Знайти поле, чий тип — Prisma enum,
+# але декоратор @IsString (не @IsEnum). Стандарт codebase — @IsEnum (77+ вжитків).
+grep -rnE "^\s*@IsString\(\)" apps/api/src/modules --include="*.dto.ts" -A1 \
+  | grep -E ":\s*[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" | grep -v spec
 ```
 
 - [ ] `$queryRaw` — тільки tagged template або `Prisma.sql` (не рядкова інтерполяція)
+- [ ] **Optional/required DTO-поле, чий тип — Prisma enum → `@IsEnum(TheEnum)`, НЕ `@IsString()`.** `@IsString()` пропускає будь-який рядок → значення долітає до enum-колонки у `create/update` → Postgres `invalid input value for enum "X"` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Стандарт codebase — `@IsEnum` (cash.dto `direction`/`reason`, payments.dto тощо, 77+ вжитків). Sample (expense-categories.dto `CreateExpenseCategoryDto.type: ExpenseCategoryType` мав `@IsString()`): `POST {type:"FOO"}` → `type = dto.type ?? 'EXPENSE'` → insert у enum-колонку → 500
 - [ ] `@Param(':id')` → `ParseUUIDPipe` (не `version: '4'` — тести часто мають UUID v0)
 - [ ] **`@Query('xxxId')` що потрапляє у Prisma `where: { id }` на `@db.Uuid`-колонці → `ParseUUIDPipe`** (optional query → `new ParseUUIDPipe({ optional: true })`). Той самий контракт що `@Param`: невалідний UUID (`?cashRegisterId=garbage`) інакше долітає до Prisma → `P2023 invalid input syntax for type uuid` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Sample (cash-shift.controller `open`): `@Query('cashRegisterId') cashRegisterId?: string` без пайпа → `cashRegister.findFirst({ where: { id: cashRegisterId } })`
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
@@ -1452,6 +1459,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src`+`grep -rnE "\.setDate\(.*getDate\(\) ?[+-]" apps/web/src/app apps/web/src/components`.
 **Фікс:** day-арифметика → канонічний `addDaysISO(kyivToday(), N)`(UTC-математика,`lib/format.ts`); payload «кінець дня» → `${d}T23:59:59Z` (UTC end-of-day, покриває весь вибраний день незалежно від TZ браузера).
 **Severity:** IMPORTANT — німа data-corruption (дата на день раніше), tsc зелений; проявляється лише у певних TZ. Sample: WarrantyCreateModal (abe63125).
+
+### 2026-09-12 — enum-DTO поле валідоване як @IsString замість @IsEnum → Prisma enum 500 — §2.3
+
+**Сигнал:** optional/required DTO-поле, чий TS-тип — Prisma enum (`type?: ExpenseCategoryType`), декороване `@IsString()` (або лише `@IsOptional()`). `@IsString` пропускає будь-який рядок → значення долітає до enum-колонки у `create/update`.
+**Grep:** `grep -rnE "^\s*@IsString\(\)" apps/api/src/modules --include="*.dto.ts" -A1 | grep -E ":\s*[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b"`.
+**Фікс:** `@IsEnum(TheEnum)` замість `@IsString()` (стандарт codebase — 77+ вжитків: cash.dto `direction`/`reason`, payments.dto тощо).
+**Severity:** IMPORTANT — `POST {type:"FOO"}` → Postgres `invalid input value for enum` → HTTP 500 (не-i18n) замість 400; tsc зелений (значення TS-сумісне з рядком). Sample: CreateExpenseCategoryDto.type (0fc2260d).
 
 ## Карта секцій (quick reference)
 
