@@ -214,7 +214,8 @@ export default function UnitsTab() {
       setError("Усі поля є обов'язковими");
       return;
     }
-    // coefficient = 0 → divide-by-zero in qty_base: frontend guard.
+    // coefficient — множник (qty_base = qty * coefficient); 0/negative знулили б/зіпсували б
+    // кількість → frontend guard (беку safeCoeff підстрахує legacy=0 → 1).
     const coeff = form.coefficient ? Number(form.coefficient) : undefined;
     if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
       setError('Коефіцієнт має бути більший 0');
@@ -253,7 +254,7 @@ export default function UnitsTab() {
       setEditError("Скорочення та назва є обов'язковими");
       return;
     }
-    // coefficient = 0 → divide-by-zero in qty_base
+    // coefficient — множник (qty_base = qty * coefficient); 0/negative знулили б/зіпсували б кількість.
     const coeff = editForm.coefficient ? Number(editForm.coefficient) : undefined;
     if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
       setEditError('Коефіцієнт має бути більший 0');

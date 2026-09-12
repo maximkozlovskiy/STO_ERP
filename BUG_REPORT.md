@@ -4604,3 +4604,48 @@ UI↔API і `buildTree` — рекурсія без обмеження (глиб
 обчислити глибину батька + врахувати висоту гілки, що переноситься; перевищення → 400.
 
 **Статус:** [x] виправлено
+
+## Session 2026-09-13 — Тестування фіксу T25 (GoodUoM.coefficient множник: base = qty * coeff)
+
+Перевірено коміти ffa21437 + 10dab488 (T25: qty-конверсія / → *). Фокус: симетрія
+резерв↔списання↔повернення, guard coeff=0/NaN/neg, дробові/великі coeff, повнота охоплення
+всіх divisor-місць (api/web/mobile/shared/rawSQL), регресія 734 тести.
+
+**Результат: фікс функціонально коректний.** 4 арифметичні місця у
+work-order-stock-effects.service (RESERVATION/RELEASE/WRITEOFF/RETURN) — усі `part.quantity * coeff`
+з одного джерела (fetchPartCoefficients) → симетрія точна (той самий Float-добуток).
+RETURN відновлює партії з ЗАПИСАНИХ BatchConsumption (не перераховує baseQty) → roundtrip
+StockItem→0 інваріантно. safeCoeff(0/NaN/neg/null)→1 = no-op множник → baseQty=quantity.
+StockItem.quantity/reserved — Float (не Decimal(12,2)) → великі (1M) і дробові (0.001) значення
+без overflow/precision-втрат. Жодного `/coeff` дільника не лишилось ніде (api/web/mobile/shared,
+raw-SQL — 0 збігів). Регресія: 734/734 API тести зелені (включно з return-roundtrip.invariants,
+work-order-stock-effects.integration, оновлені T25-специ).
+
+### Bug #737 (LOW) — застарілі коментарі «divide-by-zero» у UnitsTab (frontend) [x] виправлено
+
+**Файл:** `apps/web/src/app/(app)/catalog/UnitsTab.tsx:217, :256`
+
+**Сценарій:** фікс T25 оновив ВСІ backend-коментарі про формулу (DTO goods/units,
+invoices/PO/stock-documents passthrough, work-orders toResponseDto) з «divisor / divide-by-zero /
+Infinity» на «множник qty_base = qty * coefficient», але пропустив два frontend-guard коментарі
+в UnitsTab (`create` і `update` одиниці). Вони й далі стверджували `coefficient = 0 → divide-by-zero
+in qty_base`, що для нової семантики НЕВІРНО (множник 0 не ділить на нуль, а обнуляє кількість).
+Сам guard (`coeff <= 0` → помилка) лишається коректним — 0/negative множник зіпсував би кількість,
+тож поведінка правильна; хибний лише коментар-обґрунтування → вводить в оману майбутнього
+розробника, що редагує конверсію одиниць (склад/гроші).
+
+**Фікс:** обидва коментарі переписано на множник-семантику з поясненням, що 0/negative знулили б/
+зіпсували б кількість, а бек-safeCoeff підстрахує legacy=0. Логіка guard без змін. Web tsc=0.
+
+**Статус:** [x] виправлено
+
+### Спостереження (не баг T25, пре-існуючий design-edge) — coeff-мутація протягом life-cycle наряду
+
+Якщо оператор редагує `GoodUoM.coefficient` МІЖ переходами наряду (напр. після RESERVATION на
+IN_PROGRESS, до WRITEOFF на COMPLETED; або між COMPLETED-WRITEOFF і CANCELLED-RETURN), резерв/
+списання перерахуються з НОВИМ coeff, тоді як RETURN відновлює партії з записаних consumptions
+(старий coeff) → StockItem.quantity += baseQty_new, але партії +baseQty_old → дрейф інваріанту
+Σ remainingQty == quantity. Цей edge існує ІДЕНТИЧНО під дільник- і множник-семантикою — T25 його
+не ввів і не погіршив. Рідкісна адмін-дія (зміна coeff уже використаної UoM). Потенційний
+майбутній fix (поза scope T25): фіксувати coeff у WorkOrderPart на момент addPart (snapshot), а не
+читати live GoodUoM при кожному переході — тоді весь life-cycle одного наряду використовує один coeff.
