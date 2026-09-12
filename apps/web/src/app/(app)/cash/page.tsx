@@ -17,7 +17,7 @@ type CashTab = 'operations' | 'registers' | 'expenses';
 const TABS: { key: CashTab; label: string; roles: readonly string[] }[] = [
   { key: 'operations', label: 'Операції', roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'] },
   { key: 'registers', label: 'Каси', roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
-  { key: 'expenses', label: 'Статті витрат', roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
+  { key: 'expenses', label: 'Статті руху коштів', roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'] },
 ];
 
 function CashPageShell() {

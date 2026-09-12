@@ -1,14 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
+export type ExpenseCategoryType = 'EXPENSE' | 'INCOME';
+
 export interface ExpenseCategory {
   id: string;
   orgId: string;
+  parentId?: string | null;
   name: string;
+  type: ExpenseCategoryType;
+  sortOrder: number;
+  isActive: boolean;
+  children: ExpenseCategory[];
   deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export const EXPENSE_CATEGORY_TYPE_LABELS: Record<ExpenseCategoryType, string> = {
+  EXPENSE: 'Витрата',
+  INCOME: 'Оприбуткування',
+};
 
 export const expenseCategoriesKeys = {
   all: ['expense-categories'] as const,
@@ -29,13 +41,35 @@ export function useExpenseCategories(showDeleted = false, enabled = true) {
   });
 }
 
+/** Сплощує дерево у плаский список активних статей заданого типу (для Select у модалці операції). */
+export function flattenActiveByType(
+  tree: ExpenseCategory[] | undefined,
+  type: ExpenseCategoryType,
+): { id: string; name: string; depth: number }[] {
+  const out: { id: string; name: string; depth: number }[] = [];
+  const walk = (nodes: ExpenseCategory[], depth: number) => {
+    for (const n of nodes) {
+      if (n.type === type && n.isActive) out.push({ id: n.id, name: n.name, depth });
+      if (n.children?.length) walk(n.children, depth + 1);
+    }
+  };
+  walk(tree ?? [], 0);
+  return out;
+}
+
+export interface CreateExpenseCategoryBody {
+  name: string;
+  type?: ExpenseCategoryType;
+  parentId?: string;
+}
+
 export function useCreateExpenseCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) =>
+    mutationFn: (body: CreateExpenseCategoryBody) =>
       apiFetch<ExpenseCategory>('/expense-categories', {
         method: 'POST',
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
   });
@@ -44,10 +78,22 @@ export function useCreateExpenseCategory() {
 export function useUpdateExpenseCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) =>
+    mutationFn: ({ id, ...body }: { id: string; name?: string; parentId?: string }) =>
       apiFetch<ExpenseCategory>(`/expense-categories/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
+  });
+}
+
+export function useToggleExpenseCategoryActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      apiFetch<ExpenseCategory>(`/expense-categories/${id}/toggle-active`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isActive }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
   });

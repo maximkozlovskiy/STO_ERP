@@ -46,6 +46,8 @@ const useExpenseCategoriesMock = vi.fn((_showDeleted?: boolean, _enabled?: boole
 vi.mock('@/hooks/api/useExpenseCategories', () => ({
   useExpenseCategories: (showDeleted?: boolean, enabled?: boolean) =>
     useExpenseCategoriesMock(showDeleted, enabled),
+  // Модалка операції сплощує дерево статей за типом — у тесті статей немає.
+  flattenActiveByType: () => [],
 }));
 
 const useCurrentShiftMock = vi.fn();

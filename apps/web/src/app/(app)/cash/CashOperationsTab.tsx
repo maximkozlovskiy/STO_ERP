@@ -35,7 +35,7 @@ import {
   MANUAL_IN_REASONS,
   MANUAL_OUT_REASONS,
 } from '@/hooks/api/useCash';
-import { useExpenseCategories } from '@/hooks/api/useExpenseCategories';
+import { useExpenseCategories, flattenActiveByType } from '@/hooks/api/useExpenseCategories';
 
 export default function CashOperationsTab({ canOperate = false }: { canOperate?: boolean }) {
   const { data: registers, isLoading: regLoading } = useCashRegisters();
@@ -146,6 +146,9 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
   }
 
   const reasonOptions = opModal === 'IN' ? MANUAL_IN_REASONS : MANUAL_OUT_REASONS;
+  // Статті відповідного напряму: IN → оприбуткування (INCOME), OUT → витрати (EXPENSE). Сплощене
+  // дерево з відступами для читабельності ієрархії у Select.
+  const categoryOptions = flattenActiveByType(expenseCats, opModal === 'IN' ? 'INCOME' : 'EXPENSE');
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3">
@@ -348,20 +351,25 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
               </option>
             ))}
           </Select>
-          {opForm.reason === 'EXPENSE' && (
-            <Select
-              label="Стаття витрат"
-              value={opForm.expenseCategoryId}
-              onChange={e => setOpForm(f => ({ ...f, expenseCategoryId: e.target.value }))}
-            >
-              <option value="">— оберіть —</option>
-              {expenseCats?.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          )}
+          <Select
+            label={
+              opForm.reason === 'EXPENSE'
+                ? 'Стаття витрат'
+                : opModal === 'IN'
+                  ? 'Стаття оприбуткування (необовʼязково)'
+                  : 'Стаття витрат (необовʼязково)'
+            }
+            value={opForm.expenseCategoryId}
+            onChange={e => setOpForm(f => ({ ...f, expenseCategoryId: e.target.value }))}
+          >
+            <option value="">— без статті —</option>
+            {categoryOptions.map(c => (
+              <option key={c.id} value={c.id}>
+                {'  '.repeat(c.depth)}
+                {c.name}
+              </option>
+            ))}
+          </Select>
           <Input
             label="Нотатка"
             value={opForm.notes}
