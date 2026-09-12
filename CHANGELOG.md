@@ -5,6 +5,16 @@
 
 ---
 
+### 0fc2260d + f7ffe598 fix(review): @IsEnum на CreateExpenseCategoryDto.type + enum-DTO чек у скілах
+
+Code review фічі «Статті руху коштів: ієрархічні + тип (витрата/оприбуткування)» (edecc533/011ede80).
+
+- **§2.3 (IMPORTANT):** `CreateExpenseCategoryDto.type` валідувалось `@IsString()` замість `@IsEnum(ExpenseCategoryType)` → `POST {type:"FOO"}` долітав до enum-колонки → Postgres `invalid input value for enum` → HTTP 500. Фікс: `@IsEnum` (стандарт codebase, 77+ вжитків).
+- **Skills:** новий grep-детектор + checklist item у sto-review §2.3; ❌/✅ приклад у sto-dev DTO-секції.
+- **CLEAN:** tenant-isolation (orgId скрізь), цикл-guard переносу гілки, getDescendantIds без N+1, каскадний soft-delete/toggle, resurrect-vs-409, cash тип↔напрям, кеш-інвалідація. tsc api+web 0; специ 15+21 зелені.
+
+---
+
 ## 2026-09-11 — Фіча: Рух готівки в касах (cash-in/cash-out + статті витрат)
 
 Фінансова частина: внесення та видача готівки, баланс каси, статті витрат, інтеграції з оплатами й ЗП.
