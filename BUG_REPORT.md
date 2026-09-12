@@ -4649,3 +4649,52 @@ IN_PROGRESS, до WRITEOFF на COMPLETED; або між COMPLETED-WRITEOFF і C
 не ввів і не погіршив. Рідкісна адмін-дія (зміна coeff уже використаної UoM). Потенційний
 майбутній fix (поза scope T25): фіксувати coeff у WorkOrderPart на момент addPart (snapshot), а не
 читати live GoodUoM при кожному переході — тоді весь life-cycle одного наряду використовує один coeff.
+
+## Session 2026-09-13 — Журнал рухів складу (StockMovements) фіча-тест
+
+Тестування фічі «Журнал рухів складу»: GET /stock-items/movements (read-only плоский журнал)
+
+- вкладка «Рухи» на /stock-documents. Перевірено 9 focus-областей: tenant-isolation, пагінація,
+  роль-гейт, type-валідація (enum + прототипні ключі), date-фільтр Kyiv-TZ, route ordering,
+  read-only append-only, frontend лейбли/кольори/empty-state/пагінація, регресія (204 API + 741 web).
+
+**Backend — чисто.** findMovements несе orgId у findMany І count (той самий where); пагінація
+через calculatePagination (NaN-guard, cap 200, page min 1); type-guard через hasOwnProperty
+(constructor/toString → 400, не 500) тримається; normalizeDates не кидає на from>to (Prisma →
+порожньо); route /movements оголошено ПЕРЕД :id/min-stock; журнал не пише (лише findMany/count);
+soft-delete фільтр good/warehouse. 20 contract + 5 service тестів покривають усі кейси.
+
+**Frontend — 1 баг (MEDIUM), виправлено.**
+
+### Bug #738 (MEDIUM) — колір/знак рядка руху фарбувався за ТИПОМ, розходився зі знаком кількості [x] виправлено
+
+**Файл:** `apps/web/src/app/(app)/stock-documents/StockMovementsTab.tsx:27-28, :168-169`
+
+**Сценарій:** колір комірки «Кількість» визначався хардкодженими Set-ами типів:
+`INCOMING = {RECEIPT, RETURN, OPENING_BALANCE}` (зелений), `OUTGOING = {WRITEOFF, RESERVATION}`
+(червоний). Знак записаної кількості (`StockMovement.quantity`) РОЗХОДИВСЯ з цими наборами:
+
+- **RESERVATION** зберігається ДОДАТНІМ (`createMovement` вимагає `dto.quantity > 0` для резерву,
+  inventory.service.ts:169), але тип був у OUTGOING → **додатнє число `5` фарбувалось червоним**
+  (виглядало як витрата −5). Коментар над кодом стверджував «RESERVATION нейтральний ... лишаємо
+  нейтральним» — прямо суперечив коду (RESERVATION у OUTGOING = червоний, не нейтральний).
+- **RESERVATION_RELEASE** зберігається ВІД'ЄМНИМ (createMovement вимагає `quantity < 0`), але тип
+  не був у жодному наборі → **від'ємне число `-5` лишалось нейтральним** (без кольору напрямку).
+- **TRANSFER** (парні рухи out<0 / in>0) не класифікувався зовсім → обидві ноги нейтральні.
+
+Тобто production-компонент дублював backend-конвенцію знаку локальним літералом і дрейфнув
+(патерн Bug #715). Наслідок: користувач бачить додатнє число червоним і від'ємне — нейтральним,
+хибно читає напрям руху складу.
+
+**Фікс:** колір СТРОГО за знаком displayed-кількості — `incoming = m.quantity > 0`,
+`outgoing = m.quantity < 0` (>0 → text-success, <0 → text-destructive, =0 → нейтральний).
+Знак `m.quantity` — єдине джерело правди, самоузгоджене з `{m.quantity}` у комірці, стійке до
+нових enum-значень (не треба чіпати Set при додаванні типу). Застарілий коментар переписано.
+
+**Регресія-guard (mutation-verified):** новий `__tests__/StockMovementsTab.test.tsx` (3 тести):
+додатні (RECEIPT/RETURN/RESERVATION/TRANSFER-in) → text-success; від'ємні (WRITEOFF/
+RESERVATION_RELEASE/TRANSFER-out) → text-destructive; RETURN лейбл «Повернення» (не сирий enum).
+Мутація (повернути type-based Set-и) → тест падає (RESERVATION +5 стає червоним). Web tsc=0,
+741+3 web тести зелені.
+
+**Статус:** [x] виправлено
