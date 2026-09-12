@@ -4,6 +4,7 @@ import { Fragment, memo, useEffect, useState, useCallback, useMemo } from 'react
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronRight, Package, Search } from 'lucide-react';
+import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
@@ -64,15 +65,8 @@ function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
 }
 
-// Matches Prisma StockMovementType enum (schema.prisma)
-const MOVEMENT_TYPE_LABELS: Record<string, string> = {
-  RECEIPT: 'Надходження',
-  WRITEOFF: 'Списання',
-  TRANSFER: 'Переміщення',
-  RESERVATION: 'Резерв',
-  RESERVATION_RELEASE: 'Зняття резерву',
-  OPENING_BALANCE: 'Початковий залишок',
-};
+// Єдине джерело лейблів типів руху — @sto/shared (включно з RETURN).
+const MOVEMENT_TYPE_LABELS = STOCK_MOVEMENT_TYPE_LABELS;
 
 function toggle(set: Set<string>, key: string): Set<string> {
   const next = new Set(set);
