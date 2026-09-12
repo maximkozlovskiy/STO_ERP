@@ -22,10 +22,13 @@ import {
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
 import { useStockMovements } from '@/hooks/api/useInventory';
 
-// Типи-надходження показуємо зеленим (+), витрати/резерв — червоним. RESERVATION нейтральний
-// (резерв не змінює фізичний залишок), але для читабельності лишаємо нейтральним.
-const INCOMING = new Set(['RECEIPT', 'RETURN', 'OPENING_BALANCE']);
-const OUTGOING = new Set(['WRITEOFF', 'RESERVATION']);
+// Колір/знак — СТРОГО за знаком записаної кількості (StockMovement.quantity), не за типом.
+// Backend-конвенція знаку (createMovement): RECEIPT/OPENING_BALANCE/RETURN/RESERVATION → qty > 0;
+// WRITEOFF/RESERVATION_RELEASE → qty < 0; TRANSFER — парні рухи (out < 0, in > 0). Тип-набори
+// розходились із цим знаком (RESERVATION зберігається додатнім, але фарбувався червоним як
+// «витрата»; RESERVATION_RELEASE/TRANSFER не класифікувались зовсім → нейтральні при від'ємному
+// числі). Знак displayed-числа — єдине джерело правди: додатнє → зелене, від'ємне → червоне,
+// нуль → нейтральне. Самоузгоджено з `{m.quantity}` і стійке до нових enum-значень.
 
 const PAGE_SIZE = 50;
 
@@ -165,8 +168,8 @@ export function StockMovementsTab() {
               </TableRow>
             )}
             {items.map(m => {
-              const incoming = INCOMING.has(m.type);
-              const outgoing = OUTGOING.has(m.type);
+              const incoming = m.quantity > 0;
+              const outgoing = m.quantity < 0;
               return (
                 <TableRow key={m.id}>
                   <TableCell className="text-[13px] text-muted-foreground whitespace-nowrap">
