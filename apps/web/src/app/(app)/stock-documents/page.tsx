@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { InventoryTab } from '../inventory/InventoryTab';
+import { StockMovementsTab } from './StockMovementsTab';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
@@ -886,15 +887,17 @@ function StockDocumentsPageClient() {
   );
 }
 
-type StockTab = 'documents' | 'stock';
-const STOCK_TABS: { key: StockTab; label: string }[] = [
-  { key: 'documents', label: 'Документи складу' },
-  { key: 'stock', label: 'Залишки' },
+type StockTab = 'documents' | 'stock' | 'movements';
+// `restricted` — вкладка лише для OWNER/ADMIN/STOREKEEPER (backend @Roles; містить ціни/собівартість).
+// RECEPTIONIST бачить лише «Залишки».
+const STOCK_TABS: { key: StockTab; label: string; restricted: boolean }[] = [
+  { key: 'documents', label: 'Документи складу', restricted: true },
+  { key: 'stock', label: 'Залишки', restricted: false },
+  { key: 'movements', label: 'Рухи', restricted: true },
 ];
 
-// Ролі, яким backend /stock-documend* endpoints дозволяють «Документи складу»
-// (stock-documents.controller.ts @Roles). RECEPTIONIST сюди НЕ входить — на цій
-// вкладці всі виклики повертають 403 → приховуємо її, лишаючи лише «Залишки».
+// Ролі, яким backend дозволяє «Документи складу» + «Рухи» (stock-documents/stock-items movements
+// @Roles). RECEPTIONIST сюди НЕ входить (price-дані) → приховуємо, лишаючи лише «Залишки».
 const DOCS_TAB_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'];
 
 // Таб-обгортка сторінки «Склад»: вкладка «Документи складу» (наявний список) + «Залишки»
@@ -907,10 +910,13 @@ function StockTabsShell() {
 
   // RECEPTIONIST допущений до обгортки заради «Залишків», але backend /stock-documents
   // 403-ить для нього → вкладку «Документи складу» приховуємо і форсуємо активну «stock».
-  const canSeeDocuments = !!employee && DOCS_TAB_ROLES.includes(employee.role);
-  const visibleTabs = canSeeDocuments ? STOCK_TABS : STOCK_TABS.filter(t => t.key === 'stock');
-  const requestedTab: StockTab = searchParams.get('tab') === 'stock' ? 'stock' : 'documents';
-  const tab: StockTab = canSeeDocuments ? requestedTab : 'stock';
+  const canSeeRestricted = !!employee && DOCS_TAB_ROLES.includes(employee.role);
+  const visibleTabs = canSeeRestricted ? STOCK_TABS : STOCK_TABS.filter(t => !t.restricted);
+  const rawTab = searchParams.get('tab');
+  const requestedTab: StockTab =
+    rawTab === 'stock' ? 'stock' : rawTab === 'movements' ? 'movements' : 'documents';
+  // Обмежені вкладки недоступні RECEPTIONIST → форсуємо «Залишки».
+  const tab: StockTab = !canSeeRestricted && requestedTab !== 'stock' ? 'stock' : requestedTab;
 
   const setTab = (t: StockTab) =>
     router.replace(t === 'documents' ? '/stock-documents' : `/stock-documents?tab=${t}`, {
@@ -945,7 +951,13 @@ function StockTabsShell() {
         ))}
       </div>
 
-      {tab === 'stock' ? <InventoryTab /> : <StockDocumentsPageClient />}
+      {tab === 'stock' ? (
+        <InventoryTab />
+      ) : tab === 'movements' ? (
+        <StockMovementsTab />
+      ) : (
+        <StockDocumentsPageClient />
+      )}
     </div>
   );
 }

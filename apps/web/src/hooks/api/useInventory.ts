@@ -95,6 +95,32 @@ export interface InventoryFilter {
   q?: string;
 }
 
+export interface StockMovementFilter {
+  goodId?: string;
+  warehouseId?: string;
+  type?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface StockMovement {
+  id: string;
+  type: string;
+  quantity: number;
+  price: number | null;
+  goodId: string;
+  goodName: string;
+  goodSku: string | null;
+  warehouseId: string;
+  warehouseName: string;
+  documentType: string | null;
+  documentId: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
 export const inventoryKeys = {
   all: ['inventory'] as const,
   items: () => [...inventoryKeys.all, 'items'] as const,
@@ -103,6 +129,8 @@ export const inventoryKeys = {
   byDocument: (filters: StockByDocumentFilter) =>
     [...inventoryKeys.all, 'by-document', filters] as const,
   byBatch: (filters: StockByDocumentFilter) => [...inventoryKeys.all, 'by-batch', filters] as const,
+  movements: (filters: StockMovementFilter) =>
+    [...inventoryKeys.all, 'movements', filters] as const,
 };
 
 export function useStockItems(filters: InventoryFilter = {}) {
@@ -152,6 +180,27 @@ export function useStockByBatch(filters: StockByDocumentFilter, enabled: boolean
     queryKey: inventoryKeys.byBatch(filters),
     queryFn: ({ signal }) =>
       apiFetch(`/stock-items/by-batch${buildStockQuery(filters)}`, { signal }),
+    enabled: !!employee && enabled,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useStockMovements(filters: StockMovementFilter = {}, enabled: boolean = true) {
+  const { employee } = useAuth();
+  const params = new URLSearchParams();
+  if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
+  if (filters.goodId) params.set('goodId', filters.goodId);
+  if (filters.type) params.set('type', filters.type);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  if (filters.page) params.set('page', String(filters.page));
+  if (filters.limit) params.set('limit', String(filters.limit));
+  const qs = params.toString();
+
+  return useQuery<{ items: StockMovement[]; total: number; page: number; limit: number }>({
+    queryKey: inventoryKeys.movements(filters),
+    queryFn: ({ signal }) => apiFetch(`/stock-items/movements${qs ? `?${qs}` : ''}`, { signal }),
     enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
