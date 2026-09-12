@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -26,7 +27,7 @@ export class CreateExpenseCategoryDto {
     description: 'Тип: EXPENSE (витрата) | INCOME (оприбуткування)',
   })
   @IsOptional()
-  @IsString()
+  @IsEnum(ExpenseCategoryType)
   type?: ExpenseCategoryType;
 
   @ApiPropertyOptional({ description: 'Батьківська стаття (null = корінь)' })
