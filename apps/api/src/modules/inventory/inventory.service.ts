@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService, BatchConsumeResult } from './batch.service';
 import { SettingsService } from '../settings/settings.service';
 import { kyivOffsetMs } from '../../common/utils/kyiv-date';
+import { calculatePagination } from '../../common/utils/pagination';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   PurchaseOrder: 'Замовлення',
@@ -728,6 +729,89 @@ export class InventoryService {
     }
 
     return { batches: Array.from(groupMap.values()) };
+  }
+
+  /**
+   * Плоский append-only журнал рухів складу з фільтрами + пагінацією (дзеркалить
+   * settlements getTransactions / cash listOperations). Read-only (StockMovement — append-only,
+   * єдина точка запису createMovement). Фільтри опційні; сорт createdAt DESC.
+   */
+  async findMovements(
+    orgId: string,
+    filters: {
+      goodId?: string;
+      warehouseId?: string;
+      type?: StockMovementType;
+      from?: string;
+      to?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{
+    items: {
+      id: string;
+      type: StockMovementType;
+      quantity: number;
+      price: number | null;
+      goodId: string;
+      goodName: string;
+      goodSku: string | null;
+      warehouseId: string;
+      warehouseName: string;
+      documentType: string | null;
+      documentId: string | null;
+      notes: string | null;
+      createdAt: Date;
+    }[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const createdAt = this.normalizeDates(filters.from, filters.to);
+    const { skip, take } = calculatePagination({ page: filters.page, limit: filters.limit });
+    const where: Prisma.StockMovementWhereInput = {
+      orgId,
+      ...(filters.goodId && { goodId: filters.goodId }),
+      ...(filters.warehouseId && { warehouseId: filters.warehouseId }),
+      ...(filters.type && { type: filters.type }),
+      ...(createdAt && { createdAt }),
+      // Узгоджено з byDocument: не показувати рухи soft-deleted товарів/складів.
+      good: { deletedAt: null },
+      warehouse: { deletedAt: null },
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.stockMovement.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          good: { select: { name: true, sku: true } },
+          warehouse: { select: { name: true } },
+        },
+      }),
+      this.prisma.stockMovement.count({ where }),
+    ]);
+    return {
+      items: items.map(m => ({
+        id: m.id,
+        type: m.type,
+        quantity: m.quantity,
+        price: m.price != null ? Number(m.price) : null,
+        goodId: m.goodId,
+        goodName: m.good.name,
+        goodSku: m.good.sku,
+        warehouseId: m.warehouseId,
+        warehouseName: m.warehouse.name,
+        documentType: m.documentType,
+        documentId: m.documentId,
+        notes: m.notes,
+        createdAt: m.createdAt,
+      })),
+      total,
+      page: Math.floor(skip / take) + 1,
+      limit: take,
+    };
   }
 
   async updateMinStock(

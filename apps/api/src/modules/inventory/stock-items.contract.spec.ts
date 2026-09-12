@@ -17,6 +17,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 const inventoryMock = {
   byDocument: vi.fn(),
   byBatch: vi.fn(),
+  findMovements: vi.fn(),
   findStockItems: vi.fn(),
   findLowStockItems: vi.fn(),
   updateMinStock: vi.fn(),
@@ -65,6 +66,7 @@ describe('StockItems — HTTP Contract', () => {
     vi.clearAllMocks();
     inventoryMock.byDocument.mockResolvedValue({ goods: [] });
     inventoryMock.byBatch.mockResolvedValue({ batches: [] });
+    inventoryMock.findMovements.mockResolvedValue({ items: [], total: 0, page: 1, limit: 50 });
   });
 
   describe('GET /stock-items/by-document', () => {
@@ -222,6 +224,65 @@ describe('StockItems — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(403);
       expect(inventoryMock.byBatch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /stock-items/movements', () => {
+    it('200 → { items, total, page, limit }; фільтри проброшено у service', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/stock-items/movements?warehouseId=${UUID_A}&goodId=${UUID_B}&type=WRITEOFF&from=2026-09-01&to=2026-09-30&page=2&limit=25`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ items: [], total: 0, page: 1, limit: 50 });
+      expect(inventoryMock.findMovements).toHaveBeenCalledWith(
+        'org-1',
+        expect.objectContaining({
+          warehouseId: UUID_A,
+          goodId: UUID_B,
+          type: 'WRITEOFF',
+          from: '2026-09-01',
+          to: '2026-09-30',
+          page: 2,
+          limit: 25,
+        }),
+      );
+    });
+
+    it('200 без параметрів', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-items/movements',
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('400 при невалідному type (не з enum)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-items/movements?type=НЕВІДОМО',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(inventoryMock.findMovements).not.toHaveBeenCalled();
+    });
+
+    it('400 при невалідному warehouseId (ParseUUIDPipe)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-items/movements?warehouseId=not-a-uuid',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(inventoryMock.findMovements).not.toHaveBeenCalled();
+    });
+
+    it('403 коли JWT-guard відмовляє', async () => {
+      jwtAllow = false;
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-items/movements',
+      });
+      expect(res.statusCode).toBe(403);
+      expect(inventoryMock.findMovements).not.toHaveBeenCalled();
     });
   });
 

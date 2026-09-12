@@ -7,7 +7,9 @@ import {
   Body,
   UseGuards,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
+import { StockMovementType } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProperty } from '@nestjs/swagger';
 import { IsNumber, IsOptional, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -89,6 +91,41 @@ export class StockItemsController {
     @Query('to') to?: string,
   ) {
     return this.inventory.byBatch(orgId, warehouseId, goodId, from, to);
+  }
+
+  @Get('movements')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Журнал рухів складу (плоский, з фільтрами + пагінація)' })
+  @ApiQuery({ name: 'warehouseId', required: false })
+  @ApiQuery({ name: 'goodId', required: false })
+  @ApiQuery({ name: 'type', required: false, enum: StockMovementType })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  movements(
+    @OrgContext() orgId: string,
+    @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
+    @Query('goodId', new ParseUUIDPipe({ optional: true })) goodId?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    // Валідація type проти enum (невідоме значення → 400, не тихий ігнор/500).
+    if (type && !(type in StockMovementType)) {
+      throw new BadRequestException('Невідомий тип руху');
+    }
+    return this.inventory.findMovements(orgId, {
+      goodId,
+      warehouseId,
+      type: type as StockMovementType | undefined,
+      from,
+      to,
+      page: page != null ? Number(page) : undefined,
+      limit: limit != null ? Number(limit) : undefined,
+    });
   }
 
   @Patch(':id/min-stock')
