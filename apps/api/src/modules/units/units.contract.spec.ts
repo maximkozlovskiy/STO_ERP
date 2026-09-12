@@ -82,7 +82,7 @@ describe('Units — HTTP Contract (Bugs #295-#305 regression guard)', () => {
       expect(res.statusCode).toBe(201);
     });
 
-    it('400 — відхиляє coefficient=0 (divide-by-zero у qty_base = qty / coefficient)', async () => {
+    it('400 — відхиляє coefficient=0 (обнулило б кількість у qty_base = qty * coefficient)', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
         url: '/units',
