@@ -180,6 +180,48 @@ describe('ExpenseCategoriesService', () => {
     expect(m.prisma.expenseCategory.updateMany).not.toHaveBeenCalled();
   });
 
+  // Bug #734: батько soft-deleted → відновлення нащадка піднімає його до кореня (не сирота).
+  it('restore: батько видалений → нащадок стає коренем (parentId=null)', async () => {
+    m.prisma.expenseCategory.findFirst
+      .mockResolvedValueOnce({ name: 'Оренда', parentId: PARENT }) // deleted node has parent
+      .mockResolvedValueOnce(null) // active-duplicate check → none
+      .mockResolvedValueOnce(null); // parentAlive check → parent НЕ живий
+    await service.restore(ORG, ID);
+    expect(m.prisma.expenseCategory.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: ID, orgId: ORG }),
+        data: expect.objectContaining({ deletedAt: null, parentId: null }),
+      }),
+    );
+  });
+
+  // Bug #734: батько живий → нащадок відновлюється БЕЗ зміни parentId.
+  it('restore: батько живий → parentId зберігається', async () => {
+    m.prisma.expenseCategory.findFirst
+      .mockResolvedValueOnce({ name: 'Оренда', parentId: PARENT })
+      .mockResolvedValueOnce(null) // active-dup
+      .mockResolvedValueOnce({ id: PARENT }); // parentAlive → живий
+    await service.restore(ORG, ID);
+    const call = m.prisma.expenseCategory.updateMany.mock.calls[0][0];
+    expect(call.data).not.toHaveProperty('parentId');
+    expect(call.data).toEqual(expect.objectContaining({ deletedAt: null }));
+  });
+
+  // Bug #736: create дитини на 3-му рівні (глибина батька=2) → 400.
+  it('create: перевищення MAX_DEPTH → 400', async () => {
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE' }); // parent lookup
+    // getDepth: батько PARENT має ланцюг GP→ROOT → глибина 2.
+    m.prisma.expenseCategory.findMany.mockResolvedValueOnce([
+      { id: PARENT, parentId: 'gp' },
+      { id: 'gp', parentId: 'root' },
+      { id: 'root', parentId: null },
+    ]);
+    await expect(service.create(ORG, { name: 'X', parentId: PARENT })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(m.prisma.expenseCategory.create).not.toHaveBeenCalled();
+  });
+
   it('findAll: cache hit → БД не чіпається', async () => {
     const cached = { items: [], total: 0 };
     m.cache.get.mockResolvedValueOnce(cached);

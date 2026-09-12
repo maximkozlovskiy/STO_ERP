@@ -62,9 +62,13 @@ export class CashService {
     if (input.expenseCategoryId) {
       const cat = await db.expenseCategory.findFirst({
         where: { id: input.expenseCategoryId, orgId, deletedAt: null },
-        select: { type: true },
+        select: { type: true, isActive: true },
       });
       if (!cat) throw new NotFoundException('Статтю не знайдено');
+      // Bug #735: вимкнена стаття (isActive=false, напр. після toggleActive гілки) не має
+      // приймати НОВІ операції — інакше вона «архівована» лише в UI, а пряме API її пропускає,
+      // спотворюючи звітність по активних статтях. Історичні операції лишаються недоторканими.
+      if (!cat.isActive) throw new BadRequestException('Стаття вимкнена — оберіть активну');
       const expected = input.direction === 'IN' ? 'INCOME' : 'EXPENSE';
       if (cat.type !== expected) {
         throw new BadRequestException(

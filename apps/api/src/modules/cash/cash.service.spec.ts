@@ -178,7 +178,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
       branchId: 'b1',
       initialBalance: 100000,
     });
-    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE' });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE', isActive: true });
     await service.createOperation(ORG, {
       cashRegisterId: REG,
       direction: 'OUT',
@@ -195,7 +195,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
       isFiscal: false,
       branchId: 'b1',
     });
-    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME' });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME', isActive: true });
     await expect(
       service.createOperation(ORG, {
         cashRegisterId: REG,
@@ -210,7 +210,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
 
   it('тип↔напрям: IN + стаття INCOME → ок; IN + EXPENSE → 400', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValue({ id: REG, isFiscal: false, branchId: 'b1' });
-    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME' });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME', isActive: true });
     await service.createOperation(ORG, {
       cashRegisterId: REG,
       direction: 'IN',
@@ -220,7 +220,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     });
     expect(m.prisma.cashOperation.create).toHaveBeenCalled();
 
-    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE' });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE', isActive: true });
     await expect(
       service.createOperation(ORG, {
         cashRegisterId: REG,
@@ -230,6 +230,27 @@ describe('CashService.createOperation — єдина точка руху', () =>
         expenseCategoryId: 'cat-e',
       }),
     ).rejects.toThrow(/статтю оприбуткування/);
+  });
+
+  // Bug #735: вимкнена стаття (isActive=false) не приймається для НОВОЇ операції.
+  it('вимкнена стаття (isActive=false) → 400 «Стаття вимкнена»', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValue({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+      initialBalance: 100000,
+    });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE', isActive: false });
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'OUT',
+        amount: 100,
+        reason: 'EXPENSE',
+        expenseCategoryId: 'cat-off',
+      }),
+    ).rejects.toThrow(/вимкнена/);
+    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
   it('зовнішній tx → без власного $transaction', async () => {

@@ -15,6 +15,9 @@ import {
 
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:expense-categories:${orgId}`;
+// Bug #736: макс. глибина дерева — 3 рівні (0..2), як UI (MAX_DEPTH=2). Backend теж мусить
+// обмежувати, бо пряме API інакше будує необмежену вкладеність (розходження UI↔API).
+const MAX_DEPTH = 2;
 
 interface Row {
   id: string;
@@ -92,6 +95,10 @@ export class ExpenseCategoriesService {
         throw new BadRequestException('Тип статті має збігатися з типом батьківської статті');
       }
       type = parent.type;
+      // Bug #736: нова дитина = глибина батька + 1; не може перевищувати MAX_DEPTH.
+      const parentDepth = await this.getDepth(orgId, dto.parentId);
+      if (parentDepth + 1 > MAX_DEPTH)
+        throw new BadRequestException('Досягнуто максимальної глибини вкладеності статей');
     }
 
     // resurrect-vs-409 по (orgId,name) — @@unique включає soft-deleted.
@@ -158,6 +165,12 @@ export class ExpenseCategoriesService {
       const descendants = await this.getDescendantIds(orgId, id);
       if (descendants.includes(dto.parentId))
         throw new BadRequestException('Не можна перенести статтю у власного нащадка');
+      // Bug #736: після переносу глибина найглибшого нащадка = глибина_нового_батька + 1
+      // (сам вузол) + висота_піддерева. Не може перевищувати MAX_DEPTH.
+      const parentDepth = await this.getDepth(orgId, dto.parentId);
+      const subtreeHeight = await this.getSubtreeHeight(orgId, id);
+      if (parentDepth + 1 + subtreeHeight > MAX_DEPTH)
+        throw new BadRequestException('Досягнуто максимальної глибини вкладеності статей');
     }
 
     await this.prisma.expenseCategory.update({
@@ -194,7 +207,7 @@ export class ExpenseCategoriesService {
   async restore(orgId: string, id: string): Promise<ExpenseCategoryResponseDto> {
     const deleted = await this.prisma.expenseCategory.findFirst({
       where: { id, orgId, NOT: { deletedAt: null } },
-      select: { name: true },
+      select: { name: true, parentId: true },
     });
     if (!deleted) throw new NotFoundException('Видалену статтю не знайдено');
     const activeDuplicate = await this.prisma.expenseCategory.findFirst({
@@ -205,9 +218,22 @@ export class ExpenseCategoriesService {
       throw new ConflictException(
         'Активна стаття з такою назвою вже існує — відновлення неможливе',
       );
+    // Bug #734: якщо батько soft-deleted (каскадне видалення батька забрало й нащадка),
+    // відновлення лише цього вузла лишило б його сиротою — parentId вказує на видалений
+    // рядок, тож buildTree (від коренів parentId=null) НЕ показав би його ні як корінь,
+    // ні під батьком → стаття «зникає» з довідника. Розірваний ланцюг предків → піднімаємо
+    // до кореня (детермінований fallback, стаття лишається видимою й керованою).
+    let reparentToRoot = false;
+    if (deleted.parentId) {
+      const parentAlive = await this.prisma.expenseCategory.findFirst({
+        where: { id: deleted.parentId, orgId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!parentAlive) reparentToRoot = true;
+    }
     const result = await this.prisma.expenseCategory.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
-      data: { deletedAt: null },
+      data: { deletedAt: null, ...(reparentToRoot ? { parentId: null } : {}) },
     });
     if (result.count === 0) throw new NotFoundException('Видалену статтю не знайдено');
     return this.finish(orgId, id);
@@ -233,6 +259,50 @@ export class ExpenseCategoriesService {
     const item = await this.prisma.expenseCategory.findFirstOrThrow({ where: { id, orgId } });
     await this.cache.del(cacheKey(orgId));
     return { ...this.toDto(item), children: [] };
+  }
+
+  /**
+   * Глибина вузла у дереві (корінь = 0). Обхід ланцюга батьків у памʼяті (без N+1).
+   * Bug #736: використовується для guard-у MAX_DEPTH у create/update.
+   */
+  private async getDepth(orgId: string, id: string): Promise<number> {
+    const all = await this.prisma.expenseCategory.findMany({
+      where: { orgId, deletedAt: null },
+      select: { id: true, parentId: true },
+      take: 1000,
+    });
+    const parentOf = new Map<string, string | null>(all.map(c => [c.id, c.parentId]));
+    let depth = 0;
+    let cur = parentOf.get(id) ?? null;
+    // Захист від зациклення (не має статись — цикли блокуються) через ліміт ітерацій.
+    while (cur && depth <= 1000) {
+      depth += 1;
+      cur = parentOf.get(cur) ?? null;
+    }
+    return depth;
+  }
+
+  /** Висота піддерева (кількість рівнів нижче вузла; лист = 0). Обхід у памʼяті. */
+  private async getSubtreeHeight(orgId: string, id: string): Promise<number> {
+    const all = await this.prisma.expenseCategory.findMany({
+      where: { orgId, deletedAt: null },
+      select: { id: true, parentId: true },
+      take: 1000,
+    });
+    const childrenByParent = new Map<string, string[]>();
+    for (const c of all) {
+      if (!c.parentId) continue;
+      const arr = childrenByParent.get(c.parentId) ?? [];
+      arr.push(c.id);
+      childrenByParent.set(c.parentId, arr);
+    }
+    const walk = (node: string, guard: number): number => {
+      if (guard > 1000) return 0;
+      const kids = childrenByParent.get(node) ?? [];
+      if (kids.length === 0) return 0;
+      return 1 + Math.max(...kids.map(k => walk(k, guard + 1)));
+    };
+    return walk(id, 0);
   }
 
   /** Усі нащадки (обхід у памʼяті — без N+1). */
