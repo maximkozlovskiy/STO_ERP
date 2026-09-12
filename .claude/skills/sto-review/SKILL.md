@@ -206,12 +206,21 @@ grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts\|spe
 # але декоратор @IsString (не @IsEnum). Стандарт codebase — @IsEnum (77+ вжитків).
 grep -rnE "^\s*@IsString\(\)" apps/api/src/modules --include="*.dto.ts" -A1 \
   | grep -E ":\s*[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" | grep -v spec
+
+# Ручна enum-валідація через `in`-оператор → резолвить прототипні ключі (constructor/toString/
+# valueOf/hasOwnProperty/isPrototypeOf) як «валідні» → `?type=constructor` проходить guard →
+# долітає до Prisma enum-колонки → P2009 invalid enum → HTTP 500 (не 400). Використовувати
+# Object.prototype.hasOwnProperty.call(Enum, value), НЕ `value in Enum` (той самий клас що
+# buildSortOrderBy hasOwnProperty-fix). Стосується будь-якого manual-guard над enum/whitelist-об'єктом.
+grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" \
+  apps/api/src/modules --include="*.controller.ts" --include="*.service.ts" | grep -v spec
 ```
 
 - [ ] `$queryRaw` — тільки tagged template або `Prisma.sql` (не рядкова інтерполяція)
 - [ ] **Optional/required DTO-поле, чий тип — Prisma enum → `@IsEnum(TheEnum)`, НЕ `@IsString()`.** `@IsString()` пропускає будь-який рядок → значення долітає до enum-колонки у `create/update` → Postgres `invalid input value for enum "X"` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Стандарт codebase — `@IsEnum` (cash.dto `direction`/`reason`, payments.dto тощо, 77+ вжитків). Sample (expense-categories.dto `CreateExpenseCategoryDto.type: ExpenseCategoryType` мав `@IsString()`): `POST {type:"FOO"}` → `type = dto.type ?? 'EXPENSE'` → insert у enum-колонку → 500
 - [ ] `@Param(':id')` → `ParseUUIDPipe` (не `version: '4'` — тести часто мають UUID v0)
 - [ ] **`@Query('xxxId')` що потрапляє у Prisma `where: { id }` на `@db.Uuid`-колонці → `ParseUUIDPipe`** (optional query → `new ParseUUIDPipe({ optional: true })`). Той самий контракт що `@Param`: невалідний UUID (`?cashRegisterId=garbage`) інакше долітає до Prisma → `P2023 invalid input syntax for type uuid` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Sample (cash-shift.controller `open`): `@Query('cashRegisterId') cashRegisterId?: string` без пайпа → `cashRegister.findFirst({ where: { id: cashRegisterId } })`
+- [ ] **Ручна enum/whitelist-валідація → `Object.prototype.hasOwnProperty.call(Enum, value)`, НЕ `value in Enum`.** `in` перевіряє й ПРОТОТИПНІ ключі: `'constructor' in StockMovementType === true` (так само `toString`/`valueOf`/`hasOwnProperty`/`isPrototypeOf`). Тож guard `if (type && !(type in Enum)) throw 400` пропускає `?type=constructor` → значення долітає до Prisma enum-колонки у `where` → `P2009 invalid enum` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Той самий клас що `buildSortOrderBy` hasOwnProperty-fix (§pagination). Sample (stock-items.controller `movements`): `if (type && !(type in StockMovementType))`. Fix: `!Object.prototype.hasOwnProperty.call(StockMovementType, type)`
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
 - [ ] Немає `eval()`, `new Function()`, `child_process.exec()`
 
@@ -1466,6 +1475,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rnE "^\s*@IsString\(\)" apps/api/src/modules --include="*.dto.ts" -A1 | grep -E ":\s*[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b"`.
 **Фікс:** `@IsEnum(TheEnum)` замість `@IsString()` (стандарт codebase — 77+ вжитків: cash.dto `direction`/`reason`, payments.dto тощо).
 **Severity:** IMPORTANT — `POST {type:"FOO"}` → Postgres `invalid input value for enum` → HTTP 500 (не-i18n) замість 400; tsc зелений (значення TS-сумісне з рядком). Sample: CreateExpenseCategoryDto.type (0fc2260d).
+
+### 2026-09-13 — ручна enum-валідація через `in`-оператор пропускає прототипні ключі → Prisma 500 — §2.3
+
+**Сигнал:** guard `if (type && !(type in SomeEnum)) throw new BadRequestException(...)` над query/param-значенням, що потім каститься у Prisma `where`. `in` перевіряє й прототипні ключі: `'constructor' in StockMovementType === true` (аналогічно `toString`/`valueOf`/`hasOwnProperty`/`isPrototypeOf`) → `?type=constructor` проходить guard.
+**Grep:** `grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" apps/api/src/modules --include="*.controller.ts" --include="*.service.ts" | grep -v spec`.
+**Фікс:** `Object.prototype.hasOwnProperty.call(SomeEnum, value)` замість `value in SomeEnum` (той самий клас, що `buildSortOrderBy` hasOwnProperty-fix у pagination.ts). Додати контракт-тест на `?type=constructor` → 400.
+**Severity:** IMPORTANT — `?type=constructor` → долітає до Prisma enum-колонки → `P2009 invalid enum` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400; звичайний garbage (`?type=НЕВІДОМО`) 400-ить коректно, тож unit-тест з нормальним garbage ховає баг. Sample: stock-items.controller `movements` (71f01134).
 
 ## Карта секцій (quick reference)
 

@@ -114,7 +114,10 @@ export class StockItemsController {
     @Query('limit') limit?: string,
   ) {
     // Валідація type проти enum (невідоме значення → 400, не тихий ігнор/500).
-    if (type && !(type in StockMovementType)) {
+    // hasOwnProperty, а не `in` — `in` резолвить прототипні ключі (constructor/toString/
+    // valueOf/hasOwnProperty), тож `?type=constructor` пройшов би guard → долетів би до
+    // Prisma enum-колонки → P2009 invalid enum → HTTP 500 (не-i18n, Sentry-шум) замість 400.
+    if (type && !Object.prototype.hasOwnProperty.call(StockMovementType, type)) {
       throw new BadRequestException('Невідомий тип руху');
     }
     return this.inventory.findMovements(orgId, {

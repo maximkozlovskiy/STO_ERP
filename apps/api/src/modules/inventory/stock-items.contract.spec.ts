@@ -266,6 +266,17 @@ describe('StockItems — HTTP Contract', () => {
       expect(inventoryMock.findMovements).not.toHaveBeenCalled();
     });
 
+    it('400 при type=constructor (прототипний ключ не проходить guard)', async () => {
+      // `type in StockMovementType` резолвив би 'constructor'/'toString' у прототип →
+      // долетіло б до Prisma enum-колонки → HTTP 500. hasOwnProperty-guard → чистий 400.
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-items/movements?type=constructor',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(inventoryMock.findMovements).not.toHaveBeenCalled();
+    });
+
     it('400 при невалідному warehouseId (ParseUUIDPipe)', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
