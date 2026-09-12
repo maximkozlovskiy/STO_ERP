@@ -1035,7 +1035,7 @@ export class PurchaseOrdersService {
         goodBrandName: l.good?.brand?.name ?? null,
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
-        // safeCoeff() catches legacy/seed coefficient=0/NaN/negative — frontend uses it as divisor for display↔base conversion.
+        // safeCoeff() catches legacy/seed coefficient=0/NaN/negative — множник display↔base (qty_base = qty * coefficient).
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: Number(l.price),

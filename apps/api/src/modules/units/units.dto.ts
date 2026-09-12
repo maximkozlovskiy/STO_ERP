@@ -18,7 +18,7 @@ export class CreateUnitDto {
   })
   @IsOptional()
   @IsNumber()
-  // coefficient is a divisor: `qty_base = qty / coefficient` (work-orders, purchase-orders, invoices). 0 → Infinity → silent NaN propagation.
+  // coefficient — множник: `qty_base = qty * coefficient` (1 альт. од. = coefficient базових). 0 → guard(safeCoeff)→1.
   @Min(0.000001)
   coefficient?: number;
 
@@ -69,7 +69,7 @@ export class UpdateUnitDto {
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsNumber()
-  // coefficient is a divisor — 0 causes Infinity → silent NaN propagation.
+  // coefficient — множник (qty_base = qty * coefficient); 0 → guard(safeCoeff)→1.
   @Min(0.000001)
   coefficient?: number;
 

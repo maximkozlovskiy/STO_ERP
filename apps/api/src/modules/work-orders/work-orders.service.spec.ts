@@ -496,7 +496,7 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
 
   // WO-C2 regression: коефіцієнт GoodUoM резолвиться за (unitOfMeasureId, goodId), не за
   // GoodUoM.id. part.quantity у не-базовій одиниці (упаковка) ділиться на coeff → база на склад.
-  it('WO-C2: coeff з GoodUoM за (unitOfMeasureId,goodId) → baseQty = quantity/coeff', async () => {
+  it('WO-C2: coeff з GoodUoM за (unitOfMeasureId,goodId) → baseQty = quantity*coeff', async () => {
     const UOM_ID = '77777777-7777-4777-8777-777777777777'; // UnitOfMeasure.id (як зберігає addPart)
     const partUpdate = vi.fn().mockResolvedValue({});
     const goodUoMFindMany = vi.fn().mockResolvedValue([
@@ -548,9 +548,9 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
         where: expect.objectContaining({ orgId: 'org-1', unitOfMeasureId: { in: [UOM_ID] } }),
       }),
     );
-    // 20 / coeff(10) = 2 базових одиниці у WRITEOFF (а не 20 без коефіцієнта).
+    // 20 * coeff(10) = 200 базових одиниць у WRITEOFF (1 альт. од. = 10 базових).
     const writeoffCall = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
-    expect(writeoffCall?.[1].quantity).toBe(-2);
+    expect(writeoffCall?.[1].quantity).toBe(-200);
   });
 
   it('weightedCostPrice=null → workOrderPart.update НЕ викликається (не перезаписує NULL)', async () => {
@@ -738,10 +738,10 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
     );
   });
 
-  it('coeff-конверсія: baseQty = part.quantity / coefficient', async () => {
+  it('coeff-конверсія: baseQty = part.quantity * coefficient', async () => {
     const createMovement = vi.fn().mockResolvedValue(RETURN_OK);
     const createTransaction = vi.fn().mockResolvedValue({});
-    // Частина у пакованні × коефіцієнт 6 (напр. 12 шт = 2 упаковки×6).
+    // Частина у пакованні × коефіцієнт 6 (напр. 12 упаковок × 6 = 72 базових шт).
     const UOM_ID = '77777777-7777-4777-8777-777777777777';
     const svc = makeSvc(
       [{ id: PART1_ID, quantity: 12, unitOfMeasureId: UOM_ID }],
@@ -758,8 +758,8 @@ describe('WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2)'
       'user-1',
       undefined,
     );
-    // 12 / 6 = 2 базові одиниці повертаються на склад
-    expect(createMovement.mock.calls[0][1].quantity).toBe(2);
+    // 12 * 6 = 72 базові одиниці повертаються на склад
+    expect(createMovement.mock.calls[0][1].quantity).toBe(72);
   });
 
   it('zero-total наряд → RETURN є, але CREDIT_NOTE НЕ створюється (і без throw)', async () => {

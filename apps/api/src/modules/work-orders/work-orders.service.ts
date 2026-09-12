@@ -1458,7 +1458,7 @@ export class WorkOrdersService {
       goodBrandName: part.good?.brand?.name ?? null,
       unitOfMeasureId: part.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? part.good?.unit,
-      // safeCoeff() guards legacy/seed coefficient=0 — frontend uses it as divisor for display↔base conversion.
+      // safeCoeff() guards legacy/seed coefficient=0 — множник display↔base (qty_base = qty * coefficient).
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       warehouseId: part.warehouseId,
       quantity: part.quantity,

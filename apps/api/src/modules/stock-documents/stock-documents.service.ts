@@ -622,7 +622,7 @@ export class StockDocumentsService {
         unit: l.good?.unit,
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
         // safeCoeff() guards against legacy/seed coefficient=0/NaN/negative —
-        // frontend uses coefficient as divisor for display↔base conversion; 0 → Infinity → silent NaN.
+        // coefficient — множник display↔base (qty_base = qty * coefficient); safeCoeff guard 0→1.
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: l.price != null ? Number(l.price) : null,

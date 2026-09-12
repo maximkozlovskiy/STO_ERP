@@ -1,10 +1,11 @@
 /**
- * Returns a safe positive divisor from a coefficient value.
+ * Returns a safe positive coefficient for qty conversion `base = qty * coefficient`
+ * (coefficient = скільки БАЗОВИХ одиниць в одній альтернативній: «1 пакет = 12 шт» → 12).
  *
  * DTO `@Min(0.000001)` blocks coefficient=0 on the write-path, but
  * legacy/seed/CSV-import data may have 0 or null. `?? 1` does NOT catch 0
  * (nullish coalescing only fires on null/undefined). `safeCoeff` catches
- * 0/NaN/negative/null/undefined — safe for `qty / coeff` division.
+ * 0/NaN/negative/null/undefined → 1 (no-op factor), safe for `qty * coeff`.
  */
 export function safeCoeff(value: number | null | undefined): number {
   if (value == null || !Number.isFinite(value) || value <= 0) return 1;

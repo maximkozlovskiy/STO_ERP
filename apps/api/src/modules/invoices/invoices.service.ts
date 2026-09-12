@@ -1064,7 +1064,7 @@ export class InvoicesService {
       description: l.description,
       unitOfMeasureId: l.unitOfMeasureId ?? null,
       unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? l.good?.unit,
-      // safeCoeff() catches legacy/seed coefficient=0 — frontend uses it as divisor for display↔base conversion.
+      // safeCoeff() catches legacy/seed coefficient=0 — множник display↔base (qty_base = qty * coefficient).
       coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
       quantity: l.quantity,
       unitPrice: Number(l.unitPrice),

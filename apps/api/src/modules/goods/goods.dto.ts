@@ -166,7 +166,7 @@ export class CreateGoodUoMDto {
   })
   @IsOptional()
   @IsNumber()
-  // coefficient=0 → divide-by-zero in qty_base conversion.
+  // coefficient — множник: qty_base = qty * coefficient (1 альт. од. = coefficient базових). 0 → guard→1.
   @Min(0.000001)
   coefficient?: number;
 
@@ -207,7 +207,7 @@ export class UpdateGoodUoMDto {
     description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ РґРѕ Р±Р°Р·РѕРІРѕС— РѕРґРёРЅРёС†С–',
   })
   @IsOptional()
-  // coefficient=0 → divide-by-zero in qty_base conversion.
+  // coefficient — множник: qty_base = qty * coefficient (1 альт. од. = coefficient базових). 0 → guard→1.
   @Min(0.000001)
   coefficient?: number;
 

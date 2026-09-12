@@ -34,7 +34,8 @@ export class WorkOrderStockEffectsService {
       where: { workOrderId, orgId, deletedAt: null },
       take: 1000,
     });
-    // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty / coefficient
+    // Batch-fetch GoodUoM coefficients for qty conversion: qty_base = qty * coefficient
+    // (coefficient = скільки БАЗОВИХ одиниць в одній альтернативній: «1 пакет = 12 шт» → 12).
     const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
 
     for (const part of parts) {
@@ -45,7 +46,7 @@ export class WorkOrderStockEffectsService {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'RESERVATION',
-          quantity: part.quantity / coeff,
+          quantity: part.quantity * coeff,
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -76,7 +77,7 @@ export class WorkOrderStockEffectsService {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'RESERVATION_RELEASE',
-          quantity: -(part.quantity / coeff),
+          quantity: -(part.quantity * coeff),
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -101,7 +102,7 @@ export class WorkOrderStockEffectsService {
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
-      const baseQty = part.quantity / coeff;
+      const baseQty = part.quantity * coeff;
       // Logic-bug fix: release the reservation BEFORE writeoff. InventoryService.createMovement
       // gates WRITEOFF on `available = quantity - reserved >= |qty|`. Якщо весь фізичний
       // залишок зарезервовано саме цим нарядом (квантитет = резерв = baseQty), available=0
@@ -198,7 +199,7 @@ export class WorkOrderStockEffectsService {
 
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
-      const baseQty = part.quantity / coeff;
+      const baseQty = part.quantity * coeff;
       // RETURN дзеркалить WRITEOFF: та сама baseQty, той самий (documentType, documentId,
       // documentLineId). InventoryService інкрементує StockItem і повертає партії (агрегує по
       // batchId у межах документа). batchCostPrice/batchId у WorkOrderPart НЕ чистимо —

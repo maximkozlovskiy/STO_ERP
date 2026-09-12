@@ -75,7 +75,7 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A
     );
   });
 
-  it('coeff застосовується: baseQty = quantity / coefficient (20 / 10 = 2)', async () => {
+  it('coeff застосовується: baseQty = quantity * coefficient (20 * 10 = 200)', async () => {
     const goodUoMFindMany = vi
       .fn()
       .mockResolvedValue([{ goodId: GOOD_ID, unitOfMeasureId: UOM_ID, coefficient: 10 }]);
@@ -91,7 +91,7 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A
     );
 
     const writeoff = inventorySpy.mock.calls.find(c => c[1].type === 'WRITEOFF');
-    expect(writeoff?.[1].quantity).toBe(-2);
+    expect(writeoff?.[1].quantity).toBe(-200);
   });
 });
 
@@ -99,7 +99,7 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A
  * A3 test-gap closure — дві крайові гілки writeOffPartsAndCharge/fetchPartCoefficients, які після
  * переїзду методів у WorkOrderStockEffectsService лишились без прямого покриття:
  *   1) zero-total throw на COMPLETED (chargeAmount <= 0 → BadRequestException);
- *   2) coeff=0 / legacy → safeCoeff→1 fallback (division-by-zero guard, baseQty=quantity/1).
+ *   2) coeff=0 / legacy → safeCoeff→1 fallback (guard, baseQty=quantity*1=quantity).
  */
 
 function makeGapService(opts: {
@@ -175,7 +175,7 @@ describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — zero-total thr
 describe('WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy safeCoeff→1 (A3 gap)', () => {
   it('GoodUoM.coefficient=0 (legacy/seed) → safeCoeff→1, baseQty=quantity (без Infinity) — MUTATION-VERIFY', async () => {
     // DTO @Min(0.000001) блокує 0 на write-path, але legacy/seed/direct-SQL можуть мати 0.
-    // Без safeCoeff → quantity/0 = Infinity → WRITEOFF(-Infinity) отруїв би склад.
+    // Без safeCoeff → coeff=0 → WRITEOFF(0) знулив би списання; safeCoeff(0)→1 → baseQty=quantity.
     const { svc, createMovement } = makeGapService({
       totalAmount: 500,
       parts: [{ id: 'part-1', quantity: 20, unitOfMeasureId: UOM_ID }],
@@ -187,7 +187,7 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy 
       'user-1',
     );
     const writeoff = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
-    // safeCoeff(0)→1 → baseQty=20/1=20 (скінченне). Замінити safeCoeff на `?? 1` → -Infinity, тест червоний.
+    // safeCoeff(0)→1 → baseQty=20*1=20. Без guard: coeff=0 → baseQty=0 → WRITEOFF(0), тест червоний.
     expect(writeoff?.[1].quantity).toBe(-20);
     expect(Number.isFinite(writeoff?.[1].quantity)).toBe(true);
   });

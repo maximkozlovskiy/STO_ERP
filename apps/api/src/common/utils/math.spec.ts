@@ -37,16 +37,16 @@ describe('safeCoeff', () => {
     expect(safeCoeff(-Infinity)).toBe(1);
   });
 
-  it('безпечний дільник: 10 / safeCoeff(0) = 10 (не ділення на 0)', () => {
+  it('безпечний множник: 10 * safeCoeff(0) = 10 (guard 0→1, не 0)', () => {
     const qty = 10;
-    const result = qty / safeCoeff(0);
+    const result = qty * safeCoeff(0);
     expect(result).toBe(10);
     expect(Number.isFinite(result)).toBe(true);
   });
 
-  it('коректно обчислює qty / coeff для базового перетворення одиниць', () => {
-    expect(10 / safeCoeff(2)).toBe(5);
-    expect(10 / safeCoeff(0.5)).toBe(20);
+  it('qty * coeff — базове перетворення одиниць (1 альт. од. = coeff базових)', () => {
+    expect(10 * safeCoeff(2)).toBe(20); // 10 упаковок × 2 = 20 базових
+    expect(10 * safeCoeff(0.5)).toBe(5);
   });
 });
 
