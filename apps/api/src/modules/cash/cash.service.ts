@@ -57,13 +57,22 @@ export class CashService {
     });
     if (!register) throw new NotFoundException('Касу не знайдено');
 
-    // Стаття витрат (валідація належності org) — лише для EXPENSE.
+    // Стаття руху коштів (валідація належності org + тип↔напрям): OUT лише EXPENSE-стаття,
+    // IN лише INCOME-стаття — гарантує коректність звітності по статтях.
     if (input.expenseCategoryId) {
       const cat = await db.expenseCategory.findFirst({
         where: { id: input.expenseCategoryId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { type: true },
       });
-      if (!cat) throw new NotFoundException('Статтю витрат не знайдено');
+      if (!cat) throw new NotFoundException('Статтю не знайдено');
+      const expected = input.direction === 'IN' ? 'INCOME' : 'EXPENSE';
+      if (cat.type !== expected) {
+        throw new BadRequestException(
+          input.direction === 'IN'
+            ? 'Для внесення оберіть статтю оприбуткування'
+            : 'Для видачі оберіть статтю витрат',
+        );
+      }
     }
 
     // Фіскальна каса → потрібна відкрита зміна цієї каси.

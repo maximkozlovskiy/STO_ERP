@@ -171,6 +171,67 @@ describe('CashService.createOperation — єдина точка руху', () =>
     ).rejects.toThrow(NotFoundException);
   });
 
+  it('тип↔напрям: OUT + стаття EXPENSE → ок', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValue({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+      initialBalance: 100000,
+    });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE' });
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'OUT',
+      amount: 100,
+      reason: 'EXPENSE',
+      expenseCategoryId: 'cat-e',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalled();
+  });
+
+  it('тип↔напрям: OUT + стаття INCOME → 400 (для видачі оберіть статтю витрат)', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+    });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME' });
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'OUT',
+        amount: 100,
+        reason: 'MANUAL_OUT',
+        expenseCategoryId: 'cat-i',
+      }),
+    ).rejects.toThrow(/статтю витрат/);
+    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
+  });
+
+  it('тип↔напрям: IN + стаття INCOME → ок; IN + EXPENSE → 400', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValue({ id: REG, isFiscal: false, branchId: 'b1' });
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME' });
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: 100,
+      reason: 'MANUAL_IN',
+      expenseCategoryId: 'cat-i',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalled();
+
+    m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'EXPENSE' });
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'IN',
+        amount: 100,
+        reason: 'MANUAL_IN',
+        expenseCategoryId: 'cat-e',
+      }),
+    ).rejects.toThrow(/статтю оприбуткування/);
+  });
+
   it('зовнішній tx → без власного $transaction', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,

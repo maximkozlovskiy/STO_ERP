@@ -25,7 +25,7 @@ import {
 } from './expense-categories.dto';
 import { ExpenseCategoriesService } from './expense-categories.service';
 
-@ApiTags('Статті витрат')
+@ApiTags('Статті руху коштів')
 @Controller('expense-categories')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
@@ -60,6 +60,17 @@ export class ExpenseCategoriesController {
   @ApiOperation({ summary: 'Створити статтю витрат' })
   create(@OrgContext() orgId: string, @Body() dto: CreateExpenseCategoryDto) {
     return this.service.create(orgId, dto);
+  }
+
+  @Patch(':id/toggle-active')
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Увімкнути/вимкнути статтю (каскадно на нащадків)' })
+  toggleActive(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { isActive: boolean },
+  ) {
+    return this.service.toggleActive(orgId, id, body.isActive);
   }
 
   @Patch(':id')

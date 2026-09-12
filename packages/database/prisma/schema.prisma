@@ -2826,21 +2826,35 @@ model CashOperation {
   @@map("cash_operations")
 }
 
-// Довідник статей витрат (per-org). Дзеркалить GoodStatus. Прив'язується до касової видачі reason=EXPENSE.
+// Тип статті руху коштів: витрата (OUT) чи оприбуткування (IN). Immutable після створення.
+enum ExpenseCategoryType {
+  EXPENSE // витрата → касова OUT-операція
+  INCOME // оприбуткування → касова IN-операція
+}
+
+// Довідник «Статті руху коштів» (per-org, ієрархічний). Дзеркалить ієрархію WorkCategory.
+// Тип (EXPENSE/INCOME) задає напрям касової операції. Прив'язується до касових IN/OUT операцій.
 model ExpenseCategory {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  orgId       String    @db.Uuid
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @db.Uuid
+  parentId    String?             @db.Uuid // null = корінь дерева
   name        String
-  syncVersion BigInt    @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  type        ExpenseCategoryType @default(EXPENSE) // напрям (EXPENSE=OUT, INCOME=IN); гілка дерева одного типу
+  sortOrder   Int                 @default(0)
+  isActive    Boolean             @default(true)
+  syncVersion BigInt              @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
   deletedAt   DateTime?
 
-  org        Organisation    @relation(fields: [orgId], references: [id])
+  org        Organisation      @relation(fields: [orgId], references: [id])
+  parent     ExpenseCategory?  @relation("ExpenseCatHierarchy", fields: [parentId], references: [id])
+  children   ExpenseCategory[] @relation("ExpenseCatHierarchy")
   operations CashOperation[]
 
   @@unique([orgId, name])
   @@index([orgId, deletedAt])
+  @@index([orgId, parentId])
   @@index([orgId, syncVersion])
   @@map("expense_categories")
 }
