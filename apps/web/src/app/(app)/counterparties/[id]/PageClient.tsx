@@ -8,6 +8,13 @@ import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
+import {
+  CounterpartyForm,
+  emptyCounterpartyForm,
+  counterpartyToForm,
+  formToPatch,
+  type CounterpartyFormState,
+} from '@/components/ui/CounterpartyForm';
 import { type Warranty } from '@/hooks/api/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -299,36 +306,15 @@ export default function CounterpartyCardPage() {
 
   // Editing info
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    phone: '',
-    email: '',
-    notes: '',
-    legalForm: '',
-    legalAddress: '',
-    actualAddress: '',
-    bankAccount: '',
-    bankName: '',
-    contactPerson: '',
-    taxNumber: '',
-  });
+  // Спільний набір полів (CounterpartyForm) — усі 15 + type, ідентично з CounterpartyEditModal.
+  const [editForm, setEditForm] = useState<CounterpartyFormState>(() => emptyCounterpartyForm());
   const [savingEdit, setSavingEdit] = useState(false);
 
   const loadCp = useCallback(() => {
     apiFetch<Counterparty>(`/counterparties/${id}`)
       .then(c => {
         setCp(c);
-        setEditForm({
-          phone: c.phone ?? '',
-          email: c.email ?? '',
-          notes: c.notes ?? '',
-          legalForm: c.legalForm ?? '',
-          legalAddress: c.legalAddress ?? '',
-          actualAddress: c.actualAddress ?? '',
-          bankAccount: c.bankAccount ?? '',
-          bankName: c.bankName ?? '',
-          contactPerson: c.contactPerson ?? '',
-          taxNumber: c.taxNumber ?? '',
-        });
+        setEditForm(counterpartyToForm(c));
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
   }, [id]);
@@ -539,18 +525,7 @@ export default function CounterpartyCardPage() {
     try {
       const updated = await apiFetch<Counterparty>(`/counterparties/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          phone: editForm.phone || undefined,
-          email: editForm.email || undefined,
-          notes: editForm.notes || undefined,
-          legalForm: editForm.legalForm || undefined,
-          legalAddress: editForm.legalAddress || undefined,
-          actualAddress: editForm.actualAddress || undefined,
-          bankAccount: editForm.bankAccount || undefined,
-          bankName: editForm.bankName || undefined,
-          contactPerson: editForm.contactPerson || undefined,
-          taxNumber: editForm.taxNumber || undefined,
-        }),
+        body: JSON.stringify(formToPatch(editForm)),
       });
       setCp(updated);
       setEditing(false);
@@ -671,18 +646,7 @@ export default function CounterpartyCardPage() {
                   size="sm"
                   onClick={() => {
                     setEditing(false);
-                    setEditForm({
-                      phone: cp.phone ?? '',
-                      email: cp.email ?? '',
-                      notes: cp.notes ?? '',
-                      legalForm: cp.legalForm ?? '',
-                      legalAddress: cp.legalAddress ?? '',
-                      actualAddress: cp.actualAddress ?? '',
-                      bankAccount: cp.bankAccount ?? '',
-                      bankName: cp.bankName ?? '',
-                      contactPerson: cp.contactPerson ?? '',
-                      taxNumber: cp.taxNumber ?? '',
-                    });
+                    setEditForm(counterpartyToForm(cp)); // скидання незбережених змін
                   }}
                 >
                   <X className="h-3.5 w-3.5" />
@@ -737,86 +701,11 @@ export default function CounterpartyCardPage() {
               )}
             </>
           ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <PhoneInput
-                  label="Телефон"
-                  value={editForm.phone}
-                  onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
-                />
-                <Input
-                  label="Email"
-                  type="email"
-                  value={editForm.email}
-                  onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="email@example.com"
-                  className="h-8 text-[13px]"
-                />
-              </div>
-              <Select
-                label="Форма власності"
-                value={editForm.legalForm}
-                onChange={e => setEditForm(f => ({ ...f, legalForm: e.target.value }))}
-                className="h-8 text-[13px] py-0.5 px-2 pr-7"
-              >
-                <option value="">— Не вказано —</option>
-                {Object.entries(LEGAL_FORM_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                label="ІПН / ЄДРПОУ"
-                value={editForm.taxNumber}
-                onChange={e => setEditForm(f => ({ ...f, taxNumber: e.target.value }))}
-                placeholder="3456789012"
-                className="h-8 text-[13px]"
-              />
-              <Input
-                label="Юридична адреса"
-                value={editForm.legalAddress}
-                onChange={e => setEditForm(f => ({ ...f, legalAddress: e.target.value }))}
-                placeholder="вул. Хрещатик 1, Київ"
-                className="h-8 text-[13px]"
-              />
-              <Input
-                label="Фактична адреса"
-                value={editForm.actualAddress}
-                onChange={e => setEditForm(f => ({ ...f, actualAddress: e.target.value }))}
-                placeholder="вул. Хрещатик 1, Київ"
-                className="h-8 text-[13px]"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="IBAN"
-                  value={editForm.bankAccount}
-                  onChange={e => setEditForm(f => ({ ...f, bankAccount: e.target.value }))}
-                  placeholder="UA12 3456 7890 1234 5678 9012 3456 7"
-                  className="h-8 text-[13px]"
-                />
-                <Input
-                  label="Банк"
-                  value={editForm.bankName}
-                  onChange={e => setEditForm(f => ({ ...f, bankName: e.target.value }))}
-                  placeholder="АТ КБ «ПриватБанк»"
-                  className="h-8 text-[13px]"
-                />
-              </div>
-              <Input
-                label="Контактна особа"
-                value={editForm.contactPerson}
-                onChange={e => setEditForm(f => ({ ...f, contactPerson: e.target.value }))}
-                placeholder="Іван Коваль"
-                className="h-8 text-[13px]"
-              />
-              <Input
-                label="Нотатки"
-                value={editForm.notes}
-                onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                className="h-8 text-[13px]"
-              />
-            </div>
+            <CounterpartyForm
+              value={editForm}
+              onChange={p => setEditForm(f => ({ ...f, ...p }))}
+              mode="edit"
+            />
           )}
         </div>
       )}

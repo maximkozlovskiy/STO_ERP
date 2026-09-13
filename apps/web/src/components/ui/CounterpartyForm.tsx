@@ -62,14 +62,17 @@ export function emptyCounterpartyForm(type: CpType = 'CLIENT'): CounterpartyForm
   };
 }
 
-export function counterpartyToForm(cp: Counterparty): CounterpartyFormState {
+// Структурний вхід — приймає і hook-тип Counterparty, і локальні інтерфейси DetailPage (type: string).
+type CounterpartyLike = Omit<Partial<Counterparty>, 'type'> & { type: string };
+
+export function counterpartyToForm(cp: CounterpartyLike): CounterpartyFormState {
   return {
-    type: cp.type,
+    type: cp.type as CpType,
     firstName: cp.firstName ?? '',
     lastName: cp.lastName ?? '',
     companyName: cp.companyName ?? '',
     edrpou: cp.edrpou ?? '',
-    vatPayer: cp.vatPayer,
+    vatPayer: cp.vatPayer ?? false,
     phone: cp.phone ?? '',
     email: cp.email ?? '',
     contactPerson: cp.contactPerson ?? '',

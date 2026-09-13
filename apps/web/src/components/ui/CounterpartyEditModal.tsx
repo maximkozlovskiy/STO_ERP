@@ -10,7 +10,6 @@ import { validateContactFields } from '@/lib/validation';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -30,6 +29,13 @@ import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 import type { CpType } from '@/hooks/api/useCounterparties';
+import {
+  CounterpartyForm,
+  emptyCounterpartyForm,
+  counterpartyToForm,
+  formToPatch,
+  type CounterpartyFormState,
+} from '@/components/ui/CounterpartyForm';
 
 export type { CpType };
 
@@ -154,18 +160,13 @@ export function CounterpartyEditModal({
     setSaving(v);
   };
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    type: 'CLIENT',
-    firstName: '',
-    lastName: '',
-    companyName: '',
-    phone: '',
-    email: '',
-    edrpou: '',
-    vatPayer: false,
-    notes: '',
-    contactPerson: '',
-  });
+  // Спільний набір полів контрагента (CounterpartyForm) — єдине джерело правди (усі 15 + type),
+  // ідентичне з DetailPage inline-edit (усунення field-desync).
+  const [form, setForm] = useState<CounterpartyFormState>(() => emptyCounterpartyForm('CLIENT'));
+  const patchForm = (p: Partial<CounterpartyFormState>) => {
+    setForm(f => ({ ...f, ...p }));
+    dirty.markDirty();
+  };
 
   // Sync form when counterparty changes (open edit)
   useEffect(() => {
@@ -173,33 +174,7 @@ export function CounterpartyEditModal({
       setEditTab('main');
       setError('');
       dirty.resetDirty();
-      if (counterparty) {
-        setForm({
-          type: counterparty.type,
-          firstName: counterparty.firstName ?? '',
-          lastName: counterparty.lastName ?? '',
-          companyName: counterparty.companyName ?? '',
-          phone: counterparty.phone ?? '',
-          email: counterparty.email ?? '',
-          edrpou: counterparty.edrpou ?? '',
-          vatPayer: counterparty.vatPayer,
-          notes: counterparty.notes ?? '',
-          contactPerson: counterparty.contactPerson ?? '',
-        });
-      } else {
-        setForm({
-          type: 'CLIENT',
-          firstName: '',
-          lastName: '',
-          companyName: '',
-          phone: '',
-          email: '',
-          edrpou: '',
-          vatPayer: false,
-          notes: '',
-          contactPerson: '',
-        });
-      }
+      setForm(counterparty ? counterpartyToForm(counterparty) : emptyCounterpartyForm('CLIENT'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, counterparty?.id]);
@@ -437,18 +412,7 @@ export function CounterpartyEditModal({
     try {
       const created = await apiFetch<CounterpartyForModal>('/counterparties', {
         method: 'POST',
-        body: JSON.stringify({
-          type: form.type,
-          firstName: form.firstName || undefined,
-          lastName: form.lastName || undefined,
-          companyName: form.companyName || undefined,
-          phone: form.phone || undefined,
-          email: form.email || undefined,
-          edrpou: form.edrpou || undefined,
-          vatPayer: form.vatPayer || undefined,
-          notes: form.notes || undefined,
-          contactPerson: form.contactPerson || undefined,
-        }),
+        body: JSON.stringify(formToPatch(form)),
       });
       dirty.resetDirty();
       // Батько передасть created як counterparty → модалка перемкнеться в edit-режим
@@ -480,17 +444,7 @@ export function CounterpartyEditModal({
     try {
       const updated = await apiFetch<CounterpartyForModal>(`/counterparties/${counterparty.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          firstName: form.firstName || undefined,
-          lastName: form.lastName || undefined,
-          companyName: form.companyName || undefined,
-          phone: form.phone || undefined,
-          email: form.email || undefined,
-          edrpou: form.edrpou || undefined,
-          vatPayer: form.vatPayer,
-          notes: form.notes || undefined,
-          contactPerson: form.contactPerson || undefined,
-        }),
+        body: JSON.stringify(formToPatch(form)),
       });
       dirty.resetDirty();
       onSaved(updated, false);
@@ -843,112 +797,7 @@ export function CounterpartyEditModal({
                 {error}
               </div>
             )}
-            <div className="space-y-4">
-              <Select
-                label="Тип"
-                required
-                value={form.type}
-                onChange={e => {
-                  setForm(f => ({ ...f, type: e.target.value }));
-                  dirty.markDirty();
-                }}
-              >
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </Select>
-
-              {form.type !== 'SUPPLIER' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Ім'я"
-                    value={form.firstName}
-                    onChange={e => {
-                      setForm(f => ({ ...f, firstName: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                    placeholder="Іван"
-                  />
-                  <Input
-                    label="Прізвище"
-                    value={form.lastName}
-                    onChange={e => {
-                      setForm(f => ({ ...f, lastName: e.target.value }));
-                      dirty.markDirty();
-                    }}
-                    placeholder="Коваль"
-                  />
-                </div>
-              )}
-
-              <Input
-                label="Назва компанії"
-                required={form.type === 'SUPPLIER'}
-                value={form.companyName}
-                onChange={e => {
-                  setForm(f => ({ ...f, companyName: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="ТОВ «Авто»"
-              />
-              <PhoneInput
-                label="Телефон"
-                value={form.phone}
-                onChange={e => {
-                  setForm(f => ({ ...f, phone: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-              <Input
-                label="Email"
-                type="email"
-                value={form.email}
-                onChange={e => {
-                  setForm(f => ({ ...f, email: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-              <Input
-                label="ЄДРПОУ"
-                value={form.edrpou}
-                onChange={e => {
-                  setForm(f => ({ ...f, edrpou: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="12345678"
-              />
-              <Input
-                label="Контактна особа"
-                value={form.contactPerson}
-                onChange={e => {
-                  setForm(f => ({ ...f, contactPerson: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="Петро Іваненко"
-              />
-              <Input
-                label="Нотатки"
-                value={form.notes}
-                onChange={e => {
-                  setForm(f => ({ ...f, notes: e.target.value }));
-                  dirty.markDirty();
-                }}
-              />
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.vatPayer}
-                  onChange={e => {
-                    setForm(f => ({ ...f, vatPayer: e.target.checked }));
-                    dirty.markDirty();
-                  }}
-                  className="h-4 w-4 rounded border-border accent-primary"
-                />
-                <span className="text-sm text-foreground">Платник ПДВ</span>
-              </label>
-            </div>
+            <CounterpartyForm value={form} onChange={patchForm} mode={isEdit ? 'edit' : 'create'} />
 
             {/* Статуси-мітки (лише при редагуванні наявного контрагента) */}
             {isEdit && counterparty && (
