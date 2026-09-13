@@ -19,7 +19,6 @@ import { type Warranty } from '@/hooks/api/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { PhoneInput } from '@/components/ui/phone-input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, daysUntil, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
@@ -29,7 +28,6 @@ import { counterpartyLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
-  COUNTERPARTY_TYPE_LABELS,
   COUNTERPARTY_TYPE_BADGE,
   COUNTERPARTY_TYPE_DESCRIPTIONS,
   CONTRACT_TYPE_LABELS,

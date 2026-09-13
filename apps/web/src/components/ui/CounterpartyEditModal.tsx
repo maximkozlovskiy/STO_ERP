@@ -16,12 +16,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
-import {
-  WO_STATUS_LABELS,
-  WO_STATUS_BADGE,
-  COUNTERPARTY_TYPE_LABELS,
-  CONTRACT_TYPE_LABELS,
-} from '@sto/shared';
+import { WO_STATUS_LABELS, WO_STATUS_BADGE, CONTRACT_TYPE_LABELS } from '@sto/shared';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
@@ -110,10 +105,6 @@ function hasCounterpartyName(f: {
 }): boolean {
   return !!(f.companyName.trim() || f.firstName.trim() || f.lastName.trim());
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
