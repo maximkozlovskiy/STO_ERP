@@ -4698,3 +4698,96 @@ RESERVATION_RELEASE/TRANSFER-out) → text-destructive; RETURN лейбл «По
 741+3 web тести зелені.
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-09-13 — Дедуп форм контрагента (CounterpartyForm + Modal + DetailPage)
+
+**Scope:** commits `0d199a90` (type editable у PATCH), `94bd21da` (спільний CounterpartyForm),
+`0c68a1cc` (dedup Modal+DetailPage), `cf6058cd`/`37ed0c1b` (post-review fix + docs).
+Baseline перед сесією: API tsc=0, web tsc=0, 2250 API + 741 web тестів зелені.
+
+**Знайдено: 2 баги (1 HIGH, 1 MEDIUM). Виправлено: 2.**
+
+Data-loss ризик #1 (головний фокус) ПЕРЕВІРЕНО — БАГУ НЕМАЄ: `formToPatch` мапить порожні
+рядки `''→undefined`; `JSON.stringify` викидає undefined-ключі з тіла; DTO-поля `@IsOptional`;
+Prisma трактує undefined як «не чіпати». Отже редагування імені в модалці (де
+`CounterpartyForModal` тип не містить юр/банк-полів, `counterpartyToForm` заповнює їх `''`) НЕ
+затирає ЄДРПОУ/юр/банк-реквізити у БД. Аналогічно DetailPage edit не обнуляє поля, яких не
+торкались. Data-loss захист працює в обидва боки.
+
+Сценарій #3 (свідоме очищення поля через UI) — задокументовано як ОЧІКУВАНУ поведінку (не баг):
+`''→undefined` означає, що стерте у формі поле лишається старим значенням у БД. Це поведінка
+ОБОХ старих форм до дедупу (навмисна «не-затираємо» конвенція, зафіксована у docstring
+`formToPatch`). Це не data-loss, а неможливість очистити необов'язкове поле через цей UI —
+свідоме компромісне рішення, збережене при дедупі.
+
+### Bug #739 (HIGH) — SUPPLIER можна зберегти без companyName (лише приховане ім'я) [x] виправлено
+
+**Файли:**
+`apps/web/src/components/ui/CounterpartyForm.tsx` (validateCounterpartyForm / hasCounterpartyName),
+`apps/web/src/components/ui/CounterpartyEditModal.tsx` (create/update guards + button),
+`apps/web/src/app/(app)/counterparties/[id]/PageClient.tsx` (saveEdit валідація),
+`apps/api/src/modules/counterparties/counterparties.service.ts` (backend cross-field guard).
+
+**Сценарій (reproducible):** `CounterpartyForm` приховує поля Ім'я/Прізвище для SUPPLIER
+(`f.type !== 'SUPPLIER'`), але НЕ очищає їхні значення у стані форми. Послідовність:
+
+1. Створити/відкрити CLIENT «Іван Коваль» (firstName заповнено, companyName порожнє).
+2. Змінити тип на SUPPLIER — поля Ім'я/Прізвище зникають з UI, але `firstName='Іван'`
+   лишається у стані форми.
+3. companyName порожнє. Кнопка «Зберегти/Оновити» лишається активною, бо старий
+   `hasCounterpartyName` рахував firstName/lastName валідною назвою НЕЗАЛЕЖНО від типу.
+4. PATCH/POST проходить → у БД SUPPLIER без companyName, з осиротілим `firstName`, недоступним
+   для перегляду/редагування у формі (поле приховане для постачальника).
+
+Тобто валідація назви НЕ була type-aware. Для SUPPLIER (де поля імені приховані) єдиним
+можливим носієм назви є companyName, але guard дозволяв «безіменного» (з погляду UI)
+постачальника. Backend `hasCounterpartyName` дублював ту саму не-type-aware логіку → сирий
+API-виклик `POST {type:'SUPPLIER', firstName:'Іван'}` теж проходив. Reproduce-скрипт підтвердив:
+`validate=null` (пропускає), `button enabled=true`.
+
+**Фікс (type-aware guard, єдине джерело правди):**
+
+- `CounterpartyForm.tsx`: новий експорт `hasCounterpartyName({type,companyName,firstName,lastName})`
+  — для SUPPLIER вимагає `companyName.trim() !== ''`; CLIENT/BOTH — компанія АБО ім'я.
+  `validateCounterpartyForm` дає SUPPLIER-специфічне повідомлення «Вкажіть назву компанії постачальника».
+- `CounterpartyEditModal.tsx`: видалено локальний не-type-aware `hasCounterpartyName`; create/update
+  тепер через `validateCounterpartyForm(form)`; кнопка-disable через спільний type-aware
+  `hasCounterpartyName(form)` (`form` має `type`).
+- `PageClient.tsx` saveEdit: додано `validateCounterpartyForm` + `validateContactFields({email})`
+  ПЕРЕД PATCH — раніше inline-edit не мав ЖОДНОЇ клієнтської валідації (покладався на backend
+  400). Тепер узгоджено з модалкою.
+- Backend `counterparties.service.ts`: `hasCounterpartyName` став type-aware (SUPPLIER→лише
+  companyName). `update()`: `existing` select додав `type`; `merged` тепер включає ЕФЕКТИВНИЙ
+  (пост-PATCH) type — інакше зміна CLIENT→SUPPLIER без companyName пройшла б guard за старим типом.
+
+**Регресія-guard (mutation-verified):**
+
+- API service.spec: +4 тести — create SUPPLIER лише firstName→400; create CLIENT firstName→ок;
+  update CLIENT→SUPPLIER без companyName→400; update SUPPLIER з companyName→ок. Мутація
+  (повернути не-type-aware guard) → перший і третій тести падають.
+- CounterpartyForm.test: +3 тести — SUPPLIER+приховане ім'я→валідація падає; SUPPLIER+companyName→ок;
+  CLIENT+firstName→ок (незмінна поведінка).
+
+**Severity HIGH** — тихе порушення бізнес-інваріанта «постачальник має назву компанії» + осиротіле
+недоступне поле; масковано `displayName` (fallback на ім'я), тому непомітно без цього тесту.
+
+**Статус:** [x] виправлено
+
+### Bug #740 (MEDIUM) — DetailPage saveEdit стирав badge-статуси з шапки до перезавантаження [x] виправлено
+
+**Файл:** `apps/web/src/app/(app)/counterparties/[id]/PageClient.tsx` (saveEdit).
+
+**Сценарій:** PATCH-відповідь `update()→toDto(item,true)` НЕ включає `statusLinks` (окремий M:N
+include лише у findOne/findAll), тому `updated.statuses === undefined`. `saveEdit` робив прямий
+`setCp(updated)` → шапка (`<StatusManager assigned={cp.statuses ?? []}>`) миттєво втрачала всі
+призначені статуси-мітки до ручного перезавантаження сторінки. Стан присутній до дедупу (той самий
+`setCp(updated)`), але дедуп зробив форму помітнішою (усі 15 полів + type) — фіксуємо разом.
+
+**Фікс:** `setCp({ ...updated, statuses: updated.statuses ?? cp.statuses })` — PATCH не чіпає
+статуси (окремий endpoint), тож зберігаємо наявні `cp.statuses`.
+
+**Severity MEDIUM** — UX-регресія (зникнення міток), без втрати даних у БД (статуси лишаються).
+
+**Статус:** [x] виправлено
