@@ -50,6 +50,11 @@ export class CreateCounterpartyDto {
 }
 
 export class UpdateCounterpartyDto {
+  @ApiPropertyOptional({ enum: CounterpartyType })
+  @IsOptional()
+  @IsEnum(CounterpartyType)
+  type?: CounterpartyType;
+
   @ApiPropertyOptional() @IsOptional() @IsString() firstName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() lastName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() companyName?: string;

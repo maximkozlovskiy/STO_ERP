@@ -146,6 +146,37 @@ describe('Counterparties — HTTP Contract', () => {
     });
   });
 
+  describe('PATCH /counterparties/:id — type editable', () => {
+    const id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+    it('приймає type у PATCH-тілі → прокидає у service (тип став редагованим)', async () => {
+      serviceMock.update.mockResolvedValueOnce({ id, type: 'SUPPLIER' });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/counterparties/${id}`,
+        payload: { type: 'SUPPLIER', companyName: 'ТОВ Пост' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        'org-1',
+        id,
+        expect.objectContaining({ type: 'SUPPLIER', companyName: 'ТОВ Пост' }),
+        expect.anything(),
+      );
+    });
+
+    it('відхиляє невалідний type з 400', async () => {
+      serviceMock.update.mockClear(); // немає глобального beforeEach — чистимо лічильник від попереднього тесту
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'PATCH',
+        url: `/counterparties/${id}`,
+        payload: { type: 'НЕВІДОМО' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET :id/contracts', () => {
     it('повертає 200 зі списком договорів', async () => {
       serviceMock.findContracts.mockResolvedValueOnce([]);
