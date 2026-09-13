@@ -22,11 +22,17 @@ import {
 
 // «Назва» контрагента обов'язкова, але гнучко: має бути companyName АБО firstName/lastName.
 // Cross-field guard — DTO не може це виразити через @IsOptional на кожному полі окремо.
+// TYPE-AWARE (Bug #739): для SUPPLIER назвою може бути ЛИШЕ companyName (у формі поля
+// Ім'я/Прізвище приховані для постачальника). Раніше сирий API-виклик міг створити SUPPLIER
+// лише з firstName → «безіменний» постачальник, ім'я недоступне у UI. Дзеркалить фронтовий
+// hasCounterpartyName у CounterpartyForm.
 function hasCounterpartyName(v: {
+  type?: CounterpartyType | string | null;
   companyName?: string | null;
   firstName?: string | null;
   lastName?: string | null;
 }): boolean {
+  if (v.type === CounterpartyType.SUPPLIER) return !!v.companyName?.trim();
   return !!(v.companyName?.trim() || v.firstName?.trim() || v.lastName?.trim());
 }
 
@@ -284,6 +290,7 @@ export class CounterpartiesService {
     const existing = await this.prisma.counterparty.findFirst({
       where: { id, orgId, deletedAt: null },
       select: {
+        type: true,
         companyName: true,
         firstName: true,
         lastName: true,
@@ -305,6 +312,9 @@ export class CounterpartiesService {
     // Merged-стан: PATCH частковий → перевіряємо результат після застосування dto
     // (undefined = не чіпаємо, лишається наявне; '' = очищення).
     const merged = {
+      // Bug #739: ефективний (пост-PATCH) type — інакше зміна CLIENT→SUPPLIER без companyName
+      // (лишок firstName) пройшла б guard за старим типом і створила безіменного постачальника.
+      type: dto.type !== undefined ? dto.type : existing.type,
       companyName: dto.companyName !== undefined ? dto.companyName : existing.companyName,
       firstName: dto.firstName !== undefined ? dto.firstName : existing.firstName,
       lastName: dto.lastName !== undefined ? dto.lastName : existing.lastName,
