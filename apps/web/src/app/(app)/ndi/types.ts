@@ -43,15 +43,9 @@ export interface BankAccount {
   bankAddress?: string | null;
 }
 
-export interface CashRegister {
-  id: string;
-  name: string;
-  currencyId: string;
-  currencyCode: string;
-  currencySymbol?: string | null;
-  branchId: string;
-  branchName: string;
-}
+// CashRegister тип видалено разом з НДІ→Каса вкладкою (refactor(dedup)):
+// каси керуються лише на сторінці «Каса» (вкладка «Каси»), яка бере тип
+// `CashRegister` з @/hooks/api/useCash. Тут інтерфейс лишався осиротілим.
 
 export interface BranchInfo {
   id: string;

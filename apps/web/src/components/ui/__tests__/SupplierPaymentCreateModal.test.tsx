@@ -1,8 +1,8 @@
 // Regression-guard для SupplierPaymentCreateModal — джерело коштів (каса/банк).
 //
 // Bug guarded (code-review 2026-08-20, family Bug #592):
-//   Модалка ділить sessionStorage-ключі 'cache:bank-accounts' / 'cache:cash-registers'
-//   з /ndi BankAccountsTab та CashRegistersTab, які зберігають форму { items: [...] }.
+//   Модалка ділить sessionStorage-ключ 'cache:bank-accounts' з /ndi BankAccountsTab
+//   (зберігає форму { items: [...] }) і самосіє 'cache:cash-registers' з /cash-registers.
 //   Раніше модалка читала/писала ГОЛИЙ масив → конфлікт форм: коли модалка читала
 //   об'єкт { items } з таба (truthy) і клала його у setBanks → banks.map crash
 //   (особливо коли offline apiFetch падав і .catch ковтав помилку — first-class
