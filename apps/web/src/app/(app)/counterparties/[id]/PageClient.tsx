@@ -13,8 +13,10 @@ import {
   emptyCounterpartyForm,
   counterpartyToForm,
   formToPatch,
+  validateCounterpartyForm,
   type CounterpartyFormState,
 } from '@/components/ui/CounterpartyForm';
+import { validateContactFields } from '@/lib/validation';
 import { type Warranty } from '@/hooks/api/useWarranties';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -519,13 +521,30 @@ export default function CounterpartyCardPage() {
 
   const saveEdit = async () => {
     if (!cp) return;
+    // Bug #739: type-aware name-guard + контактна валідація (email) ДО PATCH — раніше
+    // inline-edit не мав жодної клієнтської валідації й покладався лише на backend 400.
+    // Тепер форма спільна з модалкою → узгоджуємо валідацію (SUPPLIER вимагає companyName).
+    const nameError = validateCounterpartyForm(editForm);
+    if (nameError) {
+      setLoadError(nameError);
+      return;
+    }
+    const contactError = validateContactFields({ email: editForm.email });
+    if (contactError) {
+      setLoadError(contactError);
+      return;
+    }
+    setLoadError('');
     setSavingEdit(true);
     try {
       const updated = await apiFetch<Counterparty>(`/counterparties/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(formToPatch(editForm)),
       });
-      setCp(updated);
+      // Bug #740: PATCH-відповідь (update→toDto) НЕ включає statusLinks → updated.statuses=undefined.
+      // Прямий setCp(updated) стирав би badge-мітки з шапки до перезавантаження. PATCH не чіпає
+      // статуси (окремий M:N-endpoint) → зберігаємо наявні cp.statuses.
+      setCp({ ...updated, statuses: updated.statuses ?? cp.statuses });
       setEditing(false);
     } catch (e: unknown) {
       setLoadError(e instanceof Error ? e.message : 'Помилка збереження');

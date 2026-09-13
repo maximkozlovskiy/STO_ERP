@@ -6,6 +6,7 @@ import {
   counterpartyToForm,
   formToPatch,
   validateCounterpartyForm,
+  hasCounterpartyName,
 } from '../CounterpartyForm';
 import type { Counterparty } from '@/hooks/api/useCounterparties';
 
@@ -79,6 +80,31 @@ describe('CounterpartyForm helpers', () => {
     expect(validateCounterpartyForm(empty)).toMatch(/назву компанії або/);
     expect(validateCounterpartyForm({ ...empty, firstName: 'Іван' })).toBeNull();
     expect(validateCounterpartyForm({ ...empty, companyName: 'ТОВ' })).toBeNull();
+  });
+
+  // Bug #739: SUPPLIER має ПРИХОВАНІ поля Ім'я/Прізвище → назвою може бути ЛИШЕ companyName.
+  it('Bug #739: SUPPLIER з приховним firstName (без companyName) → валідація ПАДАЄ', () => {
+    // лишок firstName після перемикання CLIENT→SUPPLIER — поле у формі не видно
+    const supplier = emptyCounterpartyForm('SUPPLIER');
+    supplier.firstName = 'Іван';
+    supplier.lastName = 'Коваль';
+    // хоча ім'я є, для SUPPLIER воно недоступне у UI → guard має вимагати companyName
+    expect(hasCounterpartyName(supplier)).toBe(false);
+    expect(validateCounterpartyForm(supplier)).toMatch(/назву компанії постачальника/);
+  });
+
+  it('Bug #739: SUPPLIER з companyName → валідація ПРОХОДИТЬ', () => {
+    const supplier = emptyCounterpartyForm('SUPPLIER');
+    supplier.companyName = 'ТОВ Авто';
+    expect(hasCounterpartyName(supplier)).toBe(true);
+    expect(validateCounterpartyForm(supplier)).toBeNull();
+  });
+
+  it('Bug #739: CLIENT з firstName (без companyName) → валідація ПРОХОДИТЬ (незмінна поведінка)', () => {
+    const client = emptyCounterpartyForm('CLIENT');
+    client.firstName = 'Іван';
+    expect(hasCounterpartyName(client)).toBe(true);
+    expect(validateCounterpartyForm(client)).toBeNull();
   });
 });
 

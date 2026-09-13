@@ -29,6 +29,8 @@ import {
   emptyCounterpartyForm,
   counterpartyToForm,
   formToPatch,
+  hasCounterpartyName,
+  validateCounterpartyForm,
   type CounterpartyFormState,
 } from '@/components/ui/CounterpartyForm';
 
@@ -96,15 +98,9 @@ function defaultContractType(cpType: string): string {
   return types.length === 1 ? types[0] : '';
 }
 
-// «Назва» контрагента обов'язкова, але гнучко: має бути Назва компанії АБО Ім'я/Прізвище.
-// Дзеркалить cross-field guard на беку (counterparties.service).
-function hasCounterpartyName(f: {
-  companyName: string;
-  firstName: string;
-  lastName: string;
-}): boolean {
-  return !!(f.companyName.trim() || f.firstName.trim() || f.lastName.trim());
-}
+// «Назва» контрагента: TYPE-AWARE guard винесено у CounterpartyForm (єдине джерело правди,
+// Bug #739) — SUPPLIER вимагає companyName (Ім'я/Прізвище приховані), CLIENT/BOTH — компанія
+// АБО ім'я. Дзеркалить cross-field guard на беку (counterparties.service).
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -388,8 +384,9 @@ export function CounterpartyEditModal({
 
   const create = async () => {
     if (savingRef.current) return;
-    if (!hasCounterpartyName(form)) {
-      setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
+    const nameError = validateCounterpartyForm(form);
+    if (nameError) {
+      setError(nameError);
       return;
     }
     // T11: клієнтська Zod-валідація email (телефон уже нормалізує PhoneInput-маска, тож не чіпаємо).
@@ -420,8 +417,9 @@ export function CounterpartyEditModal({
   const update = async () => {
     if (savingRef.current) return;
     if (!counterparty) return;
-    if (!hasCounterpartyName(form)) {
-      setError('Вкажіть назву компанії або ім’я/прізвище контрагента');
+    const nameError = validateCounterpartyForm(form);
+    if (nameError) {
+      setError(nameError);
       return;
     }
     // T11: клієнтська Zod-валідація контактних полів.

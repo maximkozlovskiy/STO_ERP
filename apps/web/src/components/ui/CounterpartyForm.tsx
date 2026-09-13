@@ -109,10 +109,31 @@ export function formToPatch(f: CounterpartyFormState): Record<string, unknown> {
   };
 }
 
-/** Валідація: має бути назва компанії АБО ім'я/прізвище (дзеркалить backend hasCounterpartyName). */
+/**
+ * Чи має форма коректне ім'я контрагента — TYPE-AWARE (Bug #739).
+ * SUPPLIER: поля Ім'я/Прізвище ПРИХОВАНІ у формі → назвою може бути ЛИШЕ companyName.
+ * Раніше guard рахував приховані firstName/lastName (напр. лишок після перемикання
+ * CLIENT→SUPPLIER) як валідну назву → SUPPLIER зберігався без companyName, при цьому
+ * ім'я недоступне для перегляду/редагування у формі. CLIENT/BOTH: companyName АБО ім'я.
+ * Дзеркалить backend cross-field guard (counterparties.service.hasCounterpartyName).
+ */
+export function hasCounterpartyName(f: {
+  type: CpType | string;
+  companyName: string;
+  firstName: string;
+  lastName: string;
+}): boolean {
+  if (f.type === 'SUPPLIER') return f.companyName.trim() !== '';
+  return f.companyName.trim() !== '' || `${f.firstName}${f.lastName}`.trim() !== '';
+}
+
+/** Валідація: має бути назва компанії АБО ім'я/прізвище (SUPPLIER — лише компанія). */
 export function validateCounterpartyForm(f: CounterpartyFormState): string | null {
-  const hasName = f.companyName.trim() !== '' || `${f.firstName}${f.lastName}`.trim() !== '';
-  if (!hasName) return 'Вкажіть назву компанії або ім’я/прізвище контрагента';
+  if (!hasCounterpartyName(f)) {
+    return f.type === 'SUPPLIER'
+      ? 'Вкажіть назву компанії постачальника'
+      : 'Вкажіть назву компанії або ім’я/прізвище контрагента';
+  }
   return null;
 }
 
