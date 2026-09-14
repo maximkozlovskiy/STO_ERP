@@ -10,9 +10,18 @@
 
 ```
 Дата:       2026-09-14
-Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
+Фаза:       Активна розробка — тех-борг «по черзі» (TD1 ✅ закрито; далі TD2, TD3)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       980fa2cd fix(sync): повний проектний sync-аудит API↔Frontend — 2 реальні розбіжності
+Тести:      API-suite 2306 зелені (145 файлів)
+HEAD:       9cf0833b refactor(td1): currencyId NOT NULL для документів + сід базової валюти на setup
+TD1 (2026-09-14, закрито): currencyId NOT NULL на 4 документних таблицях
+(WorkOrder/PurchaseOrder/Invoice/SupplierPayment). Корінь був: setup нової org НЕ сідив базову
+валюту → getBaseCurrency().id=null. Fix: setup сідить UAH(isSystem) у bootstrap-tx;
+ExchangeRatesService.requireBaseCurrencyId(orgId)→non-null або 400 (WO/Invoice/PO create);
+SupplierPayment create guard «рахунок без валюти»→400; Invoice/PO update не занулюють currencyId.
+Payment/SettlementTransaction currencyId ЛИШАЮТЬСЯ nullable СВІДОМО (оплата без source /
+UAH-caller settlement → NULL≡base). Міграція 20260914190000 (backfill NULL→base перед SET NOT NULL).
+Попередній HEAD: 980fa2cd fix(sync): повний проектний sync-аудит API↔Frontend — 2 реальні розбіжності
 Latest sync: 2026-09-14 (sto-sync-agent, HEAD 980fa2cd) — Повний проектний аудит API↔Frontend
 (усі модулі: work-orders/invoices/payments/purchase-orders/supplier-payments/supplier-returns/
 counterparties/goods/works/inventory/stock-documents/warehouses/cash/settlements/exchange-rates/

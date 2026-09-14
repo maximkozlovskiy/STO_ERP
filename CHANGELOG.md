@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-09-14 — Тех-борг TD1: currencyId NOT NULL
+
+### 9cf0833b refactor(td1): currencyId NOT NULL для документів + сід базової валюти на setup
+
+TD1 з backlog. 6 money-колонок currencyId були nullable «for backfill BC» → забута валюта тихо
+ставала UAH. Корінь: setup нової org НЕ сідив базову валюту → `getBaseCurrency().id=null`.
+
+- **setup.service**: сідить базову валюту (UAH, isSystem) у bootstrap-tx → getBaseCurrency завжди резолвиться.
+- **ExchangeRatesService.requireBaseCurrencyId(orgId)**: non-null base id або 400 (замість тихого null);
+  WO/Invoice/PO create використовують його замість `getBaseCurrency().id`.
+- **schema**: WorkOrder/PurchaseOrder/Invoice/SupplierPayment.currencyId → NOT NULL
+  (міграція 20260914190000 з захисним backfill NULL→base перед SET NOT NULL). SupplierPayment create
+  += guard «рахунок-джерело без валюти»→400. Invoice/PO update більше не занулюють currencyId.
+- **Payment/SettlementTransaction currencyId ЛИШАЮТЬСЯ nullable СВІДОМО** — оплата без source-рахунку /
+  UAH-caller settlement → NULL≡base. Не чіпаємо.
+- Специ (9 файлів) += requireBaseCurrencyId мок; setup += currency.create мок; integration WO += currencyId.
+
+Дані: 0 NULL currencyId у 6 таблицях. tsc api 0; повний API-suite 2306 зелені. Міграцію застосовано.
+
+---
+
 ## 2026-09-14 — Sync-фікс: Мультивалюта Фаза 4 (FX-мітка у PDF акту звірки)
 
 ### 82b6854e fix(sync): FX_GAIN/FX_LOSS raw-enum leak у PDF акті звірки
