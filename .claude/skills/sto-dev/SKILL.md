@@ -193,6 +193,20 @@ await this.prisma.settlementAccount.update({ where: { id }, data: { balance: { d
 // ✅
 await this.settlementsService.createTransaction(orgId, { counterpartyId, type: 'CHARGE', amount, documentType: 'WorkOrder', documentId: wo.id });
 
+// 4b. Мультивалюта — amountBase у базовій валюті org ТІЛЬКИ через ExchangeRatesService.resolveBaseConversion
+//     Грошовий агрегат у не-базовій валюті (CashOperation, Payment, ...) пише пару (amountBase, rateUsed).
+//     Джерело курсу — єдина точка resolveBaseConversion(orgId, currencyId, date, amount):
+//       • валюта == base (OrganisationSettings.currency за КОДОМ) → { rateUsed: 1, amountBase: amount } (БЕЗ читання курсу)
+//       • інакше getRateAsOf (найближчий курс date ≤ операції, НЕ майбутній) → convertToBase(amount, rate, coefficient)
+//       • курсу на дату немає → 400 (НІКОЛИ тихо rate=1 — спотворить base-облік)
+//     convertToBase = roundMoney(amount * rate / safeCoeff(coefficient)); rate НБУ = base за (1×coefficient) од.
+// ❌ amountBase = amount (без конвертації) для валютної операції       // спотворює звітність у базовій
+// ❌ курсу немає → fallback rate=1                                     // тихе спотворення base
+// ✅ const conv = await this.exchangeRates.resolveBaseConversion(orgId, register.currencyId, new Date(), amount);
+//    await tx.cashOperation.create({ data: { ...amount, amountBase: conv.amountBase, rateUsed: conv.rateUsed } });
+//    // Баланс/overdraft каси — у ВАЛЮТІ каси (amount), НЕ base: каса моно-валютна, валюти не змішуємо.
+//    // Помилки про суми каси — БЕЗ хардкоду ₴ (каса може бути USD/EUR); символ ₴ лише де base гарантовано UAH.
+
 // 5. FSM — тільки через transition map
 // ❌
 await this.prisma.workOrder.update({ where: { id }, data: { status: newStatus } });

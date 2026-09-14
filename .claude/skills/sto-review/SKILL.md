@@ -443,9 +443,10 @@ grep -rnE "consumed\[0\]\.batchId|allocations\[0\]\.[a-zA-Z]+Id|results?\[0\]\.[
 - [ ] FSM: `transition()` читає з `WORK_ORDER_TRANSITIONS` map
 - [ ] Stock: тільки через `InventoryService.createMovement()`
 - [ ] Settlements: тільки через `SettlementsService.createTransaction()`
+- [ ] **Мультивалюта: `amountBase`/`rateUsed` ТІЛЬКИ через `ExchangeRatesService.resolveBaseConversion(orgId, currencyId, date, amount)`.** Грошовий агрегат у не-базовій валюті (CashOperation, Payment…) пише пару `(amountBase, rateUsed)`. Base-валюта (`OrganisationSettings.currency` за КОДОМ) → `{rateUsed:1, amountBase:amount}` БЕЗ читання курсу; інша без курсу на дату → **400** (НІКОЛИ тихо `rate=1` — спотворить base-облік); `getRateAsOf` бере найближчий `date ≤ операції` (НЕ майбутній). `convertToBase = roundMoney(amount*rate/safeCoeff(coefficient))`. ❌ `amountBase=amount` для валютної операції; ❌ fallback `rate=1` коли курсу немає. Баланс/overdraft каси лишаються у ВАЛЮТІ каси (`amount`, не base — каса моно-валютна). Помилки про суми каси — БЕЗ хардкоду `₴` (каса може бути USD/EUR); символ `₴` лише де base гарантовано UAH
 - [ ] `IN_PROGRESS` → `RESERVATION`; `COMPLETED` → `WRITEOFF+RESERVATION_RELEASE+CHARGE` у `$transaction`
 - [ ] `CANCELLED` зі статусу з резервом → `RESERVATION_RELEASE`
-- [ ] Soft delete скрізь; **без deletedAt**: `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `WorkOrderLineEmployee`, `Comment`, `EmployeeBranch`
+- [ ] Soft delete скрізь; **без deletedAt** (append-only): `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `CashOperation`, `WorkOrderLineEmployee`, `Comment`, `EmployeeBranch`
 - [ ] Кожен `$transaction(async cb)` → `{ timeout: N }` (5s–15s)
 - [ ] `SettlementsService.createTransaction` → internal `amount > 0 && Number.isFinite(amount)` guard
 

@@ -112,7 +112,8 @@ export class CashService {
         const balance = await this.getBalance(orgId, register.id, client);
         if (balance - amount < -0.001) {
           throw new BadRequestException(
-            `Недостатньо готівки в касі: доступно ${roundMoney(balance)} ₴, потрібно ${amount} ₴`,
+            // Суми — у валюті каси (каса моно-валютна), тож без хардкоду ₴ (каса може бути USD/EUR).
+            `Недостатньо готівки в касі: доступно ${roundMoney(balance)}, потрібно ${amount}`,
           );
         }
       }

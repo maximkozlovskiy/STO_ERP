@@ -103,7 +103,7 @@ export class ExchangeRatesService {
     ]);
     if (!currency) throw new NotFoundException('Валюту не знайдено');
     const baseCode = settings?.currency ?? 'UAH';
-    // Базова валоюта — без конвертації (rate=1). Порівнюємо за кодом (base зберігається кодом).
+    // Базова валюта — без конвертації (rate=1). Порівнюємо за кодом (base зберігається кодом).
     if (currency.code === baseCode) {
       return { rateUsed: 1, amountBase: amount };
     }
