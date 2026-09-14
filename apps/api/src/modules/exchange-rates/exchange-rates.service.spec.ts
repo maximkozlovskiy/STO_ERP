@@ -134,6 +134,17 @@ describe('ExchangeRatesService', () => {
       prisma.exchangeRate.findFirst.mockResolvedValueOnce(null);
       expect(await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2020-01-01'))).toBeNull();
     });
+
+    // Bug: інстант операції у вікні 00:00–03:00 Kyiv (EEST) припадав на попередню UTC-добу →
+    // asOf.date брав минулий день → хибний rate / спурйозна 400. Курси НБУ зберігаються під
+    // Kyiv-датою, тож lookup теж має бути під Kyiv-датою. 2026-09-14T22:30Z = 01:30 Kyiv 15-го.
+    it('asOf нормалізується до Kyiv-доби, не UTC (нічний edge)', async () => {
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce({ rate: 41.5, coefficient: 1 });
+      await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2026-09-14T22:30:00.000Z'));
+      const lte = prisma.exchangeRate.findFirst.mock.calls[0][0].where.date.lte as Date;
+      // Kyiv-дата інстанту = 2026-09-15 (а не 09-14 як дав би UTC-зріз).
+      expect(lte.toISOString().slice(0, 10)).toBe('2026-09-15');
+    });
   });
 
   describe('resolveBaseConversion', () => {

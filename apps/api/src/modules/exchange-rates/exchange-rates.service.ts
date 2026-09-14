@@ -7,6 +7,7 @@ import {
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { convertToBase } from '../../common/utils/currency';
+import { kyivYmd } from '../../common/utils/kyiv-date';
 import {
   CreateExchangeRateDto,
   ExchangeRateResponseDto,
@@ -69,7 +70,10 @@ export class ExchangeRatesService {
     currencyId: string,
     date: Date,
   ): Promise<{ rate: number; coefficient: number } | null> {
-    const asOf = new Date(`${date.toISOString().slice(0, 10)}T00:00:00.000Z`);
+    // Kyiv-доба, не UTC: курси НБУ зберігаються під Kyiv-датою (nbu-fetch), а `date` тут — інстант
+    // операції (new Date()). UTC-зріз давав би минулий день у вікні 00:00–03:00 Kyiv (EEST) →
+    // хибний rate або спурйозна 400 «немає курсу». kyivYmd вирівнює lookup із записом (DST-aware).
+    const asOf = new Date(`${kyivYmd(date)}T00:00:00.000Z`);
     const row = await this.prisma.exchangeRate.findFirst({
       where: { orgId, currencyId, deletedAt: null, date: { lte: asOf } },
       orderBy: { date: 'desc' },
@@ -110,7 +114,7 @@ export class ExchangeRatesService {
     const asOf = await this.getRateAsOf(orgId, currencyId, date);
     if (!asOf) {
       throw new BadRequestException(
-        `Немає курсу валюти ${currency.code} на ${date.toISOString().slice(0, 10)} — додайте курс у НДІ → Курси валют`,
+        `Немає курсу валюти ${currency.code} на ${kyivYmd(date)} — додайте курс у НДІ → Курси валют`,
       );
     }
     return {

@@ -3,6 +3,14 @@ const KYIV_YMD = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 export const kyivToday = (): Date => new Date(KYIV_YMD.format(new Date()));
 
 /**
+ * Kyiv-локальна календарна дата інстанту у форматі 'YYYY-MM-DD' (DST-aware через Intl).
+ * Для date-only облікових прив'язок (курс валюти на дату операції тощо), де дата має відповідати
+ * Kyiv-добі, а не UTC: інстант 2026-09-14T22:30Z (01:30 Kyiv, EEST) → '2026-09-15', а НЕ '2026-09-14'.
+ * Курси НБУ зберігаються під Kyiv-датою (nbu-fetch), тож lookup теж має бути під Kyiv-датою.
+ */
+export const kyivYmd = (d: Date): string => KYIV_YMD.format(d);
+
+/**
  * Додає `days` календарних днів до дати `base` і повертає нову Date (date-only, Kyiv).
  * Для `@db.Date` колонок TZ-нюансів немає — беремо Kyiv-локальну опівнічну дату (KYIV_YMD)
  * і додаємо дні через UTC-арифметику, щоб уникнути DST-стрибків.
