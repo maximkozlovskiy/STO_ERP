@@ -77,16 +77,16 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 
 ## API Endpoints (`/api/purchase-orders`)
 
-| Метод  | URL                                      | Дія                                                                                                                                                                  |
-| ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/purchase-orders`                   | Список (фільтри: status, supplierId, dateFrom, dateTo; sort: documentDate/createdAt/totalAmount/paymentDate; DTO += `outstanding` = totalAmount − Σ CONFIRMED оплат) |
-| GET    | `/api/purchase-orders/:id`               | Деталь з lines (без `outstanding` — лише у списку)                                                                                                                   |
-| POST   | `/api/purchase-orders`                   | Створити (lines у body)                                                                                                                                              |
-| PATCH  | `/api/purchase-orders/:id`               | Оновити (тільки DRAFT)                                                                                                                                               |
-| DELETE | `/api/purchase-orders/:id`               | Soft-delete (тільки DRAFT/CANCELLED)                                                                                                                                 |
-| POST   | `/api/purchase-orders/:id/transition`    | FSM перехід (DRAFT → ORDERED)                                                                                                                                        |
-| POST   | `/api/purchase-orders/:id/receive`       | Приймання товару → StockMovement(RECEIPT) + CHARGE                                                                                                                   |
-| POST   | `/api/purchase-orders/:id/apply-pricing` | Застосувати ціни закупки до Good.purchasePrice                                                                                                                       |
+| Метод  | URL                                      | Дія                                                                                                                                                                    |
+| ------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/purchase-orders`                   | Список (фільтри: status, supplierId, dateFrom, dateTo; sort: documentDate/createdAt/totalAmount/paymentDate; DTO += `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt`) |
+| GET    | `/api/purchase-orders/:id`               | Деталь з lines (той самий `toDto()` → `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt` присутні й тут, персистентні з `PurchaseOrder.paidAmount`, Фаза 5)             |
+| POST   | `/api/purchase-orders`                   | Створити (lines у body)                                                                                                                                                |
+| PATCH  | `/api/purchase-orders/:id`               | Оновити (тільки DRAFT)                                                                                                                                                 |
+| DELETE | `/api/purchase-orders/:id`               | Soft-delete (тільки DRAFT/CANCELLED)                                                                                                                                   |
+| POST   | `/api/purchase-orders/:id/transition`    | FSM перехід (DRAFT → ORDERED)                                                                                                                                          |
+| POST   | `/api/purchase-orders/:id/receive`       | Приймання товару → StockMovement(RECEIPT) + CHARGE                                                                                                                     |
+| POST   | `/api/purchase-orders/:id/apply-pricing` | Застосувати ціни закупки до Good.purchasePrice                                                                                                                         |
 
 ---
 

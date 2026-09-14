@@ -58,7 +58,7 @@ export interface PurchaseOrder {
   /** Сирий текст статусу служби доставки (тултип). */
   deliveryStatusRaw?: string | null;
   deliveryStatusUpdatedAt?: string | null;
-  /** Залишок боргу по PO (лише у списку findAll). */
+  /** Залишок боргу по PO (totalAmount − paidAmount) — присутній і у списку, і в деталі (Фаза 5). */
   outstanding?: number;
   pricedAt?: string | null;
   createdAt: string;
