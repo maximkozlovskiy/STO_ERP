@@ -295,12 +295,16 @@ export class PaymentsService {
             const invAmount = Number(inv.amount);
             const prevPaid = Number(inv.paidAmount);
             const remaining = invAmount - prevPaid;
-            if (dto.amount > remaining + 1e-9) {
+            // Мультивалюта (Фаза 2): invoice.amount/paidAmount у БАЗОВІЙ валюті (Invoice не має
+            // currencyId). Оплата може бути в іновалюті → порівнюємо/накопичуємо base-суму
+            // (conv.amountBase), НЕ dto.amount, інакше 100 USD зрівнялось би зі 100 UAH залишку.
+            if (conv.amountBase > remaining + 1e-9) {
+              const baseCode = (await this.exchangeRates.getBaseCurrency(orgId)).code;
               throw new BadRequestException(
-                `Сума перевищує залишок за рахунком (${remaining.toFixed(2)} грн)`,
+                `Сума перевищує залишок за рахунком (${remaining.toFixed(2)} ${baseCode})`,
               );
             }
-            const newPaid = prevPaid + dto.amount;
+            const newPaid = prevPaid + conv.amountBase;
             const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
             // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
             const updated = await tx.invoice.updateMany({
@@ -358,7 +362,9 @@ export class PaymentsService {
         if (dto.workOrderId) {
           await tx.workOrder.update({
             where: { id: dto.workOrderId, orgId },
-            data: { paidAmount: { increment: dto.amount } },
+            // Мультивалюта (Фаза 2): WorkOrder.paidAmount у БАЗОВІЙ валюті (WO не має currencyId) →
+            // інкремент base-сумою (conv.amountBase), не dto.amount (може бути USD/EUR).
+            data: { paidAmount: { increment: conv.amountBase } },
           });
         }
 

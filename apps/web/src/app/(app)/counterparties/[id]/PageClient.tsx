@@ -632,7 +632,7 @@ export default function CounterpartyCardPage() {
                 : 'text-muted-foreground',
           )}
         >
-          {fmtMoney(cp.balance)} ₴
+          {fmtMoney(cp.balance)} {baseSymbol}
           <p className="text-xs font-normal text-muted-foreground text-right">баланс</p>
         </div>
       </div>
@@ -1247,7 +1247,7 @@ export default function CounterpartyCardPage() {
                   settlementBalanceToneClass(settlementBalanceTone(cp.balance, cp.type)),
                 )}
               >
-                {fmtMoney(cp.balance)} ₴
+                {fmtMoney(cp.balance)} {baseSymbol}
               </p>
             </div>
           </div>
@@ -1272,7 +1272,9 @@ export default function CounterpartyCardPage() {
                       // SUPPLIER_REFUND; −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE.
                       const sign = BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '−';
                       const isBase = !t.currencyCode || t.currencyCode === orgCurrency;
-                      const sym = isBase ? '₴' : t.currencyCode!;
+                      // Bug #742: символ базової валюти з useBaseCurrency (не хардкод '₴' — база
+                      // орг може бути USD/EUR). Дзеркалить payments/page.tsx та SettlementsTabContent.
+                      const sym = isBase ? baseSymbol : t.currencyCode!;
                       return (
                         <>
                           <span
@@ -1340,7 +1342,7 @@ export default function CounterpartyCardPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-foreground">
-                      {fmtMoney(wo.totalAmount)} ₴
+                      {fmtMoney(wo.totalAmount)} {baseSymbol}
                     </p>
                     <span className="text-muted-foreground text-sm">→</span>
                   </div>
