@@ -21,6 +21,11 @@ export interface SupplierPayment {
   purchaseOrderId: string | null;
   purchaseOrderNumber: string | null;
   amount: number;
+  // Мультивалюта (Фаза 3): валюта оплати + base-сума + курс. null → історичні/base.
+  currencyId?: string | null;
+  currencyCode?: string | null;
+  totalAmountBase?: number | null;
+  rateUsed?: number | null;
   method: string;
   notes: string | null;
   documentDate?: string | null;

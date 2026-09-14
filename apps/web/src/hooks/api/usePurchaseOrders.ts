@@ -37,6 +37,11 @@ export interface PurchaseOrder {
   contractNumber?: string | null;
   totalAmount: number;
   totalVat: number;
+  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
+  currencyId?: string | null;
+  currencyCode?: string | null;
+  totalAmountBase?: number | null;
+  rateUsed?: number | null;
   notes: string | null;
   linesCount: number;
   lines: POLine[];

@@ -12,6 +12,11 @@ export interface Invoice {
   totalWithoutVat?: number | null;
   totalVat?: number | null;
   totalWithVat?: number | null;
+  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
+  currencyId?: string | null;
+  currencyCode?: string | null;
+  totalAmountBase?: number | null;
+  rateUsed?: number | null;
   invoiceType?: string | null;
   counterpartyId: string;
   counterpartyName?: string;

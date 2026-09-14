@@ -15,6 +15,11 @@ export interface WorkOrder {
   totalAmount: number;
   totalVat: number;
   paidAmount: number;
+  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
+  currencyId?: string | null;
+  currencyCode?: string | null;
+  totalAmountBase?: number | null;
+  rateUsed?: number | null;
   counterpartyId: string;
   counterpartyName?: string;
   contractId?: string | null;
