@@ -12,7 +12,7 @@
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       d1f1ecbe fix(tester): Bug #745 — realized FX at manual invoice→PAID (Мультивалюта Фаза 4)
+HEAD:       f89dd324 fix(sync): виправити застарілу документацію outstanding для PO (Мультивалюта Фаза 5)
 Latest tester: 2026-09-14 (sto-tester-agent, HEAD d1f1ecbe) — Мультивалюта Фаза 4 (realized FX)
 фінальний QA. Ядерний інваріант обнулення base-залишку підтверджено (CHARGE+PAYMENT+FX=0 обидва
 напрями, property 500×); WO-linked/idempotency/concurrency(CAS)/EPS/dust/base-currency/акт звірки
@@ -56,6 +56,18 @@ findByWorkOrder (+currency.code/totalAmountBase/rateUsed) + оновлено ser
 tsc api+web 0; invoices service 44 + contract 27 = зелені. (Suggestion не-фіксовано: нові
 currencyId FK без @@index — свідомо, дзеркалить Payment/SettlementTransaction Фази2, FK join лише
 по PK валюти, не фільтрується; фікс потребував би зайвої міграції.)
+Latest sync: 2026-09-14 (sto-sync-agent, HEAD f89dd324) — Мультивалюта Фаза 5 (payables FX,
+коміти 386a568a..00c70b14) targeted sync audit. CLEAN: PurchaseOrderResponseDto ↔ frontend
+PurchaseOrder інтерфейс 1:1 на paidAmount/outstanding/isFullyPaid/paidAt (назви+типи, null-safe
+обидва боки); усі PO read paths (findAll/findOne/create/update/transition/receive) ідуть через
+той самий toDto() → жоден консумер не зламаний прибраним findAll groupBy; panel-schema
+paidAmount/outstanding/paidAt мають коректний type money/date; FX_GAIN/FX_LOSS постачальника
+(documentType=PurchaseOrder) автоматично рендеряться на settlements через generic
+SETTLEMENT_TX_TYPE_LABELS/txColor (тип-залежна логіка з Фази 4, не document-type-залежна) — без
+додаткового UI. **1 фікс (LOW, doc-drift):** docs/objects/purchase-order.md + коментар у
+usePurchaseOrders.ts стверджували що outstanding є лише у списку (стара groupBy-реалізація) —
+після Фази 5 персистентний PO.paidAmount робить toDto() однаковим для списку і деталі, outstanding
+присутній всюди. Виправлено обидва місця. tsc api+web 0.
 Latest sync: 2026-09-14 (sto-sync-agent, HEAD 82b6854e) — Мультивалюта Фаза 4 (курсові різниці,
 коміти 4f6866a5..1982711b) targeted sync audit. CLEAN: schema enum FX_GAIN/FX_LOSS ↔ backend
 BALANCE_SIGN ↔ shared SETTLEMENT_TX_TYPE_LABELS/SETTLEMENT_BALANCE_SIGN ↔ report-registry масив —
