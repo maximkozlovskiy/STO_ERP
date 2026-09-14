@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { safeCoeff, roundMoney } from '../../common/utils/math';
+import { roundMoney } from '../../common/utils/math';
 import { calcVatOnBase } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -43,6 +43,11 @@ import {
   UpdateWorkOrderPartDto,
   WorkOrderPartResponseDto,
 } from './work-orders.dto';
+import {
+  mapWorkOrderToDto,
+  mapWorkOrderLineToDto,
+  mapWorkOrderPartToDto,
+} from './work-order-dto.mapper';
 
 // Shared select for GoodUoM lookups in addPart / updatePart.
 // Centralised so the type (derived via Prisma.GoodUoMGetPayload) and the select
@@ -69,13 +74,6 @@ const PART_GOOD_INCLUDE = {
     brand: { select: { name: true } },
   },
 } as const satisfies Prisma.GoodDefaultArgs;
-
-// §2.1 Auth: costPrice (батч-собівартість) — фінансово чутливе поле.
-// MECHANIC/RECEPTIONIST/CLIENT не повинні бачити закупівельну ціну запчастин у WO.
-// Дозволено лише ролям що бачать вартість у каталозі/прайс-історії (goods.controller.ts:242).
-const COST_PRICE_VISIBLE_ROLES = new Set<string>(['OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT']);
-const canSeeCostPrice = (role?: string | null): boolean =>
-  !!role && COST_PRICE_VISIBLE_ROLES.has(role);
 
 // sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
 // re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/PO_SORT_FIELDS/SD_SORT_FIELDS.
@@ -1336,203 +1334,21 @@ export class WorkOrdersService {
     });
   }
 
-  private toDto(wo: {
-    id: string;
-    orgId: string;
-    number: string;
-    status: WorkOrderStatus;
-    priority: WorkOrderPriority;
-    repairCategory: RepairCategory | null;
-    branchId: string;
-    vehicleId: string;
-    counterpartyId: string;
-    contractId?: string | null;
-    liftId?: string | null;
-    description: string | null;
-    inMileage: number | null;
-    outMileage: number | null;
-    plannedAt: Date | null;
-    dueDate: Date | null;
-    plannedHours?: number | null;
-    actualHours?: number | null;
-    completedAt: Date | null;
-    clientApproval: boolean;
-    totalLabor: Prisma.Decimal;
-    totalActualLabor?: Prisma.Decimal | null;
-    totalParts: Prisma.Decimal;
-    totalAmount: Prisma.Decimal;
-    totalVat?: Prisma.Decimal | null;
-    paidAmount: Prisma.Decimal | null;
-    currencyId?: string | null;
-    totalAmountBase?: Prisma.Decimal | null;
-    rateUsed?: Prisma.Decimal | null;
-    currency?: { code: string } | null;
-    documentDate?: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    deletedAt?: Date | null;
-    branch?: { name: string } | null;
-    vehicle?: { make: string; model: string; licensePlate: string | null } | null;
-    counterparty?: {
-      firstName: string | null;
-      lastName: string | null;
-      companyName: string | null;
-    } | null;
-    contract?: { id: string; number: string } | null;
-    lift?: { name: string } | null;
-    calendarSlots?: { startAt: Date; endAt: Date; lift: { name: string } | null }[];
-    _count?: { warranties?: number } | null;
-  }): WorkOrderResponseDto {
-    const cp = wo.counterparty;
-    const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || undefined;
-    return {
-      id: wo.id,
-      orgId: wo.orgId,
-      number: wo.number,
-      status: wo.status,
-      priority: wo.priority,
-      repairCategory: wo.repairCategory ?? null,
-      branchId: wo.branchId,
-      branchName: wo.branch?.name,
-      vehicleId: wo.vehicleId,
-      vehicleSummary: wo.vehicle
-        ? `${wo.vehicle.make} ${wo.vehicle.model}${wo.vehicle.licensePlate ? ` (${wo.vehicle.licensePlate})` : ''}`
-        : undefined,
-      counterpartyId: wo.counterpartyId,
-      counterpartyName: cpName,
-      contractId: wo.contractId ?? null,
-      contractNumber: wo.contract?.number ?? null,
-      liftId: wo.liftId ?? null,
-      liftName: wo.lift?.name ?? null,
-      description: wo.description ?? null,
-      inMileage: wo.inMileage ?? null,
-      outMileage: wo.outMileage ?? null,
-      plannedAt: wo.plannedAt instanceof Date ? wo.plannedAt.toISOString() : (wo.plannedAt ?? null),
-      dueDate: wo.dueDate instanceof Date ? wo.dueDate.toISOString() : (wo.dueDate ?? null),
-      plannedHours: wo.plannedHours ?? null,
-      actualHours: wo.actualHours ?? null,
-      completedAt:
-        wo.completedAt instanceof Date ? wo.completedAt.toISOString() : (wo.completedAt ?? null),
-      clientApproval: wo.clientApproval,
-      totalLabor: Number(wo.totalLabor),
-      totalActualLabor: Number(wo.totalActualLabor ?? 0),
-      totalParts: Number(wo.totalParts),
-      totalAmount: Number(wo.totalAmount),
-      totalVat: Number(wo.totalVat ?? 0),
-      paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
-      currencyId: wo.currencyId ?? null,
-      currencyCode: wo.currency?.code ?? null,
-      totalAmountBase: wo.totalAmountBase != null ? Number(wo.totalAmountBase) : null,
-      rateUsed: wo.rateUsed != null ? Number(wo.rateUsed) : null,
-      documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
-      createdAt: wo.createdAt instanceof Date ? wo.createdAt.toISOString() : wo.createdAt,
-      updatedAt: wo.updatedAt instanceof Date ? wo.updatedAt.toISOString() : wo.updatedAt,
-      hasActiveWarranty: (wo._count?.warranties ?? 0) > 0,
-      slotStartAt:
-        wo.calendarSlots?.[0]?.startAt instanceof Date
-          ? wo.calendarSlots[0].startAt.toISOString()
-          : (wo.calendarSlots?.[0]?.startAt ?? null),
-      slotEndAt:
-        wo.calendarSlots?.[0]?.endAt instanceof Date
-          ? wo.calendarSlots[0].endAt.toISOString()
-          : (wo.calendarSlots?.[0]?.endAt ?? null),
-      slotLiftName: wo.calendarSlots?.[0]?.lift?.name ?? null,
-      deletedAt: wo.deletedAt instanceof Date ? wo.deletedAt.toISOString() : (wo.deletedAt ?? null),
-    };
+  // DTO-мапери виділено у ./work-order-dto.mapper (TD3). Тонкі обгортки зберігають наявні
+  // виклики this.toDto/this.toLineDto/this.toPartDto по всьому сервісу без змін.
+  private toDto(wo: Parameters<typeof mapWorkOrderToDto>[0]): WorkOrderResponseDto {
+    return mapWorkOrderToDto(wo);
   }
 
-  private toLineDto(line: {
-    id: string;
-    workOrderId: string;
-    workId: string;
-    employeeId: string;
-    liftId: string | null;
-    normoHours: number;
-    actualHours: number | null;
-    price: Prisma.Decimal;
-    amount: Prisma.Decimal;
-    notes: string | null;
-    createdAt: Date;
-    work?: { name: string } | null;
-    employee?: { firstName: string; lastName: string } | null;
-  }): WorkOrderLineResponseDto {
-    return {
-      id: line.id,
-      workOrderId: line.workOrderId,
-      workId: line.workId,
-      workName: line.work?.name,
-      employeeId: line.employeeId,
-      employeeName: line.employee
-        ? formatPersonName(line.employee.lastName, line.employee.firstName) || undefined
-        : undefined,
-      liftId: line.liftId ?? null,
-      normoHours: line.normoHours,
-      actualHours: line.actualHours ?? null,
-      price: Number(line.price),
-      amount: Number(line.amount),
-      notes: line.notes ?? null,
-      createdAt: line.createdAt instanceof Date ? line.createdAt.toISOString() : line.createdAt,
-    };
+  private toLineDto(line: Parameters<typeof mapWorkOrderLineToDto>[0]): WorkOrderLineResponseDto {
+    return mapWorkOrderLineToDto(line);
   }
 
   private toPartDto(
-    part: {
-      id: string;
-      workOrderId: string;
-      goodId: string;
-      warehouseId: string;
-      quantity: number;
-      price: Prisma.Decimal;
-      amount: Prisma.Decimal;
-      batchCostPrice?: Prisma.Decimal | null;
-      unitOfMeasureId?: string | null;
-      createdAt: Date;
-      good?: {
-        name: string;
-        internalCode?: string | null;
-        sku?: string | null;
-        unit: string;
-        unitOfMeasure: { shortName: string; coefficient: number } | null;
-        brand?: { name: string } | null;
-      } | null;
-      // Populated when unitOfMeasureId is set — per-good GoodUoM record (id not needed for DTO).
-      goodUoM?: { coefficient: number; unitOfMeasure: { shortName: string } } | null;
-    },
-    // §2.1 Auth: костПрайс маскується для ролей не в COST_PRICE_VISIBLE_ROLES.
-    // Default = undefined → не показувати (fail-closed). Усі mutation-endpoints
-    // (findOne / addPart / updatePart) приймають userRole і передають сюди —
-    // консистентна поведінка: OWNER/ADMIN/STOREKEEPER/ACCOUNTANT бачать costPrice
-    // після додавання/редагування запчастини; MECHANIC/RECEPTIONIST/CLIENT — ні.
+    part: Parameters<typeof mapWorkOrderPartToDto>[0],
     userRole?: string,
   ): WorkOrderPartResponseDto {
-    // If a specific GoodUoM was selected — use its shortName/coefficient.
-    // Fallback to the good's base unit.
-    const selectedUoM = part.goodUoM;
-    const baseUoM = part.good?.unitOfMeasure;
-    return {
-      id: part.id,
-      workOrderId: part.workOrderId,
-      goodId: part.goodId,
-      goodName: part.good?.name,
-      goodInternalCode: part.good?.internalCode ?? null,
-      goodSku: part.good?.sku ?? null,
-      goodBrandName: part.good?.brand?.name ?? null,
-      unitOfMeasureId: part.unitOfMeasureId ?? null,
-      unitShortName: selectedUoM?.unitOfMeasure.shortName ?? baseUoM?.shortName ?? part.good?.unit,
-      // safeCoeff() guards legacy/seed coefficient=0 — множник display↔base (qty_base = qty * coefficient).
-      coefficient: safeCoeff(selectedUoM?.coefficient ?? baseUoM?.coefficient),
-      warehouseId: part.warehouseId,
-      quantity: part.quantity,
-      // §2.1 Auth: маскуємо costPrice для MECHANIC/RECEPTIONIST/etc.
-      costPrice: canSeeCostPrice(userRole)
-        ? part.batchCostPrice != null
-          ? Number(part.batchCostPrice)
-          : null
-        : undefined,
-      price: Number(part.price),
-      amount: Number(part.amount),
-      createdAt: part.createdAt instanceof Date ? part.createdAt.toISOString() : part.createdAt,
-    };
+    return mapWorkOrderPartToDto(part, userRole);
   }
 
   // ─── Linked Documents ──────────────────────────────────
