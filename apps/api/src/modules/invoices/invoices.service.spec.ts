@@ -44,12 +44,21 @@ describe('InvoicesService — business logic guards', () => {
     };
     workOrder: { findFirst: ReturnType<typeof vi.fn> };
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
+    settlementTransaction: {
+      count: ReturnType<typeof vi.fn>;
+      aggregate: ReturnType<typeof vi.fn>;
+    };
+    payment: { aggregate: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let docNumbers: { next: ReturnType<typeof vi.fn> };
   let pdf: { generateInvoicePdf: ReturnType<typeof vi.fn> };
   let settlementsMock: { createTransaction: ReturnType<typeof vi.fn> };
   let settingsMock: { getDefaultVatRate: ReturnType<typeof vi.fn> };
+  let exchangeRatesMockRef: {
+    resolveBaseConversion: ReturnType<typeof vi.fn>;
+    getBaseCurrency: ReturnType<typeof vi.fn>;
+  };
 
   const ORG = 'org-1';
   const WO_ID = '11111111-1111-4111-8111-111111111111';
@@ -61,6 +70,12 @@ describe('InvoicesService — business logic guards', () => {
       invoiceLine: { deleteMany: vi.fn(), createMany: vi.fn() },
       workOrder: { findFirst: vi.fn() },
       counterparty: { findFirst: vi.fn() },
+      // Bug #745: FX-хук у transition() агрегує леджер + Payment для іновалютного ручного →PAID.
+      settlementTransaction: {
+        count: vi.fn().mockResolvedValue(0),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }),
+      },
+      payment: { aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }) },
       $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
         return undefined;
@@ -69,6 +84,12 @@ describe('InvoicesService — business logic guards', () => {
     docNumbers = { next: vi.fn().mockResolvedValue('INV-2026-0001') };
     pdf = { generateInvoicePdf: vi.fn() };
     settlementsMock = { createTransaction: vi.fn() };
+    // Bug #745: reference на exchange-rates мок, щоб FX-тести могли перевизначити getBaseCurrency.
+    const exchangeRatesProvider = exchangeRatesMock();
+    exchangeRatesMockRef = exchangeRatesProvider.useValue as {
+      resolveBaseConversion: ReturnType<typeof vi.fn>;
+      getBaseCurrency: ReturnType<typeof vi.fn>;
+    };
     // Дефолт VAT = NONE; тести, що перевіряють ПДВ, перевизначають getDefaultVatRate per-case.
     settingsMock = {
       getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
@@ -85,7 +106,7 @@ describe('InvoicesService — business logic guards', () => {
         { provide: SettlementsService, useValue: settlementsMock },
         { provide: SettingsService, useValue: settingsMock },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
-        exchangeRatesMock(),
+        exchangeRatesProvider,
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -899,6 +920,79 @@ describe('InvoicesService — business logic guards', () => {
         expect.objectContaining({ type: 'PAYMENT', amount: 300 }),
         expect.anything(),
       );
+    });
+
+    // Bug #745: іновалютний standalone-рахунок з ЧАСТКОВИМИ реальними оплатами (різні курси),
+    // вручну переведений PARTIALLY_PAID→PAID, мусить визнати курсову різницю (FX_GAIN/FX_LOSS),
+    // інакше base-залишок ≠ 0 (Σчасткові×(r_doc−r_pay) висить). До фіксу цей шлях FX не бронював.
+    it('іновалютний standalone PARTIALLY_PAID→PAID: FX-проводка обнуляє base-залишок (Bug #745)', async () => {
+      const USD = 'usd-2222-2222-2222-222222222222';
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'PARTIALLY_PAID',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 100, // USD
+          paidAmount: 60, // 60 USD уже сплачено через payments-модуль (курс дати оплати)
+          currencyId: USD,
+          documentDate: new Date('2026-01-01'),
+        })
+        .mockResolvedValue({ ...findOneRow, currencyId: USD });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      // Валюта НЕ базова → FX-гілка активна.
+      exchangeRatesMockRef.getBaseCurrency.mockResolvedValue({ id: 'uah-base', code: 'UAH' });
+      // Леджер по рахунку: CHARGE base=4150 (100 USD × 41.5 курс документа); дзеркальний PAYMENT
+      // (40 USD × 41.5 = 1660, base) — payAgg. Реальні часткові: 60 USD × 42.0 = 2520 (курс оплати).
+      // Base-залишок = 4150 − 1660 − 2520 = −30 → отримали більше base → FX_GAIN 30.
+      prisma.settlementTransaction.count.mockResolvedValue(0);
+      prisma.settlementTransaction.aggregate
+        .mockResolvedValueOnce({ _sum: { amountBase: 4150 } }) // CHARGE
+        .mockResolvedValueOnce({ _sum: { amountBase: 1660 } }); // дзеркальний PAYMENT
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountBase: 2520 } }); // реальні часткові
+
+      await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
+
+      const fxCall = settlementsMock.createTransaction.mock.calls.find(
+        (c: unknown[]) =>
+          (c[1] as { type?: string })?.type === 'FX_GAIN' ||
+          (c[1] as { type?: string })?.type === 'FX_LOSS',
+      );
+      expect(fxCall, 'FX-проводка має бути створена для іновалютного ручного →PAID').toBeDefined();
+      expect(fxCall![1]).toMatchObject({
+        type: 'FX_GAIN',
+        amount: 30,
+        documentType: 'Invoice',
+        documentId: INV_ID,
+      });
+      // FX БЕЗ currencyId → base-дельта (rate=1), інакше re-конвертація зіпсує суму.
+      expect((fxCall![1] as { currencyId?: unknown }).currencyId).toBeUndefined();
+    });
+
+    it('іновалютний ручний →PAID, FX вже проведено (count>0) → повторно НЕ бронюється (Bug #745 idempotency)', async () => {
+      const USD = 'usd-2222-2222-2222-222222222222';
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'PARTIALLY_PAID',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 100,
+          paidAmount: 60,
+          currencyId: USD,
+          documentDate: new Date('2026-01-01'),
+        })
+        .mockResolvedValue({ ...findOneRow, currencyId: USD });
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      exchangeRatesMockRef.getBaseCurrency.mockResolvedValue({ id: 'uah-base', code: 'UAH' });
+      prisma.settlementTransaction.count.mockResolvedValue(1); // FX уже існує
+
+      await service.transition(ORG, INV_ID, 'PAID' as never, 'user-1');
+
+      const fxCall = settlementsMock.createTransaction.mock.calls.find(
+        (c: unknown[]) =>
+          (c[1] as { type?: string })?.type === 'FX_GAIN' ||
+          (c[1] as { type?: string })?.type === 'FX_LOSS',
+      );
+      expect(fxCall).toBeUndefined();
     });
 
     it('WO-рахунок →PAID: БЕЗ PAYMENT (CHARGE був через COMPLETED, уникаємо подвійного обліку)', async () => {

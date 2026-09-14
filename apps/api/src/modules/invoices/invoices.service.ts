@@ -494,10 +494,73 @@ export class InvoicesService {
             },
             tx,
           );
+
+          // Курсові різниці (Bug #745): ручний →PAID іновалютного standalone-рахунку, який мав
+          // ЧАСТКОВІ реальні оплати (payments-модуль, курс дати оплати) → CHARGE брав курс дати
+          // документа, часткові PAYMENT — курс дати оплат, дзеркальний PAYMENT (вище) — знову курс
+          // документа. Base-залишок НЕ нульовий (Σчасткові×(r_doc−r_pay)). Дзеркалить FX-хук
+          // payments.service: одна проводка FX_GAIN/FX_LOSS обнуляє base-залишок. Тільки коли валюта
+          // НЕ базова (base → CHARGE/PAYMENT в одному курсі, залишок і так 0). paidBase агрегується
+          // ПІСЛЯ дзеркального PAYMENT — але дзеркальний PAYMENT — settlement-only (не Payment-рядок),
+          // тож рахуємо base-залишок напряму з леджера цього документа.
+          if (!(await this.sameCurrencyAsBase(orgId, null, inv.currencyId))) {
+            // Idempotency: PAID термінальний (INV_TRANSITIONS PAID:[]), але guard симетричний із
+            // payments.service — повторна FX для цього рахунку не дублюється.
+            const fxExisting = await tx.settlementTransaction.count({
+              where: {
+                orgId,
+                type: { in: ['FX_GAIN', 'FX_LOSS'] },
+                documentType: 'Invoice',
+                documentId: id,
+              },
+            });
+            if (fxExisting === 0) {
+              // Base-залишок цього рахунку = CHARGE(doc, курс документа) − дзеркальний PAYMENT(doc,
+              // курс документа) − Σреальні_часткові_оплати (Payment.amountBase по invoiceId, курс
+              // дати оплати). Реальні часткові оплати мають settlement documentType='Payment' (не
+              // 'Invoice') → у леджері проти цього рахунку їх немає; беремо з Payment-таблиці. FX
+              // обнуляє саме дрейф Σчасткові×(r_doc−r_pay). CHARGE−mirrorPAYMENT дає лише base(remaining).
+              const [chargeAgg, payAgg, realPaidAgg] = await Promise.all([
+                tx.settlementTransaction.aggregate({
+                  where: { orgId, type: 'CHARGE', documentType: 'Invoice', documentId: id },
+                  _sum: { amountBase: true },
+                }),
+                tx.settlementTransaction.aggregate({
+                  where: { orgId, type: 'PAYMENT', documentType: 'Invoice', documentId: id },
+                  _sum: { amountBase: true },
+                }),
+                tx.payment.aggregate({
+                  where: { orgId, invoiceId: id },
+                  _sum: { amountBase: true },
+                }),
+              ]);
+              const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
+              const docPaymentBase = Number(payAgg._sum.amountBase ?? 0); // дзеркальний PAYMENT (base)
+              const realPaidBase = Number(realPaidAgg._sum.amountBase ?? 0);
+              const fx = roundMoney(chargeBase - docPaymentBase - realPaidBase);
+              if (Math.abs(fx) >= 0.005) {
+                await this.settlements.createTransaction(
+                  orgId,
+                  {
+                    counterpartyId: inv.counterpartyId,
+                    // fx>0: нараховано більше base ніж отримано → збиток (гасить додатний залишок).
+                    type: fx > 0 ? 'FX_LOSS' : 'FX_GAIN',
+                    amount: Math.abs(fx),
+                    // БЕЗ currencyId → base-дельта (rate=1); інакше re-конвертація зіпсує суму.
+                    documentType: 'Invoice',
+                    documentId: id,
+                    notes: 'Курсова різниця (ручне закриття рахунку)',
+                    createdBy: userId,
+                  },
+                  tx,
+                );
+              }
+            }
+          }
         }
       },
       { timeout: 10_000 },
-    ); // updateMany + до 2 settlement-write (CHARGE/PAYMENT) — узгоджено з іншими tx у файлі
+    ); // updateMany + до 3 settlement-write (CHARGE/PAYMENT/FX) — узгоджено з іншими tx у файлі
     return this.findOne(orgId, id);
   }
 
@@ -761,6 +824,22 @@ export class InvoicesService {
     });
     if (result.count === 0) throw new NotFoundException('Рядок не знайдено');
     await this.recalcTotals(orgId, invoiceId);
+  }
+
+  /**
+   * Чи дві валюти (nullable currencyId) еквівалентні базовій валюті org. NULL ≡ base
+   * (історичні/backfill). Дзеркалить payments.service.sameCurrencyAsBase — використовується
+   * FX-хуком у transition() (Bug #745) для визначення «не базова валюта → можлива курсова різниця».
+   */
+  private async sameCurrencyAsBase(
+    orgId: string,
+    a: string | null,
+    b: string | null,
+  ): Promise<boolean> {
+    if (a === b) return true;
+    const baseId = (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const norm = (v: string | null) => v ?? baseId;
+    return norm(a) === norm(b);
   }
 
   private async recalcTotals(orgId: string, invoiceId: string): Promise<void> {

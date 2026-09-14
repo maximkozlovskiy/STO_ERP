@@ -4947,3 +4947,77 @@ workOrder.currencyId)) throw BadRequestException('Валюта оплати ма
 tsc api+web 0. currency-модулі лишаються зелені.
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-09-14 — Мультивалюта Фаза 4 (realized FX) фінальний QA
+
+Baseline: tsc api+web 0; API suite 2296 passed; web vitest 754 passed. Sync (82b6854e PDF-мітка)
+і review (0 дефектів по 9 money-точках) пройдені. Полювання на баги які sync/review могли пропустити
+
+- end-to-end перевірка інваріантів обнулення base-залишку.
+
+**Підтверджено КОРЕКТНИМИ (не баги):**
+
+- Ядерний інваріант обнулення: CHARGE(+cb) + PAYMENT(−pb) + FX(±|cb−pb|) = 0 у ОБИДВА боки
+  (property-тест 500 прогонів). Знак FX не подвоює — гасить (FX_LOSS−1 гасить додатний, FX_GAIN+1
+  від'ємний).
+- WO-linked USD-інвойс: chargeBase з WorkOrder-CHARGE, FX під documentType=Invoice → покрито тестом.
+- Часткова оплата → FX не бронюється; лише при newStatus===PAID (CAS-guard на paidAmount).
+- Concurrency: два конкурентні фінальні платежі — CAS updateMany(paidAmount) пропускає лише один,
+  інший rollback; count-guard(FX_GAIN/FX_LOSS) додатковий backstop. Reopen НЕМОЖЛИВИЙ (INV_TRANSITIONS
+  PAID:[]) → idempotency-count тільки belt-and-suspenders.
+- EPS 0.005: roundMoney квантує fx до 0.01 → |fx| або 0 (skip) або ≥0.01 (бронь); межа 0.004/0.006
+  moot після roundMoney. Коректно.
+- Dust (scenario #9): chargeBase і кожен Payment.amountBase — Decimal(12,2) (convertToBase→roundMoney)
+  → всі кратні 0.01 → fx=roundMoney(cb−Σpb)=cb−Σpb ТОЧНО → FX обнуляє без копійчаного залишку.
+  Доведено аналізом схеми + новий property-тест.
+- base-валютний інвойс / історичні (currencyId=null) → FX ніколи (sameCurrencyAsBase skip). Покрито.
+- Акт звірки (settlements-account.service): periodDelta=Σ BALANCE_SIGN[type]×amountBase включає
+  FX_GAIN/FX_LOSS з коректним знаком; opening=closing−periodDelta; snapshotJson усі типи; PDF-мітка
+  через shared SETTLEMENT_TX_TYPE_LABELS (Курсовий прибуток/збиток). Коректно.
+- Dashboard revenue: фільтр type:'PAYMENT' — FX НЕ спотворює виручку. Коректно.
+- Frontend (SettlementsTabContent + counterparties/[id]): FX колір (FX_LOSS destructive / FX_GAIN
+  success), знак через SETTLEMENT_BALANCE_UP_TYPES, CSV-експорт має колонку «Валюта» + base-колонку
+  (Bug #743 патерн закритий). Коректно.
+- CHARGE завжди існує до оплати (SEND→CHARGE для standalone; COMPLETED→CHARGE для WO; оплата вимагає
+  SENT+/INVOICED). «FX на рахунку без CHARGE» недосяжний нормальним потоком.
+
+### Bug #745 — MEDIUM — Ручний →PAID іновалютного standalone-рахунку не визнавав курсову різницю
+
+**Файли:** `apps/api/src/modules/invoices/invoices.service.ts` (transition, гілка settlesStandaloneOnPaid)
+
+**Проблема:** FX-хук Фази 4 доданий ЛИШЕ у `payments.service.create()` (шлях «записати платіж →
+invoice PAID»). Але invoice може досягти PAID і ЧЕРЕЗ ІНШИЙ шлях — ручний
+`invoices.service.transition(PAID)` (FSM `PARTIALLY_PAID→PAID` і `SENT→PAID` дозволені). Цей шлях
+(Bug #675) створює дзеркальний settlement-PAYMENT на непокритий залишок за курсом ДАТИ ДОКУМЕНТА,
+щоб закрити CHARGE. Для ІНОВАЛЮТНОГО рахунку з попередніми ЧАСТКОВИМИ реальними оплатами
+(payments-модуль, курс дати ОПЛАТИ) base-залишок НЕ нульовий: CHARGE брав курс документа,
+дзеркальний PAYMENT — теж курс документа, а часткові — курс дат оплат → залишок =
+Σчасткові×(r_doc−r_pay) ≠ 0. FX не визнавалась → у леджері/балансі висить непогашена курсова різниця
+для іновалютного рахунку (та сама вада, що payments.service Фази 4 закриває для свого шляху).
+
+**Шлях досяжності:** іновалютний standalone-рахунок → SEND (CHARGE у base) → часткова оплата через
+payments-модуль (PARTIALLY_PAID, курс дати оплати) → адмін вручну переводить у PAID (не фінальним
+платежем). Клієнтський receivable — IN scope Фази 4 (не deferred payables/WO-direct).
+
+**Виявлено через:** трасування ВСІХ шляхів досягнення invoice.status=PAID (не лише payments.service).
+grep `type: 'CHARGE'`/`type: 'PAYMENT'` creators → invoices.service.transition має власний
+settlement-PAYMENT, який FX-хук Фази 4 не торкнувся. Звірка з INV_TRANSITIONS (PARTIALLY_PAID→PAID
+дозволено) + Bug #675 тест (paidAmount=200 partial) підтвердили реальність шляху.
+
+**Фікс:** у `settlesStandaloneOnPaid`-блоці після дзеркального PAYMENT додано FX-хук (дзеркалить
+payments.service): якщо валюта НЕ базова (`sameCurrencyAsBase(orgId, null, inv.currencyId)===false`)
+і FX ще не проведено (count-guard) → обчислити base-залишок = chargeBase(леджер, CHARGE doc) −
+docPaymentBase(дзеркальний PAYMENT) − realPaidBase(Σ Payment.amountBase по invoiceId) → одна
+проводка FX_GAIN/FX_LOSS(|fx|≥0.005, БЕЗ currencyId → base-дельта) обнуляє залишок. Додано helper
+`sameCurrencyAsBase` (дзеркало payments.service). Тільки standalone (гілка вимагає workOrderId=null),
+тож chargeDocType завжди 'Invoice'.
+
+**Регресія-захист:** 2 нові тести invoices.service.spec (FX_GAIN на різницю курсів +
+idempotency count>0 → skip); base-валютні Bug #675 тести незмінні (currencyId=null → skip).
+
+- dust-property-тест settlements.invariants (N часткових центів + FX = рівно 0).
+  tsc api+web 0; API suite 2298 passed (2296+2); settlements.invariants 17 (16+1).
+
+**Статус:** [x] виправлено

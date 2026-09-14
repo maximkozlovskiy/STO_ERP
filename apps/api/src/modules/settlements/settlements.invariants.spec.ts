@@ -317,4 +317,31 @@ describe('Settlements — balance invariants (property-based)', () => {
       { numRuns: 500 },
     );
   });
+
+  // Курсові різниці (Фаза 4) — DUST-інваріант (scenario #9): кілька ЧАСТКОВИХ оплат, кожна з
+  // amountBase округленою до копійки (Decimal(12,2) — convertToBase→roundMoney), сумуються у paidBase.
+  // Оскільки chargeBase і КОЖНА paidBase_i вже кратні 0.01, fx=roundMoney(cb−Σpb)=cb−Σpb ТОЧНО
+  // (roundMoney no-op) → FX обнуляє base-залишок без копійчаного залишку. Тест моделює центи (integer)
+  // → кратність 0.01 гарантована; перевіряє що будь-яка кількість часткових + FX = рівно 0.
+  it('FX dust: N часткових оплат (округлені центи) + FX → balance == 0 ТОЧНО (без копійок)', () => {
+    fc.assert(
+      fc.property(
+        moneyAmount(),
+        fc.array(moneyAmount(), { minLength: 1, maxLength: 12 }),
+        (chargeBase, partials) => {
+          const paidBase = partials.reduce((s, p) => s + p, 0);
+          const fx = chargeBase - paidBase;
+          const fxType: TxType = fx > 0 ? 'FX_LOSS' : 'FX_GAIN';
+          const txs: { type: TxType; amount: number }[] = [
+            { type: 'CHARGE', amount: chargeBase },
+            ...partials.map(p => ({ type: 'PAYMENT' as TxType, amount: p })),
+          ];
+          if (fx !== 0) txs.push({ type: fxType, amount: Math.abs(fx) });
+          // Integer-центи → жодного float-дрейфу; residual МУСИТЬ бути рівно 0.
+          return applyTransactions(txs) === 0;
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
 });
