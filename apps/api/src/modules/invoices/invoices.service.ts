@@ -388,6 +388,10 @@ export class InvoicesService {
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
         notes: dto.notes ?? undefined,
+        // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
+        // transition() (DRAFT→SENT нараховує CHARGE у base по свіжому currencyId) —
+        // не перераховуємо тут, щоб не дублювати conversion-логіку поза FSM.
+        currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
       },
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },

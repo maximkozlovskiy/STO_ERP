@@ -119,6 +119,15 @@ export class UpdatePurchaseOrderDto {
   @IsDateString()
   documentDate?: string;
 
+  // Мультивалюта (Фаза 3): дозволяє зміну валюти чернетки з UI. Редагувати можна лише
+  // DRAFT (guard у service.update); якщо разом з валютою прийшли lines — service рахує
+  // base-конвертацію по ЕФЕКТИВНІЙ валюті (dto.currencyId ?? po.currencyId), не по старій.
+  @ApiPropertyOptional({ description: 'Валюта документа' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  currencyId?: string;
+
   @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)

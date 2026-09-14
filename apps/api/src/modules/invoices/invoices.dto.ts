@@ -71,6 +71,15 @@ export class UpdateInvoiceDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   documentDate?: string;
+
+  // Мультивалюта (Фаза 3): дозволяє зміну валюти чернетки з UI. Редагувати можна лише
+  // DRAFT (guard у service.update) — CHARGE ще не нарахований, тож totalAmountBase/rateUsed
+  // перерахує transition() при виставленні (DRAFT→SENT), той самий lazy-патерн.
+  @ApiPropertyOptional({ description: 'Валюта документа' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  currencyId?: string;
 }
 
 const INV_TRANSITION_STATUSES = ['SENT', 'PAID', 'CANCELLED'] as const;

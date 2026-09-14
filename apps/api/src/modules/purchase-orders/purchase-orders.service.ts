@@ -493,22 +493,25 @@ export class PurchaseOrdersService {
       ? roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0))
       : undefined;
 
-    // Мультивалюта (Фаза 3): при зміні тоталу перераховуємо base по курсу на дату документа
-    // (нову з DTO або наявну). Без валюти → base. Якщо тотал не змінюється (немає lines) —
-    // conv лишається на наявних значеннях (не пишемо).
+    // Мультивалюта (Фаза 3): перераховуємо base якщо змінився тотал (нові lines) АБО
+    // валюта документа (dto.currencyId !== наявної po.currencyId) — інакше totalAmountBase
+    // лишався б порахованим по СТАРІЙ валюті після зміни лише валюти без рядків.
+    // ЕФЕКТИВНА валюта — dto.currencyId якщо клієнт міняє її у цьому ж PATCH, інакше наявна.
     const effectiveDate = dto.documentDate ? new Date(dto.documentDate) : po.documentDate;
-    const conv =
-      computedLines && po.currencyId
+    const effectiveCurrencyId = dto.currencyId === undefined ? po.currencyId : dto.currencyId;
+    const currencyChanged = dto.currencyId !== undefined && dto.currencyId !== po.currencyId;
+    const needsRecalc = !!computedLines || currencyChanged;
+    const conv = needsRecalc
+      ? effectiveCurrencyId
         ? await this.exchangeRates.resolveBaseConversion(
             orgId,
-            po.currencyId,
+            effectiveCurrencyId,
             effectiveDate ?? new Date(),
             totalAmount,
             true,
           )
-        : computedLines
-          ? { rateUsed: 1, amountBase: totalAmount }
-          : null;
+        : { rateUsed: 1, amountBase: totalAmount }
+      : null;
 
     const updated = await this.prisma.$transaction(
       async tx => {
@@ -540,6 +543,7 @@ export class PurchaseOrdersService {
             contractId: newContractId,
             notes: dto.notes,
             totalAmount,
+            currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
             ...(totalVat !== undefined ? { totalVat } : {}),
             ...(conv ? { totalAmountBase: conv.amountBase, rateUsed: conv.rateUsed } : {}),
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,

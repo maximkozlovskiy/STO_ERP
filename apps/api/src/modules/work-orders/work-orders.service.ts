@@ -446,6 +446,8 @@ export class WorkOrdersService {
         // were silently missing from the audit diff.
         'plannedHours',
         'actualHours',
+        // Мультивалюта (Фаза 3): зміна валюти документа має бути видна в аудиті.
+        'currencyId',
       ] as const
     ).forEach(trackField);
 
@@ -473,6 +475,10 @@ export class WorkOrdersService {
               ? null
               : new Date(dto.dueDate),
         documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
+        // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
+        // наступного recalcTotals (той самий lazy-патерн, що вже для documentDate вище) —
+        // НЕ перераховуємо тут, щоб не дублювати recalc-логіку поза transaction.
+        currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
         liftId: dto.liftId === undefined ? undefined : (dto.liftId ?? null),
         plannedHours: dto.plannedHours === undefined ? undefined : (dto.plannedHours ?? null),
         actualHours: dto.actualHours === undefined ? undefined : (dto.actualHours ?? null),

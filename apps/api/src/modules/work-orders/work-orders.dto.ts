@@ -142,6 +142,15 @@ export class UpdateWorkOrderDto {
   @IsDateString()
   documentDate?: string;
 
+  // Мультивалюта (Фаза 3): дозволяє зміну валюти документа з UI. totalAmountBase/rateUsed
+  // перераховуються лише при наступному recalcTotals (зміна рядка/деталі) — той самий
+  // lazy-патерн, що вже існує для documentDate вище.
+  @ApiPropertyOptional({ description: 'Валюта документа' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  currencyId?: string;
+
   @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє', type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
