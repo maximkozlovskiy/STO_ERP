@@ -1281,6 +1281,17 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
         return undefined;
       }),
     } as never;
+    // Курсові різниці (Фаза 4): FX-хук агрегує CHARGE (леджер) + Payment.amountBase + count наявних FX.
+    // Default: chargeBase===paidBase===0 (fx=0 → FX не бронюється), count=0. FX-тести перевизначають.
+    (
+      prisma as never as Record<string, Record<string, ReturnType<typeof vi.fn>>>
+    ).settlementTransaction = {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } }),
+      count: vi.fn().mockResolvedValue(0),
+    };
+    (
+      prisma as never as Record<string, Record<string, ReturnType<typeof vi.fn>>>
+    ).payment.aggregate = vi.fn().mockResolvedValue({ _sum: { amountBase: 0 } });
     settlements = { createTransaction: vi.fn() };
     loyalty = { queueEarn: vi.fn().mockResolvedValue(undefined) };
     cash = { createOperation: vi.fn().mockResolvedValue(undefined) };
@@ -1524,5 +1535,164 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     ).rejects.toThrow(/Валюта оплати має збігатися з валютою наряду/);
     expect(prisma.payment.create).not.toHaveBeenCalled();
     expect(prisma.workOrder.update).not.toHaveBeenCalled();
+  });
+
+  // ── Курсові різниці (Фаза 4): realized FX при повній оплаті іновалютного рахунку ──────────
+  const INV_FX = '99999999-9999-4999-8999-999999999999';
+
+  // Хелпер: повна оплата USD-інвойсу (стає PAID) з заданими chargeBase (леджер) і paidBase (Payment agg).
+  const setupFxInvoicePaid = (chargeBase: number, paidBase: number, existingFx = 0) => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    prisma.invoice.findFirst.mockResolvedValue({
+      id: INV_FX,
+      status: 'SENT',
+      workOrderId: null,
+      amount: 100,
+      paidAmount: 0,
+      currencyId: USD_ID, // != base → FX-гілка активна
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: paidBase });
+    const pr = prisma as never as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+    pr.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amountBase: chargeBase } });
+    pr.settlementTransaction.count.mockResolvedValue(existingFx);
+    pr.payment.aggregate.mockResolvedValue({ _sum: { amountBase: paidBase } });
+  };
+
+  // Дістає FX-виклик createTransaction (тип FX_GAIN/FX_LOSS), якщо був.
+  const fxCall = () =>
+    settlements.createTransaction.mock.calls.find(
+      c => c[1]?.type === 'FX_GAIN' || c[1]?.type === 'FX_LOSS',
+    );
+
+  it('повна оплата USD-інвойсу, chargeBase>paidBase → FX_LOSS на різницю (base), documentId=інвойс', async () => {
+    // Нараховано 4200 base (курс документа), отримано 4150 base (курс оплати) → збиток 50.
+    setupFxInvoicePaid(4200, 4150);
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
+    const call = fxCall();
+    expect(call).toBeDefined();
+    expect(call![0]).toBe(ORG);
+    expect(call![1]).toMatchObject({
+      type: 'FX_LOSS',
+      amount: 50,
+      documentType: 'Invoice',
+      documentId: INV_FX,
+    });
+    // FX-проводка БЕЗ currencyId → base-дельта (rate=1).
+    expect(call![1].currencyId).toBeUndefined();
+  });
+
+  it('повна оплата USD-інвойсу, paidBase>chargeBase → FX_GAIN на різницю', async () => {
+    // Нараховано 4100 base, отримано 4150 base → прибуток 50.
+    setupFxInvoicePaid(4100, 4150);
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
+    const call = fxCall();
+    expect(call).toBeDefined();
+    expect(call![1]).toMatchObject({ type: 'FX_GAIN', amount: 50, documentId: INV_FX });
+  });
+
+  it('fx ≈ 0 (той самий курс, chargeBase==paidBase) → FX НЕ бронюється', async () => {
+    setupFxInvoicePaid(4150, 4150);
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
+    expect(fxCall()).toBeUndefined();
+  });
+
+  it('idempotency: FX для рахунку вже проведено (count>0) → повторно НЕ бронюється', async () => {
+    setupFxInvoicePaid(4200, 4150, 1); // existingFx=1
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
+    expect(fxCall()).toBeUndefined();
+  });
+
+  it('часткова оплата (PARTIALLY_PAID) → FX НЕ бронюється (лише при повній)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    prisma.invoice.findFirst.mockResolvedValue({
+      id: INV_FX,
+      status: 'SENT',
+      workOrderId: null,
+      amount: 200, // оплата 100 < 200 → PARTIALLY_PAID
+      paidAmount: 0,
+      currencyId: USD_ID,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
+    expect(fxCall()).toBeUndefined();
+  });
+
+  it('base-валютний інвойс повністю сплачено → FX НЕ бронюється (немає курсової різниці)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: UAH_ID,
+    });
+    prisma.invoice.findFirst.mockResolvedValue({
+      id: INV_FX,
+      status: 'SENT',
+      workOrderId: null,
+      amount: 100,
+      paidAmount: 0,
+      currencyId: UAH_ID, // == base → FX-гілка неактивна
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 1, amountBase: 100 });
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX }, 'user-1');
+    expect(fxCall()).toBeUndefined();
+  });
+
+  it('WO-linked USD-інвойс: chargeBase береться з WorkOrder-CHARGE (леджер), documentType=Invoice у FX', async () => {
+    const WO = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    prisma.workOrder.findFirst.mockResolvedValue({
+      branchId: 'br-1',
+      status: 'INVOICED',
+      currencyId: USD_ID,
+    });
+    prisma.workOrder.update.mockResolvedValue({});
+    prisma.invoice.findFirst.mockResolvedValue({
+      id: INV_FX,
+      status: 'SENT',
+      workOrderId: WO, // WO-linked → chargeDoc = WorkOrder
+      amount: 100,
+      paidAmount: 0,
+      currencyId: USD_ID,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+    const pr = prisma as never as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
+    pr.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amountBase: 4200 } }); // WO CHARGE base
+    pr.settlementTransaction.count.mockResolvedValue(0);
+    pr.payment.aggregate.mockResolvedValue({ _sum: { amountBase: 4150 } });
+
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_FX, workOrderId: WO }, 'user-1');
+
+    // chargeBase-агрегат шукав CHARGE проти WorkOrder (не Invoice).
+    expect(pr.settlementTransaction.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          type: 'CHARGE',
+          documentType: 'WorkOrder',
+          documentId: WO,
+        }),
+      }),
+    );
+    // FX-проводка йде під documentType=Invoice (idempotency-ключ), сума 4200−4150=50 → LOSS.
+    expect(fxCall()![1]).toMatchObject({
+      type: 'FX_LOSS',
+      amount: 50,
+      documentType: 'Invoice',
+      documentId: INV_FX,
+    });
   });
 });

@@ -11,6 +11,7 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { roundMoney } from '../../common/utils/math';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -283,6 +284,10 @@ export class PaymentsService {
 
     const payment = await this.prisma.$transaction(
       async tx => {
+        // Курсові різниці (Фаза 4): захоплюємо контекст іновалютного рахунку, що став PAID цим платежем,
+        // щоб ПІСЛЯ запису Payment+PAYMENT-settlement (paidBase має включати цей платіж) визнати FX.
+        let fxContext: { invoiceId: string; chargeDocType: string; chargeDocId: string } | null =
+          null;
         // Часткова оплата з захистом від переплати під concurrency (FIN-C1 еволюція):
         // читаємо amount/paidAmount/status; валідуємо суму ≤ залишку; атомарно інкрементуємо
         // paidAmount ЛИШЕ якщо paidAmount не змінився з-під нас (CAS через updateMany where
@@ -292,6 +297,7 @@ export class PaymentsService {
             where: { id: dto.invoiceId, orgId, deletedAt: null },
             // Мультивалюта (Фаза 3): currencyId рахунку — оплата має бути у ТІЙ САМІЙ валюті.
             select: {
+              id: true,
               status: true,
               workOrderId: true,
               amount: true,
@@ -339,6 +345,19 @@ export class PaymentsService {
             if (updated.count === 0) {
               throw new BadRequestException('Рахунок змінено паралельною операцією — повторіть');
             }
+            // Курсові різниці (Фаза 4): рахунок став PAID цим платежем + валюта НЕ базова →
+            // після запису PAYMENT-settlement визнаємо realized FX. CHARGE нараховувався проти
+            // наряду (WO-рахунок) або самого рахунку (standalone) — реконструюємо base з леджера.
+            if (
+              newStatus === 'PAID' &&
+              !(await this.sameCurrencyAsBase(orgId, null, inv.currencyId))
+            ) {
+              fxContext = {
+                invoiceId: inv.id,
+                chargeDocType: inv.workOrderId ? 'WorkOrder' : 'Invoice',
+                chargeDocId: inv.workOrderId ?? inv.id,
+              };
+            }
           }
         }
 
@@ -383,6 +402,60 @@ export class PaymentsService {
           },
           tx,
         );
+
+        // Курсові різниці (Фаза 4): рахунок повністю сплачено в іновалюті → base-залишок ≠ 0, бо
+        // CHARGE брав курс дати документа, а PAYMENT — курс дати оплати. Реалізуємо FX однією
+        // проводкою, що обнуляє залишок. paidBase агрегується ПІСЛЯ create цього Payment (включений).
+        if (fxContext) {
+          const [chargeAgg, paidAgg, fxExisting] = await Promise.all([
+            tx.settlementTransaction.aggregate({
+              where: {
+                orgId,
+                type: 'CHARGE',
+                documentType: fxContext.chargeDocType,
+                documentId: fxContext.chargeDocId,
+              },
+              _sum: { amountBase: true },
+            }),
+            tx.payment.aggregate({
+              where: { orgId, invoiceId: fxContext.invoiceId },
+              _sum: { amountBase: true },
+            }),
+            // Idempotency: якщо FX для цього рахунку вже проведено — не дублюємо (повторний PAID).
+            tx.settlementTransaction.count({
+              where: {
+                orgId,
+                type: { in: ['FX_GAIN', 'FX_LOSS'] },
+                documentType: 'Invoice',
+                documentId: fxContext.invoiceId,
+              },
+            }),
+          ]);
+          if (fxExisting === 0) {
+            const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
+            const paidBase = Number(paidAgg._sum.amountBase ?? 0);
+            const fx = roundMoney(chargeBase - paidBase);
+            // EPS 0.005: нижче — копійчаний дрейф округлення / той самий курс → FX не потрібна
+            // (і createTransaction відхилив би amount≤0).
+            if (Math.abs(fx) >= 0.005) {
+              await this.settlements.createTransaction(
+                orgId,
+                {
+                  counterpartyId: dto.counterpartyId,
+                  // fx>0: нарахували більше base ніж отримали → збиток (гасить додатний залишок).
+                  type: fx > 0 ? 'FX_LOSS' : 'FX_GAIN',
+                  amount: Math.abs(fx),
+                  // БЕЗ currencyId → base-дельта (rate=1, base=amount); інакше re-конвертація зіпсує суму.
+                  documentType: 'Invoice',
+                  documentId: fxContext.invoiceId,
+                  notes: `Курсова різниця: нараховано ${chargeBase.toFixed(2)} за курсом документа, отримано ${paidBase.toFixed(2)} за курсом оплат`,
+                  createdBy: userId,
+                },
+                tx,
+              );
+            }
+          }
+        }
 
         if (dto.workOrderId) {
           await tx.workOrder.update({
