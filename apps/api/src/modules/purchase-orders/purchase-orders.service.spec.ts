@@ -10,7 +10,23 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
+
+// Мультивалюта (Фаза 3): PurchaseOrdersService набув ExchangeRatesService. Default мок — базова
+// валюта (rate=1, amountBase=amount). DI-drift guard (Bug #724 клас).
+const exchangeRatesProvider = () => ({
+  provide: ExchangeRatesService,
+  useValue: {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+  },
+});
 
 // Bug #187 / #200: regression-захист для applyPricing
 // Bug #200: оновлено fixtures з полем `status` (defense-in-depth status guard c1dc5dd)
@@ -93,6 +109,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
           provide: DeliveryTrackingService,
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -426,6 +443,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
           provide: DeliveryTrackingService,
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1155,6 +1173,7 @@ describe('PurchaseOrdersService.update — contract resolution', () => {
           provide: DeliveryTrackingService,
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1384,6 +1403,7 @@ describe('PurchaseOrdersService.transition — FSM map', () => {
           provide: DeliveryTrackingService,
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1652,6 +1672,7 @@ describe('PurchaseOrdersService.findAll — sortBy=paymentDate nulls-last (Bug #
           provide: DeliveryTrackingService,
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);
@@ -1752,6 +1773,7 @@ describe('PurchaseOrdersService — linked-documents edge cases', () => {
           provide: DeliveryTrackingService,
           useValue: { enqueueInitial: vi.fn().mockResolvedValue(undefined) },
         },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

@@ -14,6 +14,7 @@ import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { NovaPoshtaPollingProcessor } from './delivery/nova-poshta-polling.processor';
 import { DeliveryProvidersController } from './delivery/delivery-providers.controller';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
@@ -22,6 +23,7 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     SettlementsModule,
     SettingsModule,
     IntegrationLogsModule,
+    ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів замовлення
     BullModule.registerQueue({ name: 'nova-poshta-polling', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
   controllers: [PurchaseOrdersController, DeliveryProvidersController],

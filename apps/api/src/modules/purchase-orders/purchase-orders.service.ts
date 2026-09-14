@@ -14,6 +14,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { calcLineVat } from '../../common/utils/vat';
 import {
@@ -80,6 +81,7 @@ export class PurchaseOrdersService {
     private readonly pricingService: PricingService,
     private readonly settingsService: SettingsService,
     private readonly deliveryTracking: DeliveryTrackingService,
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
 
   /** Нормалізує введений номер накладної: trim, порожнє → null. */
@@ -190,6 +192,7 @@ export class PurchaseOrdersService {
           supplier: { select: { firstName: true, lastName: true, companyName: true } },
           warehouse: { select: { name: true } },
           contract: { select: { id: true, number: true } },
+          currency: { select: { code: true } },
           _count: { select: { lines: { where: { deletedAt: null } } } },
         },
       }),
@@ -236,6 +239,7 @@ export class PurchaseOrdersService {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        currency: { select: { code: true } },
         lines: {
           where: { deletedAt: null },
           include: { good: PO_LINE_GOOD_INCLUDE },
@@ -310,6 +314,20 @@ export class PurchaseOrdersService {
     const totalAmount = roundMoney(computedLines.reduce((s, l) => s + l.quantity * l.price, 0));
     const totalVat = roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0));
 
+    // Мультивалюта (Фаза 3): валюта замовлення — з DTO або базова org; base-сума тоталу по курсу
+    // на дату документа (fallbackToLatest — документний потік).
+    const documentDate = dto.documentDate ? new Date(dto.documentDate) : kyivToday();
+    const currencyId = dto.currencyId ?? (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const conv = currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          currencyId,
+          documentDate,
+          totalAmount,
+          true,
+        )
+      : { rateUsed: 1, amountBase: totalAmount };
+
     const po = await this.prisma.$transaction(
       async tx => {
         const created = await tx.purchaseOrder.create({
@@ -322,7 +340,10 @@ export class PurchaseOrdersService {
             notes: dto.notes,
             totalAmount,
             totalVat,
-            documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
+            currencyId,
+            totalAmountBase: conv.amountBase,
+            rateUsed: conv.rateUsed,
+            documentDate,
             paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null,
             // Доставка: якщо ЕН вказано при створенні — статус PENDING, далі опитуємо НП.
             ...this.trackingFields(createTracking),
@@ -347,6 +368,7 @@ export class PurchaseOrdersService {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
             warehouse: { select: { name: true } },
             contract: { select: { id: true, number: true } },
+            currency: { select: { code: true } },
             lines: {
               where: { deletedAt: null },
               take: 1000,
@@ -380,6 +402,9 @@ export class PurchaseOrdersService {
         supplierId: true,
         contractId: true,
         trackingNumber: true,
+        // Мультивалюта (Фаза 3): валюта + дата для перерахунку base при зміні тоталу.
+        currencyId: true,
+        documentDate: true,
       },
     });
     if (!po) throw new NotFoundException('Замовлення не знайдено');
@@ -468,6 +493,23 @@ export class PurchaseOrdersService {
       ? roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0))
       : undefined;
 
+    // Мультивалюта (Фаза 3): при зміні тоталу перераховуємо base по курсу на дату документа
+    // (нову з DTO або наявну). Без валюти → base. Якщо тотал не змінюється (немає lines) —
+    // conv лишається на наявних значеннях (не пишемо).
+    const effectiveDate = dto.documentDate ? new Date(dto.documentDate) : po.documentDate;
+    const conv =
+      computedLines && po.currencyId
+        ? await this.exchangeRates.resolveBaseConversion(
+            orgId,
+            po.currencyId,
+            effectiveDate ?? new Date(),
+            totalAmount,
+            true,
+          )
+        : computedLines
+          ? { rateUsed: 1, amountBase: totalAmount }
+          : null;
+
     const updated = await this.prisma.$transaction(
       async tx => {
         if (computedLines !== undefined) {
@@ -499,6 +541,7 @@ export class PurchaseOrdersService {
             notes: dto.notes,
             totalAmount,
             ...(totalVat !== undefined ? { totalVat } : {}),
+            ...(conv ? { totalAmountBase: conv.amountBase, rateUsed: conv.rateUsed } : {}),
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
             ...(dto.paymentDate !== undefined
               ? { paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : null }
@@ -509,6 +552,7 @@ export class PurchaseOrdersService {
             supplier: { select: { firstName: true, lastName: true, companyName: true } },
             warehouse: { select: { name: true } },
             contract: { select: { id: true, number: true } },
+            currency: { select: { code: true } },
             lines: {
               where: { deletedAt: null },
               take: 1000,
@@ -731,6 +775,11 @@ export class PurchaseOrdersService {
               // НЕ CHARGE — той дає +1 (клієнтська семантика «нам винні»).
               type: 'SUPPLIER_CHARGE',
               amount: receivedAmount,
+              // Мультивалюта (Фаза 3): борг постачальнику у base по курсу на дату ПРИЙОМУ (кожен
+              // частковий прийом — свій курс на свою дату; FX-різниці поза scope). Без валюти → base.
+              currencyId: po.currencyId ?? undefined,
+              date: kyivToday(),
+              fallbackToLatest: true,
               documentType: 'PurchaseOrder',
               documentId: id,
               createdBy: userId,
@@ -958,6 +1007,10 @@ export class PurchaseOrdersService {
     contractId?: string | null;
     totalAmount: import('@prisma/client').Prisma.Decimal;
     totalVat?: import('@prisma/client').Prisma.Decimal | null;
+    currencyId?: string | null;
+    totalAmountBase?: import('@prisma/client').Prisma.Decimal | null;
+    rateUsed?: import('@prisma/client').Prisma.Decimal | null;
+    currency?: { code: string } | null;
     notes: string | null;
     documentDate?: Date | null;
     paymentDate?: Date | null;
@@ -1014,6 +1067,10 @@ export class PurchaseOrdersService {
       contractNumber: po.contract?.number ?? null,
       totalAmount: Number(po.totalAmount),
       totalVat: Number(po.totalVat ?? 0),
+      currencyId: po.currencyId ?? null,
+      currencyCode: po.currency?.code ?? null,
+      totalAmountBase: po.totalAmountBase != null ? Number(po.totalAmountBase) : null,
+      rateUsed: po.rateUsed != null ? Number(po.rateUsed) : null,
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
       paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,

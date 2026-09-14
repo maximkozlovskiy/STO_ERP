@@ -9,6 +9,7 @@ import { DocumentNumberService } from '../../document-number/document-number.ser
 import { PricingService } from '../../inventory/pricing.service';
 import { SettingsService } from '../../settings/settings.service';
 import { DeliveryTrackingService } from './delivery-tracking.service';
+import { ExchangeRatesService } from '../../exchange-rates/exchange-rates.service';
 
 /**
  * Bug #696 (test-gap): PurchaseOrdersService create/update + trackingNumber enqueue-on-ttn.
@@ -106,6 +107,18 @@ describe('PurchaseOrdersService — delivery tracking enqueue-on-ttn', () => {
           },
         },
         { provide: DeliveryTrackingService, useValue: { enqueueInitial } },
+        {
+          provide: ExchangeRatesService,
+          useValue: {
+            resolveBaseConversion: vi
+              .fn()
+              .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+                rateUsed: 1,
+                amountBase: amount,
+              })),
+            getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+          },
+        },
       ],
     }).compile();
     service = module.get(PurchaseOrdersService);

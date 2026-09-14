@@ -59,6 +59,12 @@ export class CreatePurchaseOrderDto {
   @IsDateString()
   documentDate?: string;
 
+  @ApiPropertyOptional({ description: 'Валюта документа (за замовчуванням — базова валюта org)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  currencyId?: string;
+
   @ApiPropertyOptional({ description: 'Планова дата оплати постачальнику (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -193,6 +199,11 @@ export class PurchaseOrderResponseDto {
   @ApiPropertyOptional() contractNumber?: string | null;
   @ApiProperty() totalAmount!: number;
   @ApiProperty() totalVat!: number;
+  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
+  @ApiPropertyOptional() currencyId?: string | null;
+  @ApiPropertyOptional() currencyCode?: string | null;
+  @ApiPropertyOptional() totalAmountBase?: number | null;
+  @ApiPropertyOptional() rateUsed?: number | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiPropertyOptional({ description: 'Планова дата оплати' }) paymentDate?: string | null;
