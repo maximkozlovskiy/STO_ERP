@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { Prisma, SettlementTransactionType } from '@prisma/client';
 
 export interface CreateTransactionDto {
   counterpartyId: string;
   type: SettlementTransactionType;
-  amount: number; // always positive — sign determined by type
+  amount: number; // always positive — sign determined by type (у валюті currencyId)
+  // Мультивалюта (Фаза 2): валюта транзакції. Якщо не задано → базова org (rate=1, amountBase=amount) —
+  // BC для викликачів, що передають UAH-суми (invoice/WO/PO/supplier). Payment передає валюту рахунку.
+  currencyId?: string;
   documentType?: string;
   documentId?: string;
   notes?: string;
@@ -35,7 +39,10 @@ export const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
 
 @Injectable()
 export class SettlementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly exchangeRates: ExchangeRatesService,
+  ) {}
 
   async createTransaction(
     orgId: string,
@@ -45,7 +52,17 @@ export class SettlementsService {
     if (!Number.isFinite(dto.amount) || dto.amount <= 0) {
       throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
     }
-    const balanceDelta = BALANCE_SIGN[dto.type] * dto.amount;
+    // Мультивалюта (Фаза 2): баланс боргу зводиться у БАЗОВІЙ валюті → balanceDelta від amountBase.
+    // Без currencyId → базова (rate=1, amountBase=amount) → 7 UAH-викликачів працюють без змін.
+    const conv = dto.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          dto.currencyId,
+          new Date(),
+          dto.amount,
+        )
+      : { rateUsed: 1, amountBase: dto.amount };
+    const balanceDelta = BALANCE_SIGN[dto.type] * conv.amountBase;
 
     const run = async (db: Prisma.TransactionClient | PrismaService) => {
       // SettlementAccount has no deletedAt — it's a singleton per counterparty, never soft-deleted
@@ -66,6 +83,9 @@ export class SettlementsService {
             settlementAccountId: account.id,
             type: dto.type,
             amount: dto.amount,
+            currencyId: dto.currencyId ?? null,
+            amountBase: conv.amountBase,
+            rateUsed: conv.rateUsed,
             documentType: dto.documentType ?? null,
             documentId: dto.documentId ?? null,
             notes: dto.notes ?? null,

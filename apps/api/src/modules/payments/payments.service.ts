@@ -10,6 +10,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -25,6 +26,7 @@ const PAYMENT_INCLUDE = {
   counterparty: { select: { firstName: true, lastName: true, companyName: true } },
   bankAccount: { select: { name: true } },
   cashRegister: { select: { name: true } },
+  currency: { select: { code: true } },
 } satisfies Prisma.PaymentInclude;
 
 @Injectable()
@@ -39,6 +41,7 @@ export class PaymentsService {
     private readonly loyalty: LoyaltyService,
     private readonly audit: AuditService,
     private readonly cash: CashService,
+    private readonly exchangeRates: ExchangeRatesService,
     @InjectQueue('checkbox') private readonly checkboxQueue: Queue,
   ) {}
 
@@ -239,6 +242,32 @@ export class PaymentsService {
       (resolvedSource.sourceType === 'CASH_REGISTER' &&
         resolvedSource.cashRegisterIsFiscal === true);
 
+    // Мультивалюта (Фаза 2): якщо рахунок-призначення має валюту → конвертуємо суму оплати у
+    // БАЗОВУ (amountBase по курсу на дату). Ці поля лягають і в Payment, і у settlement-борг
+    // (createTransaction отримує currencyId → баланс зводиться у base). Без валюти рахунку →
+    // base (rate=1, amountBase=amount): BC для орг без мультивалюти. cash.createOperation
+    // конвертує сам (Фаза 1) — тут НЕ дублюємо, лише Payment+settlement.
+    const paymentCurrencyId = resolvedSource.currencyId ?? null;
+    const conv = paymentCurrencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          paymentCurrencyId,
+          new Date(),
+          dto.amount,
+        )
+      : { rateUsed: 1, amountBase: dto.amount };
+
+    // Інваріант «фіскальна каса = UAH»: ПРРО (Checkbox/Vchasno) фіскалізує чеки лише у базовій
+    // валюті. Оплата у фіскальну касу/метод в іновалюті створила б чек у не-UAH → відхиляємо.
+    if (willFiscalize && paymentCurrencyId) {
+      const base = await this.exchangeRates.getBaseCurrency(orgId);
+      if (paymentCurrencyId !== base.id) {
+        throw new BadRequestException(
+          `Фіскалізація можлива лише у базовій валюті (${base.code}). Оберіть касу/рахунок у ${base.code} або спосіб оплати без ПРРО.`,
+        );
+      }
+    }
+
     const payment = await this.prisma.$transaction(
       async tx => {
         // Часткова оплата з захистом від переплати під concurrency (FIN-C1 еволюція):
@@ -291,6 +320,10 @@ export class PaymentsService {
             workOrderId: dto.workOrderId ?? null,
             invoiceId: dto.invoiceId ?? null,
             amount: dto.amount,
+            // Мультивалюта (Фаза 2): валюта рахунку + base-сума по курсу на дату.
+            currencyId: paymentCurrencyId,
+            amountBase: conv.amountBase,
+            rateUsed: conv.rateUsed,
             method: dto.method,
             notes: dto.notes ?? null,
             // Рахунок-призначення (куди фізично лягли гроші) — з DTO або дефолту methodConfig.
@@ -312,6 +345,9 @@ export class PaymentsService {
             counterpartyId: dto.counterpartyId,
             type: 'PAYMENT',
             amount: dto.amount,
+            // Мультивалюта (Фаза 2): передаємо валюту → борг лягає у base (amountBase). createTransaction
+            // сам конвертує (спільне джерело курсу). Без currencyId → base (BC для UAH-орг).
+            currencyId: paymentCurrencyId ?? undefined,
             documentType: 'Payment',
             documentId: created.id,
             createdBy: userId,
@@ -436,8 +472,10 @@ export class PaymentsService {
 
     // Non-blocking loyalty earn: if queue is down, log warning, payment stands.
     // BullMQ job checks OrganisationSettings.loyaltyEnabled — exits without writing if disabled.
+    // Мультивалюта (Фаза 2): бали від amountBase (у base), не dto.amount — інакше 100 USD дали б
+    // стільки ж балів, скільки 100 UAH. loyaltyEarnPer трактується у базовій валюті.
     await this.loyalty
-      .queueEarn(orgId, dto.counterpartyId, dto.amount, payment.id)
+      .queueEarn(orgId, dto.counterpartyId, conv.amountBase, payment.id)
       .catch((err: unknown) =>
         this.logger.warn(
           `Loyalty earn enqueue failed: ${err instanceof Error ? err.message : err}`,
@@ -488,6 +526,8 @@ export class PaymentsService {
     cashRegisterId: string | null;
     /** true → каса фіскальна: будь-яка оплата у неї пробиває чек ПРРО (тригер незалежно від методу). */
     cashRegisterIsFiscal?: boolean;
+    /** Валюта рахунку-призначення (bank/cash) — валюта Payment (мультивалюта Фаза 2). null → базова. */
+    currencyId?: string | null;
   }> {
     // Джерело значень: DTO задав хоч одне поле → explicit; інакше беремо дефолт methodConfig.
     const fromDto = !!(dto.sourceType || dto.bankAccountId || dto.cashRegisterId);
@@ -511,13 +551,13 @@ export class PaymentsService {
       }
       const acc = await this.prisma.bankAccount.findFirst({
         where: { id: bankAccountId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, currencyId: true },
       });
       if (!acc) {
         if (fromDto) throw new NotFoundException('Банківський рахунок не знайдено');
         return empty; // stale config default → degrade, не валимо платіж
       }
-      return { sourceType, bankAccountId, cashRegisterId: null };
+      return { sourceType, bankAccountId, cashRegisterId: null, currencyId: acc.currencyId };
     }
     // CASH_REGISTER
     if (!cashRegisterId) {
@@ -526,13 +566,19 @@ export class PaymentsService {
     }
     const reg = await this.prisma.cashRegister.findFirst({
       where: { id: cashRegisterId, orgId, deletedAt: null },
-      select: { id: true, isFiscal: true },
+      select: { id: true, isFiscal: true, currencyId: true },
     });
     if (!reg) {
       if (fromDto) throw new NotFoundException('Касу не знайдено');
       return empty; // stale config default → degrade, не валимо платіж
     }
-    return { sourceType, bankAccountId: null, cashRegisterId, cashRegisterIsFiscal: reg.isFiscal };
+    return {
+      sourceType,
+      bankAccountId: null,
+      cashRegisterId,
+      cashRegisterIsFiscal: reg.isFiscal,
+      currencyId: reg.currencyId,
+    };
   }
 
   private toDto(p: {
@@ -542,6 +588,9 @@ export class PaymentsService {
     workOrderId: string | null;
     invoiceId: string | null;
     amount: import('@prisma/client').Prisma.Decimal;
+    currencyId?: string | null;
+    amountBase?: import('@prisma/client').Prisma.Decimal | null;
+    rateUsed?: import('@prisma/client').Prisma.Decimal | null;
     method: string;
     notes: string | null;
     fiscalReceiptId: string | null;
@@ -552,6 +601,7 @@ export class PaymentsService {
     cashRegisterId?: string | null;
     bankAccount?: { name: string } | null;
     cashRegister?: { name: string } | null;
+    currency?: { code: string } | null;
     createdAt: Date;
     counterparty: {
       companyName: string | null;
@@ -571,6 +621,10 @@ export class PaymentsService {
       workOrderId: p.workOrderId ?? null,
       invoiceId: p.invoiceId ?? null,
       amount: Number(p.amount),
+      currencyId: p.currencyId ?? null,
+      currencyCode: p.currency?.code ?? null,
+      amountBase: p.amountBase != null ? Number(p.amountBase) : null,
+      rateUsed: p.rateUsed != null ? Number(p.rateUsed) : null,
       method: p.method,
       notes: p.notes ?? null,
       fiscalReceiptId: p.fiscalReceiptId ?? null,

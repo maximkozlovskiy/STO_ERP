@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { SettlementsService } from './settlements.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 describe('SettlementsService.createTransaction', () => {
   let service: SettlementsService;
@@ -11,6 +12,7 @@ describe('SettlementsService.createTransaction', () => {
     settlementTransaction: { create: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
+  let exchangeRates: { resolveBaseConversion: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     prisma = {
@@ -25,8 +27,21 @@ describe('SettlementsService.createTransaction', () => {
         .fn()
         .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     };
+    // Дефолт: базова валюта (rate=1, amountBase=amount) — 7 UAH-викликачів не передають currencyId.
+    exchangeRates = {
+      resolveBaseConversion: vi
+        .fn()
+        .mockImplementation(async (_org: string, _cur: string, _date: Date, amount: number) => ({
+          rateUsed: 1,
+          amountBase: amount,
+        })),
+    };
     const module = await Test.createTestingModule({
-      providers: [SettlementsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        SettlementsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ExchangeRatesService, useValue: exchangeRates },
+      ],
     }).compile();
     service = module.get(SettlementsService);
   });
@@ -135,11 +150,55 @@ describe('SettlementsService.createTransaction', () => {
         settlementAccountId: 'acc-1',
         type: 'CHARGE',
         amount: 100,
+        // Без currencyId → базова (rate=1, amountBase=amount) — BC для UAH-викликачів.
+        currencyId: null,
+        amountBase: 100,
+        rateUsed: 1,
         documentType: 'WorkOrder',
         documentId: 'wo-1',
         notes: 'test',
         createdBy: 'emp-1',
       },
+    });
+  });
+
+  // ── Мультивалюта (Фаза 2) ──────────────────────────────────────────────────
+  it('без currencyId → base (rate=1, amountBase=amount), resolveBaseConversion не викликається', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    await service.createTransaction('org-1', dto({ type: 'CHARGE', amount: 250 }));
+    expect(exchangeRates.resolveBaseConversion).not.toHaveBeenCalled();
+    expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
+      where: { id: 'acc-1', orgId: 'org-1' },
+      data: { balance: { increment: 250 } },
+    });
+  });
+
+  it('з currencyId (USD) → balanceDelta від amountBase, не від amount', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    // 100 USD × курс 41.50 = 4150 UAH base
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+    await service.createTransaction(
+      'org-1',
+      dto({ type: 'PAYMENT', amount: 100, currencyId: 'usd-1' }),
+    );
+    expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledWith(
+      'org-1',
+      'usd-1',
+      expect.any(Date),
+      100,
+    );
+    // PAYMENT = -1 → balance -= amountBase (4150), НЕ -100
+    expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
+      where: { id: 'acc-1', orgId: 'org-1' },
+      data: { balance: { increment: -4150 } },
+    });
+    expect(prisma.settlementTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amount: 100,
+        currencyId: 'usd-1',
+        amountBase: 4150,
+        rateUsed: 41.5,
+      }),
     });
   });
 });

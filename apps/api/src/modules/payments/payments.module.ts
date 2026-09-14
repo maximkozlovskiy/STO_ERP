@@ -28,6 +28,7 @@ import { WorkOrdersModule } from '../work-orders/work-orders.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
 import { AuditModule } from '../audit/audit.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
@@ -43,6 +44,7 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     LoyaltyModule,
     AuditModule, // C1: аудит створення платежу
     CashModule, // готівкова оплата → cash-in у касу
+    ExchangeRatesModule, // мультивалюта (Фаза 2): конвертація суми оплати у base
   ],
   controllers: [
     PaymentsController,

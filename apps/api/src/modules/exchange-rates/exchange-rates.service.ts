@@ -89,6 +89,20 @@ export class ExchangeRatesService {
    * Інакше — курс на дату (getRateAsOf); якщо курсу немає → 400 (НЕ тихо rate=1: це спотворило б
    * base-облік). Спільна точка мультивалютної конвертації для всіх грошових агрегатів.
    */
+  /** Базова валюта org (за OrganisationSettings.currency code) → {id?, code}. code завжди (default UAH). */
+  async getBaseCurrency(orgId: string): Promise<{ id: string | null; code: string }> {
+    const settings = await this.prisma.organisationSettings.findFirst({
+      where: { orgId },
+      select: { currency: true },
+    });
+    const code = settings?.currency ?? 'UAH';
+    const cur = await this.prisma.currency.findFirst({
+      where: { orgId, code, deletedAt: null },
+      select: { id: true },
+    });
+    return { id: cur?.id ?? null, code };
+  }
+
   async resolveBaseConversion(
     orgId: string,
     currencyId: string,

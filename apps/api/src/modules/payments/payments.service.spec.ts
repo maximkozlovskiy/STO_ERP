@@ -10,6 +10,20 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+
+// Дефолтний мок конвертації: базова валюта (rate=1, amountBase=amount). Дзеркалить поведінку для
+// орг без мультивалюти — 4 describe-блоки нижче будують PaymentsService і всі потребують цей provider
+// (DI-drift guard: без нього Test.createTestingModule.compile() падає з UnknownDependency).
+const exchangeRatesMock = () => ({
+  resolveBaseConversion: vi
+    .fn()
+    .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+      rateUsed: 1,
+      amountBase: amount,
+    })),
+  getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+});
 
 /**
  * FIN-C1: ідемпотентність оплати рахунку. Перехід SENT→PAID виконується ПЕРШИМ у tx через
@@ -91,6 +105,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
           provide: CashService,
           useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
         },
+        { provide: ExchangeRatesService, useValue: exchangeRatesMock() },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -406,6 +421,7 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
           provide: CashService,
           useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
         },
+        { provide: ExchangeRatesService, useValue: exchangeRatesMock() },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -605,6 +621,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
           provide: CashService,
           useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
         },
+        { provide: ExchangeRatesService, useValue: exchangeRatesMock() },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -892,6 +909,10 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     cashRegisterId: null,
     bankAccount: null,
     cashRegister: null,
+    currency: null,
+    currencyId: null,
+    amountBase: null,
+    rateUsed: null,
     createdAt: new Date('2026-09-06T15:00:00.000Z'),
     counterparty: { firstName: 'Іван', lastName: 'Петренко', companyName: null },
     ...over,
@@ -928,6 +949,7 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
           provide: CashService,
           useValue: { createOperation: vi.fn().mockResolvedValue(undefined) },
         },
+        { provide: ExchangeRatesService, useValue: exchangeRatesMock() },
         { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
       ],
     }).compile();
@@ -1176,5 +1198,204 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
       failedPayment({ fiscalStatus: 'FAILED', fiscalReceiptId: 'RCPT-1' }),
     );
     await expect(service.retryFiscal(ORG, PAY_ID)).rejects.toThrow(/уже пробито/);
+  });
+});
+
+/**
+ * Мультивалюта (Фаза 2) — Payment у валюті рахунку-призначення.
+ * Інваріанти:
+ *   1. Оплата у касу з currencyId → payment.create пише currencyId/amountBase/rateUsed (по курсу).
+ *   2. settlements.createTransaction отримує currencyId → борг у base.
+ *   3. loyalty.queueEarn отримує amountBase (не dto.amount) — бали у base.
+ *   4. Фіскальна каса у НЕ-базовій валюті → 400 (ПРРО лише у base), без payment.create.
+ *   5. Фіскальна каса у БАЗОВІЙ валюті (currencyId == base) → успіх (чек ставиться).
+ */
+describe('PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard)', () => {
+  let service: PaymentsService;
+  let prisma: Record<string, Record<string, ReturnType<typeof vi.fn>>> & {
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+  let settlements: { createTransaction: ReturnType<typeof vi.fn> };
+  let loyalty: { queueEarn: ReturnType<typeof vi.fn> };
+  let cash: { createOperation: ReturnType<typeof vi.fn> };
+  let exchangeRates: {
+    resolveBaseConversion: ReturnType<typeof vi.fn>;
+    getBaseCurrency: ReturnType<typeof vi.fn>;
+  };
+  let checkboxQueue: { add: ReturnType<typeof vi.fn> };
+  let lastCreateData: Record<string, unknown> | undefined;
+
+  const ORG = 'org-1';
+  const CP_ID = '22222222-2222-4222-8222-222222222222';
+  const PAY_ID = '44444444-4444-4444-8444-444444444444';
+  const CASH_ID = '66666666-6666-4666-8666-666666666666';
+  const USD_ID = '77777777-7777-4777-8777-777777777777';
+  const UAH_ID = '88888888-8888-4888-8888-888888888888';
+
+  beforeEach(async () => {
+    lastCreateData = undefined;
+    prisma = {
+      counterparty: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: CP_ID,
+          phone: null,
+          email: null,
+          firstName: null,
+          lastName: null,
+          companyName: 'ТОВ',
+        }),
+      },
+      workOrder: { findFirst: vi.fn(), update: vi.fn() },
+      invoice: { findFirst: vi.fn(), updateMany: vi.fn() },
+      garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'br-1' }) },
+      payment: {
+        create: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+          lastCreateData = args.data;
+          return Promise.resolve({
+            id: PAY_ID,
+            orgId: ORG,
+            counterpartyId: CP_ID,
+            workOrderId: null,
+            invoiceId: null,
+            amount: 100,
+            method: 'cash',
+            notes: null,
+            fiscalReceiptId: null,
+            fiscalStatus: args.data.fiscalStatus ?? null,
+            fiscalError: null,
+            currencyId: args.data.currencyId ?? null,
+            amountBase: args.data.amountBase ?? null,
+            rateUsed: args.data.rateUsed ?? null,
+            currency: null,
+            createdAt: new Date(),
+            counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
+          });
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      paymentMethodConfig: { findFirst: vi.fn().mockResolvedValue({ requiresFiscal: false }) },
+      bankAccount: { findFirst: vi.fn() },
+      cashRegister: { findFirst: vi.fn() },
+      $transaction: vi.fn().mockImplementation(async (arg: unknown) => {
+        if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
+        return undefined;
+      }),
+    } as never;
+    settlements = { createTransaction: vi.fn() };
+    loyalty = { queueEarn: vi.fn().mockResolvedValue(undefined) };
+    cash = { createOperation: vi.fn().mockResolvedValue(undefined) };
+    checkboxQueue = { add: vi.fn().mockResolvedValue(undefined) };
+    exchangeRates = {
+      resolveBaseConversion: vi.fn(),
+      getBaseCurrency: vi.fn().mockResolvedValue({ id: UAH_ID, code: 'UAH' }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        PaymentsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SettlementsService, useValue: settlements },
+        { provide: NotificationsService, useValue: { send: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: WorkOrdersService,
+          useValue: { transition: vi.fn().mockResolvedValue(undefined) },
+        },
+        { provide: LoyaltyService, useValue: loyalty },
+        { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        { provide: CashService, useValue: cash },
+        { provide: ExchangeRatesService, useValue: exchangeRates },
+        { provide: getQueueToken('checkbox'), useValue: checkboxQueue },
+      ],
+    }).compile();
+    service = module.get(PaymentsService);
+  });
+
+  const usdCashDto = {
+    counterpartyId: CP_ID,
+    amount: 100,
+    method: 'cash',
+    sourceType: 'CASH_REGISTER' as const,
+    cashRegisterId: CASH_ID,
+  };
+
+  it('оплата у USD-касу → payment пише currencyId/amountBase/rateUsed по курсу; settlement отримує currencyId', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    // 100 USD × 41.50 = 4150 UAH base.
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await service.create(ORG, usdCashDto, 'user-1');
+
+    expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledWith(
+      ORG,
+      USD_ID,
+      expect.any(Date),
+      100,
+    );
+    expect(lastCreateData?.currencyId).toBe(USD_ID);
+    expect(lastCreateData?.amountBase).toBe(4150);
+    expect(lastCreateData?.rateUsed).toBe(41.5);
+    // Борг у base: settlement отримує currencyId (createTransaction сам конвертує).
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'PAYMENT', amount: 100, currencyId: USD_ID }),
+      expect.anything(),
+    );
+  });
+
+  it('loyalty нараховує від amountBase (base), не від dto.amount', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await service.create(ORG, usdCashDto, 'user-1');
+
+    expect(loyalty.queueEarn).toHaveBeenCalledWith(ORG, CP_ID, 4150, PAY_ID);
+  });
+
+  it('фіскальна каса у НЕ-базовій валюті (USD) → 400, без payment.create/settlement', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: true, // фіскальна → willFiscalize=true
+      currencyId: USD_ID,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await expect(service.create(ORG, usdCashDto, 'user-1')).rejects.toThrow(/базовій валюті/);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(checkboxQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('фіскальна каса у БАЗОВІЙ валюті (currencyId == base) → успіх, чек ставиться', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: true,
+      currencyId: UAH_ID, // == base
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 1, amountBase: 100 });
+
+    await service.create(ORG, usdCashDto, 'user-1');
+
+    expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+    expect(lastCreateData?.fiscalStatus).toBe('QUEUED');
+    expect(checkboxQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('оплата без рахунку (source=null) → base (rate=1, amountBase=amount), resolveBaseConversion не викликається', async () => {
+    // Метод без дефолтного рахунку → resolvedSource.currencyId undefined → base.
+    await service.create(ORG, { counterpartyId: CP_ID, amount: 100, method: 'cash' }, 'user-1');
+
+    expect(exchangeRates.resolveBaseConversion).not.toHaveBeenCalled();
+    expect(lastCreateData?.currencyId).toBeNull();
+    expect(lastCreateData?.amountBase).toBe(100);
+    expect(lastCreateData?.rateUsed).toBe(1);
+    expect(loyalty.queueEarn).toHaveBeenCalledWith(ORG, CP_ID, 100, PAY_ID);
   });
 });

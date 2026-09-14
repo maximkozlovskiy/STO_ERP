@@ -2082,7 +2082,12 @@ model Payment {
   counterpartyId  String   @db.Uuid
   workOrderId     String?  @db.Uuid
   invoiceId       String?  @db.Uuid
-  amount          Decimal  @db.Decimal(12, 2)
+  amount          Decimal  @db.Decimal(12, 2) // у валюті оплати (currencyId — з рахунку-призначення)
+  // Мультивалюта (Фаза 2): currencyId — валюта оплати (з sourceType-рахунку bank/cash); amountBase —
+  // у БАЗОВІЙ валюті org (UAH) по курсу на дату; rateUsed — курс. nullable — backfill=UAH.
+  currencyId      String?  @db.Uuid
+  amountBase      Decimal? @db.Decimal(12, 2)
+  rateUsed        Decimal? @db.Decimal(18, 6)
   method          String
   notes           String?
   fiscalReceiptId String?
@@ -2110,6 +2115,7 @@ model Payment {
   invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
   bankAccount  BankAccount?  @relation(fields: [bankAccountId], references: [id])
   cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id])
+  currency     Currency?     @relation(fields: [currencyId], references: [id])
 
   @@index([orgId, workOrderId])
   // Covering: list endpoint sorts by createdAt DESC + filters by counterpartyId.
@@ -2208,14 +2214,21 @@ model SettlementTransaction {
   orgId               String                    @db.Uuid
   settlementAccountId String                    @db.Uuid
   type                SettlementTransactionType
-  amount              Decimal                   @db.Decimal(12, 2)
+  amount              Decimal                   @db.Decimal(12, 2) // у валюті транзакції (currencyId)
+  // Мультивалюта (Фаза 2): currencyId — валюта транзакції; amountBase — сума у БАЗОВІЙ валюті org (UAH)
+  // по курсу на дату; rateUsed — застосований курс. Баланс боргу (SettlementAccount.balance) рахується
+  // від amountBase (Σ sign×amountBase) → зведення різновалютних боргів у base. nullable — backfill=UAH.
+  currencyId          String?                   @db.Uuid
+  amountBase          Decimal?                  @db.Decimal(12, 2)
+  rateUsed            Decimal?                  @db.Decimal(18, 6)
   documentType        String?
   documentId          String?                   @db.Uuid
   notes               String?
   createdAt           DateTime                  @default(now())
   createdBy           String?                   @db.Uuid
 
-  account SettlementAccount @relation(fields: [settlementAccountId], references: [id])
+  account  SettlementAccount @relation(fields: [settlementAccountId], references: [id])
+  currency Currency?         @relation(fields: [currencyId], references: [id])
 
   // Covering for getTransactions (paginated list per account) + reconciliation period scans:
   // WHERE settlementAccountId/orgId + ORDER BY createdAt DESC + sometimes BETWEEN periodFrom/periodTo.
@@ -2706,10 +2719,12 @@ model Currency {
   updatedAt         DateTime  @updatedAt
   deletedAt         DateTime?
 
-  organisation  Organisation   @relation(fields: [orgId], references: [id])
-  exchangeRates ExchangeRate[]
-  bankAccounts  BankAccount[]
-  cashRegisters CashRegister[]
+  organisation           Organisation            @relation(fields: [orgId], references: [id])
+  exchangeRates          ExchangeRate[]
+  bankAccounts           BankAccount[]
+  cashRegisters          CashRegister[]
+  payments               Payment[]
+  settlementTransactions SettlementTransaction[]
 
   @@unique([orgId, code])
   @@index([orgId, deletedAt])

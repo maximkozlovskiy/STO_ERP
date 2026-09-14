@@ -53,6 +53,11 @@ export class PaymentResponseDto {
   @ApiPropertyOptional() workOrderId?: string | null;
   @ApiPropertyOptional() invoiceId?: string | null;
   @ApiProperty() amount!: number;
+  // Мультивалюта (Фаза 2): валюта оплати + base-сума по курсу на дату. null → історичні/UAH.
+  @ApiPropertyOptional() currencyId?: string | null;
+  @ApiPropertyOptional() currencyCode?: string | null;
+  @ApiPropertyOptional() amountBase?: number | null;
+  @ApiPropertyOptional() rateUsed?: number | null;
   @ApiProperty() method!: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() fiscalReceiptId?: string | null;
