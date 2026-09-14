@@ -4840,3 +4840,65 @@ Kyiv-15-те → `findFirst` = null → **спурйозна 400 «Немає к
 незмінна (візуальна коректність, без спотворення даних).
 
 **Статус:** [x] виправлено
+
+## Session 2026-09-14 — Мультивалюта Фаза 2 (Payment + SettlementTransaction у base): bug hunt
+
+Фінальний QA-етап фічі (sync+review вже пройдені: review знайшов+виправив 2 Critical
+cross-currency баги у invoice/WO-обліку + 1 hardcoded символ). Baseline зелений: tsc api+web 0,
+API specs 375 passed (payments 60, settlements 15, settlements-invariants 15, exchange-rates 13,
+cash/cash-shift). Web: PaymentsPage 10 passed. Прогнано сценарії 1–7 з ТЗ.
+
+### Bug #743 (MEDIUM) — CSV-експорт транзакцій взаєморозрахунків змішує валюти в одній колонці «Сума» (multicurrency-aware екран, non-aware експорт) [x] виправлено
+
+**Файл:** `apps/web/src/app/(app)/settlements/SettlementsTabContent.tsx` (CSV export у Balance card).
+
+**Сценарій:** on-screen список транзакцій коректно показує суму у валюті транзакції (USD/EUR) +
+base-підрядок + символ валюти (Фаза 2). Але CSV-експорт (кнопка «Експорт CSV») лишився з Фази 1:
+header `['Дата','Тип','Сума','Документ','Нотатки']` з ОДНІЄЮ колонкою «Сума», у яку кладеться сирий
+`tx.amount` у валюті транзакції БЕЗ коду валюти й БЕЗ base-суми. Транзакція 100 USD і 4150 UAH
+виглядають у колонці як `100` і `4150` — нерозрізнювані; будь-хто, хто підсумує колонку, дістане
+безглузду суму (100+4150). Клас Bug #629 (сире money покидає систему через export) × мультивалюта:
+екран multicurrency-aware, експорт — ні. Той самий тип gap, що review закрив для invoice/WO-обліку,
+але у frontend-export його не помітили (review сфокусувався на backend base-обліку).
+
+**Фікс:** header → `['Дата','Тип','Сума','Валюта', 'Сума (${baseCode})','Документ','Нотатки']`;
+рядок додає `tx.currencyCode ?? baseCode` (колонка «Валюта») і `tx.amountBase ?? tx.amount` (колонка
+base — історичні рядки без amountBase = base UAH). Base-колонка — єдина коректно-підсумовна;
+валютна колонка тепер однозначна. `baseCode` з `useBaseCurrency()` (не хардкод UAH — узгоджено з
+рештою фічі). tsc web 0, PaymentsPage тести зелені (CSV headers у тестах не асертяться).
+
+**Severity MEDIUM** — user-visible фінансовий експорт змішує валюти (некоректна агрегація у Excel);
+не спотворює stored balance (баланс завжди у base на бекенді). Для типової UAH-only org колонки
+надлишкові, але не шкідливі (Валюта=UAH, Сума=Сума (UAH)).
+
+**Статус:** [x] виправлено
+
+### Test-gap (закрито разом з верифікацією just-fixed Critical) — немає регресії на overpay-guard/paidAmount у BASE при не-базовій оплаті
+
+**Файл:** `apps/api/src/modules/payments/payments.service.spec.ts` (+3 тести у describe «мультивалюта Фаза 2»).
+
+**Спостереження:** review щойно виправив Critical — invoice overpay-guard, invoice.paidAmount та
+WorkOrder.paidAmount інкремент мають працювати у BASE (`conv.amountBase`), не `dto.amount` (Invoice/WO
+не мають currencyId). Але наявні overpay-тести (Bug #668/#670) використовували base-DTO, де
+amountBase==amount → вони проходили б і зі старим (баговим) `dto.amount`. Отже фікс не був захищений
+регресією: тихий відкат до `dto.amount` пройшов би CI.
+
+**Закриття:** +3 тести у не-базовій валюті (USD, rate 41.5):
+
+1. overpay-guard у base: залишок 4000 base, платіж 100 USD=4150 base → 400 (якби порівнювали
+   dto.amount 100 ≤ 4000 → хибно пройшло б).
+2. invoice.paidAmount: залишок 4150 base, 100 USD=4150 base → paidAmount=4150, status=PAID (якби
+   інкрементили dto.amount → 100 + PARTIALLY_PAID).
+3. WorkOrder.paidAmount: `increment: 4150` (base), не 100.
+   Кожен тест — реальний mutation-guard (assert конкретне base-значення). payments spec 60→63 зелені.
+
+**Статус:** [x] закрито
+
+### Спостереження (не баг фічі) — QrPaymentModal.test.tsx flaky під повним паралельним web-suite
+
+`QrPaymentModal.test.tsx > polling PAID → onPaid РІВНО один раз` впав 1 раз у повному прогоні
+(`vitest run` весь web, environment 346s = висока контенція), але ізольовано 8/8 зелений. Polling-тест
+із fake-timers, чутливий до навантаження; НЕ зачеплений комітами фічі мультивалюти (останній дотик
+b5ab13f6, до фічі). Класифіковано як flaky-under-load, не регресія фічі й не release-blocker для
+мультивалюти. Рекомендація на майбутнє (поза scope): збільшити timeout/ізолювати timer-based polling
+тести або винести у `test.sequential`.

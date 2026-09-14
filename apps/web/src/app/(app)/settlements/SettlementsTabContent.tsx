@@ -286,12 +286,26 @@ export function SettlementsTabContent() {
                     onClick={() => {
                       if (!selected || transactions.length === 0) return;
                       const name = cpDisplayName(selected);
+                      // Мультивалюта: окремі колонки «Валюта» + «Сума (базова)», щоб експорт не
+                      // змішував суми різних валют у одній колонці (100 USD і 4150 UAH виглядали б
+                      // однаково → нескладна сума). Base-колонка (amountBase ?? amount — історичні =
+                      // base UAH) — єдина, яку коректно підсумовувати.
                       const rows = [
-                        ['Дата', 'Тип', 'Сума', 'Документ', 'Нотатки'],
+                        [
+                          'Дата',
+                          'Тип',
+                          'Сума',
+                          'Валюта',
+                          `Сума (${baseCode})`,
+                          'Документ',
+                          'Нотатки',
+                        ],
                         ...transactions.map(tx => [
                           fmtDate(tx.createdAt),
                           TX_LABELS[tx.type] ?? tx.type,
                           tx.amount,
+                          tx.currencyCode ?? baseCode,
+                          tx.amountBase ?? tx.amount,
                           tx.documentType ?? '',
                           tx.notes ?? '',
                         ]),

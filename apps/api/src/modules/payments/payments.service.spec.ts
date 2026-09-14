@@ -1398,4 +1398,80 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(lastCreateData?.rateUsed).toBe(1);
     expect(loyalty.queueEarn).toHaveBeenCalledWith(ORG, CP_ID, 100, PAY_ID);
   });
+
+  // ── Regression: часткова оплата інвойсу у НЕ-базовій валюті працює у BASE ──────────
+  // Bug #742-клас (just-fixed Critical): Invoice.amount/paidAmount у base (Invoice не має
+  // currencyId). Оплата у USD → overpay-guard і paidAmount МУСЯТЬ порівнюватись/накопичуватись
+  // у conv.amountBase, НЕ dto.amount. Без цього 100 USD зрівнялось би зі 100 UAH залишку.
+  // Ці тести падають, якщо код повернеться до dto.amount у invoice-гілці.
+  const INV_ID_MC = '99999999-9999-4999-8999-999999999999';
+
+  it('оплата інвойсу у USD: overpay-guard у BASE (amountBase > залишку base → 400)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    // Залишок інвойсу = 4000 base (UAH). Платіж 100 USD × 41.5 = 4150 base > 4000 → переплата.
+    // Якби порівнювали dto.amount(100) ≤ 4000 → хибно пройшло б.
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 4000,
+      paidAmount: 0,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await expect(
+      service.create(ORG, { ...usdCashDto, invoiceId: INV_ID_MC }, 'user-1'),
+    ).rejects.toThrow(/перевищує залишок/);
+    expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('оплата інвойсу у USD: paidAmount інкрементиться base-сумою (amountBase), не dto.amount', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    // Залишок = 4150 base; 100 USD × 41.5 = 4150 base → рівно закриває → PAID.
+    // Якби інкрементили dto.amount(100) → paidAmount=100, status=PARTIALLY_PAID (баг).
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 4150,
+      paidAmount: 0,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await service.create(ORG, { ...usdCashDto, invoiceId: INV_ID_MC }, 'user-1');
+
+    expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 4150, status: 'PAID' }),
+      }),
+    );
+  });
+
+  it('оплата наряду у USD: WorkOrder.paidAmount інкрементиться base-сумою (amountBase), не dto.amount', async () => {
+    const WO_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    prisma.workOrder.findFirst.mockResolvedValue({ branchId: 'br-1', status: 'INVOICED' });
+    prisma.workOrder.update.mockResolvedValue({});
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await service.create(ORG, { ...usdCashDto, workOrderId: WO_ID }, 'user-1');
+
+    expect(prisma.workOrder.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { paidAmount: { increment: 4150 } },
+      }),
+    );
+  });
 });
