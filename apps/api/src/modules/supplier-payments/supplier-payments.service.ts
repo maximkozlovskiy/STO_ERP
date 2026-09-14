@@ -891,6 +891,7 @@ export class SupplierPaymentsService {
                   deletedAt: null,
                 },
                 select: { id: true },
+                take: 500,
               }),
               tx.settlementTransaction.count({
                 where: {
