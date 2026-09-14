@@ -111,6 +111,8 @@ export const REGISTRY_ENUMS: Record<string, readonly string[]> = {
     'SUPPLIER_CHARGE',
     'SUPPLIER_PAYMENT',
     'SUPPLIER_REFUND',
+    'FX_GAIN',
+    'FX_LOSS',
   ],
   StockMovementType: [
     'RECEIPT',

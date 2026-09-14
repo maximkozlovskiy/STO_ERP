@@ -16,17 +16,21 @@ type TxType =
   | 'CREDIT_NOTE'
   | 'SUPPLIER_CHARGE'
   | 'SUPPLIER_PAYMENT'
-  | 'SUPPLIER_REFUND';
+  | 'SUPPLIER_REFUND'
+  | 'FX_GAIN'
+  | 'FX_LOSS';
 
 // Дзеркалить BALANCE_SIGN (settlements.service). Постачальницькі типи мають окрему семантику:
 // SUPPLIER_CHARGE −1 (ми винні), SUPPLIER_PAYMENT/SUPPLIER_REFUND +1 (наш борг ↓).
-const BALANCE_INCREASING: TxType[] = ['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND'];
+// Курсові різниці (Фаза 4): FX_GAIN +1 (гасить від'ємний залишок), FX_LOSS −1 (гасить додатний).
+const BALANCE_INCREASING: TxType[] = ['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND', 'FX_GAIN'];
 const BALANCE_DECREASING: TxType[] = [
   'PAYMENT',
   'PREPAYMENT',
   'REFUND',
   'CREDIT_NOTE',
   'SUPPLIER_CHARGE',
+  'FX_LOSS',
 ];
 
 /** Кумулятивно застосовує транзакції до початкового балансу. */
@@ -195,8 +199,8 @@ describe('Settlements — balance invariants (property-based)', () => {
   // Bug #608 regression guard: наступний refactor знаку не втратить жодне enum-значення.
   it('BALANCE_SIGN покриває ВСІ SettlementTransactionType (exhaustive) і кожен ±1', () => {
     const enumValues = Object.values(SettlementTransactionType);
-    // Не менше 8 значень (CHARGE/PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE + 3 SUPPLIER_*).
-    expect(enumValues.length).toBeGreaterThanOrEqual(8);
+    // Не менше 10 значень (CHARGE/PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE + 3 SUPPLIER_* + 2 FX_*).
+    expect(enumValues.length).toBeGreaterThanOrEqual(10);
     for (const t of enumValues) {
       const sign = BALANCE_SIGN[t];
       expect(sign, `BALANCE_SIGN missing for enum value ${t}`).toBeDefined();
@@ -211,6 +215,9 @@ describe('Settlements — balance invariants (property-based)', () => {
     expect(BALANCE_SIGN.SUPPLIER_CHARGE).toBe(-1);
     expect(BALANCE_SIGN.SUPPLIER_PAYMENT).toBe(1);
     expect(BALANCE_SIGN.SUPPLIER_REFUND).toBe(1);
+    // Курсові різниці (Фаза 4): FX_GAIN гасить від'ємний залишок (+1), FX_LOSS — додатний (−1).
+    expect(BALANCE_SIGN.FX_GAIN).toBe(1);
+    expect(BALANCE_SIGN.FX_LOSS).toBe(-1);
   });
 
   // Bug #715 cross-layer guard: фронт (SettlementsTabContent + counterparties/[id]) споживає
@@ -249,6 +256,12 @@ describe('Settlements — balance invariants (property-based)', () => {
     // SUPPLIER_PAYMENT: дзеркальний випадок — sign +1 (у UP-set) АЛЕ НЕ charge-like (зелений).
     expect(SETTLEMENT_BALANCE_UP_TYPES.has('SUPPLIER_PAYMENT')).toBe(true);
     expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('SUPPLIER_PAYMENT')).toBe(false);
+    // Курсові різниці (Фаза 4): НЕ charge-like (колір за типом у frontend: GAIN зелений/LOSS червоний,
+    // не через charge-like set). FX_GAIN у UP-set (+1), FX_LOSS ні (−1).
+    expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('FX_GAIN')).toBe(false);
+    expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('FX_LOSS')).toBe(false);
+    expect(SETTLEMENT_BALANCE_UP_TYPES.has('FX_GAIN')).toBe(true);
+    expect(SETTLEMENT_BALANCE_UP_TYPES.has('FX_LOSS')).toBe(false);
   });
 
   it('частковий постач. цикл: receive(X) − pay(Y<X) + refund(Z) → −(X−Y−Z)', () => {
@@ -280,6 +293,28 @@ describe('Settlements — balance invariants (property-based)', () => {
         return balance === clientDebt - supplierDebt;
       }),
       { numRuns: 300 },
+    );
+  });
+
+  // Курсові різниці (Фаза 4) — ЯДЕРНИЙ інваріант: повна оплата іновалютного рахунку у base НЕ
+  // зводиться до нуля (курс нарахування ≠ курс оплати); FX-проводка обнуляє залишок ТОЧНО.
+  // chargeBase + (−paidBase) + FX = 0, де FX = −(chargeBase − paidBase). Хибний знак FX подвоїв би
+  // залишок замість обнулення — цей тест ловить інверсію.
+  it('FX zeroing: CHARGE(cb) + PAYMENT(pb) + FX(cb−pb) → balance == 0 (обидва напрями)', () => {
+    fc.assert(
+      fc.property(moneyAmount(), moneyAmount(), (chargeBase, paidBase) => {
+        const fx = chargeBase - paidBase;
+        // fx>0 → нарахували більше base ніж отримали → FX_LOSS(−1) гасить додатний залишок.
+        // fx<0 → отримали більше → FX_GAIN(+1) гасить від'ємний. |fx| завжди додатна сума проводки.
+        const fxType: TxType = fx > 0 ? 'FX_LOSS' : 'FX_GAIN';
+        const balance = applyTransactions([
+          { type: 'CHARGE', amount: chargeBase },
+          { type: 'PAYMENT', amount: paidBase },
+          { type: fxType, amount: Math.abs(fx) },
+        ]);
+        return balance === 0;
+      }),
+      { numRuns: 500 },
     );
   });
 });

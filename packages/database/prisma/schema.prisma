@@ -214,6 +214,11 @@ enum SettlementTransactionType {
   SUPPLIER_CHARGE
   SUPPLIER_PAYMENT
   SUPPLIER_REFUND
+  // Курсові різниці (мультивалюта Фаза 4): realized FX при повній оплаті іновалютного документа.
+  // FX_GAIN(+1) гасить від'ємний base-залишок (отримали більше base), FX_LOSS(−1) — додатний
+  // (отримали менше base ніж нараховано). amount=amountBase=|fx| у БАЗОВІЙ валюті (currencyId=null).
+  FX_GAIN
+  FX_LOSS
 }
 
 // Зарплатний період (payroll). FSM: DRAFT → COMPUTED (нарахування зафіксовано) → PAID; або CANCELLED.

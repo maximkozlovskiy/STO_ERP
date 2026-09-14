@@ -333,7 +333,7 @@ export const STOCK_MOVEMENT_TYPE_LABELS: Record<string, string> = {
   RETURN: 'Повернення',
 };
 
-/** SettlementTransactionType — 8 типів транзакцій взаєморозрахунків. */
+/** SettlementTransactionType — 10 типів транзакцій взаєморозрахунків. */
 export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
   CHARGE: 'Нарахування',
   PAYMENT: 'Оплата',
@@ -343,6 +343,8 @@ export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
   SUPPLIER_CHARGE: 'Нарахування (постач.)',
   SUPPLIER_PAYMENT: 'Оплата постачальнику',
   SUPPLIER_REFUND: 'Повернення постачальнику',
+  FX_GAIN: 'Курсовий прибуток',
+  FX_LOSS: 'Курсовий збиток',
 };
 
 /**
@@ -369,6 +371,9 @@ export const SETTLEMENT_BALANCE_SIGN: Record<string, 1 | -1> = {
   SUPPLIER_CHARGE: -1, // ми винні постачальнику (баланс постач.-акаунта падає)
   SUPPLIER_PAYMENT: 1, // наш борг постачальнику меншає
   SUPPLIER_REFUND: 1,
+  // Курсові різниці (Фаза 4) — гасять base-залишок повністю сплаченого іновалютного документа.
+  FX_GAIN: 1,
+  FX_LOSS: -1,
 };
 
 /** Похідне: типи, що ЗБІЛЬШУЮТЬ баланс (sign=+1) — знак «+» у рядку транзакції. */
