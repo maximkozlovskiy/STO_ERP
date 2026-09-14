@@ -5021,3 +5021,42 @@ idempotency count>0 → skip); base-валютні Bug #675 тести незм�
   tsc api+web 0; API suite 2298 passed (2296+2); settlements.invariants 17 (16+1).
 
 **Статус:** [x] виправлено
+
+## Session 2026-09-14 — Мультивалюта Фаза 5 (payables FX) tester (фінальний QA)
+
+Scope: bbc46a1b/386a568a/a76d688b/00c70b14/f89dd324/7b2da1ee (payables FX — курсові різниці постачальника).
+Baseline: tsc api/web/shared 0; supplier-payments 60→**64** (+4 нові), PO 199, settlements+invariants,
+web 754 — усе зелене.
+
+**Результат: 0 нових багів.** Sign-інверсія (SUPPLIER_CHARGE=−1/SUPPLIER_PAYMENT=+1 → fx>0=FX_GAIN,
+fx<0=FX_LOSS) підтверджена математично коректною (property-based zeroing, обидва напрями, balance===0).
+
+Перевірені edge-сценарії (усі коректні):
+
+- **ДРУГИЙ ШЛЯХ (аналог Bug #745 на клієнті) — ВІДСУТНІЙ.** `PurchaseOrder.paidAmount` пишеться ЛИШЕ у
+  `supplier-payments.confirm()`; `SUPPLIER_PAYMENT` settlement створюється лише там; єдиний endpoint
+  `POST :id/confirm`, єдиний caller, немає bulk/прямої оплати PO. purchase-orders.receive() пише лише
+  SUPPLIER_CHARGE (не paidAmount). Немає шляху зробити PO оплаченим без FX-визнання.
+- chargeBase = Σ усіх SUPPLIER_CHARGE (documentType=PurchaseOrder) — кожен частковий receive() пише
+  окрему проводку за курсом прийому; агрегат повний. StockDocument.confirm() НЕ пише SUPPLIER_CHARGE.
+- paidBase = Σ усіх CONFIRMED SUPPLIER_PAYMENT цього PO (spIds, take:500) — часткові оплати: FX лише
+  коли остання робить повну; від Σ, не від останнього платежу (новий тест).
+- Overpay-повтор: paidAt≠null guard + fxExisting count-guard → без другого FX; paidAmount інкрементиться
+  без cap, paidAt не перезаписується (новий тест).
+- Concurrency: paidAmount CAS (where paidAmount=снапшот) серіалізує; програш → 400 + повний rollback
+  (жодного подвоєння FX/paidAmount) (новий тест).
+- Валютний guard SP==PO лише коли purchaseOrderId≠null; SP без PO → без guard/FX/tracking, не ламається
+  (новий тест). base-PO (currencyId=null) / historical backfill → FX ніколи (skip via sameCurrencyAsBase).
+- FX settlement без currencyId → rate=1, amountBase=amount → balanceDelta точно обнуляє base-залишок →
+  SettlementAccount постачальника == 0.
+- Frontend: FX_LOSS=destructive/charge-like, FX_GAIN=success — єдина конвенція для клієнт+постач. FX
+  (той самий BALANCE_SIGN), НЕ інвертована копія. isFullyPaid=paidAt≠null консистентно.
+
+Прийнятні edge (НЕ баги, задокументовано): (1) confirm проти soft-deleted PO у вузькому вікні
+DRAFT→delete→confirm пропускає guard/tracking, але SUPPLIER_PAYMENT settlement коректний (борг гаситься);
+create() валідовує PO deletedAt:null+supplier — вікно вкрай рідкісне. (2) SUPPLIER_REFUND (повернення
+постачальнику) записується у base (rate=1) і не входить у FX-обнулення, але повернення зменшує paidAmount-
+шлях так, що becameFullyPaid зазвичай не тригериться — поза FX-моделлю Фази 5.
+
+Додано 4 regression-тести (supplier-payments.service.spec): часткові→повна FX від Σ; overpay-повтор без
+другого FX; concurrency paidAmount CAS count=0→400; SP без PO без tracking. [x] завершено

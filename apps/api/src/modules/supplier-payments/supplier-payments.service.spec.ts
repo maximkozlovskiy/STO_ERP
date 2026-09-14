@@ -462,6 +462,119 @@ describe('SupplierPaymentsService — regression guards', () => {
     expect(fxCall()).toBeUndefined();
   });
 
+  // Сценарій 2 (tester): остання часткова оплата робить PO повним → FX від Σ усіх платежів.
+  it('часткові оплати: остання (200 з paidAmount=800, total=1000) робить повну оплату → FX, paidAmount CAS від po.paidAmount=800', async () => {
+    // pre-read SP: amount=200 (не дефолтні 100), привʼязаний до PO_FX у USD.
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce({
+        status: SupplierPaymentStatus.DRAFT,
+        supplierId: SUPPLIER_ID,
+        amount: 200,
+        sourceType: PaymentSourceType.BANK_ACCOUNT,
+        cashRegisterId: null,
+        currencyId: USD,
+        purchaseOrderId: PO_FX,
+      })
+      .mockResolvedValueOnce(confirmedRow); // findOne
+    // PO: total=1000, вже сплачено 800 (попередні часткові), paidAt ще null.
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      currencyId: USD,
+      totalAmount: 1000,
+      paidAmount: 800,
+      paidAt: null,
+    });
+    (
+      service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
+    ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
+    // chargeBase = Σ усіх SUPPLIER_CHARGE = 42000; paidBase = Σ усіх SUPPLIER_PAYMENT = 41900 → fx=+100.
+    prisma.settlementTransaction.aggregate
+      .mockResolvedValueOnce({ _sum: { amountBase: 42000 } }) // charge
+      .mockResolvedValueOnce({ _sum: { amountBase: 41900 } }); // paid (усі 5 платежів)
+    prisma.supplierPayment.findMany.mockResolvedValue([
+      { id: 'sp-1' },
+      { id: 'sp-2' },
+      { id: 'sp-3' },
+      { id: 'sp-4' },
+      { id: SP_ID },
+    ]);
+
+    await service.confirm(ORG, SP_ID, USER_ID);
+
+    // FX від Σ (не лише останнього платежу): fx=+100 → FX_GAIN (інверсія клієнта).
+    expect(fxCall()![1]).toMatchObject({ type: 'FX_GAIN', amount: 100, documentId: PO_FX });
+    // paidAmount CAS: 800+200=1000, where paidAmount=800 (снапшот), paidAt виставлено.
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ paidAmount: 800 }),
+        data: expect.objectContaining({ paidAmount: 1000, paidAt: expect.anything() }),
+      }),
+    );
+  });
+
+  // Сценарій 6 (tester): overpay-повтор після повної оплати → paidAt вже set → БЕЗ другого FX.
+  it('повторна оплата після повної (paidAt≠null) → paidAmount інкремент, БЕЗ другого FX', async () => {
+    setupSpPre(USD);
+    // PO вже повністю сплачено раніше: paidAmount=100=total, paidAt виставлено.
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      currencyId: USD,
+      totalAmount: 100,
+      paidAmount: 100,
+      paidAt: new Date('2026-09-01'),
+    });
+    (
+      service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
+    ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
+    prisma.settlementTransaction.aggregate.mockResolvedValue({ _sum: { amountBase: 4200 } });
+    prisma.supplierPayment.findMany.mockResolvedValue([{ id: SP_ID }]);
+
+    await service.confirm(ORG, SP_ID, USER_ID);
+
+    // becameFullyPaid = false (paidAt != null) → жодного FX навіть за наявної base-різниці.
+    expect(fxCall()).toBeUndefined();
+    // paidAmount все одно інкрементиться (overpay без cap), БЕЗ перезапису paidAt.
+    expect(prisma.purchaseOrder.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { paidAmount: 200 } }),
+    );
+  });
+
+  // Сценарій 8 (tester): paidAmount CAS програв гонку (count=0) → 400, весь confirm відкат.
+  it('concurrency: paidAmount CAS count=0 (паралельна оплата) → 400', async () => {
+    setupSpPre(USD);
+    setupPo(USD, 100, 0);
+    (
+      service as unknown as { exchangeRates: { getBaseCurrency: ReturnType<typeof vi.fn> } }
+    ).exchangeRates.getBaseCurrency = vi.fn().mockResolvedValue({ id: UAH, code: 'UAH' });
+    // SP CAS (confirm) успішний, але paidAmount CAS програв (інша оплата змінила paidAmount).
+    prisma.purchaseOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.confirm(ORG, SP_ID, USER_ID)).rejects.toThrow(
+      /Замовлення змінено паралельною операцією/,
+    );
+    expect(fxCall()).toBeUndefined();
+  });
+
+  // Сценарій 4 (tester): SP без purchaseOrderId → без guard/без FX/без paidAmount (не ламається).
+  it('SP без purchaseOrderId → confirm без guard/FX/paidAmount tracking', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce({
+        status: SupplierPaymentStatus.DRAFT,
+        supplierId: SUPPLIER_ID,
+        amount: 100,
+        sourceType: PaymentSourceType.BANK_ACCOUNT,
+        cashRegisterId: null,
+        currencyId: USD,
+        purchaseOrderId: null,
+      })
+      .mockResolvedValueOnce(confirmedRow);
+    await service.confirm(ORG, SP_ID, USER_ID);
+    // SUPPLIER_PAYMENT settlement пишеться, але жодного paidAmount CAS / FX.
+    expect(prisma.purchaseOrder.findFirst).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrder.updateMany).not.toHaveBeenCalled();
+    expect(fxCall()).toBeUndefined();
+    expect(
+      settlements.createTransaction.mock.calls.some(c => c[1]?.type === 'SUPPLIER_PAYMENT'),
+    ).toBe(true);
+  });
+
   // ──────────────────────────────────────────────────────────────────────
   // cancel() / remove()
   // ──────────────────────────────────────────────────────────────────────
