@@ -277,7 +277,14 @@ export class PaymentsService {
         if (dto.invoiceId) {
           const inv = await tx.invoice.findFirst({
             where: { id: dto.invoiceId, orgId, deletedAt: null },
-            select: { status: true, workOrderId: true, amount: true, paidAmount: true },
+            // Мультивалюта (Фаза 3): currencyId рахунку — оплата має бути у ТІЙ САМІЙ валюті.
+            select: {
+              status: true,
+              workOrderId: true,
+              amount: true,
+              paidAmount: true,
+              currencyId: true,
+            },
           });
           if (inv) {
             // OVERDUE теж оплачуваний (прострочений рахунок ще належить сплатити); часткова
@@ -292,19 +299,24 @@ export class PaymentsService {
             if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
               throw new BadRequestException('Рахунок не належить до вказаного наряду');
             }
+            // Мультивалюта (Фаза 3): валюта оплати мусить збігатися з валютою рахунку — інакше
+            // крос-валютна алокація (яким курсом закрити залишок = FX-політика, поза scope).
+            // NULL currencyId (історичні/base) вважаємо еквівалентними базовій валюті.
+            if (!(await this.sameCurrencyAsBase(orgId, paymentCurrencyId, inv.currencyId))) {
+              throw new BadRequestException('Валюта оплати має збігатися з валютою рахунку');
+            }
             const invAmount = Number(inv.amount);
             const prevPaid = Number(inv.paidAmount);
             const remaining = invAmount - prevPaid;
-            // Мультивалюта (Фаза 2): invoice.amount/paidAmount у БАЗОВІЙ валюті (Invoice не має
-            // currencyId). Оплата може бути в іновалюті → порівнюємо/накопичуємо base-суму
-            // (conv.amountBase), НЕ dto.amount, інакше 100 USD зрівнялось би зі 100 UAH залишку.
-            if (conv.amountBase > remaining + 1e-9) {
-              const baseCode = (await this.exchangeRates.getBaseCurrency(orgId)).code;
+            // Мультивалюта (Фаза 3): invoice.amount/paidAmount тепер у ВАЛЮТІ рахунку, а оплата — у
+            // тій самій валюті (перевірено вище) → порівнюємо/накопичуємо dto.amount (у валюті),
+            // НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
+            if (dto.amount > remaining + 1e-9) {
               throw new BadRequestException(
-                `Сума перевищує залишок за рахунком (${remaining.toFixed(2)} ${baseCode})`,
+                `Сума перевищує залишок за рахунком (${remaining.toFixed(2)})`,
               );
             }
-            const newPaid = prevPaid + conv.amountBase;
+            const newPaid = prevPaid + dto.amount;
             const newStatus = newPaid >= invAmount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID';
             // CAS: оновлюємо лише якщо paidAmount досі == prevPaid (не змінений конкурентом).
             const updated = await tx.invoice.updateMany({
@@ -362,9 +374,9 @@ export class PaymentsService {
         if (dto.workOrderId) {
           await tx.workOrder.update({
             where: { id: dto.workOrderId, orgId },
-            // Мультивалюта (Фаза 2): WorkOrder.paidAmount у БАЗОВІЙ валюті (WO не має currencyId) →
-            // інкремент base-сумою (conv.amountBase), не dto.amount (може бути USD/EUR).
-            data: { paidAmount: { increment: conv.amountBase } },
+            // Мультивалюта (Фаза 3): WorkOrder.paidAmount тепер у ВАЛЮТІ наряду; оплата має збігатися
+            // з валютою (WO-рахунок успадковує валюту наряду) → інкремент dto.amount, не conv.amountBase.
+            data: { paidAmount: { increment: dto.amount } },
           });
         }
 
@@ -504,6 +516,22 @@ export class PaymentsService {
     }
 
     return this.toDto(payment);
+  }
+
+  /**
+   * Мультивалюта (Фаза 3): чи однакова валюта оплати й рахунку/наряду. NULL трактується як базова
+   * валюта org (історичні документи / оплата без рахунку-джерела) → NULL ≡ base ≡ NULL. Резолв
+   * базової id відкладено (лениво), лише коли хоч одна сторона NULL, а інша — ні.
+   */
+  private async sameCurrencyAsBase(
+    orgId: string,
+    a: string | null,
+    b: string | null,
+  ): Promise<boolean> {
+    if (a === b) return true;
+    const baseId = (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const norm = (v: string | null) => v ?? baseId;
+    return norm(a) === norm(b);
   }
 
   /**

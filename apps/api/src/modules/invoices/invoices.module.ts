@@ -9,6 +9,7 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
 import { SettlementsModule } from '../settlements/settlements.module';
 import { SettingsModule } from '../settings/settings.module';
 import { AuditModule } from '../audit/audit.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
 
 @Module({
@@ -18,6 +19,7 @@ import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
     SettlementsModule,
     SettingsModule,
     AuditModule, // C1: аудит створення рахунку
+    ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів рахунку
     BullModule.registerQueue({ name: 'invoice-overdue', defaultJobOptions: DEFAULT_JOB_OPTS }),
   ],
   controllers: [InvoicesController],

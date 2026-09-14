@@ -42,6 +42,12 @@ export class CreateInvoiceDto {
   @Transform(emptyToUndefined)
   @IsDateString()
   documentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Валюта документа (за замовчуванням — базова валюта org)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  currencyId?: string;
 }
 
 export class UpdateInvoiceDto {
@@ -144,6 +150,11 @@ export class InvoiceResponseDto {
   @ApiProperty() totalWithoutVat!: number;
   @ApiProperty() totalVat!: number;
   @ApiProperty() totalWithVat!: number;
+  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
+  @ApiPropertyOptional() currencyId?: string | null;
+  @ApiPropertyOptional() currencyCode?: string | null;
+  @ApiPropertyOptional() totalAmountBase?: number | null;
+  @ApiPropertyOptional() rateUsed?: number | null;
   @ApiPropertyOptional() invoiceType?: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() dueDate?: string | null;

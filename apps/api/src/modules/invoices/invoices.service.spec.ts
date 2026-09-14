@@ -8,6 +8,22 @@ import { PdfService } from '../pdf/pdf.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+
+// Мультивалюта (Фаза 3): InvoicesService набув ExchangeRatesService (recalcTotals/create base-конвертація).
+// Default мок — базова валюта (rate=1, amountBase=amount). DI-drift guard (Bug #724 клас).
+const exchangeRatesMock = () => ({
+  provide: ExchangeRatesService,
+  useValue: {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+  },
+});
 
 /**
  * Bug #413: Service-level spec для guards що додані review-фіксами #403, #406, #407, #412.
@@ -69,6 +85,7 @@ describe('InvoicesService — business logic guards', () => {
         { provide: SettlementsService, useValue: settlementsMock },
         { provide: SettingsService, useValue: settingsMock },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        exchangeRatesMock(),
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -701,6 +718,35 @@ describe('InvoicesService — business logic guards', () => {
       );
     });
 
+    // Мультивалюта (Фаза 3): CHARGE пробрасує currencyId + date + fallbackToLatest → борг у base.
+    it('standalone у валюті DRAFT→SENT → CHARGE з currencyId + date + fallbackToLatest', async () => {
+      const USD = 'usd-1111-1111-1111-111111111111';
+      const docDate = new Date('2026-02-01');
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({
+          status: 'DRAFT',
+          workOrderId: null,
+          counterpartyId: CP_ID,
+          amount: 100,
+          currencyId: USD,
+          documentDate: docDate,
+        })
+        .mockResolvedValue(findOneRow);
+      prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      await service.transition(ORG, INV_ID, 'SENT' as never, 'user-1');
+      expect(settlementsMock.createTransaction).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({
+          type: 'CHARGE',
+          amount: 100,
+          currencyId: USD,
+          date: docDate,
+          fallbackToLatest: true,
+        }),
+        expect.anything(),
+      );
+    });
+
     it('WO-рахунок DRAFT→SENT → CHARGE НЕ створюється (уникнення подвійного боргу)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
@@ -908,6 +954,7 @@ describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
           },
         },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        exchangeRatesMock(),
       ],
     }).compile();
     service = module.get(InvoicesService);
@@ -995,6 +1042,7 @@ describe('InvoicesService — linked-documents edge cases', () => {
           },
         },
         { provide: AuditService, useValue: { record: vi.fn().mockResolvedValue(undefined) } },
+        exchangeRatesMock(),
       ],
     }).compile();
     service = module.get(InvoicesService);

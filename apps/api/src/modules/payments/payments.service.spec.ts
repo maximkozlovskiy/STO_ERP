@@ -1399,26 +1399,25 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(loyalty.queueEarn).toHaveBeenCalledWith(ORG, CP_ID, 100, PAY_ID);
   });
 
-  // ── Regression: часткова оплата інвойсу у НЕ-базовій валюті працює у BASE ──────────
-  // Bug #742-клас (just-fixed Critical): Invoice.amount/paidAmount у base (Invoice не має
-  // currencyId). Оплата у USD → overpay-guard і paidAmount МУСЯТЬ порівнюватись/накопичуватись
-  // у conv.amountBase, НЕ dto.amount. Без цього 100 USD зрівнялось би зі 100 UAH залишку.
-  // Ці тести падають, якщо код повернеться до dto.amount у invoice-гілці.
+  // ── Мультивалюта Фаза 3: оплата документа у ВАЛЮТІ документа ──────────
+  // Модель змінилась (Фаза 3): Invoice.amount/paidAmount тепер у ВАЛЮТІ рахунку; оплата МУСИТЬ бути
+  // у тій самій валюті → overpay-guard і paidAmount порівнюються/накопичуються у dto.amount (валюта),
+  // борг у леджері лягає у base через settlement. Крос-валютна оплата → 400.
   const INV_ID_MC = '99999999-9999-4999-8999-999999999999';
 
-  it('оплата інвойсу у USD: overpay-guard у BASE (amountBase > залишку base → 400)', async () => {
+  it('оплата USD-інвойсу з USD-каси: overpay-guard у ВАЛЮТІ (dto.amount > залишку → 400)', async () => {
     prisma.cashRegister.findFirst.mockResolvedValue({
       id: CASH_ID,
       isFiscal: false,
       currencyId: USD_ID,
     });
-    // Залишок інвойсу = 4000 base (UAH). Платіж 100 USD × 41.5 = 4150 base > 4000 → переплата.
-    // Якби порівнювали dto.amount(100) ≤ 4000 → хибно пройшло б.
+    // Рахунок у USD, залишок = 90 USD; платіж 100 USD > 90 → переплата (у валюті рахунку).
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'SENT',
       workOrderId: null,
-      amount: 4000,
+      amount: 90,
       paidAmount: 0,
+      currencyId: USD_ID,
     });
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
 
@@ -1429,33 +1428,56 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(prisma.payment.create).not.toHaveBeenCalled();
   });
 
-  it('оплата інвойсу у USD: paidAmount інкрементиться base-сумою (amountBase), не dto.amount', async () => {
+  it('оплата USD-інвойсу з USD-каси: paidAmount інкрементиться dto.amount (валюта), не amountBase', async () => {
     prisma.cashRegister.findFirst.mockResolvedValue({
       id: CASH_ID,
       isFiscal: false,
       currencyId: USD_ID,
     });
-    // Залишок = 4150 base; 100 USD × 41.5 = 4150 base → рівно закриває → PAID.
-    // Якби інкрементили dto.amount(100) → paidAmount=100, status=PARTIALLY_PAID (баг).
+    // Рахунок 100 USD, залишок 100; платіж 100 USD → рівно закриває → PAID (у валюті).
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'SENT',
       workOrderId: null,
-      amount: 4150,
+      amount: 100,
       paidAmount: 0,
+      currencyId: USD_ID,
     });
     prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
 
     await service.create(ORG, { ...usdCashDto, invoiceId: INV_ID_MC }, 'user-1');
 
+    // paidAmount у валюті рахунку (100), status PAID; settlement окремо конвертує у base.
     expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ paidAmount: 4150, status: 'PAID' }),
+        data: expect.objectContaining({ paidAmount: 100, status: 'PAID' }),
       }),
     );
   });
 
-  it('оплата наряду у USD: WorkOrder.paidAmount інкрементиться base-сумою (amountBase), не dto.amount', async () => {
+  it('крос-валюта: оплата з USD-каси у base-інвойс → 400 (валюти мають збігатися)', async () => {
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    // Рахунок у базовій валюті (currencyId=UAH_ID), оплата з USD-каси → розбіжність валют.
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'SENT',
+      workOrderId: null,
+      amount: 100,
+      paidAmount: 0,
+      currencyId: UAH_ID,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await expect(
+      service.create(ORG, { ...usdCashDto, invoiceId: INV_ID_MC }, 'user-1'),
+    ).rejects.toThrow(/Валюта оплати має збігатися/);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('оплата наряду у USD: WorkOrder.paidAmount інкрементиться dto.amount (валюта наряду)', async () => {
     const WO_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     prisma.cashRegister.findFirst.mockResolvedValue({
       id: CASH_ID,
@@ -1468,9 +1490,10 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
 
     await service.create(ORG, { ...usdCashDto, workOrderId: WO_ID }, 'user-1');
 
+    // WO.paidAmount у валюті наряду → інкремент dto.amount (100), не amountBase (4150).
     expect(prisma.workOrder.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { paidAmount: { increment: 4150 } },
+        data: { paidAmount: { increment: 100 } },
       }),
     );
   });

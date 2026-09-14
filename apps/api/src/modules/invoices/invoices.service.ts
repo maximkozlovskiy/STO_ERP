@@ -16,6 +16,7 @@ import { PdfService } from '../pdf/pdf.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SettingsService } from '../settings/settings.service';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import {
   CreateInvoiceDto,
@@ -74,6 +75,7 @@ export class InvoicesService {
     private readonly settlements: SettlementsService,
     private readonly settingsService: SettingsService,
     private readonly audit: AuditService,
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
 
   async findAll(
@@ -126,6 +128,7 @@ export class InvoicesService {
         include: {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           workOrder: { select: { number: true } },
+          currency: { select: { code: true } },
         },
       }),
       this.prisma.invoice.count({ where }),
@@ -140,6 +143,7 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
+        currency: { select: { code: true } },
         // good.unit + unitOfMeasure required: unitShortName/coefficient were always undefined
         // until includes were updated to match DTO fields.
         lines: {
@@ -170,7 +174,14 @@ export class InvoicesService {
         // Full-row guard тягнув би 20+ колонок (vehicle/branch/lift FKs, syncVersion, timestamps)
         // — wire payload зайвий, V8 alloc на гарячому шляху invoice create.
         where: { id: workOrderId, orgId, deletedAt: null },
-        select: { id: true, status: true, counterpartyId: true, totalAmount: true },
+        // Мультивалюта (Фаза 3): валюта наряду → успадковується рахунком (amount у тій самій валюті).
+        select: {
+          id: true,
+          status: true,
+          counterpartyId: true,
+          totalAmount: true,
+          currencyId: true,
+        },
       }),
       this.prisma.invoice.findFirst({
         where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
@@ -196,6 +207,19 @@ export class InvoicesService {
     const documentDate = kyivToday();
     const dueDate = await this.resolveDueDate(orgId, undefined, documentDate);
 
+    // Мультивалюта (Фаза 3): рахунок успадковує валюту наряду; base-сума — по курсу на дату рахунку
+    // (rate-on-date per event; fallbackToLatest — документний потік). Без валюти → base (rate=1).
+    const invoiceAmount = Number(wo.totalAmount);
+    const conv = wo.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          wo.currencyId,
+          documentDate,
+          invoiceAmount,
+          true,
+        )
+      : { rateUsed: 1, amountBase: invoiceAmount };
+
     // Serializable isolation + re-check `existing` within the tx prevents two concurrent
     // createFromWorkOrder calls from BOTH passing the pre-check and creating duplicate invoices.
     // On Serializable conflict, Prisma throws P2034 → map to BadRequestException.
@@ -220,7 +244,10 @@ export class InvoicesService {
               counterpartyId: wo.counterpartyId,
               workOrderId: wo.id,
               number,
-              amount: Number(wo.totalAmount),
+              amount: invoiceAmount,
+              currencyId: wo.currencyId ?? null,
+              totalAmountBase: conv.amountBase,
+              rateUsed: conv.rateUsed,
               dueDate,
               documentDate,
               notes: null,
@@ -229,6 +256,7 @@ export class InvoicesService {
             include: {
               counterparty: { select: { firstName: true, lastName: true, companyName: true } },
               workOrder: { select: { number: true } },
+              currency: { select: { code: true } },
             },
           });
         },
@@ -289,6 +317,18 @@ export class InvoicesService {
     const documentDate = dto.documentDate ? new Date(dto.documentDate) : kyivToday();
     const dueDate = await this.resolveDueDate(orgId, dto.dueDate, documentDate);
 
+    // Мультивалюта (Фаза 3): валюта рахунку — з DTO або базова org; base-сума по курсу на дату документа.
+    const currencyId = dto.currencyId ?? (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const conv = currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          currencyId,
+          documentDate,
+          dto.amount,
+          true,
+        )
+      : { rateUsed: 1, amountBase: dto.amount };
+
     const inv = await this.prisma.invoice.create({
       data: {
         orgId,
@@ -296,6 +336,9 @@ export class InvoicesService {
         workOrderId: dto.workOrderId ?? null,
         number,
         amount: dto.amount,
+        currencyId,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
         invoiceType: dto.invoiceType ?? 'INVOICE',
         dueDate,
         documentDate,
@@ -305,6 +348,7 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
+        currency: { select: { code: true } },
       },
     });
 
@@ -368,6 +412,9 @@ export class InvoicesService {
         counterpartyId: true,
         amount: true,
         paidAmount: true,
+        // Мультивалюта (Фаза 3): валюта + дата документа для CHARGE/PAYMENT у base.
+        currencyId: true,
+        documentDate: true,
       },
     });
     if (!inv) throw new NotFoundException('Рахунок не знайдено');
@@ -414,6 +461,10 @@ export class InvoicesService {
               counterpartyId: inv.counterpartyId,
               type: 'CHARGE',
               amount: Number(inv.amount),
+              // Мультивалюта (Фаза 3): борг у base по курсу на дату документа рахунку.
+              currencyId: inv.currencyId ?? undefined,
+              date: inv.documentDate ?? undefined,
+              fallbackToLatest: true,
               documentType: 'Invoice',
               documentId: id,
               createdBy: userId,
@@ -430,6 +481,9 @@ export class InvoicesService {
               counterpartyId: inv.counterpartyId,
               type: 'PAYMENT',
               amount: paymentRemaining,
+              currencyId: inv.currencyId ?? undefined,
+              date: inv.documentDate ?? undefined,
+              fallbackToLatest: true,
               documentType: 'Invoice',
               documentId: id,
               createdBy: userId,
@@ -481,6 +535,17 @@ export class InvoicesService {
     // totalWithoutVat/totalVat/totalWithVat; Prisma defaults leave them at 0 while
     // lines[].priceWithVat has real values. sumLineTotals — спільний single-pass суматор.
     const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(original.lines);
+    const clonedAmount = original.lines.length > 0 ? totalWithVat : Number(original.amount);
+    // Мультивалюта (Фаза 3): клон успадковує валюту оригіналу; base — по СВІЖОМУ курсу (новий DRAFT).
+    const clonedConv = original.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          original.currencyId,
+          new Date(),
+          clonedAmount,
+          true,
+        )
+      : { rateUsed: 1, amountBase: clonedAmount };
 
     // Clone must NOT inherit workOrderId: the same WO would accumulate duplicate invoices
     // and the WO→Invoice 1:1 invariant breaks (auto-invoice on completion creates a 3rd).
@@ -493,10 +558,13 @@ export class InvoicesService {
         // When the invoice has line items, sync `amount` with their total to
         // avoid mismatch between `amount` and recalculated VAT breakdown.
         // Fall back to `original.amount` when there are no lines.
-        amount: original.lines.length > 0 ? totalWithVat : original.amount,
+        amount: clonedAmount,
+        currencyId: original.currencyId ?? null,
         totalWithoutVat,
         totalVat,
         totalWithVat,
+        totalAmountBase: clonedConv.amountBase,
+        rateUsed: clonedConv.rateUsed,
         dueDate: original.dueDate,
         notes: original.notes,
         status: InvoiceStatus.DRAFT,
@@ -519,6 +587,7 @@ export class InvoicesService {
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },
+        currency: { select: { code: true } },
       },
     });
 
@@ -696,17 +765,42 @@ export class InvoicesService {
     // Тепер: prisma.aggregate({_sum: ...}) — 1 row response, Postgres counts.
     // Паралель з паттерном work-orders.recalcTotals (2026-05-31).
     // InvoiceLine uses hard delete (no deletedAt column) — where matches original findMany.
-    const result = await this.prisma.invoiceLine.aggregate({
-      where: { invoiceId, orgId },
-      _sum: { priceWithoutVat: true, vatAmount: true, priceWithVat: true },
-    });
+    const [result, inv] = await Promise.all([
+      this.prisma.invoiceLine.aggregate({
+        where: { invoiceId, orgId },
+        _sum: { priceWithoutVat: true, vatAmount: true, priceWithVat: true },
+      }),
+      // Мультивалюта (Фаза 3): валюта + дата документа для base-конвертації тоталу.
+      this.prisma.invoice.findFirst({
+        where: { id: invoiceId, orgId },
+        select: { currencyId: true, documentDate: true },
+      }),
+    ]);
     const totalWithoutVat = roundMoney(Number(result._sum.priceWithoutVat ?? 0));
     const totalVat = roundMoney(Number(result._sum.vatAmount ?? 0));
     const totalWithVat = roundMoney(Number(result._sum.priceWithVat ?? 0));
 
+    // Base-сума рахунку по курсу на дату документа (fallbackToLatest — документний потік).
+    const conv = inv?.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          inv.currencyId,
+          inv.documentDate ?? new Date(),
+          totalWithVat,
+          true,
+        )
+      : { rateUsed: 1, amountBase: totalWithVat };
+
     await this.prisma.invoice.update({
       where: { id: invoiceId, orgId },
-      data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
+      data: {
+        totalWithoutVat,
+        totalVat,
+        totalWithVat,
+        amount: totalWithVat,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
+      },
     });
   }
 
@@ -888,6 +982,10 @@ export class InvoicesService {
       totalWithoutVat: Prisma.Decimal;
       totalVat: Prisma.Decimal;
       totalWithVat: Prisma.Decimal;
+      currencyId?: string | null;
+      totalAmountBase?: Prisma.Decimal | null;
+      rateUsed?: Prisma.Decimal | null;
+      currency?: { code: string } | null;
       invoiceType: string;
       notes: string | null;
       dueDate: Date | null;
@@ -944,6 +1042,10 @@ export class InvoicesService {
       totalWithoutVat: Number(inv.totalWithoutVat),
       totalVat: Number(inv.totalVat),
       totalWithVat: Number(inv.totalWithVat),
+      currencyId: inv.currencyId ?? null,
+      currencyCode: inv.currency?.code ?? null,
+      totalAmountBase: inv.totalAmountBase != null ? Number(inv.totalAmountBase) : null,
+      rateUsed: inv.rateUsed != null ? Number(inv.rateUsed) : null,
       invoiceType: inv.invoiceType,
       notes: inv.notes,
       dueDate: inv.dueDate instanceof Date ? inv.dueDate.toISOString() : (inv.dueDate ?? null),
