@@ -130,9 +130,31 @@ describe('ExchangeRatesService', () => {
       expect(prisma.exchangeRate.findFirst.mock.calls[0][0].orderBy).toEqual({ date: 'desc' });
     });
 
-    it('немає курсу ≤ date → null', async () => {
+    it('немає курсу ≤ date → null (strict, без fallback)', async () => {
       prisma.exchangeRate.findFirst.mockResolvedValueOnce(null);
       expect(await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2020-01-01'))).toBeNull();
+      // Strict-режим: рівно ОДИН запит (без другого fallback-lookup).
+      expect(prisma.exchangeRate.findFirst).toHaveBeenCalledTimes(1);
+    });
+
+    // Фаза 3: fallbackToLatest — коли немає курсу ≤ date, беремо ОСТАННІЙ наявний (будь-яка дата).
+    it('fallbackToLatest=true: немає курсу ≤ date → останній наявний курс', async () => {
+      prisma.exchangeRate.findFirst
+        .mockResolvedValueOnce(null) // немає ≤ date
+        .mockResolvedValueOnce({ rate: 42.0, coefficient: 1 }); // останній у таблиці
+      const r = await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2020-01-01'), true);
+      expect(r).toEqual({ rate: 42.0, coefficient: 1 });
+      // Другий lookup — без date-фільтра, order date desc.
+      const secondWhere = prisma.exchangeRate.findFirst.mock.calls[1][0].where;
+      expect(secondWhere.date).toBeUndefined();
+      expect(prisma.exchangeRate.findFirst.mock.calls[1][0].orderBy).toEqual({ date: 'desc' });
+    });
+
+    it('fallbackToLatest=true але таблиця порожня → null', async () => {
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      expect(
+        await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2020-01-01'), true),
+      ).toBeNull();
     });
 
     // Bug: інстант операції у вікні 00:00–03:00 Kyiv (EEST) припадав на попередню UTC-добу →
@@ -188,6 +210,23 @@ describe('ExchangeRatesService', () => {
       await expect(
         service.resolveBaseConversion('org-1', CURRENCY_ID, new Date('2026-05-28'), 100),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    // Фаза 3: документні потоки передають fallbackToLatest=true → замість 400 беруть останній курс.
+    it('fallbackToLatest=true: немає курсу на дату → останній курс (не 400)', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ code: 'USD' });
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      prisma.exchangeRate.findFirst
+        .mockResolvedValueOnce(null) // немає ≤ date
+        .mockResolvedValueOnce({ rate: 42.0, coefficient: 1 }); // останній
+      const r = await service.resolveBaseConversion(
+        'org-1',
+        CURRENCY_ID,
+        new Date('2020-01-01'),
+        100,
+        true,
+      );
+      expect(r).toEqual({ rateUsed: 42.0, amountBase: 4200 });
     });
   });
 });

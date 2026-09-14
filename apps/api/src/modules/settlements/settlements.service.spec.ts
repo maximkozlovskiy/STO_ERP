@@ -186,6 +186,7 @@ describe('SettlementsService.createTransaction', () => {
       'usd-1',
       expect.any(Date),
       100,
+      false,
     );
     // PAYMENT = -1 → balance -= amountBase (4150), НЕ -100
     expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
@@ -200,5 +201,45 @@ describe('SettlementsService.createTransaction', () => {
         rateUsed: 41.5,
       }),
     });
+  });
+
+  // Фаза 3: документні потоки передають date (дата події) + fallbackToLatest у resolveBaseConversion.
+  it('пробрасує date + fallbackToLatest у resolveBaseConversion (документний потік)', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+    const docDate = new Date('2026-01-01');
+    await service.createTransaction(
+      'org-1',
+      dto({
+        type: 'CHARGE',
+        amount: 100,
+        currencyId: 'usd-1',
+        date: docDate,
+        fallbackToLatest: true,
+      }),
+    );
+    expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledWith(
+      'org-1',
+      'usd-1',
+      docDate,
+      100,
+      true,
+    );
+  });
+
+  it('без date → new Date(); без fallbackToLatest → false (BC для Фази 2)', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+    await service.createTransaction(
+      'org-1',
+      dto({ type: 'PAYMENT', amount: 100, currencyId: 'usd-1' }),
+    );
+    expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledWith(
+      'org-1',
+      'usd-1',
+      expect.any(Date),
+      100,
+      false,
+    );
   });
 });

@@ -11,6 +11,10 @@ export interface CreateTransactionDto {
   // Мультивалюта (Фаза 2): валюта транзакції. Якщо не задано → базова org (rate=1, amountBase=amount) —
   // BC для викликачів, що передають UAH-суми (invoice/WO/PO/supplier). Payment передає валюту рахунку.
   currencyId?: string;
+  // Мультивалюта (Фаза 3): дата події для курсу (дата документа для CHARGE / дата оплати для PAYMENT).
+  // Default new Date() (BC). fallbackToLatest — документні потоки беруть останній курс якщо немає на дату.
+  date?: Date;
+  fallbackToLatest?: boolean;
   documentType?: string;
   documentId?: string;
   notes?: string;
@@ -58,8 +62,9 @@ export class SettlementsService {
       ? await this.exchangeRates.resolveBaseConversion(
           orgId,
           dto.currencyId,
-          new Date(),
+          dto.date ?? new Date(),
           dto.amount,
+          dto.fallbackToLatest ?? false,
         )
       : { rateUsed: 1, amountBase: dto.amount };
     const balanceDelta = BALANCE_SIGN[dto.type] * conv.amountBase;

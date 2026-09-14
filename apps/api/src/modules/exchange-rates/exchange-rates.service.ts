@@ -69,6 +69,7 @@ export class ExchangeRatesService {
     orgId: string,
     currencyId: string,
     date: Date,
+    fallbackToLatest = false,
   ): Promise<{ rate: number; coefficient: number } | null> {
     // Kyiv-доба, не UTC: курси НБУ зберігаються під Kyiv-датою (nbu-fetch), а `date` тут — інстант
     // операції (new Date()). UTC-зріз давав би минулий день у вікні 00:00–03:00 Kyiv (EEST) →
@@ -79,8 +80,18 @@ export class ExchangeRatesService {
       orderBy: { date: 'desc' },
       select: { rate: true, coefficient: true },
     });
-    if (!row) return null;
-    return { rate: Number(row.rate), coefficient: Number(row.coefficient) };
+    if (row) return { rate: Number(row.rate), coefficient: Number(row.coefficient) };
+    // Фаза 3 (opt-in): документні потоки допускають fallback на ОСТАННІЙ наявний курс (будь-яка дата),
+    // якщо на/до дати події курсу немає. Каса/Payment (strict) НЕ передають fallbackToLatest → 400.
+    if (fallbackToLatest) {
+      const latest = await this.prisma.exchangeRate.findFirst({
+        where: { orgId, currencyId, deletedAt: null },
+        orderBy: { date: 'desc' },
+        select: { rate: true, coefficient: true },
+      });
+      if (latest) return { rate: Number(latest.rate), coefficient: Number(latest.coefficient) };
+    }
+    return null;
   }
 
   /**
@@ -108,6 +119,7 @@ export class ExchangeRatesService {
     currencyId: string,
     date: Date,
     amount: number,
+    fallbackToLatest = false,
   ): Promise<{ rateUsed: number; amountBase: number }> {
     const [currency, settings] = await Promise.all([
       this.prisma.currency.findFirst({
@@ -125,7 +137,7 @@ export class ExchangeRatesService {
     if (currency.code === baseCode) {
       return { rateUsed: 1, amountBase: amount };
     }
-    const asOf = await this.getRateAsOf(orgId, currencyId, date);
+    const asOf = await this.getRateAsOf(orgId, currencyId, date, fallbackToLatest);
     if (!asOf) {
       throw new BadRequestException(
         `Немає курсу валюти ${currency.code} на ${kyivYmd(date)} — додайте курс у НДІ → Курси валют`,
