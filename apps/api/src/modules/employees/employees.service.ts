@@ -8,6 +8,7 @@ import { Prisma, UserRole } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { calculatePagination } from '../../common/utils/pagination';
 import {
   AssignBranchesDto,
   AssignLiftsDto,
@@ -46,8 +47,7 @@ export class EmployeesService {
         ];
       }
     }
-    const limit = query.limit ?? 20;
-    const skip = query.page && query.limit ? (query.page - 1) * query.limit : 0;
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const [items, total] = await Promise.all([
       this.prisma.employee.findMany({
         where,
@@ -61,7 +61,7 @@ export class EmployeesService {
           query.sortBy === 'createdAt'
             ? [{ createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }]
             : [{ lastName: query.sortDir === 'desc' ? 'desc' : 'asc' }, { firstName: 'asc' }],
-        take: limit,
+        take,
         skip,
       }),
       this.prisma.employee.count({ where }),

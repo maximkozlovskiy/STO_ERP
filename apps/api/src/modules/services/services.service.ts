@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { calculatePagination } from '../../common/utils/pagination';
 import {
   CreateServiceDto,
   UpdateServiceDto,
@@ -238,7 +239,7 @@ export class ServicesService {
     const where: Prisma.ServiceWhereInput = { orgId, ...(showDeleted ? {} : { deletedAt: null }) };
     if (q) where.name = { contains: q, mode: 'insensitive' };
 
-    const skip = (page - 1) * limit;
+    const { skip, take } = calculatePagination({ page, limit });
     const [items, total] = await Promise.all([
       this.prisma.service.findMany({
         where,
@@ -246,7 +247,7 @@ export class ServicesService {
         // before deleted ones in showDeleted=true lists.
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
-        take: limit,
+        take,
         include: {
           serviceWorks: {
             include: { work: { select: { name: true, normoHours: true, price: true } } },

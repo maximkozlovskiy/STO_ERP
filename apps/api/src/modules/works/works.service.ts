@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { calculatePagination } from '../../common/utils/pagination';
 import {
   CreateWorkDto,
   UpdateWorkDto,
@@ -24,7 +25,7 @@ export class WorksService {
     else if (query.categoryId) where.categoryId = query.categoryId;
     if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
 
-    const skip = (query.page - 1) * query.limit;
+    const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const [items, total] = await Promise.all([
       this.prisma.work.findMany({
         where,
@@ -34,7 +35,7 @@ export class WorksService {
         // explicit `nulls: 'first'` inverts that so active rows come first.
         orderBy: [{ deletedAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
         skip,
-        take: query.limit,
+        take,
       }),
       this.prisma.work.count({ where }),
     ]);

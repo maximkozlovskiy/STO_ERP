@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { calculatePagination } from '../../common/utils/pagination';
 import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 import { BALANCE_SIGN } from './settlements.service';
@@ -48,11 +49,11 @@ export class SettlementsAccountService {
   }
 
   async getTransactions(orgId: string, counterpartyId: string, page = 1, limit = 50) {
-    // DoS hardening: cap user-controlled pagination params (defensive backup
-    // to controller-level validation). `?limit=999999` would OOM the API
-    // when settlement_transactions has tens of thousands of rows per org.
-    const safeLimit = Math.min(Math.max(limit, 1), 200);
-    const safePage = Math.max(page, 1);
+    // DoS hardening: cap user-controlled pagination params (defensive backup to controller-level
+    // validation). `?limit=999999` would OOM the API when settlement_transactions has tens of
+    // thousands of rows per org. Спільна утиліта: NaN-guard + cap(200) + clamp page≥1.
+    const { skip, take: safeLimit } = calculatePagination({ page, limit });
+    const safePage = Math.floor(skip / safeLimit) + 1;
 
     // Narrow projection — потрібен лише account.id як FK у settlementTransaction queries.
     const account = await this.prisma.settlementAccount.findFirst({
@@ -61,7 +62,6 @@ export class SettlementsAccountService {
     });
     if (!account) return { items: [], total: 0, page: safePage, limit: safeLimit };
 
-    const skip = (safePage - 1) * safeLimit;
     const [items, total] = await Promise.all([
       this.prisma.settlementTransaction.findMany({
         where: { settlementAccountId: account.id, orgId },
