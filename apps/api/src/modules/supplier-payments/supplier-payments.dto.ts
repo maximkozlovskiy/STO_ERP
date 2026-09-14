@@ -136,6 +136,11 @@ export class SupplierPaymentResponseDto {
   @ApiPropertyOptional() purchaseOrderId?: string | null;
   @ApiPropertyOptional() purchaseOrderNumber?: string | null;
   @ApiProperty() amount!: number;
+  // Мультивалюта (Фаза 3): валюта оплати + base-сума + курс. null → історичні/base.
+  @ApiPropertyOptional() currencyId?: string | null;
+  @ApiPropertyOptional() currencyCode?: string | null;
+  @ApiPropertyOptional() totalAmountBase?: number | null;
+  @ApiPropertyOptional() rateUsed?: number | null;
   @ApiProperty() method!: string;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() documentDate?: string | null;

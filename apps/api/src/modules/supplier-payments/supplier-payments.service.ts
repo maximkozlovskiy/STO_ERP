@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { SettlementsService } from '../settlements/settlements.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { CashService } from '../cash/cash.service';
 import {
   CreateSupplierPaymentDto,
@@ -47,6 +48,7 @@ export class SupplierPaymentsService {
     private readonly settlements: SettlementsService,
     private readonly docNumbers: DocumentNumberService,
     private readonly cash: CashService,
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
 
   async findAll(
@@ -117,6 +119,7 @@ export class SupplierPaymentsService {
           bankAccount: { select: { name: true } },
           cashRegister: { select: { name: true } },
           purchaseOrder: { select: { number: true } },
+          currency: { select: { code: true } },
         },
       }),
       this.prisma.supplierPayment.count({ where }),
@@ -519,6 +522,7 @@ export class SupplierPaymentsService {
         bankAccount: { select: { name: true } },
         cashRegister: { select: { name: true } },
         purchaseOrder: { select: { number: true } },
+        currency: { select: { code: true } },
       },
     });
     if (!sp) throw new NotFoundException('Оплату не знайдено');
@@ -543,13 +547,14 @@ export class SupplierPaymentsService {
       dto.bankAccountId
         ? this.prisma.bankAccount.findFirst({
             where: { id: dto.bankAccountId, orgId, deletedAt: null },
-            select: { id: true },
+            // Мультивалюта (Фаза 3): валюта оплати = валюта source-рахунку.
+            select: { id: true, currencyId: true },
           })
         : Promise.resolve(null),
       dto.cashRegisterId
         ? this.prisma.cashRegister.findFirst({
             where: { id: dto.cashRegisterId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, currencyId: true },
           })
         : Promise.resolve(null),
       dto.purchaseOrderId
@@ -579,6 +584,13 @@ export class SupplierPaymentsService {
 
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_PAYMENT');
 
+    // Мультивалюта (Фаза 3): валюта оплати — з обраного source-рахунку. Конвертація base — на confirm
+    // (по курсу на дату проведення), тут лише фіксуємо валюту (amount у ній).
+    const currencyId =
+      dto.sourceType === PaymentSourceType.BANK_ACCOUNT
+        ? (bankAccount?.currencyId ?? null)
+        : (cashRegister?.currencyId ?? null);
+
     const sp = await this.prisma.supplierPayment.create({
       data: {
         orgId,
@@ -590,6 +602,7 @@ export class SupplierPaymentsService {
           dto.sourceType === PaymentSourceType.CASH_REGISTER ? dto.cashRegisterId : null,
         number,
         amount: dto.amount,
+        currencyId,
         method: dto.method,
         notes: dto.notes ?? null,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
@@ -599,6 +612,7 @@ export class SupplierPaymentsService {
         bankAccount: { select: { name: true } },
         cashRegister: { select: { name: true } },
         purchaseOrder: { select: { number: true } },
+        currency: { select: { code: true } },
       },
     });
 
@@ -730,9 +744,23 @@ export class SupplierPaymentsService {
         amount: true,
         sourceType: true,
         cashRegisterId: true,
+        // Мультивалюта (Фаза 3): валюта оплати — для конвертації боргу постачальнику у base.
+        currencyId: true,
       },
     });
     if (!pre) throw new NotFoundException('Оплату не знайдено');
+
+    // Base-конвертація суми на дату проведення (fallbackToLatest — документний потік). Без валюти → base.
+    const confirmDate = new Date();
+    const conv = pre.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          pre.currencyId,
+          confirmDate,
+          Number(pre.amount),
+          true,
+        )
+      : { rateUsed: 1, amountBase: Number(pre.amount) };
 
     const allowed = SP_TRANSITIONS[pre.status];
     if (!allowed.includes(SupplierPaymentStatus.CONFIRMED)) {
@@ -746,7 +774,12 @@ export class SupplierPaymentsService {
         // stock-documents.transition / completion-acts.confirm. count===0 → інший уже провів.
         const cas = await tx.supplierPayment.updateMany({
           where: { id, orgId, deletedAt: null, status: SupplierPaymentStatus.DRAFT },
-          data: { status: SupplierPaymentStatus.CONFIRMED },
+          // Мультивалюта (Фаза 3): фіксуємо base-суму + курс на момент проведення.
+          data: {
+            status: SupplierPaymentStatus.CONFIRMED,
+            totalAmountBase: conv.amountBase,
+            rateUsed: conv.rateUsed,
+          },
         });
         if (cas.count === 0) {
           throw new BadRequestException(
@@ -764,6 +797,10 @@ export class SupplierPaymentsService {
             counterpartyId: pre.supplierId,
             type: 'SUPPLIER_PAYMENT',
             amount: Number(pre.amount),
+            // Мультивалюта (Фаза 3): борг постачальнику ↓ у base по курсу на дату проведення.
+            currencyId: pre.currencyId ?? undefined,
+            date: confirmDate,
+            fallbackToLatest: true,
             documentType: 'SupplierPayment',
             documentId: id,
             createdBy: userId,
@@ -873,6 +910,9 @@ export class SupplierPaymentsService {
     cashRegisterId: string | null;
     purchaseOrderId: string | null;
     amount: Prisma.Decimal | number;
+    currencyId?: string | null;
+    totalAmountBase?: Prisma.Decimal | number | null;
+    rateUsed?: Prisma.Decimal | number | null;
     method: string;
     notes: string | null;
     documentDate: Date | null;
@@ -887,6 +927,7 @@ export class SupplierPaymentsService {
     bankAccount?: { name: string } | null;
     cashRegister?: { name: string } | null;
     purchaseOrder?: { number: string } | null;
+    currency?: { code: string } | null;
   }): SupplierPaymentResponseDto {
     const sup = sp.supplier;
     const supplierName =
@@ -909,6 +950,10 @@ export class SupplierPaymentsService {
       purchaseOrderId: sp.purchaseOrderId ?? null,
       purchaseOrderNumber: sp.purchaseOrder?.number ?? null,
       amount: Number(sp.amount),
+      currencyId: sp.currencyId ?? null,
+      currencyCode: sp.currency?.code ?? null,
+      totalAmountBase: sp.totalAmountBase != null ? Number(sp.totalAmountBase) : null,
+      rateUsed: sp.rateUsed != null ? Number(sp.rateUsed) : null,
       method: sp.method,
       notes: sp.notes ?? null,
       documentDate: sp.documentDate ? sp.documentDate.toISOString().slice(0, 10) : null,

@@ -7,6 +7,22 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { CashService } from '../cash/cash.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+
+// Мультивалюта (Фаза 3): SupplierPaymentsService набув ExchangeRatesService (confirm base-конвертація).
+// Default мок — базова валюта (rate=1, amountBase=amount). DI-drift guard (Bug #724 клас).
+const exchangeRatesProvider = () => ({
+  provide: ExchangeRatesService,
+  useValue: {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+  },
+});
 
 // Regression-guards для feature "Оплата постачальнику" (SupplierPayment).
 // Ключові business invariants на confirm()/cancel() FSM-step:
@@ -102,6 +118,7 @@ describe('SupplierPaymentsService — regression guards', () => {
         { provide: SettlementsService, useValue: settlements },
         { provide: DocumentNumberService, useValue: docNumbers },
         { provide: CashService, useValue: cash },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(SupplierPaymentsService);
@@ -203,11 +220,11 @@ describe('SupplierPaymentsService — regression guards', () => {
 
     await service.confirm(ORG, SP_ID, USER_ID);
 
-    // CAS updateMany where status=DRAFT.
+    // CAS updateMany where status=DRAFT; data += base-поля (Фаза 3: totalAmountBase/rateUsed).
     expect(prisma.supplierPayment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: SupplierPaymentStatus.DRAFT }),
-        data: { status: SupplierPaymentStatus.CONFIRMED },
+        data: expect.objectContaining({ status: SupplierPaymentStatus.CONFIRMED }),
       }),
     );
     expect(settlements.createTransaction).toHaveBeenCalledTimes(1);
@@ -1021,6 +1038,7 @@ describe('SupplierPaymentsService — linked-documents edge cases', () => {
         { provide: SettlementsService, useValue: {} },
         { provide: DocumentNumberService, useValue: {} },
         { provide: CashService, useValue: { createOperation: vi.fn() } },
+        exchangeRatesProvider(),
       ],
     }).compile();
     service = module.get(SupplierPaymentsService);
