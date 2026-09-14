@@ -1477,14 +1477,19 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(prisma.payment.create).not.toHaveBeenCalled();
   });
 
-  it('оплата наряду у USD: WorkOrder.paidAmount інкрементиться dto.amount (валюта наряду)', async () => {
+  it('оплата USD-наряду з USD-каси: WorkOrder.paidAmount інкрементиться dto.amount (валюта наряду)', async () => {
     const WO_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     prisma.cashRegister.findFirst.mockResolvedValue({
       id: CASH_ID,
       isFiscal: false,
       currencyId: USD_ID,
     });
-    prisma.workOrder.findFirst.mockResolvedValue({ branchId: 'br-1', status: 'INVOICED' });
+    // Наряд у USD (валюта оплати == валюта наряду) → guard пропускає.
+    prisma.workOrder.findFirst.mockResolvedValue({
+      branchId: 'br-1',
+      status: 'INVOICED',
+      currencyId: USD_ID,
+    });
     prisma.workOrder.update.mockResolvedValue({});
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
 
@@ -1496,5 +1501,28 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
         data: { paidAmount: { increment: 100 } },
       }),
     );
+  });
+
+  it('крос-валюта: оплата з USD-каси у base-наряд (без invoiceId) → 400 (валюти мають збігатися) [Bug #744]', async () => {
+    const WO_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    prisma.cashRegister.findFirst.mockResolvedValue({
+      id: CASH_ID,
+      isFiscal: false,
+      currencyId: USD_ID,
+    });
+    // Наряд у базовій валюті (currencyId=null≡UAH), оплата з USD-каси → розбіжність валют.
+    // Без цього guard WO.paidAmount (у валюті наряду=UAH) інкрементився б на 100 USD → змішування одиниць.
+    prisma.workOrder.findFirst.mockResolvedValue({
+      branchId: 'br-1',
+      status: 'INVOICED',
+      currencyId: null,
+    });
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
+
+    await expect(
+      service.create(ORG, { ...usdCashDto, workOrderId: WO_ID }, 'user-1'),
+    ).rejects.toThrow(/Валюта оплати має збігатися з валютою наряду/);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.workOrder.update).not.toHaveBeenCalled();
   });
 });

@@ -208,7 +208,9 @@ export class PaymentsService {
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
             where: { id: dto.workOrderId, orgId, deletedAt: null },
-            select: { branchId: true, status: true },
+            // Мультивалюта (Фаза 3): currencyId наряду — оплата має бути у ТІЙ САМІЙ валюті
+            // (WO.paidAmount ведеться у валюті наряду; крос-валютна алокація = FX-політика, поза scope).
+            select: { branchId: true, status: true, currencyId: true },
           })
         : Promise.resolve(null),
       // Спосіб оплати: requiresFiscal (для ПРРО) + дефолтний рахунок-призначення (мапінг
@@ -265,6 +267,17 @@ export class PaymentsService {
         throw new BadRequestException(
           `Фіскалізація можлива лише у базовій валюті (${base.code}). Оберіть касу/рахунок у ${base.code} або спосіб оплати без ПРРО.`,
         );
+      }
+    }
+
+    // Мультивалюта (Фаза 3): пряма оплата наряду (без invoiceId) — валюта оплати мусить збігатися
+    // з валютою наряду. WO.paidAmount інкрементується у ВАЛЮТІ наряду (dto.amount), тож оплата у
+    // іншій валюті змішала б одиниці у paidAmount (та сама вада, що invoice-guard нижче ловить для
+    // рахунку). NULL currencyId (історичні/base) ≡ базова валюта. Дзеркалить invoice-перевірку;
+    // для WO-with-invoice invoice-guard спрацьовує додатково (invoice успадковує валюту наряду).
+    if (dto.workOrderId && workOrder) {
+      if (!(await this.sameCurrencyAsBase(orgId, paymentCurrencyId, workOrder.currencyId))) {
+        throw new BadRequestException('Валюта оплати має збігатися з валютою наряду');
       }
     }
 

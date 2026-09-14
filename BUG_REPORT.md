@@ -4902,3 +4902,48 @@ amountBase==amount → вони проходили б і зі старим (ба
 b5ab13f6, до фічі). Класифіковано як flaky-under-load, не регресія фічі й не release-blocker для
 мультивалюти. Рекомендація на майбутнє (поза scope): збільшити timeout/ізолювати timer-based polling
 тести або винести у `test.sequential`.
+
+## Session 2026-09-14 — Мультивалюта Фаза 3 (tester, HEAD a818cad7)
+
+Фінальний етап QA після sync (c03faefe) + review (25b82f13). Полювання на баги в іновалютних
+грошових потоках WorkOrder/Invoice/PurchaseOrder/SupplierPayment/Payment. Baseline: tsc api+web 0,
+currency-модулі 802 зелені, payments 358 зелені.
+
+### Bug #744 — Пряма оплата наряду обходить перевірку валюти → WorkOrder.paidAmount змішує одиниці валют
+
+**Severity:** HIGH (financial-integrity / currency-mixing у currency-specific полі)
+**Файл:** `apps/api/src/modules/payments/payments.service.ts` (create → WO-branch, рядки ~208-213, ~392)
+
+**Опис:** У Фазі 3 `WorkOrder.paidAmount` ведеться у ВАЛЮТІ наряду (не base), тож оплата
+інкрементує його на `dto.amount` (валюта оплати = валюта каси/банку-джерела). Invoice-шлях
+(`dto.invoiceId`) захищений guard-ом `sameCurrencyAsBase(payment, invoice.currencyId)` (рядок 305):
+крос-валютна оплата рахунку → 400. Але ПАРАЛЕЛЬНИЙ WO-шлях (`dto.workOrderId` без `dto.invoiceId`)
+такого guard-у НЕ мав — коментар (рядок 377-378) лише СТВЕРДЖУВАВ інваріант «оплата має збігатися з
+валютою наряду», але не ЕНФОРСИВ його. Наряд фетчився з `select: { branchId, status }` — без
+`currencyId`. Наслідок: іновалютний наряд (USD), сплачений з UAH-каси (або base-наряд з USD-каси),
+інкрементував `paidAmount` на суму в ІНШІЙ валюті → 100 USD додавалось до UAH-простору paidAmount →
+змішування одиниць (та сама вада, що Bug #742 Фази 2 виправив для base-обліку; тут вилізла на
+WO-direct шляху який invoice-guard не покриває). Борг у леджері лягав у base коректно (settlement
+конвертує), але `paidAmount` наряду corrupt → хибний «залишок до сплати», хибний перехід у PAID.
+Шлях досяжний: status-guard вимагає `INVOICED`, `invoiceId` опційний → WO-only оплата приймається API.
+
+**Виявлено через:** grep усіх `paidAmount: { increment }` / `paidAmount: newPaid` сайтів + звірка
+кожного currency-specific mutation з наявністю currency-match guard. WO-сайт мав mutation, не мав
+guard-а. Існуючий тест (payments.spec «оплата наряду у USD») кодував саме баговану поведінку —
+мокав наряд БЕЗ currencyId + оплату з USD-каси й асертив УСПІХ (paidAmount += 100).
+
+**Фікс:**
+
+1. `payments.service.ts` create(): додано `currencyId` у WO-select; після fiscal-guard додано
+   `if (dto.workOrderId && workOrder) { if (!sameCurrencyAsBase(orgId, paymentCurrencyId,
+workOrder.currencyId)) throw BadRequestException('Валюта оплати має збігатися з валютою наряду') }`.
+   Дзеркалить invoice-guard; для WO-with-invoice обидва guard-и спрацьовують (invoice успадковує
+   валюту наряду). NULL currencyId ≡ base (історичні/backfill).
+2. `payments.service.spec.ts`: виправлено існуючий WO-USD тест (наряд тепер USD → guard пропускає,
+   інтент «paidAmount += dto.amount, не amountBase» збережено) + додано новий тест крос-валютного
+   відхилення (base-наряд + USD-каса → 400, без payment.create/workOrder.update).
+
+**Регресія-захист:** payments spec 358→359 (виправлений intent + новий крос-валютний тест).
+tsc api+web 0. currency-модулі лишаються зелені.
+
+**Статус:** [x] виправлено
