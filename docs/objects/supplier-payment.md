@@ -34,7 +34,16 @@ model SupplierPayment {
 > **Мультивалюта (Фаза 3, 2026-09-14):** `amount` у **валюті source-рахунку** (bank/cash `currencyId`);
 > `currencyId` фіксується при create. На `confirm()` рахується `totalAmountBase`/`rateUsed` по курсу на
 > дату проведення (fallbackToLatest), і SUPPLIER_PAYMENT пробрасує `currencyId`+`date` → борг постачальнику
-> ↓ у base. cash-out конвертує CashService сам (Фаза 1). FX-різниці — поза Фазою 3.
+> ↓ у base. cash-out конвертує CashService сам (Фаза 1).
+
+> **Payables FX (Фаза 5, 2026-09-14):** `confirm()` для привʼязаної до PO оплати: (1) валютний guard
+> — валюта SP == валюта PO (інакше 400); (2) інкрементує `PurchaseOrder.paidAmount` (CAS, у валюті PO);
+> (3) при першій повній оплаті (paidAmount>=totalAmount−0.005) в іновалюті визнає realized FX однією
+> проводкою що обнуляє base-залишок PO. **⚠️ ЗНАК ІНВЕРТОВАНИЙ vs клієнт** (SUPPLIER_CHARGE=−1/
+> SUPPLIER_PAYMENT=+1 → залишок=paidBase−chargeBase): fx=chargeBase−paidBase → `fx>0 ⇒ FX_GAIN`,
+> `fx<0 ⇒ FX_LOSS`. chargeBase = Σ SUPPLIER_CHARGE.amountBase (ledger, PO); paidBase = Σ
+> SUPPLIER_PAYMENT.amountBase (CONFIRMED SP цього PO). Skip: base / |fx|<0.005 / idempotency count-guard.
+> cancel N/A (CONFIRMED термінальний → paidAmount монотонний).
 
 **Enum-и:** `SupplierPaymentStatus` (DRAFT/CONFIRMED/CANCELLED), `PaymentSourceType` (BANK_ACCOUNT/CASH_REGISTER).
 

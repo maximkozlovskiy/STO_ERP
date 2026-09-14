@@ -19,6 +19,8 @@ model PurchaseOrder {
   currencyId      String?          @db.Uuid   // мультивалюта Фаза 3: валюта документа
   totalAmountBase Decimal?         @db.Decimal(12, 2) // тотал у БАЗОВІЙ валюті по курсу на documentDate
   rateUsed        Decimal?         @db.Decimal(18, 6)
+  paidAmount   Decimal             @default(0) @db.Decimal(12, 2) // payables Фаза 5: Σ проведених оплат (валюта PO)
+  paidAt       DateTime?           @db.Date   // дата першої повної оплати (тригер payables FX)
   notes        String?
   documentDate DateTime            @default(now()) @db.Date
   syncVersion  BigInt              @default(0)
@@ -30,6 +32,10 @@ model PurchaseOrder {
 // Мультивалюта (Фаза 3, 2026-09-14): totalAmount/рядки у валюті замовлення; totalAmountBase — у базовій
 // по курсу на documentDate (create/update; fallbackToLatest). Прийом (receive) → SUPPLIER_CHARGE
 // пробрасує currencyId+дату прийому → борг постачальнику у base (кожен частковий прийом — свій курс).
+// Payables FX (Фаза 5, 2026-09-14): paidAmount — Σ проведених SupplierPayment (вісь ОПЛАТИ, окрема від
+// status=прийом); повна оплата (paidAmount>=totalAmount−0.005 → paidAt) в іновалюті → supplier-payments.
+// confirm() визнає realized FX (курс прийому≠курс оплати). ⚠️ ЗНАК ІНВЕРТОВАНИЙ vs клієнт: fx=chargeBase−
+// paidBase → fx>0=FX_GAIN, fx<0=FX_LOSS (бо SUPPLIER_CHARGE=−1/SUPPLIER_PAYMENT=+1). Валюта SP==валюта PO (guard).
 
 model PurchaseOrderLine {
   purchaseOrderId String    @db.Uuid

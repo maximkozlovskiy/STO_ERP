@@ -248,6 +248,15 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+Мультивалюта Фаза 5 (payables FX — постачальник) — 2026-09-14:
+  386a568a DB: PurchaseOrder += paidAmount/paidAt (вісь ОПЛАТИ окрема від status=прийом; міграція 20260914180000 backfill)
+  bbc46a1b payables FX: supplier-payments.confirm() валютний guard + paidAmount CAS + realized FX при повній оплаті
+  a76d688b frontend: PO картка Сплачено/Залишок/Повністю сплачено
+  ⚠️ ЗНАК ІНВЕРТОВАНИЙ vs клієнт (SUPPLIER_CHARGE=−1/SUPPLIER_PAYMENT=+1 → fx>0=FX_GAIN, fx<0=FX_LOSS).
+  chargeBase з ledger SUPPLIER_CHARGE, paidBase з SUPPLIER_PAYMENT; skip base/|fx|<0.005/idempotency; cancel N/A.
+  Realized FX завершено (client Фаза 4 + payables Фаза 5); unrealized переоцінка — deferred.
+  tsc api+web 0; supplier-payments 60 + invariants(+payables zeroing) + PO 199 зелені.
+
 Мультивалюта Фаза 4 (курсові різниці, realized FX) — 2026-09-14:
   4f6866a5 enum FX_GAIN/FX_LOSS + BALANCE_SIGN(+1/−1) + усі enum-дзеркала + invariants core-zeroing
   3204cd63 FX hook payments.service (invoice→PAID): chargeBase з леджера − paidBase → FX-проводка обнуляє base-залишок

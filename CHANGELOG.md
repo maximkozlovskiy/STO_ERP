@@ -19,6 +19,28 @@ counterparties/[id] PageClient) вже консолідовані на shared `S
 
 ---
 
+## 2026-09-14 — Фіча: Мультивалюта Фаза 5 (payables FX — курсові різниці постачальника)
+
+Дзеркало Фази 4 на боці постачальника: повна оплата іновалютного PO у своїй валюті лишала ненульовий
+base-залишок (SUPPLIER_CHARGE за курсом прийому, SUPPLIER_PAYMENT за курсом оплати). Фаза 5 обнуляє його.
+
+- **DB (386a568a):** PurchaseOrder += paidAmount (вісь ОПЛАТИ, окрема від status=прийом) + paidAt
+  (дата першої повної оплати = тригер FX). Міграція 20260914180000 (backfill з CONFIRMED SupplierPayment;
+  0 SettlementTransaction → historical PO без FX). PurchaseOrderStatus не чіпано.
+- **Backend (bbc46a1b):** supplier-payments.confirm(): валютний guard (SP-валюта==PO-валюта→400);
+  paidAmount CAS (у валюті PO); при повній оплаті realized FX. ⚠️ **ЗНАК ІНВЕРТОВАНИЙ vs клієнт**
+  (SUPPLIER_CHARGE=−1/SUPPLIER_PAYMENT=+1 → залишок=paidBase−chargeBase → fx>0=FX_GAIN, fx<0=FX_LOSS).
+  chargeBase = Σ SUPPLIER_CHARGE.amountBase (ledger, PO); paidBase = Σ SUPPLIER_PAYMENT.amountBase
+  (CONFIRMED SP цього PO); БЕЗ currencyId. Skip: base/|fx|<0.005/idempotency. cancel N/A (CONFIRMED термінальний).
+  purchase-orders: toDto += paidAmount/outstanding/isFullyPaid/paidAt; findAll groupBy → persistent (−1 запит).
+- **Frontend (a76d688b):** PO картка «Сплачено/Залишок до сплати/Повністю сплачено» (schema-driven).
+  FX-рядки вже рендеряться на взаєморозрахунках (Фаза 4).
+- **QA:** tsc api+web 0; supplier-payments 60 (+6 payables FX: guard/INVERTED both dirs/partial/idempotency/
+  base) + invariants +1 payables zeroing property + PO 199. Realized FX завершено (client+payables);
+  unrealized переоцінка — deferred.
+
+---
+
 ## 2026-09-14 — Фіча: Мультивалюта Фаза 4 (курсові різниці, realized FX)
 
 Повна оплата іновалютного рахунку у своїй валюті лишала ненульовий base-залишок (CHARGE за курсом
