@@ -108,6 +108,9 @@ interface Transaction {
   id: string;
   type: string;
   amount: number;
+  // Мультивалюта (Фаза 2): валюта + base-сума. null → історичні/base UAH.
+  currencyCode?: string | null;
+  amountBase?: number | null;
   documentType: string | null;
   documentId: string | null;
   notes: string | null;
@@ -1257,19 +1260,38 @@ export default function CounterpartyCardPage() {
                     <p className="text-sm text-foreground">{t.notes ?? t.documentType ?? t.type}</p>
                     <p className="text-xs text-muted-foreground">{fmtDate(t.createdAt)}</p>
                   </div>
-                  <span
-                    className={cn(
-                      'text-sm font-semibold',
-                      // Колір за семантикою (як у SettlementsTabContent): нарахування (наш борг/клієнт
-                      // винен) → destructive; оплата/повернення → success.
-                      CHARGE_LIKE_TX_TYPES.has(t.type) ? 'text-destructive-text' : 'text-success',
-                    )}
-                  >
-                    {/* Знак = дзеркало бекового BALANCE_SIGN. +1: CHARGE, SUPPLIER_PAYMENT, SUPPLIER_REFUND;
-                        −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE. */}
-                    {BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '−'}
-                    {fmtMoney(Math.abs(t.amount))} ₴
-                  </span>
+                  <div className="text-right">
+                    {(() => {
+                      // Знак = дзеркало бекового BALANCE_SIGN. +1: CHARGE, SUPPLIER_PAYMENT,
+                      // SUPPLIER_REFUND; −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE.
+                      const sign = BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '−';
+                      const isBase = !t.currencyCode || t.currencyCode === orgCurrency;
+                      const sym = isBase ? '₴' : t.currencyCode!;
+                      return (
+                        <>
+                          <span
+                            className={cn(
+                              'text-sm font-semibold',
+                              // Колір за семантикою (як у SettlementsTabContent): нарахування (наш
+                              // борг/клієнт винен) → destructive; оплата/повернення → success.
+                              CHARGE_LIKE_TX_TYPES.has(t.type)
+                                ? 'text-destructive-text'
+                                : 'text-success',
+                            )}
+                          >
+                            {sign}
+                            {fmtMoney(Math.abs(t.amount))} {sym}
+                          </span>
+                          {!isBase && t.amountBase != null && (
+                            <div className="text-[11px] text-muted-foreground tabular-nums">
+                              {sign}
+                              {fmtMoney(Math.abs(t.amountBase))} ₴
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               ))}
             </div>

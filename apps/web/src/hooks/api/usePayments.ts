@@ -14,6 +14,11 @@ export interface Payment {
   workOrderId: string | null;
   invoiceId: string | null;
   amount: number;
+  // Мультивалюта (Фаза 2): валюта оплати + base-сума по курсу. null → історичні/UAH.
+  currencyId?: string | null;
+  currencyCode?: string | null;
+  amountBase?: number | null;
+  rateUsed?: number | null;
   method: string;
   notes: string | null;
   fiscalReceiptId: string | null;

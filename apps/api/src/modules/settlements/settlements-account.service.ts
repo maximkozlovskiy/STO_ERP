@@ -68,6 +68,8 @@ export class SettlementsAccountService {
         orderBy: { createdAt: 'desc' },
         skip,
         take: safeLimit,
+        // Мультивалюта (Фаза 2): код валюти транзакції для UI (символ + base-сума).
+        include: { currency: { select: { code: true } } },
       }),
       this.prisma.settlementTransaction.count({
         where: { settlementAccountId: account.id, orgId },
@@ -79,6 +81,11 @@ export class SettlementsAccountService {
         id: t.id,
         type: t.type,
         amount: Number(t.amount),
+        // Мультивалюта (Фаза 2): валюта + base-сума (null → історичні/base UAH).
+        currencyId: t.currencyId,
+        currencyCode: t.currency?.code ?? null,
+        amountBase: t.amountBase != null ? Number(t.amountBase) : null,
+        rateUsed: t.rateUsed != null ? Number(t.rateUsed) : null,
         documentType: t.documentType,
         documentId: t.documentId,
         notes: t.notes,
@@ -132,8 +139,10 @@ export class SettlementsAccountService {
     // This avoids a full table scan on the append-only transactions log
     // Використовуємо ЄДИНЕ джерело знаку (BALANCE_SIGN) — раніше тут була захардкоджена
     // копія `type==='CHARGE' ? + : -`, яка не знала про постачальницькі типи (SUPPLIER_*).
+    // Мультивалюта (Фаза 2): баланс зводиться у base → periodDelta від amountBase (не amount).
+    // Історичні рядки (amountBase=null) = base UAH → фолбек на amount.
     const periodDelta = transactions.reduce(
-      (sum, t) => sum + BALANCE_SIGN[t.type] * Number(t.amount),
+      (sum, t) => sum + BALANCE_SIGN[t.type] * Number(t.amountBase ?? t.amount),
       0,
     );
 
@@ -152,6 +161,9 @@ export class SettlementsAccountService {
           date: t.createdAt,
           type: t.type,
           amount: Number(t.amount),
+          // Мультивалюта (Фаза 2): base-сума (для звірки у base, узгоджено з opening/closing).
+          amountBase: t.amountBase != null ? Number(t.amountBase) : Number(t.amount),
+          currencyId: t.currencyId,
           documentType: t.documentType,
           documentId: t.documentId,
         })),
@@ -208,6 +220,7 @@ export class SettlementsAccountService {
           date: string;
           type: string;
           amount: number;
+          amountBase?: number;
           documentType?: string;
         }>)
       : [];
@@ -219,10 +232,12 @@ export class SettlementsAccountService {
       periodTo: act.periodTo,
       openingBalance: Number(act.openingBalance),
       closingBalance: Number(act.closingBalance),
+      // Мультивалюта (Фаза 2): у base — суми узгоджені з opening/closing (base). amountBase з
+      // нового snapshot; старі акти (без поля) → amount (усі були base UAH).
       transactions: transactions.map(t => ({
         date: new Date(t.date),
         type: t.type,
-        amount: t.amount,
+        amount: t.amountBase ?? t.amount,
         documentType: t.documentType,
       })),
     });

@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayment, useRetryFiscal } from '@/hooks/api/usePayments';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import {
   FISCAL_STATUS_LABELS,
   FISCAL_STATUS_BADGE,
@@ -15,10 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate } from '@/lib/format';
-
-function fmt(n: number) {
-  return fmtMoney(n) + ' ₴';
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -37,6 +34,9 @@ export default function PaymentDetailClient() {
 
   const { data: p, isLoading } = usePayment(id);
   const retryFiscal = useRetryFiscal();
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
 
   const onRetry = async () => {
     if (!id) return;
@@ -59,6 +59,10 @@ export default function PaymentDetailClient() {
     return <div className="p-6 text-muted-foreground">Платіж не знайдено</div>;
   }
 
+  // Валюта оплати: код рядка або базовий (історичні/UAH).
+  const isBase = !p.currencyCode || p.currencyCode === baseCode;
+  const paymentSymbol = isBase ? baseSymbol : p.currencyCode;
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-6 max-w-2xl">
       <button
@@ -72,7 +76,17 @@ export default function PaymentDetailClient() {
 
       <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="page-title">Оплата від {fmtDate(p.createdAt)}</h1>
-        <div className="text-xl font-semibold tabular-nums">{fmt(p.amount)}</div>
+        <div className="flex flex-col items-end">
+          <div className="text-xl font-semibold tabular-nums">
+            {fmtMoney(p.amount)} {paymentSymbol}
+          </div>
+          {!isBase && p.amountBase != null && (
+            <div className="text-sm text-muted-foreground tabular-nums">
+              {fmtMoney(p.amountBase)} {baseSymbol}
+              {p.rateUsed != null && ` · курс ${p.rateUsed}`}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-4 space-y-4">
@@ -85,6 +99,14 @@ export default function PaymentDetailClient() {
               : '—'}
           </Field>
           <Field label="Дата">{fmtDate(p.createdAt)}</Field>
+          {!isBase && (
+            <Field label="Валюта">
+              {p.currencyCode}
+              {p.rateUsed != null && (
+                <span className="text-muted-foreground"> · курс {p.rateUsed}</span>
+              )}
+            </Field>
+          )}
           {p.notes && <Field label="Примітки">{p.notes}</Field>}
         </div>
 

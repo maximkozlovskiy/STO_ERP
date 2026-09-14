@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { HandCoins, Search, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayments, useRetryFiscal, type PaymentsFilter } from '@/hooks/api/usePayments';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import {
   FISCAL_STATUS_LABELS,
   FISCAL_STATUS_BADGE,
@@ -32,10 +33,6 @@ import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
 const LIMIT = 20;
-
-function fmt(n: number) {
-  return fmtMoney(n) + ' ₴';
-}
 
 // Фіскальний бейдж: null → «—» (метод без фіскалізації).
 function FiscalBadge({ status }: { status: string | null }) {
@@ -74,6 +71,10 @@ function PaymentsPageInner() {
   };
   const { data, isLoading } = usePayments(filters);
   const retryFiscal = useRetryFiscal();
+  // Мультивалюта: символ базової валюти для рядка «у базовій» (не-базові оплати).
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
 
   // Методи оплати для фільтра (best-effort; фолбек на порожньо).
   useEffect(() => {
@@ -194,7 +195,25 @@ function PaymentsPageInner() {
                         ? `${PAYMENT_SOURCE_TYPE_LABELS[p.sourceType] ?? p.sourceType}${p.sourceName ? ` · ${p.sourceName}` : ''}`
                         : '—'}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{fmt(p.amount)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {(() => {
+                        // Валюта оплати: код рядка або базовий символ (історичні/UAH).
+                        const isBase = !p.currencyCode || p.currencyCode === baseCode;
+                        const sym = isBase ? baseSymbol : p.currencyCode;
+                        return (
+                          <div className="flex flex-col items-end">
+                            <span>
+                              {fmtMoney(p.amount)} {sym}
+                            </span>
+                            {!isBase && p.amountBase != null && (
+                              <span className="text-xs text-muted-foreground">
+                                {fmtMoney(p.amountBase)} {baseSymbol}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell>
                       <FiscalBadge status={p.fiscalStatus} />
                     </TableCell>

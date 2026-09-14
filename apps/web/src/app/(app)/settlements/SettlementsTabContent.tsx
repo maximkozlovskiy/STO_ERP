@@ -12,6 +12,7 @@ import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search
 import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
 import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 
 interface Counterparty {
   id: string;
@@ -24,6 +25,9 @@ interface Transaction {
   id: string;
   type: string;
   amount: number;
+  // Мультивалюта (Фаза 2): валюта транзакції + base-сума. null → історичні/base.
+  currencyCode?: string | null;
+  amountBase?: number | null;
   documentType?: string | null;
   documentId?: string | null;
   notes?: string | null;
@@ -63,8 +67,8 @@ const txColor = (type: string): string =>
 // SETTLEMENT_BALANCE_UP_TYPES (дзеркало бекового BALANCE_SIGN, під invariant-тестом).
 const BALANCE_UP_TYPES = SETTLEMENT_BALANCE_UP_TYPES;
 
-function fmt(n: number) {
-  return `${fmtMoney(n)} ₴`;
+function fmt(n: number, symbol = '₴') {
+  return `${fmtMoney(n)} ${symbol}`;
 }
 
 function cpDisplayName(cp: Counterparty): string {
@@ -77,6 +81,11 @@ function cpDisplayName(cp: Counterparty): string {
  * a "Розрахунки" tab inside /reports.
  */
 export function SettlementsTabContent() {
+  // Мультивалюта: символ базової валюти. Баланс боргу завжди у base; транзакції можуть бути у валюті.
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
+
   const [selected, setSelected] = useState<Counterparty | null>(null);
   const [selectedDisplay, setSelectedDisplay] = useState('');
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
@@ -254,7 +263,7 @@ export function SettlementsTabContent() {
                       ),
                     )}
                   >
-                    {balance != null ? fmt(balance) : '—'}
+                    {balance != null ? fmt(balance, baseSymbol) : '—'}
                   </div>
                   <div className="text-[12px] text-muted-foreground mt-1">
                     {(() => {
@@ -339,9 +348,26 @@ export function SettlementsTabContent() {
                           {fmtDate(tx.createdAt)}
                         </div>
                       </div>
-                      <div className={cn('text-sm font-semibold', txColor(tx.type))}>
-                        {BALANCE_UP_TYPES.has(tx.type) ? '+' : '−'}
-                        {fmt(tx.amount)}
+                      <div className="text-right">
+                        {(() => {
+                          const sign = BALANCE_UP_TYPES.has(tx.type) ? '+' : '−';
+                          const isBase = !tx.currencyCode || tx.currencyCode === baseCode;
+                          const sym = isBase ? baseSymbol : tx.currencyCode!;
+                          return (
+                            <>
+                              <div className={cn('text-sm font-semibold', txColor(tx.type))}>
+                                {sign}
+                                {fmt(tx.amount, sym)}
+                              </div>
+                              {!isBase && tx.amountBase != null && (
+                                <div className="text-[11px] text-muted-foreground tabular-nums">
+                                  {sign}
+                                  {fmt(tx.amountBase, baseSymbol)}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))
@@ -371,7 +397,7 @@ export function SettlementsTabContent() {
                       </div>
                       <div className="text-right">
                         <div className="text-[12px] text-muted-foreground">
-                          Відкриття: {fmt(act.openingBalance)}
+                          Відкриття: {fmt(act.openingBalance, baseSymbol)}
                         </div>
                         <div
                           className={cn(
@@ -383,7 +409,7 @@ export function SettlementsTabContent() {
                                 : 'text-foreground-muted',
                           )}
                         >
-                          Закриття: {fmt(act.closingBalance)}
+                          Закриття: {fmt(act.closingBalance, baseSymbol)}
                         </div>
                       </div>
                       <Button
@@ -428,8 +454,8 @@ export function SettlementsTabContent() {
             <div className="p-4 bg-success-subtle rounded-lg border border-success/20">
               <div className="text-[13px] font-medium text-success mb-2">Акт звірки сформовано</div>
               <div className="text-[12px] text-foreground-muted space-y-1">
-                <div>Відкриваючий залишок: {fmt(actResult.openingBalance)}</div>
-                <div>Закриваючий залишок: {fmt(actResult.closingBalance)}</div>
+                <div>Відкриваючий залишок: {fmt(actResult.openingBalance, baseSymbol)}</div>
+                <div>Закриваючий залишок: {fmt(actResult.closingBalance, baseSymbol)}</div>
                 <div>Транзакцій: {actResult.transactions.length}</div>
               </div>
             </div>

@@ -32,6 +32,11 @@ vi.mock('@/hooks/api/usePayments', () => ({
   useRetryFiscal: () => ({ mutateAsync: retryMutateAsync, isPending: false }),
 }));
 
+// useBaseCurrency (Фаза 2 мультивалюта) — useQuery-хук; мокаємо, щоб не потребувати QueryClient.
+vi.mock('@/hooks/api/useCash', () => ({
+  useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
+}));
+
 vi.mock('@/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -45,6 +50,10 @@ const basePayment = (over: Record<string, unknown> = {}) => ({
   workOrderId: null,
   invoiceId: null,
   amount: 500,
+  currencyId: null,
+  currencyCode: null,
+  amountBase: null,
+  rateUsed: null,
   method: 'card',
   notes: null,
   fiscalReceiptId: null,
