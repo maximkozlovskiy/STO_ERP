@@ -12,7 +12,22 @@
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       7b2da1ee fix(review): take:500 на spIds findMany у payables FX (Мультивалюта Фаза 5)
+HEAD:       980fa2cd fix(sync): повний проектний sync-аудит API↔Frontend — 2 реальні розбіжності
+Latest sync: 2026-09-14 (sto-sync-agent, HEAD 980fa2cd) — Повний проектний аудит API↔Frontend
+(усі модулі: work-orders/invoices/payments/purchase-orders/supplier-payments/supplier-returns/
+counterparties/goods/works/inventory/stock-documents/warehouses/cash/settlements/exchange-rates/
+bank-accounts/employees/payroll/warranties/loyalty/notifications/settings/dashboard/calendar/
+booking/reports — усі CLEAN крім 2). **Bug (HIGH): employees rateScheme silent reset on кожне
+редагування** — toDto() безумовно пропускав rateScheme навіть у findOne() для OWNER/ADMIN
+(коментар про "OWNER/ADMIN-scoped endpoint" був застарілий — такого шляху не існувало);
+EmployeeEditModal відкривався на list-row (rateScheme завжди undefined) → форма тихо
+підставляла дефолт (percent_normo/40%) і зберігала його на КОЖЕН save, губ­лячи реальну
+зарплатну схему співробітника незалежно від того що редагувалось. Фікс: findOne(id,
+includeRateScheme) — true лише для OWNER/ADMIN через CurrentUser().role; фронт
+(openEditModal) довантажує GET /employees/:id перед відкриттям модалки замість list-row.
+**Bug (Direction 3): useReferenceData.loadContracts** — GET /counterparties/:id/contracts
+повертає bare array, фронт читав r.items (завжди undefined) → contracts список завжди
+порожній; + непідтримуваний ?limit=100 query param прибрано. tsc api+web 0 errors.
 Latest review: 2026-09-14 (sto-review-agent, HEAD 7b2da1ee) — Мультивалюта Фаза 5 (payables FX,
 курсові різниці постачальника, коміти 386a568a..f89dd324). Money-critical CLEAN: знак FX
 ІНВЕРТОВАНИЙ коректно (SUPPLIER_CHARGE=−1/SUPPLIER_PAYMENT=+1 → залишок=paidBase−chargeBase;
