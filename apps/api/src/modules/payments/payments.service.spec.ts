@@ -24,6 +24,7 @@ const exchangeRatesMock = () => {
         amountBase: amount,
       })),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
     // Реальна логіка sameCurrency (Фаза 5 консолідація) поверх мокнутого getBaseCurrency —
     // читає base у момент виклику, тож перевизначення getBaseCurrency у тесті працює.
     sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
