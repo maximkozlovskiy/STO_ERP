@@ -181,10 +181,10 @@ export function useReferenceData() {
   const loadContracts = (cpId: string) => {
     if (!cpId) return;
     const reqId = ++contractReqRef.current;
-    apiFetch<{ items: Contract[] }>(`/counterparties/${cpId}/contracts?limit=100`)
+    apiFetch<Contract[]>(`/counterparties/${cpId}/contracts`)
       .then(r => {
         if (reqId !== contractReqRef.current) return;
-        setContracts(Array.isArray(r.items) ? r.items : []);
+        setContracts(Array.isArray(r) ? r : []);
       })
       .catch(() => {});
   };

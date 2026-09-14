@@ -14,6 +14,7 @@ import {
   AssignWorkCategoriesDto,
   AssignZonesDto,
   CreateEmployeeDto,
+  EmployeeDetailDto,
   EmployeeResponseDto,
   EmployeesQueryDto,
   UpdateEmployeeDto,
@@ -68,7 +69,11 @@ export class EmployeesService {
     return { items: items.map(item => this.toDto(item)), total };
   }
 
-  async findOne(orgId: string, id: string): Promise<EmployeeResponseDto> {
+  async findOne(
+    orgId: string,
+    id: string,
+    includeRateScheme = false,
+  ): Promise<EmployeeResponseDto | EmployeeDetailDto> {
     const item = await this.prisma.employee.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
@@ -79,7 +84,7 @@ export class EmployeesService {
       },
     });
     if (!item) throw new NotFoundException('Співробітника не знайдено');
-    return this.toDto(item);
+    return this.toDto(item, includeRateScheme);
   }
 
   async create(orgId: string, dto: CreateEmployeeDto): Promise<EmployeeResponseDto> {
@@ -415,29 +420,32 @@ export class EmployeesService {
     }
   }
 
-  private toDto(item: {
-    id: string;
-    orgId: string;
-    userId: string | null;
-    firstName: string;
-    lastName: string;
-    role: string;
-    status: string;
-    rateScheme: unknown;
-    phone?: string | null;
-    email?: string | null;
-    dateOfHire?: Date | null;
-    dateOfFire?: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    deletedAt?: Date | null;
-    allBranches: boolean;
-    employeeZones: Array<{ zoneId: string }>;
-    employeeLifts: Array<{ liftId: string }>;
-    employeeWorkCategories: Array<{ workCategoryId: string }>;
-    employeeBranches: Array<{ branchId: string }>;
-  }): EmployeeResponseDto {
-    return {
+  private toDto(
+    item: {
+      id: string;
+      orgId: string;
+      userId: string | null;
+      firstName: string;
+      lastName: string;
+      role: string;
+      status: string;
+      rateScheme: unknown;
+      phone?: string | null;
+      email?: string | null;
+      dateOfHire?: Date | null;
+      dateOfFire?: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      deletedAt?: Date | null;
+      allBranches: boolean;
+      employeeZones: Array<{ zoneId: string }>;
+      employeeLifts: Array<{ liftId: string }>;
+      employeeWorkCategories: Array<{ workCategoryId: string }>;
+      employeeBranches: Array<{ branchId: string }>;
+    },
+    includeRateScheme = false,
+  ): EmployeeResponseDto | EmployeeDetailDto {
+    const base: EmployeeResponseDto = {
       id: item.id,
       orgId: item.orgId,
       userId: item.userId,
@@ -445,7 +453,6 @@ export class EmployeesService {
       lastName: item.lastName,
       role: item.role as UserRole,
       status: item.status as import('@prisma/client').EmployeeStatus,
-      // rateScheme intentionally omitted — exposed only via OWNER/ADMIN-scoped endpoint
       phone: item.phone,
       email: item.email,
       dateOfHire: item.dateOfHire instanceof Date ? item.dateOfHire.toISOString() : item.dateOfHire,
@@ -461,5 +468,12 @@ export class EmployeesService {
       deletedAt:
         item.deletedAt instanceof Date ? item.deletedAt.toISOString() : (item.deletedAt ?? null),
     };
+    // rateScheme (зарплатна схема) — чутливі дані, віддаються лише OWNER/ADMIN
+    // через findOne(includeRateScheme=true). findAll() ніколи не включає (список
+    // доступний і RECEPTIONIST). Bug: раніше toDto() ЗАВЖДИ пропускав rateScheme,
+    // навіть у findOne для OWNER/ADMIN — EmployeeEditModal тихо перезаписував
+    // реальну схему на дефолтну (percent_normo/40%) при КОЖНОМУ редагуванні.
+    if (!includeRateScheme) return base;
+    return { ...base, rateScheme: item.rateScheme as EmployeeDetailDto['rateScheme'] };
   }
 }

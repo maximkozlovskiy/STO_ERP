@@ -227,6 +227,21 @@ export default function EmployeesPage() {
   const [error, setError] = useState('');
   const [markingId, setMarkingId] = useState<string | null>(null);
 
+  // findAll() ніколи не повертає rateScheme (сек'юріті-фільтр для RECEPTIONIST) —
+  // список-рядок employee завжди має rateScheme=undefined. Якщо відкрити модалку
+  // редагування прямо на ньому, форма тихо підставляє дефолтну схему
+  // (percent_normo/40%) і зберігає її, перезаписуючи реальну зарплатну схему
+  // співробітника. Тому перед редагуванням довантажуємо картку через
+  // GET /employees/:id, де rateScheme присутній для OWNER/ADMIN.
+  const openEditModal = useCallback(async (emp: Employee) => {
+    try {
+      const full = await apiFetch<Employee>(`/employees/${emp.id}`);
+      setModalEmp(full);
+    } catch {
+      setModalEmp(emp);
+    }
+  }, []);
+
   // Filters (specific to employees)
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -716,7 +731,7 @@ export default function EmployeesPage() {
                             size="icon-sm"
                             title="Редагувати"
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => setModalEmp(emp)}
+                            onClick={() => void openEditModal(emp)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>

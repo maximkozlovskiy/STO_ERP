@@ -17,6 +17,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import {
   AssignBranchesDto,
   AssignLiftsDto,
@@ -47,9 +49,18 @@ export class EmployeesController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Картка співробітника' })
-  @ApiResponse({ status: 200, type: EmployeeResponseDto })
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
+  @ApiResponse({
+    status: 200,
+    type: EmployeeResponseDto,
+    description: 'rateScheme присутній лише для OWNER/ADMIN (EmployeeDetailDto)',
+  })
+  findOne(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): ReturnType<EmployeesService['findOne']> {
+    const includeRateScheme = user.role === 'OWNER' || user.role === 'ADMIN';
+    return this.service.findOne(orgId, id, includeRateScheme);
   }
 
   @Post()
