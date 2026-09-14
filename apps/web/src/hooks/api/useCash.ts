@@ -73,6 +73,36 @@ export const MANUAL_IN_REASONS = ['MANUAL_IN', 'COLLECTION'] as const;
 /** Приводи, доступні для ручної видачі (OUT). */
 export const MANUAL_OUT_REASONS = ['MANUAL_OUT', 'EXPENSE', 'SUPPLIER_PAYMENT', 'REFUND'] as const;
 
+/**
+ * Базова валюта org (OrganisationSettings.currency) — код + символ.
+ * amountBase зберігається у базовій валюті org; каса вважається базовою, коли її код === базовому.
+ * НЕ хардкодити 'UAH'/'₴' в UI: база конфігурована (rule Configuration over Hardcode), org може мати
+ * іншу базу — тоді і колонка «У базовій», і її символ мають слідувати за реальною базою.
+ */
+export interface BaseCurrency {
+  code: string;
+  symbol: string;
+}
+export function useBaseCurrency() {
+  return useQuery({
+    queryKey: ['settings', 'base-currency'],
+    queryFn: async (): Promise<BaseCurrency> => {
+      const [settings, currencies] = await Promise.all([
+        apiFetch<{ currency: string }>('/settings/organisation'),
+        apiFetch<{ items: { code: string; symbol?: string | null }[]; total: number }>(
+          '/currencies',
+        ).catch(() => ({ items: [], total: 0 })),
+      ]);
+      const code = settings.currency || 'UAH';
+      const match = currencies.items?.find(c => c.code === code);
+      // Fallback-символ для базового UAH коли /currencies недоступний.
+      const symbol = match?.symbol || (code === 'UAH' ? '₴' : code);
+      return { code, symbol };
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
 export function useCashRegisters() {
   return useQuery({
     queryKey: cashKeys.registers(),

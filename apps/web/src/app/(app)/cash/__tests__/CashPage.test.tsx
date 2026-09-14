@@ -36,6 +36,8 @@ vi.mock('@/hooks/api/useCash', () => ({
   }),
   useCashOperations: () => ({ data: [], isLoading: false }),
   useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  // Базова валюта org (UAH) — вкладка порівнює код каси з базовим замість хардкоду 'UAH'.
+  useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
   CASH_REASON_LABELS: {},
   MANUAL_IN_REASONS: ['MANUAL_IN'],
   MANUAL_OUT_REASONS: ['MANUAL_OUT'],

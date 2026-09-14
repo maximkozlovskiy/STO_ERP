@@ -31,6 +31,7 @@ import {
   useCashRegisters,
   useCashOperations,
   useCreateCashOperation,
+  useBaseCurrency,
   CASH_REASON_LABELS,
   MANUAL_IN_REASONS,
   MANUAL_OUT_REASONS,
@@ -50,9 +51,15 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     if (!selectedId && registers?.length) setSelectedId(registers[0].id);
   }, [registers, selectedId]);
 
-  // Мультивалюта: символ валюти каси + чи показувати колонку «У базовій (₴)» (лише для НЕ-базової каси).
+  // Мультивалюта: символ валюти каси + чи показувати колонку «У базовій» (лише для НЕ-базової каси).
+  // База конфігурована (OrganisationSettings.currency) — НЕ хардкодимо 'UAH'/'₴', інакше для org
+  // з іншою базою колонка/символ були б хибними. Поки база не завантажилась — трактуємо касу як
+  // базову (не мигаємо порожньою колонкою).
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
   const curSymbol = selected?.currencySymbol ?? selected?.currencyCode ?? '';
-  const isBaseCurrency = (selected?.currencyCode ?? 'UAH') === 'UAH';
+  const isBaseCurrency = !baseCurrency || (selected?.currencyCode ?? baseCode) === baseCode;
 
   const { data: shift, isLoading: shiftLoading } = useCurrentShift(selected?.branchId ?? null);
   const openShift = useOpenShift();
@@ -249,7 +256,9 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
               <TableHead>Операція</TableHead>
               <TableHead>Привід</TableHead>
               <TableHead className="text-right">Сума</TableHead>
-              {!isBaseCurrency && <TableHead className="text-right">У базовій (₴)</TableHead>}
+              {!isBaseCurrency && (
+                <TableHead className="text-right">У базовій ({baseSymbol})</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -309,7 +318,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                 </TableCell>
                 {!isBaseCurrency && (
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {op.amountBase != null ? `${fmtMoney(op.amountBase)} ₴` : '—'}
+                    {op.amountBase != null ? `${fmtMoney(op.amountBase)} ${baseSymbol}` : '—'}
                   </TableCell>
                 )}
               </TableRow>
