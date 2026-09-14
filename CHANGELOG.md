@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-09-14 — Тех-борг TD2: захист manual-SQL конструктів від schema-rebuild
+
+### refactor(td2): guard-тест + self-heal manual-SQL конструктів проти db push
+
+TD2 з backlog. schema.prisma НЕ виражає низку конструктів → `db push`/`migrate reset` зі схеми
+тихо їх викидають, а _prisma_migrations лишає ранні міграції «finished» → migrate deploy не переграє.
+
+- **Виявлено реальний інцидент:** на dev-БД УСІ GIN/pg_trgm пошукові індекси були відсутні (6 trgm-
+  міграцій finished, 0 GIN-індексів у pg_index) — наслідок колишнього rebuild зі схеми; пошук
+  контрагентів/товарів/нарядів деградував до seq-scan. Partial-unique/EXCLUDE/CHECK уціліли
+  (створені пізнішими міграціями, після rebuild).
+- **schema-integrity.integration.spec.ts** (новий guard, проти живої dev-БД, SKIP без docker):
+  асертить 11 partial-unique + 8 trgm (семантично через indexdef, не за іменем) + GiST EXCLUDE +
+  2 CHECK + pg_trgm/btree_gist; doc-number індекси ще й перевіряє що справді ЧАСТКОВІ (indpred).
+- **міграція 20260914200000** (нова timestamp → migrate deploy переграє скрізь рівно раз):
+  idempotent re-ensure усіх trgm-індексів + pg_trgm → self-heal дрейфованих БД, no-op на здорових.
+  Застосовано на dev → guard 7/7 зелені.
+- **docs/DATABASE.md**: заборона db push/reset на БД з даними + повний реєстр Prisma-невиразних
+  конструктів + правило «новий manual-SQL конструкт → розширити guard у тому ж коміті».
+
+tsc api 0.
+
+---
+
 ## 2026-09-14 — Тех-борг TD1: currencyId NOT NULL
 
 ### 9cf0833b refactor(td1): currencyId NOT NULL для документів + сід базової валюти на setup

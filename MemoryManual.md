@@ -10,10 +10,16 @@
 
 ```
 Дата:       2026-09-14
-Фаза:       Активна розробка — тех-борг «по черзі» (TD1 ✅ закрито; далі TD2, TD3)
+Фаза:       Активна розробка — тех-борг «по черзі» (TD1 ✅ + TD2 ✅ закрито; далі TD3)
 TypeScript: ✅ 0 errors (api + web)
-Тести:      API-suite 2306 зелені (145 файлів)
-HEAD:       9cf0833b refactor(td1): currencyId NOT NULL для документів + сід базової валюти на setup
+Тести:      API-suite 2306 зелені + новий schema-integrity guard 7/7
+HEAD:       TD2 refactor(td2): guard-тест + self-heal manual-SQL конструктів проти db push
+TD2 (2026-09-14, закрито): захист Prisma-невиразних конструктів (partial-unique doc-number +
+GIN/trgm пошук + GiST EXCLUDE + CHECK) від тихої втрати при db push/reset. **Виявлено реальний
+інцидент:** на dev-БД усі GIN/trgm індекси були відсутні (rebuild зі схеми) → пошук seq-scan.
+Fix: guard-тест apps/api/src/prisma/schema-integrity.integration.spec.ts (проти живої БД, SKIP без
+docker); idempotent міграція 20260914200000 (self-heal trgm); docs/DATABASE.md (заборона db push +
+реєстр конструктів). ⚠️ ПРАВИЛО: новий manual-SQL конструкт → розширити guard у тому ж коміті.
 TD1 (2026-09-14, закрито): currencyId NOT NULL на 4 документних таблицях
 (WorkOrder/PurchaseOrder/Invoice/SupplierPayment). Корінь був: setup нової org НЕ сідив базову
 валюту → getBaseCurrency().id=null. Fix: setup сідить UAH(isSystem) у bootstrap-tx;
