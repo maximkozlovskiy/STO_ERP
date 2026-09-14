@@ -306,15 +306,19 @@ describe('Invoices — HTTP Contract', () => {
       expect(res.json()).toBeNull();
     });
 
-    it('повертає 200 з { id, number, status, amount, documentDate } коли рахунок існує (Bug #509)', async () => {
-      // Bug #509: контракт розширено у 523190f2 — wire shape тепер 5 полів для invoice
-      // slot у картці наряду. Regression-guard: refactor що видалить status/amount/
-      // documentDate з `select` clause service-у або з мапінгу → contract spec падає.
+    it('повертає 200 з валютними полями коли рахунок існує (Bug #509 + Фаза 3)', async () => {
+      // Bug #509: wire shape для invoice slot у картці наряду. Фаза 3 розширила його
+      // валютними полями (currencyCode/totalAmountBase/rateUsed) — InvoiceSection рендерить
+      // foreign+base пару. Regression-guard: refactor що видалить будь-яке поле з `select`
+      // clause service-у або з мапінгу → contract spec падає.
       serviceMock.findByWorkOrder.mockResolvedValueOnce({
         id: VALID_UUID,
         number: 'INV-2026-0001',
         status: 'DRAFT',
         amount: 200,
+        currencyCode: null,
+        totalAmountBase: null,
+        rateUsed: null,
         documentDate: '2026-01-15T00:00:00.000Z',
       });
       const res = await (app as NestFastifyApplication).inject({
@@ -327,6 +331,9 @@ describe('Invoices — HTTP Contract', () => {
         number: 'INV-2026-0001',
         status: 'DRAFT',
         amount: 200,
+        currencyCode: null,
+        totalAmountBase: null,
+        rateUsed: null,
         documentDate: '2026-01-15T00:00:00.000Z',
       });
     });
@@ -337,6 +344,9 @@ describe('Invoices — HTTP Contract', () => {
         number: 'INV-2026-0001',
         status: 'DRAFT',
         amount: 200,
+        currencyCode: null,
+        totalAmountBase: null,
+        rateUsed: null,
         documentDate: null,
       });
       const res = await (app as NestFastifyApplication).inject({
@@ -349,6 +359,9 @@ describe('Invoices — HTTP Contract', () => {
         number: 'INV-2026-0001',
         status: 'DRAFT',
         amount: 200,
+        currencyCode: null,
+        totalAmountBase: null,
+        rateUsed: null,
         documentDate: null,
       });
     });

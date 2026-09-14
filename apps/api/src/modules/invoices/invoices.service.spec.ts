@@ -448,16 +448,19 @@ describe('InvoicesService — business logic guards', () => {
       expect(result).toBeNull();
     });
 
-    it('повертає { id, number, status, amount, documentDate } коли invoice існує (Bug #508)', async () => {
-      // Сервіс розширено у commit 523190f2: findByWorkOrder() віддає 5 полів для
-      // invoice slot у картці наряду — status badge, сума, дата документу. Mock
-      // ОБОВ'ЯЗКОВО повертає shape що Prisma реально віддасть (Decimal для amount,
-      // Date для documentDate), щоб мapping `Number()` + `.toISOString()` працював.
+    it('повертає { id, number, status, amount, currency*, documentDate } коли invoice існує (Bug #508)', async () => {
+      // Сервіс розширено: findByWorkOrder() віддає 8 полів для invoice slot у картці
+      // наряду — status badge, сума, валюта (Фаза 3: currencyCode/totalAmountBase/rateUsed
+      // для foreign+base пари), дата документу. Mock ОБОВ'ЯЗКОВО повертає shape що Prisma
+      // реально віддасть (Decimal для amount, Date для documentDate).
       prisma.invoice.findFirst.mockResolvedValue({
         id: INV_ID,
         number: 'INV-1',
         status: 'DRAFT',
         amount: 200,
+        totalAmountBase: null,
+        rateUsed: null,
+        currency: null,
         documentDate: new Date('2026-01-15T00:00:00.000Z'),
       });
       const result = await service.findByWorkOrder(ORG, WO_ID);
@@ -466,6 +469,33 @@ describe('InvoicesService — business logic guards', () => {
         number: 'INV-1',
         status: 'DRAFT',
         amount: 200,
+        currencyCode: null,
+        totalAmountBase: null,
+        rateUsed: null,
+        documentDate: '2026-01-15T00:00:00.000Z',
+      });
+    });
+
+    it('повертає валютні поля (currencyCode/totalAmountBase/rateUsed) для інвалютного рахунку (Фаза 3)', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: INV_ID,
+        number: 'INV-1',
+        status: 'SENT',
+        amount: 100,
+        totalAmountBase: 4150,
+        rateUsed: 41.5,
+        currency: { code: 'USD' },
+        documentDate: new Date('2026-01-15T00:00:00.000Z'),
+      });
+      const result = await service.findByWorkOrder(ORG, WO_ID);
+      expect(result).toEqual({
+        id: INV_ID,
+        number: 'INV-1',
+        status: 'SENT',
+        amount: 100,
+        currencyCode: 'USD',
+        totalAmountBase: 4150,
+        rateUsed: 41.5,
         documentDate: '2026-01-15T00:00:00.000Z',
       });
     });
@@ -478,6 +508,9 @@ describe('InvoicesService — business logic guards', () => {
         number: 'INV-1',
         status: 'DRAFT',
         amount: 200,
+        totalAmountBase: null,
+        rateUsed: null,
+        currency: null,
         documentDate: null,
       });
       const result = await service.findByWorkOrder(ORG, WO_ID);
@@ -486,6 +519,9 @@ describe('InvoicesService — business logic guards', () => {
         number: 'INV-1',
         status: 'DRAFT',
         amount: 200,
+        currencyCode: null,
+        totalAmountBase: null,
+        rateUsed: null,
         documentDate: null,
       });
     });

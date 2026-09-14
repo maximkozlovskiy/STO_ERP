@@ -816,11 +816,25 @@ export class InvoicesService {
     number: string;
     status: InvoiceStatus;
     amount: number;
+    // Мультивалюта (Фаза 3): валюта рахунку + base-сума + курс для invoice slot картки наряду —
+    // InvoiceSection рендерить foreign+base пару. Без них UI мовчки падав би на base-символ ₴.
+    currencyCode: string | null;
+    totalAmountBase: number | null;
+    rateUsed: number | null;
     documentDate: string | null;
   } | null> {
     const inv = await this.prisma.invoice.findFirst({
       where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
-      select: { id: true, number: true, status: true, amount: true, documentDate: true },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        amount: true,
+        totalAmountBase: true,
+        rateUsed: true,
+        documentDate: true,
+        currency: { select: { code: true } },
+      },
     });
     if (!inv) return null;
     return {
@@ -828,6 +842,9 @@ export class InvoicesService {
       number: inv.number,
       status: inv.status,
       amount: Number(inv.amount),
+      currencyCode: inv.currency?.code ?? null,
+      totalAmountBase: inv.totalAmountBase != null ? Number(inv.totalAmountBase) : null,
+      rateUsed: inv.rateUsed != null ? Number(inv.rateUsed) : null,
       documentDate: inv.documentDate ? inv.documentDate.toISOString() : null,
     };
   }
