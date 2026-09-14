@@ -83,6 +83,12 @@ export class CreateWorkOrderDto {
   @IsDateString()
   documentDate?: string;
 
+  @ApiPropertyOptional({ description: 'Валюта документа (за замовчуванням — базова валюта org)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  currencyId?: string;
+
   @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє' })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -296,8 +302,7 @@ export class WorkOrderResponseDto {
   @ApiProperty() counterpartyId!: string;
   @ApiPropertyOptional() counterpartyName?: string;
   @ApiPropertyOptional({ description: 'Р”РѕРіРѕРІС–СЂ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' }) contractId?:
-    | string
-    | null;
+    string | null;
   @ApiPropertyOptional() contractNumber?: string | null;
   @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє' }) liftId?: string | null;
   @ApiPropertyOptional({ description: 'РќР°Р·РІР° РїС–РґР№РѕРјРЅРёРєР°' }) liftName?: string | null;
@@ -316,6 +321,11 @@ export class WorkOrderResponseDto {
   @ApiProperty() totalAmount!: number;
   @ApiProperty() totalVat!: number;
   @ApiProperty() paidAmount!: number;
+  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
+  @ApiPropertyOptional() currencyId?: string | null;
+  @ApiPropertyOptional() currencyCode?: string | null;
+  @ApiPropertyOptional() totalAmountBase?: number | null;
+  @ApiPropertyOptional() rateUsed?: number | null;
   @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р°' }) documentDate?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;

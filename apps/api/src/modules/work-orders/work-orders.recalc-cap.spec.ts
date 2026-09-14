@@ -52,7 +52,10 @@ function makePrismaSpy(
   const woUpdate = vi.fn().mockResolvedValue({});
 
   const tx = {
-    workOrder: { update: woUpdate },
+    workOrder: {
+      update: woUpdate,
+      findFirst: vi.fn().mockResolvedValue({ currencyId: null, documentDate: new Date() }),
+    },
     workOrderLine: { findMany: lineFindMany },
     workOrderPart: { create: partCreate, aggregate: partAggregate },
   };
@@ -80,6 +83,16 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // pdf
     null as never, // audit
     settingsService, // settingsService (Bug #536)
+    // exchangeRates (Фаза 3): default base — recalcTotals пише totalAmountBase (base=amount, rate=1)
+    {
+      resolveBaseConversion: vi
+        .fn()
+        .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+          rateUsed: 1,
+          amountBase: amount,
+        })),
+      getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    } as never,
     null as never, // events (EventEmitter2)
   );
 }

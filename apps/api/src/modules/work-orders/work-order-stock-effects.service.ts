@@ -157,7 +157,8 @@ export class WorkOrderStockEffectsService {
     // addLine/updatePart міг змінити суму через recalcTotals між pre-tx read і цією транзакцією.
     const freshWo = await db.workOrder.findFirst({
       where: { id: wo.id, orgId },
-      select: { totalAmount: true },
+      // Мультивалюта (Фаза 3): валюта + дата документа для base-конвертації CHARGE.
+      select: { totalAmount: true, currencyId: true, documentDate: true },
     });
     const chargeAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
     if (chargeAmount <= 0)
@@ -168,6 +169,10 @@ export class WorkOrderStockEffectsService {
         counterpartyId: wo.counterpartyId,
         type: 'CHARGE',
         amount: chargeAmount,
+        // Борг у base по курсу на дату документа (наряд ведеться у валюті). Без currencyId → base.
+        currencyId: freshWo?.currencyId ?? undefined,
+        date: freshWo?.documentDate ?? undefined,
+        fallbackToLatest: true,
         documentType: 'WorkOrder',
         documentId: wo.id,
         createdBy: userId,
@@ -224,7 +229,8 @@ export class WorkOrderStockEffectsService {
     // EDITABLE_STATUSES → totalAmount не змінюється, але re-read гарантує точну симетрію з CHARGE.
     const freshWo = await db.workOrder.findFirst({
       where: { id: wo.id, orgId },
-      select: { totalAmount: true },
+      // Мультивалюта (Фаза 3): валюта + дата документа для симетрії CREDIT_NOTE з CHARGE.
+      select: { totalAmount: true, currencyId: true, documentDate: true },
     });
     const creditAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
     if (creditAmount > 0) {
@@ -234,6 +240,9 @@ export class WorkOrderStockEffectsService {
           counterpartyId: wo.counterpartyId,
           type: 'CREDIT_NOTE',
           amount: creditAmount,
+          currencyId: freshWo?.currencyId ?? undefined,
+          date: freshWo?.documentDate ?? undefined,
+          fallbackToLatest: true,
           documentType: 'WorkOrder',
           documentId: wo.id,
           createdBy: userId,

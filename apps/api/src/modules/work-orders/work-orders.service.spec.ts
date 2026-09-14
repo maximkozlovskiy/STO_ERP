@@ -51,6 +51,16 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // pdf
     null as never, // audit
     null as never, // settingsService
+    // exchangeRates (Фаза 3): default base-конвертація (rate=1, amountBase=amount)
+    {
+      resolveBaseConversion: vi
+        .fn()
+        .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+          rateUsed: 1,
+          amountBase: amount,
+        })),
+      getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    } as never,
     { emit: vi.fn() } as never, // events (EventEmitter2)
   );
 }

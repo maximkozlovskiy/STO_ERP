@@ -23,6 +23,7 @@ import {
 } from './work-orders.fsm';
 import { AuditService } from '../audit/audit.service';
 import { SettingsService } from '../settings/settings.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import {
   WORK_ORDER_EVENTS,
   WorkOrderCompletedEvent,
@@ -97,6 +98,7 @@ export class WorkOrdersService {
     private readonly pdf: PdfService,
     private readonly audit: AuditService,
     private readonly settingsService: SettingsService,
+    private readonly exchangeRates: ExchangeRatesService,
     // A2: transition() емітить доменні події; lifecycle-side-effects (пробіг/ТО/гарантія/нотифікація/
     // аудит) — у WorkOrderEventHandlers через @OnEvent.
     // A3: share/public-кошторис винесено у WorkOrderShareService; transaction-critical stock+settlement
@@ -152,6 +154,7 @@ export class WorkOrdersService {
           counterparty: { select: { firstName: true, lastName: true, companyName: true } },
           branch: { select: { name: true } },
           contract: { select: { id: true, number: true } },
+          currency: { select: { code: true } },
           lift: { select: { name: true } },
           calendarSlots: {
             where: { deletedAt: null },
@@ -191,6 +194,7 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        currency: { select: { code: true } },
         lift: { select: { name: true } },
         // Bug review (sto-optimize 2026-06-05): defensive take cap — addLine/addPart
         // endpoints не мають ArrayMaxSize, тож теоретично WO може мати unbounded lines/parts.
@@ -333,6 +337,10 @@ export class WorkOrdersService {
 
     const number = await this.docNumbers.next(orgId, 'WORK_ORDER');
 
+    // Мультивалюта (Фаза 3): валюта наряду — з DTO або базова org. Тотали ще 0 (рядки додаються
+    // пізніше → recalcTotals порахує totalAmountBase по курсу). Тут лише фіксуємо currencyId.
+    const currencyId = dto.currencyId ?? (await this.exchangeRates.getBaseCurrency(orgId)).id;
+
     const wo = await this.prisma.workOrder.create({
       data: {
         orgId,
@@ -349,6 +357,7 @@ export class WorkOrdersService {
         plannedAt: dto.plannedAt ? new Date(dto.plannedAt) : null,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         plannedHours: dto.plannedHours ?? null,
+        currencyId,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
       },
       include: {
@@ -356,6 +365,7 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        currency: { select: { code: true } },
         lift: { select: { name: true } },
       },
     });
@@ -473,6 +483,7 @@ export class WorkOrdersService {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         branch: { select: { name: true } },
         contract: { select: { id: true, number: true } },
+        currency: { select: { code: true } },
         lift: { select: { name: true } },
       },
     });
@@ -533,6 +544,7 @@ export class WorkOrdersService {
         repairCategory: true,
         dueDate: true,
         plannedHours: true,
+        currencyId: true, // Мультивалюта (Фаза 3): клон успадковує валюту документа
         lines: {
           where: { deletedAt: null },
           select: {
@@ -587,6 +599,18 @@ export class WorkOrdersService {
     // Prisma defaults leave them at 0 while lines[].amount has real values.
     const totalLabor = original.lines.reduce((s, l) => s + Number(l.amount), 0);
     const totalParts = original.parts.reduce((s, p) => s + Number(p.amount), 0);
+    const clonedTotal = roundMoney(totalLabor + totalParts);
+    // Мультивалюта (Фаза 3): клон — новий DRAFT на сьогодні → base-сума по СВІЖОМУ курсу (не курс
+    // оригіналу). Успадковує currencyId оригіналу; без валюти → base (rate=1).
+    const clonedConv = original.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          original.currencyId,
+          new Date(),
+          clonedTotal,
+          true,
+        )
+      : { rateUsed: 1, amountBase: clonedTotal };
 
     // 4. Create cloned WO as DRAFT
     const cloned = await this.prisma.workOrder.create({
@@ -606,10 +630,13 @@ export class WorkOrdersService {
         // plannedHours copied from original — clone preserves all planning fields.
         // actualHours intentionally omitted — clone is a new DRAFT session, actual hours do not yet exist.
         plannedHours: original.plannedHours,
+        currencyId: original.currencyId ?? null,
         totalLabor,
         totalActualLabor: totalLabor,
         totalParts,
-        totalAmount: totalLabor + totalParts,
+        totalAmount: clonedTotal,
+        totalAmountBase: clonedConv.amountBase,
+        rateUsed: clonedConv.rateUsed,
         lines: {
           // clones are DRAFT — actualHours reset to null; copying original value misleads labour reports for the new visit.
           create: original.lines.map(l => ({
@@ -751,6 +778,7 @@ export class WorkOrdersService {
             },
             branch: { select: { name: true } },
             contract: { select: { id: true, number: true } },
+            currency: { select: { code: true } },
           },
         });
       },
@@ -1158,7 +1186,7 @@ export class WorkOrdersService {
     // (2) Single-pass reduce замість twin-scan: раніше `lines.reduce`
     //     викликався двічі по тому ж масиву (totalLabor + totalActualLabor).
     //     Для WO з 50+ рядками — половина CPU/GC роботи у hot path mutation.
-    const [lines, partsAgg] = await Promise.all([
+    const [lines, partsAgg, wo] = await Promise.all([
       tx.workOrderLine.findMany({
         where: { workOrderId, orgId, deletedAt: null },
         select: { amount: true, actualHours: true, normoHours: true, price: true },
@@ -1167,6 +1195,11 @@ export class WorkOrdersService {
       tx.workOrderPart.aggregate({
         where: { workOrderId, orgId, deletedAt: null },
         _sum: { amount: true },
+      }),
+      // Мультивалюта (Фаза 3): валюта + дата документа для base-конвертації тоталу.
+      tx.workOrder.findFirst({
+        where: { id: workOrderId, orgId },
+        select: { currencyId: true, documentDate: true },
       }),
     ]);
 
@@ -1190,14 +1223,28 @@ export class WorkOrdersService {
 
     // WO-H2: квантуємо всі грошові суми до копійки перед записом у Decimal(12,2) —
     // інакше float-дрейф дає Σ(рядки)≠total і невірну базу для CHARGE при COMPLETED.
+    const totalAmount = roundMoney(totalBase);
+    // Мультивалюта (Фаза 3): base-сума тоталу по курсу на дату документа (fallbackToLatest — документний
+    // потік). Без currencyId → base (rate=1, base=total). Курс — на documentDate (наряд ведеться у валюті).
+    const conv = wo?.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          wo.currencyId,
+          wo.documentDate ?? new Date(),
+          totalAmount,
+          true,
+        )
+      : { rateUsed: 1, amountBase: totalAmount };
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
       data: {
         totalLabor: roundMoney(totalLabor),
         totalActualLabor: roundMoney(totalActualLabor),
         totalParts: roundMoney(totalParts),
-        totalAmount: roundMoney(totalBase),
+        totalAmount,
         totalVat: roundMoney(totalVat),
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
       },
     });
   }
@@ -1310,6 +1357,10 @@ export class WorkOrdersService {
     totalAmount: Prisma.Decimal;
     totalVat?: Prisma.Decimal | null;
     paidAmount: Prisma.Decimal | null;
+    currencyId?: string | null;
+    totalAmountBase?: Prisma.Decimal | null;
+    rateUsed?: Prisma.Decimal | null;
+    currency?: { code: string } | null;
     documentDate?: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -1363,6 +1414,10 @@ export class WorkOrdersService {
       totalAmount: Number(wo.totalAmount),
       totalVat: Number(wo.totalVat ?? 0),
       paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,
+      currencyId: wo.currencyId ?? null,
+      currencyCode: wo.currency?.code ?? null,
+      totalAmountBase: wo.totalAmountBase != null ? Number(wo.totalAmountBase) : null,
+      rateUsed: wo.rateUsed != null ? Number(wo.rateUsed) : null,
       documentDate: wo.documentDate ? wo.documentDate.toISOString().slice(0, 10) : null,
       createdAt: wo.createdAt instanceof Date ? wo.createdAt.toISOString() : wo.createdAt,
       updatedAt: wo.updatedAt instanceof Date ? wo.updatedAt.toISOString() : wo.updatedAt,

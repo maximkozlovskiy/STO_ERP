@@ -15,6 +15,7 @@ import { DocumentNumberModule } from '../document-number/document-number.module'
 import { AuditModule } from '../audit/audit.module';
 import { WarrantiesModule } from '../warranties/warranties.module';
 import { SettingsModule } from '../settings/settings.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { SettingsModule } from '../settings/settings.module';
     AuditModule,
     WarrantiesModule,
     SettingsModule,
+    ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів наряду
   ],
   controllers: [WorkOrdersController, WorkOrdersPublicController],
   // A2: WorkOrderEventHandlers — @OnEvent-хендлери lifecycle-side-effects (реагують на події з

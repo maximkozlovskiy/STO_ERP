@@ -61,7 +61,11 @@ function makePrismaSpy(lines: LineRow[], partsSum: number) {
   const woUpdate = vi.fn().mockResolvedValue({});
 
   const tx = {
-    workOrder: { update: woUpdate },
+    // Мультивалюта (Фаза 3): recalcTotals читає currencyId/documentDate наряду. null → base.
+    workOrder: {
+      update: woUpdate,
+      findFirst: vi.fn().mockResolvedValue({ currencyId: null, documentDate: new Date() }),
+    },
     workOrderLine: { findMany: lineFindMany },
     workOrderPart: { create: partCreate, aggregate: partAggregate },
   };
@@ -94,6 +98,16 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // pdf
     null as never, // audit
     settingsService, // settingsService (Bug #536)
+    // exchangeRates (Фаза 3): default base — recalcTotals пише totalAmountBase (base=amount, rate=1)
+    {
+      resolveBaseConversion: vi
+        .fn()
+        .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+          rateUsed: 1,
+          amountBase: amount,
+        })),
+      getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    } as never,
     null as never, // events (EventEmitter2)
   );
 }
@@ -192,5 +206,19 @@ describe('WorkOrdersService.recalcTotals — totalActualLabor formula', () => {
     expect(data.totalLabor).toBe(500);
     expect(data.totalActualLabor).toBe(0); // actualHours=0 wins over normoHours=5
     expect(data.totalAmount).toBe(0); // 0 actual + 0 parts
+  });
+
+  // Мультивалюта (Фаза 3): recalcTotals пише totalAmountBase/rateUsed. Base-валюта (мок default)
+  // → base = totalAmount, rate = 1 (не залишаються undefined — інакше base-звітність порожня).
+  it('пише totalAmountBase + rateUsed (base-валюта → base=totalAmount, rate=1)', async () => {
+    const lines: LineRow[] = [{ amount: 300, actualHours: 3, normoHours: 3, price: 100 }];
+    const { prisma, woUpdate } = makePrismaSpy(lines, 200);
+    const service = makeService(prisma);
+    await service.addPart(ORG, WO_ID, { goodId: GOOD_ID, warehouseId: WAREHOUSE_ID, quantity: 1 });
+
+    const data = woUpdate.mock.calls[0][0].data;
+    expect(data.totalAmount).toBe(500); // 300 actual + 200 parts
+    expect(data.totalAmountBase).toBe(500);
+    expect(data.rateUsed).toBe(1);
   });
 });
