@@ -25,9 +25,11 @@ interface Transaction {
   id: string;
   type: string;
   amount: number;
-  // Мультивалюта (Фаза 2): валюта транзакції + base-сума. null → історичні/base.
+  // Мультивалюта (Фаза 2): валюта транзакції + base-сума + курс. null → історичні/base.
+  currencyId?: string | null;
   currencyCode?: string | null;
   amountBase?: number | null;
+  rateUsed?: number | null;
   documentType?: string | null;
   documentId?: string | null;
   notes?: string | null;

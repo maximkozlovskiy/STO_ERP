@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/CounterpartyForm';
 import { validateContactFields } from '@/lib/validation';
 import { type Warranty } from '@/hooks/api/useWarranties';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -108,9 +109,11 @@ interface Transaction {
   id: string;
   type: string;
   amount: number;
-  // Мультивалюта (Фаза 2): валюта + base-сума. null → історичні/base UAH.
+  // Мультивалюта (Фаза 2): валюта + base-сума + курс. null → історичні/base UAH.
+  currencyId?: string | null;
   currencyCode?: string | null;
   amountBase?: number | null;
+  rateUsed?: number | null;
   documentType: string | null;
   documentId: string | null;
   notes: string | null;
@@ -230,6 +233,9 @@ export default function CounterpartyCardPage() {
   const { confirm, dialogProps } = useConfirm();
   const linkedNav = useLinkedNav();
   const linkedConfig = useMemo(() => counterpartyLinkedConfig(linkedNav), [linkedNav]);
+  // Мультивалюта: символ базової валюти для base-підрядка транзакцій (не хардкод '₴' — Bug #742).
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
 
   const [cp, setCp] = useState<Counterparty | null>(null);
   const tab = (searchParams.get('tab') ?? 'info') as CrmTab;
@@ -1285,7 +1291,7 @@ export default function CounterpartyCardPage() {
                           {!isBase && t.amountBase != null && (
                             <div className="text-[11px] text-muted-foreground tabular-nums">
                               {sign}
-                              {fmtMoney(Math.abs(t.amountBase))} ₴
+                              {fmtMoney(Math.abs(t.amountBase))} {baseSymbol}
                             </div>
                           )}
                         </>
