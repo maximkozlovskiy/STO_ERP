@@ -10,6 +10,7 @@ describe('ExchangeRatesService', () => {
   let service: ExchangeRatesService;
   let prisma: {
     currency: { findFirst: ReturnType<typeof vi.fn> };
+    organisationSettings: { findFirst: ReturnType<typeof vi.fn> };
     exchangeRate: {
       findFirst: ReturnType<typeof vi.fn>;
       findFirstOrThrow: ReturnType<typeof vi.fn>;
@@ -35,6 +36,7 @@ describe('ExchangeRatesService', () => {
   beforeEach(async () => {
     prisma = {
       currency: { findFirst: vi.fn() },
+      organisationSettings: { findFirst: vi.fn().mockResolvedValue({ currency: 'UAH' }) },
       exchangeRate: {
         findFirst: vi.fn(),
         findFirstOrThrow: vi.fn().mockResolvedValue(fullRow()),
@@ -114,6 +116,67 @@ describe('ExchangeRatesService', () => {
       await expect(service.update('org-1', 'missing', { rate: 1 })).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('getRateAsOf', () => {
+    it('повертає найближчий курс ≤ date', async () => {
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce({ rate: 41.5, coefficient: 1 });
+      const r = await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2026-05-28'));
+      expect(r).toEqual({ rate: 41.5, coefficient: 1 });
+      const where = prisma.exchangeRate.findFirst.mock.calls[0][0].where;
+      expect(where).toMatchObject({ orgId: 'org-1', currencyId: CURRENCY_ID, deletedAt: null });
+      expect(where.date.lte).toBeInstanceOf(Date);
+      expect(prisma.exchangeRate.findFirst.mock.calls[0][0].orderBy).toEqual({ date: 'desc' });
+    });
+
+    it('немає курсу ≤ date → null', async () => {
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(null);
+      expect(await service.getRateAsOf('org-1', CURRENCY_ID, new Date('2020-01-01'))).toBeNull();
+    });
+  });
+
+  describe('resolveBaseConversion', () => {
+    it('базова валюта (code === settings.currency) → rate=1, base=amount (без курсу)', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ code: 'UAH' });
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      const r = await service.resolveBaseConversion(
+        'org-1',
+        CURRENCY_ID,
+        new Date('2026-05-28'),
+        500,
+      );
+      expect(r).toEqual({ rateUsed: 1, amountBase: 500 });
+      expect(prisma.exchangeRate.findFirst).not.toHaveBeenCalled(); // курс не читається для базової
+    });
+
+    it('інша валюта → base = amount × rate (курс на дату)', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ code: 'USD' });
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce({ rate: 41.5, coefficient: 1 });
+      const r = await service.resolveBaseConversion(
+        'org-1',
+        CURRENCY_ID,
+        new Date('2026-05-28'),
+        100,
+      );
+      expect(r).toEqual({ rateUsed: 41.5, amountBase: 4150 });
+    });
+
+    it('інша валюта без курсу на дату → 400', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce({ code: 'USD' });
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      prisma.exchangeRate.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.resolveBaseConversion('org-1', CURRENCY_ID, new Date('2026-05-28'), 100),
+      ).rejects.toThrow(/Немає курсу валюти/);
+    });
+
+    it('невідома валюта → NotFound', async () => {
+      prisma.currency.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.resolveBaseConversion('org-1', CURRENCY_ID, new Date('2026-05-28'), 100),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

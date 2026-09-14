@@ -1,6 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
+import { convertToBase } from '../../common/utils/currency';
 import {
   CreateExchangeRateDto,
   ExchangeRateResponseDto,
@@ -52,6 +58,65 @@ export class ExchangeRatesService {
     });
     if (!item) throw new NotFoundException('Курс валюти не знайдено');
     return this.toDto(item);
+  }
+
+  /**
+   * Курс валюти на дату — найближчий запис із date ≤ вказаної (для мультивалютної конвертації
+   * amountBase). null якщо курсу немає жодного ≤ date. date нормалізується до UTC-півночі (@db.Date).
+   */
+  async getRateAsOf(
+    orgId: string,
+    currencyId: string,
+    date: Date,
+  ): Promise<{ rate: number; coefficient: number } | null> {
+    const asOf = new Date(`${date.toISOString().slice(0, 10)}T00:00:00.000Z`);
+    const row = await this.prisma.exchangeRate.findFirst({
+      where: { orgId, currencyId, deletedAt: null, date: { lte: asOf } },
+      orderBy: { date: 'desc' },
+      select: { rate: true, coefficient: true },
+    });
+    if (!row) return null;
+    return { rate: Number(row.rate), coefficient: Number(row.coefficient) };
+  }
+
+  /**
+   * Резолвить пару (rateUsed, amountBase) для суми у заданій валюті на дату.
+   * Базова валюта org (OrganisationSettings.currency за кодом) → {rateUsed:1, amountBase:amount}.
+   * Інакше — курс на дату (getRateAsOf); якщо курсу немає → 400 (НЕ тихо rate=1: це спотворило б
+   * base-облік). Спільна точка мультивалютної конвертації для всіх грошових агрегатів.
+   */
+  async resolveBaseConversion(
+    orgId: string,
+    currencyId: string,
+    date: Date,
+    amount: number,
+  ): Promise<{ rateUsed: number; amountBase: number }> {
+    const [currency, settings] = await Promise.all([
+      this.prisma.currency.findFirst({
+        where: { id: currencyId, orgId, deletedAt: null },
+        select: { code: true },
+      }),
+      this.prisma.organisationSettings.findFirst({
+        where: { orgId },
+        select: { currency: true },
+      }),
+    ]);
+    if (!currency) throw new NotFoundException('Валюту не знайдено');
+    const baseCode = settings?.currency ?? 'UAH';
+    // Базова валоюта — без конвертації (rate=1). Порівнюємо за кодом (base зберігається кодом).
+    if (currency.code === baseCode) {
+      return { rateUsed: 1, amountBase: amount };
+    }
+    const asOf = await this.getRateAsOf(orgId, currencyId, date);
+    if (!asOf) {
+      throw new BadRequestException(
+        `Немає курсу валюти ${currency.code} на ${date.toISOString().slice(0, 10)} — додайте курс у НДІ → Курси валют`,
+      );
+    }
+    return {
+      rateUsed: asOf.rate,
+      amountBase: convertToBase(amount, asOf.rate, asOf.coefficient),
+    };
   }
 
   async create(orgId: string, dto: CreateExchangeRateDto): Promise<ExchangeRateResponseDto> {
