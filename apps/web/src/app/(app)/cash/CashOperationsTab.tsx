@@ -264,7 +264,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             )}
             {!opsLoading && (operations?.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="p-0">
+                <TableCell colSpan={isBaseCurrency ? 4 : 5} className="p-0">
                   <EmptyState
                     icon={Wallet}
                     title="Операцій немає"
