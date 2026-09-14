@@ -109,16 +109,19 @@ export const VAT_LABELS: Record<string, string> = {
   INCLUSIVE: 'ПДВ включено',
 };
 
+// Дзеркалить NotificationEventType enum (schema.prisma) — усі 11 значень.
 export const EVENT_LABELS: Record<string, string> = {
-  WO_COMPLETED: 'Наряд завершено',
+  WO_CREATED: 'Наряд створено',
   WO_ESTIMATE_READY: 'Кошторис готовий',
   WO_APPROVED: 'Наряд підтверджено',
   WO_IN_PROGRESS: 'Наряд в роботі',
+  WO_COMPLETED: 'Наряд завершено',
   WO_READY_FOR_PICKUP: 'Авто готове до видачі',
   PAYMENT_RECEIVED: 'Оплата отримана',
   INVOICE_SENT: 'Рахунок надіслано',
   LOW_STOCK_ALERT: 'Низький залишок',
   FOLLOWUP_REMINDER: 'Нагадування про планове ТО',
+  BOOKING_CONFIRMATION: 'Підтвердження запису',
 };
 
 export const WEBHOOK_EVENT_OPTIONS = [

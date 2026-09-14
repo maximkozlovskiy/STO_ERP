@@ -74,7 +74,9 @@ export default function NotificationsTab() {
         <p className="text-muted-foreground text-sm">Шаблони не знайдено</p>
       )}
 
-      {(['SMS', 'EMAIL', 'PUSH'] as const).map(channel => {
+      {/* Канали дзеркалять NotificationChannel enum (schema.prisma): SMS/VIBER/EMAIL/TELEGRAM.
+          Раніше був фантомний PUSH (не існує у enum) → шаблони VIBER/TELEGRAM тихо не рендерились. */}
+      {(['SMS', 'VIBER', 'EMAIL', 'TELEGRAM'] as const).map(channel => {
         const channelTemplates = templates.filter(t => t.channel === channel);
         if (channelTemplates.length === 0) return null;
         return (
@@ -82,8 +84,9 @@ export default function NotificationsTab() {
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <span className="px-2 py-0.5 bg-secondary rounded text-xs font-mono">{channel}</span>
               {channel === 'SMS' && 'SMS-сповіщення'}
+              {channel === 'VIBER' && 'Viber-сповіщення'}
               {channel === 'EMAIL' && 'Email-сповіщення'}
-              {channel === 'PUSH' && 'Push-сповіщення'}
+              {channel === 'TELEGRAM' && 'Telegram-сповіщення'}
             </h3>
             <div className="space-y-3">
               {channelTemplates.map(t => (
