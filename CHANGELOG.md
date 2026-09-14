@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-09-14 — Sync-фікс: Мультивалюта Фаза 4 (FX-мітка у PDF акту звірки)
+
+### 82b6854e fix(sync): FX_GAIN/FX_LOSS raw-enum leak у PDF акті звірки
+
+Таргетований sync-аудит Фази 4 (курсові різниці). Enum/BALANCE_SIGN/shared labels/report-registry
+масив підтверджено 1:1; `getTransactions` DTO та обидва frontend-екрани (SettlementsTabContent,
+counterparties/[id] PageClient) вже консолідовані на shared `SETTLEMENT_TX_TYPE_LABELS`. Знайдено
+1 пропущений локальний дубль: `PdfService.generateReconciliationActPdf` мав власний
+`txTypeLabel()` лише на 5 старих клієнтських типів → друкований акт звірки показував сирий
+`FX_GAIN`/`FX_LOSS` замість «Курсовий прибуток/збиток». Замінено на shared-мапу з `@sto/shared`;
++smoke test з FX-рядками. tsc api+web 0.
+
+---
+
 ## 2026-09-14 — Фіча: Мультивалюта Фаза 4 (курсові різниці, realized FX)
 
 Повна оплата іновалютного рахунку у своїй валюті лишала ненульовий base-залишок (CHARGE за курсом

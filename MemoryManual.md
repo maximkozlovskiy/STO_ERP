@@ -12,7 +12,7 @@
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       e2164cdf fix(tester): Bug #744 — пряма оплата наряду обходила перевірку валюти (Мультивалюта Фаза 3)
+HEAD:       82b6854e fix(sync): FX_GAIN/FX_LOSS raw-enum leak у PDF акті звірки (Мультивалюта Фаза 4)
 Latest tester: 2026-09-14 (sto-tester-agent, HEAD e2164cdf) — Мультивалюта Фаза 3 end-to-end.
 Прогнав усі іновалютні грошові потоки (WO/Invoice/PO/SupplierPayment/Payment/settlements/
 exchange-rates). CLEAN: WO CHARGE/CREDIT_NOTE симетричні (currencyId+documentDate+fallback),
@@ -46,6 +46,18 @@ findByWorkOrder (+currency.code/totalAmountBase/rateUsed) + оновлено ser
 tsc api+web 0; invoices service 44 + contract 27 = зелені. (Suggestion не-фіксовано: нові
 currencyId FK без @@index — свідомо, дзеркалить Payment/SettlementTransaction Фази2, FK join лише
 по PK валюти, не фільтрується; фікс потребував би зайвої міграції.)
+Latest sync: 2026-09-14 (sto-sync-agent, HEAD 82b6854e) — Мультивалюта Фаза 4 (курсові різниці,
+коміти 4f6866a5..1982711b) targeted sync audit. CLEAN: schema enum FX_GAIN/FX_LOSS ↔ backend
+BALANCE_SIGN ↔ shared SETTLEMENT_TX_TYPE_LABELS/SETTLEMENT_BALANCE_SIGN ↔ report-registry масив —
+усі 1:1; getTransactions DTO віддає type/notes/documentType/amountBase коректно для FX-рядків;
+SettlementsTabContent + counterparties/[id] PageClient вже консолідовані на shared labels (жодних
+нових локальних дублів там). **1 фікс (MEDIUM):** pdf.service.ts (generateReconciliationActPdf)
+мав ОКРЕМИЙ локальний inline txTypeLabel() лише на 5 старих клієнтських типів (без SUPPLIER_*,
+без FX_GAIN/FX_LOSS) — друкований акт звірки показував сирий enum-рядок для курсової різниці.
+Фікс: імпорт SETTLEMENT_TX_TYPE_LABELS з @sto/shared (те саме джерело що й фронт). +smoke test
+generateReconciliationActPdf з FX-рядками (раніше 0 тестів на цю функцію). Задокументовано у
+GOTCHAS.md — новий enum-value вимагає grep і по backend pdf/print-сервісах, не лише apps/web/.
+tsc api+web 0, pdf.service.spec.ts 6/6.
 Latest sync: 2026-09-14 (sto-sync-agent, HEAD c03faefe) — Мультивалюта Фаза 3 (валюта документів:
 WorkOrder+PurchaseOrder+Invoice+SupplierPayment, коміти e07a60b0..94763ac7) targeted sync audit.
 CLEAN: усі 4 ResponseDto (currencyId/currencyCode/totalAmountBase/rateUsed) ↔ фронт-інтерфейси
