@@ -1282,7 +1282,8 @@ export default function CounterpartyCardPage() {
                               'text-sm font-semibold',
                               // Колір за семантикою (як у SettlementsTabContent): нарахування (наш
                               // борг/клієнт винен) → destructive; оплата/повернення → success.
-                              CHARGE_LIKE_TX_TYPES.has(t.type)
+                              // Курсові різниці (Фаза 4): FX_LOSS — destructive, FX_GAIN — success.
+                              CHARGE_LIKE_TX_TYPES.has(t.type) || t.type === 'FX_LOSS'
                                 ? 'text-destructive-text'
                                 : 'text-success',
                             )}

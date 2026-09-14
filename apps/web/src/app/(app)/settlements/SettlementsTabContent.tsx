@@ -11,7 +11,11 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
-import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
+import {
+  SETTLEMENT_BALANCE_UP_TYPES,
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES,
+  SETTLEMENT_TX_TYPE_LABELS,
+} from '@sto/shared';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 
 interface Counterparty {
@@ -46,25 +50,22 @@ interface RecAct {
 
 type CpItem = SearchPickerItem & Counterparty;
 
-const TX_LABELS: Record<string, string> = {
-  CHARGE: 'Нарахування',
-  PAYMENT: 'Оплата',
-  PREPAYMENT: 'Передоплата',
-  REFUND: 'Повернення',
-  CREDIT_NOTE: 'Кредит-нота',
-  SUPPLIER_CHARGE: 'Нарахування (постач.)',
-  SUPPLIER_PAYMENT: 'Оплата постачальнику',
-  SUPPLIER_REFUND: 'Повернення постачальнику',
-};
+// Мітки типів — ЄДИНЕ джерело @sto/shared (раніше був локальний дубль → drift-ризик при новому типі,
+// напр. FX_GAIN/FX_LOSS Фази 4). Тепер обидва settlement-екрани + звіти беруть SETTLEMENT_TX_TYPE_LABELS.
+const TX_LABELS = SETTLEMENT_TX_TYPE_LABELS;
 // Колір рядка = БІЗНЕС-семантика: «charge-like» (борг створено) = destructive, решта = success.
 // Централізовано у @sto/shared (SETTLEMENT_TX_CHARGE_LIKE_TYPES) — той самий набір, що на картці
 // контрагента (counterparties/[id]/PageClient), щоб той самий тип не фарбувався по-різному між
 // екранами (Bug #715 клас: cross-page колір-drift). Колір НАВМИСНЕ окремий від balance-sign:
 // постачальницькі типи (SUPPLIER_PAYMENT: sign +1) все одно success, бо гасять наш борг.
+// Курсові різниці (Фаза 4): FX_LOSS — destructive (курсовий збиток), FX_GAIN — success (прибуток);
+// НЕ через charge-like set (там лишаються лише CHARGE/SUPPLIER_CHARGE), а явною гілкою.
 // Токен text-destructive-text (не text-destructive) — той самий, що на картці контрагента
 // (counterparties/[id]/PageClient), інакше червоний рендериться різним відтінком між екранами.
 const txColor = (type: string): string =>
-  SETTLEMENT_TX_CHARGE_LIKE_TYPES.has(type) ? 'text-destructive-text' : 'text-success';
+  SETTLEMENT_TX_CHARGE_LIKE_TYPES.has(type) || type === 'FX_LOSS'
+    ? 'text-destructive-text'
+    : 'text-success';
 // Типи, що ЗБІЛЬШУЮТЬ баланс (BALANCE_SIGN = +1) — знак «+»/«−». Джерело знаку — @sto/shared
 // SETTLEMENT_BALANCE_UP_TYPES (дзеркало бекового BALANCE_SIGN, під invariant-тестом).
 const BALANCE_UP_TYPES = SETTLEMENT_BALANCE_UP_TYPES;
