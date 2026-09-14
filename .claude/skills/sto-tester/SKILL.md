@@ -1728,6 +1728,20 @@ sed -n '/^model Counterparty /,/^}/p' schema.prisma | grep -E "\[\]"   # усі 
 **Severity:** MEDIUM (user-visible фінекспорт змішує валюти → хибна агрегація в Excel; stored balance завжди у base на бекенді → не corrupts даних).
 **Де шукати ще:** payments/settlements/cash/invoice/PO CSV+XLSX-експортери; будь-який `exportReport`/`buildCsv`/xlsx-емітер, чий агрегат нещодавно отримав валютне поле. Родич #629 (float в export), #715 (display-model drift).
 
+### 2026-09-14 — Currency-match guard на ОДНОМУ target-шляху, паралельний шлях без guard-а (лише коментар-твердження) (Bug #744) — backend / multicurrency / financial-integrity / HIGH
+
+**Сигнал:** метод має ДЕКІЛЬКА target-гілок, кожна інкрементує СВОЄ currency-specific поле (напр. `payments.create` → invoice-гілка пише `invoice.paidAmount`, WO-гілка пише `workOrder.paidAmount`). Одна гілка має явну перевірку валют (`sameCurrencyAsBase(paymentCur, targetCur)` → 400 при розбіжності), інша — НЕ має, а замість guard-а стоїть КОМЕНТАР що СТВЕРДЖУЄ інваріант («оплата має збігатися з валютою наряду — тож інкрементимо dto.amount»). Виказує себе тим, що незахищена гілка навіть НЕ фетчить `currencyId` target-а у свій `select` (нема чого порівнювати). Наслідок: у валюті document-специфічне поле (`paidAmount` у валюті документа, не base) інкрементиться сумою в ІНШІЙ валюті → змішування одиниць → хибний залишок/статус. Борг у леджері лягає у base коректно (settlement конвертує), тож баг «тихий» — corrupts лише document-поле, не балансовий агрегат.
+
+**Причина виникнення:** коли одну гілку фіксили guard-ом (напр. invoice cross-currency), розробник вважав паралельну гілку «очевидно теж коректною бо агрегат успадковує валюту» й лишив коментар замість коду. Коментар не enforce. Досяжність незахищеної гілки недооцінюється (тут: WO-direct оплата без `invoiceId` — status-guard пропускає, `invoiceId` опційний).
+
+**Підхід до виявлення:** grep УСІХ мутацій currency-specific поля (`grep -rnE "paidAmount:\s*\{\s*increment|paidAmount:\s*(newPaid|prevPaid)"` — узагальнити на будь-яке document-currency-scoped поле, що інкрементиться зовнішньою сумою). Для КОЖНОГО сайту звірити: чи є ПЕРЕД мутацією currency-match guard проти валюти target-а? Якщо сусідня гілка того ж методу guard має, а ця — ні → баг. Червоний прапор: коментар з «має збігатися»/«успадковує валюту» БЕЗ парного `throw`. Другий сигнал: target fetched без `currencyId` у select, хоча метод конвертує/порівнює валюти деінде.
+
+**Підхід до фіксу:** додати `currencyId` у select target-а незахищеної гілки + дзеркалити наявний guard сусідньої гілки (`if (!sameCurrencyAsBase(orgId, paymentCur, target.currencyId)) throw BadRequestException(<укр>)`). NULL currencyId ≡ base (історичні/backfill). Регресія-захист ОБОВ'ЯЗКОВИЙ у НЕ-базовій валюті: існуючий тест міг кодувати саме баг (мокати target без currencyId + оплату в іновалюті й асертити УСПІХ) — виправити його інтент (зробити валюти однаковими) + додати окремий тест крос-валютного 400.
+
+**Severity:** HIGH (currency-mixing у грошовому полі → хибний залишок до сплати + хибний авто-перехід у PAID).
+
+**Де шукати ще:** будь-який метод з ≥2 target-гілками що пишуть валютне поле — supplier-payments (SP vs PO alloc), stock-documents receipt vs return, credit-note allocation; узагальнено — будь-де де фікс валют-guard-у був точковий (одна гілка) а метод має інші входи у той самий агрегат. Родич #742 (base-облік mixing), Фаза 2 invoice-guard.
+
 ### 2026-09-04 — Похідне money × дріб-коефіцієнт / reduce / різниця БЕЗ roundMoney що покидає систему сирим (Bug #629) — backend / money-precision / report-and-export / LOW-MEDIUM
 
 **Сигнал:** `Number(x)*RATIO` (дробовий RATIO, `LABOR_COST_RATIO=0.4`→`3520.30*0.4=1408.1200000000001`), Σ у `reduce`, або різниця сум (`invoiced-purchases=66.77000000000001`) — IEEE-754 дрейф. Маскується `fmt()` на екрані, але емітиться СИРИМ у CSV/XLSX/PDF-експорт (без fmtMoney для number-детекту) і у JSON API (mobile/sync). Аудит округлення фокусується на DB-write/balance і пропускає «display-only» звіти.

@@ -12,7 +12,20 @@
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       25b82f13 fix(review): findByWorkOrder валютні поля для InvoiceSection (Мультивалюта Фаза 3)
+HEAD:       e2164cdf fix(tester): Bug #744 — пряма оплата наряду обходила перевірку валюти (Мультивалюта Фаза 3)
+Latest tester: 2026-09-14 (sto-tester-agent, HEAD e2164cdf) — Мультивалюта Фаза 3 end-to-end.
+Прогнав усі іновалютні грошові потоки (WO/Invoice/PO/SupplierPayment/Payment/settlements/
+exchange-rates). CLEAN: WO CHARGE/CREDIT_NOTE симетричні (currencyId+documentDate+fallback),
+Invoice CHARGE/PAYMENT+createFromWorkOrder успадкування валюти, PO receipt SUPPLIER_CHARGE (курс
+на дату прийому, over-receipt заблоковано), SupplierPayment confirm base+cash-out без подвійної
+конвертації, cash strict / Payment strict / документні потоки fallbackToLatest, backfill base-by-code
+shortcut (rate=1 без читання курсу), PO update ефективна валюта. **1 фікс (HIGH, Bug #744):** пряма
+оплата наряду (workOrderId без invoiceId) не мала currency-match guard — invoice-шлях мав, WO-шлях
+лише коментар-твердження; іновалютний наряд з каси іншої валюти інкрементив paidAmount (у валюті
+наряду) сумою в іншій валюті → змішування одиниць (борг у base лягав коректно, corrupt лише
+paidAmount). Фікс: +currencyId у WO-select + guard sameCurrencyAsBase (дзеркалить invoice-guard) +
+виправлено тест що кодував баг + новий крос-валютний тест. payments 358→359, currency-модулі 803
+зелені, tsc api+web 0. Новий підхід у sto-tester (guard на одному target-шляху, паралельний без).
 Latest review: 2026-09-14 (sto-review-agent, HEAD 25b82f13) — Мультивалюта Фаза 3 (валюта
 документів: WorkOrder+PurchaseOrder+Invoice+SupplierPayment, коміти e07a60b0..c03faefe). Логіка
 ГРОШЕЙ CLEAN: resolveBaseConversion base(за КОДОМ)→rate=1 без читання курсу / інша без курсу на
