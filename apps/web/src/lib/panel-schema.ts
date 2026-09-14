@@ -180,9 +180,13 @@ export const PURCHASE_ORDER_PANEL_SCHEMA = [
   { key: 'warehouseName', label: 'Склад' },
   { key: 'contractNumber', label: 'Договір' },
   { key: 'totalAmount', label: 'Сума', type: 'money' },
+  // Payables (Фаза 5): сплачено / залишок до сплати / дата повної оплати.
+  { key: 'paidAmount', label: 'Сплачено', type: 'money' },
+  { key: 'outstanding', label: 'Залишок до сплати', type: 'money' },
   { key: 'linesCount', label: 'Позицій', type: 'number' },
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'paymentDate', label: 'Дата оплати', type: 'date' },
+  { key: 'paidAt', label: 'Повністю сплачено', type: 'date' },
   { key: 'trackingNumber', label: 'Накладна (ЕН)' },
   { key: 'deliveryStatus', label: 'Доставка' },
   { key: 'notes', label: 'Нотатки' },

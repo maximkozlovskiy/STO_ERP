@@ -42,6 +42,10 @@ export interface PurchaseOrder {
   currencyCode?: string | null;
   totalAmountBase?: number | null;
   rateUsed?: number | null;
+  // Payables (Фаза 5): сплачено/повністю сплачено (у валюті PO). outstanding вже є нижче.
+  paidAmount?: number;
+  isFullyPaid?: boolean;
+  paidAt?: string | null;
   notes: string | null;
   linesCount: number;
   lines: POLine[];
