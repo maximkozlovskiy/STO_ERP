@@ -4,6 +4,35 @@
 
 ---
 
+## [2026-09-14] Новий enum-value: hunt поширюється і на BACKEND PDF/print-шар, не лише фронт
+
+Мультивалюта Фаза 4 (`FX_GAIN`/`FX_LOSS`) вже консолідувала дубль-мітки на фронті
+(`SettlementsTabContent`/`PageClient` → shared `SETTLEMENT_TX_TYPE_LABELS`). Sync-аудит
+знайшов ЩЕ один дубль, якого попередня консолідація не торкнулась — **на бекенді**:
+`PdfService.generateReconciliationActPdf` (`apps/api/src/modules/pdf/pdf.service.ts`) мав
+власний inline `txTypeLabel()` object-literal лише на 5 старих клієнтських типів
+(`CHARGE`/`PAYMENT`/`PREPAYMENT`/`REFUND`/`CREDIT_NOTE`), без `SUPPLIER_*` і без нових
+`FX_GAIN`/`FX_LOSS` → друкований акт звірки показував сирий enum-рядок замість українського
+тексту. Причина: `docs/GOTCHAS.md` (запис нижче, 2026-06-15) вчив grep-ити лише
+`apps/web/src/`, backend pdf/print-сервіси лишались поза чеклістом.
+
+**Фікс:** `pdf.service.ts` тепер імпортує `SETTLEMENT_TX_TYPE_LABELS` з `@sto/shared`
+(так само як `settlements.service.ts` вже імпортує `TRANSACTION_TIMEOUT_MS` звідти — `@sto/shared`
+резолвиться в API рантаймі, окремого CJS-білда не треба).
+
+**Правило на майбутнє при додаванні нового значення enum:** grep НЕ лише
+`apps/web/src/`, а й `apps/api/src/**/pdf.service.ts`, `**/*.service.ts` на локальні
+`{ TYPE: 'мітка' }` object-literal мапи того самого enum:
+
+```bash
+grep -rn "CHARGE:.*'.*Оплата\|txTypeLabel\|StatusLabel = {" apps/api/src/ apps/web/src/
+```
+
+**Severity:** MEDIUM — не блокує функціонал (сума/знак коректні), але друкований документ,
+що йде контрагенту, показує технічний enum замість людського тексту.
+
+---
+
 ## [2026-06-16] NestJS + SWC builder на Windows: paths aliases не резолвяться
 
 **SWC не виконує `tsconfig paths` transform при emit** — копіює alias literal (`@sto/shared`) як є у dist JS. Node не знаходить модуль → `Cannot find module '@sto/shared'`.

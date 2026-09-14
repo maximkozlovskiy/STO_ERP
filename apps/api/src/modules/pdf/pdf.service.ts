@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SETTLEMENT_TX_TYPE_LABELS } from '@sto/shared';
 // pdfmake v0.3.x server-side API: singleton instance with createPdf(docDef).getBuffer().
 // The legacy `pdfmake/build/pdfmake` path is a browser-only UMD bundle and has no PdfPrinter class.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -165,14 +166,10 @@ export class PdfService {
   }
 
   async generateReconciliationActPdf(data: ReconciliationActPdfData): Promise<Buffer> {
-    const txTypeLabel = (type: string) =>
-      ({
-        CHARGE: 'Нарахування',
-        PAYMENT: 'Оплата',
-        PREPAYMENT: 'Передоплата',
-        REFUND: 'Повернення',
-        CREDIT_NOTE: 'Кредит-нота',
-      })[type] ?? type;
+    // Раніше — локальний дубль лише на 5 клієнтських типів (без SUPPLIER_*/FX_GAIN/FX_LOSS) →
+    // курсова різниця (мультивалюта Фаза 4) друкувалась у акті як сирий enum 'FX_GAIN'/'FX_LOSS'.
+    // Тепер єдине джерело — shared SETTLEMENT_TX_TYPE_LABELS (дзеркалить settlements екрани).
+    const txTypeLabel = (type: string) => SETTLEMENT_TX_TYPE_LABELS[type] ?? type;
 
     const docDef = {
       content: [

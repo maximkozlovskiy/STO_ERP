@@ -58,5 +58,16 @@ _Stub — заповнити при роботі з settlements модулем._
 >
 > Оплата постачальнику закривається [SupplierPayment](supplier-payment.md) →
 > `SUPPLIER_PAYMENT`. Клієнтський `Payment` не підходить (Checkbox+лояльність — лише клієнтські).
+>
+> **Мітка типу (label):** ЄДИНЕ джерело — shared `SETTLEMENT_TX_TYPE_LABELS`
+> (`packages/shared/src/constants/statuses.ts`). Sync-аудит Фази 4 (2026-09-14) знайшов
+> ЩЕ один локальний дубль, крім вже консолідованих `SettlementsTabContent`/`PageClient`:
+> `PdfService.generateReconciliationActPdf` (backend, `pdf.service.ts`) мав власний
+> `txTypeLabel()` object-literal лише на 5 клієнтських типів → `SUPPLIER_*`/`FX_GAIN`/`FX_LOSS`
+> друкувались у PDF акту звірки як сирий enum-рядок. Виправлено — тепер імпортує
+> `SETTLEMENT_TX_TYPE_LABELS` з `@sto/shared`. При додаванні нового
+> `SettlementTransactionType` перевіряти ВСІ споживачі мітки: `SettlementsTabContent.tsx`,
+> `counterparties/[id]/PageClient.tsx`, `ReportBuilder.tsx`, `pdf.service.ts`
+> (`generateReconciliationActPdf`) — grep `SETTLEMENT_TX_TYPE_LABELS\|txTypeLabel` перед комітом.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) · [docs/objects/supplier-payment.md](supplier-payment.md)

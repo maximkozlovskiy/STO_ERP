@@ -107,4 +107,42 @@ describe('PdfService — pdfmake integration', () => {
     expect(Buffer.isBuffer(buf)).toBe(true);
     expect(buf.length).toBeGreaterThan(500);
   }, 15_000);
+
+  // Мультивалюта Фаза 4 (sync-fix): generateReconciliationActPdf раніше мав ЛОКАЛЬНИЙ
+  // txTypeLabel-дубль без SUPPLIER_*/FX_GAIN/FX_LOSS → курсова різниця друкувалась як сирий
+  // enum. Тепер мітка йде з shared SETTLEMENT_TX_TYPE_LABELS — смоук перевіряє, що FX-рядок
+  // у акті звірки не валить генерацію (і що імпорт з @sto/shared резолвиться у Nest-рантаймі).
+  it('generateReconciliationActPdf renders FX_GAIN/FX_LOSS rows without crashing', async () => {
+    const buf = await service.generateReconciliationActPdf({
+      org: { name: 'СТО Альфа' },
+      counterpartyName: 'Іван Петренко',
+      periodFrom: new Date('2026-09-01T00:00:00Z'),
+      periodTo: new Date('2026-09-14T00:00:00Z'),
+      openingBalance: 0,
+      closingBalance: 0,
+      transactions: [
+        {
+          date: new Date('2026-09-05T10:00:00Z'),
+          type: 'CHARGE',
+          amount: 1000,
+          documentType: 'Invoice',
+        },
+        {
+          date: new Date('2026-09-10T10:00:00Z'),
+          type: 'FX_LOSS',
+          amount: 15.5,
+          documentType: 'Invoice',
+        },
+        {
+          date: new Date('2026-09-11T10:00:00Z'),
+          type: 'FX_GAIN',
+          amount: 3.2,
+          documentType: 'Invoice',
+        },
+      ],
+    });
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(buf.length).toBeGreaterThan(500);
+    expect(buf.slice(0, 4).toString('ascii')).toBe('%PDF');
+  }, 15_000);
 });
