@@ -199,33 +199,11 @@ export class PurchaseOrdersService {
       this.prisma.purchaseOrder.count({ where }),
     ]);
 
-    // outstanding по PO поточної сторінки: totalAmount − Σ CONFIRMED SupplierPayment.
-    // Один groupBy на сторінку (≤200 PO) — для бейджа «Днів до оплати» у списку купівлі
-    // (показується лише де є реальний залишок боргу). Патерн-еталон — getSchedule.
-    const poIds = items.map(i => i.id);
-    const paidByPo = new Map<string, number>();
-    if (poIds.length > 0) {
-      const grouped = await this.prisma.supplierPayment.groupBy({
-        by: ['purchaseOrderId'],
-        where: {
-          orgId,
-          deletedAt: null,
-          status: 'CONFIRMED',
-          purchaseOrderId: { in: poIds },
-        },
-        _sum: { amount: true },
-      });
-      for (const g of grouped) {
-        if (g.purchaseOrderId) paidByPo.set(g.purchaseOrderId, Number(g._sum.amount ?? 0));
-      }
-    }
-
+    // Payables FX (Фаза 5): paidAmount тепер персистентний на PO (інкрементується у
+    // supplier-payments.confirm) → outstanding рахується у toDto прямо з po.paidAmount. Раніше був
+    // groupBy CONFIRMED SupplierPayment на кожну сторінку — тепер −1 запит.
     return {
-      items: items.map(item => {
-        const dto = this.toDto(item);
-        dto.outstanding = Math.max(0, dto.totalAmount - (paidByPo.get(item.id) ?? 0));
-        return dto;
-      }),
+      items: items.map(item => this.toDto(item)),
       total,
       page,
       limit: take,
@@ -1015,6 +993,8 @@ export class PurchaseOrdersService {
     totalAmountBase?: import('@prisma/client').Prisma.Decimal | null;
     rateUsed?: import('@prisma/client').Prisma.Decimal | null;
     currency?: { code: string } | null;
+    paidAmount?: import('@prisma/client').Prisma.Decimal | null;
+    paidAt?: Date | null;
     notes: string | null;
     documentDate?: Date | null;
     paymentDate?: Date | null;
@@ -1075,6 +1055,11 @@ export class PurchaseOrdersService {
       currencyCode: po.currency?.code ?? null,
       totalAmountBase: po.totalAmountBase != null ? Number(po.totalAmountBase) : null,
       rateUsed: po.rateUsed != null ? Number(po.rateUsed) : null,
+      // Payables (Фаза 5): сплачено/залишок/повністю сплачено (у валюті PO).
+      paidAmount: po.paidAmount != null ? Number(po.paidAmount) : 0,
+      outstanding: Math.max(0, Number(po.totalAmount) - Number(po.paidAmount ?? 0)),
+      isFullyPaid: po.paidAt != null,
+      paidAt: po.paidAt ? po.paidAt.toISOString().slice(0, 10) : null,
       notes: po.notes ?? null,
       documentDate: po.documentDate ? po.documentDate.toISOString().slice(0, 10) : null,
       paymentDate: po.paymentDate ? po.paymentDate.toISOString().slice(0, 10) : null,

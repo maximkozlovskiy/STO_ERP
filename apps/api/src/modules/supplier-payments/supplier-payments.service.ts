@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { roundMoney } from '../../common/utils/math';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -746,9 +747,31 @@ export class SupplierPaymentsService {
         cashRegisterId: true,
         // Мультивалюта (Фаза 3): валюта оплати — для конвертації боргу постачальнику у base.
         currencyId: true,
+        // Payables FX (Фаза 5): PO — для трекінгу оплати + курсової різниці при повній оплаті.
+        purchaseOrderId: true,
       },
     });
     if (!pre) throw new NotFoundException('Оплату не знайдено');
+
+    // Payables FX (Фаза 5): якщо оплата привʼязана до PO — валюта оплати мусить збігатися з валютою PO
+    // (інакше крос-валютна алокація = FX-політика поза scope; залишок тоді = чиста курсова різниця).
+    // NULL currencyId (історичні/base) еквівалентні базовій валюті. Guard саме у confirm — валюта
+    // консеквентна лише тут (DRAFT-валюта ще може змінитись через update()).
+    let po: {
+      currencyId: string | null;
+      totalAmount: Prisma.Decimal;
+      paidAmount: Prisma.Decimal;
+      paidAt: Date | null;
+    } | null = null;
+    if (pre.purchaseOrderId) {
+      po = await this.prisma.purchaseOrder.findFirst({
+        where: { id: pre.purchaseOrderId, orgId, deletedAt: null },
+        select: { currencyId: true, totalAmount: true, paidAmount: true, paidAt: true },
+      });
+      if (po && !(await this.sameCurrencyAsBase(orgId, pre.currencyId ?? null, po.currencyId))) {
+        throw new BadRequestException('Валюта оплати має збігатися з валютою замовлення');
+      }
+    }
 
     // Base-конвертація суми на дату проведення (fallbackToLatest — документний потік). Без валюти → base.
     const confirmDate = new Date();
@@ -829,6 +852,90 @@ export class SupplierPaymentsService {
             tx,
           );
         }
+
+        // Payables FX (Фаза 5): трекінг оплати PO + realized FX при повній оплаті. Після
+        // SUPPLIER_PAYMENT settlement (щоб paidBase включав цей платіж). Лише для привʼязаних до PO.
+        if (pre.purchaseOrderId && po) {
+          const poId = pre.purchaseOrderId;
+          // paidAmount CAS (валюта оплати == валюта PO за guard вище) — дзеркалить invoice.paidAmount CAS.
+          const newPaid = roundMoney(Number(po.paidAmount) + Number(pre.amount));
+          const totalAmount = Number(po.totalAmount);
+          const becameFullyPaid =
+            totalAmount > 0 && newPaid >= totalAmount - 0.005 && po.paidAt == null;
+          const paidCas = await tx.purchaseOrder.updateMany({
+            where: { id: poId, orgId, deletedAt: null, paidAmount: po.paidAmount },
+            data: { paidAmount: newPaid, ...(becameFullyPaid ? { paidAt: kyivToday() } : {}) },
+          });
+          if (paidCas.count === 0) {
+            throw new BadRequestException('Замовлення змінено паралельною операцією — повторіть');
+          }
+
+          // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
+          // прийому) ≠ курс оплати → base-залишок ≠ 0; одна проводка обнуляє.
+          if (becameFullyPaid && !(await this.sameCurrencyAsBase(orgId, null, po.currencyId))) {
+            const [chargeAgg, spIds, fxExisting] = await Promise.all([
+              tx.settlementTransaction.aggregate({
+                where: {
+                  orgId,
+                  type: 'SUPPLIER_CHARGE',
+                  documentType: 'PurchaseOrder',
+                  documentId: poId,
+                },
+                _sum: { amountBase: true },
+              }),
+              tx.supplierPayment.findMany({
+                where: {
+                  orgId,
+                  purchaseOrderId: poId,
+                  status: SupplierPaymentStatus.CONFIRMED,
+                  deletedAt: null,
+                },
+                select: { id: true },
+              }),
+              tx.settlementTransaction.count({
+                where: {
+                  orgId,
+                  type: { in: ['FX_GAIN', 'FX_LOSS'] },
+                  documentType: 'PurchaseOrder',
+                  documentId: poId,
+                },
+              }),
+            ]);
+            if (fxExisting === 0) {
+              const paidAgg = await tx.settlementTransaction.aggregate({
+                where: {
+                  orgId,
+                  type: 'SUPPLIER_PAYMENT',
+                  documentType: 'SupplierPayment',
+                  documentId: { in: spIds.map(s => s.id) },
+                },
+                _sum: { amountBase: true },
+              });
+              const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
+              const paidBase = Number(paidAgg._sum.amountBase ?? 0);
+              const fx = roundMoney(chargeBase - paidBase);
+              if (Math.abs(fx) >= 0.005) {
+                await this.settlements.createTransaction(
+                  orgId,
+                  {
+                    counterpartyId: pre.supplierId,
+                    // ⚠️ ІНВЕРСІЯ клієнта: SUPPLIER_CHARGE(−1)/SUPPLIER_PAYMENT(+1) → залишок = paidBase−chargeBase.
+                    // fx>0 (нарахували більше base) → залишок ВІД'ЄМНИЙ → FX_GAIN(+1) підіймає до 0.
+                    // fx<0 (сплатили більше) → залишок ДОДАТНИЙ → FX_LOSS(−1). НЕ копіювати клієнтський тернарник!
+                    type: fx > 0 ? 'FX_GAIN' : 'FX_LOSS',
+                    amount: Math.abs(fx),
+                    // БЕЗ currencyId → base-дельта (rate=1, base=amount).
+                    documentType: 'PurchaseOrder',
+                    documentId: poId,
+                    notes: `Курсова різниця (постачальник): нараховано ${chargeBase.toFixed(2)} за курсом прийому, сплачено ${paidBase.toFixed(2)} за курсом оплат`,
+                    createdBy: userId,
+                  },
+                  tx,
+                );
+              }
+            }
+          }
+        }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
@@ -870,6 +977,22 @@ export class SupplierPaymentsService {
       where: { id, orgId },
       data: { deletedAt: new Date() },
     });
+  }
+
+  /**
+   * Payables FX (Фаза 5): чи однакова валюта оплати й PO. NULL трактується як базова валюта org
+   * (історичні / оплата без валюти) → NULL ≡ base. Дзеркалить payments.service.sameCurrencyAsBase
+   * (свідомо реплікуємо — не рефакторимо у shared цієї фази, менший blast-radius).
+   */
+  private async sameCurrencyAsBase(
+    orgId: string,
+    a: string | null,
+    b: string | null,
+  ): Promise<boolean> {
+    if (a === b) return true;
+    const baseId = (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const norm = (v: string | null) => v ?? baseId;
+    return norm(a) === norm(b);
   }
 
   /**

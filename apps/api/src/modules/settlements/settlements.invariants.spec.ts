@@ -296,6 +296,26 @@ describe('Settlements — balance invariants (property-based)', () => {
     );
   });
 
+  // Payables FX (Фаза 5) — ЯДЕРНИЙ інваріант постачальницького боку: знак ІНВЕРТОВАНИЙ відносно
+  // клієнта (SUPPLIER_CHARGE=−1, SUPPLIER_PAYMENT=+1). Залишок = paidBase−chargeBase; FX обнуляє.
+  // fx=chargeBase−paidBase; fx>0→FX_GAIN(+1), fx<0→FX_LOSS(−1). Хибний (клієнтський) знак подвоїв би.
+  it('FX zeroing (payables): SUPPLIER_CHARGE(cb) + SUPPLIER_PAYMENT(pb) + FX → balance 0 (обидва напрями)', () => {
+    fc.assert(
+      fc.property(moneyAmount(), moneyAmount(), (chargeBase, paidBase) => {
+        const fx = chargeBase - paidBase;
+        // ІНВЕРСІЯ клієнта: fx>0 → FX_GAIN (не FX_LOSS!), fx<0 → FX_LOSS.
+        const fxType: TxType = fx > 0 ? 'FX_GAIN' : 'FX_LOSS';
+        const balance = applyTransactions([
+          { type: 'SUPPLIER_CHARGE', amount: chargeBase }, // −1
+          { type: 'SUPPLIER_PAYMENT', amount: paidBase }, // +1
+          { type: fxType, amount: Math.abs(fx) },
+        ]);
+        return balance === 0;
+      }),
+      { numRuns: 500 },
+    );
+  });
+
   // Курсові різниці (Фаза 4) — ЯДЕРНИЙ інваріант: повна оплата іновалютного рахунку у base НЕ
   // зводиться до нуля (курс нарахування ≠ курс оплати); FX-проводка обнуляє залишок ТОЧНО.
   // chargeBase + (−paidBase) + FX = 0, де FX = −(chargeBase − paidBase). Хибний знак FX подвоїв би

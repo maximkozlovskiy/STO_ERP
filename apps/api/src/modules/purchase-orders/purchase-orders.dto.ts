@@ -225,9 +225,13 @@ export class PurchaseOrderResponseDto {
   @ApiPropertyOptional({ description: 'Час останнього оновлення статусу доставки' })
   deliveryStatusUpdatedAt?: string | null;
   @ApiPropertyOptional({
-    description: 'Залишок боргу по PO (totalAmount − Σ CONFIRMED оплат); лише у списку',
+    description: 'Залишок боргу по PO (totalAmount − paidAmount)',
   })
   outstanding?: number;
+  // Payables (Фаза 5): сплачено (у валюті PO) + чи повністю сплачено + дата повної оплати.
+  @ApiPropertyOptional() paidAmount?: number;
+  @ApiPropertyOptional() isFullyPaid?: boolean;
+  @ApiPropertyOptional() paidAt?: string | null;
   @ApiPropertyOptional({ description: 'Дата останнього розцінення' }) pricedAt?: string | null;
   @ApiProperty() linesCount!: number;
   @ApiProperty({ type: [PurchaseOrderLineResponseDto] }) lines!: PurchaseOrderLineResponseDto[];
