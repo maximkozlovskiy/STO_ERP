@@ -152,6 +152,9 @@ const QA_STORAGE_KEY = 'sto_quick_actions';
 export default function DashboardPage() {
   const { employee } = useRequireAuth();
   const enabled = !!employee;
+  // Виручка — чутлива фін-інформація: /reports/revenue дозволений лише OWNER/ADMIN/ACCOUNTANT.
+  // Для решти ролей НЕ фаєримо запит (інакше 403 → банер помилки) і ховаємо графік.
+  const canViewRevenue = ['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(employee?.role ?? '');
 
   const {
     data: ordersData,
@@ -172,7 +175,7 @@ export default function DashboardPage() {
     data: revenueData,
     isLoading: revenueLoading,
     isError: revenueError,
-  } = useDashboardRevenue(enabled);
+  } = useDashboardRevenue(enabled && canViewRevenue);
   const { data: maintenanceData } = useDashboardMaintenance(enabled);
   const { data: expiringWarrantiesData } = useDashboardExpiringWarranties(enabled);
   const loading = ordersLoading || lowStockLoading || invoicesLoading || revenueLoading;
@@ -372,8 +375,8 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {/* Revenue chart */}
-          {revenue.length > 0 ? (
+          {/* Revenue chart — лише для ролей з доступом до фін-звітності (RBAC /reports/revenue) */}
+          {canViewRevenue && revenue.length > 0 ? (
             <Card className="mb-6">
               <CardHeader>
                 <div className="flex items-center justify-between">

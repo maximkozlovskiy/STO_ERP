@@ -1,43 +1,23 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Sse,
-  MessageEvent,
-  UnauthorizedException,
-  UseGuards,
-} from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
-import { Observable, interval, startWith } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import { PrismaService } from '../../prisma/prisma.service';
-
-interface JwtPayload {
-  sub: string;
-  orgId: string;
-  tokenVersion?: number;
-}
 
 @ApiTags('Dashboard')
 @Controller('dashboard')
 export class DashboardController {
-  constructor(
-    private readonly dashboardService: DashboardService,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly dashboardService: DashboardService) {}
 
   /**
    * Поточний снапшот дашборду (для опитування — Bearer token у заголовку).
+   *
+   * Історія: раніше був також @Sse() GET /dashboard/stream?token= (JWT через query-param, бо EventSource
+   * не дає custom headers). Фронт перейшов на polling (useDashboardStream → /dashboard/summary кожні 30с),
+   * тож SSE-endpoint став мертвим кодом і видалений (tech-debt 2026-09-14): менша auth-поверхня (токен у
+   * query потрапляв у access-log) + менше залежностей у контролері.
    */
   @Get('summary')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -46,69 +26,5 @@ export class DashboardController {
   @ApiOperation({ summary: 'Поточний стан дашборду' })
   getSummary(@OrgContext() orgId: string) {
     return this.dashboardService.getSummary(orgId);
-  }
-
-  /**
-   * SSE stream для дашборду (real-time).
-   * JWT передається через query param: GET /dashboard/stream?token=xxx
-   * Оскільки EventSource не підтримує custom headers.
-   * Verify токену відбувається вручну тут — на цей endpoint @UseGuards не вішається,
-   * бо JwtAuthGuard очікує Bearer header.
-   *
-   * БЕЗПЕКА (T6): окрім підпису+expiry, звіряємо tokenVersion проти AuthAccount (як jwt.strategy) —
-   * інакше відкликаний токен (logout-all / зміна пароля) продовжував би стрімити до свого expiry.
-   * Перевірка — при ВІДКРИТТІ з'єднання; вже-відкритий стрім живе до reconnect (EventSource
-   * перепідключається кожні ~кілька сек при обриві → revocation спрацює на найближчому reconnect).
-   * ЗАСТЕРЕЖЕННЯ: токен у query-param потрапляє в access-log (Caddy) — прийнятно для короткоживучого
-   * (15хв) access-токена на internal LAN; EventSource не дає передати Authorization-заголовок.
-   */
-  @Get('stream')
-  @Sse()
-  // SSE: дозволяємо лише 5 нових з'єднань на хвилину з однієї IP.
-  // Це не обмежує вже відкриті long-lived з'єднання — тільки нові підключення,
-  // що захищає від reconnect-storm (browser tab spawn, broken proxies).
-  @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  @ApiOperation({ summary: 'SSE stream дашборду (JWT через query param)' })
-  @ApiQuery({ name: 'token', description: 'JWT access token' })
-  async stream(@Query('token') token: string): Promise<Observable<MessageEvent>> {
-    if (!token) {
-      throw new UnauthorizedException('Token не надано');
-    }
-
-    let payload: JwtPayload;
-    try {
-      payload = this.jwtService.verify<JwtPayload>(token, {
-        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      });
-      if (!payload.orgId || !payload.sub) {
-        throw new UnauthorizedException('Невірний токен (відсутні claims)');
-      }
-    } catch {
-      throw new UnauthorizedException('Невірний або минулий токен');
-    }
-
-    // T6: revocation-guard + liveness — той самий контракт, що jwt.strategy.validate.
-    const employee = await this.prisma.employee.findFirst({
-      where: { id: payload.sub, orgId: payload.orgId, deletedAt: null },
-      select: { id: true, authAccount: { select: { tokenVersion: true } } },
-    });
-    if (!employee) {
-      throw new UnauthorizedException('Сесія недійсна');
-    }
-    const currentVersion = employee.authAccount?.tokenVersion ?? 0;
-    if ((payload.tokenVersion ?? 0) !== currentVersion) {
-      throw new UnauthorizedException('Сесія недійсна');
-    }
-
-    const orgId = payload.orgId;
-
-    // Емітувати snapshot одразу при підключенні + кожні 30 сек.
-    return interval(30_000).pipe(
-      startWith(0),
-      switchMap(async () => {
-        const data = await this.dashboardService.getSummary(orgId);
-        return { data: JSON.stringify(data) };
-      }),
-    );
   }
 }
