@@ -11,6 +11,20 @@
 ```
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
+Latest review: 2026-09-14 (sto-review-agent, HEAD 12bf3e2d) — Мультивалюта Фаза 2 (Payment +
+SettlementTransaction, коміти cc61cfc6..f8601ff7). Логіка ГРОШЕЙ переважно CLEAN: balanceDelta +
+loyalty від conv.amountBase (не amount), createTransaction конвертує через ExchangeRatesService,
+settlements-account periodDelta/акт звірки/snapshotJson від amountBase з фолбеком на amount для
+історичних рядків, Decimal→Number з null-guard скрізь, orgId у всіх нових запитах, фіскальний
+інваріант через getBaseCurrency().id, append-only Payment/SettlementTransaction, resolveBaseConversion
+base→rate=1 / інша без курсу→400. **3 фікси: (2 CRITICAL)** cross-currency mixing у payments.service:
+invoice overpay-guard + invoice.paidAmount accumulate + WorkOrder.paidAmount increment робили
+dto.amount (валюта оплати) проти/у base-полів Invoice/WO (немає currencyId) → 100 USD зрівнювалось
+би зі 100 UAH залишку та псувало paidAmount → фікс на conv.amountBase; overpay-повідомлення baseCode
+замість хардкоду «грн». **(1 IMPORTANT, Bug #742 sibling-drift)** counterparties/[id]/PageClient:
+balance + WO total + base-підрядок tx хардкодили '₴' попри база-орг USD/EUR → baseSymbol з
+useBaseCurrency (дзеркалить payments/page.tsx + SettlementsTabContent). tsc api+web 0; payments 60
++ settlements 15 + supplier-payments 54 = зелені.
 Latest sync: 2026-09-14 (sto-sync-agent, HEAD 6a89c46c) — Мультивалюта Фаза 2 (Payment +
 SettlementTransaction, коміти cc61cfc6 backend + ddcb6f58 frontend UI) targeted sync audit.
 CLEAN: PaymentResponseDto↔Payment interface (currencyId/currencyCode/amountBase/rateUsed) 1:1;
