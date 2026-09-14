@@ -114,6 +114,19 @@ export class ExchangeRatesService {
     return { id: cur?.id ?? null, code };
   }
 
+  /**
+   * Чи однакова валюта двох сторін (оплата ↔ документ). NULL трактується як БАЗОВА валюта org
+   * (історичні документи / джерело без валюти) → NULL ≡ base. Резолв base-id лениво: лише коли
+   * a≠b і треба з'ясувати чи одна зі сторін = base. ЄДИНЕ джерело правди для крос-валютного guard-а
+   * (Фаза 3-5): payments/invoices/supplier-payments валідують валюту оплати проти валюти документа.
+   */
+  async sameCurrency(orgId: string, a: string | null, b: string | null): Promise<boolean> {
+    if (a === b) return true;
+    const baseId = (await this.getBaseCurrency(orgId)).id;
+    const norm = (v: string | null) => v ?? baseId;
+    return norm(a) === norm(b);
+  }
+
   async resolveBaseConversion(
     orgId: string,
     currencyId: string,

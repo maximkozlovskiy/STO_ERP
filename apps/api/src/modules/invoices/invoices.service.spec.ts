@@ -12,9 +12,8 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 // Мультивалюта (Фаза 3): InvoicesService набув ExchangeRatesService (recalcTotals/create base-конвертація).
 // Default мок — базова валюта (rate=1, amountBase=amount). DI-drift guard (Bug #724 клас).
-const exchangeRatesMock = () => ({
-  provide: ExchangeRatesService,
-  useValue: {
+const exchangeRatesMock = () => {
+  const useValue = {
     resolveBaseConversion: vi
       .fn()
       .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
@@ -22,8 +21,15 @@ const exchangeRatesMock = () => ({
         amountBase: amount,
       })),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-  },
-});
+    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
+      if (a === b) return true;
+      const baseId = (await useValue.getBaseCurrency(org)).id;
+      const norm = (v: string | null) => v ?? baseId;
+      return norm(a) === norm(b);
+    }),
+  };
+  return { provide: ExchangeRatesService, useValue };
+};
 
 /**
  * Bug #413: Service-level spec для guards що додані review-фіксами #403, #406, #407, #412.

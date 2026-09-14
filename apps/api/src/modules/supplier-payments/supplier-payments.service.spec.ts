@@ -11,9 +11,8 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 // Мультивалюта (Фаза 3): SupplierPaymentsService набув ExchangeRatesService (confirm base-конвертація).
 // Default мок — базова валюта (rate=1, amountBase=amount). DI-drift guard (Bug #724 клас).
-const exchangeRatesProvider = () => ({
-  provide: ExchangeRatesService,
-  useValue: {
+const exchangeRatesProvider = () => {
+  const useValue = {
     resolveBaseConversion: vi
       .fn()
       .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
@@ -21,8 +20,16 @@ const exchangeRatesProvider = () => ({
         amountBase: amount,
       })),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-  },
-});
+    // Реальна логіка поверх мокнутого getBaseCurrency (тести FX перевизначають getBaseCurrency).
+    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
+      if (a === b) return true;
+      const baseId = (await useValue.getBaseCurrency(org)).id;
+      const norm = (v: string | null) => v ?? baseId;
+      return norm(a) === norm(b);
+    }),
+  };
+  return { provide: ExchangeRatesService, useValue };
+};
 
 // Regression-guards для feature "Оплата постачальнику" (SupplierPayment).
 // Ключові business invariants на confirm()/cancel() FSM-step:

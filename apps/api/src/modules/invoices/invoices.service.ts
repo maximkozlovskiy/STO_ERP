@@ -503,7 +503,7 @@ export class InvoicesService {
           // НЕ базова (base → CHARGE/PAYMENT в одному курсі, залишок і так 0). paidBase агрегується
           // ПІСЛЯ дзеркального PAYMENT — але дзеркальний PAYMENT — settlement-only (не Payment-рядок),
           // тож рахуємо base-залишок напряму з леджера цього документа.
-          if (!(await this.sameCurrencyAsBase(orgId, null, inv.currencyId))) {
+          if (!(await this.exchangeRates.sameCurrency(orgId, null, inv.currencyId))) {
             // Idempotency: PAID термінальний (INV_TRANSITIONS PAID:[]), але guard симетричний із
             // payments.service — повторна FX для цього рахунку не дублюється.
             const fxExisting = await tx.settlementTransaction.count({
@@ -824,22 +824,6 @@ export class InvoicesService {
     });
     if (result.count === 0) throw new NotFoundException('Рядок не знайдено');
     await this.recalcTotals(orgId, invoiceId);
-  }
-
-  /**
-   * Чи дві валюти (nullable currencyId) еквівалентні базовій валюті org. NULL ≡ base
-   * (історичні/backfill). Дзеркалить payments.service.sameCurrencyAsBase — використовується
-   * FX-хуком у transition() (Bug #745) для визначення «не базова валюта → можлива курсова різниця».
-   */
-  private async sameCurrencyAsBase(
-    orgId: string,
-    a: string | null,
-    b: string | null,
-  ): Promise<boolean> {
-    if (a === b) return true;
-    const baseId = (await this.exchangeRates.getBaseCurrency(orgId)).id;
-    const norm = (v: string | null) => v ?? baseId;
-    return norm(a) === norm(b);
   }
 
   private async recalcTotals(orgId: string, invoiceId: string): Promise<void> {

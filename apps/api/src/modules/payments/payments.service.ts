@@ -277,7 +277,9 @@ export class PaymentsService {
     // рахунку). NULL currencyId (історичні/base) ≡ базова валюта. Дзеркалить invoice-перевірку;
     // для WO-with-invoice invoice-guard спрацьовує додатково (invoice успадковує валюту наряду).
     if (dto.workOrderId && workOrder) {
-      if (!(await this.sameCurrencyAsBase(orgId, paymentCurrencyId, workOrder.currencyId))) {
+      if (
+        !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, workOrder.currencyId))
+      ) {
         throw new BadRequestException('Валюта оплати має збігатися з валютою наряду');
       }
     }
@@ -321,7 +323,9 @@ export class PaymentsService {
             // Мультивалюта (Фаза 3): валюта оплати мусить збігатися з валютою рахунку — інакше
             // крос-валютна алокація (яким курсом закрити залишок = FX-політика, поза scope).
             // NULL currencyId (історичні/base) вважаємо еквівалентними базовій валюті.
-            if (!(await this.sameCurrencyAsBase(orgId, paymentCurrencyId, inv.currencyId))) {
+            if (
+              !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, inv.currencyId))
+            ) {
               throw new BadRequestException('Валюта оплати має збігатися з валютою рахунку');
             }
             const invAmount = Number(inv.amount);
@@ -350,7 +354,7 @@ export class PaymentsService {
             // наряду (WO-рахунок) або самого рахунку (standalone) — реконструюємо base з леджера.
             if (
               newStatus === 'PAID' &&
-              !(await this.sameCurrencyAsBase(orgId, null, inv.currencyId))
+              !(await this.exchangeRates.sameCurrency(orgId, null, inv.currencyId))
             ) {
               fxContext = {
                 invoiceId: inv.id,
@@ -602,22 +606,6 @@ export class PaymentsService {
     }
 
     return this.toDto(payment);
-  }
-
-  /**
-   * Мультивалюта (Фаза 3): чи однакова валюта оплати й рахунку/наряду. NULL трактується як базова
-   * валюта org (історичні документи / оплата без рахунку-джерела) → NULL ≡ base ≡ NULL. Резолв
-   * базової id відкладено (лениво), лише коли хоч одна сторона NULL, а інша — ні.
-   */
-  private async sameCurrencyAsBase(
-    orgId: string,
-    a: string | null,
-    b: string | null,
-  ): Promise<boolean> {
-    if (a === b) return true;
-    const baseId = (await this.exchangeRates.getBaseCurrency(orgId)).id;
-    const norm = (v: string | null) => v ?? baseId;
-    return norm(a) === norm(b);
   }
 
   /**

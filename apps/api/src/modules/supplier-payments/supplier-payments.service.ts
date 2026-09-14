@@ -768,7 +768,10 @@ export class SupplierPaymentsService {
         where: { id: pre.purchaseOrderId, orgId, deletedAt: null },
         select: { currencyId: true, totalAmount: true, paidAmount: true, paidAt: true },
       });
-      if (po && !(await this.sameCurrencyAsBase(orgId, pre.currencyId ?? null, po.currencyId))) {
+      if (
+        po &&
+        !(await this.exchangeRates.sameCurrency(orgId, pre.currencyId ?? null, po.currencyId))
+      ) {
         throw new BadRequestException('Валюта оплати має збігатися з валютою замовлення');
       }
     }
@@ -872,7 +875,10 @@ export class SupplierPaymentsService {
 
           // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
           // прийому) ≠ курс оплати → base-залишок ≠ 0; одна проводка обнуляє.
-          if (becameFullyPaid && !(await this.sameCurrencyAsBase(orgId, null, po.currencyId))) {
+          if (
+            becameFullyPaid &&
+            !(await this.exchangeRates.sameCurrency(orgId, null, po.currencyId))
+          ) {
             const [chargeAgg, spIds, fxExisting] = await Promise.all([
               tx.settlementTransaction.aggregate({
                 where: {
@@ -978,22 +984,6 @@ export class SupplierPaymentsService {
       where: { id, orgId },
       data: { deletedAt: new Date() },
     });
-  }
-
-  /**
-   * Payables FX (Фаза 5): чи однакова валюта оплати й PO. NULL трактується як базова валюта org
-   * (історичні / оплата без валюти) → NULL ≡ base. Дзеркалить payments.service.sameCurrencyAsBase
-   * (свідомо реплікуємо — не рефакторимо у shared цієї фази, менший blast-radius).
-   */
-  private async sameCurrencyAsBase(
-    orgId: string,
-    a: string | null,
-    b: string | null,
-  ): Promise<boolean> {
-    if (a === b) return true;
-    const baseId = (await this.exchangeRates.getBaseCurrency(orgId)).id;
-    const norm = (v: string | null) => v ?? baseId;
-    return norm(a) === norm(b);
   }
 
   /**

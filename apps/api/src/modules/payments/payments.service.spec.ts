@@ -15,15 +15,26 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 // Дефолтний мок конвертації: базова валюта (rate=1, amountBase=amount). Дзеркалить поведінку для
 // орг без мультивалюти — 4 describe-блоки нижче будують PaymentsService і всі потребують цей provider
 // (DI-drift guard: без нього Test.createTestingModule.compile() падає з UnknownDependency).
-const exchangeRatesMock = () => ({
-  resolveBaseConversion: vi
-    .fn()
-    .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
-      rateUsed: 1,
-      amountBase: amount,
-    })),
-  getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-});
+const exchangeRatesMock = () => {
+  const m = {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    // Реальна логіка sameCurrency (Фаза 5 консолідація) поверх мокнутого getBaseCurrency —
+    // читає base у момент виклику, тож перевизначення getBaseCurrency у тесті працює.
+    sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
+      if (a === b) return true;
+      const baseId = (await m.getBaseCurrency(org)).id;
+      const norm = (v: string | null) => v ?? baseId;
+      return norm(a) === norm(b);
+    }),
+  };
+  return m;
+};
 
 /**
  * FIN-C1: ідемпотентність оплати рахунку. Перехід SENT→PAID виконується ПЕРШИМ у tx через
@@ -1221,6 +1232,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
   let exchangeRates: {
     resolveBaseConversion: ReturnType<typeof vi.fn>;
     getBaseCurrency: ReturnType<typeof vi.fn>;
+    sameCurrency: ReturnType<typeof vi.fn>;
   };
   let checkboxQueue: { add: ReturnType<typeof vi.fn> };
   let lastCreateData: Record<string, unknown> | undefined;
@@ -1299,6 +1311,12 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     exchangeRates = {
       resolveBaseConversion: vi.fn(),
       getBaseCurrency: vi.fn().mockResolvedValue({ id: UAH_ID, code: 'UAH' }),
+      sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
+        if (a === b) return true;
+        const baseId = (await exchangeRates.getBaseCurrency(org)).id;
+        const norm = (v: string | null) => v ?? baseId;
+        return norm(a) === norm(b);
+      }),
     };
 
     const module = await Test.createTestingModule({

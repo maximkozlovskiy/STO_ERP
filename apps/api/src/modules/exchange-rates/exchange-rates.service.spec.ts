@@ -229,4 +229,38 @@ describe('ExchangeRatesService', () => {
       expect(r).toEqual({ rateUsed: 42.0, amountBase: 4200 });
     });
   });
+
+  // Спільний крос-валютний guard (Фаза 3-5): раніше дубльований у payments/invoices/supplier-payments;
+  // консолідовано на ExchangeRatesService.sameCurrency. NULL ≡ базова валюта org.
+  describe('sameCurrency', () => {
+    const USD = 'usd-1';
+    const UAH = 'uah-1';
+
+    it('a === b (той самий id) → true, БЕЗ читання base (short-circuit)', async () => {
+      expect(await service.sameCurrency('org-1', USD, USD)).toBe(true);
+      expect(prisma.organisationSettings.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('null === null → true (обидві базові)', async () => {
+      expect(await service.sameCurrency('org-1', null, null)).toBe(true);
+    });
+
+    it('null vs base-id → true (NULL ≡ base)', async () => {
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      prisma.currency.findFirst.mockResolvedValueOnce({ id: UAH });
+      expect(await service.sameCurrency('org-1', null, UAH)).toBe(true);
+    });
+
+    it('null vs НЕ-base (USD) → false', async () => {
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      prisma.currency.findFirst.mockResolvedValueOnce({ id: UAH });
+      expect(await service.sameCurrency('org-1', null, USD)).toBe(false);
+    });
+
+    it('USD vs UAH (обидві задані, різні) → false', async () => {
+      prisma.organisationSettings.findFirst.mockResolvedValueOnce({ currency: 'UAH' });
+      prisma.currency.findFirst.mockResolvedValueOnce({ id: UAH });
+      expect(await service.sameCurrency('org-1', USD, UAH)).toBe(false);
+    });
+  });
 });
