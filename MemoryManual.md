@@ -12,7 +12,21 @@
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       f89dd324 fix(sync): виправити застарілу документацію outstanding для PO (Мультивалюта Фаза 5)
+HEAD:       7b2da1ee fix(review): take:500 на spIds findMany у payables FX (Мультивалюта Фаза 5)
+Latest review: 2026-09-14 (sto-review-agent, HEAD 7b2da1ee) — Мультивалюта Фаза 5 (payables FX,
+курсові різниці постачальника, коміти 386a568a..f89dd324). Money-critical CLEAN: знак FX
+ІНВЕРТОВАНИЙ коректно (SUPPLIER_CHARGE=−1/SUPPLIER_PAYMENT=+1 → залишок=paidBase−chargeBase;
+fx=chargeBase−paidBase; fx>0→FX_GAIN, fx<0→FX_LOSS — ПРОТИЛЕЖНО клієнту, НЕ скопійований тернарник),
+підтверджено реальним property-тестом settlements.invariants (500× обидва напрями, balance→0) +
+6 unit supplier-payments (FX_GAIN/FX_LOSS/партіал-без-FX/idempotency count-guard/base-PO-skip/
+крос-валюта-400). paidAmount CAS concurrency-safe (where:{paidAmount:прочитане}, count=0→400);
+SUPPLIER_PAYMENT settlement booked ДО paidBase-aggregate у tx → включений; валютний guard ДО
+будь-якого запису (перед $transaction); currencyId=null на FX→base-дельта; CONFIRMED термінальний
+(SP_TRANSITIONS.CONFIRMED:[]) → paidAmount монотонний, reversal N/A; міграція backfill без FX
+(historical PO без FX, проспективно); tenant orgId у всіх агрегатах; kyivToday()@db.Date DST-aware;
+0 хардкодів ₴; frontend paidAmount/outstanding/paidAt через panel-schema. Тести: 78 passed
+(supplier-payments 60 + invariants 18), tsc api+web 0. **1 фікс (Suggestion):** spIds findMany
+(CONFIRMED SP по PO для paidBase) без take → +take:500 (§3.2/§1 стандарт; bounded на практиці).
 Latest tester: 2026-09-14 (sto-tester-agent, HEAD d1f1ecbe) — Мультивалюта Фаза 4 (realized FX)
 фінальний QA. Ядерний інваріант обнулення base-залишку підтверджено (CHARGE+PAYMENT+FX=0 обидва
 напрями, property 500×); WO-linked/idempotency/concurrency(CAS)/EPS/dust/base-currency/акт звірки
