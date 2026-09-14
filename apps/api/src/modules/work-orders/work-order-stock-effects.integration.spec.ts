@@ -138,8 +138,13 @@ describe('WorkOrderStockEffectsService — guarded goodUoM.findMany (integration
       where: { orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!cp || !branchRow || !vehicle) {
-      console.warn('[integration] бракує cp/branch/vehicle — тест пропущено');
+    // TD1: WorkOrder.currencyId NOT NULL — беремо базову валюту org.
+    const currency = await raw.currency.findFirst({
+      where: { orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!cp || !branchRow || !vehicle || !currency) {
+      console.warn('[integration] бракує cp/branch/vehicle/currency — тест пропущено');
       return;
     }
 
@@ -149,6 +154,7 @@ describe('WorkOrderStockEffectsService — guarded goodUoM.findMany (integration
         branchId: branchRow.id,
         vehicleId: vehicle.id,
         counterpartyId: cp.id,
+        currencyId: currency.id,
         number: `A3-INT-${Date.now()}`,
         status: 'COMPLETED',
         totalAmount: 100,

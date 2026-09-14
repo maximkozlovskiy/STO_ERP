@@ -586,11 +586,15 @@ export class SupplierPaymentsService {
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_PAYMENT');
 
     // Мультивалюта (Фаза 3): валюта оплати — з обраного source-рахунку. Конвертація base — на confirm
-    // (по курсу на дату проведення), тут лише фіксуємо валюту (amount у ній).
+    // (по курсу на дату проведення), тут лише фіксуємо валюту (amount у ній). TD1: currencyId NOT NULL —
+    // рахунок валідовано вище (404 якщо немає), а bank/cash мають required currencyId → завжди резолвиться.
     const currencyId =
       dto.sourceType === PaymentSourceType.BANK_ACCOUNT
-        ? (bankAccount?.currencyId ?? null)
-        : (cashRegister?.currencyId ?? null);
+        ? bankAccount?.currencyId
+        : cashRegister?.currencyId;
+    if (!currencyId) {
+      throw new BadRequestException('Рахунок-джерело не має валюти');
+    }
 
     const sp = await this.prisma.supplierPayment.create({
       data: {

@@ -339,7 +339,7 @@ export class WorkOrdersService {
 
     // Мультивалюта (Фаза 3): валюта наряду — з DTO або базова org. Тотали ще 0 (рядки додаються
     // пізніше → recalcTotals порахує totalAmountBase по курсу). Тут лише фіксуємо currencyId.
-    const currencyId = dto.currencyId ?? (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const currencyId = dto.currencyId ?? (await this.exchangeRates.requireBaseCurrencyId(orgId));
 
     const wo = await this.prisma.workOrder.create({
       data: {

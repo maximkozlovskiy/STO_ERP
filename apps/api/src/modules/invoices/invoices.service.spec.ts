@@ -21,6 +21,7 @@ const exchangeRatesMock = () => {
         amountBase: amount,
       })),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
     sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
       if (a === b) return true;
       const baseId = (await useValue.getBaseCurrency(org)).id;

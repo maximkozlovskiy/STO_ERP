@@ -115,6 +115,22 @@ export class ExchangeRatesService {
   }
 
   /**
+   * base-currency id, гарантовано НЕ null (TD1). База сідиться на setup (setup.service), тож для
+   * коректно ініціалізованої org завжди резолвиться; якщо ні (edge/битий стан) — 400 з зрозумілим
+   * повідомленням замість тихого NULL≡base. Викликається create-шляхами документів (WO/Invoice/PO),
+   * де currencyId тепер NOT NULL.
+   */
+  async requireBaseCurrencyId(orgId: string): Promise<string> {
+    const base = await this.getBaseCurrency(orgId);
+    if (!base.id) {
+      throw new BadRequestException(
+        `Базову валюту (${base.code}) не налаштовано — створіть її у НДІ → Валюти`,
+      );
+    }
+    return base.id;
+  }
+
+  /**
    * Чи однакова валюта двох сторін (оплата ↔ документ). NULL трактується як БАЗОВА валюта org
    * (історичні документи / джерело без валюти) → NULL ≡ base. Резолв base-id лениво: лише коли
    * a≠b і треба з'ясувати чи одна зі сторін = base. ЄДИНЕ джерело правди для крос-валютного guard-а

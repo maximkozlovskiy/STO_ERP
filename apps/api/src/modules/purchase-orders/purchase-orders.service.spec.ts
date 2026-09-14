@@ -25,6 +25,7 @@ const exchangeRatesProvider = () => ({
         amountBase: amount,
       })),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
   },
 });
 

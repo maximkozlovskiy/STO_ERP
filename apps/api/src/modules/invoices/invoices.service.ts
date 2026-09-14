@@ -245,7 +245,7 @@ export class InvoicesService {
               workOrderId: wo.id,
               number,
               amount: invoiceAmount,
-              currencyId: wo.currencyId ?? null,
+              currencyId: wo.currencyId,
               totalAmountBase: conv.amountBase,
               rateUsed: conv.rateUsed,
               dueDate,
@@ -318,7 +318,7 @@ export class InvoicesService {
     const dueDate = await this.resolveDueDate(orgId, dto.dueDate, documentDate);
 
     // Мультивалюта (Фаза 3): валюта рахунку — з DTO або базова org; base-сума по курсу на дату документа.
-    const currencyId = dto.currencyId ?? (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const currencyId = dto.currencyId ?? (await this.exchangeRates.requireBaseCurrencyId(orgId));
     const conv = currencyId
       ? await this.exchangeRates.resolveBaseConversion(
           orgId,
@@ -391,7 +391,8 @@ export class InvoicesService {
         // Мультивалюта (Фаза 3): totalAmountBase/rateUsed лишаються зі старого курсу до
         // transition() (DRAFT→SENT нараховує CHARGE у base по свіжому currencyId) —
         // не перераховуємо тут, щоб не дублювати conversion-логіку поза FSM.
-        currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
+        // Мультивалюта (TD1): currencyId NOT NULL — не дозволяємо занулити (лише зміна на іншу валюту).
+        currencyId: dto.currencyId ?? undefined,
       },
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },

@@ -20,6 +20,7 @@ const exchangeRatesProvider = () => {
         amountBase: amount,
       })),
     getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
     // Реальна логіка поверх мокнутого getBaseCurrency (тести FX перевизначають getBaseCurrency).
     sameCurrency: vi.fn(async (org: string, a: string | null, b: string | null) => {
       if (a === b) return true;
@@ -154,7 +155,8 @@ describe('SupplierPaymentsService — regression guards', () => {
 
   it('create(): успішне створення з касою → DRAFT, settlement НЕ пишеться', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID, type: 'SUPPLIER' });
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    // TD1: currencyId деривиться з source-рахунку → каса мусить мати currencyId (required у схемі).
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
     prisma.supplierPayment.create.mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' });
 
     await service.create(

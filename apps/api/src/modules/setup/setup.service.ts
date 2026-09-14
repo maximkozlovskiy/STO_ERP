@@ -68,6 +68,21 @@ export class SetupService {
               data: { orgId: org.id },
             });
 
+            // Мультивалюта (TD1): сідимо БАЗОВУ валюту org (UAH — дефолт OrganisationSettings.currency)
+            // при ініціалізації. Без цього getBaseCurrency(orgId).id === null для свіжої org → документи
+            // створювались би з currencyId=null (NULL≡base fallback). Тепер база завжди резолвиться →
+            // currencyId на грошових рядках гарантовано NOT NULL (див. міграцію 20260914190000).
+            await tx.currency.create({
+              data: {
+                orgId: org.id,
+                code: 'UAH',
+                name: 'Гривня',
+                fullName: 'Українська гривня',
+                symbol: '₴',
+                isSystem: true,
+              },
+            });
+
             const docTypes = [
               'WORK_ORDER',
               'INVOICE',

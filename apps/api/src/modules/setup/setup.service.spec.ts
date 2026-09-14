@@ -47,6 +47,7 @@ function makePrisma(orgCountOutsideTx: number, orgCountInsideTx: number) {
       update: vi.fn().mockResolvedValue({ id: 'org-1', orgId: 'org-1' }),
     },
     organisationSettings: { create: vi.fn().mockResolvedValue({}) },
+    currency: { create: vi.fn().mockResolvedValue({ id: 'cur-uah' }) }, // TD1: base-валюта на setup
     documentNumberConfig: { createMany: vi.fn().mockResolvedValue({ count: 8 }) },
     paymentMethodConfig: { createMany: vi.fn().mockResolvedValue({ count: 5 }) },
     taxRate: { createMany: vi.fn().mockResolvedValue({ count: 3 }) },

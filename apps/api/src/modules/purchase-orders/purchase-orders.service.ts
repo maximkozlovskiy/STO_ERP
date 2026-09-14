@@ -295,7 +295,7 @@ export class PurchaseOrdersService {
     // Мультивалюта (Фаза 3): валюта замовлення — з DTO або базова org; base-сума тоталу по курсу
     // на дату документа (fallbackToLatest — документний потік).
     const documentDate = dto.documentDate ? new Date(dto.documentDate) : kyivToday();
-    const currencyId = dto.currencyId ?? (await this.exchangeRates.getBaseCurrency(orgId)).id;
+    const currencyId = dto.currencyId ?? (await this.exchangeRates.requireBaseCurrencyId(orgId));
     const conv = currencyId
       ? await this.exchangeRates.resolveBaseConversion(
           orgId,
@@ -521,7 +521,8 @@ export class PurchaseOrdersService {
             contractId: newContractId,
             notes: dto.notes,
             totalAmount,
-            currencyId: dto.currencyId === undefined ? undefined : (dto.currencyId ?? null),
+            // Мультивалюта (TD1): currencyId NOT NULL — не дозволяємо занулити (лише зміна валюти).
+            currencyId: dto.currencyId ?? undefined,
             ...(totalVat !== undefined ? { totalVat } : {}),
             ...(conv ? { totalAmountBase: conv.amountBase, rateUsed: conv.rateUsed } : {}),
             documentDate: dto.documentDate ? new Date(dto.documentDate) : undefined,
