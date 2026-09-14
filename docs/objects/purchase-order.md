@@ -16,6 +16,9 @@ model PurchaseOrder {
   number       String
   status       PurchaseOrderStatus @default(DRAFT)
   totalAmount  Decimal             @default(0) @db.Decimal(12, 2)
+  currencyId      String?          @db.Uuid   // мультивалюта Фаза 3: валюта документа
+  totalAmountBase Decimal?         @db.Decimal(12, 2) // тотал у БАЗОВІЙ валюті по курсу на documentDate
+  rateUsed        Decimal?         @db.Decimal(18, 6)
   notes        String?
   documentDate DateTime            @default(now()) @db.Date
   syncVersion  BigInt              @default(0)
@@ -23,6 +26,10 @@ model PurchaseOrder {
   updatedAt    DateTime            @updatedAt
   deletedAt    DateTime?
 }
+
+// Мультивалюта (Фаза 3, 2026-09-14): totalAmount/рядки у валюті замовлення; totalAmountBase — у базовій
+// по курсу на documentDate (create/update; fallbackToLatest). Прийом (receive) → SUPPLIER_CHARGE
+// пробрасує currencyId+дату прийому → борг постачальнику у base (кожен частковий прийом — свій курс).
 
 model PurchaseOrderLine {
   purchaseOrderId String    @db.Uuid

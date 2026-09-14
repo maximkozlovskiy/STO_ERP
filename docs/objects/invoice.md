@@ -22,6 +22,9 @@ model Invoice {
   totalWithoutVat Decimal       @default(0) @db.Decimal(12, 2)
   totalVat        Decimal       @default(0) @db.Decimal(12, 2)
   totalWithVat    Decimal       @default(0) @db.Decimal(12, 2)
+  currencyId      String?       @db.Uuid   // мультивалюта Фаза 3: валюта документа
+  totalAmountBase Decimal?      @db.Decimal(12, 2) // amount у БАЗОВІЙ валюті org по курсу на documentDate
+  rateUsed        Decimal?      @db.Decimal(18, 6)
   documentDate    DateTime      @default(now()) @db.Date
   syncVersion     BigInt        @default(0)
   createdAt       DateTime      @default(now())
@@ -29,6 +32,14 @@ model Invoice {
   deletedAt       DateTime?
 }
 ```
+
+> **Мультивалюта (Фаза 3, 2026-09-14):** `amount`/`paidAmount`/`total*` тепер у **валюті документа**
+> (`currencyId`; nullable → base UAH для історичних). `totalAmountBase`/`rateUsed` — тотал у базовій
+> валюті по курсу на `documentDate` (recalcTotals; fallbackToLatest). createFromWorkOrder успадковує
+> валюту наряду. Standalone CHARGE (SEND) і mirror PAYMENT (manual→PAID) пробрасують `currencyId`+`date`
+> у settlement → борг у base. **Оплата рахунку має бути у ТІЙ САМІЙ валюті** (payments.service: валюта
+> оплати == валюта рахунку, інакше 400; overpay/paidAmount порівнюються у валюті документа). Іновалютний
+> рахунок структурно нефіскалізовний. FX-різниці — поза Фазою 3.
 
 **Відносини:**
 

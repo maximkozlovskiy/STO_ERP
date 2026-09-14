@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-09-14 — Фіча: Мультивалюта Фаза 3 (валюта документів)
+
+WorkOrder / PurchaseOrder / Invoice / SupplierPayment отримали валюту документа: рядки у валюті,
+тотал зводиться у базову (UAH) по курсу на дату; борг/звітність у base. Курсові різниці — поза Фазою 3.
+
+- **DB (e07a60b0):** 4 моделі += currencyId?/totalAmountBase?/rateUsed? (nullable, backfill=UAH,
+  FK→Currency ON DELETE SET NULL + back-relations); міграція 20260914160000. Рядки без змін (у валюті).
+- **ExchangeRates (b389a7c3):** getRateAsOf/resolveBaseConversion += opt-in fallbackToLatest — немає
+  курсу на/до дати → останній наявний (лише документні потоки; каса/Payment лишаються strict-400).
+  SettlementsService.createTransaction DTO += date (дата події) + fallbackToLatest.
+- **WorkOrder (4148d705):** recalcTotals пише base; CHARGE/CREDIT_NOTE пробрасують валюту+дату; clone
+  успадковує валюту зі свіжим курсом.
+- **Invoice + Payment (585ae89c):** recalc/createFromWO(копіює валюту)/clone base; standalone
+  CHARGE/mirror PAYMENT пробрасують валюту+дату. Payment: Invoice.amount/paidAmount тепер у валюті
+  документа → overpay/paidAmount/WO.paidAmount у dto.amount; вимога валюта оплати==валюта рахунку (400).
+- **PurchaseOrder (13d09a6a):** create/update base; receipt SUPPLIER_CHARGE валюта+дата прийому.
+- **SupplierPayment (144398a7):** валюта з source-рахунку; confirm base + SUPPLIER_PAYMENT валюта+дата.
+- **Frontend (3b7964e3 +):** спільний CurrencySelect; інтерфейси += currency поля; 3 модалки +
+  detail/list показують валюту + base-суму + курс.
+- **QA:** tsc api+web 0; повний API-suite 2283 зелені (WO 131 / invoices 42 / payments 64 / PO 181 /
+  supplier-payments 72 / exchange-rates 16 / settlements 17). DI-drift: ExchangeRatesModule + spec-моки
+  у WO/Invoice/PO/SupplierPayment. Інваріант: rate-on-date per event без FX-звірки (борг≠0 для іновалюти
+  — очікувано, FX поза Фазою 3).
+
+---
+
 ## 2026-09-14 — Фіча: Мультивалюта Фаза 2 (Payment + SettlementTransaction у base)
 
 Оплата/борг у різних валютах зводяться у БАЗОВУ валюту org (UAH) по курсу на дату (модель Фази 1).

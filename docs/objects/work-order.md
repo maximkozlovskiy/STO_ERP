@@ -43,6 +43,13 @@ model WorkOrder {
 - ← `WorkOrderPart[]` (запчастини)
 - ← `CalendarSlot[]` (слоти календаря)
 - ← `Invoice[]` (рахунки)
+- → `Currency` (M:1 через `currencyId`, optional — мультивалюта Фаза 3)
+
+> **Мультивалюта (Фаза 3, 2026-09-14):** WorkOrder += `currencyId`/`totalAmountBase`/`rateUsed`.
+> `totalAmount`/`totalLabor`/…/`paidAmount` — у **валюті наряду**; `totalAmountBase` — тотал у базовій
+> валюті org по курсу на `documentDate` (recalcTotals; fallbackToLatest). CHARGE (COMPLETED) і
+> CREDIT_NOTE (COMPLETED→CANCELLED) пробрасують `currencyId`+`date` у settlement → борг у base. Оплата
+> наряду має бути у валюті наряду (WO.paidAmount += сума у валюті). FX-різниці — поза Фазою 3.
 
 ---
 

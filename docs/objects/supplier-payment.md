@@ -18,6 +18,9 @@ model SupplierPayment {
   number          String
   status          SupplierPaymentStatus @default(DRAFT)
   amount          Decimal               @db.Decimal(12, 2)
+  currencyId      String?               @db.Uuid   // мультивалюта Фаза 3: валюта оплати (з source-рахунку)
+  totalAmountBase Decimal?              @db.Decimal(12, 2) // у БАЗОВІЙ валюті по курсу на дату confirm
+  rateUsed        Decimal?              @db.Decimal(18, 6)
   method          String                            // код з PaymentMethodConfig
   notes           String?
   documentDate    DateTime              @default(now()) @db.Date
@@ -27,6 +30,11 @@ model SupplierPayment {
   deletedAt       DateTime?
 }
 ```
+
+> **Мультивалюта (Фаза 3, 2026-09-14):** `amount` у **валюті source-рахунку** (bank/cash `currencyId`);
+> `currencyId` фіксується при create. На `confirm()` рахується `totalAmountBase`/`rateUsed` по курсу на
+> дату проведення (fallbackToLatest), і SUPPLIER_PAYMENT пробрасує `currencyId`+`date` → борг постачальнику
+> ↓ у base. cash-out конвертує CashService сам (Фаза 1). FX-різниці — поза Фазою 3.
 
 **Enum-и:** `SupplierPaymentStatus` (DRAFT/CONFIRMED/CANCELLED), `PaymentSourceType` (BANK_ACCOUNT/CASH_REGISTER).
 

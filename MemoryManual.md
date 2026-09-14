@@ -175,6 +175,19 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+Мультивалюта Фаза 3 (валюта документів) — 8 комітів, 2026-09-14:
+  e07a60b0 DB: WO/PO/Invoice/SupplierPayment += currencyId/totalAmountBase/rateUsed (backfill UAH, FK→Currency)
+  b389a7c3 exchange-rates fallbackToLatest opt-in + settlements date/fallback plumbing
+  4148d705 WorkOrder валюта (recalc base + CHARGE/CREDIT_NOTE + clone)
+  585ae89c Invoice валюта + Payment у валюті документа (paidAmount/overpay у dto.amount; валюта оплати==рахунку→400)
+  13d09a6a PurchaseOrder валюта (create/update base + receipt SUPPLIER_CHARGE)
+  144398a7 SupplierPayment валюта (source-валюта + confirm base)
+  3b7964e3 frontend infra (CurrencySelect + інтерфейси)
+  (+ frontend модалки/detail-list — крок 8)
+  Модель: рядки у валюті документа, тотал у base по курсу на дату; fallbackToLatest лише документні
+  потоки (каса/Payment strict-400). rate-on-date per event, FX-різниці поза Фазою 3. tsc api+web 0;
+  повний API 2283 зелені. DI-drift: ExchangeRatesModule + spec-моки у WO/Invoice/PO/SupplierPayment.
+
 ddcb6f58  feat(multicurrency): Фаза 2 UI — оплати + взаєморозрахунки у валюті та base
           Дата: 2026-09-14. Frontend: /payments (список+картка), взаєморозрахунки, картка
           контрагента показують суму у валюті оплати/транзакції + base-підрядок (₴) для не-базових;
