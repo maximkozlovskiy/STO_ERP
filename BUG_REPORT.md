@@ -4791,3 +4791,52 @@ include лише у findOne/findAll), тому `updated.statuses === undefined`.
 **Severity MEDIUM** — UX-регресія (зникнення міток), без втрати даних у БД (статуси лишаються).
 
 **Статус:** [x] виправлено
+
+## Session 2026-09-14 — Мультивалюта Фаза 1 (каса): base-конвертація + UI base-currency
+
+### Bug #741 (HIGH) — курс на дату резолвиться за UTC-добою, не Kyiv → хибний rate / спурйозна 400 у нічному вікні [x] виправлено
+
+**Файли:** `apps/api/src/modules/exchange-rates/exchange-rates.service.ts` (`getRateAsOf`, `resolveBaseConversion`), новий helper `apps/api/src/common/utils/kyiv-date.ts` (`kyivYmd`).
+
+**Сценарій:** `CashService.createOperation` передає `new Date()` (інстант) у `resolveBaseConversion`
+→ `getRateAsOf`, який нормалізував дату через `date.toISOString().slice(0,10)` = **UTC-дата**.
+Але курси НБУ зберігаються під **Kyiv-датою** (`nbu-fetch.service`: `KYIV_YMD.format(new Date())`).
+Розбіжність UTC↔Kyiv у вікні 00:00–03:00 Kyiv (EEST +03:00): операція о 01:30 Kyiv 15-го →
+інстант `2026-09-14T22:30Z` → UTC-зріз `'2026-09-14'` → `date: {lte: 2026-09-14}` бере курс
+ПОПЕРЕДНЬОГО дня (хибний `rateUsed`/`amountBase` у base-обліку), а якщо курс існує лише на
+Kyiv-15-те → `findFirst` = null → **спурйозна 400 «Немає курсу»** для валідної USD-операції.
+Баланс каси не зачеплено (агрегує `amount` у валюті каси), але base-леджер спотворюється + операція
+може безпідставно блокуватись. Прямо суперечить проєктному правилу DST-aware Kyiv (MEMORY).
+
+**Фікс:** новий DST-aware helper `kyivYmd(d)` (Intl `Europe/Kyiv` → 'YYYY-MM-DD'); `getRateAsOf`
+будує `asOf` з `kyivYmd(date)` замість UTC-зрізу; повідомлення 400 у `resolveBaseConversion` теж
+через `kyivYmd`. Date-only Date з тестів (`new Date('2026-05-28')` = UTC-північ) → у Kyiv 03:00 того ж
+дня → `kyivYmd` = '2026-05-28' (без регресії наявних кейсів).
+
+**Регресія-guard:** `exchange-rates.service.spec.ts` +1 тест — інстант `2026-09-14T22:30Z` →
+`where.date.lte` = 2026-09-15 (Kyiv), а не 09-14 (UTC). Мутація (повернути UTC-зріз) → тест падає.
+
+**Severity HIGH** — хибне money-значення у base-обліку + спурйозний блок валідної операції; невидимо
+для unit-моків курсу (моки повертали фіксований rate незалежно від дати).
+
+**Статус:** [x] виправлено
+
+### Bug #742 (MEDIUM) — UI хардкодить базову валюту 'UAH'/'₴' замість конфігурованої OrganisationSettings.currency [x] виправлено
+
+**Файли:** `apps/web/src/app/(app)/cash/CashOperationsTab.tsx`, `apps/web/src/hooks/api/useCash.ts` (новий `useBaseCurrency`), тест `__tests__/CashPage.test.tsx` (мок).
+
+**Сценарій:** `isBaseCurrency = (selected?.currencyCode ?? 'UAH') === 'UAH'` + літерали `У базовій (₴)`
+хардкодять базу як UAH. Бекенд же визначає базу за `OrganisationSettings.currency` (порівняння за
+кодом у `resolveBaseConversion`). Для org з іншою базою (напр. USD): каса-USD була б помилково базовою
+у бекенді (rate=1) — але UI показав би колонку «У базовій (₴)» з невірним символом, а для реально
+базової каси не сховав би її. Порушення правил Configuration over Hardcode (#10–#13) — суть самої фічі.
+
+**Фікс:** новий хук `useBaseCurrency()` (читає `/settings/organisation` .currency + символ із
+`/currencies`, кеш 30хв); вкладка порівнює код каси з реальним базовим кодом і показує реальний
+базовий символ у заголовку/комірці колонки. Поки база не завантажилась — каса трактується як базова
+(без мигання порожньою колонкою).
+
+**Severity MEDIUM** — некоректна колонка/символ для non-UAH-base org; для типової UAH-org поведінка
+незмінна (візуальна коректність, без спотворення даних).
+
+**Статус:** [x] виправлено

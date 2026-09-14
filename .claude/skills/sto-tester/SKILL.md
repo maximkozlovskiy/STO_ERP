@@ -3242,6 +3242,27 @@ grep -rn "decimalHoursTo\|pxToHours\|pxToDecimal\|clientX.*-.*rect\|getBoundingC
 **Фікс:** `DateTime`+normalize kyivMidnight(); або `@db.Date` лише для calendar-independent.
 **Severity:** HIGH.
 
+### 2026-09-14 — Reference-lookup date WRITTEN Kyiv / READ UTC (курс валюти на дату) — backend / time-zone semantics
+
+**Сигнал:** значення пишеться під Kyiv-датою (`KYIV_YMD.format()` у writer, напр. nbu-fetch), а
+читається/матчиться під UTC-датою (`instant.toISOString().slice(0,10)` у lookup, напр.
+`getRateAsOf(date:{lte})`). Розбіжність проявляється ЛИШЕ у вікні 00:00–03:00 Kyiv (EEST +03:00):
+lookup бере попередній день → хибне похідне значення АБО null → спурйозна 400.
+**Причина виникнення:** розробник вважає `toISOString().slice(0,10)` за «дату операції», не помічаючи
+що writer уже зафіксував рядок під Kyiv-датою — базиси розходяться лише на межі доби, вдень тест зелений.
+**Підхід до виявлення:** для кожного date-only lookup/матчу (`{lte/gte/equals: <date>}`, `@db.Date`)
+знайти ПАРНИЙ writer тієї ж таблиці й звірити базис дати (Kyiv vs UTC) — вони МУСЯТЬ збігатися. Grep
+`toISOString().slice(0, 10)` у сервісах (не тестах); для кожного — чи writer використовує `KYIV_YMD`/
+`kyivToday`/`kyivYmd`. Особливо небезпечно коли balance/леджер НЕ зачеплені (агрегують інше поле) →
+баг «тихий», маскується у base-звітності.
+**Підхід до фіксу:** спільний DST-aware helper (`kyivYmd(d)` в `common/utils/kyiv-date.ts`) на ОБОХ
+кінцях (write і read) — один formatter, не дублювати Intl inline. Regression: інстант у нічному вікні
+(`2026-09-14T22:30:00Z` = 01:30 Kyiv 15-го) → lookup межа = Kyiv-дата (15-те), не UTC (14-те).
+**Severity:** HIGH (хибне money-значення + спурйозний блок валідної операції).
+**Де шукати ще:** будь-який `*.service.ts` що резолвить курс/тариф/ліміт/шаблон «на дату» через
+`findFirst({date:{lte}})` з `new Date()`; payments/payroll cash-out (успадковують від `getRateAsOf`);
+майбутні фази мультивалюти (invoices/settlements amountBase по курсу на дату документа).
+
 ### 2026-05-28 — $transaction(array,{timeout}) не підтримується Prisma 5 — backend
 
 **Сигнал:** `$transaction([op1,op2],{timeout})`→`TypeError: Option not supported`.
