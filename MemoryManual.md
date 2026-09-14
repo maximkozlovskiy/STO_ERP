@@ -12,8 +12,18 @@
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
 TypeScript: ✅ 0 errors (api + web)
-HEAD:       82b6854e fix(sync): FX_GAIN/FX_LOSS raw-enum leak у PDF акті звірки (Мультивалюта Фаза 4)
-Latest tester: 2026-09-14 (sto-tester-agent, HEAD e2164cdf) — Мультивалюта Фаза 3 end-to-end.
+HEAD:       d1f1ecbe fix(tester): Bug #745 — realized FX at manual invoice→PAID (Мультивалюта Фаза 4)
+Latest tester: 2026-09-14 (sto-tester-agent, HEAD d1f1ecbe) — Мультивалюта Фаза 4 (realized FX)
+фінальний QA. Ядерний інваріант обнулення base-залишку підтверджено (CHARGE+PAYMENT+FX=0 обидва
+напрями, property 500×); WO-linked/idempotency/concurrency(CAS)/EPS/dust/base-currency/акт звірки
+знак+мітка/dashboard revenue виключає FX/frontend колір+CSV — усе CLEAN. **1 фікс (MEDIUM, Bug #745):**
+FX-хук Фази 4 доданий лише у payments.service; ДРУГИЙ шлях до invoice PAID — ручний
+invoices.service.transition(PAID) (Bug #675 дзеркальний PAYMENT) — FX не визнавав. Іновалютний
+standalone з частковими реальними оплатами (курс дати оплати) + ручний PAID (дзеркальний PAYMENT
+курс документа) лишав base-залишок Σчасткові×(r_doc−r_pay)≠0. Фікс: FX-хук у settlesStandaloneOnPaid
+(base-залишок=chargeBase−docPaymentBase−realPaidBase→FX_GAIN/FX_LOSS, не-base only, count-guard,
+helper sameCurrencyAsBase). +2 тести invoices + 1 dust-property settlements.invariants. API suite
+2298 passed, tsc api+web 0. Попереднє: 2026-09-14 (HEAD e2164cdf) — Мультивалюта Фаза 3 end-to-end.
 Прогнав усі іновалютні грошові потоки (WO/Invoice/PO/SupplierPayment/Payment/settlements/
 exchange-rates). CLEAN: WO CHARGE/CREDIT_NOTE симетричні (currencyId+documentDate+fallback),
 Invoice CHARGE/PAYMENT+createFromWorkOrder успадкування валюти, PO receipt SUPPLIER_CHARGE (курс
