@@ -11,6 +11,28 @@
 ```
 Дата:       2026-09-14
 Фаза:       Активна розробка (CHANGELOG.md → docs/PHASES.md)
+TypeScript: ✅ 0 errors (api + web)
+HEAD:       25b82f13 fix(review): findByWorkOrder валютні поля для InvoiceSection (Мультивалюта Фаза 3)
+Latest review: 2026-09-14 (sto-review-agent, HEAD 25b82f13) — Мультивалюта Фаза 3 (валюта
+документів: WorkOrder+PurchaseOrder+Invoice+SupplierPayment, коміти e07a60b0..c03faefe). Логіка
+ГРОШЕЙ CLEAN: resolveBaseConversion base(за КОДОМ)→rate=1 без читання курсу / інша без курсу на
+дату→400 (fallbackToLatest opt-in лише документні CHARGE/PAYMENT/тотали; каса Фаза1/Payment Фаза2
+strict-400 — НЕ передають fallback); getRateAsOf date≤події (kyivYmd, не майбутній); balanceDelta
+від amountBase; Invoice↔Payment у ВАЛЮТІ рахунку (overpay/paidAmount/increment на dto.amount +
+sameCurrencyAsBase guard NULL≡base — Bug Фази2 не повторено); recalcTotals WO/Invoice/PO завжди
+пишуть totalAmountBase/rateUsed на курс дати документа; PO частковий прийом — SUPPLIER_CHARGE свій
+курс на дату прийому (amount у валюті, base у settlement); SupplierPayment валюта з source-рахунку,
+confirm пише base+SUPPLIER_PAYMENT, cash-out не подвоює конвертацію (CashService сам); tenant orgId
+скрізь, append-only, nullable нові поля+backfill UAH+ON DELETE SET NULL, Decimal→Number null-guard;
+frontend foreign+base через єдиний isBase/baseSymbol патерн, CurrencySelect, useBaseCurrency (0
+хардкодів ₴ де валюта документа). **1 фікс (IMPORTANT, sync-gap):** InvoiceSection картки наряду
+рендерить валютні поля рахунку (currencyCode/totalAmountBase/rateUsed), але endpoint
+/invoices/from-work-order/:id/find (findByWorkOrder) віддавав лише 5 полів без валюти → інвалютний
+рахунок мовчки показувався у базовому ₴ без base-підрядка. Фікс: розширено select+return
+findByWorkOrder (+currency.code/totalAmountBase/rateUsed) + оновлено service+contract специ.
+tsc api+web 0; invoices service 44 + contract 27 = зелені. (Suggestion не-фіксовано: нові
+currencyId FK без @@index — свідомо, дзеркалить Payment/SettlementTransaction Фази2, FK join лише
+по PK валюти, не фільтрується; фікс потребував би зайвої міграції.)
 Latest sync: 2026-09-14 (sto-sync-agent, HEAD c03faefe) — Мультивалюта Фаза 3 (валюта документів:
 WorkOrder+PurchaseOrder+Invoice+SupplierPayment, коміти e07a60b0..94763ac7) targeted sync audit.
 CLEAN: усі 4 ResponseDto (currencyId/currencyCode/totalAmountBase/rateUsed) ↔ фронт-інтерфейси
