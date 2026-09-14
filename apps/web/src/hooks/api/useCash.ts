@@ -27,6 +27,10 @@ export interface CashOperation {
   cashShiftId?: string | null;
   direction: 'IN' | 'OUT';
   amount: number;
+  /** Сума у базовій валюті (UAH) по курсу на дату операції (мультивалюта Фаза 1). */
+  amountBase?: number | null;
+  /** Застосований курс (base за 1 од. валюти каси). */
+  rateUsed?: number | null;
   reason: string;
   expenseCategoryId?: string | null;
   expenseCategoryName?: string | null;

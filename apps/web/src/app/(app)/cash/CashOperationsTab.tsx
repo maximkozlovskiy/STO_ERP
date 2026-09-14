@@ -50,6 +50,10 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     if (!selectedId && registers?.length) setSelectedId(registers[0].id);
   }, [registers, selectedId]);
 
+  // Мультивалюта: символ валюти каси + чи показувати колонку «У базовій (₴)» (лише для НЕ-базової каси).
+  const curSymbol = selected?.currencySymbol ?? selected?.currencyCode ?? '';
+  const isBaseCurrency = (selected?.currencyCode ?? 'UAH') === 'UAH';
+
   const { data: shift, isLoading: shiftLoading } = useCurrentShift(selected?.branchId ?? null);
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
@@ -245,12 +249,13 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
               <TableHead>Операція</TableHead>
               <TableHead>Привід</TableHead>
               <TableHead className="text-right">Сума</TableHead>
+              {!isBaseCurrency && <TableHead className="text-right">У базовій (₴)</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {opsLoading && (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center">
+                <TableCell colSpan={isBaseCurrency ? 4 : 5} className="py-10 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -300,8 +305,13 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                   )}
                 >
                   {op.direction === 'IN' ? '+' : '−'}
-                  {fmtMoney(op.amount)}
+                  {fmtMoney(op.amount)} {curSymbol}
                 </TableCell>
+                {!isBaseCurrency && (
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {op.amountBase != null ? `${fmtMoney(op.amountBase)} ₴` : '—'}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
