@@ -10,35 +10,26 @@ bypassPermissions: true
 
 ## Режим Auto (ОБОВ'ЯЗКОВО)
 
-**Все виконується без питань.** Алгоритм:
+**Все виконується без питань, без дозволу між кроками.** Фіксуй одним реченням що робиш.
 
 ```
-1. Крок 0 — контекст (git diff + scope)
-2. Крок 1 — §1 TypeScript (завжди)
-3. Крок 2 — секції за матрицею типу зміни
-4. Крок 3 — виправити всі знайдені проблеми
-5. Крок 4 — tsc 0 errors + git commit
-6. Крок 5 — оновити MemoryManual.md
-7. Крок 6 — самовдосконалення: записати нові підходи
+0. Контекст (git diff + scope)      4. tsc 0 errors + git commit
+1. §1 TypeScript (завжди)           5. Оновити MemoryManual.md
+2. Секції за матрицею типу зміни    6. Самовдосконалення: записати нові підходи
+3. Виправити всі знайдені проблеми
 ```
-
-> Не питай дозволу між кроками. Фіксуй одним реченням що робиш.
 
 ---
 
 ## Крок 0 — Контекст
 
 ```bash
-# Scope та тип змін
 git diff HEAD --name-only | head -30
-CHANGED=$(git diff HEAD --name-only | wc -l)
-echo "Змінено файлів: $CHANGED"
-
-# Читай стан проєкту
+CHANGED=$(git diff HEAD --name-only | wc -l); echo "Змінено файлів: $CHANGED"
 cat MemoryManual.md | head -50
 ```
 
-**Визнач агрегати зі scope → читай відповідні дос'є паралельно:**
+**Агрегати зі scope → читай відповідні дос'є паралельно:**
 
 | Ключові слова у змінених файлах            | Читати                           |
 | ------------------------------------------ | -------------------------------- |
@@ -53,10 +44,9 @@ cat MemoryManual.md | head -50
 | `stock-item`, `StockMovement`, `inventory` | `docs/objects/inventory.md`      |
 | `settlement`, `transaction`, `payment`     | `docs/objects/settlements.md`    |
 
-Якщо scope торкається сервісних файлів (`*.service.ts`) → також читай `docs/BUSINESS-RULES.md`.
-Якщо scope — нова сторінка або компонент → також читай `docs/GOTCHAS.md`.
+Scope торкається `*.service.ts` → також `docs/BUSINESS-RULES.md`. Нова сторінка/компонент → також `docs/GOTCHAS.md`.
 
-**Матриця: тип зміни → секції що запускати**
+**Матриця: тип зміни → секції**
 
 | Тип зміни              | Обов'язкові секції            | Пропустити           |
 | ---------------------- | ----------------------------- | -------------------- |
@@ -78,11 +68,7 @@ cat MemoryManual.md | head -50
 ```bash
 # Web — ОБОВ'ЯЗКОВО --incremental false (кеш приховує помилки)
 cd apps/web && node_modules/.bin/tsc --noEmit --incremental false
-
-# API
 pnpm --filter @sto/api exec tsc --noEmit
-
-# Shared / UI
 pnpm --filter @sto/shared exec tsc --noEmit
 
 # React namespace без named import (→ VSCode errors, tsc може мовчати)
@@ -101,9 +87,9 @@ grep -rn "\[var(--\|(--color-" apps/web/src/ --include="*.tsx" --include="*.ts"
 # Tailwind 4 — inline HSL (не перемикається в dark mode)
 grep -rnE "text-\[hsl\(|border-\[hsl\(|bg-\[hsl\(|ring-\[hsl\(" apps/web/src/app apps/web/src/components --include="*.tsx"
 
-# Inline style з rgba(var(--X-rgb)) / hsl(var(--X)) — звірити що CSS var РЕАЛЬНО існує у globals.css.
+# Inline style rgba(var(--X-rgb))/hsl(var(--X)) — звірити що CSS var РЕАЛЬНО існує у globals.css.
 # Токени --color-* зберігаються як hsl()/var() цілісні значення, НЕ як rgb/hsl-триплети →
-# rgba(var(--color-primary), a) мовчки падає на fallback (або transparent). Тема-aware фарба з alpha = color-mix().
+# rgba(var(--color-primary), a) мовчки падає на fallback (або transparent). Тема-aware alpha = color-mix().
 grep -rnE "rgba\(var\(--|hsla?\(var\(--" apps/web/src/ --include="*.tsx" --include="*.ts"
 # Для кожного --X-rgb / --X у rgba(): grep "X" apps/web/src/app/globals.css — якщо немає → CRITICAL/IMPORTANT
 
@@ -129,15 +115,15 @@ done
 
 **Автофікси:**
 
-| Помилка                                       | Фікс                                                         |
-| --------------------------------------------- | ------------------------------------------------------------ |
-| `React.ReactNode`                             | `import type { ReactNode } from 'react'` → `ReactNode`       |
-| `React.ChangeEvent<T>` / `React.FormEvent<T>` | `import type { ChangeEvent, FormEvent } from 'react'`        |
-| `bg-(--color-X)` / `border-(--color-X)`       | Canonical token: `bg-X` / `border-X`                         |
-| `w-[Npx]`                                     | Tailwind scale: M = N/4 (52px→w-13)                          |
-| `flex-shrink-0`                               | `shrink-0`                                                   |
-| `URL.revokeObjectURL(url)` після `a.click()`  | `setTimeout(() => URL.revokeObjectURL(url), 100)`            |
-| `findMany` без `take`                         | `take: 200` (list endpoints) або `take: 500` (sub-resources) |
+| Помилка                                       | Фікс                                                   |
+| --------------------------------------------- | ------------------------------------------------------ |
+| `React.ReactNode`                             | `import type { ReactNode } from 'react'` → `ReactNode` |
+| `React.ChangeEvent<T>` / `React.FormEvent<T>` | `import type { ChangeEvent, FormEvent } from 'react'`  |
+| `bg-(--color-X)` / `border-(--color-X)`       | Canonical token: `bg-X` / `border-X`                   |
+| `w-[Npx]`                                     | Tailwind scale: M = N/4 (52px→w-13)                    |
+| `flex-shrink-0`                               | `shrink-0`                                             |
+| `URL.revokeObjectURL(url)` після `a.click()`  | `setTimeout(() => URL.revokeObjectURL(url), 100)`      |
+| `findMany` без `take`                         | `take: 200` (list) або `take: 500` (sub-resources)     |
 
 - [ ] `tsc --noEmit` → 0 errors (web `--incremental false`, api, shared)
 - [ ] Немає `React.X` — тільки named imports з `'react'`
@@ -158,28 +144,26 @@ done
 ```bash
 # Контролери без @UseGuards
 grep -rn "@Controller" apps/api/src/ --include="*.controller.ts" | grep -v "UseGuards\|@Public"
-
 # Endpoints без @Roles
 grep -rn "@Get\|@Post\|@Patch\|@Delete" apps/api/src/modules/ --include="*.controller.ts" -A1 | grep -v "@Roles\|@Public\|spec" | head -20
 ```
 
 - [ ] Кожен `@Controller` має `@UseGuards(JwtAuthGuard, RolesGuard)` або явний `@Public()`
-- [ ] `@Roles(...)` на кожному методі — без `@Roles` RolesGuard пропускає всіх авторизованих (включаючи MECHANIC до cost даних!)
+- [ ] `@Roles(...)` на кожному методі — без `@Roles` RolesGuard пропускає всіх авторизованих (включно з MECHANIC до cost даних!)
 - [ ] `costPrice`, `purchasePrice`, `salePrice`, `priceHistory`, `margin` → тільки `OWNER/ADMIN/STOREKEEPER/ACCOUNTANT`
 - [ ] `/setup/init` → перевіряє `isAlreadyInitialized()` (anti-replay)
-- [ ] `@CurrentUser()` повертає `{ sub, orgId, role }` — не `any`; у контролерах використовувати `user.id`, не `user.sub` (jwt.strategy.ts повертає `{ id, orgId, role }`)
-- [ ] Restore-endpoint (`POST :id/restore`) → ролі ІДЕНТИЧНІ delete-endpoint. Асиметрія (restore дозволений ширшій ролі ніж delete) = роль може «undo» видалення яке сама не мала права зробити
+- [ ] `@CurrentUser()` повертає `{ sub, orgId, role }` — не `any`; у контролерах `user.id`, не `user.sub` (jwt.strategy.ts повертає `{ id, orgId, role }`)
+- [ ] Restore-endpoint (`POST :id/restore`) → ролі ІДЕНТИЧНІ delete-endpoint (асиметрія = роль «undo»-ить видалення, яке сама не мала права зробити)
 
 #### §2.2 Tenant Isolation
 
 ```bash
-# findFirst/findMany без orgId у where
 grep -rn "findFirst\|findMany\|findUnique\|\.update(\|\.delete(" apps/api/src/modules/ --include="*.service.ts" \
   | grep -v "orgId\|spec\|//.*find" | head -20
 ```
 
 - [ ] Кожен `findFirst` / `findMany` / `update` / `delete` містить `orgId`
-- [ ] `@Param('id')` ніколи не використовується без перевірки належності до `orgId`
+- [ ] `@Param('id')` ніколи без перевірки належності до `orgId`
 - [ ] PATCH/UPDATE з FK body-полем (`goodId`, `vehicleId`) → валідує що FK belongs to `orgId`
 - [ ] FK у sync push (`customerGarageId`, `liftId`, `employeeId`) → `validateForeignKeys(orgId, ...)`
 
@@ -188,39 +172,25 @@ grep -rn "findFirst\|findMany\|findUnique\|\.update(\|\.delete(" apps/api/src/mo
 ```bash
 # Рядкова інтерполяція у queryRaw
 grep -rn "queryRaw\|executeRaw" apps/api/src/ --include="*.ts" | grep -v "Prisma\.sql\|plainto_tsquery\|spec"
-
 # ParseUUIDPipe відсутній (@Param)
 grep -rn "@Param('id')\|@Param(\"id\")" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe\|spec"
-
-# @Query('...Id') що є UUID-ідентифікатором але БЕЗ ParseUUIDPipe (той самий 500-vs-400 ризик що @Param)
-# Query-параметр з іменем *Id/*id, який сервіс кладе у Prisma where: { id } на @db.Uuid-колонці:
-# невалідний рядок → Prisma P2023 "invalid input syntax for type uuid" → HTTP 500 (не-i18n, Sentry-шум).
-# Optional query → `new ParseUUIDPipe({ optional: true })`.
+# @Query('...Id') UUID-ідентифікатор БЕЗ ParseUUIDPipe (той самий 500-vs-400 ризик що @Param)
 grep -rnE "@Query\((['\"])[a-zA-Z]*[Ii]d\1\s*\)" apps/api/src/ --include="*.controller.ts" | grep -v "ParseUUIDPipe\|spec"
-
 # process.env напряму в сервісах
 grep -rn "process\.env\." apps/api/src/ --include="*.ts" | grep -v "main.ts\|spec"
-
-# Enum-DTO поле валідоване як @IsString замість @IsEnum: значення долітає до Prisma enum-колонки
-# → Postgres "invalid input value for enum" → HTTP 500 (не-i18n). Знайти поле, чий тип — Prisma enum,
-# але декоратор @IsString (не @IsEnum). Стандарт codebase — @IsEnum (77+ вжитків).
+# Enum-DTO поле валідоване @IsString замість @IsEnum → Prisma enum 500
 grep -rnE "^\s*@IsString\(\)" apps/api/src/modules --include="*.dto.ts" -A1 \
   | grep -E ":\s*[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" | grep -v spec
-
-# Ручна enum-валідація через `in`-оператор → резолвить прототипні ключі (constructor/toString/
-# valueOf/hasOwnProperty/isPrototypeOf) як «валідні» → `?type=constructor` проходить guard →
-# долітає до Prisma enum-колонки → P2009 invalid enum → HTTP 500 (не 400). Використовувати
-# Object.prototype.hasOwnProperty.call(Enum, value), НЕ `value in Enum` (той самий клас що
-# buildSortOrderBy hasOwnProperty-fix). Стосується будь-якого manual-guard над enum/whitelist-об'єктом.
+# Ручна enum-валідація через `in` → прототипні ключі проходять guard → Prisma 500
 grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" \
   apps/api/src/modules --include="*.controller.ts" --include="*.service.ts" | grep -v spec
 ```
 
 - [ ] `$queryRaw` — тільки tagged template або `Prisma.sql` (не рядкова інтерполяція)
-- [ ] **Optional/required DTO-поле, чий тип — Prisma enum → `@IsEnum(TheEnum)`, НЕ `@IsString()`.** `@IsString()` пропускає будь-який рядок → значення долітає до enum-колонки у `create/update` → Postgres `invalid input value for enum "X"` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Стандарт codebase — `@IsEnum` (cash.dto `direction`/`reason`, payments.dto тощо, 77+ вжитків). Sample (expense-categories.dto `CreateExpenseCategoryDto.type: ExpenseCategoryType` мав `@IsString()`): `POST {type:"FOO"}` → `type = dto.type ?? 'EXPENSE'` → insert у enum-колонку → 500
+- [ ] **DTO-поле, чий тип — Prisma enum → `@IsEnum(TheEnum)`, НЕ `@IsString()`.** `@IsString()` пропускає будь-який рядок → значення долітає до enum-колонки у `create/update` → Postgres `invalid input value for enum` → HTTP 500 (не-i18n) замість 400. Стандарт codebase — `@IsEnum` (77+ вжитків: cash.dto `direction`/`reason`, payments.dto). Sample: `CreateExpenseCategoryDto.type` мав `@IsString()`. (Деталі: запис 2026-09-12)
 - [ ] `@Param(':id')` → `ParseUUIDPipe` (не `version: '4'` — тести часто мають UUID v0)
-- [ ] **`@Query('xxxId')` що потрапляє у Prisma `where: { id }` на `@db.Uuid`-колонці → `ParseUUIDPipe`** (optional query → `new ParseUUIDPipe({ optional: true })`). Той самий контракт що `@Param`: невалідний UUID (`?cashRegisterId=garbage`) інакше долітає до Prisma → `P2023 invalid input syntax for type uuid` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Sample (cash-shift.controller `open`): `@Query('cashRegisterId') cashRegisterId?: string` без пайпа → `cashRegister.findFirst({ where: { id: cashRegisterId } })`
-- [ ] **Ручна enum/whitelist-валідація → `Object.prototype.hasOwnProperty.call(Enum, value)`, НЕ `value in Enum`.** `in` перевіряє й ПРОТОТИПНІ ключі: `'constructor' in StockMovementType === true` (так само `toString`/`valueOf`/`hasOwnProperty`/`isPrototypeOf`). Тож guard `if (type && !(type in Enum)) throw 400` пропускає `?type=constructor` → значення долітає до Prisma enum-колонки у `where` → `P2009 invalid enum` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400. Той самий клас що `buildSortOrderBy` hasOwnProperty-fix (§pagination). Sample (stock-items.controller `movements`): `if (type && !(type in StockMovementType))`. Fix: `!Object.prototype.hasOwnProperty.call(StockMovementType, type)`
+- [ ] **`@Query('xxxId')` що потрапляє у Prisma `where: { id }` на `@db.Uuid` → `ParseUUIDPipe`** (optional → `new ParseUUIDPipe({ optional: true })`). Невалідний UUID інакше → `P2023 invalid input syntax for type uuid` → HTTP 500. Sample: cash-shift.controller `open` `@Query('cashRegisterId')`
+- [ ] **Ручна enum/whitelist-валідація → `Object.prototype.hasOwnProperty.call(Enum, value)`, НЕ `value in Enum`.** `in` резолвить прототипні ключі: `'constructor' in Enum === true` (так само `toString`/`valueOf`/`hasOwnProperty`/`isPrototypeOf`) → `?type=constructor` проходить guard → Prisma enum-колонка → `P2009 invalid enum` → HTTP 500. Той самий клас що `buildSortOrderBy` hasOwnProperty-fix. Sample: stock-items.controller `movements`. (Деталі: запис 2026-09-13)
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
 - [ ] Немає `eval()`, `new Function()`, `child_process.exec()`
 
@@ -228,53 +198,41 @@ grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method
 
 ```bash
 grep -rn "passwordHash\|apiKey\b\|secret\b" apps/api/src/modules/ --include="*.dto.ts"
-
-# Body-borne credential → error/log echo-vector: клієнт кладе credential у request BODY
-# (не заголовок), а throw-сайт вбудовує `await response.text()` у Error.message. Якщо провайдер
-# ЕХО-не запит у 4xx-відповіді → секрет тече у Error.message → лог/IntegrationLog.error.
-# Знайти клієнтів, що шлють credential у body (не header): JSON.stringify з apiKey/token/pin/key
+# Body-borne credential → error/log echo-vector: credential у request BODY (не заголовок) +
+# `await response.text()` у Error.message. Провайдер що ЕХО-не запит у 4xx → секрет тече у лог/IntegrationLog.
 grep -rnE "body:\s*(JSON\.stringify\()?\{[^}]*(apiKey|token|pin_?[Cc]ode|privateKey|secret|password)" \
   apps/api/src/modules --include="*.ts" | grep -v spec
-# Для кожного знайденого клієнта → перевірити, що throw-сайт з `response.text()` пропускає текст
-# через redactSecrets(text, [<ті самі body-secret значення>]) (apps/api/src/common/utils/redact.ts)
 grep -rnE "throw new Error\(`[^`]*\$\{(await )?(response|res)\.text\(\)" apps/api/src/modules --include="*.ts" | grep -v spec
 ```
 
 - [ ] `passwordHash`, `apiKey`, `secret` відсутні у `*ResponseDto`
 - [ ] `phone`, `edrpou`, `email` у `PULL_FIELD_BLACKLIST` (sync)
-- [ ] **Body-borne credential + `response.text()` у Error.message → `redactSecrets(text, [secret])`.** Секрети у ЗАГОЛОВКАХ (Bearer/X-Token/Authorization) безпечні — ми не серіалізуємо заголовки. Але коли клієнт шле credential у request BODY (Nova Poshta `apiKey` у JSON, Checkbox `pin_code`/`licenseKey` у sign-in body), а throw вбудовує `${await response.text()}` → провайдер, що ЕХО-не запит у 4xx-тілі, зіллє секрет у Error.message → лог/`IntegrationLog.error`. Логер (`IntegrationLogService.wrap`) свідомо секрет-сліпий → redaction МУСИТЬ бути на рівні клієнта, де значення секрету у скоупі. Fix: `redactSecrets(text, [<body-secret значення>])` (`apps/api/src/common/utils/redact.ts` — ігнорує <6-символьні значення). LiqPay-стиль (body=base64(payload)+signature без сирого privateKey) — безпечний. Sample: audit IntegrationLog (1bc106f8)
+- [ ] **Body-borne credential + `response.text()` у Error.message → `redactSecrets(text, [secret])`.** Секрети у ЗАГОЛОВКАХ (Bearer/X-Token) безпечні (не серіалізуємо заголовки). Але credential у request BODY (Nova Poshta `apiKey`, Checkbox `pin_code`/`licenseKey`) + `${await response.text()}` у throw → провайдер що ЕХО-не запит у 4xx зіллє секрет у Error.message → `IntegrationLog.error`. Логер (`IntegrationLogService.wrap`) секрет-сліпий → redaction МУСИТЬ бути на рівні клієнта. `redactSecrets(...)` (`apps/api/src/common/utils/redact.ts` — ігнорує <6-символьні). LiqPay-стиль (body=base64+signature без сирого privateKey) — безпечний. Sample: audit IntegrationLog (1bc106f8)
 
 #### §2.5 BullMQ Queue Safety
 
 ```bash
-# Queue add без attempts
 grep -rn "\.add(" apps/api/src/ --include="*.ts" | grep -v "attempts\|spec"
-
 # Прямі HTTP поза чергою
-grep -rn "axios\|node-fetch\|https\.request\|http\.request" apps/api/src/modules/ --include="*.ts" \
-  | grep -v "spec\|queue\|processor"
-
-# @Process без concurrency (IMPORTANT: без concurrency Bull default = 1, але для I/O процесорів
-# з мережевими викликами це означає серіалізацію: 100 jobs × 15s = 1500s стіни)
+grep -rn "axios\|node-fetch\|https\.request\|http\.request" apps/api/src/modules/ --include="*.ts" | grep -v "spec\|queue\|processor"
+# @Process без concurrency (Bull default=1 → серіалізація I/O: 100 jobs × 15s = 1500s стіни)
 grep -rn "@Process(" apps/api/src/ --include="*.processor.ts" | grep -v "concurrency\|spec"
-
-# .add() ПІСЛЯ закоміченої $transaction без .catch() — enqueue-fail валить успішну фінансову операцію
-# (offline-first: Redis-down = нормальний стан). Сигнал: `await this.Xqueue.add(` НЕ у ланцюгу .catch
+# .add() ПІСЛЯ закоміченої $transaction без .catch() — enqueue-fail валить успішну фін-операцію (Redis-down=норма)
 grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts" -A12 \
   | grep -L "\.catch(" 2>/dev/null; \
 grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts"
 ```
 
 - [ ] Кожен `.add()` → `attempts ≥ 10`, `backoff: { type: 'exponential' }`
-- [ ] **`.add()` де `job.data` містить секрет (apiKey/token/creds/пароль) → `removeOnFail: N`** (bounded). Без нього невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст памʼяті. Grep: `grep -rn "\.add(" apps/api/src --include="*.ts" -A8 | grep -iE "apiKey|token|secret|creds|password" ` → перевірити наявність `removeOnFail` у тому ж блоці опцій
-- [ ] **One-off/manual `.add()` (enqueueImmediate/«зробити зараз») у scheduler з repeatable-сіблінгами → мусить мати `jobId` (дедуп спаму) + `removeOnFail: N` (bounded), як його repeatable-сіблінги у ТОМУ Ж файлі.** Навіть без секрета: без `removeOnFail` невдалі manual-jobs ростуть безмежно у Redis; без `jobId` спам кнопки ставить дублі паралельних job-ів. Grep: `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8` → якщо у файлі є `.add()` з `jobId`+`removeOnFail` І інший `.add()` БЕЗ них → прапор. jobId має бути ОКРЕМИЙ від repeatable (`<x>-now-<org>`, не `<x>-<org>`), щоб не конфліктувати з cron-записом. Severity: IMPORTANT (Redis-ріст + duplicate-fan-out)
+- [ ] **`.add()` де `job.data` містить секрет (apiKey/token/creds/пароль) → `removeOnFail: N`** (bounded; інакше невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст памʼяті). Grep: `grep -rn "\.add(" apps/api/src --include="*.ts" -A8 | grep -iE "apiKey|token|secret|creds|password"` → перевірити `removeOnFail`
+- [ ] **One-off/manual `.add()` (enqueueImmediate/«зробити зараз») у scheduler з repeatable-сіблінгами → `jobId` (дедуп спаму) + `removeOnFail: N`, як repeatable-сіблінги у ТОМУ Ж файлі.** Без `removeOnFail` manual-jobs ростуть у Redis; без `jobId` спам кнопки = дублі. `jobId` ОКРЕМИЙ від repeatable (`<x>-now-<org>`, не `<x>-<org>`). Grep: `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8`. Severity: IMPORTANT
 - [ ] ПРРО: `attempts: 288`, `backoff: { delay: 300_000 }` (24 год)
 - [ ] SMS: `attempts: 10`, `backoff: { delay: 60_000 }`
 - [ ] Процесори → `try/catch` + `throw err` (щоб BullMQ retry спрацював)
 - [ ] Ніяких прямих HTTP до зовнішніх API поза чергою
 - [ ] **`@Process(name)` → `@Process({ name, concurrency: N })`**: HTTP I/O → `3-5`, DB write → `3`, batch fan-out → `1`
-- [ ] **`.add()` ПІСЛЯ закоміченої `$transaction` → `.catch()` (non-blocking), НЕ голий `await`.** Коли фінансова/доменна операція вже закомічена (Payment+settlement+FSM), а enqueue йде ПІСЛЯ tx, голий `await queue.add()` при Redis-down кидає → HTTP 500 попри успішну операцію + сутність зависає у `QUEUED`/pending-статусі навічно (жодного job-а). Offline-first (CLAUDE.md §3: система не зупиняється без Redis). Fix: `.catch(async err => { logger.warn(...); await entity.update({ status → FAILED/термінальний, error: 'Черга недоступна' }) })` — дзеркалить сусідні non-blocking enqueue (`loyalty.queueEarn`, `notifications.send`). Grep: детектор вище. Severity: IMPORTANT (offline-first + stuck-status lifecycle hole)
-- [ ] **Зовнішній connection/transport/pool у provider (nodemailer `createTransport`, БД-конект, socket) → `close()`/`dispose()` у `finally`, НЕ лише на success-гілці.** Створити ресурс ДО `try`; закрити у `finally`. Інакше кинутий виклик (таймаут/auth-фейл/ECONNREFUSED) лишає сокет висіти → при `concurrency=N × attempts=10` десятки leaked-сокетів. Дзеркалить fetch-патерн `clearTimeout(timer)` у `finally` (§7 AbortController). Grep: `grep -rnE "createTransport|\.connect\(|new (Pool|Client)\(" apps/api/src/modules --include="*.ts" | grep -v spec` → для кожного перевірити, що парний `close()`/`end()`/`dispose()` стоїть у `finally`, а не лише перед `return`
+- [ ] **`.add()` ПІСЛЯ закоміченої `$transaction` → `.catch()` (non-blocking), НЕ голий `await`.** Коли фін/доменна операція закомічена (Payment+settlement+FSM), а enqueue йде ПІСЛЯ tx, голий `await queue.add()` при Redis-down кидає → HTTP 500 попри успіх + сутність зависає у `QUEUED` навічно. Offline-first (CLAUDE.md §3). Fix: `.catch(async err => { logger.warn(...); await entity.update({ status → FAILED, error: 'Черга недоступна' }) })` — дзеркалить `loyalty.queueEarn`/`notifications.send`. Severity: IMPORTANT
+- [ ] **Зовнішній connection/transport/pool у provider (nodemailer `createTransport`, БД-конект, socket) → `close()`/`dispose()` у `finally`, НЕ лише на success-гілці.** Створити ресурс ДО `try`; закрити у `finally`. Інакше кинутий виклик лишає сокет висіти → `concurrency=N × attempts=10` = десятки leaked-сокетів. Дзеркалить `clearTimeout(timer)` у `finally` (§7 AbortController). Grep: `grep -rnE "createTransport|\.connect\(|new (Pool|Client)\(" apps/api/src/modules --include="*.ts" | grep -v spec` → парний `close()`/`end()`/`dispose()` у `finally`
 
 #### §2.6 Sentry
 
@@ -300,49 +258,31 @@ grep -n "SentryProvider" apps/web/src/app/layout.tsx apps/web/src/app/\(setup\)/
 # addEventListener/setInterval/setTimeout без cleanup
 grep -rn "addEventListener\|setInterval\|setTimeout\b" apps/web/src/ --include="*.tsx" --include="*.ts" \
   | grep -v "clearTimeout\|clearInterval\|removeEventListener\|spec" | head -20
-
 # debounceRef без clearTimeout у cleanup
 grep -rn "debounceRef\|pollRef\|timerRef" apps/web/src/ --include="*.tsx" | grep -v "clearTimeout\|spec"
-
 # fetch без cancelled flag або AbortController
 grep -rn "apiFetch\|apiBlobFetch" apps/web/src/app/ --include="*.tsx" -B2 | grep "useEffect" | head -20
-
 # Статичні константи у render body (нова RegExp/Set/Map кожен рендер)
 grep -rnE "^\s+const [A-Z_]+\s*=\s*(\/|new (Set|Map|RegExp))" apps/web/src/app --include="*.tsx"
-
 # memo з inline array/object prop (memo марний)
 grep -rnE "<[A-Z][A-Za-z]+[^>]*=\{[a-zA-Z.]+\.(filter|map|slice)\(" apps/web/src/app --include="*.tsx"
-
 # closest()/matches() на data-атрибут якого бібліотека НЕ ставить (dnd-kit attributes = role/aria-*)
 grep -rnE "closest\(['\"]?\[data-(dnd-draggable|dnd|rdnd)" apps/web/src/ --include="*.tsx"
-
-# pointer interaction state (drawing/resizing) — leave-handler має скидати ВСІ режими
+# pointer interaction state — leave-handler має скидати ВСІ режими
 grep -rn "onPointerLeave\|PointerLeave" apps/web/src/app --include="*.tsx"
-
 # requestAnimationFrame без id-capture (cancelAnimationFrame неможливий)
 grep -rnE "^\s*requestAnimationFrame\(" apps/web/src/app apps/web/src/components --include="*.tsx"
-
 # imperative style.* мутації у callback (rAF/RO/setTimeout) — перевірити unmount cleanup
 grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps/web/src/app --include="*.tsx"
-
-# Anchored popup useLayoutEffect deps `[anchorRef]` — стейл позиція при re-open
+# Anchored popup useLayoutEffect deps [anchorRef] — стейл позиція при re-open
 grep -rnE "useLayoutEffect\(.*\}, \[anchorRef\]\)" apps/web/src/components/ui --include="*.tsx"
-
 # Nested overlay Esc handler у bubble-фазі — закриває батьківський Modal
 grep -rnE "document\.addEventListener\(['\"]keydown" apps/web/src/components/ui --include="*.tsx" --include="*.ts"
-
 # Spread SyntheticEvent з заміною target — ламає прототип
 grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --include="*.tsx" --include="*.ts"
-
-# Skip-first-run ref (`*LoadedRef` / `mountedRef` / `initedRef`) поруч з toggle-useEffect —
-# перевірити чи ref СКИДАЄТЬСЯ у батьківському (parent-key) useEffect. Інакше при зміні
-# parent-id (counterparty/tab/entity) main useEffect І toggle useEffect обидва фаєрять
-# fetch → дубль-запит + гонка (реф `true` з попередньої сесії парента).
+# Skip-first-run ref поруч з toggle-useEffect — перевірити скидання у parent-key useEffect (дубль-fetch на switch)
 grep -rnE "(Loaded|Mounted|Inited|SkipFirst)Ref\s*=\s*useRef\(false\)" apps/web/src/ --include="*.tsx"
-
-# Side-effect (apiFetch/fetch) ВСЕРЕДИНІ state-updater `setX(prev => { ...apiFetch...; return ... })`
-# — updater має бути ЧИСТИМ; React StrictMode double-invoke updater у dev → дубль-GET.
-# Toggle-select handler (клік по вже-вибраному → закрити) не має жити в updater.
+# Side-effect (apiFetch/fetch) ВСЕРЕДИНІ state-updater setX(prev => {...}) — updater має бути ЧИСТИМ (StrictMode double-invoke → дубль-GET)
 grep -rnE "set[A-Z][A-Za-z]*\((prev|cur|p)\s*=>" apps/web/src/app apps/web/src/components --include="*.tsx" -A4 \
   | grep -E "apiFetch|apiBlobFetch|fetch\(" | head -10
 ```
@@ -352,15 +292,15 @@ grep -rnE "set[A-Z][A-Za-z]*\((prev|cur|p)\s*=>" apps/web/src/app apps/web/src/c
 - [ ] `debounceRef.current` → `clearTimeout` у cleanup (HTTP запит стартує навіть якщо mounted=false)
 - [ ] `useEffect` з `apiFetch` → `let cancelled=false; ... if (!cancelled) setState(...); return () => { cancelled=true }`
 - [ ] Stateless константи (RegExp, Set, Map) → module-level, не у render body
-- [ ] `memo(Component)` → пропсами — стабільні референції (через `useMemo` Map, не inline `.filter()`)
+- [ ] `memo(Component)` → пропси стабільні референції (через `useMemo` Map, не inline `.filter()`)
 - [ ] Inline `ref={el => el.indeterminate = x}` → `useRef` + `useEffect([dep])` (крихко при React Compiler)
 - [ ] `target.closest('[data-X]')` → атрибут реально рендериться у DOM (dnd-kit НЕ ставить `data-dnd-draggable`); додати власний `data-Y` маркер
 - [ ] `onPointerLeave` → скидає **ВСІ** pointer-режими (drawing **і** resizing)
 - [ ] `requestAnimationFrame` що мутує DOM/state → id у `useRef<number|null>(null)`; `cancelAnimationFrame` на toggle + у unmount `useEffect(() => () => {...}, [])`
 - [ ] Pair `setTimeout` + `rAF` для анімації → обидва id у refs; cleanup у dedicated unmount-effect
 - [ ] `<Input>` wrapper з mask → НЕ `{ ...e, target: {...e.target, value: X} }` (ламає SyntheticEvent прототип); мутувати `e.target.value` напряму
-- [ ] Skip-first-run ref (`*LoadedRef`) у toggle-useEffect → батьківський (parent-key) useEffect ЯКИЙ ФАЄРИТЬ ПРИ ЗМІНІ CP/entity-id повинен скидати `ref.current = false` (інакше дубль-fetch при switch — main + toggle обидва фаєрять на новий id); ref-декларація перед useEffect що її використовує (уникнення TDZ якщо refactor пересуне блоки)
-- [ ] Side-effect (`apiFetch`/`fetch`) НЕ всередині state-updater `setX(prev => {...})` — updater має бути чистим; StrictMode double-invoke дублює запит. Sample bug (audit 6405c3a9): `selectPO` робив довантаження повного PO у `setSelectedPO(prev => { apiFetch(...); return po })` для toggle-логіки. Fix: fetch ПОЗА updater; toggle-рішення (клік по вже-вибраному → закрити) через синх `selectedIdRef` (sync-ується `useEffect([selected])`), не через читання `prev` у самому updater-і
+- [ ] Skip-first-run ref (`*LoadedRef`) у toggle-useEffect → parent-key useEffect (фаєрить при зміні CP/entity-id) скидає `ref.current = false` (інакше дубль-fetch при switch — main + toggle); ref-декларація перед useEffect що її використовує (TDZ при refactor)
+- [ ] Side-effect (`apiFetch`/`fetch`) НЕ всередині state-updater `setX(prev => {...})` — updater чистий; StrictMode double-invoke дублює запит. toggle-рішення (клік по вже-вибраному → закрити) через синх `selectedIdRef`, не читання `prev` в updater-і. Sample (audit 6405c3a9): `selectPO` робив довантаження у `setSelectedPO(prev => { apiFetch(...); return po })`
 
 #### §3.2 Backend
 
@@ -369,7 +309,7 @@ grep -rn "findMany(" apps/api/src/ --include="*.ts" | grep -v "take:\|spec"
 ```
 
 - [ ] `findMany` без `take` — потенційний OOM
-- [ ] **Full-scan job (reconciliation / audit / drift-detection / per-org invariant-check), що МУСИТЬ покрити ВСІ рядки → keyset-пагінація, НЕ голий `take: N`.** У звичайному list-endpoint `take: N` коректний (користувач бачить сторінку). Але у job-і, що звіряє інваріанти по всій орг, `take: N` тихо ОБРІЗАЄ скан → дрейф за рядком N лишається непоміченим = хибна впевненість «розбіжностей немає» (гірше за OOM). Fix: keyset-loop по `id` (еталон `forEachActiveOrg`, Bug #107): `orderBy:{id:'asc'}, take: BATCH, ...(cursor ? {skip:1, cursor:{id}} : {})`, `if (rows.length < BATCH) break`. Агрегати (`groupBy`/`_sum`) — SQL-side, обмежені к-стю груп → пагінація НЕ потрібна, лишати як є. Sample: A3 reconciliation.processor — 3× `stockItem/settlementAccount/invoice.findMany` без take. Grep: `grep -rn "findMany(" apps/api/src/**/*.processor.ts apps/api/src/**/*.scheduler.ts | grep -v take`
+- [ ] **Full-scan job (reconciliation/audit/drift-detection/per-org invariant-check) що МУСИТЬ покрити ВСІ рядки → keyset-пагінація, НЕ голий `take: N`.** У list-endpoint `take: N` коректний. Але у job-і, що звіряє інваріанти по всій орг, `take: N` тихо ОБРІЗАЄ скан → дрейф за рядком N непомічений = хибна впевненість (гірше за OOM). Fix: keyset-loop по `id` (еталон `forEachActiveOrg`, Bug #107): `orderBy:{id:'asc'}, take: BATCH, ...(cursor ? {skip:1, cursor:{id}} : {})`, `if (rows.length < BATCH) break`. Агрегати (`groupBy`/`_sum`) — SQL-side → пагінація НЕ потрібна. Sample: A3 reconciliation.processor. Grep: `grep -rn "findMany(" apps/api/src/**/*.processor.ts apps/api/src/**/*.scheduler.ts | grep -v take`
 - [ ] Немає `new PrismaClient()` поза `PrismaService`
 - [ ] `$transaction` має `{ timeout: N }` (5000–15000ms)
 - [ ] Prisma `include` без циклічних зв'язків (A → B → A)
@@ -380,12 +320,9 @@ grep -rn "findMany(" apps/api/src/ --include="*.ts" | grep -v "take:\|spec"
 
 ```bash
 # Бізнес-логіка у контролері
-grep -rn "prisma\.\|NotFoundException\|BadRequestException" apps/api/src/ --include="*.controller.ts" \
-  | grep -v "spec\|ParseUUID"
-
+grep -rn "prisma\.\|NotFoundException\|BadRequestException" apps/api/src/ --include="*.controller.ts" | grep -v "spec\|ParseUUID"
 # List endpoint без { items, total } wrapper
-grep -rn "async findAll\|async getAll" apps/api/src/modules/ --include="*.service.ts" \
-  | grep -v "ResponseDto\[\]\|Dto\[\]>\|Paginated" | head -10
+grep -rn "async findAll\|async getAll" apps/api/src/modules/ --include="*.service.ts" | grep -v "ResponseDto\[\]\|Dto\[\]>\|Paginated" | head -10
 ```
 
 - [ ] Controller: HTTP layer тільки (ніяких Prisma, бізнес-логіки, `if/else`)
@@ -411,40 +348,31 @@ grep -rn "forwardRef" apps/api/src/ --include="*.module.ts" | head -5
 
 ```bash
 # Прямий update stockItem поза InventoryService
-grep -rn "stockItem\.update\|stockItem\.upsert" apps/api/src/modules/ --include="*.ts" \
-  | grep -v "inventory.service\|spec"
-
+grep -rn "stockItem\.update\|stockItem\.upsert" apps/api/src/modules/ --include="*.ts" | grep -v "inventory.service\|spec"
 # Прямий update balance поза SettlementsService
 grep -rn "settlementAccount\.update" apps/api/src/modules/ --include="*.ts" | grep -v "settlements.service\|spec"
-
 # Прямий delete (hard delete)
 grep -rn "prisma\.[a-zA-Z]*\.delete(" apps/api/src/modules/ --include="*.service.ts" | grep -v spec
-
 # findFirst/findMany без deletedAt: null
 grep -rn "findFirst\|findMany" apps/api/src/modules/ --include="*.service.ts" \
   | grep -v "deletedAt\|spec\|StockMovement\|SettlementTransaction\|Payment\|WorkOrderLineEmployee\|BatchConsumption\|PriceHistory\|Comment\|EmployeeBranch" | head -20
-
 # $transaction без timeout
 for f in $(grep -rl "\$transaction(async" apps/api/src --include="*.ts" | grep -v spec); do
-  tx=$(grep -c "\$transaction(async" "$f")
-  to=$(grep -c "timeout:" "$f")
+  tx=$(grep -c "\$transaction(async" "$f"); to=$(grep -c "timeout:" "$f")
   [ "$tx" -gt "$to" ] && echo "MISMATCH $f: $tx tx, $to timeouts"
 done
-
-# Sentinel empty-string у UUID FK write: shape `consumed[0].batchId` / `res[0].XId`
-# без truthy-guard, при цьому колонка у Prisma-схемі — `@db.Uuid`. AVG_COST/aggregate
-# branch у batch/alloc-сервісі може повертати '' → Postgres кидає runtime
-# "invalid input syntax for type uuid: """.
+# Sentinel empty-string у UUID FK write (AVG_COST/aggregate branch → '' → Postgres invalid uuid)
 grep -rnE "consumed\[0\]\.batchId|allocations\[0\]\.[a-zA-Z]+Id|results?\[0\]\.[a-zA-Z]+Id" apps/api/src/modules --include="*.ts" | grep -v spec | head
-# Fix: `if (results[0].id) db.X.update({...})` або truthy у ternary:
-# `results[0].id ? results[0].id : null`.
+# Fix: if (results[0].id) db.X.update({...}) або truthy ternary: results[0].id ? results[0].id : null
+# Валютна dto.amount накопичується у base-only сіблінг-агрегат (Invoice/WO paidAmount)
+grep -nE "paidAmount.*(increment|decrement).*dto\.amount|prevPaid \+ dto\.amount|dto\.amount > remaining" apps/api/src/modules --include="*.service.ts"
 ```
 
 - [ ] FSM: `transition()` читає з `WORK_ORDER_TRANSITIONS` map
 - [ ] Stock: тільки через `InventoryService.createMovement()`
 - [ ] Settlements: тільки через `SettlementsService.createTransaction()`
-- [ ] **Мультивалюта: `amountBase`/`rateUsed` ТІЛЬКИ через `ExchangeRatesService.resolveBaseConversion(orgId, currencyId, date, amount)`.** Грошовий агрегат у не-базовій валюті (CashOperation, Payment…) пише пару `(amountBase, rateUsed)`. Base-валюта (`OrganisationSettings.currency` за КОДОМ) → `{rateUsed:1, amountBase:amount}` БЕЗ читання курсу; інша без курсу на дату → **400** (НІКОЛИ тихо `rate=1` — спотворить base-облік); `getRateAsOf` бере найближчий `date ≤ операції` (НЕ майбутній). `convertToBase = roundMoney(amount*rate/safeCoeff(coefficient))`. ❌ `amountBase=amount` для валютної операції; ❌ fallback `rate=1` коли курсу немає. Баланс/overdraft каси лишаються у ВАЛЮТІ каси (`amount`, не base — каса моно-валютна). Помилки про суми каси — БЕЗ хардкоду `₴` (каса може бути USD/EUR); символ `₴` лише де base гарантовано UAH
-- [ ] **Мультивалюта: валютна `dto.amount` НІКОЛИ не накопичується/порівнюється проти base-only сіблінг-агрегату — використати `conv.amountBase`.** Коли грошова операція має валюту (Payment `dto.amount` у валюті рахунку), а сусідня сутність, яку вона оновлює, НЕ має `currencyId` (Invoice/WorkOrder `amount`/`paidAmount`/`totalAmount` — усі у БАЗОВІЙ валюті org), то `paidAmount + dto.amount`, `paidAmount: { increment: dto.amount }`, `if (dto.amount > remaining)` **змішують валюти** (100 USD зрівнялось би зі 100 UAH залишку / зіпсувало б base-облік paidAmount). Fix: усі accumulate/compare проти base-only полів → `conv.amountBase` (BC: у base-валюті `conv.amountBase === dto.amount`, тести не ламаються). Overpay/remaining-повідомлення → `baseCode` (з `getBaseCurrency`), НЕ хардкод «грн». Grep: `grep -nE "paidAmount.*(increment|decrement).*dto\.amount|prevPaid \+ dto\.amount|dto\.amount > remaining" apps/api/src/modules --include="*.service.ts"` → для кожного перевірити, чи цільова модель має `currencyId` (якщо ні — має бути `conv.amountBase`). Sample: payments.service invoice/WO paidAmount (12bf3e2d). Severity: CRITICAL — тихе псування фін-обліку для не-base оплат
+- [ ] **Мультивалюта: `amountBase`/`rateUsed` ТІЛЬКИ через `ExchangeRatesService.resolveBaseConversion(orgId, currencyId, date, amount)`.** Грошовий агрегат у не-базовій валюті (CashOperation, Payment…) пише пару `(amountBase, rateUsed)`. Base-валюта (`OrganisationSettings.currency` за КОДОМ) → `{rateUsed:1, amountBase:amount}` БЕЗ читання курсу; інша без курсу на дату → **400** (НІКОЛИ тихо `rate=1` — спотворить base-облік); `getRateAsOf` бере найближчий `date ≤ операції` (НЕ майбутній). `convertToBase = roundMoney(amount*rate/safeCoeff(coefficient))`. ❌ `amountBase=amount` для валютної операції; ❌ fallback `rate=1` коли курсу немає. Баланс/overdraft каси лишаються у ВАЛЮТІ каси (`amount`, не base — каса моно-валютна). Помилки про суми каси — БЕЗ хардкоду `₴` (каса може бути USD/EUR); `₴` лише де base гарантовано UAH
+- [ ] **Мультивалюта: валютна `dto.amount` НІКОЛИ не накопичується/порівнюється проти base-only сіблінг-агрегату — використати `conv.amountBase`.** Коли грошова операція має валюту (Payment `dto.amount` у валюті рахунку), а сусідня сутність БЕЗ `currencyId` (Invoice/WorkOrder `amount`/`paidAmount`/`totalAmount` — у БАЗОВІЙ валюті org), то `paidAmount + dto.amount`, `paidAmount: { increment: dto.amount }`, `if (dto.amount > remaining)` **змішують валюти** (100 USD зрівнялось би зі 100 UAH). Fix: усі accumulate/compare проти base-only полів → `conv.amountBase` (BC: у base `conv.amountBase === dto.amount`). Overpay/remaining → `baseCode` (`getBaseCurrency`), НЕ хардкод «грн». Grep: детектор вище → для кожного перевірити, чи цільова модель має `currencyId`. Sample: payments.service invoice/WO paidAmount (12bf3e2d). Severity: CRITICAL. (Деталі: запис 2026-09-14)
 - [ ] `IN_PROGRESS` → `RESERVATION`; `COMPLETED` → `WRITEOFF+RESERVATION_RELEASE+CHARGE` у `$transaction`
 - [ ] `CANCELLED` зі статусу з резервом → `RESERVATION_RELEASE`
 - [ ] Soft delete скрізь; **без deletedAt** (append-only): `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `CashOperation`, `WorkOrderLineEmployee`, `Comment`, `EmployeeBranch`
@@ -482,24 +410,19 @@ grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "W
 ### §6 Database
 
 ```bash
-# N+1 — findMany без include + подальший цикл
+# N+1 — findMany без include + подальший цикл (для кожного — перевірити prisma виклик всередині циклу)
 grep -rn "for.*of\|forEach\|\.map(" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | head -20
-# Для кожного — перевірити чи є prisma виклик всередині циклу
-
 # include: true замість select — тягне всі колонки
 grep -rn "include:.*true\b" apps/api/src/modules/ --include="*.service.ts" | grep -v "spec\|//.*include" | head -15
-
 # Raw SQL без LIMIT або snake_case ідентифікатори
 grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" | grep -v spec
 grep -rn "queryRaw\|executeRaw" apps/api/src --include="*.ts" -A 20 \
   | grep -E "org_id|deleted_at|created_at|updated_at|good_id|warehouse_id|min_stock" | head -10
-
 # FK без @@index
 grep -rn "@db.Uuid" packages/database/prisma/schema.prisma | grep -v "id\s\|@@index\|@@unique"
-
-# schema.prisma змінено у diff — але міграція НЕ додана (Critical: schema ≠ DB)
+# schema.prisma змінено але міграція НЕ додана (Critical: schema ≠ DB)
 if git diff HEAD~10 --name-only 2>/dev/null | grep -q "schema.prisma"; then
-  echo "schema.prisma змінено — перевір що додана нова папка у migrations/:"
+  echo "schema.prisma змінено — перевір нову папку у migrations/:"
   git log --oneline -10 --name-only | grep -E "schema.prisma|migrations/" | head
 fi
 # Нове enum-значення у schema (ADD VALUE) — звірити з міграцією
@@ -528,12 +451,9 @@ grep -rn "ALTER TYPE.*ADD VALUE" packages/database/prisma/migrations/ | tail -5
 # Послідовні незалежні запити (sequential → parallel)
 grep -rn "const .* = await.*findFirst" apps/api/src/modules/ --include="*.service.ts" -A3 \
   | grep -B1 "await.*findFirst" | grep -v spec | head -20
-
 # Blocking sync у async context
 grep -rn "readFileSync\|writeFileSync\|existsSync" apps/api/src/ --include="*.ts"
-
-# Bulk-apply patterns: per-iteration $transaction([...]) + per-iteration calculate*()
-# Сигнал що bulk-метод робить N окремих TX замість 1 batched (N+1 + missing timeout)
+# Bulk-apply: per-iteration $transaction([...]) + per-iteration calculate*() (N окремих TX замість 1 batched)
 for f in $(grep -rl "for.*of.*\(lines\|items\|rows\|goods\)" apps/api/src/modules/ --include="*.service.ts" | grep -v spec); do
   has_calc=$(grep -c "await.*calculate\|await.*\.compute" "$f")
   has_arr_tx=$(grep -c "await this\.prisma\.\$transaction(\[" "$f")
@@ -550,12 +470,9 @@ done
 
 ```bash
 # new Date() у render path (hydration mismatch)
-grep -rn "new Date()\|Date\.now()" apps/web/src/app/ --include="*.tsx" \
-  | grep -v "useEffect\|getTime\|setDate\|//\|spec"
-
+grep -rn "new Date()\|Date\.now()" apps/web/src/app/ --include="*.tsx" | grep -v "useEffect\|getTime\|setDate\|//\|spec"
 # key={i} у re-sortable lists
 grep -rn "key={i}\|key={index}" apps/web/src/app/ --include="*.tsx" | head -10
-
 # Per-item fan-out: Promise.all(days/ids.map(apiFetch)) без cap і без AbortController
 grep -rnE "Promise\.all\(\s*[a-zA-Z]+\.map\(" apps/web/src/app/ --include="*.tsx" -A2 | grep -i "apiFetch" | head -10
 ```
@@ -574,9 +491,7 @@ grep -rnE "Promise\.all\(\s*[a-zA-Z]+\.map\(" apps/web/src/app/ --include="*.tsx
 
 ```bash
 # Прямий fetch без apiFetch
-grep -rn "fetch(" apps/web/src/ --include="*.tsx" --include="*.ts" \
-  | grep -v "apiFetch\|api-client\|auth/context\|spec"
-
+grep -rn "fetch(" apps/web/src/ --include="*.tsx" --include="*.ts" | grep -v "apiFetch\|api-client\|auth/context\|spec"
 # apiBlobFetch / apiMultipartFetch без Array.isArray message guard
 grep -n "message?: string\b\|message: string\b" apps/web/src/lib/api-client.ts
 ```
@@ -595,21 +510,16 @@ grep -n "message?: string\b\|message: string\b" apps/web/src/lib/api-client.ts
 ```bash
 # .catch(() => {}) на fetch — ховає помилки
 grep -rn "\.catch(() => {})" apps/web/src/app/ --include="*.tsx"
-
-# loading оголошений але setLoading(true) відсутній
+# loading оголошений але setLoading(true) відсутній (для кожного — перевірити setLoading(true) перед fetch)
 grep -rn "const \[loading.*false" apps/web/src/app/ --include="*.tsx" | head -10
-# Для кожного — перевірити чи є setLoading(true) перед fetch
-
 # saving глобальний замість per-row
 grep -rn "saving\b" apps/web/src/app/ --include="*.tsx" | grep "useState(false)" | head -5
-
 # Paired display-name FK — обидва не скидаються разом
 grep -rnE "setForm\(.*Id: ['\"]['\"]" apps/web/src/app/ --include="*.tsx"
-
 # Event-handler fetch (openEdit/openCard/onSelect) що setState після resolve — без request-token guard
 grep -rnE "const (open|load|select|fetch)[A-Z][A-Za-z]* = (async )?\(" apps/web/src/app/ --include="*.tsx" -A30 \
   | grep -E "apiFetch" | head -20
-# Для кожного handler-fetch: re-виклик для іншого id → перевірити token-ref/AbortController + reset похідного стану на старті
+# Для кожного handler-fetch: re-виклик для іншого id → token-ref/AbortController + reset похідного стану на старті
 ```
 
 - [ ] Кожен list-fetch: `setLoading(true)` перед; `.catch(setError)`; `.finally(() => setLoading(false))`; `{!loading && items.length===0 && <EmptyState/>}`
@@ -617,9 +527,9 @@ grep -rnE "const (open|load|select|fetch)[A-Z][A-Za-z]* = (async )?\(" apps/web/
 - [ ] `error` page-level ≠ `formError` (не перезаписувати)
 - [ ] Paired FK state (`counterpartyId` + `counterpartyDisplayName`) → скидати **обидва** на onClose/POST success/onClear
 - [ ] Fetch у обробнику події → token-ref (`++ref.current`; `if (ref.current !== reqId) return`) + скинути похідний стан
-- [ ] **Cross-field guard на беку → знайти ВСІ frontend-entry-points**: коли додано backend-cross-field валідацію (напр. `hasCounterpartyName`), grep `POST /<endpoint>` по apps/web/src → **кожен** callsite має власний frontend guard з ідентичною логікою (**trim + OR + одне повідомлення**). Sample bug: guard у CounterpartyEditModal, але CalendarSlotModal-wizard (2й callsite) мав власний `!x && !y` без trim → whitespace-only обходило frontend, backend повертав 400 із загальним message без inline. Grep: `grep -rn "'/counterparties'" apps/web/src` — перевір ВСІ файли, не тільки основний edit-modal
-- [ ] **Дві форми що редагують ОДНУ сутність → спільний контрольований компонент + ОДИН `formToPatch` (field-desync).** Коли одна й та сама сутність (Counterparty) редагується у ДВОХ місцях (EditModal + DetailPage inline-edit), кожне з власним state-shape та власним PATCH-об'єктом — набори полів дрейфують: одна форма шле юр/банк-поля, інша ЄДРПОУ/особисті → те саме поле «не чіпається» з одного місця й затирається з іншого = field-desync класу «каси». Fix (dedup 0c68a1cc): один controlled-компонент (`CounterpartyForm`) + хелпери (`emptyX`/`xToForm`/`formToPatch`/`validateX`) — обидва callsites шлють ІДЕНТИЧНЕ `formToPatch`-тіло. Перевірити: (1) немає залишків старих окремих patch-об'єктів у жодному callsite; (2) `formToPatch` порожні рядки → `undefined` (PATCH не затирає наявне — безпечно ЛИШЕ якщо бек робить `dto.X !== undefined ? dto.X : existing.X`; якщо потрібне НАВМИСНЕ очищення поля — окремий тредофф, `''→null`); (3) після дедупу — grep осиротілі імпорти/const у ОБОХ файлах (`PhoneInput`, локальні `TYPE_LABELS`/`LABELS`-мапи, перенесені у спільний компонент): `grep -n "<removed-symbol>"` кожен файл → 0 вжитків = видалити (tsc не ловить, бо немає `noUnusedLocals`; eslint лише `warn`). Sample: після переносу type-Select у `CounterpartyForm` лишились unused `PhoneInput`/`COUNTERPARTY_TYPE_LABELS` imports + `const TYPE_LABELS` (cf6058cd)
-- [ ] **Enum-axis розширення → знайти ВСІ inline списки TX_TYPES (sibling-drift)**: коли розширюється enum-value що впливає на знак/колір/семантику (`SettlementTransactionType` += SUPPLIER_CHARGE/PAYMENT/REFUND), оновлення однієї TX_LABELS/COLORS/BALANCE_UP-мапи НЕ достатньо. У frontend можуть існувати ІНШІ inline-копії старої осі — grep за назвами старих values (`['PAYMENT', 'PREPAYMENT', 'REFUND', 'CREDIT_NOTE']`, `type === 'CHARGE'`, `.includes(t.type)`, `TX_COLORS`, `TX_LABELS`) по всьому apps/web/src → кожна знайдена копія має бути оновлена ідентично (з module-level Set + коментар-посилання на бекове BALANCE_SIGN як source of truth). Sample bug: коміт 23ce9109 оновив SettlementsTabContent.tsx (нові типи в BALANCE_UP_TYPES), але sibling `apps/web/src/app/(app)/counterparties/[id]/PageClient.tsx:1331,1336` мав власну inline-копію `['PAYMENT','PREPAYMENT','REFUND','CREDIT_NOTE'].includes(t.type)` без SUPPLIER_CHARGE → отримання товару малювалось як «+ red» (наче нам винні). Fix: 2 module-level Set + коментар-посилання. Правило: після 3-го consumer → shared helper у `lib/utils.ts`. Grep рецепти для enum axes: `grep -rnE "\.includes\(t\.type\)" apps/web/src`, `grep -rn "TX_LABELS\|TX_COLORS" apps/web/src`
+- [ ] **Cross-field guard на беку → знайти ВСІ frontend-entry-points**: коли додано backend-cross-field валідацію (`hasCounterpartyName`), grep `POST /<endpoint>` по apps/web/src → **кожен** callsite має власний frontend guard з ідентичною логікою (**trim + OR + одне повідомлення**). Sample: guard у CounterpartyEditModal, але CalendarSlotModal-wizard мав власний `!x && !y` без trim → whitespace-only обходило. Grep: `grep -rn "'/counterparties'" apps/web/src`
+- [ ] **Дві форми що редагують ОДНУ сутність → спільний контрольований компонент + ОДИН `formToPatch` (field-desync).** Коли сутність (Counterparty) редагується у ДВОХ місцях (EditModal + DetailPage inline-edit), кожне з власним state-shape/PATCH — набори полів дрейфують: одне поле «не чіпається» з одного місця й затирається з іншого. Fix (dedup 0c68a1cc): один controlled-компонент (`CounterpartyForm`) + хелпери (`emptyX`/`xToForm`/`formToPatch`/`validateX`) — обидва callsites шлють ІДЕНТИЧНЕ `formToPatch`-тіло. Перевірити: (1) немає залишків старих patch-об'єктів; (2) `formToPatch` порожні рядки → `undefined` (безпечно ЛИШЕ якщо бек `dto.X !== undefined ? dto.X : existing.X`; навмисне очищення → `''→null`); (3) після дедупу grep осиротілі імпорти/const у ОБОХ файлах (`PhoneInput`, локальні `TYPE_LABELS`-мапи) — tsc не ловить (немає `noUnusedLocals`), eslint лише `warn`. Sample cf6058cd
+- [ ] **Enum-axis розширення → знайти ВСІ inline списки TX_TYPES (sibling-drift)**: коли розширюється enum-value що впливає на знак/колір/семантику (`SettlementTransactionType` += SUPPLIER_CHARGE/PAYMENT/REFUND), оновлення однієї TX_LABELS/COLORS/BALANCE_UP-мапи НЕ достатньо. Grep за старими values (`['PAYMENT','PREPAYMENT','REFUND','CREDIT_NOTE']`, `type === 'CHARGE'`, `.includes(t.type)`, `TX_COLORS`, `TX_LABELS`) по apps/web/src → кожна копія оновлюється ідентично (module-level Set + коментар-посилання на бекове BALANCE_SIGN як SSOT). Sample: 23ce9109 оновив SettlementsTabContent, але sibling `counterparties/[id]/PageClient.tsx:1331,1336` мав власну inline-копію без SUPPLIER_CHARGE → отримання товару малювалось «+ red». Правило: після 3-го consumer → shared helper у `lib/utils.ts`. Grep: `grep -rnE "\.includes\(t\.type\)" apps/web/src`, `grep -rn "TX_LABELS\|TX_COLORS" apps/web/src`
 
 #### §8.2.1 Select race
 
@@ -645,13 +555,12 @@ grep -rn "localStorage\|sessionStorage\|window\.\|document\." apps/web/src/ \
 #### §8.4 Routing & Auth
 
 ```bash
-# Таб-обгортка з розширеним useRequireAuth (union ролей заради ОДНОГО табу) — інші таби
-# можуть 403-ити для доданої ролі. Знайти сторінки з >3 ролей у guard + кілька inner-табів.
+# Таб-обгортка з розширеним useRequireAuth (union ролей заради ОДНОГО табу) — інші таби можуть 403-ити
 grep -rnE "useRequireAuth\(\[[^]]*,[^]]*,[^]]*,[^]]*\]" apps/web/src/app --include="*.tsx"
 ```
 
 - [ ] Захищені сторінки → `useRequireAuth(roles)` або redirect
-- [ ] **Таб-обгортка що РОЗШИРЮЄ `useRequireAuth` guard заради одного табу → кожен інший таб мусить бути gated за роллю, а default-таб форсуватись на дозволений.** Патерн (audit 305ee759): сторінка «Склад» об'єднала «Документи складу» (backend `@Roles=OWNER/ADMIN/STOREKEEPER`) + «Залишки» (backend дозволяє RECEPTIONIST) під одним guard-ом `['OWNER','ADMIN','STOREKEEPER','RECEPTIONIST']`. Наслідок: RECEPTIONIST проходить guard, але default-таб «Документи складу» 403-ить на КОЖНОМУ виклику → банер помилки + порожні таблиці + create-кнопка що 403-ить. Не витік (backend 403-ить коректно) — broken UX. Fix: `canSeeTab = ROLES.includes(employee.role)` дзеркалить `@Roles` backend-контролера кожного табу; приховати недозволені таби (`.filter`) + форсувати `activeTab` на дозволений коли `!canSee`. Звірити ролі кожного inner-таба з `@Roles` його backend-endpoints (`grep "@Roles" <controller>`)
+- [ ] **Таб-обгортка що РОЗШИРЮЄ `useRequireAuth` guard заради одного табу → кожен інший таб gated за роллю, default-таб форсується на дозволений.** Патерн (audit 305ee759): «Склад» об'єднала «Документи складу» (`@Roles=OWNER/ADMIN/STOREKEEPER`) + «Залишки» (дозволяє RECEPTIONIST) під `['OWNER','ADMIN','STOREKEEPER','RECEPTIONIST']`. Наслідок: RECEPTIONIST проходить guard, але default-таб «Документи складу» 403-ить → банер помилки + порожні таблиці. Не витік (backend 403-ить коректно) — broken UX. Fix: `canSeeTab = ROLES.includes(employee.role)` дзеркалить `@Roles` кожного табу; приховати недозволені (`.filter`) + форсувати `activeTab`. Звірити ролі кожного inner-таба з `@Roles` його endpoints (`grep "@Roles" <controller>`)
 - [ ] `/setup` має окремий `layout.tsx` без `AuthProvider`/`TopShell`
 - [ ] PUBLIC_ROUTES (`/booking`, `/setup`, `/login`, `/403`) → `publicFetch`, не `apiFetch`
 
@@ -659,34 +568,21 @@ grep -rnE "useRequireAuth\(\[[^]]*,[^]]*,[^]]*,[^]]*\]" apps/web/src/app --inclu
 
 ```bash
 # toast без features.toastEnabled guard
-grep -rn "toast\." apps/web/src/app/ apps/web/src/components/ --include="*.tsx" \
-  | grep -v "features\.toastEnabled\|// toast\|ToastContainer"
-
+grep -rn "toast\." apps/web/src/app/ apps/web/src/components/ --include="*.tsx" | grep -v "features\.toastEnabled\|// toast\|ToastContainer"
 # Promise.all для bulk-мутацій (має бути allSettled)
-grep -rn "Promise\.all(" apps/web/src/ --include="*.tsx" \
-  | grep -i "bulk\|map.*apiFetch" | grep -v "allSettled"
-
+grep -rn "Promise\.all(" apps/web/src/ --include="*.tsx" | grep -i "bulk\|map.*apiFetch" | grep -v "allSettled"
 # indeterminate через inline ref (крихко)
 grep -rn "indeterminate" apps/web/src/ --include="*.tsx" | grep -v "useEffect\|useRef\|//"
-
-# Hover-only кнопки без focus-visible/focus → невидимі при Tab-навігації (WCAG 2.1.1)
-# Виключаємо pointer-events-none overlays (декоративні, не інтерактивні)
-grep -rn "group-hover:opacity-100" apps/web/src/ --include="*.tsx" \
-  | grep -v "focus-visible:opacity-100\|focus:opacity-100\|pointer-events-none"
-
-# Animation wrapper з власним `if (!open) return null` ламає exit-анімацію Modal
-# Wrapper що рендерить <Modal>/<PickerModal>/<SearchPickerModal> не має робити цей guard самостійно
+# Hover-only кнопки без focus-visible/focus → невидимі при Tab (WCAG 2.1.1); виключаємо pointer-events-none overlays
+grep -rn "group-hover:opacity-100" apps/web/src/ --include="*.tsx" | grep -v "focus-visible:opacity-100\|focus:opacity-100\|pointer-events-none"
+# Animation wrapper з власним if (!open) return null ламає exit-анімацію Modal
 for f in $(grep -rl "if (!open) return null" apps/web/src/components/ui --include="*.tsx"); do
   has_modal_wrapper=$(grep -c "<Modal\b\|<PickerModal\b\|<SearchPickerModal\b" "$f")
   [ "$has_modal_wrapper" -gt 0 ] && echo "EXIT-ANIM BUG: $f має if(!open) перед <Modal>"
 done
-
-# Глобальний [data-state] селектор у globals.css без скоп-маркера — небезпечно
-# (Radix/HeadlessUI використовують data-state="open|closed" як публічний контракт)
+# Глобальний [data-state] селектор у globals.css без скоп-маркера (Radix/HeadlessUI використовують data-state як публічний контракт)
 grep -nE "^\[data-state=" apps/web/src/app/globals.css | grep -v "data-animate"
-
-# СТАНДАРТ списків: сторінка з <DetailPanel> МУСИТЬ мати <DetailPanelToggle> (інакше
-# користувач не може сховати панель; на deep-tab-сторінках панель мовчки зникає — Bug #496/#505).
+# СТАНДАРТ списків: сторінка з <DetailPanel> МУСИТЬ мати <DetailPanelToggle> (Bug #496/#505)
 for f in $(grep -rl "<DetailPanel\b" apps/web/src/app --include="*.tsx" | grep -v "detail-panel-toggle"); do
   grep -q "DetailPanelToggle" "$f" || echo "MISSING TOGGLE: $f має DetailPanel без DetailPanelToggle"
 done
@@ -704,30 +600,18 @@ done
 ```bash
 # Inline IIFE у JSX
 grep -rnE "\{\(\(\) =>" apps/web/src/app/ --include="*.tsx"
-
-# Нова <col> додана у <colgroup> але tfoot colSpan не оновлений
-# (порівняти кількість <col> у <colgroup> з усіма colSpan-ами + сусідніми cells у tfoot/empty-state row)
-# Сигнал: feat-diff показує `+ <col className="w-N">` у тому ж файлі що має <tfoot> з captured colSpan
+# Нова <col> у <colgroup> але tfoot colSpan не оновлений (порівняти кількість <col> з colSpan-ами у tfoot/empty-state)
 git diff HEAD~5 --unified=0 apps/web/src/components --include="*.tsx" 2>/dev/null | grep -E "^\+\s+<col\b"
-
 # Дубльована date badge математика
 grep -rn "86_400_000\|diffDays" apps/web/src/app/ --include="*.tsx" | grep -v "lib/utils\|expiry-badge"
-
-# Date-picker YYYY-MM-DD → ISO конверсія через LOCAL-parse + toISOString() (off-by-one на межі дня)
-# `new Date(`${d}T00:00:00`)` парсить у TZ БРАУЗЕРА, .toISOString() конвертує в UTC →
-# у браузерах з додатнім offset (Kyiv UTC+3) дата зсувається на -1. Замість min-date/setDate-арифметики
-# → канонічний addDaysISO(); для payload → `${d}T23:59:59Z` (кінець дня в UTC).
+# Date-picker YYYY-MM-DD → ISO через LOCAL-parse + toISOString() (off-by-one на межі дня; Kyiv UTC+3 → -1)
 grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src --include="*.tsx" --include="*.ts"
 grep -rnE "\.setDate\(.*getDate\(\) ?\+|\.setDate\(.*getDate\(\) ?-" apps/web/src/app apps/web/src/components --include="*.tsx"
-
 # Власний picker не через picker-modal.tsx
 grep -rn "<Modal" apps/web/src/app/ --include="*.tsx" -l
-
-# Partial helper-migration: файл-консумент useListPage використовує і setPage(1) і resetPage() одночасно
-# (зазвичай applyFilter мігровано на resetPage, а inline JSX handlers досі викликають setPage(1))
+# Partial helper-migration: файл використовує і setPage(1) і resetPage() одночасно
 for f in $(grep -rl "useListPage<" apps/web/src/app --include="*.tsx"); do
-  has_set=$(grep -c "setPage(1)" "$f")
-  has_reset=$(grep -c "resetPage()" "$f")
+  has_set=$(grep -c "setPage(1)" "$f"); has_reset=$(grep -c "resetPage()" "$f")
   [ "$has_set" -gt 0 ] && [ "$has_reset" -gt 0 ] && echo "MIXED: $f (setPage(1)=$has_set, resetPage()=$has_reset)"
 done
 ```
@@ -736,9 +620,9 @@ done
 - [ ] Великий датасет + сервер-пошук → `<SearchCombobox<T>>`
 - [ ] Inline IIFE `{(() => {...})()}` → іменована функція; pointless wrapper навколо `.map()` → прибрати IIFE
 - [ ] "Прострочено/скоро" badge → `<ExpiryBadge>` + `daysUntil()`, не inline `Math.ceil(.../86_400_000)`
-- [ ] **Date-picker `YYYY-MM-DD` → ISO конверсія без LOCAL-parse.** `new Date(`${d}T00:00:00`).toISOString()` парсить рядок у TZ **браузера**, потім конвертує в UTC → у браузерах з додатнім UTC-offset (Kyiv UTC+3) дата зсувається на **-1 день** (`2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z`), зберігається/відправляється дата на день раніше вибраної. Для day-based min/max арифметики → канонічний `addDaysISO(kyivToday(), N)` (UTC-математика, вже у `lib/format.ts`), НЕ ручний `new Date + setDate + toISOString().slice`. Для payload «до кінця дня» → `${d}T23:59:59Z`(UTC end-of-day, покриває весь вибраний день незалежно від TZ). Grep: детектор вище. Sample bug (audit Warranties UI, abe63125):`WarrantyCreateModal`— і`tomorrow`(min-date), і submit`expiresAt` мали цей зсув
+- [ ] **Date-picker `YYYY-MM-DD` → ISO конверсія без LOCAL-parse.** `new Date(`${d}T00:00:00`).toISOString()` парсить рядок у TZ **браузера**, потім у UTC → у браузерах з додатнім offset (Kyiv UTC+3) дата зсувається на **-1 день** (`2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z`). Day-based min/max арифметика → канонічний `addDaysISO(kyivToday(), N)` (UTC-математика, `lib/format.ts`), НЕ ручний `new Date + setDate + toISOString().slice`. Payload «до кінця дня» → `${d}T23:59:59Z`(UTC end-of-day). Sample:`WarrantyCreateModal` (abe63125). (Деталі: запис 2026-09-09)
 - [ ] Однаковий helper 2+ рази → `lib/utils.ts`
-- [ ] **Export/render parity (екран↔файл):** окремий `exportCell`/`toCsvCell` helper поруч із екранним `fmtCell`/`renderCell` → мусить давати ТІ САМІ лейбли для КОЖНОГО `type` (enum, boolean, date). Grep обидва, порівняй гілки по-типах: пропущена гілка = мовчазна розбіжність. Sample bug (audit e4f2ed2e): `exportCell` не мав `boolean`-гілки → boolean-колонка (`isActive`/«Активна») експортувалась `String(true)`→"true"/"false" (англ.), екран через `fmtCell` давав «Так/Ні». Fix: додати відсутні type-гілки, дзеркалячи екранний форматер. Виняток — числове форматування: у файлі число лишається сирим (raw) для XLSX `ss:Type=Number`, це прийнятна різниця (значення те саме, лише без grouping/decimals), НЕ розбіжність лейблів. Grep: `grep -nE "function (export|toCsv|toXlsx)[A-Za-z]*Cell" apps/web/src` → для кожного знайти парний `fmtCell/renderCell` і звірити switch по type
+- [ ] **Export/render parity (екран↔файл):** окремий `exportCell`/`toCsvCell` поруч із екранним `fmtCell`/`renderCell` → ТІ САМІ лейбли для КОЖНОГО `type` (enum, boolean, date). Grep обидва, порівняй гілки по-типах: пропущена гілка = мовчазна розбіжність. Sample (audit e4f2ed2e): `exportCell` без `boolean`-гілки → boolean-колонка експортувалась "true"/"false" (англ.), екран давав «Так/Ні». Виняток — числове форматування: у файлі число raw для XLSX `ss:Type=Number` (значення те саме, лише без grouping/decimals), НЕ розбіжність лейблів. Grep: `grep -nE "function (export|toCsv|toXlsx)[A-Za-z]*Cell" apps/web/src`
 
 ---
 
@@ -766,9 +650,7 @@ grep -n "model " packages/database/prisma/schema.prisma | grep -v "//"
 
 ```bash
 # Magic numbers у сервісах
-grep -rn "= [0-9]\{2,\}" apps/api/src/modules/ --include="*.ts" \
-  | grep -v "spec\|take:\|skip:\|1000\|200\|100\|60_000\|300_000" | head -15
-
+grep -rn "= [0-9]\{2,\}" apps/api/src/modules/ --include="*.ts" | grep -v "spec\|take:\|skip:\|1000\|200\|100\|60_000\|300_000" | head -15
 # Hardcoded шаблони повідомлень
 grep -rn "\"Шановний\|\"Ваш наряд\|\"Рахунок №\|'Дякуємо" apps/api/src/ --include="*.ts" | grep -v spec
 ```
@@ -784,17 +666,13 @@ grep -rn "\"Шановний\|\"Ваш наряд\|\"Рахунок №\|'Дяк
 ```bash
 # Frontend інтерфейси
 grep -rn "^interface \|^type [A-Z]" apps/web/src/app/ --include="*.tsx" | grep -v "Props\b"
-
 # Backend toResponseDto
 grep -rn "toResponseDto\|toDto\|toDetailDto" apps/api/src/modules/ --include="*.ts" | grep -v spec
-
 # syncVersion BigInt напряму у response
 grep -rn "return\s*await\s*this\.prisma\.[a-zA-Z]\+\.\(findMany\|findFirst\|create\|update\)" \
   apps/api/src/modules/ --include="*.service.ts" | grep -v spec
-
 # Payload spread з BigInt (Bug #128)
 grep -rn "payload.*\.\.\.row\|payload:\s*row" apps/api/src/modules/ --include="*.ts" | grep -v spec
-
 # Dynamic model lookup plural→singular (Bug #127)
 grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" | grep -v spec
 ```
@@ -811,7 +689,7 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
 ## Крок 3 — Виправлення
 
 ```
-Для кожної знайденої проблеми (Critical → Important → Suggestion):
+Для кожної проблеми (Critical → Important → Suggestion):
   1. Прочитай файл
   2. Застосуй мінімальний точковий фікс
   3. pnpm --filter <package> exec tsc --noEmit → 0 errors
@@ -825,7 +703,6 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
 ```bash
 pnpm --filter @sto/api exec tsc --noEmit
 cd apps/web && node_modules/.bin/tsc --noEmit --incremental false
-
 git add apps/ packages/
 git commit -m "fix(review): <коротко що виправлено>"
 ```
@@ -850,31 +727,20 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ## Крок 6 — Самовдосконалення (ОБОВ'ЯЗКОВО після кожного запуску)
 
-Після виправлення кожної проблеми — запитай себе:
-
-> **"Цей баг охоплений існуючим пунктом чекліста §1–§13?"**
-
-Якщо **НІ** — одразу оновити цей файл:
+Після виправлення кожної проблеми — запитай: **"Цей баг охоплений існуючим пунктом чекліста §1–§13?"** Якщо **НІ**:
 
 1. Додати grep-команду у відповідний розділ
 2. Додати checklist item
 3. Записати підхід у "Накопичені підходи" нижче
 4. Commit: `docs(skills): add <патерн> to sto-review`
 
-**Розподіл sto-review vs sto-tester:**
+**Розподіл:** `sto-review` = статичний аналіз (grep, tsc, код-аналіз); `sto-tester` = динамічні баги (runtime, browser, a11y, i18n, E2E).
 
-- `sto-review` = статичний аналіз (grep, tsc, код-аналіз)
-- `sto-tester` = динамічні баги (runtime, browser, a11y, i18n, E2E)
-
-### Формат запису
+**Формат запису:**
 
 ```
 ### YYYY-MM-DD — [Назва] — §N
-
-**Сигнал:** ...
-**Grep:** ...
-**Фікс:** ...
-**Severity:** CRITICAL / IMPORTANT / SUGGESTION
+**Сигнал:** ... **Grep:** ... **Фікс:** ... **Severity:** CRITICAL / IMPORTANT / SUGGESTION
 ```
 
 ---
@@ -897,7 +763,6 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ### 🔵 Suggestion (nice to have)
 1. [файл:рядок] — пропозиція
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
@@ -909,14 +774,14 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ### 2026-06-19 — relation-include drift: findOne vs create/update — §13
 
-**Сигнал:** новий scalar/relation у `findOne()` include + `toDto()`, але `create/update/addPart/updatePart` include-шейп старий → поле = `null` у POST/PATCH response. Frontend що рендерить з create/update payload одразу показує `null`. (purchase-orders: `lines.good` без `internalCode/brand`; work-orders: `parts.good` без `internalCode/sku/brand`).
+**Сигнал:** новий scalar/relation у `findOne()` include + `toDto()`, але `create/update/addPart/updatePart` include-шейп старий → поле = `null` у POST/PATCH response (purchase-orders `lines.good` без `internalCode/brand`; work-orders `parts.good` без `internalCode/sku/brand`).
 **Grep:** `grep -nE "(good|supplier|vehicle|counterparty|warehouse):\s*\{\s*select:" apps/api/src/modules/X/*.service.ts | sort -t: -k3` — звірити shape findOne vs create/update.
 **Фікс:** один shared `const GOOD_INCLUDE_SELECT = {...} satisfies Prisma.GoodSelect` → reuse у findOne/create/update/addPart/updatePart.
-**Severity:** IMPORTANT — німа degradation (toDto `?` optional маркує), фронт показує null після POST/PATCH до refresh.
+**Severity:** IMPORTANT — німа degradation, фронт показує null після POST/PATCH до refresh.
 
 ### 2026-06-19 — frontend мапер читає неіснуюче поле з DTO — §13
 
-**Сигнал:** frontend type-cast вигадує relation (`brand: { name }`) і мапер читає `g.brand?.name ?? null`, а DTO повертає flat scalar (`brandName`). Спред `...g` пише правильний `brandName`, потім bogus мапер перетирає на `null`. TS не ловить (assertion vs runtime DTO). (GoodPickerModal — brandName завжди null).
+**Сигнал:** frontend type-cast вигадує relation (`brand: { name }`), мапер читає `g.brand?.name ?? null`, а DTO повертає flat scalar (`brandName`). Спред `...g` пише правильний `brandName`, потім bogus мапер перетирає на `null`. TS не ловить (GoodPickerModal — brandName завжди null).
 **Grep:** `grep -rnE "apiFetch<\{[^}]*(brand|supplier|good):\s*\{" apps/web/src --include="*.tsx"` — звірити з backend toDto shape.
 **Фікс:** прибрати фейковий relation з type-cast; покладатись на spread `...g`; лишити лише поля що потребують перетворення.
 **Severity:** IMPORTANT — німа degradation, UI показує null для поля що backend віддає.
@@ -1089,7 +954,7 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 ### 2026-05-31 — Per-item line.id-keyed onSelect sub-resource race — §8.2
 
-**Сигнал:** `lines.map((l,i) => onSelect={async g => { setLines(...); const sub = await apiFetch(`/x/${g.id}/Y`); setLines(ls => ls.map((x,idx) => idx===i ? {...x, sub} : x)) }})` — race при швидкому переви­борі товару в рядку.
+**Сигнал:** `lines.map((l,i) => onSelect={async g => { setLines(...); const sub = await apiFetch(`/x/${g.id}/Y`); setLines(ls => ls.map((x,idx) => idx===i ? {...x, sub} : x)) }})` — race при швидкому перевиборі товару в рядку.
 **Фікс:** capture `selectedGoodId = g.id`; скинути похідний стан одразу; після await перевірити `if (ls[idx]?.goodId !== selectedGoodId) return ls`.
 **Severity:** IMPORTANT — silent UI inconsistency (UoM товару Y на товар X → невірний коефіцієнт/quantity).
 
@@ -1320,20 +1185,18 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 
 **Сигнал:** tax-aware aggregate (`vatReport/revenueReport`) без `status: { in: [...] }` → включає DRAFT/CANCELLED → завищене ПДВ-зобов'язання.
 **Grep:** `grep -rnE "\.aggregate\(\{" apps/api/src/modules/reports --include="*.service.ts" -A10 | grep -B5 "_sum\|_count" | grep -v "status:"`; per-model loop для Invoice/PurchaseOrder/WorkOrder/StockDocument.
-**Фікс:** `status: { in: [...] }` за бізнес-правилами:
+**Фікс:** `status: { in: [...] }` за бізнес-правилами (документувати inline _чому саме ці статуси_):
 
 - Sales VAT (Invoice): `SENT, PAID, OVERDUE`
 - Purchase VAT credit (PurchaseOrder): `PARTIAL, RECEIVED`
 - Revenue (WorkOrder): `COMPLETED, INVOICED, PAID, ARCHIVED`
 - Inventory (StockDocument): `CONFIRMED`
-
-Документувати inline _чому саме ці статуси_.
-**Severity:** CRITICAL — financial/regulatory compliance bug.
+  **Severity:** CRITICAL — financial/regulatory compliance bug.
 
 ### 2026-09-02 — Sentinel empty-string у UUID FK колонку → runtime "invalid input syntax for type uuid" — §5/§6
 
 **Сигнал:** сервіс повертає sentinel `''` у полі-ідентифікаторі (`consumeBatch(AVG_COST)` → `[{batchId: ''}]` = "агрегат по кількох партіях"). Викликач пише `''` у `batchId String? @db.Uuid` → Postgres `invalid input syntax for type uuid: ""` → FSM COMPLETED/CONFIRMED падає лише на org з AVG_COST. Тест з real-UUID мока не reproduce.
-**Grep:** `grep -rnE "consumed\[0\]\.batchId|allocations\[0\]\.[a-zA-Z]+Id|results?\[0\]\.[a-zA-Z]+Id" apps/api/src/modules --include="*.ts"` (детектор у §5) — перевірити чи sentinel-повертайка дає `''` + чи колонка `@db.Uuid`.
+**Grep:** `grep -rnE "consumed\[0\]\.batchId|allocations\[0\]\.[a-zA-Z]+Id|results?\[0\]\.[a-zA-Z]+Id" apps/api/src/modules --include="*.ts"` (детектор у §5) — перевірити sentinel-повертайку `''` + чи колонка `@db.Uuid`.
 **Фікс:** truthy-guard `consumed[0].batchId ? consumed[0].batchId : null` (порожній рядок falsy, UUID truthy). Або explicit `null` у sentinel. Regression-spec: mock `[{batchId: ''}]` → assert `data: { batchId: null }`.
 **Severity:** CRITICAL — runtime blocker на всіх org з AVG_COST; TS зелений, unit з real UUID пропускають.
 
@@ -1367,131 +1230,128 @@ grep -rnE "cursor-pointer" apps/web/src/ --include="*.tsx" -B3 -A3 | grep -B3 -A
 
 ### 2026-09-06 — getLinkedCounts рахує FK-наявність, detail фільтрує deletedAt:null → count!=detail — §6/§13
 
-**Сигнал:** новий `getLinkedCounts(orgId, ids)` рахує пов'язані сутності за самою наявністю FK (`X.purchaseOrderId ? 1 : 0`, обов'язковий FK → `1`), тоді як парний `getLinkedDocuments` робить `findFirst({ deletedAt: null })` і повертає `[]` коли реф soft-deleted. FK `ON DELETE SET NULL` спрацьовує ЛИШЕ при hard-delete → soft-delete лишає FK вказувати на мертвий рядок → badge показує «1», панель порожня (Bug #A/#641 count!=detail). Канонічний патерн у `invoices.getLinkedCounts` (коментар «Bug #A») уже це кодифікує; нові модулі (stock-documents/supplier-returns) його пропускали.
+**Сигнал:** новий `getLinkedCounts(orgId, ids)` рахує пов'язані сутності за самою наявністю FK (`X.purchaseOrderId ? 1 : 0`, обов'язковий FK → `1`), тоді як парний `getLinkedDocuments` робить `findFirst({ deletedAt: null })` і повертає `[]` коли реф soft-deleted. FK `ON DELETE SET NULL` спрацьовує ЛИШЕ при hard-delete → soft-delete лишає FK вказувати на мертвий рядок → badge «1», панель порожня (Bug #A/#641 count!=detail). Канонічний патерн у `invoices.getLinkedCounts` (коментар «Bug #A»); нові модулі (stock-documents/supplier-returns) його пропускали.
 **Grep:** `grep -rn "getLinkedCounts" apps/api/src/modules --include="*.service.ts"` → для кожного: чи є `findMany` живих реф-id (PO/warehouse/counterparty) + `Set`-membership перед інкрементом, чи безумовне `? 1 : 0` / `= 1`. Обов'язковий FK (`warehouseId`/`supplierId`) ≠ живий → теж gate через liveness.
 **Фікс:** зібрати унікальні реф-id → `findMany({ where: { id: { in: [...] }, orgId, deletedAt: null }, select: { id: true } })` → `new Set(...)` → `refId && liveSet.has(refId) ? 1 : 0` (дзеркалить invoices). +spec: soft-deleted реф → count=0.
 **Severity:** IMPORTANT — badge/панель розсинхрон; німа degradation (лише коли реф soft-deleted поки документ на нього посилається).
 
 ### 2026-09-06 — queue.add() ПІСЛЯ закоміченої tx без .catch() → 500 на успішній операції + stuck QUEUED — §2.5/§10
 
-**Сигнал:** доменна/фінансова операція комітиться у `$transaction` (Payment+settlement+FSM), сутність отримує статус `QUEUED`/pending ВСЕРЕДИНІ tx, а enqueue робочого job-а йде голим `await this.Xqueue.add(...)` ПІСЛЯ commit — без `.catch()`. При Redis-down (нормальний offline-стан) `.add()` кидає → HTTP 500 повертається клієнту попри те що гроші/статус вже закомічені, І сутність зависає у `QUEUED` навічно (жодного job-а не поставлено → processor ніколи не переведе у DONE/FAILED). Сусідні enqueue у тому ж методі (`loyalty.queueEarn`, `notifications.send`) вже non-blocking через `.catch()` — новий enqueue пропустив цю конвенцію. (ПРРО Крок 1: `checkboxQueue.add` для фіскального чеку.)
-**Grep:** `grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts"` → для кожного перевірити чи виклик у ланцюгу `.catch(...)`; якщо enqueue ПІСЛЯ `$transaction` і голий — прапор.
-**Фікс:** `.catch(async err => { logger.warn('enqueue failed: ...'); await this.prisma.entity.update({ where: { id, orgId }, data: { status: TERMINAL_FAILED, error: 'Черга недоступна' } }).catch(() => undefined) })` — знімає stuck-статус + не валить успішну операцію. Плюс `removeOnFail: N` у опціях (bounded retention). Дзеркалить offline-first інваріант (CLAUDE.md §3).
+**Сигнал:** доменна/фінансова операція комітиться у `$transaction` (Payment+settlement+FSM), сутність отримує статус `QUEUED`/pending ВСЕРЕДИНІ tx, а enqueue робочого job-а йде голим `await this.Xqueue.add(...)` ПІСЛЯ commit — без `.catch()`. При Redis-down (нормальний offline-стан) `.add()` кидає → HTTP 500 попри те що гроші/статус вже закомічені, І сутність зависає у `QUEUED` навічно (жодного job-а → processor ніколи не переведе у DONE/FAILED). Сусідні enqueue (`loyalty.queueEarn`, `notifications.send`) вже non-blocking через `.catch()`. (ПРРО Крок 1: `checkboxQueue.add` для фіскального чеку.)
+**Grep:** `grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include="*.service.ts"` → чи виклик у ланцюгу `.catch(...)`; якщо enqueue ПІСЛЯ `$transaction` і голий — прапор.
+**Фікс:** `.catch(async err => { logger.warn('enqueue failed: ...'); await this.prisma.entity.update({ where: { id, orgId }, data: { status: TERMINAL_FAILED, error: 'Черга недоступна' } }).catch(() => undefined) })` — знімає stuck-статус + не валить успішну операцію. Плюс `removeOnFail: N`. Дзеркалить offline-first (CLAUDE.md §3).
 **Severity:** IMPORTANT — offline-first порушення (система стоїть без Redis) + lifecycle hole (навічно QUEUED); TS зелений, видно лише при Redis-down.
 
 ### 2026-09-06 — error-swallowing wrapper резолвиться → caller показує хибний success — §8.2
 
-**Сигнал:** shared-мутатор (`patchChannel`/`saveX`) має внутрішній `try/catch`, що `setError`+`toast.error` і **резолвиться** (не re-throw). Caller (`saveCreds`/submit-handler) робить `await wrapper(...)` у власному `try` → після await беззастережно `toast.success('Збережено')` + `closeModal()`. Оскільки wrapper проковтнув помилку й не кинув, caller завжди думає що успіх → toast «збережено» + модалка закрита навіть коли PATCH впав (і поруч ще один error-toast). Аналогічно ланцюг залежних мутацій (priority-swap: два послідовні PATCH) виконує 2-й крок навіть коли 1-й впав → часткова неконсистентність.
+**Сигнал:** shared-мутатор (`patchChannel`/`saveX`) має внутрішній `try/catch`, що `setError`+`toast.error` і **резолвиться** (не re-throw). Caller (`saveCreds`/submit) робить `await wrapper(...)` у власному `try` → беззастережно `toast.success('Збережено')` + `closeModal()`. Wrapper проковтнув помилку → caller завжди думає що успіх → toast «збережено» + модалка закрита навіть коли PATCH впав. Аналогічно ланцюг залежних мутацій (priority-swap: 2 послідовні PATCH) виконує 2-й крок навіть коли 1-й впав → часткова неконсистентність.
 **Grep:**
 
 ```bash
-# wrapper з внутрішнім catch що НЕ кидає + caller з success-toast після await
 grep -rnE "const (patch|save|update|toggle)[A-Za-z]* = (async )?\(" apps/web/src/app --include="*.tsx" -A25 \
   | grep -E "catch|toast\.success|return true|return false" | head -30
 ```
 
-**Фікс:** wrapper повертає `boolean` (`return true`/`return false` у catch); caller гейтить `const ok = await wrapper(...); if (!ok) return;` перед success-toast/close. Ланцюг залежних мутацій — 2-й крок лише `if (ok)`; додати in-flight guard (`movingId`) проти конкурентних запусків.
-**Severity:** IMPORTANT — хибний UX-сигнал (juser думає що збережено) + часткова неконсистентність у dependent-write ланцюгах.
+**Фікс:** wrapper повертає `boolean` (`return true`/`return false` у catch); caller гейтить `const ok = await wrapper(...); if (!ok) return;` перед success-toast/close. Ланцюг залежних мутацій — 2-й крок лише `if (ok)`; in-flight guard (`movingId`) проти конкурентних запусків.
+**Severity:** IMPORTANT — хибний UX-сигнал + часткова неконсистентність у dependent-write ланцюгах.
 
 ### 2026-09-06 — provider-агностичне «template-id» поле → inline-канал шле ПОРОЖНІЙ текст — §5/§13
 
-**Сигнал:** нове опц. поле-джерело-контенту (`externalTemplateId`) зберігається per-config незалежно від провайдера, а resolve-фільтр зараховує канал придатним за самою наявністю поля: `filter(c => hasLocalTemplate(c) || c.externalTemplateId)`. Але поле консумить лише ЧАСТИНА провайдерів/каналів (eSputnik Viber/Telegram через smartsend); inline-провайдер (SMS усіх, TurboSMS Viber) ігнорує його й шле `message` — який для external-template каналу = `''` (renderTemplate('')). Результат: `sendsms {text:''}` / `viber {text:''}` — мовчазна порожня відправка. Прямий API-виклик в обхід UI записує template-id на inline-канал.
+**Сигнал:** нове опц. поле-джерело-контенту (`externalTemplateId`) зберігається per-config незалежно від провайдера, а resolve-фільтр зараховує канал придатним за самою наявністю поля: `filter(c => hasLocalTemplate(c) || c.externalTemplateId)`. Але поле консумить лише ЧАСТИНА провайдерів (eSputnik Viber/Telegram через smartsend); inline-провайдер (SMS усіх, TurboSMS Viber) ігнорує його й шле `message` — який для external-template каналу = `''` (renderTemplate('')). Результат: `sendsms {text:''}` — мовчазна порожня відправка. Прямий API-виклик в обхід UI записує template-id на inline-канал.
 **Grep:** `grep -rnE "\|\|\s*c\.(externalTemplateId|templateId|externalId)" apps/api/src/modules --include="*.service.ts"` — фільтр придатності що OR-иться на опц. поле без перевірки провайдера. Плюс: чи `templateBody: ... ?? ''` подається inline-провайдеру.
-**Фікс (3 шари):** (1) провайдер декларує які канали template-based — `readonly templateChannels?: NotificationChannel[]` (SSOT, віддається у `registry.list()` для UI); (2) upsert примусово `field = isTemplateChannel ? dto.field ?? null : null` (defence-in-depth проти прямого API); (3) resolve-фільтр: канал без локального шаблону придатний лише якщо `registry.get(provider)?.templateChannels?.includes(channel)`. Frontend derive `needsX` з `provider.templateChannels`, не хардкод-Set. +регрес: inline-канал зі stray-template-id → канал ВИКЛЮЧЕНО / поле=null.
+**Фікс (3 шари):** (1) провайдер декларує які канали template-based — `readonly templateChannels?: NotificationChannel[]` (SSOT, у `registry.list()`); (2) upsert примусово `field = isTemplateChannel ? dto.field ?? null : null` (defence-in-depth); (3) resolve-фільтр: канал без локального шаблону придатний лише якщо `registry.get(provider)?.templateChannels?.includes(channel)`. Frontend derive `needsX` з `provider.templateChannels`, не хардкод-Set. +регрес: inline-канал зі stray-template-id → канал ВИКЛЮЧЕНО / поле=null.
 **Severity:** IMPORTANT — мовчазна порожня відправка на mis-config; TS зелений (поле опційне у всіх шарах).
 
 ### 2026-09-06 — exclusivity-action + сусідній per-item toggle що мовчки ламає інваріант — §8.2/§5
 
-**Сигнал:** нова дія встановлює «ексклюзивно лише один X активний» (activate-provider, set-default-account, pin-single) через bulk-mutation (`updateMany others=false, updateMany chosen=true` / `$transaction`), АЛЕ у тому ж UI лишається старий per-item toggle (`Switch`/checkbox) що редагує те саме поле (`enabled`/`isDefault`) на БУДЬ-ЯКОМУ елементі. Юзер вмикає item іншої групи → інваріант «лише один» тихо порушено. Downstream-споживач (`resolveConfig` фільтрує `enabled:true` по ВСІХ) бере два → подвійна/невизначена поведінка. TS зелений (поле легітимне boolean).
+**Сигнал:** нова дія встановлює «ексклюзивно лише один X активний» (activate-provider, set-default-account, pin-single) через bulk-mutation (`updateMany others=false, updateMany chosen=true`), АЛЕ у тому ж UI лишається старий per-item toggle (`Switch`/checkbox) що редагує те саме поле (`enabled`/`isDefault`) на БУДЬ-ЯКОМУ елементі. Юзер вмикає item іншої групи → інваріант «лише один» тихо порушено. Downstream (`resolveConfig` фільтрує `enabled:true` по ВСІХ) бере два → подвійна поведінка. TS зелений.
 **Grep:**
 
 ```bash
-# activate/setDefault/setPrimary поруч із per-item enabled/isDefault toggle у тому ж файлі
 grep -rlE "activate[A-Z]|setDefault|setPrimary|isExclusive|updateMany.*enabled" apps/web/src/app --include="*.tsx" \
   | xargs grep -lE "toggle[A-Z]|onChange.*enabled|checked=\{" 2>/dev/null
-# derived «активний» через find(first-match) — маскує другий активний елемент
 grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z]+ \?\? null" apps/web/src --include="*.tsx"
 ```
 
-**Фікс:** per-item toggle гейтить інваріант — увімкнути item можна лише якщо він у активній групі (`if (enable && item.group !== activeGroup) { setError(...); return; }`); toggle неактивної групи `disabled`. Вимкнути item активної групи (звузити) — дозволено. Активація іншої групи — лише через exclusivity-action. Empty-state guard на самій exclusivity-action: якщо група не має жодного item → bulk-mutation матчить 0 рядків = no-op + хибний success-toast → перевірити `items.some(i => i.group === chosen)` перед викликом.
-**Severity:** IMPORTANT — тихе порушення інваріанта; downstream бере два «ексклюзивні» → неоднозначна поведінка; UX хибний success на no-op.
+**Фікс:** per-item toggle гейтить інваріант — увімкнути item можна лише якщо він у активній групі (`if (enable && item.group !== activeGroup) { setError(...); return; }`); toggle неактивної групи `disabled`. Вимкнути item активної групи — дозволено. Активація іншої групи — лише через exclusivity-action. Empty-state guard на самій exclusivity-action: якщо група не має жодного item → bulk-mutation матчить 0 рядків = no-op + хибний success-toast → перевірити `items.some(i => i.group === chosen)` перед викликом.
+**Severity:** IMPORTANT — тихе порушення інваріанта; downstream бере два «ексклюзивні»; UX хибний success на no-op.
 
 ### 2026-09-06 — optional-джерело з config-дефолту валить операцію коли дефолт stale → offline-first — §5/§10
 
-**Сигнал:** сервіс резолвить **опційне** поле (рахунок-призначення платежу, дефолтний склад, дефолтний шаблон) за пріоритетом «DTO явно → інакше дефолт з config-моделі → інакше null» і **безумовно** кидає `NotFoundException` коли резолвлений id не знайдено (`findFirst({ deletedAt: null })` → null). Проблема: коли id прийшов НЕ з вводу користувача, а з **config-дефолту** (`PaymentMethodConfig.defaultBankAccountId`), а цей рахунок з тих пір soft-delete-нули → **застарілий конфіг валить легітимну грошову/доменну операцію** (HTTP 404 на валідному платежі). Порушує offline-first (CLAUDE.md §3: «система не зупиняється»). Метадані-лінк (куди фізично лягли гроші) — опційний і не впливає на борг/settlement, тож блокувати рух грошей через нього неправильно.
-**Grep:** `grep -rnE "default[A-Z][a-zA-Z]*Id|methodConfig\?\.|config\?\.default" apps/api/src/modules --include="*.service.ts" -A6 | grep -iE "NotFoundException|throw"` — для кожного резолвера опційного дефолту перевірити, чи розрізняється explicit(DTO) vs config-default джерело перед throw.
-**Фікс:** розрізнити джерело значення прапорцем `const fromDto = !!(dto.X || dto.Y || dto.Z)`. **Explicit (DTO)** невалідний/чужий/видалений → строго `throw` (4xx) — це ввід користувача, мусить бути коректним. **Config-default** stale (з тих пір видалено) → **degrade to null** (best-effort, операція успішна). Крос-tenant перевірка (`orgId` у where) лишається в обох гілках. Sample: `PaymentsService.resolveDestinationAccount` (money-model Phase 1, review 2026-09-06) — +2 spec (explicit invalid→throw; config-default deleted→degrade+payment succeeds).
-**Severity:** IMPORTANT — offline-first порушено; застарілий адмін-конфіг блокує легітимні гроші/операції; degradation не видима у tsc/тестах поки конкретний дефолт не буде soft-deleted на проді.
+**Сигнал:** сервіс резолвить **опційне** поле (рахунок-призначення платежу, дефолтний склад/шаблон) за пріоритетом «DTO явно → інакше дефолт з config-моделі → інакше null» і **безумовно** кидає `NotFoundException` коли резолвлений id не знайдено (`findFirst({ deletedAt: null })` → null). Проблема: коли id прийшов НЕ з вводу користувача, а з **config-дефолту** (`PaymentMethodConfig.defaultBankAccountId`), а цей рахунок з тих пір soft-delete-нули → **застарілий конфіг валить легітимну грошову операцію** (HTTP 404 на валідному платежі). Порушує offline-first (CLAUDE.md §3). Метадані-лінк (куди фізично лягли гроші) — опційний і не впливає на борг/settlement.
+**Grep:** `grep -rnE "default[A-Z][a-zA-Z]*Id|methodConfig\?\.|config\?\.default" apps/api/src/modules --include="*.service.ts" -A6 | grep -iE "NotFoundException|throw"` — для кожного резолвера опційного дефолту чи розрізняється explicit(DTO) vs config-default перед throw.
+**Фікс:** розрізнити джерело прапорцем `const fromDto = !!(dto.X || dto.Y || dto.Z)`. **Explicit (DTO)** невалідний/чужий/видалений → строго `throw` (4xx). **Config-default** stale → **degrade to null** (best-effort, операція успішна). Крос-tenant (`orgId` у where) в обох гілках. Sample: `PaymentsService.resolveDestinationAccount` — +2 spec (explicit invalid→throw; config-default deleted→degrade+payment succeeds).
+**Severity:** IMPORTANT — offline-first порушено; застарілий адмін-конфіг блокує легітимні гроші; degradation не видима у tsc/тестах поки дефолт не soft-deleted на проді.
 
 ### 2026-09-06 — оптимістичний status-flip після mutation ігнорує проміжний стан (partial) — §8.2
 
-**Сигнал:** після успішного POST (оплата/крок FSM) фронт оптимістично ставить **фінальний** статус у відкритій панелі (`setSelectedX(prev => ({ ...prev, status: 'PAID' }))`), припускаючи що mutation завжди веде у фінал. Але backend має **проміжний** стан (`PARTIALLY_PAID` коли `paidAmount < amount`) → частковий платіж лишає рахунок частковим, а панель показує PAID → ховає кнопку дії («Оплатити»), яку користувач ще має натиснути. `invalidateQueries` виправить після refetch, але оптимістичне значення хибне у вікні до refetch (і повністю хибне якщо refetch впаде).
-**Grep:** `grep -rnE "set[A-Z][a-zA-Z]*\(prev =>.*status: '[A-Z_]+'" apps/web/src/app --include="*.tsx"` — для кожного оптимістичного status-flip після mutation перевірити, чи враховано проміжні стани.
-**Фікс:** обчислити результуючий статус **тією самою логікою що backend** (з тим самим epsilon для money): `const optimistic = newPaidTotal >= amount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID'`; оновити і похідні поля (`paidAmount`), щоб панель була консистентна до refetch.
+**Сигнал:** після успішного POST (оплата/крок FSM) фронт оптимістично ставить **фінальний** статус (`setSelectedX(prev => ({ ...prev, status: 'PAID' }))`), припускаючи що mutation завжди веде у фінал. Але backend має **проміжний** стан (`PARTIALLY_PAID` коли `paidAmount < amount`) → частковий платіж лишає рахунок частковим, а панель показує PAID → ховає кнопку «Оплатити». `invalidateQueries` виправить після refetch, але оптимістичне значення хибне у вікні до refetch (і повністю хибне якщо refetch впаде).
+**Grep:** `grep -rnE "set[A-Z][a-zA-Z]*\(prev =>.*status: '[A-Z_]+'" apps/web/src/app --include="*.tsx"` — для кожного оптимістичного status-flip чи враховано проміжні стани.
+**Фікс:** обчислити результуючий статус **тією самою логікою що backend** (з тим самим epsilon): `const optimistic = newPaidTotal >= amount - 1e-9 ? 'PAID' : 'PARTIALLY_PAID'`; оновити і похідні поля (`paidAmount`).
 **Severity:** IMPORTANT — хибний UI-стан ховає потрібну дію (partial payment → кнопка «Оплатити» зникає); гроші-критичний UX.
 
 ### 2026-09-06 — date-only `lte` фільтр = midnight UTC → виключає весь день `dateTo` — §5/§6
 
-**Сигнал:** where-фільтр діапазону дат по date-only рядку (`YYYY-MM-DD` від DatePicker): `createdAt.lte = new Date(opts.dateTo)`. `new Date('2026-09-06')` парситься як **midnight UTC** (00:00:00.000Z), тож `lte` виключає ВСІ рядки, зроблені пізніше 00:00 того ж дня — фільтр «до 06.09» не показує оплату о 10:00 06.09. Симетрично `gte = new Date(dateFrom)` коректний (початок дня), але залежить від TZ; краще фіксувати обидва явно. Еталон-реалізація вже є у `supplier-payments.service` (`+ 'T23:59:59.999Z'`).
-**Grep:** `grep -rnE "(lte|lt):\s*new Date\((opts\.|dto\.)?date[A-Za-z]*\)" apps/api/src/modules --include="*.service.ts"` — для кожного `lte: new Date(dateTo)` без `T23:59:59` перевірити чи вхід date-only.
-**Фікс:** `gte: new Date(dateFrom + 'T00:00:00.000Z')`, `lte: new Date(dateTo + 'T23:59:59.999Z')` (inclusive-of-full-day, UTC-стабільно, дзеркалить supplier-payments).
-**Severity:** IMPORTANT — silent correctness: фільтр «сьогодні»/«за період до X» мовчки губить весь останній день; не ловиться tsc.
+**Сигнал:** where-фільтр діапазону дат по date-only рядку (`YYYY-MM-DD` від DatePicker): `createdAt.lte = new Date(opts.dateTo)`. `new Date('2026-09-06')` = **midnight UTC** (00:00:00.000Z), тож `lte` виключає ВСІ рядки пізніше 00:00 того ж дня — фільтр «до 06.09» не показує оплату о 10:00 06.09. Симетрично `gte = new Date(dateFrom)` коректний (початок дня), але TZ-залежний. Еталон вже у `supplier-payments.service` (`+ 'T23:59:59.999Z'`).
+**Grep:** `grep -rnE "(lte|lt):\s*new Date\((opts\.|dto\.)?date[A-Za-z]*\)" apps/api/src/modules --include="*.service.ts"` — для кожного `lte: new Date(dateTo)` без `T23:59:59` чи вхід date-only.
+**Фікс:** `gte: new Date(dateFrom + 'T00:00:00.000Z')`, `lte: new Date(dateTo + 'T23:59:59.999Z')` (inclusive-of-full-day, UTC-стабільно).
+**Severity:** IMPORTANT — silent correctness: фільтр «за період до X» мовчки губить весь останній день; не ловиться tsc.
 
 ### 2026-09-06 — query-string фільтр каститься `as EnumType` без валідації → Prisma 500 — §2.3/§6
 
-**Сигнал:** `@Query('x') x?: string` (raw string, ValidationPipe не чіпає per-param query без DTO) каститься прямо у Prisma enum: `where.x = opts.x as Prisma...['x']`. Довільне значення (`?fiscalStatus=garbage`, `?status=FOO`) доходить до Prisma → відхиляється на рівні запиту → HTTP 500 (не-i18n, шум у Sentry) замість порожнього/400.
+**Сигнал:** `@Query('x') x?: string` (raw string, ValidationPipe не чіпає per-param query без DTO) каститься прямо у Prisma enum: `where.x = opts.x as Prisma...['x']`. Довільне значення (`?fiscalStatus=garbage`, `?status=FOO`) доходить до Prisma → відхиляється → HTTP 500 (не-i18n, шум у Sentry) замість порожнього/400.
 **Grep:** `grep -rnE "where\.[a-zA-Z]+ = opts\.[a-zA-Z]+ as Prisma" apps/api/src/modules --include="*.service.ts"`; `grep -rnE "as Prisma\.[A-Za-z]+WhereInput\['" apps/api/src/modules --include="*.service.ts"`.
-**Фікс:** `const X_VALUES = new Set<string>(Object.values(SomeEnum));` (enum-driven, з `@prisma/client`) → `if (opts.x && X_VALUES.has(opts.x)) where.x = opts.x as ...;` — невідоме ігнорується (фільтр не застосовується), як для будь-якого нерозпізнаного query-параметра.
+**Фікс:** `const X_VALUES = new Set<string>(Object.values(SomeEnum));` (enum-driven, з `@prisma/client`) → `if (opts.x && X_VALUES.has(opts.x)) where.x = opts.x as ...;` — невідоме ігнорується.
 **Severity:** IMPORTANT — 500 замість 400/порожнього; тривіальний DoS/шум через ручний query-параметр.
 
 ### 2026-09-07 — CAS-статус закомічено ПЕРЕД money-side-effect → crash-window без реконсиляції — §5
 
-**Сигнал:** money-flow робить `updateMany({where:{status:'PENDING'}, data:{status:'PAID'}})` (CAS-claim) → count===1 → окремим кроком `payments.create()` + запис лінка (`paymentId`). CAS і create — НЕ в одній транзакції (create має власну tx / зовн. виклики). Якщо процес падає МІЖ CAS і create (або create кидає, а код лишає PAID+error БЕЗ re-enqueue), наступний poll робить early-return на `status !== 'PENDING'` → Payment/settlement НЕ створюються НІКОЛИ, хоча гроші у gateway реальні → тиха втрата платежу. Гроші отримано, обліку немає.
-**Grep:** `grep -rnE "updateMany\(\{[^}]*status: 'PENDING'.*data: \{ status: 'PAID'" apps/api/src/modules --include="*.ts"` → для кожного CAS-claim перевірити: (1) чи є гілка `status==='PAID' && linkId===null` що ДОводить side-effect (реконсиляція), (2) чи re-enqueue-иться poll на невдалому create, (3) чи є стеля ретраїв проти вічного циклу при ПОСТІЙНІЙ помилці.
-**Фікс:** гілка реконсиляції на вході process(): `if (status==='PAID'){ if(linkId) return; await finalize(...); return }`. `finalize()` — спільний create+link для CAS-win і reconcile; на помилці re-enqueue (jobId-дедуп = single-flight, без лавини); лічильник `finalizeAttempts` у job.data з `MAX` стелею → далі PAID+error для ручного розбору. Idempotency: `linkId!=null → стоп`.
+**Сигнал:** money-flow робить `updateMany({where:{status:'PENDING'}, data:{status:'PAID'}})` (CAS-claim) → count===1 → окремим кроком `payments.create()` + запис лінка (`paymentId`). CAS і create — НЕ в одній транзакції. Якщо процес падає МІЖ CAS і create (або create кидає, а код лишає PAID+error БЕЗ re-enqueue), наступний poll робить early-return на `status !== 'PENDING'` → Payment/settlement НЕ створюються НІКОЛИ, хоча гроші у gateway реальні → тиха втрата платежу.
+**Grep:** `grep -rnE "updateMany\(\{[^}]*status: 'PENDING'.*data: \{ status: 'PAID'" apps/api/src/modules --include="*.ts"` → для кожного CAS-claim перевірити: (1) гілка `status==='PAID' && linkId===null` що ДОводить side-effect (реконсиляція), (2) чи re-enqueue-иться poll на невдалому create, (3) стеля ретраїв проти вічного циклу.
+**Фікс:** гілка реконсиляції на вході process(): `if (status==='PAID'){ if(linkId) return; await finalize(...); return }`. `finalize()` — спільний create+link для CAS-win і reconcile; на помилці re-enqueue (jobId-дедуп = single-flight); лічильник `finalizeAttempts` у job.data з `MAX` стелею → далі PAID+error для ручного розбору. Idempotency: `linkId!=null → стоп`.
 **Severity:** CRITICAL — тиха втрата грошей (gateway отримав, обліку немає); tsc + happy-path тест мовчать.
 
 ### 2026-09-07 — legacy/default-гілка резолвера повертає конфіг ЧУЖОГО kind (не-exhaustive if/else) — §2/§4
 
-**Сигнал:** резолвер конфіга (`legacyFromBranchSettings`/`resolveX`) має `if (kind === 'FISCAL') {...}` а далі БЕЗУМОВНИЙ «дефолт»-блок (PAYMENT), який виконується для будь-якого не-FISCAL kind. Коли додається новий kind у enum (`ProviderKind += DELIVERY`), він тихо потрапляє у PAYMENT-гілку → повертає креди/провайдера ЧУЖОГО kind (напр. monobank для DELIVERY). Латентно маскується коли consumer робить `registry.get(wrongProvider)=null` — але це витік конфіга чужого kind і ламається при будь-якому майбутньому збігу кодів провайдерів.
-**Grep:** `grep -rnE "if \(kind === '[A-Z]+'\)" apps/api/src/modules --include="*.service.ts" -A30` → перевірити, що для КОЖНОГО enum-значення є явна гілка АБО explicit `return null`; фінальний блок не має бути «catch-all» для одного конкретного kind. Тригер: enum з `ADD VALUE` у diff + резолвер що читає той enum.
-**Фікс:** явний guard перед «дефолт»-блоком: `if (kind !== 'PAYMENT') return null;` (легасі-колонок для нового kind не існує) — або exhaustive `switch (kind)` з `default: return null`.
-**Severity:** IMPORTANT — cross-kind config leak; tsc + happy-path (лише FISCAL/PAYMENT) мовчать, спливає лише при новому enum-значенні.
+**Сигнал:** резолвер конфіга (`legacyFromBranchSettings`/`resolveX`) має `if (kind === 'FISCAL') {...}` а далі БЕЗУМОВНИЙ «дефолт»-блок (PAYMENT), який виконується для будь-якого не-FISCAL kind. Коли додається новий kind (`ProviderKind += DELIVERY`), він тихо потрапляє у PAYMENT-гілку → повертає креди/провайдера ЧУЖОГО kind (monobank для DELIVERY). Латентно маскується коли consumer робить `registry.get(wrongProvider)=null`.
+**Grep:** `grep -rnE "if \(kind === '[A-Z]+'\)" apps/api/src/modules --include="*.service.ts" -A30` → для КОЖНОГО enum-значення явна гілка АБО explicit `return null`; фінальний блок не має бути «catch-all». Тригер: enum з `ADD VALUE` у diff + резолвер що читає той enum.
+**Фікс:** явний guard перед «дефолт»-блоком: `if (kind !== 'PAYMENT') return null;` — або exhaustive `switch (kind)` з `default: return null`.
+**Severity:** IMPORTANT — cross-kind config leak; tsc + happy-path мовчать, спливає лише при новому enum-значенні.
 
 ### 2026-09-09 — one-off `.add()` без jobId/removeOnFail поруч із repeatable-сіблінгами — §2.5
 
-**Сигнал:** scheduler має `enqueueRepeatable`/`reschedule` `.add()` з `jobId`+`removeOnFail: N`, але «manual»/«зробити зараз» `enqueueImmediate` `.add()` у тому ж файлі — БЕЗ обох. job.data без секрета (§2.5 secret-rule не спрацьовує), але: без `removeOnFail` невдалі manual-jobs ростуть безмежно у Redis; без `jobId` спам кнопки ставить дублі паралельних job-ів. (nbu-fetch.scheduler.ts `enqueueImmediate`.)
-**Grep:** `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8` → якщо у файлі співіснують `.add()` з `jobId`+`removeOnFail` і `.add()` без них — прапор.
-**Фікс:** додати `jobId: '<x>-now-<org>'` (ОКРЕМИЙ від repeatable `<x>-<org>` — інакше конфлікт з cron-записом) + `removeOnFail: 200` (дзеркалить сіблінги).
-**Severity:** IMPORTANT — Redis-ріст (unbounded failed-set) + duplicate manual fan-out; tsc зелений, видно лише на проді під навантаженням.
+**Сигнал:** scheduler має `enqueueRepeatable`/`reschedule` `.add()` з `jobId`+`removeOnFail: N`, але «manual»/«зробити зараз» `enqueueImmediate` `.add()` у тому ж файлі — БЕЗ обох. job.data без секрета (§2.5 secret-rule не спрацьовує), але: без `removeOnFail` невдалі manual-jobs ростуть у Redis; без `jobId` спам кнопки = дублі. (nbu-fetch.scheduler.ts `enqueueImmediate`.)
+**Grep:** `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8` → якщо співіснують `.add()` з `jobId`+`removeOnFail` і `.add()` без них — прапор.
+**Фікс:** `jobId: '<x>-now-<org>'` (ОКРЕМИЙ від repeatable `<x>-<org>` — інакше конфлікт з cron-записом) + `removeOnFail: 200` (дзеркалить сіблінги).
+**Severity:** IMPORTANT — Redis-ріст (unbounded failed-set) + duplicate manual fan-out; tsc зелений.
 
 ### 2026-09-09 — date-picker YYYY-MM-DD → ISO через local-parse → off-by-one на межі дня — §8.6
 
-**Сигнал:** `new Date(`${d}T00:00:00`).toISOString()` де `d` — рядок з date-picker. Парсинг `T00:00:00` (без `Z`) відбувається у TZ **браузера**, `.toISOString()` конвертує в UTC. У браузерах з додатнім offset (Kyiv UTC+3) `2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z` → збережена/відправлена дата на **-1 день**. Той самий баг у ручній min/max-date арифметиці (`new Date(...); setDate(getDate()+1); toISOString().slice(0,10)`).
+**Сигнал:** `new Date(`${d}T00:00:00`).toISOString()` де `d` — рядок з date-picker. Парсинг `T00:00:00` (без `Z`) у TZ **браузера**, `.toISOString()` → UTC. У браузерах з додатнім offset (Kyiv UTC+3) `2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z` → дата на **-1 день**. Той самий баг у ручній min/max арифметиці (`new Date(...); setDate(getDate()+1); toISOString().slice(0,10)`).
 **Grep:** `grep -rnE "new Date\(\`?\\\$?\{[a-zA-Z]+\}?T00:00:00\`?\)" apps/web/src`+`grep -rnE "\.setDate\(.*getDate\(\) ?[+-]" apps/web/src/app apps/web/src/components`.
-**Фікс:** day-арифметика → канонічний `addDaysISO(kyivToday(), N)`(UTC-математика,`lib/format.ts`); payload «кінець дня» → `${d}T23:59:59Z` (UTC end-of-day, покриває весь вибраний день незалежно від TZ браузера).
-**Severity:** IMPORTANT — німа data-corruption (дата на день раніше), tsc зелений; проявляється лише у певних TZ. Sample: WarrantyCreateModal (abe63125).
+**Фікс:** day-арифметика → канонічний `addDaysISO(kyivToday(), N)`(UTC-математика,`lib/format.ts`); payload «кінець дня» → `${d}T23:59:59Z`.
+**Severity:** IMPORTANT — німа data-corruption (дата на день раніше), tsc зелений; лише у певних TZ. Sample: WarrantyCreateModal (abe63125).
 
 ### 2026-09-12 — enum-DTO поле валідоване як @IsString замість @IsEnum → Prisma enum 500 — §2.3
 
 **Сигнал:** optional/required DTO-поле, чий TS-тип — Prisma enum (`type?: ExpenseCategoryType`), декороване `@IsString()` (або лише `@IsOptional()`). `@IsString` пропускає будь-який рядок → значення долітає до enum-колонки у `create/update`.
 **Grep:** `grep -rnE "^\s*@IsString\(\)" apps/api/src/modules --include="*.dto.ts" -A1 | grep -E ":\s*[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b"`.
 **Фікс:** `@IsEnum(TheEnum)` замість `@IsString()` (стандарт codebase — 77+ вжитків: cash.dto `direction`/`reason`, payments.dto тощо).
-**Severity:** IMPORTANT — `POST {type:"FOO"}` → Postgres `invalid input value for enum` → HTTP 500 (не-i18n) замість 400; tsc зелений (значення TS-сумісне з рядком). Sample: CreateExpenseCategoryDto.type (0fc2260d).
+**Severity:** IMPORTANT — `POST {type:"FOO"}` → Postgres `invalid input value for enum` → HTTP 500 (не-i18n) замість 400; tsc зелений. Sample: CreateExpenseCategoryDto.type (0fc2260d).
 
 ### 2026-09-13 — ручна enum-валідація через `in`-оператор пропускає прототипні ключі → Prisma 500 — §2.3
 
 **Сигнал:** guard `if (type && !(type in SomeEnum)) throw new BadRequestException(...)` над query/param-значенням, що потім каститься у Prisma `where`. `in` перевіряє й прототипні ключі: `'constructor' in StockMovementType === true` (аналогічно `toString`/`valueOf`/`hasOwnProperty`/`isPrototypeOf`) → `?type=constructor` проходить guard.
 **Grep:** `grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" apps/api/src/modules --include="*.controller.ts" --include="*.service.ts" | grep -v spec`.
-**Фікс:** `Object.prototype.hasOwnProperty.call(SomeEnum, value)` замість `value in SomeEnum` (той самий клас, що `buildSortOrderBy` hasOwnProperty-fix у pagination.ts). Додати контракт-тест на `?type=constructor` → 400.
-**Severity:** IMPORTANT — `?type=constructor` → долітає до Prisma enum-колонки → `P2009 invalid enum` → HTTP 500 (не-i18n, Sentry-шум) замість чистого 400; звичайний garbage (`?type=НЕВІДОМО`) 400-ить коректно, тож unit-тест з нормальним garbage ховає баг. Sample: stock-items.controller `movements` (71f01134).
+**Фікс:** `Object.prototype.hasOwnProperty.call(SomeEnum, value)` замість `value in SomeEnum` (той самий клас, що `buildSortOrderBy` hasOwnProperty-fix у pagination.ts). Контракт-тест на `?type=constructor` → 400.
+**Severity:** IMPORTANT — `?type=constructor` → Prisma enum-колонка → `P2009 invalid enum` → HTTP 500 замість 400; звичайний garbage (`?type=НЕВІДОМО`) 400-ить коректно, тож unit-тест з нормальним garbage ховає баг. Sample: stock-items.controller `movements` (71f01134).
 
 ### 2026-09-14 — валютна `dto.amount` накопичується у base-only сіблінг-агрегат (Invoice/WO paidAmount) — §5
 
-**Сигнал:** мультивалютна операція має валюту (`dto.amount` у валюті рахунку/каси), але оновлює сусідню сутність БЕЗ `currencyId` (Invoice/WorkOrder `amount`/`paidAmount`/`totalAmount` — усі у БАЗОВІЙ валюті org). Код робить `prevPaid + dto.amount`, `paidAmount: { increment: dto.amount }`, `if (dto.amount > remaining)` → змішує валюти (100 USD зрівнюється зі 100 UAH залишку; base `paidAmount` накопичує чужу валюту). Симетрично тому, як Payment САМ коректно пише `amountBase`, але забуває, що ЦІЛЬ (Invoice/WO) теж base-only.
+**Сигнал:** мультивалютна операція має валюту (`dto.amount` у валюті рахунку/каси), але оновлює сусідню сутність БЕЗ `currencyId` (Invoice/WorkOrder `amount`/`paidAmount`/`totalAmount` — у БАЗОВІЙ валюті org). Код робить `prevPaid + dto.amount`, `paidAmount: { increment: dto.amount }`, `if (dto.amount > remaining)` → змішує валюти (100 USD зрівнюється зі 100 UAH). Симетрично тому, як Payment САМ коректно пише `amountBase`, але забуває, що ЦІЛЬ (Invoice/WO) теж base-only.
 **Grep:** `grep -nE "paidAmount.*(increment|decrement).*dto\.amount|prevPaid \+ dto\.amount|dto\.amount > remaining" apps/api/src/modules --include="*.service.ts"` → для кожного match перевірити, чи цільова Prisma-модель має `currencyId` (`awk '/^model X /,/^\}/' schema.prisma | grep currencyId`); якщо ні — має бути `conv.amountBase`.
-**Фікс:** усі accumulate/compare проти base-only полів → `conv.amountBase` (у base-валюті `conv.amountBase === dto.amount` → BC, тести зелені). Remaining/overpay-повідомлення → `baseCode` (`getBaseCurrency`), не хардкод «грн».
-**Severity:** CRITICAL — тихе псування фін-обліку (paidAmount/статус PAID) для не-base оплат; base-only тести не ловлять (там amountBase==amount). Sample: payments.service invoice+WO (12bf3e2d).
+**Фікс:** усі accumulate/compare проти base-only полів → `conv.amountBase` (у base `conv.amountBase === dto.amount` → BC). Remaining/overpay → `baseCode` (`getBaseCurrency`), не хардкод «грн».
+**Severity:** CRITICAL — тихе псування фін-обліку (paidAmount/статус PAID) для не-base оплат; base-only тести не ловлять. Sample: payments.service invoice+WO (12bf3e2d).
 
 ## Карта секцій (quick reference)
 

@@ -8,28 +8,28 @@ bypassPermissions: true
 
 # sto-dev — Coding Standards
 
-> Цей скіл застосовується **під час написання** — не після.  
-> Мета: щоб `/sto-review` знаходив 0 проблем.
+> Застосовується **під час написання**, не після. Мета: `/sto-review` знаходить 0 проблем. Живий документ — після кожного `/sto-review`/`/sto-tester` додавай новий патерн, якщо баг тут не покритий.
 
 ## Зміст
 
-| §   | Секція                                                                   | Для кого                                      |
-| --- | ------------------------------------------------------------------------ | --------------------------------------------- |
-| §1  | [TypeScript](#typescript)                                                | Всі файли `.ts`/`.tsx`                        |
-| §2  | [NestJS / API](#nestjs--api)                                             | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
-| §3  | [Next.js 15 / Web](#nextjs-15--web)                                      | `apps/web/src/**`                             |
-| §4  | [UX/UI Features System](#uxui-features-system-phase-20)                  | Хуки та компоненти UI                         |
-| §5  | [Tailwind 4 — Canonical Syntax](#tailwind-4--canonical-syntax)           | Будь-який `.tsx` з className                  |
-| §6  | [Prisma 5](#prisma-5)                                                    | `schema.prisma`, `*.service.ts` з Prisma      |
-| §7  | [SSE — Real-time](#sse-server-sent-events--real-time-дані-без-websocket) | Streaming endpoints, EventSource              |
-| §8  | [Optimistic UI](#optimistic-ui--миттєвий-відгук-без-очікування-api)      | FSM кнопки, форми з негайним відгуком         |
-| §9  | [Polymorphic entities](#polymorphic-entities--comments-auditlog-media)   | Comments, AuditLog, Media                     |
-| §10 | [Webhook pattern](#webhook-pattern--вихідні-нотифікації)                 | Outbound webhooks                             |
-| §11 | [Offline-first / BullMQ](#offline-first--bullmq)                         | Зовнішні API, SMS, ПРРО                       |
-| §12 | [Безпека](#безпека)                                                      | Auth guards, tenant isolation                 |
-| §13 | [Checklist перед здачею](#checklist-перед-здачею-коду)                   | Всі зміни перед комітом                       |
+| §    | Секція                                                                                                                                                                                                           | Для кого                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| §1   | [TypeScript](#typescript)                                                                                                                                                                                        | Всі `.ts`/`.tsx`                              |
+| §2   | [NestJS / API](#nestjs--api)                                                                                                                                                                                     | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
+| §3   | [Next.js 15 / Web](#nextjs-15--web)                                                                                                                                                                              | `apps/web/src/**`                             |
+| §4   | [UX/UI Features System](#uxui-features-system-phase-20)                                                                                                                                                          | Хуки та компоненти UI                         |
+| §5   | [Tailwind 4 — Canonical Syntax](#tailwind-4--canonical-syntax)                                                                                                                                                   | Будь-який `.tsx` з className                  |
+| §6   | [Prisma 5](#prisma-5)                                                                                                                                                                                            | `schema.prisma`, `*.service.ts` з Prisma      |
+| §7   | [SSE — Real-time](#sse-server-sent-events--real-time-дані-без-websocket)                                                                                                                                         | Streaming endpoints, EventSource              |
+| §8   | [Optimistic UI](#optimistic-ui--миттєвий-відгук-без-очікування-api)                                                                                                                                              | FSM кнопки, форми з негайним відгуком         |
+| §9   | [Polymorphic entities](#polymorphic-entities--comments-auditlog-media)                                                                                                                                           | Comments, AuditLog, Media                     |
+| §10  | [Webhook pattern](#webhook-pattern--вихідні-нотифікації)                                                                                                                                                         | Outbound webhooks                             |
+| §11  | [Offline-first / BullMQ](#offline-first--bullmq)                                                                                                                                                                 | Зовнішні API, SMS, ПРРО                       |
+| §12  | [Безпека](#безпека)                                                                                                                                                                                              | Auth guards, tenant isolation                 |
+| §13  | [Checklist перед здачею](#checklist-перед-здачею-коду)                                                                                                                                                           | Всі зміни перед комітом                       |
+| §14+ | Модульність (§14), DRY хуки (§25), Modal+Tabs (§18), Schema-driven UI (§15), shared constants (§16, §25.5), API-хуки (§17/§20/§22), Zod (§21), TableContainer (§23), EntityPickerField (§24), Settings Tab (§26) | UI-архітектура                                |
 
-> **Швидкий старт:** для нового контролера → §1 + §2 + §12. Для нової сторінки → §1 + §3 + §5. Для Prisma моделі → §1 + §6.
+> **Швидкий старт:** новий контролер → §1+§2+§12. Нова сторінка → §1+§3+§5. Prisma модель → §1+§6.
 
 ---
 
@@ -52,7 +52,7 @@ bypassPermissions: true
 }
 ```
 
-> `ignoreDeprecations` має бути ≤ поточної TS major. На TS 5.9 валідне тільки `"5.0"`.
+> `ignoreDeprecations` ≤ поточної TS major. На TS 5.9 валідне тільки `"5.0"`.
 
 ### Заборонені патерни
 
@@ -124,6 +124,8 @@ apps/api/src/modules/{domain}/
 
 ### Fastify route ordering — специфічні роути ПЕРЕД параметричними
 
+У Fastify (на відміну від Express) роути матчаться в порядку оголошення; `:id` — жадібний, захоплює `uuid/toggle-active` якщо оголошений першим. Завжди: `GET/PATCH :id/action` вище за `GET/PATCH :id`.
+
 ```typescript
 // ❌ :id матчить "toggle-active" як параметр → Cannot PATCH /resource/:id/toggle-active
 @Patch(':id')          update(...)    // захоплює "uuid/toggle-active" цілком
@@ -136,10 +138,6 @@ apps/api/src/modules/{domain}/
 @Patch(':id')         update(...)     // ← після всіх sub-routes
 @Delete(':id')        remove(...)     // ← після всіх sub-routes
 ```
-
-> **Правило:** у Fastify (на відміну від Express) роути матчаться в порядку оголошення.
-> `:id` — жадібний параметр, він захоплює `uuid/toggle-active` якщо оголошений першим.
-> Завжди: `GET/PATCH :id/action` → вище за `GET/PATCH :id` у контролері.
 
 ### Controller — тільки HTTP шар
 
@@ -335,7 +333,7 @@ const [pageError, setPageError] = useState<string | null>(null);
 const [formError, setFormError] = useState<string | null>(null);
 ```
 
-### Event handler cleanup
+### Event handler cleanup — завжди повертай cleanup з useEffect
 
 ```typescript
 // ❌ Витік пам'яті — немає cleanup
@@ -378,13 +376,13 @@ useEffect(() => {
 }, []);
 ```
 
-### apiFetch — завжди через централізований клієнт
+### apiFetch — завжди через централізований клієнт (auth + base URL + error handling)
 
 ```typescript
 // ❌ Прямий fetch
 const res = await fetch(`/api/work-orders`, { headers: { Authorization: `Bearer ${token}` } });
 
-// ✅ apiFetch (автоматично додає auth + base URL + error handling)
+// ✅ apiFetch
 import { apiFetch } from '@/lib/api-client';
 const data = await apiFetch<WorkOrder[]>('/work-orders');
 ```
@@ -393,7 +391,7 @@ const data = await apiFetch<WorkOrder[]>('/work-orders');
 
 ## UX/UI Features System (Phase 20)
 
-> 10 UX-прапорців у `OrganisationSettings.uiFeatures` (JSON, per-org), всі за замовчуванням `true`. Endpoint `GET /settings/ui-features` (всі ролі). Module-level cache з TTL — один fetch/сесію; при помилці кешує DEFAULTS на 60 сек. Слухає `sto:logout` → скидає до DEFAULTS.
+> 10 UX-прапорців у `OrganisationSettings.uiFeatures` (JSON, per-org), всі default `true`. Endpoint `GET /settings/ui-features` (всі ролі). Module-level cache з TTL — один fetch/сесію; при помилці кешує DEFAULTS на 60 сек. Слухає `sto:logout` → скидає до DEFAULTS.
 
 ### uiFeatures — повна схема
 
@@ -423,63 +421,49 @@ if (features.toastEnabled) toast.success('Збережено');
 // Інвалідація після зміни: invalidateUiFeaturesCache() → dispatch 'sto:ui-features-change'
 ```
 
-### Toast — сповіщення після мутацій
+### Хуки/компоненти системи
 
-- Завжди перевіряй прапорець: `if (features.toastEnabled) toast.success('Збережено')`
-- При вимкненому toast — fallback: `else setError(msg)` (inline error display)
-- `ToastContainer` монтується в `TopShell.tsx` — не підключати в новому layout
+**Toast:** завжди за прапорцем `if (features.toastEnabled) toast.success('Збережено')`; при вимкненому — fallback `else setError(msg)` (inline error). `ToastContainer` монтується в `TopShell.tsx` — не підключати в новому layout.
 
-### useDirtyForm — захист від випадкового закриття
-
-API: `const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({ enabled: features.unsavedGuardEnabled })`
+**useDirtyForm** — захист від випадкового закриття. `const { isDirty, markDirty, resetDirty, confirmClose } = useDirtyForm({ enabled: features.unsavedGuardEnabled })`
 
 - `onChange` → `markDirty()`; після збереження → `resetDirty()` (ОБОВ'ЯЗКОВО)
 - `confirmClose()` → `Promise<boolean>`; `isDirtyRef` (useRef) для `beforeunload`, `isDirty` (useState) для рендеру
 
-### useInlineEdit — редагування у таблиці
+**useInlineEdit** — редагування у таблиці. `const inlineEdit = useInlineEdit({ enabled, onSave: async (rowId, field, value) => ... })`
 
-API: `const inlineEdit = useInlineEdit({ enabled, onSave: async (rowId, field, value) => ... })`
-
-- `inlineEdit.isEditing(row.id, 'field')` → рендерить `<InlineEditCell>` або `<InlineViewCell>`
+- `inlineEdit.isEditing(row.id, 'field')` → `<InlineEditCell>` або `<InlineViewCell>`
 - `commitEdit(v).catch(() => {})` — ЗАВЖДИ `.catch` бо re-throws після toast
 - `<select>` → `defaultValue` (uncontrolled) — controlled `value` "відскакує" при in-flight save
 - `savingRef` блокує подвійний коміт (blur + click)
 
-### useBulkSelect — множинний вибір у таблиці
-
-API: `const bulkSelect = useBulkSelect(data?.items ?? [])` — auto-prunes stale IDs при рефетч
+**useBulkSelect** — множинний вибір. `const bulkSelect = useBulkSelect(data?.items ?? [])` — auto-prunes stale IDs при рефетч
 
 - `indeterminate` → imperative через `useEffect + ref`, НЕ inline ref callback
 - Bulk-мутації → `Promise.allSettled` (НЕ `Promise.all`); завжди `bulkSelect.clear()` + `load()`
 - colSpan у loading/empty: `features.bulkActionsEnabled ? cols + 1 : cols`
 - `useMemo` для `bulkActions` array
 
-### useSavedFilters — збережені пресети фільтрів
-
-API: `const { saved, save, remove } = useSavedFilters<MyFilters>('page-key')`
+**useSavedFilters** — пресети фільтрів. `const { saved, save, remove } = useSavedFilters<MyFilters>('page-key')`
 
 - SSR-safe: `useState([])` → гідратація у `useEffect` з localStorage
 - `Array.isArray` guard при читанні — захист від corruption
 - `pageKey` — унікальний per-page рядок (`'work-orders'`, `'inventory'`, `'employees'`)
 
-### Hover-actions у рядках таблиці
+**Hover-actions у рядках таблиці:**
 
 - `group` на `<TableRow>`, кнопки: `opacity-0 group-hover:opacity-100 focus-visible:opacity-100`
-- `size="icon-sm"` для icon-only кнопок; `onClick={e => e.stopPropagation()}` на `<TableCell>`
+- `size="icon-sm"` для icon-only; `onClick={e => e.stopPropagation()}` на `<TableCell>`
 - Trash2 у `{!isDeleted && ...}`; перед DELETE — `confirm({ variant: 'destructive' })`
 - Навігація до деталей → `ExternalLink`; додаткові дії (Розцінити) → `Zap` зліва від Pencil
 - Застосовується: work-orders (ExternalLink+Trash2), invoices/purchase-orders/stock-documents (Pencil+Trash2), catalog tabs (Pencil+Trash2/RotateCcw)
 
-### NotificationCenter — сповіщення у sidebar
-
-API: `const { add } = useNotifications(); add('success'|'error'|'warning', title, body)`
+**NotificationCenter:** `const { add } = useNotifications(); add('success'|'error'|'warning', title, body)`
 
 - `group` + `opacity-0 group-hover:opacity-100 focus:opacity-100` на кнопці delete
 - `onKeyDown` на `role="button"` → guard `if (e.target !== e.currentTarget) return`
 
-### SyncIndicator — статус синхронізації
-
-`window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status: 'syncing' } }))` — `'idle'|'syncing'|'offline'|'error'`; wired у TopShell, показується коли `status !== 'idle'` або `lastSync !== null`
+**SyncIndicator:** `window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status: 'syncing' } }))` — `'idle'|'syncing'|'offline'|'error'`; wired у TopShell, показується коли `status !== 'idle'` або `lastSync !== null`
 
 ---
 
@@ -525,7 +509,7 @@ bg-[var(--kpi-bg)]             → bg-(--kpi-bg)             ← залишит�
 | `--radius-lg`              | `rounded-lg`                              |
 | `--radius-xl`              | `rounded-xl`                              |
 
-### Pixel → Tailwind scale
+### Pixel → Tailwind scale (px/4)
 
 ```
 w-[52px]   → w-13      (52/4 = 13)
@@ -548,7 +532,7 @@ tracking-[0.08em] → tracking-widest
 
 ### Arbitrary value — парність дужок ОБОВ'ЯЗКОВА
 
-Tailwind 4 JIT парсить `*-[...]` як arbitrary value. Якщо закриваюча `]` відсутня — клас **тихо НЕ генерується**, CSS просто не з'являється; помилки збірки немає.
+Tailwind 4 JIT парсить `*-[...]` як arbitrary value. Незакрита `]` → клас **тихо НЕ генерується** (CSS не з'являється, помилки збірки немає). Перевіряй парність `[`/`]`; довгий клас винось у змінну (`const ringErr = 'focus:ring-[hsl(0_86%_93%)]'`); `/sto-review` grep'ає незакриті дужки.
 
 ```tsx
 // ❌ Невидима помилка — фокус-ring не з'являється
@@ -557,8 +541,6 @@ hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)',
 // ✅ Закрита дужка — клас працює
 hasError && 'border-destructive focus:ring-[hsl(0_86%_93%)]',
 ```
-
-При ручному кодуванні: перевіряй парність `[`/`]`; довгий клас винось у змінну (`const ringErr = 'focus:ring-[hsl(0_86%_93%)]'`); `/sto-review` grep'ає незакриті дужки.
 
 ### Blob URL — `revokeObjectURL` тільки через setTimeout
 
@@ -602,8 +584,7 @@ model AnyModel {
 
 ### Зміна schema.prisma ЗАВЖДИ потребує міграції
 
-> Правка `schema.prisma` оновлює лише типи Prisma client — НЕ базу. TS компілюється,
-> але runtime fail при insert/select нового значення. **Кожна зміна → нова папка у `migrations/`.**
+Правка `schema.prisma` оновлює лише типи Prisma client — НЕ базу. TS компілюється, але runtime fail при insert/select нового значення. **Кожна зміна → нова папка у `migrations/`.**
 
 ```sql
 -- ❌ Додати enum value тільки у schema.prisma (PIT/RAMP) → insert type='PIT' впаде в runtime
@@ -714,7 +695,7 @@ const handleTransition = async (id: string, newStatus: string) => {
 
 - Зберігати `prev` state ПЕРЕД мутацією для rollback
 - `setItems` з functional updater (не closure value) — щоб не затерти паралельні зміни
-- Завжди робити `load()` після успіху — side-effects на сервері можуть змінити інші поля
+- Завжди `load()` після успіху — side-effects на сервері можуть змінити інші поля
 - НЕ застосовувати до: фінансових операцій, FSM-переходів з критичними side-effects (WRITEOFF, CHARGE)
 
 ---
@@ -984,8 +965,7 @@ Prisma
 
 ## §14 Модульність і Універсальність UI
 
-> **Правило:** Перш ніж писати inline-логіку в page.tsx — запитай себе: "Це буде потрібно ще хоча б раз?"  
-> Якщо так — одразу виносити в компонент. Один раз — inline припустимо.
+> **Правило:** Перш ніж писати inline-логіку в page.tsx — запитай: "Це буде потрібно ще хоча б раз?" Якщо так — одразу виносити в компонент. Один раз — inline припустимо.
 
 ### Коли виносити в компонент
 
@@ -1000,8 +980,7 @@ Prisma
 
 ### ExpiryBadge — канонічний бейдж "прострочено / скоро"
 
-> **Шлях:** `apps/web/src/components/ui/expiry-badge.tsx` + helper `daysUntil()` у `lib/utils.ts`
-> Будь-яка логіка "скільки днів до дати → червоний/жовтий бейдж" (страховка, техогляд, ТО, гарантія).
+> **Шлях:** `apps/web/src/components/ui/expiry-badge.tsx` + helper `daysUntil()` у `lib/utils.ts`. Будь-яка логіка "скільки днів до дати → червоний/жовтий бейдж" (страховка, техогляд, ТО, гарантія). `nowMs` завжди з `useState`/`useEffect` (SSR-safe), ніколи `new Date()` у render. `nowMs=0` → бейдж не рендериться (дані ще не готові).
 
 ```tsx
 // ✅ Один компонент — конфігуровані лейбли + поріг
@@ -1023,15 +1002,12 @@ const isSoon = diff !== null && diff <= 30;
 })()}
 ```
 
-> `nowMs` завжди з `useState`/`useEffect` (SSR-safe), ніколи `new Date()` у render. `nowMs=0` → бейдж не рендериться (дані ще не готові).
-
 ### PickerModal — канонічний компонент для вибору зі списку
 
-> **Шлях:** `apps/web/src/components/ui/picker-modal.tsx`  
-> Використовується коли потрібно вибрати одну сутність зі списку з пошуком по реквізитах.
+> **Шлях:** `apps/web/src/components/ui/picker-modal.tsx`. Використовується коли потрібно вибрати одну сутність зі списку з пошуком по реквізитах. Тригер поле — завжди через `EntityPickerField` (§24).
 
 ```tsx
-// ✅ Завжди використовуй PickerModal для вибору сутності зі списку
+// ✅ Завжди PickerModal для вибору сутності зі списку
 import { PickerModal } from '@/components/ui/picker-modal';
 
 <PickerModal<BankAccount>
@@ -1058,8 +1034,6 @@ import { PickerModal } from '@/components/ui/picker-modal';
   {items.filter(...).map(item => <button .../>)}
 </Modal>
 ```
-
-**Тригер поле — завжди через `EntityPickerField`** (повний патерн і заборона ручної кнопки — §24).
 
 ### Заборонені inline-патерни
 
@@ -1105,11 +1079,9 @@ const [pickerQuery, setPickerQuery] = useState(''); // не потрібен —
 
 > **Правило:** Якщо один і той самий блок коду (useState+useEffect, JSX-секція) зустрічається у 2+ файлах — виносити в хук або компонент. Завжди.
 
----
-
 ### §25.1 — useBulkIndeterminate: замість 7-рядкового блоку
 
-**Проблема:** у кожній list-сторінці дублювалось:
+Дублювалось у кожній list-сторінці:
 
 ```ts
 const bulkSelect = useBulkSelect(items);
@@ -1119,7 +1091,7 @@ useEffect(() => {
 }, [bulkSelect.someSelected]);
 ```
 
-**Рішення:** `hooks/useBulkIndeterminate.ts`
+Рішення: `hooks/useBulkIndeterminate.ts`
 
 ```ts
 // ✅ Один рядок замість 7
@@ -1128,13 +1100,9 @@ const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(items);
 
 **Правило:** `useBulkIndeterminate` завжди після React Query виклику — так `items` вже має стабільну ref.
 
----
-
 ### §25.2 — useCachedRefData: замість 25-рядкового ref-cache патерну
 
-**Проблема:** паттерн `getCached → show stale → fetch → setCache → setState` повторювався у 5+ місцях.
-
-**Рішення:** `hooks/useCachedRefData.ts`
+Паттерн `getCached → show stale → fetch → setCache → setState` повторювався у 5+ місцях. Рішення: `hooks/useCachedRefData.ts`
 
 ```ts
 // ✅ Замість 25 рядків — 1 рядок
@@ -1151,25 +1119,9 @@ const { data: brands } = useCachedRefData(
 
 **Коли НЕ використовувати:** якщо після завантаження є side-effect (`setForm(f => ({ ...f, branchId: bs[0].id }))`). В такому випадку залишати оригінальний `useEffect` з `getCached`/`setCache`.
 
----
-
 ### §25.3 — useListPage: спільна інфраструктура list-сторінок
 
-**Проблема:** кожна list-сторінка повторювала 7+ хуків:
-
-```ts
-const features = useUiFeatures();
-const [page, setPage] = useState(1);
-const [showDeleted, setShowDeleted] = useState(false);
-const tableColumns = useTableColumns(pageKey, COLUMNS);
-const { dragProps } = useColumnDrag(...);
-const detailPanel = useDetailPanel(pageKey);
-const panelConfig = useDetailPanelConfig(`${pageKey}-panel`);
-const savedFilters = useSavedFilters<TFilters>(pageKey);
-const [activeSavedFilterId, setActiveSavedFilterId] = useState(null);
-```
-
-**Рішення:** `hooks/useListPage.ts` — один виклик замість 9:
+Кожна list-сторінка повторювала 7+ хуків (`useUiFeatures`, `page/setPage`, `showDeleted`, `useTableColumns`, `useColumnDrag`, `useDetailPanel`, `useDetailPanelConfig`, `useSavedFilters`, `activeSavedFilterId`). Рішення: `hooks/useListPage.ts` — один виклик замість 9:
 
 ```ts
 // ✅ Generic TFilters для типізованого savedFilters
@@ -1203,13 +1155,9 @@ const items = data?.items ?? EMPTY_ITEMS;
 const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(items);
 ```
 
----
-
 ### §25.4 — Розбиття моноліту: коли файл > 400 рядків
 
 **Правило:** файл > 400 рядків → шукати природні межі для розбиття.
-
-**Рецепт для великих компонентів:**
 
 ```
 page.tsx (1500+ рядків)
@@ -1220,7 +1168,7 @@ XxxModal.tsx             ← модальна форма в components/ui/
 page.tsx (200-400 рядків) ← тільки orchestration + рендер view-режимів
 ```
 
-**Конкретні патерни (реалізовано в STO ERP):**
+Конкретні патерни (реалізовано в STO ERP):
 
 | Компонент                         | До          | Після                                                                |
 | --------------------------------- | ----------- | -------------------------------------------------------------------- |
@@ -1228,23 +1176,15 @@ page.tsx (200-400 рядків) ← тільки orchestration + рендер vi
 | `work-orders/[id]/PageClient.tsx` | 1579 рядків | 1252 (orchestrator) + 4 `*Section.tsx`                               |
 | `calendar/page.tsx`               | 1518 рядків | 239 (thin render) + `useCalendarState.ts` + `CalendarDayGrid.tsx`    |
 
-**Правило для tab-компонентів:**
+**Tab-компоненти:** кожна ModalTabs вкладка → окремий компонент. Props: `goodId + orgId + onCountChange` (для badge у ModalTabs):
 
 ```ts
-// Кожна ModalTabs вкладка → окремий компонент
-// Props: goodId + orgId + onCountChange (для badge у ModalTabs)
 <GoodBarcodeTab goodId={good.id} onCountChange={n => setBarcodeCount(n)} />
 <GoodBatchesTab goodId={good.id} />
 <GoodUoMTab goodId={good.id} onChanged={() => refetch()} />
 ```
 
-**Підхід для секцій сторінки:**
-
-- Props-drilling (не Context) — дані завантажені в orchestrator, передаємо явно
-- `onChanged` callback → orchestrator робить refetch або оновлює стан
-- Кожна секція — самодостатня для рендеру, не для fetch
-
----
+**Секції сторінки:** props-drilling (не Context) — дані завантажені в orchestrator, передаємо явно; `onChanged` callback → orchestrator робить refetch; кожна секція самодостатня для рендеру, не для fetch.
 
 ### §25.5 — Константи в одному місці: packages/shared
 
@@ -1266,8 +1206,6 @@ const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS; // alias для зворотної
 const TYPE_LABELS: Record<string, string> = { CLIENT: 'Клієнт', ... };
 ```
 
----
-
 ### §25.6 — Backend: спільні utils замість дублікатів
 
 ```ts
@@ -1281,16 +1219,7 @@ assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 // Замість 4-рядкового блоку в 4 сервісах
 ```
 
-**Що іде в `common/utils/`:**
-
-- Математичні хелпери (`safeCoeff`)
-- FSM валідація (`assertFsmTransition`)
-- Дата/час (`kyivToday` — вже є)
-- Security guards (`validatePublicUrl` — вже є)
-
-**Що НЕ іде в `common/`:** бізнес-логіка (вона залишається в модулях).
-
----
+**Що іде в `common/utils/`:** математичні хелпери (`safeCoeff`), FSM валідація (`assertFsmTransition`), дата/час (`kyivToday` — вже є), security guards (`validatePublicUrl` — вже є). **Що НЕ іде:** бізнес-логіка (залишається в модулях).
 
 ### §25.7 — Checklist DRY-рефакторингу
 
@@ -1312,10 +1241,10 @@ assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 
 ### §18.1 — Структура Edit Modal з ModalTabs
 
-Коли сутність має 1+ дочірніх колекцій (контрагент → авто, товар → штрихкоди), організуй edit modal за цим паттерном:
+Коли сутність має 1+ дочірніх колекцій (контрагент → авто, товар → штрихкоди): основна форма + ModalTabs нижче.
 
 ```tsx
-// ✅ Правильна організація: основна форма + ModalTabs нижче
+// ✅ Правильна організація
 <Modal open={modal} onClose={closeModal} size="lg" title="Редагування X">
   {/* 1) Основні поля форми — завжди видимі */}
   <form className="space-y-4" onSubmit={e => e.preventDefault()}>
@@ -1348,10 +1277,9 @@ assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 </Modal>
 ```
 
-**State для дочірньої колекції:**
+**State для дочірньої колекції** (по одному блоку на кожну):
 
 ```ts
-// По одному блоку на кожну дочірню колекцію:
 const [modalChildren, setModalChildren] = useState<Child[]>([]);
 const [modalChildrenLoading, setModalChildrenLoading] = useState(false);
 const [childError, setChildError] = useState('');
@@ -1405,11 +1333,7 @@ content: (
 ),
 ```
 
-**count у вкладці** — обчислюється з поточного state (не від API):
-
-```tsx
-count: modalChildren.length,  // оновлюється в реальному часі при add/delete
-```
+**count у вкладці** — обчислюється з поточного state (не від API), оновлюється в реальному часі при add/delete: `count: modalChildren.length`.
 
 **Умовні вкладки** (показуємо лише якщо дані завантажені):
 
@@ -1441,8 +1365,7 @@ tabs={[
 
 ## §15 Schema-driven UI (metadata-driven rendering)
 
-> **Правило:** Будь-який список полів для відображення в UI **ніколи не хардкодиться** в page.tsx.  
-> Поля описуються один раз у схемі поряд з TypeScript типом — і рендеряться автоматично.
+> **Правило:** Будь-який список полів для UI **ніколи не хардкодиться** в page.tsx. Поля описуються один раз у схемі поряд з TypeScript типом — і рендеряться автоматично.
 
 ### Коли застосовувати
 
@@ -1513,15 +1436,13 @@ panelConfig.reset; // () => void
 
 Стан зберігається в `localStorage` + синхронізується з API `/user-preferences/{pageKey}`.
 
-### Як додати нове поле в майбутньому
+### Як додати нове поле
 
-Тільки в `lib/panel-schema.ts` — додати рядок у відповідну схему:
+Тільки в `lib/panel-schema.ts` — додати рядок у відповідну схему; поле автоматично з'являється в панелі, доступне для toggle/reorder, **жодних змін у page.tsx**:
 
 ```typescript
 { key: 'newField', label: 'Нова назва', type: 'text' }
 ```
-
-Поле автоматично з'являється в панелі, доступне для toggle/reorder — **жодних змін у page.tsx**.
 
 ### ❌ Заборонено
 
@@ -1532,10 +1453,9 @@ const MY_PANEL_FIELDS = [
   { key: 'amount', label: 'Сума' },
 ] as const;
 
-// ❌ Вручну перебирати поля без buildPanelFields
+// ❌ Вручну перебирати поля без buildPanelFields (якщо полів 5+ — це вже порушення)
 <PanelField hidden={panelConfig.isFieldHidden('status')} fieldKey="status" label="Статус" value={...} />
 <PanelField hidden={panelConfig.isFieldHidden('amount')} fieldKey="amount" label="Сума" value={...} />
-// (якщо полів 5+ — це вже порушення)
 ```
 
 ### ✅ Правильно
@@ -1551,8 +1471,7 @@ const MY_PANEL_FIELDS = [
 
 ## §16 SharedStatusConstants — єдине місце для статусів
 
-`STATUS_LABELS`, `STATUS_BADGE`, `PRIORITY_LABELS` — тільки в `packages/shared/src/constants/statuses.ts`. `Record<WorkOrderStatus, string>` → compile-error при пропущеному статусі.
-`import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared'` — НЕ inline у page.tsx.
+`STATUS_LABELS`, `STATUS_BADGE`, `PRIORITY_LABELS` — тільки в `packages/shared/src/constants/statuses.ts`. `Record<WorkOrderStatus, string>` → compile-error при пропущеному статусі. `import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared'` — НЕ inline у page.tsx.
 
 ---
 
@@ -1564,9 +1483,7 @@ const MY_PANEL_FIELDS = [
 
 ## §19 FSMButtons — shared компонент FSM-переходів
 
-> **Правило:** Кнопки FSM-переходів не рендеряться inline у page.tsx. Використовується `<FSMButtons>`.
-
-### ❌ Заборонено
+> **Правило:** Кнопки FSM-переходів не рендеряться inline у page.tsx. Використовується `<FSMButtons>`. Файл: `apps/web/src/components/ui/fsm-buttons.tsx`
 
 ```typescript
 // ❌ Дублювання логіки у кожній сторінці
@@ -1577,10 +1494,8 @@ const MY_PANEL_FIELDS = [
 ))}
 ```
 
-### ✅ Правильно
-
 ```tsx
-// apps/web/src/components/ui/fsm-buttons.tsx
+// ✅ apps/web/src/components/ui/fsm-buttons.tsx
 <FSMButtons
   status={wo.status}
   transitions={WO_FSM_TRANSITIONS}
@@ -1589,8 +1504,6 @@ const MY_PANEL_FIELDS = [
   loading={saving}
 />
 ```
-
-**Файл:** `apps/web/src/components/ui/fsm-buttons.tsx`
 
 ---
 
@@ -1602,9 +1515,7 @@ const MY_PANEL_FIELDS = [
 
 ## §21 Shared Zod validators
 
-> **Правило:** Валідаційні правила (email, телефон, IBAN) не пишуться regex inline. Є `@sto/shared` validators.
-
-### ✅ Правильно
+> **Правило:** Валідаційні правила (email, телефон, IBAN) не пишуться regex inline. Є `@sto/shared` validators. Файл-джерело правди: `packages/shared/src/schemas/validators.ts`
 
 ```typescript
 // packages/shared/src/schemas/validators.ts
@@ -1622,8 +1533,6 @@ import { PHONE_UA_REGEX } from '@sto/shared';
 phone: string;
 ```
 
-**Файл-джерело правди:** `packages/shared/src/schemas/validators.ts`
-
 ---
 
 ## §22 useApiError — централізований handler помилок
@@ -1634,21 +1543,15 @@ phone: string;
 
 ## §23 TableContainer — контейнер таблиці зі sticky-шапкою
 
-### Правило
-
 **ЗАВЖДИ** загортати `<Table>` у `<TableContainer>` замість inline div.
 
-### ❌ Заборонено
-
 ```tsx
+// ❌ Заборонено
 <div className="flex-1 min-h-0 min-w-0 overflow-auto bg-surface border border-border rounded-xl">
   <Table>...</Table>
-</div>
-```
+</div>;
 
-### ✅ Правильно
-
-```tsx
+// ✅ Правильно
 import { TableContainer } from '@/components/ui/table-container';
 
 <div className="flex flex-1 min-h-0">
@@ -1663,7 +1566,7 @@ import { TableContainer } from '@/components/ui/table-container';
 
 ### Чому
 
-`TableContainer` додає клас `table-scroll-container`, який вирішує два візуальних баги шапки (CSS у globals.css):
+`TableContainer` додає клас `table-scroll-container`, який вирішує два візуальних баги шапки (CSS у globals.css). ❌ Без `TableContainer` — справа від шапки білий простір (видно фон контейнера). ✅ З `TableContainer` — фон за скролбаром збігається з кольором thead.
 
 ```css
 :root {
@@ -1682,9 +1585,6 @@ import { TableContainer } from '@/components/ui/table-container';
 }
 ```
 
-❌ Без `TableContainer` — справа від шапки білий простір (видно фон контейнера).  
-✅ З `TableContainer` — фон за скролбаром збігається з кольором thead.
-
 ### Props
 
 | Prop             | Default | Опис                                        |
@@ -1700,9 +1600,7 @@ import { TableContainer } from '@/components/ui/table-container';
 <TableContainer className="rounded-none border-0">
 ```
 
-### Висота шапки змінилась?
-
-Якщо thead має нестандартну висоту (двохрядкова шапка, інший padding) — перевизначи CSS-змінну на конкретному контейнері:
+**Нестандартна висота шапки** (двохрядкова, інший padding) → перевизнач CSS-змінну на контейнері:
 
 ```tsx
 <TableContainer style={{ '--table-thead-h': '52px' } as React.CSSProperties}>
@@ -1712,10 +1610,7 @@ import { TableContainer } from '@/components/ui/table-container';
 
 ## §24 — EntityPickerField + \*EditModal: стандарт поля-посилання
 
-> **Правило:** будь-яке поле форми що посилається на інший об'єкт (контрагент, товар, наряд, співробітник тощо) **ЗАВЖДИ** реалізується через `EntityPickerField` + `*EditModal` + `SearchPickerModal`.  
-> Старий патерн «велика кнопка з іконкою Search всередині» — **заборонений**.
-
----
+> **Правило:** будь-яке поле форми що посилається на інший об'єкт (контрагент, товар, наряд, співробітник) **ЗАВЖДИ** через `EntityPickerField` + `*EditModal` + `SearchPickerModal`. Старий патерн «велика кнопка з іконкою Search всередині» — **заборонений**.
 
 ### §24.1 — EntityPickerField — єдиний UI-контрол для reference-поля
 
@@ -1742,7 +1637,7 @@ interface EntityPickerFieldProps {
                                 └───── onClear (hidden якщо display = '')
 ```
 
-**Кнопка `UserPlus` / `FilePlus` (створення нового)** — додається ЗОВНІ поля, праворуч:
+**Кнопка `UserPlus` / `FilePlus` (створення нового)** — ЗОВНІ поля, праворуч:
 
 ```tsx
 <div className="flex items-center gap-1">
@@ -1755,13 +1650,9 @@ interface EntityPickerFieldProps {
 </div>
 ```
 
----
-
 ### §24.2 — \*EditModal — стандарт компонента редагування об'єкта
 
-Кожна сутність через лупу → окремий `*EditModal.tsx` у `apps/web/src/components/ui/`.
-
-Props: `{ open, entity: XxxForModal | null, onClose, onSaved }` — `null` = режим створення.
+Кожна сутність через лупу → окремий `*EditModal.tsx` у `apps/web/src/components/ui/`. Props: `{ open, entity: XxxForModal | null, onClose, onSaved }` — `null` = режим створення.
 
 Внутрішня структура:
 
@@ -1769,8 +1660,6 @@ Props: `{ open, entity: XxxForModal | null, onClose, onSaved }` — `null` = р�
 2. `useEffect([open, entity?.id])` — завантаження дочірніх з race guard (`reqRef.current`)
 3. `handleClose` → `dirty.confirmClose()` перед `onClose()`
 4. `<DirtyConfirmDialog {...dirty.dialogProps} />` + `<ConfirmDialog {...confirmProps} />` у return
-
----
 
 ### §24.3 — Повний патерн: reference-поле у формі
 
@@ -1805,8 +1694,6 @@ const openCpDetail = useCallback(async () => {
 />
 ```
 
----
-
 ### §24.4 — Реєстр \*EditModal компонентів
 
 | Компонент                  | Файл                              | Відкривається для                  |
@@ -1821,8 +1708,6 @@ const openCpDetail = useCallback(async () => {
 | `StockDocumentCreateModal` | `ui/StockDocumentCreateModal.tsx` | документ складу                    |
 
 > При додаванні нової сутності — додай рядок у цю таблицю.
-
----
 
 ### §24.5 — Заборонені патерни
 
@@ -1852,8 +1737,6 @@ onClick={() => router.push(`/counterparties/${id}`)}
 // ✅ onOpenDetail callback
 <EntityPickerField onOpenDetail={form.counterpartyId ? openCpDetail : undefined} />
 ```
-
----
 
 ### §24.6 — Checklist для нового reference-поля
 
@@ -2057,5 +1940,4 @@ export default function XxxTab() {
 /sto-tester    ← знаходить runtime баги
 ```
 
-> `/sto-dev` — це живий документ.  
-> Після кожного `/sto-review` або `/sto-tester` — якщо знайдено баг якого тут немає, **одразу додай** новий патерн.
+> `/sto-dev` — живий документ. Після кожного `/sto-review`/`/sto-tester`, якщо знайдено баг якого тут немає, **одразу додай** новий патерн.
