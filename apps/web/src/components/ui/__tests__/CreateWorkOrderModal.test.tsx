@@ -36,6 +36,12 @@ vi.mock('@/lib/format', async () => ({
   kyivToday: () => '2026-06-08',
 }));
 
+// useBaseCurrency (використовується CurrencySelect у модалці) читає org базову
+// валюту через useQuery — стабимо, щоб не потрібен QueryClientProvider (мультивалюта Фаза 3).
+vi.mock('@/hooks/api/useCash', () => ({
+  useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
+}));
+
 const mockBranches = [{ id: 'b1', name: 'Філія №1' }];
 const mockWarehouses = [{ id: 'w1', name: 'Склад №1' }];
 const mockEmployees = [

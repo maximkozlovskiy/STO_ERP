@@ -63,6 +63,7 @@ import {
 } from '@/components/ui/LinkedDocumentsPanel';
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
+import { CurrencySelect } from '@/components/ui/CurrencySelect';
 
 // A3-modal: Branch/Lift/Warehouse/Employee/Vehicle типи → useReferenceData (import above).
 interface Counterparty {
@@ -88,6 +89,8 @@ interface WorkOrderDetail {
   counterpartyId: string;
   counterpartyName?: string;
   contractId?: string | null;
+  currencyId?: string | null;
+  currencyCode?: string | null;
   liftId?: string | null;
   description?: string | null;
   inMileage?: number | null;
@@ -321,6 +324,7 @@ export function CreateWorkOrderModal({
     vehicleId: '',
     counterpartyId: '',
     contractId: '',
+    currencyId: '',
     liftId: '',
     description: '',
     priority: 'NORMAL',
@@ -539,6 +543,7 @@ export function CreateWorkOrderModal({
       vehicleId: prefill?.vehicleId ?? '',
       counterpartyId: prefill?.counterpartyId ?? '',
       contractId: '',
+      currencyId: '',
       liftId: prefill?.liftId ?? '',
       description: prefill?.description ?? '',
       priority: 'NORMAL',
@@ -635,6 +640,7 @@ export function CreateWorkOrderModal({
           vehicleId: wo.vehicleId ?? '',
           counterpartyId: wo.counterpartyId ?? '',
           contractId: wo.contractId ?? '',
+          currencyId: wo.currencyId ?? '',
           liftId: wo.liftId ?? '',
           description: wo.description ?? '',
           priority: wo.priority ?? 'NORMAL',
@@ -1020,6 +1026,7 @@ export function CreateWorkOrderModal({
             vehicleId: form.vehicleId,
             counterpartyId: form.counterpartyId,
             contractId: form.contractId || undefined,
+            currencyId: form.currencyId || undefined,
             liftId: form.liftId || undefined,
             description: form.description || undefined,
             priority: form.priority || 'NORMAL',
@@ -1125,6 +1132,7 @@ export function CreateWorkOrderModal({
           method: 'PATCH',
           body: JSON.stringify({
             documentDate: form.documentDate || undefined,
+            currencyId: form.currencyId || undefined,
             priority: form.priority || undefined,
             repairCategory: form.repairCategory || undefined,
             description: form.description || undefined,
@@ -2038,6 +2046,13 @@ export function CreateWorkOrderModal({
                             </option>
                           ))}
                         </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <CurrencySelect
+                          value={form.currencyId}
+                          onChange={id => setForm(f => ({ ...f, currencyId: id }))}
+                          disabled={!canEdit}
+                        />
                       </div>
                     </div>
 

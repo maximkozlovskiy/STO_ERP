@@ -31,6 +31,7 @@ import {
   purchaseOrdersKeys,
   PurchaseOrder,
 } from '@/hooks/api/usePurchaseOrders';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
 import { Button } from '@/components/ui/button';
@@ -116,10 +117,6 @@ interface PoFilters extends Record<string, unknown> {
 
 const STATUS_LABELS = PO_STATUS_LABELS;
 const STATUS_BADGE = PO_STATUS_BADGE;
-
-function fmt(n: number) {
-  return fmtMoney(n) + ' ₴';
-}
 
 // Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
 const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
@@ -298,6 +295,9 @@ function PurchaseOrdersPageClient() {
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as PurchaseOrder[]);
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
 
   // Пов'язані документи — nav + config + popup state + batched counts.
   const linkedNav = useLinkedNav();
@@ -369,91 +369,97 @@ function PurchaseOrdersPageClient() {
 
   // Побудова табів панелі — дзеркалить buildInvoiceTabs (schema-driven fields + Дії).
   const buildPoTabs = useCallback(
-    (po: PurchaseOrder): DetailPanelTab[] => [
-      {
-        key: 'info',
-        label: 'Основне',
-        content: (
-          <div className="space-y-3">
-            {buildPanelFields(po, PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config, {
-              status: v => (
-                <Badge
-                  variant={STATUS_BADGE[String(v)] ?? 'secondary'}
-                  tooltip={PO_STATUS_DESCRIPTIONS[String(v)]}
-                >
-                  {STATUS_LABELS[String(v)] ?? String(v)}
-                </Badge>
-              ),
-              deliveryStatus: (v, record) =>
-                v ? (
+    (po: PurchaseOrder): DetailPanelTab[] => {
+      // Мультивалюта (Фаза 3): символ валюти замовлення для позицій.
+      const isBase = !po.currencyCode || po.currencyCode === baseCode;
+      const sym = isBase ? baseSymbol : po.currencyCode;
+      return [
+        {
+          key: 'info',
+          label: 'Основне',
+          content: (
+            <div className="space-y-3">
+              {buildPanelFields(po, PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config, {
+                status: v => (
                   <Badge
-                    variant={
-                      (DELIVERY_STATUS_BADGE[String(v)] ?? 'secondary') as React.ComponentProps<
-                        typeof Badge
-                      >['variant']
-                    }
-                    tooltip={record.deliveryStatusRaw ?? undefined}
+                    variant={STATUS_BADGE[String(v)] ?? 'secondary'}
+                    tooltip={PO_STATUS_DESCRIPTIONS[String(v)]}
                   >
-                    {DELIVERY_STATUS_LABELS[String(v)] ?? String(v)}
+                    {STATUS_LABELS[String(v)] ?? String(v)}
                   </Badge>
-                ) : (
-                  '—'
                 ),
-            }).map(f => (
-              <PanelField
-                key={f.key}
-                fieldKey={f.key}
-                label={f.label}
-                value={f.value}
-                hidden={f.hidden}
-              />
-            ))}
-            <div className="pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setEditingPOId(po.id)}
-              >
-                Відкрити замовлення
-              </Button>
-            </div>
-          </div>
-        ),
-      },
-      {
-        key: 'lines',
-        label: 'Позиції',
-        content:
-          po.lines.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">Немає позицій</p>
-          ) : (
-            <div className="space-y-2">
-              {po.lines.map((line, i) => (
-                <div
-                  key={line.id ?? i}
-                  className="rounded-lg border border-border px-3 py-2 text-[13px]"
-                >
-                  <p className="font-medium text-foreground">{line.goodName ?? '—'}</p>
-                  <p className="text-muted-foreground text-[12px] mt-0.5">
-                    {line.quantity} {line.unitShortName ?? line.unit ?? ''} × {fmtMoney(line.price)}{' '}
-                    ₴{' = '}
-                    <span className="text-foreground font-medium">
-                      {fmtMoney(line.amount ?? line.quantity * line.price)} ₴
-                    </span>
-                  </p>
-                </div>
+                deliveryStatus: (v, record) =>
+                  v ? (
+                    <Badge
+                      variant={
+                        (DELIVERY_STATUS_BADGE[String(v)] ?? 'secondary') as React.ComponentProps<
+                          typeof Badge
+                        >['variant']
+                      }
+                      tooltip={record.deliveryStatusRaw ?? undefined}
+                    >
+                      {DELIVERY_STATUS_LABELS[String(v)] ?? String(v)}
+                    </Badge>
+                  ) : (
+                    '—'
+                  ),
+              }).map(f => (
+                <PanelField
+                  key={f.key}
+                  fieldKey={f.key}
+                  label={f.label}
+                  value={f.value}
+                  hidden={f.hidden}
+                />
               ))}
+              <div className="pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setEditingPOId(po.id)}
+                >
+                  Відкрити замовлення
+                </Button>
+              </div>
             </div>
           ),
-      },
-      {
-        key: 'links',
-        label: "Зв'язки",
-        content: <LinkedDocumentsPanel config={linkedConfig} entityId={po.id} />,
-      },
-    ],
-    [panelConfig.config, linkedConfig],
+        },
+        {
+          key: 'lines',
+          label: 'Позиції',
+          content:
+            po.lines.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+            ) : (
+              <div className="space-y-2">
+                {po.lines.map((line, i) => (
+                  <div
+                    key={line.id ?? i}
+                    className="rounded-lg border border-border px-3 py-2 text-[13px]"
+                  >
+                    <p className="font-medium text-foreground">{line.goodName ?? '—'}</p>
+                    <p className="text-muted-foreground text-[12px] mt-0.5">
+                      {line.quantity} {line.unitShortName ?? line.unit ?? ''} ×{' '}
+                      {fmtMoney(line.price)} {sym}
+                      {' = '}
+                      <span className="text-foreground font-medium">
+                        {fmtMoney(line.amount ?? line.quantity * line.price)} {sym}
+                      </span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ),
+        },
+        {
+          key: 'links',
+          label: "Зв'язки",
+          content: <LinkedDocumentsPanel config={linkedConfig} entityId={po.id} />,
+        },
+      ];
+    },
+    [panelConfig.config, linkedConfig, baseCode, baseSymbol],
   );
 
   // Ref з id поточно вибраного PO — щоб toggle-логіка не залежала від стейл-замикання
@@ -1356,15 +1362,25 @@ function PurchaseOrdersPageClient() {
                                   </Badge>
                                 </TableCell>
                               );
-                            if (col.key === 'amount')
+                            if (col.key === 'amount') {
+                              const isBase = !po.currencyCode || po.currencyCode === baseCode;
+                              const sym = isBase ? baseSymbol : po.currencyCode;
                               return (
                                 <TableCell
                                   key="amount"
-                                  className="text-right font-semibold text-[13px]"
+                                  className="text-right font-semibold text-[13px] tabular-nums"
                                 >
-                                  {fmtMoney(po.totalAmount)} ₴
+                                  <div>
+                                    {fmtMoney(po.totalAmount)} {sym}
+                                  </div>
+                                  {!isBase && po.totalAmountBase != null && (
+                                    <div className="text-[11px] font-normal text-muted-foreground">
+                                      {fmtMoney(po.totalAmountBase)} {baseSymbol}
+                                    </div>
+                                  )}
                                 </TableCell>
                               );
+                            }
                             if (col.key === 'date')
                               return (
                                 <TableCell key="date" className="text-[13px] text-muted-foreground">

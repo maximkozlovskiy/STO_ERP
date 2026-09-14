@@ -36,6 +36,8 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
+import { CurrencySelect } from '@/components/ui/CurrencySelect';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,8 @@ interface InvoiceDetail {
   invoiceType?: string | null;
   counterpartyId: string;
   counterpartyName?: string | null;
+  currencyId?: string | null;
+  currencyCode?: string | null;
   workOrderId?: string | null;
   workOrderNumber?: string | null;
   amount: number;
@@ -146,10 +150,17 @@ export function InvoiceCreateModal({
   const [form, setForm] = useState({
     counterpartyId: '',
     invoiceType: 'STANDARD',
+    currencyId: '',
     dueDate: '',
     documentDate: kyivToday(),
     notes: '',
   });
+  // Мультивалюта (Фаза 3): локальний перелік валют — щоб з currencyId вивести символ/код
+  // для колонок «Ціна»/«Сума» та підсумків (CurrencySelect не експонує обраний елемент).
+  const [currencies, setCurrencies] = useState<
+    { id: string; code: string; symbol?: string | null }[]
+  >([]);
+  const { data: baseCurrency } = useBaseCurrency();
   const [counterpartyDisplay, setCounterpartyDisplay] = useState('');
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -246,6 +257,7 @@ export function InvoiceCreateModal({
       setForm({
         counterpartyId: '',
         invoiceType: 'STANDARD',
+        currencyId: '',
         dueDate: '',
         documentDate: kyivToday(),
         notes: '',
@@ -256,6 +268,25 @@ export function InvoiceCreateModal({
     // осідання стану — value-based, тому без setTimeout-гонки.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceId]);
+
+  // Мультивалюта: підвантажити перелік валют для резолву символу обраної валюти.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    apiFetch<{ items: { id: string; code: string; symbol?: string | null }[] }>('/currencies')
+      .then(r => {
+        if (!cancelled) setCurrencies(r.items ?? []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Символ обраної валюти для колонок/підсумків (fallback — код або базовий символ).
+  const selectedCurrency = currencies.find(c => c.id === form.currencyId);
+  const currencySymbol =
+    selectedCurrency?.symbol || selectedCurrency?.code || baseCurrency?.symbol || '₴';
 
   // Захоплення базлайну + dirty-детекція (value-based).
   // Create: базлайн — перший snapshot після reset (порожня форма).
@@ -294,6 +325,7 @@ export function InvoiceCreateModal({
         setForm({
           counterpartyId: inv.counterpartyId ?? '',
           invoiceType: inv.invoiceType ?? 'STANDARD',
+          currencyId: inv.currencyId ?? '',
           dueDate: inv.dueDate ? inv.dueDate.slice(0, 10) : '',
           documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),
           notes: inv.notes ?? '',
@@ -452,6 +484,7 @@ export function InvoiceCreateModal({
           body: JSON.stringify({
             counterpartyId: form.counterpartyId || undefined,
             invoiceType: form.invoiceType || undefined,
+            currencyId: form.currencyId || undefined,
             amount: computedTotal >= 0.01 ? computedTotal : 0.01,
             dueDate: form.dueDate || undefined,
             documentDate: form.documentDate || undefined,
@@ -496,6 +529,7 @@ export function InvoiceCreateModal({
         body: JSON.stringify({
           counterpartyId: form.counterpartyId || undefined,
           invoiceType: form.invoiceType || undefined,
+          currencyId: form.currencyId || undefined,
           dueDate: form.dueDate || undefined,
           documentDate: form.documentDate || undefined,
           notes: form.notes || undefined,
@@ -855,7 +889,16 @@ export function InvoiceCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Термін оплати | Примітки */}
+                {/* Рядок 3: Валюта */}
+                <div className="grid grid-cols-2 gap-4">
+                  <CurrencySelect
+                    value={form.currencyId}
+                    onChange={id => setForm(f => ({ ...f, currencyId: id }))}
+                    disabled={!canEdit}
+                  />
+                </div>
+
+                {/* Рядок 4: Термін оплати | Примітки */}
                 <div className="grid grid-cols-2 gap-4">
                   <DatePickerInput
                     label="Термін оплати"
@@ -931,10 +974,10 @@ export function InvoiceCreateModal({
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">ОПИС</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">К-СТЬ</th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    ЦІНА, ₴
+                    ЦІНА, {currencySymbol}
                   </th>
                   <th className="text-right px-3 py-2 font-medium text-muted-foreground">
-                    СУМА, ₴
+                    СУМА, {currencySymbol}
                   </th>
                 </tr>
               </thead>
@@ -1041,7 +1084,7 @@ export function InvoiceCreateModal({
                     Разом:
                   </td>
                   <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
-                    {total.toFixed(2)} ₴
+                    {total.toFixed(2)} {currencySymbol}
                   </td>
                 </tr>
                 {isEditMode && paidAmount != null && paidAmount > 0 && (
@@ -1053,7 +1096,7 @@ export function InvoiceCreateModal({
                       Оплачено:
                     </td>
                     <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-success">
-                      {paidAmount.toFixed(2)} ₴
+                      {paidAmount.toFixed(2)} {currencySymbol}
                     </td>
                   </tr>
                 )}
@@ -1066,7 +1109,7 @@ export function InvoiceCreateModal({
                       Залишок:
                     </td>
                     <td className="px-3 py-1.5 text-right text-[13px] font-semibold tabular-nums text-destructive">
-                      {(total - paidAmount).toFixed(2)} ₴
+                      {(total - paidAmount).toFixed(2)} {currencySymbol}
                     </td>
                   </tr>
                 )}

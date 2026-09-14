@@ -36,6 +36,7 @@ export interface WorkOrderFormState {
   vehicleId: string;
   counterpartyId: string;
   contractId: string;
+  currencyId: string;
   liftId: string;
   description: string;
   priority: string;

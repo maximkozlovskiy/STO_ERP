@@ -25,6 +25,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { useInvoices, invoicesKeys, Invoice } from '@/hooks/api/useInvoices';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -118,10 +119,6 @@ interface InvoiceWithOptionals extends Invoice {
 const STATUS_LABELS = INVOICE_STATUS_LABELS;
 const STATUS_BADGE = INVOICE_STATUS_BADGE;
 const STATUS_TRANSITIONS = INVOICE_STATUS_TRANSITIONS;
-
-function fmt(n: number) {
-  return fmtMoney(n) + ' ₴';
-}
 
 // Module-level constants — стабільні референси і JSON прекомпьютений лише раз
 // (раніше JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) бігав на кожен render).
@@ -238,6 +235,9 @@ function InvoicesPageInner() {
   const invoices = queryData?.items ?? (EMPTY_ITEMS as unknown as Invoice[]);
   const total = queryData?.total ?? 0;
   const totalPages = Math.ceil(total / limit) || 1;
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
 
   // Stable sorted ID list — prevents useQuery refiring on reference-only changes.
   const invoiceIds = useMemo(() => invoices.map(i => i.id).sort(), [invoices]);
@@ -555,116 +555,130 @@ function InvoicesPageInner() {
     [resetPage, setActiveSavedFilterId],
   );
 
-  const buildInvoiceTabs = (inv: InvoiceWithOptionals): DetailPanelTab[] => [
-    {
-      key: 'info',
-      label: 'Основне',
-      content: (
-        <div className="space-y-3">
-          {/* Schema-driven fields — order + visibility from useDetailPanelConfig */}
-          {buildPanelFields(inv, INVOICE_PANEL_SCHEMA, panelConfig.config, {
-            status: v => (
-              <Badge
-                variant={STATUS_BADGE[String(v)] ?? 'secondary'}
-                tooltip={INVOICE_STATUS_DESCRIPTIONS[String(v)]}
-              >
-                {STATUS_LABELS[String(v)]}
-              </Badge>
-            ),
-            invoiceType: v => (v ? (INVOICE_TYPE_LABELS[String(v)] ?? String(v)) : undefined),
-            totalWithoutVat: v =>
-              v != null && Number(v) > 0 ? `${fmtMoney(Number(v))} ₴` : undefined,
-            totalVat: v => (v != null && Number(v) !== 0 ? `${fmtMoney(Number(v))} ₴` : undefined),
-            totalWithVat: (v, r) =>
-              v != null && Number(v) > 0 && Number(v) !== r.amount
-                ? `${fmtMoney(Number(v))} ₴`
-                : undefined,
-          }).map(f => (
-            <PanelField
-              key={f.key}
-              fieldKey={f.key}
-              label={f.label}
-              value={f.value}
-              hidden={f.hidden}
-            />
-          ))}
-          <PanelSection title="Дії">
-            <div className="flex flex-col gap-2">
-              {STATUS_TRANSITIONS[inv.status]?.map(s => (
+  const buildInvoiceTabs = (inv: InvoiceWithOptionals): DetailPanelTab[] => {
+    // Мультивалюта (Фаза 3): символ валюти рахунку для панелі/позицій.
+    const isBase = !inv.currencyCode || inv.currencyCode === baseCode;
+    const sym = isBase ? baseSymbol : inv.currencyCode;
+    return [
+      {
+        key: 'info',
+        label: 'Основне',
+        content: (
+          <div className="space-y-3">
+            {/* Schema-driven fields — order + visibility from useDetailPanelConfig */}
+            {buildPanelFields(inv, INVOICE_PANEL_SCHEMA, panelConfig.config, {
+              status: v => (
+                <Badge
+                  variant={STATUS_BADGE[String(v)] ?? 'secondary'}
+                  tooltip={INVOICE_STATUS_DESCRIPTIONS[String(v)]}
+                >
+                  {STATUS_LABELS[String(v)]}
+                </Badge>
+              ),
+              invoiceType: v => (v ? (INVOICE_TYPE_LABELS[String(v)] ?? String(v)) : undefined),
+              totalWithoutVat: v =>
+                v != null && Number(v) > 0 ? `${fmtMoney(Number(v))} ${sym}` : undefined,
+              totalVat: v =>
+                v != null && Number(v) !== 0 ? `${fmtMoney(Number(v))} ${sym}` : undefined,
+              totalWithVat: (v, r) =>
+                v != null && Number(v) > 0 && Number(v) !== r.amount
+                  ? `${fmtMoney(Number(v))} ${sym}`
+                  : undefined,
+            }).map(f => (
+              <PanelField
+                key={f.key}
+                fieldKey={f.key}
+                label={f.label}
+                value={f.value}
+                hidden={f.hidden}
+              />
+            ))}
+            <PanelSection title="Дії">
+              <div className="flex flex-col gap-2">
+                {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                  <Button
+                    key={s}
+                    variant={
+                      s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'
+                    }
+                    size="sm"
+                    className="w-full"
+                    onClick={() => (s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s))}
+                    loading={savingId === inv.id}
+                  >
+                    {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                  </Button>
+                ))}
                 <Button
-                  key={s}
-                  variant={s === 'CANCELLED' ? 'destructive' : s === 'PAID' ? 'default' : 'outline'}
+                  variant="outline"
                   size="sm"
                   className="w-full"
-                  onClick={() => (s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s))}
-                  loading={savingId === inv.id}
+                  onClick={() => void downloadPdf(inv)}
                 >
-                  {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                  Завантажити PDF
                 </Button>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => void downloadPdf(inv)}
-              >
-                Завантажити PDF
-              </Button>
-              <Button variant="outline" size="sm" className="w-full" onClick={() => window.print()}>
-                Друк
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => void handleClone(inv)}
-                loading={cloning}
-                disabled={cloning}
-              >
-                Дублювати
-              </Button>
-            </div>
-          </PanelSection>
-        </div>
-      ),
-    },
-    {
-      key: 'lines',
-      label: 'Позиції',
-      content:
-        !inv.lines || inv.lines.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">Немає позицій</p>
-        ) : (
-          <div className="space-y-2">
-            {inv.lines.map((line, i) => (
-              <div
-                key={line.id ?? i}
-                className="rounded-lg border border-border px-3 py-2 text-[13px]"
-              >
-                <p className="font-medium text-foreground">{line.description}</p>
-                <p className="text-muted-foreground text-[12px] mt-0.5">
-                  {line.quantity} {line.unitShortName ?? ''} × {fmtMoney(line.unitPrice)} ₴{' = '}
-                  <span className="text-foreground font-medium">
-                    {fmtMoney(line.priceWithVat)} ₴
-                  </span>
-                </p>
-                {line.vatRate > 0 && (
-                  <p className="text-muted-foreground text-[11px] mt-0.5">
-                    Без ПДВ: {fmtMoney(line.priceWithoutVat)} ₴ · ПДВ {line.vatRate}%:{' '}
-                    {fmtMoney(line.vatAmount)} ₴
-                  </p>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => window.print()}
+                >
+                  Друк
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => void handleClone(inv)}
+                  loading={cloning}
+                  disabled={cloning}
+                >
+                  Дублювати
+                </Button>
               </div>
-            ))}
+            </PanelSection>
           </div>
         ),
-    },
-    {
-      key: 'links',
-      label: "Зв'язки",
-      content: <LinkedDocumentsPanel config={linkedConfig} entityId={inv.id} />,
-    },
-  ];
+      },
+      {
+        key: 'lines',
+        label: 'Позиції',
+        content:
+          !inv.lines || inv.lines.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+          ) : (
+            <div className="space-y-2">
+              {inv.lines.map((line, i) => (
+                <div
+                  key={line.id ?? i}
+                  className="rounded-lg border border-border px-3 py-2 text-[13px]"
+                >
+                  <p className="font-medium text-foreground">{line.description}</p>
+                  <p className="text-muted-foreground text-[12px] mt-0.5">
+                    {line.quantity} {line.unitShortName ?? ''} × {fmtMoney(line.unitPrice)} {sym}
+                    {' = '}
+                    <span className="text-foreground font-medium">
+                      {fmtMoney(line.priceWithVat)} {sym}
+                    </span>
+                  </p>
+                  {line.vatRate > 0 && (
+                    <p className="text-muted-foreground text-[11px] mt-0.5">
+                      Без ПДВ: {fmtMoney(line.priceWithoutVat)} {sym} · ПДВ {line.vatRate}%:{' '}
+                      {fmtMoney(line.vatAmount)} {sym}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ),
+      },
+      {
+        key: 'links',
+        label: "Зв'язки",
+        content: <LinkedDocumentsPanel config={linkedConfig} entityId={inv.id} />,
+      },
+    ];
+  };
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -923,15 +937,25 @@ function InvoicesPageInner() {
                               </Badge>
                             </TableCell>
                           );
-                        if (col.key === 'amount')
+                        if (col.key === 'amount') {
+                          const isBase = !inv.currencyCode || inv.currencyCode === baseCode;
+                          const sym = isBase ? baseSymbol : inv.currencyCode;
                           return (
                             <TableCell
                               key="amount"
-                              className="text-right font-semibold text-[13px]"
+                              className="text-right font-semibold text-[13px] tabular-nums"
                             >
-                              {fmt(inv.amount)}
+                              <div>
+                                {fmtMoney(inv.amount)} {sym}
+                              </div>
+                              {!isBase && inv.totalAmountBase != null && (
+                                <div className="text-[11px] font-normal text-muted-foreground">
+                                  {fmtMoney(inv.totalAmountBase)} {baseSymbol}
+                                </div>
+                              )}
                             </TableCell>
                           );
+                        }
                         if (col.key === 'documentDate')
                           return (
                             <TableCell
@@ -1070,19 +1094,22 @@ function InvoicesPageInner() {
           (() => {
             const paid = showPayment.paidAmount ?? 0;
             const remaining = invoiceRemaining(showPayment.amount, showPayment.paidAmount);
+            const payIsBase = !showPayment.currencyCode || showPayment.currencyCode === baseCode;
+            const paySym = payIsBase ? baseSymbol : showPayment.currencyCode;
+            const fmtPay = (n: number) => `${fmtMoney(n)} ${paySym}`;
             return (
               <div className="space-y-4">
                 <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
                   <div>
-                    Сума рахунку: <strong>{fmt(showPayment.amount)}</strong>
+                    Сума рахунку: <strong>{fmtPay(showPayment.amount)}</strong>
                   </div>
                   {paid > 0 && (
                     <div>
-                      Уже оплачено: <strong>{fmt(paid)}</strong>
+                      Уже оплачено: <strong>{fmtPay(paid)}</strong>
                     </div>
                   )}
                   <div>
-                    Залишок до сплати: <strong>{fmt(remaining)}</strong>
+                    Залишок до сплати: <strong>{fmtPay(remaining)}</strong>
                   </div>
                 </div>
                 <Select
@@ -1107,7 +1134,7 @@ function InvoicesPageInner() {
                   )}
                 </Select>
                 <Input
-                  label="Сума, ₴"
+                  label={`Сума, ${paySym}`}
                   type="number"
                   value={payForm.amount}
                   onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}

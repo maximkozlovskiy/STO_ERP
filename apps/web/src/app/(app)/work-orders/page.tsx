@@ -26,6 +26,7 @@ import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -167,7 +168,7 @@ const WO_COLUMNS: Array<{ key: string; label: string }> = [
   { key: 'status', label: 'Статус' },
   { key: 'lift', label: 'Підйомник' },
   { key: 'priority', label: 'Пріоритет' },
-  { key: 'amount', label: 'Сума, ₴' },
+  { key: 'amount', label: 'Сума' },
   { key: 'documentDate', label: 'Дата документа' },
   { key: 'plannedAt', label: 'Заплановано' },
   { key: 'dueDate', label: 'Дедлайн' },
@@ -276,6 +277,9 @@ function WorkOrdersPageInner() {
   // effect fires on every render. Use module-level frozen EMPTY_ITEMS instead.
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as WorkOrder[]);
   const total = queryData?.total ?? 0;
+  const { data: baseCurrency } = useBaseCurrency();
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
 
   // Modal & form state
   const [modal, setModal] = useState(false);
@@ -980,14 +984,21 @@ function WorkOrdersPageInner() {
                           // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
                           const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
                           const plannedAmount = wo.totalLabor + wo.totalParts;
+                          const isBase = !wo.currencyCode || wo.currencyCode === baseCode;
+                          const sym = isBase ? baseSymbol : wo.currencyCode;
                           return (
                             <TableCell key="amount" className="tabular-nums text-right">
                               <div className="font-medium text-foreground">
-                                {fmtMoney(wo.totalAmount)}
+                                {fmtMoney(wo.totalAmount)} {sym}
                               </div>
+                              {!isBase && wo.totalAmountBase != null && (
+                                <div className="text-[11px] text-muted-foreground">
+                                  {fmtMoney(wo.totalAmountBase)} {baseSymbol}
+                                </div>
+                              )}
                               {hasActual && (
                                 <div className="text-[11px] text-muted-foreground line-through">
-                                  {fmtMoney(plannedAmount)}
+                                  {fmtMoney(plannedAmount)} {sym}
                                 </div>
                               )}
                             </TableCell>

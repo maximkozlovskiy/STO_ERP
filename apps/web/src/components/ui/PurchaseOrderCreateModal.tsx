@@ -39,6 +39,8 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
+import { CurrencySelect } from '@/components/ui/CurrencySelect';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import {
   CounterpartyEditModal,
   type CounterpartyForModal,
@@ -85,6 +87,8 @@ interface PODetail {
   status: string;
   supplierId: string;
   supplierName?: string | null;
+  currencyId?: string | null;
+  currencyCode?: string | null;
   warehouseId: string;
   warehouseName?: string | null;
   contractId?: string | null;
@@ -192,12 +196,18 @@ export function PurchaseOrderCreateModal({
   const [form, setForm] = useState({
     supplierId: '',
     warehouseId: '',
+    currencyId: '',
     notes: '',
     documentDate: kyivToday(),
     paymentDate: '',
     trackingNumber: '',
   });
   const [supplierDisplay, setSupplierDisplay] = useState('');
+  // Мультивалюта (Фаза 3): локальний перелік валют для резолву символу обраної валюти.
+  const [currencies, setCurrencies] = useState<
+    { id: string; code: string; symbol?: string | null }[]
+  >([]);
+  const { data: baseCurrency } = useBaseCurrency();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const canPrice = isEditMode && (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL');
@@ -403,6 +413,7 @@ export function PurchaseOrderCreateModal({
       setForm({
         supplierId: '',
         warehouseId: '',
+        currencyId: '',
         notes: '',
         documentDate: kyivToday(),
         paymentDate: '',
@@ -413,6 +424,25 @@ export function PurchaseOrderCreateModal({
     // Базлайн (create або edit) захоплюється value-based ефектом нижче.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, purchaseOrderIdProp, isEditMode]);
+
+  // Мультивалюта: підвантажити перелік валют для резолву символу обраної валюти.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    apiFetch<{ items: { id: string; code: string; symbol?: string | null }[] }>('/currencies')
+      .then(r => {
+        if (!cancelled) setCurrencies(r.items ?? []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Символ обраної валюти для колонок таблиці (fallback — код або базовий символ).
+  const selectedCurrency = currencies.find(c => c.id === form.currencyId);
+  const currencySymbol =
+    selectedCurrency?.symbol || selectedCurrency?.code || baseCurrency?.symbol || '₴';
 
   // Value-based dirty-детекція + захоплення базлайну.
   // Create: базлайн — перший snapshot після reset. Edit: після завершення
@@ -449,6 +479,7 @@ export function PurchaseOrderCreateModal({
           setForm({
             supplierId: po.supplierId ?? '',
             warehouseId: po.warehouseId ?? '',
+            currencyId: po.currencyId ?? '',
             notes: po.notes ?? '',
             documentDate: po.documentDate ? po.documentDate.slice(0, 10) : kyivToday(),
             paymentDate: po.paymentDate ? po.paymentDate.slice(0, 10) : '',
@@ -787,6 +818,7 @@ export function PurchaseOrderCreateModal({
         body: JSON.stringify({
           supplierId: form.supplierId,
           warehouseId: form.warehouseId,
+          currencyId: form.currencyId || undefined,
           notes: form.notes || undefined,
           documentDate: form.documentDate || undefined,
           paymentDate: form.paymentDate || undefined,
@@ -831,6 +863,7 @@ export function PurchaseOrderCreateModal({
         body: JSON.stringify({
           supplierId: form.supplierId || undefined,
           warehouseId: form.warehouseId || undefined,
+          currencyId: form.currencyId || undefined,
           // null → backend clears contractId; UUID → set; undefined → keep current.
           // We always send the explicit value because supplier picker resets contract
           // state to null and backend must persist that clear.
@@ -1309,7 +1342,7 @@ export function PurchaseOrderCreateModal({
                   </Select>
                 </div>
 
-                {/* Рядок 3: Договір */}
+                {/* Рядок 3: Договір | Валюта */}
                 <div className="grid grid-cols-2 gap-4">
                   <Input
                     label="Договір"
@@ -1318,6 +1351,11 @@ export function PurchaseOrderCreateModal({
                     readOnly
                     placeholder="— автоматично —"
                     className="h-8 text-[13px]"
+                  />
+                  <CurrencySelect
+                    value={form.currencyId}
+                    onChange={id => setForm(f => ({ ...f, currencyId: id }))}
+                    disabled={!canEdit}
                   />
                 </div>
 
@@ -1484,19 +1522,19 @@ export function PurchaseOrderCreateModal({
                       </th>
                     )}
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Ціна, ₴
+                      Ціна, {currencySymbol}
                     </th>
                     {vatMode !== 'NONE' && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                        ПДВ, ₴
+                        ПДВ, {currencySymbol}
                       </th>
                     )}
                     <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted whitespace-nowrap">
-                      Сума, ₴
+                      Сума, {currencySymbol}
                     </th>
                     {canPrice && (
                       <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary whitespace-nowrap">
-                        Ціна розцінки, ₴
+                        Ціна розцінки, {currencySymbol}
                       </th>
                     )}
                     {canPrice && (

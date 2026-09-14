@@ -60,6 +60,12 @@ vi.mock('@/lib/format', async () => ({
   kyivToday: () => '2026-06-15',
 }));
 
+// useBaseCurrency (CurrencySelect + модалки Invoice/PO) читає org базову валюту через
+// useQuery — стабимо, щоб plain-render (без QueryClientProvider) не падав (мультивалюта Фаза 3).
+vi.mock('@/hooks/api/useCash', () => ({
+  useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
+}));
+
 const mockWarehouses = [
   { id: 'w1', name: 'Склад №1', deletedAt: null },
   { id: 'w2', name: 'Склад №2', deletedAt: null },

@@ -23,6 +23,7 @@ import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtDate } from '@/lib/format';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
 
@@ -31,6 +32,9 @@ export interface InvoiceRef {
   number: string;
   status: InvoiceStatus;
   amount: number;
+  currencyCode?: string | null;
+  totalAmountBase?: number | null;
+  rateUsed?: number | null;
   documentDate: string | null;
 }
 
@@ -66,6 +70,7 @@ export function InvoiceSection({
 }: InvoiceSectionProps) {
   const router = useRouter();
   const features = useUiFeatures();
+  const { data: baseCurrency } = useBaseCurrency();
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [refreshingInvoice, setRefreshingInvoice] = useState(false);
   const [downloadingInvoicePdf, setDownloadingInvoicePdf] = useState(false);
@@ -161,9 +166,25 @@ export function InvoiceSection({
           >
             {INVOICE_STATUS_LABELS[invoiceRef.status] ?? invoiceRef.status}
           </Badge>
-          <p className="text-sm font-semibold text-foreground tabular-nums">
-            {fmtMoney(invoiceRef.amount)} ₴
-          </p>
+          {(() => {
+            const baseCode = baseCurrency?.code ?? 'UAH';
+            const baseSymbol = baseCurrency?.symbol ?? '₴';
+            const isBase = !invoiceRef.currencyCode || invoiceRef.currencyCode === baseCode;
+            const sym = isBase ? baseSymbol : invoiceRef.currencyCode;
+            return (
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold text-foreground tabular-nums">
+                  {fmtMoney(invoiceRef.amount)} {sym}
+                </span>
+                {!isBase && invoiceRef.totalAmountBase != null && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {fmtMoney(invoiceRef.totalAmountBase)} {baseSymbol}
+                    {invoiceRef.rateUsed != null && ` · курс ${invoiceRef.rateUsed}`}
+                  </span>
+                )}
+              </span>
+            );
+          })()}
           {invoiceRef.documentDate && (
             <p className="text-xs text-muted-foreground">{fmtDate(invoiceRef.documentDate)}</p>
           )}

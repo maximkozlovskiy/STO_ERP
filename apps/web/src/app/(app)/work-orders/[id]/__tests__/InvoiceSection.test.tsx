@@ -65,6 +65,12 @@ vi.mock('@/hooks/useUiFeatures', () => ({
   }),
 }));
 
+// useBaseCurrency читає org базову валюту через useQuery — стабимо, щоб не потрібен
+// QueryClientProvider у component-test (мультивалюта Фаза 3).
+vi.mock('@/hooks/api/useCash', () => ({
+  useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
+}));
+
 // ─── Shared fixtures ─────────────────────────────────────────────────────────
 
 const WO_ID = '11111111-1111-4111-8111-111111111111';

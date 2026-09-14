@@ -17,6 +17,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtInt, fmtDate, fmtDateTime, fmtShortDateTime } from '@/lib/format';
+import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
 import {
@@ -120,6 +121,10 @@ interface WorkOrderDetail {
   repairCategory?: string | null;
   clientApproval?: boolean;
   documentDate?: string | null;
+  currencyId?: string | null;
+  currencyCode?: string | null;
+  totalAmountBase?: number | null;
+  rateUsed?: number | null;
   totalLabor: number;
   totalActualLabor: number;
   totalParts: number;
@@ -244,6 +249,7 @@ export default function WorkOrderCardPage() {
   const router = useRouter();
 
   const [wo, setWo] = useState<WorkOrderDetail | null>(null);
+  const { data: baseCurrency } = useBaseCurrency();
   const [woLoading, setWoLoading] = useState(true);
   const [works, setWorks] = useState<Work[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -720,6 +726,12 @@ export default function WorkOrderCardPage() {
   const canEdit = WO_EDITABLE_STATUSES.includes(wo.status);
   const allowedTransitions = TRANSITIONS[wo.status] ?? [];
 
+  // Мультивалюта (Фаза 3): валюта документа + сума у базовій валюті.
+  const baseCode = baseCurrency?.code ?? 'UAH';
+  const baseSymbol = baseCurrency?.symbol ?? '₴';
+  const isBase = !wo.currencyCode || wo.currencyCode === baseCode;
+  const sym = isBase ? baseSymbol : wo.currencyCode;
+
   return (
     <div className="page-container max-w-4xl space-y-6">
       {error && (
@@ -758,7 +770,15 @@ export default function WorkOrderCardPage() {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-foreground">{fmtMoney(wo.totalAmount)} ₴</p>
+          <p className="text-lg font-bold text-foreground tabular-nums">
+            {fmtMoney(wo.totalAmount)} {sym}
+          </p>
+          {!isBase && wo.totalAmountBase != null && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {fmtMoney(wo.totalAmountBase)} {baseSymbol}
+              {wo.rateUsed != null && ` · курс ${wo.rateUsed}`}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">загальна сума</p>
         </div>
       </div>
@@ -905,27 +925,33 @@ export default function WorkOrderCardPage() {
           <p className="text-xs text-muted-foreground">
             {wo.totalActualLabor !== wo.totalLabor ? 'Роботи (план)' : 'Роботи'}
           </p>
-          <p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</p>
+          <p className="text-lg font-semibold text-foreground tabular-nums">
+            {fmtMoney(wo.totalLabor)} {sym}
+          </p>
           {wo.totalActualLabor !== wo.totalLabor && (
             <p className="text-xs text-muted-foreground mt-1">
               факт.:{' '}
-              <span className="font-medium text-foreground">{fmtMoney(wo.totalActualLabor)} ₴</span>
+              <span className="font-medium text-foreground tabular-nums">
+                {fmtMoney(wo.totalActualLabor)} {sym}
+              </span>
             </p>
           )}
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Запчастини</p>
-          <p className="text-lg font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</p>
+          <p className="text-lg font-semibold text-foreground tabular-nums">
+            {fmtMoney(wo.totalParts)} {sym}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Оплачено</p>
           <p
             className={cn(
-              'text-lg font-semibold',
+              'text-lg font-semibold tabular-nums',
               wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground',
             )}
           >
-            {fmtMoney(wo.paidAmount)} ₴
+            {fmtMoney(wo.paidAmount)} {sym}
           </p>
         </div>
       </div>
