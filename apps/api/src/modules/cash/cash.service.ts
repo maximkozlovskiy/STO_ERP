@@ -3,6 +3,7 @@ import { CashDirection, CashOperationReason, Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { roundMoney } from '../../common/utils/math';
 import { CashOperationResponseDto, CreateCashOperationDto } from './cash.dto';
 
@@ -35,6 +36,7 @@ export class CashService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly exchangeRates: ExchangeRatesService,
   ) {}
 
   /**
@@ -53,9 +55,18 @@ export class CashService {
 
     const register = await db.cashRegister.findFirst({
       where: { id: input.cashRegisterId, orgId, deletedAt: null },
-      select: { id: true, isFiscal: true, branchId: true },
+      select: { id: true, isFiscal: true, branchId: true, currencyId: true },
     });
     if (!register) throw new NotFoundException('Касу не знайдено');
+
+    // Мультивалюта (Фаза 1): amountBase у базовій валюті org по курсу на дату операції. Валюта —
+    // з каси (моно-валютна). Базова каса → rate=1, base=amount; інша валюта без курсу на дату → 400.
+    const conv = await this.exchangeRates.resolveBaseConversion(
+      orgId,
+      register.currencyId,
+      new Date(),
+      amount,
+    );
 
     // Стаття руху коштів (валідація належності org + тип↔напрям): OUT лише EXPENSE-стаття,
     // IN лише INCOME-стаття — гарантує коректність звітності по статтях.
@@ -112,6 +123,8 @@ export class CashService {
           cashShiftId,
           direction: input.direction,
           amount,
+          amountBase: conv.amountBase,
+          rateUsed: conv.rateUsed,
           reason: input.reason,
           expenseCategoryId: input.expenseCategoryId ?? null,
           counterpartyId: input.counterpartyId ?? null,
@@ -238,6 +251,8 @@ export class CashService {
     cashShiftId: string | null;
     direction: CashDirection;
     amount: Prisma.Decimal;
+    amountBase?: Prisma.Decimal | null;
+    rateUsed?: Prisma.Decimal | null;
     reason: CashOperationReason;
     expenseCategoryId: string | null;
     counterpartyId: string | null;
@@ -254,6 +269,8 @@ export class CashService {
       cashShiftId: o.cashShiftId,
       direction: o.direction,
       amount: Number(o.amount),
+      amountBase: o.amountBase != null ? Number(o.amountBase) : null,
+      rateUsed: o.rateUsed != null ? Number(o.rateUsed) : null,
       reason: o.reason,
       expenseCategoryId: o.expenseCategoryId,
       expenseCategoryName: o.expenseCategory?.name ?? null,

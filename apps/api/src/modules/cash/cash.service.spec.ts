@@ -26,12 +26,21 @@ function makeMocks() {
       $transaction: vi.fn(),
     },
     audit: { record: vi.fn().mockResolvedValue(undefined) },
+    // Мультивалюта: за замовч. базова каса (UAH) → base=amount, rate=1. Тести валют перекривають.
+    exchangeRates: {
+      resolveBaseConversion: vi
+        .fn()
+        .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
+          Promise.resolve({ rateUsed: 1, amountBase: amount }),
+        ),
+    },
   };
 }
 function makeService(m: ReturnType<typeof makeMocks>): CashService {
   const s = new CashService(
     m.prisma as unknown as PrismaService,
     m.audit as unknown as AuditService,
+    m.exchangeRates as unknown as import('../exchange-rates/exchange-rates.service').ExchangeRatesService,
   );
   // $transaction прокидає callback з тим самим prisma-моком (client = prisma).
   m.prisma.$transaction.mockImplementation(async (fn: (c: unknown) => Promise<unknown>) =>
@@ -85,6 +94,78 @@ describe('CashService.createOperation — єдина точка руху', () =>
         data: expect.objectContaining({ cashShiftId: null, direction: 'IN', amount: 500 }),
       }),
     );
+  });
+
+  it('мультивалюта: UAH-каса → amountBase=amount, rateUsed=1 (базова)', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+      currencyId: 'uah-id',
+    });
+    // дефолтний resolveBaseConversion-мок → {rateUsed:1, amountBase:amount}
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: 500,
+      reason: 'MANUAL_IN',
+    });
+    expect(m.exchangeRates.resolveBaseConversion).toHaveBeenCalledWith(
+      ORG,
+      'uah-id',
+      expect.any(Date),
+      500,
+    );
+    expect(m.prisma.cashOperation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 500, amountBase: 500, rateUsed: 1 }),
+      }),
+    );
+  });
+
+  it('мультивалюта: USD-каса → amountBase = amount×rate (з конвертації)', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+      currencyId: 'usd-id',
+    });
+    m.exchangeRates.resolveBaseConversion.mockResolvedValueOnce({
+      rateUsed: 41.5,
+      amountBase: 4150,
+    });
+    await service.createOperation(ORG, {
+      cashRegisterId: REG,
+      direction: 'IN',
+      amount: 100,
+      reason: 'MANUAL_IN',
+    });
+    expect(m.prisma.cashOperation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 100, amountBase: 4150, rateUsed: 41.5 }),
+      }),
+    );
+  });
+
+  it('мультивалюта: немає курсу на дату → 400 (resolveBaseConversion кидає), операція не створюється', async () => {
+    m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
+      id: REG,
+      isFiscal: false,
+      branchId: 'b1',
+      currencyId: 'usd-id',
+    });
+    m.exchangeRates.resolveBaseConversion.mockRejectedValueOnce(
+      new BadRequestException('Немає курсу валюти USD'),
+    );
+    await expect(
+      service.createOperation(ORG, {
+        cashRegisterId: REG,
+        direction: 'IN',
+        amount: 100,
+        reason: 'MANUAL_IN',
+      }),
+    ).rejects.toThrow(/Немає курсу валюти/);
+    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
   it('фіскальна каса без відкритої зміни → BadRequest', async () => {

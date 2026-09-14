@@ -54,7 +54,11 @@ export class CashOperationResponseDto {
   @ApiProperty() cashRegisterId!: string;
   @ApiPropertyOptional({ type: String, nullable: true }) cashShiftId?: string | null;
   @ApiProperty() direction!: string;
-  @ApiProperty() amount!: number;
+  @ApiProperty({ description: 'Сума у валюті каси' }) amount!: number;
+  @ApiPropertyOptional({ description: 'Сума у базовій валюті (UAH) по курсу на дату операції' })
+  amountBase?: number | null;
+  @ApiPropertyOptional({ description: 'Застосований курс (base за 1 од. валюти каси)' })
+  rateUsed?: number | null;
   @ApiProperty() reason!: string;
   @ApiPropertyOptional({ type: String, nullable: true }) expenseCategoryId?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) expenseCategoryName?: string | null;
