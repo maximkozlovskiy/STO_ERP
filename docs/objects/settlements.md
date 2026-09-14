@@ -24,16 +24,28 @@ _Stub — заповнити при роботі з settlements модулем._
 - **Клієнтські vs постачальницькі типи РОЗДІЛЕНІ** (знак протилежний для того самого руху,
   тому НЕ можна переюзати CHARGE/PAYMENT для постачальника):
 
-| Тип                | Знак   | Хто пише                           | Семантика                               |
-| ------------------ | ------ | ---------------------------------- | --------------------------------------- |
-| `CHARGE`           | +1     | `WorkOrder` COMPLETED              | клієнт винен нам                        |
-| `PAYMENT`          | −1     | `Payment` (клієнт заплатив нам)    | борг клієнта ↓                          |
-| `PREPAYMENT`       | −1     | (клієнтський, наразі без writer'а) | —                                       |
-| `REFUND`           | −1     | (клієнтський, наразі без writer'а) | —                                       |
-| `CREDIT_NOTE`      | −1     | (клієнтський, наразі без writer'а) | —                                       |
-| `SUPPLIER_CHARGE`  | **−1** | `PurchaseOrder.receive`            | отримали товар → МИ винні постачальнику |
-| `SUPPLIER_PAYMENT` | **+1** | `SupplierPayment.confirm`          | заплатили постачальнику → наш борг ↓    |
-| `SUPPLIER_REFUND`  | **+1** | `SupplierReturn.confirm`           | повернули товар → наш борг ↓            |
+| Тип                | Знак   | Хто пише                           | Семантика                                         |
+| ------------------ | ------ | ---------------------------------- | ------------------------------------------------- |
+| `CHARGE`           | +1     | `WorkOrder` COMPLETED              | клієнт винен нам                                  |
+| `PAYMENT`          | −1     | `Payment` (клієнт заплатив нам)    | борг клієнта ↓                                    |
+| `PREPAYMENT`       | −1     | (клієнтський, наразі без writer'а) | —                                                 |
+| `REFUND`           | −1     | (клієнтський, наразі без writer'а) | —                                                 |
+| `CREDIT_NOTE`      | −1     | (клієнтський, наразі без writer'а) | —                                                 |
+| `SUPPLIER_CHARGE`  | **−1** | `PurchaseOrder.receive`            | отримали товар → МИ винні постачальнику           |
+| `SUPPLIER_PAYMENT` | **+1** | `SupplierPayment.confirm`          | заплатили постачальнику → наш борг ↓              |
+| `SUPPLIER_REFUND`  | **+1** | `SupplierReturn.confirm`           | повернули товар → наш борг ↓                      |
+| `FX_GAIN`          | **+1** | `PaymentsService` (invoice→PAID)   | курсовий прибуток → гасить від'ємний base-залишок |
+| `FX_LOSS`          | **−1** | `PaymentsService` (invoice→PAID)   | курсовий збиток → гасить додатний base-залишок    |
+
+> **Курсові різниці (Фаза 4, 2026-09-14, realized FX):** повна оплата іновалютного рахунку у своїй
+> валюті лишає ненульовий base-залишок (CHARGE за курсом дати документа, PAYMENT — дати оплати).
+> При `invoice→PAID` (не-базова валюта) PaymentsService рахує `fx = chargeBase − paidBase`, де
+> **chargeBase = Σ CHARGE.amountBase з ЛЕДЖЕРА** по charge-документу (WorkOrder для WO-рахунку /
+> Invoice для standalone — НЕ зі stored `totalAmountBase`, бо WO/invoice-тотал може дрейфувати),
+> **paidBase = Σ Payment.amountBase** по invoiceId. Одна проводка `FX_GAIN`/`FX_LOSS` (amount=|fx| у
+> base, **currencyId=null**) обнуляє залишок ТОЧНО. Skip: base-валюта / |fx|<0.005 / вже проведено
+> (count-guard, idempotency). Акт звірки авто-включає FX (BALANCE_SIGN). **Клієнтський бік лише;**
+> payables (SupplierPayment) + WO-direct + unrealized (переоцінка) — deferred.
 
 > ⚠️ **Історія бага:** до 2026-09-02 `receive()` писав `CHARGE(+1)` постачальнику → баланс
 > ставав ДОДАТНИМ (наче він винен нам), через що графік оплат (фільтр `balance<0`) не бачив

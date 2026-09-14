@@ -226,6 +226,15 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+Мультивалюта Фаза 4 (курсові різниці, realized FX) — 2026-09-14:
+  4f6866a5 enum FX_GAIN/FX_LOSS + BALANCE_SIGN(+1/−1) + усі enum-дзеркала + invariants core-zeroing
+  3204cd63 FX hook payments.service (invoice→PAID): chargeBase з леджера − paidBase → FX-проводка обнуляє base-залишок
+  a32d1820 frontend: мітки «Курсовий прибуток/збиток» (shared) + FX_LOSS-червоний
+  Модель: realized FX при повній оплаті іновалютного рахунку; chargeBase = Σ CHARGE.amountBase з ЛЕДЖЕРА
+  по charge-документу (WO/Invoice, не stored totalAmountBase); currencyId=null на FX (base-дельта);
+  skip base-валюта/|fx|<0.005/idempotency-count. Клієнтський бік; payables+WO-direct+unrealized deferred.
+  tsc api+web 0; settlements 33 + payments 72(+8 FX) + report-builder 39 зелені.
+
 Мультивалюта Фаза 3 (валюта документів) — 8 комітів, 2026-09-14:
   e07a60b0 DB: WO/PO/Invoice/SupplierPayment += currencyId/totalAmountBase/rateUsed (backfill UAH, FK→Currency)
   b389a7c3 exchange-rates fallbackToLatest opt-in + settlements date/fallback plumbing

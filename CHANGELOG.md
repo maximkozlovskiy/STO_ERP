@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-09-14 — Фіча: Мультивалюта Фаза 4 (курсові різниці, realized FX)
+
+Повна оплата іновалютного рахунку у своїй валюті лишала ненульовий base-залишок (CHARGE за курсом
+дати документа, PAYMENT за курсом дати оплати). Фаза 4 визнає цю різницю явно й обнуляє залишок.
+
+- **DB (4f6866a5):** SettlementTransactionType += FX_GAIN/FX_LOSS; standalone міграція 20260914170000
+  (ALTER TYPE ADD VALUE). BALANCE_SIGN FX_GAIN:+1 (гасить від'ємний залишок), FX_LOSS:−1 (додатний) +
+  усі enum-дзеркала (shared labels/sign, report-registry) + invariants (core zeroing-property).
+- **Backend (3204cd63):** payments.service при invoice→PAID (не-базова валюта) визнає realized FX:
+  chargeBase = Σ CHARGE.amountBase з ЛЕДЖЕРА по charge-документу (WO для WO-рахунку / Invoice для
+  standalone — не зі stored totalAmountBase, бо WO/invoice тотал може дрейфувати); paidBase = Σ
+  Payment.amountBase по invoiceId; fx=roundMoney(cb−pb); одна FX-проводка (БЕЗ currencyId → base-дельта)
+  обнуляє залишок ТОЧНО. Skip: base-валюта / |fx|<0.005 / вже проведено (idempotency count-guard).
+- **Frontend (a32d1820):** мітки «Курсовий прибуток/збиток» (локальний TX_LABELS-дубль замінено shared);
+  FX_LOSS→червоний у взаєморозрахунках + картці контрагента.
+- **Scope:** клієнтський бік (receivable). DEFER: payables FX (SupplierPayment), WO-direct, unrealized
+  (переоцінка). Акт звірки авто-включає FX (BALANCE_SIGN). Dashboard revenue (type=PAYMENT) не зачеплено.
+- **QA:** tsc api+web 0; settlements 33 (core zeroing) + payments 72 (+8 FX) + report-builder 39 зелені.
+  Знак — головний ризик — locked property-тестом «CHARGE(cb)+PAYMENT(pb)+FX(cb−pb)→balance 0».
+
+---
+
 ## 2026-09-14 — Фіча: Мультивалюта Фаза 3 (валюта документів)
 
 WorkOrder / PurchaseOrder / Invoice / SupplierPayment отримали валюту документа: рядки у валюті,
