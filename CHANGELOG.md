@@ -19,6 +19,25 @@ counterparties/[id] PageClient) вже консолідовані на shared `S
 
 ---
 
+## 2026-09-14 — Тех-борг: sync-аудит + консолідація (повний проект)
+
+Повний sync-аудит API↔Frontend (~30 модулів) + tech-debt аудит; виправлено реальні розбіжності,
+закрито найдорожчий drift, зафіксовано backlog.
+
+- **Sync-фікси:** employees rateScheme тихо скидався на кожне редагування (HIGH, `980fa2cd`);
+  counterparty contracts bare-array vs {items} (`980fa2cd`); notifications фантомний PUSH-канал →
+  VIBER/TELEGRAM шаблони не рендерились + EVENT_LABELS без 2 подій (`2bbf5449`).
+- **Dashboard RBAC (`93a5b64d`):** нефін-ролі (RECEPTIONIST/MECHANIC/STOREKEEPER) бачили банер помилки
+  бо графік виручки викликав /reports/revenue (403). canViewRevenue → не фаєрять запит + ховають графік.
+  Видалено мертвий @Sse() /dashboard/stream (фронт на polling) + JwtModule/ConfigModule з модуля.
+- **Консолідація sameCurrency (`573ae3ca`):** крос-валютний guard був дубльований ×4 (self-admitted,
+  без тесту, drift Bug #608/#715 клас) → ExchangeRatesService.sameCurrency (єдине джерело) + 5 тестів.
+- **Backlog (GAPS TD1-TD3):** currencyId NOT-NULL tightening; захист manual-SQL індексів від db push;
+  консолідація роздутих файлів (модалки 2000+, skill-файли, пагінація, Kyiv-date).
+- tsc api+web 0; усі зачеплені специ зелені.
+
+---
+
 ## 2026-09-14 — Фіча: Мультивалюта Фаза 5 (payables FX — курсові різниці постачальника)
 
 Дзеркало Фази 4 на боці постачальника: повна оплата іновалютного PO у своїй валюті лишала ненульовий
