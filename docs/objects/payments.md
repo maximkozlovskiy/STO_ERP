@@ -15,7 +15,10 @@ model Payment {
   counterpartyId  String   @db.Uuid
   workOrderId     String?  @db.Uuid
   invoiceId       String?  @db.Uuid
-  amount          Decimal  @db.Decimal(12, 2)
+  amount          Decimal  @db.Decimal(12, 2)          // у валюті оплати (currencyId — з рахунку-призначення)
+  currencyId      String?  @db.Uuid                    // мультивалюта Фаза 2 (валюта рахунку bank/cash)
+  amountBase      Decimal? @db.Decimal(12, 2)          // у БАЗОВІЙ валюті org по курсу на дату (backfill=UAH)
+  rateUsed        Decimal? @db.Decimal(18, 6)          // застосований курс (base за 1×coeff)
   method          String                              // код PaymentMethodConfig (cash, monobank_qr, …)
   notes           String?
   fiscalReceiptId String?                             // id чека у ПРРО (заповнюється при DONE)
@@ -31,7 +34,14 @@ model Payment {
 }
 ```
 
-**Відносини:** → `Counterparty`, → `WorkOrder?`, → `Invoice?`, → `BankAccount?`, → `CashRegister?`.
+**Відносини:** → `Counterparty`, → `WorkOrder?`, → `Invoice?`, → `BankAccount?`, → `CashRegister?`, → `Currency?`.
+
+> **Мультивалюта (Фаза 2, 2026-09-14):** `PaymentsService.create` бере валюту з рахунку-призначення
+> (bank/cash `currencyId`), конвертує суму у base (`ExchangeRatesService.resolveBaseConversion`, курс
+> на дату; немає курсу → 400) і пише `currencyId`/`amountBase`/`rateUsed`. У `settlements.createTransaction`
+> передається `currencyId` → борг лягає у base. **Loyalty** нараховує від `amountBase` (не `amount`).
+> **Інваріант «фіскальна каса = UAH»:** оплата у фіскальну касу/метод у не-базовій валюті → 400 (ПРРО
+> фіскалізує лише у base). Оплата без рахунку-призначення → base (rate=1). Курсові різниці — поза Фазою 2.
 
 **Індекси:** `(orgId, workOrderId)`, `(orgId, counterpartyId, createdAt)`, `(orgId, createdAt)`,
 `(orgId, invoiceId)` (covering для `getLinkedCounts`), `(orgId, fiscalStatus, createdAt)`

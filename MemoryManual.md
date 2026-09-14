@@ -144,6 +144,22 @@ Bug #573 (CRITICAL) FIXED: API не стартував — @fastify/middie 9.x �
 ## Останній commit
 
 ```
+ddcb6f58  feat(multicurrency): Фаза 2 UI — оплати + взаєморозрахунки у валюті та base
+          Дата: 2026-09-14. Frontend: /payments (список+картка), взаєморозрахунки, картка
+          контрагента показують суму у валюті оплати/транзакції + base-підрядок (₴) для не-базових;
+          баланс боргу завжди у base; useBaseCurrency (Фаза 1). Backend UI-даних: getTransactions
+          += currencyCode/amountBase/rateUsed; акт звірки periodDelta від amountBase; snapshotJson
+          += amountBase; PDF у base. tsc api+web 0; web payments 20 green.
+
+cc61cfc6  feat(multicurrency): Фаза 2 — Payment + SettlementTransaction у base (DB+backend)
+          Дата: 2026-09-14. Payment+SettlementTransaction += currencyId?/amountBase?/rateUsed?
+          (nullable, backfill=UAH, FK→Currency ON DELETE SET NULL; міграції 140000/150000).
+          createTransaction DTO += опційний currencyId → balanceDelta від amountBase (борг у base);
+          7 UAH-викликачів без змін. Payment.create конвертує валюту рахунку-призначення; loyalty
+          від amountBase; інваріант «фіскальна каса = UAH» (не-base→400). getBaseCurrency у
+          ExchangeRatesService. DI: PaymentsModule += ExchangeRatesModule. specs: settlements 15 +
+          invariants 15 + payments 60 green (+ExchangeRates mock — DI-drift guard). tsc api 0.
+
 0804aa22  fix(review): enum-guard рухів складу через hasOwnProperty, не `in` (проти прототипних ключів)
           Дата: 2026-09-13. Code review фічі «Журнал рухів складу» (71f01134/98bb05fb/70c73425).
           1 IMPORTANT (§2.3): stock-items.controller `movements` мав `type in StockMovementType`

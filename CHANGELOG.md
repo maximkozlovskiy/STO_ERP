@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-09-14 — Фіча: Мультивалюта Фаза 2 (Payment + SettlementTransaction у base)
+
+Оплата/борг у різних валютах зводяться у БАЗОВУ валюту org (UAH) по курсу на дату (модель Фази 1).
+
+- **DB (cc61cfc6):** Payment + SettlementTransaction += currencyId?/amountBase?/rateUsed? (nullable,
+  backfill=UAH rate=1); relation → Currency; міграції 20260914140000 (колонки + backfill) +
+  20260914150000 (FK ON DELETE SET NULL). balance лишається Decimal (семантично base).
+- **Backend (cc61cfc6):** SettlementsService.createTransaction DTO += опційний currencyId →
+  balanceDelta від amountBase (борг у base); без currencyId → base (7 UAH-викликачів без змін).
+  PaymentsService.create конвертує суму валюти рахунку-призначення, пише currencyId/amountBase/rateUsed,
+  передає currencyId у createTransaction; loyalty від amountBase (100 USD ≠ 100 UAH балів);
+  інваріант «фіскальна каса = UAH» (оплата у фіскальну не-base касу → 400, ПРРО лише у base).
+  ExchangeRatesService += getBaseCurrency. PaymentsModule += ExchangeRatesModule (DI).
+- **Backend UI-даних (ddcb6f58):** settlements-account.getTransactions += currencyCode/amountBase/rateUsed;
+  акт звірки periodDelta від amountBase; snapshotJson += amountBase; PDF транзакції у base.
+- **Frontend (ddcb6f58):** /payments (список + картка), взаєморозрахунки, картка контрагента —
+  сума у валюті + base-підрядок (не-базові); баланс боргу завжди у base; useBaseCurrency (Фаза 1).
+- **QA:** tsc api+web 0; settlements(15)+invariants(15)+payments(60)+web payments(20) = 110 green.
+  DI-drift guard: +ExchangeRates mock у settlements/payments специ. Курсові різниці — поза Фазою 2.
+
+---
+
 ### 0fc2260d + f7ffe598 fix(review): @IsEnum на CreateExpenseCategoryDto.type + enum-DTO чек у скілах
 
 Code review фічі «Статті руху коштів: ієрархічні + тип (витрата/оприбуткування)» (edecc533/011ede80).

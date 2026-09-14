@@ -6,9 +6,18 @@ _Stub — заповнити при роботі з settlements модулем._
 
 ## Ключові факти
 
-- `SettlementAccount` — balance per counterparty (немає `deletedAt`)
+- `SettlementAccount` — balance per counterparty (немає `deletedAt`); **balance у БАЗОВІЙ валюті org**
+  (семантично, з мультивалюти Фаза 2 — історично вже був UAH)
 - `SettlementTransaction` — append-only (немає `deletedAt`)
 - Мутація ТІЛЬКИ через `SettlementsService.createTransaction()`
+- **Мультивалюта (Фаза 2, 2026-09-14):** `SettlementTransaction` += `currencyId?`/`amountBase?`/`rateUsed?`
+  (nullable, backfill=UAH rate=1, FK→Currency ON DELETE SET NULL). `amount` — у валюті транзакції;
+  `amountBase` — у base по курсу на дату. **`balanceDelta = BALANCE_SIGN[type] × amountBase`** (НЕ amount!)
+  → різновалютні борги зводяться у base. `createTransaction` DTO += опційний `currencyId`: якщо не задано
+  або == base → rate=1, amountBase=amount (7 UAH-викликачів — invoice/WO/PO/supplier — БЕЗ змін; лише
+  `Payment` передає валюту рахунку). Курс через `ExchangeRatesService.resolveBaseConversion` (немає курсу
+  на дату → 400). Акт звірки: `periodDelta` від `amountBase`; snapshotJson += `amountBase`; PDF у base.
+  Курсові різниці — поза Фазою 2.
 - **Вісь балансу (ЄДИНА):** `balance>0` = дебіторська (нам винні), `balance<0` = кредиторська
   (ми винні). Джерело правди знаку — `BALANCE_SIGN: Record<SettlementTransactionType, 1|-1>`
   (settlements.service.ts, **exported** — reconciliation act переюзує, НЕ копіює).
