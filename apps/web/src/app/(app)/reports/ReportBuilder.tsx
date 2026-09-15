@@ -33,6 +33,7 @@ import { Modal } from '@/components/ui/modal';
 import { fmtMoney, fmtDate, fmtInt } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { cn, escapeCsvCell } from '@/lib/utils';
+import { downloadBlob } from '@/lib/download';
 import {
   WO_STATUS_LABELS,
   WO_PRIORITY_LABELS,
@@ -1273,11 +1274,17 @@ function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
   if (format === 'csv') {
     // escapeCsvCell нейтралізує formula-injection (=,+,-,@) + квотує роздільник ',' .
     const csv = rows.map(r => r.map(c => escapeCsvCell(c, ',')).join(',')).join('\n');
-    downloadBlob('﻿' + csv, `report-${result.entity}.csv`, 'text/csv;charset=utf-8;');
+    downloadBlob(
+      new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }),
+      `report-${result.entity}.csv`,
+    );
   } else {
     // XLSX через SpreadsheetML (простий, без бібліотеки) — відкривається Excel-ом.
     const xml = buildXlsxXml(rows);
-    downloadBlob(xml, `report-${result.entity}.xls`, 'application/vnd.ms-excel');
+    downloadBlob(
+      new Blob([xml], { type: 'application/vnd.ms-excel' }),
+      `report-${result.entity}.xls`,
+    );
   }
 }
 
@@ -1297,18 +1304,4 @@ function buildXlsxXml(rows: string[][]): string {
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
 <Worksheet ss:Name="Звіт"><Table>${body}</Table></Worksheet></Workbook>`;
-}
-
-function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  // appendChild/removeChild: Firefox/Safari не диспатчать click на detached anchor → тиха відмова.
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Deferred revoke: Safari/Firefox інколи не встигають прочитати blob-URL до синхронного revoke.
-  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
