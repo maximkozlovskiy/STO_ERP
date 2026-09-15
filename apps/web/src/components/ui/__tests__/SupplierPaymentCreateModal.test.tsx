@@ -57,7 +57,7 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
       ),
     ).not.toThrow();
     // Модалка відрендерилась, дефолтне джерело CASH_REGISTER → каса з кешу присутня.
-    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
   });
 
   it('не крашиться коли cache — голий масив (стара форма модалки)', async () => {
@@ -140,15 +140,18 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
     );
 
     // Дочекатись автовибору каси (єдина) + методу оплати.
-    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
+    // timeout:2000 — під повним паралельним suite async-flush голодує (усталений
+    // патерн: CreateWorkOrderModal/DocumentCreateModals тести), дефолтні 1000ms
+    // дають false-negative лише під навантаженням.
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
 
     const createBtn = screen.getByRole('button', { name: 'Створити оплату' }) as HTMLButtonElement;
     // Кнопка активна лише коли supplierId заповнено (prefill) — дочекатись.
-    await waitFor(() => expect(createBtn.disabled).toBe(false));
+    await waitFor(() => expect(createBtn.disabled).toBe(false), { timeout: 2000 });
 
     // 1-й клік: POST створює оплату, onSaved кидає → помилка, createdIdRef=sp1.
     fireEvent.click(createBtn);
-    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 2000 });
 
     const postCallsAfterFirst = apiFetchMock.mock.calls.filter(
       c =>
@@ -159,7 +162,7 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
 
     // 2-й клік (retry): create пропускається (createdIdRef), onSaved успішний.
     fireEvent.click(createBtn);
-    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2), { timeout: 2000 });
 
     const postCallsAfterRetry = apiFetchMock.mock.calls.filter(
       c =>
@@ -199,9 +202,9 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Каса №1')).toBeInTheDocument(), { timeout: 2000 });
     const btn = screen.getByRole('button', { name: 'Створити оплату' }) as HTMLButtonElement;
-    await waitFor(() => expect(btn.disabled).toBe(false));
+    await waitFor(() => expect(btn.disabled).toBe(false), { timeout: 2000 });
 
     // Два нативні click-и в ОДНОМУ синхронному блоці — React не встигає flush-нути
     // disabled між ними (fireEvent це замаскував би своїм sync-flush).

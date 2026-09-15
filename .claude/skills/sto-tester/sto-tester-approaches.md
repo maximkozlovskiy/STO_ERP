@@ -2581,3 +2581,17 @@ for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do
 **Фікс:** type-aware guard у СПІЛЬНИЙ компонент форми (єдине джерело), reuse у всіх write-місцях (модалка+inline-edit) + дзеркалити на backend. Для editable-дискримінатора backend merged-guard бере ЕФЕКТИВНИЙ type (`dto.type ?? existing.type`) — додати дискримінатор у `existing` select. Не «очищати» приховане поле через formToPatch (`''→undefined` не затре БД).
 **Severity:** HIGH (тихе порушення інваріанта + осиротіле недоступне поле, масковане displayName-fallback).
 **Де ще:** будь-яка форма з type/mode/category-прихованням + агрегатний required-guard: Counterparty (fixed), Good pricing-mode, Employee rate-scheme, WorkOrder vehicle-vs-anonymous, будь-який `discriminatedUnion` write-форма. Сібл #728 (інверсія: там форма не дає створити валідне, тут ПРИЙМАЄ невалідне).
+
+### 2026-09-15 — Component-тест з дефолтним waitFor timeout (1000ms) flaky під повним паралельним suite (Bug #746) — frontend / test-infra / MEDIUM
+
+**Сигнал:** окремий web-spec passes в ізоляції (`vitest run <файл>` → all green), але падає у повному `vitest run src` як `1 failed | N passed` на `await waitFor(() => expect(...))` без явного timeout. Типово це модалка з async-mount (reference-fetch каси/банку/методів через React Query) + POST-round-trip через `mutateAsync`→`apiFetch`. Повний suite має важкий environment/transform setup (сотні секунд) → async microtask-flush окремого тесту голодує під паралельним навантаженням, а дефолтний `waitFor` timeout=1000ms замалий. У repo вже є усталений патерн `{ timeout: 2000 }` (CreateWorkOrderModal.test.tsx, DocumentCreateModals.test.tsx, command-palette.test.tsx) — новий/дедуплікований spec його часто НЕ успадковує.
+
+**Причина виникнення:** розробник копіює тест-скелет без явного timeout бо «в ізоляції зелено»; CI/локальний ізольований прогін маскує проблему. Дедуп модалок (декомпозиція) додає новий async-шар (хук замість inline fetch) → більше awaited-tick-ів до першого render/enable.
+
+**Підхід до виявлення:** якщо повний suite падає, а `vitest run <той-самий-файл>` — ні → це starvation, НЕ продуктовий баг. Підтвердити: тест перевіряє продуктовий інваріант (idempotency/double-submit/rollback), логіку якого можна відтворити в ізоляції. Grep кандидатів: `grep -rLn "timeout:" apps/web/src/**/__tests__/*.tsx` серед файлів що мають `mutateAsync`/`apiFetch` POST + `waitFor`.
+
+**Підхід до фіксу:** фіксувати ТЕСТ (не компонент) — додати `{ timeout: 2000 }` до всіх async `waitFor`/`findBy` у spec-і (дзеркалить усталений repo-патерн). НЕ чіпати компонент: sync-guard/idempotency verify в ізоляції. Верифікувати повторним прогоном ПОВНОГО suite ×2-3 на стабільність.
+
+**Severity:** MEDIUM (flaky false-negative — блокує CI/коміт, маскує реальні падіння шумом, але не продуктовий дефект).
+
+**Де шукати ще:** будь-який web component-spec з async-mount модалки + POST через React Query mutation: SupplierPaymentCreateModal (fixed), PaymentCreateModal, CreateWorkOrderModal (вже має timeout), DocumentCreateModals (вже має), будь-яка `*CreateModal.test.tsx`/`*EditModal.test.tsx` без явного waitFor timeout.

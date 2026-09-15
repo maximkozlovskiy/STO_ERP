@@ -5060,3 +5060,36 @@ create() валідовує PO deletedAt:null+supplier — вікно вкрай
 
 Додано 4 regression-тести (supplier-payments.service.spec): часткові→повна FX від Σ; overpay-повтор без
 другого FX; concurrency paidAmount CAS count=0→400; SP без PO без tracking. [x] завершено
+
+## Session 2026-09-15 — Tester ЦИКЛ 1/3 (повний bug-hunt проекту)
+
+Scope: увесь проект + щойно змінене цього циклу (XLSX-import UI, pricing-rules apply-all,
+ParseUUIDPipe holdouts, blob-download appendChild, декомпозиції модалок).
+Baseline: tsc api 0, tsc web 0 (`--incremental false`). API vitest 2313/2313 (146 файлів).
+FX/FSM/pricing invariants 61/61.
+
+### Bug #746 — SupplierPaymentCreateModal WEB-H3 idempotency тести flaky під повним suite (default waitFor timeout starvation) — frontend / test-infra / MEDIUM
+
+**Симптом:** повний web suite (`vitest run src`) падав `1 failed | 753 passed` на
+`SupplierPaymentCreateModal.test.tsx:151` — `await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))`
+таймаутив. В ізоляції (`vitest run <файл>`) — 5/5 passed. Отже false-negative лише під навантаженням.
+
+**Причина:** WEB-H3 idempotency-тести (два double-submit сценарії) роблять POST-round-trip через
+React Query `createMut.mutateAsync` → `apiFetch`. Async-flush цих `waitFor` голодує під повним
+паралельним suite (environment setup 306s, transform 56s), а дефолтний `waitFor` timeout = 1000ms
+недостатній. У репо вже усталений патерн `{ timeout: 2000 }` для async-важких модалок
+(CreateWorkOrderModal.test.tsx:103, DocumentCreateModals.test.tsx:214, command-palette.test.tsx:146).
+Цей spec його не мав.
+
+**Тест vs код:** це flakiness ТЕСТУ, не продукту — компонент коректний (savingRef sync-guard +
+createdIdRef idempotency перевірені в ізоляції, обидва double-submit сценарії проходять). Фікс —
+у тесті (усталений патерн), не в компоненті.
+
+**Фікс:** додано `{ timeout: 2000 }` до всіх async `waitFor` у SupplierPaymentCreateModal.test.tsx
+(автовибір каси, кнопка active, onSaved×1, onSaved×2, а також cache-shape тест) — дзеркалить
+патерн CreateWorkOrderModal/DocumentCreateModals. Компонент НЕ торкався.
+
+**Верифікація:** повний web suite після фіксу — 754/754 passed (79 файлів), 3 повторні прогони
+стабільні. tsc web 0.
+
+**Статус:** [x] виправлено
