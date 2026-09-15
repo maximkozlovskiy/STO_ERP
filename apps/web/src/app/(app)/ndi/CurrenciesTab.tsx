@@ -321,6 +321,13 @@ export default function CurrenciesTab() {
             onChange={e => setCurrencyForm({ ...currencyForm, fullName: e.target.value })}
             className="h-8 text-[13px]"
           />
+          <Input
+            label="Міжнародна назва"
+            value={currencyForm.internationalName}
+            onChange={e => setCurrencyForm({ ...currencyForm, internationalName: e.target.value })}
+            placeholder="наприклад: US Dollar"
+            className="h-8 text-[13px]"
+          />
           <div className="flex items-center justify-between pt-2 border-t border-border">
             <div>
               <p className="text-sm font-medium text-foreground">Завантажувати курс з НБУ</p>

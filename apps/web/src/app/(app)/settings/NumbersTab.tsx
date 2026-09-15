@@ -8,15 +8,22 @@ import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { type DocNumberConfig } from './shared';
 
+// Повний перелік DocumentType (schema.prisma) — усі 13 значень мають людський підпис,
+// інакше засіяні setup-ом типи (STOCK_OPENING, RECONCILIATION_ACT) показуються сирим кодом.
 const DOC_TYPE_LABELS: Record<string, string> = {
   WORK_ORDER: 'Наряд-замовлення',
   INVOICE: 'Рахунок-фактура',
   PURCHASE_ORDER: 'Замовлення постачальнику',
+  SUPPLIER_RETURN: 'Повернення постачальнику',
   STOCK_RECEIPT: 'Прихід на склад',
   STOCK_WRITEOFF: 'Списання зі складу',
   STOCK_TRANSFER: 'Переміщення між складами',
+  STOCK_OPENING: 'Початкові залишки',
+  RECONCILIATION_ACT: 'Акт звірки',
   COMPLETION_ACT: 'Акт виконаних робіт',
+  COUNTERPARTY_AGREEMENT: 'Договір контрагента',
   GOOD_INTERNAL_CODE: 'Внутрішній код товару',
+  SUPPLIER_PAYMENT: 'Оплата постачальнику',
 };
 
 export default function NumbersTab() {
