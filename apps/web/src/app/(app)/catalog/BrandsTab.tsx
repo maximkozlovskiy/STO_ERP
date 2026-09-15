@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
+import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/lib/toast';
@@ -196,6 +197,11 @@ export default function BrandsTab() {
       <div className="flex items-center justify-between gap-3 shrink-0">
         <p className="text-[13px] text-muted-foreground">Бренди та виробники запчастин і товарів</p>
         <div className="flex items-center gap-2">
+          <XlsxImportButton
+            templateType="brands"
+            importUrl="/xlsx/import/brands"
+            onImportComplete={() => load()}
+          />
           <Button
             variant="outline"
             size="icon-sm"

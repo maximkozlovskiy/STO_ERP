@@ -37,6 +37,7 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
+import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -342,15 +343,13 @@ export function StockDocumentCreateModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isEditMode, editLoaded, formSnapshot]);
 
-  // Load document in edit mode
-  useEffect(() => {
-    if (!open || !isEditMode || !stockDocumentId) return;
-    let cancelled = false;
-    setLoading(true);
+  // Load document in edit mode. silent=true — для reload після XLSX import позицій:
+  // без loading-спінера (форма вже видима), без editLoaded-переустановки (dirty-baseline незмінна).
+  const loadDoc = useCallback((docId: string, silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
-    apiFetch<StockDocDetail>(`/stock-documents/${stockDocumentId}`)
+    return apiFetch<StockDocDetail>(`/stock-documents/${docId}`)
       .then(doc => {
-        if (cancelled) return;
         setDocNumber(doc.number);
         setCurrentStatus(doc.status);
         setForm({
@@ -376,19 +375,21 @@ export function StockDocumentCreateModal({
         );
       })
       .catch(e => {
-        if (cancelled) return;
         setError(e instanceof Error ? e.message : 'Помилка завантаження документа');
       })
       .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
+        if (!silent) setLoading(false);
         // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
         // на фактично завантажених даних (не на порожній формі).
         setEditLoaded(true);
       });
-    return () => {
-      cancelled = true;
-    };
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isEditMode || !stockDocumentId) return;
+    void loadDoc(stockDocumentId);
+    // loadDoc навмисно поза deps — стабільний useCallback([]) reload по id/open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stockDocumentId]);
 
   // Auto-collapse header when adding lines
@@ -1148,14 +1149,23 @@ export function StockDocumentCreateModal({
             </table>
 
             {canEdit && !showLineInput && (
-              <button
-                type="button"
-                onClick={() => setShowLineInput(true)}
-                className="flex items-center gap-1.5 mt-2 ml-3 text-[12px] text-primary hover:text-primary/80 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Додати товар
-              </button>
+              <div className="flex items-center gap-3 mt-2 ml-3">
+                <button
+                  type="button"
+                  onClick={() => setShowLineInput(true)}
+                  className="flex items-center gap-1.5 text-[12px] text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Додати товар
+                </button>
+                {isEditMode && stockDocumentId && (
+                  <XlsxImportButton
+                    templateType="sd-lines"
+                    importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
+                    onImportComplete={() => loadDoc(stockDocumentId, true)}
+                  />
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -52,6 +52,7 @@ import {
 } from '@/components/ui/SupplierPaymentCreateModal';
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 import { RulePricerModal } from '@/components/ui/purchase-order/RulePricerModal';
+import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import {
   type Warehouse,
   type Supplier,
@@ -1373,6 +1374,13 @@ export function PurchaseOrderCreateModal({
                       Оприбуткувати
                     </Button>
                   ))}
+                {canEdit && isEditMode && activePOId && !receiveMode && (
+                  <XlsxImportButton
+                    templateType="po-lines"
+                    importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
+                    onImportComplete={() => loadPo(activePOId, true)}
+                  />
+                )}
                 {canEdit && !showLineInput && !receiveMode && (
                   <button
                     type="button"

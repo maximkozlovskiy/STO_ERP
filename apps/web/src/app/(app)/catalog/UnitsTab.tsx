@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/template-picker-modal';
+import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
 import {
   Table,
   TableHeader,
@@ -343,6 +344,11 @@ export default function UnitsTab() {
           Одиниці виміру, що використовуються в каталозі товарів
         </p>
         <div className="flex items-center gap-2">
+          <XlsxImportButton
+            templateType="units"
+            importUrl="/xlsx/import/units"
+            onImportComplete={() => load()}
+          />
           <Button
             variant="outline"
             size="icon-sm"
