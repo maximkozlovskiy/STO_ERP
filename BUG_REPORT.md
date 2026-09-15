@@ -5,23 +5,28 @@
 
 ## Session 2026-09-15 — E2E цикл 1/3: 1 ПЕРЕДІСНУЮЧИЙ баг (не регресія цієї сесії)
 
-### Bug #747 — [MEDIUM, ВІДКРИТО] CreateWorkOrderModal не закривається кнопкою «Закрити»/Escape на свіжому open
+### Bug #747 — [MEDIUM, ✅ ВИПРАВЛЕНО 2026-09-15] CreateWorkOrderModal не закривається на свіжому open
 
-**Спостереження (E2E `work-orders.spec.ts:73` «модалка закривається кнопкою Скасувати або Escape»):**
-відкрити «Новий наряд» → клік X «Закрити» (або Escape) → модалка ЛИШАЄТЬСЯ visible (dialog
-`data-state="open"`), НЕ закривається. У DOM — лише сама «Новий наряд» (без DirtyConfirmDialog).
+**Спостереження:** відкрити «Новий наряд» → клік «Закрити»/Escape → модалка ЛИШАЄТЬСЯ visible.
 
-**Діагноз — ПЕРЕДІСНУЮЧИЙ, НЕ регресія TD3-декомпозиції:** відтворено на pre-TD3 версії модалки
-(checkout `abe34226` — падає ідентично). Один із ~2 відомо-червоних E2E з коміту `21ba0db6`
-(«300 E2E — 4 failed → 298/300»). Найімовірніша причина: форма стає dirty-on-open (ймовірно
-async currency-default з мультивалюти Фаза 3 виставляється ПІСЛЯ `dirty.captureBaseline` без
-підняття `rebaselineRef`) → `handleModalClose` → `await dirty.confirmClose()` → показ/логіка
-DirtyConfirmDialog блокує закриття. Потребує прицільного аналізу baseline-таймінгу
-(`CreateWorkOrderModal.tsx:600-616` useEffect + currency-default effect) — high-risk фікс, НЕ
-робимо в межах QA-циклу без окремого узгодження. Backend не залучений.
+**Діагноз (ПІДТВЕРДЖЕНО live-інструментацією):** гіпотеза про dirty-on-open виявилась вірною.
+Живий лог показав `handleModalClose … isDirty=TRUE` + DirtyConfirmDialog «Є незбережені зміни»
+зʼявляється й блокує закриття (E2E `[role=dialog].first()` бачив WO-модалку позаду confirm). Diff
+базлайну проти поточного snapshot виявив 2 поля, що авто-заповнюються ПІСЛЯ `captureBaseline` БЕЗ
+`rebaselineRef`: **`branchId`** (single-branch auto-select) і головне **`currencyId`** —
+`CurrencySelect` з `defaultToBase` async виставляє базову валюту (UAH) коли `/currencies`+
+`useBaseCurrency` резолвляться (CurrencySelect.tsx:56-60). Обидва → форма «брудна» на open →
+confirmClose блокує. jsdom НЕ відтворював (мок empty-cache уникав триггерного async-setForm; тому
+попередній component-діагноз хибно показував «clean»).
 
-**Чому не виправлено зараз:** фікс зачіпає dirty-baseline таймінг найризикованішої модалки;
-робити наосліп у циклі = ризик нової регресії. Винесено для окремої задачі.
+**Fix (`CreateWorkOrderModal.tsx`):** currency `onChange` піднімає `rebaselineRef` коли це
+програмний initial-fill (порожнє `currencyId`→value після baseline), дзеркалячи branch-autoselect
+Bug #639 → dirty-детектор згортає авто-default у базлайн замість «брудно». Бонус (a11y): close+
+minimize кнопки WO-модалки отримали `aria-label` (мали лише `title`; base-Modal X прихований через
+`hideClose`). E2E `work-orders.spec.ts` повернено з fixme.
+
+**Verify:** live E2E `модалка закривається` — 1 passed; повний work-orders spec 10/10; component
+CreateWorkOrderModal + DocumentDirtyGuard 14/14; tsc web 0.
 
 ## Session 2026-09-11 — Тест фічі «Кастомізація бокової панелі» (FULL, HEAD dc59edaa) — ЧИСТО, 0 багів
 

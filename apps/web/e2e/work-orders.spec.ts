@@ -70,11 +70,12 @@ test.describe('Наряди — форма створення', () => {
     await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 8_000 });
   });
 
-  // Bug #747 (BUG_REPORT.md, ПЕРЕДІСНУЮЧИЙ, не регресія): свіжий «Новий наряд» не
-  // закривається X/Escape — форма dirty-on-open (ймовірно async currency-default після
-  // captureBaseline) → confirmClose блокує. Відтворено на pre-TD3 версії. fixme до
-  // прицільного фіксу dirty-baseline таймінгу (high-risk, окрема задача).
-  test.fixme('модалка закривається кнопкою Скасувати або Escape', async ({ page }) => {
+  // Bug #747 (РОЗВʼЯЗАНО 2026-09-15): падіння було НЕ через dirty-on-open — jsdom-діагностика
+  // довела, що Escape→onClose, а dirty-guard НЕ блокує (форма чиста на свіжому open). Справжня
+  // причина: WO-модалка рендериться з hideClose, її власна X-кнопка мала лише title="Закрити"
+  // без aria-label → локатор [aria-label="Закрити"] її не знаходив, тест падав на flaky-Escape
+  // fallback. Fix: додано aria-label на close+minimize (a11y). Тест повернено з fixme.
+  test('модалка закривається кнопкою Скасувати або Escape', async ({ page }) => {
     await page
       .getByRole('button', { name: /^Наряд$/ })
       .first()

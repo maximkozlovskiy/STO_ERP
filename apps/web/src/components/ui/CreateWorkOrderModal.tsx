@@ -1575,6 +1575,7 @@ export function CreateWorkOrderModal({
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
                 title="Згорнути у вкладку"
+                aria-label="Згорнути у вкладку"
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -1584,6 +1585,7 @@ export function CreateWorkOrderModal({
               onClick={handleModalClose}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
               title="Закрити"
+              aria-label="Закрити"
               disabled={saving || transitioning}
             >
               <X className="h-4 w-4" />
@@ -1984,7 +1986,20 @@ export function CreateWorkOrderModal({
                       <div className="grid grid-cols-2 gap-4">
                         <CurrencySelect
                           value={form.currencyId}
-                          onChange={id => setForm(f => ({ ...f, currencyId: id }))}
+                          onChange={id =>
+                            setForm(f => {
+                              if (f.currencyId === id) return f;
+                              // Bug #747: CurrencySelect авто-виставляє базову валюту async ПІСЛЯ
+                              // captureBaseline (порожнє currencyId→UAH) — це програмний defaultToBase,
+                              // не правка користувача. Піднімаємо rebaselineRef (як branch-autoselect
+                              // Bug #639), щоб dirty-детектор згорнув її у базлайн, інакше свіжа
+                              // форма стає «брудною» на open і не закривається (confirmClose блокує).
+                              if (!f.currencyId && baselineCapturedRef.current) {
+                                rebaselineRef.current = true;
+                              }
+                              return { ...f, currencyId: id };
+                            })
+                          }
                           disabled={!canEdit}
                         />
                       </div>
