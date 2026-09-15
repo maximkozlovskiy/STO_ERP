@@ -5113,3 +5113,39 @@ createdIdRef idempotency перевірені в ізоляції, обидва 
 стабільні. tsc web 0.
 
 **Статус:** [x] виправлено
+
+---
+
+## Session 2026-09-15 — Цикл 2/3 повний bug-hunt (maintenance-schedule EDIT + expense-category RESTORE)
+
+**0 продуктових багів.** Статичний аналіз §1.1–§1.7 по scope + повні тестові прогони — все зелене.
+
+**Baseline (усе GREEN):**
+
+- API tsc: 0 помилок
+- API vitest: 2313/2313 passed (146 файлів)
+- Web tsc (`--incremental false`): 0 помилок
+- Web vitest (`src`): 754/754 passed (79 файлів)
+- Flaky-тест #746 (SupplierPaymentCreateModal) — цього прогону зелений, підтверджує flaky не продукт.
+
+**Перевірено (нова логіка циклу 2):**
+
+1. **maintenance-schedule EDIT** (`vehicles/[id]/PageClient.tsx` + `PATCH /maintenance-schedules/:id`):
+   - POST-vs-PATCH коректно гейтиться на `editingScheduleId` (set у `openEditSchedule`, clear на success + `cancelScheduleForm`) — дубль при edit неможливий.
+   - Скидання стану форми + `editingScheduleId=null` на успіху і на cancel.
+   - Re-entrancy: кнопка `loading={savingSchedule}` (disable) + синхронний `setSavingSchedule(true)`.
+   - Backend `update()`: `shouldRecalc` перераховує `next*` лише коли змінюється recalc-впливове поле; інакше зберігає existing. `where:{id,orgId}` + попередній `findFirst` з orgId-guard — tenant intact.
+   - `undefined`-поля з `JSON.stringify` опускаються → Prisma no-op (без перезапису).
+
+2. **expense-category RESTORE** (`cash/ExpenseCategoriesTab.tsx` + `expense-categories.service.restore`):
+   - active-duplicate по (orgId,name) → 409 (unit-covered).
+   - Bug #734 orphan-reparent-to-root: батько мертвий → `parentId=null`; живий → зберігається (обидві гілки unit-covered).
+   - showDeleted-toggle: restore інвалідовує `expenseCategoriesKeys.all` → обидва view refetch.
+   - Idempotency: `restoringId` in-flight guard (frontend) + `updateMany count===0 → 404` (backend).
+   - tenant `orgId` на кожному запиті; кеш скидається через `finish()`.
+
+**Статичні перевірки:** 0 `.delete()` (soft-delete скрізь), 0 tenant-leak (кожен find/update має orgId), 0 magic-number порушень у scope.
+
+**Нових патернів немає** → sto-tester-approaches.md без змін.
+
+**Код не змінювався** → коміт не потрібен (робоче дерево має лише видалення session-lock, не продукт).
