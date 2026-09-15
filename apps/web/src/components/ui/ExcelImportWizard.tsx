@@ -4,7 +4,7 @@
 // документ). Двокроковий: (1) налаштування колонок + файл, (2) резолвінг знайдених рядків.
 // Стиль модалки — як RulePricerModal (суб-діалог поверх основної модалки документа).
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
-import { Upload, Check } from 'lucide-react';
+import { Upload, Check, CheckSquare, Square, Repeat } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -325,9 +325,9 @@ export function ExcelImportWizard({
     <Modal
       open={open}
       onClose={onClose}
-      title={
-        docNumber ? `Завантаження товарів з Excel · ${docNumber}` : 'Завантаження товарів з Excel'
-      }
+      title={`${step === 2 ? 'Ідентифікація товарів' : 'Завантаження товарів з Excel'}${
+        docNumber ? ` · ${docNumber}` : ''
+      }`}
       size={step === 2 || rawPreview ? 'xl' : 'md'}
     >
       {step === 1 ? (
@@ -514,31 +514,37 @@ export function ExcelImportWizard({
             </span>
           </div>
 
-          {/* Масові дії над вибором рядків */}
+          {/* Масові дії над вибором рядків (іконки) */}
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => setAllIncluded(true)}
               disabled={rows.length === 0}
+              title="Вибрати всі"
+              aria-label="Вибрати всі"
             >
-              Вибрати всі
+              <CheckSquare className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => setAllIncluded(false)}
               disabled={rows.length === 0}
+              title="Забрати всі"
+              aria-label="Забрати всі"
             >
-              Забрати всі
+              <Square className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={invertIncluded}
               disabled={rows.length === 0}
+              title="Інвертувати вибір"
+              aria-label="Інвертувати вибір"
             >
-              Інвертувати вибір
+              <Repeat className="h-4 w-4" />
             </Button>
             <span className="text-[12px] text-muted-foreground tabular-nums ml-auto">
               Обрано: {includedCount} / {rows.length}

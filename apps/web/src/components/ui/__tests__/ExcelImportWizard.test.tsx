@@ -194,6 +194,11 @@ describe('ExcelImportWizard — крок 2: масовий вибір рядкі
     expect(screen.getByText(/Обрано: 1 \/ 2/)).toBeInTheDocument();
   });
 
+  it('на кроці 2 заголовок «Ідентифікація товарів»', async () => {
+    await gotoStep2();
+    expect(screen.getByText(/Ідентифікація товарів/)).toBeInTheDocument();
+  });
+
   it('«Вибрати всі» позначає всі рядки, «Забрати всі» — знімає', async () => {
     await gotoStep2();
     fireEvent.click(screen.getByRole('button', { name: /Вибрати всі/ }));
