@@ -191,9 +191,11 @@ export class ReportBuilderService {
     await this.getSaved(orgId, id); // guard-404 + tenant (id належить org, не soft-deleted)
     if (dto.config) buildQuery(dto.config, orgId); // dry-run
     // update() повертає оновлений рядок одним UPDATE...RETURNING — без окремого re-fetch
-    // (getSaved вище вже підтвердив tenant+not-deleted у тому ж запиті).
+    // (getSaved вище вже підтвердив tenant+not-deleted). where МУСИТЬ нести orgId+deletedAt:null:
+    // (1) A1 tenant-guard відхиляє update без tenant-токена у where (TenantIsolationError);
+    // (2) захист від TOCTOU між getSaved і update (паралельний soft-delete/cross-tenant).
     return this.prisma.savedReport.update({
-      where: { id },
+      where: { id, orgId, deletedAt: null },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.config

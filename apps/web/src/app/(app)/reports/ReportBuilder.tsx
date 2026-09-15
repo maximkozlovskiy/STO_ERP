@@ -644,6 +644,7 @@ export function ReportBuilder() {
         onChange={setRenameName}
         onSubmit={doRename}
         pending={updateSavedMut.isPending}
+        submitLabel="Перейменувати"
       />
     </div>
   );
@@ -658,6 +659,7 @@ function NamePromptModal({
   onChange,
   onSubmit,
   pending,
+  submitLabel = 'Зберегти',
 }: {
   open: boolean;
   onClose: () => void;
@@ -666,6 +668,7 @@ function NamePromptModal({
   onChange: (v: string) => void;
   onSubmit: () => void;
   pending: boolean;
+  submitLabel?: string;
 }) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
@@ -682,7 +685,7 @@ function NamePromptModal({
             Скасувати
           </Button>
           <Button onClick={onSubmit} disabled={pending}>
-            Зберегти
+            {submitLabel}
           </Button>
         </div>
       </div>
