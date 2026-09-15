@@ -296,17 +296,21 @@ export default function VehicleCardPage() {
     if (!scheduleForm.maintenanceType.trim()) return;
     setSavingSchedule(true);
     try {
+      // На create порожнє поле = undefined (не шлемо → бек ставить дефолт/null).
+      // На edit (PATCH) порожнє поле = null: undefined у JSON.stringify зникає, тож без null
+      // очищення раніше заповненого поля не долетіло б до бекенду (значення лишалось би старим).
+      const empty = editingScheduleId ? null : undefined;
       const body = {
         maintenanceType: scheduleForm.maintenanceType,
-        intervalDays: scheduleForm.intervalDays ? Number(scheduleForm.intervalDays) : undefined,
+        intervalDays: scheduleForm.intervalDays ? Number(scheduleForm.intervalDays) : empty,
         intervalMileage: scheduleForm.intervalMileage
           ? Number(scheduleForm.intervalMileage)
-          : undefined,
-        lastMaintenanceDate: scheduleForm.lastMaintenanceDate || undefined,
+          : empty,
+        lastMaintenanceDate: scheduleForm.lastMaintenanceDate || empty,
         lastMaintenanceMileage: scheduleForm.lastMaintenanceMileage
           ? Number(scheduleForm.lastMaintenanceMileage)
-          : undefined,
-        notes: scheduleForm.notes || undefined,
+          : empty,
+        notes: scheduleForm.notes || empty,
       };
       if (editingScheduleId) {
         await apiFetch<MaintenanceSchedule>(`/maintenance-schedules/${editingScheduleId}`, {
