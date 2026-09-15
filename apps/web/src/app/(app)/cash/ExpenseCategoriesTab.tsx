@@ -1,7 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Tag, ChevronRight, ChevronDown, EyeOff, Eye } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Tag,
+  ChevronRight,
+  ChevronDown,
+  EyeOff,
+  Eye,
+  RotateCcw,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
@@ -18,6 +28,7 @@ import {
   useUpdateExpenseCategory,
   useDeleteExpenseCategory,
   useToggleExpenseCategoryActive,
+  useRestoreExpenseCategory,
   EXPENSE_CATEGORY_TYPE_LABELS,
   type ExpenseCategory,
   type ExpenseCategoryType,
@@ -29,25 +40,33 @@ function CategoryNode({
   node,
   depth,
   canManage,
+  restoringId,
   onAddChild,
   onEdit,
   onDelete,
   onToggle,
+  onRestore,
 }: {
   node: ExpenseCategory;
   depth: number;
   canManage: boolean;
+  restoringId: string | null;
   onAddChild: (parent: ExpenseCategory) => void;
   onEdit: (c: ExpenseCategory) => void;
   onDelete: (c: ExpenseCategory) => void;
   onToggle: (c: ExpenseCategory) => void;
+  onRestore: (c: ExpenseCategory) => void;
 }) {
   const [open, setOpen] = useState(true);
   const hasChildren = node.children.length > 0;
+  const isDeleted = !!node.deletedAt;
   return (
     <div>
       <div
-        className="group flex items-center gap-1.5 py-1.5 pr-2 hover:bg-secondary/40 rounded"
+        className={cn(
+          'group flex items-center gap-1.5 py-1.5 pr-2 hover:bg-secondary/40 rounded',
+          isDeleted && 'opacity-60',
+        )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
         {hasChildren ? (
@@ -69,43 +88,64 @@ function CategoryNode({
         >
           {node.name}
         </span>
+        {isDeleted && <Badge variant="secondary">видалено</Badge>}
         {canManage && (
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
-            {depth < MAX_DEPTH && (
+            {isDeleted ? (
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => onAddChild(node)}
-                title="Додати підстаттю"
+                loading={restoringId === node.id}
+                disabled={restoringId === node.id}
+                onClick={() => onRestore(node)}
+                title="Відновити"
+                className="text-success/70 hover:text-success hover:bg-success/10"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <RotateCcw className="h-3.5 w-3.5" />
               </Button>
+            ) : (
+              <>
+                {depth < MAX_DEPTH && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onAddChild(node)}
+                    title="Додати підстаттю"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onEdit(node)}
+                  title="Перейменувати"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onToggle(node)}
+                  title={node.isActive ? 'Вимкнути' : 'Увімкнути'}
+                >
+                  {node.isActive ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onDelete(node)}
+                  title="Видалити"
+                  className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
             )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onEdit(node)}
-              title="Перейменувати"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onToggle(node)}
-              title={node.isActive ? 'Вимкнути' : 'Увімкнути'}
-            >
-              {node.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onDelete(node)}
-              title="Видалити"
-              className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
           </div>
         )}
       </div>
@@ -116,10 +156,12 @@ function CategoryNode({
             node={child}
             depth={depth + 1}
             canManage={canManage}
+            restoringId={restoringId}
             onAddChild={onAddChild}
             onEdit={onEdit}
             onDelete={onDelete}
             onToggle={onToggle}
+            onRestore={onRestore}
           />
         ))}
     </div>
@@ -128,11 +170,14 @@ function CategoryNode({
 
 export default function ExpenseCategoriesTab({ canManage = false }: { canManage?: boolean }) {
   const { confirm, dialogProps } = useConfirm();
-  const { data: categories, isLoading } = useExpenseCategories();
+  const [showDeleted, setShowDeleted] = useState(false);
+  const { data: categories, isLoading } = useExpenseCategories(showDeleted);
   const createMut = useCreateExpenseCategory();
   const updateMut = useUpdateExpenseCategory();
   const deleteMut = useDeleteExpenseCategory();
   const toggleMut = useToggleExpenseCategoryActive();
+  const restoreMut = useRestoreExpenseCategory();
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<ExpenseCategory | null>(null);
@@ -217,6 +262,20 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
     }
   };
 
+  const restore = async (c: ExpenseCategory) => {
+    // in-flight guard: duplicate POSTs → 2nd+ returns 404 → false-error in UI.
+    if (restoringId === c.id) return;
+    setRestoringId(c.id);
+    try {
+      await restoreMut.mutateAsync(c.id);
+      toast.success('Статтю відновлено');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Помилка відновлення');
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
   const renderSection = (title: string, type: ExpenseCategoryType, nodes: ExpenseCategory[]) => (
     <div className="border border-border rounded-xl bg-surface overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-secondary/30">
@@ -245,10 +304,12 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
               node={n}
               depth={0}
               canManage={canManage}
+              restoringId={restoringId}
               onAddChild={openAddChild}
               onEdit={openEdit}
               onDelete={remove}
               onToggle={toggle}
+              onRestore={restore}
             />
           ))
         )}
@@ -258,10 +319,23 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3 overflow-auto">
-      <p className="text-[13px] text-muted-foreground shrink-0">
-        Статті руху коштів для касових операцій. Витрати (для видач) та оприбуткування (для
-        внесень), ієрархічні — з підстаттями.
-      </p>
+      <div className="flex items-center justify-between gap-3 shrink-0">
+        <p className="text-[13px] text-muted-foreground">
+          Статті руху коштів для касових операцій. Витрати (для видач) та оприбуткування (для
+          внесень), ієрархічні — з підстаттями.
+        </p>
+        {canManage && (
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            onClick={() => setShowDeleted(d => !d)}
+            className={cn(showDeleted && 'border-primary text-primary', 'shrink-0')}
+          >
+            {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="flex justify-center py-10">

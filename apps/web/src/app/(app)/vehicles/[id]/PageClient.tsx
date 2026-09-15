@@ -108,6 +108,7 @@ export default function VehicleCardPage() {
     notes: '',
   });
   const [showAddSchedule, setShowAddSchedule] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     maintenanceType: 'ТО',
     intervalDays: '',
@@ -292,22 +293,29 @@ export default function VehicleCardPage() {
     if (!scheduleForm.maintenanceType.trim()) return;
     setSavingSchedule(true);
     try {
-      await apiFetch<MaintenanceSchedule>('/maintenance-schedules', {
-        method: 'POST',
-        body: JSON.stringify({
-          vehicleId: id,
-          maintenanceType: scheduleForm.maintenanceType,
-          intervalDays: scheduleForm.intervalDays ? Number(scheduleForm.intervalDays) : undefined,
-          intervalMileage: scheduleForm.intervalMileage
-            ? Number(scheduleForm.intervalMileage)
-            : undefined,
-          lastMaintenanceDate: scheduleForm.lastMaintenanceDate || undefined,
-          lastMaintenanceMileage: scheduleForm.lastMaintenanceMileage
-            ? Number(scheduleForm.lastMaintenanceMileage)
-            : undefined,
-          notes: scheduleForm.notes || undefined,
-        }),
-      });
+      const body = {
+        maintenanceType: scheduleForm.maintenanceType,
+        intervalDays: scheduleForm.intervalDays ? Number(scheduleForm.intervalDays) : undefined,
+        intervalMileage: scheduleForm.intervalMileage
+          ? Number(scheduleForm.intervalMileage)
+          : undefined,
+        lastMaintenanceDate: scheduleForm.lastMaintenanceDate || undefined,
+        lastMaintenanceMileage: scheduleForm.lastMaintenanceMileage
+          ? Number(scheduleForm.lastMaintenanceMileage)
+          : undefined,
+        notes: scheduleForm.notes || undefined,
+      };
+      if (editingScheduleId) {
+        await apiFetch<MaintenanceSchedule>(`/maintenance-schedules/${editingScheduleId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+      } else {
+        await apiFetch<MaintenanceSchedule>('/maintenance-schedules', {
+          method: 'POST',
+          body: JSON.stringify({ ...body, vehicleId: id }),
+        });
+      }
       setScheduleForm({
         maintenanceType: 'ТО',
         intervalDays: '',
@@ -316,6 +324,7 @@ export default function VehicleCardPage() {
         lastMaintenanceMileage: '',
         notes: '',
       });
+      setEditingScheduleId(null);
       setShowAddSchedule(false);
       apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`)
         .then(setSchedules)
@@ -330,6 +339,33 @@ export default function VehicleCardPage() {
     } finally {
       setSavingSchedule(false);
     }
+  };
+
+  const openEditSchedule = (sc: MaintenanceSchedule) => {
+    setEditingScheduleId(sc.id);
+    setScheduleForm({
+      maintenanceType: sc.maintenanceType,
+      intervalDays: sc.intervalDays != null ? String(sc.intervalDays) : '',
+      intervalMileage: sc.intervalMileage != null ? String(sc.intervalMileage) : '',
+      lastMaintenanceDate: sc.lastMaintenanceDate ? sc.lastMaintenanceDate.slice(0, 10) : '',
+      lastMaintenanceMileage:
+        sc.lastMaintenanceMileage != null ? String(sc.lastMaintenanceMileage) : '',
+      notes: sc.notes ?? '',
+    });
+    setShowAddSchedule(true);
+  };
+
+  const cancelScheduleForm = () => {
+    setShowAddSchedule(false);
+    setEditingScheduleId(null);
+    setScheduleForm({
+      maintenanceType: 'ТО',
+      intervalDays: '',
+      intervalMileage: '',
+      lastMaintenanceDate: '',
+      lastMaintenanceMileage: '',
+      notes: '',
+    });
   };
 
   const removeSchedule = async (scheduleId: string) => {
@@ -556,7 +592,11 @@ export default function VehicleCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-foreground">Регламент ТО</h2>
-          <Button variant="ghost" size="sm" onClick={() => setShowAddSchedule(v => !v)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => (showAddSchedule ? cancelScheduleForm() : setShowAddSchedule(true))}
+          >
             <Plus className="h-4 w-4" />
             Регламент
           </Button>
@@ -564,6 +604,9 @@ export default function VehicleCardPage() {
 
         {showAddSchedule && (
           <AnimatedBody className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
+            <p className="text-[13px] font-medium text-foreground">
+              {editingScheduleId ? 'Редагування регламенту' : 'Новий регламент'}
+            </p>
             <div className="grid grid-cols-2 gap-2">
               <Input
                 label="Тип ТО"
@@ -627,7 +670,7 @@ export default function VehicleCardPage() {
               >
                 Зберегти
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setShowAddSchedule(false)}>
+              <Button size="sm" variant="outline" onClick={cancelScheduleForm}>
                 Скасувати
               </Button>
             </div>
@@ -680,15 +723,20 @@ export default function VehicleCardPage() {
                     {sc.notes && <p className="text-xs text-muted-foreground">{sc.notes}</p>}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  loading={deletingScheduleId === sc.id}
-                  onClick={() => removeSchedule(sc.id)}
-                  className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 shrink-0"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <Button variant="ghost" size="sm" onClick={() => openEditSchedule(sc)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    loading={deletingScheduleId === sc.id}
+                    onClick={() => removeSchedule(sc.id)}
+                    className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
