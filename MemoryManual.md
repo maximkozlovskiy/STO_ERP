@@ -10,11 +10,12 @@
 
 ```
 Дата:       2026-09-15
-Фаза:       Активна розробка — backlog TD1–TD3 ЗАКРИТО; 3 повні QA-цикли пройдено
-TypeScript: ✅ 0 errors (api + web, --incremental false)
-Тести:      API 2313/2313 · web component 754/754 · property/contract у складі suite ·
-            E2E 337 passed (0 hard fail, 1 skip=#747, live БД) · schema-integrity guard 7/7
-HEAD:       26706372 fix(code-review): цикл 3/3 — updateSaved порушував A1 tenant-guard
+Фаза:       Активна розробка — generic Excel-імпорт товарів (BACKEND) готовий
+TypeScript: ✅ 0 errors (api, npx tsc --noEmit)
+Тести:      xlsx+goods+brands+utils+counterparty-import-mappings 297/297 ·
+            prisma+PO+SD регрес 288/288 (0 нових падінь) · нове: normalize-article,
+            xlsx-import (preview/apply 16), brands resolve, mapping upsert
+HEAD:       5f3ae56c feat(counterparties): CounterpartyImportMapping persistence module
 ```
 
 **Backlog тех-боргу (усе 🟢):** TD1 currencyId NOT NULL + seed base-валюти; TD2 schema-integrity
@@ -34,11 +35,12 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-3 QA-цикли (повний ланцюг ×3) — 2026-09-15, HEAD 26706372:
-  цикл 1: sync(7) review(8) tester(1) optimize(1) e2e(4 розібрано) simplify(1) code-review(1) sec(0)
-  цикл 2: sync(3) review(0) tester(0) optimize(1) e2e(0) simplify(1) code-review(1) sec(0)
-  цикл 3: sync(1) review(0) tester(0) optimize(3) e2e(0) simplify(1) code-review(2 вкл. CRITICAL) sec(0)
-Деталі кожного коміту → CHANGELOG.md.
+Generic Excel-імпорт товарів (BACKEND) — 2026-09-15, HEAD 5f3ae56c (3 feature-коміти):
+  a4e93da8 normalizeArticle util + skuNormalized/normalizedSynonym SOT + resolveByNameOrSynonym
+  228ebadb xlsx adapter registry (PO/SD) + previewImport/applyImport + DTO + controller (DI-drift #724)
+  5f3ae56c CounterpartyImportMapping module (GET/PUT /counterparties/:id/import-mapping)
+DB-крок був окремим комітом 44e17aba (schema). tsc 0, 297+288 тестів зелені.
+Деталі → CHANGELOG.md.
 ```
 
 ---
@@ -55,6 +57,10 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 | `apps/web/src/components/ui/work-order/{InvoiceConflictDialog,PlannedActualMetrics}.tsx` | Виділені суб-компоненти CreateWorkOrderModal                                                |
 | `apps/web/src/components/ui/purchase-order/{types,RulePricerModal}.tsx`                  | Виділені з PurchaseOrderCreateModal                                                         |
 | `.claude/skills/sto-tester/sto-tester-approaches.md`                                     | Журнал патернів багів (винесено зі SKILL.md)                                                |
+| `apps/api/src/common/utils/normalize-article.ts`                                         | `normalizeArticle` — upper + strip non-alnum (SOT skuNormalized/normalizedSynonym)          |
+| `apps/api/src/modules/xlsx/document-line-import.adapter.ts`                              | Generic import: PO/StockDocument адаптери + registry (loadDoc/assertDraft/replaceLines)     |
+| `apps/api/src/modules/xlsx/import.dto.ts`                                                | PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000)                          |
+| `apps/api/src/modules/counterparty-import-mappings/`                                     | Персист мапінгу колонок Excel per-контрагент (GET/PUT, upsert по @unique)                   |
 
 ---
 
@@ -62,6 +68,9 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 
 - `StockDocumentType.RECEIPT` — повністю додано: Prisma enum + DTO + service + frontend tabs
 - `deduplicateBy(plan, u => u.goodId)` — у PO/xlsx applyPricing ПЕРЕД `Promise.all`
+- Generic Excel-імпорт: `XlsxService.previewImport/applyImport` + `DocumentLineImportAdapterRegistry`
+  (docType→adapter). skuNormalized/normalizedSynonym пишуться ЛИШЕ у Goods/BrandsService (SOT).
+  XlsxService конструктор: Prisma+Pricing+**Goods+Brands+registry** (DI-drift #724 — оновлювати всі специ)
 - `BALANCE_SIGN: Record<SettlementTransactionType, 1|-1>` — exhaustive (з FX_GAIN:+1/FX_LOSS:−1)
 - Мультивалюта: money-рядки carry amount+currencyId+amountBase+rateUsed; баланс/звіти у base;
   `requireBaseCurrencyId` fail-closed у WO/Invoice/PO create; currencyId NOT NULL на 4 документних таблицях

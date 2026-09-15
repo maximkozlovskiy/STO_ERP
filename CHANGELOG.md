@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-09-15 — Generic Excel-імпорт товарів (BACKEND)
+
+### 5f3ae56c feat(counterparties): CounterpartyImportMapping persistence module
+
+GET/PUT `/counterparties/:id/import-mapping` (@Roles OWNER/ADMIN/XLSX_MANAGER) — збереження
+мапінгу колонок Excel per-контрагент. Service get/upsert по `counterpartyId @unique` (atomic
+prisma.upsert, tenant-guard), @IsInt @Min(1) DTO, дефолт startRow=2. Зареєстровано у app.module.
+
+### 228ebadb feat(xlsx): generic товар-імпорт — adapter registry + preview/apply
+
+`document-line-import.adapter.ts`: PO/StockDocument адаптери + registry (loadDoc/assertDraft/
+replaceLines; PO рахує ПДВ+base по курсу дати, SD — RECEIPT-рядки). `XlsxService.previewImport`
+(bulk exact skuNormalized + substring/ILIKE fallback → matched/ambiguous/notFound, бренд-резолв,
+без N+1, нічого не пише) + `applyImport` (use/create Good+Brand → adapter.replaceLines у tx,
+DRAFT-guard). DTO PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000). Controller
+POST `import/preview` (multipart) + `import/apply` (JSON). DI-drift (Bug #724): GoodsService+
+BrandsService+registry у конструкторі XlsxService + усі специ.
+
+### a4e93da8 feat(import): normalizeArticle util + skuNormalized/normalizedSynonym SOT
+
+`common/utils/normalize-article.ts` (+spec): `(s??'').toUpperCase().replace(/[^A-Z0-9]/g,'')`.
+GoodsService.create/update — skuNormalized обчислюється тут (єдине місце). BrandsService —
+normalizedSynonym у create/syncSynonyms + новий `resolveByNameOrSynonym(orgId, raw)`.
+
+---
+
 ## 2026-09-15 — Sync цикл 2/3: другий контрольний прохід API↔Frontend
 
 ### 4d01c0df fix(sync): цикл 2/3 — ReportBuilder.tsx на спільний downloadBlob helper
