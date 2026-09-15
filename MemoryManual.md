@@ -14,30 +14,43 @@
 TypeScript: ✅ 0 errors (api + web)
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       4d01c0df fix(sync): цикл 2/3 — ReportBuilder.tsx на спільний downloadBlob helper
-Latest sync: 2026-09-15 (цикл 2/3, HEAD 4d01c0df) — Другий контрольний прохід API↔Frontend,
-усі ~65 backend-контролерів (включно з sub-controllers), звірено з попереднім циклом 1
-(HEAD 7fa18952) та комітами між циклами (f678f30c ParseUUIDPipe/blob-download,
-74d6b1ec спільний downloadBlob helper, eaa084a1 stale-response guard). Direction 1: 0 знайдено
-(усі ~30+ backend-модулів мають UI-покриття, перевірено report-builder/user-preferences/
-work-order-media/payroll/webhooks/system-templates/integration-logs/completion-acts/comments/
-work-order-templates — раніше «CLEAN побіжно», тепер підтверджено endpoint-за-endpoint).
-Direction 2: 1 знайдено / 1 виправлено — ReportBuilder.tsx мав ЛОКАЛЬНУ дубль-функцію
-downloadBlob(content:string,filename,mime), яку рефактор 74d6b1ec СВІДОМО залишив поза scope
-("5 передіснуючих сайтів — окремо"); функціонально коректна (review f678f30c вже додав
-appendChild/removeChild+deferred revoke), але суперечила заявленій меті "single source of
-truth" спільного lib/download.ts helper — мігровано на @/lib/download, локальну функцію
-видалено (4d01c0df). Інші 5 pre-existing inline blob-download сайтів (invoices/page.tsx,
-SettlementsTabContent.tsx×2, InvoiceSection.tsx, PageClient.tsx×2) — функціонально коректні
-(мають appendChild/removeChild+setTimeout), НЕ мігровані — це /simplify-scope (DRY), не
-sync-контракт, залишено як цикл-1 і залишив. Всі 8 xlsx.controller.ts endpoints мають UI-тригер
-(templates/goods/brands/units/works/po-lines/sd-lines/wo-parts/apply-pricing-from-list).
-Direction 3: 0 знайдено — settlements (Transaction/RecAct interface), loyalty (getTransactions
-{items,total}), CalendarSlot (status?/type? optional, коментар пояснює причину) звірені поле-в-
+HEAD:       d195db00 fix(sync): цикл 2/3 — wire maintenance-schedule edit + expense-category restore UI
+Latest sync: 2026-09-15 (цикл 2/3, довершено HEAD d195db00) — Другий контрольний прохід
+API↔Frontend, усі ~65 backend-контролерів (включно з sub-controllers), звірено з попереднім
+циклом 1 (HEAD 7fa18952) та комітами між циклами (f678f30c ParseUUIDPipe/blob-download,
+74d6b1ec спільний downloadBlob helper, eaa084a1 stale-response guard, 4ed14240 memo — не мав
+впливати на API contracts, підтверджено). Цикл 2/3 пройшов у 2 раунди на одному HEAD-ланцюгу:
+раунд 1 (4d01c0df) + раунд 2 (d195db00, цей запуск). Підсумкові числа обох раундів разом:
+Direction 1: 2 знайдено / 2 виправлено — PATCH /maintenance-schedules/:id не мав UI-тригера
+(VehicleCardPage мав лише create+delete регламенту ТО, без edit) → форма додавання тепер working
+і як редагування (Pencil-кнопка на рядку, prefill, PATCH замість POST); POST /expense-categories/
+:id/restore не мав UI-тригера (ExpenseCategoriesTab, на відміну від структурно ідентичних
+GoodStatusesTab/CounterpartyStatusesTab, не мав showDeleted-toggle і restore-кнопки) → додано
+обидва за ідентичним патерном сусідніх довідників (d195db00). Поглиблено перевірені й підтверджені
+CLEAN 12 модулів раніше «CLEAN побіжно»: loyalty/payroll/services/supplier-returns/warranties/
+document-number(N/A,немає controller)/user-preferences/system-templates/counterparty-statuses/
+good-statuses/bank-accounts/reconciliation(N/A,немає controller) — плюс report-builder/
+work-order-media/webhooks/integration-logs/completion-acts/comments/work-order-templates з
+раунду 1. Усі ~30+ backend-модулів тепер мають підтверджене UI-покриття endpoint-за-endpoint.
+Direction 2: 1 знайдено / 1 виправлено (раунд 1, 4d01c0df) — ReportBuilder.tsx мав ЛОКАЛЬНУ
+дубль-функцію downloadBlob(content:string,filename,mime), яку рефактор 74d6b1ec СВІДОМО залишив
+поза scope ("5 передіснуючих сайтів — окремо"); функціонально коректна (review f678f30c вже додав
+appendChild/removeChild+deferred revoke), але суперечила заявленій меті "single source of truth"
+спільного lib/download.ts helper — мігровано на @/lib/download, локальну функцію видалено.
+Інші 5 pre-existing inline blob-download сайтів (invoices/page.tsx, ndi/OrgInfoTab.tsx,
+SettlementsTabContent.tsx, InvoiceSection.tsx, work-orders/[id]/PageClient.tsx×2) — функціонально
+коректні (appendChild/removeChild+setTimeout), НЕ мігровані — /simplify-scope (DRY), не
+sync-контракт. Усі @Query('...Id') по всьому дереву мають ParseUUIDPipe — 0 нових holdouts
+(exchange-rates/cash-registers fix з f678f30c були останніми). Direction 3: 0 знайдено — settlements
+(Transaction/RecAct interface), loyalty (getTransactions {items,total}), CalendarSlot (status?/
+type? optional), payroll/services/warranties/bank-accounts DTO↔interface — усі звірені поле-в-
 поле з toDto()/toResponseDto(), Decimal→Number скрізь коректний, CHARGE/PAYMENT колір через
-централізований SETTLEMENT_TX_CHARGE_LIKE_TYPES (не хардкод). ParseUUIDPipe holdouts (@Query
-'...Id' без валідації) — 0 знайдено, усі 56 контролерів з ParseUUIDPipe покривають query-id.
-tsc web 0 (--incremental false) + tsc api 0. Попередній HEAD:
+централізований SETTLEMENT_TX_CHARGE_LIKE_TYPES. Дрібні non-sync знахідки (задокументовано,
+не виправлено — поза сфера sync): mojibake у services.dto.ts (Swagger text-only), Swagger
+@ApiResponse на counterparty-statuses/good-statuses findAll документує bare array, хоча
+runtime повертає {items,total} (frontend вже очікує wrapper коректно — doc-only неточність);
+кілька dead-code hook-експортів (usePayrollPeriod, useConfirmSupplierReturn та ін. — UI юзає
+raw apiFetch до тих самих endpoints). tsc web 0 (--incremental false) + tsc api 0. Попередній HEAD:
 d16663c1 docs(skills): add decomposition-memo-regression approach to sto-optimize
 Latest optimize: 2026-09-15 (sto-optimize-agent, цикл 1/3, HEAD d16663c1) — Повний проектний
 perf-аудит УСЬОГО дерева. Знайдено 1 / виправлено 1. **Fix (rerender, 4ed14240):**

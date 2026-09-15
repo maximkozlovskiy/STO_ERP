@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-09-15 — Sync цикл 2/3: другий контрольний прохід API↔Frontend
+
+### 4d01c0df fix(sync): цикл 2/3 — ReportBuilder.tsx на спільний downloadBlob helper
+
+Direction 2: рефактор 74d6b1ec свідомо лишив ReportBuilder.tsx поза scope спільного
+`lib/download.ts` helper — локальна дубль-функція `downloadBlob(content,filename,mime)`
+(інша сигнатура) технічно коректна, але суперечить меті "single source of truth".
+Мігровано на `@/lib/download`, локальну функцію видалено.
+
+### d195db00 fix(sync): цикл 2/3 — wire maintenance-schedule edit + expense-category restore UI
+
+Direction 1, 2 знайдено / 2 виправлено:
+
+- `PATCH /maintenance-schedules/:id` не мав UI-тригера — VehicleCardPage мав лише create+delete.
+  Форма додавання регламенту ТО тепер працює і як редагування (Pencil-кнопка, prefill, PATCH).
+- `POST /expense-categories/:id/restore` не мав UI-тригера — ExpenseCategoriesTab, на відміну
+  від структурно ідентичних GoodStatusesTab/CounterpartyStatusesTab, не мав showDeleted-toggle
+  і restore-кнопки. Додано за ідентичним патерном сусідніх довідників.
+
+Direction 2/3: 0 нових — усі `@Query('...Id')` мають `ParseUUIDPipe`, DTO↔interface контракти
+12 поглиблено перевірених модулів (loyalty/payroll/services/supplier-returns/warranties/
+user-preferences/system-templates/counterparty-statuses/good-statuses/bank-accounts) збігаються
+поле-в-поле. tsc web+api 0.
+
+---
+
 ## 2026-09-15 — Code review цикл 1/3: повний проектний аудит
 
 ### f678f30c fix(review): цикл 1/3 — ParseUUIDPipe, tx timeout, blob-download, timer cleanup
