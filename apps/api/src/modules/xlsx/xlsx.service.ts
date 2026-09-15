@@ -1243,8 +1243,10 @@ export class XlsxService {
           .trim();
       }
       if ('text' in o && o.text != null) return String(o.text).trim();
-      if ('result' in o && o.result != null) return String(o.result).trim();
       if ('error' in o && o.error != null) return String(o.error);
+      // Формула: result може бути примітивом АБО обʼєктом ({ error: '#REF!' }, rich-text) →
+      // рекурсуємо через cellText, інакше String({error}) знову дав би «[object Object]».
+      if ('result' in o && o.result != null) return this.cellText(o.result);
       if ('hyperlink' in o && o.hyperlink != null) return String(o.hyperlink).trim();
     }
     return String(v).trim();

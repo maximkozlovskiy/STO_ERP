@@ -124,11 +124,14 @@ describe('XlsxService', () => {
       row.getCell(1).value = { richText: [{ text: 'Rich' }, { text: 'Text' }] };
       row.getCell(2).value = { formula: 'A1', result: 42 };
       row.getCell(3).value = new Date('2026-01-15T00:00:00Z');
+      // Формула з result-помилкою: не має протікати «[object Object]».
+      row.getCell(4).value = { formula: '1/0', result: { error: '#DIV/0!' } };
       const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
       const res = await service.rawPreview(buffer, 20);
       expect(res.rows[0]?.[0]).toBe('RichText');
       expect(res.rows[0]?.[1]).toBe('42');
       expect(res.rows[0]?.[2]).not.toContain('[object');
+      expect(res.rows[0]?.[3]).toBe('#DIV/0!');
     });
 
     it('кидає BadRequest якщо у книзі немає аркушів', async () => {
