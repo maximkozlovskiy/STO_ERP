@@ -371,3 +371,40 @@ describe('EntityPickerField — search mode (regression guards for 7b58af2c / c7
     expect(screen.getByText('Обрати…')).toBeInTheDocument();
   });
 });
+
+describe('EntityPickerField — label prop (вирівнювання по одній лінії, як Select/Input)', () => {
+  it('без label — обгортка-label не рендериться', () => {
+    render(<EntityPickerField display="" onPick={vi.fn()} onClear={vi.fn()} />);
+    expect(document.querySelector('label')).toBeNull();
+  });
+
+  it('з label — рендерить <label> з текстом', () => {
+    render(
+      <EntityPickerField display="" label="Постачальник" onPick={vi.fn()} onClear={vi.fn()} />,
+    );
+    const label = document.querySelector('label');
+    expect(label).not.toBeNull();
+    expect(label).toHaveTextContent('Постачальник');
+  });
+
+  it('required — додає «*» у label (рівно одну зірочку)', () => {
+    render(
+      <EntityPickerField
+        display=""
+        label="Постачальник"
+        required
+        onPick={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    const label = document.querySelector('label');
+    expect(label?.textContent).toContain('*');
+    // Рівно одна зірочка — не дубльована (ручний <span>* прибрано зі споживачів).
+    expect((label?.textContent?.match(/\*/g) ?? []).length).toBe(1);
+  });
+
+  it('required=false — без зірочки', () => {
+    render(<EntityPickerField display="" label="Замовлення" onPick={vi.fn()} onClear={vi.fn()} />);
+    expect(document.querySelector('label')?.textContent).not.toContain('*');
+  });
+});

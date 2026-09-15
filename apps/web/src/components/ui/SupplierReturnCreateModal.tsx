@@ -655,22 +655,19 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
                 {/* Постачальник | Склад */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-foreground mb-1">
-                      Постачальник <span className="text-destructive">*</span>
-                    </label>
-                    <EntityPickerField
-                      display={supplierName}
-                      placeholder="Пошук постачальника…"
-                      className="h-8 text-[13px]"
-                      disabled={!canEdit}
-                      onPick={() => setSupplierPickerOpen(true)}
-                      onClear={() => {
-                        setSupplierId('');
-                        setSupplierName('');
-                      }}
-                    />
-                  </div>
+                  <EntityPickerField
+                    label="Постачальник"
+                    required
+                    display={supplierName}
+                    placeholder="Пошук постачальника…"
+                    className="h-8 text-[13px]"
+                    disabled={!canEdit}
+                    onPick={() => setSupplierPickerOpen(true)}
+                    onClear={() => {
+                      setSupplierId('');
+                      setSupplierName('');
+                    }}
+                  />
                   <Select
                     label="Склад"
                     required
@@ -689,22 +686,18 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 </div>
 
                 {/* Замовлення (джерело) — опціонально (Phase D2) */}
-                <div>
-                  <label className="block text-[13px] font-medium text-foreground mb-1">
-                    Замовлення (джерело)
-                  </label>
-                  <EntityPickerField
-                    display={purchaseOrderNumber}
-                    placeholder="Замовлення постачальнику (необовʼязково)…"
-                    className="h-8 text-[13px]"
-                    disabled={!canEdit || isEdit}
-                    onPick={() => setPoPickerOpen(true)}
-                    onClear={() => {
-                      setPurchaseOrderId('');
-                      setPurchaseOrderNumber('');
-                    }}
-                  />
-                </div>
+                <EntityPickerField
+                  label="Замовлення (джерело)"
+                  display={purchaseOrderNumber}
+                  placeholder="Замовлення постачальнику (необовʼязково)…"
+                  className="h-8 text-[13px]"
+                  disabled={!canEdit || isEdit}
+                  onPick={() => setPoPickerOpen(true)}
+                  onClear={() => {
+                    setPurchaseOrderId('');
+                    setPurchaseOrderNumber('');
+                  }}
+                />
 
                 {/* Опис */}
                 <Input

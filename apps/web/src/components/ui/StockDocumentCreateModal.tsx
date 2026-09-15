@@ -974,22 +974,18 @@ export function StockDocumentCreateModal({
                 </div>
 
                 {/* Рядок 4: Замовлення (джерело) — опціонально (Phase D2) */}
-                <div>
-                  <label className="block text-[13px] font-medium text-foreground mb-1">
-                    Замовлення (джерело)
-                  </label>
-                  <EntityPickerField
-                    display={purchaseOrderNumber}
-                    placeholder="Замовлення постачальнику (необовʼязково)…"
-                    className="h-8 text-[13px]"
-                    disabled={!canEdit || isEditMode}
-                    onPick={() => setPoPickerOpen(true)}
-                    onClear={() => {
-                      setForm(f => ({ ...f, purchaseOrderId: '' }));
-                      setPurchaseOrderNumber('');
-                    }}
-                  />
-                </div>
+                <EntityPickerField
+                  label="Замовлення (джерело)"
+                  display={purchaseOrderNumber}
+                  placeholder="Замовлення постачальнику (необовʼязково)…"
+                  className="h-8 text-[13px]"
+                  disabled={!canEdit || isEditMode}
+                  onPick={() => setPoPickerOpen(true)}
+                  onClear={() => {
+                    setForm(f => ({ ...f, purchaseOrderId: '' }));
+                    setPurchaseOrderNumber('');
+                  }}
+                />
 
                 {/* Рядок 5: Примітки */}
                 <Input

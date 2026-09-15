@@ -14,6 +14,10 @@ interface SearchItem {
 interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
   /** Displayed name of the selected entity */
   display: string;
+  /** Optional field label — renders the same label+gap wrapper as Input/Select для однакового вирівнювання. */
+  label?: string;
+  /** Показати «*» біля label (обовʼязкове поле). */
+  required?: boolean;
   placeholder?: string;
   disabled?: boolean;
   /** Hide the "..." pick button (e.g. in read-only mode) */
@@ -55,6 +59,8 @@ interface EntityPickerFieldProps<T extends SearchItem = SearchItem> {
  */
 export function EntityPickerField<T extends SearchItem = SearchItem>({
   display,
+  label,
+  required = false,
   placeholder = 'Обрати…',
   disabled = false,
   hidePick = false,
@@ -173,11 +179,11 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   // True when an item is selected (display is non-empty)
   const hasValue = !!display;
 
-  return (
+  const fieldEl = (
     <div
       ref={containerRef}
       className={cn(
-        'relative flex items-center gap-1 rounded-lg border border-border bg-surface px-3 h-9 min-w-0',
+        'relative flex items-center gap-1 rounded border border-border bg-surface px-3 h-9 min-w-0',
         className,
       )}
     >
@@ -317,6 +323,19 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
         </div>
       )}
+    </div>
+  );
+
+  if (!label) return fieldEl;
+
+  // Однаковий label+gap-обгортка, що й Input/Select — щоб поля вирівнювались по одній лінії.
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[13px] font-medium text-foreground leading-none">
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </label>
+      {fieldEl}
     </div>
   );
 }

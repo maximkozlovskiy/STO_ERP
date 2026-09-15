@@ -1217,33 +1217,30 @@ export function PurchaseOrderCreateModal({
 
                 {/* Рядок 2: Постачальник | Склад */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-foreground mb-1">
-                      Постачальник <span className="text-destructive">*</span>
-                    </label>
-                    <EntityPickerField<SupplierItem>
-                      display={supplierDisplay}
-                      placeholder="Пошук постачальника…"
-                      className="h-8 text-[13px]"
-                      disabled={!canEdit}
-                      onPick={() => setSupplierPickerOpen(true)}
-                      onOpenDetail={form.supplierId ? openSupplierDetail : undefined}
-                      onSearch={fetchSupplierItems}
-                      onSearchSelect={item => {
-                        setSupplierDisplay(item.primary);
-                        setForm(f => ({ ...f, supplierId: item.id }));
-                        // Clear contract when supplier changes
-                        setContractId(null);
-                        setContractNumber(null);
-                      }}
-                      onClear={() => {
-                        setSupplierDisplay('');
-                        setForm(f => ({ ...f, supplierId: '' }));
-                        setContractId(null);
-                        setContractNumber(null);
-                      }}
-                    />
-                  </div>
+                  <EntityPickerField<SupplierItem>
+                    label="Постачальник"
+                    required
+                    display={supplierDisplay}
+                    placeholder="Пошук постачальника…"
+                    className="h-8 text-[13px]"
+                    disabled={!canEdit}
+                    onPick={() => setSupplierPickerOpen(true)}
+                    onOpenDetail={form.supplierId ? openSupplierDetail : undefined}
+                    onSearch={fetchSupplierItems}
+                    onSearchSelect={item => {
+                      setSupplierDisplay(item.primary);
+                      setForm(f => ({ ...f, supplierId: item.id }));
+                      // Clear contract when supplier changes
+                      setContractId(null);
+                      setContractNumber(null);
+                    }}
+                    onClear={() => {
+                      setSupplierDisplay('');
+                      setForm(f => ({ ...f, supplierId: '' }));
+                      setContractId(null);
+                      setContractNumber(null);
+                    }}
+                  />
                   <Select
                     label="Склад"
                     required

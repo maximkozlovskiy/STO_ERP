@@ -853,27 +853,24 @@ export function InvoiceCreateModal({
 
                 {/* Рядок 2: Контрагент | Тип */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[13px] font-medium text-foreground mb-1">
-                      Контрагент {!isEditMode && <span className="text-destructive">*</span>}
-                    </label>
-                    <EntityPickerField<CpItem>
-                      display={counterpartyDisplay}
-                      placeholder="Пошук контрагента…"
-                      className="h-8 text-[13px]"
-                      disabled={!canEdit}
-                      onPick={() => setCpPickerOpen(true)}
-                      onSearch={fetchCpItems}
-                      onSearchSelect={item => {
-                        setCounterpartyDisplay(item.primary);
-                        setForm(f => ({ ...f, counterpartyId: item.id }));
-                      }}
-                      onClear={() => {
-                        setCounterpartyDisplay('');
-                        setForm(f => ({ ...f, counterpartyId: '' }));
-                      }}
-                    />
-                  </div>
+                  <EntityPickerField<CpItem>
+                    label="Контрагент"
+                    required={!isEditMode}
+                    display={counterpartyDisplay}
+                    placeholder="Пошук контрагента…"
+                    className="h-8 text-[13px]"
+                    disabled={!canEdit}
+                    onPick={() => setCpPickerOpen(true)}
+                    onSearch={fetchCpItems}
+                    onSearchSelect={item => {
+                      setCounterpartyDisplay(item.primary);
+                      setForm(f => ({ ...f, counterpartyId: item.id }));
+                    }}
+                    onClear={() => {
+                      setCounterpartyDisplay('');
+                      setForm(f => ({ ...f, counterpartyId: '' }));
+                    }}
+                  />
                   <Select
                     label="Тип рахунку"
                     value={form.invoiceType}

@@ -358,27 +358,24 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
           )}
 
           {/* Постачальник */}
-          <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1">
-              Постачальник <span className="text-destructive">*</span>
-            </label>
-            <EntityPickerField
-              display={supplierName}
-              placeholder="Пошук постачальника…"
-              className="h-8 text-[13px]"
-              onPick={() => setSupplierPickerOpen(true)}
-              onClear={() => {
-                setSupplierId('');
-                setSupplierName('');
-                // Прив'язка до PO належить конкретному постачальнику; при очищенні
-                // постачальника треба скинути обидва поля пари, інакше залишається
-                // orphan purchaseOrderId який не пройде backend-валідацію (PO не
-                // належатиме "новому" вибраному постачальнику) — §8.2 paired FK state.
-                setPurchaseOrderId('');
-                setPurchaseOrderNumber('');
-              }}
-            />
-          </div>
+          <EntityPickerField
+            label="Постачальник"
+            required
+            display={supplierName}
+            placeholder="Пошук постачальника…"
+            className="h-8 text-[13px]"
+            onPick={() => setSupplierPickerOpen(true)}
+            onClear={() => {
+              setSupplierId('');
+              setSupplierName('');
+              // Прив'язка до PO належить конкретному постачальнику; при очищенні
+              // постачальника треба скинути обидва поля пари, інакше залишається
+              // orphan purchaseOrderId який не пройде backend-валідацію (PO не
+              // належатиме "новому" вибраному постачальнику) — §8.2 paired FK state.
+              setPurchaseOrderId('');
+              setPurchaseOrderNumber('');
+            }}
+          />
 
           {/* Джерело коштів */}
           <div className="grid grid-cols-2 gap-4">
@@ -459,22 +456,18 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
 
           {/* Замовлення постачальнику (опціонально) | Дата */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">
-                Замовлення (опціонально)
-              </label>
-              <EntityPickerField
-                display={purchaseOrderNumber}
-                placeholder="Прив’язати замовлення…"
-                className="h-8 text-[13px]"
-                disabled={!supplierId}
-                onPick={() => setPoPickerOpen(true)}
-                onClear={() => {
-                  setPurchaseOrderId('');
-                  setPurchaseOrderNumber('');
-                }}
-              />
-            </div>
+            <EntityPickerField
+              label="Замовлення (опціонально)"
+              display={purchaseOrderNumber}
+              placeholder="Прив’язати замовлення…"
+              className="h-8 text-[13px]"
+              disabled={!supplierId}
+              onPick={() => setPoPickerOpen(true)}
+              onClear={() => {
+                setPurchaseOrderId('');
+                setPurchaseOrderNumber('');
+              }}
+            />
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">
                 Дата документа

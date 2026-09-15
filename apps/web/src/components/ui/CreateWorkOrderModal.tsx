@@ -1895,46 +1895,43 @@ export function CreateWorkOrderModal({
                     {/* Клієнт | Договір / Автомобіль | Категорія */}
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[13px] font-medium text-foreground mb-1">
-                            Клієнт <span className="text-destructive">*</span>
-                          </label>
-                          <EntityPickerField<HeaderCpItem>
-                            display={counterpartyDisplayName}
-                            className="h-8 text-[13px]"
-                            placeholder="Пошук клієнта…"
-                            ariaLabel="Клієнт"
-                            onPick={() => setCpPickerOpen(true)}
-                            onSearch={fetchCpHeaderItems}
-                            onSearchSelect={item => {
-                              setCounterpartyDisplayName(item.primary);
-                              setCpPhone(item.phone ?? '');
-                              setForm(f => ({
-                                ...f,
-                                counterpartyId: item.id,
-                                vehicleId: '',
-                                contractId: '',
-                              }));
-                              setVehicles([]);
-                              setContracts([]);
-                              loadVehicles(item.id);
-                              loadContracts(item.id);
-                            }}
-                            onClear={() => {
-                              setCounterpartyDisplayName('');
-                              setCpPhone('');
-                              setForm(f => ({
-                                ...f,
-                                counterpartyId: '',
-                                vehicleId: '',
-                                contractId: '',
-                              }));
-                              setVehicles([]);
-                              setContracts([]);
-                            }}
-                            hidePick={false}
-                          />
-                        </div>
+                        <EntityPickerField<HeaderCpItem>
+                          label="Клієнт"
+                          required
+                          display={counterpartyDisplayName}
+                          className="h-8 text-[13px]"
+                          placeholder="Пошук клієнта…"
+                          ariaLabel="Клієнт"
+                          onPick={() => setCpPickerOpen(true)}
+                          onSearch={fetchCpHeaderItems}
+                          onSearchSelect={item => {
+                            setCounterpartyDisplayName(item.primary);
+                            setCpPhone(item.phone ?? '');
+                            setForm(f => ({
+                              ...f,
+                              counterpartyId: item.id,
+                              vehicleId: '',
+                              contractId: '',
+                            }));
+                            setVehicles([]);
+                            setContracts([]);
+                            loadVehicles(item.id);
+                            loadContracts(item.id);
+                          }}
+                          onClear={() => {
+                            setCounterpartyDisplayName('');
+                            setCpPhone('');
+                            setForm(f => ({
+                              ...f,
+                              counterpartyId: '',
+                              vehicleId: '',
+                              contractId: '',
+                            }));
+                            setVehicles([]);
+                            setContracts([]);
+                          }}
+                          hidePick={false}
+                        />
                         <Select
                           label="Договір"
                           value={form.contractId}
