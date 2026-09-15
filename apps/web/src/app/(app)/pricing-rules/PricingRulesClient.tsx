@@ -9,6 +9,7 @@ import { Plus, Pencil, Trash2, Upload, Tag, RefreshCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
+import { downloadBlob } from '@/lib/download';
 import { Button } from '@/components/ui/button';
 import { AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -326,14 +327,7 @@ export default function PricingRulesClient() {
                   );
                   const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
                   const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = data.filename;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  setTimeout(() => URL.revokeObjectURL(url), 100);
+                  downloadBlob(blob, data.filename);
                 } catch (e: unknown) {
                   setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
                 }

@@ -4,6 +4,7 @@ import { useState, useRef, type ChangeEvent } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { downloadBlob } from '@/lib/download';
 
 interface ImportResult {
   created: number;
@@ -44,14 +45,7 @@ export function XlsxImportButton({
       const blob = new Blob([bytes], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = data.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 100);
+      downloadBlob(blob, data.filename);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
     } finally {

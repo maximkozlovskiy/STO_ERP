@@ -52,9 +52,8 @@ async function seedSupplierAndCash(page: import('@playwright/test').Page, token:
       // Backend correctly rejects paying out more cash than available
       // ("Недостатньо готівки в касі"), so a fresh 0-balance register must be
       // topped up before any SUPPLIER_PAYMENT confirm that draws from CASH_REGISTER.
-      let cashFunded = false;
       if (cr?.id) {
-        const fundRes = await fetch(`${API}/cash-registers/${cr.id}/operations`, {
+        await fetch(`${API}/cash-registers/${cr.id}/operations`, {
           method: 'POST',
           headers: auth,
           body: JSON.stringify({
@@ -64,9 +63,8 @@ async function seedSupplierAndCash(page: import('@playwright/test').Page, token:
             notes: 'E2E seed funding',
           }),
         });
-        cashFunded = fundRes.ok;
       }
-      return { supplierId, cashRegisterId: cr?.id, cashRegisterOk: crRes.ok, cashFunded };
+      return { supplierId, cashRegisterId: cr?.id, cashRegisterOk: crRes.ok };
     },
     { token, API },
   );

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { WO_SHAREABLE_STATUSES, WO_INVOICEABLE_STATUSES } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
+import { downloadBlob } from '@/lib/download';
 
 /**
  * A3-modal: дії edit-режиму наряду (друк/зберегти-як/поділитись/SMS/рахунок), винесені з
@@ -99,16 +100,7 @@ export function useWorkOrderActions({
       const match =
         disposition.match(/filename\*=UTF-8''(.+)/i) ?? disposition.match(/filename="?([^"]+)"?/i);
       const filename = match ? decodeURIComponent(match[1]) : `Кошторис.${format}`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      // appendChild/removeChild: Firefox/Safari не диспатчать click на detached anchor.
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // Deferred revoke: Chromium дропає download при синхронному revoke.
-      setTimeout(() => URL.revokeObjectURL(url), 100);
+      downloadBlob(blob, filename);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка';
       if (features.toastEnabled) toast.error(msg);

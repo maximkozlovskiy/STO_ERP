@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table';
 import { cn, escapeCsvCell } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
+import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
 import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
@@ -218,14 +219,7 @@ function ReportsPageClient() {
               onClick={() => {
                 const csv = buildCsv(tab, data);
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${tab}-report.csv`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 100);
+                downloadBlob(blob, `${tab}-report.csv`);
               }}
             >
               Експорт CSV
