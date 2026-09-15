@@ -5,9 +5,10 @@ import dynamic from 'next/dynamic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
-import { Plus, Pencil, Trash2, Upload, Tag } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Tag, RefreshCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
 import { AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -85,6 +86,7 @@ export default function PricingRulesClient() {
   const [modal, setModal] = useState(false);
   const [editRule, setEditRule] = useState<PricingRule | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
 
   const [showPricingImport, setShowPricingImport] = useState(false);
   const [pricingFile, setPricingFile] = useState<File | null>(null);
@@ -217,6 +219,31 @@ export default function PricingRulesClient() {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення');
     } finally {
       if (mountedRef.current) setDeletingId(null);
+    }
+  };
+
+  // POST /pricing-rules/:id/apply-all — негайно перерахувати ціни всіх товарів,
+  // що підпадають під це правило (без очікування наступного PO/nightly job).
+  const applyRule = async (rule: PricingRule) => {
+    if (
+      !(await confirm({
+        title: `Перерахувати ціни за правилом «${rule.name}»?`,
+        message: 'Ціни продажу всіх відповідних товарів буде оновлено негайно.',
+      }))
+    )
+      return;
+    setApplyingId(rule.id);
+    try {
+      const res = await apiFetch<{ updated: number; message: string }>(
+        `/pricing-rules/${rule.id}/apply-all`,
+        { method: 'POST' },
+      );
+      if (mountedRef.current) setError('');
+      toast.success(res.message);
+    } catch (e: unknown) {
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка застосування');
+    } finally {
+      if (mountedRef.current) setApplyingId(null);
     }
   };
 
@@ -541,6 +568,18 @@ export default function PricingRulesClient() {
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => void applyRule(rule)}
+                        disabled={applyingId === rule.id}
+                        title="Перерахувати ціни всіх відповідних товарів зараз"
+                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        <RefreshCw
+                          className={cn('h-3.5 w-3.5', applyingId === rule.id && 'animate-spin')}
+                        />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
