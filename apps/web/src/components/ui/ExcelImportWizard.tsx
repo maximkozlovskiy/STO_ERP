@@ -1,0 +1,472 @@
+'use client';
+
+// Generic майстер Excel-імпорту товарів у документ (замовлення постачальнику / складський
+// документ). Двокроковий: (1) налаштування колонок + файл, (2) резолвінг знайдених рядків.
+// Стиль модалки — як RulePricerModal (суб-діалог поверх основної модалки документа).
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
+import { Upload, Check } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { toast } from '@/lib/toast';
+import { cn } from '@/lib/utils';
+import {
+  usePreviewImport,
+  useApplyImport,
+  useCounterpartyImportMapping,
+  useUpsertImportMapping,
+  type ExcelImportDocType,
+  type ImportMapping,
+  type PreviewRow,
+  type ApplyRow,
+} from '@/hooks/api/useExcelImport';
+
+export interface ExcelImportWizardProps {
+  open: boolean;
+  onClose: () => void;
+  docType: ExcelImportDocType;
+  docId: string;
+  counterpartyId?: string;
+  counterpartyName?: string;
+  onImportComplete: () => void;
+}
+
+// Локальний стан рядка на кроці 2: обраний candidate + прапор «створити нову».
+interface RowResolution {
+  selectedGoodId: string; // для matched/ambiguous
+  create: boolean; // для notFound
+}
+
+const DEFAULT_MAPPING: ImportMapping = {
+  startRow: 2,
+  codeCol: null,
+  articleCol: null,
+  brandCol: null,
+  nameCol: null,
+  quantityCol: null,
+  priceCol: null,
+};
+
+// Числове поле мапінгу → рядок для інпута (null/0 → порожній рядок).
+function numToStr(v: number | null): string {
+  return v != null && v > 0 ? String(v) : '';
+}
+// Рядок інпута → число мапінгу (порожній → null).
+function strToNum(v: string): number | null {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const numFmt = new Intl.NumberFormat('uk-UA', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function ExcelImportWizard({
+  open,
+  onClose,
+  docType,
+  docId,
+  counterpartyId,
+  counterpartyName,
+  onImportComplete,
+}: ExcelImportWizardProps) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [file, setFile] = useState<File | null>(null);
+  const [mapping, setMapping] = useState<ImportMapping>(DEFAULT_MAPPING);
+  const [rows, setRows] = useState<PreviewRow[]>([]);
+  const [resolutions, setResolutions] = useState<Record<number, RowResolution>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const previewMut = usePreviewImport();
+  const applyMut = useApplyImport();
+  const upsertMapping = useUpsertImportMapping();
+  const { data: savedMapping } = useCounterpartyImportMapping(open ? counterpartyId : undefined);
+
+  // При відкритті — скидаємо на крок 1 і підтягуємо збережений мапінг контрагента (якщо є).
+  useEffect(() => {
+    if (!open) return;
+    setStep(1);
+    setFile(null);
+    setRows([]);
+    setResolutions({});
+    setMapping(DEFAULT_MAPPING);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [open]);
+
+  // savedMapping приходить асинхронно — застосовуємо коли з'явився і лише на кроці 1.
+  useEffect(() => {
+    if (open && savedMapping && step === 1) {
+      setMapping({
+        startRow: savedMapping.startRow || 2,
+        codeCol: savedMapping.codeCol,
+        articleCol: savedMapping.articleCol,
+        brandCol: savedMapping.brandCol,
+        nameCol: savedMapping.nameCol,
+        quantityCol: savedMapping.quantityCol,
+        priceCol: savedMapping.priceCol,
+      });
+    }
+  }, [open, savedMapping, step]);
+
+  const setCol = useCallback((key: keyof ImportMapping, value: string) => {
+    setMapping(m => ({ ...m, [key]: strToNum(value) }));
+  }, []);
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setFile(e.target.files?.[0] ?? null);
+  };
+
+  // Крок 1 → 2: preview + fire-and-forget збереження мапінгу контрагента.
+  const handlePreview = useCallback(async () => {
+    if (!file) {
+      toast.error('Оберіть файл Excel');
+      return;
+    }
+    if (!mapping.startRow || mapping.startRow < 1) {
+      toast.error('Вкажіть номер першого рядка (≥ 1)');
+      return;
+    }
+    try {
+      const res = await previewMut.mutateAsync({ file, docType, docId, mapping });
+      // Зберегти мапінг для контрагента — fire-and-forget, не блокує перехід.
+      if (counterpartyId) {
+        upsertMapping.mutate({ counterpartyId, mapping }, { onError: () => {} });
+      }
+      const initial: Record<number, RowResolution> = {};
+      for (const row of res.rows) {
+        initial[row.rowIndex] = {
+          selectedGoodId:
+            row.status === 'matched'
+              ? (row.matchedGoodId ?? '')
+              : row.status === 'ambiguous'
+                ? (row.candidates[0]?.id ?? '')
+                : '',
+          create: false,
+        };
+      }
+      setRows(res.rows);
+      setResolutions(initial);
+      setStep(2);
+      if (res.rows.length === 0) {
+        toast.warning('У файлі не знайдено рядків для імпорту');
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка розпізнавання файлу');
+    }
+  }, [file, mapping, docType, docId, counterpartyId, previewMut, upsertMapping]);
+
+  const setRowGood = useCallback((rowIndex: number, goodId: string) => {
+    setResolutions(r => ({ ...r, [rowIndex]: { ...r[rowIndex], selectedGoodId: goodId } }));
+  }, []);
+  const setRowCreate = useCallback((rowIndex: number, create: boolean) => {
+    setResolutions(r => ({ ...r, [rowIndex]: { ...r[rowIndex], create } }));
+  }, []);
+
+  // Крок 2 → apply: збираємо резолвлені рядки.
+  const handleApply = useCallback(async () => {
+    const resolved: ApplyRow[] = [];
+    for (const row of rows) {
+      const res = resolutions[row.rowIndex];
+      if (!res) continue;
+      if (row.status === 'matched' || row.status === 'ambiguous') {
+        if (!res.selectedGoodId) continue; // не обрано → пропустити
+        resolved.push({
+          rowIndex: row.rowIndex,
+          action: 'use',
+          goodId: res.selectedGoodId,
+          quantity: row.quantity,
+          price: row.price,
+        });
+      } else {
+        // notFound: лише коли позначено «створити»
+        if (!res.create) continue;
+        const name = (row.rawName || row.rawArticle || '').trim();
+        if (!name) continue; // немає з чого створити позицію
+        resolved.push({
+          rowIndex: row.rowIndex,
+          action: 'create',
+          createData: {
+            name,
+            sku: row.rawArticle?.trim() || undefined,
+            rawBrand: row.rawBrand?.trim() || undefined,
+          },
+          quantity: row.quantity,
+          price: row.price,
+        });
+      }
+    }
+
+    if (resolved.length === 0) {
+      toast.error('Немає рядків для імпорту — оберіть товари або позначте «Створити»');
+      return;
+    }
+
+    try {
+      await applyMut.mutateAsync({ docType, docId, rows: resolved });
+      toast.success(`Додано позицій: ${resolved.length}`);
+      onImportComplete();
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Помилка додавання товарів');
+    }
+  }, [rows, resolutions, docType, docId, applyMut, onImportComplete, onClose]);
+
+  const statusRowClass = (status: PreviewRow['status']): string => {
+    if (status === 'matched') return 'bg-success-subtle';
+    if (status === 'ambiguous') return 'bg-warning-subtle';
+    return 'bg-destructive-subtle';
+  };
+
+  const matchedCount = rows.filter(r => r.status === 'matched').length;
+  const ambiguousCount = rows.filter(r => r.status === 'ambiguous').length;
+  const notFoundCount = rows.filter(r => r.status === 'notFound').length;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Завантаження товарів з Excel"
+      size={step === 2 ? 'xl' : 'md'}
+    >
+      {step === 1 ? (
+        <div className="flex flex-col gap-4" style={{ minHeight: '200px' }}>
+          {/* Контрагент (readonly) */}
+          <div>
+            <label className="text-[13px] font-medium text-foreground leading-none">
+              Контрагент
+            </label>
+            <div className="mt-1 h-9 flex items-center px-3 rounded border border-border bg-secondary text-[14px] text-muted-foreground">
+              {counterpartyName || '—'}
+            </div>
+          </div>
+
+          {/* Файл */}
+          <div>
+            <label className="text-[13px] font-medium text-foreground leading-none">
+              Файл Excel <span className="text-destructive">*</span>
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={handleFileChange}
+              className="mt-1 block w-full text-[13px] text-foreground file:mr-3 file:rounded file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-secondary"
+            />
+          </div>
+
+          {/* Мапінг колонок */}
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Перший рядок даних"
+              type="number"
+              min={1}
+              value={numToStr(mapping.startRow)}
+              onChange={e => setMapping(m => ({ ...m, startRow: strToNum(e.target.value) ?? 1 }))}
+            />
+            <Input
+              label="Колонка коду"
+              type="number"
+              min={1}
+              value={numToStr(mapping.codeCol)}
+              onChange={e => setCol('codeCol', e.target.value)}
+            />
+            <Input
+              label="Колонка артикулу"
+              type="number"
+              min={1}
+              value={numToStr(mapping.articleCol)}
+              onChange={e => setCol('articleCol', e.target.value)}
+            />
+            <Input
+              label="Колонка бренду"
+              type="number"
+              min={1}
+              value={numToStr(mapping.brandCol)}
+              onChange={e => setCol('brandCol', e.target.value)}
+            />
+            <Input
+              label="Колонка найменування"
+              type="number"
+              min={1}
+              value={numToStr(mapping.nameCol)}
+              onChange={e => setCol('nameCol', e.target.value)}
+            />
+            <Input
+              label="Колонка кількості"
+              type="number"
+              min={1}
+              value={numToStr(mapping.quantityCol)}
+              onChange={e => setCol('quantityCol', e.target.value)}
+            />
+            <Input
+              label="Колонка ціни"
+              type="number"
+              min={1}
+              value={numToStr(mapping.priceCol)}
+              onChange={e => setCol('priceCol', e.target.value)}
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={onClose} disabled={previewMut.isPending}>
+              Скасувати
+            </Button>
+            <Button
+              leftIcon={<Upload className="h-4 w-4" />}
+              onClick={() => void handlePreview()}
+              loading={previewMut.isPending}
+              disabled={previewMut.isPending || !file}
+            >
+              Завантажити товари
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3" style={{ minHeight: '200px' }}>
+          {/* Легенда результату */}
+          <div className="flex flex-wrap gap-3 text-[12px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm bg-success-subtle border border-success-border" />
+              Знайдено: {matchedCount}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm bg-warning-subtle border border-warning-border" />
+              Уточнити: {ambiguousCount}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-3 w-3 rounded-sm bg-destructive-subtle border border-destructive-border" />
+              Не знайдено: {notFoundCount}
+            </span>
+          </div>
+
+          <div
+            className="rounded-lg border border-border overflow-auto"
+            style={{ maxHeight: '55vh' }}
+          >
+            <table className="w-full text-[12px]">
+              <colgroup>
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col />
+                <col className="w-[9%]" />
+                <col className="w-[11%]" />
+                <col className="w-[30%]" />
+              </colgroup>
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-border bg-secondary">
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                    Артикул
+                  </th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                    Бренд
+                  </th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                    Найменування
+                  </th>
+                  <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                    К-сть
+                  </th>
+                  <th className="text-right px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                    Ціна
+                  </th>
+                  <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
+                    Статус / дія
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                      Немає рядків для імпорту
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map(row => {
+                    const res = resolutions[row.rowIndex];
+                    return (
+                      <tr
+                        key={row.rowIndex}
+                        className={cn('border-b border-border/60', statusRowClass(row.status))}
+                      >
+                        <td className="px-3 py-2 align-top text-foreground">
+                          {row.rawArticle || row.rawCode || '—'}
+                        </td>
+                        <td className="px-3 py-2 align-top text-foreground">
+                          {row.rawBrand || '—'}
+                        </td>
+                        <td className="px-3 py-2 align-top text-foreground">
+                          {row.rawName || '—'}
+                        </td>
+                        <td className="px-3 py-2 align-top text-right tabular-nums">
+                          {numFmt.format(row.quantity)}
+                        </td>
+                        <td className="px-3 py-2 align-top text-right tabular-nums">
+                          {numFmt.format(row.price)}
+                        </td>
+                        <td className="px-3 py-2 align-top">
+                          {row.status === 'matched' ? (
+                            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-success-text">
+                              <Check className="h-3.5 w-3.5" />
+                              {row.candidates.find(c => c.id === row.matchedGoodId)?.name ??
+                                'Знайдено'}
+                            </span>
+                          ) : row.status === 'ambiguous' ? (
+                            <Select
+                              value={res?.selectedGoodId ?? ''}
+                              onChange={e => setRowGood(row.rowIndex, e.target.value)}
+                              className="h-8 text-[12px]"
+                            >
+                              <option value="">— оберіть товар —</option>
+                              {row.candidates.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                  {c.sku ? ` (${c.sku})` : ''}
+                                  {c.brandName ? ` · ${c.brandName}` : ''}
+                                </option>
+                              ))}
+                            </Select>
+                          ) : (
+                            <label className="inline-flex items-center gap-2 text-[12px] text-foreground cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={res?.create ?? false}
+                                onChange={e => setRowCreate(row.rowIndex, e.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-border"
+                              />
+                              Створити нову позицію
+                            </label>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-2 justify-between pt-2">
+            <Button variant="outline" onClick={() => setStep(1)} disabled={applyMut.isPending}>
+              Назад
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose} disabled={applyMut.isPending}>
+                Скасувати
+              </Button>
+              <Button
+                onClick={() => void handleApply()}
+                loading={applyMut.isPending}
+                disabled={applyMut.isPending || rows.length === 0}
+              >
+                Заповнити товарами
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
