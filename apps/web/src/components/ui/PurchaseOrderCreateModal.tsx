@@ -31,7 +31,6 @@ import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { PO_STATUS_LABELS, PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
-import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -52,120 +51,22 @@ import {
   type SupplierPaymentPrefill,
 } from '@/components/ui/SupplierPaymentCreateModal';
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Warehouse {
-  id: string;
-  name: string;
-  deletedAt?: string | null;
-}
-
-interface Supplier {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  companyName: string | null;
-  phone?: string | null;
-}
-
-interface Good {
-  id: string;
-  name: string;
-  internalCode?: string | null;
-  sku: string | null;
-  brandName?: string | null;
-  unit: string | null;
-  purchasePrice: number | null;
-  barcode?: string | null;
-  barcodes?: string[];
-}
-
-interface PODetail {
-  id: string;
-  number: string;
-  status: string;
-  supplierId: string;
-  supplierName?: string | null;
-  currencyId?: string | null;
-  currencyCode?: string | null;
-  warehouseId: string;
-  warehouseName?: string | null;
-  contractId?: string | null;
-  contractNumber?: string | null;
-  notes?: string | null;
-  documentDate?: string | null;
-  paymentDate?: string | null;
-  trackingNumber?: string | null;
-  lines?: POLine[];
-}
-
-interface LocalLine {
-  _key: string;
-  id?: string;
-  goodId: string;
-  goodName: string;
-  goodSku?: string | null;
-  goodInternalCode?: string | null;
-  goodBrandName?: string | null;
-  unit: string;
-  unitShortName?: string | null;
-  quantity: string;
-  price: string;
-  receivedQty?: number;
-  pricedSalePrice?: number | null;
-  pricingRuleName?: string | null;
-}
-
-interface POLine {
-  id: string;
-  goodId: string;
-  goodName?: string | null;
-  goodSku?: string | null;
-  goodInternalCode?: string | null;
-  goodBrandName?: string | null;
-  unit?: string | null;
-  unitShortName?: string | null;
-  quantity: number;
-  price: number;
-  receivedQty?: number;
-  pricedSalePrice?: number | null;
-  pricingRuleName?: string | null;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-secondary text-muted-foreground',
-  ORDERED: 'bg-primary-subtle text-primary',
-  PARTIAL: 'bg-warning-subtle text-warning',
-  RECEIVED: 'bg-success-subtle text-success',
-  CANCELLED: 'bg-destructive-subtle text-destructive',
-};
-
-const STATUS_DESCRIPTIONS: Record<string, string> = {
-  DRAFT: 'Чернетка — замовлення підготовлено, ще не відправлено постачальнику',
-  ORDERED: 'Замовлено — замовлення відправлено, очікується постачання',
-  PARTIAL: 'Частково отримано — частина товарів вже надійшла',
-  RECEIVED: 'Отримано — всі товари оприбутковано',
-  CANCELLED: 'Скасовано — замовлення скасовано',
-};
-
-const PO_STATUS_ORDER = Object.keys(PO_STATUS_LABELS);
-const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
-
-const nextKey = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `k${Math.random().toString(36).slice(2)}`;
-
-const EMPTY_LINE: Omit<LocalLine, '_key'> = {
-  goodId: '',
-  goodName: '',
-  unit: 'шт',
-  quantity: '1',
-  price: '',
-};
+import { RulePricerModal } from '@/components/ui/purchase-order/RulePricerModal';
+import {
+  type Warehouse,
+  type Supplier,
+  type Good,
+  type POLine,
+  type LocalLine,
+  type PODetail,
+  type PricingRule,
+  STATUS_COLORS,
+  STATUS_DESCRIPTIONS,
+  PO_STATUS_ORDER,
+  EMPTY_TRANSITIONS,
+  nextKey,
+  EMPTY_LINE,
+} from '@/components/ui/purchase-order/types';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -231,9 +132,7 @@ export function PurchaseOrderCreateModal({
   const [receiving, setReceiving] = useState(false);
   const [applyingPricing, setApplyingPricing] = useState(false);
   const [rulePricerOpen, setRulePricerOpen] = useState(false);
-  const [pricingRules, setPricingRules] = useState<
-    Array<{ id: string; name: string; description: string | null }>
-  >([]);
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
   const [ruleFilterBySupplier, setRuleFilterBySupplier] = useState(true);
   const [error, setError] = useState('');
@@ -2006,71 +1905,17 @@ export function PurchaseOrderCreateModal({
       />
 
       {/* Пікер правила ціноутворення */}
-      <Modal
+      <RulePricerModal
         open={rulePricerOpen}
         onClose={() => setRulePricerOpen(false)}
-        title="Оберіть правило розцінки"
-        size="md"
-      >
-        <div className="flex flex-col gap-3" style={{ minHeight: '200px' }}>
-          {/* Фільтр по постачальнику */}
-          {form.supplierId && (
-            <div className="flex items-center gap-2 text-[13px]">
-              <button
-                type="button"
-                onClick={() => void toggleRuleSupplierFilter(true)}
-                className={cn(
-                  'px-3 py-1 rounded-full border text-xs font-medium transition-colors',
-                  ruleFilterBySupplier
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/50',
-                )}
-              >
-                {supplierDisplay || 'Постачальник'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleRuleSupplierFilter(false)}
-                className={cn(
-                  'px-3 py-1 rounded-full border text-xs font-medium transition-colors',
-                  !ruleFilterBySupplier
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/50',
-                )}
-              >
-                Всі правила
-              </button>
-            </div>
-          )}
-          {pricingRulesLoading ? (
-            <div className="flex justify-center py-10">
-              <Spinner size="sm" />
-            </div>
-          ) : pricingRules.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-10 text-center">
-              {ruleFilterBySupplier && form.supplierId
-                ? 'Немає правил для цього постачальника'
-                : 'Немає активних правил ціноутворення'}
-            </p>
-          ) : (
-            <div className="space-y-1 overflow-y-auto" style={{ maxHeight: '380px' }}>
-              {pricingRules.map(rule => (
-                <button
-                  key={rule.id}
-                  type="button"
-                  onClick={() => void handleApplyPricingByRule(rule.id)}
-                  className="w-full text-left px-3 py-2.5 rounded-lg border border-border bg-surface hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="text-sm font-medium text-foreground">{rule.name}</div>
-                  {rule.description && (
-                    <div className="text-xs text-muted-foreground mt-0.5">{rule.description}</div>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </Modal>
+        supplierId={form.supplierId}
+        supplierDisplay={supplierDisplay}
+        ruleFilterBySupplier={ruleFilterBySupplier}
+        onToggleFilter={bySupplier => void toggleRuleSupplierFilter(bySupplier)}
+        pricingRules={pricingRules}
+        pricingRulesLoading={pricingRulesLoading}
+        onSelectRule={ruleId => void handleApplyPricingByRule(ruleId)}
+      />
 
       {/* Оплата постачальнику по цьому замовленню */}
       <SupplierPaymentCreateModal
