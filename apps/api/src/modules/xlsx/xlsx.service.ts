@@ -1203,16 +1203,29 @@ export class XlsxService {
     limit = 20,
   ): Promise<{ totalRows: number; columnCount: number; rows: string[][] }> {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    try {
+      await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    } catch {
+      // Bug #751: не-xlsx/пошкоджений буфер → jszip кидає сирий Error ("Can't find end of
+      // central directory…") → 500 з англомовним стеком. Передперегляд запускається одразу
+      // після вибору БУДЬ-ЯКОГО файлу — віддаємо дружній український 400 замість 500.
+      throw new BadRequestException(
+        'Не вдалося прочитати файл — очікується коректний Excel (.xlsx)',
+      );
+    }
     const sheet = workbook.worksheets[0];
     if (!sheet) throw new BadRequestException('Таблиця не знайдена');
 
     const cap = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
     const rows: string[][] = [];
     let columnCount = 0;
-    // eachRow пропускає порожні рядки; totalRows беремо з actualRowCount (усі рядки з даними).
-    sheet.eachRow((row, idx) => {
-      if (idx > cap) return;
+    // Bug #750: eachRow ітерує за АБСОЛЮТНИМ номером рядка аркуша (idx), який пропускає порожні
+    // рядки. Обмеження треба накладати на кількість ЗІБРАНИХ рядків (rows.length), а не на idx —
+    // інакше файл із порожніми провідними рядками (дані з рядка 30) або з розривом посередині дав
+    // би порожній/обрізаний передперегляд («показано 0 з N»), хоча даних вистачає. totalRows
+    // лишаємо з actualRowCount (усі рядки з даними).
+    sheet.eachRow(row => {
+      if (rows.length >= cap) return;
       const values = row.values as unknown[]; // 1-based: [0] завжди порожній
       const maxCol = Math.max(0, values.length - 1);
       if (maxCol > columnCount) columnCount = maxCol;

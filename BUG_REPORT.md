@@ -5260,3 +5260,75 @@ tenant-перевірки виконуються першими.
 
 **Тести:** API `npx vitest run` → 2355 passed (149 files). Web `npx vitest run src` → 754 passed (79 files).
 TSC api 0, web 0.
+
+## Session 2026-09-16 — Bug-hunt «передперегляд Excel окремою таблицею» (rawPreview + cellText, коміти 46fab8c9 + aa3d876b)
+
+Focus: `xlsx.service.rawPreview()` / `cellText()`, `POST /xlsx/import/raw-preview`, `useRawPreview`,
+`ExcelImportWizard` таблиця передперегляду. Edge-cases: порожні провідні рядки, 1 рядок, широкий
+аркуш, обрізаний рядок, не-xlsx буфер, limit-межі, cellText (boolean/0/''/null/formula result=0),
+frontend повторний вибір/тиха деградація/підсвітка.
+
+### Bug #750 — [x] виправлено — HIGH — rawPreview: ліміт накладався на АБСОЛЮТНИЙ номер рядка аркуша, а не на кількість зібраних рядків → порожній/обрізаний передперегляд для файлів із порожніми провідними рядками
+
+**Severity:** HIGH (передперегляд — ключова функція фічі; тихо повертає 0 рядків для валідних файлів)
+**Файл:** `apps/api/src/modules/xlsx/xlsx.service.ts` — `rawPreview()`
+
+**Симптом:** `sheet.eachRow((row, idx) => { if (idx > cap) return; ... })`. `eachRow` ітерує за
+АБСОЛЮТНИМ номером рядка аркуша (`idx`), пропускаючи порожні рядки. Обмеження `idx > cap` (cap=20)
+відкидає всі рядки нижче 20-го рядка аркуша — навіть якщо зібрано < 20 рядків даних. Наслідки:
+
+- Файл із порожніми провідними рядками (шапка/дані з рядка 30) → `rows.length = 0`, хоча
+  `totalRows = 25`. UI показує «показано 0 з 25» і порожню таблицю — фіча мовчки не працює.
+- Розрив посередині аркуша (header у рядку 1, дані з рядка 15) → замість 20 рядків показує ~7.
+
+Відтворено скриптом: 25 рядків даних з рядка-аркуша 30 → `rows.length=0`; header+дані з рядка 15 →
+`rows.length=7` (очікувалось 20).
+
+**Причина:** плутанина «номер рядка аркуша» (idx з eachRow, з розривами) vs «порядковий номер
+зібраного рядка передперегляду». Розробник припустив, що дані завжди починаються з рядка 1 без
+розривів.
+
+**Фікс:** обмеження на `rows.length >= cap` (кількість ЗІБРАНИХ рядків), параметр `idx` прибрано з
+колбека. `totalRows` лишається `actualRowCount`. Додано 2 regression-тести (провідні порожні + розрив).
+
+### Bug #751 — [x] виправлено — MEDIUM — rawPreview: не-xlsx/пошкоджений буфер → 500 з англомовним jszip-стеком замість дружнього українського 400
+
+**Severity:** MEDIUM (передперегляд стартує одразу після вибору БУДЬ-ЯКОГО файлу; порушує CLAUDE.md
+rule #17 — API-помилки українською)
+**Файл:** `apps/api/src/modules/xlsx/xlsx.service.ts` — `rawPreview()`
+
+**Симптом:** `workbook.xlsx.load()` на не-zip буфері кидає СИРИЙ `Error` від jszip
+(«Can't find end of central directory : is this a zip file ?» / «End of data reached … Corrupted zip ?»).
+У `rawPreview` він не перехоплювався → NestJS віддає 500 Internal Server Error з англомовним стеком.
+Оскільки передперегляд викликається одразу після вибору файлу (`handleFileChange`), користувач, що
+випадково обрав .csv/.txt/.pdf, отримував 500 замість зрозумілого повідомлення. Відтворено:
+plain-text, random-binary, порожній буфер, csv — усі кидають сирий Error.
+
+**Причина:** ExcelJS не нормалізує помилки парсингу у доменні винятки; `getUploadedFile` у контролері
+ловить лише multipart-помилки, не помилки парсингу.
+
+**Фікс:** `try/catch` навколо `workbook.xlsx.load()` у `rawPreview` → `BadRequestException('Не вдалося
+прочитати файл — очікується коректний Excel (.xlsx)')`. Frontend уже робить тиху деградацію на помилці
+(`handleFileChange.onError`), тож майстер лишається робочим (колонки вводяться вручну). Додано 2
+regression-тести (не-xlsx текст + порожній буфер). Примітка: той самий сирий-Error патерн існує у
+`parseGoods/parsePOLines/parseMappedRows` тощо — поза scope цього bug-hunt (легасі-ендпоінти).
+
+### Перевірено — БЕЗ багів (focus-області):
+
+- **cellText:** `boolean` → «true»/«false» ✓; число `0` → «0» ✓; порожній рядок → «» (trim) ✓; null-
+  комірка всередині рядка → «» ✓; формула `result=0` → `0 != null` = true → рекурсія → «0» ✓ (ключова
+  перевірка `!= null`, а не `!o.result`); формула `result={error:'#DIV/0!'}` → рекурсія → «#DIV/0!» ✓
+  (тест locked); rich-text/date/hyperlink → без «[object Object]» ✓.
+- **rawPreview інше:** 1 рядок → `totalRows=1`, UI «рядка» (бінарна плюралізація — свідоме спрощення,
+  тест locked) ✓; широкий аркуш → `columnCount` = max(values.length-1) по рядках ✓; обрізаний рядок
+  коротший за columnCount → service віддає короткий `cells`, frontend `cells[i] || ''` → «» (без краху) ✓;
+  порожня книга без аркушів → BadRequest ✓; limit-межі (0/від'ємний/NaN/1000/дробовий) коректно
+  клемпляться `min(max(trunc||20,1),100)` ✓ (HTTP завжди передає 20 — контролер хардкодить).
+- **frontend:** повторний вибір файлу → `setRawPreview(null)` + re-mutate → підміна ✓; помилка парсу →
+  `onError` тиха деградація, майстер робочий ✓; підсвітка `roleByCol` перебудовується щорендер із
+  `mapping`, `setCol` тригерить re-render → оновлюється при зміні номера колонки ✓; колонка поза
+  `columnCount` у мапінгу (напр. priceCol=99, columnCount=4) → header/body ітерують лише `columnCount`,
+  `roleByCol.get(99)` не запитується → highlight просто не з'являється, без краху ✓.
+
+**Тести:** API `npx vitest run src/modules/xlsx/xlsx.service.spec.ts` → 21 passed (17 було + 4 нові).
+Web `ExcelImportWizard.test.tsx` → 3 passed. TSC api 0, web 0 (`--incremental false`).

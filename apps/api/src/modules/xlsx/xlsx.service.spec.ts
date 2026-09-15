@@ -139,6 +139,46 @@ describe('XlsxService', () => {
       const empty = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
       await expect(service.rawPreview(empty, 20)).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    // Bug #750: обмеження накладалось на АБСОЛЮТНИЙ idx рядка аркуша (eachRow пропускає порожні),
+    // а не на кількість зібраних рядків → файл із порожніми провідними рядками давав порожній
+    // передперегляд («показано 0 з N»).
+    it('Bug #750: порожні провідні рядки (дані з рядка 30) → передперегляд НЕ порожній', async () => {
+      const wb = new ExcelJS.Workbook();
+      const sheet = wb.addWorksheet('S');
+      for (let i = 0; i < 25; i++) sheet.getRow(30 + i).getCell(1).value = `data${i}`;
+      const buf = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+      const res = await service.rawPreview(buf, 20);
+      expect(res.totalRows).toBe(25);
+      expect(res.rows).toHaveLength(20); // перші 20 рядків даних, не 0
+      expect(res.rows[0]).toEqual(['data0']);
+    });
+
+    // Bug #750: розрив посередині аркуша не має обрізати передперегляд нижче ліміту.
+    it('Bug #750: header + розрив + дані (рядки 15..39) → показано рівно limit рядків', async () => {
+      const wb = new ExcelJS.Workbook();
+      const sheet = wb.addWorksheet('S');
+      sheet.getRow(1).getCell(1).value = 'header';
+      for (let i = 0; i < 25; i++) sheet.getRow(15 + i).getCell(1).value = `d${i}`;
+      const buf = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+      const res = await service.rawPreview(buf, 20);
+      expect(res.totalRows).toBe(26);
+      expect(res.rows).toHaveLength(20);
+      expect(res.rows[0]).toEqual(['header']);
+      expect(res.rows[1]).toEqual(['d0']);
+    });
+
+    // Bug #751: не-xlsx буфер → дружній BadRequest (українською), а не 500 з англомовним jszip-стеком.
+    it('Bug #751: не-xlsx буфер (звичайний текст) → BadRequestException, не 500', async () => {
+      const notXlsx = Buffer.from('this is not an excel file', 'utf-8');
+      await expect(service.rawPreview(notXlsx, 20)).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('Bug #751: порожній буфер → BadRequestException', async () => {
+      await expect(service.rawPreview(Buffer.alloc(0), 20)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
   });
 
   // ─── applyPricingFromList ───────────────────────────────────────────────────
