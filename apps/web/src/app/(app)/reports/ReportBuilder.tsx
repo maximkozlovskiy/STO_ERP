@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { DragEvent, ReactNode } from 'react';
 import {
   X,
@@ -321,6 +321,11 @@ export function ReportBuilder() {
     setRenameName(s.name);
   };
 
+  // Стабільні onClose для Modal — інакше Modal.useEffect([open, handleKey]) знімає+вішає
+  // keydown-listener і переписує body.style.overflow на КОЖЕН символ у полі назви (2.16).
+  const closeSave = useCallback(() => setSaveOpen(false), []);
+  const closeRename = useCallback(() => setRenameTarget(null), []);
+
   const doRename = async () => {
     if (!renameTarget || !renameName.trim()) return toast.warning('Вкажіть назву');
     try {
@@ -621,7 +626,7 @@ export function ReportBuilder() {
       )}
 
       {/* Modal керує own mount/unmount + exit-анімацією; НЕ обгортати у {open && …} — це ламає exit. */}
-      <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title="Зберегти звіт">
+      <Modal open={saveOpen} onClose={closeSave} title="Зберегти звіт">
         <div className="flex flex-col gap-3 p-1">
           <input
             autoFocus
@@ -631,7 +636,7 @@ export function ReportBuilder() {
             className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
           />
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setSaveOpen(false)}>
+            <Button variant="outline" onClick={closeSave}>
               Скасувати
             </Button>
             <Button onClick={doSave} disabled={saveMut.isPending}>
@@ -641,7 +646,7 @@ export function ReportBuilder() {
         </div>
       </Modal>
 
-      <Modal open={!!renameTarget} onClose={() => setRenameTarget(null)} title="Перейменувати звіт">
+      <Modal open={!!renameTarget} onClose={closeRename} title="Перейменувати звіт">
         <div className="flex flex-col gap-3 p-1">
           <input
             autoFocus
@@ -651,7 +656,7 @@ export function ReportBuilder() {
             className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
           />
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setRenameTarget(null)}>
+            <Button variant="outline" onClick={closeRename}>
               Скасувати
             </Button>
             <Button onClick={doRename} disabled={updateSavedMut.isPending}>

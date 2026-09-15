@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -254,6 +254,10 @@ export default function VehicleCardPage() {
       setEditSaving(false);
     }
   };
+
+  // Стабільний onClose — інакше Modal.useEffect([open, handleKey]) переприв'язує
+  // keydown-listener і переписує body.style.overflow на КОЖЕН символ у формі (2.16).
+  const closeEdit = useCallback(() => setShowEdit(false), []);
 
   const addNode = async () => {
     setSaving(true);
@@ -739,7 +743,7 @@ export default function VehicleCardPage() {
       {/* Edit Modal */}
       <Modal
         open={showEdit}
-        onClose={() => setShowEdit(false)}
+        onClose={closeEdit}
         title="Редагування автомобіля"
         size="lg"
         footer={
@@ -751,7 +755,7 @@ export default function VehicleCardPage() {
             >
               Зберегти
             </Button>
-            <Button variant="outline" onClick={() => setShowEdit(false)}>
+            <Button variant="outline" onClick={closeEdit}>
               Скасувати
             </Button>
           </>
