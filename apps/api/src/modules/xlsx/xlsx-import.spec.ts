@@ -303,6 +303,39 @@ describe('XlsxService — generic import (preview/apply)', () => {
       expect(goodsService.create.mock.calls[0]![1]).toMatchObject({ brandId: 'brand-new' });
     });
 
+    it('Bug #748: дублікат goodId у межах імпорту → одна лінія (перше входження), не задвоєна кількість', async () => {
+      // Два різні артикули резолвляться у ТОЙ САМИЙ товар g-1 (action=use двічі).
+      prisma.good.findFirst.mockResolvedValue({ id: 'g-1' });
+      await service.applyImport(ORG, 'PURCHASE_ORDER', 'doc-1', [
+        { rowIndex: 2, action: 'use', goodId: 'g-1', quantity: 3, price: 100 },
+        { rowIndex: 3, action: 'use', goodId: 'g-1', quantity: 5, price: 120 },
+      ]);
+      // Лише ОДНА лінія (перше входження) — без дедупу було б дві лінії на той самий goodId
+      // без @@unique(docId,goodId) → задвоєна кількість/сума документа.
+      expect(adapter.replaceLines.mock.calls[0]![3]).toEqual([
+        { goodId: 'g-1', quantity: 3, price: 100 },
+      ]);
+    });
+
+    it('Bug #748: use + create того ж наявного товару → дедуп після резолву', async () => {
+      // create резолвить бренд→ні, створює good з id 'g-dup'; далі use того ж 'g-dup'.
+      goodsService.create.mockResolvedValueOnce({ id: 'g-dup' });
+      prisma.good.findFirst.mockResolvedValueOnce({ id: 'g-dup' });
+      await service.applyImport(ORG, 'PURCHASE_ORDER', 'doc-1', [
+        {
+          rowIndex: 2,
+          action: 'create',
+          createData: { name: 'Товар', sku: 'DUP-1' },
+          quantity: 2,
+          price: 50,
+        },
+        { rowIndex: 3, action: 'use', goodId: 'g-dup', quantity: 4, price: 60 },
+      ]);
+      expect(adapter.replaceLines.mock.calls[0]![3]).toEqual([
+        { goodId: 'g-dup', quantity: 2, price: 50 },
+      ]);
+    });
+
     it('replaceLines виконується всередині $transaction', async () => {
       prisma.good.findFirst.mockResolvedValueOnce({ id: 'g-1' });
       await service.applyImport(ORG, 'STOCK_DOCUMENT', 'doc-1', [

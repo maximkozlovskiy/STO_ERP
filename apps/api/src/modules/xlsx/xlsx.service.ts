@@ -1123,6 +1123,14 @@ export class XlsxService {
     adapter.assertDraft(doc.status);
 
     const lines: ImportLineInput[] = [];
+    // Дедуплікація по goodId у межах одного імпорту (Bug #748): PurchaseOrderLine /
+    // StockDocumentLine НЕ мають @@unique(docId, goodId) → два рядки файлу, що резолвляться
+    // у той самий товар (дублікат артикулу; кілька ambiguous → один вибір; use+create того ж
+    // товару), інакше створили б ДВА рядки документа → задвоєна кількість і totalAmount.
+    // Дзеркалить guard легасі-імпортерів (importPOLines: «Дублікат товару у файлі»): лишаємо
+    // ПЕРШЕ входження, наступні пропускаємо. Для action='create' дедуп після резолву goodId —
+    // повторний create того ж SKU і так впав би на ConflictException.
+    const seenGoodIds = new Set<string>();
     for (const row of resolvedRows) {
       let goodId: string;
       if (row.action === 'create') {
@@ -1160,6 +1168,10 @@ export class XlsxService {
         if (!good) throw new NotFoundException(`Рядок ${row.rowIndex}: товар не знайдено`);
         goodId = good.id;
       }
+      // Дублікат goodId у межах імпорту → пропускаємо (лишається перше входження).
+      // Робимо ПІСЛЯ резолву: два різні артикули можуть вказувати на один товар.
+      if (seenGoodIds.has(goodId)) continue;
+      seenGoodIds.add(goodId);
       lines.push({ goodId, quantity: row.quantity, price: row.price });
     }
 

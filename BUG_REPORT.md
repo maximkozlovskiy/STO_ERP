@@ -5185,3 +5185,73 @@ createdIdRef idempotency перевірені в ізоляції, обидва 
 **Нових патернів немає** → sto-tester-approaches.md без змін.
 
 **Код не змінювався** → коміт лише docs (BUG_REPORT сесійний запис).
+
+## Session 2026-09-15 — Bug-hunt generic Excel-імпорт товарів (backend+frontend, після backend+frontend review)
+
+Scope: `apps/api/src/modules/xlsx/{xlsx.service,document-line-import.adapter,import.dto}.ts`,
+`apps/api/src/modules/counterparty-import-mappings/*`, `apps/api/src/common/utils/normalize-article.ts`,
+`apps/web/src/components/ui/ExcelImportWizard.tsx`, `apps/web/src/hooks/api/useExcelImport.ts`.
+Фокус: normalizeArticle, preview identify (matched/ambiguous/notFound), apply (create/use/tenant/DRAFT),
+мультивалюта, mapping persistence, frontend стан-машина.
+
+### Bug #748 — [x] виправлено — HIGH — apply: дублікат goodId у межах імпорту → задвоєні лінії документа
+
+**Severity:** HIGH (тиха data-corruption: задвоєна кількість і totalAmount документа)
+**Файл:** `apps/api/src/modules/xlsx/xlsx.service.ts` — `applyImport()`
+
+**Симптом:** `applyImport` будував масив `lines` прямим маппінгом `resolvedRows` БЕЗ дедуплікації
+по goodId. Якщо два рядки файлу резолвляться у той самий товар (однаковий артикул у двох рядках;
+кілька `ambiguous` рядків, де користувач обрав один товар; `use`+`create` того ж наявного товару) —
+`adapter.replaceLines()` робив `createMany` з ДВОМА лініями на той самий `goodId`.
+`PurchaseOrderLine` і `StockDocumentLine` НЕ мають `@@unique(docId, goodId)` (перевірено schema.prisma
+рядки 1653, 1810) → БД не відхиляє дублі → документ отримує дві окремі лінії того самого товару →
+`totalAmount`/`totalVat`/`totalAmountBase` (PO) задвоюються.
+
+**Чому review пропустив:** легасі-імпортери (`importPOLines`/`importSDLines`/`importWOParts`) МАЮТЬ
+явний guard `seenGoodIds` + помилку «Дублікат товару у файлі», але новий generic `applyImport` цей
+інваріант загубив. Backend review дивився кожен метод ізольовано; крос-порівняння зі старими
+імпортерами не робилось. Unit-специ дублікат goodId не покривали.
+
+**Fix:** додано `seenGoodIds` Set у `applyImport`; дедуп ПІСЛЯ резолву goodId (два різні артикули
+можуть вказувати на один товар) — лишається ПЕРШЕ входження, наступні пропускаються (дзеркалить
+семантику легасі-імпортерів). +2 регресійні тести (`xlsx-import.spec.ts`): use+use того ж goodId
+та create+use того ж товару → рівно одна лінія.
+
+### Bug #749 — [ ] задокументовано (не фіксовано, low-risk знання) — MEDIUM — apply: Good/Brand створюються ПОЗА $transaction
+
+**Severity:** MEDIUM (часткова неатомарність при помилці в середині apply)
+**Файл:** `apps/api/src/modules/xlsx/xlsx.service.ts` — `applyImport()`
+
+**Симптом:** цикл резолву рядків створює `Good`/`Brand` (`goodsService.create`, `brandsService.create`)
+ДО і ПОЗА `prisma.$transaction`, у якому виконується `replaceLines`. Якщо рядок N кидає (SKU
+ConflictException, валідація), рядки 1..N-1 вже закомітили нові Good/Brand, але жодна лінія документа
+не записана. Повторний запуск впаде знову на тих самих SKU (тепер існують) → сироти-товари.
+
+**Чому не фіксовано зараз:** повний фікс потребує tx-aware варіанту `goodsService.create` (приймати
+`tx: Prisma.TransactionClient`), що є ширшою зміною сервісу Goods за межами scope цього bug-hunt і
+несе ризик регресій у створенні товарів. Записано як відомий патерн у sto-tester-approaches.md для
+планового рефактору. Пом'якшення (наявне): apply — рідкісна разова операція оператора; DRAFT-guard і
+tenant-перевірки виконуються першими.
+
+### Перевірено — БЕЗ багів (focus-області):
+
+- **normalizeArticle:** `'04E-129-620'=='04E129620'` ✓; кирилиця прибирається (навмисно) ✓;
+  null/undefined/'' → '' ✓ (9 unit-тестів зелені). `skuNormalized` заповнюється у GoodsService.create
+  (рядок 197) І update (рядок 242, лише коли `'sku' in dto`), зануляється при очищенні sku ✓.
+- **preview identify:** matched/ambiguous/notFound логіка коректна; bulk exact-lookup один findMany
+  (no N+1) ✓; substring fallback лише для нерозвʼязаних ✓; brand-narrow по resolveByNameOrSynonym ✓;
+  brandCol заданий але не резолвиться → падає на exact.length===1 matched (свідомий дизайн) ✓.
+- **apply tenant/DRAFT:** `adapter.loadDoc(orgId,...)` + `assertDraft` перед записом ✓; чужий goodId
+  (`use`) → `findFirst where:{id,orgId,deletedAt:null}` → NotFound ✓; створені Good/Brand у правильній
+  org (orgId параметр) ✓; неможливо імпортувати в чужий PO/StockDocument (orgId-scope у loadDoc +
+  replaceLines findFirstOrThrow) ✓.
+- **мультивалюта:** PO-адаптер рахує base по `resolveBaseConversion(orgId, po.currencyId, documentDate)`,
+  ціни рядків у валюті документа ✓; roundMoney на totalAmount/totalVat ✓.
+- **mapping persistence:** upsert idempotent (where: counterpartyId @unique), per-counterparty,
+  tenant-guard через `assertCounterpartyInOrg` + upsert-безпека tenant-extension (рядок 175-186) ✓.
+- **frontend стан-машина:** matched→use(matchedGoodId), ambiguous→use(selectedGoodId, skip якщо
+  порожньо), notFound→create лише при чекбоксі+name ✓; synchronous double-submit guard (handlePreview/
+  handleApply) ✓; savedMapping застосовується once-per-open (mappingAppliedRef) ✓.
+
+**Тести:** API `npx vitest run` → 2355 passed (149 files). Web `npx vitest run src` → 754 passed (79 files).
+TSC api 0, web 0.

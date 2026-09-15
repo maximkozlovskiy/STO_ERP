@@ -2595,3 +2595,31 @@ for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do
 **Severity:** MEDIUM (flaky false-negative — блокує CI/коміт, маскує реальні падіння шумом, але не продуктовий дефект).
 
 **Де шукати ще:** будь-який web component-spec з async-mount модалки + POST через React Query mutation: SupplierPaymentCreateModal (fixed), PaymentCreateModal, CreateWorkOrderModal (вже має timeout), DocumentCreateModals (вже має), будь-яка `*CreateModal.test.tsx`/`*EditModal.test.tsx` без явного waitFor timeout.
+
+### 2026-09-15 — Рефакторинг-агрегатор загубив інваріант-guard оригіналу (dedup goodId) (Bug #748) — backend / business-logic / data-integrity / HIGH
+
+**Сигнал:** нова generic-абстракція (adapter/registry/pipeline) замінює N спеціалізованих методів, що робили те саме (тут: `applyImport`→`replaceLines` vs легасі `importPOLines`/`importSDLines`/`importWOParts`). Легасі-методи мали ЗАХИСНИЙ guard (`seenGoodIds` Set + помилка «Дублікат товару у файлі»), а нова уніфікована реалізація його НЕ перенесла — будувала writes прямим `.map()` без дедупу. Bulk-write (`createMany`) на таблицю БЕЗ `@@unique(docId, entityId)` тихо створює дублікати → задвоєні кількість/сума. tsc/review/unit зелені: кожен метод дивиться ізольовано, unit-специ дублі не покривають, БД дублі не відхиляє.
+
+**Причина виникнення:** розробник рефакторить «щасливий шлях» (резолв→запис), а захисні guard-и оригіналу — периферійні рядки, які легко проґавити при переписуванні. «Новий код виглядає чистіше» маскує втрату інваріанта.
+
+**Підхід до виявлення:** при заміні спеціалізованого коду на generic — diff СТАРОГО і НОВОГО на _захисні_ конструкції (`seen*`/`Set`/`dedup*`/дублікат-guard/`skipDuplicates`/unique-check), не лише на happy-path. Для КОЖНОГО bulk-write (`createMany`) у нову таблицю: перевірити чи є `@@unique` що ловить дублі-ключі (`grep "@@unique" schema.prisma` по моделі) — якщо НЕМА, дедуп МУСИТЬ бути в коді. Крос-порівняння: `git log`-знайти попередній «спеціалізований» метод що робив те саме, звірити guard-набір.
+
+**Підхід до фіксу:** перенести guard оригіналу у generic-реалізацію (тут: `seenGoodIds` дедуп ПІСЛЯ резолву entity-id — різні вхідні ключі можуть вказувати на один рядок; лишати перше входження, дзеркалити семантику легасі). +регресійний тест на дублікат (два входи→один write).
+
+**Severity:** HIGH (тиха data-corruption: задвоєні document totals, без винятку/логу).
+
+**Де шукати ще:** будь-який adapter/registry/strategy-рефактор що замінив кілька схожих методів; будь-який `createMany` у line/movement/transaction-таблицю без `@@unique(parentId, childId)` — PurchaseOrderLine, StockDocumentLine (обидва без такого unique), будь-який bulk-importer/bulk-copy/duplicate-document.
+
+### 2026-09-15 — Створення сутностей ПОЗА транзакцією застосування (Bug #749) — backend / transactional-integrity / MEDIUM
+
+**Сигнал:** сервіс-метод у циклі створює довготривалі сутності (`Good`/`Brand` через інший сервіс) ДО і ПОЗА `prisma.$transaction`, у якому потім атомарно пишуться залежні рядки. Якщо будь-який рядок циклу кине (Conflict/валідація) — вже створені сутності попередніх ітерацій закомічені, але фінальний запис не відбувся → сироти. Ознака: `await otherService.create(...)` всередині `for` перед окремим `await this.prisma.$transaction(...)`.
+
+**Причина виникнення:** сусідні сервіси (`GoodsService.create`) не приймають `tx: TransactionClient` → неможливо викликати їх усередині транзакції без рефактору; розробник лишає їх зовні «бо так простіше», не помічаючи неатомарність.
+
+**Підхід до виявлення:** grep `await .*Service\.create\(` / `\.upsert\(` у тілі методу що МАЄ окремий `$transaction`; перевірити чи create-виклики поза межами tx-callback. Live-probe: apply із валідним рядком-1 + конфліктним рядком-2 (дубль SKU) → рядок-1 Good створено, документ порожній = сироти.
+
+**Підхід до фіксу:** зробити сусідній сервіс tx-aware (додати опційний `tx` параметр, використати `tx ?? this.prisma`) і перенести create-и всередину `$transaction`; АБО валідувати ВСІ рядки (existence/required) перед будь-яким create, щоб частий клас помилок (валідація) не лишав сиріт. Якщо повний фікс ширший за scope — задокументувати як відомий патерн, не «тихо лишати».
+
+**Severity:** MEDIUM (неатомарність лише при помилці в середині batch; рідкісна оператор-операція).
+
+**Де шукати ще:** будь-який bulk-apply/import/copy що створює довідникові сутності + пише залежні рядки; wizard-apply endpoints; `*.service` методи де `create` іншого агрегату передує локальному `$transaction`.
