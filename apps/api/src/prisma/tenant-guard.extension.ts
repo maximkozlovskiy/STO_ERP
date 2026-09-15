@@ -15,7 +15,7 @@ import { TenantIsolationError } from './tenant-isolation.error';
 
 // Моделі БЕЗ orgId-колонки (junction/child/append-only-child/глобальний каталог) + Organisation
 // (self-tenant: orgId===id, легітимно читається `where:{id}`). Guard пропускає їх без tenant-перевірки.
-const TENANT_EXEMPT_MODELS = new Set<string>([
+export const TENANT_EXEMPT_MODELS = new Set<string>([
   // junction (composite PK, без власного orgId)
   'EmployeeZone',
   'EmployeeLift',

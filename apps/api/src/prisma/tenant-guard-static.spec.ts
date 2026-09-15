@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { TENANT_EXEMPT_MODELS } from './tenant-guard.extension';
 
 /**
  * СТАТИЧНИЙ guard проти класу багів «prisma.X.update/delete({ where: { id } })» БЕЗ orgId/branchId.
@@ -101,6 +102,23 @@ describe('tenant-guard STATIC — write без orgId у where (клас багі
         'у where. Додай orgId (де: { id, orgId }), АБО — якщо модель легітимно exempt — у ALLOWLIST ' +
         'з обґрунтуванням.\n' +
         violations.join('\n'),
+    ).toEqual([]);
+  });
+
+  // Drift-guard: ALLOWLIST не має «прикривати» модель, яка НЕ exempt у рантаймі — інакше статичний
+  // пас видавав би зелене там, де guard реально кине 500. Кожен delegate у ALLOWLIST мусить мапитись
+  // на модель із TENANT_EXEMPT_MODELS (delegate camelCase → Model PascalCase).
+  it('кожен ALLOWLIST-запис відповідає моделі з рантайм-TENANT_EXEMPT_MODELS (без дрейфу)', () => {
+    const exemptCamel = new Set(
+      [...TENANT_EXEMPT_MODELS].map(m => m[0].toLowerCase() + m.slice(1)),
+    );
+    const bogus = [...ALLOWLIST]
+      .map(entry => entry.split('.')[0])
+      .filter(delegate => !exemptCamel.has(delegate));
+    expect(
+      bogus,
+      'Ці ALLOWLIST-моделі НЕ у TENANT_EXEMPT_MODELS (tenant-guard.extension.ts) → статичний пас ' +
+        'приховав би реальний runtime-500. Прибери з ALLOWLIST або додай у TENANT_EXEMPT_MODELS.',
     ).toEqual([]);
   });
 });

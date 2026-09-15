@@ -163,6 +163,7 @@ grep -rn "findFirst\|findMany\|findUnique\|\.update(\|\.delete(" apps/api/src/mo
 ```
 
 - [ ] Кожен `findFirst` / `findMany` / `update` / `delete` містить `orgId`
+- [ ] **`update`/`updateMany`/`delete`/`deleteMany`({where:{id}}) БЕЗ orgId → A1 tenant-guard кине 500** (клас #747/updateSaved/changePassword/brands/loyalty). Unit-специ мокають Prisma → guard не спрацьовує → баг проходить зелено! Захист: `tenant-guard-static.spec.ts` (статичний CI-детектор, має лишатись зелений). Grep: `grep -rnE "\.(update|updateMany|delete)\(\{\s*where:\s*\{\s*id[,}]" apps/api/src/modules --include=*.service.ts | grep -v spec` → кожен match без orgId/branchId = баг (окрім TENANT_EXEMPT_MODELS). «getX({orgId}) вище» НЕ рятує — guard оцінює кожен виклик окремо. Verify LIVE (curl), не лише спеки
 - [ ] `@Param('id')` ніколи без перевірки належності до `orgId`
 - [ ] PATCH/UPDATE з FK body-полем (`goodId`, `vehicleId`) → валідує що FK belongs to `orgId`
 - [ ] FK у sync push (`customerGarageId`, `liftId`, `employeeId`) → `validateForeignKeys(orgId, ...)`
