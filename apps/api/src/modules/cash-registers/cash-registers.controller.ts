@@ -37,7 +37,10 @@ export class CashRegistersController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Список кас' })
   @ApiQuery({ name: 'branchId', required: false })
-  findAll(@OrgContext() orgId: string, @Query('branchId') branchId?: string) {
+  findAll(
+    @OrgContext() orgId: string,
+    @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
+  ) {
     return this.service.findAll(orgId, branchId);
   }
 

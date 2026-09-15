@@ -222,7 +222,9 @@ function ReportsPageClient() {
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `${tab}-report.csv`;
+                document.body.appendChild(a);
                 a.click();
+                document.body.removeChild(a);
                 setTimeout(() => URL.revokeObjectURL(url), 100);
               }}
             >

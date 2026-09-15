@@ -103,8 +103,12 @@ export function useWorkOrderActions({
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
+      // appendChild/removeChild: Firefox/Safari не диспатчать click на detached anchor.
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      // Deferred revoke: Chromium дропає download при синхронному revoke.
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка';
       if (features.toastEnabled) toast.error(msg);

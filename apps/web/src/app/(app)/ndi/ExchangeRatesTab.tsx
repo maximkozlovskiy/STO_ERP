@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -46,6 +46,13 @@ export default function ExchangeRatesTab() {
   const [fetchingNbu, setFetchingNbu] = useState(false);
   const [nbuFetchHour, setNbuFetchHour] = useState<number>(12);
   const [savingNbu, setSavingNbu] = useState(false);
+  // Deferred NBU-reload timer — очистити на unmount, щоб не setState на розмонтованому компоненті.
+  const nbuReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (nbuReloadTimerRef.current !== null) clearTimeout(nbuReloadTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     setLoadingRates(true);
@@ -166,10 +173,13 @@ export default function ExchangeRatesTab() {
       await apiFetch('/exchange-rates/nbu-fetch', { method: 'POST' });
       if (currentFeatures.toastEnabled) toast.success('Завантаження курсів НБУ поставлено в чергу');
       // Reload rates after 3s to show newly fetched data
-      setTimeout(() => {
-        void apiFetch<{ items: ExchangeRate[] }>('/exchange-rates').then(r =>
-          setExchangeRates(r.items),
-        );
+      if (nbuReloadTimerRef.current !== null) clearTimeout(nbuReloadTimerRef.current);
+      nbuReloadTimerRef.current = setTimeout(() => {
+        void apiFetch<{ items: ExchangeRate[] }>('/exchange-rates')
+          .then(r => setExchangeRates(r.items))
+          .catch((err: unknown) =>
+            console.error('[ExchangeRatesTab] reload after NBU fetch failed', err),
+          );
       }, 3_000);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка запуску завантаження';

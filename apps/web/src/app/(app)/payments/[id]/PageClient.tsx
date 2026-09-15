@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -17,7 +18,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <div className="text-xs text-muted-foreground mb-0.5">{label}</div>

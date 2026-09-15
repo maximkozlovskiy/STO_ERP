@@ -39,7 +39,7 @@ export class ExchangeRatesController {
   @ApiQuery({ name: 'to', required: false })
   findAll(
     @OrgContext() orgId: string,
-    @Query('currencyId') currencyId?: string,
+    @Query('currencyId', new ParseUUIDPipe({ optional: true })) currencyId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {

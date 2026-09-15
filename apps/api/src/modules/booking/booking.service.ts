@@ -545,22 +545,25 @@ export class BookingService {
     // Слот і заявку звільняємо в одній $transaction — атомарно (не лишити слот-сироту
     // якщо cancel заявки впаде, і навпаки). deletedSlot по id АБО parentSlotId — покриває
     // split-слот (createSlot розбиває запис через межу робочого дня на parent+child).
-    const result = await this.prisma.$transaction(async tx => {
-      if (req?.confirmedSlotId) {
-        await tx.calendarSlot.updateMany({
-          where: {
-            orgId,
-            deletedAt: null,
-            OR: [{ id: req.confirmedSlotId }, { parentSlotId: req.confirmedSlotId }],
-          },
-          data: { deletedAt: new Date() },
+    const result = await this.prisma.$transaction(
+      async tx => {
+        if (req?.confirmedSlotId) {
+          await tx.calendarSlot.updateMany({
+            where: {
+              orgId,
+              deletedAt: null,
+              OR: [{ id: req.confirmedSlotId }, { parentSlotId: req.confirmedSlotId }],
+            },
+            data: { deletedAt: new Date() },
+          });
+        }
+        return tx.bookingRequest.updateMany({
+          where: { id, orgId, deletedAt: null },
+          data: { status: 'CANCELLED', deletedAt: new Date() },
         });
-      }
-      return tx.bookingRequest.updateMany({
-        where: { id, orgId, deletedAt: null },
-        data: { status: 'CANCELLED', deletedAt: new Date() },
-      });
-    });
+      },
+      { timeout: 10000 },
+    );
     if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
   }
 

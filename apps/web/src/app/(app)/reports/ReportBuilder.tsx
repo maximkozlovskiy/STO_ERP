@@ -1305,7 +1305,10 @@ function downloadBlob(content: string, filename: string, mime: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  // appendChild/removeChild: Firefox/Safari не диспатчать click на detached anchor → тиха відмова.
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   // Deferred revoke: Safari/Firefox інколи не встигають прочитати blob-URL до синхронного revoke.
   setTimeout(() => URL.revokeObjectURL(url), 100);
 }

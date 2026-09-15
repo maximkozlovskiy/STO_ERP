@@ -330,7 +330,9 @@ export default function PricingRulesClient() {
                   const a = document.createElement('a');
                   a.href = url;
                   a.download = data.filename;
+                  document.body.appendChild(a);
                   a.click();
+                  document.body.removeChild(a);
                   setTimeout(() => URL.revokeObjectURL(url), 100);
                 } catch (e: unknown) {
                   setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
