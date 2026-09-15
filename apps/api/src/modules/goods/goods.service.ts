@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeArticle } from '../../common/utils/normalize-article';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import {
   CreateGoodDto,
@@ -185,7 +186,16 @@ export class GoodsService {
       throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const internalCode = await this.docNumbers.next(orgId, 'GOOD_INTERNAL_CODE');
     const item = await this.prisma.good.create({
-      data: { ...dto, orgId, unit: dto.unit ?? 'шт', salePrice: dto.salePrice ?? 0, internalCode },
+      // skuNormalized — SOT: обчислюється тут (і в update()), ніде більше. Порожній sku → null,
+      // щоб не забивати індекс порожніми рядками (Excel-імпорт шукає лише непорожні norm-ключі).
+      data: {
+        ...dto,
+        orgId,
+        unit: dto.unit ?? 'шт',
+        salePrice: dto.salePrice ?? 0,
+        internalCode,
+        skuNormalized: dto.sku ? normalizeArticle(dto.sku) : null,
+      },
       // include goodCategory so response carries goodCategoryName
       // (mirrors findAll/findOne include; otherwise UI shows null after create/update).
       include: {
@@ -225,7 +235,12 @@ export class GoodsService {
       throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
     const item = await this.prisma.good.update({
       where: { id, orgId },
-      data: dto,
+      // skuNormalized — SOT: перераховуємо ЛИШЕ коли клієнт торкнувся sku (ключ присутній у dto).
+      // sku очищено (порожнє/undefined) → skuNormalized=null; змінено → normalize; ключ відсутній → не чіпаємо.
+      data: {
+        ...dto,
+        ...('sku' in dto ? { skuNormalized: dto.sku ? normalizeArticle(dto.sku) : null } : {}),
+      },
       include: {
         preferredSupplier: { select: { firstName: true, lastName: true, companyName: true } },
         goodCategory: { select: { id: true, name: true } },

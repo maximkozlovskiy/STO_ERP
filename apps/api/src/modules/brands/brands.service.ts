@@ -1,5 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Brand } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeArticle } from '../../common/utils/normalize-article';
 import { CacheService } from '../../redis/cache.service';
 import { BrandResponseDto, CreateBrandDto, UpdateBrandDto } from './brands.dto';
 
@@ -87,6 +89,39 @@ export class BrandsService {
     return this.toDto(item);
   }
 
+  /**
+   * Резолвить бренд за сирою назвою АБО синонімом (для Excel-імпорту товарів).
+   * norm = normalizeArticle(raw). Пріоритет:
+   *  1) Brand, у якого normalizeArticle(name) === norm (порівняння у JS — список брендів org малий);
+   *  2) BrandSynonym.normalizedSynonym === norm (findFirst orgId+deletedAt:null).
+   * Повертає Brand або null. Порожній/некоректний raw (norm === '') → null (не матчимо все підряд).
+   */
+  async resolveByNameOrSynonym(
+    orgId: string,
+    raw: string | null | undefined,
+  ): Promise<Brand | null> {
+    const norm = normalizeArticle(raw);
+    if (!norm) return null;
+
+    // Список активних брендів org (обмежений take: 1000, як у findAll) — нормалізуємо name у JS,
+    // бо normalizeArticle не виражається у SQL. Для типового СТО брендів десятки-сотні.
+    const brands = await this.prisma.brand.findMany({
+      where: { orgId, deletedAt: null },
+      take: 1000,
+    });
+    const byName = brands.find(b => normalizeArticle(b.name) === norm);
+    if (byName) return byName;
+
+    const synonym = await this.prisma.brandSynonym.findFirst({
+      where: { orgId, normalizedSynonym: norm, deletedAt: null },
+      select: { brandId: true },
+    });
+    if (!synonym) return null;
+    return this.prisma.brand.findFirst({
+      where: { id: synonym.brandId, orgId, deletedAt: null },
+    });
+  }
+
   async create(orgId: string, dto: CreateBrandDto): Promise<BrandResponseDto> {
     const synonyms = this.cleanSynonyms(dto.synonyms);
 
@@ -119,7 +154,11 @@ export class BrandsService {
         synonyms: synonyms.length
           ? {
               createMany: {
-                data: synonyms.map(s => ({ orgId, synonym: s })),
+                data: synonyms.map(s => ({
+                  orgId,
+                  synonym: s,
+                  normalizedSynonym: normalizeArticle(s),
+                })),
                 skipDuplicates: true,
               },
             }
@@ -212,7 +251,9 @@ export class BrandsService {
     // Incoming entries not yet active for this brand.
     const notActive = incoming.filter(s => !activeBySyn.has(s));
     // Among those, ones whose soft-deleted row exists somewhere in the org → resurrect+rebind.
-    const toResurrect = notActive.filter(s => deletedBySyn.has(s)).map(s => deletedBySyn.get(s)!);
+    const toResurrect = notActive
+      .filter(s => deletedBySyn.has(s))
+      .map(s => ({ id: deletedBySyn.get(s)!, synonym: s }));
     // The rest → truly new rows.
     const toCreate = notActive.filter(s => !deletedBySyn.has(s));
 
@@ -223,15 +264,22 @@ export class BrandsService {
             data: { deletedAt: new Date() },
           })
         : Promise.resolve(),
-      toResurrect.length
-        ? this.prisma.brandSynonym.updateMany({
-            where: { id: { in: toResurrect } },
-            data: { deletedAt: null, brandId },
-          })
-        : Promise.resolve(),
+      // Resurrect: воскрешаємо по одному updateMany на synonym, щоб заповнити normalizedSynonym
+      // (старі tombstone-рядки могли мати null) — набір малий (≤20 синонімів на бренд).
+      ...toResurrect.map(({ id, synonym }) =>
+        this.prisma.brandSynonym.updateMany({
+          where: { id, orgId },
+          data: { deletedAt: null, brandId, normalizedSynonym: normalizeArticle(synonym) },
+        }),
+      ),
       toCreate.length
         ? this.prisma.brandSynonym.createMany({
-            data: toCreate.map(s => ({ orgId, brandId, synonym: s })),
+            data: toCreate.map(s => ({
+              orgId,
+              brandId,
+              synonym: s,
+              normalizedSynonym: normalizeArticle(s),
+            })),
             skipDuplicates: true,
           })
         : Promise.resolve(),

@@ -361,6 +361,51 @@ describe('GoodsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.good.update).not.toHaveBeenCalled();
     });
+
+    it('sku змінюється → skuNormalized перераховується (SOT)', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow); // tenant guard
+      await service.update('org-1', 'good-1', { sku: '04E-129-620' });
+      expect(prisma.good.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ sku: '04E-129-620', skuNormalized: '04E129620' }),
+        }),
+      );
+    });
+
+    it('sku очищується (порожній рядок) → skuNormalized=null', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      await service.update('org-1', 'good-1', { sku: '' });
+      expect(prisma.good.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ skuNormalized: null }) }),
+      );
+    });
+
+    it('sku не передано → skuNormalized НЕ у data (не чіпаємо)', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      await service.update('org-1', 'good-1', { name: 'Нова назва' });
+      const data = (prisma.good.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+      expect('skuNormalized' in data).toBe(false);
+    });
+  });
+
+  describe('create — skuNormalized (SOT)', () => {
+    it('sku заданий → skuNormalized нормалізований у create.data', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null);
+      await service.create('org-1', { name: 'Насос', salePrice: 10, sku: '04E 129 620' });
+      expect(prisma.good.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ skuNormalized: '04E129620' }),
+        }),
+      );
+    });
+
+    it('sku відсутній → skuNormalized=null', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(null);
+      await service.create('org-1', { name: 'Насос', salePrice: 10 });
+      expect(prisma.good.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ skuNormalized: null }) }),
+      );
+    });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

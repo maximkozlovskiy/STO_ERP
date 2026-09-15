@@ -82,10 +82,10 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
 
     await callSyncSynonyms(service, ORG, BRAND_A, ['OEM']);
 
-    // Має викликатись updateMany з deletedAt: null + brandId: BRAND_A.
+    // Має викликатись updateMany з deletedAt: null + brandId: BRAND_A + normalizedSynonym.
     expect(mocks.prisma.brandSynonym.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['syn-1'] } },
-      data: { deletedAt: null, brandId: BRAND_A },
+      where: { id: 'syn-1', orgId: ORG },
+      data: { deletedAt: null, brandId: BRAND_A, normalizedSynonym: 'OEM' },
     });
     // createMany НЕ викликається — це resurrect, не create.
     expect(mocks.prisma.brandSynonym.createMany).not.toHaveBeenCalled();
@@ -99,7 +99,7 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
     await callSyncSynonyms(service, ORG, BRAND_A, ['BRAND_NEW']);
 
     expect(mocks.prisma.brandSynonym.createMany).toHaveBeenCalledWith({
-      data: [{ orgId: ORG, brandId: BRAND_A, synonym: 'BRAND_NEW' }],
+      data: [{ orgId: ORG, brandId: BRAND_A, synonym: 'BRAND_NEW', normalizedSynonym: 'BRANDNEW' }],
       skipDuplicates: true,
     });
   });
@@ -173,8 +173,8 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
     // brandId МАЄ оновитися на BRAND_A — без цього синонім "OEM" зник би назавжди
     // (deletedAt=null, але brandId=BRAND_B → не з'явиться у новому бренду).
     expect(mocks.prisma.brandSynonym.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['syn-oem'] } },
-      data: { deletedAt: null, brandId: BRAND_A },
+      where: { id: 'syn-oem', orgId: ORG },
+      data: { deletedAt: null, brandId: BRAND_A, normalizedSynonym: 'OEM' },
     });
   });
 });
@@ -247,5 +247,68 @@ describe('BrandsService.restore — active-name-duplicate guard (MD-C1 parity)',
 
     await expect(service.restore(ORG, BRAND_A)).rejects.toThrow(NotFoundException);
     expect(mocks.prisma.brand.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// ─── resolveByNameOrSynonym (Excel-імпорт) ──────────────────────────────────────
+function makeResolveMocks() {
+  return {
+    prisma: {
+      brand: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      brandSynonym: { findFirst: vi.fn().mockResolvedValue(null) },
+    },
+    cache: { get: vi.fn().mockResolvedValue(null), set: vi.fn(), del: vi.fn() },
+  };
+}
+
+describe('BrandsService.resolveByNameOrSynonym', () => {
+  let mocks: ReturnType<typeof makeResolveMocks>;
+  let service: BrandsService;
+
+  beforeEach(() => {
+    mocks = makeResolveMocks();
+    service = new BrandsService(
+      mocks.prisma as unknown as PrismaService,
+      mocks.cache as unknown as CacheService,
+    );
+  });
+
+  it('порожній/некоректний raw (norm==="") → null, без запитів', async () => {
+    expect(await service.resolveByNameOrSynonym(ORG, '  ---  ')).toBeNull();
+    expect(await service.resolveByNameOrSynonym(ORG, null)).toBeNull();
+    expect(mocks.prisma.brand.findMany).not.toHaveBeenCalled();
+  });
+
+  it('матч за нормалізованою назвою (case/роздільники ігноруються)', async () => {
+    mocks.prisma.brand.findMany.mockResolvedValueOnce([
+      { id: 'b-1', name: 'Bosch' },
+      { id: 'b-2', name: 'Mann-Filter' },
+    ]);
+    const res = await service.resolveByNameOrSynonym(ORG, 'mann filter');
+    expect(res).toMatchObject({ id: 'b-2' });
+    // Синонім не читається, якщо матч за назвою.
+    expect(mocks.prisma.brandSynonym.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('матч за нормалізованим синонімом коли назва не збіглась', async () => {
+    mocks.prisma.brand.findMany.mockResolvedValueOnce([{ id: 'b-1', name: 'Bosch' }]);
+    mocks.prisma.brandSynonym.findFirst.mockResolvedValueOnce({ brandId: 'b-9' });
+    mocks.prisma.brand.findFirst.mockResolvedValueOnce({ id: 'b-9', name: 'Continental' });
+
+    const res = await service.resolveByNameOrSynonym(ORG, 'oem-1');
+    expect(mocks.prisma.brandSynonym.findFirst).toHaveBeenCalledWith({
+      where: { orgId: ORG, normalizedSynonym: 'OEM1', deletedAt: null },
+      select: { brandId: true },
+    });
+    expect(res).toMatchObject({ id: 'b-9' });
+  });
+
+  it('ані назва, ані синонім не збіглись → null', async () => {
+    mocks.prisma.brand.findMany.mockResolvedValueOnce([{ id: 'b-1', name: 'Bosch' }]);
+    mocks.prisma.brandSynonym.findFirst.mockResolvedValueOnce(null);
+    expect(await service.resolveByNameOrSynonym(ORG, 'НевідомийБренд123')).toBeNull();
   });
 });
