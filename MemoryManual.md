@@ -14,7 +14,23 @@
 TypeScript: ✅ 0 errors (api + web)
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       7fa18952 fix(sync): wire missing pricing-rules apply-all UI trigger
+HEAD:       f678f30c fix(review): цикл 1/3 — ParseUUIDPipe, tx timeout, blob-download, timer cleanup
+Latest review: 2026-09-15 (sto-review-agent, цикл 1/3, HEAD f678f30c) — Повний проектний аудит
+УСЬОГО дерева (не лише diff). Знайдено 8 / виправлено 8 (Critical 0 / Important 6 / Suggestion 2).
+Important: (1) exchange-rates + cash-registers @Query('currencyId'/'branchId') без ParseUUIDPipe →
+Prisma P2023 (невалідний UUID у where на @db.Uuid) → HTTP 500 замість 400 — обидва були
+єдиними holdouts (решта 30+ query-id вже валідовані); (2) booking.service cancelRequest
+$transaction(async) без { timeout } → додано 10000; (3-6) blob-download без appendChild/removeChild
+у 5 сайтах (xlsx-import-button, ReportBuilder, pricing-rules, reports/page, useWorkOrderActions) →
+Firefox/Safari не диспатчать click на detached anchor + useWorkOrderActions мав негайний
+revokeObjectURL → setTimeout(...,100). Suggestion: ExchangeRatesTab NBU-reload setTimeout без
+cleanup/catch → ref+unmount cleanup+.catch; payments/[id] React.ReactNode → named import.
+МУЛЬТИВАЛЮТА перевірена й КОРЕКТНА: Invoice/WO у Фазі 3 (currencyId NOT NULL, amount у валюті
+документа), payments.service має sameCurrency-guard + FX_GAIN/FX_LOSS реалізацію — dto.amount→
+paidAmount тут НЕ баг (SKILL §5 2026-09-14 запис уточнено). XLSX-import: toArrayBuffer slice-fix
+коректний (pool-bug уникнено); getLinkedCounts liveness (stock-docs/supplier-returns) — повний;
+TX_LABELS sibling-drift — усунено (shared SSOT + FX-гілки). tsc api+web 0. Попередній HEAD:
+7fa18952 fix(sync): wire missing pricing-rules apply-all UI trigger
 Latest sync: 2026-09-15 (цикл 1/3, довершено HEAD 7fa18952) — Повний проектний аудит API↔Frontend,
 усі ~57 backend-модулів (apps/api/src/modules/, включно з sub-controllers: batches/pricing-rules/
 stock-items під inventory, cash-shifts/fiscal-providers/payment-gateways/online-payments під

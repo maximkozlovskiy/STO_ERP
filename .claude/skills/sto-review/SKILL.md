@@ -1353,6 +1353,8 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Фікс:** усі accumulate/compare проти base-only полів → `conv.amountBase` (у base `conv.amountBase === dto.amount` → BC). Remaining/overpay → `baseCode` (`getBaseCurrency`), не хардкод «грн».
 **Severity:** CRITICAL — тихе псування фін-обліку (paidAmount/статус PAID) для не-base оплат; base-only тести не ловлять. Sample: payments.service invoice+WO (12bf3e2d).
 
+> **UPD 2026-09-15 (review цикл 1/3):** Invoice/WorkOrder ПЕРЕЙШЛИ у Фазу 3 — тепер `currencyId NOT NULL` + `amount/paidAmount/totalAmount` у ВАЛЮТІ документа (не base). payments.service тепер коректно: (1) `sameCurrency(payment, invoice)` guard перед алокацією → оплата у тій самій валюті → `dto.amount` накопичується правильно; (2) base-леджер через settlement (`amountBase`); (3) FX_GAIN/FX_LOSS реалізується коли рахунок став PAID у іновалюті. Тобто `dto.amount → paidAmount` тут НЕ баг (обидва у валюті документа). Правило лишається валідним для СПРАВДІ base-only сіблінгів — але спершу перевір `currencyId` у моделі-цілі (може бути Фаза 3), інакше false-positive на payments.service.
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |

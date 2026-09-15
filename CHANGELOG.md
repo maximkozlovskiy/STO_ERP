@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-15 — Code review цикл 1/3: повний проектний аудит
+
+### f678f30c fix(review): цикл 1/3 — ParseUUIDPipe, tx timeout, blob-download, timer cleanup
+
+Повний review УСЬОГО дерева (не diff). 8 знайдено / 8 виправлено (Important 6, Suggestion 2):
+
+- **§2.3** exchange-rates + cash-registers: `@Query('currencyId'/'branchId')` → `ParseUUIDPipe({optional})`
+  — невалідний UUID у Prisma `where` на `@db.Uuid` давав P2023 → HTTP 500 замість 400 (єдині holdouts).
+- **§5** booking.service `cancelRequest`: `$transaction(async)` → `{ timeout: 10000 }`.
+- **§1/§8** blob-download без `appendChild`/`removeChild` у 5 сайтах (xlsx-import-button, ReportBuilder,
+  pricing-rules, reports/page, useWorkOrderActions) — Firefox/Safari не диспатчать click на detached
+  anchor; useWorkOrderActions мав ще й негайний `revokeObjectURL` → `setTimeout(...,100)`.
+- **§3.1** ExchangeRatesTab: NBU-reload `setTimeout` → ref + unmount cleanup + `.catch()`.
+- **§1** payments/[id]: `React.ReactNode` → named import.
+
+Мультивалюта перевірена й КОРЕКТНА (Фаза 3: Invoice/WO `currencyId NOT NULL`, sameCurrency-guard,
+FX_GAIN/FX_LOSS). tsc api+web 0. SKILL §5 (2026-09-14) уточнено проти Фаза-3 false-positive.
+
+---
+
 ## 2026-09-15 — Тех-борг TD3: консолідація роздутих файлів + утиліт (закрито)
 
 Останній пункт backlog TD1–TD3. Кілька комітів:
