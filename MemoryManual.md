@@ -16,6 +16,10 @@ TypeScript: ✅ 0 errors (api, npx tsc --noEmit)
             prisma+PO+SD регрес 288/288 (0 нових падінь) · нове: normalize-article,
             xlsx-import (preview/apply 16), brands resolve, mapping upsert
 HEAD:       5f3ae56c feat(counterparties): CounterpartyImportMapping persistence module
+Review:     2026-09-15 (auto, HEAD f509cd8b) — generic Excel-import BACKEND: 0 проблем.
+            A1 tenant-guard (усі update/updateMany/upsert несуть orgId або документовано
+            safe upsert), мультивалюта (PO adapter → resolveBaseConversion), soft-delete,
+            DI-drift #724 (специ мокають DocumentLineImportAdapterRegistry) — усе чисто.
 ```
 
 **Backlog тех-боргу (усе 🟢):** TD1 currencyId NOT NULL + seed base-валюти; TD2 schema-integrity
