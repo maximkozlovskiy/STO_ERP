@@ -11,10 +11,17 @@
 ```
 Дата:       2026-09-15
 Фаза:       Активна розробка — backlog TD1–TD3 ЗАКРИТО (TD1 ✅ TD2 ✅ TD3 ✅)
-TypeScript: ✅ 0 errors (api + web)
+TypeScript: ✅ 0 errors (api + web) — підтверджено після perf-fix 4a3b624d
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       d195db00 fix(sync): цикл 2/3 — wire maintenance-schedule edit + expense-category restore UI
+HEAD:       0f1866f8 docs(skills): add redundant-full-scan approach to sto-optimize
+Optimize:   2026-09-15 цикл 2/3 (sto-optimize-agent, 4a3b624d) — 1 знайдено / 1 виправлено.
+            expense-categories.update() reparent робив 3 ідентичні findMany(усе дерево)
+            через getDescendantIds+getDepth+getSubtreeHeight підряд → loadTree() один
+            scan + pure-функції у памʼяті (−67% DB RTT на branch-move). Новий патерн
+            «redundant-full-scan (multi tree-helper per mutation)» → SKILL.md (0f1866f8).
+            tsc api+web 0. Решта cycle-2 focus (vehicles maintenance edit, ExpenseCategoriesTab
+            showDeleted-toggle/tree, restore orphan-reparent) — clean, N+1 немає.
 Review:     2026-09-15 цикл 2/3 (sto-review-agent, HEAD d195db00) — 0 знайдено / 0 виправлено, коміт не потрібен
 Latest sync: 2026-09-15 (цикл 2/3, довершено HEAD d195db00) — Другий контрольний прохід
 API↔Frontend, усі ~65 backend-контролерів (включно з sub-controllers), звірено з попереднім
