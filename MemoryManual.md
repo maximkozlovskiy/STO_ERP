@@ -11,10 +11,15 @@
 ```
 Дата:       2026-09-15
 Фаза:       Активна розробка — backlog TD1–TD3 ЗАКРИТО (TD1 ✅ TD2 ✅ TD3 ✅)
-TypeScript: ✅ 0 errors (api + web, --incremental false) — підтверджено після sync цикл 3/3
+TypeScript: ✅ 0 errors (api + web, --incremental false) — підтверджено після optimize цикл 3/3
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       99a9e6c8 fix(sync): цикл 3/3 — PATCH /reports/builder/saved/:id не мав UI-тригера
+HEAD:       e880431a perf(optimize): цикл 3/3 — стабільні Modal onClose (ReportBuilder + vehicles edit)
+Optimize:   2026-09-15 (цикл 3/3, ФІНАЛЬНИЙ) — 3 знайдено / 3 виправлено. (1) report-builder
+            updateSaved 3→2 RTT (update...RETURNING замість updateMany+refetch, 5c8de77b);
+            (2+3) inline-arrow onClose у typing-модалках ReportBuilder rename/save + vehicles
+            edit-форма → useCallback, прибрано keydown/overflow-thrashing на кожен символ (2.16,
+            e880431a). Новий підхід 1.9 (redundant return-refetch) додано у SKILL.md.
 Latest sync: 2026-09-15 (цикл 3/3, ФІНАЛЬНИЙ, HEAD 99a9e6c8) — Третій контрольний прохід
 API↔Frontend, звірка усіх ~65 backend-контролерів (включно з sub-controllers) + прицільна
 перевірка файлів, змінених циклами 1-2 (maintenance-schedules edit UI, expense-categories
