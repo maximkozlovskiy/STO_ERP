@@ -78,6 +78,9 @@ export function ExcelImportWizard({
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [resolutions, setResolutions] = useState<Record<number, RowResolution>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Збережений мапінг застосовуємо ЛИШЕ один раз за відкриття — інакше refetch react-query
+  // (focus / staleTime) віддає новий референс і мовчки затирає введені користувачем колонки.
+  const mappingAppliedRef = useRef(false);
 
   const previewMut = usePreviewImport();
   const applyMut = useApplyImport();
@@ -92,12 +95,14 @@ export function ExcelImportWizard({
     setRows([]);
     setResolutions({});
     setMapping(DEFAULT_MAPPING);
+    mappingAppliedRef.current = false;
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [open]);
 
-  // savedMapping приходить асинхронно — застосовуємо коли з'явився і лише на кроці 1.
+  // savedMapping приходить асинхронно — застосовуємо ОДИН раз за відкриття (коли з'явився).
   useEffect(() => {
-    if (open && savedMapping && step === 1) {
+    if (open && savedMapping && step === 1 && !mappingAppliedRef.current) {
+      mappingAppliedRef.current = true;
       setMapping({
         startRow: savedMapping.startRow || 2,
         codeCol: savedMapping.codeCol,
@@ -120,6 +125,9 @@ export function ExcelImportWizard({
 
   // Крок 1 → 2: preview + fire-and-forget збереження мапінгу контрагента.
   const handlePreview = useCallback(async () => {
+    // Bug #630 клас: синхронний guard проти подвійного сабміту — disabled від isPending
+    // оновлюється асинхронно, два кліки в одному тіку інакше обидва пройдуть.
+    if (previewMut.isPending) return;
     if (!file) {
       toast.error('Оберіть файл Excel');
       return;
@@ -166,6 +174,8 @@ export function ExcelImportWizard({
 
   // Крок 2 → apply: збираємо резолвлені рядки.
   const handleApply = useCallback(async () => {
+    // Bug #630 клас: синхронний guard проти подвійного сабміту (див. handlePreview).
+    if (applyMut.isPending) return;
     const resolved: ApplyRow[] = [];
     for (const row of rows) {
       const res = resolutions[row.rowIndex];
