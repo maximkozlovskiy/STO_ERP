@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-09-15] `prisma.X.update({where:{id}})` без orgId → A1 tenant-guard кидає 500
+
+Клас багів, що траплявся вже ТРИЧІ (report-builder `updateSaved`, `auth.changePassword`, і мало не
+optimize-рефактори). A1 fail-closed tenant-guard ($extends, `tenant-guard.extension.ts`) вимагає, щоб
+КОЖЕН guarded `update`/`updateMany`/`delete` ніс tenant-токен (orgId/branchId) у `where` — інакше
+`TenantIsolationError` → замаскований HTTP 500 «Внутрішня помилка сервера». Виняток лише для моделей
+у `TENANT_EXEMPT_MODELS` (junction-таблиці, Organisation, SystemTemplate, append-only-child).
+
+**Симптом:** endpoint що робить update повертає 500 (не 400/404), у dev-лозі TenantIsolationError.
+Часто ховається бо: (а) unit-специ мокають Prisma → guard не виконується → зелено; (б) «оптимізація»
+`updateMany({where:{id,orgId}})` → `update({where:{id}})` виглядає безпечно бо `findFirst({orgId})`
+стоїть вище — АЛЕ guard оцінює кожен виклик НЕЗАЛЕЖНО, попередній read його не задовольняє.
+
+**Grep-детектор:** `grep -rnE "\.update\(\{\s*where:\s*\{\s*id[,}]" apps/api/src --include=*.service.ts`
+→ кожен match де where НЕ містить orgId/branchId і модель НЕ у TENANT_EXEMPT_MODELS = потенційний 500.
+
+**Fix:** `where:{ id, orgId }` (Prisma приймає non-unique поля у where update — компаунд типізується
+через extendedWhereUnique, що в проєкті увімкнено). Verify: unit-мок НЕ ловить → перевіряти НАЖИВО
+проти tenant-guarded БД (curl create→update→200), не лише специ.
+
+---
+
 ## [2026-09-15] E2E редіректять на /login, якщо web підняли БЕЗ NEXT_PUBLIC_E2E=1
 
 Симптом: `npx playwright test` → усі тести падають на `readyPage` з навігацією на
