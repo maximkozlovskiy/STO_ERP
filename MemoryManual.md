@@ -15,6 +15,7 @@ TypeScript: ✅ 0 errors (api + web)
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
 HEAD:       d195db00 fix(sync): цикл 2/3 — wire maintenance-schedule edit + expense-category restore UI
+Review:     2026-09-15 цикл 2/3 (sto-review-agent, HEAD d195db00) — 0 знайдено / 0 виправлено, коміт не потрібен
 Latest sync: 2026-09-15 (цикл 2/3, довершено HEAD d195db00) — Другий контрольний прохід
 API↔Frontend, усі ~65 backend-контролерів (включно з sub-controllers), звірено з попереднім
 циклом 1 (HEAD 7fa18952) та комітами між циклами (f678f30c ParseUUIDPipe/blob-download,
@@ -67,6 +68,32 @@ Promise.all-fetch. InvoiceConflictDialog/RulePricerModal — inline-arrow onClos
 рідко-видимі → skip. Схема без нових WHERE-колонок → 0 нових індексів. Новий патерн у SKILL 2.17:
 decomposition-memo-регресія (d16663c1). tsc api 0 + web 0 (bare --incremental false). Попередній HEAD:
 f678f30c fix(review): цикл 1/3 — ParseUUIDPipe, tx timeout, blob-download, timer cleanup
+Latest review: 2026-09-15 (sto-review-agent, цикл 2/3, HEAD d195db00) — Повний проектний аудит
+УСЬОГО дерева, другий прохід. Знайдено 0 / виправлено 0 (Critical 0 / Important 0 / Suggestion 0)
+→ КОМІТ НЕ ПОТРІБЕН. Прицільно перевірено 3 файли, де sto-sync цикл 2 дописав РЕАЛЬНУ логіку:
+(1) vehicles/[id]/PageClient.tsx — новий edit-режим maintenance-schedule: editingScheduleId,
+POST↔PATCH-розгалуження в addSchedule, prefill через openEditSchedule, скидання editingScheduleId
+у cancelScheduleForm+після save, savingSchedule/deletingScheduleId per-op, loadReqRef race-guard —
+CLEAN; (2) cash/ExpenseCategoriesTab.tsx + useExpenseCategories.ts — restore-фіча: showDeleted-toggle
+коректно перемикає ?showDeleted=true (окремий queryKey), restore in-flight guard (restoringId===c.id
+→ return; setRestoringId), useRestoreExpenseCategory invalidate expenseCategoriesKeys.all (покриває
+обидва showDeleted-варіанти), RBAC canManage гейтить toggle+restore-кнопку, tree рендерить deleted
+вузли плоско (backend findAll showDeleted→плаский список щоб уникнути orphan) — CLEAN; backend
+expense-categories.service.restore — атомарний updateMany({NOT:{deletedAt:null}})+count===0 guard,
+active-duplicate 409, orphan-reparent Bug #734, cache.del через finish() — CLEAN; restore-ролі
+(OWNER/ADMIN) === delete-ролі (§2.1 симетрія); (3) reports/ReportBuilder.tsx — міграція на спільний
+downloadBlob (lib/download.ts: appendChild/removeChild+deferred revoke), exportCell↔fmtCell parity
+(boolean Так/Ні, enum, date), CSV formula-injection escape — CLEAN. Контроль цикл-1 фіксів: усі
+@Param('id')/@Query('...Id') мають ParseUUIDPipe (0 holdouts); StockDocument CONFIRM CAS-claim
+updateMany where status:DRAFT першим у $transaction+count===0 throw; PlannedActualMetrics memo;
+downloadBlob helper. Cross-cutting greps: 0 hard-delete, 0 $transaction без timeout, 0 console.log,
+0 @IsString на enum-DTO (§2.3), 0 `in`-оператор enum-guard, payments.fiscalStatus cast guarded
+FISCAL_STATUS_VALUES.has() (false-positive), date-only lte end-of-day скрізь. maintenance-schedules
+controller повністю secured (@UseGuards+@Roles на кожному методі+ParseUUIDPipe). tsc api 0 + web 0
+(--incremental false). Зауваження (pre-existing, НЕ цикл-2 регресія): VehicleCardPage не гейтить
+mutation-кнопки за роллю — MECHANIC бачить edit/add регламенту що 403-нуть (backend коректно 403;
+§8.4 broken-UX не leak; стосується всіх кнопок сторінки, не лише нового edit — консистентно з
+сіблінгами). Попередній HEAD (цикл 1): f678f30c
 Latest review: 2026-09-15 (sto-review-agent, цикл 1/3, HEAD f678f30c) — Повний проектний аудит
 УСЬОГО дерева (не лише diff). Знайдено 8 / виправлено 8 (Critical 0 / Important 6 / Suggestion 2).
 Important: (1) exchange-rates + cash-registers @Query('currencyId'/'branchId') без ParseUUIDPipe →
