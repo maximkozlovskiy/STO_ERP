@@ -9,11 +9,18 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-14
-Фаза:       Активна розробка — тех-борг «по черзі» (TD1 ✅ + TD2 ✅ закрито; далі TD3)
+Дата:       2026-09-15
+Фаза:       Активна розробка — backlog TD1–TD3 ЗАКРИТО (TD1 ✅ TD2 ✅ TD3 ✅)
 TypeScript: ✅ 0 errors (api + web)
-Тести:      API-suite 2306 зелені + новий schema-integrity guard 7/7
-HEAD:       TD2 refactor(td2): guard-тест + self-heal manual-SQL конструктів проти db push
+Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7
+HEAD:       db94ce8e refactor(td3): декомпозиція PurchaseOrderCreateModal (2085→1929)
+TD3 (2026-09-15, закрито): консолідація роздутих файлів + утиліт. pagination→common/utils/
+pagination.ts, Kyiv-date→common/utils/kyiv-date.ts (337523be); work-orders.service 1657→1473
+(DTO-мапери, 1ed42c35); 4 скіли стиснуто (a8367105, знання 100% збережено діф-verified);
+PurchaseOrderCreateModal 2085→1929 (types.ts+RulePricerModal у ./purchase-order/, db94ce8e).
+ЗАЛИШОК свідомо: CreateWorkOrderModal 2337 (уже частково розбита; далі diminishing-returns),
+sto-tester 3804 (структурний split окремо). Попередній HEAD:
+refactor(td2): guard-тест + self-heal manual-SQL конструктів проти db push
 TD2 (2026-09-14, закрито): захист Prisma-невиразних конструктів (partial-unique doc-number +
 GIN/trgm пошук + GiST EXCLUDE + CHECK) від тихої втрати при db push/reset. **Виявлено реальний
 інцидент:** на dev-БД усі GIN/trgm індекси були відсутні (rebuild зі схеми) → пошук seq-scan.

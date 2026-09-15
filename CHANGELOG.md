@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-09-15 — Тех-борг TD3: консолідація роздутих файлів + утиліт (закрито)
+
+Останній пункт backlog TD1–TD3. Кілька комітів:
+
+### 337523be refactor(td3): pagination + Kyiv-date holdouts → спільні утиліти
+
+Hand-rolled пагінація (5 сервісів, без NaN-guard/cap) → `common/utils/pagination.ts`
+(calculatePagination); Kyiv-date Intl-конструкції ×9 → `common/utils/kyiv-date.ts`.
+
+### 1ed42c35 refactor(td3): виділити WorkOrder DTO-мапери у окремий модуль
+
+work-orders.service 1657→1473 — DTO-мапери винесено в окремий модуль (менший review-surface).
+
+### a8367105 docs(skills): консолідація 4 скілів (знання збережено)
+
+sto-tester 3901→3804, sto-dev 2061→1932, sto-optimize 1887→1293, sto-review 1511→1368.
+Стиснуто лише прозу/дублювання — bug-refs/```bash-детектори/❌✅-приклади/checklists/dated-entries
+збережено 100% (перевірено діфом old vs new кожним агентом).
+
+### db94ce8e refactor(td3): декомпозиція PurchaseOrderCreateModal (2085→1929)
+
+Виділено у ./purchase-order/: types.ts (усі інтерфейси+константи+хелпери, pure move) +
+RulePricerModal.tsx (самодостатній суб-діалог, ~9 props). Прибрано мертвий import Spinner.
+Behavior-preserving; tsc web 0; DocumentCreateModals+DocumentDirtyGuard 7/7.
+
+ЗАЛИШОК (свідомо): CreateWorkOrderModal 2337 (уже частково розбита PartsTable/WorksTable —
+подальше дроблення diminishing-returns); sto-tester 3804 (найбільший skill, структурний split
+окремо). Backlog TD1–TD3 закрито.
+
+---
+
 ## 2026-09-14 — Тех-борг TD2: захист manual-SQL конструктів від schema-rebuild
 
 ### refactor(td2): guard-тест + self-heal manual-SQL конструктів проти db push
