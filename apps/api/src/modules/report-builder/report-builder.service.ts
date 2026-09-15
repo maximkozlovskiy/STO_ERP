@@ -188,10 +188,12 @@ export class ReportBuilderService {
   }
 
   async updateSaved(orgId: string, id: string, dto: { name?: string; config?: FullReportConfig }) {
-    await this.getSaved(orgId, id); // guard-404 + tenant
+    await this.getSaved(orgId, id); // guard-404 + tenant (id належить org, не soft-deleted)
     if (dto.config) buildQuery(dto.config, orgId); // dry-run
-    await this.prisma.savedReport.updateMany({
-      where: { id, orgId, deletedAt: null },
+    // update() повертає оновлений рядок одним UPDATE...RETURNING — без окремого re-fetch
+    // (getSaved вище вже підтвердив tenant+not-deleted у тому ж запиті).
+    return this.prisma.savedReport.update({
+      where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.config
@@ -202,7 +204,6 @@ export class ReportBuilderService {
           : {}),
       },
     });
-    return this.getSaved(orgId, id);
   }
 
   async removeSaved(orgId: string, id: string) {
