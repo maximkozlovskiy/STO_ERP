@@ -44,7 +44,6 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
@@ -55,6 +54,8 @@ import { ServicePickerModal, type ServicePickerItem } from '@/components/ui/Serv
 import { GoodPickerModal, type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { PartsTable } from './work-order/PartsTable';
 import { WorksTable } from './work-order/WorksTable';
+import { InvoiceConflictDialog } from './work-order/InvoiceConflictDialog';
+import { PlannedActualMetrics } from './work-order/PlannedActualMetrics';
 import type { LocalPart, LocalLine, WorkOrderFormState } from './work-order/types';
 import { Tooltip } from '@/components/ui/tooltip';
 import {
@@ -225,11 +226,6 @@ const nextKey = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `k${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-
-// sto-optimize: stable no-op handler for disabled DateTimePickerInput placeholders
-// (actual-section start/end). Inline `() => {}` create new function references each
-// render → DateTimePickerInput memoization marked as dirty even though field is fixed.
-const NOOP_DT_CHANGE: (v: string) => void = () => {};
 
 // Calc working hours between two "YYYY-MM-DDTHH:mm" local datetime strings.
 // Returns rounded-to-2-decimals string, or '' if inputs are missing/invalid.
@@ -1871,80 +1867,18 @@ export function CreateWorkOrderModal({
                     </div>
 
                     {/* Планові та фактичні показники */}
-                    <div className="rounded-lg border border-border overflow-hidden">
-                      <div className="grid grid-cols-2 divide-x divide-border">
-                        <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
-                          Планові показники
-                        </div>
-                        <div className="px-3 py-1.5 bg-secondary/50 text-xs font-medium text-muted-foreground">
-                          Фактичні показники
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 divide-x divide-border">
-                        <div className="grid grid-cols-[1fr_1fr_auto] gap-3 p-3">
-                          <DateTimePickerInput
-                            label="Дата та час початку"
-                            value={form.plannedStartAt}
-                            onChange={handlePlannedStartChange}
-                            disabled={!canEdit}
-                            inputClassName="h-8 text-[13px]"
-                          />
-                          <DateTimePickerInput
-                            label="Дата та час завершення"
-                            value={form.plannedEndAt}
-                            onChange={handlePlannedEndChange}
-                            disabled={!canEdit}
-                            inputClassName="h-8 text-[13px]"
-                          />
-                          <div className="flex flex-col gap-1 min-w-[80px]">
-                            <label className="text-[11px] text-muted-foreground font-medium">
-                              Нормогодин
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              value={form.plannedHours}
-                              onChange={handlePlannedHoursChange}
-                              disabled={!canEdit}
-                              placeholder="0"
-                              className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-[1fr_1fr_auto] gap-3 p-3">
-                          <DateTimePickerInput
-                            label="Дата та час початку"
-                            value=""
-                            onChange={NOOP_DT_CHANGE}
-                            disabled
-                            inputClassName="h-8 text-[13px]"
-                          />
-                          <DateTimePickerInput
-                            label="Дата та час завершення"
-                            value=""
-                            onChange={NOOP_DT_CHANGE}
-                            disabled
-                            inputClassName="h-8 text-[13px]"
-                          />
-                          <div className="flex flex-col gap-1 min-w-[80px]">
-                            <label className="text-[11px] text-muted-foreground font-medium">
-                              Нормогодин
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              value={liveActualHours != null ? liveActualHours : form.actualHours}
-                              onChange={handleActualHoursChange}
-                              disabled={!canEdit || liveActualHours != null}
-                              placeholder="0"
-                              className="h-8 w-full rounded-md border border-input bg-background px-2 text-[13px] tabular-nums disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-ring"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <PlannedActualMetrics
+                      canEdit={canEdit}
+                      plannedStartAt={form.plannedStartAt}
+                      plannedEndAt={form.plannedEndAt}
+                      plannedHours={form.plannedHours}
+                      actualHours={form.actualHours}
+                      liveActualHours={liveActualHours}
+                      onPlannedStartChange={handlePlannedStartChange}
+                      onPlannedEndChange={handlePlannedEndChange}
+                      onPlannedHoursChange={handlePlannedHoursChange}
+                      onActualHoursChange={handleActualHoursChange}
+                    />
 
                     {/* Попередження про конфлікт у календарі */}
                     {calConflict?.anyConflict && (
@@ -2275,61 +2209,13 @@ export function CreateWorkOrderModal({
         }
       />
 
-      {invoiceConflict && (
-        // ESC обробляється глобальним document listener (див. useEffect вище —
-        // onKeyDown на <div role="presentation"> без tabIndex/focus не фaйрить).
-        // Overlay click + autoFocus для модального UX.
-        <div
-          className="fixed inset-0 z-60 flex items-center justify-center bg-black/50"
-          onClick={() => !invoiceLoading && setInvoiceConflict(false)}
-          role="presentation"
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invoice-conflict-title"
-            className="bg-surface rounded-xl shadow-xl p-6 max-w-sm w-full mx-4"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 id="invoice-conflict-title" className="font-semibold text-base mb-2">
-              Рахунок вже існує
-            </h3>
-            <p className="text-sm text-muted-foreground mb-5">
-              Для цього наряду вже є активний рахунок. Що зробити?
-            </p>
-            <div className="flex flex-col gap-2">
-              <Button
-                autoFocus
-                onClick={handleInvoiceRefresh}
-                loading={invoiceLoading}
-                disabled={invoiceLoading}
-                className="w-full"
-              >
-                Оновити (перезаписати рядки)
-              </Button>
-              {/* захист від race — поки triggers in-flight, інші дії dialog
-                  заборонені (інакше "Відкрити існуючий" відкриває рахунок паралельно з
-                  refresh → дві вкладки + застаріле UI). */}
-              <Button
-                variant="outline"
-                onClick={handleInvoiceOpen}
-                disabled={invoiceLoading}
-                className="w-full"
-              >
-                Відкрити існуючий
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setInvoiceConflict(false)}
-                disabled={invoiceLoading}
-                className="w-full"
-              >
-                Скасувати
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <InvoiceConflictDialog
+        open={invoiceConflict}
+        loading={invoiceLoading}
+        onClose={() => setInvoiceConflict(false)}
+        onRefresh={handleInvoiceRefresh}
+        onOpenExisting={handleInvoiceOpen}
+      />
       <ConfirmDialog {...confirmDialogProps} />
       <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
