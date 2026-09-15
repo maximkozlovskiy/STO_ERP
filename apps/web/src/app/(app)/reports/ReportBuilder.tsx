@@ -626,46 +626,67 @@ export function ReportBuilder() {
       )}
 
       {/* Modal керує own mount/unmount + exit-анімацією; НЕ обгортати у {open && …} — це ламає exit. */}
-      <Modal open={saveOpen} onClose={closeSave} title="Зберегти звіт">
-        <div className="flex flex-col gap-3 p-1">
-          <input
-            autoFocus
-            value={saveName}
-            onChange={e => setSaveName(e.target.value)}
-            placeholder="Назва звіту"
-            className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={closeSave}>
-              Скасувати
-            </Button>
-            <Button onClick={doSave} disabled={saveMut.isPending}>
-              Зберегти
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <NamePromptModal
+        open={saveOpen}
+        onClose={closeSave}
+        title="Зберегти звіт"
+        value={saveName}
+        onChange={setSaveName}
+        onSubmit={doSave}
+        pending={saveMut.isPending}
+      />
 
-      <Modal open={!!renameTarget} onClose={closeRename} title="Перейменувати звіт">
-        <div className="flex flex-col gap-3 p-1">
-          <input
-            autoFocus
-            value={renameName}
-            onChange={e => setRenameName(e.target.value)}
-            placeholder="Назва звіту"
-            className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={closeRename}>
-              Скасувати
-            </Button>
-            <Button onClick={doRename} disabled={updateSavedMut.isPending}>
-              Зберегти
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <NamePromptModal
+        open={!!renameTarget}
+        onClose={closeRename}
+        title="Перейменувати звіт"
+        value={renameName}
+        onChange={setRenameName}
+        onSubmit={doRename}
+        pending={updateSavedMut.isPending}
+      />
     </div>
+  );
+}
+
+// Спільний name-prompt діалог (Зберегти / Перейменувати звіт) — усуває дубль JSX.
+function NamePromptModal({
+  open,
+  onClose,
+  title,
+  value,
+  onChange,
+  onSubmit,
+  pending,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  pending: boolean;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <div className="flex flex-col gap-3 p-1">
+        <input
+          autoFocus
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Назва звіту"
+          className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
+        />
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Скасувати
+          </Button>
+          <Button onClick={onSubmit} disabled={pending}>
+            Зберегти
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
