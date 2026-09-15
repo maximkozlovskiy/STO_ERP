@@ -3,6 +3,26 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-09-15 — E2E цикл 1/3: 1 ПЕРЕДІСНУЮЧИЙ баг (не регресія цієї сесії)
+
+### Bug #747 — [MEDIUM, ВІДКРИТО] CreateWorkOrderModal не закривається кнопкою «Закрити»/Escape на свіжому open
+
+**Спостереження (E2E `work-orders.spec.ts:73` «модалка закривається кнопкою Скасувати або Escape»):**
+відкрити «Новий наряд» → клік X «Закрити» (або Escape) → модалка ЛИШАЄТЬСЯ visible (dialog
+`data-state="open"`), НЕ закривається. У DOM — лише сама «Новий наряд» (без DirtyConfirmDialog).
+
+**Діагноз — ПЕРЕДІСНУЮЧИЙ, НЕ регресія TD3-декомпозиції:** відтворено на pre-TD3 версії модалки
+(checkout `abe34226` — падає ідентично). Один із ~2 відомо-червоних E2E з коміту `21ba0db6`
+(«300 E2E — 4 failed → 298/300»). Найімовірніша причина: форма стає dirty-on-open (ймовірно
+async currency-default з мультивалюти Фаза 3 виставляється ПІСЛЯ `dirty.captureBaseline` без
+підняття `rebaselineRef`) → `handleModalClose` → `await dirty.confirmClose()` → показ/логіка
+DirtyConfirmDialog блокує закриття. Потребує прицільного аналізу baseline-таймінгу
+(`CreateWorkOrderModal.tsx:600-616` useEffect + currency-default effect) — high-risk фікс, НЕ
+робимо в межах QA-циклу без окремого узгодження. Backend не залучений.
+
+**Чому не виправлено зараз:** фікс зачіпає dirty-baseline таймінг найризикованішої модалки;
+робити наосліп у циклі = ризик нової регресії. Винесено для окремої задачі.
+
 ## Session 2026-09-11 — Тест фічі «Кастомізація бокової панелі» (FULL, HEAD dc59edaa) — ЧИСТО, 0 багів
 
 **Scope:** frontend-only фіча per-user reorder/hide/custom-sections бокового меню (commit `027b47f0`).
