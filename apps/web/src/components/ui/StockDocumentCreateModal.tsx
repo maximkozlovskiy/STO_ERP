@@ -14,6 +14,7 @@ import {
   Plus,
   Trash2,
   X,
+  Upload,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -38,6 +39,7 @@ import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
+import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -188,6 +190,9 @@ export function StockDocumentCreateModal({
   const [lines, setLines] = useState<LocalLine[]>([]);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
+  const [excelWizardOpen, setExcelWizardOpen] = useState(false);
+  // Стабільний onClose — GOTCHAS modal-thrashing.
+  const closeExcelWizard = useCallback(() => setExcelWizardOpen(false), []);
   const [goodSearchOpen, setGoodSearchOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -1173,11 +1178,21 @@ export function StockDocumentCreateModal({
                   Додати товар
                 </button>
                 {isEditMode && stockDocumentId && (
-                  <XlsxImportButton
-                    templateType="sd-lines"
-                    importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
-                    onImportComplete={() => loadDoc(stockDocumentId, true)}
-                  />
+                  <>
+                    <XlsxImportButton
+                      templateType="sd-lines"
+                      importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
+                      onImportComplete={() => loadDoc(stockDocumentId, true)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setExcelWizardOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Завантажити з Excel
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -1230,6 +1245,19 @@ export function StockDocumentCreateModal({
           setPoPickerOpen(false);
         }}
       />
+      {/* Майстер завантаження товарів з Excel. StockDocument не має контрагента —
+          counterpartyId=undefined (mapping тоді не читається, це ок). */}
+      {stockDocumentId && (
+        <ExcelImportWizard
+          open={excelWizardOpen}
+          onClose={closeExcelWizard}
+          docType="STOCK_DOCUMENT"
+          docId={stockDocumentId}
+          counterpartyId={undefined}
+          onImportComplete={() => void loadDoc(stockDocumentId, true)}
+        />
+      )}
+
       <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );

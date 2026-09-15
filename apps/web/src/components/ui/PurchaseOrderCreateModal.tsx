@@ -18,6 +18,7 @@ import {
   Zap,
   PackageCheck,
   Wallet,
+  Upload,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -53,6 +54,7 @@ import {
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 import { RulePricerModal } from '@/components/ui/purchase-order/RulePricerModal';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
+import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
 import {
   type Warehouse,
   type Supplier,
@@ -129,6 +131,9 @@ export function PurchaseOrderCreateModal({
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [receiveMode, setReceiveMode] = useState(false);
+  const [excelWizardOpen, setExcelWizardOpen] = useState(false);
+  // Стабільний onClose — GOTCHAS modal-thrashing (нова ідентичність щорендеру ремонтує Modal).
+  const closeExcelWizard = useCallback(() => setExcelWizardOpen(false), []);
   const [receiveQtys, setReceiveQtys] = useState<Record<string, string>>({});
   const [receiving, setReceiving] = useState(false);
   const [applyingPricing, setApplyingPricing] = useState(false);
@@ -1375,11 +1380,21 @@ export function PurchaseOrderCreateModal({
                     </Button>
                   ))}
                 {canEdit && isEditMode && activePOId && !receiveMode && (
-                  <XlsxImportButton
-                    templateType="po-lines"
-                    importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
-                    onImportComplete={() => loadPo(activePOId, true)}
-                  />
+                  <>
+                    <XlsxImportButton
+                      templateType="po-lines"
+                      importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
+                      onImportComplete={() => loadPo(activePOId, true)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setExcelWizardOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Завантажити з Excel
+                    </button>
+                  </>
                 )}
                 {canEdit && !showLineInput && !receiveMode && (
                   <button
@@ -1911,6 +1926,19 @@ export function PurchaseOrderCreateModal({
           setGoodSearchOpen(false);
         }}
       />
+
+      {/* Майстер завантаження товарів з Excel */}
+      {activePOId && (
+        <ExcelImportWizard
+          open={excelWizardOpen}
+          onClose={closeExcelWizard}
+          docType="PURCHASE_ORDER"
+          docId={activePOId}
+          counterpartyId={form.supplierId || undefined}
+          counterpartyName={supplierDisplay}
+          onImportComplete={() => void loadPo(activePOId, true)}
+        />
+      )}
 
       {/* Пікер правила ціноутворення */}
       <RulePricerModal
