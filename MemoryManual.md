@@ -14,20 +14,33 @@
 TypeScript: ✅ 0 errors (api + web)
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       12188e5c fix(sync): wire missing XLSX import UI for brands/units/PO-lines/stock-doc-lines
-Latest sync: 2026-09-15 (цикл 1/3, HEAD 12188e5c) — Повний проектний аудит API↔Frontend, усі ~30
-модулів. Direction 1: 4 знайдено / 4 виправлено — POST /xlsx/import/{brands,units} та
-/xlsx/import/{purchase-order-lines,stock-document-lines}/:id мали 0 UI-тригерів; додано
-XlsxImportButton у BrandsTab/UnitsTab (toolbar) і у PurchaseOrderCreateModal/
-StockDocumentCreateModal (edit-mode lines toolbar, лише DRAFT). StockDocumentCreateModal:
-inline load-effect винесено у loadDoc(id, silent) callback для reload після імпорту без
-переустановки dirty-baseline. Direction 2 (URL): 0 знайдено — повний apiFetch inventory
-звірено з @Controller routes, включно з nested (settlements під counterparties/:id,
-report-builder під reports/builder). Direction 3 (типи): 0 знайдено — WorkOrder/Invoice/
-PurchaseOrder/SupplierPayment currencyId/totalAmountBase/rateUsed, PO paidAmount/paidAt/
-isFullyPaid/outstanding, FX_GAIN/FX_LOSS sign convention (LOSS=destructive/GAIN=success)
-звірено поле-в-поле з toDto()/mapWorkOrderToDto() після TD1-TD3 рефакторингу — жодних
-втрачених полів при виділенні work-order-dto.mapper.ts. tsc api+web 0 errors. Попередній HEAD:
+HEAD:       7fa18952 fix(sync): wire missing pricing-rules apply-all UI trigger
+Latest sync: 2026-09-15 (цикл 1/3, довершено HEAD 7fa18952) — Повний проектний аудит API↔Frontend,
+усі ~57 backend-модулів (apps/api/src/modules/, включно з sub-controllers: batches/pricing-rules/
+stock-items під inventory, cash-shifts/fiscal-providers/payment-gateways/online-payments під
+payments, delivery-providers під purchase-orders, lifts під zones, public/work-orders під
+work-orders). Direction 1: 6 знайдено / 6 виправлено — POST /xlsx/import/{brands,units} та
+/xlsx/import/{purchase-order-lines,stock-document-lines}/:id мали 0 UI-тригерів (12188e5c,
+XlsxImportButton у BrandsTab/UnitsTab + PurchaseOrderCreateModal/StockDocumentCreateModal
+edit-mode toolbar); POST /pricing-rules/:id/apply-all (миттєвий масовий перерахунок цін) мав
+0 UI-тригер (7fa18952, RefreshCw row-action + confirm + toast у PricingRulesClient). notifications/
+перевірено як звичайний модуль (НЕ виняток) — NotificationsTab+NotificationProvidersPanel
+покривають усі 8 endpoints (templates/providers/channels/verify/activate) поле-в-поле. Виявлено
+й НЕ виправлено (не sync-баг, а незавершена фіча): GET /good-categories/:id/linked-work-categories
+та /work-categories/:id/linked-good-categories не мають ЖОДНОГО write-endpoint для
+WorkGoodCategoryLink (лише seed) — немає що фіксити на фронті без нового backend API. Direction 2
+(URL): 0 знайдено — повний apiFetch inventory (150+ call sites) звірено з @Controller routes,
+включно з nested (settlements під counterparties/:id, report-builder під reports/builder,
+notification-* generic ProviderRegistryPanel endpoint-prop). Direction 3 (типи): 1 знайдено
+/ 1 виправлено (хвіст, 3baa8665) — CalendarSlotResponseDto.status/type (AVAILABLE|BOOKED|BLOCKED,
+WORK|MAINTENANCE|BREAK|MEETING) були відсутні у фронтенд CalendarSlot interface (calendar.types.ts);
+додано як optional (UI поки створює лише BOOKED/WORK слоти). WorkOrder/Invoice/PurchaseOrder/
+SupplierPayment currencyId/totalAmountBase/rateUsed, PO paidAmount/paidAt/isFullyPaid/outstanding,
+FX_GAIN/FX_LOSS sign convention (LOSS=destructive/GAIN=success) звірено поле-в-поле з
+toDto()/mapWorkOrderToDto() після TD1-TD3 рефакторингу — жодних втрачених полів при виділенні
+work-order-dto.mapper.ts. requireBaseCurrencyId() 400 на WO/Invoice/PO create коректно спливає
+через apiFetch generic error-handling (Ukrainian message → setError/toast, без спец-обробки).
+tsc api+web 0 errors. Попередній HEAD:
 f5bc76e1 fix(review): PlannedActualMetrics — named ChangeEvent import + min-w-20
             (review-fix для 5b3f6937 TD3-декомпозиції CreateWorkOrderModal 2337→2224)
 TD3 (2026-09-15, закрито): консолідація роздутих файлів + утиліт. pagination→common/utils/
