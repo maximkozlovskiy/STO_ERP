@@ -402,15 +402,20 @@ grep -rn "onClose={() =>\|onClose={close\|onClose={handleClose" apps/web/src/app
 
 **Пріоритет-фільтр (не фіксувати marginal):** лише `DatePickerInput`/date-picker (кліки) → амплітуда низька. Фіксувати ЛИШЕ модалки з `<Input>`/`<textarea>` що typing на КОЖЕН символ. 73 inline-onClose по app/ — більшість confirm/view-only без typing; цілитись у typing-форми. SHARED панелі (reused N×, напр. ProviderRegistryPanel) — пріоритет: один фікс покриває всі точки.
 
-### 2.17 Lazy-chart child без React.memo під SSE/polling parent — recharts full-reconcile на кожен live-tick
+### 2.17 Стабільно-пропний дочірній без React.memo під частим parent-render — reconcile дарма (chart під SSE-tick / суб-форма під keystroke)
 
 ```bash
+# (а) Lazy-chart під SSE/polling parent — recharts full-reconcile на кожен live-tick
 grep -rn "dynamic(() => import" apps/web/src/app/ --include="*.tsx" | grep -iE "Chart|Graph|Plot"
 grep -rn "export default function\|export default memo" apps/web/src/app/ --include="*.tsx" | grep -iE "Chart|Graph"
 grep -rln "useDashboardStream\|EventSource\|refetchInterval\|Stream(" apps/web/src/app/ --include="*.tsx"
+# (б) Decomposition-регресія: суб-компонент виділено з keystroke-frequent модалки БЕЗ memo (пропси вже стабільні)
+for d in apps/web/src/components/ui/*/; do grep -rL "memo" "$d"*.tsx 2>/dev/null; done  # суб-файли декомпозицій без memo
+# для кандидата: пропси лише примітиви+useCallback-хендлери у батька? батько має typing-input? → memo-кандидат
 ```
 
-**Фікс:** `export default memo(Chart)` — ЛИШЕ коли всі пропси стабільні (data з frozen-`EMPTY_*`-fallback/прямого query-ref; 0 inline-обʼєкт/масив/callback пропсів). recharts-callbacks усередині chart memo НЕ бачить. Lazy-loading ріже BUNDLE, НЕ runtime-reconcile — memo додає runtime-барʼєр. Відрізняти від list-item-memo (там ламають inline-callbacks): тут пропси вже стабільні.
+**Фікс (а) chart:** `export default memo(Chart)` — ЛИШЕ коли всі пропси стабільні (data з frozen-`EMPTY_*`-fallback/прямого query-ref; 0 inline-обʼєкт/масив/callback пропсів). recharts-callbacks усередині chart memo НЕ бачить. Lazy-loading ріже BUNDLE, НЕ runtime-reconcile — memo додає runtime-барʼєр.
+**Фікс (б) суб-форма:** `function XBase(...){}` + `export const X = memo(XBase);`. Тригер тут — не live-tick, а typing у СУСІДНЬОМУ полі тієї ж форми (батько ре-рендериться на кожен символ). Zero-risk коли пропси = примітиви + useCallback-хендлери батька. Момент декомпозиції великої модалки = момент коли memo стає можливим і потрібним, але про нього забувають (фокус на розмірі файлу). Skip суб-модалки з inline-arrow-пропсами (`onClose={() => setX(false)}` → memo no-op) чи рідко-видимі (`open &&`-gated, дешеві коли closed). Відрізняти від list-item-memo (там ЛАМАЮТЬ inline-callbacks): тут пропси вже стабільні, готовий кандидат.
 
 ---
 
@@ -529,6 +534,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат кожного запису: **Сигнал** (+grep) · **Причина** · **Виявлення** · **Фікс** · **Impact** · **Де шукати ще**. Записи від найновіших до найстаріших.
+
+### 2026-09-15 (Цикл 1/3) — Decomposition-регресія memo: cohesive суб-компонент виділено з keystroke-frequent модалки/форми, memo НЕ додано, хоча пропси ВЖЕ стабільні (батько має useCallback-хендлери)
+
+**Сигнал:** великий модал/форма з typing-полями (`CreateWorkOrderModal`, `PurchaseOrderCreateModal` — batched setState на кожен символ, батько ре-рендериться постійно) розбито у TD-декомпозиції на суб-компоненти (`./work-order/`, `./purchase-order/`). Виділений суб-компонент — `export function X(...)` БЕЗ memo, приймає ЛИШЕ примітиви + хендлери, а батько ті хендлери вже загорнув у `useCallback`. Тобто пропси стабільні за ідентичністю, але суб-компонент реконсилюється на кожен keystroke бо React рендерить дочірні при render батька без memo-барʼєра. Відрізняється від 2.17 (chart-під-SSE): тут тригер — не live-tick, а typing у СУСІДНЬОМУ полі тієї ж форми; від 2.6/list-item — там memo ламають inline-callbacks, тут callbacks вже useCallback-стабільні (готовий кандидат).
+**Grep:** нові суб-компоненти від декомпозиції — `ls apps/web/src/components/ui/<parent-slug>/`, для кожного `grep -L "memo" X.tsx`. Cross-check у батька: (1) чи всі пропси примітиви/стабільні refs? (2) чи хендлери `useCallback`? (3) чи батько має typing-input (setState на символ)? Усі 3 «так» → memo-кандидат з реальним impact. Якщо у виклику inline-arrow-проп (`onClose={() => setX(false)}`) — memo no-op, спершу стабілізувати АБО skip якщо модалка рідко-видима (returns null коли closed).
+**Причина:** декомпозиція фокусується на розмірі файлу («2337→2224 рядків»), не на runtime-барʼєрах. Автор бачить «виділив шматок як був» — але inline-JSX-блок у батьку реконсилювався разом з батьком «безкоштовно» (React не порівнює), а виділений компонент БЕЗ memo так само реконсилюється, лише тепер це окрема функція яку легко обгорнути. Момент декомпозиції = момент коли memo стає можливим і потрібним, але про нього забувають.
+**Виявлення:** після КОЖНОЇ модалко/форм-декомпозиції (TD-рефактор «розбито N→M») — пройтись новоствореними суб-файлами, звірити стабільність пропсів у батьку. Пріоритет — суб-компоненти з кількома input/picker (дорогий рендер), під формою де є typing.
+**Фікс:** `function XBase(...){}` + `export const X = memo(XBase);` (перейменувати internal, export через memo). Zero-risk коли пропси стабільні. НЕ чіпати суб-компоненти-модалки з inline-arrow-пропсами (no-op) чи рідко-видимі (`open &&` gated, дешеві коли closed).
+**Impact:** typing 20 символів у формі × дорогий суб-компонент (2+ picker/input) → 20 зайвих реконсиляцій → 0. Звільняє main-thread під час набору.
+**Де шукати ще:** усі `apps/web/src/components/ui/{work-order,purchase-order}/` суб-компоненти (PlannedActualMetrics — fixed; InvoiceConflictDialog/RulePricerModal — inline-arrow, skip); будь-яка майбутня декомпозиція великих модалок; header-форма CreateWorkOrderModal коли її винесуть у useWorkOrderForm-хук. Родич 2.17 (chart-memo під live-parent) і 2.6 (list-item memo) — усі три = «дочірній реконсилюється дарма під частим parent-render», різняться природою тригера і стабільністю пропсів.
 
 ### 2026-09-09 (Цикл 2) — Descriptor-фільтр-miss живе не лише у _\_logs/__audit, а й у CORE append-only ENTITY (payments.fiscalStatus, *_payments.status) — status/descriptor-дропдаун на entity-list-сторінці
 
