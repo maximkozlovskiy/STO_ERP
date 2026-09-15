@@ -4,7 +4,7 @@
 // Винесено без зміни поведінки — cohesive суб-форма (дати/нормогодини). Фактична колонка
 // read-only (заповнюється з ліній): дати завжди disabled+NOOP, нормогодини = liveActualHours
 // (обчислені з ліній) або form.actualHours, disabled коли live-значення присутнє.
-import type { ChangeEvent } from 'react';
+import { memo, type ChangeEvent } from 'react';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 
 const NOOP_DT_CHANGE: (v: string) => void = () => {};
@@ -22,7 +22,11 @@ export interface PlannedActualMetricsProps {
   onActualHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
 }
 
-export function PlannedActualMetrics({
+// sto-optimize (2.17): усі пропси — примітиви (canEdit/*Hours/liveActualHours) або
+// useCallback-стабільні хендлери (див. CreateWorkOrderModal:838-870). Батько (CreateWorkOrderModal)
+// ре-рендериться на КОЖЕН символ у будь-якому полі великої форми → без memo ця суб-форма
+// (2× DateTimePickerInput + 2× number input) реконсилюється дарма щоразу. memo = runtime-барʼєр.
+function PlannedActualMetricsBase({
   canEdit,
   plannedStartAt,
   plannedEndAt,
@@ -107,3 +111,5 @@ export function PlannedActualMetrics({
     </div>
   );
 }
+
+export const PlannedActualMetrics = memo(PlannedActualMetricsBase);
