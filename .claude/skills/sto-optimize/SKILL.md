@@ -51,6 +51,10 @@ grep -rn "\.map.*await\|await.*\.map\|Promise\.all.*map" apps/api/src/modules/ -
 grep -rn "for.*await\|forEach.*await" apps/api/src/modules/ --include="*.service.ts" | grep -v spec
 # include: true замість select (тягне всі колонки)
 grep -rn "include:.*true\b" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | grep -v "//.*include"
+# Redundant full-scan: ≥2 приватні tree/graph-хелпери (getDepth/getSubtreeHeight/getDescendantIds/
+# getAncestors) викликані ПІДРЯД у одному mutation — кожен робить власний findMany(усе піддерево)
+grep -rn "await this\.get\(Depth\|SubtreeHeight\|DescendantIds\|Ancestors\|Descendants\|Children\)" \
+  apps/api/src/modules/ --include="*.service.ts" | grep -v spec
 ```
 
 **Фікс:**
@@ -534,6 +538,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат кожного запису: **Сигнал** (+grep) · **Причина** · **Виявлення** · **Фікс** · **Impact** · **Де шукати ще**. Записи від найновіших до найстаріших.
+
+### 2026-09-15 (Цикл 2/3) — Redundant full-scan: 2-3 приватні tree/graph-хелпери викликані підряд у одному mutation, кожен робить власний findMany(усе піддерево) → N ідентичних сканів на одну операцію
+
+**Сигнал:** ієрархічний-довідник service (expense-categories, work-categories, будь-який parentId-tree) з guard-логікою на mutation-path — гілка-перенос/create-з-глибиною/каскад — викликає ПІДРЯД кілька приватних async-хелперів `getDepth()` + `getSubtreeHeight()` + `getDescendantIds()` (або `getAncestors`/`getChildren`). Кожен хелпер САМОСТІЙНО робить `findMany({where:{orgId,deletedAt:null}, select:{id,parentId}})` усього дерева і будує власну adjacency-мапу у памʼяті. Кожен окремо «без N+1» (обхід у памʼяті — і навіть коментар так каже), але разом = N ідентичних full-scan на одну mutation. Тут: update() reparent робив 3 однакові findMany. Це НЕ класичний N+1 (не ітерація по колекції) — це та сама читка, повторена бо кожен хелпер самодостатній.
+**Grep:** `grep -rn "await this\.get(Depth|SubtreeHeight|DescendantIds|Ancestors|Descendants|Children)" apps/api/src/modules/ --include="*.service.ts"`. Для КОЖНОГО методу-споживача — чи ≥2 таких виклики у ОДНОМУ code-path (послідовно, не в різних гілках if)? Відкрити хелпери: чи кожен починається з власного `findMany(...tree...)`? 2+ у одному path + identичний findMany усередині → redundant-scan. Пастка: коментар «обхід у памʼяті — без N+1» присипляє — він правдивий per-helper, але scope хибний (кожен свій scan).
+**Причина:** хелпери спроектовані самодостатніми (single-use — remove/toggleActive кличе лише getDescendantIds; create лише getDepth). Пізніший складніший guard (branch-move з MAX_DEPTH) потребує 3 метрик і просто кличе 3 готові хелпери підряд — «вони ж усі memory-обхід, дешево». Ніхто не бачить що кожен окремо тягне все дерево.
+**Виявлення:** будь-який mutation-guard що читає ≥2 структурні метрики дерева/графа (глибина+висота+нащадки, ancestors+descendants, cycle-check+depth-check). Один знімок джерела покриває всі. Особливо в ієрархічних довідниках (categories, org-units, BOM, account-plan).
+**Фікс:** виділити `loadTree(orgId)` (або `loadGraph`) що робить ОДИН findMany → повертає готові adjacency-мапи (`parentOf`, `childrenByParent`); перетворити хелпери на СИНХРОННІ pure-функції над цими мапами (`depthFrom(parentOf,id)`, `subtreeHeightFrom(children,id)`, `descendantsFrom(children,id)`). Multi-metric path кличе loadTree ОДИН раз + усі pure-функції. Single-use async-обгортки лишити тонкими (`getX = loadTree().then(pure)`) для їх одиничних call-site-ів — behavior/guard незмінні, а redundant-path тепер 1 scan. Zero-risk (та сама логіка, менше читок).
+**Impact:** branch-move: 3 identичні full-tree findMany → 1 (−67% DB RTT на цю операцію). Масштабується з розміром дерева × частотою reparent.
+**Де шукати ще:** усі parentId-tree довідники (expense-categories — fixed, work-categories — має getDescendantIds але single-use per-path, org-units, account-plan, BOM); графові guard-и (dependency-cycle + topo-depth); будь-який mutation що валідує І структуру І метрику окремими хелперами. Родич N+1 (1.1), але вимір інший: не «запит-на-елемент», а «однаковий запит-на-хелпер».
 
 ### 2026-09-15 (Цикл 1/3) — Decomposition-регресія memo: cohesive суб-компонент виділено з keystroke-frequent модалки/форми, memo НЕ додано, хоча пропси ВЖЕ стабільні (батько має useCallback-хендлери)
 
