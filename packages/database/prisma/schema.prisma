@@ -997,7 +997,7 @@ model WorkGoodCategoryLink {
   goodCategory GoodCategory @relation(fields: [goodCategoryId], references: [id])
 
   @@unique([orgId, workCategoryId, goodCategoryId])
-  @@index([orgId, workCategoryId])
+  // [orgId,workCategoryId] надлишковий — префікс @@unique вище
   @@index([orgId, goodCategoryId])
   @@map("work_good_category_links")
 }
@@ -1173,7 +1173,7 @@ model GoodUoM {
   unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id])
 
   @@unique([orgId, goodId, unitOfMeasureId])
-  @@index([orgId, goodId])
+  // [orgId,goodId] надлишковий — префікс @@unique([orgId,goodId,unitOfMeasureId]) вище
   @@map("good_uom")
 }
 
@@ -1418,7 +1418,7 @@ model StockItem {
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@unique([orgId, goodId, warehouseId])
-  @@index([orgId, warehouseId])
+  // [orgId,warehouseId] надлишковий — префікс [orgId,warehouseId,deletedAt] нижче
   @@index([orgId, warehouseId, deletedAt])
   @@index([orgId, syncVersion])
   @@map("stock_items")
@@ -1488,7 +1488,7 @@ model StockBatch {
   workOrderParts    WorkOrderPart[]
   movements         StockMovement[]    @relation("BatchMovements")
 
-  @@index([orgId, goodId, warehouseId, isActive])
+  // [orgId,goodId,warehouseId,isActive] надлишковий — префікс 5-колонкового індексу нижче
   @@index([orgId, warehouseId, isActive, createdAt])
   @@index([orgId, goodId, expiryDate])
   @@index([orgId, syncVersion])
@@ -1521,7 +1521,7 @@ model BatchConsumption {
 
   batch StockBatch @relation(fields: [batchId], references: [id])
 
-  @@index([orgId, batchId])
+  // [orgId,batchId] надлишковий — префікс [orgId,batchId,createdAt] нижче
   @@index([orgId, documentType, documentId])
   @@index([orgId, batchId, createdAt])
   @@map("batch_consumptions")
@@ -2742,7 +2742,7 @@ model LoyaltyAccount {
   counterparty Counterparty         @relation(fields: [counterpartyId], references: [id])
   transactions LoyaltyTransaction[]
 
-  @@index([orgId])
+  // [orgId] надлишковий — префікс [orgId,syncVersion] нижче
   @@index([orgId, syncVersion])
   @@map("loyalty_accounts")
 }
