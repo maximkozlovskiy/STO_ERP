@@ -11,6 +11,7 @@ import {
   Save,
   Download,
   Filter,
+  Pencil,
 } from 'lucide-react';
 import {
   useReportMetadata,
@@ -18,6 +19,7 @@ import {
   useSavedReports,
   useSaveReport,
   useDeleteSavedReport,
+  useUpdateSavedReport,
   type MetaEntity,
   type MetaField,
   type ReportConfig,
@@ -25,6 +27,7 @@ import {
   type GroupNode,
   type Agg,
   type ReportFilter,
+  type SavedReport,
 } from '@/hooks/api/useReportBuilder';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -154,6 +157,7 @@ export function ReportBuilder() {
   const { data: saved } = useSavedReports();
   const saveMut = useSaveReport();
   const delMut = useDeleteSavedReport();
+  const updateSavedMut = useUpdateSavedReport();
 
   const [entityKey, setEntityKey] = useState<string>('');
   const [columns, setColumns] = useState<string[]>([]);
@@ -166,6 +170,8 @@ export function ReportBuilder() {
   const [result, setResult] = useState<ReportRunResult | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
+  const [renameTarget, setRenameTarget] = useState<SavedReport | null>(null);
+  const [renameName, setRenameName] = useState('');
   const [configCollapsed, setConfigCollapsed] = useState(false);
 
   const entity: MetaEntity | undefined = useMemo(
@@ -310,6 +316,22 @@ export function ReportBuilder() {
     }
   };
 
+  const openRename = (s: SavedReport) => {
+    setRenameTarget(s);
+    setRenameName(s.name);
+  };
+
+  const doRename = async () => {
+    if (!renameTarget || !renameName.trim()) return toast.warning('Вкажіть назву');
+    try {
+      await updateSavedMut.mutateAsync({ id: renameTarget.id, name: renameName.trim() });
+      toast.success('Перейменовано');
+      setRenameTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Не вдалося перейменувати');
+    }
+  };
+
   const loadSaved = (cfg: ReportConfig) => {
     setEntityKey(cfg.entity);
     setColumns(cfg.columns ?? []);
@@ -417,6 +439,14 @@ export function ReportBuilder() {
                 onClick={() => loadSaved(s.config)}
               >
                 {s.name}
+              </button>
+              <button
+                type="button"
+                aria-label="Перейменувати"
+                className="text-muted-foreground hover:text-primary"
+                onClick={() => openRename(s)}
+              >
+                <Pencil className="size-3" />
               </button>
               <button
                 type="button"
@@ -605,6 +635,26 @@ export function ReportBuilder() {
               Скасувати
             </Button>
             <Button onClick={doSave} disabled={saveMut.isPending}>
+              Зберегти
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!renameTarget} onClose={() => setRenameTarget(null)} title="Перейменувати звіт">
+        <div className="flex flex-col gap-3 p-1">
+          <input
+            autoFocus
+            value={renameName}
+            onChange={e => setRenameName(e.target.value)}
+            placeholder="Назва звіту"
+            className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>
+              Скасувати
+            </Button>
+            <Button onClick={doRename} disabled={updateSavedMut.isPending}>
               Зберегти
             </Button>
           </div>

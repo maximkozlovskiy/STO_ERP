@@ -152,6 +152,16 @@ export function useDeleteSavedReport() {
   });
 }
 
+/** Перейменувати і/або оновити конфіг збереженого звіту (PATCH /reports/builder/saved/:id). */
+export function useUpdateSavedReport() {
+  const qc = useQueryClient();
+  return useMutation<SavedReport, Error, { id: string; name?: string; config?: ReportConfig }>({
+    mutationFn: ({ id, ...body }) =>
+      apiFetch(`/reports/builder/saved/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: reportBuilderKeys.saved() }),
+  });
+}
+
 /** Виконати збережений звіт за id (GET /reports/builder/saved/:id/run). */
 export function useRunSavedReport() {
   return useMutation<ReportRunResult, Error, string>({
