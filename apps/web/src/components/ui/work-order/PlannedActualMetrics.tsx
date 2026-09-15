@@ -4,6 +4,7 @@
 // Винесено без зміни поведінки — cohesive суб-форма (дати/нормогодини). Фактична колонка
 // read-only (заповнюється з ліній): дати завжди disabled+NOOP, нормогодини = liveActualHours
 // (обчислені з ліній) або form.actualHours, disabled коли live-значення присутнє.
+import type { ChangeEvent } from 'react';
 import { DateTimePickerInput } from '@/components/ui/datetime-picker-input';
 
 const NOOP_DT_CHANGE: (v: string) => void = () => {};
@@ -17,8 +18,8 @@ export interface PlannedActualMetricsProps {
   liveActualHours: number | null;
   onPlannedStartChange: (v: string) => void;
   onPlannedEndChange: (v: string) => void;
-  onPlannedHoursChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onActualHoursChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onPlannedHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onActualHoursChange: (e: ChangeEvent<HTMLInputElement>) => void;
 }
 
 export function PlannedActualMetrics({
@@ -59,7 +60,7 @@ export function PlannedActualMetrics({
             disabled={!canEdit}
             inputClassName="h-8 text-[13px]"
           />
-          <div className="flex flex-col gap-1 min-w-[80px]">
+          <div className="flex flex-col gap-1 min-w-20">
             <label className="text-[11px] text-muted-foreground font-medium">Нормогодин</label>
             <input
               type="number"
@@ -88,7 +89,7 @@ export function PlannedActualMetrics({
             disabled
             inputClassName="h-8 text-[13px]"
           />
-          <div className="flex flex-col gap-1 min-w-[80px]">
+          <div className="flex flex-col gap-1 min-w-20">
             <label className="text-[11px] text-muted-foreground font-medium">Нормогодин</label>
             <input
               type="number"
