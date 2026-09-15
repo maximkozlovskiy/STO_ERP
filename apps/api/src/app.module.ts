@@ -76,6 +76,7 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
 import { UserPreferencesModule } from './modules/user-preferences/user-preferences.module';
+import { CounterpartyImportMappingsModule } from './modules/counterparty-import-mappings/counterparty-import-mappings.module';
 import { SystemTemplatesModule } from './modules/system-templates/system-templates.module';
 import { BullBoardModule } from './modules/bull-board/bull-board.module';
 
@@ -229,6 +230,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     BankAccountsModule,
     CashRegistersModule,
     UserPreferencesModule,
+    CounterpartyImportMappingsModule,
     SystemTemplatesModule,
     // D3 — bull-board admin UI для BullMQ-черг. register() повертає порожній модуль у production
     // (роут не існує на проді, як Swagger); non-prod — /api/admin/queues за auth-middleware (OWNER/ADMIN).
