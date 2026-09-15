@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-09-15] E2E редіректять на /login, якщо web підняли БЕЗ NEXT_PUBLIC_E2E=1
+
+Симптом: `npx playwright test` → усі тести падають на `readyPage` з навігацією на
+`http://localhost:3001/login/`, навіть коли globalSetup успішно мінтить свіжий JWT
+(`E2E auth state saved…` без помилки) і creds валідні (`admin@sto.local/admin123` → 200 на API).
+
+Причина: auth-escape-hatch у `apps/web/src/lib/auth/context.tsx` гейтований
+`E2E_HATCH_ENABLED = process.env.NEXT_PUBLIC_E2E === '1'` — **build-time** прапорець Next.js.
+Без нього хатч (skip refresh-on-mount + гідрація токена з `localStorage.sto_e2e_access_token`)
+tree-shake-иться геть → AuthProvider робить refresh-on-mount → 401 (refresh-cookie не
+захоплюється cross-origin у Playwright) → LOGOUT → `/login`. `playwright.config.ts` задає
+`webServer.env.NEXT_PUBLIC_E2E='1'`, АЛЕ `reuseExistingServer: true` → якщо dev-сервер :3001
+вже піднято звичайним `pnpm --filter @sto/web dev` (без прапорця), Playwright його **reuse-ить**
+і власний env НЕ застосовує. storageState має усі прапорці (`sto_e2e_skip_refresh` тощо), але
+код що їх читає скомпільований геть.
+
+**Фікс:** зупинити звичайний web-сервер :3001 і дати Playwright підняти свій (з
+`NEXT_PUBLIC_E2E=1`), або одразу піднімати web з `NEXT_PUBLIC_E2E=1 pnpm --filter @sto/web dev`.
+Після цього PO-E2E 11/11 зелені проти живої БД. Це harness/env-умова, не баг застосунку.
+
+---
+
 ## [2026-09-14] Новий enum-value: hunt поширюється і на BACKEND PDF/print-шар, не лише фронт
 
 Мультивалюта Фаза 4 (`FX_GAIN`/`FX_LOSS`) вже консолідувала дубль-мітки на фронті

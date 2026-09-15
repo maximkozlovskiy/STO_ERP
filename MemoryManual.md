@@ -12,7 +12,8 @@
 Дата:       2026-09-15
 Фаза:       Активна розробка — backlog TD1–TD3 ЗАКРИТО (TD1 ✅ TD2 ✅ TD3 ✅)
 TypeScript: ✅ 0 errors (api + web)
-Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7
+Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
+            + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
 HEAD:       db94ce8e refactor(td3): декомпозиція PurchaseOrderCreateModal (2085→1929)
 TD3 (2026-09-15, закрито): консолідація роздутих файлів + утиліт. pagination→common/utils/
 pagination.ts, Kyiv-date→common/utils/kyiv-date.ts (337523be); work-orders.service 1657→1473
