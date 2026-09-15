@@ -153,6 +153,15 @@ grep -rn "getSummary\|dashboard" apps/api/src/modules/dashboard/ --include="*.se
 
 **Фікс:** кеш 25s (SSE polling 30s → DB hit раз на interval).
 
+### 1.9 Redundant return-refetch після tenant-scoped updateMany (guard-getX уже підтвердив ownership)
+
+```bash
+# mutation що після updateMany робить return this.getX/findX — потенційно зайвий 3-й запит
+grep -rn "updateMany(" apps/api/src/modules/ --include="*.service.ts" -A8 | grep -B6 "return this\.get\|return this\.find" | grep -v spec | head -20
+```
+
+**Фікс:** якщо метод має guard-`getX`/`findFirst` НА ВХОДІ (404 + tenant) і `updateMany({where:{id,orgId,deletedAt:null}})` + фінальний `return this.getX(orgId,id)` → злити write+return у `return this.prisma.X.update({where:{id}, data})` (повертає рядок через `UPDATE...RETURNING`; guard уже підтвердив org-ownership). Guard-getX лишити. Zero-risk. НЕ застосовувати якщо `data` залежить від concurrent-стану (тоді updateMany+count-guard).
+
 ---
 
 ## Крок 2 — Frontend аудит
@@ -538,6 +547,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат кожного запису: **Сигнал** (+grep) · **Причина** · **Виявлення** · **Фікс** · **Impact** · **Де шукати ще**. Записи від найновіших до найстаріших.
+
+### 2026-09-15 (Цикл 3/3) — Redundant re-fetch: mutation робить guard-`getX` → `updateMany` (tenant-scoped where) → повторний `getX` для return-значення = 3 RTT там де вистачає 2 (write-op повертає рядок через RETURNING)
+
+**Сигнал:** service-mutation (`updateSaved`/`update`/`rename`/`patch`) починається з guard-читки (`await this.getX(orgId, id)` — 404 + tenant + not-deleted), далі пише через `updateMany({where:{id, orgId, deletedAt:null}, data})` (щоб tenant-фільтр жив у WHERE), а в кінці РОБИТЬ ЩЕ ОДИН `return this.getX(orgId, id)` бо `updateMany` повертає лише `{count}`, не рядок. Разом = 3 запити (read-guard + write + read-return), де середній write і фінальний read можна злити в один `update({where:{id}, data})` що повертає оновлений рядок через `UPDATE...RETURNING` (guard вище вже підтвердив приналежність org + not-deleted у ТОМУ Ж запиті, тож `update` по голому `{id}` безпечний). НЕ плутати з наявним guard-getX (він потрібен — дає 404-семантику + дозволяє dry-run валідацію config ПЕРЕД записом). Проблема — саме ТРЕТІЙ запит (return-refetch), не перший.
+**Grep:** `grep -rn "updateMany(" apps/api/src/modules/ --include="*.service.ts" -A8 | grep -B6 "return this\.get\|return this\.find" | grep -v spec` — mutation що після `updateMany` робить `return this.getX/findX`. Cross-check: (1) чи Є guard-getX/findFirst НА ПОЧАТКУ методу що вже підтвердив tenant+not-deleted? (2) чи `updateMany`-where = `{id, orgId, deletedAt:null}` а `data` не залежить від race-стану? Обидва «так» → фінальний refetch зайвий, злити з write через `update({where:{id}})`.
+**Причина:** `updateMany` обрали свідомо (треба `orgId`+`deletedAt` у WHERE, а `update` вимагає unique-where і не приймає composite tenant-фільтр напряму). Але `updateMany` повертає `{count}` → «щоб віддати свіжий DTO — перечитаю getX». Ніхто не помічає що guard-getX на початку вже зробив tenant-перевірку, тож `update({where:{id}})` (unique, повертає рядок) закриває і write, і return одним statement.
+**Виявлення:** будь-який CRUD-update із tenant-guard-на-вході що завершується re-fetch. Особливо де є ще й dry-run валідація між guard і write (report-builder config) — там guard мусить лишитись, ріжеться тільки return-refetch.
+**Фікс:** `updateMany(tenant-where)+return getX` → `return this.prisma.X.update({where:{id}, data})`. Guard-getX на початку ЛИШИТИ (404 + dry-run). Zero-risk: id щойно підтверджено як org-owned+not-deleted у тому ж синхронному потоці; `update` по PK повертає рядок через RETURNING без окремого SELECT. НЕ застосовувати якщо між guard і write є `await` що може змінити ownership (немає у CRUD), або якщо data залежить від concurrent-стану (тоді updateMany+count-guard, див. 2026-09-02 conditional-decrement).
+**Impact:** rename/edit saved-report: 3→2 DB RTT (−33%). Масштабується з частотою edit-операцій; найпомітніше на low-latency-очікуваних inline-edit (rename-модалка).
+**Де шукати ще:** усі `updateSaved`/`update`/`patch`-методи з guard-на-вході + return-refetch: report-builder (fixed), saved-filters, nav-config, notification-templates, будь-який settings-CRUD. Родич 2026-09-02 (upsert `.select` — write-op повертає рядок безкоштовно): обидва про «write повертає рядок через RETURNING», тут — прибрати зайвий refetch, там — не боятись `.select`.
 
 ### 2026-09-15 (Цикл 2/3) — Redundant full-scan: 2-3 приватні tree/graph-хелпери викликані підряд у одному mutation, кожен робить власний findMany(усе піддерево) → N ідентичних сканів на одну операцію
 
