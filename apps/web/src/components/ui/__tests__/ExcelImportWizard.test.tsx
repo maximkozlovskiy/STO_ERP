@@ -34,6 +34,9 @@ const previewResponse: PreviewResponse = {
 // Захоплюємо аргументи apply, щоб перевірити який набір рядків імпортується.
 const applySpy = vi.fn();
 
+// Override preview-відповіді для edge-case тестів (null → базовий previewResponse).
+const previewOverride: { current: PreviewResponse | null } = { current: null };
+
 // Керовані моки хуків імпорту — щоб детерміновано керувати сирим передпереглядом
 // без реального apiFetch/парсингу Excel. useRawPreview.mutate синхронно кличе onSuccess.
 const rawPreviewData: { current: RawPreviewResponse } = {
@@ -57,7 +60,7 @@ vi.mock('@/hooks/api/useExcelImport', () => ({
   }),
   usePreviewImport: () => ({
     isPending: false,
-    mutateAsync: () => Promise.resolve(previewResponse),
+    mutateAsync: () => Promise.resolve(previewOverride.current ?? previewResponse),
   }),
   useApplyImport: () => ({
     isPending: false,
@@ -166,6 +169,7 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
 describe('ExcelImportWizard — крок 2: масовий вибір рядків', () => {
   beforeEach(() => {
     applySpy.mockClear();
+    previewOverride.current = null;
   });
 
   // Довести майстер до кроку 2 (таблиця ідентифікованих рядків).
@@ -216,5 +220,164 @@ describe('ExcelImportWizard — крок 2: масовий вибір рядкі
     fireEvent.click(screen.getByRole('button', { name: /Забрати всі/ }));
     const applyBtn = screen.getByRole('button', { name: /Заповнити товарами/ });
     expect(applyBtn).toBeDisabled();
+  });
+});
+
+// Edge-cases handleApply: notFound з порожніми name+article не має слати битий create-рядок.
+describe('ExcelImportWizard — крок 2: edge-cases apply', () => {
+  beforeEach(() => {
+    applySpy.mockClear();
+  });
+
+  async function gotoStep2With(rows: PreviewResponse['rows']) {
+    previewOverride.current = { rows };
+    render(
+      <ExcelImportWizard
+        open
+        onClose={vi.fn()}
+        docType="PURCHASE_ORDER"
+        docId="11111111-1111-1111-1111-111111111111"
+        onImportComplete={vi.fn()}
+      />,
+    );
+    selectFile();
+    fireEvent.click(screen.getByRole('button', { name: /Ідентифікувати товари/ }));
+    await screen.findByRole('button', { name: /Вибрати всі/ });
+  }
+
+  it('notFound з порожніми rawName І rawArticle, інвертований у included → тихо пропускається (без биттого create)', async () => {
+    await gotoStep2With([
+      {
+        rowIndex: 2,
+        rawArticle: 'ABC-12',
+        rawBrand: 'BOSCH',
+        rawName: 'Прокладка',
+        quantity: 4,
+        price: 100,
+        status: 'matched',
+        matchedGoodId: 'good-1',
+        candidates: [{ id: 'good-1', sku: 'ABC-12', name: 'Прокладка', brandName: 'BOSCH' }],
+      },
+      {
+        rowIndex: 3,
+        rawArticle: '',
+        rawBrand: '',
+        rawName: '',
+        quantity: 2,
+        price: 50,
+        status: 'notFound',
+        matchedGoodId: null,
+        candidates: [],
+      },
+    ]);
+    // Інверсія: matched(вкл→викл), notFound-порожній(викл→вкл). includedCount=1, readyCount=0.
+    fireEvent.click(screen.getByRole('button', { name: /Інвертувати вибір/ }));
+    expect(screen.getByText(/Обрано: 1 \/ 2 · до імпорту: 0/)).toBeInTheDocument();
+    // Bug #752: readyCount=0 → кнопка вимкнена (не шле битий create). Форсуємо клік → без POST.
+    const applyBtn = screen.getByRole('button', { name: /Заповнити товарами/ });
+    expect(applyBtn).toBeDisabled();
+    fireEvent.click(applyBtn);
+    await new Promise(r => setTimeout(r, 0));
+    expect(applySpy).not.toHaveBeenCalled();
+  });
+
+  it('усі notFound з порожніми name + «Вибрати всі» → включено є, але apply порожній (без POST)', async () => {
+    await gotoStep2With([
+      {
+        rowIndex: 2,
+        rawArticle: '',
+        rawBrand: '',
+        rawName: '',
+        quantity: 1,
+        price: 10,
+        status: 'notFound',
+        matchedGoodId: null,
+        candidates: [],
+      },
+      {
+        rowIndex: 3,
+        rawArticle: '',
+        rawBrand: '',
+        rawName: '',
+        quantity: 2,
+        price: 20,
+        status: 'notFound',
+        matchedGoodId: null,
+        candidates: [],
+      },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: /Вибрати всі/ }));
+    expect(screen.getByText(/Обрано: 2 \/ 2 · до імпорту: 0/)).toBeInTheDocument();
+    const applyBtn = screen.getByRole('button', { name: /Заповнити товарами/ });
+    expect(applyBtn).toBeDisabled();
+    fireEvent.click(applyBtn);
+    await new Promise(r => setTimeout(r, 0));
+    expect(applySpy).not.toHaveBeenCalled();
+  });
+
+  it('ambiguous included без обраного candidate → пропуск у apply (лічильник «Обрано» рахує include, не готовність)', async () => {
+    await gotoStep2With([
+      {
+        rowIndex: 2,
+        rawArticle: 'MULTI',
+        rawBrand: 'X',
+        rawName: 'Фільтр',
+        quantity: 1,
+        price: 30,
+        status: 'ambiguous',
+        matchedGoodId: null,
+        candidates: [
+          { id: 'g-a', sku: 'A', name: 'Фільтр A', brandName: 'X' },
+          { id: 'g-b', sku: 'B', name: 'Фільтр B', brandName: 'X' },
+        ],
+      },
+    ]);
+    // ambiguous стартово included=true, selectedGoodId=candidates[0]='g-a'.
+    // Скидаємо вибір товару на порожній → included лишається, але apply має пропустити.
+    const select = document.querySelector('select') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: '' } });
+    // includedCount=1, readyCount=0 (товар не обрано) → лічильник чесно показує «до імпорту: 0».
+    expect(screen.getByText(/Обрано: 1 \/ 1 · до імпорту: 0/)).toBeInTheDocument();
+    const applyBtn = screen.getByRole('button', { name: /Заповнити товарами/ });
+    expect(applyBtn).toBeDisabled();
+    fireEvent.click(applyBtn);
+    await new Promise(r => setTimeout(r, 0));
+    expect(applySpy).not.toHaveBeenCalled();
+  });
+
+  it('інвертувати двічі → повернення до початкового набору (Обрано 1 / 2)', async () => {
+    await gotoStep2With([
+      {
+        rowIndex: 2,
+        rawArticle: 'ABC-12',
+        rawBrand: 'BOSCH',
+        rawName: 'Прокладка',
+        quantity: 4,
+        price: 100,
+        status: 'matched',
+        matchedGoodId: 'good-1',
+        candidates: [{ id: 'good-1', sku: 'ABC-12', name: 'Прокладка', brandName: 'BOSCH' }],
+      },
+      {
+        rowIndex: 3,
+        rawArticle: 'XY-9',
+        rawBrand: 'SKF',
+        rawName: 'Сальник',
+        quantity: 2,
+        price: 50,
+        status: 'notFound',
+        matchedGoodId: null,
+        candidates: [],
+      },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: /Інвертувати вибір/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Інвертувати вибір/ }));
+    expect(screen.getByText(/Обрано: 1 \/ 2/)).toBeInTheDocument();
+    // Початковий набір: matched(вкл). Apply має піти matched, не notFound.
+    fireEvent.click(screen.getByRole('button', { name: /Заповнити товарами/ }));
+    await vi.waitFor(() => expect(applySpy).toHaveBeenCalledTimes(1));
+    const vars = applySpy.mock.calls[0][0] as { rows: { action: string; rowIndex: number }[] };
+    expect(vars.rows).toHaveLength(1);
+    expect(vars.rows[0]).toMatchObject({ action: 'use', rowIndex: 2 });
   });
 });

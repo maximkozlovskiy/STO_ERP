@@ -42,6 +42,18 @@ interface RowResolution {
   included: boolean; // чи включати рядок в імпорт (для notFound = «створити нову позицію»)
 }
 
+// Чи готовий рядок реально піти в apply (не лише позначений). Єдине джерело правди
+// для лічильника «готово» і збірки resolved у handleApply — щоб «Обрано» не вводило в оману
+// (наприклад ambiguous без обраного товару або notFound без назви позначені, але не імпортуються).
+function isRowApplyable(row: PreviewRow, res: RowResolution | undefined): boolean {
+  if (!res || !res.included) return false;
+  if (row.status === 'matched' || row.status === 'ambiguous') {
+    return !!res.selectedGoodId;
+  }
+  // notFound → потрібна назва (з rawName або rawArticle)
+  return !!(row.rawName || row.rawArticle || '').trim();
+}
+
 const DEFAULT_MAPPING: ImportMapping = {
   startRow: 2,
   codeCol: null,
@@ -245,10 +257,8 @@ export function ExcelImportWizard({
     const resolved: ApplyRow[] = [];
     for (const row of rows) {
       const res = resolutions[row.rowIndex];
-      if (!res) continue;
-      if (!res.included) continue; // рядок не позначено для імпорту → пропустити
+      if (!res || !isRowApplyable(row, res)) continue; // не позначено / не готово → пропустити
       if (row.status === 'matched' || row.status === 'ambiguous') {
-        if (!res.selectedGoodId) continue; // не обрано товар → пропустити
         resolved.push({
           rowIndex: row.rowIndex,
           action: 'use',
@@ -306,6 +316,9 @@ export function ExcelImportWizard({
   const ambiguousCount = rows.filter(r => r.status === 'ambiguous').length;
   const notFoundCount = rows.filter(r => r.status === 'notFound').length;
   const includedCount = rows.filter(r => resolutions[r.rowIndex]?.included).length;
+  // Скільки з позначених рядків реально піде в імпорт (ambiguous без товару / notFound без назви
+  // позначені, але не імпортуються) — щоб «Обрано» не вводило в оману.
+  const readyCount = rows.filter(r => isRowApplyable(r, resolutions[r.rowIndex])).length;
   const allIncluded = rows.length > 0 && includedCount === rows.length;
 
   return (
@@ -529,6 +542,7 @@ export function ExcelImportWizard({
             </Button>
             <span className="text-[12px] text-muted-foreground tabular-nums ml-auto">
               Обрано: {includedCount} / {rows.length}
+              {readyCount !== includedCount ? ` · до імпорту: ${readyCount}` : ''}
             </span>
           </div>
 
@@ -670,7 +684,7 @@ export function ExcelImportWizard({
               <Button
                 onClick={() => void handleApply()}
                 loading={applyMut.isPending}
-                disabled={applyMut.isPending || includedCount === 0}
+                disabled={applyMut.isPending || readyCount === 0}
               >
                 Заповнити товарами
               </Button>

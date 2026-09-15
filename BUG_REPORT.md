@@ -5332,3 +5332,56 @@ regression-тести (не-xlsx текст + порожній буфер). Пр
 
 **Тести:** API `npx vitest run src/modules/xlsx/xlsx.service.spec.ts` → 21 passed (17 було + 4 нові).
 Web `ExcelImportWizard.test.tsx` → 3 passed. TSC api 0, web 0 (`--incremental false`).
+
+---
+
+## Session 2026-09-16 — Bug hunt коміту 916e25d0 (per-row чекбокс + масові дії, крок 2)
+
+### Bug #752 [x] виправлено — «Обрано» вводить в оману: лічильник рахує include-стан, а не готовність до apply
+
+**Severity:** LOW (UX; без псування даних, без падінь, без битого POST)
+**Файл:** `apps/web/src/components/ui/ExcelImportWizard.tsx`
+
+**Опис:** На кроці 2 лічильник «Обрано: N / M» рахував лише `resolutions[...].included`.
+Проте у apply реально йдуть НЕ всі позначені рядки — `handleApply` пропускає:
+
+- `ambiguous`, позначений, але без обраного товару (`selectedGoodId === ''`);
+- `notFound`, позначений, але з порожніми `rawName` І `rawArticle` (нема з чого створити позицію).
+
+Внаслідок користувач міг бачити «Обрано: 3», кнопка «Заповнити товарами» активна
+(disable був лише за `includedCount === 0`), клік → або `toast «Немає рядків для імпорту»`
+попри позначені рядки, або «Додано позицій: 1» замість очікуваних 3. POST при цьому
+не битий (silent-skip логіка коректна), але UX оманливий.
+
+**Виявлено:** ручний edge-case аналіз focus-областей (не покрито тестом). Silent-skip
+для порожнього notFound (`if (!name) continue`) працював, але не мав тесту → додано.
+
+**Фікс:**
+
+1. Винесено єдине джерело правди `isRowApplyable(row, res)` — та сама умова, що й у `handleApply`.
+2. `handleApply` тепер збирає `resolved` через `isRowApplyable` (без дублювання умов).
+3. Додано `readyCount` = к-сть реально готових рядків; лічильник показує
+   `Обрано: N / M · до імпорту: K` коли `K !== N`.
+4. Кнопка apply тепер `disabled` за `readyCount === 0` (замість `includedCount === 0`) —
+   активна лише коли є що імпортувати; клік ніколи не веде до «Немає рядків» toast.
+
+**Тести (нові, ExcelImportWizard.test.tsx):**
+
+- notFound з порожніми rawName+rawArticle, інвертований у included → readyCount=0, кнопка
+  disabled, POST не викликано;
+- усі notFound-порожні + «Вибрати всі» → «до імпорту: 0», кнопка disabled, без POST;
+- ambiguous included без обраного candidate → «до імпорту: 0», disabled, без POST;
+- інвертувати двічі → повернення до початкового набору (matched → action:'use').
+
+### Перевірено — БЕЗ багів (focus-області):
+
+- **Silent-skip create:** notFound+included з порожньою назвою → `handleApply` пропускає
+  тихо (`isRowApplyable` false), не шле битий `create`-рядок у POST ✓ (тепер під тестом).
+- **Інверсія двічі:** `!cur?.included` двічі → початковий стан ✓ (тест locked).
+- **Header select-all indeterminate:** частковий вибір показує `unchecked` (немає
+  `el.indeterminate`) — прийнятне спрощення (не баг): три явні кнопки Вибрати/Забрати/Інвертувати
+  дають повний контроль; лишаю як є.
+- **empty-rows apply:** `rows.length === 0` → кнопки масових дій disabled, apply disabled ✓.
+
+**Тести:** `ExcelImportWizard.test.tsx` → 12 passed (8 було + 4 нові).
+`DocumentCreateModals.test.tsx` → 5 passed. TSC web 0 (`--incremental false`).
