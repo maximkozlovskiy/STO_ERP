@@ -10,8 +10,22 @@ import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
+import { GoodsService } from '../goods/goods.service';
+import { BrandsService } from '../brands/brands.service';
 import { deduplicateBy } from '../../common/utils/array';
 import { roundMoney } from '../../common/utils/math';
+import { normalizeArticle } from '../../common/utils/normalize-article';
+import {
+  DocumentLineImportAdapterRegistry,
+  type ImportDocType,
+  type ImportLineInput,
+} from './document-line-import.adapter';
+import type {
+  ApplyImportRowDto,
+  PreviewCandidate,
+  PreviewRowDto,
+  PreviewRowStatus,
+} from './import.dto';
 
 export interface GoodRow {
   sku?: string;
@@ -58,6 +72,9 @@ export class XlsxService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricingService: PricingService,
+    private readonly goodsService: GoodsService,
+    private readonly brandsService: BrandsService,
+    private readonly importAdapters: DocumentLineImportAdapterRegistry,
   ) {}
 
   /**
@@ -958,9 +975,278 @@ export class XlsxService {
     };
   }
 
+  // ─── Generic import: preview + apply ─────────────────────────────────────────
+
+  /**
+   * Прев'ю generic-імпорту товарів у документ (PO/StockDocument). НІЧОГО не пише.
+   * Читає файл за мапінгом колонок, для кожного рядка резолвить Good:
+   *  1) exact skuNormalized (+ бренд якщо задано і резолвиться) → matched;
+   *  2) exact skuNormalized без бренду → 1 кандидат=matched, кілька=ambiguous;
+   *  3) substring (skuNormalized contains norm АБО name ILIKE) → candidates (take 10);
+   *  4) нічого → notFound.
+   * Bulk: один findMany по всіх normArticles уникає N+1; substring — лише для нерозвʼязаних.
+   */
+  async previewImport(
+    orgId: string,
+    docType: ImportDocType,
+    docId: string,
+    buffer: Buffer | Uint8Array,
+    mapping: ImportMapping,
+  ): Promise<PreviewRowDto[]> {
+    const adapter = this.importAdapters.get(docType);
+    const doc = await adapter.loadDoc(orgId, docId);
+    if (!doc) throw new NotFoundException('Документ не знайдено');
+    adapter.assertDraft(doc.status);
+
+    const parsed = await this.parseMappedRows(buffer, mapping);
+
+    // Bulk-резолв брендів (за rawBrand) — зберемо унікальні непорожні бренди й резолвимо кожен раз.
+    const brandCache = new Map<string, string | null>(); // normBrand → brandId|null
+    const resolveBrandId = async (rawBrand?: string | null): Promise<string | null> => {
+      const norm = normalizeArticle(rawBrand);
+      if (!norm) return null;
+      if (brandCache.has(norm)) return brandCache.get(norm) ?? null;
+      const brand = await this.brandsService.resolveByNameOrSynonym(orgId, rawBrand);
+      brandCache.set(norm, brand?.id ?? null);
+      return brand?.id ?? null;
+    };
+
+    // Bulk exact-lookup: усі непорожні normArticles одним findMany (уникнення N+1).
+    const normArticles = Array.from(
+      new Set(parsed.map(r => normalizeArticle(r.rawArticle)).filter(n => n.length > 0)),
+    );
+    const exactGoods = normArticles.length
+      ? await this.prisma.good.findMany({
+          where: { orgId, deletedAt: null, skuNormalized: { in: normArticles } },
+          select: {
+            id: true,
+            sku: true,
+            name: true,
+            brandId: true,
+            brand: { select: { name: true } },
+          },
+          take: MAX_QUERY_LIMIT,
+        })
+      : [];
+    const exactByNorm = new Map<string, typeof exactGoods>();
+    for (const g of exactGoods) {
+      const key = normalizeArticle(g.sku);
+      if (!key) continue;
+      const arr = exactByNorm.get(key);
+      if (arr) arr.push(g);
+      else exactByNorm.set(key, [g]);
+    }
+
+    const rows: PreviewRowDto[] = [];
+    for (const r of parsed) {
+      const norm = normalizeArticle(r.rawArticle);
+      const brandId = await resolveBrandId(r.rawBrand);
+
+      let status: PreviewRowStatus = 'notFound';
+      let matchedGoodId: string | null = null;
+      let candidates: PreviewCandidate[] = [];
+
+      const exact = norm ? (exactByNorm.get(norm) ?? []) : [];
+      if (exact.length > 0) {
+        // Якщо бренд задано і резолвиться — намагаємось звузити до нього.
+        const byBrand = brandId ? exact.filter(g => g.brandId === brandId) : [];
+        if (byBrand.length === 1) {
+          status = 'matched';
+          matchedGoodId = byBrand[0]!.id;
+        } else if (byBrand.length > 1) {
+          status = 'ambiguous';
+          candidates = byBrand.map(g => this.toCandidate(g));
+        } else if (exact.length === 1) {
+          status = 'matched';
+          matchedGoodId = exact[0]!.id;
+        } else {
+          status = 'ambiguous';
+          candidates = exact.map(g => this.toCandidate(g));
+        }
+      } else {
+        // Substring/ILIKE fallback — лише для нерозвʼязаних (не в bulk, кількість notFound мала).
+        const or: Prisma.GoodWhereInput[] = [];
+        if (norm) or.push({ skuNormalized: { contains: norm } });
+        if (r.rawName && r.rawName.trim())
+          or.push({ name: { contains: r.rawName.trim(), mode: 'insensitive' } });
+        if (or.length) {
+          const found = await this.prisma.good.findMany({
+            where: { orgId, deletedAt: null, OR: or },
+            select: {
+              id: true,
+              sku: true,
+              name: true,
+              brandId: true,
+              brand: { select: { name: true } },
+            },
+            take: 10,
+          });
+          if (found.length) {
+            status = 'ambiguous';
+            candidates = found.map(g => this.toCandidate(g));
+          }
+        }
+      }
+
+      rows.push({
+        rowIndex: r.rowIndex,
+        rawCode: r.rawCode ?? null,
+        rawArticle: r.rawArticle ?? null,
+        rawBrand: r.rawBrand ?? null,
+        rawName: r.rawName ?? null,
+        quantity: r.quantity,
+        price: r.price,
+        status,
+        matchedGoodId,
+        candidates,
+      });
+    }
+
+    return rows;
+  }
+
+  /**
+   * Застосувати вирішені рядки прев'ю: для action='create' — резолв/створення бренду + Good,
+   * для action='use' — валідація goodId у org. Зібрані рядки → adapter.replaceLines у $transaction.
+   * Guard DRAFT + tenant orgId скрізь. Повертає нічого (контролер віддасть оновлений документ).
+   */
+  async applyImport(
+    orgId: string,
+    docType: ImportDocType,
+    docId: string,
+    resolvedRows: ApplyImportRowDto[],
+    createdBy?: string,
+  ): Promise<void> {
+    const adapter = this.importAdapters.get(docType);
+    const doc = await adapter.loadDoc(orgId, docId);
+    if (!doc) throw new NotFoundException('Документ не знайдено');
+    adapter.assertDraft(doc.status);
+
+    const lines: ImportLineInput[] = [];
+    for (const row of resolvedRows) {
+      let goodId: string;
+      if (row.action === 'create') {
+        if (!row.createData?.name) {
+          throw new BadRequestException(
+            `Рядок ${row.rowIndex}: назва товару обовʼязкова для створення`,
+          );
+        }
+        // Резолв або створення бренду (якщо rawBrand задано).
+        let brandId: string | undefined;
+        if (row.createData.rawBrand && row.createData.rawBrand.trim()) {
+          const existing = await this.brandsService.resolveByNameOrSynonym(
+            orgId,
+            row.createData.rawBrand,
+          );
+          brandId = existing
+            ? existing.id
+            : (await this.brandsService.create(orgId, { name: row.createData.rawBrand.trim() })).id;
+        }
+        const created = await this.goodsService.create(orgId, {
+          name: row.createData.name.trim(),
+          sku: row.createData.sku?.trim() || undefined,
+          brandId,
+          purchasePrice: row.price,
+        });
+        goodId = created.id;
+      } else {
+        if (!row.goodId) {
+          throw new BadRequestException(`Рядок ${row.rowIndex}: не вказано товар`);
+        }
+        const good = await this.prisma.good.findFirst({
+          where: { id: row.goodId, orgId, deletedAt: null },
+          select: { id: true },
+        });
+        if (!good) throw new NotFoundException(`Рядок ${row.rowIndex}: товар не знайдено`);
+        goodId = good.id;
+      }
+      lines.push({ goodId, quantity: row.quantity, price: row.price });
+    }
+
+    await this.prisma.$transaction(
+      async tx => {
+        await adapter.replaceLines(tx, orgId, docId, lines, createdBy);
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+  }
+
+  private toCandidate(g: {
+    id: string;
+    sku: string | null;
+    name: string;
+    brand?: { name: string } | null;
+  }): PreviewCandidate {
+    return { id: g.id, sku: g.sku, name: g.name, brandName: g.brand?.name ?? null };
+  }
+
+  /**
+   * Парсить рядки файлу за мапінгом колонок (1-based). startRow — рядок першого товару.
+   * Кількість/ціна коерсяться через parseNumber (0 якщо порожньо). Порожні рядки (без коду,
+   * артикулу і назви) пропускаються.
+   */
+  private async parseMappedRows(
+    buffer: Buffer | Uint8Array,
+    mapping: ImportMapping,
+  ): Promise<MappedRow[]> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+
+    const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 2;
+    const cell = (values: unknown[], col?: number): string | null =>
+      col && col >= 1 ? String(values[col] ?? '').trim() || null : null;
+
+    const rows: MappedRow[] = [];
+    sheet.eachRow((row, idx) => {
+      if (idx < startRow) return;
+      const values = row.values as unknown[];
+      const rawCode = cell(values, mapping.codeCol);
+      const rawArticle = cell(values, mapping.articleCol);
+      const rawBrand = cell(values, mapping.brandCol);
+      const rawName = cell(values, mapping.nameCol);
+      if (!rawCode && !rawArticle && !rawName) return; // порожній рядок
+      rows.push({
+        rowIndex: idx,
+        rawCode,
+        rawArticle,
+        rawBrand,
+        rawName,
+        quantity:
+          this.parseNumber(mapping.quantityCol ? values[mapping.quantityCol] : undefined) ?? 0,
+        price: this.parseNumber(mapping.priceCol ? values[mapping.priceCol] : undefined) ?? 0,
+      });
+    });
+
+    if (rows.length === 0) throw new BadRequestException('Файл не містить рядків товарів');
+    return rows;
+  }
+
   private parseNumber(value: unknown): number | undefined {
     if (value === undefined || value === null || value === '') return undefined;
     const num = Number(value);
     return Number.isFinite(num) ? num : undefined;
   }
+}
+
+/** Мапінг колонок Excel (1-based) для generic-імпорту товарів. */
+export interface ImportMapping {
+  startRow: number;
+  codeCol?: number;
+  articleCol?: number;
+  brandCol?: number;
+  nameCol?: number;
+  quantityCol?: number;
+  priceCol?: number;
+}
+
+interface MappedRow {
+  rowIndex: number;
+  rawCode: string | null;
+  rawArticle: string | null;
+  rawBrand: string | null;
+  rawName: string | null;
+  quantity: number;
+  price: number;
 }

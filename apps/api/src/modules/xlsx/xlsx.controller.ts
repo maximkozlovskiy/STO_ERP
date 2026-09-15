@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Post,
@@ -14,12 +15,19 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { Request } from '@nestjs/common';
-import { XlsxService, ImportResult } from './xlsx.service';
+import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
+import type { ImportDocType } from './document-line-import.adapter';
+import { ApplyImportDto } from './import.dto';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { UnitsService } from '../units/units.service';
 import { WorksService } from '../works/works.service';
+
+const IMPORT_DOC_TYPES: readonly ImportDocType[] = ['PURCHASE_ORDER', 'STOCK_DOCUMENT'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @ApiTags('XLSX Import')
 @Controller('xlsx')
@@ -286,6 +294,59 @@ export class XlsxController {
       ? 'csv'
       : 'xlsx';
     return this.xlsxService.applyPricingFromList(orgId, buffer, fileType);
+  }
+
+  // ─── Generic document import (preview + apply) ──────────────────────────────────
+
+  @Post('import/preview')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Прев’ю generic-імпорту товарів у документ (PO/склад)' })
+  @ApiConsumes('multipart/form-data')
+  async previewImport(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    // Multipart form-fields доступні на file.fields як { fieldname: { value } }.
+    const fields =
+      (file as unknown as { fields?: Record<string, { value?: unknown }> }).fields ?? {};
+    const num = (k: string): number | undefined => {
+      const v = fields[k]?.value;
+      if (v === undefined || v === null || v === '') return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : undefined;
+    };
+    const str = (k: string): string => String(fields[k]?.value ?? '').trim();
+
+    const docType = str('docType') as ImportDocType;
+    if (!IMPORT_DOC_TYPES.includes(docType)) {
+      throw new BadRequestException('Невідомий тип документа');
+    }
+    const docId = str('docId');
+    if (!UUID_RE.test(docId)) throw new BadRequestException('Некоректний ідентифікатор документа');
+
+    const mapping: ImportMapping = {
+      startRow: num('startRow') ?? 2,
+      codeCol: num('codeCol'),
+      articleCol: num('articleCol'),
+      brandCol: num('brandCol'),
+      nameCol: num('nameCol'),
+      quantityCol: num('quantityCol'),
+      priceCol: num('priceCol'),
+    };
+
+    const rows = await this.xlsxService.previewImport(orgId, docType, docId, buffer, mapping);
+    return { rows };
+  }
+
+  @Post('import/apply')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Застосувати вирішені рядки generic-імпорту' })
+  async applyImport(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ApplyImportDto,
+  ) {
+    await this.xlsxService.applyImport(orgId, dto.docType, dto.docId, dto.rows, user.id);
+    return { ok: true };
   }
 
   // ─── Helper ───────────────────────────────────────────────────────────────────

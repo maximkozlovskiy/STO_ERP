@@ -5,6 +5,9 @@ import ExcelJS from 'exceljs';
 import { XlsxService } from './xlsx.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
+import { GoodsService } from '../goods/goods.service';
+import { BrandsService } from '../brands/brands.service';
+import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 
 // Bug #188: regression-захист для applyPricingFromList + generatePricingListTemplate
 describe('XlsxService', () => {
@@ -56,6 +59,11 @@ describe('XlsxService', () => {
         XlsxService,
         { provide: PrismaService, useValue: prisma },
         { provide: PricingService, useValue: pricingService },
+        // Bug #724 DI-drift: XlsxService конструктор отримав GoodsService/BrandsService/registry —
+        // додаємо моки у ВСІ специ що конструюють реальний XlsxService.
+        { provide: GoodsService, useValue: { create: vi.fn() } },
+        { provide: BrandsService, useValue: { resolveByNameOrSynonym: vi.fn(), create: vi.fn() } },
+        { provide: DocumentLineImportAdapterRegistry, useValue: { get: vi.fn() } },
       ],
     }).compile();
     service = module.get(XlsxService);
