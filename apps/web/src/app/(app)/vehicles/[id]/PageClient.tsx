@@ -56,6 +56,16 @@ interface MaintenanceSchedule {
 }
 
 const FUEL_TYPES = ['Бензин', 'Дизель', 'Газ', 'Гібрид', 'Електро', 'LPG'];
+
+// Порожня форма регламенту ТО — one source of truth для init + reset (create success / cancel).
+const EMPTY_SCHEDULE_FORM = {
+  maintenanceType: 'ТО',
+  intervalDays: '',
+  intervalMileage: '',
+  lastMaintenanceDate: '',
+  lastMaintenanceMileage: '',
+  notes: '',
+};
 const TRANSMISSION_TYPES = [
   { value: '', label: 'Не вказано' },
   { value: 'manual', label: 'Механічна' },
@@ -109,14 +119,7 @@ export default function VehicleCardPage() {
   });
   const [showAddSchedule, setShowAddSchedule] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({
-    maintenanceType: 'ТО',
-    intervalDays: '',
-    intervalMileage: '',
-    lastMaintenanceDate: '',
-    lastMaintenanceMileage: '',
-    notes: '',
-  });
+  const [scheduleForm, setScheduleForm] = useState({ ...EMPTY_SCHEDULE_FORM });
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -316,14 +319,7 @@ export default function VehicleCardPage() {
           body: JSON.stringify({ ...body, vehicleId: id }),
         });
       }
-      setScheduleForm({
-        maintenanceType: 'ТО',
-        intervalDays: '',
-        intervalMileage: '',
-        lastMaintenanceDate: '',
-        lastMaintenanceMileage: '',
-        notes: '',
-      });
+      setScheduleForm({ ...EMPTY_SCHEDULE_FORM });
       setEditingScheduleId(null);
       setShowAddSchedule(false);
       apiFetch<MaintenanceSchedule[]>(`/maintenance-schedules?vehicleId=${id}`)
@@ -358,14 +354,7 @@ export default function VehicleCardPage() {
   const cancelScheduleForm = () => {
     setShowAddSchedule(false);
     setEditingScheduleId(null);
-    setScheduleForm({
-      maintenanceType: 'ТО',
-      intervalDays: '',
-      intervalMileage: '',
-      lastMaintenanceDate: '',
-      lastMaintenanceMileage: '',
-      notes: '',
-    });
+    setScheduleForm({ ...EMPTY_SCHEDULE_FORM });
   };
 
   const removeSchedule = async (scheduleId: string) => {
