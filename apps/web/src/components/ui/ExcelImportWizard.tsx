@@ -452,7 +452,7 @@ export function ExcelImportWizard({
               loading={previewMut.isPending}
               disabled={previewMut.isPending || !file}
             >
-              Завантажити товари
+              Ідентифікувати товари
             </Button>
           </div>
         </div>
