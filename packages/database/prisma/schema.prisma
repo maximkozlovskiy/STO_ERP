@@ -727,6 +727,7 @@ model Counterparty {
   org                Organisation           @relation(fields: [orgId], references: [id])
   customerGarages    CustomerGarage[]
   contracts          CounterpartyContract[]
+  importMapping      CounterpartyImportMapping?
   settlementAccount  SettlementAccount?
   loyaltyAccount     LoyaltyAccount?
   purchaseOrders     PurchaseOrder[]
@@ -1048,6 +1049,7 @@ model BrandSynonym {
   orgId       String    @db.Uuid
   brandId     String    @db.Uuid
   synonym     String
+  normalizedSynonym String? // upper + strip non-alnum із synonym — для резолву бренду при Excel-імпорті
   syncVersion BigInt    @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1057,7 +1059,32 @@ model BrandSynonym {
 
   @@unique([orgId, synonym])
   @@index([orgId, brandId, deletedAt])
+  @@index([orgId, normalizedSynonym])
   @@map("brand_synonyms")
+}
+
+// Збережений мапінг колонок Excel per-контрагент для майстра завантаження товарів.
+// Дзеркалить патерн BranchProviderConfig: окрема таблиця, @@unique, атомарний upsert.
+model CounterpartyImportMapping {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @unique @db.Uuid // 1:1 з контрагентом (один мапінг на контрагента)
+  startRow       Int      @default(2) // рядок з якого починається читання товарів
+  codeCol        Int? // номер колонки коду (1-based)
+  articleCol     Int? // номер колонки артикулу
+  brandCol       Int? // номер колонки бренду
+  nameCol        Int? // номер колонки найменування
+  quantityCol    Int? // номер колонки кількості
+  priceCol       Int? // номер колонки ціни
+  syncVersion    BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+
+  @@index([orgId, counterpartyId])
+  @@map("counterparty_import_mappings")
 }
 
 model Good {
@@ -1068,6 +1095,7 @@ model Good {
   goodCategoryId String?   @db.Uuid
   internalCode   String?
   sku            String?
+  skuNormalized  String?   // upper + strip non-alnum з sku — для exact-пошуку при Excel-імпорті (заповнюється у GoodsService)
   name           String
   unit           String    @default("шт")
   purchasePrice  Decimal?  @db.Decimal(12, 2)
@@ -1105,6 +1133,7 @@ model Good {
   @@unique([orgId, internalCode])
   @@index([orgId, deletedAt])
   @@index([orgId, sku])
+  @@index([orgId, skuNormalized])
   @@index([orgId, goodType, deletedAt])
   @@index([orgId, syncVersion])
   @@map("goods")
