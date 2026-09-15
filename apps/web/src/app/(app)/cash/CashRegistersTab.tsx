@@ -137,6 +137,10 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
       setError("Назва є обов'язковою");
       return;
     }
+    if (!form.currencyId) {
+      setError('Оберіть валюту каси');
+      return;
+    }
     // Прив'язку до ПРРО шлемо лише для фіскальної каси; для звичайної — очищаємо (порожній рядок).
     const provider = form.isFiscal ? form.fiscalProvider : '';
     const providerReg = form.isFiscal ? form.providerCashRegisterId.trim() : '';
@@ -145,6 +149,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
         await updateMut.mutateAsync({
           id: editing.id,
           name: form.name.trim(),
+          currencyId: form.currencyId,
           isFiscal: form.isFiscal,
           fiscalProvider: provider,
           providerCashRegisterId: providerReg,
@@ -307,31 +312,34 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
             className="h-8 text-[13px]"
           />
           {!editing && (
-            <>
-              <Select
-                label="Філія"
-                value={form.branchId}
-                onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-              >
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                label="Валюта"
-                value={form.currencyId}
-                onChange={e => setForm(f => ({ ...f, currencyId: e.target.value }))}
-              >
-                {currencies.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.code}
-                  </option>
-                ))}
-              </Select>
-            </>
+            <Select
+              label="Філія"
+              value={form.branchId}
+              onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
+            >
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
           )}
+          {/* Валюта — і при створенні, і при редагуванні: каса без валюти не може вести
+              операції з готівкою (currencyId NOT NULL на бекенді). Дозволяємо виправити
+              валюту наявної каси, у якої вона не задана/некоректна. */}
+          <Select
+            label="Валюта"
+            required
+            value={form.currencyId}
+            onChange={e => setForm(f => ({ ...f, currencyId: e.target.value }))}
+          >
+            <option value="">— Оберіть валюту —</option>
+            {currencies.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.code}
+              </option>
+            ))}
+          </Select>
           <Input
             label="Стартовий залишок"
             type="number"

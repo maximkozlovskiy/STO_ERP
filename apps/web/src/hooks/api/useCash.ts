@@ -146,6 +146,7 @@ export function useUpdateCashRegister() {
     }: {
       id: string;
       name?: string;
+      currencyId?: string;
       isFiscal?: boolean;
       /** '' очищає прив'язку (бекенд: empty-to-null). */
       fiscalProvider?: string;
