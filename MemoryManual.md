@@ -14,7 +14,22 @@
 TypeScript: ✅ 0 errors (api + web)
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       f678f30c fix(review): цикл 1/3 — ParseUUIDPipe, tx timeout, blob-download, timer cleanup
+HEAD:       d16663c1 docs(skills): add decomposition-memo-regression approach to sto-optimize
+Latest optimize: 2026-09-15 (sto-optimize-agent, цикл 1/3, HEAD d16663c1) — Повний проектний
+perf-аудит УСЬОГО дерева. Знайдено 1 / виправлено 1. **Fix (rerender, 4ed14240):**
+PlannedActualMetrics виділено з CreateWorkOrderModal у TD3-декомпозиції (5b3f6937) без memo,
+хоча всі пропси стабільні (примітиви canEdit/*Hours/liveActualHours + 4 useCallback-хендлери
+CreateWorkOrderModal:838-870); батько ре-рендериться на КОЖЕН символ великої форми → суб-форма
+(2× DateTimePickerInput + 2× number input) реконсилювалась дарма → `memo(PlannedActualMetricsBase)`.
+Категорії: N+1 0 / index 0 / parallel 0 / rerender 1 / cache 0 / bundle 0. ПІДТВЕРДЖЕНО ЧИСТИМИ:
+FX-ledger chargeBase/paidBase (payments/invoices/supplier-payments) — aggregate({_sum:amountBase})
+під Promise.all, 0 N+1; pricing-rules apply-all — Promise.all-fetch+in-memory compute+chunked $tx
+tenant-guard; XLSX-import blob-download — appendChild/removeChild+setTimeout revoke (fixed 1919d…);
+PricingRulesClient — useQuery+useDebounce+useMemo; supplier-payments aging — in-memory над
+Promise.all-fetch. InvoiceConflictDialog/RulePricerModal — inline-arrow onClose (memo no-op),
+рідко-видимі → skip. Схема без нових WHERE-колонок → 0 нових індексів. Новий патерн у SKILL 2.17:
+decomposition-memo-регресія (d16663c1). tsc api 0 + web 0 (bare --incremental false). Попередній HEAD:
+f678f30c fix(review): цикл 1/3 — ParseUUIDPipe, tx timeout, blob-download, timer cleanup
 Latest review: 2026-09-15 (sto-review-agent, цикл 1/3, HEAD f678f30c) — Повний проектний аудит
 УСЬОГО дерева (не лише diff). Знайдено 8 / виправлено 8 (Critical 0 / Important 6 / Suggestion 2).
 Important: (1) exchange-rates + cash-registers @Query('currencyId'/'branchId') без ParseUUIDPipe →
