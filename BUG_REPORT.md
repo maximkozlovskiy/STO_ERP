@@ -5149,3 +5149,39 @@ createdIdRef idempotency перевірені в ізоляції, обидва 
 **Нових патернів немає** → sto-tester-approaches.md без змін.
 
 **Код не змінювався** → коміт не потрібен (робоче дерево має лише видалення session-lock, не продукт).
+
+---
+
+## Session 2026-09-15 — sto-tester ЦИКЛ 3/3 (ФІНАЛЬНИЙ) — bug-hunt
+
+**Результат: 0 продуктових багів. Чистий фінальний прохід.**
+
+Останній номер багу лишається #747 (нових не додано).
+
+**Прогони (реальні числа):**
+
+- API tsc: 0 помилок
+- Web tsc (`--incremental false`): 0 помилок
+- API vitest (`npx vitest run`): 2313/2313 passed (146 файлів)
+- Web vitest (`npx vitest run src`): 754/754 passed (79 файлів)
+
+**Особлива увага — нова логіка циклу 3 (rename збереженого звіту, commit 99a9e6c8):**
+`useUpdateSavedReport` + ReportBuilder rename-модалка + `report-builder.service.updateSaved`.
+
+1. **Re-entrancy:** кнопка «Зберегти» rename-модалки має `disabled={updateSavedMut.isPending}` — подвійний сабміт заблоковано.
+2. **Cache invalidation:** `useUpdateSavedReport.onSuccess` → `invalidateQueries(reportBuilderKeys.saved())` — список рефетчиться після ренейму.
+3. **Tenant orgId:** `updateSaved` викликає `getSaved` (guard-404 + `findFirst where:{id,orgId,deletedAt:null}`) ПЕРЕД мутацією, далі `updateMany where:{id,orgId,deletedAt:null}` — крос-tenant ренейм неможливий.
+4. **Dry-run config validation:** `if (dto.config) buildQuery(dto.config, orgId)` — невалідний config кине 400 ДО запису; при чистому ренеймі (лише name) dry-run не виконується (config undefined) — коректно.
+5. **Rename НЕ створює дубль:** використано `updateMany` (не `create`); повертає свіжий `getSaved` — жодного нового рядка.
+6. **DTO:** `UpdateSavedReportDto` — `@IsOptional @IsString @MaxLength(200) name`, `@IsOptional @ValidateNested config` — whitelist ValidationPipe відсікає зайве.
+7. **Controller:** `@Roles('OWNER','ADMIN','ACCOUNTANT')`, `@Param('id', ParseUUIDPipe)` — RBAC + валідація id.
+
+**Статичні перевірки §1.1–§1.7 у scope:**
+
+- 0 `prisma.X.delete()` (soft-delete скрізь; `deleteMany` лише на join/link-таблицях, scoped orgId/parentId — дозволений патерн).
+- Report-query builder (`buildQuery`): `where.orgId` інжектиться завжди (рядок 159), `deletedAt:null` для soft-delete сутностей (160), relation-hop soft-delete (60) — tenant + soft-delete на корені generic-движка.
+- 0 tenant-leak у report-builder CRUD (кожен find/update/delete має orgId).
+
+**Нових патернів немає** → sto-tester-approaches.md без змін.
+
+**Код не змінювався** → коміт лише docs (BUG_REPORT сесійний запис).
