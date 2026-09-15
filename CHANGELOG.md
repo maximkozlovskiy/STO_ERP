@@ -30,9 +30,23 @@ sto-tester 3901→3804, sto-dev 2061→1932, sto-optimize 1887→1293, sto-revie
 RulePricerModal.tsx (самодостатній суб-діалог, ~9 props). Прибрано мертвий import Spinner.
 Behavior-preserving; tsc web 0; DocumentCreateModals+DocumentDirtyGuard 7/7.
 
-ЗАЛИШОК (свідомо): CreateWorkOrderModal 2337 (уже частково розбита PartsTable/WorksTable —
-подальше дроблення diminishing-returns); sto-tester 3804 (найбільший skill, структурний split
-окремо). Backlog TD1–TD3 закрито.
+### 497e3909 docs(skills): структурний split sto-tester (3804→1238)
+
+Журнал «Накопичені підходи» (~2575 рядків) → окремий sto-tester-approaches.md; SKILL.md 3804→1238
+(<1500). Тіло byte-identical; bug-refs 294/детектори 195/dated 232 — 0 втрат.
+
+### 5b3f6937 + f5bc76e1 refactor(td3): декомпозиція CreateWorkOrderModal (2337→2223)
+
+Найризикованіша модалка (WO create/edit, dynamic import у 4 місцях), тому консервативно:
+виділено ЛИШЕ 2 cohesive суб-компоненти з вузькою prop-surface — work-order/InvoiceConflictDialog
+(суб-діалог «рахунок уже існує») + work-order/PlannedActualMetrics (планові/фактичні показники).
+Header-форму (branch/lift/client/vehicle/category) свідомо НЕ чіпав — 30+ props без cohesion,
+потребує useWorkOrderForm-хука (окремий рефактор). Публічний surface недоторканий.
+Повне QA (бек+фронт): review 0 behavioral divergence, component 11/11, tsc web 0, backend
+WO-suite 131/131, E2E crud-work-order 4/4 (жива БД). Review-fix: named ChangeEvent import + min-w-20.
+
+Backlog TD1–TD3 повністю відпрацьовано. Свідомий залишок (state-hook рефактор, не JSX-slicing):
+CreateWorkOrderModal ще 2223.
 
 ---
 

@@ -21,8 +21,11 @@ pagination.ts, Kyiv-date→common/utils/kyiv-date.ts (337523be); work-orders.ser
 (DTO-мапери, 1ed42c35); 4 скіли стиснуто (a8367105, знання 100% збережено діф-verified);
 PurchaseOrderCreateModal 2085→1929 (types.ts+RulePricerModal у ./purchase-order/, db94ce8e).
 sto-tester структурний split (2026-09-15): журнал винесено у sto-tester-approaches.md →
-SKILL.md 3804→1238, знання byte-identical. ЗАЛИШОК свідомо: CreateWorkOrderModal 2337
-(уже частково розбита; далі diminishing-returns). Попередній HEAD:
+SKILL.md 3804→1238, знання byte-identical. CreateWorkOrderModal 2337→2223 (5b3f6937): виділено
+2 cohesive суб-компоненти (InvoiceConflictDialog + PlannedActualMetrics у ./work-order/);
+header-форму свідомо НЕ чіпав (потребує useWorkOrderForm-хука). Повне QA: review 0 divergence,
+component 11/11, tsc 0, backend WO 131/131, E2E crud-work-order 4/4 (жива БД). TD3 backlog повністю
+відпрацьовано. Попередній HEAD:
 refactor(td2): guard-тест + self-heal manual-SQL конструктів проти db push
 TD2 (2026-09-14, закрито): захист Prisma-невиразних конструктів (partial-unique doc-number +
 GIN/trgm пошук + GiST EXCLUDE + CHECK) від тихої втрати при db push/reset. **Виявлено реальний
