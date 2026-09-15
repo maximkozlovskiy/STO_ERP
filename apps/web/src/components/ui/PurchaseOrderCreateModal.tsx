@@ -694,15 +694,16 @@ export function PurchaseOrderCreateModal({
 
   const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
-  const handleCreate = async () => {
+  // Повертає id створеного PO (для create-then-open-wizard) або null при помилці/дублі-сабміті.
+  const handleCreate = async (): Promise<string | null> => {
     // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit. `disabled={saving}`
     // спирається на re-render React МІЖ подіями кліку; два click-и в одному tick обидва
     // входять до застосування disabled → 2 POST /purchase-orders. savingRef фліпається
     // синхронно у setSavingBoth → другий вхід одразу повертається.
-    if (savingRef.current || transitioningRef.current) return;
+    if (savingRef.current || transitioningRef.current) return null;
     if (!form.supplierId || !form.warehouseId) {
       setError('Оберіть постачальника та склад');
-      return;
+      return null;
     }
     setSavingBoth(true);
     setError('');
@@ -741,11 +742,24 @@ export function PurchaseOrderCreateModal({
       // Не закриваємо — переходимо в edit mode щоб можна було одразу додавати товари
       setActivePOId(po.id);
       await loadPo(po.id);
+      return po.id;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка створення замовлення');
+      return null;
     } finally {
       setSavingBoth(false);
     }
+  };
+
+  // Excel-імпорт потребує вже створеного PO (docId). У create-mode спершу створюємо чернетку
+  // (handleCreate → activePOId), тоді відкриваємо майстер. У edit-mode — одразу.
+  const openExcelImport = async () => {
+    if (activePOId) {
+      setExcelWizardOpen(true);
+      return;
+    }
+    const id = await handleCreate();
+    if (id) setExcelWizardOpen(true);
   };
 
   const handleSave = async () => {
@@ -1380,21 +1394,24 @@ export function PurchaseOrderCreateModal({
                     </Button>
                   ))}
                 {canEdit && isEditMode && activePOId && !receiveMode && (
-                  <>
-                    <XlsxImportButton
-                      templateType="po-lines"
-                      importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
-                      onImportComplete={() => loadPo(activePOId, true)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setExcelWizardOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors"
-                    >
-                      <Upload className="h-3.5 w-3.5" />
-                      Завантажити з Excel
-                    </button>
-                  </>
+                  <XlsxImportButton
+                    templateType="po-lines"
+                    importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
+                    onImportComplete={() => loadPo(activePOId, true)}
+                  />
+                )}
+                {/* Майстер Excel-імпорту доступний і на створенні: у create-mode спершу створює
+                    чернетку PO (потрібен docId), тоді відкриває майстер. */}
+                {canEdit && !receiveMode && (
+                  <button
+                    type="button"
+                    onClick={() => void openExcelImport()}
+                    disabled={saving || transitioning}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Завантажити з Excel
+                  </button>
                 )}
                 {canEdit && !showLineInput && !receiveMode && (
                   <button

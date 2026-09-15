@@ -136,6 +136,17 @@ describe('PurchaseOrderCreateModal — regression', () => {
     // (We keep `postBody` in the closure to fail fast if the modal ever POSTs unexpectedly.)
     expect(postBody).toBeUndefined();
   });
+
+  it('кнопка «Завантажити з Excel» присутня вже у create-mode (не лише edit)', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+      return Promise.resolve({ items: [] });
+    });
+    renderWithQueryClient(<PurchaseOrderCreateModal open onClose={vi.fn()} onSaved={vi.fn()} />);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/warehouses'));
+    // Без purchaseOrderId (create-mode) кнопка має бути (openExcelImport спершу створить чернетку).
+    expect(screen.getByRole('button', { name: /Завантажити з Excel/ })).toBeInTheDocument();
+  });
 });
 
 // ─── Bug #462 ─────────────────────────────────────────────────────────────────
