@@ -11,10 +11,39 @@
 ```
 Дата:       2026-09-15
 Фаза:       Активна розробка — backlog TD1–TD3 ЗАКРИТО (TD1 ✅ TD2 ✅ TD3 ✅)
-TypeScript: ✅ 0 errors (api + web) — підтверджено після perf-fix 4a3b624d
+TypeScript: ✅ 0 errors (api + web, --incremental false) — підтверджено після sync цикл 3/3
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       0f1866f8 docs(skills): add redundant-full-scan approach to sto-optimize
+HEAD:       99a9e6c8 fix(sync): цикл 3/3 — PATCH /reports/builder/saved/:id не мав UI-тригера
+Latest sync: 2026-09-15 (цикл 3/3, ФІНАЛЬНИЙ, HEAD 99a9e6c8) — Третій контрольний прохід
+API↔Frontend, звірка усіх ~65 backend-контролерів (включно з sub-controllers) + прицільна
+перевірка файлів, змінених циклами 1-2 (maintenance-schedules edit UI, expense-categories
+restore UI, ReportBuilder downloadBlob-міграція, pricing apply-all, CalendarSlot types) —
+жодного регресу. Проміжні комміти f32e4d66 (code-review, окрема сесія) + 59f3df7b (simplify,
+окрема сесія) перевірені git show — легітимні, не "чужі" зміни. Direction 1: 1 знайдено /
+1 виправлено — GET+PATCH /reports/builder/saved/:id існували з початкового каркасу
+report-builder (b6301d0e) без ЖОДНОГО UI-тригера (фронт юзав лише list/create/delete/run,
+GET single не потрібен бо list вже містить config, але PATCH — реальна прогалина: не можна
+було перейменувати чи оновити вже збережений звіт, тільки "Зберегти" як новий дублікат).
+Fix: useUpdateSavedReport() хук (useReportBuilder.ts) + Pencil-кнопка на чіпі збереженого
+звіту → rename-модалка, паттерн ідентичний існуючій save-модалці. search/ і inspection/
+спершу здались "невикликаними" через неточний grep (multi-line apiFetch<T>() через рядок) —
+повторна перевірка підтвердила search (command-palette.tsx:148, /search?q=) і inspection
+(work-orders/[id]/PageClient.tsx, GET+POST /work-orders/:id/inspection +
+/inspection/default-points) CLEAN, false positive. bull-board/ і pdf/ підтверджені N/A
+(немає @Controller — bull-board Fastify-plugin admin panel, pdf — internal service для
+invoices/completion-acts), той самий патерн що cash/reconciliation/document-number з циклу 2.
+Direction 2 (URL): 0 знайдено — повний apiFetch inventory (150+ call sites) звірено з
+@Controller routes, settlements підтверджено під counterparties/:counterpartyId (не окремий
+controller), stock-items/by-document+by-batch, ProviderRegistryPanel generic endpoint-prop
+(fiscal-providers/payment-gateways/delivery-providers) — усі коректні. Direction 3 (типи):
+0 знайдено — maintenance-schedules (MaintenanceSchedule interface vs ResponseDto),
+expense-categories (ExpenseCategory vs ExpenseCategoryResponseDto), CalendarSlot
+(status?/type? optional), pricing-rules (PricingRule interface vs toDto()), inspection
+(InspectionReport/InspectionPoint vs InspectionResponseDto/InspectionPointDto) — усі звірені
+поле-в-поле, 0 регресій від циклів 1-2. tsc web 0 (--incremental false) + tsc api 0.
+Working tree чистий після коміту (окрім .claude/scheduled_tasks.lock — поза сферою).
+Попередній HEAD: f32e4d66 fix(code-review) цикл 2/3 (окрема сесія, vehicles edit-null-fix)
 Optimize:   2026-09-15 цикл 2/3 (sto-optimize-agent, 4a3b624d) — 1 знайдено / 1 виправлено.
             expense-categories.update() reparent робив 3 ідентичні findMany(усе дерево)
             через getDescendantIds+getDepth+getSubtreeHeight підряд → loadTree() один
