@@ -89,6 +89,20 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
     expect(screen.getByText(/показано 3 з 250 рядків/)).toBeInTheDocument();
   });
 
+  it('показує номер документа у шапці модалки', () => {
+    render(
+      <ExcelImportWizard
+        open
+        onClose={vi.fn()}
+        docType="PURCHASE_ORDER"
+        docId="11111111-1111-1111-1111-111111111111"
+        docNumber="ЗАМ-2026-000780"
+        onImportComplete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Завантаження товарів з Excel · ЗАМ-2026-000780/)).toBeInTheDocument();
+  });
+
   it('шапка передперегляду має літери колонок Excel (A, B, C, D)', () => {
     render(
       <ExcelImportWizard

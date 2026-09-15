@@ -1951,6 +1951,7 @@ export function PurchaseOrderCreateModal({
           onClose={closeExcelWizard}
           docType="PURCHASE_ORDER"
           docId={activePOId}
+          docNumber={poNumber || undefined}
           counterpartyId={form.supplierId || undefined}
           counterpartyName={supplierDisplay}
           onImportComplete={() => void loadPo(activePOId, true)}

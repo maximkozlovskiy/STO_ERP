@@ -1253,6 +1253,7 @@ export function StockDocumentCreateModal({
           onClose={closeExcelWizard}
           docType="STOCK_DOCUMENT"
           docId={stockDocumentId}
+          docNumber={docNumber || undefined}
           counterpartyId={undefined}
           onImportComplete={() => void loadDoc(stockDocumentId, true)}
         />

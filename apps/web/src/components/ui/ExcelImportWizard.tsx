@@ -29,6 +29,8 @@ export interface ExcelImportWizardProps {
   onClose: () => void;
   docType: ExcelImportDocType;
   docId: string;
+  /** Людиночитний номер документа (напр. «ЗАМ-2026-000780») — показується у шапці. */
+  docNumber?: string;
   counterpartyId?: string;
   counterpartyName?: string;
   onImportComplete: () => void;
@@ -92,6 +94,7 @@ export function ExcelImportWizard({
   onClose,
   docType,
   docId,
+  docNumber,
   counterpartyId,
   counterpartyName,
   onImportComplete,
@@ -282,8 +285,10 @@ export function ExcelImportWizard({
     <Modal
       open={open}
       onClose={onClose}
-      title="Завантаження товарів з Excel"
-      size={step === 2 ? 'xl' : rawPreview ? 'lg' : 'md'}
+      title={
+        docNumber ? `Завантаження товарів з Excel · ${docNumber}` : 'Завантаження товарів з Excel'
+      }
+      size={step === 2 || rawPreview ? 'xl' : 'md'}
     >
       {step === 1 ? (
         <div className="flex flex-col gap-4" style={{ minHeight: '200px' }}>
