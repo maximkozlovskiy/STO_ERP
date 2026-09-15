@@ -15,11 +15,16 @@ TypeScript: ✅ 0 errors (api + web, npx tsc --noEmit --incremental false)
 Тести:      xlsx+goods+brands+utils+counterparty-import-mappings 297/297 ·
             prisma+PO+SD регрес 288/288 (0 нових падінь) · web DocumentCreateModals+
             CreateWorkOrderModal 15/15 зелені після FE-підключення майстра
-HEAD:       03a098c9 feat(web): підключити ExcelImportWizard до модалок PO та складського документа
-Review:     2026-09-15 (auto, HEAD f509cd8b) — generic Excel-import BACKEND: 0 проблем.
-            A1 tenant-guard (усі update/updateMany/upsert несуть orgId або документовано
-            safe upsert), мультивалюта (PO adapter → resolveBaseConversion), soft-delete,
-            DI-drift #724 (специ мокають DocumentLineImportAdapterRegistry) — усе чисто.
+HEAD:       d91fe897 fix(review): sync double-submit guard + once-per-open mapping у ExcelImportWizard
+Review:     2026-09-15 (auto, HEAD d91fe897) — generic Excel-import FRONTEND: 2 Important
+            виправлено. (1) handlePreview/handleApply мали лише disabled={isPending} без
+            синх-guard → подвійний клік у одному тіку = дубль preview/apply (Bug #630 клас);
+            (2) savedMapping-effect затирав введені колонки при react-query refetch →
+            mappingAppliedRef (раз за відкриття). Решта чисто: onClose стабільний (useCallback
+            у батьках), cache invalidation коректний (PO/SD keys за docType + mapping detail),
+            FormData не шле порожні колонки, apply-payload = whitelist DTO (0 зайвих полів).
+            web tsc 0, 15/15 модалок зелені.
+            Попередній BACKEND review (HEAD f509cd8b): 0 проблем.
 ```
 
 **Backlog тех-боргу (усе 🟢):** TD1 currencyId NOT NULL + seed base-валюти; TD2 schema-integrity
@@ -39,11 +44,13 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Generic Excel-імпорт товарів (FRONTEND) — 2026-09-15, HEAD 03a098c9 (2 feature-коміти):
+Generic Excel-імпорт товарів (FRONTEND) — 2026-09-15, HEAD d91fe897 (3 коміти):
   b913ab48 useExcelImport хуки (preview multipart / apply JSON / counterparty mapping GET+PUT)
            + ExcelImportWizard.tsx (generic ui/, 2-крокова модалка matched/ambiguous/notFound)
   03a098c9 підключення майстра до PurchaseOrderCreateModal + StockDocumentCreateModal
            («Завантажити з Excel» поряд з XlsxImportButton, стабільний onClose)
+  d91fe897 review-фікс: синх double-submit guard (handlePreview/handleApply) + once-per-open
+           застосування savedMapping (mappingAppliedRef проти react-query refetch-clobber)
 web tsc 0 (--incremental false — фантомна PricingRulesClient обходиться), 15/15 модалок зелені.
 
 Generic Excel-імпорт товарів (BACKEND) — 2026-09-15, HEAD 5f3ae56c (3 feature-коміти):
