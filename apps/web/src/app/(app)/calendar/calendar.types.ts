@@ -11,6 +11,10 @@ export interface CalendarSlot {
   startAt: string;
   endAt: string;
   notes?: string | null;
+  /** AVAILABLE/BOOKED/BLOCKED — UI наразі створює лише BOOKED (WO-прив'язані) слоти. */
+  status?: string;
+  /** WORK/MAINTENANCE/BREAK/MEETING — UI наразі створює лише WORK-слоти. */
+  type?: string;
   workOrderNumber?: string;
   workOrderStatus?: string | null;
   counterpartyName?: string;
