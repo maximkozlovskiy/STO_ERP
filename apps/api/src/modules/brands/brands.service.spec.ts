@@ -112,7 +112,8 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
     await callSyncSynonyms(service, ORG, BRAND_A, []);
 
     expect(mocks.prisma.brandSynonym.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['syn-active'] } },
+      // orgId обовʼязковий у where — A1 tenant-guard кине без нього (tenant-guard-static.spec)
+      where: { id: { in: ['syn-active'] }, orgId: ORG },
       data: { deletedAt: expect.any(Date) },
     });
   });

@@ -246,7 +246,7 @@ export class LoyaltyService {
         if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
 
         const updated = await tx.loyaltyAccount.updateMany({
-          where: { id: acc.id, balance: { gte: points } },
+          where: { id: acc.id, orgId, balance: { gte: points } },
           data: { balance: { decrement: points } },
         });
         if (updated.count === 0) {

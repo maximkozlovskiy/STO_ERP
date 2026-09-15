@@ -260,7 +260,7 @@ export class BrandsService {
     await Promise.all([
       toRemove.length
         ? this.prisma.brandSynonym.updateMany({
-            where: { id: { in: toRemove } },
+            where: { id: { in: toRemove }, orgId },
             data: { deletedAt: new Date() },
           })
         : Promise.resolve(),
