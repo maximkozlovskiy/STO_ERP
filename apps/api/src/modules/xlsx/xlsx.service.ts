@@ -1193,6 +1193,64 @@ export class XlsxService {
   }
 
   /**
+   * Сирий передперегляд файлу (mapping-незалежний): повертає перші `limit` рядків аркуша як
+   * текстову сітку 1-based-колонок + загальну кількість рядків аркуша й максимальну ширину.
+   * Використовується UI-майстром, щоб показати вміст файлу ДО налаштування колонок — користувач
+   * бачить структуру й вписує номери колонок. Нічого не резолвить і не пише в БД.
+   */
+  async rawPreview(
+    buffer: Buffer | Uint8Array,
+    limit = 20,
+  ): Promise<{ totalRows: number; columnCount: number; rows: string[][] }> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+
+    const cap = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
+    const rows: string[][] = [];
+    let columnCount = 0;
+    // eachRow пропускає порожні рядки; totalRows беремо з actualRowCount (усі рядки з даними).
+    sheet.eachRow((row, idx) => {
+      if (idx > cap) return;
+      const values = row.values as unknown[]; // 1-based: [0] завжди порожній
+      const maxCol = Math.max(0, values.length - 1);
+      if (maxCol > columnCount) columnCount = maxCol;
+      const cells: string[] = [];
+      for (let c = 1; c <= maxCol; c++) cells.push(this.cellText(values[c]));
+      rows.push(cells);
+    });
+
+    return { totalRows: sheet.actualRowCount, columnCount, rows };
+  }
+
+  /**
+   * Надійне текстове представлення значення комірки ExcelJS. `row.values` може містити не лише
+   * примітиви, а й обʼєкти: rich-text ({ richText: [...] }), формули ({ result }), гіперлінки
+   * ({ text/hyperlink }), помилки ({ error }), дати (Date). Прямий String(obj) → «[object Object]».
+   */
+  private cellText(v: unknown): string {
+    if (v === undefined || v === null) return '';
+    if (typeof v === 'string') return v.trim();
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (v instanceof Date) return v.toLocaleDateString('uk-UA');
+    if (typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      if (Array.isArray(o.richText)) {
+        return o.richText
+          .map(rt => String((rt as { text?: unknown }).text ?? ''))
+          .join('')
+          .trim();
+      }
+      if ('text' in o && o.text != null) return String(o.text).trim();
+      if ('result' in o && o.result != null) return String(o.result).trim();
+      if ('error' in o && o.error != null) return String(o.error);
+      if ('hyperlink' in o && o.hyperlink != null) return String(o.hyperlink).trim();
+    }
+    return String(v).trim();
+  }
+
+  /**
    * Парсить рядки файлу за мапінгом колонок (1-based). startRow — рядок першого товару.
    * Кількість/ціна коерсяться через parseNumber (0 якщо порожньо). Порожні рядки (без коду,
    * артикулу і назви) пропускаються.

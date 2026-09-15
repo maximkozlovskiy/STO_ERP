@@ -337,6 +337,16 @@ export class XlsxController {
     return { rows };
   }
 
+  @Post('import/raw-preview')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Сирий передперегляд Excel (перші рядки як текстова сітка)' })
+  @ApiConsumes('multipart/form-data')
+  async rawPreviewImport(@Request() req: FastifyRequest) {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    return this.xlsxService.rawPreview(buffer, 20);
+  }
+
   @Post('import/apply')
   @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
   @ApiOperation({ summary: 'Застосувати вирішені рядки generic-імпорту' })

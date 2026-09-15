@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import {
+  useRawPreview,
   usePreviewImport,
   useApplyImport,
   useCounterpartyImportMapping,
@@ -20,6 +21,7 @@ import {
   type ImportMapping,
   type PreviewRow,
   type ApplyRow,
+  type RawPreviewResponse,
 } from '@/hooks/api/useExcelImport';
 
 export interface ExcelImportWizardProps {
@@ -63,6 +65,28 @@ const numFmt = new Intl.NumberFormat('uk-UA', {
   maximumFractionDigits: 2,
 });
 
+// 1-based номер колонки → літера Excel (1→A, 2→B, 27→AA).
+function colLetter(n: number): string {
+  let s = '';
+  let x = n;
+  while (x > 0) {
+    const r = (x - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    x = Math.floor((x - 1) / 26);
+  }
+  return s;
+}
+
+// Підписи ролей колонок для підсвітки передперегляду (1-based номер → назва ролі).
+const COL_ROLE_LABELS: [keyof ImportMapping, string][] = [
+  ['codeCol', 'Код'],
+  ['articleCol', 'Артикул'],
+  ['brandCol', 'Бренд'],
+  ['nameCol', 'Назва'],
+  ['quantityCol', 'К-сть'],
+  ['priceCol', 'Ціна'],
+];
+
 export function ExcelImportWizard({
   open,
   onClose,
@@ -74,6 +98,7 @@ export function ExcelImportWizard({
 }: ExcelImportWizardProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [file, setFile] = useState<File | null>(null);
+  const [rawPreview, setRawPreview] = useState<RawPreviewResponse | null>(null);
   const [mapping, setMapping] = useState<ImportMapping>(DEFAULT_MAPPING);
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [resolutions, setResolutions] = useState<Record<number, RowResolution>>({});
@@ -82,6 +107,7 @@ export function ExcelImportWizard({
   // (focus / staleTime) віддає новий референс і мовчки затирає введені користувачем колонки.
   const mappingAppliedRef = useRef(false);
 
+  const rawPreviewMut = useRawPreview();
   const previewMut = usePreviewImport();
   const applyMut = useApplyImport();
   const upsertMapping = useUpsertImportMapping();
@@ -92,6 +118,7 @@ export function ExcelImportWizard({
     if (!open) return;
     setStep(1);
     setFile(null);
+    setRawPreview(null);
     setRows([]);
     setResolutions({});
     setMapping(DEFAULT_MAPPING);
@@ -120,7 +147,18 @@ export function ExcelImportWizard({
   }, []);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setFile(e.target.files?.[0] ?? null);
+    const f = e.target.files?.[0] ?? null;
+    setFile(f);
+    setRawPreview(null);
+    if (!f) return;
+    // Сирий передперегляд одразу після вибору файлу — щоб користувач бачив вміст і колонки.
+    rawPreviewMut.mutate(f, {
+      onSuccess: data => setRawPreview(data),
+      onError: () => {
+        // Тиха деградація: без передперегляду майстер усе одно робочий (colnums вводяться вручну).
+        setRawPreview(null);
+      },
+    });
   };
 
   // Крок 1 → 2: preview + fire-and-forget збереження мапінгу контрагента.
@@ -229,6 +267,13 @@ export function ExcelImportWizard({
     return 'bg-destructive-subtle';
   };
 
+  // 1-based номер колонки → підпис ролі (для підсвітки шапки передперегляду).
+  const roleByCol = new Map<number, string>();
+  for (const [key, label] of COL_ROLE_LABELS) {
+    const col = mapping[key];
+    if (typeof col === 'number' && col > 0) roleByCol.set(col, label);
+  }
+
   const matchedCount = rows.filter(r => r.status === 'matched').length;
   const ambiguousCount = rows.filter(r => r.status === 'ambiguous').length;
   const notFoundCount = rows.filter(r => r.status === 'notFound').length;
@@ -238,7 +283,7 @@ export function ExcelImportWizard({
       open={open}
       onClose={onClose}
       title="Завантаження товарів з Excel"
-      size={step === 2 ? 'xl' : 'md'}
+      size={step === 2 ? 'xl' : rawPreview ? 'lg' : 'md'}
     >
       {step === 1 ? (
         <div className="flex flex-col gap-4" style={{ minHeight: '200px' }}>
@@ -318,6 +363,79 @@ export function ExcelImportWizard({
               onChange={e => setCol('priceCol', e.target.value)}
             />
           </div>
+
+          {/* Передперегляд файлу — сирі рядки з підсвіткою обраних колонок */}
+          {rawPreviewMut.isPending ? (
+            <div className="text-[12px] text-muted-foreground py-2">Читаємо файл…</div>
+          ) : rawPreview && rawPreview.rows.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[13px] font-medium text-foreground leading-none">
+                  Передперегляд файлу
+                </label>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  показано {rawPreview.rows.length} з {rawPreview.totalRows}{' '}
+                  {rawPreview.totalRows === 1 ? 'рядка' : 'рядків'}
+                </span>
+              </div>
+              <div
+                className="rounded-lg border border-border overflow-auto"
+                style={{ maxHeight: '32vh' }}
+              >
+                <table className="text-[12px] border-collapse">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-secondary">
+                      <th className="px-2 py-1.5 text-[10px] font-semibold text-foreground-muted border-b border-r border-border text-right sticky left-0 bg-secondary">
+                        #
+                      </th>
+                      {Array.from({ length: rawPreview.columnCount }, (_, i) => {
+                        const col = i + 1;
+                        const role = roleByCol.get(col);
+                        return (
+                          <th
+                            key={col}
+                            className={cn(
+                              'px-2 py-1.5 text-[10px] font-semibold border-b border-border whitespace-nowrap text-left',
+                              role ? 'bg-info-subtle text-info-text' : 'text-foreground-muted',
+                            )}
+                            title={role ? `Колонка ${colLetter(col)} → ${role}` : undefined}
+                          >
+                            {colLetter(col)}
+                            {role ? ` · ${role}` : ''}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rawPreview.rows.map((cells, ri) => (
+                      <tr key={ri} className="border-b border-border/60">
+                        <td className="px-2 py-1 text-[10px] text-muted-foreground border-r border-border text-right tabular-nums sticky left-0 bg-surface">
+                          {ri + 1}
+                        </td>
+                        {Array.from({ length: rawPreview.columnCount }, (_, i) => {
+                          const col = i + 1;
+                          const highlighted = roleByCol.has(col);
+                          return (
+                            <td
+                              key={col}
+                              className={cn(
+                                'px-2 py-1 whitespace-nowrap max-w-55 overflow-hidden text-ellipsis',
+                                highlighted ? 'bg-info-subtle text-foreground' : 'text-foreground',
+                              )}
+                              title={cells[i] || undefined}
+                            >
+                              {cells[i] || ''}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={onClose} disabled={previewMut.isPending}>

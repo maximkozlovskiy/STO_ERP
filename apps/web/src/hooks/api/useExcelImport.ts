@@ -77,6 +77,28 @@ export interface ApplyImportVars {
   rows: ApplyRow[];
 }
 
+// ─── useRawPreview (сирий передперегляд файлу до налаштування колонок) ──────
+
+export interface RawPreviewResponse {
+  totalRows: number;
+  columnCount: number;
+  rows: string[][]; // перші N рядків аркуша як текстова сітка (1-based колонки зліва направо)
+}
+
+/**
+ * Сирий передперегляд Excel: показує перші рядки файлу як є, ще до вибору колонок.
+ * Приймає лише файл (без docId) — бекенд читає байти, у БД не пише.
+ */
+export function useRawPreview() {
+  return useMutation<RawPreviewResponse, Error, File>({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return apiMultipartFetch<RawPreviewResponse>('/xlsx/import/raw-preview', fd);
+    },
+  });
+}
+
 // ─── usePreviewImport ─────────────────────────────────────────────────────
 
 /**

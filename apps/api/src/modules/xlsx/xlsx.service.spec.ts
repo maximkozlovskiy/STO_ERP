@@ -85,6 +85,59 @@ describe('XlsxService', () => {
     });
   });
 
+  // ─── rawPreview ──────────────────────────────────────────────────────────────
+
+  describe('rawPreview', () => {
+    async function buildWorkbook(rows: unknown[][]): Promise<Buffer> {
+      const wb = new ExcelJS.Workbook();
+      const sheet = wb.addWorksheet('Аркуш1');
+      for (const r of rows) sheet.addRow(r);
+      return (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+    }
+
+    it('повертає перші рядки як текстову сітку + загальну кількість рядків', async () => {
+      const buf = await buildWorkbook([
+        ['Код', 'Артикул', 'Бренд', 'К-сть'],
+        ['1001', 'ABC-12', 'BOSCH', 4],
+        ['1002', 'XY-9', 'SKF', 2],
+      ]);
+      const res = await service.rawPreview(buf, 20);
+      expect(res.totalRows).toBe(3);
+      expect(res.columnCount).toBe(4);
+      expect(res.rows).toHaveLength(3);
+      expect(res.rows[0]).toEqual(['Код', 'Артикул', 'Бренд', 'К-сть']);
+      expect(res.rows[1]).toEqual(['1001', 'ABC-12', 'BOSCH', '4']);
+    });
+
+    it('обрізає до limit, але totalRows рахує всі рядки', async () => {
+      const rows: unknown[][] = [['h1', 'h2']];
+      for (let i = 1; i <= 30; i++) rows.push([`code${i}`, `art${i}`]);
+      const res = await service.rawPreview(await buildWorkbook(rows), 20);
+      expect(res.totalRows).toBe(31);
+      expect(res.rows).toHaveLength(20);
+    });
+
+    it('розпаковує rich-text / формулу / дату замість [object Object]', async () => {
+      const wb = new ExcelJS.Workbook();
+      const sheet = wb.addWorksheet('S');
+      const row = sheet.addRow([]);
+      row.getCell(1).value = { richText: [{ text: 'Rich' }, { text: 'Text' }] };
+      row.getCell(2).value = { formula: 'A1', result: 42 };
+      row.getCell(3).value = new Date('2026-01-15T00:00:00Z');
+      const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+      const res = await service.rawPreview(buffer, 20);
+      expect(res.rows[0]?.[0]).toBe('RichText');
+      expect(res.rows[0]?.[1]).toBe('42');
+      expect(res.rows[0]?.[2]).not.toContain('[object');
+    });
+
+    it('кидає BadRequest якщо у книзі немає аркушів', async () => {
+      const wb = new ExcelJS.Workbook();
+      const empty = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+      await expect(service.rawPreview(empty, 20)).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   // ─── applyPricingFromList ───────────────────────────────────────────────────
 
   describe('applyPricingFromList — CSV', () => {
