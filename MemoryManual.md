@@ -9,14 +9,19 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-15
-Фаза:       Активна розробка — generic Excel-імпорт товарів (BACKEND+FRONTEND) готовий
+Дата:       2026-09-16
+Фаза:       Активна розробка — generic Excel-імпорт товарів + сирий передперегляд (raw-preview) готовий
 TypeScript: ✅ 0 errors (api + web, npx tsc --noEmit --incremental false)
-Тести:      xlsx+goods+brands+utils+counterparty-import-mappings 297/297 ·
-            prisma+PO+SD регрес 288/288 (0 нових падінь) · web DocumentCreateModals+
-            CreateWorkOrderModal 15/15 зелені після FE-підключення майстра
-HEAD:       d91fe897 fix(review): sync double-submit guard + once-per-open mapping у ExcelImportWizard
-Review:     2026-09-15 (auto, HEAD d91fe897) — generic Excel-import FRONTEND: 2 Important
+Тести:      xlsx api 17/17 (у т.ч. rawPreview +5) · ExcelImportWizard 3/3
+HEAD:       aa3d876b fix(review): cellText не протікає «[object Object]» для формули з result-помилкою
+Review:     2026-09-16 (auto, коміт 46fab8c9 raw-preview) — 1 Suggestion виправлено:
+            cellText для формули з result-об'єктом ({result:{error}}) давав «[object Object]»
+            → тепер result рекурсується через cellText; гілку 'error' піднято перед 'result'.
+            +тест (#DIV/0!). Решта чисто: RBAC OWNER/ADMIN/XLSX_MANAGER на endpoint, БД/orgId
+            не чіпає, limit clamp 1..100, totalRows=actualRowCount, 1-based row.values, XSS
+            неможливий (React екранує cells/title), тиха деградація onError, reset rawPreview
+            при виборі/відкритті, tabular-nums, множина рядок/рядків, sticky шапка+перший стовпець.
+Prev:       d91fe897 (auto) — generic Excel-import FRONTEND: 2 Important
             виправлено. (1) handlePreview/handleApply мали лише disabled={isPending} без
             синх-guard → подвійний клік у одному тіку = дубль preview/apply (Bug #630 клас);
             (2) savedMapping-effect затирав введені колонки при react-query refetch →
