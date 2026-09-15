@@ -162,13 +162,17 @@ export class ExpenseCategoriesService {
       if (!parent) throw new NotFoundException('Батьківську статтю не знайдено');
       if (parent.type !== existing.type)
         throw new BadRequestException('Батьківська стаття має бути того ж типу');
-      const descendants = await this.getDescendantIds(orgId, id);
+      // Perf: гілка-перенос потребує трьох метрик дерева (нащадки-цикл, глибина нового
+      // батька, висота піддерева). Раніше кожна робила власний findMany(усе дерево) → 3
+      // ідентичні full-scan на один update. Тепер один знімок дерева → усі три у памʼяті.
+      const tree = await this.loadTree(orgId);
+      const descendants = this.descendantsFrom(tree.childrenByParent, id);
       if (descendants.includes(dto.parentId))
         throw new BadRequestException('Не можна перенести статтю у власного нащадка');
       // Bug #736: після переносу глибина найглибшого нащадка = глибина_нового_батька + 1
       // (сам вузол) + висота_піддерева. Не може перевищувати MAX_DEPTH.
-      const parentDepth = await this.getDepth(orgId, dto.parentId);
-      const subtreeHeight = await this.getSubtreeHeight(orgId, id);
+      const parentDepth = this.depthFrom(tree.parentOf, dto.parentId);
+      const subtreeHeight = this.subtreeHeightFrom(tree.childrenByParent, id);
       if (parentDepth + 1 + subtreeHeight > MAX_DEPTH)
         throw new BadRequestException('Досягнуто максимальної глибини вкладеності статей');
     }
@@ -262,16 +266,33 @@ export class ExpenseCategoriesService {
   }
 
   /**
-   * Глибина вузла у дереві (корінь = 0). Обхід ланцюга батьків у памʼяті (без N+1).
-   * Bug #736: використовується для guard-у MAX_DEPTH у create/update.
+   * Один знімок живого дерева орг → adjacency-мапи (parentOf, childrenByParent). Дозволяє
+   * обчислити глибину / висоту / нащадків у памʼяті БЕЗ повторних full-scan (гілка-перенос у
+   * update() потребує всіх трьох одразу — раніше 3 ідентичні findMany).
    */
-  private async getDepth(orgId: string, id: string): Promise<number> {
+  private async loadTree(orgId: string): Promise<{
+    parentOf: Map<string, string | null>;
+    childrenByParent: Map<string, string[]>;
+  }> {
     const all = await this.prisma.expenseCategory.findMany({
       where: { orgId, deletedAt: null },
       select: { id: true, parentId: true },
       take: 1000,
     });
-    const parentOf = new Map<string, string | null>(all.map(c => [c.id, c.parentId]));
+    const parentOf = new Map<string, string | null>();
+    const childrenByParent = new Map<string, string[]>();
+    for (const c of all) {
+      parentOf.set(c.id, c.parentId);
+      if (!c.parentId) continue;
+      const arr = childrenByParent.get(c.parentId) ?? [];
+      arr.push(c.id);
+      childrenByParent.set(c.parentId, arr);
+    }
+    return { parentOf, childrenByParent };
+  }
+
+  /** Глибина вузла (корінь = 0) — обхід ланцюга батьків у памʼяті. */
+  private depthFrom(parentOf: Map<string, string | null>, id: string): number {
     let depth = 0;
     let cur = parentOf.get(id) ?? null;
     // Захист від зациклення (не має статись — цикли блокуються) через ліміт ітерацій.
@@ -282,20 +303,8 @@ export class ExpenseCategoriesService {
     return depth;
   }
 
-  /** Висота піддерева (кількість рівнів нижче вузла; лист = 0). Обхід у памʼяті. */
-  private async getSubtreeHeight(orgId: string, id: string): Promise<number> {
-    const all = await this.prisma.expenseCategory.findMany({
-      where: { orgId, deletedAt: null },
-      select: { id: true, parentId: true },
-      take: 1000,
-    });
-    const childrenByParent = new Map<string, string[]>();
-    for (const c of all) {
-      if (!c.parentId) continue;
-      const arr = childrenByParent.get(c.parentId) ?? [];
-      arr.push(c.id);
-      childrenByParent.set(c.parentId, arr);
-    }
+  /** Висота піддерева (кількість рівнів нижче вузла; лист = 0) — обхід у памʼяті. */
+  private subtreeHeightFrom(childrenByParent: Map<string, string[]>, id: string): number {
     const walk = (node: string, guard: number): number => {
       if (guard > 1000) return 0;
       const kids = childrenByParent.get(node) ?? [];
@@ -305,20 +314,8 @@ export class ExpenseCategoriesService {
     return walk(id, 0);
   }
 
-  /** Усі нащадки (обхід у памʼяті — без N+1). */
-  private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
-    const all = await this.prisma.expenseCategory.findMany({
-      where: { orgId, deletedAt: null },
-      select: { id: true, parentId: true },
-      take: 1000,
-    });
-    const childrenByParent = new Map<string, string[]>();
-    for (const c of all) {
-      if (!c.parentId) continue;
-      const arr = childrenByParent.get(c.parentId) ?? [];
-      arr.push(c.id);
-      childrenByParent.set(c.parentId, arr);
-    }
+  /** Усі нащадки (обхід у памʼяті) з готової adjacency-мапи. */
+  private descendantsFrom(childrenByParent: Map<string, string[]>, parentId: string): string[] {
     const out: string[] = [];
     const stack = [parentId];
     while (stack.length) {
@@ -329,6 +326,20 @@ export class ExpenseCategoriesService {
       }
     }
     return out;
+  }
+
+  /**
+   * Глибина вузла у дереві (корінь = 0). Bug #736: guard MAX_DEPTH у create (single-use → один scan).
+   */
+  private async getDepth(orgId: string, id: string): Promise<number> {
+    const { parentOf } = await this.loadTree(orgId);
+    return this.depthFrom(parentOf, id);
+  }
+
+  /** Усі нащадки (single-use у remove/toggleActive → один scan). */
+  private async getDescendantIds(orgId: string, parentId: string): Promise<string[]> {
+    const { childrenByParent } = await this.loadTree(orgId);
+    return this.descendantsFrom(childrenByParent, parentId);
   }
 
   private buildTree(all: Row[], parentId: string | null): ExpenseCategoryResponseDto[] {
