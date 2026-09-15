@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-09-15 — Generic Excel-імпорт товарів (FRONTEND)
+
+### 03a098c9 feat(web): підключити ExcelImportWizard до модалок PO та складського документа
+
+`PurchaseOrderCreateModal` + `StockDocumentCreateModal`: кнопка «Завантажити з Excel» поряд з
+наявним XlsxImportButton (PO — `canEdit && isEditMode && activePOId && !receiveMode`,
+counterpartyId=supplierId; SD — DRAFT, counterpartyId=undefined). Стабільний `closeExcelWizard`
+(useCallback) проти modal-thrashing. onImportComplete → loadPo/loadDoc silent reload.
+
+### b913ab48 feat(web): generic Excel-імпорт товарів — хуки + майстер
+
+`hooks/api/useExcelImport.ts`: `usePreviewImport` (multipart → /xlsx/import/preview),
+`useApplyImport` (JSON → /xlsx/import/apply, invalidate purchase-orders/stock-documents),
+`useCounterpartyImportMapping` (GET, enabled коли є id) + `useUpsertImportMapping` (PUT).
+`components/ui/ExcelImportWizard.tsx` (generic): 2-крокова модалка (налаштування колонок +
+файл → таблиця-результат), matched=success/ambiguous=warning+Select/notFound=destructive+
+чекбокс «Створити», re-entrancy guard на обох сабмітах, українською. tsc 0, 15/15 тестів модалок.
+
+---
+
 ## 2026-09-15 — Generic Excel-імпорт товарів (BACKEND)
 
 ### 5f3ae56c feat(counterparties): CounterpartyImportMapping persistence module

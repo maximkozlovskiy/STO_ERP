@@ -10,12 +10,12 @@
 
 ```
 Дата:       2026-09-15
-Фаза:       Активна розробка — generic Excel-імпорт товарів (BACKEND) готовий
-TypeScript: ✅ 0 errors (api, npx tsc --noEmit)
+Фаза:       Активна розробка — generic Excel-імпорт товарів (BACKEND+FRONTEND) готовий
+TypeScript: ✅ 0 errors (api + web, npx tsc --noEmit --incremental false)
 Тести:      xlsx+goods+brands+utils+counterparty-import-mappings 297/297 ·
-            prisma+PO+SD регрес 288/288 (0 нових падінь) · нове: normalize-article,
-            xlsx-import (preview/apply 16), brands resolve, mapping upsert
-HEAD:       5f3ae56c feat(counterparties): CounterpartyImportMapping persistence module
+            prisma+PO+SD регрес 288/288 (0 нових падінь) · web DocumentCreateModals+
+            CreateWorkOrderModal 15/15 зелені після FE-підключення майстра
+HEAD:       03a098c9 feat(web): підключити ExcelImportWizard до модалок PO та складського документа
 Review:     2026-09-15 (auto, HEAD f509cd8b) — generic Excel-import BACKEND: 0 проблем.
             A1 tenant-guard (усі update/updateMany/upsert несуть orgId або документовано
             safe upsert), мультивалюта (PO adapter → resolveBaseConversion), soft-delete,
@@ -39,6 +39,13 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Generic Excel-імпорт товарів (FRONTEND) — 2026-09-15, HEAD 03a098c9 (2 feature-коміти):
+  b913ab48 useExcelImport хуки (preview multipart / apply JSON / counterparty mapping GET+PUT)
+           + ExcelImportWizard.tsx (generic ui/, 2-крокова модалка matched/ambiguous/notFound)
+  03a098c9 підключення майстра до PurchaseOrderCreateModal + StockDocumentCreateModal
+           («Завантажити з Excel» поряд з XlsxImportButton, стабільний onClose)
+web tsc 0 (--incremental false — фантомна PricingRulesClient обходиться), 15/15 модалок зелені.
+
 Generic Excel-імпорт товарів (BACKEND) — 2026-09-15, HEAD 5f3ae56c (3 feature-коміти):
   a4e93da8 normalizeArticle util + skuNormalized/normalizedSynonym SOT + resolveByNameOrSynonym
   228ebadb xlsx adapter registry (PO/SD) + previewImport/applyImport + DTO + controller (DI-drift #724)
