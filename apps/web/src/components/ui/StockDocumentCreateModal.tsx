@@ -343,13 +343,21 @@ export function StockDocumentCreateModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isEditMode, editLoaded, formSnapshot]);
 
+  // Токен останнього запиту — stale-guard: якщо docId/open змінились (або компонент
+  // розмонтувався) поки fetch у польоті, застаріла відповідь НЕ перезаписує свіжий стан форми.
+  // Замінює `cancelled`-прапорець колишнього inline-ефекту, який refactor у useCallback загубив.
+  const loadReqRef = useRef(0);
+
   // Load document in edit mode. silent=true — для reload після XLSX import позицій:
   // без loading-спінера (форма вже видима), без editLoaded-переустановки (dirty-baseline незмінна).
   const loadDoc = useCallback((docId: string, silent = false) => {
+    const reqId = ++loadReqRef.current;
+    const isStale = () => reqId !== loadReqRef.current;
     if (!silent) setLoading(true);
     setError('');
     return apiFetch<StockDocDetail>(`/stock-documents/${docId}`)
       .then(doc => {
+        if (isStale()) return;
         setDocNumber(doc.number);
         setCurrentStatus(doc.status);
         setForm({
@@ -375,9 +383,11 @@ export function StockDocumentCreateModal({
         );
       })
       .catch(e => {
+        if (isStale()) return;
         setError(e instanceof Error ? e.message : 'Помилка завантаження документа');
       })
       .finally(() => {
+        if (isStale()) return;
         if (!silent) setLoading(false);
         // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
         // на фактично завантажених даних (не на порожній формі).
@@ -388,6 +398,10 @@ export function StockDocumentCreateModal({
   useEffect(() => {
     if (!open || !isEditMode || !stockDocumentId) return;
     void loadDoc(stockDocumentId);
+    // Invalidate any in-flight load on re-run/unmount — застаріла відповідь ігнорується.
+    return () => {
+      loadReqRef.current++;
+    };
     // loadDoc навмисно поза deps — стабільний useCallback([]) reload по id/open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stockDocumentId]);
