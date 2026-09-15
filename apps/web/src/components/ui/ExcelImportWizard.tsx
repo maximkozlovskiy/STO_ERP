@@ -36,10 +36,10 @@ export interface ExcelImportWizardProps {
   onImportComplete: () => void;
 }
 
-// Локальний стан рядка на кроці 2: обраний candidate + прапор «створити нову».
+// Локальний стан рядка на кроці 2.
 interface RowResolution {
   selectedGoodId: string; // для matched/ambiguous
-  create: boolean; // для notFound
+  included: boolean; // чи включати рядок в імпорт (для notFound = «створити нову позицію»)
 }
 
 const DEFAULT_MAPPING: ImportMapping = {
@@ -192,7 +192,8 @@ export function ExcelImportWizard({
               : row.status === 'ambiguous'
                 ? (row.candidates[0]?.id ?? '')
                 : '',
-          create: false,
+          // matched/ambiguous — включаємо одразу (товар знайдено); notFound — ні (треба рішення).
+          included: row.status !== 'notFound',
         };
       }
       setRows(res.rows);
@@ -209,9 +210,33 @@ export function ExcelImportWizard({
   const setRowGood = useCallback((rowIndex: number, goodId: string) => {
     setResolutions(r => ({ ...r, [rowIndex]: { ...r[rowIndex], selectedGoodId: goodId } }));
   }, []);
-  const setRowCreate = useCallback((rowIndex: number, create: boolean) => {
-    setResolutions(r => ({ ...r, [rowIndex]: { ...r[rowIndex], create } }));
+  const setRowIncluded = useCallback((rowIndex: number, included: boolean) => {
+    setResolutions(r => ({ ...r, [rowIndex]: { ...r[rowIndex], included } }));
   }, []);
+
+  // Масові дії над вибором рядків (крок 2).
+  const setAllIncluded = useCallback(
+    (value: boolean) => {
+      setResolutions(prev => {
+        const next = { ...prev };
+        for (const row of rows) {
+          next[row.rowIndex] = { ...next[row.rowIndex], included: value };
+        }
+        return next;
+      });
+    },
+    [rows],
+  );
+  const invertIncluded = useCallback(() => {
+    setResolutions(prev => {
+      const next = { ...prev };
+      for (const row of rows) {
+        const cur = next[row.rowIndex];
+        next[row.rowIndex] = { ...cur, included: !cur?.included };
+      }
+      return next;
+    });
+  }, [rows]);
 
   // Крок 2 → apply: збираємо резолвлені рядки.
   const handleApply = useCallback(async () => {
@@ -221,8 +246,9 @@ export function ExcelImportWizard({
     for (const row of rows) {
       const res = resolutions[row.rowIndex];
       if (!res) continue;
+      if (!res.included) continue; // рядок не позначено для імпорту → пропустити
       if (row.status === 'matched' || row.status === 'ambiguous') {
-        if (!res.selectedGoodId) continue; // не обрано → пропустити
+        if (!res.selectedGoodId) continue; // не обрано товар → пропустити
         resolved.push({
           rowIndex: row.rowIndex,
           action: 'use',
@@ -231,8 +257,7 @@ export function ExcelImportWizard({
           price: row.price,
         });
       } else {
-        // notFound: лише коли позначено «створити»
-        if (!res.create) continue;
+        // notFound + included → створюємо нову позицію
         const name = (row.rawName || row.rawArticle || '').trim();
         if (!name) continue; // немає з чого створити позицію
         resolved.push({
@@ -250,7 +275,7 @@ export function ExcelImportWizard({
     }
 
     if (resolved.length === 0) {
-      toast.error('Немає рядків для імпорту — оберіть товари або позначте «Створити»');
+      toast.error('Немає рядків для імпорту — позначте рядки та оберіть товари');
       return;
     }
 
@@ -280,6 +305,8 @@ export function ExcelImportWizard({
   const matchedCount = rows.filter(r => r.status === 'matched').length;
   const ambiguousCount = rows.filter(r => r.status === 'ambiguous').length;
   const notFoundCount = rows.filter(r => r.status === 'notFound').length;
+  const includedCount = rows.filter(r => resolutions[r.rowIndex]?.included).length;
+  const allIncluded = rows.length > 0 && includedCount === rows.length;
 
   return (
     <Modal
@@ -474,21 +501,63 @@ export function ExcelImportWizard({
             </span>
           </div>
 
+          {/* Масові дії над вибором рядків */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAllIncluded(true)}
+              disabled={rows.length === 0}
+            >
+              Вибрати всі
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAllIncluded(false)}
+              disabled={rows.length === 0}
+            >
+              Забрати всі
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={invertIncluded}
+              disabled={rows.length === 0}
+            >
+              Інвертувати вибір
+            </Button>
+            <span className="text-[12px] text-muted-foreground tabular-nums ml-auto">
+              Обрано: {includedCount} / {rows.length}
+            </span>
+          </div>
+
           <div
             className="rounded-lg border border-border overflow-auto"
             style={{ maxHeight: '55vh' }}
           >
             <table className="w-full text-[12px]">
               <colgroup>
-                <col className="w-[16%]" />
-                <col className="w-[12%]" />
-                <col />
-                <col className="w-[9%]" />
+                <col className="w-11" />
+                <col className="w-[15%]" />
                 <col className="w-[11%]" />
-                <col className="w-[30%]" />
+                <col />
+                <col className="w-[8%]" />
+                <col className="w-[10%]" />
+                <col className="w-[28%]" />
               </colgroup>
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-border bg-secondary">
+                  <th className="px-2 py-2 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allIncluded}
+                      onChange={e => setAllIncluded(e.target.checked)}
+                      disabled={rows.length === 0}
+                      aria-label="Вибрати всі рядки"
+                      className="h-3.5 w-3.5 rounded border-border align-middle"
+                    />
+                  </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
                     Артикул
                   </th>
@@ -512,7 +581,7 @@ export function ExcelImportWizard({
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                       Немає рядків для імпорту
                     </td>
                   </tr>
@@ -522,8 +591,21 @@ export function ExcelImportWizard({
                     return (
                       <tr
                         key={row.rowIndex}
-                        className={cn('border-b border-border/60', statusRowClass(row.status))}
+                        className={cn(
+                          'border-b border-border/60',
+                          statusRowClass(row.status),
+                          !res?.included && 'opacity-45',
+                        )}
                       >
+                        <td className="px-2 py-2 align-top text-center">
+                          <input
+                            type="checkbox"
+                            checked={res?.included ?? false}
+                            onChange={e => setRowIncluded(row.rowIndex, e.target.checked)}
+                            aria-label={`Включити рядок ${row.rowIndex} в імпорт`}
+                            className="h-3.5 w-3.5 rounded border-border align-middle"
+                          />
+                        </td>
                         <td className="px-3 py-2 align-top text-foreground">
                           {row.rawArticle || row.rawCode || '—'}
                         </td>
@@ -562,15 +644,11 @@ export function ExcelImportWizard({
                               ))}
                             </Select>
                           ) : (
-                            <label className="inline-flex items-center gap-2 text-[12px] text-foreground cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={res?.create ?? false}
-                                onChange={e => setRowCreate(row.rowIndex, e.target.checked)}
-                                className="h-3.5 w-3.5 rounded border-border"
-                              />
-                              Створити нову позицію
-                            </label>
+                            <span className="text-[12px] text-muted-foreground">
+                              {res?.included
+                                ? 'Буде створено нову позицію'
+                                : 'Не знайдено — оберіть, щоб створити'}
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -592,7 +670,7 @@ export function ExcelImportWizard({
               <Button
                 onClick={() => void handleApply()}
                 loading={applyMut.isPending}
-                disabled={applyMut.isPending || rows.length === 0}
+                disabled={applyMut.isPending || includedCount === 0}
               >
                 Заповнити товарами
               </Button>
