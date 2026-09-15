@@ -2651,3 +2651,21 @@ for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do
 **Severity:** MEDIUM (порушує CLAUDE.md rule #17 «API-помилки українською»; UX-регрес для типової помилки користувача).
 
 **Де шукати ще:** усі `parse*`/`import*` методи xlsx.service (parseGoods/parsePOLines/parseMappedRows — той самий сирий-Error клас, легасі); будь-який upload-ендпоінт що парсить файл; image/pdf/zip-обробники.
+
+---
+
+### 2026-09-16 — Derived-лічильник ≠ action-фільтр (оманливий count + дірявий disabled) — Область: frontend
+
+**Bug #752.** Багатокроковий майстер/список показує «Обрано: N», де `N = items.filter(x => x.included).length`, а submit-handler збирає payload СТРОГІШИМ предикатом (`ambiguous` без обраного товару → skip; `notFound` з порожньою назвою → skip). Disabled-guard кнопки дивиться лише на `includedCount === 0`. Наслідок: «Обрано: 3», кнопка активна, клік → toast «Немає рядків» або «Додано 1» замість 3. POST не битий (silent-skip коректний), але UX бреше і дія no-op-ить.
+
+**Сигнал:** submit-handler-цикл (`for (const row of rows)`) з кількома `continue`, які фільтрують готовність (`!res.selectedGoodId`, `if (!name)`), тоді як user-facing лічильник і `disabled={...Count === 0}` враховують лише перший/жоден із них. Розходження предикатів «показано» vs «реально відправлено».
+
+**Причина виникнення:** «included» здається природним і для лічильника, і для disabled — але це стан НАМІРУ, а не ГОТОВНОСТІ. Готовність вимагає ще й валідних даних рядка (обраний товар / непорожня назва), логіка яких живе лише всередині handler.
+
+**Підхід до виявлення:** для кожного `.filter(x => x.included/selected/checked)`-лічильника знайти submit-handler того ж компонента; звірити його `continue`-умови з предикатом лічильника. Розбіжність → лічильник оманливий + disabled дірявий. Live: обрати рядки, які handler пропустить (ambiguous без вибору / порожня назва) → перевірити, чи кнопка активна і чи клік дає no-op-toast.
+
+**Підхід до фіксу:** винести спільний `isRowApplyable(row, res)` — ЄДИНЕ джерело правди для (1) лічильника готовності `readyCount`, (2) збірки payload у handler, (3) `disabled={readyCount === 0}`. Показати `readyCount` окремо («до імпорту: K») коли `K !== includedCount`, щоб «Обрано» лишалось чесним. Регресія: ambiguous-included-без-товару / notFound-порожній → readyCount=0, кнопка disabled, POST 0×; інверсія×2 → початковий набір.
+
+**Severity:** LOW (UX; без псування даних/падінь/битого POST). Escalate до MEDIUM якщо оманлива дія стосується грошей/списання і користувач впевнений, що відправив більше, ніж пішло.
+
+**Де шукати ще:** будь-який bulk-select / multi-step wizard / кошик де count і submit розходяться: ExcelImportWizard (fixed), масові дії у таблицях (bulk archive/delete/assign), «додати вибрані у документ», reservation-picker, будь-який `selectedCount` поряд з handler-циклом що має `continue`.

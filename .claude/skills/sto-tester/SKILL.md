@@ -655,6 +655,22 @@ grep -rnE "@Roles\('OWNER'" apps/api/src/modules --include="*.controller.ts" | g
 # Live-доказ: DB-flip ролі (`employee.role=RECEPTIONIST`) → login → curl ендпоінт → 403 = баг.
 # Регресія: component-тест мокає хук і асертить `toHaveBeenCalledWith(..., canOperate)` для обох гілок.
 
+# Bug #752: derived-лічильник/індикатор рахує ІНШИМ предикатом, ніж action-фільтр →
+# оманливе UX + увімкнена дія, що no-op-ить (toast «нічого нема» попри N обраних).
+# Патерн: `<count>Count = items.filter(<predicate-A>).length` показується користувачу
+# («Обрано: N»), а submit-handler збирає payload через СТРОГІШИЙ <predicate-B>
+# (`if (!row.selectedId) continue` / `if (!name) continue` / скіп ambiguous без вибору).
+# Кнопка disabled лише за `<count>Count === 0` (predicate-A) → активна коли predicate-B дає 0.
+# Сигнал: handler-цикл з кількома `continue`, а лічильник/`disabled` дивиться лише перший.
+grep -rnE "\.filter\(\w+ => \w+\??\.(included|selected|checked|active)" apps/web/src --include="*.tsx" | head -20
+# Для КОЖНОГО filter-лічильника знайти submit-handler цього ж компонента:
+grep -rnE "for \(const \w+ of \w+\)" apps/web/src/components --include="*.tsx" -A 12 | grep -E "continue;" | head -20
+# Якщо handler має continue-и (skip ambiguous без товару / notFound без назви / !selectedId),
+# яких predicate-лічильника НЕ враховує → лічильник бреше + disabled-guard дірявий.
+# Fix: винести спільний `isRowApplyable(row,res)` predicate → лічильник, handler і disabled
+# використовують ОДНЕ джерело правди; показати readyCount окремо коли != includedCount.
+# Регресія: ambiguous-included-без-товару / notFound-порожній → «до імпорту: 0», кнопка disabled, POST 0×.
+
 # Мертвий стан/handler після рефактору inline→shared-component (Bug #160)
 # для кожного useState/useCallback з префіксом фічі (woSearch/woOptions...) перевірити чи setter
 # викликається ПОЗА reset-ефектом і чи value читається у JSX. tsc без noUnusedLocals НЕ ловить.
