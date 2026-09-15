@@ -1132,6 +1132,7 @@ model Good {
 
   @@unique([orgId, internalCode])
   @@index([orgId, deletedAt])
+  @@index([orgId, goodCategoryId, deletedAt]) // фільтр каталогу по категорії — раніше без індексу
   @@index([orgId, sku])
   @@index([orgId, skuNormalized])
   @@index([orgId, goodType, deletedAt])
@@ -1310,7 +1311,8 @@ model WorkOrder {
   claimWarranties  Warranty[]            @relation("WarrantyClaim")
   inspectionReport InspectionReport?
 
-  @@index([orgId, status, deletedAt])
+  // +createdAt хвостом: list-page фільтрує по status + сортує createdAt desc → covering (без Sort node)
+  @@index([orgId, status, deletedAt, createdAt])
   @@index([orgId, status, branchId, deletedAt])
   @@index([orgId, syncVersion])
   @@index([orgId, counterpartyId])
@@ -1641,7 +1643,7 @@ model PurchaseOrder {
   stockDocuments   StockDocument[]
   supplierReturns  SupplierReturn[]
 
-  @@index([orgId, status, deletedAt])
+  @@index([orgId, status, deletedAt, createdAt])
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
@@ -1699,7 +1701,7 @@ model SupplierReturn {
   purchaseOrder PurchaseOrder?       @relation(fields: [purchaseOrderId], references: [id])
   lines         SupplierReturnLine[]
 
-  @@index([orgId, status, deletedAt])
+  @@index([orgId, status, deletedAt, createdAt])
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
@@ -1761,7 +1763,8 @@ model SupplierPayment {
   cashRegister  CashRegister?  @relation(fields: [cashRegisterId], references: [id])
   currency      Currency?      @relation("SupplierPaymentCurrency", fields: [currencyId], references: [id])
 
-  @@index([orgId, deletedAt])
+  // +createdAt: дефолтний unfiltered list сортує createdAt desc → covering (як решта документів)
+  @@index([orgId, deletedAt, createdAt])
   @@index([orgId, supplierId, createdAt])
   @@index([orgId, status, createdAt])
   // sto-optimize (2026-08-30): findAll(purchaseOrderId=?) + getSchedule nested include
@@ -1797,8 +1800,8 @@ model StockDocument {
   purchaseOrder   PurchaseOrder?      @relation(fields: [purchaseOrderId], references: [id])
   lines           StockDocumentLine[]
 
-  @@index([orgId, status, deletedAt])
-  @@index([orgId, type, deletedAt])
+  @@index([orgId, status, deletedAt, createdAt])
+  @@index([orgId, type, deletedAt, createdAt])
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
@@ -2129,7 +2132,7 @@ model Invoice {
   payments     Payment[]
   lines        InvoiceLine[]
 
-  @@index([orgId, status, deletedAt])
+  @@index([orgId, status, deletedAt, createdAt])
   @@index([orgId, syncVersion])
   @@index([orgId, deletedAt, createdAt])
   @@index([orgId, documentDate, deletedAt])
