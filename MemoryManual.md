@@ -14,7 +14,8 @@
 TypeScript: ✅ 0 errors (api + web)
 Тести:      API-suite 2306 зелені + schema-integrity guard 7/7; web PO-модалка 7/7 (component)
             + E2E 11/11 (crud-purchase-order + purchase-orders-receive, жива БД, 2026-09-15)
-HEAD:       497e3909 docs(skills): структурний split sto-tester (3804→1238, знання збережено)
+HEAD:       f5bc76e1 fix(review): PlannedActualMetrics — named ChangeEvent import + min-w-20
+            (review-fix для 5b3f6937 TD3-декомпозиції CreateWorkOrderModal 2337→2224)
 TD3 (2026-09-15, закрито): консолідація роздутих файлів + утиліт. pagination→common/utils/
 pagination.ts, Kyiv-date→common/utils/kyiv-date.ts (337523be); work-orders.service 1657→1473
 (DTO-мапери, 1ed42c35); 4 скіли стиснуто (a8367105, знання 100% збережено діф-verified);
