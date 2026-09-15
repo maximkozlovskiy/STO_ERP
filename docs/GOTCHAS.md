@@ -4,6 +4,25 @@
 
 ---
 
+## [2026-09-15] Service Worker у DEV віддає застарілий JS-бандл → форми «не сабмітяться» / зламаний HMR
+
+Симптом: у dev-Chrome клік по кнопці форми (напр. «Увійти») НЕ надсилає жодного запиту на бекенд
+(у Network 0 запитів на /api/…), хоча той самий вхід через API (curl) та через чистий Playwright-браузер
+працює (200). У Network видно `sw.js` як ініціатор і відсутність JS-чанків Next.js (вони прийшли з
+SW-кешу `sto-erp-v1`, а не з мережі).
+
+Причина: `ServiceWorkerRegistrar` реєстрував `/sw.js` БЕЗУМОВНО (включно з dev). SW робить cache-first
+на статику (sw.js:100-121) → після оновлення коду браузер тримає СТАРИЙ бандл, у якому обробник форми
+інший/зламаний → клік нічого не робить. SW коректно НЕ чіпає /api/ і не-GET, тож сам POST не блокується —
+ламається саме доставка актуального JS. Ламає HMR так само.
+
+Fix (застосовано): `ServiceWorkerRegistrar` реєструє SW ЛИШЕ у production (`NODE_ENV==='production'`),
+а в dev — активно `getRegistrations().unregister()` + чистить `caches` з префіксом `sto-erp`.
+Ручний воркараунд для вже-зараженого браузера: DevTools → Application → Service Workers → Unregister +
+Clear site data + Ctrl+Shift+R (або інкогніто). Не плутати з auth: пароль/бекенд тут ні до чого.
+
+---
+
 ## [2026-09-15] `prisma.X.update({where:{id}})` без orgId → A1 tenant-guard кидає 500
 
 Клас багів, що траплявся вже ТРИЧІ (report-builder `updateSaved`, `auth.changePassword`, і мало не
