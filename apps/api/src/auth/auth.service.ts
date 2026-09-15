@@ -206,8 +206,11 @@ export class AuthService {
     const hash = await bcrypt.hash(newPassword, 12);
     // B1: зміна пароля інвалідовує усі інші сесії (bump tokenVersion) — стандартна безпекова
     // поведінка: якщо пароль змінено через компрометацію, старі токени на інших пристроях мертві.
+    // where МУСИТЬ нести orgId — A1 tenant-guard відхиляє guarded update без tenant-токена
+    // (AuthAccount не у TENANT_EXEMPT_MODELS) → TenantIsolationError. auth.id вже tenant-звірено
+    // вище через findFirst({orgId}); orgId у where задовольняє guard і не змінює вибірку (1 рядок).
     await this.prisma.authAccount.update({
-      where: { id: auth.id },
+      where: { id: auth.id, orgId },
       data: { passwordHash: hash, tokenVersion: { increment: 1 } },
     });
   }
