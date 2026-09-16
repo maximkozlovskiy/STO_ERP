@@ -10,11 +10,21 @@
 
 ```
 Дата:       2026-09-16
-Фаза:       Активна розробка — generic Excel-імпорт товарів + сирий передперегляд (raw-preview) готовий
-TypeScript: ✅ 0 errors (api + web, npx tsc --noEmit --incremental false)
-Тести:      xlsx api 17/17 (у т.ч. rawPreview +5) · ExcelImportWizard 3/3
-HEAD:       aa3d876b fix(review): cellText не протікає «[object Object]» для формули з result-помилкою
-Review:     2026-09-16 (auto, коміт 46fab8c9 raw-preview) — 1 Suggestion виправлено:
+Фаза:       Аудит #1 Фаза 1 — Employee на zod + react-hook-form (спільна схема web↔api) готова
+TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
+Тести:      employee-schema 15/15 · employees module 27/27 · EmployeeEditModal 4/4
+HEAD:       2f974834 fix(review): employeeFormSchema — приховані числові поля не блокують сабміт
+Review:     2026-09-16 (auto, коміт eb3582cb Employee zod+RHF) — 1 Suggestion (латентний) виправлено:
+            percent/ratePerHour/fixedMonthly/bonusPercent = numericString() (обовʼязкове z.number())
+            → ПОРОЖНЄ будь-яке (навіть приховане неактивне за rateType) → NaN → не-локалізоване
+            "Expected number, received nan" блокувало сабміт. Fix: flatRateNumber() (number|NaN),
+            фінітність АКТИВНОГО поля гейтить superRefine з локалізованим меседжем. +2 регрес-тести.
+            Решта чисто: superRefine діапазони коректні (percent 1..100, ratePerHour>=0, bonus 0..100),
+            grantAccess→loginEmail+password+minlen, useForm<Input,_,Values> коерсить числа, rhfDirty→
+            markDirty БЕЗ else (не тре assignment-dirty, reset не вмикає dirty), rateSchemeSchema
+            реекспорт без циклів, Controller PhoneInput/DatePicker value/onChange коректні,
+            ZodValidationPipe дзеркалить 400-контракт. Prev review нижче:
+Review-prev: 2026-09-16 (auto, коміт 46fab8c9 raw-preview) — 1 Suggestion виправлено:
             cellText для формули з result-об'єктом ({result:{error}}) давав «[object Object]»
             → тепер result рекурсується через cellText; гілку 'error' піднято перед 'result'.
             +тест (#DIV/0!). Решта чисто: RBAC OWNER/ADMIN/XLSX_MANAGER на endpoint, БД/orgId
@@ -49,6 +59,15 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит #1 Фаза 1 — Employee на zod + react-hook-form — 2026-09-16, HEAD 2f974834:
+  eb3582cb feat(forms): Employee на zod + RHF — employeeFormSchema (superRefine крос-польові),
+           rateSchemeSchema перенесено у @sto/shared (реекспорт з api dto), numericString()
+           валідатор, controller create/update через ZodValidationPipe, EmployeeEditModal на
+           RHF+zodResolver (Controller для PhoneInput/DatePickerInput, міст rhfDirty→markDirty).
+  2f974834 review-фікс: flatRateNumber() — приховані неактивні числові поля (за rateType) не
+           блокують сабміт не-локалізованим NaN-меседжем; фінітність активного поля у superRefine.
+tsc shared+api+web 0. employee-schema 15/15, employees 27/27, EmployeeEditModal 4/4.
+
 Generic Excel-імпорт товарів (FRONTEND) — 2026-09-15, HEAD d91fe897 (3 коміти):
   b913ab48 useExcelImport хуки (preview multipart / apply JSON / counterparty mapping GET+PUT)
            + ExcelImportWizard.tsx (generic ui/, 2-крокова модалка matched/ambiguous/notFound)
