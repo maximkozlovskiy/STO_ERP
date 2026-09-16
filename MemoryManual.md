@@ -12,8 +12,16 @@
 Дата:       2026-09-17
 Фаза:       Аудит #1 Фаза 4 — 4 документ-модалки на zod+RHF зі спільними схемами (SupplierPayment/StockDocument/SupplierReturn/PurchaseOrder)
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      4 schema-специ 38/38, SupplierPaymentCreateModal 5/5 (без регресій)
-HEAD:       28f11795 docs(skills): add safeParse(getValues) misleading-error check to sto-review (§8.2)
+Тести:      api 2462/2462 (160 файлів) · web 793/793 (82 файли, ×2 стабільно) · 4 schema-специ 38/38.
+            Фаза 4 ЗАВЕРШЕНА повністю: 4/4 модалки на zod+RHF, QA-ланцюг sync→review→tester пройдено.
+HEAD:       50567fd8 fix(tester): Bug #756 — стабілізація flaky DocumentCreateModals (RHF-модалки) timeout:2000
+Tester:     2026-09-17 (auto, Фаза 4) — 0 продакшн-багів. Ручний аудит усіх 4 модалок: useFieldArray
+            identity/mutation (PO editingKey=field.id, commitEdit/update/remove/append коректні, display-поля
+            збережені), гроші/idempotency (moneyString UA-кома, lines у $transaction, savingRef, createdIdRef),
+            dirty-guard (Bug #639), edit-load reset()→clean, cross-field (sourceType↔account, TRANSFER),
+            PO складні флоу (receive/pricing/Excel/multicurrency) — усе чисто. Єдиний фікс Bug #756 (LOW,
+            лише тест): DocumentCreateModals flaky під паралельним suite (async-flush starvation важких
+            RHF-модалок) → explicit timeout:2000 на всі async-асерти; продакшн НЕ чіпано.
 Review:     2026-09-17 (auto, Фаза 4, коміт cf7de79c) — 1 Important + 2 Suggestion виправлено:
             (I) PurchaseOrderCreateModal handleCreate/handleSave показували хардкод «Оберіть постачальника
             та склад» на будь-який safeParse-фейл; кнопка вже гарантує supplier+warehouse → реальний фейл
@@ -98,6 +106,24 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит #1 Фаза 4 — 4 документ-модалки на zod+RHF зі спільними схемами — 2026-09-17, HEAD 50567fd8:
+  eb063aaa SupplierPayment: supplier-payment.schema (sourceType↔account superRefine, moneyString()
+           UA-кома), controller ZodValidationPipe, RHF-модалка +dirty-guard (нового не було).
+  6f863a95 StockDocument: stock-document.schema (TRANSFER superRefine Bug #462), RHF+useFieldArray
+           (lines у тілі $transaction, без окремого /lines-endpoint).
+  89d9ff98 SupplierReturn: supplier-return.schema (price required, purchaseOrderId create-only),
+           RHF+useFieldArray з INLINE-редагуванням рядків (register(lines.N.quantity)), unitOfMeasureId.
+  40c6cec8 PurchaseOrder (найскладніша, 1981р): purchase-order.schema (contractId/trackingNumber
+           nullable update), RHF+useFieldArray; receive/Excel/pricing/multicurrency/create-then-edit
+           збережено. FIX (review): inline-edit editingKey=field.id (не line._key) — edit-row інакше
+           не активувалась (жоден тест не ганяв inline-edit → спіймано у review перед комітом).
+  cf7de79c review-фікс: firstSchemaError() у PO (змістовна line-item помилка замість хардкоду) +
+           allowedTransitions у StockDoc у useMemo. 50567fd8 tester Bug #756 (flaky test → timeout:2000).
+  Патерн MP-F6/MP-F6.1: спільна zod-схема = ЄДИНЕ джерело валідації web↔api (ZodValidationPipe на беку +
+  zodResolver на фронті). Усі рядки-документи (StockDoc/SR/PO) шлють lines У ТІЛІ (атомарно), на відміну
+  від Invoice (окремий /lines-endpoint + retry). QA: sync чисто → review 3 фікси → tester 0 продакшн-багів.
+tsc shared+api+web 0. api 2462/2462, web 793/793, 4 schema-специ 38/38.
+
 Аудит #1 Фаза 1 — Employee на zod + react-hook-form — 2026-09-16, HEAD 2f974834:
   eb3582cb feat(forms): Employee на zod + RHF — employeeFormSchema (superRefine крос-польові),
            rateSchemeSchema перенесено у @sto/shared (реекспорт з api dto), numericString()

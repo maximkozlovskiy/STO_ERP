@@ -601,6 +601,20 @@ export const goodUpdateSchema = goodFormSchema.partial(); // PATCH — усі п
 - **Read-only рядки + inline-add:** якщо існуючі рядки НЕ редагуються inline (редагування = видалити+додати),
   `fields.map` рендерить read-only рядки; окремий локальний `newLine` useState для inline-add, `append(newLine)`
   на «+», `remove(index)` на видалення. Живі значення — `watch('lines')` (не `field` з useFieldArray — воно snapshot).
+- **Lines у ТІЛІ create/update (StockDoc/SupplierReturn/PO — ДОМІНУЮЧИЙ варіант, Фаза 4):** бек приймає
+  `dto.lines` і створює/пересоздає рядки в атомарному `$transaction` — БЕЗ окремого `/lines`-endpoint.
+  Submit ПРОСТИЙ: `handleSubmit(onValid)` → один POST/PATCH з `lines` у тілі. **Без** multi-request retry,
+  createdLineRef, DELETE-diff (усе робить бек транзакційно). Ризик нижчий за Invoice-варіант.
+  - **Inline-edit рядка:** `register(\`lines.${index}.quantity\`)`для прямого редагування (SupplierReturn),
+АБО staging`editingLine`useState +`update(index, {...editingLine})`(PO). ⚠️ **row-match за`field.id`**
+(RHF-генерований), НЕ за власним `_key`—`field.id ≠ _key`, інакше edit-row ніколи не активується
+(реальний баг, спіймано у Фазі 4 review). `startEdit(line, index, field.id)`тримає`field.id`.
+  - **Display/persist-поля поза схемою** (goodName/unit/unitOfMeasureId/pricedSalePrice): зберігаються у
+    field-об'єкті (RHF не втрачає їх у runtime), читаються через `line as unknown as {...}` cast; при PATCH
+    ті, що потрібні беку (unitOfMeasureId), беруться з `getValues('lines')` за індексом.
+  - **Оманлива submit-помилка:** якщо submit читає `safeParse(getValues())` вручну (щоб повернути id, як PO
+    handleCreate) — НЕ хардкодь «Оберіть X»; бери `err.issues[0].message` (українські зі схеми) + префікс
+    `Рядок N:` коли `path[0]==='lines'`. Інакше line-item фейл (порожня ціна) показує помилку про шапку.
 - **Multi-request submit** (коли бек не приймає lines у тілі документа, як Invoice — рядки окремими POST /lines):
   RHF-масив локальний; `handleSubmit(onValid)` рахує похідні (напр. `amount` зі суми рядків), POST шапку,
   далі цикл POST/DELETE рядків. **Retry-safety зберегти:** `createdDocRef` (не плодити дублі документа на retry),

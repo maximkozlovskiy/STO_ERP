@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-09-17 — Аудит #1 Фаза 4: 4 документ-модалки на zod + RHF зі спільними схемами
+
+Завершено єдиний пункт аудиту «zod + react-hook-form зі спільними схемами» — усі документ-модалки
+тепер на патерні MP-F6/MP-F6.1 (спільна zod-схема у `@sto/shared` = ЄДИНЕ джерело валідації web↔api:
+`ZodValidationPipe` на беку + `zodResolver` на фронті). QA-ланцюг sync→review→tester: sync чисто,
+review 3 фікси, tester 0 продакшн-багів. tsc shared+api+web 0; api 2462, web 793 тести зелені.
+
+### eb063aaa feat(forms): SupplierPayment на RHF+zodResolver (Фаза 4a)
+
+`supplier-payment.schema` з `sourceType↔account` superRefine (BANK потребує bankAccountId+забороняє
+cashRegisterId, CASH навпаки — per-field помилки). Новий хелпер `moneyString()` — UA-кома '1500,50'→1500.5.
+Контролер create/update → ZodValidationPipe. Модалка на useForm; **додано dirty-guard** (нового не було).
+
+### 6f863a95 feat(forms): StockDocument на RHF+useFieldArray (Фаза 4b)
+
+`stock-document.schema` з TRANSFER superRefine (Bug #462: targetWarehouseId обовʼязковий і ≠ warehouseId).
+Рядки У ТІЛІ create/update (атомарний $transaction), без окремого /lines-endpoint. Модалка на
+useForm+useFieldArray; value-based dirty → RHF isDirty. FSM/Excel-wizard/XLSX-import збережено.
+
+### 89d9ff98 feat(forms): SupplierReturn на RHF+useFieldArray (Фаза 4c)
+
+`supplier-return.schema` (price ОБОВʼЯЗКОВА на відміну від StockDoc; purchaseOrderId create-only).
+Модалка з INLINE-редагуванням рядків через `register(lines.N.quantity/price)`; unitOfMeasureId
+збережено з getValues при PATCH (Bug #548). Duplicate-good guard на append.
+
+### 40c6cec8 feat(forms): PurchaseOrder на RHF+useFieldArray (Фаза 4d, найскладніша)
+
+`purchase-order.schema` (contractId/trackingNumber nullable в update — null очищає). Модалка 1981р
+на useForm+useFieldArray; contractId лишається useState (auto-fill+null-clear). НЕ зламано:
+receiveMode, ExcelImportWizard create-then-open, XlsxImportButton, apply-pricing/RulePricerModal,
+create-then-edit flow, multicurrency, inline-edit. **FIX** (review-found latent): inline-edit
+editingKey зіставляв line._key проти RHF field.id → edit-row ніколи не активувалась; startEdit
+тепер тримає field.id.
+
+### cf7de79c fix(review) + 50567fd8 fix(tester)
+
+Review: `firstSchemaError()` у PO handleCreate/handleSave — змістовна line-item помилка («Рядок N:
+Ціна не може бути відʼємною») замість хардкоду «Оберіть постачальника та склад»; мертвий import POLine;
+`allowedTransitions` у StockDoc у useMemo. Tester: Bug #756 (LOW, лише тест) — flaky DocumentCreateModals
+під паралельним suite → explicit timeout:2000.
+
+---
+
 ## 2026-09-16 — Аудит #1 Фаза 3: Invoice zod + RHF + useFieldArray — sync fix
 
 ### 675d6b4c fix(sync): invoiceType 'INVOICE' поза UI-enum ламав редагування рахунків з наряду
