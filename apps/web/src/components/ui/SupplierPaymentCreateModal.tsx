@@ -1,9 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  supplierPaymentFormSchema,
+  type SupplierPaymentFormInput,
+  type SupplierPaymentFormValues,
+} from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
@@ -69,26 +78,51 @@ interface Props {
   prefill?: SupplierPaymentPrefill;
 }
 
+// «Чиста» база форми — reset() до неї на open дає rhfDirty=false (Bug #639: auto-select
+// каси/банку виконується через setValue з shouldDirty:false, тому не вмикає dirty-guard).
+const emptyDefaults = (): SupplierPaymentFormInput => ({
+  supplierId: '',
+  sourceType: 'CASH_REGISTER',
+  bankAccountId: '',
+  cashRegisterId: '',
+  purchaseOrderId: '',
+  amount: '',
+  method: '',
+  notes: '',
+  documentDate: kyivToday(),
+});
+
 export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, prefill }: Props) {
   const features = useUiFeatures();
   const isEdit = !!paymentId;
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
-  const [supplierId, setSupplierId] = useState('');
+  // react-hook-form + спільна zod-схема (єдине джерело валідації web ↔ api).
+  const {
+    control,
+    register,
+    reset,
+    watch,
+    setValue,
+    handleSubmit,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<SupplierPaymentFormInput, unknown, SupplierPaymentFormValues>({
+    resolver: zodResolver(supplierPaymentFormSchema),
+    defaultValues: emptyDefaults(),
+    mode: 'onBlur',
+  });
+
+  // Локальні (не-валідовані) поля відображення пікерів — display-текст постачальника/PO.
   const [supplierName, setSupplierName] = useState('');
-  const [sourceType, setSourceType] = useState<PaymentSourceType>('CASH_REGISTER');
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [cashRegisterId, setCashRegisterId] = useState('');
-  const [purchaseOrderId, setPurchaseOrderId] = useState('');
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState('');
-  const [notes, setNotes] = useState('');
-  const [documentDate, setDocumentDate] = useState(() => kyivToday());
+
+  const sourceType = watch('sourceType') as PaymentSourceType;
+  const supplierId = watch('supplierId');
 
   const [saving, setSaving] = useState(false);
   // Синхронний re-entrancy guard: `disabled={saving}` спирається на re-render React
   // МІЖ подіями кліку — але два click-и, доставлені в ОДНОМУ tick (дуже швидкий
-  // double-click / синтетичні події / Enter-repeat), обидва входять у handleSave до
+  // double-click / синтетичні події / Enter-repeat), обидва входять у submit до
   // того як disabled застосується → 2 POST /supplier-payments (2 оплати). createdIdRef
   // не рятує бо виставляється лише ПІСЛЯ await першого POST. Ref фліпається синхронно
   // на першому вході → другий вхід одразу повертається (WEB-H3 double-submit).
@@ -133,32 +167,23 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     if (!open || !isEdit || !existing) return;
     if (populatedRef.current === existing.id) return;
     populatedRef.current = existing.id;
-    setSupplierId(existing.supplierId);
+    // reset() ставить нову «чисту» базу з наявного запису → rhfDirty=false.
+    reset({
+      supplierId: existing.supplierId,
+      sourceType: existing.sourceType,
+      bankAccountId: existing.bankAccountId ?? '',
+      cashRegisterId: existing.cashRegisterId ?? '',
+      purchaseOrderId: existing.purchaseOrderId ?? '',
+      amount: String(existing.amount),
+      method: existing.method,
+      notes: existing.notes ?? '',
+      documentDate: existing.documentDate ?? kyivToday(),
+    });
     setSupplierName(existing.supplierName ?? '');
-    setSourceType(existing.sourceType);
-    setBankAccountId(existing.bankAccountId ?? '');
-    setCashRegisterId(existing.cashRegisterId ?? '');
-    setPurchaseOrderId(existing.purchaseOrderId ?? '');
     setPurchaseOrderNumber(existing.purchaseOrderNumber ?? '');
-    setAmount(String(existing.amount));
-    setMethod(existing.method);
-    setNotes(existing.notes ?? '');
-    setDocumentDate(existing.documentDate ?? kyivToday());
     // джерело вже обрано з запису — не даємо auto-select перезаписати
     autoSelectedRef.current = { cash: true, bank: true };
-  }, [open, isEdit, existing]);
-
-  // Передзаповнення при створенні з іншого документа (напр. PurchaseOrder).
-  const prefilledRef = useRef(false);
-  useEffect(() => {
-    if (!open || isEdit || !prefill || prefilledRef.current) return;
-    prefilledRef.current = true;
-    if (prefill.supplierId) setSupplierId(prefill.supplierId);
-    if (prefill.supplierName) setSupplierName(prefill.supplierName);
-    if (prefill.purchaseOrderId) setPurchaseOrderId(prefill.purchaseOrderId);
-    if (prefill.purchaseOrderNumber) setPurchaseOrderNumber(prefill.purchaseOrderNumber);
-    if (prefill.amount != null && prefill.amount > 0) setAmount(String(prefill.amount));
-  }, [open, isEdit, prefill]);
+  }, [open, isEdit, existing, reset]);
 
   // ── Reference data ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -194,8 +219,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   }, [open]);
 
   // Auto-select single source — раз на джерело коли список прибув.
-  // Не читає cashRegisterId/bankAccountId у deps, щоб не перевибирати
-  // щойно очищене користувачем поле.
+  // shouldDirty:false — авто-вибір не вмикає dirty-guard (Bug #639). Не читає
+  // cash/bankAccountId у deps, щоб не перевибирати щойно очищене користувачем поле.
   useEffect(() => {
     if (
       sourceType === 'CASH_REGISTER' &&
@@ -203,134 +228,128 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       !autoSelectedRef.current.cash
     ) {
       autoSelectedRef.current.cash = true;
-      setCashRegisterId(cashRegisters[0].id);
+      setValue('cashRegisterId', cashRegisters[0].id, { shouldDirty: false });
     }
     if (sourceType === 'BANK_ACCOUNT' && banks.length === 1 && !autoSelectedRef.current.bank) {
       autoSelectedRef.current.bank = true;
-      setBankAccountId(banks[0].id);
+      setValue('bankAccountId', banks[0].id, { shouldDirty: false });
     }
-  }, [sourceType, cashRegisters, banks]);
+  }, [sourceType, cashRegisters, banks, setValue]);
 
   useEffect(() => {
-    if (methods.length > 0 && !method) setMethod(methods[0].code);
-  }, [methods, method]);
+    if (methods.length > 0 && !watch('method')) {
+      setValue('method', methods[0].code, { shouldDirty: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [methods]);
 
-  const resetForm = useCallback(() => {
-    setSupplierId('');
-    setSupplierName('');
-    setSourceType('CASH_REGISTER');
-    setBankAccountId('');
-    setCashRegisterId('');
-    setPurchaseOrderId('');
-    setPurchaseOrderNumber('');
-    setAmount('');
-    setMethod('');
-    setNotes('');
-    setDocumentDate(kyivToday());
-    setError('');
-    autoSelectedRef.current = { cash: false, bank: false };
-    populatedRef.current = null;
-    prefilledRef.current = false;
-    createdIdRef.current = null;
-    savingRef.current = false;
-  }, []);
-
+  // Reset on open/close — чиста база + скидання refs + (для create) prefill.
+  // ВАЖЛИВО: reset() і prefill в ОДНОМУ ефекті, у порядку reset→prefill — інакше
+  // окремий пізніший reset-ефект затирає щойно передзаповнений supplierId (кнопка
+  // «Створити» лишалась би disabled бо supplierId порожній).
   useEffect(() => {
-    if (!open) resetForm();
-  }, [open, resetForm]);
-
-  const handleSave = useCallback(async () => {
-    // WEB-H3: синхронний guard проти concurrent double-submit (див. savingRef).
-    if (savingRef.current) return;
-    if (!supplierId) {
-      setError('Оберіть постачальника');
-      return;
-    }
-    if (sourceType === 'BANK_ACCOUNT' && !bankAccountId) {
-      setError('Оберіть банківський рахунок');
-      return;
-    }
-    if (sourceType === 'CASH_REGISTER' && !cashRegisterId) {
-      setError('Оберіть касу');
-      return;
-    }
-    // UA-locale: користувач може ввести кому як десятковий роздільник.
-    const amt = parseFloat(amount.replace(',', '.'));
-    if (!Number.isFinite(amt) || amt <= 0) {
-      setError('Сума має бути більшою за нуль');
-      return;
-    }
-    if (!method) {
-      setError('Оберіть метод оплати');
-      return;
-    }
-    setError('');
-    savingRef.current = true;
-    setSaving(true);
-    const payload = {
-      supplierId,
-      sourceType,
-      bankAccountId: sourceType === 'BANK_ACCOUNT' ? bankAccountId : undefined,
-      cashRegisterId: sourceType === 'CASH_REGISTER' ? cashRegisterId : undefined,
-      purchaseOrderId: purchaseOrderId || undefined,
-      amount: amt,
-      method,
-      notes: notes || undefined,
-      documentDate,
-    };
-    try {
-      if (isEdit) {
-        await updateMut.mutateAsync({ id: paymentId!, data: payload });
-        if (features.toastEnabled) toast.success('Оплату оновлено');
-      } else if (createdIdRef.current) {
-        // Оплату вже створено на попередній спробі (retry після обриву на
-        // відповіді) — не створюємо дубль, лише завершуємо форму.
-        if (features.toastEnabled) toast.success('Оплату створено');
-      } else {
-        // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
-        const created = await createMut.mutateAsync(payload);
-        createdIdRef.current = created.id;
-        if (features.toastEnabled) toast.success('Оплату створено');
-      }
-      onSaved();
-      onClose();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
-      setError(msg);
-      if (features.toastEnabled) toast.error(msg);
-    } finally {
+    if (open) {
+      dirty.resetDirty();
+      setError('');
+      autoSelectedRef.current = { cash: false, bank: false };
+      createdIdRef.current = null;
       savingRef.current = false;
-      setSaving(false);
+      if (!isEdit) {
+        // reset() ставить чисту базу → rhfDirty=false; далі накладаємо prefill.
+        reset(emptyDefaults());
+        setSupplierName('');
+        setPurchaseOrderNumber('');
+        // Передзаповнення при створенні з іншого документа (напр. PurchaseOrder).
+        if (prefill) {
+          if (prefill.supplierId) setValue('supplierId', prefill.supplierId);
+          if (prefill.supplierName) setSupplierName(prefill.supplierName);
+          if (prefill.purchaseOrderId) setValue('purchaseOrderId', prefill.purchaseOrderId);
+          if (prefill.purchaseOrderNumber) setPurchaseOrderNumber(prefill.purchaseOrderNumber);
+          if (prefill.amount != null && prefill.amount > 0)
+            setValue('amount', String(prefill.amount));
+        }
+      }
+    } else {
+      // Повне очищення при закритті (edit populate спрацює наново при наступному open).
+      populatedRef.current = null;
     }
-  }, [
-    supplierId,
-    sourceType,
-    bankAccountId,
-    cashRegisterId,
-    purchaseOrderId,
-    amount,
-    method,
-    notes,
-    documentDate,
-    features.toastEnabled,
-    onSaved,
-    onClose,
-    isEdit,
-    paymentId,
-    updateMut,
-    createMut,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, paymentId]);
+
+  // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
+  useEffect(() => {
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhfDirty]);
+
+  const onValid = useCallback(
+    async (values: SupplierPaymentFormValues) => {
+      // WEB-H3: синхронний guard проти concurrent double-submit (див. savingRef).
+      if (savingRef.current) return;
+      savingRef.current = true;
+      setSaving(true);
+      setError('');
+      const payload = {
+        supplierId: values.supplierId,
+        sourceType: values.sourceType,
+        bankAccountId: values.sourceType === 'BANK_ACCOUNT' ? values.bankAccountId : undefined,
+        cashRegisterId: values.sourceType === 'CASH_REGISTER' ? values.cashRegisterId : undefined,
+        purchaseOrderId: values.purchaseOrderId || undefined,
+        amount: values.amount,
+        method: values.method,
+        notes: values.notes || undefined,
+        documentDate: values.documentDate,
+      };
+      try {
+        if (isEdit) {
+          await updateMut.mutateAsync({ id: paymentId!, data: payload });
+          if (features.toastEnabled) toast.success('Оплату оновлено');
+        } else if (createdIdRef.current) {
+          // Оплату вже створено на попередній спробі (retry після обриву на
+          // відповіді) — не створюємо дубль, лише завершуємо форму.
+          if (features.toastEnabled) toast.success('Оплату створено');
+        } else {
+          // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
+          const created = await createMut.mutateAsync(payload);
+          createdIdRef.current = created.id;
+          if (features.toastEnabled) toast.success('Оплату створено');
+        }
+        dirty.resetDirty();
+        onSaved();
+        onClose();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Помилка збереження';
+        setError(msg);
+        if (features.toastEnabled) toast.error(msg);
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    },
+    [isEdit, paymentId, updateMut, createMut, features.toastEnabled, onSaved, onClose, dirty],
+  );
+
+  const handleSave = handleSubmit(onValid);
+
+  const handleModalClose = useCallback(async () => {
+    if (savingRef.current) return;
+    if (!(await dirty.confirmClose())) return;
+    onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose]);
 
   return (
     <>
       <Modal
         open={open}
-        onClose={onClose}
+        onClose={handleModalClose}
+        onSubmit={handleSave}
         title={isEdit ? 'Редагувати оплату' : 'Нова оплата постачальнику'}
         size="lg"
         footer={
           <div className="flex gap-2 items-center justify-end w-full">
-            <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+            <Button variant="outline" size="sm" onClick={handleModalClose} disabled={saving}>
               Закрити
             </Button>
             <Button
@@ -358,72 +377,101 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
           )}
 
           {/* Постачальник */}
-          <EntityPickerField
-            label="Постачальник"
-            required
-            display={supplierName}
-            placeholder="Пошук постачальника…"
-            className="h-8 text-[13px]"
-            onPick={() => setSupplierPickerOpen(true)}
-            onClear={() => {
-              setSupplierId('');
-              setSupplierName('');
-              // Прив'язка до PO належить конкретному постачальнику; при очищенні
-              // постачальника треба скинути обидва поля пари, інакше залишається
-              // orphan purchaseOrderId який не пройде backend-валідацію (PO не
-              // належатиме "новому" вибраному постачальнику) — §8.2 paired FK state.
-              setPurchaseOrderId('');
-              setPurchaseOrderNumber('');
-            }}
-          />
+          <div>
+            <EntityPickerField
+              label="Постачальник"
+              required
+              display={supplierName}
+              placeholder="Пошук постачальника…"
+              className="h-8 text-[13px]"
+              onPick={() => setSupplierPickerOpen(true)}
+              onClear={() => {
+                setValue('supplierId', '', { shouldDirty: true });
+                setSupplierName('');
+                // Прив'язка до PO належить конкретному постачальнику; при очищенні
+                // постачальника треба скинути обидва поля пари, інакше залишається
+                // orphan purchaseOrderId який не пройде backend-валідацію (PO не
+                // належатиме "новому" вибраному постачальнику) — §8.2 paired FK state.
+                setValue('purchaseOrderId', '', { shouldDirty: true });
+                setPurchaseOrderNumber('');
+              }}
+            />
+            {errors.supplierId && (
+              <p className="text-[12px] text-destructive leading-tight mt-1">
+                {errors.supplierId.message}
+              </p>
+            )}
+          </div>
 
           {/* Джерело коштів */}
           <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Джерело коштів"
-              required
-              value={sourceType}
-              onChange={e => {
-                setSourceType(e.target.value as PaymentSourceType);
-                setBankAccountId('');
-                setCashRegisterId('');
-              }}
-              className="h-8 text-[13px]"
-            >
-              <option value="CASH_REGISTER">Каса</option>
-              <option value="BANK_ACCOUNT">Банківський рахунок</option>
-            </Select>
+            <Controller
+              control={control}
+              name="sourceType"
+              render={({ field }) => (
+                <Select
+                  label="Джерело коштів"
+                  required
+                  value={field.value}
+                  onChange={e => {
+                    field.onChange(e.target.value as PaymentSourceType);
+                    // зміна джерела скидає обидва рахунки — щоб не лишити orphan FK
+                    // невідповідного типу (backend guard відхилить, superRefine також).
+                    setValue('bankAccountId', '', { shouldDirty: true });
+                    setValue('cashRegisterId', '', { shouldDirty: true });
+                  }}
+                  className="h-8 text-[13px]"
+                >
+                  <option value="CASH_REGISTER">Каса</option>
+                  <option value="BANK_ACCOUNT">Банківський рахунок</option>
+                </Select>
+              )}
+            />
 
             {sourceType === 'CASH_REGISTER' ? (
-              <Select
-                label="Каса"
-                required
-                value={cashRegisterId}
-                onChange={e => setCashRegisterId(e.target.value)}
-                className="h-8 text-[13px]"
-              >
-                <option value="">— Оберіть —</option>
-                {cashRegisters.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+              <Controller
+                control={control}
+                name="cashRegisterId"
+                render={({ field }) => (
+                  <Select
+                    label="Каса"
+                    required
+                    value={typeof field.value === 'string' ? field.value : ''}
+                    onChange={field.onChange}
+                    errorMessage={errors.cashRegisterId?.message}
+                    className="h-8 text-[13px]"
+                  >
+                    <option value="">— Оберіть —</option>
+                    {cashRegisters.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
             ) : (
-              <Select
-                label="Банківський рахунок"
-                required
-                value={bankAccountId}
-                onChange={e => setBankAccountId(e.target.value)}
-                className="h-8 text-[13px]"
-              >
-                <option value="">— Оберіть —</option>
-                {banks.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </Select>
+              <Controller
+                control={control}
+                name="bankAccountId"
+                render={({ field }) => (
+                  <Select
+                    label="Банківський рахунок"
+                    required
+                    value={typeof field.value === 'string' ? field.value : ''}
+                    onChange={field.onChange}
+                    errorMessage={errors.bankAccountId?.message}
+                    className="h-8 text-[13px]"
+                  >
+                    <option value="">— Оберіть —</option>
+                    {banks.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
             )}
           </div>
 
@@ -433,25 +481,32 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
               label="Сума, ₴"
               type="text"
               inputMode="decimal"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
+              {...register('amount')}
               placeholder="0.00"
+              errorMessage={errors.amount?.message}
               className="h-8 text-[13px] tabular-nums"
             />
-            <Select
-              label="Метод оплати"
-              required
-              value={method}
-              onChange={e => setMethod(e.target.value)}
-              className="h-8 text-[13px]"
-            >
-              {methods.length === 0 && <option value="">—</option>}
-              {methods.map(m => (
-                <option key={m.code} value={m.code}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="method"
+              render={({ field }) => (
+                <Select
+                  label="Метод оплати"
+                  required
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  errorMessage={errors.method?.message}
+                  className="h-8 text-[13px]"
+                >
+                  {methods.length === 0 && <option value="">—</option>}
+                  {methods.map(m => (
+                    <option key={m.code} value={m.code}>
+                      {m.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
           </div>
 
           {/* Замовлення постачальнику (опціонально) | Дата */}
@@ -464,7 +519,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
               disabled={!supplierId}
               onPick={() => setPoPickerOpen(true)}
               onClear={() => {
-                setPurchaseOrderId('');
+                setValue('purchaseOrderId', '', { shouldDirty: true });
                 setPurchaseOrderNumber('');
               }}
             />
@@ -472,15 +527,23 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
               <label className="block text-[13px] font-medium text-foreground mb-1">
                 Дата документа
               </label>
-              <DatePickerInput value={documentDate} onChange={setDocumentDate} />
+              <Controller
+                control={control}
+                name="documentDate"
+                render={({ field }) => (
+                  <DatePickerInput
+                    value={typeof field.value === 'string' ? field.value : ''}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
             </div>
           </div>
 
           {/* Опис */}
           <Input
             label="Опис"
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
+            {...register('notes')}
             placeholder="Додаткова інформація…"
             className="h-8 text-[13px]"
           />
@@ -492,10 +555,10 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         open={supplierPickerOpen}
         onClose={() => setSupplierPickerOpen(false)}
         onSelect={(item: { id: string; primary: string }) => {
-          setSupplierId(item.id);
+          setValue('supplierId', item.id, { shouldDirty: true });
           setSupplierName(item.primary);
           // зміна постачальника скидає прив'язку до PO (PO належить конкретному постачальнику)
-          setPurchaseOrderId('');
+          setValue('purchaseOrderId', '', { shouldDirty: true });
           setPurchaseOrderNumber('');
           setSupplierPickerOpen(false);
         }}
@@ -512,7 +575,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         open={poPickerOpen}
         onClose={() => setPoPickerOpen(false)}
         onSelect={(item: { id: string; primary: string }) => {
-          setPurchaseOrderId(item.id);
+          setValue('purchaseOrderId', item.id, { shouldDirty: true });
           setPurchaseOrderNumber(item.primary);
           setPoPickerOpen(false);
         }}
@@ -523,6 +586,8 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
           ).then(d => d.items.map(po => ({ id: po.id, primary: po.number })))
         }
       />
+
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }

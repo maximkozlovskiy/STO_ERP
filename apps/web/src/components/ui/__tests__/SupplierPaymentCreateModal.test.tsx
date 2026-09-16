@@ -19,6 +19,11 @@ import { SupplierPaymentCreateModal } from '../SupplierPaymentCreateModal';
 // Спільний helper (simplify/reuse) замість локальної копії.
 import { renderWithQueryClient } from '../../../__tests__/query-utils';
 
+// Схема тепер валідує supplierId/cashRegisterId через zod .uuid() (спільна web↔api) —
+// фікстури мусять бути валідні UUID, інакше handleSubmit блокує submit і POST не летить.
+const SUP_UUID = '11111111-1111-1111-1111-111111111111';
+const CASH_UUID = '33333333-3333-3333-3333-333333333333';
+
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
@@ -46,7 +51,7 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
     );
     window.sessionStorage.setItem(
       'cache:cash-registers',
-      JSON.stringify({ items: [{ id: 'cr1', name: 'Каса №1' }], total: 1 }),
+      JSON.stringify({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 }),
     );
     // Offline: усі reference-fetch падають (як у реальному offline-first сценарії).
     apiFetchMock.mockRejectedValue(new Error('offline'));
@@ -63,7 +68,7 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
   it('не крашиться коли cache — голий масив (стара форма модалки)', async () => {
     window.sessionStorage.setItem(
       'cache:cash-registers',
-      JSON.stringify([{ id: 'cr1', name: 'Каса №1' }]),
+      JSON.stringify([{ id: CASH_UUID, name: 'Каса №1' }]),
     );
     apiFetchMock.mockRejectedValue(new Error('offline'));
 
@@ -79,7 +84,7 @@ describe('SupplierPaymentCreateModal — cache-shape regression (family Bug #592
       if (path === '/bank-accounts')
         return Promise.resolve({ items: [{ id: 'ba1', name: 'Основний' }], total: 1 });
       if (path === '/cash-registers')
-        return Promise.resolve({ items: [{ id: 'cr1', name: 'Каса №1' }], total: 1 });
+        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
       if (path === '/payment-methods') return Promise.resolve([]);
       return Promise.resolve({ items: [], total: 0 });
     });
@@ -114,7 +119,7 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
   it('retry після успішного create + провалу onSaved не створює дубль оплати', async () => {
     apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
       if (path === '/cash-registers')
-        return Promise.resolve({ items: [{ id: 'cr1', name: 'Каса №1' }], total: 1 });
+        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
       if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
       if (path === '/payment-methods')
         return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
@@ -135,7 +140,7 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
         open
         onClose={() => {}}
         onSaved={onSaved}
-        prefill={{ supplierId: 'sup1', supplierName: 'Постачальник', amount: 100 }}
+        prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
       />,
     );
 
@@ -182,7 +187,7 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
     let resolvePost: () => void = () => {};
     apiFetchMock.mockImplementation((path: string, opts?: { method?: string }) => {
       if (path === '/cash-registers')
-        return Promise.resolve({ items: [{ id: 'cr1', name: 'Каса №1' }], total: 1 });
+        return Promise.resolve({ items: [{ id: CASH_UUID, name: 'Каса №1' }], total: 1 });
       if (path === '/bank-accounts') return Promise.resolve({ items: [], total: 0 });
       if (path === '/payment-methods')
         return Promise.resolve([{ code: 'CASH', name: 'Готівка', isActive: true }]);
@@ -198,7 +203,7 @@ describe('SupplierPaymentCreateModal — idempotency (WEB-H3)', () => {
         open
         onClose={() => {}}
         onSaved={() => {}}
-        prefill={{ supplierId: 'sup1', supplierName: 'Постачальник', amount: 100 }}
+        prefill={{ supplierId: SUP_UUID, supplierName: 'Постачальник', amount: 100 }}
       />,
     );
 

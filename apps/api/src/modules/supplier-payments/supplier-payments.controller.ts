@@ -20,8 +20,13 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { SupplierPaymentsService } from './supplier-payments.service';
 import {
-  CreateSupplierPaymentDto,
-  UpdateSupplierPaymentDto,
+  supplierPaymentCreateSchema,
+  supplierPaymentUpdateSchema,
+  type SupplierPaymentCreateValues,
+  type SupplierPaymentUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
   SupplierPaymentQueryDto,
   SupplierPaymentScheduleQueryDto,
   SupplierPaymentScheduleDocumentsQueryDto,
@@ -41,7 +46,7 @@ export class SupplierPaymentsController {
   @ApiOperation({ summary: 'Створити оплату постачальнику (чернетка)' })
   create(
     @OrgContext() orgId: string,
-    @Body() dto: CreateSupplierPaymentDto,
+    @Body(new ZodValidationPipe(supplierPaymentCreateSchema)) dto: SupplierPaymentCreateValues,
     @CurrentUser() user: { id: string },
   ) {
     return this.service.create(orgId, dto, user.id);
@@ -145,7 +150,7 @@ export class SupplierPaymentsController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateSupplierPaymentDto,
+    @Body(new ZodValidationPipe(supplierPaymentUpdateSchema)) dto: SupplierPaymentUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }

@@ -64,3 +64,15 @@ export const optionalNonNegNumber = () =>
  */
 export const numericString = () =>
   z.preprocess(v => (v === '' || v === null || v === undefined ? NaN : Number(v)), z.number());
+
+/**
+ * Грошова сума з рядка форми з підтримкою UA-локалі (кома як десятковий роздільник).
+ * Дзеркалить фронтове `amount.replace(',', '.')` — '1,5' → 1.5. `z.input` — рядок, `z.output` = number.
+ * Порожнє/нечислове → NaN → падає на .number(); діапазон (min 0.01) додає доменна схема через .pipe().
+ */
+export const moneyString = () =>
+  z.preprocess(v => {
+    if (v === '' || v === null || v === undefined) return NaN;
+    if (typeof v === 'string') return Number(v.replace(',', '.'));
+    return Number(v);
+  }, z.number());

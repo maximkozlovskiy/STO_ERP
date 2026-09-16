@@ -4,3 +4,4 @@ export * from './employee.schema';
 export * from './counterparty.schema';
 export * from './vehicle.schema';
 export * from './invoice.schema';
+export * from './supplier-payment.schema';
