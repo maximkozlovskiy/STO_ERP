@@ -22,8 +22,13 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import {
-  CreatePurchaseOrderDto,
-  UpdatePurchaseOrderDto,
+  purchaseOrderCreateSchema,
+  purchaseOrderUpdateSchema,
+  type PurchaseOrderCreateValues,
+  type PurchaseOrderUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
   ReceivePurchaseOrderDto,
   TransitionPurchaseOrderDto,
   PurchaseOrderQueryDto,
@@ -84,7 +89,10 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити замовлення постачальнику' })
-  create(@OrgContext() orgId: string, @Body() dto: CreatePurchaseOrderDto) {
+  create(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(purchaseOrderCreateSchema)) dto: PurchaseOrderCreateValues,
+  ) {
     return this.service.create(orgId, dto);
   }
 
@@ -94,7 +102,7 @@ export class PurchaseOrdersController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdatePurchaseOrderDto,
+    @Body(new ZodValidationPipe(purchaseOrderUpdateSchema)) dto: PurchaseOrderUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }
