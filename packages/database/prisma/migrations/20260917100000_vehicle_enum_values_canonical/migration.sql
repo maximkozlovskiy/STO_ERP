@@ -27,13 +27,15 @@ UPDATE "vehicles" SET "driveType" = 'FWD' WHERE lower("driveType") IN ('fwd', '�
 UPDATE "vehicles" SET "driveType" = 'RWD' WHERE lower("driveType") IN ('rwd', 'задній');
 UPDATE "vehicles" SET "driveType" = 'AWD' WHERE lower("driveType") IN ('awd', '4wd', 'повний');
 
--- ── bodyType: lowercase → код (van→MINIVAN, truck/convertible→OTHER) ──
+-- ── bodyType: lowercase → код (VAN — окремий канонічний код "Фургон", НЕ MINIVAN;
+-- truck/convertible → OTHER, немає власного канонічного коду) ──
 UPDATE "vehicles" SET "bodyType" = 'SEDAN'     WHERE lower("bodyType") IN ('sedan', 'седан');
 UPDATE "vehicles" SET "bodyType" = 'HATCHBACK' WHERE lower("bodyType") IN ('hatchback', 'хетчбек');
 UPDATE "vehicles" SET "bodyType" = 'WAGON'     WHERE lower("bodyType") IN ('wagon', 'універсал');
 UPDATE "vehicles" SET "bodyType" = 'SUV'       WHERE lower("bodyType") IN ('suv', 'позашляховик');
 UPDATE "vehicles" SET "bodyType" = 'CROSSOVER' WHERE lower("bodyType") IN ('crossover', 'кросовер');
 UPDATE "vehicles" SET "bodyType" = 'COUPE'     WHERE lower("bodyType") IN ('coupe', 'купе');
-UPDATE "vehicles" SET "bodyType" = 'MINIVAN'   WHERE lower("bodyType") IN ('van', 'minivan', 'мінівен');
+UPDATE "vehicles" SET "bodyType" = 'MINIVAN'   WHERE lower("bodyType") IN ('minivan', 'мінівен');
 UPDATE "vehicles" SET "bodyType" = 'PICKUP'    WHERE lower("bodyType") IN ('pickup', 'пікап');
-UPDATE "vehicles" SET "bodyType" = 'OTHER'     WHERE lower("bodyType") IN ('truck', 'вантажівка', 'convertible', 'кабріолет', 'фургон');
+UPDATE "vehicles" SET "bodyType" = 'VAN'       WHERE lower("bodyType") IN ('van', 'фургон');
+UPDATE "vehicles" SET "bodyType" = 'OTHER'     WHERE lower("bodyType") IN ('truck', 'вантажівка', 'convertible', 'кабріолет');
