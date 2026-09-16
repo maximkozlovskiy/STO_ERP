@@ -227,6 +227,12 @@ export function InvoiceCreateModal({
   // створити ДРУГИЙ рахунок. Зберігаємо id першого успіху й дошиваємо лише
   // ще-не-збережені рядки (їх видаляємо зі state після кожного успішного POST).
   const createdInvoiceRef = useRef<{ id: string; number: string } | null>(null);
+  // Bug #755: retry-safety для РЯДКІВ. Multi-request submit (POST шапка → N× POST /lines)
+  // при обриві на рядку #2 лишав рядок #1 уже збереженим на беку; повторний клік
+  // ре-постив ВСІ рядки з форми (linesToPost щоразу з RHF-масиву) → задвоєна сума.
+  // Тут запам'ятовуємо _key кожного успішно збереженого рядка (create+edit) і на
+  // ретраї пропускаємо його. _key стабільний per-line (nextKey() при load/append/flush).
+  const postedLineKeysRef = useRef<Set<string>>(new Set());
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -264,6 +270,7 @@ export function InvoiceCreateModal({
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
     createdInvoiceRef.current = null;
+    postedLineKeysRef.current = new Set();
     if (!isEditMode) {
       // reset() ставить нову «чисту» базу → rhfDirty=false (edit-режим заповнюється load-ефектом).
       reset({
@@ -499,21 +506,27 @@ export function InvoiceCreateModal({
         });
         createdInvoiceRef.current = inv;
       }
-      // Постимо рядки; ведемо список ще-не-збережених для retry-safety.
+      // Постимо рядки; на ретраї пропускаємо вже збережені (Bug #755). Кожен успіх
+      // фіксуємо у postedLineKeysRef ДО shift — щоб обрив на наступному рядку не
+      // ре-постив попередні при повторному кліку «Створити».
       const remaining = [...linesToPost];
       while (remaining.length) {
         const line = remaining[0]!;
-        await apiFetch(`/invoices/${inv.id}/lines`, {
-          method: 'POST',
-          body: JSON.stringify({
-            description: line.description,
-            quantity: parseFloat(String(line.quantity)) || 1,
-            unitPrice: parseFloat(String(line.unitPrice)) || 0,
-          }),
-        });
+        if (!line._key || !postedLineKeysRef.current.has(line._key)) {
+          await apiFetch(`/invoices/${inv.id}/lines`, {
+            method: 'POST',
+            body: JSON.stringify({
+              description: line.description,
+              quantity: parseFloat(String(line.quantity)) || 1,
+              unitPrice: parseFloat(String(line.unitPrice)) || 0,
+            }),
+          });
+          if (line._key) postedLineKeysRef.current.add(line._key);
+        }
         remaining.shift();
       }
       createdInvoiceRef.current = null;
+      postedLineKeysRef.current = new Set();
       if (features.toastEnabled) toast.success(`Рахунок ${inv.number} створено`);
       dirty.resetDirty();
       onSaved?.();
@@ -551,8 +564,11 @@ export function InvoiceCreateModal({
         await apiFetch(`/invoices/${invoiceId}/lines/${lineId}`, { method: 'DELETE' });
         initialLineIdsRef.current.delete(lineId);
       }
-      // POST нових рядків (без id).
+      // POST нових рядків (без id). Bug #755: на ретраї (DELETE ok, але POST нового впав)
+      // пропускаємо вже збережені _key — інакше повторний «Зберегти» задвоював нові рядки
+      // (без id вони щоразу потрапляли у фільтр). Успіх фіксуємо у postedLineKeysRef.
       for (const line of linesNow.filter(l => !l.id)) {
+        if (line._key && postedLineKeysRef.current.has(line._key)) continue;
         await apiFetch(`/invoices/${invoiceId}/lines`, {
           method: 'POST',
           body: JSON.stringify({
@@ -561,7 +577,9 @@ export function InvoiceCreateModal({
             unitPrice: parseFloat(String(line.unitPrice)) || 0,
           }),
         });
+        if (line._key) postedLineKeysRef.current.add(line._key);
       }
+      postedLineKeysRef.current = new Set();
 
       if (features.toastEnabled) toast.success('Рахунок збережено');
       dirty.resetDirty();

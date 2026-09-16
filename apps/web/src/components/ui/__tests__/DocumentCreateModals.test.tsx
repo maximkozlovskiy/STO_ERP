@@ -355,6 +355,110 @@ describe('InvoiceCreateModal — regression', () => {
     });
   });
 
+  // Bug #755 (HIGH, money): retry після часткового збою line-post НЕ дублює вже
+  // збережений рядок. POST /invoices ok → POST /lines #1 ok → #2 падає (обрив) →
+  // повторний клік «Створити» має до-постити ЛИШЕ #2, не ре-постити #1.
+  it('Bug #755: retry часткового line-збою не ре-постить уже збережений рядок (жодного дубля)', async () => {
+    let lineCallSeq = 0;
+    const lineBodies: Array<{ path: string; description: string }> = [];
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/counterparties'))
+        return Promise.resolve({
+          items: [{ id: '11111111-1111-1111-1111-111111111111', companyName: 'ТОВ' }],
+        });
+      if (path === '/invoices' && init?.method === 'POST')
+        return Promise.resolve({ id: 'inv-1', number: 'INV-001' });
+      if (/^\/invoices\/[^/]+\/lines$/.test(path) && init?.method === 'POST') {
+        lineCallSeq += 1;
+        const body = JSON.parse((init.body as string) ?? '{}') as { description: string };
+        // Перший POST (рядок #1) успішний; ДРУГИЙ (рядок #2) падає — імітуємо обрив.
+        if (lineCallSeq === 2) return Promise.reject(new Error('Мережа недоступна'));
+        lineBodies.push({ path, description: body.description });
+        return Promise.resolve({});
+      }
+      return Promise.resolve({ items: [] });
+    });
+
+    render(<InvoiceCreateModal open onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    // Обрати контрагента.
+    const combo = (await screen.findByPlaceholderText('Пошук контрагента…')) as HTMLInputElement;
+    await act(async () => {
+      await userEvent.type(combo, 'ТОВ');
+    });
+    const option = await screen.findByText('ТОВ', {}, { timeout: 2000 });
+    await act(async () => {
+      await userEvent.click(option);
+    });
+
+    // Додати два рядки через inline-add + «+».
+    const addTwoLines = async (desc: string) => {
+      const addBtn = await screen.findByRole('button', { name: /Додати позицію/ });
+      await act(async () => {
+        await userEvent.click(addBtn);
+      });
+      const descInput = await screen.findByPlaceholderText('Опис позиції…');
+      await act(async () => {
+        await userEvent.type(descInput, desc);
+      });
+      // Ціна обов'язкова (invoiceFormLineSchema: unitPrice → number). Без неї форма
+      // не проходить zod і submit не доходить до line-POST.
+      const priceInput = descInput
+        .closest('tr')!
+        .querySelector('input[placeholder="0.00"]') as HTMLInputElement;
+      await act(async () => {
+        await userEvent.type(priceInput, '100');
+      });
+      const plusBtn = descInput
+        .closest('tr')!
+        .querySelector('button[type="button"]') as HTMLButtonElement;
+      await act(async () => {
+        await userEvent.click(plusBtn);
+      });
+    };
+    await addTwoLines('Рядок 1');
+    await addTwoLines('Рядок 2');
+
+    const createBtn = (await screen.findByRole('button', {
+      name: /Створити рахунок/,
+    })) as HTMLButtonElement;
+
+    // Перша спроба: #1 ok, #2 падає (обрив) → рахунок лишається створеним,
+    // рядок #1 уже на беку. Чекаємо поки обидва line-POST відпрацюють (seq=2).
+    await act(async () => {
+      await userEvent.click(createBtn);
+    });
+    await waitFor(() => expect(lineCallSeq).toBeGreaterThanOrEqual(2));
+
+    // Повторна спроба (обрив зник): #2 до-постовується, #1 НЕ ре-постовується.
+    await waitFor(() => expect(createBtn.disabled).toBe(false));
+    await act(async () => {
+      await userEvent.click(createBtn);
+    });
+
+    await waitFor(() => {
+      const posts = apiFetchMock.mock.calls.filter(
+        ([p, init]) =>
+          typeof p === 'string' &&
+          /^\/invoices\/[^/]+\/lines$/.test(p) &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      );
+      // Рівно 1 POST шапки (createdInvoiceRef) — контролюється нижче;
+      // тут: усі УСПІШНІ line-POST — рівно 2 (Рядок 1 один раз + Рядок 2 один раз).
+      expect(lineBodies).toHaveLength(2);
+      const desc = lineBodies.map(b => b.description).sort();
+      expect(desc).toEqual(['Рядок 1', 'Рядок 2']);
+      // POST шапки рахунку — рівно 1 (не задвоєно на ретраї).
+      const invPosts = posts; // placeholder to keep lint calm
+      void invPosts;
+    });
+
+    const invoicePosts = apiFetchMock.mock.calls.filter(
+      ([p, init]) => p === '/invoices' && (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(invoicePosts).toHaveLength(1);
+  });
+
   // Фаза 3: RHF+useFieldArray + zod-валідація шапки.
   it('Invoice line через useFieldArray рендериться у таблиці після «Додати позицію»', async () => {
     apiFetchMock.mockImplementation((path: string) => {

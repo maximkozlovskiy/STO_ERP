@@ -5462,3 +5462,25 @@ zod-полів; підтверджено node-probe (`vehicleUpdateSchema.safePa
 **Тести:** `vehicle.schema.test.ts` (нові, 11 — date/year/garage/coercion + counterparty name-by-type).
 Baseline: API 88 passed, web 24 passed. tsc shared/api/web — 0 (--incremental false). Після фіксу:
 web schema+form тести 23 passed, tsc усі 0.
+
+## Session 2026-09-16 — Bug hunt Фази 3 «Invoice zod + react-hook-form + useFieldArray» (HEAD b8234172)
+
+Фокус: фінансовий модал, перший useFieldArray у проєкті, multi-request submit (POST шапка → N× POST /lines → DELETE видалених). Полювання на edge-cases часткових збоїв (гроші).
+
+### Bug #755 [x] виправлено — HIGH (гроші) — retry після часткового збою line-post ре-постив уже збережені рядки → задвоєна сума рахунку
+
+**Де:** `apps/web/src/components/ui/InvoiceCreateModal.tsx` — `handleCreate` (POST /lines loop) і `handleSave` (POST нових рядків loop).
+
+**Сценарій (create):** POST /invoices ok → `createdInvoiceRef` виставлено → POST /lines #1 ok → POST /lines #2 падає на обриві → catch показує помилку, `savingRef` скидається. Користувач повторно тисне «Створити рахунок» → `linesToPost = collectLines()` повертає ВСІ рядки з RHF-масиву знову; `createdInvoiceRef` коректно не плодить другий рахунок, АЛЕ рядок #1 ре-постовується → на беку рахунок отримує рядок #1 двічі + рядок #2 → `recalcTotals` роздуває `amount` на суму задвоєного рядка.
+
+**Root cause:** локальний `remaining` перебудовувався з нуля при кожному виклику `handleCreate`; `remaining.shift()` мутував лише локальну копію, RHF-поля ніколи не змінювались. Коментар у коді («їх видаляємо зі state після кожного успішного POST») описував інваріант, якого код НЕ дотримувався — жоден рядок не прибирався зі state/ref після успіху. `addLine` на беку без idempotency/dedup → кожен POST створює новий InvoiceLine.
+
+**Сценарій (edit, той самий root cause):** PATCH ok → DELETE видаленого рядка ok (`initialLineIdsRef.delete` захищає від повторного 404 — ЦЕЙ шлях коректний) → POST нового рядка падає → retry: нові рядки все ще без `id` (відповідь POST відкидалась), тож `linesNow.filter(l => !l.id)` бере їх знову → задвоєні нові рядки.
+
+**Фікс:** новий `postedLineKeysRef: Set<string>` — фіксує `_key` кожного успішно збереженого рядка (create+edit); loop пропускає рядок, чий `_key` уже у сеті. `_key` стабільний per-line (nextKey() при load/append/flush, входить у `invoiceFormLineSchema`). Ref скидається при відкритті модалки та після повного успіху submit. DELETE-шлях edit-режиму лишився без змін (уже був захищений).
+
+**Тест-guard:** `DocumentCreateModals.test.tsx` → «Bug #755: retry часткового line-збою не ре-постить уже збережений рядок». Мокає #2-й line-POST на reject; після повторного кліку перевіряє, що успішних line-POST рівно 2 (не 3) і POST шапки рівно 1. Підтверджено: без фіксу → 3 (Рядок 1 задвоєно), з фіксом → 2.
+
+**Перевірено коректним (без багів):** amount-floor 0.01 для рахунку без рядків; порожня ціна/quantity=0 блокується zod на рівні форми (numericString('')→NaN→fail, min 0.001); `collectLines` auto-flush рівно 1 раз (newLine скидається після flush); `normalizeInvoiceType` ('INVOICE'/null/'WEIRD'→STANDARD); submit заблоковано без counterparty (disabled + zod .uuid); dirty через rhfDirty-міст, reset() не вмикає dirty; DELETE-retry edit-режиму (initialLineIdsRef.delete); FSM/minimize/multicurrency (currencySymbol через watchedCurrencyId; doTransition) — міграцією не зачеплені.
+
+**Baseline:** tsc shared/api/web — 0 (--incremental false). API invoices+schema: 91 passed. web DocumentCreateModals: 6→7 passed (новий guard). Після фіксу: tsc усі 0, 7 passed.
