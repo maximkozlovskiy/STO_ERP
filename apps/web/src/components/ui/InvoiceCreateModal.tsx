@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { invoiceFormSchema, type InvoiceFormInput, type InvoiceFormValues } from '@sto/shared';
 import {
   ChevronLeft,
   ChevronRight,
@@ -147,14 +150,34 @@ export function InvoiceCreateModal({
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
 
-  const [form, setForm] = useState({
-    counterpartyId: '',
-    invoiceType: 'STANDARD',
-    currencyId: '',
-    dueDate: '',
-    documentDate: kyivToday(),
-    notes: '',
+  // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).
+  const {
+    register,
+    control,
+    reset,
+    watch,
+    setValue,
+    getValues,
+    handleSubmit,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<InvoiceFormInput, unknown, InvoiceFormValues>({
+    resolver: zodResolver(invoiceFormSchema),
+    defaultValues: {
+      counterpartyId: '',
+      invoiceType: 'STANDARD',
+      currencyId: '',
+      dueDate: '',
+      documentDate: kyivToday(),
+      notes: '',
+      lines: [],
+    },
+    mode: 'onBlur',
   });
+  // Line-items: fields несуть _key/id/description/quantity/unitPrice + локальне lineTotalWithVat
+  // (авторитетна сума з ПДВ для прев'ю; не валідується схемою). append/remove керують масивом.
+  const { fields, append, remove } = useFieldArray({ control, name: 'lines' });
+  const watchedLines = watch('lines');
+  const watchedCurrencyId = watch('currencyId');
   // Мультивалюта (Фаза 3): локальний перелік валют — щоб з currencyId вивести символ/код
   // для колонок «Ціна»/«Сума» та підсумків (CurrencySelect не експонує обраний елемент).
   const [currencies, setCurrencies] = useState<
@@ -166,7 +189,6 @@ export function InvoiceCreateModal({
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [workOrderNumber, setWorkOrderNumber] = useState<string | null>(null);
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
-  const [lines, setLines] = useState<LocalLine[]>([]);
   const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
@@ -190,10 +212,6 @@ export function InvoiceCreateModal({
   // створити ДРУГИЙ рахунок. Зберігаємо id першого успіху й дошиваємо лише
   // ще-не-збережені рядки (їх видаляємо зі state після кожного успішного POST).
   const createdInvoiceRef = useRef<{ id: string; number: string } | null>(null);
-  // Value-based dirty-детекція: чи вже захоплено «чистий» базлайн.
-  const baselineCapturedRef = useRef(false);
-  // Edit-режим: true після завершення першого завантаження (гейт базлайну).
-  const [editLoaded, setEditLoaded] = useState(false);
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -216,31 +234,10 @@ export function InvoiceCreateModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [statusMenuOpen]);
 
-  // Серіалізований відбиток значущих полів форми. Value-based dirty-детекція
-  // порівнює цей рядок із базлайном — тому ре-рендер, що дає form/lines новий
-  // reference з тими самими значеннями, НЕ породжує хибний «Є незбережені зміни».
-  const formSnapshot = useMemo(
-    () =>
-      JSON.stringify({
-        counterpartyId: form.counterpartyId,
-        invoiceType: form.invoiceType,
-        dueDate: form.dueDate,
-        documentDate: form.documentDate,
-        notes: form.notes,
-        lines: lines.map(l => ({
-          description: l.description,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-        })),
-      }),
-    [form, lines],
-  );
-
   // Reset on open
   useEffect(() => {
     if (!open) return;
     dirty.resetDirty();
-    setEditLoaded(false);
     setError('');
     setStatusMenuOpen(false);
     setHeaderCollapsed(false);
@@ -248,26 +245,32 @@ export function InvoiceCreateModal({
     setCurrentStatus('DRAFT');
     setWorkOrderNumber(null);
     setPaidAmount(null);
-    setLines([]);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     initialLineIdsRef.current = new Set();
     createdInvoiceRef.current = null;
     if (!isEditMode) {
-      setForm({
+      // reset() ставить нову «чисту» базу → rhfDirty=false (edit-режим заповнюється load-ефектом).
+      reset({
         counterpartyId: '',
         invoiceType: 'STANDARD',
         currencyId: '',
         dueDate: '',
         documentDate: kyivToday(),
         notes: '',
+        lines: [],
       });
       setCounterpartyDisplay('');
     }
-    // Базлайн (create або edit) захоплюється у окремому ефекті нижче після
-    // осідання стану — value-based, тому без setTimeout-гонки.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceId]);
+
+  // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
+  useEffect(() => {
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhfDirty]);
 
   // Мультивалюта: підвантажити перелік валют для резолву символу обраної валюти.
   useEffect(() => {
@@ -284,30 +287,9 @@ export function InvoiceCreateModal({
   }, [open]);
 
   // Символ обраної валюти для колонок/підсумків (fallback — код або базовий символ).
-  const selectedCurrency = currencies.find(c => c.id === form.currencyId);
+  const selectedCurrency = currencies.find(c => c.id === watchedCurrencyId);
   const currencySymbol =
     selectedCurrency?.symbol || selectedCurrency?.code || baseCurrency?.symbol || '₴';
-
-  // Захоплення базлайну + dirty-детекція (value-based).
-  // Create: базлайн — перший snapshot після reset (порожня форма).
-  // Edit: базлайн — snapshot ПІСЛЯ завершення завантаження (editLoaded=true).
-  // `loading` стартує як false, тож гейтимо на явному editLoaded, інакше базлайн
-  // захопиться на порожній формі до старту load-ефекту, а завантажені дані згодом
-  // хибно позначать форму брудною.
-  useEffect(() => {
-    if (!open) {
-      baselineCapturedRef.current = false;
-      return;
-    }
-    if (isEditMode && !editLoaded) return;
-    if (!baselineCapturedRef.current) {
-      baselineCapturedRef.current = true;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    dirty.syncDirty(formSnapshot);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isEditMode, editLoaded, formSnapshot]);
 
   // Load invoice data in edit mode
   useEffect(() => {
@@ -322,15 +304,6 @@ export function InvoiceCreateModal({
         setCurrentStatus(inv.status);
         setWorkOrderNumber(inv.workOrderNumber ?? null);
         setPaidAmount(inv.paidAmount ?? null);
-        setForm({
-          counterpartyId: inv.counterpartyId ?? '',
-          invoiceType: inv.invoiceType ?? 'STANDARD',
-          currencyId: inv.currencyId ?? '',
-          dueDate: inv.dueDate ? inv.dueDate.slice(0, 10) : '',
-          documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),
-          notes: inv.notes ?? '',
-        });
-        setCounterpartyDisplay(inv.counterpartyName ?? '');
         const loadedLines = (inv.lines ?? []).map(l => ({
           _key: nextKey(),
           id: l.id,
@@ -339,7 +312,17 @@ export function InvoiceCreateModal({
           unitPrice: String(l.unitPrice),
           lineTotalWithVat: l.priceWithVat, // WEB-R3-4: авторитетна сума з ПДВ для прев'ю «Разом»
         }));
-        setLines(loadedLines);
+        // reset() із завантаженими даними → нова «чиста» база (rhfDirty=false для незмінених даних).
+        reset({
+          counterpartyId: inv.counterpartyId ?? '',
+          invoiceType: inv.invoiceType ?? 'STANDARD',
+          currencyId: inv.currencyId ?? '',
+          dueDate: inv.dueDate ? inv.dueDate.slice(0, 10) : '',
+          documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),
+          notes: inv.notes ?? '',
+          lines: loadedLines,
+        });
+        setCounterpartyDisplay(inv.counterpartyName ?? '');
         initialLineIdsRef.current = new Set(loadedLines.map(l => l.id!).filter(Boolean));
       })
       .catch(e => {
@@ -351,7 +334,6 @@ export function InvoiceCreateModal({
         setLoading(false);
         // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
         // на фактично завантажених даних (не на порожній формі).
-        setEditLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -426,54 +408,63 @@ export function InvoiceCreateModal({
   // рядки (ще без backend-розрахунку) → qty×unitPrice без ПДВ; backend додасть ПДВ при збереженні.
   const total = useMemo(
     () =>
-      lines.reduce((sum, l) => {
-        if (l.lineTotalWithVat != null) return sum + l.lineTotalWithVat;
-        const qty = parseFloat(l.quantity) || 0;
-        const price = parseFloat(l.unitPrice) || 0;
+      (watchedLines ?? []).reduce((sum, l) => {
+        const withVat = (l as { lineTotalWithVat?: number }).lineTotalWithVat;
+        if (withVat != null) return sum + withVat;
+        const qty = parseFloat(String(l.quantity)) || 0;
+        const price = parseFloat(String(l.unitPrice)) || 0;
         return sum + qty * price;
       }, 0),
-    [lines],
+    [watchedLines],
   );
 
   const addLine = () => {
     if (!newLine.description) return;
-    setLines(prev => [...prev, { ...newLine, _key: nextKey() }]);
+    append({ ...newLine, _key: nextKey() });
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
   };
 
-  const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key));
+  const removeLine = (index: number) => remove(index);
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
   const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
-  const handleCreate = async () => {
-    // WEB-H3: синхронний guard проти concurrent double-submit. `disabled={saving}`
-    // спирається на re-render React МІЖ подіями кліку; два click-и в одному tick
-    // (швидкий double-click / синтетичні події) обидва входять до застосування
-    // disabled → 2 POST /invoices (2 рахунки). savingRef фліпається синхронно у
-    // setSavingBoth → другий вхід одразу повертається. createdInvoiceRef не рятує
-    // бо виставляється лише ПІСЛЯ await першого POST /invoices.
+  // Тип рядка у field-array (форм-схема + локальні _key/id/lineTotalWithVat).
+  type FormLine = {
+    _key?: string;
+    id?: string;
+    description: string;
+    quantity: string;
+    unitPrice: string;
+    lineTotalWithVat?: number;
+  };
+
+  // Локальна допоміжна: зібрати рядки для POST з auto-flush pending newLine.
+  const collectLines = (): FormLine[] => {
+    const arr = (getValues('lines') as FormLine[]) ?? [];
+    if (newLine.description) {
+      const flushed = { ...newLine, _key: nextKey() };
+      append(flushed);
+      setNewLine(EMPTY_LINE);
+      return [...arr, flushed];
+    }
+    return arr;
+  };
+
+  // WEB-H3: синхронний guard проти concurrent double-submit (savingRef фліпається до re-render).
+  const handleCreate = handleSubmit(async (values: InvoiceFormValues) => {
     if (savingRef.current || transitioningRef.current) return;
     setSavingBoth(true);
     setError('');
     try {
-      // Auto-flush pending line
-      const pendingLine = newLine.description ? { ...newLine, _key: nextKey() } : null;
-      const linesToPost = pendingLine ? [...lines, pendingLine] : lines;
-      if (pendingLine) {
-        setLines(linesToPost);
-        setNewLine(EMPTY_LINE);
-      }
-
-      // розрахувати total з рядків і передати у POST замість 0.01 placeholder.
-      // Backend `addLine` потім перерахує точно з ПДВ через recalcTotals, але якщо
-      // мережа впала між POST /invoices і POST /lines — invoice не залишається з
-      // нерелевантним amount=0.01.
+      const linesToPost = collectLines();
+      // total з рядків → передаємо у POST замість 0.01 placeholder (щоб при обриві між
+      // POST /invoices і POST /lines invoice не лишався з нерелевантним amount=0.01).
       const computedTotal = linesToPost.reduce((s, l) => {
-        const qty = parseFloat(l.quantity) || 0;
-        const price = parseFloat(l.unitPrice) || 0;
+        const qty = parseFloat(String(l.quantity)) || 0;
+        const price = parseFloat(String(l.unitPrice)) || 0;
         return s + qty * price;
       }, 0);
       // Перевикористовуємо вже створений рахунок на retry, щоб не плодити дублі.
@@ -482,34 +473,34 @@ export function InvoiceCreateModal({
         inv = await apiFetch<{ id: string; number: string }>('/invoices', {
           method: 'POST',
           body: JSON.stringify({
-            counterpartyId: form.counterpartyId || undefined,
-            invoiceType: form.invoiceType || undefined,
-            currencyId: form.currencyId || undefined,
+            counterpartyId: values.counterpartyId,
+            invoiceType: values.invoiceType,
+            currencyId: values.currencyId,
             amount: computedTotal >= 0.01 ? computedTotal : 0.01,
-            dueDate: form.dueDate || undefined,
-            documentDate: form.documentDate || undefined,
-            notes: form.notes || undefined,
+            dueDate: values.dueDate,
+            documentDate: values.documentDate,
+            notes: values.notes,
           }),
         });
         createdInvoiceRef.current = inv;
       }
-
-      // Після кожного успішного POST прибираємо рядок зі state — retry після
-      // mid-batch провалу НЕ задублює вже збережені рядки.
-      for (const line of linesToPost) {
+      // Постимо рядки; ведемо список ще-не-збережених для retry-safety.
+      const remaining = [...linesToPost];
+      while (remaining.length) {
+        const line = remaining[0]!;
         await apiFetch(`/invoices/${inv.id}/lines`, {
           method: 'POST',
           body: JSON.stringify({
             description: line.description,
-            quantity: parseFloat(line.quantity) || 1,
-            unitPrice: parseFloat(line.unitPrice) || 0,
+            quantity: parseFloat(String(line.quantity)) || 1,
+            unitPrice: parseFloat(String(line.unitPrice)) || 0,
           }),
         });
-        setLines(prev => prev.filter(l => l._key !== line._key));
+        remaining.shift();
       }
-
       createdInvoiceRef.current = null;
       if (features.toastEnabled) toast.success(`Рахунок ${inv.number} створено`);
+      dirty.resetDirty();
       onSaved?.();
       onClose();
     } catch (e: unknown) {
@@ -517,49 +508,44 @@ export function InvoiceCreateModal({
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
-  const handleSave = async () => {
+  const handleSave = handleSubmit(async (values: InvoiceFormValues) => {
     if (!invoiceId) return;
+    if (savingRef.current || transitioningRef.current) return;
     setSavingBoth(true);
     setError('');
     try {
       await apiFetch(`/invoices/${invoiceId}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          counterpartyId: form.counterpartyId || undefined,
-          invoiceType: form.invoiceType || undefined,
-          currencyId: form.currencyId || undefined,
-          dueDate: form.dueDate || undefined,
-          documentDate: form.documentDate || undefined,
-          notes: form.notes || undefined,
+          counterpartyId: values.counterpartyId,
+          invoiceType: values.invoiceType,
+          currencyId: values.currencyId,
+          dueDate: values.dueDate,
+          documentDate: values.documentDate,
+          notes: values.notes,
         }),
       });
 
-      // видалити рядки що були у початковому списку але користувач
-      // прибрав через removeLine. Без цього бекенд лишає їх у БД.
-      // Retry-safety: після успішного DELETE прибираємо id зі snapshot-у, інакше
-      // повторний save після провалу наступного POST знову DELETE-не вже видалений
-      // рядок → 404.
-      const currentIds = new Set(lines.map(l => l.id).filter(Boolean) as string[]);
+      const linesNow = collectLines();
+      // DELETE рядків, прибраних локально (є у initialLineIdsRef, немає у поточних id).
+      const currentIds = new Set(linesNow.map(l => l.id).filter(Boolean) as string[]);
       const removedIds = [...initialLineIdsRef.current].filter(id => !currentIds.has(id));
       for (const lineId of removedIds) {
         await apiFetch(`/invoices/${invoiceId}/lines/${lineId}`, { method: 'DELETE' });
         initialLineIdsRef.current.delete(lineId);
       }
-
-      // Post new lines (those without id). Після успішного POST прибираємо рядок
-      // зі state (за _key) — retry не задублює вже збережені рядки.
-      for (const line of lines.filter(l => !l.id)) {
+      // POST нових рядків (без id).
+      for (const line of linesNow.filter(l => !l.id)) {
         await apiFetch(`/invoices/${invoiceId}/lines`, {
           method: 'POST',
           body: JSON.stringify({
             description: line.description,
-            quantity: parseFloat(line.quantity) || 1,
-            unitPrice: parseFloat(line.unitPrice) || 0,
+            quantity: parseFloat(String(line.quantity)) || 1,
+            unitPrice: parseFloat(String(line.unitPrice)) || 0,
           }),
         });
-        setLines(prev => prev.filter(l => l._key !== line._key));
       }
 
       if (features.toastEnabled) toast.success('Рахунок збережено');
@@ -571,7 +557,7 @@ export function InvoiceCreateModal({
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
@@ -582,12 +568,19 @@ export function InvoiceCreateModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  const watchedInvoiceType =
+    typeof watch('invoiceType') === 'string' ? (watch('invoiceType') as string) : '';
+  const watchedDueDate = typeof watch('dueDate') === 'string' ? (watch('dueDate') as string) : '';
+  const watchedCounterpartyId = watch('counterpartyId');
+
   const headerChips =
     isEditMode && headerCollapsed
       ? [
-          form.invoiceType ? (INVOICE_TYPE_LABELS[form.invoiceType] ?? form.invoiceType) : null,
+          watchedInvoiceType
+            ? (INVOICE_TYPE_LABELS[watchedInvoiceType] ?? watchedInvoiceType)
+            : null,
           counterpartyDisplay || null,
-          form.dueDate ? `до ${form.dueDate}` : null,
+          watchedDueDate ? `до ${watchedDueDate}` : null,
         ].filter(Boolean)
       : [];
 
@@ -611,10 +604,16 @@ export function InvoiceCreateModal({
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
               <div className="w-36">
-                <DatePickerInput
-                  value={form.documentDate}
-                  onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-                  disabled={!canEdit}
+                <Controller
+                  control={control}
+                  name="documentDate"
+                  render={({ field }) => (
+                    <DatePickerInput
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={field.onChange}
+                      disabled={!canEdit}
+                    />
+                  )}
                 />
               </div>
             </div>
@@ -814,7 +813,7 @@ export function InvoiceCreateModal({
                 <Button
                   onClick={handleCreate}
                   loading={saving}
-                  disabled={saving || !form.counterpartyId}
+                  disabled={saving || !watchedCounterpartyId}
                   size="sm"
                 >
                   Створити рахунок
@@ -864,17 +863,19 @@ export function InvoiceCreateModal({
                     onSearch={fetchCpItems}
                     onSearchSelect={item => {
                       setCounterpartyDisplay(item.primary);
-                      setForm(f => ({ ...f, counterpartyId: item.id }));
+                      setValue('counterpartyId', item.id, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
                     }}
                     onClear={() => {
                       setCounterpartyDisplay('');
-                      setForm(f => ({ ...f, counterpartyId: '' }));
+                      setValue('counterpartyId', '', { shouldDirty: true });
                     }}
                   />
                   <Select
                     label="Тип рахунку"
-                    value={form.invoiceType}
-                    onChange={e => setForm(f => ({ ...f, invoiceType: e.target.value }))}
+                    {...register('invoiceType')}
                     disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
@@ -888,25 +889,36 @@ export function InvoiceCreateModal({
 
                 {/* Рядок 3: Валюта */}
                 <div className="grid grid-cols-2 gap-4">
-                  <CurrencySelect
-                    value={form.currencyId}
-                    onChange={id => setForm(f => ({ ...f, currencyId: id }))}
-                    disabled={!canEdit}
+                  <Controller
+                    control={control}
+                    name="currencyId"
+                    render={({ field }) => (
+                      <CurrencySelect
+                        value={typeof field.value === 'string' ? field.value : ''}
+                        onChange={id => field.onChange(id)}
+                        disabled={!canEdit}
+                      />
+                    )}
                   />
                 </div>
 
                 {/* Рядок 4: Термін оплати | Примітки */}
                 <div className="grid grid-cols-2 gap-4">
-                  <DatePickerInput
-                    label="Термін оплати"
-                    value={form.dueDate}
-                    onChange={v => setForm(f => ({ ...f, dueDate: v }))}
-                    disabled={!canEdit}
+                  <Controller
+                    control={control}
+                    name="dueDate"
+                    render={({ field }) => (
+                      <DatePickerInput
+                        label="Термін оплати"
+                        value={typeof field.value === 'string' ? field.value : ''}
+                        onChange={field.onChange}
+                        disabled={!canEdit}
+                      />
+                    )}
                   />
                   <Input
                     label="Примітки"
-                    value={form.notes}
-                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                    {...register('notes')}
                     disabled={!canEdit}
                     placeholder="Додаткова інформація…"
                     className="h-8 text-[13px]"
@@ -979,36 +991,38 @@ export function InvoiceCreateModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {lines.map(line => (
-                  <tr key={line._key} className="hover:bg-secondary/20 group">
-                    <td className="px-3 py-2">{line.description}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      <div className="flex items-center justify-end gap-1">
-                        <span>
-                          {/* WEB-R3-4: рядкова СУМА мусить збігатися з логікою «Разом» — для
-                              завантаженого рядка беремо авторитетний lineTotalWithVat (з ПДВ),
-                              інакше qty×unitPrice. Без цього для EXCLUSIVE-ПДВ рядки не додавались
-                              би до підсумку у футері. */}
-                          {(line.lineTotalWithVat != null
-                            ? line.lineTotalWithVat
-                            : (parseFloat(line.quantity) || 0) * (parseFloat(line.unitPrice) || 0)
-                          ).toFixed(2)}
-                        </span>
-                        {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => removeLine(line._key)}
-                            className="opacity-0 group-hover:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {fields.map((field, index) => {
+                  const line = (watchedLines?.[index] ?? field) as FormLine;
+                  return (
+                    <tr key={field.id} className="hover:bg-secondary/20 group">
+                      <td className="px-3 py-2">{line.description}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{line.unitPrice}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <div className="flex items-center justify-end gap-1">
+                          <span>
+                            {/* WEB-R3-4: рядкова СУМА збігається з логікою «Разом» — завантажений
+                                рядок бере авторитетний lineTotalWithVat (з ПДВ), інакше qty×unitPrice. */}
+                            {(line.lineTotalWithVat != null
+                              ? line.lineTotalWithVat
+                              : (parseFloat(String(line.quantity)) || 0) *
+                                (parseFloat(String(line.unitPrice)) || 0)
+                            ).toFixed(2)}
+                          </span>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => removeLine(index)}
+                              className="opacity-0 group-hover:opacity-100 ml-1 text-muted-foreground hover:text-destructive transition-all"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {/* Add line input row */}
                 {canEdit && showLineInput && (
@@ -1133,13 +1147,13 @@ export function InvoiceCreateModal({
         open={cpPickerOpen}
         onClose={() => setCpPickerOpen(false)}
         title="Оберіть контрагента"
-        selectedId={form.counterpartyId}
+        selectedId={watchedCounterpartyId || ''}
         fetchItems={fetchCpItems}
         searchPlaceholder="Ім'я, телефон, компанія..."
         emptyText="Контрагентів не знайдено"
         onSelect={item => {
           setCounterpartyDisplay(item.primary);
-          setForm(f => ({ ...f, counterpartyId: item.id }));
+          setValue('counterpartyId', item.id, { shouldDirty: true, shouldValidate: true });
           setCpPickerOpen(false);
         }}
       />

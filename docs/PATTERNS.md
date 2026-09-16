@@ -592,6 +592,24 @@ export const goodUpdateSchema = goodFormSchema.partial(); // PATCH — усі п
 - **Клас багів:** ручна useState-валідація розсипана по хендлерах, 1 банер помилки, рас-синк із class-validator DTO.
 - **Детектор:** нова модалка з `useState`-полями + ручні `if (!x) setError(...)` перед submit → мігрувати на MP-F6.
 
+### MP-F6.1 — Line-items через useFieldArray (масиви рядків)
+
+Форма з масивом рядків (Invoice/PO/StockDoc lines) — `useFieldArray({ control, name: 'lines' })` замість
+`useState<Line[]>`. Схема: `lines: z.array(lineSchema).default([])` (per-field помилки на шлях `['lines', i, 'field']`).
+
+- **Еталон:** `InvoiceCreateModal.tsx` (перший useFieldArray) + `invoice.schema.ts`.
+- **Read-only рядки + inline-add:** якщо існуючі рядки НЕ редагуються inline (редагування = видалити+додати),
+  `fields.map` рендерить read-only рядки; окремий локальний `newLine` useState для inline-add, `append(newLine)`
+  на «+», `remove(index)` на видалення. Живі значення — `watch('lines')` (не `field` з useFieldArray — воно snapshot).
+- **Multi-request submit** (коли бек не приймає lines у тілі документа, як Invoice — рядки окремими POST /lines):
+  RHF-масив локальний; `handleSubmit(onValid)` рахує похідні (напр. `amount` зі суми рядків), POST шапку,
+  далі цикл POST/DELETE рядків. **Retry-safety зберегти:** `createdDocRef` (не плодити дублі документа на retry),
+  `initialLineIdsRef` diff для DELETE прибраних. Читати рядки через `getValues('lines')`, НЕ мутувати field-array у циклі.
+- **Тип field-item ширший за схему:** локальні `_key`/`id`/`lineTotalWithVat` — у field-item, не валідуються
+  (лишити `.optional()` у формовій line-схемі або widened local type).
+- **Тест:** «додати позицію → рядок рендериться у таблиці» + збережені double-submit/DELETE-diff регреси.
+  ⚠️ Фікстури контрагента/UUID-полів МУСЯТЬ бути валідними UUID (схема тепер `.uuid()` — старий `'cp1'` → submit блоковано).
+
 ---
 
 ## Зведення grep-детекторів (для CI / review)

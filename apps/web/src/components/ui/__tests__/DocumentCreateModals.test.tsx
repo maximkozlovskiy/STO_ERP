@@ -201,7 +201,14 @@ describe('InvoiceCreateModal — WEB-H3 double-submit', () => {
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
       if (path.startsWith('/counterparties'))
         return Promise.resolve({
-          items: [{ id: 'cp1', firstName: 'Клієнт', lastName: null, companyName: 'ТОВ' }],
+          items: [
+            {
+              id: '11111111-1111-1111-1111-111111111111',
+              firstName: 'Клієнт',
+              lastName: null,
+              companyName: 'ТОВ',
+            },
+          ],
         });
       if (path === '/invoices' && init?.method === 'POST')
         return new Promise(res => {
@@ -265,7 +272,7 @@ describe('InvoiceCreateModal — regression', () => {
       id: 'inv-1',
       number: 'INV-001',
       status: 'DRAFT',
-      counterpartyId: 'cp1',
+      counterpartyId: '11111111-1111-1111-1111-111111111111',
       counterpartyName: 'Тест Клієнт',
       amount: 200,
       dueDate: '2026-07-01',
@@ -346,5 +353,36 @@ describe('InvoiceCreateModal — regression', () => {
       );
       expect(deletes.length).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  // Фаза 3: RHF+useFieldArray + zod-валідація шапки.
+  it('Invoice line через useFieldArray рендериться у таблиці після «Додати позицію»', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path.startsWith('/counterparties'))
+        return Promise.resolve({
+          items: [{ id: '11111111-1111-1111-1111-111111111111', companyName: 'ТОВ' }],
+        });
+      return Promise.resolve({ items: [] });
+    });
+    render(<InvoiceCreateModal open onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    // Відкрити inline-рядок і додати позицію.
+    const addBtn = await screen.findByRole('button', { name: /Додати позицію/ });
+    await act(async () => {
+      await userEvent.click(addBtn);
+    });
+    const descInput = await screen.findByPlaceholderText('Опис позиції…');
+    await act(async () => {
+      await userEvent.type(descInput, 'Заміна масла');
+    });
+    // Клік «+» (додати рядок у field-array).
+    const plusBtn = descInput
+      .closest('tr')!
+      .querySelector('button[type="button"]') as HTMLButtonElement;
+    await act(async () => {
+      await userEvent.click(plusBtn);
+    });
+    // Рядок зʼявився як read-only у таблиці (useFieldArray field).
+    await waitFor(() => expect(screen.getByText('Заміна масла')).toBeInTheDocument());
   });
 });
