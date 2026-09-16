@@ -13,9 +13,17 @@
 Фаза:       Аудит #1 ЗАВЕРШЕНО — усі 6 форм-модалок (Good/Employee/Counterparty/Vehicle/Invoice + 4 документи
             Ф4 + WorkOrder Ф5) на zod+RHF зі спільними схемами. QA-ланцюг sync→review→tester пройдено по кожній фазі.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2479/2479 (161 файл) · web 343/343 · CreateWorkOrderModal 13/13 · work-order-schema.spec 17/17 ·
+Тести:      api 2494/2494 (162 файли) · web 343/343 · CreateWorkOrderModal 13/13 · work-order-schema.spec 17/17 ·
             work-orders module 131/131.
-HEAD:       9968a39f docs(skills): RHF+.uuid() fixture-trap test-authoring approach → sto-tester
+HEAD:       7bdf2ae7 fix(review): MINIO_PORT → prod-strict env-валідація (аудит backend #1)
+Review:     2026-09-17 (auto, аудит backend #1, коміт 7bdf2ae7) — env.schema.ts fail-fast env-валідація
+            перевірено: ВСІ споживані змінні (process.env.* + configService.get) покриті, prod-strict/
+            dev-lenient коректний, .passthrough() зберігає POSTGRES_*/NEXT_PUBLIC_* і НЕ маскує typo
+            (superRefine ловить правильне ім'я), NOTIFICATION_ENC_KEY порожнє=off/prod-required коректно.
+            ConfigService.get() читає validated Env ПЕРШИМ → coerce.number на PORT/MINIO_PORT — єдиний
+            споживач parseInt(MINIO_PORT) безпечний. 1 Important gap: MINIO_PORT — hard-dep (files.service
+            getOrThrow у конструкторі), але був відсутній у prod-strict наборі → додано requireInProd +
+            тест (15 env-тестів). api tsc 0, api-suite 2494/2494.
 Tester:     2026-09-17 (auto, Фаза 5) — 0 продакшн-багів; shim-міграція без регресій у 9 зонах ризику
             (SHIM цілісність, гроші/idempotency Bug #755 retry-dedup runtime-підтверджено, UA-кома гейт,
             nullable clear, status-conditional PATCH, actualHours recalc, calendar-sync, dirty-guard, stock-totals).
