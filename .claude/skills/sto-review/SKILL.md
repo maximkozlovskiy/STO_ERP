@@ -1356,6 +1356,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 
 > **UPD 2026-09-15 (review цикл 1/3):** Invoice/WorkOrder ПЕРЕЙШЛИ у Фазу 3 — тепер `currencyId NOT NULL` + `amount/paidAmount/totalAmount` у ВАЛЮТІ документа (не base). payments.service тепер коректно: (1) `sameCurrency(payment, invoice)` guard перед алокацією → оплата у тій самій валюті → `dto.amount` накопичується правильно; (2) base-леджер через settlement (`amountBase`); (3) FX_GAIN/FX_LOSS реалізується коли рахунок став PAID у іновалюті. Тобто `dto.amount → paidAmount` тут НЕ баг (обидва у валюті документа). Правило лишається валідним для СПРАВДІ base-only сіблінгів — але спершу перевір `currencyId` у моделі-цілі (може бути Фаза 3), інакше false-positive на payments.service.
 
+### 2026-09-16 — умовно-обовʼязкове числове поле форми: field-level `z.number()` блокує сабміт за НЕактивні (приховані) поля — §1
+
+**Сигнал:** плоска zod-форма (web-стан на react-hook-form), де набір релевантних числових полів залежить від дискримінатора (`rateType`/`kind`/`mode`), але КОЖНЕ числове поле — `numericString()`/`z.coerce.number()`/`z.number()` (обовʼязкове). Порожнє БУДЬ-ЯКЕ з них (навіть приховане неактивне) → NaN/coerce-fail → hard-fail на рівні поля з НЕ-локалізованим `"Expected number, received nan"`. Латентно, коли модалка сідить дефолти у всі поля; стає живим багом, щойно приховане поле очищується/не сідиться → помилка на невидимому полі → «Зберегти нічого не робить». `z.number()` до того ж ПРОПУСКАЄ NaN у діапазонних порівняннях (`NaN <= 0 === false`) — тож наївний superRefine без `isFinite` мовчки пропустив би й порожнє АКТИВНЕ поле.
+**Grep:** `grep -rn "numericString()\|z.coerce.number()\|z.number()" packages/shared/src/schemas/forms apps/web/src --include="*.ts" --include="*.tsx"` → для кожної схеми з дискримінованими полями перевірити: чи required-числове поле стає обовʼязковим лише коли активне за дискримінатором.
+**Фікс:** field-level → `number | NaN` (напр. `z.preprocess(emptyToNaN, z.union([z.number(), z.nan()]))`), а обовʼязковість+фінітність АКТИВНОГО поля гейтити у `superRefine` через `!Number.isFinite(v.field)` з локалізованим повідомленням (isFinite ПЕРШИМ, до діапазонних порівнянь). Так неактивні порожні поля не блокують, активне порожнє дає укр-повідомлення.
+**Severity:** SUGGESTION (латентний; IMPORTANT якщо приховане поле реально очищується) — не-локалізована помилка на невидимому полі → тихий фейл сабміту. Sample: employeeFormSchema percent/ratePerHour/fixedMonthly/bonusPercent (2f974834).
+
 ## Карта секцій (quick reference)
 
 | #   | Секція         | Стосується                                                     |
