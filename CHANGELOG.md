@@ -5,6 +5,35 @@
 
 ---
 
+## 2026-09-17 — Аудит стеку BACKEND #1: fail-fast env-валідація (zod)
+
+Перший пункт backend-розділу аудиту стеку (front-розділ #1 zod+RHF завершено). Контейнер із
+кривим/неповним `.env` тепер падає НА СТАРТІ з чітким агрегованим переліком проблем, а не на
+першому запиті, що зачепить відповідну змінну. Критично для installer-моделі деплою на ПК СТО,
+де `.env` заповнює не розробник. QA: review→tester (sync пропущено — backend-only), 3 баги виправлено.
+
+### 123deff2 feat(config): env.schema + validateEnv → ConfigModule.forRoot({validate})
+
+zod-схема всіх env, що споживає API + `validateEnv()`. Централізує розсіяний getOrThrow-fail-fast
+(JWT при логіні, MinIO при аплоаді). prod-strict/dev-lenient: формат наявних змінних валідуємо
+завжди (кривий PORT/DATABASE_URL/REDIS_URL падає скрізь); prod-критичні секрети required лише у
+production. `.passthrough()` зберігає POSTGRES__/NEXT_PUBLIC__. Помилка агрегує ВСІ issues + вказує .env.example.
+
+### 7bdf2ae7 fix(review): MINIO_PORT → prod-strict
+
+MINIO_PORT — hard-dep (files.service `getOrThrow('MINIO_PORT')` у КОНСТРУКТОРІ → падає при DI-boot),
+але був відсутній у prod-strict наборі → оператор бачив би сирий DI-стектрейс. Додано requireInProd.
+
+### 1feb3e15 fix(tester): Bugs #757-#758
+
+- **#757** (dev-UX): `NOTIFICATION_ENC_KEY.min(32)` always-on був строгіший за споживача
+  (EncryptionService SHA-256-нормалізує будь-яку довжину) → короткий dev-ключ валив старт; fix: min32 лише prod-gated.
+- **#758** (діагностика): prod-strict presence у object-level `.superRefine`, який Zod ПРОПУСКАЄ при
+  base-parse issue → одна format-помилка (PORT='nope') ховала весь перелік відсутніх prod-секретів
+  (нищить installer-діагностику); fix: `checkProdStrict()` незалежно по сирому config, issues злиті вручну.
+
+---
+
 ## 2026-09-17 — Аудит #1 Фаза 5: WorkOrder на zod + RHF (найскладніша модалка, ЗАВЕРШУЄ аудит #1)
 
 Остання й найскладніша модалка проєкту (CreateWorkOrderModal, 2372р: FSM + рядки-роботи +

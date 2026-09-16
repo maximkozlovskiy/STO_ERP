@@ -10,12 +10,21 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит #1 ЗАВЕРШЕНО — усі 6 форм-модалок (Good/Employee/Counterparty/Vehicle/Invoice + 4 документи
-            Ф4 + WorkOrder Ф5) на zod+RHF зі спільними схемами. QA-ланцюг sync→review→tester пройдено по кожній фазі.
+Фаза:       Аудит стеку — BACKEND розділ (front-розділ #1 zod+RHF завершено — усі 6 форм-модалок).
+            Backend #1 (fail-fast env-валідація zod) ЗАВЕРШЕНО, QA review→tester пройдено. Далі: DLQ / API-версіонування.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2494/2494 (162 файли) · web 343/343 · CreateWorkOrderModal 13/13 · work-order-schema.spec 17/17 ·
-            work-orders module 131/131.
-HEAD:       7bdf2ae7 fix(review): MINIO_PORT → prod-strict env-валідація (аудит backend #1)
+Тести:      api 2499/2499 (162 файли) · web 343/343 · env.schema.spec 20/20 · work-order-schema 17/17.
+HEAD:       4795a13a docs(skills): env-validation bug patterns → sto-tester (Bug #757/#758)
+Tester:     2026-09-17 (auto, аудит backend #1 env-валідація) — 2 MEDIUM виправлено: (#757) dev-UX —
+            NOTIFICATION_ENC_KEY.min(32) always-on строгіший за споживача (EncryptionService SHA-256
+            приймає будь-яку довжину) → короткий dev-ключ валив старт; fix: min32 лише prod-gated.
+            (#758) агрегація — prod-strict у object-level superRefine, Zod пропускає його при base-parse
+            issue → одна format-помилка (PORT='nope') ховала ВЕСЬ перелік відсутніх prod-секретів
+            (нищить installer-діагностику); fix: checkProdStrict() незалежно по сирому config, issues
+            злиті вручну. Решта чисто (dev-деплой .env.dev проходить, prod-strict повнота, coerce.number
+            наслідки). +5 регрес-тестів (20 env). api-suite 2499/2499.
+Review:     2026-09-17 (auto, аудит backend #1, коміт 7bdf2ae7) — 1 Important: MINIO_PORT — hard-dep
+            (files.service getOrThrow у конструкторі), був відсутній у prod-strict → додано requireInProd.
 Review:     2026-09-17 (auto, аудит backend #1, коміт 7bdf2ae7) — env.schema.ts fail-fast env-валідація
             перевірено: ВСІ споживані змінні (process.env.* + configService.get) покриті, prod-strict/
             dev-lenient коректний, .passthrough() зберігає POSTGRES_*/NEXT_PUBLIC_* і НЕ маскує typo
@@ -142,6 +151,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит стеку BACKEND #1 — fail-fast env-валідація (zod) — 2026-09-17, HEAD 4795a13a:
+  123deff2 env.schema.ts: zod-схема всіх env API + validateEnv() → ConfigModule.forRoot({validate}).
+        Контейнер із кривим/неповним .env падає НА СТАРТІ з агрегованим переліком, не на першому
+        запиті. prod-strict/dev-lenient: формат валідуємо завжди, prod-критичні секрети (DATABASE_URL,
+        JWT ≥32, MinIO endpoint/port/keys/bucket, ENC_KEY) required лише у NODE_ENV=production.
+        .passthrough() зберігає POSTGRES_*/NEXT_PUBLIC_*. Централізує розсіяний getOrThrow-fail-fast.
+  7bdf2ae7 review: MINIO_PORT — hard-dep (files.service getOrThrow у конструкторі) → додано prod-strict.
+  1feb3e15 tester: #757 min(32) always-on строгіший за EncryptionService (SHA-256 будь-яка довжина) →
+        min32 лише prod-gated. #758 prod-strict у object-superRefine короткозамикався при format-issue →
+        винесено checkProdStrict() незалежно, issues злиті вручну (installer-діагностика ціла).
+tsc api 0. env.schema.spec 20/20, api-suite 2499/2499. Далі backend-розділ: DLQ / API-версіонування.
+
 Аудит #1 Фаза 5 — WorkOrder на zod+RHF (найскладніша, ЗАВЕРШУЄ аудит #1) — 2026-09-17, HEAD 9968a39f:
   <бек> work-order.schema (header/line/part + form) + 6 endpoint-ів (create/update, lines POST/PATCH,
         parts POST/PATCH) → ZodValidationPipe. Nullable-семантика update. FIX (spec): nullable() з
