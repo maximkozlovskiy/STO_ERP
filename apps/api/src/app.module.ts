@@ -7,6 +7,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'crypto';
 import { resolve } from 'node:path';
+import { validateEnv } from './config/env.schema';
 import {
   CORRELATION_ID_HEADER,
   CorrelationIdMiddleware,
@@ -93,6 +94,10 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
         resolve(__dirname, '../../../.env.dev'),
         resolve(__dirname, '../../../.env'),
       ],
+      // Fail-fast env-валідація при старті (аудит backend #1). Кривий/неповний .env
+      // валить контейнер одразу з чітким переліком проблем, а не на першому запиті.
+      // prod-strict / dev-lenient — див. env.schema.ts.
+      validate: validateEnv,
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
