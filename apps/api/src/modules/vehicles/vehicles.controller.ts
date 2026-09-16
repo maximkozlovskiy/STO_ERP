@@ -17,14 +17,15 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import {
-  CreateVehicleDto,
-  CreateVehicleNodeDto,
-  UpdateVehicleDto,
-  VehicleNodeResponseDto,
-  VehicleResponseDto,
-} from './vehicles.dto';
+import { CreateVehicleNodeDto, VehicleNodeResponseDto, VehicleResponseDto } from './vehicles.dto';
 import { VehiclesService } from './vehicles.service';
+import {
+  vehicleCreateSchema,
+  vehicleUpdateSchema,
+  type VehicleCreateValues,
+  type VehicleUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
 @ApiTags('Автомобілі')
 @Controller('vehicles')
@@ -59,7 +60,10 @@ export class VehiclesController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати авто' })
   @ApiResponse({ status: 201, type: VehicleResponseDto })
-  create(@OrgContext() orgId: string, @Body() dto: CreateVehicleDto) {
+  create(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(vehicleCreateSchema)) dto: VehicleCreateValues,
+  ) {
     return this.service.create(orgId, dto);
   }
 
@@ -68,7 +72,7 @@ export class VehiclesController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateVehicleDto,
+    @Body(new ZodValidationPipe(vehicleUpdateSchema)) dto: VehicleUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }

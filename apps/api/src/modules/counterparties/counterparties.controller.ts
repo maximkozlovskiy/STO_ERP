@@ -32,6 +32,13 @@ import {
 } from './counterparties.dto';
 import { CounterpartiesService } from './counterparties.service';
 import { AssignCounterpartyStatusDto } from '../counterparty-statuses/counterparty-statuses.dto';
+import {
+  counterpartyFormSchema,
+  counterpartyUpdateSchema,
+  type CounterpartyFormValues,
+  type CounterpartyUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 
 @ApiTags('Контрагенти')
 @Controller('counterparties')
@@ -72,7 +79,7 @@ export class CounterpartiesController {
   create(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
-    @Body() dto: CreateCounterpartyDto,
+    @Body(new ZodValidationPipe(counterpartyFormSchema)) dto: CounterpartyFormValues,
   ) {
     return this.service.create(orgId, dto, user?.id);
   }
@@ -83,7 +90,7 @@ export class CounterpartiesController {
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateCounterpartyDto,
+    @Body(new ZodValidationPipe(counterpartyUpdateSchema)) dto: CounterpartyUpdateValues,
   ) {
     return this.service.update(orgId, id, dto, user?.id);
   }
