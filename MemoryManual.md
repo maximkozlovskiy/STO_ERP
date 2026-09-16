@@ -12,8 +12,18 @@
 Дата:       2026-09-17
 Фаза:       Аудит #1 Фаза 5 — WorkOrder (найскладніша модалка) на zod+RHF зі спільними схемами; sync-аудит пройдено
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2479/2479 (161 файл) · CreateWorkOrderModal 11/11 · work-order-schema.spec 17/17.
-HEAD:       252af5fc fix(sync): WorkOrder save() liftId/plannedAt/dueDate clear-семантика (Фаза 5 аудит)
+Тести:      api 2479/2479 (161 файл) · CreateWorkOrderModal 11/11 · work-order-schema.spec 17/17 ·
+            work-orders.contract 22/22 · +4 кома-aware form-schema кейси (зелені).
+HEAD:       eb667b51 docs(skills): FORM-schema кома-aware numeric check → sto-review
+Review:     2026-09-17 (auto, Фаза 5, коміт d8a569aa) — 1 Important виправлено: WorkOrder FORM-схема
+            (workOrderFormSchema, гейт submit через safeParse(getValues())) валідувала числові поля
+            через numericString/z.coerce.number (Number('1,5')=NaN) → легітимний UA-ввід «1,5» у
+            quantity/normoHours/price/plannedHours/actualHours мовчки блокував submit хибним zod-issue,
+            хоча локальні add-гейти (toNumberOrUndefined, comma-aware) кому приймали. Fix: новий
+            optionalMoneyNumber() + moneyString у FORM-схемі (endpoint-схеми без змін — payload numeric
+            JSON). SHIM-архітектура (form/setForm/lines/parts як watch()/setValue/replace bridge, Bug #755
+            retry-dedup, nullable clear-семантика, RHF isDirty bridge, canEdit/canEditActual) — звірено
+            чисто, регресій немає. Новий патерн → sto-review §8.2 + Накопичені підходи (eb667b51).
 Sync:       2026-09-17 (Фаза 5, коміти cd4b58c0/a61f990a) — 1 баг знайдено й виправлено: save() header PATCH
             слав `undefined` (omit) замість `null` (очистити) коли користувач очищав "Підйомник" (Select →
             "— Без підйомника —") або datetime-local "Плановий початок/кінець". workOrderUpdateSchema.liftId/
