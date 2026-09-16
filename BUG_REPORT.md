@@ -5484,3 +5484,33 @@ web schema+form тести 23 passed, tsc усі 0.
 **Перевірено коректним (без багів):** amount-floor 0.01 для рахунку без рядків; порожня ціна/quantity=0 блокується zod на рівні форми (numericString('')→NaN→fail, min 0.001); `collectLines` auto-flush рівно 1 раз (newLine скидається після flush); `normalizeInvoiceType` ('INVOICE'/null/'WEIRD'→STANDARD); submit заблоковано без counterparty (disabled + zod .uuid); dirty через rhfDirty-міст, reset() не вмикає dirty; DELETE-retry edit-режиму (initialLineIdsRef.delete); FSM/minimize/multicurrency (currencySymbol через watchedCurrencyId; doTransition) — міграцією не зачеплені.
 
 **Baseline:** tsc shared/api/web — 0 (--incremental false). API invoices+schema: 91 passed. web DocumentCreateModals: 6→7 passed (новий guard). Після фіксу: tsc усі 0, 7 passed.
+
+---
+
+## Session 2026-09-17 — Аудит #1 Фаза 4 bug-hunt (RHF-міграція 4 документ-модалок)
+
+**Scope:** commits eb063aaa/6f863a95/89d9ff98/40c6cec8 (+review cf7de79c) — SupplierPayment/StockDocument/SupplierReturn/PurchaseOrder модалки з value-based useState на RHF+useFieldArray зі спільними zod-схемами. Фокус: регресії від міграції (identity/mutation useFieldArray, гроші, dirty-guard, edit-load, cross-field, PO складні флоу, inline-editable SupplierReturn).
+
+**Baseline:** tsc shared/api/web = 0 (--incremental false). API unit: 2462 passed (160 files). web component: 793 tests.
+
+**Результат ручного аудиту 4 модалок:** 0 регресій у продакшн-коді. Перевірено детально:
+
+- **useFieldArray identity/mutation (PO):** `editingKey===field.id` матчинг коректний; `commitEdit` через `update(editingIndex,...)` зберігає display-поля (goodName/unit/receivedQty/pricedSalePrice); `removeLine(index)` без off-by-one; `pricedSalePrice` inline `update(index,{...line,...})` зберігає всі поля; staging newLine мержиться у `handleCreate` без дублю/втрати.
+- **Гроші:** SupplierPayment moneyString UA-кома ('1500,50'→1500.5); PO/SR/StockDoc numericString quantity/price; retry-idempotency (createdIdRef SupplierPayment; PO/SR/StockDoc рядки у тілі $transaction — подвійний submit блокується savingRef sync-guard).
+- **dirty-guard:** auto-select (branch/warehouse/cash) через `setValue({shouldDirty:false})` не брудить форму (Bug #639); rhfDirty→useDirtyForm міст; resetDirty перед onClose.
+- **edit-load:** reset() із запису → rhfDirty=false; PATCH payload коректний (StockDoc лише notes/date/lines; SR без purchaseOrderId+unitOfMeasureId зберігається index-aligned; PO contractId/trackingNumber null-clear).
+- **cross-field:** SupplierPayment sourceType↔account superRefine (per-field помилка); StockDoc TRANSFER targetWarehouseId superRefine (Bug #462).
+- **PO складні флоу:** receiveMode/handleReceive (receivedQty per l.id), ExcelImportWizard create-then-open, apply-pricing, create-then-edit (setActivePOId+loadPo), multicurrency — не зачеплені або коректні.
+- **SupplierReturn inline-editable:** register(lines.N.quantity/price) оновлює sub/total; unitOfMeasureId index-aligned при PATCH (Bug #548 display unitShortName).
+
+### Bug #756 [x] виправлено — LOW (тест-якість) — flaky baseline: DocumentCreateModals.test.tsx падав інтермітентно під повним паралельним web-suite (default 1000ms waitFor/findBy голодує)
+
+**Де:** `apps/web/src/components/ui/__tests__/DocumentCreateModals.test.tsx` — async-асерти без явного timeout у тестах, що монтують важкі RHF-модалки (Invoice create/edit + useFieldArray рендер рядків).
+
+**Сигнал:** перший повний прогін `pnpm --filter @sto/web vitest run` → `1 failed | 81 passed (файли)`, `2 failed | 791 passed (тести)`; падіння `waitFor(() => expect(screen.getByText('Заміна масла')))` @ line 490 (тест «Invoice line через useFieldArray рендериться»). Повторний прогін того самого файлу ІЗОЛЬОВАНО → 7/7 passed; повторний повний прогін → 0 failed. Класична flakiness: timing-залежні асерти з дефолтним 1000ms timeout стравуються async-flush-голодуванням, коли важкі модальні suite (CreateWorkOrderModal / NotificationProvidersPanel / DocumentCreateModals) монтуються паралельно на одному воркері.
+
+**Root cause:** RHF `useFieldArray` re-render + важкий mount модалки під паралельним навантаженням перевищують дефолтний 1000ms `waitFor`/`findBy` timeout Testing Library. Той самий патерн уже задокументовано і закрито `timeout:2000` у сусідніх тестах (SupplierPaymentCreateModal.test.tsx, CreateWorkOrderModal.test.tsx, і навіть у цьому ж файлі рядки 232/389). Кілька асертів у Bug #461/#755/«useFieldArray рендер» тестах лишились на дефолті → інтермітентний release-blocker (червоний baseline ховає майбутні регресії за шумом).
+
+**Фікс:** додано явний `{ timeout: 2000 }` до вразливих `waitFor`/`findByRole`/`findByPlaceholderText`/`findByText`, що чекають на RHF-field-array рендер або edit-load контент: line 227/386 (combo контрагента), 322-323 (Робота 1/2 edit-load), 396/400/422 (Bug #755 addTwoLines + createBtn), 489/493/490 («useFieldArray рендериться»). Продакшн-код не змінювався — це виключно стабілізація тестів (fix TEST, не компонент; компонент коректний — підтверджено ізольованим прогоном 7/7).
+
+**Регресія-guard:** повторні прогони повного suite green. Severity LOW (не user-facing; але flaky baseline = release-blocker за §0 SKILL — ховає регресії).

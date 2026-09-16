@@ -224,7 +224,9 @@ describe('InvoiceCreateModal — WEB-H3 double-submit', () => {
     render(<InvoiceCreateModal open onClose={onClose} onSaved={onSaved} />);
 
     // Обрати контрагента через inline-combobox picker (активує «Створити рахунок»).
-    const combo = (await screen.findByPlaceholderText('Пошук контрагента…')) as HTMLInputElement;
+    const combo = (await screen.findByPlaceholderText('Пошук контрагента…', undefined, {
+      timeout: 2000,
+    })) as HTMLInputElement;
     await act(async () => {
       await userEvent.type(combo, 'ТОВ');
     });
@@ -318,9 +320,10 @@ describe('InvoiceCreateModal — regression', () => {
 
     // Wait for invoice detail load.
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/invoices/inv-1'));
-    // Wait for the rows to appear.
-    await screen.findByText('Робота 1');
-    await screen.findByText('Робота 2');
+    // Wait for the rows to appear. timeout:2000 — під повним паралельним suite
+    // async-flush голодує (edit-mode load + RHF reset); дефолт 1000ms flaky.
+    await screen.findByText('Робота 1', undefined, { timeout: 2000 });
+    await screen.findByText('Робота 2', undefined, { timeout: 2000 });
 
     // Hover to reveal the trash icon. The trash button is rendered with
     // opacity-0 group-hover, but tests can still click it (it's in DOM and not disabled).
@@ -382,7 +385,9 @@ describe('InvoiceCreateModal — regression', () => {
     render(<InvoiceCreateModal open onClose={vi.fn()} onSaved={vi.fn()} />);
 
     // Обрати контрагента.
-    const combo = (await screen.findByPlaceholderText('Пошук контрагента…')) as HTMLInputElement;
+    const combo = (await screen.findByPlaceholderText('Пошук контрагента…', undefined, {
+      timeout: 2000,
+    })) as HTMLInputElement;
     await act(async () => {
       await userEvent.type(combo, 'ТОВ');
     });
@@ -393,11 +398,19 @@ describe('InvoiceCreateModal — regression', () => {
 
     // Додати два рядки через inline-add + «+».
     const addTwoLines = async (desc: string) => {
-      const addBtn = await screen.findByRole('button', { name: /Додати позицію/ });
+      // timeout:2000 — під повним паралельним suite async-flush голодує (heavy RHF
+      // modal); дефолтні 1000ms дають false-negative лише під навантаженням.
+      const addBtn = await screen.findByRole(
+        'button',
+        { name: /Додати позицію/ },
+        { timeout: 2000 },
+      );
       await act(async () => {
         await userEvent.click(addBtn);
       });
-      const descInput = await screen.findByPlaceholderText('Опис позиції…');
+      const descInput = await screen.findByPlaceholderText('Опис позиції…', undefined, {
+        timeout: 2000,
+      });
       await act(async () => {
         await userEvent.type(descInput, desc);
       });
@@ -419,9 +432,13 @@ describe('InvoiceCreateModal — regression', () => {
     await addTwoLines('Рядок 1');
     await addTwoLines('Рядок 2');
 
-    const createBtn = (await screen.findByRole('button', {
-      name: /Створити рахунок/,
-    })) as HTMLButtonElement;
+    const createBtn = (await screen.findByRole(
+      'button',
+      {
+        name: /Створити рахунок/,
+      },
+      { timeout: 2000 },
+    )) as HTMLButtonElement;
 
     // Перша спроба: #1 ok, #2 падає (обрив) → рахунок лишається створеним,
     // рядок #1 уже на беку. Чекаємо поки обидва line-POST відпрацюють (seq=2).
@@ -470,12 +487,15 @@ describe('InvoiceCreateModal — regression', () => {
     });
     render(<InvoiceCreateModal open onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    // Відкрити inline-рядок і додати позицію.
-    const addBtn = await screen.findByRole('button', { name: /Додати позицію/ });
+    // Відкрити inline-рядок і додати позицію. timeout:2000 — heavy RHF modal під
+    // паралельним suite; дефолт 1000ms дає flaky false-negative під навантаженням.
+    const addBtn = await screen.findByRole('button', { name: /Додати позицію/ }, { timeout: 2000 });
     await act(async () => {
       await userEvent.click(addBtn);
     });
-    const descInput = await screen.findByPlaceholderText('Опис позиції…');
+    const descInput = await screen.findByPlaceholderText('Опис позиції…', undefined, {
+      timeout: 2000,
+    });
     await act(async () => {
       await userEvent.type(descInput, 'Заміна масла');
     });
@@ -487,6 +507,11 @@ describe('InvoiceCreateModal — regression', () => {
       await userEvent.click(plusBtn);
     });
     // Рядок зʼявився як read-only у таблиці (useFieldArray field).
-    await waitFor(() => expect(screen.getByText('Заміна масла')).toBeInTheDocument());
+    // timeout:2000 — під повним паралельним suite async-flush голодує (усталений
+    // патерн решти модальних тестів); дефолтні 1000ms дають false-negative лише
+    // під навантаженням (RHF useFieldArray re-render + heavy modal mount).
+    await waitFor(() => expect(screen.getByText('Заміна масла')).toBeInTheDocument(), {
+      timeout: 2000,
+    });
   });
 });
