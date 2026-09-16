@@ -5,7 +5,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   counterpartyFormSchema,
-  hasCounterpartyName,
   vehicleFormSchema,
   type CounterpartyFormInput,
   type CounterpartyFormValues,
