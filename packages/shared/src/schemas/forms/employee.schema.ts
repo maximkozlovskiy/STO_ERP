@@ -1,5 +1,21 @@
 import { z } from 'zod';
-import { optionalString, emptyToUndefined, numericString } from '../validators';
+import { optionalString, emptyToUndefined } from '../validators';
+
+/**
+ * Плоске числове поле форми, чия обовʼязковість залежить від rateType.
+ * Порожнє/нечислове → NaN, але поле НЕ падає на рівні `.number()` — фінітність
+ * АКТИВНОГО поля (за rateType) перевіряє superRefine з локалізованим повідомленням.
+ * Так неактивні (приховані) поля з порожнім значенням не блокують сабміт
+ * не-локалізованим "Expected number, received nan". `z.number()` без .finite()
+ * пропускає NaN → саме тому фінітність гейтимо у superRefine.
+ */
+const flatRateNumber = () =>
+  z.preprocess(
+    v => (v === '' || v === null || v === undefined ? NaN : Number(v)),
+    // number АБО NaN: z.number() відкидає NaN → додаємо z.nan(), щоб порожнє
+    // приховане поле не валило парсинг; активне поле гейтить superRefine.
+    z.union([z.number(), z.nan()]),
+  );
 
 /**
  * Спільні zod-схеми співробітника (Employee) — ЄДИНЕ джерело правди web ↔ api.
@@ -60,40 +76,48 @@ export const employeeFormSchema = z
     // superRefine (нижче), бо залежать від rateType. z.preprocess(String→Number) типізує ВХІД як
     // рядок (на відміну від z.coerce.number, чий input=number) — сумісно з рядковим станом форми.
     rateType: z.enum(RATE_TYPE_VALUES),
-    percent: numericString(),
-    ratePerHour: numericString(),
-    fixedMonthly: numericString(),
-    bonusPercent: numericString(),
+    percent: flatRateNumber(),
+    ratePerHour: flatRateNumber(),
+    fixedMonthly: flatRateNumber(),
+    bonusPercent: flatRateNumber(),
     // Доступ у систему (лише create).
     grantAccess: z.boolean().optional().default(false),
     loginEmail: optionalString(),
     password: optionalString(),
   })
   .superRefine((v, ctx) => {
-    // Умовні правила rateScheme за rateType.
-    if (v.rateType === 'percent_normo' && (v.percent <= 0 || v.percent > 100)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['percent'],
-        message: 'Відсоток має бути від 1 до 100',
-      });
+    // Умовні правила rateScheme за rateType. Фінітність гейтимо ТІЛЬКИ для активного
+    // поля (flatRateNumber пропускає NaN, щоб приховані неактивні поля не блокували
+    // сабміт не-локалізованим повідомленням). NaN не проходить діапазонні порівняння
+    // (`NaN <= 0` === false), тож без явного isFinite активне порожнє поле мовчки б
+    // пройшло валідацію → тому перевіряємо isFinite першим.
+    if (v.rateType === 'percent_normo') {
+      if (!Number.isFinite(v.percent) || v.percent <= 0 || v.percent > 100) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['percent'],
+          message: 'Відсоток має бути від 1 до 100',
+        });
+      }
     }
-    if (v.rateType === 'per_normo_hour' && v.ratePerHour < 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['ratePerHour'],
-        message: "Ставка за нормо-годину повинна бути невід'ємним числом",
-      });
+    if (v.rateType === 'per_normo_hour') {
+      if (!Number.isFinite(v.ratePerHour) || v.ratePerHour < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ratePerHour'],
+          message: "Ставка за нормо-годину повинна бути невід'ємним числом",
+        });
+      }
     }
     if (v.rateType === 'fixed_plus_bonus') {
-      if (v.fixedMonthly < 0) {
+      if (!Number.isFinite(v.fixedMonthly) || v.fixedMonthly < 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['fixedMonthly'],
           message: "Фіксована ставка повинна бути невід'ємним числом",
         });
       }
-      if (v.bonusPercent < 0 || v.bonusPercent > 100) {
+      if (!Number.isFinite(v.bonusPercent) || v.bonusPercent < 0 || v.bonusPercent > 100) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['bonusPercent'],

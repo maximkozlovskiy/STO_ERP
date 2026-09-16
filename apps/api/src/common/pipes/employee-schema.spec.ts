@@ -83,6 +83,31 @@ describe('employeeFormSchema (плоска форма)', () => {
         true,
       );
   });
+
+  // Robustness: неактивні (за rateType) числові поля можуть бути ПОРОЖНІ — не блокують
+  // сабміт не-локалізованим "Expected number, received nan".
+  it('per_normo_hour: порожні НЕактивні числові поля не блокують', () => {
+    const r = employeeFormSchema.safeParse({
+      ...base,
+      rateType: 'per_normo_hour',
+      percent: '',
+      ratePerHour: '12',
+      fixedMonthly: '',
+      bonusPercent: '',
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.ratePerHour).toBe(12);
+  });
+
+  // Активне порожнє поле ВСЕ ОДНО падає — з ЛОКАЛІЗОВАНИМ повідомленням (не "Expected number").
+  it('percent_normo: порожнє АКТИВНЕ percent → локалізована помилка', () => {
+    const r = employeeFormSchema.safeParse({ ...base, percent: '' });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find(i => i.path[0] === 'percent');
+      expect(issue?.message).toBe('Відсоток має бути від 1 до 100');
+    }
+  });
 });
 
 describe('buildRateScheme', () => {
