@@ -92,6 +92,10 @@ export const envSchema = z
       'JWT_REFRESH_SECRET обовʼязковий у production',
     );
     requireInProd('MINIO_ENDPOINT', env.MINIO_ENDPOINT, 'MINIO_ENDPOINT обовʼязковий у production');
+    // MINIO_PORT — hard-dep: files.service.ts робить getOrThrow('MINIO_PORT') у конструкторі,
+    // тож без нього FilesService падає при старті модуля. Централізуємо fail-fast сюди,
+    // щоб оператор бачив причину у переліку, а не у стектрейсі DI при піднятті.
+    requireInProd('MINIO_PORT', env.MINIO_PORT, 'MINIO_PORT обовʼязковий у production');
     requireInProd(
       'MINIO_ACCESS_KEY',
       env.MINIO_ACCESS_KEY,

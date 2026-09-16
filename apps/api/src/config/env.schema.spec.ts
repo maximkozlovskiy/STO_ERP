@@ -9,6 +9,7 @@ const prodBase = {
   JWT_ACCESS_SECRET: STRONG,
   JWT_REFRESH_SECRET: STRONG,
   MINIO_ENDPOINT: 'minio',
+  MINIO_PORT: '9000',
   MINIO_ACCESS_KEY: 'ak',
   MINIO_SECRET_KEY: 'sk',
   MINIO_BUCKET: 'sto-files',
@@ -38,6 +39,11 @@ describe('validateEnv — fail-fast env валідація', () => {
   it('production: відсутній NOTIFICATION_ENC_KEY → кидає (шифрування at-rest)', () => {
     const { NOTIFICATION_ENC_KEY, ...rest } = prodBase;
     expect(() => validateEnv(rest)).toThrow(/NOTIFICATION_ENC_KEY обовʼязковий у production/);
+  });
+
+  it('production: відсутній MINIO_PORT → кидає (files.service getOrThrow hard-dep)', () => {
+    const { MINIO_PORT, ...rest } = prodBase;
+    expect(() => validateEnv(rest)).toThrow(/MINIO_PORT обовʼязковий у production/);
   });
 
   it('production: короткий JWT_ACCESS_SECRET (<32) → кидає (формат)', () => {
