@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { invoiceFormSchema, type InvoiceFormInput, type InvoiceFormValues } from '@sto/shared';
+import {
+  invoiceFormSchema,
+  INVOICE_TYPE_VALUES,
+  type InvoiceFormInput,
+  type InvoiceFormValues,
+} from '@sto/shared';
 import {
   ChevronLeft,
   ChevronRight,
@@ -125,6 +130,16 @@ const nextKey = () =>
     : `k${Math.random().toString(36).slice(2)}`;
 
 const EMPTY_LINE: Omit<LocalLine, '_key'> = { description: '', quantity: '1', unitPrice: '' };
+
+// Бек-дефолт invoiceType='INVOICE' (Prisma @default, createFromWorkOrder/refreshFromWorkOrder
+// не передають invoiceType у create()) — значення НЕ входить до UI-enum STANDARD/PREPAYMENT/
+// CREDIT_NOTE (INVOICE_TYPE_VALUES). Без нормалізації reset() пише 'INVOICE' у форму й
+// zodResolver валить submit існуючих (переважно виставлених з наряду) рахунків. Будь-яке
+// значення поза enum → 'STANDARD' (найближчий за змістом дефолт).
+const normalizeInvoiceType = (value?: string | null): InvoiceFormValues['invoiceType'] =>
+  value && (INVOICE_TYPE_VALUES as readonly string[]).includes(value)
+    ? (value as InvoiceFormValues['invoiceType'])
+    : 'STANDARD';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -315,7 +330,7 @@ export function InvoiceCreateModal({
         // reset() із завантаженими даними → нова «чиста» база (rhfDirty=false для незмінених даних).
         reset({
           counterpartyId: inv.counterpartyId ?? '',
-          invoiceType: inv.invoiceType ?? 'STANDARD',
+          invoiceType: normalizeInvoiceType(inv.invoiceType),
           currencyId: inv.currencyId ?? '',
           dueDate: inv.dueDate ? inv.dueDate.slice(0, 10) : '',
           documentDate: inv.documentDate ? inv.documentDate.slice(0, 10) : kyivToday(),

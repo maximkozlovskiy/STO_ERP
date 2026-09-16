@@ -248,6 +248,10 @@ export class InvoicesService {
               currencyId: wo.currencyId,
               totalAmountBase: conv.amountBase,
               rateUsed: conv.rateUsed,
+              // Явно STANDARD — без цього лягав Prisma-дефолт 'INVOICE' (поза UI-enum
+              // STANDARD/PREPAYMENT/CREDIT_NOTE), і web-форма падала на zodResolver при
+              // редагуванні рахунку виставленого з наряду (найчастіший шлях створення).
+              invoiceType: 'STANDARD',
               dueDate,
               documentDate,
               notes: null,
@@ -339,7 +343,9 @@ export class InvoicesService {
         currencyId,
         totalAmountBase: conv.amountBase,
         rateUsed: conv.rateUsed,
-        invoiceType: dto.invoiceType ?? 'INVOICE',
+        // 'STANDARD' — узгоджено з UI-enum (INVOICE_TYPE_VALUES); 'INVOICE' (старий Prisma-дефолт)
+        // поза enum-ом і ламав zodResolver форми при редагуванні.
+        invoiceType: dto.invoiceType ?? 'STANDARD',
         dueDate,
         documentDate,
         notes: dto.notes ?? null,
