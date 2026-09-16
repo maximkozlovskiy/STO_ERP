@@ -33,6 +33,21 @@ export const optionalString = () => z.preprocess(emptyToUndefined, z.string().op
 export const optionalUuid = () => z.preprocess(emptyToUndefined, uuidFieldSchema.optional());
 
 /**
+ * Опційна дата-рядок (ISO/`YYYY-MM-DD`): '' → undefined, інакше валідована.
+ * Дзеркалить беківський `@IsDateString()` — без цього довільний рядок (напр. 'not-a-date')
+ * проходить схему і летить у Prisma `DateTime?` → PrismaClientValidationError (500 замість
+ * локалізованого 400). `z.coerce.date()` парсить і `2025-01-01`, і повний ISO; невалідне → issue.
+ */
+export const optionalDateString = () =>
+  z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .refine(v => !Number.isNaN(Date.parse(v)), { message: 'Невірний формат дати' })
+      .optional(),
+  );
+
+/**
  * Опційне невід'ємне число з коерцією з рядка: '' → undefined, '350' → 350.
  * `z.coerce.number()` перетворює рядок; порожнє відсікаємо ДО коерції (інакше '' → 0).
  */

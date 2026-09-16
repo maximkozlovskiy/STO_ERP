@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, emptyToUndefined } from '../validators';
+import { optionalString, optionalUuid, optionalDateString, emptyToUndefined } from '../validators';
 
 /**
  * Спільна zod-схема автомобіля (Vehicle) — ЄДИНЕ джерело правди web ↔ api.
@@ -52,9 +52,21 @@ export function optionLabel(
   return options.find(o => o.value === value)?.label ?? value;
 }
 
-/** Опційне ціле з рядка форми: '' → undefined, '2015' → 2015. */
-const optionalInt = () =>
-  z.preprocess(emptyToUndefined, z.coerce.number().int('Має бути цілим числом').optional());
+/**
+ * Опційний рік випуску: '' → undefined, '2015' → 2015. Діапазон 1900..поточний+1
+ * (дзеркалить прибраний HTML `min=1900 max=2100` старих форм — без нього рік міг бути
+ * будь-яким цілим: '50', '-100', '999999'). Верхня межа — наступний модельний рік.
+ */
+const optionalYear = () =>
+  z.preprocess(
+    emptyToUndefined,
+    z.coerce
+      .number()
+      .int('Має бути цілим числом')
+      .min(1900, 'Рік не раніше 1900')
+      .max(new Date().getFullYear() + 1, 'Рік у майбутньому')
+      .optional(),
+  );
 /** Опційне невідʼємне ціле (пробіг). */
 const optionalNonNegInt = () =>
   z.preprocess(
@@ -71,7 +83,7 @@ const vehicleBaseShape = {
   model: z.string().trim().min(1, 'Вкажіть модель').max(100, 'Занадто довго'),
   vin: optionalString(),
   licensePlate: optionalString(),
-  year: optionalInt(),
+  year: optionalYear(),
   engineVolume: optionalNonNegFloat(),
   fuelType: optionalString(),
   currentMileage: optionalNonNegInt(),
@@ -81,8 +93,8 @@ const vehicleBaseShape = {
   driveType: optionalString(),
   bodyType: optionalString(),
   engineCode: optionalString(),
-  insuranceExpiry: optionalString(),
-  inspectionExpiry: optionalString(),
+  insuranceExpiry: optionalDateString(),
+  inspectionExpiry: optionalDateString(),
 };
 
 /**

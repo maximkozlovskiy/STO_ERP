@@ -5385,3 +5385,80 @@ Web `ExcelImportWizard.test.tsx` → 3 passed. TSC api 0, web 0 (`--incremental 
 
 **Тести:** `ExcelImportWizard.test.tsx` → 12 passed (8 було + 4 нові).
 `DocumentCreateModals.test.tsx` → 5 passed. TSC web 0 (`--incremental false`).
+
+## Session 2026-09-16 — Bug hunt Фази 2 «Counterparty + Vehicle zod + react-hook-form» (HEAD b7cb7fb6)
+
+Архітектурна зміна: спільні zod-схеми web↔api, RHF-native форми, ZodValidationPipe заміняє
+class-validator DTO для counterparties/vehicles, DB-міграція канонізації vehicle enum-значень.
+Ключова пастка класу: коли ZodValidationPipe заміняє class-validator, окремі валідації DTO
+(`@IsDateString()`, `@IsInt() @Min/@Max`) МУСЯТЬ мати дзеркало у zod-схемі — інакше поле тихо
+недовалідоване, і сміття летить у Prisma (500) або в БД (брудні дані).
+
+### Bug #753 [x] виправлено — Vehicle дати (insuranceExpiry/inspectionExpiry) втратили валідацію → Prisma 500 замість локалізованого 400
+
+**Severity:** MEDIUM (порушення контракту 400-українською; 500 на битому вводі; API/mobile/sync)
+**Файли:** `packages/shared/src/schemas/validators.ts`, `packages/shared/src/schemas/forms/vehicle.schema.ts`
+
+**Опис:** `insuranceExpiry`/`inspectionExpiry` у Prisma — `DateTime?`. Стара `CreateVehicleDto`/
+`UpdateVehicleDto` мала `@Transform(emptyToUndefined) @IsDateString()`. Після переходу на
+ZodValidationPipe ці поля стали `optionalString()` у спільному `vehicleBaseShape` — **жодної
+валідації формату дати**. Довільний рядок (`'not-a-date'`, `'garbage'`) проходить схему →
+`prisma.vehicle.update({ data: { insuranceExpiry: 'not-a-date' } })` → `PrismaClientValidationError`
+→ **500 Internal Server Error** замість `400 Bad Request` з українським повідомленням (порушення
+CLAUDE.md правил #16/#17). DatePickerInput у UI дає коректний `YYYY-MM-DD`, тож happy-path працює —
+але сирий API-виклик / malformed client-стан валить 500.
+
+**Виявлено:** статичний аналіз §1.2 (validation guards) — звірка Prisma-типів колонок проти
+zod-полів; підтверджено node-probe (`vehicleUpdateSchema.safeParse({insuranceExpiry:'not-a-date'})`
+→ OK замість FAIL).
+
+**Фікс:** новий хелпер `optionalDateString()` у validators.ts (`'' → undefined`, інакше
+`Date.parse` refine → `Невірний формат дати`); обидва date-поля `vehicleBaseShape` переведені на
+нього. Валідні `YYYY-MM-DD` і повний ISO проходять; порожнє → undefined; сміття → локалізований 400.
+
+### Bug #754 [x] виправлено — Vehicle year втратив діапазон (регресія HTML min=1900 max=2100)
+
+**Severity:** LOW (якість даних; без падінь/корупції балансу)
+**Файл:** `packages/shared/src/schemas/forms/vehicle.schema.ts`
+
+**Опис:** Стара форма `vehicles/new` мала `<input year min="1900" max="2100">`. Спільний
+`VehicleForm` рендерить `type="number"` без min/max, а `optionalInt()` у схемі перевіряв лише
+`.int()` — жодного діапазону. Рік міг бути `50`, `-100`, `999999` (node-probe підтвердив: усі OK).
+
+**Виявлено:** статичний аналіз — diff старих форм проти спільної (`git show 2bd77ba9~1` показав
+`min="1900" max="2100"`, яких немає у новій схемі).
+
+**Фікс:** `optionalInt()` → `optionalYear()`: діапазон `1900..(поточний рік + 1)` з локалізованими
+повідомленнями (`Рік не раніше 1900` / `Рік у майбутньому`). Порожнє → undefined, валідні проходять.
+
+### Перевірено — БЕЗ багів (focus edge-cases із завдання):
+
+- **Counterparty CLIENT→SUPPLIER із залишковим firstName (Bug #739):** `counterpartyFormSchema`
+  superRefine `nameByType` блокує SUPPLIER без companyName навіть при захованому firstName; обидві
+  форми (модалка + inline-edit) використовують ПОВНУ форм-схему як resolver → блокується до PATCH ✓
+- **PATCH лише type=SUPPLIER на CP що вже має ім'я:** `counterpartyUpdateSchema` (partial, без
+  superRefine) пропускає; бек `update()` рахує `merged` (ефективний post-PATCH type + наявні поля) →
+  `hasCounterpartyName(merged)` — коректний захист від безіменного постачальника ✓
+- **email '' → undefined (не помилка); legalForm '' → undefined:** підтверджено node-probe ✓
+- **Vehicle create без гаража заблоковано:** `vehicleCreateSchema` `customerGarageId: z.string().uuid()`
+  → FAIL; `vehicleFormSchema` опційний (гараж резолвиться батьком) ✓
+- **update дропає customerGarageId:** `vehicleUpdateSchema = z.object(vehicleBaseShape).partial()`
+  без customerGarageId; обидва споживачі роблять `{ customerGarageId: _drop, ...payload }` ✓
+- **Compact vehicle-edit у модалці не витирає fuel/color/тех.поля:** `startEditVehicle` prefill лише
+  compact-полів, решта `''`→undefined у схемі → `JSON.stringify` дропає → PATCH не чіпає їх ✓
+- **VIN-uniqueness:** бек `assertVinUnique` (findFirst orgId+vin+deletedAt:null, excludeId на update)
+  → 400 `Автомобіль з VIN "..." вже існує`; форма шле, apiFetch показує ✓
+- **Vehicle enum старе значення поза мапінгом міграції:** `optionLabel` fallback на raw value
+  (read-only показує сире, не порожнє) ✓; edit-Select із невідомим value: RHF зберігає внутрішнє
+  значення (jsdom-probe: untouched 'LNG' долітає у submit) — display-only нюанс, без корупції даних.
+- **Міграція VAN vs MINIVAN:** обидва канонічні коди присутні у BODY_OPTIONS; 'van'/'фургон'→VAN
+  (Фургон), 'minivan'/'мінівен'→MINIVAN (Мінівен); truck/convertible→OTHER — консистентно ✓
+- **Вкладена форма авто у CounterpartyEditModal:** два незалежні `useForm` (counterparty + vehicle);
+  garage auto-create-flow (cpIdAtStart + currentCpIdRef tenant-guard); saveVehicle звіряє
+  currentCpIdRef перед setState → перемикання CP під час запиту не тече у чужу таблицю ✓
+- **Міст rhfDirty→useDirtyForm:** `useEffect([rhfDirty])` markDirty/resetDirty; vehicle-tab має
+  ОКРЕМИЙ useForm → його isDirty не тригерить counterparty-dirty (окремі RHF-стори) ✓
+
+**Тести:** `vehicle.schema.test.ts` (нові, 11 — date/year/garage/coercion + counterparty name-by-type).
+Baseline: API 88 passed, web 24 passed. tsc shared/api/web — 0 (--incremental false). Після фіксу:
+web schema+form тести 23 passed, tsc усі 0.
