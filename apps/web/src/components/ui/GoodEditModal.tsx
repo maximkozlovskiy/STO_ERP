@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { goodFormSchema, type GoodFormInput } from '@sto/shared';
 import { Barcode, Package, TrendingUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -81,7 +84,8 @@ interface GoodEditModalProps {
   goodCatTree: CategoryNode[];
 }
 
-const EMPTY_FORM = {
+// Дефолти форми (усі поля рядки — web-стан; схема коерсить при валідації).
+const EMPTY_FORM: GoodFormInput = {
   sku: '',
   name: '',
   unit: 'шт',
@@ -125,8 +129,23 @@ export function GoodEditModal({
   // Призначати/знімати статуси-мітки — OWNER/ADMIN/STOREKEEPER (паритет з assign-endpoint @Roles).
   const canManageStatuses = ['OWNER', 'ADMIN', 'STOREKEEPER'].includes(employee?.role ?? '');
 
-  // ── Form state ─────────────────────────────────────────────────────────────
-  const [form, setForm] = useState(EMPTY_FORM);
+  // ── Form (react-hook-form + спільна zod-схема) ──────────────────────────────
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    watch,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<GoodFormInput>({
+    resolver: zodResolver(goodFormSchema),
+    defaultValues: EMPTY_FORM,
+    mode: 'onBlur',
+  });
+  // Спостережувані поля для взаємозалежної логіки (unit ← unitId) та EntityPicker.
+  const watchUnitId = watch('unitId');
+  const watchPreferredSupplierId = watch('preferredSupplierId');
+
   const [saving, setSaving] = useState(false);
   // WEB-H3 (Bug #634, клас Bug #630): синхронний guard проти concurrent double-submit.
   // `<Button loading={saving}>` вимикається лише ПІСЛЯ re-render React між кліками;
@@ -157,7 +176,9 @@ export function GoodEditModal({
     dirty.resetDirty();
 
     if (good) {
-      setForm({
+      // reset() встановлює нову «чисту» базу → formState.isDirty=false (жодних авто-dirty
+      // від програмного заповнення, на відміну від Bug #639-класу з ручним markDirty).
+      reset({
         sku: good.sku ?? '',
         name: good.name,
         unit: good.unit,
@@ -174,7 +195,7 @@ export function GoodEditModal({
       });
       setSupplierDisplay(good.preferredSupplierName ?? '');
     } else {
-      setForm(EMPTY_FORM);
+      reset(EMPTY_FORM);
       setSupplierDisplay('');
     }
     // Reset count badges on entity switch — child tabs will repopulate on mount.
@@ -185,19 +206,28 @@ export function GoodEditModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, good?.id]);
 
+  // ── Міст RHF isDirty → useDirtyForm (зберігає DirtyConfirmDialog + beforeunload) ──
+  // RHF рахує dirty порівнянням поточних значень із defaultValues (встановленими reset()),
+  // тож програмне заповнення не вмикає dirty. Синхронізуємо у наявний guard.
+  useEffect(() => {
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhfDirty]);
+
   // ── Supplier picker handlers ───────────────────────────────────────────────
   const openSupplierDetail = useCallback(async () => {
-    if (!form.preferredSupplierId) return;
+    if (!watchPreferredSupplierId) return;
     try {
       const cp = await apiFetch<CounterpartyForModal>(
-        `/counterparties/${form.preferredSupplierId}`,
+        `/counterparties/${watchPreferredSupplierId}`,
       );
       setCpDetailData(cp);
       setCpDetailOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка завантаження постачальника');
     }
-  }, [form.preferredSupplierId]);
+  }, [watchPreferredSupplierId]);
 
   // Stable onSearch reference — prevents EntityPickerField from re-attaching
   // its outside-click listener on every parent render.
@@ -216,39 +246,18 @@ export function GoodEditModal({
   }, [dirty, onClose]);
 
   // ── Save (create or update) ────────────────────────────────────────────────
-  const save = async () => {
+  // Валідація — через zodResolver (per-field помилки); onValid отримує коерснуті значення
+  // (числа — number, порожні опційні — undefined) від тієї самої схеми, що валідує бек.
+  const onValid = handleSubmit(async values => {
     if (savingRef.current) return;
-    if (form.purchasePrice) {
-      const pp = Number(form.purchasePrice);
-      if (!Number.isFinite(pp) || pp < 0) {
-        setError("Ціна закупівлі повинна бути невід'ємним числом");
-        return;
-      }
-    }
-    if (form.salePrice) {
-      const sp = Number(form.salePrice);
-      if (!Number.isFinite(sp) || sp < 0) {
-        setError("Ціна продажу повинна бути невід'ємним числом");
-        return;
-      }
-    }
     setSavingBoth(true);
     setError('');
     try {
       const payload = {
-        sku: form.sku || undefined,
-        name: form.name,
-        unit: form.unit || 'шт',
-        unitId: form.unitId || undefined,
-        purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : undefined,
-        salePrice: form.salePrice ? Number(form.salePrice) : undefined,
-        category: form.category || undefined,
-        goodCategoryId: form.goodCategoryId || undefined,
-        brandId: form.brandId || undefined,
-        barcode: !isEdit ? form.barcode || undefined : undefined,
-        notes: form.notes || undefined,
-        goodType: form.goodType || undefined,
-        preferredSupplierId: form.preferredSupplierId || undefined,
+        ...values,
+        unit: values.unit || 'шт',
+        // barcode лише при створенні (edit має окремий таб штрихкодів).
+        barcode: isEdit ? undefined : values.barcode,
       };
       const saved = isEdit
         ? await apiFetch<GoodForModal>(`/goods/${good!.id}`, {
@@ -269,7 +278,7 @@ export function GoodEditModal({
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
   return (
     <>
@@ -279,7 +288,7 @@ export function GoodEditModal({
         title={isEdit ? 'Редагування товару' : 'Новий товар / запчастина'}
         size={isEdit ? 'lg' : 'xl'}
         footer={
-          <Button onClick={save} loading={saving} disabled={!form.name}>
+          <Button onClick={onValid} loading={saving}>
             {isEdit ? 'Зберегти' : 'Зберегти та продовжити'}
           </Button>
         }
@@ -302,35 +311,26 @@ export function GoodEditModal({
           <Input
             label="Назва"
             required
-            value={form.name}
-            onChange={e => {
-              setForm(f => ({ ...f, name: e.target.value }));
-              dirty.markDirty();
-            }}
+            {...register('name')}
+            errorMessage={errors.name?.message}
             placeholder="Масло моторне 5W-40"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Артикул (SKU)"
-              value={form.sku}
-              onChange={e => {
-                setForm(f => ({ ...f, sku: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('sku')}
+              errorMessage={errors.sku?.message}
               placeholder="OIL-5W40"
             />
             {units.length > 0 ? (
               <Select
                 label="Одиниця виміру"
-                value={form.unitId}
+                value={typeof watchUnitId === 'string' ? watchUnitId : ''}
                 onChange={e => {
                   const unit = units.find(u => u.id === e.target.value);
-                  setForm(f => ({
-                    ...f,
-                    unitId: e.target.value,
-                    unit: unit?.shortName ?? f.unit,
-                  }));
-                  dirty.markDirty();
+                  // Взаємозалежність: вибір unitId підставляє shortName у текстове unit.
+                  setValue('unitId', e.target.value, { shouldDirty: true });
+                  if (unit) setValue('unit', unit.shortName, { shouldDirty: true });
                 }}
               >
                 <option value="">— вписати вручну</option>
@@ -341,61 +341,32 @@ export function GoodEditModal({
                 ))}
               </Select>
             ) : (
-              <Input
-                label="Одиниця"
-                value={form.unit}
-                onChange={e => {
-                  setForm(f => ({ ...f, unit: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="шт"
-              />
+              <Input label="Одиниця" {...register('unit')} placeholder="шт" />
             )}
           </div>
-          {units.length > 0 && !form.unitId && (
-            <Input
-              label="Одиниця (вручну)"
-              value={form.unit}
-              onChange={e => {
-                setForm(f => ({ ...f, unit: e.target.value }));
-                dirty.markDirty();
-              }}
-              placeholder="шт"
-            />
+          {units.length > 0 && !watchUnitId && (
+            <Input label="Одиниця (вручну)" {...register('unit')} placeholder="шт" />
           )}
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Ціна закупки, ₴"
               type="number"
               min="0"
-              value={form.purchasePrice}
-              onChange={e => {
-                setForm(f => ({ ...f, purchasePrice: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('purchasePrice')}
+              errorMessage={errors.purchasePrice?.message}
               placeholder="350"
             />
             <Input
               label="Ціна продажу, ₴"
               type="number"
               min="0"
-              value={form.salePrice}
-              onChange={e => {
-                setForm(f => ({ ...f, salePrice: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('salePrice')}
+              errorMessage={errors.salePrice?.message}
               placeholder="500"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Бренд"
-              value={form.brandId}
-              onChange={e => {
-                setForm(f => ({ ...f, brandId: e.target.value }));
-                dirty.markDirty();
-              }}
-            >
+            <Select label="Бренд" {...register('brandId')} errorMessage={errors.brandId?.message}>
               <option value="">—</option>
               {brands.map(b => (
                 <option key={b.id} value={b.id}>
@@ -406,11 +377,8 @@ export function GoodEditModal({
             {goodCatTree.length > 0 ? (
               <Select
                 label="Категорія товарів"
-                value={form.goodCategoryId}
-                onChange={e => {
-                  setForm(f => ({ ...f, goodCategoryId: e.target.value }));
-                  dirty.markDirty();
-                }}
+                {...register('goodCategoryId')}
+                errorMessage={errors.goodCategoryId?.message}
               >
                 <option value="">— Не вказано —</option>
                 {flatCategories(goodCatTree).map(c => (
@@ -421,24 +389,13 @@ export function GoodEditModal({
                 ))}
               </Select>
             ) : (
-              <Input
-                label="Категорія"
-                value={form.category}
-                onChange={e => {
-                  setForm(f => ({ ...f, category: e.target.value }));
-                  dirty.markDirty();
-                }}
-                placeholder="Мастила"
-              />
+              <Input label="Категорія" {...register('category')} placeholder="Мастила" />
             )}
           </div>
           <Select
             label="Тип товару"
-            value={form.goodType}
-            onChange={e => {
-              setForm(f => ({ ...f, goodType: e.target.value }));
-              dirty.markDirty();
-            }}
+            {...register('goodType')}
+            errorMessage={errors.goodType?.message}
           >
             <option value="">Не вказано</option>
             <option value="SPARE_PART">Запчастина</option>
@@ -456,42 +413,25 @@ export function GoodEditModal({
               display={supplierDisplay}
               placeholder="Пошук постачальника…"
               ariaLabel="Основний постачальник"
-              onOpenDetail={form.preferredSupplierId ? openSupplierDetail : undefined}
+              onOpenDetail={watchPreferredSupplierId ? openSupplierDetail : undefined}
               onPick={() => {}}
               onSearch={searchSuppliers}
               onSearchSelect={item => {
                 setSupplierDisplay(item.primary);
-                setForm(f => ({ ...f, preferredSupplierId: item.id }));
-                dirty.markDirty();
+                setValue('preferredSupplierId', item.id, { shouldDirty: true });
               }}
               onClear={() => {
                 setSupplierDisplay('');
-                setForm(f => ({ ...f, preferredSupplierId: '' }));
-                dirty.markDirty();
+                setValue('preferredSupplierId', '', { shouldDirty: true });
               }}
               hidePick
             />
           </div>
 
           {!isEdit && (
-            <Input
-              label="Штрихкод"
-              value={form.barcode}
-              onChange={e => {
-                setForm(f => ({ ...f, barcode: e.target.value }));
-                dirty.markDirty();
-              }}
-              placeholder="4820000000000"
-            />
+            <Input label="Штрихкод" {...register('barcode')} placeholder="4820000000000" />
           )}
-          <Input
-            label="Нотатки"
-            value={form.notes}
-            onChange={e => {
-              setForm(f => ({ ...f, notes: e.target.value }));
-              dirty.markDirty();
-            }}
-          />
+          <Input label="Нотатки" {...register('notes')} />
 
           {/* Статуси-мітки (лише при редагуванні наявного товару) */}
           {isEdit && good && (

@@ -113,3 +113,81 @@ describe('GoodEditModal — double-submit guard (Bug #634 / WEB-H3)', () => {
     });
   });
 });
+
+describe('GoodEditModal — валідація zod + react-hook-form', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ items: [] });
+  });
+
+  function renderModal() {
+    render(
+      <GoodEditModal
+        open
+        good={null}
+        onClose={() => {}}
+        onSaved={() => {}}
+        brands={[]}
+        units={[]}
+        suppliers={[]}
+        goodCatTree={[]}
+      />,
+    );
+  }
+
+  it('порожня назва → inline-помилка українською, POST не йде', async () => {
+    renderModal();
+    const saveBtn = screen.getByRole('button', { name: 'Зберегти та продовжити' });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Вкажіть назву товару')).toBeInTheDocument();
+    });
+    const postCalls = apiFetchMock.mock.calls.filter(
+      c => c[0] === '/goods' && (c[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(postCalls.length).toBe(0);
+  });
+
+  it("від'ємна ціна → inline-помилка, POST не йде", async () => {
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText('Масло моторне 5W-40'), {
+      target: { value: 'Товар' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('500'), { target: { value: '-10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти та продовжити' }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Значення не може бути від'ємним")).toBeInTheDocument();
+    });
+    const postCalls = apiFetchMock.mock.calls.filter(
+      c => c[0] === '/goods' && (c[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(postCalls.length).toBe(0);
+  });
+
+  it('валідна форма → POST /goods з коерснутою ціною (number, не рядок)', async () => {
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/goods' && init?.method === 'POST') {
+        return Promise.resolve({ id: 'g1', name: 'Товар', unit: 'шт', salePrice: 500 });
+      }
+      return Promise.resolve({ items: [] });
+    });
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText('Масло моторне 5W-40'), {
+      target: { value: 'Товар' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('500'), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зберегти та продовжити' }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find(
+        c => c[0] === '/goods' && (c[1] as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(post).toBeTruthy();
+      const body = JSON.parse((post![1] as RequestInit).body as string);
+      expect(body.name).toBe('Товар');
+      expect(body.salePrice).toBe(500); // number, коерсовано зі схеми
+    });
+  });
+});

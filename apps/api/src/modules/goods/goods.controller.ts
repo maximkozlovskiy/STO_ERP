@@ -15,7 +15,14 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { UUID_REGEX } from '@sto/shared';
+import {
+  UUID_REGEX,
+  goodFormSchema,
+  goodUpdateSchema,
+  type GoodFormValues,
+  type GoodUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -24,8 +31,6 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { GoodsService } from './goods.service';
 import {
-  CreateGoodDto,
-  UpdateGoodDto,
   GoodQueryDto,
   GoodResponseDto,
   CreateGoodUoMDto,
@@ -96,7 +101,7 @@ export class GoodsController {
   @ApiOperation({ summary: 'Створити товар' })
   create(
     @OrgContext() orgId: string,
-    @Body() dto: CreateGoodDto,
+    @Body(new ZodValidationPipe(goodFormSchema)) dto: GoodFormValues,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.create(orgId, dto, user.role);
@@ -108,7 +113,7 @@ export class GoodsController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateGoodDto,
+    @Body(new ZodValidationPipe(goodUpdateSchema)) dto: GoodUpdateValues,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.update(orgId, id, dto, user.role);

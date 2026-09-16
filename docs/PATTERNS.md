@@ -549,6 +549,51 @@ Skip-first-run ref скидається на зміну parent-id.
 
 ---
 
+## MP-F6 — Форми: react-hook-form + спільна zod-схема (ЄДИНЕ джерело валідації)
+
+Валідація форм НЕ дублюється між фронтом і беком. Одна zod-схема у `@sto/shared` валідує обидва боки:
+web через `zodResolver`, бек через `ZodValidationPipe`. Усуває клас багів «фронт каже ОК, бек 400/500».
+
+**Схема** — `packages/shared/src/schemas/forms/<domain>.schema.ts`, з примітивів `schemas/validators.ts`
+(reuse `optionalString`/`optionalUuid`/`optionalNonNegNumber` — коерсять рядкові web-поля: `'' → undefined`,
+`'350' → 350`). Експорт через `schemas/forms/index.ts`. **Після зміни shared — `pnpm --filter @sto/shared build:cjs`**
+(api споживає CJS `dist`, не source; web бачить source через `transpilePackages`).
+
+```ts
+// good.schema.ts
+export const goodFormSchema = z.object({
+  name: z.string().trim().min(1, 'Вкажіть назву товару'),
+  purchasePrice: optionalNonNegNumber(),
+  brandId: optionalUuid(),
+  // ...
+});
+export type GoodFormValues = z.infer<typeof goodFormSchema>; // після парсингу (number/undefined)
+export type GoodFormInput = z.input<typeof goodFormSchema>; // web-стан (рядки) для useForm
+export const goodUpdateSchema = goodFormSchema.partial(); // PATCH — усі поля опційні
+```
+
+**Бек** — `@Body(new ZodValidationPipe(schema)) dto: GoodFormValues`
+(`apps/api/src/common/pipes/zod-validation.pipe.ts`). Pipe дзеркалить формат 400 глобального
+`validationExceptionFactory` (`{ statusCode, message: string[], error }` укр.), тож контракт відповіді
+НЕ змінюється — `apiFetch` і всі споживачі працюють без змін, class-validator та zod-DTO співіснують безпечно.
+
+**Фронт** — `useForm<GoodFormInput>({ resolver: zodResolver(goodFormSchema), defaultValues })`:
+
+- `{...register('field')}` + `errorMessage={errors.field?.message}` → **per-field inline-помилки** (нове).
+- Взаємозалежні / кастомні поля (EntityPicker, залежні селекти) — `setValue('f', v, { shouldDirty: true })` + `watch`.
+- `reset(data)` при відкритті/зміні сутності → встановлює «чисту» базу; програмне заповнення НЕ вмикає dirty
+  (уникнення Bug #639-класу з ручним markDirty).
+- **Міст у `useDirtyForm`:** `useEffect([formState.isDirty]) → isDirty ? markDirty() : resetDirty()` —
+  зберігає `DirtyConfirmDialog` + beforeunload-guard.
+- `handleSubmit(onValid)` → `onValid` отримує коерснуті значення (числа — number); синхронний `savingRef`-guard
+  лишається (WEB-H3 double-submit).
+
+- **Еталон:** `apps/web/src/components/ui/GoodEditModal.tsx` (пілот); схема `good.schema.ts`.
+- **Клас багів:** ручна useState-валідація розсипана по хендлерах, 1 банер помилки, рас-синк із class-validator DTO.
+- **Детектор:** нова модалка з `useState`-полями + ручні `if (!x) setError(...)` перед submit → мігрувати на MP-F6.
+
+---
+
 ## Зведення grep-детекторів (для CI / review)
 
 | Патерн                   | Сигнал порушення                                                                      |
