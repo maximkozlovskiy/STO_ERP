@@ -4,7 +4,9 @@ import {
   optionalUuid,
   optionalDateString,
   optionalNonNegNumber,
+  optionalMoneyNumber,
   numericString,
+  moneyString,
 } from '../validators';
 
 /**
@@ -162,17 +164,26 @@ export type WorkOrderPartUpdateValues = z.infer<typeof workOrderPartUpdateSchema
 // ─── Форма web (шапка + lines[] + parts[]) ───────────────────────────────────
 // Рядки форми несуть локальні display-поля (workName/employeeName/goodName…) поза схемою —
 // widened у модалці. Тут — лише валідовані поля (submit шле їх окремими POST /lines, /parts).
+// ⚠️ Form-схеми валідують СИРИЙ рядковий стан форми (inline-інпути WorksTable/PartsTable
+// не конвертують кому) → числові поля кома-aware (`moneyString`/`optionalMoneyNumber`),
+// дзеркалять `toNumberOrUndefined` у модалці. `numericString`/`z.coerce.number()` (Number('1,5')=NaN)
+// заблокував би легітимний UA-ввід '1,5' на гейті safeParse(getValues()).
 export const workOrderFormLineSchema = z.object({
   _key: z.string().optional(),
   id: z.string().optional(),
   workId: z.string().uuid('Оберіть роботу'),
   employeeId: z.string().uuid('Оберіть виконавця'),
   normoHours: z.preprocess(
-    v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.01, 'Нормо-години повинні бути більшими за нуль').optional(),
+    v =>
+      v === '' || v === null || v === undefined
+        ? undefined
+        : typeof v === 'string'
+          ? Number(v.replace(',', '.'))
+          : v,
+    z.number().min(0.01, 'Нормо-години повинні бути більшими за нуль').optional(),
   ),
-  actualHours: optionalNonNegNumber(),
-  price: optionalNonNegNumber(),
+  actualHours: optionalMoneyNumber(),
+  price: optionalMoneyNumber(),
 });
 
 export const workOrderFormPartSchema = z.object({
@@ -180,8 +191,8 @@ export const workOrderFormPartSchema = z.object({
   id: z.string().optional(),
   goodId: z.string().uuid('Оберіть товар'),
   warehouseId: z.string().uuid('Оберіть склад'),
-  quantity: numericString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
-  price: optionalNonNegNumber(),
+  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
+  price: optionalMoneyNumber(),
   unitOfMeasureId: optionalUuid(),
 });
 
@@ -200,8 +211,9 @@ export const workOrderFormSchema = z.object({
   // при submit). Валідуємо як опційну дату (Date.parse приймає datetime-local).
   plannedStartAt: optionalDateString(),
   plannedEndAt: optionalDateString(),
-  plannedHours: optionalNonNegNumber(),
-  actualHours: optionalNonNegNumber(),
+  // Кома-aware: інпути «Планові/Фактичні години» — вільний рядок (UA '1,5').
+  plannedHours: optionalMoneyNumber(),
+  actualHours: optionalMoneyNumber(),
   lines: z.array(workOrderFormLineSchema).default([]),
   parts: z.array(workOrderFormPartSchema).default([]),
 });

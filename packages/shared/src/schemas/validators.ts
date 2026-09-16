@@ -76,3 +76,17 @@ export const moneyString = () =>
     if (typeof v === 'string') return Number(v.replace(',', '.'));
     return Number(v);
   }, z.number());
+
+/**
+ * Опційне невід'ємне число з UA-комою: '' / null → undefined, '1,5' → 1.5.
+ * Як `optionalNonNegNumber`, але кома-aware (дзеркалить фронтове `toNumberOrUndefined`,
+ * що робить `.replace(',', '.')`). Потрібне для form-схем де інпут — вільний рядок і
+ * користувач може ввести UA-десятковий роздільник (наряди/рахунки: normoHours/price/hours).
+ * `z.coerce.number()` НЕ кома-aware (Number('1,5')=NaN) → без цього легітимний '1,5' блокує submit.
+ */
+export const optionalMoneyNumber = () =>
+  z.preprocess(v => {
+    if (v === '' || v === null || v === undefined) return undefined;
+    if (typeof v === 'string') return Number(v.replace(',', '.'));
+    return v;
+  }, z.number().min(0, "Значення не може бути від'ємним").optional());
