@@ -9,11 +9,27 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-16
-Фаза:       Аудит #1 Фаза 3 — Invoice на zod + react-hook-form + useFieldArray (перший line-items у проєкті)
+Дата:       2026-09-17
+Фаза:       Аудит #1 Фаза 4 — 4 документ-модалки на zod+RHF зі спільними схемами (SupplierPayment/StockDocument/SupplierReturn/PurchaseOrder)
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      web 792/792 · api 2424/2424 (без регресій), invoice-schema 15/15, DocumentCreateModals 6/6
-HEAD:       675d6b4c fix(sync): invoiceType 'INVOICE' поза UI-enum ламав редагування рахунків з наряду
+Тести:      4 schema-специ 38/38, SupplierPaymentCreateModal 5/5 (без регресій)
+HEAD:       28f11795 docs(skills): add safeParse(getValues) misleading-error check to sto-review (§8.2)
+Review:     2026-09-17 (auto, Фаза 4, коміт cf7de79c) — 1 Important + 2 Suggestion виправлено:
+            (I) PurchaseOrderCreateModal handleCreate/handleSave показували хардкод «Оберіть постачальника
+            та склад» на будь-який safeParse-фейл; кнопка вже гарантує supplier+warehouse → реальний фейл
+            майже завжди у рядку (порожня ціна/кількість) → оманливе повідомлення. Fix: firstSchemaError()
+            бере перший zod-issue.message зі схеми (усі українські) + префікс «Рядок N:» для line-items;
+            тип zod-error без прямого import zod (web не має його прямою залежністю). (S) мертвий import
+            POLine у PO (лишок RHF-міграції). (S) allowedTransitions у StockDoc загорнуто в useMemo (як у PO)
+            — referential stability + усунено exhaustive-deps warning. sto-dev/sto-review оновлено новим
+            патерном (safeParse misleading-error §8.2). Решта Фази 4 чиста: isDirty-міст (markDirty/resetDirty
+            else-гілка не конфліктує з save-flow), усі auto-select {shouldDirty:false} (Bug #639), useFieldArray
+            identity (editingKey=field.id, update/remove/append за index, display-поля через cast), WEB-H3
+            savingRef синхронний у всіх 4 (handleSubmit ставить ref СИНХРОННО на вході onValid до першого await;
+            PO через safeParse-хендлери), createdIdRef retry-safety (SupplierPayment) збережена, Controller
+            field.value {}-cast + exactOptionalPropertyTypes ok, ukrainian errors + h-8 alignment. Контролери
+            4 модулів чисті (guards/roles/ParseUUIDPipe). Sync-агент пройшов чисто ПЕРЕД review (0 розбіжностей).
+Prev HEAD:  675d6b4c fix(sync): invoiceType 'INVOICE' поза UI-enum ламав редагування рахунків з наряду
 Sync:       2026-09-16 (Фаза 3, коміти 6157d9fe/107daec7) — 1 баг знайдено й виправлено: createFromWorkOrder
             (основний шлях створення рахунку) не ставив invoiceType → Prisma @default("INVOICE"), яке поза
             UI-enum STANDARD/PREPAYMENT/CREDIT_NOTE. При редагуванні такого рахунку reset() писав 'INVOICE'
