@@ -79,15 +79,17 @@ describe('CreateWorkOrderModal — regression guards', () => {
 
     const onClose = vi.fn();
     // Provide a prefill so required fields are satisfied for submit.
+    // Схема наряду тепер .uuid() (Фаза 5) — фікстури мусять бути валідними UUID, інакше
+    // safeParse-гейт у create() відсіює submit до setSaving і Escape закриває модалку.
     render(
       <CreateWorkOrderModal
         open
         onClose={onClose}
         prefill={{
-          branchId: 'b1',
-          counterpartyId: 'cp1',
+          branchId: '11111111-1111-4111-8111-111111111111',
+          counterpartyId: '22222222-2222-4222-8222-222222222222',
           counterpartyDisplay: 'Тест Клієнт',
-          vehicleId: 'v1',
+          vehicleId: '33333333-3333-4333-8333-333333333333',
         }}
       />,
     );

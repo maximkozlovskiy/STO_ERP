@@ -2,6 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  workOrderFormSchema,
+  type WorkOrderFormInput,
+  type WorkOrderFormValues,
+} from '@sto/shared';
 import {
   X,
   ChevronLeft,
@@ -305,6 +312,33 @@ const toNumberOrUndefined = (raw: string): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+// Тип рядка/деталі у RHF field-array: валідовані поля схеми + локальні display-поля
+// (workName/goodName…). append/update приймають цей ширший тип (cast через FormLineArg).
+type FormLineArg = NonNullable<WorkOrderFormInput['lines']>[number] & Partial<LocalLine>;
+type FormPartArg = NonNullable<WorkOrderFormInput['parts']>[number] & Partial<LocalPart>;
+
+// Порожній input-shape форми (RHF defaultValues + reset). Усі header-поля — рядки ('' = не
+// задано), priority дефолт 'NORMAL', documentDate = сьогодні (Kyiv). lines/parts порожні.
+// Дзеркалить старий WorkOrderFormState + порожні масиви рядків/деталей.
+const emptyDefaults = (): WorkOrderFormInput => ({
+  branchId: '',
+  vehicleId: '',
+  counterpartyId: '',
+  contractId: '',
+  currencyId: '',
+  liftId: '',
+  description: '',
+  priority: 'NORMAL',
+  repairCategory: '',
+  documentDate: kyivToday(),
+  plannedStartAt: '',
+  plannedEndAt: '',
+  plannedHours: '',
+  actualHours: '',
+  lines: [],
+  parts: [],
+});
+
 export function CreateWorkOrderModal({
   open,
   onClose,
@@ -315,22 +349,120 @@ export function CreateWorkOrderModal({
   onMinimize,
 }: Props) {
   const isEditMode = !!workOrderId;
-  const [form, setForm] = useState<WorkOrderFormState>({
-    branchId: '',
-    vehicleId: '',
-    counterpartyId: '',
-    contractId: '',
-    currencyId: '',
-    liftId: '',
-    description: '',
-    priority: 'NORMAL',
-    repairCategory: '',
-    documentDate: kyivToday(),
-    plannedStartAt: '',
-    plannedEndAt: '',
-    plannedHours: '',
-    actualHours: '',
+
+  // ── react-hook-form + спільна zod-схема (шапка + lines[] + parts[]) ──────────
+  // Multi-request submit (Invoice-архітектура): шапка → POST /work-orders, рядки/деталі —
+  // окремими POST/PATCH /lines та /parts. Валідація через zodResolver(workOrderFormSchema).
+  const {
+    control,
+    reset,
+    watch,
+    setValue,
+    getValues,
+    formState: { isDirty: rhfDirty },
+  } = useForm<WorkOrderFormInput, unknown, WorkOrderFormValues>({
+    resolver: zodResolver(workOrderFormSchema),
+    defaultValues: emptyDefaults(),
+    mode: 'onBlur',
   });
+  // Суб-компоненти WorksTable/PartsTable оперують setLines/setParts (повний масив) і матчать
+  // рядки за _key — тож parent тримає field-array лише як RHF-джерело правди й пише через
+  // replace() (shim setLines/setParts). append/update/remove не потрібні (усе йде через replace).
+  const { replace: replaceLines } = useFieldArray({ control, name: 'lines' });
+  const { replace: replaceParts } = useFieldArray({ control, name: 'parts' });
+
+  // Спостерігаємо весь стан форми одним watch() — далі будуємо read-only `form`-об'єкт та
+  // `lines`/`parts` (з _key), щоб уся наявна логіка (handlers/JSX/суб-компоненти) читала їх
+  // без змін. watch() повертає найсвіжіші значення на кожен ре-рендер.
+  const watchedAll = watch();
+
+  // `form` shim: read-only відбиток шапки у формі старого WorkOrderFormState. Уся наявна
+  // логіка (`form.plannedStartAt`, header-JSX, useEffect-и, save/create) читає його без змін.
+  const form: WorkOrderFormState = useMemo(
+    () => ({
+      branchId: (watchedAll.branchId as string) ?? '',
+      vehicleId: (watchedAll.vehicleId as string) ?? '',
+      counterpartyId: (watchedAll.counterpartyId as string) ?? '',
+      contractId: (watchedAll.contractId as string) ?? '',
+      currencyId: (watchedAll.currencyId as string) ?? '',
+      liftId: (watchedAll.liftId as string) ?? '',
+      description: (watchedAll.description as string) ?? '',
+      priority: (watchedAll.priority as string) ?? 'NORMAL',
+      repairCategory: (watchedAll.repairCategory as string) ?? '',
+      documentDate: (watchedAll.documentDate as string) ?? '',
+      plannedStartAt: (watchedAll.plannedStartAt as string) ?? '',
+      plannedEndAt: (watchedAll.plannedEndAt as string) ?? '',
+      plannedHours: (watchedAll.plannedHours as string) ?? '',
+      actualHours: (watchedAll.actualHours as string) ?? '',
+    }),
+    [watchedAll],
+  );
+
+  // `setForm` shim: приймає той самий SetStateAction<WorkOrderFormState>, що й старий useState.
+  // Обчислює наступний стан із getValues()-знімка й пише лише змінені поля через setValue
+  // (shouldDirty:true → RHF isDirty ↑, dirty-guard). getValues (а не `form`) — щоб послідовні
+  // setForm у одному tick бачили свіжі значення (React-batched setState-семантика).
+  const setForm = useCallback(
+    (updater: WorkOrderFormState | ((prev: WorkOrderFormState) => WorkOrderFormState)) => {
+      const v = getValues();
+      const prev: WorkOrderFormState = {
+        branchId: (v.branchId as string) ?? '',
+        vehicleId: (v.vehicleId as string) ?? '',
+        counterpartyId: (v.counterpartyId as string) ?? '',
+        contractId: (v.contractId as string) ?? '',
+        currencyId: (v.currencyId as string) ?? '',
+        liftId: (v.liftId as string) ?? '',
+        description: (v.description as string) ?? '',
+        priority: (v.priority as string) ?? 'NORMAL',
+        repairCategory: (v.repairCategory as string) ?? '',
+        documentDate: (v.documentDate as string) ?? '',
+        plannedStartAt: (v.plannedStartAt as string) ?? '',
+        plannedEndAt: (v.plannedEndAt as string) ?? '',
+        plannedHours: (v.plannedHours as string) ?? '',
+        actualHours: (v.actualHours as string) ?? '',
+      };
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      (Object.keys(next) as (keyof WorkOrderFormState)[]).forEach(k => {
+        if (next[k] !== prev[k]) {
+          setValue(k as keyof WorkOrderFormInput, next[k], { shouldDirty: true });
+        }
+      });
+    },
+    [getValues, setValue],
+  );
+
+  // `lines`/`parts` shim: field-array items несуть _key/id + display-поля → LocalLine/LocalPart.
+  // field.id (RHF-внутрішній) ≠ _key; зберігаємо _key на кожному item (append/update/reset).
+  const lines = useMemo<LocalLine[]>(
+    () => (watchedAll.lines as unknown as LocalLine[]) ?? [],
+    [watchedAll.lines],
+  );
+  const parts = useMemo<LocalPart[]>(
+    () => (watchedAll.parts as unknown as LocalPart[]) ?? [],
+    [watchedAll.parts],
+  );
+
+  // `setLines`/`setParts` shim: приймають SetStateAction<LocalLine[]|LocalPart[]> (як старий
+  // useState), матеріалізують наступний масив і пишуть його через field-array replace()
+  // (shouldDirty вбудований). getValues-знімок — щоб послідовні updater-и у одному tick
+  // бачили свіжий масив.
+  const setLines = useCallback(
+    (updater: LocalLine[] | ((prev: LocalLine[]) => LocalLine[])) => {
+      const prev = (getValues('lines') as unknown as LocalLine[]) ?? [];
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      replaceLines(next as unknown as FormLineArg[]);
+    },
+    [getValues, replaceLines],
+  );
+  const setParts = useCallback(
+    (updater: LocalPart[] | ((prev: LocalPart[]) => LocalPart[])) => {
+      const prev = (getValues('parts') as unknown as LocalPart[]) ?? [];
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      replaceParts(next as unknown as FormPartArg[]);
+    },
+    [getValues, replaceParts],
+  );
+
   const [counterpartyDisplayName, setCounterpartyDisplayName] = useState('');
   const [cpPhone, setCpPhone] = useState('');
   // A3-modal: довідники + org-налаштування винесено у useReferenceData (self-contained ref-data + settings).
@@ -364,20 +496,11 @@ export function CreateWorkOrderModal({
   // Refs ensure handleModalClose sees sync state, not stale closure.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Value-based dirty-детекція: базлайн — серіалізований відбиток «чистої» форми.
-  // Замінює крихкий baselineReadyRef + setTimeout(0) (гонка macrotask-прапорця з
-  // відкладеним flush passive-ефектів React → хибний «Є незбережені зміни» на
-  // чистій формі). baselineCapturedRef — чи вже захоплено початковий базлайн.
-  const baselineCapturedRef = useRef(false);
-  // Bug #639: async авто-вибір єдиної філії — програмна зміна. Ефект авто-вибору
-  // піднімає цей прапорець, і наступний прогін dirty-детектора згортає нове значення
-  // у базлайн замість dirty.
-  const rebaselineRef = useRef(false);
-  // Edit-режим: true після завершення першого завантаження (гейт базлайну).
-  // `editModeLoading` стартує як false, а load-ефект визначено ПІСЛЯ baseline-ефекту,
-  // тож без цього прапорця базлайн захопився б на порожній формі, а завантажені дані
-  // згодом хибно позначили б dirty.
-  const [editLoaded, setEditLoaded] = useState(false);
+  // Dirty-детекція — RHF isDirty (bridge-ефект нижче → dirty.markDirty/resetDirty).
+  // Value-based базлайн (baselineCapturedRef/rebaselineRef/editLoaded/formSnapshot) прибрано:
+  // reset() ставить нову «чисту» базу (rhfDirty=false), а програмні зміни (авто-вибір філії
+  // Bug #639, currency defaultToBase Bug #747) йдуть через setValue({shouldDirty:false}) — не
+  // вмикають dirty без крихкого baseline-rebaseline протоколу.
   // track initial planned dates loaded from WO so we can detect
   // whether they actually changed before prompting the calendar-sync dialog.
   // Without this every save() — even one that only touches description or
@@ -411,6 +534,14 @@ export function CreateWorkOrderModal({
   const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
+
+  // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
+  useEffect(() => {
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhfDirty]);
+
   const {
     conflict: calConflict,
     check: checkConflict,
@@ -482,9 +613,8 @@ export function CreateWorkOrderModal({
   const [editingPartKey, setEditingPartKey] = useState<string | null>(null);
   const [editingPart, setEditingPart] = useState<Omit<LocalPart, '_key'>>(EMPTY_PART);
 
-  // Accumulated pre-save rows
-  const [lines, setLines] = useState<LocalLine[]>([]);
-  const [parts, setParts] = useState<LocalPart[]>([]);
+  // Accumulated pre-save rows: lines/parts тепер джерело правди — RHF field-array (оголошено
+  // вгорі як watch()-shim lines/parts + setLines/setParts→replace). Старий useState прибрано.
   // A3-modal: stock-totals кеш винесено у useStockTotals (Bug #452-454 збережено). Виклик — після
   // оголошення parts/newPart/editingPart нижче.
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
@@ -501,23 +631,13 @@ export function CreateWorkOrderModal({
   // скидає transient UI до neutral baseline, потім edit-mode useEffect завантажує
   // фактичні дані WO-B.
   useEffect(() => {
-    if (!open) {
-      baselineCapturedRef.current = false;
-      rebaselineRef.current = false;
-      setEditLoaded(false);
-      return;
-    }
-    baselineCapturedRef.current = false;
-    rebaselineRef.current = false;
-    setEditLoaded(false);
+    if (!open) return;
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
     setLinkedDocsCounts(null);
     setVehicles([]);
     setContracts([]);
-    setLines([]);
-    setParts([]);
     setNewLine(EMPTY_LINE);
     setNewPart(EMPTY_PART);
     setShowLineInput(false);
@@ -529,91 +649,44 @@ export function CreateWorkOrderModal({
     setCurrentStatus('DRAFT');
     // A fresh modal session starts without a prior partial create.
     createdWoRef.current = null;
+    postedLineKeysRef.current = new Set();
+    postedPartKeysRef.current = new Set();
     // reset snapshot so previous WO's dates don't bleed into a new session.
     initialPlannedRef.current = {
       startAt: prefill?.plannedStartAt ?? '',
       endAt: prefill?.plannedEndAt ?? '',
     };
-    setForm({
-      branchId: prefill?.branchId ?? '',
-      vehicleId: prefill?.vehicleId ?? '',
-      counterpartyId: prefill?.counterpartyId ?? '',
-      contractId: '',
-      currencyId: '',
-      liftId: prefill?.liftId ?? '',
-      description: prefill?.description ?? '',
-      priority: 'NORMAL',
-      repairCategory: '',
-      documentDate: kyivToday(),
-      plannedStartAt: prefill?.plannedStartAt ?? '',
-      plannedEndAt: prefill?.plannedEndAt ?? '',
-      plannedHours:
-        prefill?.plannedHours ?? calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt),
-      actualHours: '',
-    });
     setCounterpartyDisplayName(prefill?.counterpartyDisplay ?? '');
     setCpPhone('');
 
-    if (!prefill?.branchId) {
-      const src = getCached<Branch[]>('cache:branches') ?? branches;
-      if (src.length === 1) setForm(f => ({ ...f, branchId: src[0].id }));
+    if (!isEditMode) {
+      // Авто-вибір єдиної філії (Bug #639) — програмний, тож входить у reset-базу (не dirty),
+      // а не окремим setValue. prefill.branchId має пріоритет.
+      let branchId = prefill?.branchId ?? '';
+      if (!branchId) {
+        const src = getCached<Branch[]>('cache:branches') ?? branches;
+        if (src.length === 1) branchId = src[0].id;
+      }
+      // reset() ставить нову «чисту» базу → rhfDirty=false (edit-режим заповнюється load-ефектом).
+      reset({
+        ...emptyDefaults(),
+        branchId,
+        vehicleId: prefill?.vehicleId ?? '',
+        counterpartyId: prefill?.counterpartyId ?? '',
+        liftId: prefill?.liftId ?? '',
+        description: prefill?.description ?? '',
+        plannedStartAt: prefill?.plannedStartAt ?? '',
+        plannedEndAt: prefill?.plannedEndAt ?? '',
+        plannedHours:
+          prefill?.plannedHours ?? calcPlannedHours(prefill?.plannedStartAt, prefill?.plannedEndAt),
+      });
+      if (prefill?.counterpartyId) {
+        loadVehicles(prefill.counterpartyId, prefill.vehicleId);
+        loadContracts(prefill.counterpartyId);
+      }
     }
-
-    if (!isEditMode && prefill?.counterpartyId) {
-      loadVehicles(prefill.counterpartyId, prefill.vehicleId);
-      loadContracts(prefill.counterpartyId);
-    }
-    // Базлайн (create або edit) захоплюється value-based ефектом нижче після
-    // осідання стану — без setTimeout-гонки.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, workOrderId]);
-
-  // Серіалізований відбиток значущих полів. Value-based dirty-детекція порівнює
-  // цей рядок із базлайном — ре-рендер із новим reference, але тими самими
-  // значеннями, НЕ позначає форму брудною.
-  const formSnapshot = useMemo(
-    () =>
-      JSON.stringify({
-        form,
-        lines: lines.map(l => ({
-          workId: l.workId,
-          employeeId: l.employeeId,
-          normoHours: l.normoHours,
-          actualHours: l.actualHours,
-          price: l.price,
-        })),
-        parts: parts.map(p => ({
-          goodId: p.goodId,
-          warehouseId: p.warehouseId,
-          quantity: p.quantity,
-          price: p.price,
-          unitOfMeasureId: p.unitOfMeasureId,
-        })),
-      }),
-    [form, lines, parts],
-  );
-
-  // Value-based dirty-детекція + захоплення базлайну.
-  // Create: базлайн — перший snapshot після reset (з prefill). Edit: після
-  // завершення завантаження (editLoaded=true). Bug #639: async авто-вибір
-  // єдиної філії — програмна зміна; ефект авто-вибору піднімає rebaselineRef, і тут
-  // нове значення згортається у базлайн замість dirty.
-  useEffect(() => {
-    if (!open) return;
-    if (isEditMode && !editLoaded) return;
-    if (!baselineCapturedRef.current) {
-      baselineCapturedRef.current = true;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    if (rebaselineRef.current) {
-      rebaselineRef.current = false;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    dirty.syncDirty(formSnapshot);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isEditMode, editLoaded, formSnapshot]);
 
   // Edit mode — load existing WO data when modal opens or workOrderId changes.
   // Cancellation guard: at TabBar restore time, the user can click tab B while A's
@@ -631,7 +704,37 @@ export function CreateWorkOrderModal({
         if (cancelled) return;
         setWoNumber(wo.number);
         setCurrentStatus(wo.status);
-        setForm({
+        const loadedLines: LocalLine[] = wo.lines.map(l => ({
+          _key: nextKey(),
+          id: l.id,
+          workId: l.workId,
+          workName: l.workName ?? '',
+          employeeId: l.employeeId,
+          normoHours: String(l.normoHours),
+          actualHours: l.actualHours != null ? String(l.actualHours) : '',
+          price: String(l.price),
+        }));
+        const loadedParts: LocalPart[] = wo.parts.map(p => ({
+          _key: nextKey(),
+          id: p.id,
+          goodId: p.goodId,
+          goodName: p.goodName ?? '',
+          goodInternalCode: p.goodInternalCode ?? null,
+          goodSku: p.goodSku ?? null,
+          goodBrandName: p.goodBrandName ?? null,
+          warehouseId: p.warehouseId,
+          quantity: String(p.quantity),
+          costPrice: p.costPrice ?? null,
+          price: String(p.price),
+          // зберігаємо UoM що повернув backend, інакше inline-edit dropdown
+          // скине вибір до дефолту "шт" навіть якщо реально товар у "кг".
+          unitOfMeasureId: p.unitOfMeasureId ?? '',
+          unitShortName: p.unitShortName ?? '',
+        }));
+        // reset() із завантаженими даними → нова «чиста» база (rhfDirty=false для незмінених даних).
+        // lines/parts несуть _key/display-поля поза схемою (widened у field-array item).
+        reset({
+          ...emptyDefaults(),
           branchId: wo.branchId ?? '',
           vehicleId: wo.vehicleId ?? '',
           counterpartyId: wo.counterpartyId ?? '',
@@ -639,13 +742,15 @@ export function CreateWorkOrderModal({
           currencyId: wo.currencyId ?? '',
           liftId: wo.liftId ?? '',
           description: wo.description ?? '',
-          priority: wo.priority ?? 'NORMAL',
-          repairCategory: wo.repairCategory ?? '',
+          priority: (wo.priority ?? 'NORMAL') as WorkOrderFormInput['priority'],
+          repairCategory: (wo.repairCategory ?? '') as WorkOrderFormInput['repairCategory'],
           documentDate: wo.documentDate ? wo.documentDate.slice(0, 10) : kyivToday(),
           plannedStartAt: isoToKyivLocalDateTime(wo.plannedAt),
           plannedEndAt: isoToKyivLocalDateTime(wo.dueDate),
           plannedHours: wo.plannedHours != null ? String(wo.plannedHours) : '',
           actualHours: wo.actualHours != null ? String(wo.actualHours) : '',
+          lines: loadedLines as unknown as WorkOrderFormInput['lines'],
+          parts: loadedParts as unknown as WorkOrderFormInput['parts'],
         });
         // snapshot loaded dates for later change-detection.
         // Used by save() to decide whether to show calendar-sync dialog.
@@ -655,37 +760,6 @@ export function CreateWorkOrderModal({
         };
         setCounterpartyDisplayName(wo.counterpartyName ?? '');
         setCpPhone('');
-        setLines(
-          wo.lines.map(l => ({
-            _key: nextKey(),
-            id: l.id,
-            workId: l.workId,
-            workName: l.workName ?? '',
-            employeeId: l.employeeId,
-            normoHours: String(l.normoHours),
-            actualHours: l.actualHours != null ? String(l.actualHours) : '',
-            price: String(l.price),
-          })),
-        );
-        setParts(
-          wo.parts.map(p => ({
-            _key: nextKey(),
-            id: p.id,
-            goodId: p.goodId,
-            goodName: p.goodName ?? '',
-            goodInternalCode: p.goodInternalCode ?? null,
-            goodSku: p.goodSku ?? null,
-            goodBrandName: p.goodBrandName ?? null,
-            warehouseId: p.warehouseId,
-            quantity: String(p.quantity),
-            costPrice: p.costPrice ?? null,
-            price: String(p.price),
-            // зберігаємо UoM що повернув backend, інакше inline-edit dropdown
-            // скине вибір до дефолту "шт" навіть якщо реально товар у "кг".
-            unitOfMeasureId: p.unitOfMeasureId ?? '',
-            unitShortName: p.unitShortName ?? '',
-          })),
-        );
         if (wo.counterpartyId) {
           loadVehicles(wo.counterpartyId, wo.vehicleId);
           loadContracts(wo.counterpartyId);
@@ -698,9 +772,6 @@ export function CreateWorkOrderModal({
       .finally(() => {
         if (cancelled) return;
         setEditModeLoading(false);
-        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
-        // на фактично завантажених даних (не на порожній формі).
-        setEditLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -739,13 +810,11 @@ export function CreateWorkOrderModal({
   // (2) modal reopens when branches are already cached (branches dep unchanged).
   useEffect(() => {
     if (!open || isEditMode || branches.length !== 1) return;
-    setForm(f => {
-      if (f.branchId) return f;
-      // Bug #639: авто-вибір після базлайну → програмна зміна; піднімаємо
-      // rebaselineRef, щоб dirty-детектор згорнув її у базлайн (не dirty).
-      if (baselineCapturedRef.current) rebaselineRef.current = true;
-      return { ...f, branchId: branches[0].id };
-    });
+    if (getValues('branchId')) return;
+    // Bug #639: авто-вибір єдиної філії — програмна зміна; setValue({shouldDirty:false})
+    // не вмикає dirty-guard (форма лишається «чистою» на open).
+    setValue('branchId', branches[0].id, { shouldDirty: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branches, open, isEditMode]);
 
   // Auto-select first warehouse for new parts when warehouses load
@@ -765,9 +834,10 @@ export function CreateWorkOrderModal({
   // A3-modal: loadVehicles/loadContracts у useReferenceData. Тонка обгортка передає onSingleVehicle-колбек
   // (auto-select single vehicle) → хук лишається form-agnostic, а form-мутація тут (spine).
   const loadVehicles = (cpId: string, keepVehicleId?: string) =>
-    loadVehiclesRef(cpId, keepVehicleId, vehicleId =>
-      setForm(f => (f.vehicleId ? f : { ...f, vehicleId })),
-    );
+    loadVehiclesRef(cpId, keepVehicleId, vehicleId => {
+      // Авто-вибір єдиного авто — програмний (shouldDirty:false), як branch-autoselect.
+      if (!getValues('vehicleId')) setValue('vehicleId', vehicleId, { shouldDirty: false });
+    });
 
   const [workPickerOpen, setWorkPickerOpen] = useState(false);
   const [editWorkPickerOpen, setEditWorkPickerOpen] = useState(false);
@@ -970,11 +1040,35 @@ export function CreateWorkOrderModal({
   // lines/parts that have not been persisted yet — otherwise the same lines
   // would be duplicated on every retry click.
   const createdWoRef = useRef<CreatedWorkOrder | null>(null);
+  // Bug #755 (retry-safety РЯДКІВ/ДЕТАЛЕЙ): multi-request submit (POST шапка → N× POST /lines,
+  // /parts) при обриві на рядку #2 лишає рядок #1 збереженим на беку. Повторний клік ре-постив
+  // би ВСІ рядки з форми → задвоєна сума. Запам'ятовуємо _key кожного успішно збереженого рядка
+  // й на ретраї пропускаємо його. _key стабільний per-row (nextKey() при append/flush/load).
+  const postedLineKeysRef = useRef<Set<string>>(new Set());
+  const postedPartKeysRef = useRef<Set<string>>(new Set());
 
   const create = async () => {
     // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit. Два click-и в
     // одному tick інакше створять 2 наряди до застосування disabled={saving}.
     if (savingRef.current || transitioningRef.current) return;
+    // Валідація через спільну zod-схему (Invoice/PO-патерн: safeParse(getValues) як гейт;
+    // payload далі будується з form.*/toNumberOrUndefined для UA-коми та existing-семантики).
+    // Half-row auto-flush нижче доповнює lines/parts staging-рядком ДО перевірки.
+    {
+      const flushLine =
+        newLine.workId && newLine.employeeId ? [{ ...newLine, _key: nextKey() }] : [];
+      const flushPart =
+        newPart.goodId && newPart.warehouseId ? [{ ...newPart, _key: nextKey() }] : [];
+      const parsed = workOrderFormSchema.safeParse({
+        ...getValues(),
+        lines: [...(getValues('lines') ?? []), ...flushLine],
+        parts: [...(getValues('parts') ?? []), ...flushPart],
+      });
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів');
+        return;
+      }
+    }
     // warn user if half-typed row would be silently dropped (data loss).
     // Pre-check BEFORE setSaving so the button stays enabled and the warning is visible.
     const hasHalfLine = !!newLine.workId && !newLine.employeeId;
@@ -1038,8 +1132,12 @@ export function CreateWorkOrderModal({
 
       // Post lines sequentially (order matters for display).
       // After each successful POST we drop the row from local state so a retry
-      // after a mid-batch failure does NOT duplicate already-saved lines.
+      // after a mid-batch failure does NOT duplicate already-saved lines. Bug #755:
+      // додатково фіксуємо _key у postedLineKeysRef і пропускаємо його на ретраї —
+      // drop-from-array сам по собі не захищає (setLines shim → replace, а мид-батч
+      // fail лишає обірваний масив; Set — авторитетне джерело «вже збережено»).
       for (const line of linesToPost) {
+        if (line._key && postedLineKeysRef.current.has(line._key)) continue;
         await apiFetch(`/work-orders/${wo.id}/lines`, {
           method: 'POST',
           body: JSON.stringify({
@@ -1050,10 +1148,12 @@ export function CreateWorkOrderModal({
             price: toNumberOrUndefined(line.price),
           }),
         });
+        if (line._key) postedLineKeysRef.current.add(line._key);
         setLines(prev => prev.filter(l => l._key !== line._key));
       }
 
       for (const part of partsToPost) {
+        if (part._key && postedPartKeysRef.current.has(part._key)) continue;
         await apiFetch(`/work-orders/${wo.id}/parts`, {
           method: 'POST',
           body: JSON.stringify({
@@ -1064,10 +1164,13 @@ export function CreateWorkOrderModal({
             unitOfMeasureId: part.unitOfMeasureId || undefined,
           }),
         });
+        if (part._key) postedPartKeysRef.current.add(part._key);
         setParts(prev => prev.filter(p => p._key !== part._key));
       }
 
       createdWoRef.current = null;
+      postedLineKeysRef.current = new Set();
+      postedPartKeysRef.current = new Set();
       dirty.resetDirty();
       onCreated?.(wo);
       onClose();
@@ -1080,8 +1183,8 @@ export function CreateWorkOrderModal({
 
   const save = async () => {
     if (!workOrderId) return;
-    setSavingBoth(true);
-    setError('');
+    // WEB-H3: синхронний guard проти concurrent double-submit (savingRef фліпається до re-render).
+    if (savingRef.current || transitioningRef.current) return;
     // Commit any open inline-edit row synchronously so save() reads the latest actualHours.
     // setLines is async (React batched), so compute the merged snapshot here and use it
     // directly in the rest of save() via committedLines instead of the stale `lines` closure.
@@ -1089,6 +1192,7 @@ export function CreateWorkOrderModal({
     // editingLine state never carries `id` → раніше merge скидав `id` у undefined →
     // save() filter `!!l.id && l.actualHours !== ''` пропускав рядок → PATCH lines
     // не надсилався → actualHours на line-рівні ніколи не зберігалось у IN_PROGRESS/ON_HOLD.
+    // ⚠️ Commit editing row у field-array ДО читання getValues('lines') (RHF-джерело правди).
     const committedLines = editingLineKey
       ? lines.map(l => (l._key === editingLineKey ? { ...l, ...editingLine, _key: l._key } : l))
       : lines;
@@ -1096,6 +1200,21 @@ export function CreateWorkOrderModal({
       setLines(committedLines);
       setEditingLineKey(null);
     }
+    // Валідація через спільну zod-схему (гейт; payload будується з form.*/committedLines нижче
+    // для UA-коми та existing null-семантики). committedLines merge вже враховано.
+    {
+      const parsed = workOrderFormSchema.safeParse({
+        ...getValues(),
+        lines: committedLines,
+        parts: getValues('parts') ?? [],
+      });
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Перевірте правильність заповнення полів');
+        return;
+      }
+    }
+    setSavingBoth(true);
+    setError('');
     try {
       // computedActualHours має бути `undefined` коли користувач
       // не вказував явно і recalc не може порахувати (lines.length=0). Інакше
@@ -1167,6 +1286,9 @@ export function CreateWorkOrderModal({
         // Паралель = race у READ COMMITTED: тх1/тх2 одна одної не бачать у
         // SUM(amount), тому останній writer перетирає тotalAmount → втрачені суми.
         for (const line of committedLines.filter(l => !l.id)) {
+          // Bug #755: на ретраї (частина рядків уже збережена) пропускаємо вже-POST-нуті _key —
+          // новий рядок (без id) інакше щоразу потрапляє у фільтр → задвоєна сума.
+          if (line._key && postedLineKeysRef.current.has(line._key)) continue;
           await apiFetch(`/work-orders/${workOrderId}/lines`, {
             method: 'POST',
             body: JSON.stringify({
@@ -1177,6 +1299,7 @@ export function CreateWorkOrderModal({
               price: toNumberOrUndefined(line.price),
             }),
           });
+          if (line._key) postedLineKeysRef.current.add(line._key);
         }
         // PATCH існуючих рядків щоб зберегти actualHours (та інші inline-edit зміни).
         for (const line of committedLines.filter(l => !!l.id)) {
@@ -1192,6 +1315,8 @@ export function CreateWorkOrderModal({
           });
         }
         for (const part of parts.filter(p => !p.id)) {
+          // Bug #755: retry-dedup нових деталей (без id) через postedPartKeysRef.
+          if (part._key && postedPartKeysRef.current.has(part._key)) continue;
           await apiFetch(`/work-orders/${workOrderId}/parts`, {
             method: 'POST',
             body: JSON.stringify({
@@ -1202,6 +1327,7 @@ export function CreateWorkOrderModal({
               unitOfMeasureId: part.unitOfMeasureId || undefined,
             }),
           });
+          if (part._key) postedPartKeysRef.current.add(part._key);
         }
       } else if (canEditActual) {
         // у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
@@ -1270,6 +1396,8 @@ export function CreateWorkOrderModal({
           }
         }
       }
+      postedLineKeysRef.current = new Set();
+      postedPartKeysRef.current = new Set();
       dirty.resetDirty();
       onUpdated?.();
       onClose();
@@ -1981,23 +2109,24 @@ export function CreateWorkOrderModal({
                         </Select>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <CurrencySelect
-                          value={form.currencyId}
-                          onChange={id =>
-                            setForm(f => {
-                              if (f.currencyId === id) return f;
-                              // Bug #747: CurrencySelect авто-виставляє базову валюту async ПІСЛЯ
-                              // captureBaseline (порожнє currencyId→UAH) — це програмний defaultToBase,
-                              // не правка користувача. Піднімаємо rebaselineRef (як branch-autoselect
-                              // Bug #639), щоб dirty-детектор згорнув її у базлайн, інакше свіжа
-                              // форма стає «брудною» на open і не закривається (confirmClose блокує).
-                              if (!f.currencyId && baselineCapturedRef.current) {
-                                rebaselineRef.current = true;
-                              }
-                              return { ...f, currencyId: id };
-                            })
-                          }
-                          disabled={!canEdit}
+                        <Controller
+                          control={control}
+                          name="currencyId"
+                          render={({ field }) => (
+                            <CurrencySelect
+                              value={typeof field.value === 'string' ? field.value : ''}
+                              onChange={id => {
+                                const prevVal = typeof field.value === 'string' ? field.value : '';
+                                if (prevVal === id) return;
+                                // Bug #747: CurrencySelect авто-виставляє базову валюту async на open
+                                // (порожнє currencyId→UAH) — програмний defaultToBase, не правка
+                                // користувача. shouldDirty:false → форма лишається «чистою» й
+                                // закривається без confirm. Зміна з непорожнього → правка → dirty.
+                                setValue('currencyId', id, { shouldDirty: prevVal !== '' });
+                              }}
+                              disabled={!canEdit}
+                            />
+                          )}
                         />
                       </div>
                     </div>
