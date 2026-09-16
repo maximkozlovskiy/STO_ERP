@@ -5545,3 +5545,35 @@ web schema+form тести 23 passed, tsc усі 0.
 **Верифікація:** tsc shared/api/web = 0. web CreateWorkOrderModal: 11→13 passed. web DocumentDirtyGuard: 3 passed. api work-orders: 131 passed. Усе зелене.
 
 **Висновок:** shim-міграція a61f990a НЕ внесла регресій у жодну з 9 зон ризику. Money/idempotency-інваріанти (retry-dedup, double-submit, sequential-writes), UA-кома, nullable-clear, status-conditional PATCH — усі збережені й тепер частина з них має runtime-guard замість статичних асертів.
+
+## Session 2026-09-17 — Bug hunt Аудиту backend #1 «fail-fast env-валідація через zod» (commits 123deff2 + 7bdf2ae7)
+
+**Scope:** `apps/api/src/config/env.schema.ts` (нова zod-схема + `validateEnv`), `env.schema.spec.ts`, `apps/api/src/app.module.ts` (`ConfigModule.forRoot({ validate: validateEnv })`). Review вже пройшов (додав MINIO_PORT до prod-strict). Sync пропущено (backend-only). Фокус — РИЗИКИ startup-валідації: регресія запуску тестів/деплою, повнота prod-strict, наслідки coerce.number, агрегація помилок.
+
+**Baseline:** api tsc = 0. Повний api-suite = **162 файли / 2494 тести — зелений** (validate вбудований у ConfigModule НЕ ламає жоден spec, включно з тими що будують AppModule — dev-lenient пропускає порожній/test env). `.env.dev` + `.env.example` проходять `validateEnv` у dev; PORT/MINIO_PORT коерсяться у number (3000/9000). prod-strict повнота підтверджена: усі getOrThrow-hard-deps (JWT_ACCESS/REFRESH у auth.service/jwt.strategy/bull-board.guard; MINIO_ENDPOINT/PORT/ACCESS_KEY/SECRET_KEY/BUCKET у files.service) покриті prod-required набором — 0 непокритих getOrThrow. main.ts читає `process.env.PORT` напряму (не ConfigService) → coerce-number не досягає його (`assignVariablesToProcess` не перезаписує вже-наявні ключі) → parseInt безпечний. Знайдено 2 баги.
+
+### Bug #757 [x] виправлено — MEDIUM (dev-UX регресія) — короткий NOTIFICATION_ENC_KEY (<32) блокував старт dev/test, хоча EncryptionService нормалізує будь-яку довжину через SHA-256
+
+**Сигнал:** поле `NOTIFICATION_ENC_KEY: z.string().min(32).optional().or(z.literal(''))` — `.min(32)` застосовувався у ВСІХ середовищах. Але `EncryptionService.onModuleInit` (encryption.service.ts:41) робить `createHash('sha256').update(raw,'utf8').digest()` — тобто приймає БУДЬ-ЯКУ непорожню довжину й розтягує її у детермінований 32-байтовий ключ. 5-символьний dev-ключ (`dev12`) працює у рантаймі бездоганно.
+
+**Наслідок:** оператор/розробник, що виставив короткий `NOTIFICATION_ENC_KEY=devkey` (раніше валідна конфігурація), тепер отримує ЖОРСТКИЙ startup-fail `NOTIFICATION_ENC_KEY має бути ≥ 32 символів` у dev/test. Схема стала СТРОГІШОЮ за сервіс, який вона мала дзеркалити. Суперечить власній філософії файлу (env.schema.ts:14-17): «формат валідуємо завжди, ОБОВʼЯЗКОВІСТЬ prod-критичних — лише у production».
+
+**Repro (підтверджено):** `validateEnv({ NODE_ENV: 'development', NOTIFICATION_ENC_KEY: 'dev12' })` кидав.
+
+**Фікс:** прибрано always-on `.min(32)` з поля (`z.string().optional()` — лише presence-формат). Мінімум ≥32 перенесено у prod-gated перевірку (hardening проти слабкої ентропії у production). Empty-string лишається дозволеним скрізь (шифрування off). Тепер: dev/test — будь-яка непорожня довжина OK; prod — обовʼязковий І ≥32.
+
+**Регрес-тести (env.schema.spec.ts):** короткий ключ у dev/test не валить (2 тести); короткий у prod кидає `≥ 32 символів у production`; рівно-32 у prod валідний.
+
+### Bug #758 [x] виправлено — MEDIUM (діагностика fail-fast) — format-помилка (base-parse) короткозамикала prod-strict `superRefine` → перелік відсутніх prod-секретів зникав з повідомлення
+
+**Сигнал:** prod-strict присутність реалізована через `.superRefine` на об'єктній схемі. Zod ПРОПУСКАЄ object-level refinement, якщо base-parse дав issues. Тобто одна format-помилка (напр. кривий `PORT='nope'`) → у повідомленні лише `PORT: Expected number, received nan`, а ВЕСЬ перелік відсутніх prod-секретів (DATABASE_URL/JWT__/MINIO__/ENC_KEY) зникав.
+
+**Наслідок (саме сценарій, заради якого фіча існує):** оператор на ПК СТО заповнює прод-`.env` з typo в PORT І забуває DATABASE_URL/JWT. Контейнер падає лише з «PORT: Expected number» → оператор фіксить PORT, рестарт → аж тепер бачить брак DATABASE_URL, рестарт → JWT… ітеративно, по рестарту на змінну. Це нищить сенс агрегованого fail-fast (env.schema.ts:122: «оператор бачить точний перелік»).
+
+**Repro (підтверджено, тест спершу падав):** `validateEnv({ NODE_ENV: 'production', PORT: 'nope' })` → повідомлення містило `PORT`, але НЕ містило `DATABASE_URL`/`JWT_ACCESS_SECRET`.
+
+**Фікс:** prod-strict винесено з `.superRefine` у незалежну функцію `checkProdStrict(config)`, що працює по СИРОМУ config і виконується ЗАВЖДИ у `validateEnv` — незалежно від того, чи base-parse дав issues. Format-issues + prod-issues тепер зливаються в один агрегований перелік. Схема лишає лише format-перевірки (coerce/url/enum/refine); presence+entropy — у `checkProdStrict`. Prod-required набір лишається одним джерелом правди.
+
+**Регрес-тест (env.schema.spec.ts):** «агрегує format-помилку (кривий PORT) РАЗОМ з prod-missing секретами» — assert що повідомлення містить і `PORT`, і `DATABASE_URL`, і `JWT_ACCESS_SECRET` одночасно.
+
+**Верифікація обох:** api tsc = 0. env.schema.spec: 15→**21 passed** (+6 регрес-тестів). Повний api-suite: **162 файли / 2494 тести — зелений**. `.env.dev`/`.env.example` проходять; prod-повний-набір валідний; коерс PORT/MINIO_PORT працює.

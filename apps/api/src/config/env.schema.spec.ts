@@ -87,8 +87,47 @@ describe('validateEnv — fail-fast env валідація', () => {
     }
   });
 
+  // Задача #6: format-помилка (base parse) + prod-missing (superRefine) мусять
+  // агрегуватись в ОДНЕ повідомлення, а не короткозамкнутись на першій.
+  it('агрегує format-помилку (кривий PORT) РАЗОМ з prod-missing секретами', () => {
+    try {
+      validateEnv({ NODE_ENV: 'production', PORT: 'nope' });
+      expect.unreachable('мало кинути');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).toContain('PORT'); // base-parse issue
+      expect(msg).toContain('DATABASE_URL'); // superRefine issue — обидва присутні
+      expect(msg).toContain('JWT_ACCESS_SECRET');
+    }
+  });
+
   it('NOTIFICATION_ENC_KEY: порожній рядок дозволений у dev (шифрування off)', () => {
     expect(() => validateEnv({ NODE_ENV: 'development', NOTIFICATION_ENC_KEY: '' })).not.toThrow();
+  });
+
+  // Bug #1 (session 2026-09-17): min-32 на NOTIFICATION_ENC_KEY у dev блокував старт,
+  // хоча EncryptionService.onModuleInit нормалізує БУДЬ-ЯКУ непорожню довжину через SHA-256.
+  // Мінімум ≥32 має бути prod-hardening, а не завжди-формат.
+  it('NOTIFICATION_ENC_KEY: короткий (<32) ключ дозволений у dev — SHA-256 нормалізує', () => {
+    expect(() =>
+      validateEnv({ NODE_ENV: 'development', NOTIFICATION_ENC_KEY: 'dev12' }),
+    ).not.toThrow();
+  });
+
+  it('NOTIFICATION_ENC_KEY: короткий (<32) ключ у test-env теж не валить старт', () => {
+    expect(() =>
+      validateEnv({ NODE_ENV: 'test', NOTIFICATION_ENC_KEY: 'short-key' }),
+    ).not.toThrow();
+  });
+
+  it('NOTIFICATION_ENC_KEY: короткий (<32) у production → кидає (hardening ентропії)', () => {
+    expect(() => validateEnv({ ...prodBase, NOTIFICATION_ENC_KEY: 'short' })).toThrow(
+      /NOTIFICATION_ENC_KEY має бути ≥ 32 символів у production/,
+    );
+  });
+
+  it('NOTIFICATION_ENC_KEY: рівно 32 символи у production → валідний', () => {
+    expect(() => validateEnv({ ...prodBase, NOTIFICATION_ENC_KEY: STRONG })).not.toThrow();
   });
 
   it('envSchema експортується для повторного використання', () => {
