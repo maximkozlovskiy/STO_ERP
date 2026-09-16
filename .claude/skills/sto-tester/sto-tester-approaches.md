@@ -2685,3 +2685,23 @@ for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do
 **Severity:** LOW (UX; без псування даних/падінь/битого POST). Escalate до MEDIUM якщо оманлива дія стосується грошей/списання і користувач впевнений, що відправив більше, ніж пішло.
 
 **Де шукати ще:** будь-який bulk-select / multi-step wizard / кошик де count і submit розходяться: ExcelImportWizard (fixed), масові дії у таблицях (bulk archive/delete/assign), «додати вибрані у документ», reservation-picker, будь-який `selectedCount` поряд з handler-циклом що має `continue`.
+
+---
+
+### 2026-09-17 — Component-тест RHF-модалки зі схемою `.uuid()`: placeholder-id фікстури тихо блокують submit — Область: frontend (test-authoring)
+
+**Фаза 5 WorkOrder bug-hunt (0 продуктових багів; ця пастка з'їла ~3 ітерації тесту).** Коли модалку мігрують value-based useState → RHF+`zodResolver(<formSchema>)`, схема зазвичай тісніша за старий ручний guard: FK-поля стають `z.string().uuid('Оберіть...')`. Component-тест з давніми placeholder-фікстурами (`{ id: 'e1' }`, `prefill:{vehicleId:'v1', counterpartyId:'cp1'}`) тепер **не проходить `safeParse`-гейт** у `create()`/`save()` (`const parsed = schema.safeParse(getValues()); if (!parsed.success) { setError(...); return; }`). Наслідок підступний: submit-handler повертає РАНО — **жодного POST не летить**, `onClose` не викликається, а `setError('Оберіть виконавця')` показує повідомлення, якого широкий регекс тесту (`/не обрано|Помилка|Перевірте/`) НЕ ловить. Тест «зеленіє на дотик» (рендер ок, кнопка enabled) але НІКОЛИ не доходить до idempotency/retry/double-submit логіки, яку нібито перевіряє → хибно-зелений guard критичного money-шляху.
+
+**Сигнал:** у component-тесті RHF-модалки після кліку submit — `apiFetchMock` НЕ отримав POST, `onClose` не викликаний, помилки в DOM немає (або є, але не та, що очікує assert). Особливо коли фікстури — короткі рядки (`'e1'/'v1'/'cp1'/'b1'`), а схема (`git show HEAD:packages/shared/src/schemas/forms/<x>.schema.ts`) має `.uuid()`.
+
+**Причина виникнення:** фікстури писались до RHF-міграції під ручний guard `if (!form.vehicleId)` (будь-який непорожній рядок проходив). Міграція на спільну zod-схему додала `.uuid()`, але тести не оновили — placeholder-id лишились. `safeParse` тихо валить submit ще ДО `setSaving`, і без POST немає що асертити.
+
+**Підхід до виявлення:** перед написанням/оновленням component-тесту RHF-модалки — прочитати її form-схему і виписати КОЖНЕ `.uuid()`-поле; усі відповідні фікстури (prefill + мок-довідники, що заповнюють Select/picker) МУСЯТЬ бути валідними UUID (`xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx`). Швидкий детектор першопричини «тест не постить»: тимчасово залогувати `schema.safeParse(getValues())` або дампнути ВСІ error-тексти (не звужений регекс) — побачиш точну назву поля-порушника. Пікер-обрані значення (employeeId з `<Select value=...>`, workId з picker `onSearchSelect`) теж мусять бути UUID — не лише prefill.
+
+**Підхід до фіксу:** підняти константи-UUID у тесті (`const EMP_UUID='55555555-5555-4555-8555-555555555555'`), заповнити ними мок-довідники (`{items:[{id:EMP_UUID,...}]}`) і prefill. Assert-регекс помилки НЕ звужувати до підмножини повідомлень — або матчити конкретне очікуване, або дампати всі. Після фіксу — переконатись, що POST РЕАЛЬНО летить (`expect(mock).toHaveBeenCalledWith('/<endpoint>', ...)`), інакше guard і далі порожній.
+
+**Супутнє (не баг):** inline-інпути `type="number"` (normoHours/price/quantity/plannedHours) НЕ приймають кому у браузері/jsdom — UA-кома `1,5` не долітає з такого поля. Кома-aware form-схема (`optionalMoneyNumber`/`moneyString`) — захисний backstop для free-text значень і програмного вводу, а не для number-input. UA-кому submit-гейту перевіряй на рівні СХЕМИ (`schema.safeParse({lines:[{normoHours:'1,5'}]}).success===true`), а не набором у number-input компонента.
+
+**Severity:** MEDIUM (сам тест — LOW-код, але хибно-зелений guard критичного money-шляху = release-blocker за §0: ховає майбутні регресії idempotency/double-submit).
+
+**Де шукати ще:** будь-яка `*CreateModal.test.tsx`/`*EditModal.test.tsx` мігрована на `zodResolver` зі спільною `<x>FormSchema` (Invoice/PO/StockDocument/SupplierPayment/SupplierReturn/WorkOrder); будь-який тест що драйвить submit через picker/Select і асертить POST/idempotency; кожен новий тест до RHF-модалки з `.uuid()`-полями у схемі.
