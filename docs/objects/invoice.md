@@ -117,6 +117,13 @@ OVERDUE → PAID / CANCELLED
 
 - Номер авто-генерується: `DocumentNumberService.next(orgId, 'INVOICE')`
 - Рахунок з наряду: `POST /from-work-order/:id` автоматично переносить роботи і товари з WO
+- `invoiceType` — UI-enum `STANDARD`/`PREPAYMENT`/`CREDIT_NOTE` (`INVOICE_TYPE_VALUES`/
+  `INVOICE_TYPE_LABELS` у `@sto/shared`). Prisma-колонка має `@default("INVOICE")` (legacy,
+  поза enum-ом) — тому `create()` і `createFromWorkOrder()` в `invoices.service.ts` ЗАВЖДИ
+  ставлять `invoiceType` явно (`'STANDARD'`), ніколи не покладаються на DB-дефолт.
+  `InvoiceCreateModal` при завантаженні рахунку нормалізує будь-яке значення поза enum-ом
+  (старі рядки з БД) на `'STANDARD'` через `normalizeInvoiceType()` — інакше zodResolver
+  валить submit формою `invoiceFormSchema` (fix 675d6b4c, Аудит #1 Фаза 3).
 - `dueDate` контролюється `invoiceDueDays` з `SettingsService.get(orgId)` — не хардкодиться
 - `OVERDUE` встановлюється автоматично (scheduler або при відкритті списку)
 - При оплаті → `SettlementsService.createTransaction(PAYMENT)` (не пряма зміна балансу)

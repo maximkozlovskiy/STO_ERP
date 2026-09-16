@@ -10,11 +10,21 @@
 
 ```
 Дата:       2026-09-16
-Фаза:       Аудит #1 Фаза 2 — Counterparty+Vehicle на zod + react-hook-form (спільні схеми web↔api) + канонізація vehicle-enum
+Фаза:       Аудит #1 Фаза 3 — Invoice на zod + react-hook-form + useFieldArray (перший line-items у проєкті)
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      counterparty-schema 11/11 · vehicle-schema 6/6 · counterparties module 88/88 (service 50 + contract 21 + vehicles 17)
-            · CounterpartyForm 8/8 · VehicleForm 4/4 · DocumentCreateModals 5/5 (GoodEditModal/DocumentDirtyGuard skip — env-guard, не регресія)
-HEAD:       b003d98a fix(review): прибрано мертвий import hasCounterpartyName у CounterpartyEditModal
+Тести:      web 792/792 · api 2424/2424 (без регресій), invoice-schema 15/15, DocumentCreateModals 6/6
+HEAD:       675d6b4c fix(sync): invoiceType 'INVOICE' поза UI-enum ламав редагування рахунків з наряду
+Sync:       2026-09-16 (Фаза 3, коміти 6157d9fe/107daec7) — 1 баг знайдено й виправлено: createFromWorkOrder
+            (основний шлях створення рахунку) не ставив invoiceType → Prisma @default("INVOICE"), яке поза
+            UI-enum STANDARD/PREPAYMENT/CREDIT_NOTE. При редагуванні такого рахунку reset() писав 'INVOICE'
+            у форму (?? 'STANDARD' не спрацьовує — truthy), zodResolver валив submit. Fix: normalizeInvoiceType()
+            у InvoiceCreateModal (будь-яке значення поза enum → 'STANDARD' при завантаженні) + бек тепер явно
+            ставить invoiceType='STANDARD' і у createFromWorkOrder, і у ручному create()-дефолті. Решта
+            звірено синхронно: header POST/PATCH окремо від lines POST/DELETE, validation-parity dueDate/
+            documentDate/amount/quantity/unitPrice/vatRate = class-validator DTO (декоративні після
+            ZodValidationPipe-міграції, але типи звірені), useFieldArray _key/id локальні (не у payload),
+            retry-safety (createdInvoiceRef/initialLineIdsRef) збережена.
+Prev HEAD:  b003d98a fix(review): прибрано мертвий import hasCounterpartyName у CounterpartyEditModal
 Review:     2026-09-16 (auto, коміти ab169ab0..9905f947 Counterparty+Vehicle zod+RHF+enum-канонізація) — 1 Suggestion виправлено:
             осиротілий import hasCounterpartyName у CounterpartyEditModal (name-by-type тепер лише
             через zodResolver counterpartyFormSchema.superRefine). Решта чисто: update-схема partial()

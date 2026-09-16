@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-16 — Аудит #1 Фаза 3: Invoice zod + RHF + useFieldArray — sync fix
+
+### 675d6b4c fix(sync): invoiceType 'INVOICE' поза UI-enum ламав редагування рахунків з наряду
+
+`createFromWorkOrder` не передавав `invoiceType` у Prisma `create()` → падав на
+`@default("INVOICE")`, яке поза UI-enum STANDARD/PREPAYMENT/CREDIT_NOTE. Редагування такого
+рахунку писало 'INVOICE' у RHF-форму, zodResolver валив submit. Fix: `normalizeInvoiceType()`
+на load + бек явно ставить `'STANDARD'` (createFromWorkOrder + ручний create-дефолт).
+
+---
+
 ## 2026-09-15 — Generic Excel-імпорт товарів (FRONTEND)
 
 ### 03a098c9 feat(web): підключити ExcelImportWizard до модалок PO та складського документа
