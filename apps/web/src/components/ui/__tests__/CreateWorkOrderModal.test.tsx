@@ -577,6 +577,150 @@ describe('CreateWorkOrderModal — regression guards', () => {
     });
   });
 
+  // ── Bug #755-class (retry-dedup через shim) + UA-кома + double-submit ──────────
+  // Ці тести драйвлять РЕАЛЬНЕ додавання рядка через пікери (RHF+useFieldArray shim),
+  // щоб покрити регресії міграції a61f990a: postedLineKeysRef dedup, createdWoRef,
+  // half-row auto-flush, кома-aware submit. Раніше покривались лише статичними асертами.
+  const VALID_WORK = '44444444-4444-4444-8444-444444444444';
+  // employeeId у схемі — .uuid(); фікстура-виконавець мусить бути валідним UUID,
+  // інакше safeParse-гейт відсіє submit («Оберіть виконавця») до POST.
+  const EMP_UUID = '55555555-5555-4555-8555-555555555555';
+  const uuidEmployees = [{ id: EMP_UUID, firstName: 'Іван', lastName: 'Петров' }];
+  const P = {
+    branchId: '11111111-1111-4111-8111-111111111111',
+    counterpartyId: '22222222-2222-4222-8222-222222222222',
+    counterpartyDisplay: 'Тест Клієнт',
+    vehicleId: '33333333-3333-4333-8333-333333333333',
+  };
+
+  // Додає один рядок «Роботи» через реальний EntityPickerField (пошук) + Select виконавця.
+  // normoHours успадковується з обраної роботи (2) — inline-поле type="number" не приймає
+  // UA-кому у браузері/jsdom, тож кома-aware submit покрито окремо на рівні схеми
+  // (workOrderFormSchema safeParse '1,5'→1.5 — api spec probe).
+  async function addOneLine(user: ReturnType<typeof userEvent.setup>) {
+    // Розкрити inline-рядок роботи.
+    const addButtons = screen.getAllByRole('button', { name: /Додати/ });
+    await user.click(addButtons[0]!);
+    // Ввести пошук у поле «Робота» → дочекатись дропдауна → обрати.
+    const workInput = await screen.findByLabelText('Робота', {}, { timeout: 2000 });
+    await user.type(workInput, 'Заміна');
+    const option = await screen.findByText('Заміна масла', {}, { timeout: 2000 });
+    await user.click(option);
+    // Обрати виконавця у Select (плейсхолдер «— Механік —», без aria-label →
+    // знаходимо combobox, який містить option value=EMP_UUID).
+    const empSelect = screen
+      .getAllByRole('combobox')
+      .find(
+        el =>
+          el instanceof HTMLSelectElement && Array.from(el.options).some(o => o.value === EMP_UUID),
+      ) as HTMLSelectElement;
+    await user.selectOptions(empSelect, EMP_UUID);
+    // Натиснути «+» (Зберегти рядок).
+    const saveRowBtn = await screen.findByRole('button', { name: /Зберегти рядок/ });
+    await user.click(saveRowBtn);
+  }
+
+  function workAwareMock(overrides?: (path: string, init?: RequestInit) => unknown | undefined) {
+    return (path: string, init?: RequestInit) => {
+      const ov = overrides?.(path, init);
+      if (ov !== undefined) return ov;
+      if (path === '/branches') return Promise.resolve(mockBranches);
+      if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+      if (path.startsWith('/employees')) return Promise.resolve({ items: uuidEmployees });
+      if (path.startsWith('/vehicles')) return Promise.resolve([]);
+      if (path.includes('/contracts')) return Promise.resolve({ items: [] });
+      if (path.startsWith('/works'))
+        return Promise.resolve({
+          items: [{ id: VALID_WORK, name: 'Заміна масла', normoHours: 2, price: 300 }],
+        });
+      return Promise.resolve({ items: [] });
+    };
+  }
+
+  it('Bug #755-class (create): обрив на POST /lines → retry НЕ дублює POST шапки й уже-збережені рядки', async () => {
+    const user = userEvent.setup();
+    let failNextLine = true;
+    let workOrderPosts = 0;
+    const linePosts: unknown[] = [];
+    apiFetchMock.mockImplementation(
+      workAwareMock((path, init) => {
+        if (path === '/work-orders' && init?.method === 'POST') {
+          workOrderPosts += 1;
+          return Promise.resolve({ id: 'wo-created', number: 'WO-9', counterpartyId: 'cp1' });
+        }
+        if (/\/work-orders\/wo-created\/lines$/.test(path) && init?.method === 'POST') {
+          if (failNextLine) {
+            failNextLine = false;
+            return Promise.reject(new Error('500: line write failed'));
+          }
+          linePosts.push(JSON.parse(String(init?.body)));
+          return Promise.resolve({ id: `line-${linePosts.length}` });
+        }
+        return undefined;
+      }),
+    );
+
+    const onClose = vi.fn();
+    render(<CreateWorkOrderModal open onClose={onClose} prefill={P} />);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+
+    await addOneLine(user);
+
+    const submitBtn = screen.getByRole('button', { name: /Створити наряд/ });
+    await waitFor(() => expect(submitBtn).not.toBeDisabled(), { timeout: 2000 });
+
+    // 1-й submit — line-POST падає.
+    await user.click(submitBtn);
+    await waitFor(() => expect(workOrderPosts).toBe(1), { timeout: 2000 });
+    // помилка показана, модалка не закрита.
+    await waitFor(() => expect(onClose).not.toHaveBeenCalled());
+
+    // Retry — та сама шапка (createdWoRef), рядок ре-поститься рівно 1 раз (не дубль).
+    await user.click(submitBtn);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 2000 });
+
+    // Регресія-guard: рівно 1 POST шапки (createdWoRef reuse), рівно 1 успішний POST рядка.
+    expect(workOrderPosts).toBe(1);
+    expect(linePosts.length).toBe(1);
+    // normoHours дійшла до payload як number (2 з обраної роботи), не NaN/рядок.
+    expect((linePosts[0] as { normoHours: number }).normoHours).toBe(2);
+  });
+
+  it('Bug #381/#635 (double-submit): 2 кліки в одному tick → рівно 1 POST /work-orders', async () => {
+    const user = userEvent.setup();
+    let workOrderPosts = 0;
+    let resolveCreate: ((v: unknown) => void) | null = null;
+    apiFetchMock.mockImplementation(
+      workAwareMock((path, init) => {
+        if (path === '/work-orders' && init?.method === 'POST') {
+          workOrderPosts += 1;
+          return new Promise(resolve => {
+            resolveCreate = resolve;
+          });
+        }
+        if (/\/lines$/.test(path) && init?.method === 'POST') return Promise.resolve({ id: 'l1' });
+        return undefined;
+      }),
+    );
+
+    render(<CreateWorkOrderModal open onClose={vi.fn()} prefill={P} />);
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/branches'));
+    await addOneLine(user);
+
+    const submitBtn = screen.getByRole('button', { name: /Створити наряд/ });
+    await waitFor(() => expect(submitBtn).not.toBeDisabled(), { timeout: 2000 });
+
+    // Двічі поспіль, ДО того як перший await POST зарезолвиться (savingRef sync-guard).
+    await user.click(submitBtn);
+    await user.click(submitBtn);
+    await waitFor(() => expect(workOrderPosts).toBe(1), { timeout: 2000 });
+    expect(workOrderPosts).toBe(1);
+
+    await act(async () => {
+      resolveCreate?.({ id: 'wo1', number: 'WO-1', counterpartyId: 'cp1' });
+    });
+  });
+
   it('Bug #448: fallback на calcPlannedHours коли prefill.plannedHours не заданий', async () => {
     // Backward compat: старі call-sites що не передають plannedHours все ще працюють —
     // плановіh обчислюється з дат.

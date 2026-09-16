@@ -5514,3 +5514,34 @@ web schema+form тести 23 passed, tsc усі 0.
 **Фікс:** додано явний `{ timeout: 2000 }` до вразливих `waitFor`/`findByRole`/`findByPlaceholderText`/`findByText`, що чекають на RHF-field-array рендер або edit-load контент: line 227/386 (combo контрагента), 322-323 (Робота 1/2 edit-load), 396/400/422 (Bug #755 addTwoLines + createBtn), 489/493/490 («useFieldArray рендериться»). Продакшн-код не змінювався — це виключно стабілізація тестів (fix TEST, не компонент; компонент коректний — підтверджено ізольованим прогоном 7/7).
 
 **Регресія-guard:** повторні прогони повного suite green. Severity LOW (не user-facing; але flaky baseline = release-blocker за §0 SKILL — ховає регресії).
+
+---
+
+## Session 2026-09-17 — Аудит #1 Фаза 5 bug-hunt (WorkOrder RHF+shim міграція, найскладніша модалка)
+
+**Scope:** commits a61f990a (CreateWorkOrderModal value-based useState → RHF+useFieldArray через `form`/`setForm`/`lines`/`setLines`/`parts`/`setParts` shim + спільна `workOrderFormSchema`), 252af5fc (sync: save() liftId/plannedAt/dueDate clear-семантика), d8a569aa (review: form-схема кома-aware через `optionalMoneyNumber`/`moneyString`). Sync+review вже пройшли. Фокус — РЕГРЕСІЇ від shim-міграції у 2372-рядковій модалці (~700р money/FSM/inventory-логіки).
+
+**Baseline:** tsc shared/api/web = 0 (--incremental false). API work-orders: 131 passed (12 файлів). web CreateWorkOrderModal: 11 passed. web DocumentDirtyGuard: 3 passed. Усе зелене на старті.
+
+**Результат аудиту 9 зон ризику: 0 регресій у продакшн-коді.** Перевірено детально (статичний аналіз + 2 нові runtime-guard тести + schema-probe):
+
+- **SHIM цілісність:** `setForm` diff-update пише лише змінені поля через `setValue({shouldDirty:true})`, читає `getValues()` (не stale `form`-memo) → послідовні setForm у одному tick бачать свіжий стан (RHF setValue оновлює internal ref синхронно). `priority:'NORMAL'` дефолт входить у `reset()`-базу → НЕ дає хибний dirty на open. `setLines`/`setParts` через `replace()` зберігають `_key`+display-поля (workName/employeeName/goodName/unitShortName) — inline-edit merge `{...l, ...editingLine, _key}` (спред `l` першим зберігає `id`).
+- **ГРОШІ/idempotency — RUNTIME-ПІДТВЕРДЖЕНО новим тестом:** обрив POST /lines на 1-му рядку → retry реюзає `createdWoRef` (рівно **1** POST /work-orders) і пропускає вже-збережений рядок через `postedLineKeysRef` (рівно **1** успішний POST /lines, не дубль). Half-row auto-flush (заповнений newLine/newPart без «+») потрапляє у submit; half-line (workId без employeeId) блокується укр. повідомленням (Bug #384). Double-submit (2 кліки в одному tick) → рівно **1** POST /work-orders (`savingRef.current` sync-guard флінається до re-render). duplicate work+employee (Bug #382) блокується. Line-writes SEQUENTIAL (recalcTotals READ COMMITTED race) — не паралелізовано.
+- **UA-кома submit-гейт — SCHEMA-PROBE ПІДТВЕРДЖЕНО:** `workOrderFormSchema.safeParse` пропускає `normoHours:'1,5'→1.5`, `price:'100,50'`, `quantity:'2,5'→2.5`; відхиляє `'abc'`. Review-фікс (`optionalMoneyNumber`/`moneyString` замість `z.coerce.number()`) тримає. ⚠️ Примітка: inline-інпути normoHours/price — `type="number"` (браузер не приймає кому взагалі); кома-aware схема лишається захисним backstop для free-text `plannedHours`/`actualHours` та програмних значень.
+- **nullable clear (sync-фікс 252af5fc):** save() шле `liftId: form.liftId || null`, `plannedAt: localDateTimeToISO(...) ?? (form.plannedStartAt ? undefined : null)` → очищення підйомника/планової дати надсилає `null` → бек `workOrderUpdateSchema` nullable-гілка очищає (не лишає старе).
+- **status-conditional PATCH:** DRAFT/ESTIMATE/APPROVED (`canEdit`) → full PATCH + DELETE/POST/PATCH рядків; IN_PROGRESS/ON_HOLD (`canEditActual`) → лише `{actualHours}` на WO + `{actualHours}` на рядках з непорожнім actualHours. Бек `updateLine.isLineActualOnlyPatch` (workId/employeeId/liftId/normoHours/price/notes === undefined) визнає це actual-only і НЕ кидає 400 (Bug #426 клас збережено).
+- **actualHours recalc:** `recalcActualHoursEnabled` → sum рядків; `lines.length===0` → `computedActualHours=undefined` (НЕ null) → PATCH omit → не перетирає збережене `WO.actualHours`.
+- **calendar-sync:** діалог лише коли `form.plannedStartAt/EndAt !== initialPlannedRef` (datesChanged) — save опису без зміни дат НЕ дає хибний prompt; `{updated:0}` → toast «слот не знайдено».
+- **dirty-guard (Bug #639/#747):** auto-select branch/vehicle через `setValue({shouldDirty:false})`; currency defaultToBase через `shouldDirty: prevVal !== ''` (порожнє→UAH не брудить, реальна зміна брудить). RHF `isDirty`→`useDirtyForm` міст.
+- **stock-totals (Bug #452-454):** `useStockTotals(parts, newPart.goodId, editingPart.goodId)` — shim передає `parts` з watch()-shim; існуючі тести (dedup через Set, стабільний sort, fetch-error не блокує) зелені.
+
+### Тест-покриття додано (не багфікс — durable регрес-сітка для shim-міграції)
+
+**Де:** `apps/web/src/components/ui/__tests__/CreateWorkOrderModal.test.tsx` — 2 нові runtime-guard тести, що драйвлять РЕАЛЬНЕ додавання рядка через `EntityPickerField` (пошук /works + dropdown-select) + Select виконавця (валідний UUID — інакше `.uuid()`-гейт відсіює submit) через RHF+useFieldArray shim:
+
+1. «Bug #755-class (create): обрив на POST /lines → retry НЕ дублює POST шапки й уже-збережені рядки» — 1-й submit валить line-POST; retry → assert рівно 1 POST /work-orders (createdWoRef) + рівно 1 успішний POST /lines (postedLineKeysRef). Раніше цей retry-dedup через shim покривався ЛИШЕ статичними асертами.
+2. «Bug #381/#635 (double-submit): 2 кліки в одному tick → рівно 1 POST /work-orders» — savingRef sync-guard через shim.
+
+**Верифікація:** tsc shared/api/web = 0. web CreateWorkOrderModal: 11→13 passed. web DocumentDirtyGuard: 3 passed. api work-orders: 131 passed. Усе зелене.
+
+**Висновок:** shim-міграція a61f990a НЕ внесла регресій у жодну з 9 зон ризику. Money/idempotency-інваріанти (retry-dedup, double-submit, sequential-writes), UA-кома, nullable-clear, status-conditional PATCH — усі збережені й тепер частина з них має runtime-guard замість статичних асертів.
