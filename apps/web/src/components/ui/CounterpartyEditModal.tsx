@@ -1,12 +1,19 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  counterpartyFormSchema,
+  hasCounterpartyName,
+  type CounterpartyFormInput,
+  type CounterpartyFormValues,
+} from '@sto/shared';
 import { Plus, Trash2, Pencil, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDate, kyivToday } from '@/lib/format';
-import { validateContactFields } from '@/lib/validation';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,10 +35,6 @@ import {
   CounterpartyForm,
   emptyCounterpartyForm,
   counterpartyToForm,
-  formToPatch,
-  hasCounterpartyName,
-  validateCounterpartyForm,
-  type CounterpartyFormState,
 } from '@/components/ui/CounterpartyForm';
 
 export type { CpType };
@@ -147,13 +150,19 @@ export function CounterpartyEditModal({
     setSaving(v);
   };
   const [error, setError] = useState('');
-  // Спільний набір полів контрагента (CounterpartyForm) — єдине джерело правди (усі 15 + type),
-  // ідентичне з DetailPage inline-edit (усунення field-desync).
-  const [form, setForm] = useState<CounterpartyFormState>(() => emptyCounterpartyForm('CLIENT'));
-  const patchForm = (p: Partial<CounterpartyFormState>) => {
-    setForm(f => ({ ...f, ...p }));
-    dirty.markDirty();
-  };
+  // Спільна форма контрагента (react-hook-form + zod-схема) — єдине джерело валідації web↔api.
+  const {
+    register,
+    handleSubmit,
+    reset,
+    control,
+    watch,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<CounterpartyFormInput, unknown, CounterpartyFormValues>({
+    resolver: zodResolver(counterpartyFormSchema),
+    defaultValues: emptyCounterpartyForm('CLIENT'),
+    mode: 'onBlur',
+  });
 
   // Sync form when counterparty changes (open edit)
   useEffect(() => {
@@ -161,10 +170,17 @@ export function CounterpartyEditModal({
       setEditTab('main');
       setError('');
       dirty.resetDirty();
-      setForm(counterparty ? counterpartyToForm(counterparty) : emptyCounterpartyForm('CLIENT'));
+      reset(counterparty ? counterpartyToForm(counterparty) : emptyCounterpartyForm('CLIENT'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, counterparty?.id]);
+
+  // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
+  useEffect(() => {
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhfDirty]);
 
   // ── Vehicles ─────────────────────────────────────────────────────────────────
   const [modalVehicles, setModalVehicles] = useState<Vehicle[]>([]);
@@ -382,25 +398,15 @@ export function CounterpartyEditModal({
     onClose();
   }, [dirty, onClose]);
 
-  const create = async () => {
+  // Валідація — zodResolver (per-field inline, включно з name-by-type superRefine на companyName).
+  const create = handleSubmit(async (values: CounterpartyFormValues) => {
     if (savingRef.current) return;
-    const nameError = validateCounterpartyForm(form);
-    if (nameError) {
-      setError(nameError);
-      return;
-    }
-    // T11: клієнтська Zod-валідація email (телефон уже нормалізує PhoneInput-маска, тож не чіпаємо).
-    const contactError = validateContactFields({ email: form.email });
-    if (contactError) {
-      setError(contactError);
-      return;
-    }
     setSavingBoth(true);
     setError('');
     try {
       const created = await apiFetch<CounterpartyForModal>('/counterparties', {
         method: 'POST',
-        body: JSON.stringify(formToPatch(form)),
+        body: JSON.stringify(values),
       });
       dirty.resetDirty();
       // Батько передасть created як counterparty → модалка перемкнеться в edit-режим
@@ -412,28 +418,17 @@ export function CounterpartyEditModal({
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
-  const update = async () => {
+  const update = handleSubmit(async (values: CounterpartyFormValues) => {
     if (savingRef.current) return;
     if (!counterparty) return;
-    const nameError = validateCounterpartyForm(form);
-    if (nameError) {
-      setError(nameError);
-      return;
-    }
-    // T11: клієнтська Zod-валідація контактних полів.
-    const contactError = validateContactFields({ phone: form.phone, email: form.email });
-    if (contactError) {
-      setError(contactError);
-      return;
-    }
     setSavingBoth(true);
     setError('');
     try {
       const updated = await apiFetch<CounterpartyForModal>(`/counterparties/${counterparty.id}`, {
         method: 'PATCH',
-        body: JSON.stringify(formToPatch(form)),
+        body: JSON.stringify(values),
       });
       dirty.resetDirty();
       onSaved(updated, false);
@@ -443,7 +438,7 @@ export function CounterpartyEditModal({
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
   // Скидання форми авто у дефолтний стан (вихід з create/edit-режиму).
   const resetVehicleForm = () => {
@@ -735,11 +730,7 @@ export function CounterpartyEditModal({
         bodyMinHeight={isEdit ? 340 : undefined}
         footer={
           editTab === 'main' ? (
-            <Button
-              onClick={isEdit ? update : create}
-              loading={saving}
-              disabled={!hasCounterpartyName(form)}
-            >
+            <Button onClick={isEdit ? update : create} loading={saving}>
               {isEdit ? 'Оновити' : 'Зберегти'}
             </Button>
           ) : null
@@ -786,7 +777,7 @@ export function CounterpartyEditModal({
                 {error}
               </div>
             )}
-            <CounterpartyForm value={form} onChange={patchForm} mode={isEdit ? 'edit' : 'create'} />
+            <CounterpartyForm register={register} errors={errors} control={control} watch={watch} />
 
             {/* Статуси-мітки (лише при редагуванні наявного контрагента) */}
             {isEdit && counterparty && (

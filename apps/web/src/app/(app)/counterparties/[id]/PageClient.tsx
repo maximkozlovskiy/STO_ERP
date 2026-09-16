@@ -8,15 +8,18 @@ import { ArrowLeft, Plus, Pencil, Check, X } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  counterpartyFormSchema,
+  type CounterpartyFormInput,
+  type CounterpartyFormValues,
+} from '@sto/shared';
 import {
   CounterpartyForm,
   emptyCounterpartyForm,
   counterpartyToForm,
-  formToPatch,
-  validateCounterpartyForm,
-  type CounterpartyFormState,
 } from '@/components/ui/CounterpartyForm';
-import { validateContactFields } from '@/lib/validation';
 import { type Warranty } from '@/hooks/api/useWarranties';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import { Button } from '@/components/ui/button';
@@ -315,18 +318,29 @@ export default function CounterpartyCardPage() {
 
   // Editing info
   const [editing, setEditing] = useState(false);
-  // Спільний набір полів (CounterpartyForm) — усі 15 + type, ідентично з CounterpartyEditModal.
-  const [editForm, setEditForm] = useState<CounterpartyFormState>(() => emptyCounterpartyForm());
+  // Спільна форма контрагента (react-hook-form + zod-схема) — ідентична з CounterpartyEditModal.
+  const {
+    register,
+    handleSubmit,
+    reset: resetEditForm,
+    control,
+    watch,
+    formState: { errors },
+  } = useForm<CounterpartyFormInput, unknown, CounterpartyFormValues>({
+    resolver: zodResolver(counterpartyFormSchema),
+    defaultValues: emptyCounterpartyForm(),
+    mode: 'onBlur',
+  });
   const [savingEdit, setSavingEdit] = useState(false);
 
   const loadCp = useCallback(() => {
     apiFetch<Counterparty>(`/counterparties/${id}`)
       .then(c => {
         setCp(c);
-        setEditForm(counterpartyToForm(c));
+        resetEditForm(counterpartyToForm(c));
       })
       .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
-  }, [id]);
+  }, [id, resetEditForm]);
 
   const loadGarages = useCallback(() => {
     // cancelled guard mirrors loadWarranties: prevents two concurrent staged loads
@@ -528,27 +542,15 @@ export default function CounterpartyCardPage() {
     }
   };
 
-  const saveEdit = async () => {
+  // Валідація через zodResolver (per-field inline, name-by-type superRefine). Спільна з модалкою.
+  const saveEdit = handleSubmit(async (values: CounterpartyFormValues) => {
     if (!cp) return;
-    // Bug #739: type-aware name-guard + контактна валідація (email) ДО PATCH — раніше
-    // inline-edit не мав жодної клієнтської валідації й покладався лише на backend 400.
-    // Тепер форма спільна з модалкою → узгоджуємо валідацію (SUPPLIER вимагає companyName).
-    const nameError = validateCounterpartyForm(editForm);
-    if (nameError) {
-      setLoadError(nameError);
-      return;
-    }
-    const contactError = validateContactFields({ email: editForm.email });
-    if (contactError) {
-      setLoadError(contactError);
-      return;
-    }
     setLoadError('');
     setSavingEdit(true);
     try {
       const updated = await apiFetch<Counterparty>(`/counterparties/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(formToPatch(editForm)),
+        body: JSON.stringify(values),
       });
       // Bug #740: PATCH-відповідь (update→toDto) НЕ включає statusLinks → updated.statuses=undefined.
       // Прямий setCp(updated) стирав би badge-мітки з шапки до перезавантаження. PATCH не чіпає
@@ -560,7 +562,7 @@ export default function CounterpartyCardPage() {
     } finally {
       setSavingEdit(false);
     }
-  };
+  });
 
   const toggleGarage = (garageId: string) => {
     setExpandedGarages(prev => {
@@ -672,7 +674,7 @@ export default function CounterpartyCardPage() {
                   size="sm"
                   onClick={() => {
                     setEditing(false);
-                    setEditForm(counterpartyToForm(cp)); // скидання незбережених змін
+                    resetEditForm(counterpartyToForm(cp)); // скидання незбережених змін
                   }}
                 >
                   <X className="h-3.5 w-3.5" />
@@ -727,11 +729,7 @@ export default function CounterpartyCardPage() {
               )}
             </>
           ) : (
-            <CounterpartyForm
-              value={editForm}
-              onChange={p => setEditForm(f => ({ ...f, ...p }))}
-              mode="edit"
-            />
+            <CounterpartyForm register={register} errors={errors} control={control} watch={watch} />
           )}
         </div>
       )}

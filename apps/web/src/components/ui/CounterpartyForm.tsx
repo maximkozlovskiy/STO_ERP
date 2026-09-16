@@ -1,10 +1,15 @@
 'use client';
 
-import { COUNTERPARTY_TYPE_LABELS } from '@sto/shared';
+import { COUNTERPARTY_TYPE_LABELS, hasCounterpartyName } from '@sto/shared';
+import type { UseFormRegister, FieldErrors, Control, UseFormWatch } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
+import type { CounterpartyFormInput } from '@sto/shared';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui/phone-input';
 import type { Counterparty, CpType } from '@/hooks/api/useCounterparties';
+
+export { hasCounterpartyName };
 
 // Форми власності (@IsEnum LegalForm на беку). Єдине джерело для форми контрагента.
 export const LEGAL_FORM_LABELS: Record<string, string> = {
@@ -19,8 +24,8 @@ export const LEGAL_FORM_LABELS: Record<string, string> = {
 /**
  * Єдине джерело правди набору полів контрагента (15 полів + type). Раніше редагування було
  * розколоте між CounterpartyEditModal (особисті/ЄДРПОУ) і DetailPage inline-edit (юр/банк) —
- * field-desync класу «каси». Цей контрольований компонент використовується в ОБОХ місцях, тож
- * PATCH-тіло (formToPatch) ідентичне звідусіль.
+ * field-desync класу «каси». Компонент (RHF-native) використовується в ОБОХ місцях із тією самою
+ * спільною zod-схемою (counterpartyFormSchema) → валідація й PATCH-тіло ідентичні звідусіль.
  */
 export interface CounterpartyFormState {
   type: CpType;
@@ -86,76 +91,25 @@ export function counterpartyToForm(cp: CounterpartyLike): CounterpartyFormState 
   };
 }
 
-/** PATCH/POST-тіло з форми. Порожні рядки → undefined (не затираємо; конвенція обох старих форм). */
-export function formToPatch(f: CounterpartyFormState): Record<string, unknown> {
-  const u = (v: string) => (v.trim() === '' ? undefined : v.trim());
-  return {
-    type: f.type,
-    firstName: u(f.firstName),
-    lastName: u(f.lastName),
-    companyName: u(f.companyName),
-    edrpou: u(f.edrpou),
-    vatPayer: f.vatPayer,
-    phone: u(f.phone),
-    email: u(f.email),
-    contactPerson: u(f.contactPerson),
-    notes: u(f.notes),
-    legalForm: u(f.legalForm),
-    legalAddress: u(f.legalAddress),
-    actualAddress: u(f.actualAddress),
-    bankAccount: u(f.bankAccount),
-    bankName: u(f.bankName),
-    taxNumber: u(f.taxNumber),
-  };
+interface Props {
+  register: UseFormRegister<CounterpartyFormInput>;
+  errors: FieldErrors<CounterpartyFormInput>;
+  control: Control<CounterpartyFormInput>;
+  watch: UseFormWatch<CounterpartyFormInput>;
 }
 
 /**
- * Чи має форма коректне ім'я контрагента — TYPE-AWARE (Bug #739).
- * SUPPLIER: поля Ім'я/Прізвище ПРИХОВАНІ у формі → назвою може бути ЛИШЕ companyName.
- * Раніше guard рахував приховані firstName/lastName (напр. лишок після перемикання
- * CLIENT→SUPPLIER) як валідну назву → SUPPLIER зберігався без companyName, при цьому
- * ім'я недоступне для перегляду/редагування у формі. CLIENT/BOTH: companyName АБО ім'я.
- * Дзеркалить backend cross-field guard (counterparties.service.hasCounterpartyName).
+ * RHF-native форма контрагента (усі 15 полів + type). Керується батьком через
+ * useForm(counterpartyFormSchema); тут лише register/Controller + per-field errors.
+ * Секції: Основне / Юридичні / Банк. Ім'я/Прізвище приховані для SUPPLIER.
  */
-export function hasCounterpartyName(f: {
-  type: CpType | string;
-  companyName: string;
-  firstName: string;
-  lastName: string;
-}): boolean {
-  if (f.type === 'SUPPLIER') return f.companyName.trim() !== '';
-  return f.companyName.trim() !== '' || `${f.firstName}${f.lastName}`.trim() !== '';
-}
-
-/** Валідація: має бути назва компанії АБО ім'я/прізвище (SUPPLIER — лише компанія). */
-export function validateCounterpartyForm(f: CounterpartyFormState): string | null {
-  if (!hasCounterpartyName(f)) {
-    return f.type === 'SUPPLIER'
-      ? 'Вкажіть назву компанії постачальника'
-      : 'Вкажіть назву компанії або ім’я/прізвище контрагента';
-  }
-  return null;
-}
-
-interface Props {
-  value: CounterpartyFormState;
-  onChange: (patch: Partial<CounterpartyFormState>) => void;
-  /** create: type-Select активний завжди; edit: теж активний (type тепер редагований). */
-  mode?: 'create' | 'edit';
-}
-
-/** Контрольована форма контрагента (усі 15 полів + type). Секції: Основне / Юридичні / Банк. */
-export function CounterpartyForm({ value: f, onChange }: Props) {
+export function CounterpartyForm({ register, errors, control, watch }: Props) {
+  const type = watch('type');
   return (
     <div className="space-y-5">
       {/* ── Основне ─────────────────────────────────────────── */}
       <div className="space-y-3">
-        <Select
-          label="Тип"
-          required
-          value={f.type}
-          onChange={e => onChange({ type: e.target.value as CpType })}
-        >
+        <Select label="Тип" required {...register('type')} errorMessage={errors.type?.message}>
           {Object.entries(COUNTERPARTY_TYPE_LABELS).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
@@ -163,18 +117,18 @@ export function CounterpartyForm({ value: f, onChange }: Props) {
           ))}
         </Select>
 
-        {f.type !== 'SUPPLIER' && (
+        {type !== 'SUPPLIER' && (
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Ім'я"
-              value={f.firstName}
-              onChange={e => onChange({ firstName: e.target.value })}
+              {...register('firstName')}
+              errorMessage={errors.firstName?.message}
               placeholder="Іван"
             />
             <Input
               label="Прізвище"
-              value={f.lastName}
-              onChange={e => onChange({ lastName: e.target.value })}
+              {...register('lastName')}
+              errorMessage={errors.lastName?.message}
               placeholder="Коваль"
             />
           </div>
@@ -182,39 +136,39 @@ export function CounterpartyForm({ value: f, onChange }: Props) {
 
         <Input
           label="Назва компанії"
-          required={f.type === 'SUPPLIER'}
-          value={f.companyName}
-          onChange={e => onChange({ companyName: e.target.value })}
+          required={type === 'SUPPLIER'}
+          {...register('companyName')}
+          errorMessage={errors.companyName?.message}
           placeholder="ТОВ «Авто»"
         />
-        <PhoneInput
-          label="Телефон"
-          value={f.phone}
-          onChange={e => onChange({ phone: e.target.value })}
+        <Controller
+          control={control}
+          name="phone"
+          render={({ field }) => (
+            <PhoneInput
+              label="Телефон"
+              value={typeof field.value === 'string' ? field.value : ''}
+              onChange={field.onChange}
+            />
+          )}
         />
         <Input
           label="Email"
           type="email"
-          value={f.email}
-          onChange={e => onChange({ email: e.target.value })}
+          {...register('email')}
+          errorMessage={errors.email?.message}
           placeholder="email@example.com"
         />
         <Input
           label="Контактна особа"
-          value={f.contactPerson}
-          onChange={e => onChange({ contactPerson: e.target.value })}
+          {...register('contactPerson')}
           placeholder="Петро Іваненко"
         />
-        <Input
-          label="Нотатки"
-          value={f.notes}
-          onChange={e => onChange({ notes: e.target.value })}
-        />
+        <Input label="Нотатки" {...register('notes')} />
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={f.vatPayer}
-            onChange={e => onChange({ vatPayer: e.target.checked })}
+            {...register('vatPayer')}
             className="h-4 w-4 rounded border-border accent-primary"
           />
           <span className="text-sm text-foreground">Платник ПДВ</span>
@@ -226,8 +180,8 @@ export function CounterpartyForm({ value: f, onChange }: Props) {
         <p className="text-[13px] font-medium text-foreground">Юридичні реквізити</p>
         <Select
           label="Форма власності"
-          value={f.legalForm}
-          onChange={e => onChange({ legalForm: e.target.value })}
+          {...register('legalForm')}
+          errorMessage={errors.legalForm?.message}
         >
           <option value="">— Не вказано —</option>
           {Object.entries(LEGAL_FORM_LABELS).map(([k, v]) => (
@@ -237,29 +191,17 @@ export function CounterpartyForm({ value: f, onChange }: Props) {
           ))}
         </Select>
         <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="ЄДРПОУ"
-            value={f.edrpou}
-            onChange={e => onChange({ edrpou: e.target.value })}
-            placeholder="12345678"
-          />
-          <Input
-            label="ІПН / податковий №"
-            value={f.taxNumber}
-            onChange={e => onChange({ taxNumber: e.target.value })}
-            placeholder="3456789012"
-          />
+          <Input label="ЄДРПОУ" {...register('edrpou')} placeholder="12345678" />
+          <Input label="ІПН / податковий №" {...register('taxNumber')} placeholder="3456789012" />
         </div>
         <Input
           label="Юридична адреса"
-          value={f.legalAddress}
-          onChange={e => onChange({ legalAddress: e.target.value })}
+          {...register('legalAddress')}
           placeholder="вул. Хрещатик 1, Київ"
         />
         <Input
           label="Фактична адреса"
-          value={f.actualAddress}
-          onChange={e => onChange({ actualAddress: e.target.value })}
+          {...register('actualAddress')}
           placeholder="вул. Хрещатик 1, Київ"
         />
       </div>
@@ -268,18 +210,8 @@ export function CounterpartyForm({ value: f, onChange }: Props) {
       <div className="space-y-3 border-t border-border pt-4">
         <p className="text-[13px] font-medium text-foreground">Банківські реквізити</p>
         <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="IBAN"
-            value={f.bankAccount}
-            onChange={e => onChange({ bankAccount: e.target.value })}
-            placeholder="UA12 3456 …"
-          />
-          <Input
-            label="Банк"
-            value={f.bankName}
-            onChange={e => onChange({ bankName: e.target.value })}
-            placeholder="АТ КБ «ПриватБанк»"
-          />
+          <Input label="IBAN" {...register('bankAccount')} placeholder="UA12 3456 …" />
+          <Input label="Банк" {...register('bankName')} placeholder="АТ КБ «ПриватБанк»" />
         </div>
       </div>
     </div>

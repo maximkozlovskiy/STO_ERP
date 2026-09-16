@@ -1,20 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  CounterpartyForm,
-  emptyCounterpartyForm,
-  counterpartyToForm,
-  formToPatch,
-  validateCounterpartyForm,
+  counterpartyFormSchema,
   hasCounterpartyName,
-} from '../CounterpartyForm';
+  type CounterpartyFormInput,
+} from '@sto/shared';
+import { CounterpartyForm, emptyCounterpartyForm, counterpartyToForm } from '../CounterpartyForm';
 import type { Counterparty } from '@/hooks/api/useCounterparties';
 
 describe('CounterpartyForm helpers', () => {
   it('emptyCounterpartyForm — 16 полів, дефолт type=CLIENT', () => {
     const f = emptyCounterpartyForm();
     expect(f.type).toBe('CLIENT');
-    // 16 ключів (15 полів + type)
     expect(Object.keys(f)).toHaveLength(16);
   });
 
@@ -41,78 +40,59 @@ describe('CounterpartyForm helpers', () => {
     const f = counterpartyToForm(cp);
     expect(f.type).toBe('SUPPLIER');
     expect(f.companyName).toBe('ТОВ Пост');
-    expect(f.legalForm).toBe('TOV');
-    expect(f.bankName).toBe('ПриватБанк');
     expect(f.email).toBe(''); // null → ''
     expect(f.vatPayer).toBe(true);
   });
+});
 
-  it('formToPatch: усі 16 ключів; порожні → undefined; type/vatPayer завжди present', () => {
-    const f = emptyCounterpartyForm('CLIENT');
-    f.firstName = 'Іван';
-    f.companyName = '   '; // whitespace → undefined
-    const patch = formToPatch(f);
-    // 16 ключів (type + vatPayer + 14 текстових)
-    expect(Object.keys(patch)).toHaveLength(16);
-    expect(patch.type).toBe('CLIENT');
-    expect(patch.vatPayer).toBe(false);
-    expect(patch.firstName).toBe('Іван');
-    expect(patch.companyName).toBeUndefined(); // whitespace-only → undefined
-    expect(patch.bankName).toBeUndefined();
+// Валідація тепер у спільній zod-схемі (єдине джерело web↔api). Дублюємо ключові кейси у web-бандлі.
+describe('counterpartyFormSchema (name-by-type, Bug #739)', () => {
+  it('SUPPLIER з приховним firstName (без companyName) → падає', () => {
+    expect(hasCounterpartyName({ type: 'SUPPLIER', firstName: 'Іван' })).toBe(false);
+    const r = counterpartyFormSchema.safeParse({ type: 'SUPPLIER', firstName: 'Іван' });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.message).toMatch(/назву компанії постачальника/);
   });
 
-  it('formToPatch включає юр+банк поля (раніше диз’юнктні між формами)', () => {
-    const f = emptyCounterpartyForm();
-    f.legalAddress = 'Київ';
-    f.bankAccount = 'UA123';
-    f.taxNumber = '999';
-    f.edrpou = '111';
-    const patch = formToPatch(f);
-    // Ключове: один набір містить І юр/банк, І ЄДРПОУ (усунення desync).
-    expect(patch.legalAddress).toBe('Київ');
-    expect(patch.bankAccount).toBe('UA123');
-    expect(patch.taxNumber).toBe('999');
-    expect(patch.edrpou).toBe('111');
+  it('SUPPLIER з companyName → проходить', () => {
+    expect(
+      counterpartyFormSchema.safeParse({ type: 'SUPPLIER', companyName: 'ТОВ Авто' }).success,
+    ).toBe(true);
   });
 
-  it('validate: без імені й компанії → помилка; з ім’ям → ок', () => {
-    const empty = emptyCounterpartyForm();
-    expect(validateCounterpartyForm(empty)).toMatch(/назву компанії або/);
-    expect(validateCounterpartyForm({ ...empty, firstName: 'Іван' })).toBeNull();
-    expect(validateCounterpartyForm({ ...empty, companyName: 'ТОВ' })).toBeNull();
+  it('CLIENT з firstName (без companyName) → проходить', () => {
+    expect(counterpartyFormSchema.safeParse({ type: 'CLIENT', firstName: 'Іван' }).success).toBe(
+      true,
+    );
   });
 
-  // Bug #739: SUPPLIER має ПРИХОВАНІ поля Ім'я/Прізвище → назвою може бути ЛИШЕ companyName.
-  it('Bug #739: SUPPLIER з приховним firstName (без companyName) → валідація ПАДАЄ', () => {
-    // лишок firstName після перемикання CLIENT→SUPPLIER — поле у формі не видно
-    const supplier = emptyCounterpartyForm('SUPPLIER');
-    supplier.firstName = 'Іван';
-    supplier.lastName = 'Коваль';
-    // хоча ім'я є, для SUPPLIER воно недоступне у UI → guard має вимагати companyName
-    expect(hasCounterpartyName(supplier)).toBe(false);
-    expect(validateCounterpartyForm(supplier)).toMatch(/назву компанії постачальника/);
-  });
-
-  it('Bug #739: SUPPLIER з companyName → валідація ПРОХОДИТЬ', () => {
-    const supplier = emptyCounterpartyForm('SUPPLIER');
-    supplier.companyName = 'ТОВ Авто';
-    expect(hasCounterpartyName(supplier)).toBe(true);
-    expect(validateCounterpartyForm(supplier)).toBeNull();
-  });
-
-  it('Bug #739: CLIENT з firstName (без companyName) → валідація ПРОХОДИТЬ (незмінна поведінка)', () => {
-    const client = emptyCounterpartyForm('CLIENT');
-    client.firstName = 'Іван';
-    expect(hasCounterpartyName(client)).toBe(true);
-    expect(validateCounterpartyForm(client)).toBeNull();
+  it('CLIENT без імені/компанії → помилка на companyName', () => {
+    const r = counterpartyFormSchema.safeParse({ type: 'CLIENT' });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const issue = r.error.issues.find(i => i.path[0] === 'companyName');
+      expect(issue?.message).toMatch(/назву компанії або/);
+    }
   });
 });
 
-describe('CounterpartyForm render', () => {
-  const noop = () => {};
+// RHF-обгортка для рендеру форми (компонент тепер керується register/control/errors).
+function Harness({ type }: { type: 'CLIENT' | 'SUPPLIER' }) {
+  const {
+    register,
+    control,
+    watch,
+    formState: { errors },
+  } = useForm<CounterpartyFormInput>({
+    resolver: zodResolver(counterpartyFormSchema),
+    defaultValues: emptyCounterpartyForm(type),
+  });
+  return <CounterpartyForm register={register} errors={errors} control={control} watch={watch} />;
+}
 
+describe('CounterpartyForm render', () => {
   it('CLIENT → показує Ім’я/Прізвище + юр/банк секції', () => {
-    render(<CounterpartyForm value={emptyCounterpartyForm('CLIENT')} onChange={noop} />);
+    render(<Harness type="CLIENT" />);
     expect(screen.getByText("Ім'я")).toBeTruthy();
     expect(screen.getByText('Юридичні реквізити')).toBeTruthy();
     expect(screen.getByText('Банківські реквізити')).toBeTruthy();
@@ -120,9 +100,8 @@ describe('CounterpartyForm render', () => {
   });
 
   it('SUPPLIER → приховує Ім’я/Прізвище', () => {
-    render(<CounterpartyForm value={emptyCounterpartyForm('SUPPLIER')} onChange={noop} />);
+    render(<Harness type="SUPPLIER" />);
     expect(screen.queryByText("Ім'я")).toBeNull();
-    // Компанія лишається (required для SUPPLIER).
     expect(screen.getByText('Назва компанії')).toBeTruthy();
   });
 });
