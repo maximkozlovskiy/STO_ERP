@@ -623,6 +623,18 @@ export const goodUpdateSchema = goodFormSchema.partial(); // PATCH — усі п
   (лишити `.optional()` у формовій line-схемі або widened local type).
 - **Тест:** «додати позицію → рядок рендериться у таблиці» + збережені double-submit/DELETE-diff регреси.
   ⚠️ Фікстури контрагента/UUID-полів МУСЯТЬ бути валідними UUID (схема тепер `.uuid()` — старий `'cp1'` → submit блоковано).
+- **SHIM-bridge для дуже великих модалок** (WorkOrder 2372р, ~700р money-логіки): коли повне
+  переписування header/lines-JSX ризиковане, тримай RHF як джерело правди, але місток над старим
+  useState-surface: `form`/`lines`/`parts` = `useMemo`-відбиток `watch()`; `setForm`/`setLines`/`setParts`
+  = shim-и що diff-ять `getValues()` і пишуть через `setValue({shouldDirty:true})`/`replace()`. Уся наявна
+  логіка читає `form.*`/`lines` без змін → money-код зберігається byte-for-byte. Row identity лишається
+  `_key` (не `field.id`), бо parent не ітерує `fields` — суб-компоненти ітерують `_key`-несучий `watch()`-масив,
+  а `replace()` зберігає `_key`. Валідація — гейт `workOrderFormSchema.safeParse(getValues())` перед submit.
+- **UA-кома у FORM-схемах (ОБОВʼЯЗКОВО для числових полів):** free-text інпути приймають `1,5` (укр.
+  роздільник). `numericString()`/`z.coerce.number()` роблять `Number('1,5')=NaN` → safeParse-гейт хибно
+  блокує submit; `parseFloat('1,5')=1` — ще гірше (тихе усічення). Числові поля FORM-схем → `moneyString()` /
+  `optionalMoneyNumber()` (comma-aware `.replace(',','.')`). ENDPOINT-схеми (ZodValidationPipe) не чіпати —
+  туди летить уже-numeric JSON. Детектор: `grep -n "numericString()\|z\.coerce\.number\|parseFloat" *.schema.ts`.
 
 ---
 

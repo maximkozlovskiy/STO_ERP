@@ -10,11 +10,17 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит #1 Фаза 5 — WorkOrder (найскладніша модалка) на zod+RHF зі спільними схемами; sync-аудит пройдено
+Фаза:       Аудит #1 ЗАВЕРШЕНО — усі 6 форм-модалок (Good/Employee/Counterparty/Vehicle/Invoice + 4 документи
+            Ф4 + WorkOrder Ф5) на zod+RHF зі спільними схемами. QA-ланцюг sync→review→tester пройдено по кожній фазі.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2479/2479 (161 файл) · CreateWorkOrderModal 11/11 · work-order-schema.spec 17/17 ·
-            work-orders.contract 22/22 · +4 кома-aware form-schema кейси (зелені).
-HEAD:       eb667b51 docs(skills): FORM-schema кома-aware numeric check → sto-review
+Тести:      api 2479/2479 (161 файл) · web 343/343 · CreateWorkOrderModal 13/13 · work-order-schema.spec 17/17 ·
+            work-orders module 131/131.
+HEAD:       9968a39f docs(skills): RHF+.uuid() fixture-trap test-authoring approach → sto-tester
+Tester:     2026-09-17 (auto, Фаза 5) — 0 продакшн-багів; shim-міграція без регресій у 9 зонах ризику
+            (SHIM цілісність, гроші/idempotency Bug #755 retry-dedup runtime-підтверджено, UA-кома гейт,
+            nullable clear, status-conditional PATCH, actualHours recalc, calendar-sync, dirty-guard, stock-totals).
+            +2 runtime-guard тести (retry-dedup + double-submit через реальний RHF shim), +skill test-authoring
+            патерн (RHF+.uuid() placeholder-фікстури тихо блокують submit) (8a55bf62/9968a39f).
 Review:     2026-09-17 (auto, Фаза 5, коміт d8a569aa) — 1 Important виправлено: WorkOrder FORM-схема
             (workOrderFormSchema, гейт submit через safeParse(getValues())) валідувала числові поля
             через numericString/z.coerce.number (Number('1,5')=NaN) → легітимний UA-ввід «1,5» у
@@ -128,6 +134,21 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит #1 Фаза 5 — WorkOrder на zod+RHF (найскладніша, ЗАВЕРШУЄ аудит #1) — 2026-09-17, HEAD 9968a39f:
+  <бек> work-order.schema (header/line/part + form) + 6 endpoint-ів (create/update, lines POST/PATCH,
+        parts POST/PATCH) → ZodValidationPipe. Nullable-семантика update. FIX (spec): nullable() з
+        z.coerce.number() коерсив null→0 → plannedHours:null тихо ставив 0; fix z.union([z.null(),inner]).
+  a61f990a <фронт> CreateWorkOrderModal RHF+useFieldArray через SHIM (form/lines/parts = watch()-відбиток;
+        setter-и diff getValues()+setValue/replace) → money-логіка (~700р) byte-for-byte. Bug #755 retry-dedup
+        (postedLineKeysRef/postedPartKeysRef). Архітектура як Invoice (header тіло, lines/parts окремі endpoint).
+  252af5fc <sync> save() слав undefined замість null для liftId/plannedAt/dueDate → clear мовчки не зберігався.
+  d8a569aa <review> FORM-схема відхиляла UA-кому '1,5' (numericString→NaN) → safeParse-гейт блокував submit;
+        fix optionalMoneyNumber()/moneyString у form-схемах (endpoint не чіпано). ⚠️ Той самий кома-клас
+        латентний у Invoice/PO/StockDoc/SupplierReturn FORM-схемах (PO parseFloat('1,5')=1 тихе усічення) —
+        поза scope Ф5, кандидат на наступний фікс.
+  8a55bf62 <tester> 0 багів; +2 runtime-guard тести (retry-dedup + double-submit через RHF shim).
+tsc shared+api+web 0. api 2479/2479, web 343/343, work-order-schema 17/17, WO module 131/131.
+
 Аудит #1 Фаза 4 — 4 документ-модалки на zod+RHF зі спільними схемами — 2026-09-17, HEAD 50567fd8:
   eb063aaa SupplierPayment: supplier-payment.schema (sourceType↔account superRefine, moneyString()
            UA-кома), controller ZodValidationPipe, RHF-модалка +dirty-guard (нового не було).

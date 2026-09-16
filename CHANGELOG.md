@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-09-17 — Аудит #1 Фаза 5: WorkOrder на zod + RHF (найскладніша модалка, ЗАВЕРШУЄ аудит #1)
+
+Остання й найскладніша модалка проєкту (CreateWorkOrderModal, 2372р: FSM + рядки-роботи +
+деталі-запчастини + мультивалюта + ~700р money-логіки) мігрована на react-hook-form + спільні
+zod-схеми. Архітектура як Invoice: header у тілі POST /work-orders, lines/parts окремими
+endpoint-ами (multi-request submit). QA-ланцюг sync→review→tester: 2 реальні баги знайдено
+й виправлено, 0 продакшн-регресій, +2 runtime-guard тести. tsc 0; api 2479, web 343 тести.
+
+### Бек — усі 6 endpoint-ів на спільних zod-схемах через ZodValidationPipe
+
+`work-order.schema.ts`: header (create/update), line (POST/PATCH /lines), part (POST/PATCH /parts),
+
+- `workOrderFormSchema` (шапка+lines[]+parts[] для RHF). Enum WORK_ORDER_PRIORITY/REPAIR_CATEGORY =
+  Prisma enum. Nullable-семантика update (plannedAt/dueDate/liftId/plannedHours/actualHours + line.actualHours:
+  null очищає). **FIX** (spec-found): `nullable()` з `z.coerce.number()` жадібно коерсив null→0 →
+  plannedHours:null тихо ставив 0 замість очищення; fix `z.union([z.null(), inner])`.
+
+### Фронт — RHF+useFieldArray через SHIM (a61f990a)
+
+RHF — джерело правди; ~700р money-логіки (create/save) читає стан через shim (`form`/`lines`/`parts` =
+watch()-відбиток; setter-и diff-ять getValues() і пишуть через setValue/replace) → money-код збережено
+byte-for-byte. Value-based dirty → RHF isDirty bridge. **Bug #755 retry-dedup додано** (postedLineKeysRef/
+postedPartKeysRef). Збережено: createdWoRef, half-row flush, status-conditional PATCH, DELETE-diff +
+sequential line writes (recalcTotals race), calendar-sync, actualHours recalc.
+
+### QA-фікси
+
+- **sync 252af5fc** (nullable clear): save() header PATCH слав undefined (omit) замість null (clear)
+  для liftId/plannedAt/dueDate → очищення підйомника/планових дат мовчки не зберігалось. Fix: `|| null`
+  - `localDateTimeToISO() ?? (form.x ? undefined : null)`.
+- **review d8a569aa** (UA-кома): form-схема відхиляла '1,5'/'2,5' (numericString/coerce → NaN) →
+  safeParse-гейт блокував submit для укр. локалі (кома — стандартний роздільник). Fix: comma-aware
+  `optionalMoneyNumber()`/`moneyString()` у FORM-схемах (endpoint-схеми не чіпано — туди летить numeric JSON).
+- **tester 8a55bf62**: 0 багів; +2 runtime-guard тести (retry-dedup + double-submit через реальний RHF shim).
+
+---
+
 ## 2026-09-17 — Аудит #1 Фаза 4: 4 документ-модалки на zod + RHF зі спільними схемами
 
 Завершено єдиний пункт аудиту «zod + react-hook-form зі спільними схемами» — усі документ-модалки
