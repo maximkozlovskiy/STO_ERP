@@ -6,9 +6,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   counterpartyFormSchema,
   hasCounterpartyName,
+  vehicleFormSchema,
   type CounterpartyFormInput,
   type CounterpartyFormValues,
+  type VehicleFormInput,
+  type VehicleFormValues,
 } from '@sto/shared';
+import { VehicleForm } from '@/components/ui/VehicleForm';
 import { Plus, Trash2, Pencil, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -120,6 +124,30 @@ interface CounterpartyEditModalProps {
   onSaved: (cp: CounterpartyForModal, isNew: boolean) => void;
 }
 
+// Дефолти vehicle-форми (усі поля рядки — web-стан; схема коерсить). customerGarageId
+// заповнюється при збереженні (garage auto-create), у формі не редагується.
+function emptyVehicleForm(): VehicleFormInput {
+  return {
+    customerGarageId: '',
+    make: '',
+    model: '',
+    vin: '',
+    licensePlate: '',
+    year: '',
+    engineVolume: '',
+    fuelType: '',
+    currentMileage: '',
+    color: '',
+    transmissionType: '',
+    driveType: '',
+    bodyType: '',
+    engineCode: '',
+    insuranceExpiry: '',
+    inspectionExpiry: '',
+    notes: '',
+  };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CounterpartyEditModal({
@@ -194,12 +222,11 @@ export function CounterpartyEditModal({
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   // Галки «Показувати видалені» (soft-deleted авто/договори) у формі контрагента.
   const [showDeletedVehicles, setShowDeletedVehicles] = useState(false);
-  const [addVehicleForm, setAddVehicleForm] = useState({
-    make: '',
-    model: '',
-    year: '',
-    licensePlate: '',
-    vin: '',
+  // Окрема RHF-форма для вкладки авто (compact VehicleForm) — незалежна від counterparty-форми.
+  const vehicleForm = useForm<VehicleFormInput, unknown, VehicleFormValues>({
+    resolver: zodResolver(vehicleFormSchema),
+    defaultValues: emptyVehicleForm(),
+    mode: 'onBlur',
   });
   const modalVehiclesReqRef = useRef(0);
   // Live counterparty id — звіряється у handler-fetch async після await, щоб не
@@ -442,14 +469,15 @@ export function CounterpartyEditModal({
 
   // Скидання форми авто у дефолтний стан (вихід з create/edit-режиму).
   const resetVehicleForm = () => {
-    setAddVehicleForm({ make: '', model: '', year: '', licensePlate: '', vin: '' });
+    vehicleForm.reset(emptyVehicleForm());
     setEditingVehicleId(null);
     setShowAddVehicle(false);
   };
 
   // Відкрити форму на РЕДАГУВАННЯ наявного авто — prefill з рядка.
   const startEditVehicle = (v: Vehicle) => {
-    setAddVehicleForm({
+    vehicleForm.reset({
+      ...emptyVehicleForm(),
       make: v.make,
       model: v.model,
       year: v.year != null ? String(v.year) : '',
@@ -460,8 +488,8 @@ export function CounterpartyEditModal({
     setShowAddVehicle(true);
   };
 
-  const saveVehicle = async () => {
-    if (!counterparty || !addVehicleForm.make || !addVehicleForm.model) return;
+  const saveVehicle = vehicleForm.handleSubmit(async (values: VehicleFormValues) => {
+    if (!counterparty) return;
     // Tenant-guard: handler-fetch ↔ зміна counterparty (§8.2). Якщо під час запиту
     // користувач перемкнувся на іншого CP — викидаємо setState у чужу таблицю.
     // Звіряємо проти currentCpIdRef (живий id з ref), а не з captured closure.
@@ -469,13 +497,8 @@ export function CounterpartyEditModal({
     const editId = editingVehicleId;
     setAddingVehicle(true);
     try {
-      const payload = {
-        make: addVehicleForm.make,
-        model: addVehicleForm.model,
-        year: addVehicleForm.year ? Number(addVehicleForm.year) : undefined,
-        licensePlate: addVehicleForm.licensePlate || undefined,
-        vin: addVehicleForm.vin || undefined,
-      };
+      // customerGarageId зі схеми ігноруємо (гараж резолвиться нижче: наявний або auto-create).
+      const { customerGarageId: _drop, ...payload } = values;
       let saved: Vehicle;
       if (editId) {
         // PATCH наявного авто — гараж уже існує, customerGarageId не потрібен.
@@ -517,7 +540,7 @@ export function CounterpartyEditModal({
     } finally {
       setAddingVehicle(false);
     }
-  };
+  });
 
   const deleteVehicle = async (id: string) => {
     if (!(await confirm({ title: 'Видалити авто?', variant: 'destructive' }))) return;
@@ -833,13 +856,7 @@ export function CounterpartyEditModal({
                       onClick={() => {
                         // Режим СТВОРЕННЯ — скидаємо edit-стан і форму.
                         setEditingVehicleId(null);
-                        setAddVehicleForm({
-                          make: '',
-                          model: '',
-                          year: '',
-                          licensePlate: '',
-                          vin: '',
-                        });
+                        vehicleForm.reset(emptyVehicleForm());
                         setShowAddVehicle(true);
                       }}
                     >
@@ -849,55 +866,17 @@ export function CounterpartyEditModal({
                 </div>
                 {showAddVehicle && (
                   <AnimatedBody className="rounded-lg border border-border bg-secondary/40 p-3 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        label="Марка"
-                        required
-                        value={addVehicleForm.make}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, make: e.target.value }))}
-                        placeholder="Toyota"
-                      />
-                      <Input
-                        label="Модель"
-                        required
-                        value={addVehicleForm.model}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, model: e.target.value }))}
-                        placeholder="Camry"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input
-                        label="Рік"
-                        type="number"
-                        value={addVehicleForm.year}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, year: e.target.value }))}
-                        placeholder="2020"
-                      />
-                      <Input
-                        label="Держномер"
-                        value={addVehicleForm.licensePlate}
-                        onChange={e =>
-                          setAddVehicleForm(f => ({ ...f, licensePlate: e.target.value }))
-                        }
-                        placeholder="АА 1234 ВС"
-                      />
-                      <Input
-                        label="VIN"
-                        value={addVehicleForm.vin}
-                        onChange={e => setAddVehicleForm(f => ({ ...f, vin: e.target.value }))}
-                        placeholder="WVWZZZ1JZXW000001"
-                      />
-                    </div>
+                    <VehicleForm
+                      register={vehicleForm.register}
+                      errors={vehicleForm.formState.errors}
+                      control={vehicleForm.control}
+                      compact
+                    />
                     <div className="flex gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={resetVehicleForm}>
                         Скасувати
                       </Button>
-                      <Button
-                        size="sm"
-                        onClick={saveVehicle}
-                        loading={addingVehicle}
-                        disabled={!addVehicleForm.make || !addVehicleForm.model}
-                      >
+                      <Button size="sm" onClick={saveVehicle} loading={addingVehicle}>
                         {editingVehicleId ? 'Оновити' : 'Зберегти'}
                       </Button>
                     </div>

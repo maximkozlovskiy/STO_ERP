@@ -1,6 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  vehicleFormSchema,
+  optionLabel,
+  TRANSMISSION_OPTIONS,
+  DRIVE_OPTIONS,
+  BODY_OPTIONS,
+  FUEL_TYPE_OPTIONS,
+  type VehicleFormInput,
+  type VehicleFormValues,
+} from '@sto/shared';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
@@ -9,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { VehicleForm } from '@/components/ui/VehicleForm';
 import { Spinner } from '@/components/ui/spinner';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -18,6 +31,7 @@ import { fmtInt, fmtDate } from '@/lib/format';
 
 interface Vehicle {
   id: string;
+  customerGarageId: string;
   make: string;
   model: string;
   vin: string | null;
@@ -55,8 +69,6 @@ interface MaintenanceSchedule {
   notes: string | null;
 }
 
-const FUEL_TYPES = ['Бензин', 'Дизель', 'Газ', 'Гібрид', 'Електро', 'LPG'];
-
 // Порожня форма регламенту ТО — one source of truth для init + reset (create success / cancel).
 const EMPTY_SCHEDULE_FORM = {
   maintenanceType: 'ТО',
@@ -66,32 +78,7 @@ const EMPTY_SCHEDULE_FORM = {
   lastMaintenanceMileage: '',
   notes: '',
 };
-const TRANSMISSION_TYPES = [
-  { value: '', label: 'Не вказано' },
-  { value: 'manual', label: 'Механічна' },
-  { value: 'automatic', label: 'Автоматична' },
-  { value: 'variator', label: 'Варіатор' },
-  { value: 'robot', label: 'Робот' },
-];
-const DRIVE_TYPES = [
-  { value: '', label: 'Не вказано' },
-  { value: 'fwd', label: 'Передній (FWD)' },
-  { value: 'rwd', label: 'Задній (RWD)' },
-  { value: 'awd', label: 'Повний (AWD)' },
-  { value: '4wd', label: '4WD' },
-];
-const BODY_TYPES = [
-  { value: '', label: 'Не вказано' },
-  { value: 'sedan', label: 'Седан' },
-  { value: 'hatchback', label: 'Хетчбек' },
-  { value: 'suv', label: 'Позашляховик' },
-  { value: 'crossover', label: 'Кросовер' },
-  { value: 'van', label: 'Мінівен' },
-  { value: 'truck', label: 'Вантажівка' },
-  { value: 'coupe', label: 'Купе' },
-  { value: 'wagon', label: 'Універсал' },
-  { value: 'convertible', label: 'Кабріолет' },
-];
+// Vehicle fuel/transmission/drive/body опції — тепер зі спільної @sto/shared (VehicleForm).
 const NODE_CATEGORY_LABELS: Record<string, string> = {
   engine: 'Двигун',
   gearbox: 'КПП',
@@ -134,23 +121,15 @@ export default function VehicleCardPage() {
   }, []);
 
   const [showEdit, setShowEdit] = useState(false);
-  const [editForm, setEditForm] = useState({
-    make: '',
-    model: '',
-    vin: '',
-    licensePlate: '',
-    year: '',
-    engineVolume: '',
-    fuelType: '',
-    currentMileage: '',
-    color: '',
-    transmissionType: '',
-    driveType: '',
-    bodyType: '',
-    engineCode: '',
-    insuranceExpiry: '',
-    inspectionExpiry: '',
-    notes: '',
+  const {
+    register: editRegister,
+    handleSubmit: editHandleSubmit,
+    reset: editReset,
+    control: editControl,
+    formState: { errors: editErrors },
+  } = useForm<VehicleFormInput, unknown, VehicleFormValues>({
+    resolver: zodResolver(vehicleFormSchema),
+    mode: 'onBlur',
   });
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -193,7 +172,8 @@ export default function VehicleCardPage() {
 
   const openEdit = () => {
     if (!vehicle) return;
-    setEditForm({
+    editReset({
+      customerGarageId: vehicle.customerGarageId,
       make: vehicle.make,
       model: vehicle.model,
       vin: vehicle.vin ?? '',
@@ -215,36 +195,16 @@ export default function VehicleCardPage() {
     setShowEdit(true);
   };
 
-  const saveEdit = async () => {
-    if (!editForm.make.trim() || !editForm.model.trim()) {
-      setEditError("Марка та модель є обов'язковими полями");
-      return;
-    }
+  // PATCH /vehicles/:id — customerGarageId у update-схемі відсутній (перенос гаража неможливий);
+  // notes завжди present (null для очищення), решта — parsed values зі схеми.
+  const saveEdit = editHandleSubmit(async (values: VehicleFormValues) => {
     setEditSaving(true);
     setEditError('');
     try {
-      const body: Record<string, unknown> = {
-        make: editForm.make.trim(),
-        model: editForm.model.trim(),
-      };
-      if (editForm.vin.trim()) body.vin = editForm.vin.trim();
-      if (editForm.licensePlate.trim()) body.licensePlate = editForm.licensePlate.trim();
-      if (editForm.year) body.year = parseInt(editForm.year, 10);
-      if (editForm.engineVolume) body.engineVolume = parseFloat(editForm.engineVolume);
-      if (editForm.fuelType) body.fuelType = editForm.fuelType;
-      if (editForm.currentMileage) body.currentMileage = parseInt(editForm.currentMileage, 10);
-      if (editForm.color.trim()) body.color = editForm.color.trim();
-      if (editForm.transmissionType) body.transmissionType = editForm.transmissionType;
-      if (editForm.driveType) body.driveType = editForm.driveType;
-      if (editForm.bodyType) body.bodyType = editForm.bodyType;
-      if (editForm.engineCode.trim()) body.engineCode = editForm.engineCode.trim();
-      if (editForm.insuranceExpiry) body.insuranceExpiry = editForm.insuranceExpiry;
-      if (editForm.inspectionExpiry) body.inspectionExpiry = editForm.inspectionExpiry;
-      body.notes = editForm.notes.trim() || null;
-
+      const { customerGarageId: _drop, notes, ...rest } = values;
       const updated = await apiFetch<Vehicle>(`/vehicles/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...rest, notes: notes ?? null }),
       });
       setVehicle(updated);
       setShowEdit(false);
@@ -253,7 +213,7 @@ export default function VehicleCardPage() {
     } finally {
       setEditSaving(false);
     }
-  };
+  });
 
   // Стабільний onClose — інакше Modal.useEffect([open, handleKey]) переприв'язує
   // keydown-listener і переписує body.style.overflow на КОЖЕН символ у формі (2.16).
@@ -423,7 +383,9 @@ export default function VehicleCardPage() {
         {vehicle.vin && <Info label="VIN" value={vehicle.vin} mono />}
         {vehicle.year && <Info label="Рік" value={String(vehicle.year)} />}
         {vehicle.engineVolume && <Info label="Об'єм, л" value={String(vehicle.engineVolume)} />}
-        {vehicle.fuelType && <Info label="Паливо" value={vehicle.fuelType} />}
+        {vehicle.fuelType && (
+          <Info label="Паливо" value={optionLabel(FUEL_TYPE_OPTIONS, vehicle.fuelType)} />
+        )}
         {vehicle.currentMileage != null && (
           <Info label="Пробіг, км" value={fmtInt(vehicle.currentMileage)} />
         )}
@@ -431,23 +393,14 @@ export default function VehicleCardPage() {
         {vehicle.transmissionType && (
           <Info
             label="Коробка"
-            value={
-              TRANSMISSION_TYPES.find(t => t.value === vehicle.transmissionType)?.label ??
-              vehicle.transmissionType
-            }
+            value={optionLabel(TRANSMISSION_OPTIONS, vehicle.transmissionType)}
           />
         )}
         {vehicle.driveType && (
-          <Info
-            label="Привід"
-            value={DRIVE_TYPES.find(t => t.value === vehicle.driveType)?.label ?? vehicle.driveType}
-          />
+          <Info label="Привід" value={optionLabel(DRIVE_OPTIONS, vehicle.driveType)} />
         )}
         {vehicle.bodyType && (
-          <Info
-            label="Кузов"
-            value={BODY_TYPES.find(t => t.value === vehicle.bodyType)?.label ?? vehicle.bodyType}
-          />
+          <Info label="Кузов" value={optionLabel(BODY_OPTIONS, vehicle.bodyType)} />
         )}
         {vehicle.engineCode && <Info label="Код двигуна" value={vehicle.engineCode} mono />}
         {vehicle.insuranceExpiry && (
@@ -748,11 +701,7 @@ export default function VehicleCardPage() {
         size="lg"
         footer={
           <>
-            <Button
-              onClick={saveEdit}
-              loading={editSaving}
-              disabled={!editForm.make.trim() || !editForm.model.trim()}
-            >
+            <Button onClick={saveEdit} loading={editSaving}>
               Зберегти
             </Button>
             <Button variant="outline" onClick={closeEdit}>
@@ -767,158 +716,7 @@ export default function VehicleCardPage() {
               {editError}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Марка"
-              required
-              value={editForm.make}
-              onChange={e => setEditForm(f => ({ ...f, make: e.target.value }))}
-              placeholder="Toyota"
-              className="h-8 text-[13px]"
-            />
-            <Input
-              label="Модель"
-              required
-              value={editForm.model}
-              onChange={e => setEditForm(f => ({ ...f, model: e.target.value }))}
-              placeholder="Camry"
-              className="h-8 text-[13px]"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Держ. номер"
-              value={editForm.licensePlate}
-              onChange={e => setEditForm(f => ({ ...f, licensePlate: e.target.value }))}
-              placeholder="AA 1234 BB"
-              className="h-8 text-[13px]"
-            />
-            <Input
-              label="VIN"
-              value={editForm.vin}
-              onChange={e => setEditForm(f => ({ ...f, vin: e.target.value }))}
-              placeholder="1HGCM82633A004352"
-              className="font-mono h-8 text-[13px]"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Input
-              label="Рік"
-              type="number"
-              value={editForm.year}
-              onChange={e => setEditForm(f => ({ ...f, year: e.target.value }))}
-              placeholder="2024"
-              min="1900"
-              max="2100"
-              className="h-8 text-[13px]"
-            />
-            <Input
-              label="Об'єм, л"
-              type="number"
-              value={editForm.engineVolume}
-              onChange={e => setEditForm(f => ({ ...f, engineVolume: e.target.value }))}
-              placeholder="2.0"
-              step="0.1"
-              className="h-8 text-[13px]"
-            />
-            <Input
-              label="Пробіг, км"
-              type="number"
-              value={editForm.currentMileage}
-              onChange={e => setEditForm(f => ({ ...f, currentMileage: e.target.value }))}
-              placeholder="85000"
-              min="0"
-              className="h-8 text-[13px]"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Тип палива"
-              value={editForm.fuelType}
-              onChange={e => setEditForm(f => ({ ...f, fuelType: e.target.value }))}
-              placeholder="Не вказано"
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {FUEL_TYPES.map(ft => (
-                <option key={ft} value={ft}>
-                  {ft}
-                </option>
-              ))}
-            </Select>
-            <Input
-              label="Колір"
-              value={editForm.color}
-              onChange={e => setEditForm(f => ({ ...f, color: e.target.value }))}
-              placeholder="Сірий металік"
-              className="h-8 text-[13px]"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Коробка передач"
-              value={editForm.transmissionType}
-              onChange={e => setEditForm(f => ({ ...f, transmissionType: e.target.value }))}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {TRANSMISSION_TYPES.map(t => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Привід"
-              value={editForm.driveType}
-              onChange={e => setEditForm(f => ({ ...f, driveType: e.target.value }))}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {DRIVE_TYPES.map(t => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Тип кузова"
-              value={editForm.bodyType}
-              onChange={e => setEditForm(f => ({ ...f, bodyType: e.target.value }))}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {BODY_TYPES.map(t => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-            <Input
-              label="Код двигуна"
-              value={editForm.engineCode}
-              onChange={e => setEditForm(f => ({ ...f, engineCode: e.target.value }))}
-              placeholder="2AZ-FE"
-              className="font-mono h-8 text-[13px]"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <DatePickerInput
-              label="Страховка до"
-              value={editForm.insuranceExpiry}
-              onChange={v => setEditForm(f => ({ ...f, insuranceExpiry: v }))}
-            />
-            <DatePickerInput
-              label="Техогляд до"
-              value={editForm.inspectionExpiry}
-              onChange={v => setEditForm(f => ({ ...f, inspectionExpiry: v }))}
-            />
-          </div>
-          <Input
-            label="Нотатки"
-            value={editForm.notes}
-            onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-            placeholder="Додаткова інформація..."
-            className="h-8 text-[13px]"
-          />
+          <VehicleForm register={editRegister} errors={editErrors} control={editControl} />
         </div>
       </Modal>
       <ConfirmDialog {...dialogProps} />

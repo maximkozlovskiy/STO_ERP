@@ -43,6 +43,15 @@ export const BODY_OPTIONS = [
   { value: 'OTHER', label: 'Інше' },
 ] as const;
 
+/** Резолвер label за value з option-масиву (для read-only відображення). Fallback — саме value. */
+export function optionLabel(
+  options: readonly { value: string; label: string }[],
+  value: string | null | undefined,
+): string {
+  if (!value) return '';
+  return options.find(o => o.value === value)?.label ?? value;
+}
+
 /** Опційне ціле з рядка форми: '' → undefined, '2015' → 2015. */
 const optionalInt = () =>
   z.preprocess(emptyToUndefined, z.coerce.number().int('Має бути цілим числом').optional());
@@ -76,9 +85,13 @@ const vehicleBaseShape = {
   inspectionExpiry: optionalString(),
 };
 
-/** Форма/створення авто. customerGarageId обовʼязковий (до якого гаража клієнта). */
+/**
+ * Форма/створення авто. customerGarageId у ФОРМІ опційний (гараж резолвиться батьком:
+ * з query-param або auto-create) — тому optionalUuid, а обовʼязковість гаража перевіряє
+ * бек-схема vehicleCreateSchema. Форма валідує лише поля, які реально редагує користувач.
+ */
 export const vehicleFormSchema = z.object({
-  customerGarageId: z.preprocess(emptyToUndefined, optionalUuid()),
+  customerGarageId: optionalUuid(),
   ...vehicleBaseShape,
 });
 export type VehicleFormValues = z.infer<typeof vehicleFormSchema>;
