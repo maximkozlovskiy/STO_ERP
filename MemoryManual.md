@@ -10,11 +10,23 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит #1 Фаза 4 — 4 документ-модалки на zod+RHF зі спільними схемами (SupplierPayment/StockDocument/SupplierReturn/PurchaseOrder)
+Фаза:       Аудит #1 Фаза 5 — WorkOrder (найскладніша модалка) на zod+RHF зі спільними схемами; sync-аудит пройдено
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2462/2462 (160 файлів) · web 793/793 (82 файли, ×2 стабільно) · 4 schema-специ 38/38.
-            Фаза 4 ЗАВЕРШЕНА повністю: 4/4 модалки на zod+RHF, QA-ланцюг sync→review→tester пройдено.
-HEAD:       50567fd8 fix(tester): Bug #756 — стабілізація flaky DocumentCreateModals (RHF-модалки) timeout:2000
+Тести:      api 2479/2479 (161 файл) · CreateWorkOrderModal 11/11 · work-order-schema.spec 17/17.
+HEAD:       252af5fc fix(sync): WorkOrder save() liftId/plannedAt/dueDate clear-семантика (Фаза 5 аудит)
+Sync:       2026-09-17 (Фаза 5, коміти cd4b58c0/a61f990a) — 1 баг знайдено й виправлено: save() header PATCH
+            слав `undefined` (omit) замість `null` (очистити) коли користувач очищав "Підйомник" (Select →
+            "— Без підйомника —") або datetime-local "Плановий початок/кінець". workOrderUpdateSchema.liftId/
+            plannedAt/dueDate явно nullable (null очищає, undefined лишає) — сервіс так само розрізняє, але
+            форма не мала способу виразити "очистив" через існуючий `|| undefined`/localDateTimeToISO('')
+            (обидва повертають undefined на порожньому вводі). Fix: liftId → `|| null`; plannedAt/dueDate →
+            fallback (form.plannedStartAt ? undefined : null), що відрізняє "не чіпали" від "очистили". Решта
+            звірено чисто: header/line/part zod-схеми ↔ DTO field-by-field (validation-parity @Min/@IsEnum/
+            @IsUUID/@IsISO8601 збігається), WORK_ORDER_PRIORITY/REPAIR_CATEGORY_VALUES = Prisma enum точно,
+            multi-request архітектура (header POST /work-orders, lines/parts окремими /lines /parts) — фронт
+            шле саме туди, shim-payload (form.*/toNumberOrUndefined comma-aware) відповідає бек-очікуванням,
+            useWorkOrders interface ↔ WorkOrderResponseDto/Line/Part DTO — усі поля збігаються.
+Prev HEAD:  50567fd8 fix(tester): Bug #756 — стабілізація flaky DocumentCreateModals (RHF-модалки) timeout:2000
 Tester:     2026-09-17 (auto, Фаза 4) — 0 продакшн-багів. Ручний аудит усіх 4 модалок: useFieldArray
             identity/mutation (PO editingKey=field.id, commitEdit/update/remove/append коректні, display-поля
             збережені), гроші/idempotency (moneyString UA-кома, lines у $transaction, savingRef, createdIdRef),
