@@ -1,9 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { EMPLOYEE_STATUS_LABELS, EMPLOYEE_ROLE_LABELS } from '@sto/shared';
+import {
+  EMPLOYEE_STATUS_LABELS,
+  EMPLOYEE_ROLE_LABELS,
+  employeeFormSchema,
+  buildRateScheme,
+  type EmployeeFormInput,
+  type EmployeeFormValues,
+  type RateType,
+} from '@sto/shared';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,7 +87,7 @@ const RATE_LABELS: Record<string, string> = {
   fixed_plus_bonus: 'Ставка + бонус',
 };
 
-const EMPTY_FORM = {
+const EMPTY_FORM: EmployeeFormInput = {
   firstName: '',
   lastName: '',
   role: 'MECHANIC',
@@ -152,7 +162,21 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    control,
+    watch,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<EmployeeFormInput, unknown, EmployeeFormValues>({
+    resolver: zodResolver(employeeFormSchema),
+    defaultValues: EMPTY_FORM,
+    mode: 'onBlur',
+  });
+  const rateType = watch('rateType') as RateType;
+  const grantAccess = watch('grantAccess');
+
   const [saving, setSaving] = useState(false);
   // WEB-H3 (Bug #633, клас Bug #630): синхронний guard проти concurrent double-submit.
   // save() робить кілька послідовних POST (employee + auth-account) — подвійний клік
@@ -222,16 +246,16 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     dirty.resetDirty();
     if (employee) {
       const rs = employee.rateScheme;
-      setForm({
+      reset({
         firstName: employee.firstName,
         lastName: employee.lastName,
-        role: employee.role,
+        role: employee.role as EmployeeFormInput['role'],
         phone: employee.phone ?? '',
         email: employee.email ?? '',
-        status: employee.status as string,
+        status: employee.status,
         dateOfHire: employee.dateOfHire ? employee.dateOfHire.slice(0, 10) : '',
         dateOfFire: employee.dateOfFire ? employee.dateOfFire.slice(0, 10) : '',
-        rateType: rs?.type ?? 'percent_normo',
+        rateType: (rs?.type ?? 'percent_normo') as RateType,
         percent: rs?.type === 'percent_normo' ? String(rs.params.percent ?? 40) : '40',
         ratePerHour: rs?.type === 'per_normo_hour' ? String(rs.params.ratePerHour ?? 0) : '0',
         fixedMonthly: rs?.type === 'fixed_plus_bonus' ? String(rs.params.fixedMonthly ?? 0) : '0',
@@ -246,7 +270,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
       setBranchIds(employee.branchIds ?? []);
       setAllBranches(employee.allBranches ?? false);
     } else {
-      setForm({ ...EMPTY_FORM });
+      reset({ ...EMPTY_FORM });
       setZoneIds([]);
       setLiftIds([]);
       setWorkCatIds([]);
@@ -255,6 +279,13 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee?.id]);
+
+  // Міст RHF isDirty → useDirtyForm (assignment-масиви вже кличуть markDirty окремо;
+  // тут лише ДОДАЄМО dirty від полів форми, не скидаємо — щоб не затерти assignment-dirty).
+  useEffect(() => {
+    if (rhfDirty) dirty.markDirty();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rhfDirty]);
 
   const handleClose = useCallback(async () => {
     if (!(await dirty.confirmClose())) return;
@@ -293,77 +324,34 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     [dirty.markDirty],
   );
 
-  const buildRateScheme = () => {
-    if (form.rateType === 'percent_normo') {
-      const pct = Number(form.percent);
-      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-        setError('Відсоток має бути від 1 до 100');
-        return null;
-      }
-      return { type: 'percent_normo', params: { percent: pct } };
-    }
-    if (form.rateType === 'per_normo_hour') {
-      const rate = Number(form.ratePerHour);
-      if (!Number.isFinite(rate) || rate < 0) {
-        setError("Ставка за нормо-годину повинна бути невід'ємним числом");
-        return null;
-      }
-      return { type: 'per_normo_hour', params: { ratePerHour: rate } };
-    }
-    const fixed = Number(form.fixedMonthly);
-    const bonus = Number(form.bonusPercent);
-    if (!Number.isFinite(fixed) || fixed < 0) {
-      setError("Фіксована ставка повинна бути невід'ємним числом");
-      return null;
-    }
-    if (!Number.isFinite(bonus) || bonus < 0 || bonus > 100) {
-      setError('Бонус має бути від 0 до 100');
-      return null;
-    }
-    return {
-      type: 'fixed_plus_bonus',
-      params: { fixedMonthly: fixed, bonusPercent: bonus },
-    };
-  };
-
-  const save = async () => {
+  // Валідація через zodResolver (per-field + крос-польові superRefine). onValid отримує
+  // коерснуті значення (числа — number); nested rateScheme будуємо спільним buildRateScheme.
+  const save = handleSubmit(async values => {
     if (savingRef.current) return;
     setError('');
-    if (!isEdit && form.grantAccess) {
-      // trim перед перевіркою — інакше whitespace-only '   ' проходить
-      // як truthy і нерозбірливий backend `@IsEmail` помилка показується замість
-      // зрозумілого «Вкажіть email для входу».
-      if (!form.loginEmail.trim()) {
-        setError('Вкажіть email для входу');
-        return;
-      }
-      if (!form.password) {
-        setError('Вкажіть пароль');
-        return;
-      }
-      if (form.password.length < 6) {
-        setError('Пароль має бути не менше 6 символів');
-        return;
-      }
-    }
-    const rateScheme = buildRateScheme();
-    if (!rateScheme) return;
+    const rateScheme = buildRateScheme({
+      rateType: values.rateType,
+      percent: values.percent,
+      ratePerHour: values.ratePerHour,
+      fixedMonthly: values.fixedMonthly,
+      bonusPercent: values.bonusPercent,
+    });
     setSavingBoth(true);
     try {
       const payload = {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        role: form.role,
-        phone: form.phone || undefined,
-        email: form.email || undefined,
-        status: form.status,
-        dateOfHire: form.dateOfHire || undefined,
-        dateOfFire: form.dateOfFire || undefined,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        role: values.role,
+        phone: values.phone || undefined,
+        email: values.email || undefined,
+        status: values.status,
+        dateOfHire: values.dateOfHire || undefined,
+        dateOfFire: values.dateOfFire || undefined,
         rateScheme,
         ...(!isEdit &&
-          form.grantAccess && {
-            loginEmail: form.loginEmail,
-            password: form.password,
+          values.grantAccess && {
+            loginEmail: values.loginEmail,
+            password: values.password,
           }),
       };
       const saved = isEdit
@@ -406,7 +394,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
   const flatCats = useMemo(() => flattenTree(workCategories), [workCategories]);
 
@@ -421,7 +409,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         size="lg"
         footer={
           <>
-            <Button onClick={save} loading={saving} disabled={!form.firstName || !form.lastName}>
+            <Button onClick={save} loading={saving}>
               Зберегти
             </Button>
             <Button variant="outline" onClick={handleClose}>
@@ -440,21 +428,15 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             <Input
               label="Ім'я"
               required
-              value={form.firstName}
-              onChange={e => {
-                setForm(f => ({ ...f, firstName: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('firstName')}
+              errorMessage={errors.firstName?.message}
               placeholder="Іван"
             />
             <Input
               label="Прізвище"
               required
-              value={form.lastName}
-              onChange={e => {
-                setForm(f => ({ ...f, lastName: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('lastName')}
+              errorMessage={errors.lastName?.message}
               placeholder="Коваль"
             />
           </div>
@@ -462,11 +444,8 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             <Select
               label="Посада"
               required
-              value={form.role}
-              onChange={e => {
-                setForm(f => ({ ...f, role: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('role')}
+              errorMessage={errors.role?.message}
             >
               {Object.entries(ROLE_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
@@ -474,14 +453,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
                 </option>
               ))}
             </Select>
-            <Select
-              label="Статус"
-              value={form.status}
-              onChange={e => {
-                setForm(f => ({ ...f, status: e.target.value }));
-                dirty.markDirty();
-              }}
-            >
+            <Select label="Статус" {...register('status')} errorMessage={errors.status?.message}>
               {Object.entries(STATUS_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
                   {v}
@@ -490,52 +462,55 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <PhoneInput
-              label="Телефон"
-              value={form.phone}
-              onChange={e => {
-                setForm(f => ({ ...f, phone: e.target.value }));
-                dirty.markDirty();
-              }}
+            <Controller
+              control={control}
+              name="phone"
+              render={({ field }) => (
+                <PhoneInput
+                  label="Телефон"
+                  value={typeof field.value === 'string' ? field.value : ''}
+                  onChange={field.onChange}
+                />
+              )}
             />
             <Input
               label="Email"
-              value={form.email}
-              onChange={e => {
-                setForm(f => ({ ...f, email: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('email')}
+              errorMessage={errors.email?.message}
               placeholder="ivan@example.com"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <DatePickerInput
-              label="Дата прийому"
-              value={form.dateOfHire}
-              onChange={v => {
-                setForm(f => ({ ...f, dateOfHire: v }));
-                dirty.markDirty();
-              }}
+            <Controller
+              control={control}
+              name="dateOfHire"
+              render={({ field }) => (
+                <DatePickerInput
+                  label="Дата прийому"
+                  value={typeof field.value === 'string' ? field.value : ''}
+                  onChange={field.onChange}
+                />
+              )}
             />
             {isEdit && (
-              <DatePickerInput
-                label="Дата звільнення"
-                value={form.dateOfFire}
-                onChange={v => {
-                  setForm(f => ({ ...f, dateOfFire: v }));
-                  dirty.markDirty();
-                }}
+              <Controller
+                control={control}
+                name="dateOfFire"
+                render={({ field }) => (
+                  <DatePickerInput
+                    label="Дата звільнення"
+                    value={typeof field.value === 'string' ? field.value : ''}
+                    onChange={field.onChange}
+                  />
+                )}
               />
             )}
           </div>
           <Select
             label="Схема нарахування"
             required
-            value={form.rateType}
-            onChange={e => {
-              setForm(f => ({ ...f, rateType: e.target.value }));
-              dirty.markDirty();
-            }}
+            {...register('rateType')}
+            errorMessage={errors.rateType?.message}
           >
             {Object.entries(RATE_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
@@ -543,51 +518,39 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               </option>
             ))}
           </Select>
-          {form.rateType === 'percent_normo' && (
+          {rateType === 'percent_normo' && (
             <Input
               label="Відсоток, %"
               type="number"
               min="0"
-              value={form.percent}
-              onChange={e => {
-                setForm(f => ({ ...f, percent: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('percent')}
+              errorMessage={errors.percent?.message}
             />
           )}
-          {form.rateType === 'per_normo_hour' && (
+          {rateType === 'per_normo_hour' && (
             <Input
               label="Ставка, грн/нормо-год"
               type="number"
               min="0"
-              value={form.ratePerHour}
-              onChange={e => {
-                setForm(f => ({ ...f, ratePerHour: e.target.value }));
-                dirty.markDirty();
-              }}
+              {...register('ratePerHour')}
+              errorMessage={errors.ratePerHour?.message}
             />
           )}
-          {form.rateType === 'fixed_plus_bonus' && (
+          {rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Ставка, грн/міс"
                 type="number"
                 min="0"
-                value={form.fixedMonthly}
-                onChange={e => {
-                  setForm(f => ({ ...f, fixedMonthly: e.target.value }));
-                  dirty.markDirty();
-                }}
+                {...register('fixedMonthly')}
+                errorMessage={errors.fixedMonthly?.message}
               />
               <Input
                 label="Бонус, %"
                 type="number"
                 min="0"
-                value={form.bonusPercent}
-                onChange={e => {
-                  setForm(f => ({ ...f, bonusPercent: e.target.value }));
-                  dirty.markDirty();
-                }}
+                {...register('bonusPercent')}
+                errorMessage={errors.bonusPercent?.message}
               />
             </div>
           )}
@@ -599,39 +562,29 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
             <label className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary transition-colors">
               <input
                 type="checkbox"
-                checked={form.grantAccess}
-                onChange={e => {
-                  setForm(f => ({ ...f, grantAccess: e.target.checked }));
-                  dirty.markDirty();
-                }}
+                {...register('grantAccess')}
                 className="rounded border-border w-4 h-4"
               />
               <span className="text-[13px] font-medium text-foreground">
                 Надати доступ до системи
               </span>
             </label>
-            {form.grantAccess && (
+            {grantAccess && (
               <div className="grid grid-cols-2 gap-3 px-4 pb-4 border-t border-border pt-3">
                 <Input
                   label="Email для входу (логін)"
                   required
                   type="email"
-                  value={form.loginEmail}
-                  onChange={e => {
-                    setForm(f => ({ ...f, loginEmail: e.target.value }));
-                    dirty.markDirty();
-                  }}
+                  {...register('loginEmail')}
+                  errorMessage={errors.loginEmail?.message}
                   placeholder="ivan@sto.local"
                 />
                 <Input
                   label="Пароль"
                   required
                   type="password"
-                  value={form.password}
-                  onChange={e => {
-                    setForm(f => ({ ...f, password: e.target.value }));
-                    dirty.markDirty();
-                  }}
+                  {...register('password')}
+                  errorMessage={errors.password?.message}
                   placeholder="Мін. 6 символів"
                 />
               </div>

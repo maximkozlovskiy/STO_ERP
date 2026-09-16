@@ -21,27 +21,11 @@ import {
 import { Type, Transform } from 'class-transformer';
 import { EmployeeStatus, UserRole } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
-import { z } from 'zod';
 
-// в”Ђв”Ђв”Ђ rateScheme Zod validation в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-
-export const rateSchemeSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('percent_normo'),
-    params: z.object({ percent: z.number().min(0).max(100) }),
-  }),
-  z.object({
-    // Ставка за нормо-годину: accrued = ratePerHour * Σ normoHours завершених робіт.
-    type: z.literal('per_normo_hour'),
-    params: z.object({ ratePerHour: z.number().min(0) }),
-  }),
-  z.object({
-    type: z.literal('fixed_plus_bonus'),
-    params: z.object({ fixedMonthly: z.number().min(0), bonusPercent: z.number().min(0).max(100) }),
-  }),
-]);
-
-export type RateScheme = z.infer<typeof rateSchemeSchema>;
+// rateScheme-схема тепер у @sto/shared (ЄДИНЕ джерело правди web ↔ api) — реекспорт для
+// зворотної сумісності імпортів (employees.service та ін.).
+export { rateSchemeSchema, type RateScheme } from '@sto/shared';
+import type { RateScheme } from '@sto/shared';
 
 // в”Ђв”Ђв”Ђ DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 

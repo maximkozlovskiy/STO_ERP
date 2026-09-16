@@ -41,3 +41,11 @@ export const optionalNonNegNumber = () =>
     emptyToUndefined,
     z.coerce.number().min(0, "Значення не може бути від'ємним").optional(),
   );
+
+/**
+ * Обовʼязкове число з рядка форми: `z.input` приймає рядок web-стану, `z.output` = number.
+ * На відміну від `z.coerce.number()` (input=number), сумісне з рядковим станом react-hook-form.
+ * Порожнє/нечислове → NaN → падає на .number() (діапазони уточнює superRefine у доменній схемі).
+ */
+export const numericString = () =>
+  z.preprocess(v => (v === '' || v === null || v === undefined ? NaN : Number(v)), z.number());

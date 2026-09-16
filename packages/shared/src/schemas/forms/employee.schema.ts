@@ -1,0 +1,184 @@
+import { z } from 'zod';
+import { optionalString, emptyToUndefined, numericString } from '../validators';
+
+/**
+ * Спільні zod-схеми співробітника (Employee) — ЄДИНЕ джерело правди web ↔ api.
+ *
+ * Два рівні:
+ *  1. `rateSchemeSchema` — НЕСТ-форма схеми нарахування (discriminated union), яку валідує бек-payload
+ *     і сервіс. Раніше жила лише в apps/api/employees.dto.ts — перенесено сюди для reuse.
+ *  2. `employeeFormSchema` — ПЛОСКА форма (як web-стан): rateType + окремі числові поля, які модалка
+ *     збирає у rateScheme. Крос-польові правила (діапазони, пароль при grantAccess) — у superRefine.
+ */
+
+// ─── Nested rateScheme (payload/бек) ─────────────────────────────────────────
+export const rateSchemeSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('percent_normo'),
+    params: z.object({ percent: z.number().min(0).max(100) }),
+  }),
+  z.object({
+    // Ставка за нормо-годину: accrued = ratePerHour * Σ normoHours завершених робіт.
+    type: z.literal('per_normo_hour'),
+    params: z.object({ ratePerHour: z.number().min(0) }),
+  }),
+  z.object({
+    type: z.literal('fixed_plus_bonus'),
+    params: z.object({ fixedMonthly: z.number().min(0), bonusPercent: z.number().min(0).max(100) }),
+  }),
+]);
+export type RateScheme = z.infer<typeof rateSchemeSchema>;
+
+export const RATE_TYPE_VALUES = ['percent_normo', 'per_normo_hour', 'fixed_plus_bonus'] as const;
+export type RateType = (typeof RATE_TYPE_VALUES)[number];
+
+// Дзеркалять Prisma-enum-и (shared не імпортує @prisma/client). Тримати синхронно зі schema.prisma.
+export const USER_ROLE_VALUES = [
+  'OWNER',
+  'ADMIN',
+  'RECEPTIONIST',
+  'MECHANIC',
+  'STOREKEEPER',
+  'ACCOUNTANT',
+  'XLSX_MANAGER',
+  'CLIENT',
+] as const;
+export const EMPLOYEE_STATUS_VALUES = ['ACTIVE', 'ON_LEAVE', 'FIRED'] as const;
+
+// ─── Плоска форма (web-стан) ─────────────────────────────────────────────────
+export const employeeFormSchema = z
+  .object({
+    firstName: z.string().trim().min(1, "Вкажіть ім'я").max(100, "Ім'я занадто довге"),
+    lastName: z.string().trim().min(1, 'Вкажіть прізвище').max(100, 'Прізвище занадто довге'),
+    role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'Оберіть посаду' }) }),
+    phone: optionalString(),
+    email: optionalString(),
+    status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
+    dateOfHire: optionalString(),
+    dateOfFire: optionalString(),
+    // rateScheme — плоскі поля; числа з РЯДКІВ (web-стан) коерсимо у number; діапазони перевіряє
+    // superRefine (нижче), бо залежать від rateType. z.preprocess(String→Number) типізує ВХІД як
+    // рядок (на відміну від z.coerce.number, чий input=number) — сумісно з рядковим станом форми.
+    rateType: z.enum(RATE_TYPE_VALUES),
+    percent: numericString(),
+    ratePerHour: numericString(),
+    fixedMonthly: numericString(),
+    bonusPercent: numericString(),
+    // Доступ у систему (лише create).
+    grantAccess: z.boolean().optional().default(false),
+    loginEmail: optionalString(),
+    password: optionalString(),
+  })
+  .superRefine((v, ctx) => {
+    // Умовні правила rateScheme за rateType.
+    if (v.rateType === 'percent_normo' && (v.percent <= 0 || v.percent > 100)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['percent'],
+        message: 'Відсоток має бути від 1 до 100',
+      });
+    }
+    if (v.rateType === 'per_normo_hour' && v.ratePerHour < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ratePerHour'],
+        message: "Ставка за нормо-годину повинна бути невід'ємним числом",
+      });
+    }
+    if (v.rateType === 'fixed_plus_bonus') {
+      if (v.fixedMonthly < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fixedMonthly'],
+          message: "Фіксована ставка повинна бути невід'ємним числом",
+        });
+      }
+      if (v.bonusPercent < 0 || v.bonusPercent > 100) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['bonusPercent'],
+          message: 'Бонус має бути від 0 до 100',
+        });
+      }
+    }
+    // Доступ: при grantAccess loginEmail + пароль обовʼязкові.
+    if (v.grantAccess) {
+      if (!v.loginEmail || !v.loginEmail.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['loginEmail'],
+          message: 'Вкажіть email для входу',
+        });
+      }
+      if (!v.password) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['password'],
+          message: 'Вкажіть пароль',
+        });
+      } else if (v.password.length < 6) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['password'],
+          message: 'Пароль має бути не менше 6 символів',
+        });
+      }
+    }
+  });
+
+export type EmployeeFormValues = z.infer<typeof employeeFormSchema>;
+export type EmployeeFormInput = z.input<typeof employeeFormSchema>;
+
+/**
+ * Зібрати nested rateScheme з плоских (уже валідованих) значень форми.
+ * Спільна функція — web (payload) і потенційно бек можуть переюзати.
+ */
+export function buildRateScheme(v: {
+  rateType: RateType;
+  percent: number;
+  ratePerHour: number;
+  fixedMonthly: number;
+  bonusPercent: number;
+}): RateScheme {
+  switch (v.rateType) {
+    case 'percent_normo':
+      return { type: 'percent_normo', params: { percent: v.percent } };
+    case 'per_normo_hour':
+      return { type: 'per_normo_hour', params: { ratePerHour: v.ratePerHour } };
+    case 'fixed_plus_bonus':
+      return {
+        type: 'fixed_plus_bonus',
+        params: { fixedMonthly: v.fixedMonthly, bonusPercent: v.bonusPercent },
+      };
+  }
+}
+
+// ─── Бек-payload схеми (POST/PATCH /employees) ───────────────────────────────
+// Валідують те, що реально шле модалка: базові поля + nested rateScheme + опційний доступ.
+const employeeBaseFields = {
+  firstName: z.string().trim().min(1, "Вкажіть ім'я").max(100),
+  lastName: z.string().trim().min(1, 'Вкажіть прізвище').max(100),
+  role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'Оберіть посаду' }) }),
+  phone: optionalString(),
+  email: optionalString(),
+  status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
+  dateOfHire: optionalString(),
+  dateOfFire: optionalString(),
+  rateScheme: rateSchemeSchema,
+};
+
+export const employeeCreateSchema = z.object({
+  ...employeeBaseFields,
+  loginEmail: z.preprocess(
+    emptyToUndefined,
+    z.string().email('Невірний формат email для логіну').max(254).optional(),
+  ),
+  password: z.preprocess(
+    emptyToUndefined,
+    z.string().min(6, 'Пароль має бути не менше 6 символів').max(128).optional(),
+  ),
+});
+export type EmployeeCreateValues = z.infer<typeof employeeCreateSchema>;
+
+export const employeeUpdateSchema = z.object({ ...employeeBaseFields }).partial();
+export type EmployeeUpdateValues = z.infer<typeof employeeUpdateSchema>;

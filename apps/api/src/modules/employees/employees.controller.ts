@@ -20,14 +20,19 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import {
+  employeeCreateSchema,
+  employeeUpdateSchema,
+  type EmployeeCreateValues,
+  type EmployeeUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
   AssignBranchesDto,
   AssignLiftsDto,
   AssignWorkCategoriesDto,
   AssignZonesDto,
-  CreateEmployeeDto,
   EmployeeResponseDto,
   EmployeesQueryDto,
-  UpdateEmployeeDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
 
@@ -67,7 +72,10 @@ export class EmployeesController {
   @Roles('OWNER', 'ADMIN')
   @ApiOperation({ summary: 'Створити співробітника' })
   @ApiResponse({ status: 201, type: EmployeeResponseDto })
-  create(@OrgContext() orgId: string, @Body() dto: CreateEmployeeDto) {
+  create(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(employeeCreateSchema)) dto: EmployeeCreateValues,
+  ) {
     return this.service.create(orgId, dto);
   }
 
@@ -78,7 +86,7 @@ export class EmployeesController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateEmployeeDto,
+    @Body(new ZodValidationPipe(employeeUpdateSchema)) dto: EmployeeUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }
