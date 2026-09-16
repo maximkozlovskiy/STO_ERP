@@ -66,7 +66,6 @@ import {
   type Warehouse,
   type Supplier,
   type Good,
-  type POLine,
   type LocalLine,
   type PODetail,
   type PricingRule,
@@ -77,6 +76,28 @@ import {
   nextKey,
   EMPTY_LINE,
 } from '@/components/ui/purchase-order/types';
+
+// Тип zod-error з результату safeParse (web не має zod як прямої залежності — тягнемо
+// його через сам schema, а не `import { z } from 'zod'`).
+type SchemaError = Extract<
+  ReturnType<typeof purchaseOrderFormSchema.safeParse>,
+  { success: false }
+>['error'];
+
+// safeParse-помилку показуємо ЗМІСТОВНО: беремо перший zod-issue з його (українським)
+// повідомленням зі схеми (напр. «Ціна не може бути відʼємною»), а для рядка-товару
+// префіксуємо номером позиції. Раніше показувалось хардкод «Оберіть постачальника та
+// склад» — вводило в оману, коли фейл насправді у рядку (порожня ціна/кількість), а
+// кнопка вже гарантувала обраний supplier+warehouse (§8.2).
+function firstSchemaError(err: SchemaError): string {
+  const issue = err.issues[0];
+  if (!issue) return 'Перевірте заповнення форми';
+  const path = issue.path;
+  if (path[0] === 'lines' && typeof path[1] === 'number') {
+    return `Рядок ${path[1] + 1}: ${issue.message}`;
+  }
+  return issue.message;
+}
 
 // «Чиста» база форми — reset() до неї на open дає rhfDirty=false (Bug #639: авто-вибір
 // складу через setValue({shouldDirty:false}), тому не вмикає dirty-guard).
@@ -696,7 +717,7 @@ export function PurchaseOrderCreateModal({
     if (savingRef.current || transitioningRef.current) return null;
     const parsed = purchaseOrderFormSchema.safeParse(getValues());
     if (!parsed.success) {
-      setError('Оберіть постачальника та склад');
+      setError(firstSchemaError(parsed.error));
       return null;
     }
     const values = parsed.data;
@@ -771,7 +792,7 @@ export function PurchaseOrderCreateModal({
     if (savingRef.current || transitioningRef.current) return;
     const parsed = purchaseOrderFormSchema.safeParse(getValues());
     if (!parsed.success) {
-      setError('Оберіть постачальника та склад');
+      setError(firstSchemaError(parsed.error));
       return;
     }
     const values = parsed.data;

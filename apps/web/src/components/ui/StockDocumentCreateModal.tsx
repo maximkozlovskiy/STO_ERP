@@ -422,9 +422,15 @@ export function StockDocumentCreateModal({
 
   // ── FSM ───────────────────────────────────────────────────────────────────
 
-  const allowedTransitions = isEditMode
-    ? (STOCK_DOC_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
-    : EMPTY_TRANSITIONS;
+  // Memoize allowedTransitions itself для referential stability (інакше fresh fallback
+  // array щорендеру) — тоді prev/next useMemo коректно залежить від нього (дзеркалить PO).
+  const allowedTransitions = useMemo<readonly string[]>(
+    () =>
+      isEditMode
+        ? (STOCK_DOC_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
+        : EMPTY_TRANSITIONS,
+    [currentStatus, isEditMode],
+  );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
     const curIdx = STOCK_DOC_STATUS_ORDER.indexOf(currentStatus);
@@ -440,7 +446,7 @@ export function StockDocumentCreateModal({
       (s: string) => STOCK_DOC_STATUS_ORDER.indexOf(s) > curIdx,
     );
     return { statusPrevStep, statusNextStep };
-  }, [currentStatus, isEditMode]);
+  }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
     if (!stockDocumentId) return;
