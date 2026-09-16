@@ -10,11 +10,24 @@
 
 ```
 Дата:       2026-09-16
-Фаза:       Аудит #1 Фаза 1 — Employee на zod + react-hook-form (спільна схема web↔api) готова
+Фаза:       Аудит #1 Фаза 2 — Counterparty+Vehicle на zod + react-hook-form (спільні схеми web↔api) + канонізація vehicle-enum
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      employee-schema 15/15 · employees module 27/27 · EmployeeEditModal 4/4
-HEAD:       2f974834 fix(review): employeeFormSchema — приховані числові поля не блокують сабміт
-Review:     2026-09-16 (auto, коміт eb3582cb Employee zod+RHF) — 1 Suggestion (латентний) виправлено:
+Тести:      counterparty-schema 11/11 · vehicle-schema 6/6 · counterparties module 88/88 (service 50 + contract 21 + vehicles 17)
+            · CounterpartyForm 8/8 · VehicleForm 4/4 · DocumentCreateModals 5/5 (GoodEditModal/DocumentDirtyGuard skip — env-guard, не регресія)
+HEAD:       b003d98a fix(review): прибрано мертвий import hasCounterpartyName у CounterpartyEditModal
+Review:     2026-09-16 (auto, коміти ab169ab0..9905f947 Counterparty+Vehicle zod+RHF+enum-канонізація) — 1 Suggestion виправлено:
+            осиротілий import hasCounterpartyName у CounterpartyEditModal (name-by-type тепер лише
+            через zodResolver counterpartyFormSchema.superRefine). Решта чисто: update-схема partial()
+            без superRefine — merged name-by-type робить сервіс (counterparties.service:315-322 ефективний
+            post-PATCH type); vehicle customerGarageId optional у формі / required у vehicleCreateSchema,
+            обидва create-консюмери гарантують гараж (query або garage auto-create), update дропає гараж;
+            optionLabel fallback на raw value (fuel/transmission/drive/body = String?, НЕ Prisma enum →
+            міграція без ADD VALUE, VAN досяжний, unmapped лишається raw); два незалежні useForm у модалці
+            не конфліктують; savingRef WEB-H3, currentCpIdRef tenant-guard, rhfDirty→useDirtyForm міст
+            (з else — vehicle-tab має власний save-flow) — усе коректне; прибрані validateCounterpartyForm/
+            formToPatch + локальні vehicle enum-константи (2 сторінки) без осиротілих імпортів. tester
+            рекомендовано (архіт. зміна + DB-міграція + вкладені модалки). Prev review нижче:
+Review-prev1: 2026-09-16 (auto, коміт eb3582cb Employee zod+RHF) — 1 Suggestion (латентний) виправлено:
             percent/ratePerHour/fixedMonthly/bonusPercent = numericString() (обовʼязкове z.number())
             → ПОРОЖНЄ будь-яке (навіть приховане неактивне за rateType) → NaN → не-локалізоване
             "Expected number, received nan" блокувало сабміт. Fix: flatRateNumber() (number|NaN),
