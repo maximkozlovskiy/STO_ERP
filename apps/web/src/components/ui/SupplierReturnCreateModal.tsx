@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  supplierReturnFormSchema,
+  type SupplierReturnFormInput,
+  type SupplierReturnFormValues,
+} from '@sto/shared';
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -70,9 +77,10 @@ interface PurchaseOrderRef {
   supplierName?: string;
 }
 
+// Локальний елемент рядка форми (useFieldArray). goodName/goodSku/unit/unitShortName/
+// unitOfMeasureId — display/persist-поля поза zod-схемою (payload містить лише
+// goodId/quantity/price/unitOfMeasureId). quantity/price — рядки web-стану (схема коерсить).
 interface LocalLine {
-  _key: string;
-  id?: string;
   goodId: string;
   goodName: string;
   goodSku?: string | null;
@@ -85,7 +93,7 @@ interface LocalLine {
   price: string;
 }
 
-const EMPTY_LINE: Omit<LocalLine, '_key'> = {
+const EMPTY_LINE: LocalLine = {
   goodId: '',
   goodName: '',
   goodSku: null,
@@ -96,17 +104,8 @@ const EMPTY_LINE: Omit<LocalLine, '_key'> = {
   price: '',
 };
 
-// Crypto-randomUUID дає глобально-унікальні row-ключі без module-level лічильника
-// (який пережив би HMR/StrictMode і ризикував reuse). Симетрія з nextKey() інших модалок.
-const newKey = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `sr_line_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-
 function lineFromApi(l: SupplierReturnLine): LocalLine {
   return {
-    _key: newKey(),
-    id: l.id,
     goodId: l.goodId,
     goodName: l.goodName ?? '',
     goodSku: l.goodSku ?? null,
@@ -117,6 +116,17 @@ function lineFromApi(l: SupplierReturnLine): LocalLine {
     price: String(l.price),
   };
 }
+
+// «Чиста» база форми — reset() до неї на open дає rhfDirty=false (Bug #639: авто-вибір
+// складу через setValue({shouldDirty:false}), тому не вмикає dirty-guard).
+const emptyDefaults = (): SupplierReturnFormInput => ({
+  supplierId: '',
+  warehouseId: '',
+  purchaseOrderId: '',
+  notes: '',
+  documentDate: kyivToday(),
+  lines: [],
+});
 
 const numericInputCls =
   'w-full rounded border border-input bg-background px-1.5 py-1 text-[12px] tabular-nums focus:outline-none focus:ring-1 focus:ring-ring';
@@ -137,39 +147,43 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const isEdit = !!editId;
 
-  // ── Document state ─────────────────────────────────────────────────────────
+  // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).
+  const {
+    control,
+    register,
+    reset,
+    watch,
+    setValue,
+    getValues,
+    handleSubmit,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<SupplierReturnFormInput, unknown, SupplierReturnFormValues>({
+    resolver: zodResolver(supplierReturnFormSchema),
+    defaultValues: emptyDefaults(),
+    mode: 'onBlur',
+  });
+  const { fields, append, remove } = useFieldArray({ control, name: 'lines' });
+  const watchedLines = watch('lines');
+  const supplierId = watch('supplierId');
+  const warehouseId = watch('warehouseId');
+
+  // Display-стан (поза формою): статус документа, display-текст постачальника/PO.
   const [status, setStatus] = useState('DRAFT');
-  const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
-  const [warehouseId, setWarehouseId] = useState('');
-  // Опціональне замовлення постачальнику-джерело (Phase D2). Персиститься лише при CREATE.
-  const [purchaseOrderId, setPurchaseOrderId] = useState('');
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
-  const [notes, setNotes] = useState('');
-  const [documentDate, setDocumentDate] = useState(() => kyivToday());
-  const [lines, setLines] = useState<LocalLine[]>([]);
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   // WEB-H3 (Bug #630): синхронні ref-и проти concurrent double-submit. `disabled={saving}`
   // спирається на re-render React МІЖ подіями кліку; два click-и в одному tick обидва
-  // входять до застосування disabled → 2 POST /supplier-returns (2 документи повернення)
-  // або подвійний confirm/cancel. Ref фліпається синхронно ДО React state-flush → другий
-  // вхід одразу повертається. Симетрія з Invoice/PO/Stock/WorkOrder модалками.
+  // входять до застосування disabled → 2 POST /supplier-returns (2 документи повернення).
+  // Ref фліпається синхронно ДО React state-flush → другий вхід одразу повертається.
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
-  // Value-based dirty-детекція: базлайн — серіалізований відбиток «чистої» форми.
-  // Замінює крихкий baselineReadyRef + setTimeout(0) (гонка macrotask-прапорця з
-  // відкладеним flush passive-ефектів React → хибний «Є незбережені зміни» на
-  // чистій формі). baselineCapturedRef — чи вже захоплено початковий базлайн.
-  const baselineCapturedRef = useRef(false);
-  // Bug #639: async авто-вибір єдиного складу — програмна зміна. Ефект авто-вибору
-  // піднімає цей прапорець, і наступний прогін dirty-детектора згортає нове значення
-  // у базлайн замість dirty.
-  const rebaselineRef = useRef(false);
-  // Edit-режим: true після завершення завантаження — гейт для захоплення базлайну.
-  const [editLoaded, setEditLoaded] = useState(false);
+  // Bug #639: async авто-вибір єдиного складу — програмна зміна. Через
+  // setValue({shouldDirty:false}) значення не вмикає dirty-guard.
+  const autoSelectedRef = useRef(false);
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
     setSaving(v);
@@ -181,7 +195,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [error, setError] = useState('');
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [showLineInput, setShowLineInput] = useState(false);
-  const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
+  const [newLine, setNewLine] = useState<LocalLine>(EMPTY_LINE);
 
   // ── Reference data ─────────────────────────────────────────────────────────
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -221,23 +235,19 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, [open]);
 
   // Auto-select single warehouse — Bug #550: guard with !editId, інакше race з
-  // edit-fetch робить flicker (auto-select встановлює перший склад, потім edit-data
-  // перезаписує правильним warehouseId з API).
-  //
-  // Bug #639: /warehouses вантажиться АСИНХРОННО — цей auto-select спрацьовує ПІЗНІШЕ
-  // за setTimeout(0), що озброює dirty-базлайн. Програмна установка warehouseId тоді
-  // хибно позначала чисту форму брудною (Escape без жодної правки → діалог «незбережені
-  // зміни»). Прапорець autoWarehouseRef фіксує САМЕ цю програмну зміну, щоб dirty-детектор
-  // її пропустив (див. нижче) — не чіпаючи арм-таймер (його cleanup при re-run ефекту
-  // скасовував би переозброєння й вимикав guard узагалі).
+  // edit-fetch робить flicker. Bug #639: shouldDirty:false — програмна установка
+  // warehouseId не вмикає dirty-guard (Escape без правки не показує діалог).
   useEffect(() => {
-    if (warehouses.length === 1 && !warehouseId && !editId) {
-      // Bug #639: авто-вибір — програмна зміна; піднімаємо rebaselineRef, щоб
-      // dirty-детектор згорнув нове значення у базлайн (не dirty).
-      if (baselineCapturedRef.current) rebaselineRef.current = true;
-      setWarehouseId(warehouses[0].id);
+    if (
+      warehouses.length === 1 &&
+      !editId &&
+      !autoSelectedRef.current &&
+      !getValues('warehouseId')
+    ) {
+      autoSelectedRef.current = true;
+      setValue('warehouseId', warehouses[0].id, { shouldDirty: false });
     }
-  }, [warehouses, warehouseId, editId]);
+  }, [warehouses, editId, getValues, setValue]);
 
   // ── Load existing return ────────────────────────────────────────────────────
   useEffect(() => {
@@ -246,99 +256,51 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
       .then(data => {
         if (!mountedRef.current) return;
         setStatus(data.status);
-        setSupplierId(data.supplierId);
         setSupplierName(data.supplierName ?? '');
-        setWarehouseId(data.warehouseId);
-        setPurchaseOrderId(data.purchaseOrderId ?? '');
         setPurchaseOrderNumber(data.purchaseOrderNumber ?? '');
-        setNotes(data.notes ?? '');
-        setDocumentDate(data.documentDate ?? kyivToday());
-        setLines((data.lines ?? []).map(lineFromApi));
+        // reset() ставить нову «чисту» базу з наявного запису → rhfDirty=false.
+        reset({
+          supplierId: data.supplierId,
+          warehouseId: data.warehouseId,
+          purchaseOrderId: data.purchaseOrderId ?? '',
+          notes: data.notes ?? '',
+          documentDate: data.documentDate ?? kyivToday(),
+          lines: (data.lines ?? []).map(lineFromApi),
+        });
       })
-      .catch(() => {})
-      .finally(() => {
-        if (!mountedRef.current) return;
-        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн.
-        setEditLoaded(true);
-      });
-  }, [open, editId]);
+      .catch(() => {});
+  }, [open, editId, reset]);
 
-  // ── Reset ──────────────────────────────────────────────────────────────────
-  const resetForm = useCallback(() => {
-    setStatus('DRAFT');
-    setSupplierId('');
-    setSupplierName('');
-    setWarehouseId('');
-    setPurchaseOrderId('');
-    setPurchaseOrderNumber('');
-    setNotes('');
-    setDocumentDate(kyivToday());
-    setLines([]);
+  // ── Reset on open/close ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!open) {
+      autoSelectedRef.current = false;
+      return;
+    }
+    autoSelectedRef.current = false;
+    dirty.resetDirty();
     setError('');
     setHeaderCollapsed(false);
     setShowLineInput(false);
     setNewLine(EMPTY_LINE);
-  }, []);
-
-  useEffect(() => {
-    if (!open) resetForm();
-  }, [open, resetForm]);
-
-  // Baseline reset на відкриття модалки.
-  useEffect(() => {
-    if (!open) {
-      baselineCapturedRef.current = false;
-      rebaselineRef.current = false;
-      setEditLoaded(false);
-      return;
+    if (!isEdit) {
+      setStatus('DRAFT');
+      setSupplierName('');
+      setPurchaseOrderNumber('');
+      reset(emptyDefaults());
     }
-    baselineCapturedRef.current = false;
-    rebaselineRef.current = false;
-    setEditLoaded(false);
-    dirty.resetDirty();
-    // Базлайн (create або edit) захоплюється value-based ефектом нижче.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editId]);
 
-  // Серіалізований відбиток значущих полів. Value-based dirty-детекція порівнює
-  // цей рядок із базлайном — ре-рендер із новим reference НЕ позначає форму брудною.
-  const formSnapshot = useMemo(
-    () =>
-      JSON.stringify({
-        supplierId,
-        warehouseId,
-        purchaseOrderId,
-        notes,
-        documentDate,
-        lines: lines.map(l => ({ goodId: l.goodId, quantity: l.quantity, price: l.price })),
-      }),
-    [supplierId, warehouseId, purchaseOrderId, notes, documentDate, lines],
-  );
-
-  // Value-based dirty-детекція + захоплення базлайну.
-  // Create: базлайн — перший snapshot після reset. Edit: після editLoaded=true.
-  // Bug #639: async авто-вибір єдиного складу — програмна зміна; rebaselineRef
-  // згортає її у базлайн замість dirty.
+  // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
   useEffect(() => {
-    if (!open) return;
-    if (isEdit && !editLoaded) return;
-    if (!baselineCapturedRef.current) {
-      baselineCapturedRef.current = true;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    if (rebaselineRef.current) {
-      rebaselineRef.current = false;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    dirty.syncDirty(formSnapshot);
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isEdit, editLoaded, formSnapshot]);
+  }, [rhfDirty]);
 
   // ── Status transitions ─────────────────────────────────────────────────────
   // Backend FSM is linear-forward: DRAFT → CONFIRMED or DRAFT → CANCELLED; both terminal.
-  // No back-transition exists, so prev-step is always disabled — chevron stays for visual symmetry with PO modal.
   const allowedTransitions = STATUS_TRANSITIONS[status] ?? [];
   const statusPrevStep: string | null = null;
   const statusNextStep =
@@ -347,7 +309,6 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const doTransition = useCallback(
     async (targetStatus: string) => {
       if (!editId) return;
-      // синхронний guard проти подвійного confirm/cancel (Bug #630 клас).
       if (savingRef.current || transitioningRef.current) return;
       setTransitioningBoth(true);
       setError('');
@@ -379,24 +340,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     // дублюємо guard з кнопки «+» на випадок keyboard-shortcut / programmatic виклику.
     if (!newLine.goodId) return;
     if ((parseFloat(newLine.quantity) || 0) <= 0) return;
-    setLines(prev => {
-      if (prev.find(l => l.goodId === newLine.goodId)) return prev;
-      return [...prev, { ...newLine, _key: newKey() }];
-    });
+    // guard проти дубля товару у рядках (як у старій setLines-логіці).
+    const existing = getValues('lines') ?? [];
+    if (existing.some(l => l.goodId === newLine.goodId)) return;
+    append({ ...newLine });
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
-  }, [newLine]);
-
-  const handleLineChange = useCallback(
-    (key: string, field: 'quantity' | 'price', value: string) => {
-      setLines(prev => prev.map(l => (l._key === key ? { ...l, [field]: value } : l)));
-    },
-    [],
-  );
-
-  const removeLine = useCallback((key: string) => {
-    setLines(prev => prev.filter(l => l._key !== key));
-  }, []);
+  }, [newLine, append, getValues]);
 
   // ── Warehouse map ──────────────────────────────────────────────────────────
   const warehouseById = useMemo(() => {
@@ -405,59 +355,45 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     return m;
   }, [warehouses]);
 
-  const handleWarehouseChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    setWarehouseId(e.target.value);
-  }, []);
-
   // ── Totals ─────────────────────────────────────────────────────────────────
   const lineSubtotal = (qty: string, price: string) =>
     (parseFloat(qty) || 0) * (parseFloat(price) || 0);
 
   const total = useMemo(
-    () => lines.reduce((sum, l) => sum + lineSubtotal(l.quantity, l.price), 0),
-    [lines],
+    () =>
+      (watchedLines ?? []).reduce(
+        (sum, l) => sum + lineSubtotal(String(l.quantity ?? ''), String(l.price ?? '')),
+        0,
+      ),
+    [watchedLines],
   );
 
   // ── Save ───────────────────────────────────────────────────────────────────
-  const handleSave = useCallback(async () => {
-    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit —
-    // два click-и в одному tick інакше створять 2 документи повернення.
+  const handleSave = handleSubmit(async (values: SupplierReturnFormValues) => {
+    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit.
     if (savingRef.current || transitioningRef.current) return;
-    if (!supplierId) {
-      setError('Оберіть постачальника');
-      return;
-    }
-    if (!warehouseId) {
-      setError('Оберіть склад');
-      return;
-    }
-    if (lines.length === 0) {
+    if (values.lines.length === 0) {
       setError('Додайте хоча б один товар');
       return;
-    }
-    for (const l of lines) {
-      if ((parseFloat(l.quantity) || 0) <= 0) {
-        setError(`Кількість має бути > 0 (${l.goodName})`);
-        return;
-      }
     }
     setError('');
     setSavingBoth(true);
     try {
+      // unitOfMeasureId — display/persist-поле поза схемою; читаємо з поточних значень
+      // форми (getValues) щоб не загубити при PATCH (backend пересоздає рядки з NULL UoM).
+      const rawLines = (getValues('lines') ?? []) as unknown as LocalLine[];
       const payload = {
-        supplierId,
-        warehouseId,
+        supplierId: values.supplierId,
+        warehouseId: values.warehouseId,
         // PO-джерело персиститься лише при CREATE (create-only, Phase D2).
-        ...(!isEdit && purchaseOrderId ? { purchaseOrderId } : {}),
-        notes: notes || undefined,
-        documentDate,
-        lines: lines.map(l => ({
+        ...(!isEdit && values.purchaseOrderId ? { purchaseOrderId: values.purchaseOrderId } : {}),
+        notes: values.notes || undefined,
+        documentDate: values.documentDate,
+        lines: values.lines.map((l, i) => ({
           goodId: l.goodId,
-          quantity: parseFloat(l.quantity) || 0,
-          price: parseFloat(l.price) || 0,
-          // передаємо unitOfMeasureId, інакше backend.update() пересоздає рядки
-          // з NULL UoM (soft-delete + createMany з l.unitOfMeasureId ?? null).
-          ...(l.unitOfMeasureId ? { unitOfMeasureId: l.unitOfMeasureId } : {}),
+          quantity: l.quantity,
+          price: l.price,
+          ...(rawLines[i]?.unitOfMeasureId ? { unitOfMeasureId: rawLines[i].unitOfMeasureId } : {}),
         })),
       };
       if (isEdit) {
@@ -480,23 +416,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     } finally {
       setSavingBoth(false);
     }
-  }, [
-    supplierId,
-    warehouseId,
-    purchaseOrderId,
-    notes,
-    documentDate,
-    lines,
-    isEdit,
-    editId,
-    features.toastEnabled,
-    onSaved,
-    onClose,
-  ]);
+  });
 
-  // close-guard: під час save/transition Escape/backdrop не мають закривати модалку
-  // (інакше in-flight запит лишається без UI, а повторне відкриття бачить stale-стан).
-  // Симетрія з Invoice/PO/Stock/WorkOrder модалками.
+  // close-guard: під час save/transition Escape/backdrop не мають закривати модалку.
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
     if (!(await dirty.confirmClose())) return;
@@ -530,10 +452,16 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
               <div className="w-36">
-                <DatePickerInput
-                  value={documentDate}
-                  onChange={setDocumentDate}
-                  disabled={!canEdit}
+                <Controller
+                  control={control}
+                  name="documentDate"
+                  render={({ field }) => (
+                    <DatePickerInput
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={field.onChange}
+                      disabled={!canEdit}
+                    />
+                  )}
                 />
               </div>
             </div>
@@ -582,7 +510,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         }
         extraHeaderActions={
           <button
-            onClick={onClose}
+            onClick={handleModalClose}
             className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
             title="Закрити"
             disabled={saving || transitioning}
@@ -612,7 +540,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   size="sm"
                   onClick={() => void doTransition('CONFIRMED')}
                   loading={transitioning}
-                  disabled={transitioning || saving || lines.length === 0}
+                  disabled={transitioning || saving || fields.length === 0}
                 >
                   Підтвердити
                 </Button>
@@ -630,7 +558,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onClose}
+                onClick={handleModalClose}
                 disabled={saving || transitioning}
               >
                 Закрити
@@ -655,34 +583,48 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
                 {/* Постачальник | Склад */}
                 <div className="grid grid-cols-2 gap-4">
-                  <EntityPickerField
-                    label="Постачальник"
-                    required
-                    display={supplierName}
-                    placeholder="Пошук постачальника…"
-                    className="h-8 text-[13px]"
-                    disabled={!canEdit}
-                    onPick={() => setSupplierPickerOpen(true)}
-                    onClear={() => {
-                      setSupplierId('');
-                      setSupplierName('');
-                    }}
+                  <div>
+                    <EntityPickerField
+                      label="Постачальник"
+                      required
+                      display={supplierName}
+                      placeholder="Пошук постачальника…"
+                      className="h-8 text-[13px]"
+                      disabled={!canEdit}
+                      onPick={() => setSupplierPickerOpen(true)}
+                      onClear={() => {
+                        setValue('supplierId', '', { shouldDirty: true });
+                        setSupplierName('');
+                      }}
+                    />
+                    {errors.supplierId && (
+                      <p className="text-[12px] text-destructive leading-tight mt-1">
+                        {errors.supplierId.message}
+                      </p>
+                    )}
+                  </div>
+                  <Controller
+                    control={control}
+                    name="warehouseId"
+                    render={({ field }) => (
+                      <Select
+                        label="Склад"
+                        required
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        errorMessage={errors.warehouseId?.message}
+                        disabled={!canEdit}
+                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                      >
+                        <option value="">— Оберіть —</option>
+                        {warehouses.map(w => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
                   />
-                  <Select
-                    label="Склад"
-                    required
-                    value={warehouseId}
-                    onChange={handleWarehouseChange}
-                    disabled={!canEdit}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    <option value="">— Оберіть —</option>
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </Select>
                 </div>
 
                 {/* Замовлення (джерело) — опціонально (Phase D2) */}
@@ -694,7 +636,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   disabled={!canEdit || isEdit}
                   onPick={() => setPoPickerOpen(true)}
                   onClear={() => {
-                    setPurchaseOrderId('');
+                    setValue('purchaseOrderId', '', { shouldDirty: true });
                     setPurchaseOrderNumber('');
                   }}
                 />
@@ -702,8 +644,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 {/* Опис */}
                 <Input
                   label="Опис"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
+                  {...register('notes')}
                   disabled={!canEdit}
                   placeholder="Додаткова інформація…"
                   className="h-8 text-[13px]"
@@ -776,7 +717,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {lines.length === 0 && !showLineInput && (
+                  {fields.length === 0 && !showLineInput && (
                     <tr>
                       <td
                         colSpan={6}
@@ -787,48 +728,54 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     </tr>
                   )}
 
-                  {lines.map(line => {
-                    const sub = lineSubtotal(line.quantity, line.price);
+                  {fields.map((line, index) => {
+                    const display = line as unknown as {
+                      goodName?: string;
+                      goodSku?: string | null;
+                      unit?: string;
+                      unitShortName?: string | null;
+                    };
+                    const qty = String(watchedLines?.[index]?.quantity ?? '');
+                    const price = String(watchedLines?.[index]?.price ?? '');
+                    const sub = lineSubtotal(qty, price);
                     return (
-                      <tr key={line._key} className="hover:bg-surface-hover/50">
+                      <tr key={line.id} className="hover:bg-surface-hover/50">
                         <td className="px-3 py-1.5">
-                          <div className="font-medium text-[12px]">{line.goodName}</div>
-                          {line.goodSku && (
-                            <div className="text-[11px] text-muted-foreground">{line.goodSku}</div>
+                          <div className="font-medium text-[12px]">{display.goodName}</div>
+                          {display.goodSku && (
+                            <div className="text-[11px] text-muted-foreground">
+                              {display.goodSku}
+                            </div>
                           )}
                         </td>
                         <td className="px-1 py-1.5">
                           {isReadOnly ? (
-                            <span className="tabular-nums px-2">{line.quantity}</span>
+                            <span className="tabular-nums px-2">{qty}</span>
                           ) : (
                             <input
                               type="number"
                               min="0.001"
                               step="0.001"
-                              value={line.quantity}
-                              onChange={e =>
-                                handleLineChange(line._key, 'quantity', e.target.value)
-                              }
+                              {...register(`lines.${index}.quantity`)}
                               className={numericInputCls}
                             />
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-[11px] text-muted-foreground">
                           {/* Bug #548: показуємо UoM short name з API замість сирого Good.unit */}
-                          {line.unitShortName || line.unit}
+                          {display.unitShortName || display.unit}
                         </td>
                         <td className="px-1 py-1.5">
                           {isReadOnly ? (
                             <span className="tabular-nums px-2">
-                              {parseFloat(line.price).toFixed(2)}
+                              {(parseFloat(price) || 0).toFixed(2)}
                             </span>
                           ) : (
                             <input
                               type="number"
                               min="0"
                               step="0.01"
-                              value={line.price}
-                              onChange={e => handleLineChange(line._key, 'price', e.target.value)}
+                              {...register(`lines.${index}.price`)}
                               className={numericInputCls}
                             />
                           )}
@@ -840,7 +787,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           {canEdit && (
                             <button
                               type="button"
-                              onClick={() => removeLine(line._key)}
+                              onClick={() => remove(index)}
                               className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -897,7 +844,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                             type="button"
                             onClick={addLine}
                             // блокуємо «+» при порожній К-сть, щоб не плодити рядки,
-                            // які handleSave потім reject'не з помилкою «Кількість має бути > 0».
+                            // які схема потім reject'не з помилкою «Кількість має бути > 0».
                             disabled={!newLine.goodId || (parseFloat(newLine.quantity) || 0) <= 0}
                             title="Додати рядок"
                             className="p-1 rounded text-primary hover:bg-primary/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -948,7 +895,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         open={supplierPickerOpen}
         onClose={() => setSupplierPickerOpen(false)}
         onSelect={(item: { id: string; primary: string }) => {
-          setSupplierId(item.id);
+          setValue('supplierId', item.id, { shouldDirty: true });
           setSupplierName(item.primary);
           setSupplierPickerOpen(false);
         }}
@@ -1009,7 +956,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         open={poPickerOpen}
         onClose={() => setPoPickerOpen(false)}
         onSelect={(item: { id: string; primary: string }) => {
-          setPurchaseOrderId(item.id);
+          setValue('purchaseOrderId', item.id, { shouldDirty: true });
           setPurchaseOrderNumber(item.primary);
           setPoPickerOpen(false);
         }}

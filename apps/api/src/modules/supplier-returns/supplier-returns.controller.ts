@@ -20,11 +20,13 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { SupplierReturnsService } from './supplier-returns.service';
 import {
-  CreateSupplierReturnDto,
-  UpdateSupplierReturnDto,
-  SupplierReturnQueryDto,
-  LinkedCountsDto,
-} from './supplier-returns.dto';
+  supplierReturnCreateSchema,
+  supplierReturnUpdateSchema,
+  type SupplierReturnCreateValues,
+  type SupplierReturnUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { SupplierReturnQueryDto, LinkedCountsDto } from './supplier-returns.dto';
 
 @ApiTags('Supplier Returns')
 @ApiBearerAuth()
@@ -36,7 +38,10 @@ export class SupplierReturnsController {
   @Post()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Створити повернення постачальнику' })
-  create(@OrgContext() orgId: string, @Body() dto: CreateSupplierReturnDto) {
+  create(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(supplierReturnCreateSchema)) dto: SupplierReturnCreateValues,
+  ) {
     return this.service.create(orgId, dto);
   }
 
@@ -106,7 +111,7 @@ export class SupplierReturnsController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateSupplierReturnDto,
+    @Body(new ZodValidationPipe(supplierReturnUpdateSchema)) dto: SupplierReturnUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }
