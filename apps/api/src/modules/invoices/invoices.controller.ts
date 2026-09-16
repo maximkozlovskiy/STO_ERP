@@ -24,14 +24,17 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { InvoicesService } from './invoices.service';
 import {
-  CreateInvoiceDto,
-  UpdateInvoiceDto,
-  TransitionInvoiceDto,
-  CreateInvoiceLineDto,
-  UpdateInvoiceLineDto,
-  InvoiceQueryDto,
-  LinkedCountsDto,
-} from './invoices.dto';
+  invoiceHeaderSchema,
+  invoiceUpdateSchema,
+  invoiceLineSchema,
+  invoiceLineUpdateSchema,
+  type InvoiceHeaderValues,
+  type InvoiceUpdateValues,
+  type InvoiceLineValues,
+  type InvoiceLineUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { TransitionInvoiceDto, InvoiceQueryDto, LinkedCountsDto } from './invoices.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
@@ -89,7 +92,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Створити рахунок вручну' })
   create(
     @OrgContext() orgId: string,
-    @Body() dto: CreateInvoiceDto,
+    @Body(new ZodValidationPipe(invoiceHeaderSchema)) dto: InvoiceHeaderValues,
     @CurrentUser() user: { id: string },
   ) {
     // @CurrentUser повертає { id, orgId, role } (jwt.strategy.ts), не { sub } — user.sub завжди undefined.
@@ -133,7 +136,7 @@ export class InvoicesController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateInvoiceDto,
+    @Body(new ZodValidationPipe(invoiceUpdateSchema)) dto: InvoiceUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }
@@ -186,7 +189,7 @@ export class InvoicesController {
   addLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CreateInvoiceLineDto,
+    @Body(new ZodValidationPipe(invoiceLineSchema)) dto: InvoiceLineValues,
   ) {
     return this.service.addLine(orgId, id, dto);
   }
@@ -198,7 +201,7 @@ export class InvoicesController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('lineId', ParseUUIDPipe) lineId: string,
-    @Body() dto: UpdateInvoiceLineDto,
+    @Body(new ZodValidationPipe(invoiceLineUpdateSchema)) dto: InvoiceLineUpdateValues,
   ) {
     return this.service.updateLine(orgId, id, lineId, dto);
   }

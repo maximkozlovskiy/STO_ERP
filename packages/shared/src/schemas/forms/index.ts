@@ -3,3 +3,4 @@ export * from './good.schema';
 export * from './employee.schema';
 export * from './counterparty.schema';
 export * from './vehicle.schema';
+export * from './invoice.schema';
