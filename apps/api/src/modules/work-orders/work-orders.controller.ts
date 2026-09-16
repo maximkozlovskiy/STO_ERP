@@ -25,14 +25,23 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { WorkOrdersService } from './work-orders.service';
 import { WorkOrderShareService } from './work-order-share.service';
 import {
-  CreateWorkOrderDto,
-  UpdateWorkOrderDto,
+  workOrderCreateSchema,
+  workOrderUpdateSchema,
+  workOrderLineSchema,
+  workOrderLineUpdateSchema,
+  workOrderPartSchema,
+  workOrderPartUpdateSchema,
+  type WorkOrderCreateValues,
+  type WorkOrderUpdateValues,
+  type WorkOrderLineValues,
+  type WorkOrderLineUpdateValues,
+  type WorkOrderPartValues,
+  type WorkOrderPartUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
   TransitionWorkOrderDto,
   WorkOrderQueryDto,
-  CreateWorkOrderLineDto,
-  UpdateWorkOrderLineDto,
-  CreateWorkOrderPartDto,
-  UpdateWorkOrderPartDto,
   SendEstimateSmsDto,
   LinkedCountsDto,
 } from './work-orders.dto';
@@ -91,7 +100,7 @@ export class WorkOrdersController {
   create(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
-    @Body() dto: CreateWorkOrderDto,
+    @Body(new ZodValidationPipe(workOrderCreateSchema)) dto: WorkOrderCreateValues,
   ) {
     return this.service.create(orgId, dto, user.id);
   }
@@ -102,7 +111,7 @@ export class WorkOrdersController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateWorkOrderDto,
+    @Body(new ZodValidationPipe(workOrderUpdateSchema)) dto: WorkOrderUpdateValues,
     @CurrentUser() user: { id: string },
   ) {
     return this.service.update(orgId, id, dto, user.id);
@@ -189,7 +198,7 @@ export class WorkOrdersController {
   addLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CreateWorkOrderLineDto,
+    @Body(new ZodValidationPipe(workOrderLineSchema)) dto: WorkOrderLineValues,
   ) {
     return this.service.addLine(orgId, id, dto);
   }
@@ -201,7 +210,7 @@ export class WorkOrdersController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('lineId', ParseUUIDPipe) lineId: string,
-    @Body() dto: UpdateWorkOrderLineDto,
+    @Body(new ZodValidationPipe(workOrderLineUpdateSchema)) dto: WorkOrderLineUpdateValues,
   ) {
     return this.service.updateLine(orgId, id, lineId, dto);
   }
@@ -226,7 +235,7 @@ export class WorkOrdersController {
   addPart(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CreateWorkOrderPartDto,
+    @Body(new ZodValidationPipe(workOrderPartSchema)) dto: WorkOrderPartValues,
     // role passed to service so OWNER/ADMIN see costPrice immediately after addPart
     // (fail-closed default = undefined; without role they'd need a full page refresh).
     @CurrentUser() user: { role: string },
@@ -241,7 +250,7 @@ export class WorkOrdersController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('partId', ParseUUIDPipe) partId: string,
-    @Body() dto: UpdateWorkOrderPartDto,
+    @Body(new ZodValidationPipe(workOrderPartUpdateSchema)) dto: WorkOrderPartUpdateValues,
     @CurrentUser() user: { role: string },
   ) {
     return this.service.updatePart(orgId, id, partId, dto, user.role);
