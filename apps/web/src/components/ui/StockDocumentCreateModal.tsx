@@ -1,6 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  stockDocumentFormSchema,
+  type StockDocumentFormInput,
+  type StockDocumentFormValues,
+} from '@sto/shared';
 import {
   ChevronLeft,
   ChevronRight,
@@ -94,9 +101,9 @@ interface StockDocLine {
   price?: number;
 }
 
+// Локальний елемент рядка форми (useFieldArray). goodName/unit — лише для відображення
+// (не валідуються схемою). quantity/price — рядки web-стану; схема коерсить у числа.
 interface LocalLine {
-  _key: string;
-  id?: string;
   goodId: string;
   goodName: string;
   unit: string;
@@ -133,18 +140,26 @@ const TRANSITION_LABELS: Record<string, string> = {
 const STOCK_DOC_STATUS_ORDER = Object.keys(STOCK_DOC_STATUS_LABELS);
 const EMPTY_TRANSITIONS: readonly string[] = Object.freeze([]);
 
-const nextKey = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `k${Math.random().toString(36).slice(2)}`;
-
-const EMPTY_LINE: Omit<LocalLine, '_key'> = {
+const EMPTY_LINE: LocalLine = {
   goodId: '',
   goodName: '',
   unit: 'шт',
   quantity: '1',
   price: '',
 };
+
+// «Чиста» база форми — reset() до неї на open дає rhfDirty=false (Bug #639: авто-вибір
+// branch/warehouse через setValue({shouldDirty:false}), тому не вмикає dirty-guard).
+const emptyDefaults = (): StockDocumentFormInput => ({
+  type: 'WRITEOFF',
+  branchId: '',
+  warehouseId: '',
+  targetWarehouseId: '',
+  purchaseOrderId: '',
+  notes: '',
+  documentDate: kyivToday(),
+  lines: [],
+});
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -170,25 +185,36 @@ export function StockDocumentCreateModal({
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
 
-  const [form, setForm] = useState({
-    type: 'WRITEOFF',
-    branchId: '',
-    warehouseId: '',
-    targetWarehouseId: '',
-    // Опціональне замовлення постачальнику-джерело (Phase D2). Персиститься лише при CREATE.
-    purchaseOrderId: '',
-    notes: '',
-    documentDate: kyivToday(),
+  // react-hook-form + спільна zod-схема (шапка + line-items через useFieldArray).
+  const {
+    control,
+    register,
+    reset,
+    watch,
+    setValue,
+    getValues,
+    handleSubmit,
+    formState: { errors, isDirty: rhfDirty },
+  } = useForm<StockDocumentFormInput, unknown, StockDocumentFormValues>({
+    resolver: zodResolver(stockDocumentFormSchema),
+    defaultValues: emptyDefaults(),
+    mode: 'onBlur',
   });
-  // Display-номер обраного PO (поза form: не бере участі у dirty-детекції, лише візуал).
+  // Рядки document (goodId/quantity/price + локальні goodName/unit для відображення).
+  const { fields, append, remove } = useFieldArray({ control, name: 'lines' });
+  const watchedLines = watch('lines');
+  const formType = watch('type');
+  const branchId = watch('branchId');
+  const warehouseId = watch('warehouseId');
+
+  // Display-номер обраного PO (поза формою: лише візуал, не валідується).
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [docNumber, setDocNumber] = useState('');
-  const [lines, setLines] = useState<LocalLine[]>([]);
-  const [newLine, setNewLine] = useState<Omit<LocalLine, '_key'>>(EMPTY_LINE);
+  const [newLine, setNewLine] = useState<LocalLine>(EMPTY_LINE);
   const [showLineInput, setShowLineInput] = useState(false);
   const [excelWizardOpen, setExcelWizardOpen] = useState(false);
   // Стабільний onClose — GOTCHAS modal-thrashing.
@@ -205,19 +231,12 @@ export function StockDocumentCreateModal({
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
   const statusMenuRef = useRef<HTMLDivElement>(null);
-  // Value-based dirty-детекція: базлайн — серіалізований відбиток «чистої» форми.
-  // Замінює крихкий baselineReadyRef + setTimeout(0) (гонка macrotask-прапорця з
-  // відкладеним flush passive-ефектів React → хибний «Є незбережені зміни» на
-  // чистій формі). baselineCapturedRef — чи вже захоплено початковий базлайн.
-  const baselineCapturedRef = useRef(false);
-  // Bug #639: авто-вибір єдиного branch/warehouse — програмна зміна значень
-  // (не дія користувача). Ефект авто-вибору піднімає цей прапорець, і наступний
-  // прогін dirty-детектора згортає нове значення у базлайн замість dirty.
-  const rebaselineRef = useRef(false);
-  // Edit-режим: true після завершення першого завантаження (гейт базлайну).
-  // `loading` стартує як false, тож без цього базлайн міг би захопитись на порожній
-  // формі до старту load-ефекту, а завантажені дані згодом хибно позначили б dirty.
-  const [editLoaded, setEditLoaded] = useState(false);
+  // Bug #639: авто-вибір єдиного branch/warehouse — програмна зміна (не дія
+  // користувача). Через setValue({shouldDirty:false}) значення не вмикає dirty-guard.
+  const autoSelectedRef = useRef<{ branch: boolean; warehouse: boolean }>({
+    branch: false,
+    warehouse: false,
+  });
 
   const setSavingBoth = (v: boolean) => {
     savingRef.current = v;
@@ -268,137 +287,84 @@ export function StockDocumentCreateModal({
       .catch(e => setError(e instanceof Error ? e.message : 'Помилка завантаження складів'));
   }, [open]);
 
-  // Серіалізований відбиток значущих полів. Value-based dirty-детекція порівнює
-  // цей рядок із базлайном — ре-рендер із новим reference, але тими самими
-  // значеннями, НЕ позначає форму брудною.
-  const formSnapshot = useMemo(
-    () =>
-      JSON.stringify({
-        type: form.type,
-        branchId: form.branchId,
-        warehouseId: form.warehouseId,
-        targetWarehouseId: form.targetWarehouseId,
-        purchaseOrderId: form.purchaseOrderId,
-        notes: form.notes,
-        documentDate: form.documentDate,
-        lines: lines.map(l => ({
-          goodId: l.goodId,
-          quantity: l.quantity,
-          price: l.price,
-        })),
-      }),
-    [form, lines],
-  );
-
-  // Reset on open
+  // Reset on open — чиста база (rhfDirty=false) + скидання refs/локального стану.
   useEffect(() => {
     if (!open) {
-      baselineCapturedRef.current = false;
-      rebaselineRef.current = false;
-      setEditLoaded(false);
+      autoSelectedRef.current = { branch: false, warehouse: false };
       return;
     }
-    baselineCapturedRef.current = false;
-    rebaselineRef.current = false;
-    setEditLoaded(false);
+    autoSelectedRef.current = { branch: false, warehouse: false };
     dirty.resetDirty();
     setError('');
     setStatusMenuOpen(false);
     setHeaderCollapsed(false);
     setDocNumber('');
     setCurrentStatus('DRAFT');
-    setLines([]);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     setPurchaseOrderNumber('');
     if (!isEditMode) {
-      setForm({
-        type: 'WRITEOFF',
-        branchId: '',
-        warehouseId: '',
-        targetWarehouseId: '',
-        purchaseOrderId: '',
-        notes: '',
-        documentDate: kyivToday(),
-      });
+      // reset() ставить чисту базу → rhfDirty=false (edit заповнюється load-ефектом).
+      reset(emptyDefaults());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stockDocumentId]);
 
-  // Value-based dirty-детекція + захоплення базлайну.
-  // Create: базлайн — перший snapshot після reset (порожня форма). Далі кожна
-  // зміна значень порівнюється з базлайном. Програмні авто-вибори branch/warehouse
-  // згортаються у базлайн окремими ефектами нижче (rebaselineRef), доки форма
-  // ще чиста. Edit: базлайн захоплюється після завершення завантаження.
+  // Міст RHF isDirty → useDirtyForm (DirtyConfirmDialog + beforeunload збережено).
   useEffect(() => {
-    if (!open) return;
-    if (isEditMode && !editLoaded) return;
-    if (!baselineCapturedRef.current) {
-      baselineCapturedRef.current = true;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    if (rebaselineRef.current) {
-      // Програмна зміна (авто-вибір) поки форма чиста → пересуваємо базлайн, не dirty.
-      rebaselineRef.current = false;
-      dirty.captureBaseline(formSnapshot);
-      return;
-    }
-    dirty.syncDirty(formSnapshot);
+    if (rhfDirty) dirty.markDirty();
+    else dirty.resetDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isEditMode, editLoaded, formSnapshot]);
+  }, [rhfDirty]);
 
   // Токен останнього запиту — stale-guard: якщо docId/open змінились (або компонент
-  // розмонтувався) поки fetch у польоті, застаріла відповідь НЕ перезаписує свіжий стан форми.
-  // Замінює `cancelled`-прапорець колишнього inline-ефекту, який refactor у useCallback загубив.
+  // розмонтувався) поки fetch у польоті, застаріла відповідь НЕ перезаписує свіжий стан.
   const loadReqRef = useRef(0);
 
-  // Load document in edit mode. silent=true — для reload після XLSX import позицій:
-  // без loading-спінера (форма вже видима), без editLoaded-переустановки (dirty-baseline незмінна).
-  const loadDoc = useCallback((docId: string, silent = false) => {
-    const reqId = ++loadReqRef.current;
-    const isStale = () => reqId !== loadReqRef.current;
-    if (!silent) setLoading(true);
-    setError('');
-    return apiFetch<StockDocDetail>(`/stock-documents/${docId}`)
-      .then(doc => {
-        if (isStale()) return;
-        setDocNumber(doc.number);
-        setCurrentStatus(doc.status);
-        setForm({
-          type: doc.type ?? 'WRITEOFF',
-          branchId: doc.branchId ?? '',
-          warehouseId: doc.warehouseId ?? '',
-          targetWarehouseId: doc.targetWarehouseId ?? '',
-          purchaseOrderId: doc.purchaseOrderId ?? '',
-          notes: doc.notes ?? '',
-          documentDate: doc.documentDate ? doc.documentDate.slice(0, 10) : kyivToday(),
+  // Load document in edit mode. silent=true — для reload після XLSX/Excel import позицій:
+  // без loading-спінера (форма вже видима). reset() ставить нову «чисту» базу → rhfDirty=false.
+  const loadDoc = useCallback(
+    (docId: string, silent = false) => {
+      const reqId = ++loadReqRef.current;
+      const isStale = () => reqId !== loadReqRef.current;
+      if (!silent) setLoading(true);
+      setError('');
+      return apiFetch<StockDocDetail>(`/stock-documents/${docId}`)
+        .then(doc => {
+          if (isStale()) return;
+          setDocNumber(doc.number);
+          setCurrentStatus(doc.status);
+          reset({
+            type: (doc.type ?? 'WRITEOFF') as StockDocumentFormInput['type'],
+            branchId: doc.branchId ?? '',
+            warehouseId: doc.warehouseId ?? '',
+            targetWarehouseId: doc.targetWarehouseId ?? '',
+            purchaseOrderId: doc.purchaseOrderId ?? '',
+            notes: doc.notes ?? '',
+            documentDate: doc.documentDate ? doc.documentDate.slice(0, 10) : kyivToday(),
+            lines: (doc.lines ?? []).map(l => ({
+              goodId: l.goodId,
+              goodName: l.goodName ?? '',
+              unit: l.unit ?? 'шт',
+              quantity: String(l.quantity),
+              price: String(l.price ?? ''),
+            })),
+          });
+          setPurchaseOrderNumber(doc.purchaseOrderNumber ?? '');
+          // Завантажені дані — база вже узгоджена; авто-вибір складів не потрібен.
+          autoSelectedRef.current = { branch: true, warehouse: true };
+        })
+        .catch(e => {
+          if (isStale()) return;
+          setError(e instanceof Error ? e.message : 'Помилка завантаження документа');
+        })
+        .finally(() => {
+          if (isStale()) return;
+          if (!silent) setLoading(false);
         });
-        setPurchaseOrderNumber(doc.purchaseOrderNumber ?? '');
-        setLines(
-          (doc.lines ?? []).map(l => ({
-            _key: nextKey(),
-            id: l.id,
-            goodId: l.goodId,
-            goodName: l.goodName ?? '',
-            unit: l.unit ?? 'шт',
-            quantity: String(l.quantity),
-            price: String(l.price ?? ''),
-          })),
-        );
-      })
-      .catch(e => {
-        if (isStale()) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження документа');
-      })
-      .finally(() => {
-        if (isStale()) return;
-        if (!silent) setLoading(false);
-        // Позначаємо завантаження завершеним — value-based ефект захопить базлайн
-        // на фактично завантажених даних (не на порожній формі).
-        setEditLoaded(true);
-      });
-  }, []);
+    },
+    [reset],
+  );
 
   useEffect(() => {
     if (!open || !isEditMode || !stockDocumentId) return;
@@ -407,7 +373,6 @@ export function StockDocumentCreateModal({
     return () => {
       loadReqRef.current++;
     };
-    // loadDoc навмисно поза deps — стабільний useCallback([]) reload по id/open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stockDocumentId]);
 
@@ -416,28 +381,24 @@ export function StockDocumentCreateModal({
     if (showLineInput) setHeaderCollapsed(true);
   }, [showLineInput]);
 
-  // Auto-select single branch/warehouse
-  // Bug #639: авто-вибір — програмна зміна. Якщо базлайн уже захоплено, піднімаємо
-  // rebaselineRef, і dirty-детектор згорне це значення у базлайн (не dirty).
+  // Auto-select single branch/warehouse — shouldDirty:false не вмикає dirty (Bug #639).
   useEffect(() => {
-    if (branches.length === 1) {
-      setForm(f => {
-        if (f.branchId) return f;
-        if (baselineCapturedRef.current) rebaselineRef.current = true;
-        return { ...f, branchId: branches[0].id };
-      });
+    if (branches.length === 1 && !autoSelectedRef.current.branch && !getValues('branchId')) {
+      autoSelectedRef.current.branch = true;
+      setValue('branchId', branches[0].id, { shouldDirty: false });
     }
-  }, [branches]);
+  }, [branches, getValues, setValue]);
 
   useEffect(() => {
-    if (warehouses.length === 1) {
-      setForm(f => {
-        if (f.warehouseId) return f;
-        if (baselineCapturedRef.current) rebaselineRef.current = true;
-        return { ...f, warehouseId: warehouses[0].id };
-      });
+    if (
+      warehouses.length === 1 &&
+      !autoSelectedRef.current.warehouse &&
+      !getValues('warehouseId')
+    ) {
+      autoSelectedRef.current.warehouse = true;
+      setValue('warehouseId', warehouses[0].id, { shouldDirty: false });
     }
-  }, [warehouses]);
+  }, [warehouses, getValues, setValue]);
 
   // ── Good picker ───────────────────────────────────────────────────────────
 
@@ -503,19 +464,17 @@ export function StockDocumentCreateModal({
 
   const total = useMemo(
     () =>
-      lines.reduce((sum, l) => {
-        const qty = parseFloat(l.quantity) || 0;
-        const price = parseFloat(l.price) || 0;
+      (watchedLines ?? []).reduce((sum, l) => {
+        const qty = parseFloat(String(l.quantity)) || 0;
+        const price = parseFloat(String(l.price ?? '')) || 0;
         return sum + qty * price;
       }, 0),
-    [lines],
+    [watchedLines],
   );
-
-  const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key));
 
   const addLine = () => {
     if (!newLine.goodId) return;
-    setLines(prev => [...prev, { ...newLine, _key: nextKey() }]);
+    append({ ...newLine });
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
   };
@@ -524,84 +483,69 @@ export function StockDocumentCreateModal({
 
   const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
 
-  const handleCreate = async () => {
-    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit (див. Invoice/PO).
+  // Спільний submit-handler: валідація зі схеми, потім гілка create/update.
+  // Рядки йдуть У ТІЛІ (атомарний $transaction на беку) — без окремого /lines-endpoint.
+  const onValid = handleSubmit(async (values: StockDocumentFormValues) => {
+    // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit.
     if (savingRef.current || transitioningRef.current) return;
-    if (!form.branchId || !form.warehouseId) {
-      setError('Оберіть філію та склад');
-      return;
-    }
-    // для типу TRANSFER бекенд вимагає targetWarehouseId. Без цієї перевірки
-    // POST йде з incomplete payload і повертає 400 — погана UX.
-    if (form.type === 'TRANSFER' && !form.targetWarehouseId) {
-      setError('Для переміщення оберіть склад призначення');
-      return;
-    }
     setSavingBoth(true);
     setError('');
-    try {
-      const doc = await apiFetch<StockDocResponse>('/stock-documents', {
-        method: 'POST',
-        body: JSON.stringify({
-          type: form.type,
-          branchId: form.branchId,
-          warehouseId: form.warehouseId,
-          targetWarehouseId:
-            form.type === 'TRANSFER' ? form.targetWarehouseId || undefined : undefined,
-          purchaseOrderId: form.purchaseOrderId || undefined,
-          notes: form.notes || undefined,
-          documentDate: form.documentDate || undefined,
-          lines: (newLine.goodId ? [...lines, { ...newLine, _key: nextKey() }] : lines).map(l => ({
-            goodId: l.goodId,
-            quantity: parseFloat(l.quantity) || 1,
-            price: parseFloat(l.price) || undefined,
-          })),
-        }),
+    // Рядки з форми + staging-рядок (newLine) якщо користувач ще не натиснув «+».
+    const lineList: StockDocumentFormValues['lines'] = [...values.lines];
+    if (newLine.goodId) {
+      const q = parseFloat(newLine.quantity);
+      lineList.push({
+        goodId: newLine.goodId,
+        quantity: Number.isFinite(q) && q > 0 ? q : 1,
+        price: newLine.price ? parseFloat(newLine.price) || undefined : undefined,
       });
-
-      if (features.toastEnabled) toast.success(`Документ ${doc.number} створено`);
-      dirty.resetDirty();
-      onSaved?.(doc);
-      onClose();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка створення документа');
-    } finally {
-      setSavingBoth(false);
     }
-  };
-
-  const handleSave = async () => {
-    if (!stockDocumentId) return;
-    setSavingBoth(true);
-    setError('');
+    const payloadLines = lineList.map(l => ({
+      goodId: l.goodId,
+      quantity: l.quantity,
+      price: l.price,
+    }));
     try {
-      // Backend has no separate POST /stock-documents/:id/lines endpoint.
-      // PATCH with lines replaces ALL lines (soft-deletes existing, re-creates from body).
-      // We always send the full current list so no lines are lost.
-      const allLines = lines.map(l => ({
-        goodId: l.goodId,
-        quantity: parseFloat(l.quantity) || 1,
-        price: parseFloat(l.price) || undefined,
-      }));
-      await apiFetch(`/stock-documents/${stockDocumentId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          notes: form.notes || undefined,
-          documentDate: form.documentDate || undefined,
-          lines: allLines,
-        }),
-      });
-
-      if (features.toastEnabled) toast.success('Документ збережено');
-      dirty.resetDirty();
-      onSaved?.();
-      onClose();
+      if (isEditMode) {
+        // PATCH з lines замінює ВСІ рядки (soft-delete наявних, re-create з тіла).
+        await apiFetch(`/stock-documents/${stockDocumentId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            notes: values.notes || undefined,
+            documentDate: values.documentDate || undefined,
+            lines: payloadLines,
+          }),
+        });
+        if (features.toastEnabled) toast.success('Документ збережено');
+        dirty.resetDirty();
+        onSaved?.();
+        onClose();
+      } else {
+        const doc = await apiFetch<StockDocResponse>('/stock-documents', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: values.type,
+            branchId: values.branchId,
+            warehouseId: values.warehouseId,
+            targetWarehouseId:
+              values.type === 'TRANSFER' ? values.targetWarehouseId || undefined : undefined,
+            purchaseOrderId: values.purchaseOrderId || undefined,
+            notes: values.notes || undefined,
+            documentDate: values.documentDate || undefined,
+            lines: payloadLines,
+          }),
+        });
+        if (features.toastEnabled) toast.success(`Документ ${doc.number} створено`);
+        dirty.resetDirty();
+        onSaved?.(doc);
+        onClose();
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally {
       setSavingBoth(false);
     }
-  };
+  });
 
   const handleModalClose = useCallback(async () => {
     if (savingRef.current || transitioningRef.current) return;
@@ -612,15 +556,14 @@ export function StockDocumentCreateModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const isTransfer = form.type === 'TRANSFER';
-
+  const isTransfer = formType === 'TRANSFER';
   const warehouseLabel = isTransfer ? 'Склад-джерело' : 'Склад';
 
   const headerChips =
     isEditMode && headerCollapsed
       ? [
-          form.type ? (STOCK_DOC_TYPE_LABELS[form.type] ?? form.type) : null,
-          form.warehouseId ? (warehouses.find(w => w.id === form.warehouseId)?.name ?? null) : null,
+          formType ? (STOCK_DOC_TYPE_LABELS[formType] ?? formType) : null,
+          warehouseId ? (warehouses.find(w => w.id === warehouseId)?.name ?? null) : null,
         ].filter(Boolean)
       : [];
 
@@ -629,7 +572,7 @@ export function StockDocumentCreateModal({
       <Modal
         open={open}
         onClose={handleModalClose}
-        onSubmit={isEditMode ? handleSave : handleCreate}
+        onSubmit={onValid}
         title={isEditMode ? 'Складський документ' : 'Новий складський документ'}
         size="content"
         hideClose
@@ -644,10 +587,16 @@ export function StockDocumentCreateModal({
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[13px] font-medium text-muted-foreground">Дата документа:</span>
               <div className="w-36">
-                <DatePickerInput
-                  value={form.documentDate}
-                  onChange={v => setForm(f => ({ ...f, documentDate: v }))}
-                  disabled={!canEdit}
+                <Controller
+                  control={control}
+                  name="documentDate"
+                  render={({ field }) => (
+                    <DatePickerInput
+                      value={typeof field.value === 'string' ? field.value : ''}
+                      onChange={field.onChange}
+                      disabled={!canEdit}
+                    />
+                  )}
                 />
               </div>
             </div>
@@ -845,7 +794,7 @@ export function StockDocumentCreateModal({
               {isEditMode ? (
                 canEdit && (
                   <Button
-                    onClick={handleSave}
+                    onClick={onValid}
                     loading={saving}
                     disabled={saving || transitioning}
                     size="sm"
@@ -855,14 +804,14 @@ export function StockDocumentCreateModal({
                 )
               ) : (
                 <Button
-                  onClick={handleCreate}
+                  onClick={onValid}
                   loading={saving}
-                  // TRANSFER potrebue targetWarehouseId — інакше backend 400.
+                  // TRANSFER потребує targetWarehouseId — інакше схема блокує submit.
                   disabled={
                     saving ||
-                    !form.branchId ||
-                    !form.warehouseId ||
-                    (form.type === 'TRANSFER' && !form.targetWarehouseId)
+                    !branchId ||
+                    !warehouseId ||
+                    (formType === 'TRANSFER' && !watch('targetWarehouseId'))
                   }
                   size="sm"
                 >
@@ -872,7 +821,7 @@ export function StockDocumentCreateModal({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onClose}
+                onClick={handleModalClose}
                 disabled={saving || transitioning}
               >
                 Закрити
@@ -902,72 +851,106 @@ export function StockDocumentCreateModal({
 
                 {/* Рядок 2: Тип документа | Філія */}
                 <div className="grid grid-cols-2 gap-4">
-                  <Select
-                    label="Тип документа"
-                    required
-                    value={form.type}
-                    onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    {Object.entries(STOCK_DOC_TYPE_LABELS).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </Select>
-                  <Select
-                    label="Філія"
-                    required
-                    value={form.branchId}
-                    onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    <option value="">— Оберіть —</option>
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </Select>
+                  <Controller
+                    control={control}
+                    name="type"
+                    render={({ field }) => (
+                      <Select
+                        label="Тип документа"
+                        required
+                        value={field.value}
+                        onChange={e => {
+                          field.onChange(e.target.value);
+                          // зміна типу з TRANSFER на інший скидає targetWarehouseId
+                          // (щоб не лишити orphan; superRefine інакше не спрацює бо не-TRANSFER).
+                          if (e.target.value !== 'TRANSFER') {
+                            setValue('targetWarehouseId', '', { shouldDirty: true });
+                          }
+                        }}
+                        disabled={!canEdit || isEditMode}
+                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                      >
+                        {Object.entries(STOCK_DOC_TYPE_LABELS).map(([k, v]) => (
+                          <option key={k} value={k}>
+                            {v}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  />
+                  <Controller
+                    control={control}
+                    name="branchId"
+                    render={({ field }) => (
+                      <Select
+                        label="Філія"
+                        required
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        errorMessage={errors.branchId?.message}
+                        disabled={!canEdit || isEditMode}
+                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                      >
+                        <option value="">— Оберіть —</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  />
                 </div>
 
                 {/* Рядок 3: Склад | Склад призначення (тільки для TRANSFER) */}
-                <div className={cn('grid gap-4', isTransfer ? 'grid-cols-2' : 'grid-cols-2')}>
-                  <Select
-                    label={warehouseLabel}
-                    required
-                    value={form.warehouseId}
-                    onChange={e => setForm(f => ({ ...f, warehouseId: e.target.value }))}
-                    disabled={!canEdit || isEditMode}
-                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                  >
-                    <option value="">— Оберіть —</option>
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </Select>
-                  {isTransfer ? (
-                    <Select
-                      label="Склад призначення"
-                      required
-                      value={form.targetWarehouseId}
-                      onChange={e => setForm(f => ({ ...f, targetWarehouseId: e.target.value }))}
-                      disabled={!canEdit || isEditMode}
-                      className="h-8 text-[13px] py-0.5 px-2 pr-7"
-                    >
-                      <option value="">— Оберіть —</option>
-                      {warehouses
-                        .filter(w => w.id !== form.warehouseId)
-                        .map(w => (
+                <div className="grid gap-4 grid-cols-2">
+                  <Controller
+                    control={control}
+                    name="warehouseId"
+                    render={({ field }) => (
+                      <Select
+                        label={warehouseLabel}
+                        required
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        errorMessage={errors.warehouseId?.message}
+                        disabled={!canEdit || isEditMode}
+                        className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                      >
+                        <option value="">— Оберіть —</option>
+                        {warehouses.map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name}
                           </option>
                         ))}
-                    </Select>
+                      </Select>
+                    )}
+                  />
+                  {isTransfer ? (
+                    <Controller
+                      control={control}
+                      name="targetWarehouseId"
+                      render={({ field }) => (
+                        <Select
+                          label="Склад призначення"
+                          required
+                          value={typeof field.value === 'string' ? field.value : ''}
+                          onChange={field.onChange}
+                          errorMessage={errors.targetWarehouseId?.message}
+                          disabled={!canEdit || isEditMode}
+                          className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                        >
+                          <option value="">— Оберіть —</option>
+                          {warehouses
+                            .filter(w => w.id !== warehouseId)
+                            .map(w => (
+                              <option key={w.id} value={w.id}>
+                                {w.name}
+                              </option>
+                            ))}
+                        </Select>
+                      )}
+                    />
                   ) : (
                     <div />
                   )}
@@ -982,7 +965,7 @@ export function StockDocumentCreateModal({
                   disabled={!canEdit || isEditMode}
                   onPick={() => setPoPickerOpen(true)}
                   onClear={() => {
-                    setForm(f => ({ ...f, purchaseOrderId: '' }));
+                    setValue('purchaseOrderId', '', { shouldDirty: true });
                     setPurchaseOrderNumber('');
                   }}
                 />
@@ -990,8 +973,7 @@ export function StockDocumentCreateModal({
                 {/* Рядок 5: Примітки */}
                 <Input
                   label="Примітки"
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  {...register('notes')}
                   disabled={!canEdit}
                   placeholder="Додаткова інформація…"
                   className="h-8 text-[13px]"
@@ -1052,32 +1034,39 @@ export function StockDocumentCreateModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {lines.map(line => (
-                  <tr key={line._key} className="hover:bg-secondary/20 group">
-                    <td className="px-3 py-2">{line.goodName}</td>
-                    <td className="px-3 py-2 text-right text-muted-foreground">{line.unit}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.quantity}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{line.price || '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {line.price
-                        ? (
-                            (parseFloat(line.quantity) || 0) * (parseFloat(line.price) || 0)
-                          ).toFixed(2)
-                        : '—'}
-                    </td>
-                    <td className="px-2 py-2">
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line._key)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {fields.map((line, index) => {
+                  const qtyRaw = watchedLines?.[index]?.quantity;
+                  const priceRaw = watchedLines?.[index]?.price;
+                  const qty = parseFloat(String(qtyRaw ?? line.quantity)) || 0;
+                  const price = parseFloat(String(priceRaw ?? line.price ?? ''));
+                  // goodName/unit — display-only поля, збережені у field-array при append/load,
+                  // але поза zod-схемою (payload їх не містить) → читаємо через cast.
+                  const display = line as unknown as { goodName?: string; unit?: string };
+                  return (
+                    <tr key={line.id} className="hover:bg-secondary/20 group">
+                      <td className="px-3 py-2">{display.goodName}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">{display.unit}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{String(line.quantity)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {Number.isFinite(price) && price ? String(line.price) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {Number.isFinite(price) && price ? (qty * price).toFixed(2) : '—'}
+                      </td>
+                      <td className="px-2 py-2">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => remove(index)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {/* Add line input row */}
                 {canEdit && showLineInput && (
@@ -1236,7 +1225,7 @@ export function StockDocumentCreateModal({
           )
         }
         onSelect={item => {
-          setForm(f => ({ ...f, purchaseOrderId: item.id }));
+          setValue('purchaseOrderId', item.id, { shouldDirty: true });
           setPurchaseOrderNumber(item.primary);
           setPoPickerOpen(false);
         }}

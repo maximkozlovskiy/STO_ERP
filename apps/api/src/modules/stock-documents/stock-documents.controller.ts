@@ -22,8 +22,13 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { StockDocumentsService } from './stock-documents.service';
 import {
-  CreateStockDocumentDto,
-  UpdateStockDocumentDto,
+  stockDocumentCreateSchema,
+  stockDocumentUpdateSchema,
+  type StockDocumentCreateValues,
+  type StockDocumentUpdateValues,
+} from '@sto/shared';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
   TransitionStockDocumentDto,
   StockDocumentQueryDto,
   LinkedCountsDto,
@@ -81,7 +86,10 @@ export class StockDocumentsController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'РЎС‚РІРѕСЂРёС‚Рё СЃРєР»Р°РґСЃСЊРєРёР№ РґРѕРєСѓРјРµРЅС‚' })
-  create(@OrgContext() orgId: string, @Body() dto: CreateStockDocumentDto) {
+  create(
+    @OrgContext() orgId: string,
+    @Body(new ZodValidationPipe(stockDocumentCreateSchema)) dto: StockDocumentCreateValues,
+  ) {
     return this.service.create(orgId, dto);
   }
 
@@ -91,7 +99,7 @@ export class StockDocumentsController {
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateStockDocumentDto,
+    @Body(new ZodValidationPipe(stockDocumentUpdateSchema)) dto: StockDocumentUpdateValues,
   ) {
     return this.service.update(orgId, id, dto);
   }

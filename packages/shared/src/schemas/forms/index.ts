@@ -5,3 +5,4 @@ export * from './counterparty.schema';
 export * from './vehicle.schema';
 export * from './invoice.schema';
 export * from './supplier-payment.schema';
+export * from './stock-document.schema';
