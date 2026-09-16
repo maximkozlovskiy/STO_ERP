@@ -1251,9 +1251,16 @@ export function CreateWorkOrderModal({
             priority: form.priority || undefined,
             repairCategory: form.repairCategory || undefined,
             description: form.description || undefined,
-            liftId: form.liftId || undefined,
-            plannedAt: localDateTimeToISO(form.plannedStartAt),
-            dueDate: localDateTimeToISO(form.plannedEndAt),
+            // liftId/plannedAt/dueDate: nullable-семантика бекенду (workOrderUpdateSchema)
+            // очищає поле при explicit `null`, а `undefined` (omit) лишає без змін. Форма
+            // не має окремого "не чіпати" значення — порожній інпут/Select === "користувач
+            // очистив" → мусимо слати `null`, інакше clear мовчки не зберігається (як Bug #755
+            // nullable-паттерн для plannedHours/actualHours нижче).
+            liftId: form.liftId || null,
+            plannedAt:
+              localDateTimeToISO(form.plannedStartAt) ?? (form.plannedStartAt ? undefined : null),
+            dueDate:
+              localDateTimeToISO(form.plannedEndAt) ?? (form.plannedEndAt ? undefined : null),
             plannedHours: form.plannedHours !== '' ? toNumberOrUndefined(form.plannedHours) : null,
             actualHours: computedActualHours,
           }),
