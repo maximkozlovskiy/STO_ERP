@@ -497,6 +497,29 @@ while-пагінація з guard проти нескінченного цикл
   `settlements.createTransaction` (Promise.all transaction+account у $transaction).
 - **Клас багів:** partial state (списали з партії, рух не створився); втрата audit trail.
 
+### MP-B12. URI-версіонування API (/api/v1) + version-neutral винятки
+
+`enableVersioning({type:URI, defaultVersion:'1'})` після `setGlobalPrefix('api')` → бізнес-роути під
+`/api/v1/*`. Мета: v2 співіснує з v1 для offline-клієнтів, що оновлюються рідко (mobile, cloud-sync).
+
+- **Еталон:** `apps/api/src/main.ts` (enableVersioning); `health.controller` + `work-orders-public.controller`
+  (`@Controller({ path, version: VERSION_NEUTRAL })`).
+- **VERSION_NEUTRAL — для роутів із зовнішнім fixed-URL консюмером** (URL НЕ отримує /v1): health
+  (docker/installer healthcheck), public share-лінки (SMS/email). Перед версіонуванням — grep УСІ
+  `@Controller` і спитати «хто б'є цей URL іззовні?»: docker healthcheck, installer PS, SMS/email-лінк,
+  external webhook/callback, cross-service. Такі → VERSION_NEUTRAL, інакше тихо переїдуть і зламаються.
+- **Клас багів (усі знайдено QA-ланцюгом, unit-тести з мок-apiFetch їх НЕ ловлять):**
+  1. **Прямий fetch поза api-client** (AuthProvider context.tsx, mobile upload.ts мали власний BASE_URL) →
+     лишився на голому /api → 404. Re-grep `fetch(.../api/` у web+mobile, не лише api-client.
+  2. **Cookie path coupling:** httpOnly-cookie з `path:'/api/auth'` НЕ дійде до `/api/v1/auth/*` (browser
+     path-prefix match). Cookie path МУСИТЬ мінятись синхронно з версійним префіксом (set + УСІ clear).
+  3. **Спільний client-префікс-хелпер маскує neutral/versioned поділ:** `publicFetch` форсив /api/v1, але
+     version-neutral public-роут живе під /api → розділити (`publicNeutralFetch` → /api).
+     app-404 (handler кинув NotFound) vs routing-404 («Cannot GET») — діагностика: routing-404 = клієнт
+     б'є не той префікс.
+- **E2E:** glob `route('**/api/**')` матчить і /api/v1 (не чіпати); exact-match `route('**/api/auth/**')`
+  → оновити на /v1 (інакше мок не перехоплює, тест б'є живий бек). setup-auth/fixtures login → /api/v1.
+
 ### MP-B11. Централізований DLQ для BullMQ (durable dead-letter)
 
 Job, що вичерпав УСІ спроби (attempts), не має тихо зникати після `removeOnFail:N` — для offline-first

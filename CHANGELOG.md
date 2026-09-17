@@ -5,25 +5,34 @@
 
 ---
 
-## 2026-09-17 — Аудит стеку BACKEND #3 sync: клієнти вирівняно з /api/v1
+## 2026-09-17 — Аудит стеку BACKEND #3: URI-версіонування API (/api/v1)
 
-Sync-агент після URI-версіонування (8c2d5aa8, enableVersioning URI defaultVersion '1'). Знайшов
-1 критичний бага: AuthController — звичайний бізнес-контролер (НЕ VERSION_NEUTRAL), тож `/auth/*`
-переїхав на `/api/v1/auth/*`, але web AuthProvider (login/refresh/logout/logout-all) і backend
-refresh-cookie `path` лишились на старому `/api/auth` — сесії/логін/логаут мовчки ламались би
-(cookie path-mismatch означав, що навіть виправлення самого URL без виправлення cookie path не
-допомогло б: браузер не надсилав би `sto_refresh` на новий шлях). Також окремий mobile upload.ts
-BASE_URL (photo upload) не мав /v1. E2E route-mock глоби оновлено, інакше тести тихо били по
-живому бекенду замість мока.
+Третій пункт backend-розділу. `enableVersioning({type:URI, defaultVersion:'1'})` → усі бізнес-роути
+під `/api/v1/*`; знімає ризик ламких змін для offline-клієнтів (mobile, cloud-sync), що оновлюються
+рідко (v2 співіснуватиме з v1). VERSION_NEUTRAL винятки (URL стабільний): health (docker/installer
+healthcheck), public/work-orders (SMS/email share-лінки). QA sync→review→tester: 2 серйозні баги.
 
-### ecb688e2 fix(sync): вирівняти клієнтів з /api/v1 після URI-версіонування
+### 8c2d5aa8 feat(api): enableVersioning /api/v1 + version-neutral винятки
 
-- `apps/web/src/lib/auth/context.tsx` — 4× fetch → `/api/v1/auth/{refresh,login,logout,logout-all}`
-- `apps/api/src/auth/auth.service.ts` — cookie path `/api/auth` → `/api/v1/auth` (set + 2× clear)
-- `apps/api/src/auth/auth.spec.ts`, `apps/web/e2e/{api-errors,inventory}.spec.ts` — оновлено
-- `apps/mobile/src/lib/upload.ts` — окремий BASE_URL для photo upload → додано /v1
-- Перевірено чисто: health/public-work-orders (VERSION_NEUTRAL), payments (без inbound callback,
-  ADR-005 BullMQ-only), webhooks.controller (власний guarded CRUD, не зовнішній inbound), Caddyfile.
+main.ts enableVersioning; health + public/work-orders @Controller VERSION_NEUTRAL. Клієнти → /api/v1:
+web api-client (API_BASE), booking-page publicFetch, mobile BASE_URL, 29 e2e. Caddy /api/* wildcard — без змін.
+
+### ecb688e2 fix(sync): CRITICAL — auth мовчки зламаний версіонуванням
+
+AuthController (не VERSION_NEUTRAL) → /auth/* переїхав на /api/v1/auth/*, але web AuthProvider (4×
+raw fetch login/refresh/logout/logout-all) + backend refresh-cookie `path` лишились на /api/auth →
+логін/сесія/логаут ламались би. Cookie path-mismatch — другий незалежний прояв: браузер не слав би
+sto_refresh на новий шлях навіть після фіксу URL. Fix: context.tsx 4× → /api/v1/auth; auth.service
+cookie path (set+2×clear) → /api/v1/auth; mobile upload.ts окремий BASE_URL → /v1; e2e route-globs.
+Перевірено чисто: payments (ADR-005 BullMQ-only, без inbound callback), webhooks (guarded CRUD).
+
+### d0e3e42c fix(tester): Bug #761 HIGH — публічний кошторис 404 на share-лінках
+
+Сторінка /estimate/[token] (публічний кошторис, SMS/email-лінк) через СПІЛЬНИЙ publicFetch форсила
+/api/v1 → била /api/v1/public/work-orders/:token → routing-404, хоча public-контролер version-neutral
+під /api/public/... → кожен клієнтський share-лінк показував «Посилання не дійсне». Fix: `publicNeutralFetch`
+→ /api (дзеркалить бекендний VERSION_NEUTRAL); estimate-page на нього. Спільний префікс-хелпер маскував
+поділ versioned-public (setup/booking) vs neutral-public (work-orders). +3 api-client URL-regression тести.
 
 ---
 

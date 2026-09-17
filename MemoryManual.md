@@ -15,7 +15,13 @@
             Далі: опційні (typedSql, NestJS11) або FRONTEND розділ аудиту.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2521/2521 (165 файлів) · DLQ 22 (service/worker-host/integration+redaction) · env.schema 20.
-HEAD:       ecb688e2 fix(sync): вирівняти клієнтів з /api/v1 після URI-версіонування (аудит backend #3)
+HEAD:       f1f9ed85 docs(skills): version-neutral publicFetch mismatch → sto-tester (Bug #761)
+Tester:     2026-09-17 (auto, аудит backend #3 API-версіонування, коміт d0e3e42c) — 1 HIGH: сторінка
+            /estimate/[token] (публічний кошторис, SMS/email share-лінк) через СПІЛЬНИЙ publicFetch форсила
+            /api/v1 → била /api/v1/public/work-orders/:token → routing-404, хоча public-контролер VERSION_NEUTRAL
+            під /api/public/... → кожен share-лінк «Посилання не дійсне». Fix: publicNeutralFetch → /api
+            (дзеркалить бек VERSION_NEUTRAL). Live-перевірено: routing (v1 vs neutral), auth flow E2E
+            (login/refresh/logout cookie path /api/v1/auth), health-neutral, bull-board/swagger, +3 URL-regres.
 Sync:       2026-09-17 (auto, аудит backend #3 API-версіонування, коміт 8c2d5aa8→ecb688e2) — 1 КРИТИЧНИЙ
             bug: AuthController не VERSION_NEUTRAL → /auth/* переїхав на /api/v1/auth/*, але web
             AuthProvider (login/refresh/logout/logout-all, 4× fetch) і backend refresh-cookie path
@@ -180,6 +186,19 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит стеку BACKEND #3 — URI-версіонування /api/v1 — 2026-09-17, HEAD f1f9ed85:
+  8c2d5aa8 feat: enableVersioning({type:URI, defaultVersion:'1'}) → бізнес-роути /api/v1/*. health +
+        public/work-orders VERSION_NEUTRAL (fixed-URL консюмери: docker healthcheck, SMS/email share).
+        Клієнти → /api/v1: web api-client/booking, mobile BASE_URL, 29 e2e. Caddy /api/* — без змін.
+  ecb688e2 sync CRITICAL: AuthController (не neutral) → /auth переїхав /api/v1/auth, але web AuthProvider
+        (4× raw fetch) + refresh-cookie path лишились /api/auth → auth мовчки зламаний. Fix: context.tsx +
+        cookie path (set+2×clear) → /api/v1/auth; mobile upload.ts BASE_URL → /v1; e2e route-globs.
+  d0e3e42c tester HIGH #761: /estimate/[token] через спільний publicFetch форсив /api/v1 → public-роут
+        (VERSION_NEUTRAL, /api/public/...) 404 → share-лінки «недійсні». Fix: publicNeutralFetch → /api.
+  Паттерн MP-B12 (docs/PATTERNS): version-neutral винятки + 3 клас-баги (raw-fetch bypass, cookie-path
+        coupling, спільний client-префікс маскує neutral/versioned). GOTCHAS: cookie-path/версія coupling.
+  api+web tsc 0. api-suite 2521/2521, web lib 153 (+3 URL-regres). Live-verified routing/auth/health.
+
 Аудит стеку BACKEND #2 — централізований DLQ для BullMQ — 2026-09-17, HEAD a120de94:
   ee57f38c feat: DeadLetterJob (TENANT_EXEMPT, orgId nullable, міграція additive) + DeadLetterWorkerHost
         (base, deadLetterOnFailed терминальний гейт) вбудовано у 12 черг + checkbox delegate. Capture у
