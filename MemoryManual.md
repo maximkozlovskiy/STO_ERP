@@ -10,12 +10,19 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит стеку — BACKEND розділ. Backend #2 (централізований DLQ для BullMQ) реалізовано +
-            review пройдено. Backend #1 (env-валідація) ЗАВЕРШЕНО. Далі: API-версіонування / tester DLQ.
+Фаза:       Аудит стеку — BACKEND розділ. Backend #1 (env-валідація) + #2 (централізований DLQ) ЗАВЕРШЕНО
+            (обидва QA review→tester пройдено). Далі: API-версіонування (/api/v1) / опційні (typedSql, NestJS11).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2510+ (DLQ 20/20: service 13, integration 2, worker-host 3, static 2; touched processors 62).
-HEAD:       9a0114c1 fix(review): DLQ payload secret-redaction + orgId-scoped resolve (аудит backend #2)
-Tester:     2026-09-17 (auto, аудит backend #1 env-валідація) — 2 MEDIUM виправлено: (#757) dev-UX —
+Тести:      api 2521/2521 (165 файлів) · DLQ 22 (service/worker-host/integration+redaction) · env.schema 20.
+HEAD:       a120de94 docs(skills): DLQ secret-redaction over/under-match + non-JSON-safe checks → sto-tester
+Tester:     2026-09-17 (auto, аудит backend #2 DLQ) — 2 виправлено: (#759 HIGH over-redaction) плоский regex
+            матчив короткі підрядки auth|sign|pass|key будь-де → редагував діагностичні поля (authorId/
+            assignee/passenger/signedBy/bypass/keyword) → нищив цінність DLQ; fix: токен-орієнтований
+            isSensitiveKey() (сильні терміни всюди, слабкі лише з компаньйон-токеном apiKey/authToken).
+            (#760 MEDIUM тиха втрата) BigInt у job.data → Prisma JSONB throw → fail-open ковтав → DLQ-рядок
+            ТИХО втрачено; fix: JSON-safe нормалізація (BigInt→String/Date→ISO/cyclic→CIRCULAR). Capture по
+            12 чергах + checkbox delegate + tenant-404 + fail-open + runUnscoped ALS — чисто. api-suite 2521.
+Tester-env: 2026-09-17 (auto, аудит backend #1 env-валідація) — 2 MEDIUM виправлено: (#757) dev-UX —
             NOTIFICATION_ENC_KEY.min(32) always-on строгіший за споживача (EncryptionService SHA-256
             приймає будь-яку довжину) → короткий dev-ключ валив старт; fix: min32 лише prod-gated.
             (#758) агрегація — prod-strict у object-level superRefine, Zod пропускає його при base-parse
@@ -160,6 +167,19 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит стеку BACKEND #2 — централізований DLQ для BullMQ — 2026-09-17, HEAD a120de94:
+  ee57f38c feat: DeadLetterJob (TENANT_EXEMPT, orgId nullable, міграція additive) + DeadLetterWorkerHost
+        (base, deadLetterOnFailed терминальний гейт) вбудовано у 12 черг + checkbox delegate. Capture у
+        процесі (@OnWorkerEvent('failed')), НЕ QueueEvents (несе лише jobId/reason + removeOnFail евіктить).
+        Controller GET/PATCH /dead-letter. @Global DeadLetterModule.
+  9a0114c1 review: HIGH secrets-at-rest (webhooks secret:ep.secret у payload plaintext) → sanitizePayload();
+        IMPORTANT resolve() race → updateMany({id,orgId})+404.
+  0eea48ca tester: #759 HIGH over-redaction (плоский regex auth|sign|pass|key редагував authorId/assignee/
+        passenger) → токен-орієнтований isSensitiveKey(); #760 MEDIUM BigInt→JSONB throw→тиха втрата DLQ →
+        JSON-safe нормалізація.
+  Паттерн MP-B11 (docs/PATTERNS): durable DLQ, 3 клас-баги (secrets/non-JSON/tenant-exempt-write).
+  Follow-up v1.1: dead-letter-purge (лише resolved past-cutoff). tsc api 0, api-suite 2521/2521.
+
 Аудит стеку BACKEND #1 — fail-fast env-валідація (zod) — 2026-09-17, HEAD 4795a13a:
   123deff2 env.schema.ts: zod-схема всіх env API + validateEnv() → ConfigModule.forRoot({validate}).
         Контейнер із кривим/неповним .env падає НА СТАРТІ з агрегованим переліком, не на першому

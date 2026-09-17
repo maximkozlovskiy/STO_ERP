@@ -497,6 +497,27 @@ while-пагінація з guard проти нескінченного цикл
   `settlements.createTransaction` (Promise.all transaction+account у $transaction).
 - **Клас багів:** partial state (списали з партії, рух не створився); втрата audit trail.
 
+### MP-B11. Централізований DLQ для BullMQ (durable dead-letter)
+
+Job, що вичерпав УСІ спроби (attempts), не має тихо зникати після `removeOnFail:N` — для offline-first
+(ПРРО/SMS/webhook) втрачений job = юридична/бізнес-проблема. Централізований durable DLQ у БД-таблиці.
+
+- **Еталон:** `modules/dead-letter/` — `DeadLetterWorkerHost extends WorkerHost` з `protected
+deadLetterOnFailed(job,err)` (терминальний гейт `attemptsMade >= opts.attempts`); процесори extend-ять
+  базу + однорядковий `@OnWorkerEvent('failed') onFailed(j,e){return this.deadLetterOnFailed(j,e)}`.
+  `DeadLetterService.capture` пише `DeadLetterJob` (TENANT_EXEMPT, orgId nullable) через `runUnscoped`.
+- **ЧОМУ у процесі, не QueueEvents:** BullMQ5 `QueueEvents.failed` несе лише `{jobId,failedReason}` (без
+  attemptsMade/data), а `removeOnFail` може евіктнути job до `getJob` → втрата capture. `@OnWorkerEvent`
+  має повний `Job` синхронно.
+- **Клас багів (money/legal infra):**
+  1. **Secrets-at-rest:** `payload: job.data` персистить креденшели plaintext (webhooks `secret: ep.secret`).
+     → `sanitizePayload()` з **токен-орієнтованим** `isSensitiveKey()` (НЕ плоский substring-regex:
+     `auth|sign|pass|key` ловлять `authorId/assignee/passenger/bypass` → over-redaction нищить діагностику).
+  2. **Non-JSON-safe payload:** BigInt/Date/cyclic у job.data → Prisma JSONB throw → fail-open ковтає →
+     ТИХА втрата DLQ-рядка. → нормалізувати (BigInt→String/Date→ISO/cyclic→'[CIRCULAR]', depth-cap).
+  3. **TENANT_EXEMPT write:** `resolve` мусить `updateMany({where:{id,orgId}})` (orgId у write-where), НЕ
+     `findFirst({id,orgId})→update({where:{id}})` (guard не страхує exempt-модель → race-вікно).
+
 ---
 
 ## FRONTEND

@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-09-17 — Аудит стеку BACKEND #2: централізований dead-letter (DLQ) для BullMQ
+
+Другий пункт backend-розділу. Після вичерпання attempts провалений job тримався лише
+removeOnFail:200, далі ТИХО зникав → для offline-first (ПРРО/SMS може лежати добу) втрачений
+фіскальний чек = юридична проблема. Тепер кожен job, що вичерпав УСІ спроби у будь-якій з 12
+черг, осідає у durable БД-таблиці DeadLetterJob (переживає Redis flush). QA: review→tester
+(backend-only), 4 баги виправлено (2 review + 2 tester).
+
+### ee57f38c feat(queue): DeadLetterJob + DeadLetterModule + 12 процесорів
+
+DB-таблиця DeadLetterJob (orgId nullable, TENANT_EXEMPT, міграція additive). Capture через
+`DeadLetterWorkerHost` (base extends WorkerHost, protected `deadLetterOnFailed` з терминальним
+гейтом attemptsMade>=opts.attempts). 12 процесорів extend-ять базу + 1-рядковий @OnWorkerEvent('failed')
+делегат. checkbox зберігає domain-DLQ (Payment.fiscalStatus=FAILED) + делегує у unified DLQ.
+ЧОМУ у процесі, не QueueEvents: BullMQ5 QueueEvents.failed несе лише {jobId,failedReason} +
+removeOnFail може евіктнути job до getJob → втрата capture. Controller GET/PATCH /dead-letter (OWNER/ADMIN).
+
+### 9a0114c1 fix(review): secret-redaction + orgId-scoped resolve
+
+- **HIGH**: webhooks-черга носить `secret: ep.secret` у job.data → capture персистив увесь job.data
+  у payload plaintext (secrets-at-rest leak). Fix: `sanitizePayload()` редагує sensitive-ключі.
+- **IMPORTANT**: resolve() findFirst({id,orgId})→update({where:{id}}) без orgId (TENANT_EXEMPT, guard
+  не страхує) → race-вікно; fix: updateMany({where:{id,orgId}})+404.
+
+### 0eea48ca fix(tester): Bugs #759-#760
+
+- **#759 (HIGH, over-redaction)**: плоский regex матчив короткі підрядки auth|sign|pass|key будь-де →
+  редагував діагностичні поля (authorId/assignee/passenger/signedBy/bypass/keyword...) → нищив цінність
+  DLQ. Fix: токен-орієнтований `isSensitiveKey()` — сильні терміни редагують будь-де, слабкі (auth/sign/
+  pass/key) лише з компаньйон-токеном (apiKey/authToken/passCode).
+- **#760 (MEDIUM, тиха втрата)**: BigInt у job.data → Prisma JSONB throw → fail-open ковтав → DLQ-рядок
+  ТИХО втрачено. Fix: JSON-safe нормалізація (BigInt→String/Date→ISO/cyclic→'[CIRCULAR]').
+
+---
+
 ## 2026-09-17 — Аудит стеку BACKEND #1: fail-fast env-валідація (zod)
 
 Перший пункт backend-розділу аудиту стеку (front-розділ #1 zod+RHF завершено). Контейнер із
