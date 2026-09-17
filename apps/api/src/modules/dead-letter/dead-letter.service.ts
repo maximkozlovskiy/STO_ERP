@@ -13,23 +13,126 @@ const PAYLOAD_MAX_DEPTH = 8;
 // Конвенція стеку — секрети НЕ клacти у job.data (резолвити point-of-use), але вебхук-черга
 // свідомо носить `secret: ep.secret` (підписний ключ) у payload → без цього фільтра він осів би
 // у dead_letter_jobs.payload відкритим текстом. Захист defence-in-depth: редагуємо за ІМЕНЕМ ключа
-// рекурсивно, регістронезалежно, на випадок майбутніх черг, що додадуть креденшели у job.data.
-const SENSITIVE_KEY_RE =
-  /(secret|token|password|pass|pwd|api[-_]?key|credential|authorization|auth|private[-_]?key|access[-_]?key|secret[-_]?key|pin[-_]?code|signature|sign|licenseKey)/i;
+// рекурсивно, на випадок майбутніх черг, що додадуть креденшели у job.data.
+//
+// Bug #759 — стара `SENSITIVE_KEY_RE` матчила КОРОТКІ підрядки `auth|sign|pass` будь-де у ключі
+// (unanchored), тож редагувала НЕсекретні діагностичні поля: `authorId`, `authorName`, `assignee`,
+// `assignedTo`, `assignmentId`, `passenger`, `passportNumber`, `signedBy`, `signId`, `designId`,
+// `bypass` тощо (`assign`/`design`/`bypass` містять `sign`/`pass`). Payload у DLQ існує САМЕ для
+// розбору терминального провалу — масова over-redaction нищить його діагностичну цінність.
+// Виправлення: розбиваємо ключ на токени (camelCase / snake / kebab / цифри) і матчимо за ЦІЛИМИ
+// токенами, а не підрядками. Сильні терміни (secret/token/password/signature/…) редагують будь-де;
+// слабкі неоднозначні (auth/sign/pass/key/pin/session/hash) — лише коли це весь ключ або поряд є
+// компаньйон-токен (key/code/secret/token/hash/…), напр. `apiKey`, `authToken`, `passCode`, `signKey`.
 const REDACTED = '[REDACTED]';
+
+// Сильні терміни: секрет очевидний, редагуємо якщо токен зустрічається будь-де у ключі.
+const STRONG_SECRET_TOKENS = new Set<string>([
+  'secret',
+  'token',
+  'password',
+  'passphrase',
+  'passcode',
+  'pwd',
+  'credential',
+  'credentials',
+  'authorization',
+  'signature',
+  'apikey',
+  'privatekey',
+  'accesskey',
+  'secretkey',
+  'pincode',
+  'licensekey',
+  'jwt',
+  'bearer',
+  'cookie',
+  'otp',
+  'cvv',
+  'cvc',
+  'pan',
+  'cardpan',
+]);
+
+// Слабкі неоднозначні терміни: редагуємо ЛИШЕ якщо це весь ключ (один токен) або поряд компаньйон.
+const WEAK_SECRET_TOKENS = new Set<string>([
+  'auth',
+  'sign',
+  'pass',
+  'key',
+  'pin',
+  'session',
+  'hash',
+]);
+const COMPANION_TOKENS = new Set<string>([
+  'key',
+  'code',
+  'secret',
+  'token',
+  'hash',
+  'hmac',
+  'value',
+  'phrase',
+  'word',
+]);
+
+/** Розбиває ключ на нормалізовані lowercase-токени по camelCase / snake / kebab / цифрових межах. */
+function keyTokens(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(t => t.toLowerCase());
+}
+
+/**
+ * Чи є ключ носієм секрета (за токенами, не підрядками — Bug #759). Експортовано для тестів.
+ */
+export function isSensitiveKey(key: string): boolean {
+  const toks = keyTokens(key);
+  if (toks.length === 0) return false;
+  const joined = toks.join('');
+  if (STRONG_SECRET_TOKENS.has(joined)) return true;
+  for (const t of toks) if (STRONG_SECRET_TOKENS.has(t)) return true;
+  // Весь ключ — один слабкий токен: `{ sign }`, `{ pass }`, `{ key }`, `{ auth }`, `{ pin }`.
+  if (toks.length === 1 && WEAK_SECRET_TOKENS.has(toks[0])) return true;
+  // Слабкий токен поряд із компаньйоном → компаунд-секрет: apiKey, authToken, passCode, signKey.
+  for (let i = 0; i < toks.length; i++) {
+    if (!WEAK_SECRET_TOKENS.has(toks[i])) continue;
+    const prev = toks[i - 1];
+    const next = toks[i + 1];
+    if ((next && COMPANION_TOKENS.has(next)) || (prev && COMPANION_TOKENS.has(prev))) return true;
+    // xKey-компаунд (apiKey/secretKey/accessKey/signKey): `key` не на першій позиції.
+    if (toks[i] === 'key' && i > 0) return true;
+  }
+  return false;
+}
 
 /**
  * Рекурсивно клонує payload, замінюючи значення sensitive-ключів на `[REDACTED]`.
  * Не мутує вхід (job.data лишається недоторканим для решти обробки). Обмежений глибиною
- * (циклічні/глибокі структури → обрізаються), масиви обходяться поелементно.
+ * (циклічні/глибокі структури → обрізаються), масиви обходяться поелементно. Не-JSON-safe
+ * значення (BigInt/Date/undefined/Buffer) нормалізуються, щоб Prisma JSONB-запис не кидав
+ * і не втрачав увесь DLQ-рядок через fail-open (Bug #760).
  */
-export function sanitizePayload(value: unknown, depth = 0): unknown {
+export function sanitizePayload(value: unknown, depth = 0, seen?: WeakSet<object>): unknown {
   if (depth >= PAYLOAD_MAX_DEPTH) return '[TRUNCATED]';
-  if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(v => sanitizePayload(v, depth + 1));
+  if (value === null || value === undefined) return null; // undefined → null (JSONB-safe)
+  const t = typeof value;
+  if (t === 'bigint') return (value as bigint).toString(); // BigInt не серіалізується у JSON
+  if (t === 'function' || t === 'symbol') return `[${t}]`;
+  if (t !== 'object') return value; // string/number/boolean
+  if (value instanceof Date) return value.toISOString();
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return '[Buffer]';
+  // Циклічний ref → мітка (depth-cap теж є, але seen дає точнішу діагностику).
+  const tracked = seen ?? new WeakSet<object>();
+  if (tracked.has(value as object)) return '[CIRCULAR]';
+  tracked.add(value as object);
+  if (Array.isArray(value)) return value.map(v => sanitizePayload(v, depth + 1, tracked));
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = SENSITIVE_KEY_RE.test(k) ? REDACTED : sanitizePayload(v, depth + 1);
+    out[k] = isSensitiveKey(k) ? REDACTED : sanitizePayload(v, depth + 1, tracked);
   }
   return out;
 }

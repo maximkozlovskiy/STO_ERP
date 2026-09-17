@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DeadLetterService, sanitizePayload } from './dead-letter.service';
+import { DeadLetterService, sanitizePayload, isSensitiveKey } from './dead-letter.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 // runUnscoped просто виконує callback — стабимо, щоб unit-тест не тягнув ALS.
@@ -163,5 +163,115 @@ describe('sanitizePayload', () => {
     const out = sanitizePayload(deep);
     // Не кидає, повертає значення (обрізане на глибині).
     expect(out).toBeDefined();
+  });
+
+  // Bug #759 — over-redaction: короткі підрядки auth/sign/pass НЕ мають редагувати діагностичні поля.
+  it('Bug #759: НЕ редагує несекретні поля що містять підрядки auth/sign/pass (діагностика збережена)', () => {
+    const out = sanitizePayload({
+      authorId: 'u-1',
+      authorName: 'Іван',
+      assignee: 'mech-3',
+      assignedTo: 'bay-2',
+      assignmentId: 'a-9',
+      passenger: 'John',
+      passengerCount: 4,
+      passportNumber: 'AB123',
+      signedBy: 'admin',
+      signedAt: '2026-01-01',
+      signId: 's-7',
+      designId: 'd-2',
+      bypass: true,
+      bypassReason: 'manual',
+      paymentMethod: 'CARD',
+    }) as Record<string, unknown>;
+    expect(out.authorId).toBe('u-1');
+    expect(out.authorName).toBe('Іван');
+    expect(out.assignee).toBe('mech-3');
+    expect(out.assignedTo).toBe('bay-2');
+    expect(out.assignmentId).toBe('a-9');
+    expect(out.passenger).toBe('John');
+    expect(out.passengerCount).toBe(4);
+    expect(out.passportNumber).toBe('AB123');
+    expect(out.signedBy).toBe('admin');
+    expect(out.signedAt).toBe('2026-01-01');
+    expect(out.signId).toBe('s-7');
+    expect(out.designId).toBe('d-2');
+    expect(out.bypass).toBe(true);
+    expect(out.bypassReason).toBe('manual');
+    expect(out.paymentMethod).toBe('CARD');
+  });
+
+  it('Bug #759: РЕДАГУЄ справжні секрети (сильні терміни + компаунди зі слабким токеном)', () => {
+    const out = sanitizePayload({
+      secret: 'a',
+      apiKey: 'b',
+      accessToken: 'c',
+      refreshToken: 'd',
+      clientSecret: 'e',
+      privateKey: 'f',
+      authToken: 'g',
+      sessionKey: 'h',
+      passphrase: 'i',
+      pinCode: 'j',
+      sign: 'k', // весь ключ — слабкий токен → редагуємо
+      pass: 'l',
+      key: 'm',
+    }) as Record<string, unknown>;
+    for (const k of Object.keys(out)) expect(out[k]).toBe('[REDACTED]');
+  });
+
+  it('Bug #759: isSensitiveKey — точкова таблиця істинності', () => {
+    for (const k of [
+      'secret',
+      'webhookSecret',
+      'apiKey',
+      'x-api-key',
+      'privateKey',
+      'accessKey',
+      'signature',
+      'authToken',
+      'passphrase',
+      'pinCode',
+    ]) {
+      expect(isSensitiveKey(k)).toBe(true);
+    }
+    for (const k of [
+      'authorId',
+      'assignee',
+      'assignedTo',
+      'passenger',
+      'passportNumber',
+      'signedBy',
+      'signId',
+      'designId',
+      'bypass',
+      'campaign',
+      'username',
+      'keyword',
+      'paymentMethod',
+    ]) {
+      expect(isSensitiveKey(k)).toBe(false);
+    }
+  });
+
+  // Bug #760 — не-JSON-safe значення не мають зривати Prisma JSONB-запис (fail-open → втрата рядка).
+  it('Bug #760: нормалізує BigInt/Date/undefined/цикл → JSON-safe без throw', () => {
+    const cyclic: Record<string, unknown> = { name: 'root' };
+    cyclic.self = cyclic;
+    const out = sanitizePayload({
+      big: BigInt('9007199254740993'),
+      when: new Date('2026-01-02T03:04:05.000Z'),
+      missing: undefined,
+      cyclic,
+    }) as Record<string, unknown>;
+    expect(out.big).toBe('9007199254740993');
+    expect(out.when).toBe('2026-01-02T03:04:05.000Z');
+    expect(out.missing).toBeNull();
+    // Цикл → мітка, не переповнення стека.
+    const c = out.cyclic as Record<string, unknown>;
+    expect(c.name).toBe('root');
+    expect(c.self).toBe('[CIRCULAR]');
+    // Весь результат серіалізується у JSON (як зробить Prisma JSONB).
+    expect(() => JSON.stringify(out)).not.toThrow();
   });
 });

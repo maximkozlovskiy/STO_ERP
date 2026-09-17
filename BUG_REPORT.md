@@ -5577,3 +5577,38 @@ web schema+form тести 23 passed, tsc усі 0.
 **Регрес-тест (env.schema.spec.ts):** «агрегує format-помилку (кривий PORT) РАЗОМ з prod-missing секретами» — assert що повідомлення містить і `PORT`, і `DATABASE_URL`, і `JWT_ACCESS_SECRET` одночасно.
 
 **Верифікація обох:** api tsc = 0. env.schema.spec: 15→**21 passed** (+6 регрес-тестів). Повний api-suite: **162 файли / 2494 тести — зелений**. `.env.dev`/`.env.example` проходять; prod-повний-набір валідний; коерс PORT/MINIO_PORT працює.
+
+## Session 2026-09-17 — Bug hunt Аудиту backend #2 «централізований dead-letter (DLQ) для BullMQ» (commits ee57f38c + 9a0114c1)
+
+### Bug #759 [x] виправлено — HIGH (діагностична втрата: масова over-redaction payload) — sanitizePayload редагував НЕсекретні поля
+
+**Файл:** `apps/api/src/modules/dead-letter/dead-letter.service.ts`
+
+**Симптом:** `SENSITIVE_KEY_RE` матчила короткі підрядки `auth|sign|pass` будь-де у назві ключа (unanchored `RegExp.test`). Через це `[REDACTED]` затирав діагностичні поля, що містять ці підрядки як частину слова: `authorId`, `authorName`, `authoredBy` (auth), `assignee`, `assigneeId`, `assignedTo`, `assignmentId`, `reassign` (assign→sign), `passenger`, `passengerCount`, `passportNumber`, `passRate` (pass), `signedBy`, `signedAt`, `signId`, `signals`, `countersign` (sign), `designId`, `design` (design→sign), `bypass`, `bypassReason` (bypass→pass). DLQ-payload існує САМЕ для розбору терминального провалу — над-редакція знищувала його цінність (false-positive redaction).
+
+**Причина:** секрет-фільтр писався як плоский regex-алтернатив із короткими термінами (`auth`, `sign`, `pass`) без token/word-boundary. Ці підрядки надзвичайно поширені всередині бізнес-полів.
+
+**Фікс:** замінено на токен-орієнтований `isSensitiveKey(key)`: ключ розбивається на токени (camelCase / snake / kebab / цифрові межі), матч ЛИШЕ за цілими токенами. Сильні терміни (`secret/token/password/passphrase/signature/authorization/apikey/privatekey/accesskey/pincode/licensekey/jwt/bearer/cookie/cvv/pan…`) редагують будь-де; слабкі неоднозначні (`auth/sign/pass/key/pin/session/hash`) — лише коли це весь ключ (один токен) або поряд компаньйон-токен (`key/code/secret/token/hash/hmac…`), напр. `apiKey`, `authToken`, `passCode`, `signKey`, `secretKey`. Перевірено таблицею істинності: усі реальні секрети редагуються, усі діагностичні поля лишаються. (Свідома консервативність: `signatureRequired` містить повне слово `signature` → редагується — безпечна over-redaction рідкісного прапорця, не бізнес-втрата.)
+
+**Regression:** `dead-letter.service.spec.ts` — 3 нові тести: over-redaction КЕЕР-список (15 полів), справжні-секрети REDACT-список (13 полів + компаунди), точкова таблиця `isSensitiveKey`.
+
+### Bug #760 [x] виправлено — MEDIUM (fail-open втрата DLQ-рядка) — не-JSON-safe payload зривав Prisma JSONB-запис
+
+**Файл:** `apps/api/src/modules/dead-letter/dead-letter.service.ts`
+
+**Симптом:** `sanitizePayload` повертала `BigInt` як є (`typeof !== 'object'`), а `Date`/`undefined` частково. `job.data` із `BigInt` (напр. amount у копійках як BigInt) → `prisma.deadLetterJob.create({ payload })` кинув би на JSONB-серіалізації → `capture` fail-open ковтав виключення (`catch` → `logger.error`) → **DLQ-рядок втрачено тихо**. Оскільки DLQ і так пишеться лише на терминальному провалі, це подвійна втрата аудиту money/legal-infra.
+
+**Причина:** санітайзер редагував ключі, але не нормалізував ЗНАЧЕННЯ до JSON-safe перед JSONB-записом. Depth-cap захищав від глибини, але не від типів.
+
+**Фікс:** `sanitizePayload` нормалізує: `BigInt→String`, `Date→ISOString`, `undefined→null`, `function/symbol→'[type]'`, `Buffer→'[Buffer]'`; додано `WeakSet`-tracking для явної мітки `[CIRCULAR]` на циклічних ref (плюс наявний depth-cap). Результат гарантовано `JSON.stringify`-able → Prisma JSONB не кидає → DLQ-рядок пишеться.
+
+**Regression:** `dead-letter.service.spec.ts` — тест BigInt/Date/undefined/cyclic → JSON-safe без throw.
+
+**Перевірено ОК (без багів):**
+
+- #1 Capture по кожній із 12 черг — усі процесори (`sms/outbound-webhook/checkbox/payment-polling/reconciliation/loyalty/followup/nova-poshta-polling/nbu-fetch/invoice-overdue/integration-log-purge/idempotency-purge`) коректно `@OnWorkerEvent('failed') → deadLetterOnFailed`; терминальний гейт `attemptsMade < maxAttempts → return` правильний (юніт-тест + integration проти живої БД зелені).
+- #3 checkbox delegate — domain `fiscalStatus:FAILED` (з `.catch`) + `deadLetterOnFailed` обидва на терминалі; `this.worker.name` доступний у failed-event (worker забутстраплений). Жоден шлях не кидає назовні.
+- #4 tenant — `resolve()` `updateMany({where:{id,orgId}})` → крос-tenant count===0 → 404 (не мовчазний no-op); `findAll` скоуплено `where:{orgId}` (orgId=null infra-рядки НЕ показуються).
+- #5 fail-open — `capture` внутрішній try/catch, ніколи не кидає → черга не зривається, self-retry не провокується.
+- #6 runUnscoped ALS — `tenantStore.run(...)` коректно scoped, контекст НЕ протікає за callback (await всередині).
+- #8 міграція застосована на dev-БД — integration-spec пише/читає DeadLetterJob наживо (2 тести зелені).
