@@ -39,7 +39,10 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
 
 # Generate the Prisma client (query engine binary is bundled — no network needed),
-# then strip dev dependencies to keep the runtime image lean.
+# then strip dev dependencies to keep the runtime image lean. The prisma CLI is a
+# PROD dependency of @sto/database (not a devDep) precisely so `pnpm prune --prod`
+# keeps it — the installer runs `docker compose exec/run api npx prisma migrate deploy`
+# (First-Run/Update) offline, which resolves the local CLI (no registry fetch).
 RUN pnpm --filter @sto/database exec prisma generate
 RUN pnpm prune --prod
 
