@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-17 — Аудит: RLS розглянуто → відкладено (ADR-010)
+
+### docs(adr) — ADR-010 Row-Level Security, статус «розглянуто, відкладено»
+
+Дослідження коду показало: (1) застосунок конектиться як `sto`=POSTGRES_USER=власник БД → owner
+BYPASS RLS (потрібен окремий non-owner роль або FORCE на ~40 таблицях + зміна installer/compose);
+(2) offline single-tenant-per-install (одна орг/Postgres); (3) вже є fail-closed app-guard + ALS.
+Рішення: НЕ впроваджувати — ціна/вигода на цій моделі гірша, ніж cloud multi-tenant. ADR фіксує
+тригер перегляду (cloud-sync multi-org / PgBouncer / регуляторка) + план (варіант «окремий app-роль»
+
+- tx-scoped SET LOCAL). Індекс ADR у CLAUDE.md оновлено. Закриває scope «Цінні front + RLS».
+
 ## 2026-09-17 — Аудит FRONT: оптимістика + гранулярна інвалідація
 
 ### perf(web) 8ddaf309 — оптимістичні WO-мутації + гранулярна інвалідація списків

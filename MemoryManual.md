@@ -13,7 +13,8 @@
 Фаза:       Аудит стеку — FRONT (#1 zod+RHF 6 модалок, React 19 ref-as-prop, code-splitting=вже готово,
             оптимістика+гранулярна інвалідація) + BACKEND (#1 env, #2 DLQ, #3 /api/v1) + ДАНІ/ІНФРА
             (non-root Docker, immutability-тригери) ЗАВЕРШЕНО. Follow-up (UA-кома, DLQ retention v1.1,
-            index runbook) — ЗРОБЛЕНО. Далі: RLS (останній пункт scope «Цінні front + RLS»).
+            index runbook) — ЗРОБЛЕНО. RLS: розглянуто → ВІДКЛАДЕНО (ADR-010: owner оминає RLS +
+            single-tenant-per-install + вже є fail-closed guard). Scope «Цінні front + RLS» ЗАКРИТО.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2539/2539 (167 файлів) · DLQ 28 · append-only 13 · env.schema 20 · xlsx parseNumber-кома 5.
             web: useWorkOrders 15/15 (+3 оптимістичні), lib 163/163. web-модалки зелені.
