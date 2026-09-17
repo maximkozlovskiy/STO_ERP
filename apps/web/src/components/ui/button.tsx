@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { cn } from '@/lib/utils';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'default';
@@ -12,6 +12,8 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   leftIcon?: ReactNode;
   rightIcon?: ReactNode;
+  // React 19: ref — звичайний проп (forwardRef застарілий). Bug у 19 codemod-міграції.
+  ref?: Ref<HTMLButtonElement>;
 }
 
 const base =
@@ -64,21 +66,19 @@ const BtnSpinner = ({ sm }: { sm?: boolean }) => (
   </svg>
 );
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  (
-    {
-      className,
-      variant = 'primary',
-      size = 'md',
-      loading,
-      leftIcon,
-      rightIcon,
-      children,
-      disabled,
-      ...props
-    },
-    ref,
-  ) => (
+function Button({
+  className,
+  variant = 'primary',
+  size = 'md',
+  loading,
+  leftIcon,
+  rightIcon,
+  children,
+  disabled,
+  ref,
+  ...props
+}: ButtonProps) {
+  return (
     <button
       ref={ref}
       disabled={disabled || loading}
@@ -95,9 +95,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         <span className="shrink-0 [&>svg]:h-4 [&>svg]:w-4">{rightIcon}</span>
       )}
     </button>
-  ),
-);
-Button.displayName = 'Button';
+  );
+}
 
 export { Button };
 export type { ButtonProps, Variant as ButtonVariant, Size as ButtonSize };
