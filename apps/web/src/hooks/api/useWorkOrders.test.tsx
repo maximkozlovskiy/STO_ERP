@@ -15,7 +15,26 @@ vi.mock('@/lib/auth', () => ({
   useAuth: () => useAuthMock(),
 }));
 
-import { useWorkOrders, workOrdersKeys } from './useWorkOrders';
+import {
+  useWorkOrders,
+  useWorkOrderTransition,
+  useDeleteWorkOrder,
+  workOrdersKeys,
+  type WorkOrder,
+} from './useWorkOrders';
+import type { PaginatedResponse } from './usePaginatedList';
+
+function seedList(client: QueryClient, items: Partial<WorkOrder>[]) {
+  const filters = { page: 1, limit: 20 };
+  const data: PaginatedResponse<WorkOrder> = {
+    items: items as WorkOrder[],
+    total: items.length,
+    page: 1,
+    limit: 20,
+  };
+  client.setQueryData(workOrdersKeys.list(filters), data);
+  return filters;
+}
 
 function createWrapper() {
   const client = new QueryClient({
@@ -121,6 +140,80 @@ describe('useWorkOrders', () => {
       await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
       const url2 = apiFetchMock.mock.calls[0][0] as string;
       expect(url2).not.toContain('showDeleted');
+    });
+  });
+
+  describe('useWorkOrderTransition — оптимістичне оновлення', () => {
+    beforeEach(() => {
+      useAuthMock.mockReturnValue({ employee: { id: 'emp-1', role: 'OWNER' } });
+    });
+
+    it('onMutate патчить status рядка у кешованому списку ДО відповіді сервера', async () => {
+      const { client, wrapper } = createWrapper();
+      const filters = seedList(client, [
+        { id: 'wo-1', status: 'DRAFT' },
+        { id: 'wo-2', status: 'DRAFT' },
+      ]);
+      // Сервер відповідає з затримкою → перевіряємо оптимістичний стан у проміжку.
+      let resolveFetch: (v: unknown) => void = () => {};
+      apiFetchMock.mockReturnValue(new Promise(r => (resolveFetch = r)));
+
+      const { result } = renderHook(() => useWorkOrderTransition(), { wrapper });
+      result.current.mutate({ id: 'wo-1', status: 'IN_PROGRESS' });
+
+      await waitFor(() => {
+        const cached = client.getQueryData<PaginatedResponse<WorkOrder>>(
+          workOrdersKeys.list(filters),
+        );
+        expect(cached?.items.find(i => i.id === 'wo-1')?.status).toBe('IN_PROGRESS');
+      });
+      // wo-2 не зачеплено
+      const cached = client.getQueryData<PaginatedResponse<WorkOrder>>(
+        workOrdersKeys.list(filters),
+      );
+      expect(cached?.items.find(i => i.id === 'wo-2')?.status).toBe('DRAFT');
+      resolveFetch({});
+    });
+
+    it('onError відкочує оптимістичний патч (FSM-invalid перехід → 400)', async () => {
+      const { client, wrapper } = createWrapper();
+      const filters = seedList(client, [{ id: 'wo-1', status: 'DRAFT' }]);
+      apiFetchMock.mockRejectedValue(new Error('FSM: недозволений перехід'));
+
+      const { result } = renderHook(() => useWorkOrderTransition(), { wrapper });
+      result.current.mutate({ id: 'wo-1', status: 'PAID' });
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      const cached = client.getQueryData<PaginatedResponse<WorkOrder>>(
+        workOrdersKeys.list(filters),
+      );
+      expect(cached?.items.find(i => i.id === 'wo-1')?.status).toBe('DRAFT');
+    });
+  });
+
+  describe('useDeleteWorkOrder — оптимістичне приховування', () => {
+    beforeEach(() => {
+      useAuthMock.mockReturnValue({ employee: { id: 'emp-1', role: 'OWNER' } });
+    });
+
+    it('onMutate прибирає рядок зі списку і зменшує total; onError відкочує', async () => {
+      const { client, wrapper } = createWrapper();
+      const filters = seedList(client, [
+        { id: 'wo-1', status: 'DRAFT' },
+        { id: 'wo-2', status: 'DRAFT' },
+      ]);
+      apiFetchMock.mockRejectedValue(new Error('boom'));
+
+      const { result } = renderHook(() => useDeleteWorkOrder(), { wrapper });
+      result.current.mutate('wo-1');
+
+      // Спочатку зникає (оптимістично), потім повертається (rollback)
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      const cached = client.getQueryData<PaginatedResponse<WorkOrder>>(
+        workOrdersKeys.list(filters),
+      );
+      expect(cached?.items.map(i => i.id)).toEqual(['wo-1', 'wo-2']);
+      expect(cached?.total).toBe(2);
     });
   });
 

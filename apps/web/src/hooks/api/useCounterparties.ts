@@ -68,6 +68,6 @@ export function useDeleteCounterparty() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/counterparties/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: counterpartiesKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: counterpartiesKeys.lists() }),
   });
 }

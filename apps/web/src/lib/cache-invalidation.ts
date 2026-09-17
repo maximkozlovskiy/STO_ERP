@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type { PaginatedResponse } from '@/hooks/api/usePaginatedList';
 import { warrantiesKeys } from '@/hooks/api/useWarranties';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
 import { inventoryKeys } from '@/hooks/api/useInventory';
@@ -87,4 +88,37 @@ export function invalidatePurchaseSideEffects(qc: QueryClient): void {
   qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
+}
+
+/**
+ * Оптимістичний патч ОДНОГО рядка у ВСІХ закешованих paginated-списках під заданим
+ * key-factory (`lists()` → префікс `[all, 'list']`). Знаходить елемент за id у `items`
+ * кожного кешованого запиту й застосовує `patch`. Повертає restorer, що відновлює УСІ
+ * знімки — для `onError` rollback.
+ *
+ * Використання у оптимістичній мутації:
+ *   onMutate: async ({ id, status }) => {
+ *     await qc.cancelQueries({ queryKey: workOrdersKeys.lists() });
+ *     return patchListItem(qc, workOrdersKeys.lists(), id, o => ({ ...o, status }));
+ *   },
+ *   onError: (_e, _v, restore) => restore?.(),
+ *   onSettled: () => invalidateWorkOrderSideEffects(qc),
+ */
+export function patchListItem<T extends { id: string }>(
+  qc: QueryClient,
+  listsKey: readonly unknown[],
+  id: string,
+  patch: (item: T) => T,
+): () => void {
+  const snapshots = qc.getQueriesData<PaginatedResponse<T>>({ queryKey: listsKey });
+  for (const [key, data] of snapshots) {
+    if (!data?.items?.some(it => it.id === id)) continue;
+    qc.setQueryData<PaginatedResponse<T>>(key, {
+      ...data,
+      items: data.items.map(it => (it.id === id ? patch(it) : it)),
+    });
+  }
+  return () => {
+    for (const [key, data] of snapshots) qc.setQueryData(key, data);
+  };
 }

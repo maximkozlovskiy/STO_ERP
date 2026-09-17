@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { invalidateWorkOrderSideEffects, patchListItem } from '@/lib/cache-invalidation';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 export interface WorkOrder {
@@ -84,6 +85,13 @@ export function useWorkOrders(filters: WorkOrdersFilter = {}) {
   });
 }
 
+/**
+ * FSM-перехід наряду з ОПТИМІСТИЧНИМ оновленням: badge статусу у видимому списку
+ * змінюється миттєво (onMutate патчить кеш), rollback при помилці (наприклад
+ * FSM-invalid перехід повертає 400), а onSettled запускає повний cross-cache
+ * invalidateWorkOrderSideEffects (перехід рухає й склад, і баланс, і рахунки —
+ * рядок міг зникнути/з'явитись у фільтрованому списку).
+ */
 export function useWorkOrderTransition() {
   const qc = useQueryClient();
   return useMutation({
@@ -92,14 +100,41 @@ export function useWorkOrderTransition() {
         method: 'POST',
         body: JSON.stringify({ status }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workOrdersKeys.all }),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: workOrdersKeys.lists() });
+      return patchListItem<WorkOrder>(qc, workOrdersKeys.lists(), id, o => ({ ...o, status }));
+    },
+    onError: (_e, _v, restore) => (restore as (() => void) | undefined)?.(),
+    onSettled: () => invalidateWorkOrderSideEffects(qc),
   });
 }
 
+/**
+ * Soft-delete наряду з ОПТИМІСТИЧНИМ приховуванням рядка (одразу зникає зі списку),
+ * rollback при помилці, повна cross-cache інвалідація у onSettled.
+ */
 export function useDeleteWorkOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/work-orders/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: workOrdersKeys.all }),
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: workOrdersKeys.lists() });
+      const snapshots = qc.getQueriesData<PaginatedResponse<WorkOrder>>({
+        queryKey: workOrdersKeys.lists(),
+      });
+      for (const [key, data] of snapshots) {
+        if (!data?.items?.some(it => it.id === id)) continue;
+        qc.setQueryData<PaginatedResponse<WorkOrder>>(key, {
+          ...data,
+          items: data.items.filter(it => it.id !== id),
+          total: Math.max(0, data.total - 1),
+        });
+      }
+      return () => {
+        for (const [key, data] of snapshots) qc.setQueryData(key, data);
+      };
+    },
+    onError: (_e, _v, restore) => (restore as (() => void) | undefined)?.(),
+    onSettled: () => invalidateWorkOrderSideEffects(qc),
   });
 }

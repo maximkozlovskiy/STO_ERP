@@ -35,7 +35,8 @@ export interface PricingRule {
 
 export const pricingRulesKeys = {
   all: ['pricing-rules'] as const,
-  list: () => [...pricingRulesKeys.all, 'list'] as const,
+  lists: () => [...pricingRulesKeys.all, 'list'] as const,
+  list: () => [...pricingRulesKeys.lists()] as const,
 };
 
 export function usePricingRules() {
@@ -54,5 +55,5 @@ export function usePricingRules() {
 
 export function useInvalidatePricingRules() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: pricingRulesKeys.all });
+  return () => qc.invalidateQueries({ queryKey: pricingRulesKeys.lists() });
 }

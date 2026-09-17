@@ -64,5 +64,5 @@ export function useEmployees(filters: EmployeesFilter = {}) {
 
 export function useInvalidateEmployees() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: employeesKeys.all });
+  return () => qc.invalidateQueries({ queryKey: employeesKeys.lists() });
 }

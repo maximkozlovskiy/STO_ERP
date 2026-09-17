@@ -59,5 +59,5 @@ export function useWorks(filters: WorksFilter = {}) {
 
 export function useInvalidateWorks() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: worksKeys.all });
+  return () => qc.invalidateQueries({ queryKey: worksKeys.lists() });
 }

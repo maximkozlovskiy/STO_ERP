@@ -24,7 +24,8 @@ export const EXPENSE_CATEGORY_TYPE_LABELS: Record<ExpenseCategoryType, string> =
 
 export const expenseCategoriesKeys = {
   all: ['expense-categories'] as const,
-  list: (showDeleted: boolean) => [...expenseCategoriesKeys.all, 'list', showDeleted] as const,
+  lists: () => [...expenseCategoriesKeys.all, 'list'] as const,
+  list: (showDeleted: boolean) => [...expenseCategoriesKeys.lists(), showDeleted] as const,
 };
 
 // `enabled` дозволяє гейтити запит за роллю: GET /expense-categories вимагає ACCOUNTANT+ (backend
@@ -71,7 +72,7 @@ export function useCreateExpenseCategory() {
         method: 'POST',
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.lists() }),
   });
 }
 
@@ -83,7 +84,7 @@ export function useUpdateExpenseCategory() {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.lists() }),
   });
 }
 
@@ -95,7 +96,7 @@ export function useToggleExpenseCategoryActive() {
         method: 'PATCH',
         body: JSON.stringify({ isActive }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.lists() }),
   });
 }
 
@@ -103,7 +104,7 @@ export function useDeleteExpenseCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch<void>(`/expense-categories/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.lists() }),
   });
 }
 
@@ -112,6 +113,6 @@ export function useRestoreExpenseCategory() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<ExpenseCategory>(`/expense-categories/${id}/restore`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.all }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: expenseCategoriesKeys.lists() }),
   });
 }

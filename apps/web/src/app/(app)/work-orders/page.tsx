@@ -25,7 +25,12 @@ import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
-import { useWorkOrders, workOrdersKeys, WorkOrder } from '@/hooks/api/useWorkOrders';
+import {
+  useWorkOrders,
+  useDeleteWorkOrder,
+  workOrdersKeys,
+  WorkOrder,
+} from '@/hooks/api/useWorkOrders';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
@@ -277,6 +282,7 @@ function WorkOrdersPageInner() {
   // effect fires on every render. Use module-level frozen EMPTY_ITEMS instead.
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as WorkOrder[]);
   const total = queryData?.total ?? 0;
+  const deleteWorkOrder = useDeleteWorkOrder();
   const { data: baseCurrency } = useBaseCurrency();
   const baseCode = baseCurrency?.code ?? 'UAH';
   const baseSymbol = baseCurrency?.symbol ?? '₴';
@@ -494,9 +500,10 @@ function WorkOrdersPageInner() {
     )
       return;
     try {
-      await apiFetch(`/work-orders/${wo.id}`, { method: 'DELETE' });
+      // Оптимістично: рядок зникає зі списку миттєво (onMutate), rollback при помилці,
+      // повна cross-cache інвалідація у onSettled (delete рухає й склад/баланс).
+      await deleteWorkOrder.mutateAsync(wo.id);
       if (selectedWO?.id === wo.id) setSelectedWO(null);
-      queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
       toast.success('Наряд позначено на видалення');
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка видалення');
