@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalDateString, numericString } from '../validators';
+import { optionalString, optionalUuid, optionalDateString, moneyString } from '../validators';
 
 /**
  * Спільна zod-схема повернення постачальнику (SupplierReturn) — ЄДИНЕ джерело правди web ↔ api.
@@ -13,8 +13,9 @@ import { optionalString, optionalUuid, optionalDateString, numericString } from 
 // Рядок повернення: goodId(uuid) + quantity(≥0.001) + price(≥0, обовʼязкова) + unitOfMeasureId?.
 export const supplierReturnLineSchema = z.object({
   goodId: z.string().uuid('Оберіть товар'),
-  quantity: numericString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
-  price: numericString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
+  // moneyString (UA-кома backstop) замість numericString — захищає програмні/Excel-значення '1,5'.
+  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
+  price: moneyString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
   unitOfMeasureId: optionalUuid(),
 });
 export type SupplierReturnLineInput = z.input<typeof supplierReturnLineSchema>;

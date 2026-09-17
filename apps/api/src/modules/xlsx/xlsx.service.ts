@@ -1310,7 +1310,19 @@ export class XlsxService {
 
   private parseNumber(value: unknown): number | undefined {
     if (value === undefined || value === null || value === '') return undefined;
-    const num = Number(value);
+    // UA-локаль: у Excel-комірках кількість/ціна часто з КОМОЮ як десятковим роздільником ("1,5").
+    // Number('1,5')=NaN → раніше ціну відкидало ("Ціна обов'язкова") / кількість → undefined.
+    // ExcelJS числову комірку віддає як number (тут не-рядок → пряма коерція), текстову — як string.
+    // Для рядка: прибираємо пробіли-роздільники тисяч, кому → крапку. Крапку-як-роздільник теж лишаємо.
+    let normalized: unknown = value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim().replace(/\s+/g, '');
+      // Лише кома як десятковий ("1,5"→"1.5"); якщо є і крапка, і кома — вважаємо кому тисячним
+      // роздільником не тут (Excel такого рядком зазвичай не дає) — консервативно: остання кома → крапка.
+      normalized =
+        trimmed.includes(',') && !trimmed.includes('.') ? trimmed.replace(',', '.') : trimmed;
+    }
+    const num = Number(normalized);
     return Number.isFinite(num) ? num : undefined;
   }
 }

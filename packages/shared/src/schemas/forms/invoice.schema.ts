@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optionalString, optionalUuid, optionalDateString, numericString } from '../validators';
+import { optionalString, optionalUuid, optionalDateString, moneyString } from '../validators';
 
 /**
  * Спільні zod-схеми рахунку (Invoice) — ЄДИНЕ джерело правди web ↔ api.
@@ -21,8 +21,9 @@ export type InvoiceTypeValue = (typeof INVOICE_TYPE_VALUES)[number];
 // ─── Рядок рахунку (POST/PATCH /invoices/:id/lines) ──────────────────────────
 const invoiceLineShape = {
   description: z.string().trim().min(1, 'Вкажіть опис позиції').max(500, 'Опис занадто довгий'),
-  quantity: numericString().pipe(z.number().min(0.001, 'Кількість має бути більше нуля')),
-  unitPrice: numericString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
+  // moneyString (UA-кома-aware): endpoint отримує numeric JSON (проходить), backstop для '1,5'.
+  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість має бути більше нуля')),
+  unitPrice: moneyString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
   vatRate: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : Number(v)),
     z.number().min(0, "ПДВ не може бути від'ємним").max(100, 'ПДВ не більше 100%').optional(),
@@ -47,7 +48,7 @@ export const invoiceHeaderSchema = z.object({
   counterpartyId: z.string().uuid('Оберіть контрагента'),
   workOrderId: optionalUuid(),
   // amount обчислює фронт (сума рядків); бек-мінімум 0.01 (дзеркалить @Min(0.01)).
-  amount: numericString().pipe(z.number().min(0.01, 'Сума має бути більше 0.01')),
+  amount: moneyString().pipe(z.number().min(0.01, 'Сума має бути більше 0.01')),
   invoiceType: z.preprocess(
     v => (v === '' || v === null ? undefined : v),
     z.enum(INVOICE_TYPE_VALUES).optional(),
@@ -70,8 +71,10 @@ export const invoiceFormLineSchema = z.object({
   _key: z.string().optional(),
   id: z.string().optional(),
   description: z.string().trim().min(1, 'Вкажіть опис позиції').max(500),
-  quantity: numericString().pipe(z.number().min(0.001, 'Кількість має бути більше нуля')),
-  unitPrice: numericString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
+  // moneyString (не numericString): UA-кома-aware backstop — інпут вільний рядок; хоча зараз
+  // type=number блокує кому в браузері, це захищає програмні/Excel-значення (Number('1,5')=NaN інакше).
+  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість має бути більше нуля')),
+  unitPrice: moneyString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
 });
 
 export const invoiceFormSchema = z.object({

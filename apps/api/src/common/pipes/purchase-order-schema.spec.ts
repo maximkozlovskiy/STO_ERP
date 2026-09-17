@@ -25,6 +25,20 @@ describe('purchaseOrderFormSchema (спільна, web ↔ api)', () => {
     }
   });
 
+  it('UA-кома у quantity/price/pricedSalePrice: "1,5" → 1.5 (moneyString backstop, не NaN/усічення)', () => {
+    const r = purchaseOrderFormSchema.safeParse({
+      supplierId: SUP,
+      warehouseId: WH,
+      lines: [{ goodId: GOOD, quantity: '1,5', price: '10,25', pricedSalePrice: '20,5' }],
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.lines[0].quantity).toBe(1.5); // не 1 (parseFloat-усічення) і не NaN (Number)
+      expect(r.data.lines[0].price).toBe(10.25);
+      expect(r.data.lines[0].pricedSalePrice).toBe(20.5);
+    }
+  });
+
   it('supplierId не UUID → помилка «Оберіть постачальника»', () => {
     const r = purchaseOrderFormSchema.safeParse({
       supplierId: 'x',

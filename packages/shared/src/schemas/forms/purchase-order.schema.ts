@@ -3,8 +3,8 @@ import {
   optionalString,
   optionalUuid,
   optionalDateString,
-  optionalNonNegNumber,
-  numericString,
+  moneyString,
+  optionalMoneyNumber,
 } from '../validators';
 
 /**
@@ -23,9 +23,11 @@ import {
 // Рядок ордера: goodId(uuid) + quantity(≥0.001) + price(≥0, обовʼязкова) + pricedSalePrice?(≥0).
 export const purchaseOrderLineSchema = z.object({
   goodId: z.string().uuid('Оберіть товар'),
-  quantity: numericString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
-  price: numericString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
-  pricedSalePrice: optionalNonNegNumber(),
+  // moneyString/optionalMoneyNumber (UA-кома backstop) замість numericString/optionalNonNegNumber —
+  // захищає програмні/Excel-значення '1,5' (Number('1,5')=NaN інакше). Numeric JSON з фронта проходить.
+  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
+  price: moneyString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
+  pricedSalePrice: optionalMoneyNumber(),
 });
 export type PurchaseOrderLineInput = z.input<typeof purchaseOrderLineSchema>;
 export type PurchaseOrderLineValues = z.infer<typeof purchaseOrderLineSchema>;

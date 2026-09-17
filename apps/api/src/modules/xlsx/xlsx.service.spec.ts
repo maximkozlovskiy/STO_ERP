@@ -512,4 +512,31 @@ describe('XlsxService', () => {
       );
     });
   });
+
+  // UA-кома у Excel-комірках: користувачі вводять кількість/ціну з комою ("1,5"). ExcelJS текстову
+  // комірку віддає рядком → раніше Number('1,5')=NaN → ціну відкидало / кількість → undefined.
+  describe('parseNumber — UA-кома backstop', () => {
+    const pn = (v: unknown) =>
+      (service as unknown as { parseNumber(v: unknown): number | undefined }).parseNumber(v);
+
+    it('рядок з комою "1,5" → 1.5 (не NaN, не усічення до 1)', () => {
+      expect(pn('1,5')).toBe(1.5);
+      expect(pn('10,25')).toBe(10.25);
+    });
+    it('число (числова комірка ExcelJS) проходить без змін', () => {
+      expect(pn(1.5)).toBe(1.5);
+      expect(pn(0)).toBe(0);
+    });
+    it('крапка-роздільник "1.5" лишається валідним', () => {
+      expect(pn('1.5')).toBe(1.5);
+    });
+    it('пробіли-роздільники тисяч прибираються', () => {
+      expect(pn('1 000,5')).toBe(1000.5);
+    });
+    it('порожнє/невалідне → undefined', () => {
+      expect(pn('')).toBeUndefined();
+      expect(pn(null)).toBeUndefined();
+      expect(pn('abc')).toBeUndefined();
+    });
+  });
 });
