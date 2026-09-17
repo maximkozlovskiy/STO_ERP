@@ -189,6 +189,25 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     expect(missing, "Втрачено CHECK-констрейнти — можливі від'ємні залишки").toEqual([]);
   });
 
+  it('append-only immutability тригери живі (ledger — фізична незмінність)', async () => {
+    if (!dbAvailable) return;
+    const rows = await raw.$queryRawUnsafe<{ tgname: string }[]>(
+      `SELECT tgname FROM pg_trigger
+        WHERE tgname IN ('trg_settlement_transactions_immutable', 'trg_stock_movements_immutable')
+          AND NOT tgisinternal`,
+    );
+    const present = new Set(rows.map(r => r.tgname));
+    const missing = [
+      'trg_settlement_transactions_immutable',
+      'trg_stock_movements_immutable',
+    ].filter(t => !present.has(t));
+    expect(
+      missing,
+      'Втрачено append-only тригери — ledger (settlement/stock movements) знову змінний лише за ' +
+        'конвенцією (ймовірно db push/rebuild зі схеми скинув manual-SQL тригери)',
+    ).toEqual([]);
+  });
+
   it('розширення pg_trgm і btree_gist встановлені', async () => {
     if (!dbAvailable) return;
     const rows = await raw.$queryRawUnsafe<{ extname: string }[]>(
