@@ -286,7 +286,7 @@ describe('AuthService', () => {
     it('очищає refresh cookie', () => {
       service.logout(mockRes);
       expect(mockRes.clearCookie).toHaveBeenCalledWith('sto_refresh', {
-        path: '/api/auth',
+        path: '/api/v1/auth',
       });
     });
   });
@@ -298,7 +298,7 @@ describe('AuthService', () => {
         where: { employeeId: 'emp-1', orgId: 'org-1', deletedAt: null },
         data: { tokenVersion: { increment: 1 } },
       });
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('sto_refresh', { path: '/api/auth' });
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('sto_refresh', { path: '/api/v1/auth' });
     });
   });
 });

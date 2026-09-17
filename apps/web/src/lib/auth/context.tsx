@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshToken = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch(`${API_URL}/api/auth/refresh`, {
+      const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -164,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (stored) {
       // E2E escape hatch. globalSetup cannot capture sto_refresh
-      // cookie because it's path-scoped to /api/auth on a different port (3000 vs 3001
+      // cookie because it's path-scoped to /api/v1/auth on a different port (3000 vs 3001
       // baseURL) and sameSite=strict — Playwright storageState skips it. Without this
       // flag every E2E test triggers refresh-on-mount → 401 → silent LOGOUT → /login
       // redirect, even though the access token cached in sessionStorage is still valid.
@@ -204,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<void> => {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
+    const res = await fetch(`${API_URL}/api/v1/auth/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -231,7 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async (): Promise<void> => {
     try {
-      await fetch(`${API_URL}/api/auth/logout`, {
+      await fetch(`${API_URL}/api/v1/auth/logout`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -251,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutAll = useCallback(async (): Promise<void> => {
     try {
       // B1: bump tokenVersion на бекенді → усі раніше видані токени (усіх пристроїв) мертві.
-      await fetch(`${API_URL}/api/auth/logout-all`, {
+      await fetch(`${API_URL}/api/v1/auth/logout-all`, {
         method: 'POST',
         credentials: 'include',
         headers: {

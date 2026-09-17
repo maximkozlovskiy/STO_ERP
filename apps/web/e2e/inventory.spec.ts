@@ -39,7 +39,7 @@ test.describe('Інвентар — API mock states', () => {
 
   test('empty state при порожньому складі (mock)', async ({ page }) => {
     // Mock — і auth/refresh, і stock-items
-    await page.route('**/api/auth/refresh', route =>
+    await page.route('**/api/v1/auth/refresh', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -75,7 +75,7 @@ test.describe('Інвентар — API mock states', () => {
   });
 
   test('low-stock badge при API mock з minStock > quantity', async ({ page }) => {
-    await page.route('**/api/auth/refresh', route =>
+    await page.route('**/api/v1/auth/refresh', route =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

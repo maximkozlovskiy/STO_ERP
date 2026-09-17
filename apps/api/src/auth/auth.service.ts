@@ -162,7 +162,7 @@ export class AuthService {
   }
 
   logout(res: FastifyReply): void {
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
   }
 
   /**
@@ -175,7 +175,7 @@ export class AuthService {
       where: { employeeId, orgId, deletedAt: null },
       data: { tokenVersion: { increment: 1 } },
     });
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
   }
 
   async getMe(orgId: string, employeeId: string) {
@@ -238,7 +238,7 @@ export class AuthService {
       httpOnly: true,
       secure: this.config.get<string>('NODE_ENV') === 'production',
       sameSite: 'strict',
-      path: '/api/auth',
+      path: '/api/v1/auth',
       maxAge: REFRESH_COOKIE_MAX_AGE_MS,
     });
   }

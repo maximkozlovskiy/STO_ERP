@@ -50,8 +50,8 @@ test.describe('API error resilience — захищені сторінки', () =
 test.describe('API error resilience — публічні сторінки', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('/login — рендериться навіть при 500 на /api/auth/refresh', async ({ page }) => {
-    await page.route('**/api/auth/**', route =>
+  test('/login — рендериться навіть при 500 на /api/v1/auth/refresh', async ({ page }) => {
+    await page.route('**/api/v1/auth/**', route =>
       route.fulfill({
         status: 500,
         contentType: 'application/json',
