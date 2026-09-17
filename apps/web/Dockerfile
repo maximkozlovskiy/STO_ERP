@@ -20,8 +20,11 @@ ENV NODE_ENV=production
 RUN pnpm --filter @sto/web build
 
 # Static export lives in apps/web/out/
-FROM nginx:alpine AS runner
+# Security hardening (аудит Дані/Інфра): nginx-unprivileged — non-root (uid 101), слухає :8080
+# (root nginx:alpine біндив би :80 як root). Порт-мапінг host не змінюється: назовні світить лише
+# Caddy, який тепер проксить web:8080 (Caddyfile) — усе внутрішнє. daemon off + non-root вбудовані у образ.
+FROM nginxinc/nginx-unprivileged:alpine AS runner
 COPY --from=builder /app/apps/web/out /usr/share/nginx/html
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

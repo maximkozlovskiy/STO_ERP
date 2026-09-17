@@ -121,9 +121,9 @@ services:
     cpus: 0.5
     depends_on:
       api: { condition: service_healthy }
-    # T16: nginx:alpine віддає статику на :80; busybox wget присутній у образі.
+    # nginx-unprivileged (non-root, аудит Дані/Інфра) віддає статику на :8080; busybox wget у образі.
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:80/']
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:8080/']
       interval: 30s
       timeout: 5s
       retries: 3

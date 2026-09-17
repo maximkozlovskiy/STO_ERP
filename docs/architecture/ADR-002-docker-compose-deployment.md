@@ -171,7 +171,7 @@ volumes:
 sto.local {
   tls internal
   reverse_proxy /api/* api:3000
-  reverse_proxy /* web:80
+  reverse_proxy /* web:8080
 }
 ```
 

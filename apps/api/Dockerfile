@@ -43,5 +43,12 @@ COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
 RUN pnpm --filter @sto/database exec prisma generate
 RUN pnpm prune --prod
 
+# Security hardening (аудит Дані/Інфра): не працювати від root. `node`-user (uid 1000) уже є в
+# node:20-alpine. chown /app ПІСЛЯ install/generate/prune (усі потребують root-запису у node_modules),
+# щоб рантайм-процес і `docker compose exec/run api npx prisma migrate deploy` (installer First-Run/Update)
+# писали від node. $HOME=/home/node писабельний → prisma engine temp/cache без проблем.
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000
 CMD ["node", "apps/api/dist/main.js"]

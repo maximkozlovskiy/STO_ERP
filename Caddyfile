@@ -4,9 +4,9 @@
         reverse_proxy api:3000
     }
 
-    # Web static
+    # Web static — nginx-unprivileged (non-root) слухає :8080, не :80 (аудит Дані/Інфра).
     handle {
-        reverse_proxy web:80
+        reverse_proxy web:8080
     }
 
     # E1: security headers для SPA (головна CSP — тут, не в API: XSS-поверхня це браузерний web-app).
