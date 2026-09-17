@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-17 — Аудит FRONT: оптимістика + гранулярна інвалідація
+
+### perf(web) 8ddaf309 — оптимістичні WO-мутації + гранулярна інвалідація списків
+
+- `patchListItem()` (cache-invalidation.ts): патчить один рядок у ВСІХ закешованих
+  paginated-списках під `lists()`-префіксом, повертає rollback-restorer (true snapshot-restore).
+- `useWorkOrderTransition` (був мертвий код): onMutate миттєвий status-patch + onError rollback
+  (FSM-invalid → 400) + onSettled `invalidateWorkOrderSideEffects`. Доступний для single-transition UI.
+- `useDeleteWorkOrder` (був мертвий код): onMutate прибирає рядок + `total--`, rollback; тепер
+  консюмиться `work-orders/page.tsx markDeleted` (mutateAsync). WO detail transition вже мав
+  оптимістику (imperative useState) — без змін.
+- Гранулярна `.all → .lists()`: useCounterparties(delete), useEmployees, useExpenseCategories(×5),
+  usePricingRules, useWorks. expense/pricing отримали `lists()`; `list()` деривується (ключ ідентичний).
+  Cross-domain side-effect-helpers свідомо не чіпано (.all там коректний — перехід/платіж рухає сусідні домени).
+- Аудит-нотатка: code-splitting уже готовий (13 файлів `next/dynamic`; recharts/CommandPalette/dnd-kit
+  усі lazy) — новий код не потрібен. React 19 ref-as-prop раніше (05065d5b).
+- QA: review 0 / tester 0. +3 оптимістичні тести → useWorkOrders 15/15, lib 163/163, web tsc 0.
+
 ## 2026-09-17 — Аудит Дані/Інфра + follow-up (фічі)
 
 ### feat(docker) 136f5d55 — non-root контейнери api + web
