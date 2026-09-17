@@ -10,12 +10,14 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит стеку — BACKEND розділ. Backend #1 (env-валідація) + #2 (централізований DLQ) +
-            #3 (URI-версіонування /api/v1) ЗАВЕРШЕНО (усі три QA-цикли пройдено, #3 через sto-sync-agent).
-            Далі: опційні (typedSql, NestJS11) або FRONTEND розділ аудиту.
+Фаза:       Аудит стеку — FRONT (#1 zod+RHF, 6 модалок) + BACKEND (#1 env, #2 DLQ, #3 /api/v1) + ДАНІ/ІНФРА
+            (non-root Docker, immutability-тригери) ЗАВЕРШЕНО. Follow-up: UA-кома фікс (Excel+form-схеми),
+            DLQ retention v1.1 (resolved-only purge), zero-downtime index runbook — ЗРОБЛЕНО. Далі: RLS
+            (розглянути) / опційні (typedSql, NestJS11, prismaSchemaFolder, node22) — за запитом.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2521/2521 (165 файлів) · append-only+schema-integrity 13 (behavioral+existence) · DLQ 22 · env.schema 20.
-HEAD:       31c5ec2 fix(review): append-only тригер stock_movements — порівняння цілого рядка (to_jsonb)
+Тести:      api 2539/2539 (167 файлів) · DLQ 28 (service/worker-host/integration/purge) · append-only 13 ·
+            env.schema 20 · xlsx parseNumber-кома 5. web-модалки зелені.
+HEAD:       73c57a0f docs(xlsx): parseNumber mixed-separator коментар (review nit)
 Review:     2026-09-17 (auto, аудит Дані/Інфра — append-only ledger тригери, коміт 7ac27c41) — 1 IMPORTANT
             (ledger integrity). stock_movements-тригер дозволяв «batchId серед іншого»: перелік IS NOT
             DISTINCT НЕ покривав price/notes/createdBy/unitOfMeasureId → ledger-money-поле price мутабельне

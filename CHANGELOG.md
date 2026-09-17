@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-09-17 — Аудит Дані/Інфра + follow-up (фічі)
+
+### feat(docker) 136f5d55 — non-root контейнери api + web
+
+API runner `USER node` + chown; web → `nginxinc/nginx-unprivileged:alpine` (:8080), з узгодженням
+портів (Dockerfile/nginx.conf/compose-healthcheck/Caddyfile/ADR-002). Host-порти незмінні (edge = Caddy).
+Review CRITICAL: `prisma` CLI був devDep → `pnpm prune --prod` стрипав → offline `migrate deploy` фейлив;
+fix → prod-dependency (f59fe5b9). Build валідується CI release.yml.
+
+### feat(db) 7ac27c41 — append-only immutability тригери (ledger)
+
+2 plpgsql BEFORE-тригери: `settlement_transactions` (повна заборона UPDATE+DELETE), `stock_movements`
+(DELETE-заборона + UPDATE лише одноразовий `batchId` NULL→value для createMovement). Payment виключено
+(fiscalStatus мутується ПРРО). Manual-SQL → захищений schema-integrity.spec. Review IMPORTANT (31c5ec23):
+хардкод-перелік колонок був неповний (price/notes/createdBy) → whole-row `to_jsonb(NEW)-'batchId'`.
+Live-verified + tester 0 регресій (2 behavioral specs).
+
+### feat(config) BACKEND #1 · feat(queue) #2 DLQ · feat(api) #3 /api/v1
+
+(Повні записи backend #1/#2/#3 нижче у своїх секціях.)
+
+### fix(forms+xlsx) 0aada6d2 — UA-кома у числових полях
+
+Реальний баг: `xlsx.service.parseNumber` робив `Number('1,5')=NaN` → Excel-комірка з UA-комою відкидала
+ціну/кількість. Fix: comma-aware parseNumber (+5 unit-тестів). Backstop: 4 form-схеми (invoice/stock-
+document/supplier-return/purchase-order) numericString/optionalNonNegNumber → moneyString/optionalMoneyNumber
+(type=number інпути кому не дають, але захист для програмних/Excel/майбутніх type=text).
+
+### feat(queue) — DLQ retention purge v1.1
+
+Щоденний job (04:00 Kyiv) видаляє РОЗВ'ЯЗАНІ (resolved=true) DeadLetterJob старші за retention
+(OrganisationSettings.deadLetterRetentionDays, clamp [7,730] fallback 180 + міграція). Нерозв'язані
+(money/legal фіскальні провали) НІКОЛИ не авто-видаляються. Per-org (runWithTenant + settings) + окремий
+global null-org job (runUnscoped, DEFAULT 180) для org-agnostic провалів. Дзеркалить integration-log-purge.
+
+### docs(runbook) 363ece41 — zero-downtime міграції/індекси
+
+Формалізовано з інлайн-коментаря однієї міграції у `docs/RUNBOOK-migrations.md`: additive/idempotent потік,
+важкий CREATE INDEX (вікно обслуговування / ручний CONCURRENTLY + `migrate resolve --applied`), заборонені
+операції на проді (db push/reset/edit-applied).
+
+---
+
 ## 2026-09-17 — Code review: аудит Дані/Інфра (append-only ledger тригери)
 
 Рев'ю коміту 7ac27c41 (2 plpgsql BEFORE ROW тригери незмінності ledger). Класифікація таблиць коректна
