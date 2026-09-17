@@ -10,11 +10,11 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит стеку — BACKEND розділ (front-розділ #1 zod+RHF завершено — усі 6 форм-модалок).
-            Backend #1 (fail-fast env-валідація zod) ЗАВЕРШЕНО, QA review→tester пройдено. Далі: DLQ / API-версіонування.
+Фаза:       Аудит стеку — BACKEND розділ. Backend #2 (централізований DLQ для BullMQ) реалізовано +
+            review пройдено. Backend #1 (env-валідація) ЗАВЕРШЕНО. Далі: API-версіонування / tester DLQ.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2499/2499 (162 файли) · web 343/343 · env.schema.spec 20/20 · work-order-schema 17/17.
-HEAD:       4795a13a docs(skills): env-validation bug patterns → sto-tester (Bug #757/#758)
+Тести:      api 2510+ (DLQ 20/20: service 13, integration 2, worker-host 3, static 2; touched processors 62).
+HEAD:       9a0114c1 fix(review): DLQ payload secret-redaction + orgId-scoped resolve (аудит backend #2)
 Tester:     2026-09-17 (auto, аудит backend #1 env-валідація) — 2 MEDIUM виправлено: (#757) dev-UX —
             NOTIFICATION_ENC_KEY.min(32) always-on строгіший за споживача (EncryptionService SHA-256
             приймає будь-яку довжину) → короткий dev-ключ валив старт; fix: min32 лише prod-gated.
@@ -23,6 +23,15 @@ Tester:     2026-09-17 (auto, аудит backend #1 env-валідація) — 
             (нищить installer-діагностику); fix: checkProdStrict() незалежно по сирому config, issues
             злиті вручну. Решта чисто (dev-деплой .env.dev проходить, prod-strict повнота, coerce.number
             наслідки). +5 регрес-тестів (20 env). api-suite 2499/2499.
+Review:     2026-09-17 (auto, аудит backend #2 DLQ, коміт 9a0114c1) — 1 HIGH + 1 IMPORTANT + 1 SUGGESTION.
+            HIGH: webhooks-черга носить `secret: ep.secret` у job.data → DeadLetterService.capture
+            персистив увесь job.data у dead_letter_jobs.payload plaintext (secrets-at-rest). Fix:
+            рекурсивний key-based sanitizePayload() (secret/token/apiKey/password/... → [REDACTED])
+            перед записом + регрес-тест. IMPORTANT: resolve() findFirst({id,orgId})→update({where:{id}})
+            без orgId (модель TENANT_EXEMPT, guard не страхує) → updateMany({where:{id,orgId}})+404.
+            SUGGESTION: dead_letter_jobs → sync-exclusion коментар. Аудит 11 інших черг — секретів
+            у job.data немає. 12/12 процесорів консистентні, міграція additive/idempotent, типи↔Prisma.
+            +2 нові патерни у sto-review (§2.5 DLQ-writer secret-persist HIGH; §2.2 exempt-model resolve).
 Review:     2026-09-17 (auto, аудит backend #1, коміт 7bdf2ae7) — 1 Important: MINIO_PORT — hard-dep
             (files.service getOrThrow у конструкторі), був відсутній у prod-strict → додано requireInProd.
 Review:     2026-09-17 (auto, аудит backend #1, коміт 7bdf2ae7) — env.schema.ts fail-fast env-валідація

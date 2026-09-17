@@ -226,6 +226,7 @@ grep -rnE "await this\.[a-zA-Z]+[Qq]ueue\.add\(" apps/api/src/modules --include=
 
 - [ ] Кожен `.add()` → `attempts ≥ 10`, `backoff: { type: 'exponential' }`
 - [ ] **`.add()` де `job.data` містить секрет (apiKey/token/creds/пароль) → `removeOnFail: N`** (bounded; інакше невдалі jobs осідають у Redis назавжди → секрет живе безстроково + ріст памʼяті). Grep: `grep -rn "\.add(" apps/api/src --include="*.ts" -A8 | grep -iE "apiKey|token|secret|creds|password"` → перевірити `removeOnFail`
+- [ ] **Централізований writer job.data → durable-БД (DLQ/audit-таблиця/IntegrationLog) МУСИТЬ редагувати sensitive-ключі перед persist (secrets-at-rest).** Конвенція «секрети не у job.data» НЕ гарантована по ВСІХ чергах: webhooks-черга носить `secret: ep.secret` (підписний ключ) у payload. Якщо будь-який компонент пише `job.data` цілком у постійне сховище (`DeadLetterService.capture` → `payload JSONB`), секрет осяде plaintext назавжди. Fix: рекурсивний **key-based** редактор перед записом (`sanitizePayload`: case-insensitive `/secret|token|password|api[-_]?key|credential|authorization|private[-_]?key|pin[-_]?code|signature/` → `[REDACTED]`; не мутує вхід; обмежений глибиною проти циклів). Відрізняється від `redactSecrets` (value-based, коли значення секрету у скоупі) — тут writer НЕ має значень, тож редагуємо за ІМЕНЕМ ключа. Grep: `grep -rnE "payload:\s*\(?job\.data|payload:\s*job\.data|\.\.\.job\.data" apps/api/src --include="*.ts" | grep -v spec` → кожен persist job.data у БД без sanitize = HIGH. Severity: HIGH
 - [ ] **One-off/manual `.add()` (enqueueImmediate/«зробити зараз») у scheduler з repeatable-сіблінгами → `jobId` (дедуп спаму) + `removeOnFail: N`, як repeatable-сіблінги у ТОМУ Ж файлі.** Без `removeOnFail` manual-jobs ростуть у Redis; без `jobId` спам кнопки = дублі. `jobId` ОКРЕМИЙ від repeatable (`<x>-now-<org>`, не `<x>-<org>`). Grep: `grep -rn "\.add(" apps/api/src/modules/**/*.scheduler.ts -A8`. Severity: IMPORTANT
 - [ ] ПРРО: `attempts: 288`, `backoff: { delay: 300_000 }` (24 год)
 - [ ] SMS: `attempts: 10`, `backoff: { delay: 60_000 }`
@@ -915,6 +916,19 @@ Latest review: YYYY-MM-DD (<режим>, HEAD <hash>) — <підсумок>
 **Grep:** `grep -rn "<hookName>(" apps/web/src/app` — звірити arity кожного виклику.
 **Фікс:** оновити всі call-sites в одному коміті (типово передати existing destructured value з scope).
 **Severity:** IMPORTANT — runtime undefined → crash; TS ловить, але кеш приховує.
+
+### 2026-09-17 — DLQ/audit-writer персистить job.data з секретом у БД plaintext — §2.5
+
+**Сигнал:** централізований writer (`DeadLetterService.capture`) пише `payload: job.data` цілком у durable-таблицю (`dead_letter_jobs.payload JSONB`). Конвенція «секрети не у job.data» НЕ по всіх чергах: webhooks-черга носить `secret: ep.secret` (підписний ключ) → секрет осідає at-rest назавжди.
+**Grep:** `grep -rnE "payload:\s*\(?job\.data|\.\.\.job\.data" apps/api/src --include="*.ts" | grep -v spec` → кожен persist job.data у БД без sanitize.
+**Фікс:** рекурсивний key-based `sanitizePayload()` перед записом (case-insensitive `secret|token|password|api[-_]?key|credential|authorization|private[-_]?key|pin[-_]?code|signature` → `[REDACTED]`; не мутує вхід; глибина-cap проти циклів). Відмінність від value-based `redactSecrets` — writer не має значень секретів, тож редагуємо за ІМЕНЕМ ключа.
+**Severity:** HIGH — secrets-at-rest (підписний ключ вебхука у БД відкритим текстом).
+
+### 2026-09-17 — TENANT_EXEMPT-модель: findFirst({id,orgId})→update({where:{id}}) без orgId — §2.2
+
+**Сигнал:** DLQ `resolve()` робив orgId-гейт через `findFirst({id,orgId})`, потім `update({where:{id}})` БЕЗ orgId. Модель TENANT_EXEMPT → guard не додає scope автоматично (тому в ALLOWLIST) → race-вікно на крос-tenant запис між check і write.
+**Фікс:** `updateMany({ where: { id, orgId } })` + `count===0 → 404` — orgId у самому write-where. Дзеркалить документований patch-стандарт (запис 2026-05-30).
+**Severity:** IMPORTANT — defence-in-depth gap для exempt-моделей (guard їх НЕ страхує).
 
 ### 2026-05-30 — Buffer.buffer as ArrayBuffer ігнорує byteOffset/byteLength → читання з пулу — §2.3/§1
 
