@@ -1030,6 +1030,43 @@ cat prisma/migrations/*/migration.sql
 pnpm prisma migrate deploy
 ```
 
+## Append-only immutability тригери (ledger)
+
+Фінансовий/складський ledger (`settlement_transactions`, `stock_movements`) = append-only. Незмінність
+трималась лише конвенцією коду + guard-тестом → фізично закріплена BEFORE ROW plpgsql-тригерами
+(migration `20260917120000_append_only_immutability_triggers`). Це manual-SQL конструкт (не у
+schema.prisma) → ОБОВʼЯЗКОВО покрити existence-check у `schema-integrity.integration.spec.ts` (SELECT з
+`pg_trigger` WHERE `NOT tgisinternal`) + behavioral-spec (`append-only-triggers.integration.spec.ts`).
+
+**Класифікація append-only (тригер = повна заборона UPDATE+DELETE):** модель без
+`updatedAt`/`deletedAt`/`syncVersion` і БЕЗ мутацій у коді (`settlement_transactions`). НЕ вішати тригер
+на моделі з полями що легітимно мутуються: `Payment` (`fiscalStatus`/`fiscalError`/`fiscalReceiptId`/
+`syncVersion` оновлює ПРРО-процесор), `StockBatch` (`remainingQty`/`updatedAt`/`syncVersion`).
+
+**Частковий виняток (`stock_movements`):** рядок отримує ОДИН пост-insert `UPDATE "batchId"` (NULL→value)
+у тій самій `createMovement`-tx (рух вставляється першим — його id вхід для consumeBatch). Тригер: DELETE
+завжди заборонено; UPDATE дозволено ЛИШЕ якщо змінився виключно `batchId`.
+
+❌ **Перелік колонок через `IS NOT DISTINCT` — крихкий:** пропущена/нова колонка (`price`, `notes`,
+`createdBy`, `unitOfMeasureId`) проскочить разом з batchId → мутація ledger-money-поля `price`.
+
+✅ **Порівнюй ЦІЛИЙ рядок з зануленим полем-винятком** (core PG, без extension, авто-покриває нові колонки):
+
+```sql
+IF (OLD."batchId" IS NULL
+    AND NEW."batchId" IS NOT NULL
+    AND (to_jsonb(NEW) - 'batchId') = (to_jsonb(OLD) - 'batchId')) THEN
+  RETURN NEW;  -- лише batchId змінився
+END IF;
+RAISE EXCEPTION '... append-only ...' USING ERRCODE = 'raise_exception';
+```
+
+- Idempotent: `CREATE OR REPLACE FUNCTION` + `DROP TRIGGER IF EXISTS ... CREATE TRIGGER`.
+- Правка тіла тригера у вже-застосованій міграції → Prisma НЕ переприкладе. Переприклади функцію на
+  dev-БД вручну (node + PrismaClient `$executeRawUnsafe`), інакше behavioral-spec червоніє на старій логіці.
+- Behavioral-spec cleanup: `ALTER TABLE ... DISABLE TRIGGER` → DELETE throwaway → `ENABLE TRIGGER` у `afterAll`.
+- Реверс/сторно ledger = компенсуючий запис (нова BatchConsumption/рух), НІКОЛИ DELETE/UPDATE існуючого.
+
 ## After Schema Changes
 
 1. `pnpm prisma migrate dev --name <descriptive_name>`

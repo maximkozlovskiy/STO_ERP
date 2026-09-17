@@ -34,17 +34,13 @@ BEGIN
   END IF;
 
   -- Єдиний дозволений UPDATE: "batchId" з NULL на значення, за умови що ВСІ інші колонки незмінні.
+  -- Порівнюємо цілі рядки без "batchId" через to_jsonb (core PG, без extension): так усі колонки
+  -- (включно з price/notes/createdBy/unitOfMeasureId і будь-якими доданими в майбутньому) захищені
+  -- автоматично — без ручного переліку (пропущена колонка інакше проскочила б разом з batchId, і
+  -- зокрема ledger-money-поле "price" стало б мутабельним). Оператор jsonb "- text" видаляє ключ.
   IF (OLD."batchId" IS NULL
       AND NEW."batchId" IS NOT NULL
-      AND NEW.id           IS NOT DISTINCT FROM OLD.id
-      AND NEW."orgId"      IS NOT DISTINCT FROM OLD."orgId"
-      AND NEW."goodId"     IS NOT DISTINCT FROM OLD."goodId"
-      AND NEW."warehouseId" IS NOT DISTINCT FROM OLD."warehouseId"
-      AND NEW.type         IS NOT DISTINCT FROM OLD.type
-      AND NEW.quantity     IS NOT DISTINCT FROM OLD.quantity
-      AND NEW."documentType" IS NOT DISTINCT FROM OLD."documentType"
-      AND NEW."documentId"   IS NOT DISTINCT FROM OLD."documentId"
-      AND NEW."createdAt"  IS NOT DISTINCT FROM OLD."createdAt") THEN
+      AND (to_jsonb(NEW) - 'batchId') = (to_jsonb(OLD) - 'batchId')) THEN
     RETURN NEW;
   END IF;
 

@@ -119,6 +119,21 @@ describe('append-only тригери — поведінка (жива БД)', ()
     ).resolves.not.toThrow();
   });
 
+  it('stock_movements: "batchId" set РАЗОМ зі зміною price/notes/createdBy заборонено (не лише batchId)', async () => {
+    if (!dbAvailable || !batchId) return; // немає партій — пропускаємо
+    // Регресія: тригер мусить дозволяти ВИКЛЮЧНО batchId NULL→value, а не «batchId серед іншого».
+    // Ранній перелік IS-NOT-DISTINCT не покривав price/notes/createdBy/unitOfMeasureId → зміну
+    // ledger-money-поля price можна було протягти разом із batchId. Тепер порівнюється цілий рядок.
+    const id = await insertMovement();
+    await expect(
+      raw.$executeRawUnsafe(
+        `UPDATE stock_movements SET "batchId"=$1::uuid, price=999.99 WHERE id=$2::uuid`,
+        batchId,
+        id,
+      ),
+    ).rejects.toThrow(/append-only/);
+  });
+
   it('settlement_transactions: UPDATE заборонено (повна незмінність)', async () => {
     if (!dbAvailable) return;
     // Не мутуємо реальні дані: UPDATE з неможливою умовою (0 рядків) НЕ зафаєрить BEFORE-тригер.
