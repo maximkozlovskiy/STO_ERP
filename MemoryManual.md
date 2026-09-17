@@ -15,7 +15,17 @@
             Далі: опційні (typedSql, NestJS11) або FRONTEND розділ аудиту.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2521/2521 (165 файлів) · DLQ 22 (service/worker-host/integration+redaction) · env.schema 20.
-HEAD:       f1f9ed85 docs(skills): version-neutral publicFetch mismatch → sto-tester (Bug #761)
+HEAD:       f59fe5b9 fix(review): keep prisma CLI in api runner after prune --prod (offline migrate)
+Review:     2026-09-17 (auto, аудит Дані/Інфра — non-root Docker api+web, коміт 136f5d55) — 1 CRITICAL
+            (латентний, pre-existing, у фокусі рев'ю offline-migrate). `prisma` CLI був devDep @sto/database
+            → `pnpm prune --prod` у api runner-stage видаляв його → installer `docker compose exec/run api
+            npx prisma migrate deploy` (First-Run/Update) фолбечив на registry-fetch → offline провал
+            міграції. Fix: prisma dev→prod dependency (та сама ^5.22.0) → prune зберігає CLI → npx резолвить
+            локально без мережі від USER node. Lockfile 3 рядки (--frozen-lockfile passes), db tsc 0.
+            Решта фокусу ЧИСТО: chown ПІСЛЯ install/generate/prune + USER перед CMD; nginx-unprivileged
+            uid101/:8080 default, COPY заміщає conf.d default.conf; порти узгоджені у 4 live-файлах (8080)
+            + ADR-002; release.yml docker save sto-web цілим; dev-compose не білдить; run --rm/exec обидва
+            від node; runtime FS-writes → MinIO/stdout/tmp (не local FS під root).
 Tester:     2026-09-17 (auto, аудит backend #3 API-версіонування, коміт d0e3e42c) — 1 HIGH: сторінка
             /estimate/[token] (публічний кошторис, SMS/email share-лінк) через СПІЛЬНИЙ publicFetch форсила
             /api/v1 → била /api/v1/public/work-orders/:token → routing-404, хоча public-контролер VERSION_NEUTRAL

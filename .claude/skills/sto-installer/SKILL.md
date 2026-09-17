@@ -373,6 +373,21 @@ jobs:
 
 ---
 
+## Runtime-потрібні CLI мусять бути PROD-залежностями (offline-migrate)
+
+> Реальний баг (рев'ю 136f5d55): `prisma` CLI був `devDependency` @sto/database. api-runner
+> Dockerfile робить `pnpm prune --prod` → CLI видалявся з образу. Installer міграція
+> `docker compose exec/run api npx prisma migrate deploy` (First-Run/Update) → `npx` не
+> знаходив локальний CLI → фолбек на **registry-fetch** → offline → провал міграції на
+> install/update. USER node (non-root) НЕ причина — суто відсутність CLI після prune.
+
+- [ ] Будь-який CLI, що викликається у РАНТАЙМ-контейнері (`prisma migrate deploy`, seed-раннер,
+      будь-який `npx`/`pnpm exec` з installer-скриптів) → **`dependencies`, НЕ `devDependencies`**
+      того пакета, інакше `pnpm prune --prod` у runner-stage його прибере.
+- [ ] Migrate-виклик має резолвити ЛОКАЛЬНИЙ CLI (offline): `pnpm ... exec prisma` або `npx prisma`
+      з уже встановленим prisma — ніколи не покладатись на registry-fetch (offline-first).
+- [ ] Перевірка: `grep -n "\"prisma\"" packages/database/package.json` → має бути у `dependencies`.
+
 ## Checklist перед релізом
 
 - [ ] Всі Docker images зібрані і протестовані

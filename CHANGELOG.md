@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-09-17 — Code review: аудит Дані/Інфра (non-root Docker api+web)
+
+Статичне config-рев'ю коміту 136f5d55 (Docker daemon недоступний; збірка → CI release.yml). Non-root
+частина чиста; знайдено 1 латентний CRITICAL у фокусі offline-migrate шляху.
+
+### f59fe5b9 fix(review): keep prisma CLI in api runner after prune --prod (offline migrate)
+
+`prisma` CLI був devDep @sto/database → `pnpm prune --prod` (api Dockerfile runner) видаляв його →
+installer `docker compose exec/run api npx prisma migrate deploy` (First-Run/Update) фолбечив на
+registry-fetch → offline провал міграції. Fix: prisma dev→prod dependency (^5.22.0) → prune зберігає
+CLI → npx резолвить локально без мережі від USER node. pnpm-lock 3 рядки (--frozen-lockfile passes),
+Dockerfile-коментар уточнено. Решта фокусу (chown/USER order, nginx-unprivileged :8080, порт-
+консистентність, offline-bundle, migration timing, runtime FS-writes) — статично ЧИСТО.
+
 ## 2026-09-17 — Аудит стеку BACKEND #3: URI-версіонування API (/api/v1)
 
 Третій пункт backend-розділу. `enableVersioning({type:URI, defaultVersion:'1'})` → усі бізнес-роути
