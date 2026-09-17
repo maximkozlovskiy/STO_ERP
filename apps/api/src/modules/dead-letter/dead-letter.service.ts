@@ -7,6 +7,32 @@ import { PaginatedDeadLetterDto } from './dead-letter.dto';
 
 const REASON_MAX = 1000;
 const STACK_MAX = 4000;
+const PAYLOAD_MAX_DEPTH = 8;
+
+// Ключі, чиє значення персистити у DLQ-payload plaintext НЕ можна (secrets-at-rest).
+// Конвенція стеку — секрети НЕ клacти у job.data (резолвити point-of-use), але вебхук-черга
+// свідомо носить `secret: ep.secret` (підписний ключ) у payload → без цього фільтра він осів би
+// у dead_letter_jobs.payload відкритим текстом. Захист defence-in-depth: редагуємо за ІМЕНЕМ ключа
+// рекурсивно, регістронезалежно, на випадок майбутніх черг, що додадуть креденшели у job.data.
+const SENSITIVE_KEY_RE =
+  /(secret|token|password|pass|pwd|api[-_]?key|credential|authorization|auth|private[-_]?key|access[-_]?key|secret[-_]?key|pin[-_]?code|signature|sign|licenseKey)/i;
+const REDACTED = '[REDACTED]';
+
+/**
+ * Рекурсивно клонує payload, замінюючи значення sensitive-ключів на `[REDACTED]`.
+ * Не мутує вхід (job.data лишається недоторканим для решти обробки). Обмежений глибиною
+ * (циклічні/глибокі структури → обрізаються), масиви обходяться поелементно.
+ */
+export function sanitizePayload(value: unknown, depth = 0): unknown {
+  if (depth >= PAYLOAD_MAX_DEPTH) return '[TRUNCATED]';
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(v => sanitizePayload(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = SENSITIVE_KEY_RE.test(k) ? REDACTED : sanitizePayload(v, depth + 1);
+  }
+  return out;
+}
 
 /**
  * Централізований dead-letter writer/reader (аудит стеку, backend #2).
@@ -41,8 +67,9 @@ export class DeadLetterService {
             maxAttempts: job.opts.attempts ?? 1,
             failedReason,
             stacktrace,
-            // job.data — plain-обʼєкт payload (секрети НЕ у job.data за конвенцією).
-            payload: (job.data ?? {}) as Prisma.InputJsonValue,
+            // job.data → payload JSONB, але sensitive-ключі редагуються (webhooks-черга носить
+            // `secret: ep.secret` — інакше підписний ключ осів би у БД plaintext, secrets-at-rest).
+            payload: sanitizePayload(job.data ?? {}) as Prisma.InputJsonValue,
           },
         }),
       );
@@ -100,12 +127,14 @@ export class DeadLetterService {
 
   /** Позначити DLQ-рядок опрацьованим (оператор розібрався / re-enqueue). orgId-scoped. */
   async resolve(orgId: string, id: string): Promise<{ id: string; resolved: boolean }> {
-    const row = await this.prisma.deadLetterJob.findFirst({ where: { id, orgId } });
-    if (!row) throw new NotFoundException('DLQ-запис не знайдено');
-    const updated = await this.prisma.deadLetterJob.update({
-      where: { id },
+    // orgId у where БОТ у пошуку, І в самому апдейті (defence-in-depth: DeadLetterJob TENANT_EXEMPT,
+    // тож guard НЕ додає scope автоматично; `update({where:{id}})` без orgId відкрив би race-вікно
+    // на крос-tenant запис). updateMany дозволяє composite-where {id, orgId}; count===0 → 404.
+    const res = await this.prisma.deadLetterJob.updateMany({
+      where: { id, orgId },
       data: { resolved: true, resolvedAt: new Date() },
     });
-    return { id: updated.id, resolved: updated.resolved };
+    if (res.count === 0) throw new NotFoundException('DLQ-запис не знайдено');
+    return { id, resolved: true };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DeadLetterService } from './dead-letter.service';
+import { DeadLetterService, sanitizePayload } from './dead-letter.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 // runUnscoped просто виконує callback — стабимо, щоб unit-тест не тягнув ALS.
@@ -70,5 +70,98 @@ describe('DeadLetterService.capture', () => {
   it('null stacktrace коли job.stacktrace порожній', async () => {
     await service.capture(makeJob({ stacktrace: [] }), new Error('x'), 'sms');
     expect(prisma.deadLetterJob.create.mock.calls[0][0].data.stacktrace).toBeNull();
+  });
+
+  it('редагує sensitive-ключі у payload перед записом (webhooks secret leak)', async () => {
+    const job = makeJob({
+      data: {
+        orgId: 'org-1',
+        endpointId: 'ep-1',
+        url: 'https://x.example',
+        secret: 'whsec_super_sensitive',
+        event: 'work_order.created',
+      },
+    });
+    await service.capture(job, new Error('boom'), 'outbound-webhook');
+    const payload = prisma.deadLetterJob.create.mock.calls[0][0].data.payload;
+    expect(payload.secret).toBe('[REDACTED]');
+    // Несекретні поля лишаються (діагностична цінність DLQ збережена).
+    expect(payload.orgId).toBe('org-1');
+    expect(payload.url).toBe('https://x.example');
+    expect(payload.event).toBe('work_order.created');
+  });
+});
+
+describe('DeadLetterService.resolve', () => {
+  let prisma: { deadLetterJob: { updateMany: ReturnType<typeof vi.fn> } };
+  let service: DeadLetterService;
+
+  beforeEach(() => {
+    prisma = { deadLetterJob: { updateMany: vi.fn() } };
+    service = new DeadLetterService(prisma as unknown as PrismaService);
+  });
+
+  it('оновлює лише коли рядок належить org (where несе orgId; count>0)', async () => {
+    prisma.deadLetterJob.updateMany.mockResolvedValue({ count: 1 });
+    const res = await service.resolve('org-1', 'dl-1');
+    const where = prisma.deadLetterJob.updateMany.mock.calls[0][0].where;
+    expect(where.id).toBe('dl-1');
+    expect(where.orgId).toBe('org-1'); // orgId у самому where (не лише у pre-read)
+    expect(res).toEqual({ id: 'dl-1', resolved: true });
+  });
+
+  it('кидає 404 коли рядок не належить org (крос-tenant / відсутній → count===0)', async () => {
+    prisma.deadLetterJob.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.resolve('org-2', 'dl-1')).rejects.toThrow('DLQ-запис не знайдено');
+  });
+});
+
+describe('sanitizePayload', () => {
+  it('редагує різні варіанти імен ключів (case-insensitive, api_key/apiKey/token/password)', () => {
+    const out = sanitizePayload({
+      apiKey: 'a',
+      api_key: 'b',
+      Token: 'c',
+      password: 'd',
+      privateKey: 'e',
+      Authorization: 'f',
+      pin_code: 'g',
+      keep: 'visible',
+    }) as Record<string, unknown>;
+    expect(out.apiKey).toBe('[REDACTED]');
+    expect(out.api_key).toBe('[REDACTED]');
+    expect(out.Token).toBe('[REDACTED]');
+    expect(out.password).toBe('[REDACTED]');
+    expect(out.privateKey).toBe('[REDACTED]');
+    expect(out.Authorization).toBe('[REDACTED]');
+    expect(out.pin_code).toBe('[REDACTED]');
+    expect(out.keep).toBe('visible');
+  });
+
+  it('редагує вкладені секрети (масив + вкладений обєкт)', () => {
+    const out = sanitizePayload({
+      chain: [{ provider: 'turbosms', apiKey: 'x' }],
+      nested: { creds: { secret: 'y' } },
+    }) as Record<string, unknown>;
+    const chain = out.chain as Record<string, unknown>[];
+    expect(chain[0].provider).toBe('turbosms');
+    expect(chain[0].apiKey).toBe('[REDACTED]');
+    const nested = out.nested as { creds: Record<string, unknown> };
+    expect(nested.creds.secret).toBe('[REDACTED]');
+  });
+
+  it('не мутує вхідний обʼєкт (job.data лишається недоторканим для решти обробки)', () => {
+    const input = { secret: 'keep-me' };
+    const out = sanitizePayload(input) as Record<string, unknown>;
+    expect(out.secret).toBe('[REDACTED]');
+    expect(input.secret).toBe('keep-me');
+  });
+
+  it('обрізає надто глибокі структури (захист від циклів/DoS)', () => {
+    let deep: Record<string, unknown> = { v: 'leaf' };
+    for (let i = 0; i < 12; i++) deep = { next: deep };
+    const out = sanitizePayload(deep);
+    // Не кидає, повертає значення (обрізане на глибині).
+    expect(out).toBeDefined();
   });
 });

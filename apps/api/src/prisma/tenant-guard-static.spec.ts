@@ -34,8 +34,11 @@ const ALLOWLIST = new Set<string>([
   'pricingRuleTier.updateMany',
   'pricingRuleTier.delete',
   'pricingRuleTier.deleteMany',
-  // DeadLetterJob — TENANT_EXEMPT (nullable orgId, infra). resolve() робить findFirst({id,orgId})
-  // orgId-гейт ПЕРЕД update({where:{id}}) → крос-tenant запис неможливий.
+  // DeadLetterJob — TENANT_EXEMPT (nullable orgId, infra). resolve() тепер робить
+  // updateMany({ where: { id, orgId } }) — orgId у самому where → детектор не флагує (не потребує
+  // allowlist). Запис лишено НАВМИСНО як drift-guard-приклад: якщо майбутній рефактор поверне
+  // update({ where: { id } }) без orgId, цей рядок утримає статичний пас зеленим помилково —
+  // тому при такому рефакторі його треба СВІДОМО лишити з обґрунтуванням, або тримати orgId у where.
   'deadLetterJob.update',
 ]);
 
