@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-17 — Code review: аудит Дані/Інфра (append-only ledger тригери)
+
+Рев'ю коміту 7ac27c41 (2 plpgsql BEFORE ROW тригери незмінності ledger). Класифікація таблиць коректна
+(settlement_transactions повна заборона; Payment/StockBatch правильно виключені — мутабельні поля); єдиний
+prod-UPDATE stock_movements (inventory.service:329 batchId у createMovement-$transaction) проходить тригер;
+реверс RETURN = компенсуючий запис, не DELETE. Знайдено 1 IMPORTANT (ledger integrity).
+
+### 31c5ec2 fix(review): append-only тригер stock_movements — порівняння цілого рядка
+
+`forbid_mutation_stock_movements` дозволяв UPDATE через перелік `IS NOT DISTINCT` по 9 колонках, що НЕ
+покривав `price`/`notes`/`createdBy`/`unitOfMeasureId` → UPDATE «batchId + price» проскакував, роблячи
+ledger-money-поле `price` мутабельним. Замінено на `(to_jsonb(NEW) - 'batchId') = (to_jsonb(OLD) -
+'batchId')` (core PG, без extension) — авто-покриває всі й майбутні колонки. Функцію переприкладено на
+dev-БД (правка застосованої міграції Prisma не переприкладає). +behavioral-регрес (batchId+price → reject).
+Патерн задокументовано у sto-database + sto-review. api tsc 0; append-only+schema-integrity 13/13; inventory 58/58.
+
+---
+
 ## 2026-09-17 — Code review: аудит Дані/Інфра (non-root Docker api+web)
 
 Статичне config-рев'ю коміту 136f5d55 (Docker daemon недоступний; збірка → CI release.yml). Non-root

@@ -10,6 +10,10 @@
 
 - `StockItem` — агрегат поточного залишку по (orgId, goodId, warehouseId): `quantity`, `reserved`.
 - `StockMovement` — append-only: RECEIPT/WRITEOFF/TRANSFER/RESERVATION/RESERVATION_RELEASE/OPENING_BALANCE/RETURN.
+  Незмінність ФІЗИЧНА (plpgsql BEFORE ROW тригер `trg_stock_movements_immutable`, міграція 20260917120000):
+  DELETE завжди заборонено; UPDATE дозволено ЛИШЕ одноразове `batchId` NULL→value (createMovement single-batch
+  трасування) — тригер порівнює цілий рядок через `to_jsonb` (усі інші колонки, включно з `price`, незмінні).
+  Реверс WRITEOFF (RETURN) — компенсуючий BatchConsumption, НІКОЛИ DELETE/UPDATE існуючого руху.
 - Мутація залишків ТІЛЬКИ через `InventoryService.createMovement()` (єдина точка правди).
 - `deduplicateBy(plan, u => u.goodId)` перед `Promise.all` bulk-update цін.
 

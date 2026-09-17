@@ -14,9 +14,16 @@
             #3 (URI-версіонування /api/v1) ЗАВЕРШЕНО (усі три QA-цикли пройдено, #3 через sto-sync-agent).
             Далі: опційні (typedSql, NestJS11) або FRONTEND розділ аудиту.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2521/2521 (165 файлів) · DLQ 22 (service/worker-host/integration+redaction) · env.schema 20.
-HEAD:       f59fe5b9 fix(review): keep prisma CLI in api runner after prune --prod (offline migrate)
-Review:     2026-09-17 (auto, аудит Дані/Інфра — non-root Docker api+web, коміт 136f5d55) — 1 CRITICAL
+Тести:      api 2521/2521 (165 файлів) · append-only+schema-integrity 13 (behavioral+existence) · DLQ 22 · env.schema 20.
+HEAD:       31c5ec2 fix(review): append-only тригер stock_movements — порівняння цілого рядка (to_jsonb)
+Review:     2026-09-17 (auto, аудит Дані/Інфра — append-only ledger тригери, коміт 7ac27c41) — 1 IMPORTANT
+            (ledger integrity). stock_movements-тригер дозволяв «batchId серед іншого»: перелік IS NOT
+            DISTINCT НЕ покривав price/notes/createdBy/unitOfMeasureId → ledger-money-поле price мутабельне
+            разом із batchId. Fix (коміт 31c5ec2): (to_jsonb(NEW)-'batchId')=(to_jsonb(OLD)-'batchId') —
+            авто-покриває всі + майбутні колонки; переприкладено на dev-БД; +behavioral-регрес. Решта ЧИСТО:
+            settlement_transactions повна заборона ✓; Payment/StockBatch правильно виключені; єдиний prod-UPDATE
+            (inventory.service:329 batchId у createMovement-tx) ✓; реверс RETURN = компенсуючий запис (не DELETE).
+Review(попередній): 2026-09-17 (non-root Docker api+web, коміт 136f5d55) — 1 CRITICAL
             (латентний, pre-existing, у фокусі рев'ю offline-migrate). `prisma` CLI був devDep @sto/database
             → `pnpm prune --prod` у api runner-stage видаляв його → installer `docker compose exec/run api
             npx prisma migrate deploy` (First-Run/Update) фолбечив на registry-fetch → offline провал
@@ -196,6 +203,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Review аудит Дані/Інфра — append-only ledger тригери — 2026-09-17, HEAD 31c5ec2:
+  31c5ec2 fix(review): forbid_mutation_stock_movements — перелік IS NOT DISTINCT (id/orgId/goodId/
+        warehouseId/type/quantity/documentType/documentId/createdAt) НЕ покривав price/notes/createdBy/
+        unitOfMeasureId → UPDATE «batchId + price» проскакував (мутація ledger-money). Замінено на
+        (to_jsonb(NEW)-'batchId')=(to_jsonb(OLD)-'batchId') (core PG, авто-покриває майбутні колонки).
+        Функцію переприкладено на dev-БД (правка застосованої міграції Prisma не переприкладає).
+        +behavioral-регрес (batchId+price → reject). Патерн → sto-database + sto-review (to_jsonb whole-row).
+  7ac27c41 (pre-review) feat(db): 2 plpgsql BEFORE ROW тригери — settlement_transactions повна заборона
+        UPDATE+DELETE; stock_movements DELETE-заборона + одноразовий batchId NULL→value. schema-integrity
+        existence-check (pg_trigger NOT tgisinternal) + append-only behavioral-spec. Idempotent (DROP IF EXISTS).
+  api tsc 0. append-only 5 + schema-integrity 8 = 13/13 · inventory.service 58/58.
+
 Аудит стеку BACKEND #3 — URI-версіонування /api/v1 — 2026-09-17, HEAD f1f9ed85:
   8c2d5aa8 feat: enableVersioning({type:URI, defaultVersion:'1'}) → бізнес-роути /api/v1/*. health +
         public/work-orders VERSION_NEUTRAL (fixed-URL консюмери: docker healthcheck, SMS/email share).
