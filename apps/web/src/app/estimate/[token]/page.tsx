@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
-import { publicFetch } from '@/lib/api-client';
+import { publicNeutralFetch } from '@/lib/api-client';
 
 interface EstimateLine {
   id: string;
@@ -66,7 +66,7 @@ export default function EstimatePage() {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    publicFetch<EstimateData>(`/public/work-orders/${encodeURIComponent(token)}`)
+    publicNeutralFetch<EstimateData>(`/public/work-orders/${encodeURIComponent(token)}`)
       .then(d => {
         if (!cancelled) setData(d);
       })

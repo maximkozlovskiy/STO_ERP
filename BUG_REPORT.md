@@ -5612,3 +5612,31 @@ web schema+form тести 23 passed, tsc усі 0.
 - #5 fail-open — `capture` внутрішній try/catch, ніколи не кидає → черга не зривається, self-retry не провокується.
 - #6 runUnscoped ALS — `tenantStore.run(...)` коректно scoped, контекст НЕ протікає за callback (await всередині).
 - #8 міграція застосована на dev-БД — integration-spec пише/читає DeadLetterJob наживо (2 тести зелені).
+
+## Session 2026-09-17 — Bug hunt Аудиту backend #3 «URI-версіонування /api/v1» (commits 8c2d5aa8 + ecb688e2), рантайм-валідація на живому стеку
+
+### Bug #761 [x] виправлено — HIGH (публічний кошторис не відкривався: routing-404 на share-лінках зі SMS/email) — фронтендний `publicFetch` додавав /api/v1 до VERSION_NEUTRAL-роуту
+
+**Файли:** `apps/web/src/lib/api-client.ts`, `apps/web/src/app/estimate/[token]/page.tsx`
+
+**Симптом:** Після URI-версіонування (`app.enableVersioning({type:URI, defaultVersion:'1'})`) усі бізнес-роути стали `/api/v1/*`, але два контролери лишились VERSION_NEUTRAL (URL НЕ змінюється): `health` (`/api/health/*`) і `public/work-orders` (`/api/public/work-orders/*` — публічний перегляд кошторису за share-токеном). Публічна сторінка `/estimate/[token]` (на неї шлються зовнішні SMS/email-лінки клієнтам) викликала спільний `publicFetch` з `api-client.ts`, який форсить префікс `${API_URL}/api/v1`. Результат — запит йшов на `GET /api/v1/public/work-orders/<token>` → **routing-404 «Cannot GET /api/v1/public/work-orders/...»** (бекенд змонтував цей роут ЛИШЕ під `/api/public/...`). Сторінка щоразу ловила 404 → показувала «Посилання не дійсне» навіть для валідного токена. Тобто версіонування зламало САМЕ той стабільний-URL сценарій, заради якого public-контролер зробили version-neutral.
+
+**Причина:** `sync`-фікс (ecb688e2) вирівняв auth (login/refresh/logout cookie-path на `/api/v1/auth`) і клієнтський `API_BASE=/api/v1`, але `publicFetch` — єдиний спільний хелпер для ВСІХ публічних роутів — не розрізняє versioned (setup, booking → `/api/v1`) і version-neutral (public/work-orders → `/api`) публічні контракти. Розробник розумно припустив «публічний = один префікс», але бекенд має два різні public-контракти.
+
+**Фікс:** У `api-client.ts` виділено спільне тіло `_publicFetch(base, path, init)`; `publicFetch` б'є `${API_URL}/api/v1` (versioned public: setup/booking — без змін), доданий `publicNeutralFetch` б'є `${API_URL}/api` (version-neutral public: public/work-orders, дзеркалить бекендний VERSION_NEUTRAL). Сторінка `/estimate/[token]` переведена на `publicNeutralFetch`. Раніше share-token export (`useWorkOrderActions.ts:96`) вже правильно бив `/api/public/...` напряму — узгоджено.
+
+**Regression:** `apps/web/src/lib/api-client.test.ts` (новий) — 3 тести пінять точний URL-префікс: `publicFetch('/setup/status')` → МУСИТЬ містити `/api/v1/`; `publicNeutralFetch('/public/work-orders/..')` → `/api/public/...` і НЕ містить `/v1/`; error-propagation з JSON message. E2E `estimate-share.spec.ts` «public estimate page loads without auth» тепер зелений (сторінка вантажить дані через version-neutral роут).
+
+**Перевірено наживо (curl на dev API :3000, без багів):**
+
+- **Маршрутизація:** `GET /api/v1/counterparties|work-orders|invoices` → 401 (auth-guard, НЕ 404 — роути існують); старі голі `GET /api/counterparties|work-orders` → 404 (зникли).
+- **health VERSION_NEUTRAL:** `/api/health/live` → 200; `/api/health` → 200; `/api/v1/health/live` → 404 (правильно НЕ існує).
+- **public VERSION_NEUTRAL:** `/api/public/work-orders/faketoken` → app-404 «Посилання не дійсне» (доходить до контролера); `/api/v1/public/work-orders/faketoken` → routing-404 «Cannot GET» (правильно НЕ існує); `/api/public/work-orders/faketoken/export/pdf` → app-404 (export-саброут доходить до контролера).
+- **Auth flow end-to-end:** `POST /api/v1/auth/login` (реальні креденшели) → 200 + accessToken + `Set-Cookie sto_refresh; Path=/api/v1/auth`; authenticated `GET /api/v1/counterparties` з Bearer → 200; `POST /api/v1/auth/refresh` з cookie → 200 новий accessToken; без cookie → 401; `POST /api/v1/auth/logout` та `/logout-all` → 204 + `Set-Cookie sto_refresh=; Path=/api/v1/auth; Expires=1970` (clear-path збігається з set-path → браузер реально видаляє cookie).
+- **Version-neutral edge:** Swagger `/api/docs` → 200, `/api/docs-json` → 200 (працює у dev); bull-board `/api/admin/queues` → 401 (власний Fastify-plugin поза Nest-версіонуванням, guard не зламано); setup `/api/v1/setup/status` → 200 (bare `/api/setup/status` → 404); booking `/api/v1/booking/branches` → 200 (bare → 404); bare `POST /api/auth/login` → 404 (обов'язково через v1).
+- **Regression unit-suites:** api tsc 0, web tsc 0; api-suite **165 файлів / 2521 тестів зелені** (contract-специ використовують `app.inject` БЕЗ `enableVersioning`/`setGlobalPrefix` у власному bootstrap → інжектять `/auth/login` без префіксу, версіонування їх НЕ торкається; health.controller.spec зелений); web lib-тести 153 зелені; E2E smoke 8/8 зелений (`/api/health` 200 + security headers, auth-guard redirect, auth-setup login через `/api/v1/auth/login` успішний).
+
+**Спостереження (НЕ баг версіонування, не фіксив):**
+
+- E2E `estimate-share.spec.ts:214 «work-order modal shows Друк/Поділитись/SMS»` — 1 flaky-фейл: timeout на кліку кнопки «Кошторис» на списку `/work-orders` (авторизований modal-flow, залежить від date-фільтра/refresh-таймінгу — сам тест документує цю крихкість коментарями Bug #567/#572). API-рівневі public-endpoint тести і сам public-estimate-page тест — зелені. Не пов'язано з `/api/v1`.
+- `apps/web/e2e/playwright.config.ts` не вантажить `.env.e2e` через dotenv → `setup-auth.ts` падає на дефолтний пароль `admin123` якщо `E2E_EMAIL/E2E_PASSWORD` не в env (треба експортувати вручну / CI-env). Pre-existing harness-деталь, не регресія версіонування.

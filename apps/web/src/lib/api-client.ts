@@ -240,8 +240,24 @@ export async function apiMultipartFetch<T>(
  * Використовувати тільки для публічних endpoint-ів (`/setup/status`, `/setup/init`, `/booking/*`).
  */
 export async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  return _publicFetch<T>(API_BASE, path, init);
+}
+
+/**
+ * Bug #761: version-neutral публічні роути (public/work-orders — share-лінки на кошторис
+ * зі SMS/email) НЕ версіонуються: бекенд монтує їх під /api/... (VERSION_NEUTRAL), а НЕ під
+ * /api/v1/... . Звичайний publicFetch додає /api/v1 → routing-404 «Cannot GET /api/v1/public/...»
+ * → публічна сторінка кошторису завжди показувала «Посилання не дійсне». `publicNeutralFetch`
+ * б'є напряму по /api/<path> (без версії), дзеркалячи бекендний VERSION_NEUTRAL-контракт.
+ * Використовувати ЛИШЕ для version-neutral публічних роутів (public/work-orders, health).
+ */
+export async function publicNeutralFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  return _publicFetch<T>(`${API_URL}/api`, path, init);
+}
+
+async function _publicFetch<T>(base: string, path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body != null;
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
