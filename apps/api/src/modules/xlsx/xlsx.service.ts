@@ -1317,8 +1317,9 @@ export class XlsxService {
     let normalized: unknown = value;
     if (typeof value === 'string') {
       const trimmed = value.trim().replace(/\s+/g, '');
-      // Лише кома як десятковий ("1,5"→"1.5"); якщо є і крапка, і кома — вважаємо кому тисячним
-      // роздільником не тут (Excel такого рядком зазвичай не дає) — консервативно: остання кома → крапка.
+      // Лише кома як десятковий ("1,5"→"1.5"). Якщо є І крапка, І кома (mixed-separator, напр. EU
+      // "1.234,56" чи US "1,234.56") — НЕ вгадуємо формат: лишаємо as-is → Number()=NaN → undefined
+      // (безпечніше відкинути неоднозначний рядок, ніж хибно розпарсити). Excel рядком такого рідко дає.
       normalized =
         trimmed.includes(',') && !trimmed.includes('.') ? trimmed.replace(',', '.') : trimmed;
     }
