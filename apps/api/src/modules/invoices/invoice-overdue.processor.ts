@@ -1,9 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
 interface OverdueJob {
   orgId: string;
@@ -17,11 +19,14 @@ interface OverdueJob {
  */
 @Injectable()
 @Processor('invoice-overdue', { concurrency: 1 })
-export class InvoiceOverdueProcessor extends WorkerHost {
+export class InvoiceOverdueProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(InvoiceOverdueProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
-    super();
+  constructor(
+    private readonly prisma: PrismaService,
+    deadLetter: DeadLetterService,
+  ) {
+    super(deadLetter);
   }
 
   async process(job: Job<OverdueJob>): Promise<void> {
@@ -43,5 +48,11 @@ export class InvoiceOverdueProcessor extends WorkerHost {
         this.logger.log(`Прострочено ${res.count} рахунк(ів) для org=${orgId}`);
       }
     });
+  }
+
+  // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, err: Error): Promise<void> {
+    return this.deadLetterOnFailed(job, err);
   }
 }

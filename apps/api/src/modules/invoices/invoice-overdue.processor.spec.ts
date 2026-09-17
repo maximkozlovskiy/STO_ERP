@@ -17,7 +17,7 @@ describe('InvoiceOverdueProcessor', () => {
 
   beforeEach(() => {
     prisma = { invoice: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } };
-    processor = new InvoiceOverdueProcessor(prisma as never);
+    processor = new InvoiceOverdueProcessor(prisma as never, { capture: vi.fn() } as never);
   });
 
   it('updateMany: SENT/PARTIALLY_PAID + dueDate<сьогодні + orgId + deletedAt:null → OVERDUE', async () => {

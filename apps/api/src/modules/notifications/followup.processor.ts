@@ -1,9 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { NotificationsService, NotificationConfig } from './notifications.service';
+import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
 export interface FollowUpJob {
   orgId: string;
@@ -30,14 +32,15 @@ const UA_DATE_FMT = new Intl.DateTimeFormat('uk-UA');
 // provider rate limit — serialize at the queue level to avoid cascading 429s.
 @Injectable()
 @Processor('followup', { concurrency: 1 })
-export class FollowUpProcessor extends WorkerHost {
+export class FollowUpProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(FollowUpProcessor.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    deadLetter: DeadLetterService,
   ) {
-    super();
+    super(deadLetter);
   }
 
   async process(job: Job<FollowUpJob>): Promise<void> {
@@ -317,5 +320,11 @@ export class FollowUpProcessor extends WorkerHost {
     // Fallback "клієнте" prevents broken templates like "Вітаємо, !" when counterparty
     // has no name fields (rare legacy data).
     return full || cp.companyName?.trim() || 'клієнте';
+  }
+
+  // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, err: Error): Promise<void> {
+    return this.deadLetterOnFailed(job, err);
   }
 }

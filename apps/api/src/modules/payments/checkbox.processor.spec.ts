@@ -7,6 +7,7 @@ import { ProviderConfigService } from './provider-config.service';
 import { CashShiftService } from './cash-shift.service';
 import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 /**
  * ПРРО Крок 2/registry — processor пробиває чек у ВІДКРИТУ зміну через активний FiscalProvider
@@ -91,9 +92,14 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
           provide: IntegrationLogService,
           useValue: { wrap: (_ctx: unknown, fn: () => unknown) => fn() },
         },
+        { provide: DeadLetterService, useValue: { capture: vi.fn() } },
       ],
     }).compile();
     processor = module.get(CheckboxProcessor);
+    // Централізований DLQ (backend #2): onFailed → deadLetterOnFailed читає this.worker.name.
+    // У unit-тесті BullMQ-воркер не реєструється (WorkerHost.worker кинув би), тож підставляємо
+    // легкий стаб імені черги — DeadLetterService.capture уже замокано у providers.
+    (processor as unknown as { _worker: { name: string } })._worker = { name: 'checkbox' };
   });
 
   it('idempotency: fiscalReceiptId уже є → skip (no sell)', async () => {

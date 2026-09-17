@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { FollowUpProcessor, FollowUpJob } from './followup.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
+import { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 type Cp = {
   id: string;
@@ -86,6 +87,7 @@ describe('FollowUpProcessor.handleSendReminders', () => {
         FollowUpProcessor,
         { provide: PrismaService, useValue: prisma },
         { provide: NotificationsService, useValue: notifications },
+        { provide: DeadLetterService, useValue: { capture: vi.fn() } },
       ],
     }).compile();
     processor = module.get(FollowUpProcessor);

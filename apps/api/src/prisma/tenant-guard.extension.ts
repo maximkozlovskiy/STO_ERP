@@ -31,6 +31,9 @@ export const TENANT_EXEMPT_MODELS = new Set<string>([
   'SystemTemplate',
   // self-tenant root — orgId===id, читається за `where:{id}`
   'Organisation',
+  // server-local infra з NULLABLE orgId, пишеться cross-tenant з out-of-request контексту
+  // (BullMQ failed-event listener поза runWithTenant). Читання controller фільтрує orgId вручну.
+  'DeadLetterJob',
 ]);
 
 // Операції з `where`, які мусять нести tenant-scope (читання + оновлення + агрегати).

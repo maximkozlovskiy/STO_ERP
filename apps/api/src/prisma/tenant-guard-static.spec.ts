@@ -34,6 +34,9 @@ const ALLOWLIST = new Set<string>([
   'pricingRuleTier.updateMany',
   'pricingRuleTier.delete',
   'pricingRuleTier.deleteMany',
+  // DeadLetterJob — TENANT_EXEMPT (nullable orgId, infra). resolve() робить findFirst({id,orgId})
+  // orgId-гейт ПЕРЕД update({where:{id}}) → крос-tenant запис неможливий.
+  'deadLetterJob.update',
 ]);
 
 /** Рекурсивно зібрати всі *.service.ts (без *.spec.ts). */

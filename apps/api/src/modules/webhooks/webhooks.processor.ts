@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { createHmac } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
@@ -6,6 +6,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runUnscoped } from '../../common/tenant/tenant-context';
 import { validatePublicUrl } from '../../common/utils/url-guard';
+import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
 // Concurrency=5: кожна доставка — окремий зовнішній HTTP виклик (10s timeout).
 // За замовчуванням bull обробляє 1 job за раз на processor → черга з 20 webhook
@@ -13,11 +15,14 @@ import { validatePublicUrl } from '../../common/utils/url-guard';
 // calls, burst-latency знижується в 5× (20 jobs → ~40s замість ~200s).
 @Injectable()
 @Processor('outbound-webhook', { concurrency: 5 })
-export class OutboundWebhookProcessor extends WorkerHost {
+export class OutboundWebhookProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(OutboundWebhookProcessor.name);
 
-  constructor(private prisma: PrismaService) {
-    super();
+  constructor(
+    private prisma: PrismaService,
+    deadLetter: DeadLetterService,
+  ) {
+    super(deadLetter);
   }
 
   async process(job: Job): Promise<void> {
@@ -158,5 +163,11 @@ export class OutboundWebhookProcessor extends WorkerHost {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- re-throw спійманого delivery-error (unknown) для BullMQ-retry; тип збережено навмисно
       if (deliveryError) throw deliveryError;
     });
+  }
+
+  // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, err: Error): Promise<void> {
+    return this.deadLetterOnFailed(job, err);
   }
 }

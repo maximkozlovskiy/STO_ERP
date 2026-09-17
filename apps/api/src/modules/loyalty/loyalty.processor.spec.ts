@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
 import { LoyaltyProcessor } from './loyalty.processor';
 import type { LoyaltyService } from './loyalty.service';
+import type { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 // T24: тонкий wrapper над loyaltyService.earn — фіксуємо, що job.data прокидається у earn один-в-один
 // (регресія-guard: рефактор, що переплутав би порядок аргументів → нарахування балів не тому/на не-ту суму).
@@ -12,7 +13,9 @@ describe('LoyaltyProcessor', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    processor = new LoyaltyProcessor(loyaltyService);
+    processor = new LoyaltyProcessor(loyaltyService, {
+      capture: vi.fn(),
+    } as unknown as DeadLetterService);
   });
 
   const job = (data: Record<string, unknown>) => ({ data }) as unknown as Job;

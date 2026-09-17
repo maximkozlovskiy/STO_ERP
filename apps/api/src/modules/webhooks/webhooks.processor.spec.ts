@@ -3,6 +3,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Job } from 'bullmq';
 import { OutboundWebhookProcessor } from './webhooks.processor';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 /**
  * Bug #125 — regression guard for the webhook delivery processor.
@@ -56,7 +57,11 @@ describe('OutboundWebhookProcessor.processDeliver', () => {
   beforeEach(async () => {
     prisma = makePrismaMock();
     const module = await Test.createTestingModule({
-      providers: [OutboundWebhookProcessor, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        OutboundWebhookProcessor,
+        { provide: PrismaService, useValue: prisma },
+        { provide: DeadLetterService, useValue: { capture: vi.fn() } },
+      ],
     }).compile();
     processor = module.get(OutboundWebhookProcessor);
     fetchSpy = vi.spyOn(global, 'fetch');

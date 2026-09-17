@@ -5,6 +5,7 @@ import { Job, Queue } from 'bullmq';
 import { SmsProcessor } from './sms.processor';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 /**
  * Property-based інваріанти fallback-движка.
@@ -52,7 +53,9 @@ async function runChain(outcomes: Outcome[]): Promise<{
     get: vi.fn((_provider: string) => ({ send })),
   } as unknown as NotificationProviderRegistry;
 
-  const processor = new SmsProcessor(registry, prisma, queue);
+  const processor = new SmsProcessor(registry, prisma, queue, {
+    capture: vi.fn(),
+  } as unknown as DeadLetterService);
   // Приглушити app-логи у 600 property-run-ах (шум, не поведінка).
   vi.spyOn(processor['logger'], 'log').mockImplementation(() => undefined);
   vi.spyOn(processor['logger'], 'warn').mockImplementation(() => undefined);

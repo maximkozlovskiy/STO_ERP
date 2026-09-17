@@ -4,6 +4,7 @@ import { Job, Queue } from 'bullmq';
 import { SmsProcessor } from './sms.processor';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 /**
  * Fallback-engine: chain[chainIndex] accepted → STOP; reject → наступний канал новим job;
@@ -29,7 +30,9 @@ describe('SmsProcessor (fallback engine)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (registry.get as ReturnType<typeof vi.fn>).mockReturnValue({ send });
-    processor = new SmsProcessor(registry, prisma, queue);
+    processor = new SmsProcessor(registry, prisma, queue, {
+      capture: vi.fn(),
+    } as unknown as DeadLetterService);
   });
 
   const step = (channel: NotificationChannel) => ({

@@ -95,6 +95,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       payments as never,
       pollQueue as never,
       { wrap: (_c: unknown, fn: () => unknown) => fn() } as never,
+      { capture: vi.fn() } as never,
     );
   });
 

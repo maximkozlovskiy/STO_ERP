@@ -1,10 +1,12 @@
-import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import { Processor, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationChannel, NotificationEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { NotificationProviderRegistry } from './providers/provider-registry';
+import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
 /** Один канал у fallback-ланцюзі (див. NotificationsService.ChannelStep). */
 interface ChannelStep {
@@ -43,15 +45,16 @@ function maskRecipient(recipient: string): string {
 // Без concurrency черга з 30 повідомлень виконувалась би ~300s серійно.
 @Injectable()
 @Processor('sms', { concurrency: 3 })
-export class SmsProcessor extends WorkerHost {
+export class SmsProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(SmsProcessor.name);
 
   constructor(
     private readonly registry: NotificationProviderRegistry,
     private readonly prisma: PrismaService,
     @InjectQueue('sms') private readonly smsQueue: Queue,
+    deadLetter: DeadLetterService,
   ) {
-    super();
+    super(deadLetter);
   }
 
   /**
@@ -215,5 +218,11 @@ export class SmsProcessor extends WorkerHost {
     } catch (e) {
       this.logger.error(`NotificationLog не записано: ${e instanceof Error ? e.message : e}`);
     }
+  }
+
+  // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, err: Error): Promise<void> {
+    return this.deadLetterOnFailed(job, err);
   }
 }

@@ -1,4 +1,4 @@
-import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
+import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -7,6 +7,8 @@ import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
 import { ProviderConfigService } from './provider-config.service';
 import { CashShiftService } from './cash-shift.service';
 import { IntegrationLogService } from '../integration-logs/integration-log.service';
+import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
 interface FiscalReceiptJob {
   paymentId: string;
@@ -20,7 +22,7 @@ interface FiscalReceiptJob {
 // (rate-limit ліцензії) + дренить чергу ~3× швидше. AbortController-timeout у CheckboxClient.
 @Injectable()
 @Processor('checkbox', { concurrency: 3 })
-export class CheckboxProcessor extends WorkerHost {
+export class CheckboxProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(CheckboxProcessor.name);
 
   constructor(
@@ -28,8 +30,9 @@ export class CheckboxProcessor extends WorkerHost {
     private readonly providerConfig: ProviderConfigService,
     private readonly shifts: CashShiftService,
     private readonly integrationLog: IntegrationLogService,
+    deadLetter: DeadLetterService,
   ) {
-    super();
+    super(deadLetter);
   }
 
   async process(job: Job<FiscalReceiptJob>): Promise<void> {
@@ -151,5 +154,8 @@ export class CheckboxProcessor extends WorkerHost {
           `Не вдалось записати FAILED для платежу ${paymentId}: ${e instanceof Error ? e.message : e}`,
         ),
       );
+    // Централізований DLQ: фіскальний термінальний провал ТАКОЖ лягає у DeadLetterJob (аудит
+    // стеку, backend #2). deadLetterOnFailed повторно перевіряє терминальний guard — безпечно.
+    await this.deadLetterOnFailed(job, err);
   }
 }

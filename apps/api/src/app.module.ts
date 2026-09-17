@@ -73,6 +73,7 @@ import { BookingModule } from './modules/booking/booking.module';
 import { CurrenciesModule } from './modules/currencies/currencies.module';
 import { ExchangeRatesModule } from './modules/exchange-rates/exchange-rates.module';
 import { IntegrationLogsModule } from './modules/integration-logs/integration-logs.module';
+import { DeadLetterModule } from './modules/dead-letter/dead-letter.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { CashRegistersModule } from './modules/cash-registers/cash-registers.module';
@@ -231,6 +232,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     CurrenciesModule,
     ExchangeRatesModule,
     IntegrationLogsModule,
+    DeadLetterModule,
     ReconciliationModule,
     BankAccountsModule,
     CashRegistersModule,

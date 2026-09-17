@@ -2027,6 +2027,34 @@ model IntegrationLog {
   @@map("integration_logs")
 }
 
+/// Централізований dead-letter: job, що вичерпав УСІ спроби (attempts) у будь-якій з BullMQ-черг.
+/// Durable — переживає Redis flush/рестарт (на відміну від removeOnFail:200, після якого job тихо
+/// зникає). Критично для offline-first: втрачений ПРРО-чек/SMS = юридична/бізнес-проблема. Черга
+/// `checkbox` має власний domain-DLQ (Payment.fiscalStatus=FAILED) — тут unified-запис усіх черг.
+/// orgId NULLABLE (org-agnostic scheduler-jobs: nbu-fetch/purges без job.data.orgId) → TENANT_EXEMPT.
+/// Server-local infra: БЕЗ deletedAt/syncVersion (не sync-иться на mobile). updatedAt — для resolved.
+model DeadLetterJob {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String?   @db.Uuid // best-effort з job.data.orgId; null для org-agnostic черг
+  queueName    String // 'checkbox' | 'sms' | 'outbound-webhook' | ...
+  jobName      String // job.name ('send-sms', 'purge', ...)
+  bullJobId    String // job.id у Redis (діагностика / можливий re-enqueue)
+  attemptsMade Int
+  maxAttempts  Int // job.opts.attempts ?? 1
+  failedReason String    @db.Text // err.message (truncate ~1000)
+  stacktrace   String?   @db.Text // job.stacktrace join (truncate)
+  payload      Json // job.data (секрети НЕ у job.data за конвенцією; sanitize defensively)
+  resolved     Boolean   @default(false) // оператор/retry позначив опрацьованим
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([orgId, createdAt])
+  @@index([queueName, createdAt])
+  @@index([resolved, createdAt]) // UI: активні (unresolved) зверху
+  @@map("dead_letter_jobs")
+}
+
 /// Idempotency-Key (A1): дедуплікація create-документів під offline-retry. Клієнт шле заголовок
 /// `Idempotency-Key: <uuid>`; interceptor РЕЗЕРВУЄ рядок ПЕРЕД викликом handler (unique(orgId,key)
 /// як лок проти конкурентних дублів), потім кешує 2xx-відповідь для replay. Server-local infra:

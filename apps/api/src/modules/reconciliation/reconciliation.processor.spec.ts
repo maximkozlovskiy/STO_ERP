@@ -27,7 +27,7 @@ describe('ReconciliationProcessor', () => {
       invoice: { findMany: vi.fn().mockResolvedValue([]) },
       payment: { groupBy: vi.fn().mockResolvedValue([]) },
     };
-    processor = new ReconciliationProcessor(prisma as never);
+    processor = new ReconciliationProcessor(prisma as never, { capture: vi.fn() } as never);
   });
 
   it('консистентні дані (Σbatch=quantity, Σtx×sign=balance, Σpayment=paidAmount) → 0 drift', async () => {

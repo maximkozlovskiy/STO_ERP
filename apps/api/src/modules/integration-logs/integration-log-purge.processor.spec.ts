@@ -21,7 +21,7 @@ describe('IntegrationLogPurgeProcessor', () => {
       organisationSettings: { findUnique },
       integrationLog: { deleteMany },
     } as never;
-    processor = new IntegrationLogPurgeProcessor(prisma);
+    processor = new IntegrationLogPurgeProcessor(prisma, { capture: vi.fn() } as never);
   });
 
   it('deleteMany ЗАВЖДИ orgId-scoped + createdAt < cutoff', async () => {

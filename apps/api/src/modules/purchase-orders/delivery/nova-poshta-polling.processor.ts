@@ -1,4 +1,4 @@
-import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import { Processor, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { DeliveryStatus } from '@prisma/client';
@@ -8,6 +8,8 @@ import { ProviderConfigService } from '../../payments/provider-config.service';
 import { DeliveryProviderRegistry } from './delivery-provider-registry';
 import { DeliveryTrackingService } from './delivery-tracking.service';
 import { IntegrationLogService } from '../../integration-logs/integration-log.service';
+import { DeadLetterWorkerHost } from '../../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../../modules/dead-letter/dead-letter.service';
 
 interface PollJob {
   purchaseOrderId: string;
@@ -33,7 +35,7 @@ const TERMINAL: ReadonlySet<DeliveryStatus> = new Set<DeliveryStatus>([
  */
 @Injectable()
 @Processor('nova-poshta-polling', { concurrency: 3 })
-export class NovaPoshtaPollingProcessor extends WorkerHost {
+export class NovaPoshtaPollingProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(NovaPoshtaPollingProcessor.name);
 
   constructor(
@@ -43,8 +45,9 @@ export class NovaPoshtaPollingProcessor extends WorkerHost {
     private readonly tracking: DeliveryTrackingService,
     @InjectQueue('nova-poshta-polling') private readonly pollQueue: Queue,
     private readonly integrationLog: IntegrationLogService,
+    deadLetter: DeadLetterService,
   ) {
-    super();
+    super(deadLetter);
   }
 
   async process(job: Job<PollJob>): Promise<void> {
@@ -152,5 +155,11 @@ export class NovaPoshtaPollingProcessor extends WorkerHost {
         { delay, jobId: `np-poll-${purchaseOrderId}`, removeOnComplete: true, removeOnFail: 200 },
       )
       .catch(() => undefined);
+  }
+
+  // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, err: Error): Promise<void> {
+    return this.deadLetterOnFailed(job, err);
   }
 }

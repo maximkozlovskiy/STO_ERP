@@ -1,9 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
+import { DeadLetterWorkerHost } from '../../modules/dead-letter/dead-letter-worker-host';
+import { DeadLetterService } from '../../modules/dead-letter/dead-letter.service';
 
 export interface PurgeJob {
   orgId: string;
@@ -20,11 +22,14 @@ const MAX_RETENTION_DAYS = 365;
  */
 @Injectable()
 @Processor('integration-log-purge', { concurrency: 1 })
-export class IntegrationLogPurgeProcessor extends WorkerHost {
+export class IntegrationLogPurgeProcessor extends DeadLetterWorkerHost {
   private readonly logger = new Logger(IntegrationLogPurgeProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {
-    super();
+  constructor(
+    private readonly prisma: PrismaService,
+    deadLetter: DeadLetterService,
+  ) {
+    super(deadLetter);
   }
 
   async process(job: Job<PurgeJob>): Promise<void> {
@@ -49,5 +54,11 @@ export class IntegrationLogPurgeProcessor extends WorkerHost {
         );
       }
     });
+  }
+
+  // Централізований DLQ: терминальний провал → DeadLetterJob (аудит стеку, backend #2).
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, err: Error): Promise<void> {
+    return this.deadLetterOnFailed(job, err);
   }
 }
