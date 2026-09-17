@@ -2753,3 +2753,26 @@ for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do
 **Severity:** HIGH (customer-facing стабільний-URL сценарій зламано — публічний кошторис зі SMS/email не відкривається; це САМЕ той сценарій, заради якого роут зробили version-neutral). CRITICAL якби version-neutral був docker healthcheck `/api/health` (cascade-падіння контейнера).
 
 **Де шукати ще:** усі VERSION_NEUTRAL контролери та їхні клієнти — `public/work-orders` (share-лінк + export pdf/xlsx/docx), `health` (docker/installer/mobile), будь-який майбутній зовнішньо-адресований роут (webhook-callback, ПРРО-редірект, payment-provider return-URL). Клас: «уніфікований клієнтський префікс-хелпер vs частково-версіонований бек». Також дзеркальний ризик у mobile (`apps/mobile/src/lib/*` — тут BASE_URL зашитий `/api/v1`, health/public звідти не викликаються, але перевіряти при кожному новому neutral-споживачі).
+
+### 2026-09-17 — Нове DB-immutability обмеження (BEFORE-тригер/CHECK) на ledger → рантайм-регресія легітимного flow (0 багів цього разу — методологія перевірки) — Область: db / backend / regression-hunt / installer
+
+**Контекст:** до append-only ledger-таблиць (`settlement_transactions` повна заборона UPDATE+DELETE; `stock_movements` DELETE заборонено, UPDATE лише одноразовий `batchId` NULL→value через whole-row `to_jsonb(NEW)-'batchId' = to_jsonb(OLD)-'batchId'`) додано BEFORE-тригери. Незмінність стала ФІЗИЧНОЮ (раніше — лише конвенція коду + guard-тест). Ризик протилежний звичайному: не «дірка лишилась», а «легітимний бізнес-флоу, що досі мутував таблицю, тепер кидає exception на рантаймі».
+
+**Сигнал:** після коміту, що додає тригер/CHECK/EXCLUDE на таблицю з наявними write-флоу — integration-тест (або живий флоу), що пише цю таблицю, падає з текстом обмеження (`append-only`, `violates check constraint`). Це РЕГРЕСІЯ (заблоковано легітимне), НЕ баг застосунку. Дзеркально: якщо тригер занадто вузький — money/audit-колонку можна протягти разом із дозволеною (напр. `price` разом із `batchId` при col-list `IS NOT DISTINCT FROM` замість whole-row `to_jsonb`).
+
+**Причина виникнення:** unit-специ мокають Prisma → тригер НЕ спрацьовує → зелені навіть якщо реальний флоу зламано. Тригер живе у manual-SQL міграції (не в schema.prisma) → tsc/review не бачать взаємодії з кодом. Розробник перевіряє «заборона працює», але не «усі дозволені флоу ще проходять».
+
+**Підхід до виявлення (рецепт для будь-якого нового immutability-обмеження):**
+
+1. `grep -rnE "<model>\.(update|delete|updateMany|deleteMany)" apps/api/src --include=*.service.ts` + raw: `grep -rniE "UPDATE|DELETE|TRUNCATE .*<table>|\\$executeRaw.*<table>"` → повний перелік ВСІХ мутацій таблиці у прод-коді (виключити *.spec.ts). Для append-only очікувано: лише `.create` + рівно один дозволений `.update` (звірити where/data — має міняти САМЕ дозволену колонку й нічого більше).
+2. Для КОЖНОГО знайденого мутатора: чи він у whitelisted-переліку тригера? Якщо ні → потенційна регресія (void/correction/reversal через UPDATE/DELETE — типовий сценарій).
+3. Реверс/сторно: підтвердити рантаймом що робить КОМПЕНСУЮЧИЙ запис (новий рядок), а не DELETE/UPDATE наявного (`restoreBatchesForReturn`→`returnToBatch` = insert, не delete).
+4. Прогнати LIVE-БД integration-специ (не мок-Prisma) що ганяють флоу через тригер: `*.integration.spec.ts` з реальним `new PrismaClient({datasourceUrl})` + повний api-suite проти живої dev-БД. Мок-специ тут БЕЗ ЦІННОСТІ.
+5. Верифікувати сам тригер рантаймом: `pg_trigger.tgenabled='O'` (активний), `pg_get_functiondef` містить whole-row-порівняння (не col-list — інакше пропущена колонка мутабельна).
+6. Installer-шлях: тригер у manual-SQL міграції відредагований ПІСЛЯ apply → `prisma migrate status` (drift?) + `prisma migrate deploy` проти dev-БД (checksum-error «migration modified after applied»?). Обидва мають бути clean, і migration.sql на диску = актуальна (whole-row) версія, бо `migrate deploy` на СВІЖІЙ installer-БД виконує ФАЙЛ дослівно.
+
+**Підхід до фіксу:** якщо знайдено заблокований легітимний флоу — НЕ вимикати прод-тригер; або (а) переписати флоу на append-only (компенсуючий запис замість mutate), або (б) розширити whitelist тригера точково (як `batchId` NULL→value) зі збереженням whole-row-guard на решту колонок. Кожен реальний фікс + regression-тест проти живої БД.
+
+**Severity:** заблокований легітимний ledger-флоу = HIGH (гроші/склад не проводяться); занадто вузький тригер, що пропускає money-колонку = HIGH (ledger integrity); drift/checksum-помилка на installer = HIGH (свіжа інсталяція не мігрує).
+
+**Де шукати ще:** будь-яка нова immutability-конструкція на таблиці з наявними write-флоу — BEFORE-тригер, CHECK, EXCLUDE, partial-unique, FK ON DELETE RESTRICT. Класи мутаторів під ризиком: void/correction/storno через UPDATE status; batch-cleanup через deleteMany; reversal що DELETE-ить замість компенсувати; adjustment що UPDATE-ить суму. Дзеркально при кожній manual-SQL міграції: чи migration.sql на диску = стан застосований на dev (файл могли правити після apply → installer отримає іншу версію).
