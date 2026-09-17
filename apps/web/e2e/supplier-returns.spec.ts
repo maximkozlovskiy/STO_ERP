@@ -54,10 +54,10 @@ test.describe('Повернення постачальнику', () => {
     const data = await page.evaluate(
       async ({ token }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/warehouses?limit=1', {
+          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -72,7 +72,7 @@ test.describe('Повернення постачальнику', () => {
 
     const sr = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/supplier-returns', {
+        const r = await fetch('http://localhost:3000/api/v1/supplier-returns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId, lines: [] }),
@@ -105,7 +105,7 @@ test.describe('Повернення постачальнику', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/supplier-returns/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/supplier-returns/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
@@ -125,10 +125,10 @@ test.describe('Повернення постачальнику', () => {
     const data = await page.evaluate(
       async ({ token }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/warehouses?limit=1', {
+          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -143,7 +143,7 @@ test.describe('Повернення постачальнику', () => {
 
     const sr = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/supplier-returns', {
+        const r = await fetch('http://localhost:3000/api/v1/supplier-returns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId, lines: [] }),
@@ -158,7 +158,7 @@ test.describe('Повернення постачальнику', () => {
     // FSM transition DRAFT → CONFIRMED через /confirm endpoint
     const confirmed = await page.evaluate(
       async ({ token, id }) => {
-        const r = await fetch(`http://localhost:3000/api/supplier-returns/${id}/confirm`, {
+        const r = await fetch(`http://localhost:3000/api/v1/supplier-returns/${id}/confirm`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: '{}',
@@ -175,7 +175,7 @@ test.describe('Повернення постачальнику', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/supplier-returns/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/supplier-returns/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});

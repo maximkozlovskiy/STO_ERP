@@ -1,4 +1,4 @@
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -9,7 +9,9 @@ import { REDIS_CLIENT } from '../redis/redis.constants';
 import { FilesService } from '../modules/files/files.service';
 
 @ApiTags('health')
-@Controller('health')
+// VERSION_NEUTRAL: URL лишається /api/health/* (не /api/v1/health) — docker healthcheck,
+// installer Update.ps1 та e2e-smoke б'ють /api/health/live; версіонування їх НЕ ламає.
+@Controller({ path: 'health', version: VERSION_NEUTRAL })
 @SkipThrottle()
 export class HealthController {
   constructor(

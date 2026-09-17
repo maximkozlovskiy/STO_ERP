@@ -21,7 +21,7 @@ test.describe('Smoke — публічні сторінки', () => {
     // Інваріант: сторінка рендериться і НЕ падає в error-overlay у будь-якому зі станів.
     const status = await page
       .evaluate(async () => {
-        const r = await fetch('http://localhost:3000/api/setup/status');
+        const r = await fetch('http://localhost:3000/api/v1/setup/status');
         return (await r.json()) as { initialized: boolean };
       })
       .catch(() => ({ initialized: false }));

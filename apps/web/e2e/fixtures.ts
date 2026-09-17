@@ -37,7 +37,7 @@ export async function loginViaAPI(page: Page) {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
   const result = await page.evaluate(
     async ({ apiBase, email, password }) => {
-      const r = await fetch(`${apiBase}/api/auth/login`, {
+      const r = await fetch(`${apiBase}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

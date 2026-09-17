@@ -4,7 +4,7 @@
 };
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import fastifyCookie from '@fastify/cookie';
@@ -47,6 +47,13 @@ async function bootstrap() {
   await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
 
   app.setGlobalPrefix('api');
+
+  // API-версіонування (аудит стеку, backend #3): URI-версія, defaultVersion '1' → усі роути стають
+  // /api/v1/*. Знімає ризик ламких змін для offline-клієнтів (mobile, майбутня cloud-sync), що
+  // оновлюються рідко: майбутня v2 співіснує з v1. Version-neutral винятки (URL НЕ змінюється):
+  //   · health (@Controller VERSION_NEUTRAL) — docker healthcheck б'є /api/health/live;
+  //   · public/work-orders (VERSION_NEUTRAL) — SMS/email-лінки на кошторис мусять лишитись стабільними.
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   // D3 — bull-board (BullBoardModule) монтується як Fastify-plugin і власні роути `/api/admin/queues/*`
   // обробляє повз Nest-middleware/guards. Тож захищаємо їх глобальним Fastify onRequest-хуком (bearer-JWT

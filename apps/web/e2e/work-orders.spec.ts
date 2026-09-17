@@ -129,7 +129,7 @@ test.describe('Наряди — картка', () => {
         sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
     );
     const wo = await page.evaluate(async t => {
-      const r = await fetch('http://localhost:3000/api/work-orders?limit=1', {
+      const r = await fetch('http://localhost:3000/api/v1/work-orders?limit=1', {
         headers: { Authorization: `Bearer ${t}` },
       });
       if (!r.ok) return null;

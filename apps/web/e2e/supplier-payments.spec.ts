@@ -4,7 +4,7 @@ import { clearDateFilter } from './fixtures';
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const API = 'http://localhost:3000/api';
+const API = 'http://localhost:3000/api/v1';
 
 /**
  * Supplier Payments — сторінка /supplier-payments + SupplierPaymentCreateModal.

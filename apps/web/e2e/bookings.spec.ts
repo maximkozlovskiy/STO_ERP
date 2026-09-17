@@ -53,7 +53,7 @@ test.describe('/bookings — список заявок', () => {
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const result = await page.evaluate(
       async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/booking', {
+        const r = await fetch('http://localhost:3000/api/v1/booking', {
           headers: { Authorization: `Bearer ${token}` },
         });
         return { status: r.status, body: await r.text() };

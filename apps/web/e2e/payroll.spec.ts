@@ -21,11 +21,11 @@ async function cleanupTestPeriods(page: Page): Promise<void> {
   await page.evaluate(
     async ({ API, t }) => {
       const list = (await (
-        await fetch(`${API}/api/payroll/periods`, { headers: { Authorization: `Bearer ${t}` } })
+        await fetch(`${API}/api/v1/payroll/periods`, { headers: { Authorization: `Bearer ${t}` } })
       ).json()) as { id: string; status: string; note?: string | null }[];
       for (const p of list) {
         if (p.status !== 'PAID' && p.note?.startsWith('[e2e]')) {
-          await fetch(`${API}/api/payroll/periods/${p.id}`, {
+          await fetch(`${API}/api/v1/payroll/periods/${p.id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${t}` },
           });
@@ -99,7 +99,7 @@ test.describe('Зарплата — життєвий цикл періоду (FS
     const note = `[e2e] ${Date.now()}`;
     const period = await page.evaluate(
       async ({ API, t, FROM, TO, note }) => {
-        const r = await fetch(`${API}/api/payroll/periods`, {
+        const r = await fetch(`${API}/api/v1/payroll/periods`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
           body: JSON.stringify({ periodStart: FROM, periodEnd: TO, note }),
@@ -138,7 +138,7 @@ test.describe('Зарплата — життєвий цикл періоду (FS
     // Верифікація через API: статус PAID, totalPaid > 0 або = accrued.
     const verify = await page.evaluate(
       async ({ API, t, id }) => {
-        const r = await fetch(`${API}/api/payroll/periods/${id}`, {
+        const r = await fetch(`${API}/api/v1/payroll/periods/${id}`, {
           headers: { Authorization: `Bearer ${t}` },
         });
         return (await r.json()) as { status: string; totalAccrued: number; totalPaid: number };
@@ -156,17 +156,17 @@ test.describe('Зарплата — життєвий цикл періоду (FS
 
     const res = await page.evaluate(
       async ({ API, t, FROM, TO }) => {
-        const create = await fetch(`${API}/api/payroll/periods`, {
+        const create = await fetch(`${API}/api/v1/payroll/periods`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
           body: JSON.stringify({ periodStart: FROM, periodEnd: TO, note: '[e2e] guard' }),
         });
         const p = (await create.json()) as { id: string };
-        const c1 = await fetch(`${API}/api/payroll/periods/${p.id}/compute`, {
+        const c1 = await fetch(`${API}/api/v1/payroll/periods/${p.id}/compute`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${t}` },
         });
-        const c2 = await fetch(`${API}/api/payroll/periods/${p.id}/compute`, {
+        const c2 = await fetch(`${API}/api/v1/payroll/periods/${p.id}/compute`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${t}` },
         });

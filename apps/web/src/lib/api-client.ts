@@ -1,6 +1,9 @@
 import { TOKEN_KEY } from './auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+// API-версіонування (backend #3): усі бізнес-роути під /api/v1. Version-neutral винятки
+// (health, public/work-orders) б'ються напряму по /api/... — вони не проходять через apiFetch.
+const API_BASE = `${API_URL}/api/v1`;
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -26,7 +29,7 @@ function clearToken(): void {
 
 async function tryRefresh(): Promise<string | null> {
   try {
-    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -70,7 +73,7 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // attempt JSON parsing → SyntaxError → 500 (e.g. PATCH /booking/:id/confirm).
   const hasBody = init?.body != null;
   const makeRequest = (accessToken: string | null) =>
-    fetch(`${API_URL}/api${path}`, {
+    fetch(`${API_BASE}${path}`, {
       credentials: 'include',
       ...init,
       headers: {
@@ -132,7 +135,7 @@ export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Bl
   const token = getToken();
 
   const makeRequest = (accessToken: string | null) =>
-    fetch(`${API_URL}/api${path}`, {
+    fetch(`${API_BASE}${path}`, {
       credentials: 'include',
       ...init,
       headers: {
@@ -186,7 +189,7 @@ export async function apiMultipartFetch<T>(
   const token = getToken();
 
   const makeRequest = (accessToken: string | null) =>
-    fetch(`${API_URL}/api${path}`, {
+    fetch(`${API_BASE}${path}`, {
       method: 'POST',
       credentials: 'include',
       ...init,
@@ -238,7 +241,7 @@ export async function apiMultipartFetch<T>(
  */
 export async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body != null;
-  const res = await fetch(`${API_URL}/api${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       ...(hasBody ? { 'Content-Type': 'application/json' } : {}),

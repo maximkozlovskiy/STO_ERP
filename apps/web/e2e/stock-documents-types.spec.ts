@@ -14,7 +14,7 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
       // (mirrors fix in apps/web/src/lib/api-client.ts).
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
-      const r = await fetch(`http://localhost:3000/api${path}`, {
+      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),

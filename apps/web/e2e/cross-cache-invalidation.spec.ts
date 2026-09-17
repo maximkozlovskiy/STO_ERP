@@ -12,7 +12,7 @@ import { test, expect, type Page } from '@playwright/test';
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const API = 'http://localhost:3000/api';
+const API = 'http://localhost:3000/api/v1';
 
 async function token(page: Page): Promise<string> {
   const t = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));

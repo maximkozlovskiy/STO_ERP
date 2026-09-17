@@ -42,7 +42,7 @@ test.describe('Документи складу — CRUD', () => {
 
     const seed = await page.evaluate(
       async ({ token }) => {
-        const wRes = await fetch('http://localhost:3000/api/warehouses?limit=1', {
+        const wRes = await fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const w = (await wRes.json())[0];
@@ -55,7 +55,7 @@ test.describe('Документи складу — CRUD', () => {
 
     const doc = await page.evaluate(
       async ({ token, warehouseId, branchId }) => {
-        const r = await fetch('http://localhost:3000/api/stock-documents', {
+        const r = await fetch('http://localhost:3000/api/v1/stock-documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ type: 'WRITEOFF', warehouseId, branchId, lines: [] }),
@@ -81,7 +81,7 @@ test.describe('Документи складу — CRUD', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/stock-documents/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/stock-documents/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -101,10 +101,10 @@ test.describe('Документи складу — CRUD', () => {
     const seed = await page.evaluate(
       async ({ token }) => {
         const [wRes, gRes] = await Promise.all([
-          fetch('http://localhost:3000/api/warehouses?limit=1', {
+          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/goods?limit=1', {
+          fetch('http://localhost:3000/api/v1/goods?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -129,7 +129,7 @@ test.describe('Документи складу — CRUD', () => {
     // RECEIPT збільшує склад, transition підтверджує без перевірки залишків.
     const doc = await page.evaluate(
       async ({ token, warehouseId, branchId, goodId }) => {
-        const r = await fetch('http://localhost:3000/api/stock-documents', {
+        const r = await fetch('http://localhost:3000/api/v1/stock-documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
@@ -167,7 +167,7 @@ test.describe('Документи складу — CRUD', () => {
     // і що UI оновлює badge на "Проведено" (фільтр відображення).
     const transitionRes = await page.evaluate(
       async ({ token, id }) => {
-        const r = await fetch(`http://localhost:3000/api/stock-documents/${id}/transition`, {
+        const r = await fetch(`http://localhost:3000/api/v1/stock-documents/${id}/transition`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ status: 'CONFIRMED' }),
@@ -189,7 +189,7 @@ test.describe('Документи складу — CRUD', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/stock-documents/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/stock-documents/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });

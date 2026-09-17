@@ -128,10 +128,10 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     const data = await page.evaluate(
       async ({ token }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/warehouses?limit=1', {
+          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -150,7 +150,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // Створити PO через API
     const po = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/purchase-orders', {
+        const r = await fetch('http://localhost:3000/api/v1/purchase-orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId }),
@@ -172,7 +172,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // Тестуємо FSM через API + перевіряємо відображення статусу в UI.
     const ordered = await page.evaluate(
       async ({ token, id }) => {
-        const r = await fetch(`http://localhost:3000/api/purchase-orders/${id}/transition`, {
+        const r = await fetch(`http://localhost:3000/api/v1/purchase-orders/${id}/transition`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ status: 'ORDERED' }),
@@ -190,7 +190,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       // Cleanup перед fail щоб БД лишалась чиста.
       await page.evaluate(
         async ({ token, id }) => {
-          await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+          await fetch(`http://localhost:3000/api/v1/purchase-orders/${id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -221,7 +221,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/purchase-orders/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -252,10 +252,10 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     const data = await page.evaluate(
       async ({ token }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/warehouses?limit=1', {
+          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -269,7 +269,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
     const po = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/purchase-orders', {
+        const r = await fetch('http://localhost:3000/api/v1/purchase-orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId }),
@@ -324,7 +324,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/purchase-orders/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -346,10 +346,10 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     const data = await page.evaluate(
       async ({ token }) => {
         const [cpRes, wRes] = await Promise.all([
-          fetch('http://localhost:3000/api/counterparties?types=SUPPLIER,BOTH&limit=1', {
+          fetch('http://localhost:3000/api/v1/counterparties?types=SUPPLIER,BOTH&limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/warehouses?limit=1', {
+          fetch('http://localhost:3000/api/v1/warehouses?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -363,7 +363,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
 
     const po = await page.evaluate(
       async ({ token, supplierId, warehouseId }) => {
-        const r = await fetch('http://localhost:3000/api/purchase-orders', {
+        const r = await fetch('http://localhost:3000/api/v1/purchase-orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ supplierId, warehouseId }),
@@ -424,7 +424,7 @@ test.describe('Замовлення постачальнику — CRUD', () => 
     if (await leaveBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await leaveBtn.click();
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/purchase-orders/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/purchase-orders/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });

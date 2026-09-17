@@ -91,7 +91,7 @@ test.describe('Рахунки — CRUD', () => {
     const token2 = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const firstInv = await page.evaluate(
       async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/invoices?limit=1&status=DRAFT', {
+        const r = await fetch('http://localhost:3000/api/v1/invoices?limit=1&status=DRAFT', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const d = await r.json();
@@ -102,7 +102,7 @@ test.describe('Рахунки — CRUD', () => {
     if (firstInv) {
       await page.evaluate(
         async ({ token, id }) => {
-          await fetch(`http://localhost:3000/api/invoices/${id}`, {
+          await fetch(`http://localhost:3000/api/v1/invoices/${id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -121,7 +121,7 @@ test.describe('Рахунки — CRUD', () => {
     // Знайти контрагента
     const cpRes = await page.evaluate(
       async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/counterparties?limit=1', {
+        const r = await fetch('http://localhost:3000/api/v1/counterparties?limit=1', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const d = await r.json();
@@ -136,7 +136,7 @@ test.describe('Рахунки — CRUD', () => {
     // Створити рахунок через API
     const inv = await page.evaluate(
       async ({ token, cpId }) => {
-        const r = await fetch('http://localhost:3000/api/invoices', {
+        const r = await fetch('http://localhost:3000/api/v1/invoices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ counterpartyId: cpId, amount: 50 }),
@@ -183,7 +183,7 @@ test.describe('Рахунки — CRUD', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/invoices/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/invoices/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });

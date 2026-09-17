@@ -24,7 +24,7 @@ async function apiPost<T>(page: Page, path: string, body: unknown): Promise<T> {
   const token = await getToken(page);
   return page.evaluate(
     async ({ token, path, body }) => {
-      const r = await fetch(`http://localhost:3000/api${path}`, {
+      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
@@ -44,7 +44,7 @@ async function apiGet<T>(page: Page, path: string): Promise<T> {
   const token = await getToken(page);
   return page.evaluate(
     async ({ token, path }) => {
-      const r = await fetch(`http://localhost:3000/api${path}`, {
+      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error(`GET ${path} → ${r.status}`);
@@ -58,7 +58,7 @@ async function apiDelete(page: Page, path: string): Promise<void> {
   const token = await getToken(page);
   await page.evaluate(
     async ({ token, path }) => {
-      await fetch(`http://localhost:3000/api${path}`, {
+      await fetch(`http://localhost:3000/api/v1${path}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

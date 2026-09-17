@@ -60,7 +60,7 @@ test.describe('Конструктор звітів', () => {
         localStorage.getItem('sto_access_token') || localStorage.getItem('sto_e2e_access_token'),
     );
     const resp = await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/reports/builder/run', {
+      const r = await fetch('http://localhost:3000/api/v1/reports/builder/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
         body: JSON.stringify({
@@ -201,7 +201,7 @@ test.describe('Конструктор звітів', () => {
         localStorage.getItem('sto_access_token') || localStorage.getItem('sto_e2e_access_token'),
     );
     const resp = await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/reports/builder/run', {
+      const r = await fetch('http://localhost:3000/api/v1/reports/builder/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
         body: JSON.stringify({
@@ -232,7 +232,7 @@ test.describe('Конструктор звітів', () => {
         localStorage.getItem('sto_access_token') || localStorage.getItem('sto_e2e_access_token'),
     );
     const resp = await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/reports/builder/run', {
+      const r = await fetch('http://localhost:3000/api/v1/reports/builder/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
         body: JSON.stringify({

@@ -27,7 +27,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
     await page.waitForTimeout(1000);
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/booking', {
+      const r = await fetch('http://localhost:3000/api/v1/booking', {
         headers: { Authorization: `Bearer ${tok}` },
       });
       const data = await r.json().catch(() => ({ items: [] }));
@@ -37,7 +37,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
         items
           .filter((i: { clientName: string }) => i.clientName?.includes('E2E'))
           .map((i: { id: string }) =>
-            fetch(`http://localhost:3000/api/booking/${i.id}`, {
+            fetch(`http://localhost:3000/api/v1/booking/${i.id}`, {
               method: 'DELETE',
               headers: { Authorization: `Bearer ${tok}` },
             }).catch(() => {}),
@@ -72,7 +72,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
     // requestedDate (НЕ preferredDate). Раніше тут було неправильне поле і відсутній branchId —
     // /booking/request віддавав 400, r.ok=false → test.skip → fake-green silent skip (Bug #287).
     const data = await page.evaluate(async () => {
-      const branchesRes = await fetch('http://localhost:3000/api/booking/branches');
+      const branchesRes = await fetch('http://localhost:3000/api/v1/booking/branches');
       const branches = await branchesRes.json().catch(() => []);
       return {
         branchId: Array.isArray(branches) ? branches[0]?.id : null,
@@ -87,7 +87,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
     const uniquePhone = `+38099${Date.now().toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
       async ({ branchId, phone, requestedDate }) => {
-        const r = await fetch('http://localhost:3000/api/booking/request', {
+        const r = await fetch('http://localhost:3000/api/v1/booking/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -134,7 +134,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/booking/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/booking/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
@@ -152,7 +152,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
 
     // DTO вимагає branchId + requestedDate (НЕ preferredDate). Див. коментар у попередньому тесті.
     const branchId = await page.evaluate(async () => {
-      const r = await fetch('http://localhost:3000/api/booking/branches');
+      const r = await fetch('http://localhost:3000/api/v1/booking/branches');
       const list = await r.json().catch(() => []);
       return Array.isArray(list) ? list[0]?.id : null;
     });
@@ -161,7 +161,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
     const cancelPhone = `+38099${(Date.now() + 1).toString().slice(-7)}`;
     const bookingRes = await page.evaluate(
       async ({ branchId, phone, requestedDate }) => {
-        const r = await fetch('http://localhost:3000/api/booking/request', {
+        const r = await fetch('http://localhost:3000/api/v1/booking/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -203,7 +203,7 @@ test.describe('Онлайн-запис (Bookings)', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/booking/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/booking/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});

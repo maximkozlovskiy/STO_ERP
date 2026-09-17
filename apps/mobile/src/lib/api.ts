@@ -2,9 +2,10 @@ import { Platform } from 'react-native';
 
 // На Android емуляторі 10.0.2.2 = localhost хосту
 // На фізичному пристрої — IP локального сервера
+// API-версіонування (backend #3): бізнес-роути під /api/v1 (health/public — version-neutral, /api/...).
 const BASE_URL = Platform.select({
-  android: 'http://10.0.2.2:3000/api',
-  default: 'http://localhost:3000/api',
+  android: 'http://10.0.2.2:3000/api/v1',
+  default: 'http://localhost:3000/api/v1',
 });
 
 let accessToken: string | null = null;

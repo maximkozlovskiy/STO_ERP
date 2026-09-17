@@ -38,10 +38,10 @@ test.describe('Календар — слоти', () => {
     const data = await page.evaluate(
       async ({ token }) => {
         const [liftsRes, cpRes] = await Promise.all([
-          fetch('http://localhost:3000/api/lifts', {
+          fetch('http://localhost:3000/api/v1/lifts', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch('http://localhost:3000/api/counterparties?limit=1', {
+          fetch('http://localhost:3000/api/v1/counterparties?limit=1', {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -101,7 +101,7 @@ test.describe('Календар — слоти', () => {
         const endAt = kyivWallToUtcIso(kyivToday, h, 30);
         const res = await page.evaluate(
           async ({ token, liftId, counterpartyId, startAt, endAt }) => {
-            const r = await fetch('http://localhost:3000/api/calendar/slots', {
+            const r = await fetch('http://localhost:3000/api/v1/calendar/slots', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ liftId, counterpartyId, startAt, endAt }),
@@ -140,7 +140,7 @@ test.describe('Календар — слоти', () => {
     // Cleanup
     await page.evaluate(
       async ({ token, id }) => {
-        await fetch(`http://localhost:3000/api/calendar/slots/${id}`, {
+        await fetch(`http://localhost:3000/api/v1/calendar/slots/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });

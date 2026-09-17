@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Res, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiProduces } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
@@ -18,7 +18,9 @@ import { EstimateExportService } from './work-orders-export.service';
  * але throttle прибирає automated probing з логів і Sentry-шум.
  */
 @ApiTags('Work Orders (Public)')
-@Controller('public/work-orders')
+// VERSION_NEUTRAL: URL лишається /api/public/work-orders/:token (не /api/v1/...) — на кошторис
+// шлються зовнішні SMS/email-лінки, що мусять лишатись стабільними попри версіонування API.
+@Controller({ path: 'public/work-orders', version: VERSION_NEUTRAL })
 export class WorkOrdersPublicController {
   constructor(
     private readonly shareService: WorkOrderShareService,

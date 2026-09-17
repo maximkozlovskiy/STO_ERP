@@ -30,7 +30,7 @@ test.describe('Автомобілі', () => {
         sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
     );
     const data = await page.evaluate(async tok => {
-      const r = await fetch('http://localhost:3000/api/vehicles?limit=1', {
+      const r = await fetch('http://localhost:3000/api/v1/vehicles?limit=1', {
         headers: { Authorization: `Bearer ${tok}` },
       });
       if (!r.ok) return { vehicleId: null, garageId: null };
@@ -90,7 +90,7 @@ test.describe('Автомобілі', () => {
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     const vehicle = await page.evaluate(
       async ({ tok, id }) => {
-        const r = await fetch(`http://localhost:3000/api/vehicles/${id}`, {
+        const r = await fetch(`http://localhost:3000/api/v1/vehicles/${id}`, {
           headers: { Authorization: `Bearer ${tok}` },
         });
         if (!r.ok) return null;
@@ -183,7 +183,7 @@ test.describe('Автомобілі', () => {
     const token = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
     await page.evaluate(
       async ({ token, suffix }) => {
-        const r = await fetch('http://localhost:3000/api/vehicles?limit=200', {
+        const r = await fetch('http://localhost:3000/api/v1/vehicles?limit=200', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const list = await r.json();
@@ -191,7 +191,7 @@ test.describe('Автомобілі', () => {
           v.model?.includes(suffix),
         );
         if (target) {
-          await fetch(`http://localhost:3000/api/vehicles/${target.id}`, {
+          await fetch(`http://localhost:3000/api/v1/vehicles/${target.id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           }).catch(() => {});

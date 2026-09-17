@@ -35,7 +35,9 @@ const SLOT_TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
 });
 
 async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}/api${path}`, {
+  // API-версіонування (backend #3): booking-контролер під /api/v1 (не version-neutral).
+  // Публічна сторінка /booking лишається стабільним URL — версіонується лише її API-виклик.
+  const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });

@@ -63,7 +63,7 @@ async function seedEstimateWorkOrder(
   token: string,
 ): Promise<{ id: string; number: string } | null> {
   // 1. Pick a DRAFT donor to clone — must be soft-deletable later.
-  const draftRes = await ctx.get(`${API_BASE}/api/work-orders?status=DRAFT&limit=1`, {
+  const draftRes = await ctx.get(`${API_BASE}/api/v1/work-orders?status=DRAFT&limit=1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!draftRes.ok()) return null;
@@ -72,7 +72,7 @@ async function seedEstimateWorkOrder(
   const donorId = draftList.items[0]!.id;
 
   // 2. Clone — creates a new DRAFT WO (deterministic, won't affect donor).
-  const cloneRes = await ctx.post(`${API_BASE}/api/work-orders/${donorId}/clone`, {
+  const cloneRes = await ctx.post(`${API_BASE}/api/v1/work-orders/${donorId}/clone`, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     data: {},
   });
@@ -80,13 +80,13 @@ async function seedEstimateWorkOrder(
   const clone = (await cloneRes.json()) as { id: string; number: string };
 
   // 3. Transition DRAFT → ESTIMATE.
-  const transRes = await ctx.post(`${API_BASE}/api/work-orders/${clone.id}/transition`, {
+  const transRes = await ctx.post(`${API_BASE}/api/v1/work-orders/${clone.id}/transition`, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     data: { status: 'ESTIMATE' },
   });
   if (!transRes.ok()) {
     // Cleanup the clone if transition fails (DRAFT is deletable).
-    await ctx.delete(`${API_BASE}/api/work-orders/${clone.id}`, {
+    await ctx.delete(`${API_BASE}/api/v1/work-orders/${clone.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return null;
@@ -105,14 +105,14 @@ async function cleanupEstimateWorkOrder(
   woId: string,
 ): Promise<void> {
   await ctx
-    .post(`${API_BASE}/api/work-orders/${woId}/transition`, {
+    .post(`${API_BASE}/api/v1/work-orders/${woId}/transition`, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       data: { status: 'CANCELLED' },
     })
     .catch(() => undefined);
 
   await ctx
-    .delete(`${API_BASE}/api/work-orders/${woId}`, {
+    .delete(`${API_BASE}/api/v1/work-orders/${woId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     .catch(() => undefined);
@@ -155,7 +155,7 @@ test.describe('Estimate share', () => {
     try {
       // 1. Request share token for the seeded ESTIMATE WO.
       const tokenRes = await ctx.post(
-        `${API_BASE}/api/work-orders/${seededEstimateWoId}/share-token`,
+        `${API_BASE}/api/v1/work-orders/${seededEstimateWoId}/share-token`,
         {
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           data: {},
@@ -189,14 +189,14 @@ test.describe('Estimate share', () => {
     expect(accessToken).toBeTruthy();
     const ctx = await request.newContext();
     try {
-      const listRes = await ctx.get(`${API_BASE}/api/work-orders?status=APPROVED&limit=1`, {
+      const listRes = await ctx.get(`${API_BASE}/api/v1/work-orders?status=APPROVED&limit=1`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const list = (await listRes.json()) as { items: { id: string }[] };
       test.skip(list.items.length === 0, 'no APPROVED work-order in DB');
       const woId = list.items[0]!.id;
       // Backend має приймати share-token для APPROVED (Bug #401 канонічний регрес-гард).
-      const tokenRes = await ctx.post(`${API_BASE}/api/work-orders/${woId}/share-token`, {
+      const tokenRes = await ctx.post(`${API_BASE}/api/v1/work-orders/${woId}/share-token`, {
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         data: {},
       });
@@ -226,7 +226,7 @@ test.describe('Estimate share', () => {
     // a valid access token for API calls.
     const apiCtx = await request.newContext();
     try {
-      const loginRes = await apiCtx.post(`${API_BASE}/api/auth/login`, {
+      const loginRes = await apiCtx.post(`${API_BASE}/api/v1/auth/login`, {
         headers: { 'Content-Type': 'application/json' },
         data: {
           email: process.env.E2E_EMAIL ?? 'admin@sto.local',
@@ -306,7 +306,7 @@ test.describe('Estimate share', () => {
     const apiCtx = await request.newContext();
     try {
       const tokenRes = await apiCtx.post(
-        `${API_BASE}/api/work-orders/${seededEstimateWoId}/share-token`,
+        `${API_BASE}/api/v1/work-orders/${seededEstimateWoId}/share-token`,
         {
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           data: {},

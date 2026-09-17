@@ -16,7 +16,7 @@ async function globalSetup() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3000';
 
   // Step 1: get JWT через прямий API виклик (швидше за UI логін)
-  const res = await fetch(`${apiBase}/api/auth/login`, {
+  const res = await fetch(`${apiBase}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -42,7 +42,7 @@ async function globalSetup() {
   await page.goto(`${baseURL}/login/`);
   const loginResult = await page.evaluate(
     async ({ email, password, apiBase }) => {
-      const r = await fetch(`${apiBase}/api/auth/login`, {
+      const r = await fetch(`${apiBase}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

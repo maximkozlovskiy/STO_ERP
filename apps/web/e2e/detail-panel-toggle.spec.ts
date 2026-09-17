@@ -15,7 +15,7 @@ async function apiCall(page: Page, method: string, path: string, body?: Record<s
     async ({ token, method, path, body }) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
-      const r = await fetch(`http://localhost:3000/api${path}`, {
+      const r = await fetch(`http://localhost:3000/api/v1${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),

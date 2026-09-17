@@ -145,7 +145,7 @@ test.describe('Каталог — CRUD товару', () => {
     // Перший товар — має успішно створитись
     const r1 = await page.evaluate(
       async ({ sku, token, apiBase }) => {
-        const r = await fetch(`${apiBase}/api/goods`, {
+        const r = await fetch(`${apiBase}/api/v1/goods`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ name: `Dup1-${sku}`, sku, salePrice: 100, unit: 'шт' }),
@@ -159,7 +159,7 @@ test.describe('Каталог — CRUD товару', () => {
     // Другий з тим самим SKU — має повернути 409 Conflict
     const r2 = await page.evaluate(
       async ({ sku, token, apiBase }) => {
-        const r = await fetch(`${apiBase}/api/goods`, {
+        const r = await fetch(`${apiBase}/api/v1/goods`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ name: `Dup2-${sku}`, sku, salePrice: 200, unit: 'шт' }),

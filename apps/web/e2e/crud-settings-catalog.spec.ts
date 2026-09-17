@@ -40,7 +40,7 @@ test.describe('Каталог — CRUD бренду', () => {
     const brand = await page.evaluate(
       async ({ token, brandName }) => {
         const r = await fetch(
-          `http://localhost:3000/api/brands?q=${encodeURIComponent(brandName)}`,
+          `http://localhost:3000/api/v1/brands?q=${encodeURIComponent(brandName)}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -60,7 +60,7 @@ test.describe('Каталог — CRUD бренду', () => {
       const token2 = await page.evaluate(() => sessionStorage.getItem('sto_access_token'));
       await page.evaluate(
         async ({ token, id }) => {
-          await fetch(`http://localhost:3000/api/brands/${id}`, {
+          await fetch(`http://localhost:3000/api/v1/brands/${id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` },
           });
