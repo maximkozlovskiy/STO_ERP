@@ -4,6 +4,18 @@
 
 ---
 
+## [2026-09-17] Cookie `path` мусить синхронно змінюватись разом з версійним префіксом роуту
+
+Симптом: після додавання `enableVersioning({type:URI, defaultVersion:'1'})` (усі роути → `/api/v1/*`)
+клієнтські URL можна виправити на `/api/v1/auth/...`, але якщо backend встановлює httpOnly-cookie
+з явним `path: '/api/auth'` (`res.cookie(...)`/`res.clearCookie(...)`), браузер продовжує прив'язувати
+cookie до СТАРОГО шляху і НЕ надсилає її на новий `/api/v1/auth/...` — silent auth-breakage навіть
+після виправлення самих URL (симптоми: refresh/logout виглядають як мережевий запит 200, але cookie
+не долітає / не очищається). Правило: будь-яка зміна base-path контролера (версіонування, rename,
+global prefix) МУСИТЬ синхронно оновити ВСІ `path:` у `res.cookie()/clearCookie()` цього контролера —
+grep `path: '/api/` при кожній зміні base-path. Знайдено в аудиті backend #3 (`AuthController`,
+`sto_refresh` cookie), коміт ecb688e2.
+
 ## [2026-09-15] Service Worker у DEV віддає застарілий JS-бандл → форми «не сабмітяться» / зламаний HMR
 
 Симптом: у dev-Chrome клік по кнопці форми (напр. «Увійти») НЕ надсилає жодного запиту на бекенд

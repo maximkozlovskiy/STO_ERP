@@ -10,11 +10,24 @@
 
 ```
 Дата:       2026-09-17
-Фаза:       Аудит стеку — BACKEND розділ. Backend #1 (env-валідація) + #2 (централізований DLQ) ЗАВЕРШЕНО
-            (обидва QA review→tester пройдено). Далі: API-версіонування (/api/v1) / опційні (typedSql, NestJS11).
+Фаза:       Аудит стеку — BACKEND розділ. Backend #1 (env-валідація) + #2 (централізований DLQ) +
+            #3 (URI-версіонування /api/v1) ЗАВЕРШЕНО (усі три QA-цикли пройдено, #3 через sto-sync-agent).
+            Далі: опційні (typedSql, NestJS11) або FRONTEND розділ аудиту.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2521/2521 (165 файлів) · DLQ 22 (service/worker-host/integration+redaction) · env.schema 20.
-HEAD:       a120de94 docs(skills): DLQ secret-redaction over/under-match + non-JSON-safe checks → sto-tester
+HEAD:       ecb688e2 fix(sync): вирівняти клієнтів з /api/v1 після URI-версіонування (аудит backend #3)
+Sync:       2026-09-17 (auto, аудит backend #3 API-версіонування, коміт 8c2d5aa8→ecb688e2) — 1 КРИТИЧНИЙ
+            bug: AuthController не VERSION_NEUTRAL → /auth/* переїхав на /api/v1/auth/*, але web
+            AuthProvider (login/refresh/logout/logout-all, 4× fetch) і backend refresh-cookie path
+            лишились на старому /api/auth → сесії/логін/логаут мовчки ламались (cookie path-mismatch
+            додатково приховав би баг навіть після фіксу URL). Fix: context.tsx 4× URL → /api/v1/auth/*;
+            auth.service.ts cookie path (set+2×clear) → /api/v1/auth; auth.spec.ts асерти; e2e
+            route-глоби **/api/auth/** → **/api/v1/auth/** (api-errors, inventory×2 — інакше мокали
+            не перехоплювали, тест бив по живому бекенду); mobile upload.ts окремий BASE_URL без /v1
+            (photo upload 404). Перевірено чисто: health/public-work-orders VERSION_NEUTRAL коректні,
+            payments — без inbound callback (ADR-005 BullMQ-only, немає version-neutral прогалини),
+            webhooks.controller — власний guarded CRUD (не зовнішній inbound), Caddyfile /api/* wildcard
+            без змін. api+web tsc 0, api-suite 165/2521 green.
 Tester:     2026-09-17 (auto, аудит backend #2 DLQ) — 2 виправлено: (#759 HIGH over-redaction) плоский regex
             матчив короткі підрядки auth|sign|pass|key будь-де → редагував діагностичні поля (authorId/
             assignee/passenger/signedBy/bypass/keyword) → нищив цінність DLQ; fix: токен-орієнтований

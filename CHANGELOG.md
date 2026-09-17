@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-09-17 — Аудит стеку BACKEND #3 sync: клієнти вирівняно з /api/v1
+
+Sync-агент після URI-версіонування (8c2d5aa8, enableVersioning URI defaultVersion '1'). Знайшов
+1 критичний бага: AuthController — звичайний бізнес-контролер (НЕ VERSION_NEUTRAL), тож `/auth/*`
+переїхав на `/api/v1/auth/*`, але web AuthProvider (login/refresh/logout/logout-all) і backend
+refresh-cookie `path` лишились на старому `/api/auth` — сесії/логін/логаут мовчки ламались би
+(cookie path-mismatch означав, що навіть виправлення самого URL без виправлення cookie path не
+допомогло б: браузер не надсилав би `sto_refresh` на новий шлях). Також окремий mobile upload.ts
+BASE_URL (photo upload) не мав /v1. E2E route-mock глоби оновлено, інакше тести тихо били по
+живому бекенду замість мока.
+
+### ecb688e2 fix(sync): вирівняти клієнтів з /api/v1 після URI-версіонування
+
+- `apps/web/src/lib/auth/context.tsx` — 4× fetch → `/api/v1/auth/{refresh,login,logout,logout-all}`
+- `apps/api/src/auth/auth.service.ts` — cookie path `/api/auth` → `/api/v1/auth` (set + 2× clear)
+- `apps/api/src/auth/auth.spec.ts`, `apps/web/e2e/{api-errors,inventory}.spec.ts` — оновлено
+- `apps/mobile/src/lib/upload.ts` — окремий BASE_URL для photo upload → додано /v1
+- Перевірено чисто: health/public-work-orders (VERSION_NEUTRAL), payments (без inbound callback,
+  ADR-005 BullMQ-only), webhooks.controller (власний guarded CRUD, не зовнішній inbound), Caddyfile.
+
+---
+
 ## 2026-09-17 — Аудит стеку BACKEND #2: централізований dead-letter (DLQ) для BullMQ
 
 Другий пункт backend-розділу. Після вичерпання attempts провалений job тримався лише
