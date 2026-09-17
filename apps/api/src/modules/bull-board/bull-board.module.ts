@@ -36,6 +36,7 @@ const QUEUE_NAMES = [
   'reconciliation',
   'nova-poshta-polling',
   'integration-log-purge',
+  'dead-letter-purge',
   'outbound-webhook',
   'checkbox',
   'payment-polling',

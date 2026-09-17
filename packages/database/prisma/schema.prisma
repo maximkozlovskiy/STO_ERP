@@ -1883,6 +1883,10 @@ model OrganisationSettings {
   // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
   // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
   integrationLogRetentionDays      Int             @default(30)
+  // Скільки днів зберігати РОЗВ'ЯЗАНІ (resolved=true) DLQ-записи (DeadLetterJob). Нерозв'язані
+  // (money/legal фіскальні провали) НІКОЛИ не авто-видаляються. Довша retention за лог (legal).
+  // clamp [7,730]. Читається dead-letter-purge processor (не hardcoded).
+  deadLetterRetentionDays          Int             @default(180)
   uiFeatures                       Json            @default("{}")
   // B4: Loyalty program settings
   loyaltyEnabled                   Boolean         @default(false)
