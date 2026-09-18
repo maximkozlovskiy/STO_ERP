@@ -5676,3 +5676,51 @@ TopShell вже має `useTranslation('nav')` → фліпає LIVE разом 
 **Де шукати ще:** будь-який раз, коли `resolveNav`/`NAV_SECTION_LABELS` віддають готовий рядок у JSX
 без `t()`; «Закладки» header у TopShell (рядок, без ключа — свідомо inline, поза scope);
 custom-section назви (правильно НЕ перекладаються).
+
+## Session 2026-09-19 — Bug hunt shared-zod i18n локаль-конвеєр (commit cfbd30f0 + 134d191a), runtime/behavioral
+
+### Bug #763 — i18nZodResolver лишає сирий validation-KEY для поля з ім'ям "type" [x] виправлено
+
+**Severity:** MEDIUM (UI defect: сирий ключ `v.counterparty.type.required` протікає у форму замість перекладу)
+**Файл:** `apps/web/src/lib/i18nZodResolver.ts` (translateErrorTree)
+**Знайдено:** статичний аналіз рекурсії translateErrorTree + reproduce-скрипт + інтеграційний тест.
+
+**Опис:** `translateErrorTree` рекурсивно перекладає validation-KEY-и у RHF-дереві помилок, але
+пропускала будь-який ключ з ім'ям `'type'`: `if (key === 'message' || key === 'ref' || key === 'type') continue;`.
+Намір skip-у був — оминути RHF-метадані leaf-ноди (`type` = назва правила, `ref` = DOM-нода). Але
+`'type'` — ще й ІМ'Я реального поля форми: `counterparty.schema.ts` та `stock-document.schema.ts` мають
+`type: z.enum(...)`. Коли поле `type` не проходить валідацію, RHF будує `errors.type = {message, ref, type}`.
+Батьківський обхід натикався на key `'type'` (ім'я поля) → `continue` → піддерево `errors.type` НІКОЛИ не
+відвідувалось → `errors.type.message` лишався сирим ключем (`'v.counterparty.type.required'`).
+
+**Де проявляється:** `CounterpartyForm.tsx:113` рендерить `errorMessage={errors.type?.message}` — сирий
+ключ у UI замість «Оберіть тип контрагента». (Практично важко досягти через `<select>` з дефолтом, але
+латентно: programmatic reset / undefined defaultValues / майбутні форми з полем `type` та вільним вводом.)
+
+**Причина виникнення:** skip-list змішав RHF-метаключі leaf-ноди з іменами полів. `'type'` неоднозначний:
+на рівні leaf-ноди = рядок (назва правила), на рівні контейнера полів = ім'я поля з піддеревом.
+
+**Фікс:** прибрано `key === 'type'` зі skip-списку. Пропускаємо лише `'message'` (уже оброблено вище) і
+`'ref'` (DOM-нода — рекурсія марна/циклічна). Рекурсія у `type`-рядок leaf-ноди — безпечний no-op
+(`typeof node !== 'object'` → return). Тому skip був непотрібним для коректності й ШКІДЛИВИМ для полів `type`.
+
+**Регрес-тест:** `apps/web/src/lib/__tests__/i18nZodResolver.test.ts` (3 тести) — `type`-поле counterparty
+перекладається («Оберіть тип контрагента»), звичайне поле перекладається, невідомий key лишається (fallback).
+Доведено: тест ПАДАЄ на баговій версії (`expected 'v.counterparty.type.required' to be 'Оберіть тип контрагента'`),
+проходить з фіксом.
+
+**Де шукати ще:** будь-який generic обхід дерева, що skip-ить ключі за іменем, яке водночас є валідним
+іменем поля (`name`, `type`, `ref`, `root` у RHF v7 `errors.root`). Тут `ref` безпечний (не буває іменем
+поля-контейнера у цих схемах), але майбутня схема з полем `ref`/`root` наступила б на ту саму пастку.
+
+---
+
+### Верифікація сесії (не баги — підтвердження)
+
+- **Регресія suite (must stay green):** shared build ✅; api 2549 passed (2544 baseline + 5 нових locale-pipeline); web 824 passed (821 baseline + 3 нових i18nZodResolver). Жодного НОВОГО падіння від commit-у.
+- **Live end-to-end локаль (HTTP):** НЕ виконано — усі 10 zod-piped endpoints за `JwtAuthGuard`; pipe біжить ПІСЛЯ guard → анонімний POST дає 401 ДО pipe (підтверджено: POST /api/v1/counterparties → 401). Задокументований seed-креденшел `admin@sto.local/admin123` відхилено (401) — живий DState ініціалізовано через /setup з іншим паролем, якого немає; brute-force НЕ застосовувався (classifier-denied, і це правильно). Health/ready 200, DB/redis/minio ok.
+- **Fallback інтеграційний тест (замість live HTTP):** `apps/api/src/common/pipes/zod-validation.i18n.e2e.spec.ts` (5 тестів) — реальний ZodValidationPipe + реальний `runWithTenant({locale})` ALS + реальний @sto/shared dist-каталог. Підтверджено: uk BYTE-IDENTICAL («Вкажіть назву товару (поле "name")»), en локалізовано («Enter the product name (field "name")», 0 кирилиці), БЕЗ scope → default uk, ALS-ізоляція під interleaved await (en/uk scope не течуть один в одний — Focus #4).
+- **getLocale ізоляція (Focus #4):** ALS-per-request; interceptor входить у `runWithTenant` синхронно навколо subscribe. Тест interleaved-await у e2e.spec доводить: конкурентні scope з різним locale не діляться станом. resolveLocale('en-US,uk;q=0.9') → 'en' (split ',' → перший тег → slice 2).
+- **Key-parity guard (Focus #5):** `validation-i18n-parity.spec.ts` асертить VALIDATION_KEYS === ukKeys === enKeys + translateValidation(k)≠k для кожного. Видалення будь-якого uk-ключа зламало б parity + resolve-assertion → guard РЕАЛЬНО ловить missing key (підтверджено логікою, файли не мутовано).
+- **Web i18nZodResolver behavioral (Focus #3):** ДО цієї сесії не існувало тесту, що рендерить перекладену помилку форми — `CounterpartyForm.test.tsx` асертить сирі schema-KEY-и, harness використовує plain `zodResolver` (не i18nZodResolver). Прогалину закрито новим `i18nZodResolver.test.ts` (uk-переклад через resolver).
+- **Offline (Focus #6):** каталоги — статичний TS у бандлі (`packages/shared/src/i18n/messages.{uk,en}.ts` → dist/cjs). 0 network-fetch. Підтверджено (import-only, жодного fetch у i18n-модулі).

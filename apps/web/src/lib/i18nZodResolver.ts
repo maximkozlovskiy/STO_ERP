@@ -19,8 +19,12 @@ function translateErrorTree(node: unknown, locale: ValidationLocale): void {
   if (typeof obj.message === 'string' && obj.message) {
     obj.message = translateValidation(obj.message, locale);
   }
+  // Пропускаємо ЛИШЕ 'message' (уже оброблено вище) і 'ref' (DOM-нода RHF — не помилка, рекурсія у неї
+  // марна й потенційно циклічна). НЕ пропускаємо 'type': це і назва RHF-правила (рядок, рекурсія no-op),
+  // і — критично — ім'я реального поля форми (counterparty/stock-document мають `type: z.enum`). Пропуск
+  // 'type' лишав би errors.type.message сирим KEY-ом у UI (напр. 'v.counterparty.type.required'). Bug.
   for (const key of Object.keys(obj)) {
-    if (key === 'message' || key === 'ref' || key === 'type') continue;
+    if (key === 'message' || key === 'ref') continue;
     translateErrorTree(obj[key], locale);
   }
 }
