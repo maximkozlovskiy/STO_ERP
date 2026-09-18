@@ -14,6 +14,7 @@ import {
   type EmployeeFormValues,
   type RateType,
 } from '@sto/shared';
+import { employeeStatusLabel, employeeRoleLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,8 +80,6 @@ interface EmployeeEditModalProps {
   onSaved: (emp: EmployeeForModal) => void;
 }
 
-const ROLE_LABELS = EMPLOYEE_ROLE_LABELS;
-const STATUS_LABELS = EMPLOYEE_STATUS_LABELS;
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від норма-год',
   per_normo_hour: 'Ставка × нормо-год',
@@ -447,16 +446,16 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
               {...register('role')}
               errorMessage={errors.role?.message}
             >
-              {Object.entries(ROLE_LABELS).map(([k, v]) => (
+              {Object.keys(EMPLOYEE_ROLE_LABELS).map(k => (
                 <option key={k} value={k}>
-                  {v}
+                  {employeeRoleLabel(k)}
                 </option>
               ))}
             </Select>
             <Select label="Статус" {...register('status')} errorMessage={errors.status?.message}>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => (
+              {Object.keys(EMPLOYEE_STATUS_LABELS).map(k => (
                 <option key={k} value={k}>
-                  {v}
+                  {employeeStatusLabel(k)}
                 </option>
               ))}
             </Select>

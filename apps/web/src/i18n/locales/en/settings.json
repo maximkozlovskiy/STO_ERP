@@ -1,0 +1,22 @@
+{
+  "title": "Settings",
+  "tabs": {
+    "numbers": "Numbering",
+    "workdays": "Working days",
+    "documents": "Document settings",
+    "notifications": "Notifications",
+    "theme": "Appearance",
+    "ui": "Interface",
+    "followup": "Follow-ups",
+    "loyalty": "Loyalty",
+    "fiscal": "Fiscalization",
+    "delivery": "Delivery",
+    "integrations": "Integrations",
+    "integration-logs": "Integration logs"
+  },
+  "language": "Interface language",
+  "languageOptions": {
+    "uk": "Ukrainian",
+    "en": "English"
+  }
+}

@@ -37,11 +37,11 @@ import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  PO_STATUS_LABELS,
   PO_STATUS_BADGE,
   PO_STATUS_DESCRIPTIONS,
   SUPPLIER_RETURN_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
+import { poStatusLabel, supplierReturnStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
@@ -93,11 +93,7 @@ import {
   supplierReturnsKeys,
   type SupplierReturn,
 } from '@/hooks/api/useSupplierReturns';
-import {
-  SUPPLIER_RETURN_STATUS_LABELS,
-  SUPPLIER_RETURN_STATUS_BADGE,
-  type BadgeVariant,
-} from '@sto/shared';
+import { SUPPLIER_RETURN_STATUS_BADGE, type BadgeVariant } from '@sto/shared';
 import { toast } from '@/lib/toast';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
 import { cn, daysUntil } from '@/lib/utils';
@@ -115,7 +111,6 @@ interface PoFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-const STATUS_LABELS = PO_STATUS_LABELS;
 const STATUS_BADGE = PO_STATUS_BADGE;
 
 // Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
@@ -182,15 +177,15 @@ const DOC_COUNTERS_SR: Array<{ field: SrLinkedCountsField; Icon: ElementType; la
   { field: 'warehouse', Icon: Warehouse, label: 'Склад' },
 ];
 
-// Опції фільтра статусу — повністю статичні (PO_STATUS_LABELS — імпортована константа).
+// Опції фільтра статусу — повністю статичні (лейбли через poStatusLabel).
 // Раніше створювались у тілі компонента на кожен render разом з рядками StatusPill.
 const PO_STATUS_FILTER_OPTIONS: Array<[string, string]> = [
   ['', 'Всі'],
-  ['DRAFT', PO_STATUS_LABELS['DRAFT']],
-  ['ORDERED', PO_STATUS_LABELS['ORDERED']],
-  ['PARTIAL', PO_STATUS_LABELS['PARTIAL']],
-  ['RECEIVED', PO_STATUS_LABELS['RECEIVED']],
-  ['CANCELLED', PO_STATUS_LABELS['CANCELLED']],
+  ['DRAFT', poStatusLabel('DRAFT')],
+  ['ORDERED', poStatusLabel('ORDERED')],
+  ['PARTIAL', poStatusLabel('PARTIAL')],
+  ['RECEIVED', poStatusLabel('RECEIVED')],
+  ['CANCELLED', poStatusLabel('CANCELLED')],
 ];
 
 interface SrFilters extends Record<string, unknown> {
@@ -385,7 +380,7 @@ function PurchaseOrdersPageClient() {
                     variant={STATUS_BADGE[String(v)] ?? 'secondary'}
                     tooltip={PO_STATUS_DESCRIPTIONS[String(v)]}
                   >
-                    {STATUS_LABELS[String(v)] ?? String(v)}
+                    {poStatusLabel(String(v))}
                   </Badge>
                 ),
                 deliveryStatus: (v, record) =>
@@ -812,7 +807,7 @@ function PurchaseOrdersPageClient() {
               <StatusPill
                 key={s}
                 value={s}
-                label={s ? SUPPLIER_RETURN_STATUS_LABELS[s] : 'Всі'}
+                label={s ? supplierReturnStatusLabel(s) : 'Всі'}
                 active={srStatus === s}
                 description={s ? SUPPLIER_RETURN_STATUS_DESCRIPTIONS[s] : undefined}
                 onSelect={v => {
@@ -995,7 +990,7 @@ function PurchaseOrdersPageClient() {
                                   variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status] as BadgeVariant}
                                   tooltip={SUPPLIER_RETURN_STATUS_DESCRIPTIONS[sr.status]}
                                 >
-                                  {SUPPLIER_RETURN_STATUS_LABELS[sr.status] ?? sr.status}
+                                  {supplierReturnStatusLabel(sr.status)}
                                 </Badge>
                               </TableCell>
                             );
@@ -1358,7 +1353,7 @@ function PurchaseOrdersPageClient() {
                                     variant={STATUS_BADGE[po.status] ?? 'secondary'}
                                     tooltip={PO_STATUS_DESCRIPTIONS[po.status]}
                                   >
-                                    {STATUS_LABELS[po.status]}
+                                    {poStatusLabel(po.status)}
                                   </Badge>
                                 </TableCell>
                               );

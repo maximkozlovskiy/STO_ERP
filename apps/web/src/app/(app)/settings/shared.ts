@@ -21,6 +21,7 @@ export interface OrgSettings {
   requireClientApproval: boolean;
   allowPartialPayment: boolean;
   brandTheme: string;
+  language?: string;
   costMethod: CostMethod;
   followUpActive?: boolean;
   followUpDays?: number;

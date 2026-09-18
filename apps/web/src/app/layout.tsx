@@ -4,6 +4,7 @@ import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { ColorModeProvider } from '@/components/ColorModeProvider';
+import { I18nProvider } from '@/components/I18nProvider';
 import { QueryProvider } from '@/components/QueryProvider';
 import './globals.css';
 
@@ -26,11 +27,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             __html: `(function(){try{var m=localStorage.getItem('sto_color_mode')||'light';document.documentElement.setAttribute('data-color-mode',m);if(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var l=localStorage.getItem('sto_locale');if(l==='uk'||l==='en'){document.documentElement.lang=l;}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <ServiceWorkerRegistrar />
         <QueryProvider>
-          <ColorModeProvider>{children}</ColorModeProvider>
+          <I18nProvider>
+            <ColorModeProvider>{children}</ColorModeProvider>
+          </I18nProvider>
         </QueryProvider>
       </body>
     </html>

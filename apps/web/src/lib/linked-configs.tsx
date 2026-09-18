@@ -14,12 +14,12 @@ import {
   Warehouse,
 } from 'lucide-react';
 import {
-  INVOICE_STATUS_LABELS,
-  WO_STATUS_LABELS,
-  PO_STATUS_LABELS,
-  SUPPLIER_PAYMENT_STATUS_LABELS,
-  SUPPLIER_RETURN_STATUS_LABELS,
-} from '@sto/shared';
+  invoiceStatusLabel,
+  woStatusLabel,
+  poStatusLabel,
+  supplierPaymentStatusLabel,
+  supplierReturnStatusLabel,
+} from '@/i18n/enumLabel';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import type { LinkedEntityConfig } from '@/components/ui/LinkedDocumentsPanel';
@@ -60,7 +60,7 @@ const METHOD_LABELS: Record<string, string> = {
 
 function invoiceStatusBadge(status: string) {
   return {
-    label: INVOICE_STATUS_LABELS[status] ?? status,
+    label: invoiceStatusLabel(status),
     className: INVOICE_STATUS_COLORS[status] ?? 'bg-secondary text-muted-foreground',
   };
 }
@@ -162,12 +162,12 @@ function workOrderSection(nav: LinkedNav) {
       id: row.id,
       primary: `Наряд ${row.number}`,
       badge: {
-        label: WO_STATUS_LABELS[row.status] ?? row.status,
+        label: woStatusLabel(row.status),
         className: 'bg-secondary text-muted-foreground',
       },
       preview: {
         title: `Наряд ${row.number}`,
-        rows: [{ label: 'Статус', value: WO_STATUS_LABELS[row.status] ?? row.status }],
+        rows: [{ label: 'Статус', value: woStatusLabel(row.status) }],
       },
       navigate: () => nav.toWorkOrder(row.id),
     }),
@@ -197,7 +197,7 @@ function invoiceSection(
       preview: {
         title: `Рахунок ${row.number}`,
         rows: [
-          { label: 'Статус', value: INVOICE_STATUS_LABELS[row.status] ?? row.status },
+          { label: 'Статус', value: invoiceStatusLabel(row.status) },
           { label: 'Сума', value: `${fmt(row.amount)} ₴` },
           ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
         ],
@@ -338,13 +338,13 @@ function supplierPaymentSection(nav: LinkedNav) {
       primary: `${row.number} — ${fmt(row.amount)} ₴`,
       secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
       badge: {
-        label: SUPPLIER_PAYMENT_STATUS_LABELS[row.status] ?? row.status,
+        label: supplierPaymentStatusLabel(row.status),
         className: 'bg-secondary text-muted-foreground',
       },
       preview: {
         title: `Оплата ${row.number}`,
         rows: [
-          { label: 'Статус', value: SUPPLIER_PAYMENT_STATUS_LABELS[row.status] ?? row.status },
+          { label: 'Статус', value: supplierPaymentStatusLabel(row.status) },
           { label: 'Сума', value: `${fmt(row.amount)} ₴` },
           { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
           ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
@@ -377,13 +377,13 @@ export function supplierPaymentLinkedConfig(nav: LinkedNav): LinkedEntityConfig 
           primary: `Замовлення ${row.number}`,
           secondary: `${fmt(row.totalAmount)} ₴`,
           badge: {
-            label: PO_STATUS_LABELS[row.status] ?? row.status,
+            label: poStatusLabel(row.status),
             className: 'bg-secondary text-muted-foreground',
           },
           preview: {
             title: `Замовлення ${row.number}`,
             rows: [
-              { label: 'Статус', value: PO_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Статус', value: poStatusLabel(row.status) },
               { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
             ],
           },
@@ -442,13 +442,13 @@ function purchaseOrderSourceSection(
       primary: `Замовлення ${row.number}`,
       secondary: `${fmt(row.totalAmount)} ₴`,
       badge: {
-        label: PO_STATUS_LABELS[row.status] ?? row.status,
+        label: poStatusLabel(row.status),
         className: 'bg-secondary text-muted-foreground',
       },
       preview: {
         title: `Замовлення ${row.number}`,
         rows: [
-          { label: 'Статус', value: PO_STATUS_LABELS[row.status] ?? row.status },
+          { label: 'Статус', value: poStatusLabel(row.status) },
           { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
         ],
       },
@@ -518,13 +518,13 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           primary: `${row.number} — ${fmt(row.amount)} ₴`,
           secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
           badge: {
-            label: SUPPLIER_PAYMENT_STATUS_LABELS[row.status] ?? row.status,
+            label: supplierPaymentStatusLabel(row.status),
             className: 'bg-secondary text-muted-foreground',
           },
           preview: {
             title: `Оплата ${row.number}`,
             rows: [
-              { label: 'Статус', value: SUPPLIER_PAYMENT_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Статус', value: supplierPaymentStatusLabel(row.status) },
               { label: 'Сума', value: `${fmt(row.amount)} ₴` },
               { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
             ],
@@ -541,13 +541,13 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           primary: `Повернення ${row.number}`,
           secondary: `${fmt(row.totalAmount)} ₴`,
           badge: {
-            label: SUPPLIER_RETURN_STATUS_LABELS[row.status] ?? row.status,
+            label: supplierReturnStatusLabel(row.status),
             className: 'bg-secondary text-muted-foreground',
           },
           preview: {
             title: `Повернення ${row.number}`,
             rows: [
-              { label: 'Статус', value: SUPPLIER_RETURN_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Статус', value: supplierReturnStatusLabel(row.status) },
               { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
               ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
             ],

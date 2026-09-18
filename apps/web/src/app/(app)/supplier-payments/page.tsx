@@ -34,12 +34,8 @@ import {
   type SupplierPayment,
 } from '@/hooks/api/useSupplierPayments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import {
-  SUPPLIER_PAYMENT_STATUS_LABELS,
-  SUPPLIER_PAYMENT_STATUS_BADGE,
-  SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS,
-  PAYMENT_SOURCE_TYPE_LABELS,
-} from '@sto/shared';
+import { SUPPLIER_PAYMENT_STATUS_BADGE, SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS } from '@sto/shared';
+import { supplierPaymentStatusLabel, paymentSourceTypeLabel } from '@/i18n/enumLabel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -390,7 +386,7 @@ function SupplierPaymentsPageInner() {
           variant={SUPPLIER_PAYMENT_STATUS_BADGE[String(v)] ?? 'secondary'}
           tooltip={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[String(v)]}
         >
-          {SUPPLIER_PAYMENT_STATUS_LABELS[String(v)] ?? String(v)}
+          {supplierPaymentStatusLabel(String(v))}
         </Badge>
       ),
     });
@@ -418,9 +414,7 @@ function SupplierPaymentsPageInner() {
       case 'source':
         return (
           <TableCell key="source" className="text-[13px]">
-            <span className="text-muted-foreground">
-              {PAYMENT_SOURCE_TYPE_LABELS[sp.sourceType] ?? sp.sourceType}
-            </span>
+            <span className="text-muted-foreground">{paymentSourceTypeLabel(sp.sourceType)}</span>
             {sp.sourceName ? ` · ${sp.sourceName}` : ''}
           </TableCell>
         );
@@ -449,7 +443,7 @@ function SupplierPaymentsPageInner() {
               variant={SUPPLIER_PAYMENT_STATUS_BADGE[sp.status] ?? 'secondary'}
               tooltip={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[sp.status]}
             >
-              {SUPPLIER_PAYMENT_STATUS_LABELS[sp.status] ?? sp.status}
+              {supplierPaymentStatusLabel(sp.status)}
             </Badge>
           </TableCell>
         );
@@ -558,7 +552,7 @@ function SupplierPaymentsPageInner() {
               <StatusPill
                 key={s}
                 value={s}
-                label={SUPPLIER_PAYMENT_STATUS_LABELS[s]}
+                label={supplierPaymentStatusLabel(s)}
                 description={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[s]}
                 active={status === s}
                 onSelect={v => {

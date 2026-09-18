@@ -1,0 +1,131 @@
+{
+  "WO_STATUS": {
+    "DRAFT": "Чернетка",
+    "ESTIMATE": "Кошторис",
+    "APPROVED": "Затверджено",
+    "IN_PROGRESS": "В роботі",
+    "ON_HOLD": "Призупинено",
+    "COMPLETED": "Виконано",
+    "INVOICED": "Виставлено",
+    "PAID": "Оплачено",
+    "ARCHIVED": "Архів",
+    "CANCELLED": "Скасовано"
+  },
+  "WO_PRIORITY": {
+    "LOW": "Низький",
+    "NORMAL": "Звичайний",
+    "HIGH": "Високий",
+    "URGENT": "Терміново"
+  },
+  "WO_CATEGORY": {
+    "MAINTENANCE": "ТО",
+    "CURRENT_REPAIR": "Поточний ремонт",
+    "MAJOR_REPAIR": "Кап. ремонт",
+    "BODY_REPAIR": "Кузовний",
+    "DIAGNOSTICS": "Діагностика",
+    "WARRANTY": "Гарантійний",
+    "SEASONAL": "Сезонне"
+  },
+  "INVOICE_STATUS": {
+    "DRAFT": "Чернетка",
+    "SENT": "Надіслано",
+    "PARTIALLY_PAID": "Частково оплачено",
+    "PAID": "Оплачено",
+    "OVERDUE": "Прострочено",
+    "CANCELLED": "Скасовано"
+  },
+  "INVOICE_TYPE": {
+    "STANDARD": "Стандартний",
+    "PREPAYMENT": "Аванс",
+    "CREDIT_NOTE": "Кредит-нота"
+  },
+  "PO_STATUS": {
+    "DRAFT": "Чернетка",
+    "ORDERED": "Замовлено",
+    "PARTIAL": "Частково",
+    "RECEIVED": "Отримано",
+    "CANCELLED": "Скасовано"
+  },
+  "SUPPLIER_RETURN_STATUS": {
+    "DRAFT": "Чернетка",
+    "CONFIRMED": "Підтверджено",
+    "CANCELLED": "Скасовано"
+  },
+  "SUPPLIER_PAYMENT_STATUS": {
+    "DRAFT": "Чернетка",
+    "CONFIRMED": "Проведено",
+    "CANCELLED": "Скасовано"
+  },
+  "PAYMENT_SOURCE_TYPE": {
+    "BANK_ACCOUNT": "Банк",
+    "CASH_REGISTER": "Каса"
+  },
+  "FISCAL_STATUS": {
+    "QUEUED": "У черзі",
+    "DONE": "Пробито",
+    "FAILED": "Помилка",
+    "SKIPPED": "Пропущено"
+  },
+  "STOCK_DOC_STATUS": {
+    "DRAFT": "Чернетка",
+    "CONFIRMED": "Підтверджено",
+    "CANCELLED": "Скасовано"
+  },
+  "STOCK_DOC_TYPE": {
+    "TRANSFER": "Переміщення",
+    "WRITEOFF": "Списання",
+    "RECEIPT": "Оприбуткування",
+    "OPENING_BALANCE": "Поч. залишки"
+  },
+  "STOCK_MOVEMENT_TYPE": {
+    "RECEIPT": "Прихід",
+    "WRITEOFF": "Списання",
+    "TRANSFER": "Переміщення",
+    "RESERVATION": "Резервування",
+    "RESERVATION_RELEASE": "Зняття резерву",
+    "OPENING_BALANCE": "Поч. залишки",
+    "RETURN": "Повернення"
+  },
+  "SETTLEMENT_TX_TYPE": {
+    "CHARGE": "Нарахування",
+    "PAYMENT": "Оплата",
+    "PREPAYMENT": "Передоплата",
+    "REFUND": "Повернення",
+    "CREDIT_NOTE": "Кредит-нота",
+    "SUPPLIER_CHARGE": "Нарахування (постач.)",
+    "SUPPLIER_PAYMENT": "Оплата постачальнику",
+    "SUPPLIER_REFUND": "Повернення постачальнику",
+    "FX_GAIN": "Курсовий прибуток",
+    "FX_LOSS": "Курсовий збиток"
+  },
+  "EMPLOYEE_STATUS": {
+    "ACTIVE": "Активний",
+    "ON_LEAVE": "У відпустці",
+    "FIRED": "Звільнений"
+  },
+  "EMPLOYEE_ROLE": {
+    "OWNER": "Власник",
+    "ADMIN": "Адміністратор",
+    "RECEPTIONIST": "Приймальник",
+    "MECHANIC": "Механік",
+    "STOREKEEPER": "Комірник",
+    "ACCOUNTANT": "Бухгалтер",
+    "CLIENT": "Клієнт",
+    "XLSX_MANAGER": "Менеджер імпорту"
+  },
+  "COUNTERPARTY_TYPE": {
+    "CLIENT": "Клієнт",
+    "SUPPLIER": "Постачальник",
+    "BOTH": "Обидва"
+  },
+  "CONTRACT_TYPE": {
+    "PURCHASE": "Купівля",
+    "SALE": "Продаж"
+  },
+  "GOOD_TYPE": {
+    "SPARE_PART": "Запчастина",
+    "CONSUMABLE": "Витратний матеріал",
+    "MATERIAL": "Матеріал",
+    "TOOL": "Інструмент"
+  }
+}

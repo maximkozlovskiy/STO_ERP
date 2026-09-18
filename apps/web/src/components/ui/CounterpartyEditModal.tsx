@@ -26,7 +26,8 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
-import { WO_STATUS_LABELS, WO_STATUS_BADGE, CONTRACT_TYPE_LABELS } from '@sto/shared';
+import { WO_STATUS_BADGE } from '@sto/shared';
+import { woStatusLabel, contractTypeLabel } from '@/i18n/enumLabel';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
@@ -1054,7 +1055,7 @@ export function CounterpartyEditModal({
                           {counterparty.type === 'BOTH' && <option value="">Оберіть вид</option>}
                           {contractTypesForCounterparty(counterparty.type).map(t => (
                             <option key={t} value={t}>
-                              {CONTRACT_TYPE_LABELS[t] ?? t}
+                              {contractTypeLabel(t)}
                             </option>
                           ))}
                         </Select>
@@ -1231,7 +1232,7 @@ export function CounterpartyEditModal({
                               </span>
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
-                              {CONTRACT_TYPE_LABELS[c.contractType] ?? c.contractType}
+                              {contractTypeLabel(c.contractType)}
                             </td>
                             <td className="px-3 py-2 text-muted-foreground">
                               {fmtDate(c.startDate)}
@@ -1347,7 +1348,7 @@ export function CounterpartyEditModal({
                         </td>
                         <td className="px-3 py-2">
                           <Badge variant={WO_STATUS_BADGE[wo.status] ?? 'secondary'} dot>
-                            {WO_STATUS_LABELS[wo.status] ?? wo.status}
+                            {woStatusLabel(wo.status)}
                           </Badge>
                         </td>
                         <td className="px-3 py-2 text-right text-foreground tabular-nums">

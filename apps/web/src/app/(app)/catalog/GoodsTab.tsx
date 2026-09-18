@@ -59,7 +59,8 @@ import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
 import { toast } from '@/lib/toast';
 import { fmtMoney } from '@/lib/format';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
-import { GOOD_TYPE_LABELS, GOOD_TYPE_BADGE, GOOD_TYPE_DESCRIPTIONS } from '@sto/shared';
+import { GOOD_TYPE_BADGE, GOOD_TYPE_DESCRIPTIONS } from '@sto/shared';
+import { goodTypeLabel } from '@/i18n/enumLabel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -732,7 +733,7 @@ export default function GoodsTab() {
                             variant={GOOD_TYPE_BADGE[g.goodType] ?? 'secondary'}
                             tooltip={GOOD_TYPE_DESCRIPTIONS[g.goodType]}
                           >
-                            {GOOD_TYPE_LABELS[g.goodType] ?? g.goodType}
+                            {goodTypeLabel(g.goodType)}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">—</span>
@@ -851,7 +852,7 @@ export default function GoodsTab() {
                           variant={GOOD_TYPE_BADGE[selectedGood.goodType] ?? 'secondary'}
                           tooltip={GOOD_TYPE_DESCRIPTIONS[selectedGood.goodType]}
                         >
-                          {GOOD_TYPE_LABELS[selectedGood.goodType] ?? selectedGood.goodType}
+                          {goodTypeLabel(selectedGood.goodType)}
                         </Badge>
                       ) : undefined
                     }

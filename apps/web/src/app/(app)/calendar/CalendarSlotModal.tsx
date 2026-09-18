@@ -5,7 +5,8 @@ import type { Dispatch, SetStateAction, RefObject } from 'react';
 import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
-import { WO_STATUS_LABELS, WO_STATUS_BADGE } from '@sto/shared';
+import { WO_STATUS_BADGE } from '@sto/shared';
+import { woStatusLabel } from '@/i18n/enumLabel';
 import { fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import {
@@ -122,7 +123,7 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
     };
   }, [id]);
 
-  const statusLabel = wo ? (WO_STATUS_LABELS[wo.status] ?? wo.status) : '';
+  const statusLabel = wo ? woStatusLabel(wo.status) : '';
   const statusVariant = wo ? (WO_STATUS_BADGE[wo.status] ?? 'secondary') : 'secondary';
 
   return (

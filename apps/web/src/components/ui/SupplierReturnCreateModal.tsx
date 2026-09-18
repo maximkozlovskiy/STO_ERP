@@ -18,7 +18,7 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
-import { SUPPLIER_RETURN_STATUS_LABELS } from '@sto/shared';
+import { supplierReturnStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -478,9 +478,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 >
                   <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
                   <span className="max-w-20 truncate">
-                    {statusPrevStep
-                      ? (SUPPLIER_RETURN_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                      : '—'}
+                    {statusPrevStep ? supplierReturnStatusLabel(statusPrevStep) : '—'}
                   </span>
                 </button>
                 <span
@@ -489,7 +487,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                     STATUS_COLORS[status] ?? 'bg-secondary text-muted-foreground',
                   )}
                 >
-                  {SUPPLIER_RETURN_STATUS_LABELS[status] ?? status}
+                  {supplierReturnStatusLabel(status)}
                 </span>
                 <button
                   type="button"
@@ -498,9 +496,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                   className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <span className="max-w-20 truncate">
-                    {statusNextStep
-                      ? (SUPPLIER_RETURN_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                      : '—'}
+                    {statusNextStep ? supplierReturnStatusLabel(statusNextStep) : '—'}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>

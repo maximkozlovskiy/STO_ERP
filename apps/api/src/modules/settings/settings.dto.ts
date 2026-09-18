@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -112,6 +113,12 @@ export class UpdateOrganisationSettingsDto {
   @IsOptional()
   @IsString()
   brandTheme?: string;
+
+  // Мова інтерфейсу org-дефолт. Bug #84: без поля у DTO forbidNonWhitelisted тихо дропне PATCH.
+  @ApiPropertyOptional({ enum: ['uk', 'en'] })
+  @IsOptional()
+  @IsIn(['uk', 'en'])
+  language?: string;
 
   // emptyToUndefined gap.
   @ApiPropertyOptional({ enum: BatchCostMethod })
@@ -358,6 +365,7 @@ export class OrganisationSettingsResponseDto {
   @ApiProperty() requireClientApproval!: boolean;
   @ApiProperty() allowPartialPayment!: boolean;
   @ApiProperty() brandTheme!: string;
+  @ApiProperty() language!: string;
   @ApiProperty({ enum: BatchCostMethod }) costMethod!: BatchCostMethod;
   @ApiProperty() followUpActive!: boolean;
   @ApiProperty() followUpDays!: number;

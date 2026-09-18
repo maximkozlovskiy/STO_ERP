@@ -38,6 +38,7 @@ import {
   STOCK_DOC_STATUS_TRANSITIONS,
   STOCK_DOC_TYPE_LABELS,
 } from '@sto/shared';
+import { stockDocStatusLabel, stockDocTypeLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -568,7 +569,7 @@ export function StockDocumentCreateModal({
   const headerChips =
     isEditMode && headerCollapsed
       ? [
-          formType ? (STOCK_DOC_TYPE_LABELS[formType] ?? formType) : null,
+          formType ? stockDocTypeLabel(formType) : null,
           warehouseId ? (warehouses.find(w => w.id === warehouseId)?.name ?? null) : null,
         ].filter(Boolean)
       : [];
@@ -617,9 +618,7 @@ export function StockDocumentCreateModal({
                 >
                   <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
                   <span className="max-w-20 truncate">
-                    {statusPrevStep
-                      ? (STOCK_DOC_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                      : '—'}
+                    {statusPrevStep ? stockDocStatusLabel(statusPrevStep) : '—'}
                   </span>
                 </button>
                 <button
@@ -634,9 +633,7 @@ export function StockDocumentCreateModal({
                     !isEditMode && 'cursor-default',
                   )}
                 >
-                  {isEditMode
-                    ? (STOCK_DOC_STATUS_LABELS[currentStatus] ?? currentStatus)
-                    : (STOCK_DOC_STATUS_LABELS['DRAFT'] ?? 'Чернетка')}
+                  {isEditMode ? stockDocStatusLabel(currentStatus) : stockDocStatusLabel('DRAFT')}
                 </button>
                 <button
                   type="button"
@@ -645,9 +642,7 @@ export function StockDocumentCreateModal({
                   className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <span className="max-w-20 truncate">
-                    {statusNextStep
-                      ? (STOCK_DOC_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                      : '—'}
+                    {statusNextStep ? stockDocStatusLabel(statusNextStep) : '—'}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
@@ -664,7 +659,7 @@ export function StockDocumentCreateModal({
                         }}
                         className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
                       >
-                        {TRANSITION_LABELS[s] ?? STOCK_DOC_STATUS_LABELS[s] ?? s}
+                        {TRANSITION_LABELS[s] ?? stockDocStatusLabel(s)}
                       </button>
                     ))}
                   </div>
@@ -876,9 +871,9 @@ export function StockDocumentCreateModal({
                         disabled={!canEdit || isEditMode}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        {Object.entries(STOCK_DOC_TYPE_LABELS).map(([k, v]) => (
+                        {Object.keys(STOCK_DOC_TYPE_LABELS).map(k => (
                           <option key={k} value={k}>
-                            {v}
+                            {stockDocTypeLabel(k)}
                           </option>
                         ))}
                       </Select>

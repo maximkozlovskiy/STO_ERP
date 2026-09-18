@@ -36,11 +36,10 @@ import { fmtMoney, fmtInt, fmtDate, kyivToday } from '@/lib/format';
 import {
   COUNTERPARTY_TYPE_BADGE,
   COUNTERPARTY_TYPE_DESCRIPTIONS,
-  CONTRACT_TYPE_LABELS,
-  WO_STATUS_LABELS,
   SETTLEMENT_BALANCE_UP_TYPES,
   SETTLEMENT_TX_CHARGE_LIKE_TYPES,
 } from '@sto/shared';
+import { contractTypeLabel, woStatusLabel } from '@/i18n/enumLabel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,7 +191,7 @@ const LEGAL_FORM_LABELS: Record<string, string> = {
 };
 const TYPE_BADGE = COUNTERPARTY_TYPE_BADGE;
 
-// WO_STATUS_LABELS imported from @sto/shared — single source of truth
+// woStatusLabel from @/i18n/enumLabel — single source of truth for status labels
 const WO_STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
   ESTIMATE: 'bg-warning-subtle text-warning',
@@ -1176,7 +1175,7 @@ export default function CounterpartyCardPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {CONTRACT_TYPE_LABELS[c.contractType] ?? c.contractType}
+                        {contractTypeLabel(c.contractType)}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{fmtDate(c.startDate)}</td>
                       <td className="px-4 py-3 text-muted-foreground">
@@ -1332,7 +1331,7 @@ export default function CounterpartyCardPage() {
                           WO_STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground',
                         )}
                       >
-                        {WO_STATUS_LABELS[wo.status] ?? wo.status}
+                        {woStatusLabel(wo.status)}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">

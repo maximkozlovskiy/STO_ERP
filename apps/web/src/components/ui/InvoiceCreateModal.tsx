@@ -37,6 +37,7 @@ import {
   INVOICE_STATUS_TRANSITIONS,
   INVOICE_TYPE_LABELS,
 } from '@sto/shared';
+import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -609,9 +610,7 @@ export function InvoiceCreateModal({
   const headerChips =
     isEditMode && headerCollapsed
       ? [
-          watchedInvoiceType
-            ? (INVOICE_TYPE_LABELS[watchedInvoiceType] ?? watchedInvoiceType)
-            : null,
+          watchedInvoiceType ? invoiceTypeLabel(watchedInvoiceType) : null,
           counterpartyDisplay || null,
           watchedDueDate ? `до ${watchedDueDate}` : null,
         ].filter(Boolean)
@@ -657,14 +656,12 @@ export function InvoiceCreateModal({
                   type="button"
                   disabled={transitioning || !statusPrevStep || !isEditMode}
                   onClick={() => statusPrevStep && void doTransition(statusPrevStep)}
-                  title={statusPrevStep ? INVOICE_STATUS_LABELS[statusPrevStep] : undefined}
+                  title={statusPrevStep ? invoiceStatusLabel(statusPrevStep) : undefined}
                   className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
                   <span className="max-w-20 truncate">
-                    {statusPrevStep
-                      ? (INVOICE_STATUS_LABELS[statusPrevStep] ?? statusPrevStep)
-                      : '—'}
+                    {statusPrevStep ? invoiceStatusLabel(statusPrevStep) : '—'}
                   </span>
                 </button>
                 <button
@@ -679,21 +676,17 @@ export function InvoiceCreateModal({
                     !isEditMode && 'cursor-default',
                   )}
                 >
-                  {isEditMode
-                    ? (INVOICE_STATUS_LABELS[currentStatus] ?? currentStatus)
-                    : (INVOICE_STATUS_LABELS['DRAFT'] ?? 'Чернетка')}
+                  {isEditMode ? invoiceStatusLabel(currentStatus) : invoiceStatusLabel('DRAFT')}
                 </button>
                 <button
                   type="button"
                   disabled={transitioning || !statusNextStep || !isEditMode}
                   onClick={() => statusNextStep && void doTransition(statusNextStep)}
-                  title={statusNextStep ? INVOICE_STATUS_LABELS[statusNextStep] : undefined}
+                  title={statusNextStep ? invoiceStatusLabel(statusNextStep) : undefined}
                   className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <span className="max-w-20 truncate">
-                    {statusNextStep
-                      ? (INVOICE_STATUS_LABELS[statusNextStep] ?? statusNextStep)
-                      : '—'}
+                    {statusNextStep ? invoiceStatusLabel(statusNextStep) : '—'}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
@@ -912,9 +905,9 @@ export function InvoiceCreateModal({
                     disabled={!canEdit}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
-                    {Object.entries(INVOICE_TYPE_LABELS).map(([k, v]) => (
+                    {Object.keys(INVOICE_TYPE_LABELS).map(k => (
                       <option key={k} value={k}>
-                        {v}
+                        {invoiceTypeLabel(k)}
                       </option>
                     ))}
                   </Select>

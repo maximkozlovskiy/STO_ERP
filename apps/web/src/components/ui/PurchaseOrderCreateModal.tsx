@@ -37,7 +37,8 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { displayCounterpartyName, cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
-import { PO_STATUS_LABELS, PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
+import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
+import { poStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1033,7 +1034,7 @@ export function PurchaseOrderCreateModal({
                 >
                   <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
                   <span className="max-w-20 truncate">
-                    {statusPrevStep ? (PO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep) : '—'}
+                    {statusPrevStep ? poStatusLabel(statusPrevStep) : '—'}
                   </span>
                 </button>
                 <button
@@ -1048,7 +1049,7 @@ export function PurchaseOrderCreateModal({
                     !isEditMode && 'cursor-default',
                   )}
                 >
-                  {PO_STATUS_LABELS[currentStatus] ?? currentStatus}
+                  {poStatusLabel(currentStatus)}
                 </button>
                 <button
                   type="button"
@@ -1057,7 +1058,7 @@ export function PurchaseOrderCreateModal({
                   className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <span className="max-w-20 truncate">
-                    {statusNextStep ? (PO_STATUS_LABELS[statusNextStep] ?? statusNextStep) : '—'}
+                    {statusNextStep ? poStatusLabel(statusNextStep) : '—'}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
@@ -1074,7 +1075,7 @@ export function PurchaseOrderCreateModal({
                         }}
                         className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-border transition-colors disabled:opacity-50"
                       >
-                        {PO_STATUS_ACTION_LABELS[s] ?? PO_STATUS_LABELS[s] ?? s}
+                        {PO_STATUS_ACTION_LABELS[s] ?? poStatusLabel(s)}
                       </button>
                     ))}
                   </div>

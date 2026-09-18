@@ -37,10 +37,22 @@ export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs
 export interface NavItem {
   href: string;
   label: string;
+  /** i18n-ключ у namespace `nav` (напр. 'workOrders'); label — укр. fallback. */
+  labelKey: string;
   icon: LucideIcon;
   section: NavSection;
   roles?: string[];
 }
+
+/** i18n-ключі заголовків розділів (namespace `nav`, під `section.<key>`). */
+export const NAV_SECTION_KEYS: Record<NavSection, string> = {
+  top: '',
+  documents: 'section.documents',
+  settlements: 'section.settlements',
+  reports: 'section.reports',
+  refs: 'section.refs',
+  settings: 'section.settings',
+};
 
 export interface NavGroup {
   label?: string;
@@ -62,18 +74,55 @@ export const NAV_SECTION_LABELS: Record<NavSection, string> = {
  */
 export const MASTER_NAV_ITEMS: NavItem[] = [
   // ─── Top ──────────────────────────────────────────────────────────
-  { href: '/dashboard', label: 'Дашборд', icon: LayoutDashboard, section: 'top' },
-  { href: '/calendar', label: 'Календар', icon: CalendarDays, section: 'top' },
+  {
+    href: '/dashboard',
+    labelKey: 'dashboard',
+    label: 'Дашборд',
+    icon: LayoutDashboard,
+    section: 'top',
+  },
+  {
+    href: '/calendar',
+    labelKey: 'calendar',
+    label: 'Календар',
+    icon: CalendarDays,
+    section: 'top',
+  },
 
   // ─── Документи ────────────────────────────────────────────────────
-  { href: '/work-orders', label: 'Наряди', icon: Wrench, section: 'documents' },
-  { href: '/purchase-orders', label: 'Купівля', icon: ShoppingCart, section: 'documents' },
-  { href: '/stock-documents', label: 'Склад', icon: FileText, section: 'documents' },
+  {
+    href: '/work-orders',
+    labelKey: 'workOrders',
+    label: 'Наряди',
+    icon: Wrench,
+    section: 'documents',
+  },
+  {
+    href: '/purchase-orders',
+    labelKey: 'purchaseOrders',
+    label: 'Купівля',
+    icon: ShoppingCart,
+    section: 'documents',
+  },
+  {
+    href: '/stock-documents',
+    labelKey: 'stockDocuments',
+    label: 'Склад',
+    icon: FileText,
+    section: 'documents',
+  },
 
   // ─── Взаєморозрахунки ─────────────────────────────────────────────
-  { href: '/invoices', label: 'Рахунки клієнтам', icon: Receipt, section: 'settlements' },
+  {
+    href: '/invoices',
+    labelKey: 'invoices',
+    label: 'Рахунки клієнтам',
+    icon: Receipt,
+    section: 'settlements',
+  },
   {
     href: '/payments',
+    labelKey: 'payments',
     label: 'Оплати клієнтів',
     icon: HandCoins,
     section: 'settlements',
@@ -81,6 +130,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/supplier-payments',
+    labelKey: 'supplierPayments',
     label: 'Оплати постачальникам',
     icon: Wallet,
     section: 'settlements',
@@ -89,6 +139,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   // «Каса» — остання у Взаєморозрахунках за замовчуванням (кастомний порядок може перекрити).
   {
     href: '/cash',
+    labelKey: 'cash',
     label: 'Каса',
     icon: DoorOpen,
     section: 'settlements',
@@ -99,6 +150,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   // /settlements — вкладка всередині /reports (не окремий пункт меню)
   {
     href: '/bookings',
+    labelKey: 'bookings',
     label: 'Онлайн-запис',
     icon: ClipboardList,
     section: 'reports',
@@ -106,6 +158,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/payroll',
+    labelKey: 'payroll',
     label: 'Зарплата',
     icon: Banknote,
     section: 'reports',
@@ -113,6 +166,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/reports',
+    labelKey: 'reports',
     label: 'Звіти',
     icon: BarChart2,
     section: 'reports',
@@ -120,9 +174,16 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
 
   // ─── Довідники ────────────────────────────────────────────────────
-  { href: '/counterparties', label: 'Контрагенти', icon: Users, section: 'refs' },
+  {
+    href: '/counterparties',
+    labelKey: 'counterparties',
+    label: 'Контрагенти',
+    icon: Users,
+    section: 'refs',
+  },
   {
     href: '/catalog',
+    labelKey: 'catalog',
     label: 'Каталог',
     icon: BookOpen,
     section: 'refs',
@@ -130,6 +191,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/pricing-rules',
+    labelKey: 'pricingRules',
     label: 'Ціноутворення',
     icon: Zap,
     section: 'refs',
@@ -137,6 +199,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/ndi',
+    labelKey: 'ndi',
     label: 'НДІ',
     icon: BookMarked,
     section: 'refs',
@@ -144,6 +207,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/employees',
+    labelKey: 'employees',
     label: 'Співробітники',
     icon: UserCog,
     section: 'refs',
@@ -151,6 +215,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/infrastructure',
+    labelKey: 'infrastructure',
     label: 'Інфраструктура',
     icon: Building2,
     section: 'refs',
@@ -160,6 +225,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   // ─── Налаштування ─────────────────────────────────────────────────
   {
     href: '/settings',
+    labelKey: 'settings',
     label: 'Система',
     icon: Settings,
     section: 'settings',
@@ -167,6 +233,7 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
   },
   {
     href: '/settings/sync',
+    labelKey: 'settingsSync',
     label: 'Cloud Sync',
     icon: CloudUpload,
     section: 'settings',

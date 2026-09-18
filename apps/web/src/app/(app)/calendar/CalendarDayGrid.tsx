@@ -7,7 +7,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { WO_STATUS_LABELS } from '@sto/shared';
+import { woStatusLabel } from '@/i18n/enumLabel';
 
 import type { BookingSlot, CalendarSlot, GhostSlot, Lift, PendingSlot } from './calendar.types';
 import { SIDEBAR_W, decimalHoursToHHMM, fmtTime, kyivHours, pad } from './calendar.utils';
@@ -62,7 +62,7 @@ const DraggableSlot = memo(function DraggableSlot({
   const titleTooltip = [
     timeLabel,
     slot.workOrderNumber ? `· ${slot.workOrderNumber}` : null,
-    slot.workOrderStatus ? (WO_STATUS_LABELS[slot.workOrderStatus] ?? slot.workOrderStatus) : null,
+    slot.workOrderStatus ? woStatusLabel(slot.workOrderStatus) : null,
     slot.counterpartyName ?? null,
     slot.cpPhone ?? null,
     slot.vehicleSummary ?? null,
@@ -108,7 +108,7 @@ const DraggableSlot = memo(function DraggableSlot({
           )}
           {slot.workOrderStatus && (
             <span className="truncate leading-tight text-[10px] opacity-90">
-              {WO_STATUS_LABELS[slot.workOrderStatus] ?? slot.workOrderStatus}
+              {woStatusLabel(slot.workOrderStatus)}
             </span>
           )}
           {slot.counterpartyName && (

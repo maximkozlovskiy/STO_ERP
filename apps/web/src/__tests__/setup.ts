@@ -1,5 +1,9 @@
 import '@testing-library/jest-dom';
 
+// i18n: ініціалізуємо i18next (lng='uk' за замовчуванням, бо localStorage порожній у jsdom) →
+// t() резолвить українські каталоги → існуючі тести, що асертять укр. текст, лишаються green.
+import '@/i18n/config';
+
 // jsdom does not implement Element.prototype.scrollIntoView — stub it so components
 // that scroll the active item into view (CommandPalette, Select, list virtualizers)
 // do not crash during render.

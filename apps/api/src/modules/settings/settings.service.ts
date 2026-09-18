@@ -335,6 +335,7 @@ export class SettingsService {
     requireClientApproval: boolean;
     allowPartialPayment: boolean;
     brandTheme: string;
+    language: string;
     costMethod: BatchCostMethod;
     followUpActive: boolean;
     followUpDays: number;
@@ -366,6 +367,7 @@ export class SettingsService {
       requireClientApproval: s.requireClientApproval,
       allowPartialPayment: s.allowPartialPayment,
       brandTheme: s.brandTheme,
+      language: s.language,
       costMethod: s.costMethod,
       followUpActive: s.followUpActive,
       followUpDays: s.followUpDays,

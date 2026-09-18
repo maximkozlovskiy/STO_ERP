@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/lib/auth';
@@ -50,6 +51,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 function SettingsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const { t: tr } = useTranslation('settings');
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'numbers') as Tab;
@@ -58,7 +60,7 @@ function SettingsPageClient() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-6">
-      <h1 className="page-title mb-6">Налаштування</h1>
+      <h1 className="page-title mb-6">{tr('title', { defaultValue: 'Налаштування' })}</h1>
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
@@ -73,7 +75,7 @@ function SettingsPageClient() {
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {tr(`tabs.${t.key}`, { defaultValue: t.label })}
           </button>
         ))}
       </div>

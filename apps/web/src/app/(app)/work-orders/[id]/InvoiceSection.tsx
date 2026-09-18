@@ -12,13 +12,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  INVOICE_STATUS_LABELS,
   INVOICE_STATUS_BADGE,
   INVOICE_STATUS_DESCRIPTIONS,
   WO_INVOICEABLE_STATUSES,
   WO_INVOICE_VISIBLE_STATUSES,
   type InvoiceStatus,
 } from '@sto/shared';
+import { invoiceStatusLabel } from '@/i18n/enumLabel';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -164,7 +164,7 @@ export function InvoiceSection({
             variant={INVOICE_STATUS_BADGE[invoiceRef.status] ?? 'secondary'}
             tooltip={INVOICE_STATUS_DESCRIPTIONS[invoiceRef.status]}
           >
-            {INVOICE_STATUS_LABELS[invoiceRef.status] ?? invoiceRef.status}
+            {invoiceStatusLabel(invoiceRef.status)}
           </Badge>
           {(() => {
             const baseCode = baseCurrency?.code ?? 'UAH';

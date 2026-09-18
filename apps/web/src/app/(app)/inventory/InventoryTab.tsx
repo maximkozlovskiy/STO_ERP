@@ -4,7 +4,7 @@ import { Fragment, memo, useEffect, useState, useCallback, useMemo } from 'react
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronRight, Package, Search } from 'lucide-react';
-import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
+import { stockMovementTypeLabel } from '@/i18n/enumLabel';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
@@ -64,9 +64,6 @@ const VIEW_LABELS: Record<ViewMode, string> = {
 function fmt(n: number) {
   return `${fmtMoney(n)} ₴`;
 }
-
-// Єдине джерело лейблів типів руху — @sto/shared (включно з RETURN).
-const MOVEMENT_TYPE_LABELS = STOCK_MOVEMENT_TYPE_LABELS;
 
 function toggle(set: Set<string>, key: string): Set<string> {
   const next = new Set(set);
@@ -623,7 +620,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
                           {doc.docLabel}
                         </TableCell>
                         <TableCell className="text-[12px] text-foreground">
-                          {MOVEMENT_TYPE_LABELS[mv.type] ?? mv.type}
+                          {stockMovementTypeLabel(mv.type)}
                         </TableCell>
                         <TableCell
                           className={cn(

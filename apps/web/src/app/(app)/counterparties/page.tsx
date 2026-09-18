@@ -14,11 +14,8 @@ import {
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
-import {
-  COUNTERPARTY_TYPE_LABELS,
-  COUNTERPARTY_TYPE_BADGE,
-  COUNTERPARTY_TYPE_DESCRIPTIONS,
-} from '@sto/shared';
+import { COUNTERPARTY_TYPE_BADGE, COUNTERPARTY_TYPE_DESCRIPTIONS } from '@sto/shared';
+import { counterpartyTypeLabel } from '@/i18n/enumLabel';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -61,7 +58,6 @@ interface CrmFilters extends Record<string, unknown> {
   showDeleted: boolean;
 }
 
-const TYPE_LABELS = COUNTERPARTY_TYPE_LABELS;
 const TYPE_BADGE = COUNTERPARTY_TYPE_BADGE;
 const TYPE_FILTER_OPTIONS = [
   ['', 'Всі'],
@@ -357,7 +353,7 @@ function CrmPageInner() {
                   variant={TYPE_BADGE[String(v)] ?? 'secondary'}
                   tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[String(v)]}
                 >
-                  {TYPE_LABELS[String(v)]}
+                  {counterpartyTypeLabel(String(v))}
                 </Badge>
                 {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
                 {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
@@ -651,7 +647,7 @@ function CrmPageInner() {
                                 variant={TYPE_BADGE[cp.type] ?? 'secondary'}
                                 tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
                               >
-                                {TYPE_LABELS[cp.type]}
+                                {counterpartyTypeLabel(cp.type)}
                               </Badge>
                             </TableCell>
                           );

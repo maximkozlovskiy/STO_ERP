@@ -5,11 +5,24 @@ import type { NavItem } from '../nav';
 
 // Мінімальний master для детермінованих тестів (3 секції).
 const MASTER: NavItem[] = [
-  { href: '/work-orders', label: 'Наряди', icon: Wrench, section: 'documents' },
-  { href: '/invoices', label: 'Рахунки', icon: Receipt, section: 'settlements' },
-  { href: '/cash', label: 'Каса', icon: DoorOpen, section: 'settlements' },
+  {
+    href: '/work-orders',
+    labelKey: 'workOrders',
+    label: 'Наряди',
+    icon: Wrench,
+    section: 'documents',
+  },
+  {
+    href: '/invoices',
+    labelKey: 'invoices',
+    label: 'Рахунки',
+    icon: Receipt,
+    section: 'settlements',
+  },
+  { href: '/cash', labelKey: 'cash', label: 'Каса', icon: DoorOpen, section: 'settlements' },
   {
     href: '/employees',
+    labelKey: 'employees',
     label: 'Співробітники',
     icon: Users,
     section: 'refs',

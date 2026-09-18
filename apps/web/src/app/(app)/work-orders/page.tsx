@@ -36,13 +36,13 @@ import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  WO_STATUS_LABELS,
   WO_STATUS_BADGE,
   WO_STATUS_DESCRIPTIONS,
   WO_PRIORITY_LABELS,
   WO_PRIORITY_BADGE,
   WO_CATEGORY_LABELS,
 } from '@sto/shared';
+import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -107,14 +107,11 @@ interface WOFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-// Status/badge/priority/category constants imported from @sto/shared
-const STATUS_LABELS = WO_STATUS_LABELS;
+// Labels via i18n wrappers; badge/description constants imported from @sto/shared
 const STATUS_BADGE = WO_STATUS_BADGE;
 
 const STATUS_DESCRIPTIONS = WO_STATUS_DESCRIPTIONS;
-const PRIORITY_LABELS = WO_PRIORITY_LABELS;
 const PRIORITY_BADGE = WO_PRIORITY_BADGE;
-const CATEGORY_LABELS = WO_CATEGORY_LABELS;
 
 const STATUS_TABS: Array<[string, string]> = [
   ['', 'Всі'],
@@ -566,16 +563,16 @@ function WorkOrdersPageInner() {
                   dot
                   tooltip={STATUS_DESCRIPTIONS[String(v)]}
                 >
-                  {STATUS_LABELS[String(v)] ?? String(v)}
+                  {woStatusLabel(String(v))}
                 </Badge>
               ),
               priority: v =>
                 v ? (
                   <Badge variant={PRIORITY_BADGE[String(v)] ?? 'secondary'}>
-                    {PRIORITY_LABELS[String(v)] ?? String(v)}
+                    {woPriorityLabel(String(v))}
                   </Badge>
                 ) : undefined,
-              repairCategory: v => (v ? (CATEGORY_LABELS[String(v)] ?? String(v)) : undefined),
+              repairCategory: v => (v ? woCategoryLabel(String(v)) : undefined),
               dueDate: v =>
                 v ? (
                   <span
@@ -723,9 +720,9 @@ function WorkOrdersPageInner() {
           className="w-52 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
           <option value="">Всі категорії</option>
-          {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+          {Object.keys(WO_CATEGORY_LABELS).map(value => (
             <option key={value} value={value}>
-              {label}
+              {woCategoryLabel(value)}
             </option>
           ))}
         </Select>
@@ -910,7 +907,7 @@ function WorkOrdersPageInner() {
                                 </div>
                                 {wo.repairCategory && (
                                   <p className="text-[11px] text-muted-foreground">
-                                    {CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
+                                    {woCategoryLabel(wo.repairCategory)}
                                   </p>
                                 )}
                               </div>
@@ -935,7 +932,7 @@ function WorkOrdersPageInner() {
                                 dot
                                 tooltip={STATUS_DESCRIPTIONS[wo.status]}
                               >
-                                {STATUS_LABELS[wo.status] ?? wo.status}
+                                {woStatusLabel(wo.status)}
                               </Badge>
                             </TableCell>
                           );
@@ -962,9 +959,9 @@ function WorkOrdersPageInner() {
                                   autoFocus
                                   className="rounded border border-primary bg-surface text-[12px] text-foreground px-1.5 py-0.5 outline-none disabled:opacity-50"
                                 >
-                                  {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                                  {Object.keys(WO_PRIORITY_LABELS).map(v => (
                                     <option key={v} value={v}>
-                                      {l}
+                                      {woPriorityLabel(v)}
                                     </option>
                                   ))}
                                 </select>
@@ -979,7 +976,7 @@ function WorkOrdersPageInner() {
                                 >
                                   {wo.priority && (
                                     <Badge variant={PRIORITY_BADGE[wo.priority] ?? 'secondary'}>
-                                      {PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                                      {woPriorityLabel(wo.priority)}
                                     </Badge>
                                   )}
                                 </InlineViewCell>

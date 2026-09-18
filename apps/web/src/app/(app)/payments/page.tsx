@@ -7,12 +7,8 @@ import { HandCoins, Search, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayments, useRetryFiscal, type PaymentsFilter } from '@/hooks/api/usePayments';
 import { useBaseCurrency } from '@/hooks/api/useCash';
-import {
-  FISCAL_STATUS_LABELS,
-  FISCAL_STATUS_BADGE,
-  FISCAL_STATUS_DESCRIPTIONS,
-  PAYMENT_SOURCE_TYPE_LABELS,
-} from '@sto/shared';
+import { FISCAL_STATUS_LABELS, FISCAL_STATUS_BADGE, FISCAL_STATUS_DESCRIPTIONS } from '@sto/shared';
+import { fiscalStatusLabel, paymentSourceTypeLabel } from '@/i18n/enumLabel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +38,7 @@ function FiscalBadge({ status }: { status: string | null }) {
       variant={FISCAL_STATUS_BADGE[status] ?? 'secondary'}
       tooltip={FISCAL_STATUS_DESCRIPTIONS[status]}
     >
-      {FISCAL_STATUS_LABELS[status] ?? status}
+      {fiscalStatusLabel(status)}
     </Badge>
   );
 }
@@ -149,9 +145,9 @@ function PaymentsPageInner() {
             onChange={e => resetPageAnd(() => setFiscalStatus(e.target.value))}
           >
             <option value="">Усі</option>
-            {Object.entries(FISCAL_STATUS_LABELS).map(([code, label]) => (
+            {Object.keys(FISCAL_STATUS_LABELS).map(code => (
               <option key={code} value={code}>
-                {label}
+                {fiscalStatusLabel(code)}
               </option>
             ))}
             <option value="none">Без фіскалізації</option>
@@ -192,7 +188,7 @@ function PaymentsPageInner() {
                     <TableCell>{p.method}</TableCell>
                     <TableCell>
                       {p.sourceType
-                        ? `${PAYMENT_SOURCE_TYPE_LABELS[p.sourceType] ?? p.sourceType}${p.sourceName ? ` · ${p.sourceName}` : ''}`
+                        ? `${paymentSourceTypeLabel(p.sourceType)}${p.sourceName ? ` · ${p.sourceName}` : ''}`
                         : '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">

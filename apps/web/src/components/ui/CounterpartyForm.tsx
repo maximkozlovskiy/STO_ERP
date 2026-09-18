@@ -1,6 +1,7 @@
 'use client';
 
 import { COUNTERPARTY_TYPE_LABELS, hasCounterpartyName } from '@sto/shared';
+import { counterpartyTypeLabel } from '@/i18n/enumLabel';
 import type { UseFormRegister, FieldErrors, Control, UseFormWatch } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import type { CounterpartyFormInput } from '@sto/shared';
@@ -110,9 +111,9 @@ export function CounterpartyForm({ register, errors, control, watch }: Props) {
       {/* ── Основне ─────────────────────────────────────────── */}
       <div className="space-y-3">
         <Select label="Тип" required {...register('type')} errorMessage={errors.type?.message}>
-          {Object.entries(COUNTERPARTY_TYPE_LABELS).map(([k, v]) => (
+          {Object.keys(COUNTERPARTY_TYPE_LABELS).map(k => (
             <option key={k} value={k}>
-              {v}
+              {counterpartyTypeLabel(k)}
             </option>
           ))}
         </Select>

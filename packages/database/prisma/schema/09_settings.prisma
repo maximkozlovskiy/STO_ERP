@@ -34,6 +34,7 @@ model OrganisationSettings {
   requireClientApproval            Boolean         @default(true)
   allowPartialPayment              Boolean         @default(true)
   brandTheme                       String          @default("blue")
+  language                         String          @default("uk")
   costMethod                       BatchCostMethod @default(FIFO)
   followUpActive                   Boolean         @default(false)
   followUpDays                     Int             @default(90)

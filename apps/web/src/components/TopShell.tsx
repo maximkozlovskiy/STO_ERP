@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, type ReactNode, type MouseEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
@@ -383,6 +384,7 @@ function isActive(pathname: string, href: string): boolean {
 export function TopShell({ children }: { children: ReactNode }) {
   const { employee, isLoading, logout, logoutAll } = useAuth();
   const { confirm, dialogProps } = useConfirm();
+  const { t } = useTranslation('nav');
   const pathname = usePathname();
   const router = useRouter();
 
@@ -571,6 +573,7 @@ export function TopShell({ children }: { children: ReactNode }) {
     const active = isActive(pathname ?? '', item.href);
     const Icon = item.icon;
     const isBookmarked = bookmarks.includes(item.href);
+    const navLabel = t(item.labelKey, { defaultValue: item.label });
 
     return (
       <Link
@@ -578,7 +581,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         href={item.href}
         prefetch={true}
         onMouseEnter={() => employee && PREFETCH_MAP[item.href]?.(queryClient)}
-        title={collapsed ? item.label : undefined}
+        title={collapsed ? navLabel : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg text-[13px] font-medium transition-colors duration-100 mb-0.5',
           collapsed ? 'justify-center px-0 py-2.5 mx-1.5' : 'px-2.5 py-2',
@@ -588,7 +591,7 @@ export function TopShell({ children }: { children: ReactNode }) {
         )}
       >
         <Icon className="h-5 w-5 shrink-0" />
-        {!collapsed && <span className="truncate leading-none flex-1">{item.label}</span>}
+        {!collapsed && <span className="truncate leading-none flex-1">{navLabel}</span>}
         {!collapsed && showStar && (
           <button
             onClick={e => toggleBookmark(item.href, e)}

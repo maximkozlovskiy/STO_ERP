@@ -21,15 +21,13 @@ import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
 import {
-  WO_STATUS_LABELS,
   WO_STATUS_TRANSITIONS,
-  WO_PRIORITY_LABELS,
   WO_PRIORITY_BADGE,
   WO_PRIORITY_DESCRIPTIONS,
-  WO_CATEGORY_LABELS,
   WO_EDITABLE_STATUSES,
   WO_INVOICEABLE_STATUSES,
 } from '@sto/shared';
+import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { Badge } from '@/components/ui/badge';
 import { WorkOrderLinesSection } from './WorkOrderLinesSection';
@@ -201,8 +199,7 @@ interface InspectionReport {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// Status labels imported from @sto/shared
-const STATUS_LABELS = WO_STATUS_LABELS;
+// Status labels via woStatusLabel (@/i18n/enumLabel)
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-secondary text-muted-foreground',
   ESTIMATE: 'bg-warning-subtle text-warning',
@@ -493,7 +490,7 @@ export default function WorkOrderCardPage() {
   }, [id]);
 
   const transition = async (newStatus: string) => {
-    const label = STATUS_LABELS[newStatus];
+    const label = woStatusLabel(newStatus);
     if (!(await confirm({ title: `Перевести наряд у статус "${label}"?` }))) return;
     if (!wo) return;
 
@@ -762,7 +759,7 @@ export default function WorkOrderCardPage() {
                 STATUS_COLORS[wo.status] ?? 'bg-secondary text-muted-foreground',
               )}
             >
-              {STATUS_LABELS[wo.status] ?? wo.status}
+              {woStatusLabel(wo.status)}
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
@@ -826,16 +823,14 @@ export default function WorkOrderCardPage() {
                 className="mt-0.5"
                 tooltip={WO_PRIORITY_DESCRIPTIONS[wo.priority]}
               >
-                {WO_PRIORITY_LABELS[wo.priority] ?? wo.priority}
+                {woPriorityLabel(wo.priority)}
               </Badge>
             </div>
           )}
           {wo.repairCategory && (
             <div>
               <p className="text-xs text-muted-foreground">Категорія ремонту</p>
-              <p className="text-foreground">
-                {WO_CATEGORY_LABELS[wo.repairCategory] ?? wo.repairCategory}
-              </p>
+              <p className="text-foreground">{woCategoryLabel(wo.repairCategory)}</p>
             </div>
           )}
           {wo.dueDate && (

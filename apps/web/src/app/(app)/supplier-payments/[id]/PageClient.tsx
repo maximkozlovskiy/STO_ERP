@@ -15,12 +15,8 @@ import {
   useDeleteSupplierPayment,
   type SupplierPayment,
 } from '@/hooks/api/useSupplierPayments';
-import {
-  SUPPLIER_PAYMENT_STATUS_LABELS,
-  SUPPLIER_PAYMENT_STATUS_BADGE,
-  SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS,
-  PAYMENT_SOURCE_TYPE_LABELS,
-} from '@sto/shared';
+import { SUPPLIER_PAYMENT_STATUS_BADGE, SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS } from '@sto/shared';
+import { supplierPaymentStatusLabel, paymentSourceTypeLabel } from '@/i18n/enumLabel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -142,7 +138,7 @@ export default function SupplierPaymentCardPage() {
               variant={SUPPLIER_PAYMENT_STATUS_BADGE[sp.status] ?? 'secondary'}
               tooltip={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[sp.status]}
             >
-              {SUPPLIER_PAYMENT_STATUS_LABELS[sp.status] ?? sp.status}
+              {supplierPaymentStatusLabel(sp.status)}
             </Badge>
             {sp.deletedAt && (
               <Badge variant="destructive" className="text-[10px]">
@@ -173,15 +169,12 @@ export default function SupplierPaymentCardPage() {
                 tooltip={SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS[sp.status]}
                 className="mt-0.5"
               >
-                {SUPPLIER_PAYMENT_STATUS_LABELS[sp.status] ?? sp.status}
+                {supplierPaymentStatusLabel(sp.status)}
               </Badge>
             }
           />
           <Field label="Постачальник" value={sp.supplierName} />
-          <Field
-            label="Тип джерела"
-            value={PAYMENT_SOURCE_TYPE_LABELS[sp.sourceType] ?? sp.sourceType}
-          />
+          <Field label="Тип джерела" value={paymentSourceTypeLabel(sp.sourceType)} />
           <Field label="Джерело коштів" value={sp.sourceName} />
           <Field label="Метод оплати" value={sp.method} />
           <Field label="Сума" value={<span className="tabular-nums">{fmt(sp.amount)}</span>} />

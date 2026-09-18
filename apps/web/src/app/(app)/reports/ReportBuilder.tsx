@@ -38,35 +38,36 @@ import { toast } from '@/lib/toast';
 import { cn, escapeCsvCell } from '@/lib/utils';
 import { downloadBlob } from '@/lib/download';
 import {
-  WO_STATUS_LABELS,
-  WO_PRIORITY_LABELS,
-  INVOICE_STATUS_LABELS,
-  PO_STATUS_LABELS,
-  COUNTERPARTY_TYPE_LABELS,
-  GOOD_TYPE_LABELS,
-  STOCK_MOVEMENT_TYPE_LABELS,
-  SETTLEMENT_TX_TYPE_LABELS,
-} from '@sto/shared';
+  woStatusLabel,
+  woPriorityLabel,
+  invoiceStatusLabel,
+  poStatusLabel,
+  counterpartyTypeLabel,
+  goodTypeLabel,
+  stockMovementTypeLabel,
+  settlementTxTypeLabel,
+} from '@/i18n/enumLabel';
 
 type Zone = 'columns' | 'groupBy' | 'filters';
 
-/** enumName реєстру → мапа перекладу (мовою інтерфейсу). Bug: статуси показувались англійською. */
-const ENUM_LABELS: Record<string, Record<string, string>> = {
-  WorkOrderStatus: WO_STATUS_LABELS,
-  WorkOrderPriority: WO_PRIORITY_LABELS,
-  InvoiceStatus: INVOICE_STATUS_LABELS,
-  PurchaseOrderStatus: PO_STATUS_LABELS,
-  CounterpartyType: COUNTERPARTY_TYPE_LABELS,
-  GoodType: GOOD_TYPE_LABELS,
-  StockMovementType: STOCK_MOVEMENT_TYPE_LABELS,
-  SettlementTransactionType: SETTLEMENT_TX_TYPE_LABELS,
+/** enumName реєстру → обгортка перекладу (мовою інтерфейсу). Bug: статуси показувались англійською. */
+const ENUM_LABELS: Record<string, (code: string) => string> = {
+  WorkOrderStatus: woStatusLabel,
+  WorkOrderPriority: woPriorityLabel,
+  InvoiceStatus: invoiceStatusLabel,
+  PurchaseOrderStatus: poStatusLabel,
+  CounterpartyType: counterpartyTypeLabel,
+  GoodType: goodTypeLabel,
+  StockMovementType: stockMovementTypeLabel,
+  SettlementTransactionType: settlementTxTypeLabel,
 };
 
 /** Переклад enum-значення (fallback — сире значення, якщо мапи/ключа немає). */
 function enumLabel(enumName: string | undefined, value: unknown): string {
   const v = String(value ?? '');
-  if (!enumName) return v;
-  return ENUM_LABELS[enumName]?.[v] ?? v;
+  if (!enumName || !v) return v;
+  const fn = ENUM_LABELS[enumName];
+  return fn ? fn(v) : v;
 }
 
 const AGG_LABELS: Record<Agg, string> = {

@@ -47,6 +47,7 @@ import {
   WO_CATEGORY_LABELS,
   WO_EDITABLE_STATUSES,
 } from '@sto/shared';
+import { woStatusLabel, woPriorityLabel, woCategoryLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
@@ -1640,7 +1641,7 @@ export function CreateWorkOrderModal({
                 >
                   <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
                   <span className="max-w-[80px] truncate">
-                    {statusPrevStep ? (WO_STATUS_LABELS[statusPrevStep] ?? statusPrevStep) : '—'}
+                    {statusPrevStep ? woStatusLabel(statusPrevStep) : '—'}
                   </span>
                 </button>
                 <Tooltip content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}>
@@ -1655,9 +1656,7 @@ export function CreateWorkOrderModal({
                       !isEditMode && 'cursor-default',
                     )}
                   >
-                    {isEditMode
-                      ? (WO_STATUS_LABELS[currentStatus] ?? currentStatus)
-                      : (WO_STATUS_LABELS['DRAFT'] ?? 'Чернетка')}
+                    {isEditMode ? woStatusLabel(currentStatus) : woStatusLabel('DRAFT')}
                   </button>
                 </Tooltip>
                 <button
@@ -1667,7 +1666,7 @@ export function CreateWorkOrderModal({
                   className="flex items-center gap-0.5 px-1.5 py-1 rounded text-[12px] text-muted-foreground hover:text-foreground hover:bg-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <span className="max-w-[80px] truncate">
-                    {statusNextStep ? (WO_STATUS_LABELS[statusNextStep] ?? statusNextStep) : '—'}
+                    {statusNextStep ? woStatusLabel(statusNextStep) : '—'}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
@@ -1944,8 +1943,7 @@ export function CreateWorkOrderModal({
             )}
             {!editModeLoading && isEditMode && !canEdit && (
               <div className="mb-4 text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
-                Наряд у статусі «{WO_STATUS_LABELS[currentStatus] ?? currentStatus}» — редагування
-                недоступне
+                Наряд у статусі «{woStatusLabel(currentStatus)}» — редагування недоступне
               </div>
             )}
 
@@ -1995,9 +1993,9 @@ export function CreateWorkOrderModal({
                         disabled={!canEdit}
                         className="h-8 text-[13px] py-0.5 px-2 pr-7"
                       >
-                        {Object.entries(WO_PRIORITY_LABELS).map(([k, v]) => (
+                        {Object.keys(WO_PRIORITY_LABELS).map(k => (
                           <option key={k} value={k}>
-                            {v}
+                            {woPriorityLabel(k)}
                           </option>
                         ))}
                       </Select>
@@ -2108,9 +2106,9 @@ export function CreateWorkOrderModal({
                           className="h-8 text-[13px] py-0.5 px-2 pr-7"
                         >
                           <option value="">— Не вказано —</option>
-                          {Object.entries(WO_CATEGORY_LABELS).map(([k, v]) => (
+                          {Object.keys(WO_CATEGORY_LABELS).map(k => (
                             <option key={k} value={k}>
-                              {v}
+                              {woCategoryLabel(k)}
                             </option>
                           ))}
                         </Select>

@@ -12,13 +12,12 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  EMPLOYEE_STATUS_LABELS,
   EMPLOYEE_STATUS_BADGE,
   EMPLOYEE_STATUS_DESCRIPTIONS,
-  EMPLOYEE_ROLE_LABELS,
   EMPLOYEE_ROLE_BADGE,
   EMPLOYEE_ROLE_DESCRIPTIONS,
 } from '@sto/shared';
+import { employeeStatusLabel, employeeRoleLabel } from '@/i18n/enumLabel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
@@ -106,15 +105,13 @@ interface EmployeeFilters extends Record<string, unknown> {
   showDeleted: boolean;
 }
 
-// Role/status/badge constants imported from @sto/shared
-const ROLE_LABELS = EMPLOYEE_ROLE_LABELS;
+// Role/status labels via i18n wrappers; badge constants imported from @sto/shared
 const ROLE_BADGE = EMPLOYEE_ROLE_BADGE;
 const RATE_LABELS: Record<string, string> = {
   percent_normo: '% від суми робіт',
   per_normo_hour: 'Ставка × нормо-год',
   fixed_plus_bonus: 'Ставка + бонус',
 };
-const STATUS_LABELS = EMPLOYEE_STATUS_LABELS;
 const STATUS_BADGE = EMPLOYEE_STATUS_BADGE;
 
 const ROLE_FILTER_OPTIONS: [string, string][] = [
@@ -390,7 +387,7 @@ export default function EmployeesPage() {
                 variant={STATUS_BADGE[String(v)] ?? 'secondary'}
                 tooltip={EMPLOYEE_STATUS_DESCRIPTIONS[String(v)]}
               >
-                {STATUS_LABELS[String(v)] ?? String(v)}
+                {employeeStatusLabel(String(v))}
               </Badge>
             ),
             role: v => (
@@ -398,7 +395,7 @@ export default function EmployeesPage() {
                 variant={ROLE_BADGE[String(v)] ?? 'secondary'}
                 tooltip={EMPLOYEE_ROLE_DESCRIPTIONS[String(v)]}
               >
-                {ROLE_LABELS[String(v)] ?? String(v)}
+                {employeeRoleLabel(String(v))}
               </Badge>
             ),
             dateOfHire: v => (v ? fmtDate(String(v)) : undefined),
@@ -670,7 +667,7 @@ export default function EmployeesPage() {
                                 variant={ROLE_BADGE[emp.role] ?? 'secondary'}
                                 tooltip={EMPLOYEE_ROLE_DESCRIPTIONS[emp.role]}
                               >
-                                {ROLE_LABELS[emp.role] ?? emp.role}
+                                {employeeRoleLabel(emp.role)}
                               </Badge>
                             </TableCell>
                           );
@@ -681,7 +678,7 @@ export default function EmployeesPage() {
                                 variant={STATUS_BADGE[emp.status] ?? 'secondary'}
                                 tooltip={EMPLOYEE_STATUS_DESCRIPTIONS[emp.status]}
                               >
-                                {STATUS_LABELS[emp.status] ?? emp.status}
+                                {employeeStatusLabel(emp.status)}
                               </Badge>
                             </TableCell>
                           );
@@ -758,7 +755,7 @@ export default function EmployeesPage() {
           open={!!selectedEmp && detailPanel.enabled}
           onClose={() => setSelectedEmp(null)}
           title={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : ''}
-          subtitle={selectedEmp ? ROLE_LABELS[selectedEmp.role] : ''}
+          subtitle={selectedEmp ? employeeRoleLabel(selectedEmp.role) : ''}
           tabs={selectedEmp ? buildEmployeeTabs(selectedEmp) : undefined}
           configFields={employeesPanelConfigFields}
           onToggleField={panelConfig.toggleField}

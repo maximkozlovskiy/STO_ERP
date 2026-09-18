@@ -1,0 +1,20 @@
+{
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "add": "Add",
+  "edit": "Edit",
+  "close": "Close",
+  "create": "Create",
+  "search": "Search",
+  "loading": "Loading…",
+  "saved": "Saved",
+  "confirm": "Confirm",
+  "yes": "Yes",
+  "no": "No",
+  "back": "Back",
+  "actions": "Actions",
+  "status": "Status",
+  "total": "Total",
+  "noData": "No data"
+}

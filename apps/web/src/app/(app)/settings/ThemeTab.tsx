@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Sun, Moon, Monitor, Languages } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { THEMES, type ThemeName, applyTheme } from '@/lib/theme';
 import { setColorMode, getColorMode, type ColorMode } from '@/lib/color-mode';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useLanguage } from '@/hooks/useLanguage';
+import { type Locale } from '@/i18n/locale';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { type OrgSettings } from './shared';
@@ -16,6 +19,8 @@ const NAV_MODE_KEY = 'sto_nav_mode';
 
 export default function ThemeTab() {
   const currentFeatures = useUiFeatures();
+  const { t } = useTranslation('settings');
+  const { locale, setLanguage } = useLanguage();
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [navMode, setNavModeState] = useState<NavMode>('sections');
@@ -168,6 +173,40 @@ export default function ThemeTab() {
           ))}
         </div>
         <p className="text-[12px] text-muted-foreground mt-2">Зберігається локально у браузері</p>
+      </div>
+
+      <div className="bg-surface rounded-xl border border-border p-6">
+        <p className="text-[13px] font-medium text-foreground mb-3 flex items-center gap-1.5">
+          <Languages className="h-4 w-4" />
+          {t('language', { defaultValue: 'Мова інтерфейсу' })}
+        </p>
+        <div className="flex gap-1.5">
+          {(
+            [
+              {
+                code: 'uk' as Locale,
+                label: t('languageOptions.uk', { defaultValue: 'Українська' }),
+              },
+              {
+                code: 'en' as Locale,
+                label: t('languageOptions.en', { defaultValue: 'Англійська' }),
+              },
+            ] as const
+          ).map(({ code, label }) => (
+            <button
+              key={code}
+              onClick={() => setLanguage(code)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors',
+                locale === code
+                  ? 'bg-primary text-white'
+                  : 'bg-secondary text-foreground hover:bg-secondary/80',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

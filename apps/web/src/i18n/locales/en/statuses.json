@@ -1,0 +1,131 @@
+{
+  "WO_STATUS": {
+    "DRAFT": "Draft",
+    "ESTIMATE": "Estimate",
+    "APPROVED": "Approved",
+    "IN_PROGRESS": "In progress",
+    "ON_HOLD": "On hold",
+    "COMPLETED": "Completed",
+    "INVOICED": "Invoiced",
+    "PAID": "Paid",
+    "ARCHIVED": "Archived",
+    "CANCELLED": "Cancelled"
+  },
+  "WO_PRIORITY": {
+    "LOW": "Low",
+    "NORMAL": "Normal",
+    "HIGH": "High",
+    "URGENT": "Urgent"
+  },
+  "WO_CATEGORY": {
+    "MAINTENANCE": "Maintenance",
+    "CURRENT_REPAIR": "General repair",
+    "MAJOR_REPAIR": "Major repair",
+    "BODY_REPAIR": "Body repair",
+    "DIAGNOSTICS": "Diagnostics",
+    "WARRANTY": "Warranty",
+    "SEASONAL": "Seasonal"
+  },
+  "INVOICE_STATUS": {
+    "DRAFT": "Draft",
+    "SENT": "Sent",
+    "PARTIALLY_PAID": "Partially paid",
+    "PAID": "Paid",
+    "OVERDUE": "Overdue",
+    "CANCELLED": "Cancelled"
+  },
+  "INVOICE_TYPE": {
+    "STANDARD": "Standard",
+    "PREPAYMENT": "Prepayment",
+    "CREDIT_NOTE": "Credit note"
+  },
+  "PO_STATUS": {
+    "DRAFT": "Draft",
+    "ORDERED": "Ordered",
+    "PARTIAL": "Partial",
+    "RECEIVED": "Received",
+    "CANCELLED": "Cancelled"
+  },
+  "SUPPLIER_RETURN_STATUS": {
+    "DRAFT": "Draft",
+    "CONFIRMED": "Confirmed",
+    "CANCELLED": "Cancelled"
+  },
+  "SUPPLIER_PAYMENT_STATUS": {
+    "DRAFT": "Draft",
+    "CONFIRMED": "Processed",
+    "CANCELLED": "Cancelled"
+  },
+  "PAYMENT_SOURCE_TYPE": {
+    "BANK_ACCOUNT": "Bank",
+    "CASH_REGISTER": "Cash register"
+  },
+  "FISCAL_STATUS": {
+    "QUEUED": "Queued",
+    "DONE": "Issued",
+    "FAILED": "Failed",
+    "SKIPPED": "Skipped"
+  },
+  "STOCK_DOC_STATUS": {
+    "DRAFT": "Draft",
+    "CONFIRMED": "Confirmed",
+    "CANCELLED": "Cancelled"
+  },
+  "STOCK_DOC_TYPE": {
+    "TRANSFER": "Transfer",
+    "WRITEOFF": "Write-off",
+    "RECEIPT": "Goods receipt",
+    "OPENING_BALANCE": "Opening balance"
+  },
+  "STOCK_MOVEMENT_TYPE": {
+    "RECEIPT": "Receipt",
+    "WRITEOFF": "Write-off",
+    "TRANSFER": "Transfer",
+    "RESERVATION": "Reservation",
+    "RESERVATION_RELEASE": "Reservation release",
+    "OPENING_BALANCE": "Opening balance",
+    "RETURN": "Return"
+  },
+  "SETTLEMENT_TX_TYPE": {
+    "CHARGE": "Charge",
+    "PAYMENT": "Payment",
+    "PREPAYMENT": "Prepayment",
+    "REFUND": "Refund",
+    "CREDIT_NOTE": "Credit note",
+    "SUPPLIER_CHARGE": "Charge (supplier)",
+    "SUPPLIER_PAYMENT": "Supplier payment",
+    "SUPPLIER_REFUND": "Supplier refund",
+    "FX_GAIN": "FX gain",
+    "FX_LOSS": "FX loss"
+  },
+  "EMPLOYEE_STATUS": {
+    "ACTIVE": "Active",
+    "ON_LEAVE": "On leave",
+    "FIRED": "Dismissed"
+  },
+  "EMPLOYEE_ROLE": {
+    "OWNER": "Owner",
+    "ADMIN": "Administrator",
+    "RECEPTIONIST": "Receptionist",
+    "MECHANIC": "Mechanic",
+    "STOREKEEPER": "Storekeeper",
+    "ACCOUNTANT": "Accountant",
+    "CLIENT": "Client",
+    "XLSX_MANAGER": "Import manager"
+  },
+  "COUNTERPARTY_TYPE": {
+    "CLIENT": "Client",
+    "SUPPLIER": "Supplier",
+    "BOTH": "Both"
+  },
+  "CONTRACT_TYPE": {
+    "PURCHASE": "Purchase",
+    "SALE": "Sale"
+  },
+  "GOOD_TYPE": {
+    "SPARE_PART": "Spare part",
+    "CONSUMABLE": "Consumable",
+    "MATERIAL": "Material",
+    "TOOL": "Tool"
+  }
+}

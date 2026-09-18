@@ -1,0 +1,30 @@
+// Статичні imports каталогів → бандлер інлайнить у бандл (offline, 0 network).
+// Кожен namespace — окремий JSON на мову. Додаючи мову: додати блок import + запис у resources.
+import ukCommon from './locales/uk/common.json';
+import ukNav from './locales/uk/nav.json';
+import ukSettings from './locales/uk/settings.json';
+import ukStatuses from './locales/uk/statuses.json';
+import ukFormat from './locales/uk/format.json';
+
+import enCommon from './locales/en/common.json';
+import enNav from './locales/en/nav.json';
+import enSettings from './locales/en/settings.json';
+import enStatuses from './locales/en/statuses.json';
+import enFormat from './locales/en/format.json';
+
+export const resources = {
+  uk: {
+    common: ukCommon,
+    nav: ukNav,
+    settings: ukSettings,
+    statuses: ukStatuses,
+    format: ukFormat,
+  },
+  en: {
+    common: enCommon,
+    nav: enNav,
+    settings: enSettings,
+    statuses: enStatuses,
+    format: enFormat,
+  },
+} as const;

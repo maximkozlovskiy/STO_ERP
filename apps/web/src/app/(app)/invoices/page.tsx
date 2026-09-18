@@ -30,12 +30,11 @@ import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  INVOICE_STATUS_LABELS,
   INVOICE_STATUS_BADGE,
   INVOICE_STATUS_DESCRIPTIONS,
   INVOICE_STATUS_TRANSITIONS,
-  INVOICE_TYPE_LABELS,
 } from '@sto/shared';
+import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { QrPaymentModal } from '@/components/ui/QrPaymentModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -115,8 +114,7 @@ interface InvoiceWithOptionals extends Invoice {
   lines?: InvoiceLine[];
 }
 
-// Status/badge/transition/type constants imported from @sto/shared
-const STATUS_LABELS = INVOICE_STATUS_LABELS;
+// Status labels via i18n wrappers; badge/transition constants imported from @sto/shared
 const STATUS_BADGE = INVOICE_STATUS_BADGE;
 const STATUS_TRANSITIONS = INVOICE_STATUS_TRANSITIONS;
 
@@ -393,7 +391,9 @@ function InvoicesPageInner() {
 
   const handleTransition = async (inv: InvoiceWithOptionals, newStatus: string) => {
     if (
-      !(await confirm({ title: `Перевести рахунок ${inv.number} → ${STATUS_LABELS[newStatus]}?` }))
+      !(await confirm({
+        title: `Перевести рахунок ${inv.number} → ${invoiceStatusLabel(newStatus)}?`,
+      }))
     )
       return;
     setSavingId(inv.id);
@@ -538,12 +538,12 @@ function InvoicesPageInner() {
 
   const statuses: Array<[string, string]> = [
     ['', 'Всі'],
-    ['DRAFT', STATUS_LABELS['DRAFT']],
-    ['SENT', STATUS_LABELS['SENT']],
-    ['PARTIALLY_PAID', STATUS_LABELS['PARTIALLY_PAID']],
-    ['PAID', STATUS_LABELS['PAID']],
-    ['OVERDUE', STATUS_LABELS['OVERDUE']],
-    ['CANCELLED', STATUS_LABELS['CANCELLED']],
+    ['DRAFT', invoiceStatusLabel('DRAFT')],
+    ['SENT', invoiceStatusLabel('SENT')],
+    ['PARTIALLY_PAID', invoiceStatusLabel('PARTIALLY_PAID')],
+    ['PAID', invoiceStatusLabel('PAID')],
+    ['OVERDUE', invoiceStatusLabel('OVERDUE')],
+    ['CANCELLED', invoiceStatusLabel('CANCELLED')],
   ];
 
   const handleSelectStatus = useCallback(
@@ -572,10 +572,10 @@ function InvoicesPageInner() {
                   variant={STATUS_BADGE[String(v)] ?? 'secondary'}
                   tooltip={INVOICE_STATUS_DESCRIPTIONS[String(v)]}
                 >
-                  {STATUS_LABELS[String(v)]}
+                  {invoiceStatusLabel(String(v))}
                 </Badge>
               ),
-              invoiceType: v => (v ? (INVOICE_TYPE_LABELS[String(v)] ?? String(v)) : undefined),
+              invoiceType: v => (v ? invoiceTypeLabel(String(v)) : undefined),
               totalWithoutVat: v =>
                 v != null && Number(v) > 0 ? `${fmtMoney(Number(v))} ${sym}` : undefined,
               totalVat: v =>
@@ -933,7 +933,7 @@ function InvoicesPageInner() {
                                 variant={STATUS_BADGE[inv.status] ?? 'secondary'}
                                 tooltip={INVOICE_STATUS_DESCRIPTIONS[inv.status]}
                               >
-                                {STATUS_LABELS[inv.status]}
+                                {invoiceStatusLabel(inv.status)}
                               </Badge>
                             </TableCell>
                           );

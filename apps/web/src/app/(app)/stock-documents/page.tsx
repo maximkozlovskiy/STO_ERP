@@ -34,6 +34,7 @@ import {
   STOCK_DOC_STATUS_BADGE,
   STOCK_DOC_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
+import { stockDocTypeLabel, stockDocStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
@@ -441,7 +442,7 @@ function StockDocumentsPageClient() {
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
           >
-            {t ? STOCK_DOC_TYPE_LABELS[t] : 'Всі'}
+            {t ? stockDocTypeLabel(t) : 'Всі'}
           </button>
         ))}
       </div>
@@ -457,7 +458,7 @@ function StockDocumentsPageClient() {
             <StatusPill
               key={s}
               value={s}
-              label={s ? STOCK_DOC_STATUS_LABELS[s] : 'Всі'}
+              label={s ? stockDocStatusLabel(s) : 'Всі'}
               active={statusFilter === s}
               description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
               onSelect={v => {
@@ -523,7 +524,7 @@ function StockDocumentsPageClient() {
           />
           {/* Bug #505: DetailPanelToggle видалено — toggle нічого не контролював (DetailPanel мертвий, Bug #504). */}
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            {typeFilter ? STOCK_DOC_TYPE_LABELS[typeFilter] : 'Документ'}
+            {typeFilter ? stockDocTypeLabel(typeFilter) : 'Документ'}
           </Button>
         </div>
       </div>
@@ -649,7 +650,7 @@ function StockDocumentsPageClient() {
                               variant={STOCK_DOC_TYPE_BADGE[doc.type] ?? 'secondary'}
                               tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[doc.type]}
                             >
-                              {STOCK_DOC_TYPE_LABELS[doc.type]}
+                              {stockDocTypeLabel(doc.type)}
                             </Badge>
                           </TableCell>
                         );
@@ -666,7 +667,7 @@ function StockDocumentsPageClient() {
                               variant={STOCK_DOC_STATUS_BADGE[doc.status] ?? 'secondary'}
                               tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[doc.status]}
                             >
-                              {STOCK_DOC_STATUS_LABELS[doc.status]}
+                              {stockDocStatusLabel(doc.status)}
                             </Badge>
                           </TableCell>
                         );
@@ -771,7 +772,7 @@ function StockDocumentsPageClient() {
       <Modal
         open={!!showDetail}
         onClose={() => setShowDetail(null)}
-        title={showDetail ? `${STOCK_DOC_TYPE_LABELS[showDetail.type]} ${showDetail.number}` : ''}
+        title={showDetail ? `${stockDocTypeLabel(showDetail.type)} ${showDetail.number}` : ''}
         size="lg"
         footer={
           showDetail?.status === 'DRAFT' ? (
@@ -801,13 +802,13 @@ function StockDocumentsPageClient() {
                 variant={STOCK_DOC_TYPE_BADGE[showDetail.type] ?? 'secondary'}
                 tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[showDetail.type]}
               >
-                {STOCK_DOC_TYPE_LABELS[showDetail.type]}
+                {stockDocTypeLabel(showDetail.type)}
               </Badge>
               <Badge
                 variant={STOCK_DOC_STATUS_BADGE[showDetail.status] ?? 'secondary'}
                 tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[showDetail.status]}
               >
-                {STOCK_DOC_STATUS_LABELS[showDetail.status]}
+                {stockDocStatusLabel(showDetail.status)}
               </Badge>
               <span className="text-muted-foreground text-sm">{showDetail.warehouseName}</span>
               {showDetail.targetWarehouseName && (

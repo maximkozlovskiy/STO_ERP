@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { PackageSearch } from 'lucide-react';
 import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
+import { stockMovementTypeLabel } from '@/i18n/enumLabel';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -90,9 +91,9 @@ export function StockMovementsTab() {
             className="w-44 h-8 text-[13px]"
           >
             <option value="">Усі типи</option>
-            {Object.entries(STOCK_MOVEMENT_TYPE_LABELS).map(([k, label]) => (
+            {Object.keys(STOCK_MOVEMENT_TYPE_LABELS).map(k => (
               <option key={k} value={k}>
-                {label}
+                {stockMovementTypeLabel(k)}
               </option>
             ))}
           </Select>
@@ -176,9 +177,7 @@ export function StockMovementsTab() {
                     {fmtDateTime(m.createdAt)}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary">
-                      {STOCK_MOVEMENT_TYPE_LABELS[m.type] ?? m.type}
-                    </Badge>
+                    <Badge variant="secondary">{stockMovementTypeLabel(m.type)}</Badge>
                   </TableCell>
                   <TableCell className="font-medium">
                     {m.goodName}

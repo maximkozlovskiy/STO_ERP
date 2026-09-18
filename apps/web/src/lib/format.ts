@@ -1,47 +1,71 @@
 /**
- * Frontend formatting singletons — module-level Intl.* інстанси.
+ * Frontend formatting — locale-aware, з per-locale memoized форматерами.
  *
- * Чому окремий модуль: `n.toLocaleString('uk-UA', {...})` і `new Date(...).toLocaleDateString(...)`
+ * Чому окремий модуль: `n.toLocaleString(...)` / `new Date(...).toLocaleDateString(...)`
  * у table-cells `.map(...)` конструюють новий `Intl.NumberFormat` / `Intl.DateTimeFormat` на КОЖНУ
  * комірку × кожен ререндер. Це O(rows × cells × renders) важких ініціалізацій locale-data.
  *
- * Тут — module-level singletons; виклик `fmtMoney(n)` чи `fmtDate(d)` лише виконує `.format()`,
- * який дешевий. Опції зафіксовані як константи (uk-UA, мінімум 2 цифри після крапки).
+ * i18n: display-форматери читають поточну локаль (getCurrentIntlLocale → uk-UA / en-US) і кешуються
+ * per-locale (build-once, потім лише `.format()`). Перемикання мови → нова локаль → новий форматер
+ * будується раз і кешується. TIMEZONE ЗАВЖДИ Europe/Kyiv (мова не впливає на зону).
  *
- * Аналог backend KYIV_DATE_FMT / UAH_FMT (pdf.service, reports.service).
+ * ISO/machine-хелпери (kyivToday, kyivOffsetMs, kyivDateTimeToISO...) — locale-INDEPENDENT
+ * (sv-SE/en-CA фіксовані для ISO-виводу). Аналог backend KYIV_DATE_FMT / UAH_FMT.
  */
+import { getCurrentIntlLocale } from '@/i18n/locale';
 
-const MONEY_FMT = new Intl.NumberFormat('uk-UA', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-const INT_FMT = new Intl.NumberFormat('uk-UA');
-// T19: усі date/time-форматери прив'язані до Europe/Kyiv. Без timeZone Intl рендерить у TZ браузера/ОС
-// → (а) date-only `new Date('YYYY-MM-DD')` (UTC-північ) на UTC-негативних машинах показував би
-// попередній день (off-by-one); (б) UTC-ISO timestamp на неправильно налаштованому ПК давав би невірний
-// час. СТО завжди у Києві, тож фіксуємо зону явно (дзеркалить backend KYIV_DATE_FMT).
 const KYIV_TZ = 'Europe/Kyiv';
-const DATE_FMT = new Intl.DateTimeFormat('uk-UA', { timeZone: KYIV_TZ });
-const DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: KYIV_TZ,
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const SHORT_DATETIME_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: KYIV_TZ,
-  day: '2-digit',
-  month: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
-  timeZone: KYIV_TZ,
-  hour: '2-digit',
-  minute: '2-digit',
-});
+
+// Per-locale memo-кеші: форматер будується раз на локаль, далі лише `.format()`.
+function memoByLocale<T>(build: (intlLocale: string) => T): () => T {
+  const cache = new Map<string, T>();
+  return () => {
+    const loc = getCurrentIntlLocale();
+    let fmt = cache.get(loc);
+    if (!fmt) {
+      fmt = build(loc);
+      cache.set(loc, fmt);
+    }
+    return fmt;
+  };
+}
+
+const getMoneyFmt = memoByLocale(
+  loc => new Intl.NumberFormat(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+);
+const getIntFmt = memoByLocale(loc => new Intl.NumberFormat(loc));
+// T19: date/time прив'язані до Europe/Kyiv. Без timeZone Intl рендерить у TZ браузера/ОС → off-by-one
+// на UTC-негативних машинах / невірний час на неправильно налаштованому ПК. СТО завжди у Києві.
+const getDateFmt = memoByLocale(loc => new Intl.DateTimeFormat(loc, { timeZone: KYIV_TZ }));
+const getDateTimeFmt = memoByLocale(
+  loc =>
+    new Intl.DateTimeFormat(loc, {
+      timeZone: KYIV_TZ,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+);
+const getShortDateTimeFmt = memoByLocale(
+  loc =>
+    new Intl.DateTimeFormat(loc, {
+      timeZone: KYIV_TZ,
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+);
+const getTimeFmt = memoByLocale(
+  loc =>
+    new Intl.DateTimeFormat(loc, {
+      timeZone: KYIV_TZ,
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+);
 
 /**
  * Форматувати число як суму грн з двома цифрами після крапки.
@@ -51,7 +75,7 @@ const TIME_FMT = new Intl.DateTimeFormat('uk-UA', {
  */
 export function fmtMoney(n: number | null | undefined): string {
   if (n == null) return '—';
-  return MONEY_FMT.format(n);
+  return getMoneyFmt().format(n);
 }
 
 /**
@@ -61,7 +85,7 @@ export function fmtMoney(n: number | null | undefined): string {
  */
 export function fmtInt(n: number | null | undefined): string {
   if (n == null) return '—';
-  return INT_FMT.format(n);
+  return getIntFmt().format(n);
 }
 
 /**
@@ -73,7 +97,7 @@ export function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return '—';
   const date = typeof d === 'string' ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return '—';
-  return DATE_FMT.format(date);
+  return getDateFmt().format(date);
 }
 
 /**
@@ -85,7 +109,7 @@ export function fmtDateTime(d: string | Date | null | undefined): string {
   if (!d) return '—';
   const date = typeof d === 'string' ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return '—';
-  return DATETIME_FMT.format(date);
+  return getDateTimeFmt().format(date);
 }
 
 /**
@@ -98,7 +122,7 @@ export function fmtShortDateTime(d: string | Date | null | undefined): string {
   if (!d) return '—';
   const date = typeof d === 'string' ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return '—';
-  return SHORT_DATETIME_FMT.format(date);
+  return getShortDateTimeFmt().format(date);
 }
 
 /**
@@ -111,7 +135,7 @@ export function fmtTime(d: string | Date | number | null | undefined): string {
   if (d == null) return '—';
   const date = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return '—';
-  return TIME_FMT.format(date);
+  return getTimeFmt().format(date);
 }
 
 /**

@@ -6,12 +6,8 @@ import { ArrowLeft, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayment, useRetryFiscal } from '@/hooks/api/usePayments';
 import { useBaseCurrency } from '@/hooks/api/useCash';
-import {
-  FISCAL_STATUS_LABELS,
-  FISCAL_STATUS_BADGE,
-  FISCAL_STATUS_DESCRIPTIONS,
-  PAYMENT_SOURCE_TYPE_LABELS,
-} from '@sto/shared';
+import { FISCAL_STATUS_BADGE, FISCAL_STATUS_DESCRIPTIONS } from '@sto/shared';
+import { fiscalStatusLabel, paymentSourceTypeLabel } from '@/i18n/enumLabel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -96,7 +92,7 @@ export default function PaymentDetailClient() {
           <Field label="Метод оплати">{p.method}</Field>
           <Field label="Рахунок-призначення">
             {p.sourceType
-              ? `${PAYMENT_SOURCE_TYPE_LABELS[p.sourceType] ?? p.sourceType}${p.sourceName ? ` · ${p.sourceName}` : ''}`
+              ? `${paymentSourceTypeLabel(p.sourceType)}${p.sourceName ? ` · ${p.sourceName}` : ''}`
               : '—'}
           </Field>
           <Field label="Дата">{fmtDate(p.createdAt)}</Field>
@@ -140,7 +136,7 @@ export default function PaymentDetailClient() {
                 variant={FISCAL_STATUS_BADGE[p.fiscalStatus] ?? 'secondary'}
                 tooltip={FISCAL_STATUS_DESCRIPTIONS[p.fiscalStatus]}
               >
-                {FISCAL_STATUS_LABELS[p.fiscalStatus] ?? p.fiscalStatus}
+                {fiscalStatusLabel(p.fiscalStatus)}
               </Badge>
               {p.fiscalReceiptId && (
                 <span className="text-sm text-muted-foreground">№ {p.fiscalReceiptId}</span>

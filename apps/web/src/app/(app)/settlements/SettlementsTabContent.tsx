@@ -11,11 +11,8 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { cn, escapeCsvCell, settlementBalanceTone, settlementBalanceToneClass } from '@/lib/utils';
 import { fmtMoney, fmtDate } from '@/lib/format';
-import {
-  SETTLEMENT_BALANCE_UP_TYPES,
-  SETTLEMENT_TX_CHARGE_LIKE_TYPES,
-  SETTLEMENT_TX_TYPE_LABELS,
-} from '@sto/shared';
+import { SETTLEMENT_BALANCE_UP_TYPES, SETTLEMENT_TX_CHARGE_LIKE_TYPES } from '@sto/shared';
+import { settlementTxTypeLabel } from '@/i18n/enumLabel';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 
 interface Counterparty {
@@ -50,9 +47,8 @@ interface RecAct {
 
 type CpItem = SearchPickerItem & Counterparty;
 
-// Мітки типів — ЄДИНЕ джерело @sto/shared (раніше був локальний дубль → drift-ризик при новому типі,
-// напр. FX_GAIN/FX_LOSS Фази 4). Тепер обидва settlement-екрани + звіти беруть SETTLEMENT_TX_TYPE_LABELS.
-const TX_LABELS = SETTLEMENT_TX_TYPE_LABELS;
+// Мітки типів — через i18n-обгортку settlementTxTypeLabel (fallback → @sto/shared, той самий uk-текст;
+// раніше був локальний дубль → drift-ризик при новому типі, напр. FX_GAIN/FX_LOSS Фази 4).
 // Колір рядка = БІЗНЕС-семантика: «charge-like» (борг створено) = destructive, решта = success.
 // Централізовано у @sto/shared (SETTLEMENT_TX_CHARGE_LIKE_TYPES) — той самий набір, що на картці
 // контрагента (counterparties/[id]/PageClient), щоб той самий тип не фарбувався по-різному між
@@ -303,7 +299,7 @@ export function SettlementsTabContent() {
                         ],
                         ...transactions.map(tx => [
                           fmtDate(tx.createdAt),
-                          TX_LABELS[tx.type] ?? tx.type,
+                          settlementTxTypeLabel(tx.type),
                           tx.amount,
                           tx.currencyCode ?? baseCode,
                           tx.amountBase ?? tx.amount,
@@ -358,7 +354,7 @@ export function SettlementsTabContent() {
                     <div key={tx.id} className="px-5 py-3 flex items-center justify-between">
                       <div>
                         <div className="text-[13px] font-medium text-foreground">
-                          {TX_LABELS[tx.type] ?? tx.type}
+                          {settlementTxTypeLabel(tx.type)}
                         </div>
                         <div className="text-[12px] text-muted-foreground">
                           {tx.documentType && <span>{tx.documentType} · </span>}
