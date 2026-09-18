@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -70,9 +71,9 @@ function fmt(n: number, symbol = '₴') {
   return `${fmtMoney(n)} ${symbol}`;
 }
 
-function cpDisplayName(cp: Counterparty): string {
+function cpDisplayName(cp: Counterparty, noName: string): string {
   const name = cp.companyName ?? [cp.lastName, cp.firstName].filter(Boolean).join(' ');
-  return name || '(без імені)';
+  return name || noName;
 }
 
 /**
@@ -80,6 +81,7 @@ function cpDisplayName(cp: Counterparty): string {
  * a "Розрахунки" tab inside /reports.
  */
 export function SettlementsTabContent() {
+  const { t } = useTranslation('settlements');
   // Мультивалюта: символ базової валюти. Баланс боргу завжди у base; транзакції можуть бути у валюті.
   const { data: baseCurrency } = useBaseCurrency();
   const baseCode = baseCurrency?.code ?? 'UAH';
@@ -110,46 +112,49 @@ export function SettlementsTabContent() {
     async (q: string): Promise<CpItem[]> =>
       apiFetch<{ items: Counterparty[] }>(
         `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
-      ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c) }))),
-    [],
+      ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c, t('noName')) }))),
+    [t],
   );
 
   // Race guard: при швидкому перемиканні A→B повільніша відповідь A не має
   // перезаписати стан B. Фіксуємо requestId перед await, застосовуємо setState
   // лише якщо він досі актуальний (reqRef не зрушив).
   const loadCpReqRef = useRef(0);
-  const loadCounterparty = useCallback(async (cp: Counterparty) => {
-    const reqId = ++loadCpReqRef.current;
-    setSelected(cp);
-    setBalance(null);
-    setTransactions([]);
-    setTxTotal(0);
-    setLoading(true);
-    try {
-      const [bal, txs, actsData] = await Promise.all([
-        apiFetch<{ balance: number }>(`/counterparties/${cp.id}/balance`),
-        apiFetch<{ items: Transaction[]; total: number }>(
-          `/counterparties/${cp.id}/transactions?page=1&limit=50`,
-        ),
-        apiFetch<RecAct[]>(`/counterparties/${cp.id}/reconciliation-acts`),
-      ]);
-      if (reqId !== loadCpReqRef.current) return;
-      setBalance(bal.balance);
-      setTransactions(txs.items);
-      setTxTotal(txs.total);
-      setActs(actsData);
-    } catch (e: unknown) {
-      if (reqId !== loadCpReqRef.current) return;
-      setError(e instanceof Error ? e.message : 'Помилка завантаження даних');
-    } finally {
-      if (reqId === loadCpReqRef.current) setLoading(false);
-    }
-  }, []);
+  const loadCounterparty = useCallback(
+    async (cp: Counterparty) => {
+      const reqId = ++loadCpReqRef.current;
+      setSelected(cp);
+      setBalance(null);
+      setTransactions([]);
+      setTxTotal(0);
+      setLoading(true);
+      try {
+        const [bal, txs, actsData] = await Promise.all([
+          apiFetch<{ balance: number }>(`/counterparties/${cp.id}/balance`),
+          apiFetch<{ items: Transaction[]; total: number }>(
+            `/counterparties/${cp.id}/transactions?page=1&limit=50`,
+          ),
+          apiFetch<RecAct[]>(`/counterparties/${cp.id}/reconciliation-acts`),
+        ]);
+        if (reqId !== loadCpReqRef.current) return;
+        setBalance(bal.balance);
+        setTransactions(txs.items);
+        setTxTotal(txs.total);
+        setActs(actsData);
+      } catch (e: unknown) {
+        if (reqId !== loadCpReqRef.current) return;
+        setError(e instanceof Error ? e.message : t('errors.loadFailed'));
+      } finally {
+        if (reqId === loadCpReqRef.current) setLoading(false);
+      }
+    },
+    [t],
+  );
 
   const handleCreateAct = async () => {
     if (!selected) return;
     if (actForm.periodTo < actForm.periodFrom) {
-      setError('Кінець періоду не може бути раніше початку');
+      setError(t('errors.periodOrder'));
       return;
     }
     setSaving(true);
@@ -164,7 +169,7 @@ export function SettlementsTabContent() {
       setActResult(result);
       setActs(prev => [result, ...prev]);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка створення акту');
+      setError(e instanceof Error ? e.message : t('errors.createActFailed'));
     } finally {
       setSaving(false);
     }
@@ -187,7 +192,7 @@ export function SettlementsTabContent() {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF акту звірки');
+      setError(e instanceof Error ? e.message : t('errors.downloadPdfFailed'));
     } finally {
       setDownloadingActId(null);
     }
@@ -206,8 +211,8 @@ export function SettlementsTabContent() {
         <div className="w-80">
           <EntityPickerField<CpItem>
             display={selectedDisplay}
-            placeholder="Пошук контрагента…"
-            ariaLabel="Контрагент"
+            placeholder={t('picker.placeholder')}
+            ariaLabel={t('picker.ariaLabel')}
             onPick={() => setCpPickerOpen(true)}
             onSearch={searchCounterparties}
             onSearchSelect={item => {
@@ -238,7 +243,7 @@ export function SettlementsTabContent() {
       <div className="flex-1 min-h-0 overflow-y-auto">
         {!selected ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-            Оберіть контрагента
+            {t('empty.selectCounterparty')}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-64">
@@ -250,7 +255,7 @@ export function SettlementsTabContent() {
             <div className="bg-surface rounded-xl border border-border p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[13px] text-muted-foreground">Поточний баланс</div>
+                  <div className="text-[13px] text-muted-foreground">{t('balance.current')}</div>
                   <div
                     className={cn(
                       'text-2xl font-bold mt-1',
@@ -267,12 +272,16 @@ export function SettlementsTabContent() {
                   <div className="text-[12px] text-muted-foreground mt-1">
                     {(() => {
                       const b = balance ?? 0;
-                      if (b === 0) return 'Немає заборгованостей';
+                      if (b === 0) return t('balance.noDebt');
                       const isSupplier = selected?.type === 'SUPPLIER' || selected?.type === 'BOTH';
                       // balance>0 = нам винні; balance<0 = ми винні.
                       if (b > 0)
-                        return isSupplier ? 'Переплата постачальнику' : 'Заборгованість клієнта';
-                      return isSupplier ? 'Ми винні постачальнику' : 'Переплата клієнта';
+                        return isSupplier
+                          ? t('balance.supplierOverpayment')
+                          : t('balance.clientDebt');
+                      return isSupplier
+                        ? t('balance.weOweSupplier')
+                        : t('balance.clientOverpayment');
                     })()}
                   </div>
                 </div>
@@ -282,20 +291,20 @@ export function SettlementsTabContent() {
                     size="sm"
                     onClick={() => {
                       if (!selected || transactions.length === 0) return;
-                      const name = cpDisplayName(selected);
+                      const name = cpDisplayName(selected, t('noName'));
                       // Мультивалюта: окремі колонки «Валюта» + «Сума (базова)», щоб експорт не
                       // змішував суми різних валют у одній колонці (100 USD і 4150 UAH виглядали б
                       // однаково → нескладна сума). Base-колонка (amountBase ?? amount — історичні =
                       // base UAH) — єдина, яку коректно підсумовувати.
                       const rows = [
                         [
-                          'Дата',
-                          'Тип',
-                          'Сума',
-                          'Валюта',
-                          `Сума (${baseCode})`,
-                          'Документ',
-                          'Нотатки',
+                          t('csv.date'),
+                          t('csv.type'),
+                          t('csv.amount'),
+                          t('csv.currency'),
+                          t('csv.amountBase', { code: baseCode }),
+                          t('csv.document'),
+                          t('csv.notes'),
                         ],
                         ...transactions.map(tx => [
                           fmtDate(tx.createdAt),
@@ -319,8 +328,8 @@ export function SettlementsTabContent() {
                       setTimeout(() => URL.revokeObjectURL(url), 100);
                     }}
                     disabled={transactions.length === 0}
-                    aria-label="Експорт CSV"
-                    title="Завантажити транзакції у CSV"
+                    aria-label={t('actions.exportCsvAria')}
+                    title={t('actions.exportCsvTitle')}
                   >
                     <Download className="h-4 w-4" />
                   </Button>
@@ -333,7 +342,7 @@ export function SettlementsTabContent() {
                       setShowActModal(true);
                     }}
                   >
-                    Акт звірки
+                    {t('actions.reconciliationAct')}
                   </Button>
                 </div>
               </div>
@@ -342,12 +351,14 @@ export function SettlementsTabContent() {
             {/* Transactions */}
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-secondary">
-                <h3 className="font-medium text-foreground text-sm">Транзакції ({txTotal})</h3>
+                <h3 className="font-medium text-foreground text-sm">
+                  {t('transactions.heading', { count: txTotal })}
+                </h3>
               </div>
               <div className="divide-y divide-border max-h-80 overflow-y-auto">
                 {transactions.length === 0 ? (
                   <div className="p-4 text-center text-muted-foreground text-[13px]">
-                    Транзакцій немає
+                    {t('transactions.empty')}
                   </div>
                 ) : (
                   transactions.map(tx => (
@@ -392,7 +403,7 @@ export function SettlementsTabContent() {
             {acts.length > 0 && (
               <div className="bg-surface rounded-xl border border-border overflow-hidden">
                 <div className="px-5 py-3 border-b border-border bg-secondary">
-                  <h3 className="font-medium text-foreground text-sm">Акти звірки</h3>
+                  <h3 className="font-medium text-foreground text-sm">{t('acts.heading')}</h3>
                 </div>
                 <div className="divide-y divide-border">
                   {acts.map(act => (
@@ -410,7 +421,7 @@ export function SettlementsTabContent() {
                       </div>
                       <div className="text-right">
                         <div className="text-[12px] text-muted-foreground">
-                          Відкриття: {fmt(act.openingBalance, baseSymbol)}
+                          {t('acts.opening', { value: fmt(act.openingBalance, baseSymbol) })}
                         </div>
                         <div
                           className={cn(
@@ -422,7 +433,7 @@ export function SettlementsTabContent() {
                                 : 'text-foreground-muted',
                           )}
                         >
-                          Закриття: {fmt(act.closingBalance, baseSymbol)}
+                          {t('acts.closing', { value: fmt(act.closingBalance, baseSymbol) })}
                         </div>
                       </div>
                       <Button
@@ -431,7 +442,7 @@ export function SettlementsTabContent() {
                         loading={downloadingActId === act.id}
                         onClick={() => downloadActPdf(act.id)}
                       >
-                        PDF
+                        {t('acts.pdf')}
                       </Button>
                     </div>
                   ))}
@@ -446,13 +457,13 @@ export function SettlementsTabContent() {
       <SearchPickerModal<CpItem>
         open={cpPickerOpen}
         onClose={() => setCpPickerOpen(false)}
-        title="Оберіть контрагента"
+        title={t('picker.modalTitle')}
         selectedId={selected?.id}
-        searchPlaceholder="Ім'я, телефон, компанія..."
+        searchPlaceholder={t('picker.searchPlaceholder')}
         fetchItems={q =>
           apiFetch<{ items: Counterparty[] }>(
             `/counterparties?q=${encodeURIComponent(q)}&limit=20`,
-          ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c) })))
+          ).then(r => r.items.map(c => ({ ...c, primary: cpDisplayName(c, t('noName')) })))
         }
         onSelect={cp => {
           setSelectedDisplay(cp.primary);
@@ -461,31 +472,41 @@ export function SettlementsTabContent() {
       />
 
       {/* Reconciliation act modal */}
-      <Modal open={showActModal} onClose={() => setShowActModal(false)} title="Акт звірки">
+      <Modal open={showActModal} onClose={() => setShowActModal(false)} title={t('actModal.title')}>
         {actResult ? (
           <div className="space-y-4">
             <div className="p-4 bg-success-subtle rounded-lg border border-success/20">
-              <div className="text-[13px] font-medium text-success mb-2">Акт звірки сформовано</div>
+              <div className="text-[13px] font-medium text-success mb-2">
+                {t('actModal.created')}
+              </div>
               <div className="text-[12px] text-foreground-muted space-y-1">
-                <div>Відкриваючий залишок: {fmt(actResult.openingBalance, baseSymbol)}</div>
-                <div>Закриваючий залишок: {fmt(actResult.closingBalance, baseSymbol)}</div>
-                <div>Транзакцій: {actResult.transactions.length}</div>
+                <div>
+                  {t('actModal.openingBalance', {
+                    value: fmt(actResult.openingBalance, baseSymbol),
+                  })}
+                </div>
+                <div>
+                  {t('actModal.closingBalance', {
+                    value: fmt(actResult.closingBalance, baseSymbol),
+                  })}
+                </div>
+                <div>{t('actModal.txCount', { count: actResult.transactions.length })}</div>
               </div>
             </div>
             <Button variant="outline" onClick={() => setShowActModal(false)} className="w-full">
-              Закрити
+              {t('actModal.close')}
             </Button>
           </div>
         ) : (
           <div className="space-y-4">
             <DatePickerInput
-              label="Початок періоду"
+              label={t('actModal.periodFrom')}
               required
               value={actForm.periodFrom}
               onChange={v => setActForm(f => ({ ...f, periodFrom: v }))}
             />
             <DatePickerInput
-              label="Кінець періоду"
+              label={t('actModal.periodTo')}
               required
               value={actForm.periodTo}
               onChange={v => setActForm(f => ({ ...f, periodTo: v }))}
@@ -496,7 +517,7 @@ export function SettlementsTabContent() {
               disabled={!actForm.periodFrom || !actForm.periodTo}
               className="w-full"
             >
-              Сформувати акт
+              {t('actModal.submit')}
             </Button>
           </div>
         )}

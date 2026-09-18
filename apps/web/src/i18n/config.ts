@@ -55,6 +55,7 @@ if (!i18n.isInitialized) {
       'inventory',
       'payroll',
       'pricingRules',
+      'settlements',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

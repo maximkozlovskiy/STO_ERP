@@ -1,0 +1,62 @@
+{
+  "title": "Settlements",
+  "noName": "(no name)",
+  "picker": {
+    "placeholder": "Search counterparty…",
+    "ariaLabel": "Counterparty",
+    "modalTitle": "Select counterparty",
+    "searchPlaceholder": "Name, phone, company..."
+  },
+  "empty": {
+    "selectCounterparty": "Select a counterparty"
+  },
+  "balance": {
+    "current": "Current balance",
+    "noDebt": "No outstanding balance",
+    "supplierOverpayment": "Overpaid to supplier",
+    "clientDebt": "Client debt",
+    "weOweSupplier": "We owe the supplier",
+    "clientOverpayment": "Client overpayment"
+  },
+  "actions": {
+    "exportCsvAria": "Export CSV",
+    "exportCsvTitle": "Download transactions as CSV",
+    "reconciliationAct": "Reconciliation act"
+  },
+  "csv": {
+    "date": "Date",
+    "type": "Type",
+    "amount": "Amount",
+    "currency": "Currency",
+    "amountBase": "Amount ({{code}})",
+    "document": "Document",
+    "notes": "Notes"
+  },
+  "transactions": {
+    "heading": "Transactions ({{count}})",
+    "empty": "No transactions"
+  },
+  "acts": {
+    "heading": "Reconciliation acts",
+    "opening": "Opening: {{value}}",
+    "closing": "Closing: {{value}}",
+    "pdf": "PDF"
+  },
+  "actModal": {
+    "title": "Reconciliation act",
+    "created": "Reconciliation act generated",
+    "openingBalance": "Opening balance: {{value}}",
+    "closingBalance": "Closing balance: {{value}}",
+    "txCount": "Transactions: {{count}}",
+    "close": "Close",
+    "periodFrom": "Period start",
+    "periodTo": "Period end",
+    "submit": "Generate act"
+  },
+  "errors": {
+    "periodOrder": "Period end cannot be earlier than the start",
+    "loadFailed": "Failed to load data",
+    "createActFailed": "Failed to create act",
+    "downloadPdfFailed": "Failed to download reconciliation act PDF"
+  }
+}

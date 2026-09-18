@@ -1,0 +1,62 @@
+{
+  "title": "Взаєморозрахунки",
+  "noName": "(без імені)",
+  "picker": {
+    "placeholder": "Пошук контрагента…",
+    "ariaLabel": "Контрагент",
+    "modalTitle": "Оберіть контрагента",
+    "searchPlaceholder": "Ім'я, телефон, компанія..."
+  },
+  "empty": {
+    "selectCounterparty": "Оберіть контрагента"
+  },
+  "balance": {
+    "current": "Поточний баланс",
+    "noDebt": "Немає заборгованостей",
+    "supplierOverpayment": "Переплата постачальнику",
+    "clientDebt": "Заборгованість клієнта",
+    "weOweSupplier": "Ми винні постачальнику",
+    "clientOverpayment": "Переплата клієнта"
+  },
+  "actions": {
+    "exportCsvAria": "Експорт CSV",
+    "exportCsvTitle": "Завантажити транзакції у CSV",
+    "reconciliationAct": "Акт звірки"
+  },
+  "csv": {
+    "date": "Дата",
+    "type": "Тип",
+    "amount": "Сума",
+    "currency": "Валюта",
+    "amountBase": "Сума ({{code}})",
+    "document": "Документ",
+    "notes": "Нотатки"
+  },
+  "transactions": {
+    "heading": "Транзакції ({{count}})",
+    "empty": "Транзакцій немає"
+  },
+  "acts": {
+    "heading": "Акти звірки",
+    "opening": "Відкриття: {{value}}",
+    "closing": "Закриття: {{value}}",
+    "pdf": "PDF"
+  },
+  "actModal": {
+    "title": "Акт звірки",
+    "created": "Акт звірки сформовано",
+    "openingBalance": "Відкриваючий залишок: {{value}}",
+    "closingBalance": "Закриваючий залишок: {{value}}",
+    "txCount": "Транзакцій: {{count}}",
+    "close": "Закрити",
+    "periodFrom": "Початок періоду",
+    "periodTo": "Кінець періоду",
+    "submit": "Сформувати акт"
+  },
+  "errors": {
+    "periodOrder": "Кінець періоду не може бути раніше початку",
+    "loadFailed": "Помилка завантаження даних",
+    "createActFailed": "Помилка створення акту",
+    "downloadPdfFailed": "Помилка завантаження PDF акту звірки"
+  }
+}
