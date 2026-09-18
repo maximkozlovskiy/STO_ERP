@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -79,17 +80,12 @@ const EMPTY_SCHEDULE_FORM = {
   notes: '',
 };
 // Vehicle fuel/transmission/drive/body опції — тепер зі спільної @sto/shared (VehicleForm).
-const NODE_CATEGORY_LABELS: Record<string, string> = {
-  engine: 'Двигун',
-  gearbox: 'КПП',
-  suspension: 'Підвіска',
-  electrical: 'Електрика',
-  AC: 'Кондиціонер',
-  body: 'Кузов',
-};
+// Ключі категорій вузлів у фіксованому порядку — мітки беруться з i18n (vehicles:nodeCategory.*).
+const NODE_CATEGORY_KEYS = ['engine', 'gearbox', 'suspension', 'electrical', 'AC', 'body'];
 
 export default function VehicleCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
+  const { t } = useTranslation('vehicles');
   const { confirm, dialogProps } = useConfirm();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -159,7 +155,7 @@ export default function VehicleCardPage() {
           ),
         ),
     ]).catch((e: unknown) => {
-      if (ok()) setLoadError(e instanceof Error ? e.message : 'Помилка завантаження');
+      if (ok()) setLoadError(e instanceof Error ? e.message : t('card.loadError'));
     });
   };
   useEffect(() => {
@@ -209,7 +205,7 @@ export default function VehicleCardPage() {
       setVehicle(updated);
       setShowEdit(false);
     } catch (e: unknown) {
-      setEditError(e instanceof Error ? e.message : 'Помилка збереження');
+      setEditError(e instanceof Error ? e.message : t('card.saveError'));
     } finally {
       setEditSaving(false);
     }
@@ -237,20 +233,21 @@ export default function VehicleCardPage() {
       setShowAddNode(false);
       load();
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка збереження');
+      setLoadError(e instanceof Error ? e.message : t('card.saveError'));
     } finally {
       setSaving(false);
     }
   };
 
   const removeNode = async (nodeId: string) => {
-    if (!(await confirm({ title: 'Видалити вузол?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('card.nodes.deleteConfirmTitle'), variant: 'destructive' })))
+      return;
     setSaving(true);
     try {
       await apiFetch<void>(`/vehicles/${id}/nodes/${nodeId}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка видалення');
+      setLoadError(e instanceof Error ? e.message : t('card.deleteError'));
     } finally {
       setSaving(false);
     }
@@ -299,7 +296,7 @@ export default function VehicleCardPage() {
           ),
         );
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка збереження регламенту');
+      setLoadError(e instanceof Error ? e.message : t('card.schedules.saveError'));
     } finally {
       setSavingSchedule(false);
     }
@@ -326,13 +323,19 @@ export default function VehicleCardPage() {
   };
 
   const removeSchedule = async (scheduleId: string) => {
-    if (!(await confirm({ title: 'Видалити регламент ТО?', variant: 'destructive' }))) return;
+    if (
+      !(await confirm({
+        title: t('card.schedules.deleteConfirmTitle'),
+        variant: 'destructive',
+      }))
+    )
+      return;
     setDeletingScheduleId(scheduleId);
     try {
       await apiFetch<void>(`/maintenance-schedules/${scheduleId}`, { method: 'DELETE' });
       setSchedules(s => s.filter(sc => sc.id !== scheduleId));
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка видалення');
+      setLoadError(e instanceof Error ? e.message : t('card.deleteError'));
     } finally {
       setDeletingScheduleId(null);
     }
@@ -366,72 +369,87 @@ export default function VehicleCardPage() {
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" />
-          Назад
+          {t('card.back')}
         </Button>
         <h1 className="text-2xl font-bold text-foreground flex-1">
           {vehicle.make} {vehicle.model}
         </h1>
         <Button variant="outline" size="sm" onClick={openEdit}>
           <Pencil className="h-4 w-4" />
-          Редагувати
+          {t('card.edit')}
         </Button>
       </div>
 
       {/* Vehicle info */}
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-2 gap-3 text-sm">
-        {vehicle.licensePlate && <Info label="Держ. номер" value={vehicle.licensePlate} />}
-        {vehicle.vin && <Info label="VIN" value={vehicle.vin} mono />}
-        {vehicle.year && <Info label="Рік" value={String(vehicle.year)} />}
-        {vehicle.engineVolume && <Info label="Об'єм, л" value={String(vehicle.engineVolume)} />}
+        {vehicle.licensePlate && (
+          <Info label={t('card.info.licensePlate')} value={vehicle.licensePlate} />
+        )}
+        {vehicle.vin && <Info label={t('card.info.vin')} value={vehicle.vin} mono />}
+        {vehicle.year && <Info label={t('card.info.year')} value={String(vehicle.year)} />}
+        {vehicle.engineVolume && (
+          <Info label={t('card.info.engineVolume')} value={String(vehicle.engineVolume)} />
+        )}
         {vehicle.fuelType && (
-          <Info label="Паливо" value={optionLabel(FUEL_TYPE_OPTIONS, vehicle.fuelType)} />
+          <Info
+            label={t('card.info.fuelType')}
+            value={optionLabel(FUEL_TYPE_OPTIONS, vehicle.fuelType)}
+          />
         )}
         {vehicle.currentMileage != null && (
-          <Info label="Пробіг, км" value={fmtInt(vehicle.currentMileage)} />
+          <Info label={t('card.info.currentMileage')} value={fmtInt(vehicle.currentMileage)} />
         )}
-        {vehicle.color && <Info label="Колір" value={vehicle.color} />}
+        {vehicle.color && <Info label={t('card.info.color')} value={vehicle.color} />}
         {vehicle.transmissionType && (
           <Info
-            label="Коробка"
+            label={t('card.info.transmissionType')}
             value={optionLabel(TRANSMISSION_OPTIONS, vehicle.transmissionType)}
           />
         )}
         {vehicle.driveType && (
-          <Info label="Привід" value={optionLabel(DRIVE_OPTIONS, vehicle.driveType)} />
+          <Info
+            label={t('card.info.driveType')}
+            value={optionLabel(DRIVE_OPTIONS, vehicle.driveType)}
+          />
         )}
         {vehicle.bodyType && (
-          <Info label="Кузов" value={optionLabel(BODY_OPTIONS, vehicle.bodyType)} />
+          <Info
+            label={t('card.info.bodyType')}
+            value={optionLabel(BODY_OPTIONS, vehicle.bodyType)}
+          />
         )}
-        {vehicle.engineCode && <Info label="Код двигуна" value={vehicle.engineCode} mono />}
+        {vehicle.engineCode && (
+          <Info label={t('card.info.engineCode')} value={vehicle.engineCode} mono />
+        )}
         {vehicle.insuranceExpiry && (
           <div>
-            <p className="text-xs text-muted-foreground">Страховка до</p>
+            <p className="text-xs text-muted-foreground">{t('card.info.insuranceExpiry')}</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-foreground">{fmtDate(vehicle.insuranceExpiry)}</p>
               <ExpiryBadge
                 date={vehicle.insuranceExpiry}
                 nowMs={today?.getTime() ?? 0}
-                expiredLabel="Страховка прострочена"
+                expiredLabel={t('card.info.insuranceExpired')}
               />
             </div>
           </div>
         )}
         {vehicle.inspectionExpiry && (
           <div>
-            <p className="text-xs text-muted-foreground">Техогляд до</p>
+            <p className="text-xs text-muted-foreground">{t('card.info.inspectionExpiry')}</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-foreground">{fmtDate(vehicle.inspectionExpiry)}</p>
               <ExpiryBadge
                 date={vehicle.inspectionExpiry}
                 nowMs={today?.getTime() ?? 0}
-                expiredLabel="Техогляд прострочений"
+                expiredLabel={t('card.info.inspectionExpired')}
               />
             </div>
           </div>
         )}
         {vehicle.notes && (
           <div className="col-span-2">
-            <Info label="Нотатки" value={vehicle.notes} />
+            <Info label={t('card.info.notes')} value={vehicle.notes} />
           </div>
         )}
       </div>
@@ -439,10 +457,10 @@ export default function VehicleCardPage() {
       {/* Nodes */}
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-foreground">Вузли автомобіля</h2>
+          <h2 className="font-semibold text-foreground">{t('card.nodes.title')}</h2>
           <Button variant="ghost" size="sm" onClick={() => setShowAddNode(v => !v)}>
             <Plus className="h-4 w-4" />
-            Вузол
+            {t('card.nodes.addButton')}
           </Button>
         </div>
 
@@ -451,29 +469,29 @@ export default function VehicleCardPage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                  Категорія
+                  {t('card.nodes.categoryLabel')}
                 </label>
                 <Select
                   value={nodeForm.category}
                   onChange={e => setNodeForm(f => ({ ...f, category: e.target.value }))}
                   className="h-8 text-[13px] py-0.5 px-2 pr-7"
                 >
-                  {Object.entries(NODE_CATEGORY_LABELS).map(([k, v]) => (
+                  {NODE_CATEGORY_KEYS.map(k => (
                     <option key={k} value={k}>
-                      {v}
+                      {t(`nodeCategory.${k}`)}
                     </option>
                   ))}
-                  <option value="other">Інше</option>
+                  <option value="other">{t('card.nodes.categoryOther')}</option>
                 </Select>
               </div>
               <div>
                 <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                  Назва <span className="text-destructive">*</span>
+                  {t('card.nodes.nameLabel')} <span className="text-destructive">*</span>
                 </label>
                 <Input
                   value={nodeForm.name}
                   onChange={e => setNodeForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Двигун 2.0 TSI"
+                  placeholder={t('card.nodes.namePlaceholder')}
                   className="h-8 text-[13px]"
                 />
               </div>
@@ -481,35 +499,35 @@ export default function VehicleCardPage() {
             <Input
               value={nodeForm.mileageAtInstall}
               onChange={e => setNodeForm(f => ({ ...f, mileageAtInstall: e.target.value }))}
-              placeholder="Пробіг при встановленні, км"
+              placeholder={t('card.nodes.mileagePlaceholder')}
               type="number"
               className="h-8 text-[13px]"
             />
             <Input
               value={nodeForm.notes}
               onChange={e => setNodeForm(f => ({ ...f, notes: e.target.value }))}
-              placeholder="Нотатки"
+              placeholder={t('card.nodes.notesPlaceholder')}
               className="h-8 text-[13px]"
             />
             <div className="flex gap-2">
               <Button size="sm" onClick={addNode} loading={saving} disabled={!nodeForm.name}>
-                Зберегти
+                {t('card.nodes.save')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setShowAddNode(false)}>
-                Скасувати
+                {t('card.nodes.cancel')}
               </Button>
             </div>
           </AnimatedBody>
         )}
 
         {Object.keys(grouped).length === 0 && !showAddNode && (
-          <p className="text-sm text-muted-foreground">Вузли не додані</p>
+          <p className="text-sm text-muted-foreground">{t('card.nodes.empty')}</p>
         )}
 
         {Object.entries(grouped).map(([cat, catNodes]) => (
           <div key={cat} className="mb-3">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              {NODE_CATEGORY_LABELS[cat] ?? cat}
+              {t(`nodeCategory.${cat}`, cat)}
             </p>
             <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
               {catNodes.map(n => (
@@ -518,7 +536,7 @@ export default function VehicleCardPage() {
                     <p className="text-sm text-foreground">{n.name}</p>
                     {n.mileageAtInstall != null && (
                       <p className="text-xs text-muted-foreground">
-                        Встановлено при {fmtInt(n.mileageAtInstall)} км
+                        {t('card.nodes.installedAt', { mileage: fmtInt(n.mileageAtInstall) })}
                       </p>
                     )}
                     {n.notes && <p className="text-xs text-muted-foreground">{n.notes}</p>}
@@ -541,73 +559,75 @@ export default function VehicleCardPage() {
       {/* Maintenance Schedules */}
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-foreground">Регламент ТО</h2>
+          <h2 className="font-semibold text-foreground">{t('card.schedules.title')}</h2>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => (showAddSchedule ? cancelScheduleForm() : setShowAddSchedule(true))}
           >
             <Plus className="h-4 w-4" />
-            Регламент
+            {t('card.schedules.addButton')}
           </Button>
         </div>
 
         {showAddSchedule && (
           <AnimatedBody className="mb-4 p-3 bg-secondary rounded-lg space-y-2">
             <p className="text-[13px] font-medium text-foreground">
-              {editingScheduleId ? 'Редагування регламенту' : 'Новий регламент'}
+              {editingScheduleId
+                ? t('card.schedules.formTitleEdit')
+                : t('card.schedules.formTitleCreate')}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <Input
-                label="Тип ТО"
+                label={t('card.schedules.typeLabel')}
                 value={scheduleForm.maintenanceType}
                 onChange={e => setScheduleForm(f => ({ ...f, maintenanceType: e.target.value }))}
-                placeholder="ТО, Заміна масла..."
+                placeholder={t('card.schedules.typePlaceholder')}
                 className="h-8 text-[13px]"
               />
               <Input
-                label="Нотатки"
+                label={t('card.schedules.notesLabel')}
                 value={scheduleForm.notes}
                 onChange={e => setScheduleForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Опціонально"
+                placeholder={t('card.schedules.notesPlaceholder')}
                 className="h-8 text-[13px]"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Input
-                label="Інтервал (дні)"
+                label={t('card.schedules.intervalDaysLabel')}
                 type="number"
                 min="1"
                 value={scheduleForm.intervalDays}
                 onChange={e => setScheduleForm(f => ({ ...f, intervalDays: e.target.value }))}
-                placeholder="365"
+                placeholder={t('card.schedules.intervalDaysPlaceholder')}
                 className="h-8 text-[13px]"
               />
               <Input
-                label="Інтервал (км)"
+                label={t('card.schedules.intervalMileageLabel')}
                 type="number"
                 min="1"
                 value={scheduleForm.intervalMileage}
                 onChange={e => setScheduleForm(f => ({ ...f, intervalMileage: e.target.value }))}
-                placeholder="10000"
+                placeholder={t('card.schedules.intervalMileagePlaceholder')}
                 className="h-8 text-[13px]"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <DatePickerInput
-                label="Дата останнього ТО"
+                label={t('card.schedules.lastDateLabel')}
                 value={scheduleForm.lastMaintenanceDate}
                 onChange={v => setScheduleForm(f => ({ ...f, lastMaintenanceDate: v }))}
               />
               <Input
-                label="Пробіг при останньому ТО"
+                label={t('card.schedules.lastMileageLabel')}
                 type="number"
                 min="0"
                 value={scheduleForm.lastMaintenanceMileage}
                 onChange={e =>
                   setScheduleForm(f => ({ ...f, lastMaintenanceMileage: e.target.value }))
                 }
-                placeholder="85000"
+                placeholder={t('card.schedules.lastMileagePlaceholder')}
                 className="h-8 text-[13px]"
               />
             </div>
@@ -618,17 +638,17 @@ export default function VehicleCardPage() {
                 loading={savingSchedule}
                 disabled={!scheduleForm.maintenanceType.trim()}
               >
-                Зберегти
+                {t('card.schedules.save')}
               </Button>
               <Button size="sm" variant="outline" onClick={cancelScheduleForm}>
-                Скасувати
+                {t('card.schedules.cancel')}
               </Button>
             </div>
           </AnimatedBody>
         )}
 
         {schedules.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Регламентів ТО не додано</p>
+          <p className="text-sm text-muted-foreground">{t('card.schedules.empty')}</p>
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
             {schedules.map(sc => (
@@ -638,36 +658,40 @@ export default function VehicleCardPage() {
                     <p className="text-sm font-medium text-foreground">{sc.maintenanceType}</p>
                     {!sc.isActive && (
                       <span className="text-[11px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">
-                        Неактивний
+                        {t('card.schedules.inactive')}
                       </span>
                     )}
                     {sc.nextMaintenanceDate && (
                       <ExpiryBadge
                         date={sc.nextMaintenanceDate}
                         nowMs={today?.getTime() ?? 0}
-                        expiredLabel="Прострочено"
-                        soonLabel="Незабаром"
+                        expiredLabel={t('card.schedules.expired')}
+                        soonLabel={t('card.schedules.soon')}
                         soonDays={14}
                       />
                     )}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
                     {sc.intervalDays && (
-                      <p className="text-xs text-muted-foreground">Кожні {sc.intervalDays} дн.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('card.schedules.everyDays', { days: sc.intervalDays })}
+                      </p>
                     )}
                     {sc.intervalMileage && (
                       <p className="text-xs text-muted-foreground">
-                        Кожні {fmtInt(sc.intervalMileage)} км
+                        {t('card.schedules.everyMileage', { mileage: fmtInt(sc.intervalMileage) })}
                       </p>
                     )}
                     {sc.nextMaintenanceDate && (
                       <p className="text-xs text-muted-foreground">
-                        Наступне: {fmtDate(sc.nextMaintenanceDate)}
+                        {t('card.schedules.next', { date: fmtDate(sc.nextMaintenanceDate) })}
                       </p>
                     )}
                     {sc.nextMaintenanceMileage && (
                       <p className="text-xs text-muted-foreground">
-                        При {fmtInt(sc.nextMaintenanceMileage)} км
+                        {t('card.schedules.atMileage', {
+                          mileage: fmtInt(sc.nextMaintenanceMileage),
+                        })}
                       </p>
                     )}
                     {sc.notes && <p className="text-xs text-muted-foreground">{sc.notes}</p>}
@@ -697,15 +721,15 @@ export default function VehicleCardPage() {
       <Modal
         open={showEdit}
         onClose={closeEdit}
-        title="Редагування автомобіля"
+        title={t('card.editModal.title')}
         size="lg"
         footer={
           <>
             <Button onClick={saveEdit} loading={editSaving}>
-              Зберегти
+              {t('card.editModal.save')}
             </Button>
             <Button variant="outline" onClick={closeEdit}>
-              Скасувати
+              {t('card.editModal.cancel')}
             </Button>
           </>
         }

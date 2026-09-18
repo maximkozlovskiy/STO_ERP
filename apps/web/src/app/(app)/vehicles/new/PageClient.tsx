@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vehicleFormSchema, type VehicleFormInput, type VehicleFormValues } from '@sto/shared';
@@ -43,6 +44,7 @@ const EMPTY: VehicleFormInput = {
 
 export default function NewVehiclePageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
+  const { t } = useTranslation('vehicles');
   const router = useRouter();
   const searchParams = useSearchParams();
   const garageId = searchParams.get('garageId') ?? '';
@@ -63,7 +65,7 @@ export default function NewVehiclePageClient() {
 
   const onSubmit = handleSubmit(async (values: VehicleFormValues) => {
     if (!garageId) {
-      setError('Гараж не вказано');
+      setError(t('new.garageMissing'));
       return;
     }
     setSaving(true);
@@ -76,7 +78,7 @@ export default function NewVehiclePageClient() {
       });
       router.replace(`/vehicles/${vehicle.id}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('new.saveError'));
     } finally {
       setSaving(false);
     }
@@ -85,10 +87,10 @@ export default function NewVehiclePageClient() {
   if (!garageId) {
     return (
       <div className="page-container max-w-xl flex flex-col items-center justify-center py-20 gap-4">
-        <p className="text-destructive-text">Гараж не вказано. Поверніться до картки клієнта.</p>
+        <p className="text-destructive-text">{t('new.garageMissingCard')}</p>
         <Button variant="ghost" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4 mr-1" />
-          Назад
+          {t('new.back')}
         </Button>
       </div>
     );
@@ -100,11 +102,13 @@ export default function NewVehiclePageClient() {
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" />
-          Назад
+          {t('new.back')}
         </Button>
         <div>
-          <h1 className="text-xl font-bold text-foreground">Новий автомобіль</h1>
-          {garageName && <p className="text-sm text-muted-foreground">Гараж: {garageName}</p>}
+          <h1 className="text-xl font-bold text-foreground">{t('new.title')}</h1>
+          {garageName && (
+            <p className="text-sm text-muted-foreground">{t('new.garage', { name: garageName })}</p>
+          )}
         </div>
       </div>
 
@@ -121,10 +125,10 @@ export default function NewVehiclePageClient() {
       {/* Actions */}
       <div className="flex gap-3 pb-6">
         <Button onClick={onSubmit} loading={saving} className="flex-1">
-          Зберегти автомобіль
+          {t('new.save')}
         </Button>
         <Button variant="outline" onClick={() => router.back()}>
-          Скасувати
+          {t('new.cancel')}
         </Button>
       </div>
     </div>
