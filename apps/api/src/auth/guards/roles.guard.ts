@@ -1,6 +1,8 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { translateError } from '@sto/shared';
 import { ROLES_KEY } from '../decorators/roles.decorator';
+import { getLocale } from '../../common/tenant/tenant-context';
 import type { AuthenticatedUser } from '../strategies/jwt.strategy';
 
 @Injectable()
@@ -19,7 +21,7 @@ export class RolesGuard implements CanActivate {
     const user = request.user as AuthenticatedUser | undefined;
 
     if (!user || !required.includes(user.role)) {
-      throw new ForbiddenException('Недостатньо прав для виконання цієї дії');
+      throw new ForbiddenException(translateError('err.auth.insufficientRights', getLocale()));
     }
 
     return true;

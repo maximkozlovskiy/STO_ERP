@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
-import { runUnscoped } from '../../common/tenant/tenant-context';
+import { runUnscoped, getLocale } from '../../common/tenant/tenant-context';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 
 @Injectable()
@@ -19,7 +20,7 @@ export class SetupService {
 
   async init(dto: SetupInitDto): Promise<SetupInitResponseDto> {
     if (await this.isAlreadyInitialized()) {
-      throw new BadRequestException('Систему вже налаштовано');
+      throw new BadRequestException(translateError('err.setup.alreadyConfigured', getLocale()));
     }
 
     const passwordHash = await bcrypt.hash(dto.ownerPassword, 12);
@@ -47,7 +48,9 @@ export class SetupService {
 
             const already = await tx.organisation.count();
             if (already > 0) {
-              throw new BadRequestException('Систему вже налаштовано');
+              throw new BadRequestException(
+                translateError('err.setup.alreadyConfigured', getLocale()),
+              );
             }
 
             const org = await tx.organisation.create({

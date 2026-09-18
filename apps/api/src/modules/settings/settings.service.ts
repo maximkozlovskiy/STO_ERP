@@ -6,6 +6,8 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { AuditService } from '../audit/audit.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   BranchSettingsResponseDto,
   OrganisationResponseDto,
@@ -98,7 +100,9 @@ export class SettingsService {
         select: { id: true },
       });
       if (!exists) {
-        throw new BadRequestException(`Валюта з кодом "${dto.currency}" не знайдена`);
+        throw new BadRequestException(
+          translateError('err.settings.currencyNotFound', getLocale(), { code: dto.currency }),
+        );
       }
     }
 
@@ -152,13 +156,14 @@ export class SettingsService {
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     let settings = await this.prisma.branchSettings.findUnique({
       where: { branchId },
     });
 
-    if (settings && settings.orgId !== orgId) throw new NotFoundException('Філію не знайдено');
+    if (settings && settings.orgId !== orgId)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     if (!settings) {
       settings = await this.prisma.branchSettings.upsert({
@@ -239,7 +244,7 @@ export class SettingsService {
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // Cross-field guard: workEndTime must be after workStartTime. Read current settings
     // (if only one field in PATCH) and merge with incoming before comparing.
@@ -256,7 +261,9 @@ export class SettingsService {
         return (h ?? 0) * 60 + (m ?? 0);
       };
       if (toMin(effEnd) <= toMin(effStart)) {
-        throw new BadRequestException('Час кінця роботи повинен бути після часу початку');
+        throw new BadRequestException(
+          translateError('err.settings.workEndAfterStart', getLocale()),
+        );
       }
     }
 
@@ -459,7 +466,8 @@ export class SettingsService {
     const cfg = await this.prisma.documentNumberConfig.findFirst({
       where: { orgId, documentType: documentType as DocumentType },
     });
-    if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
+    if (!cfg)
+      throw new NotFoundException(translateError('err.settings.configNotFound', getLocale()));
     const updated = await this.prisma.documentNumberConfig.update({
       where: { id: cfg.id, orgId },
       data: {
@@ -487,7 +495,8 @@ export class SettingsService {
     const cfg = await this.prisma.documentNumberConfig.findFirst({
       where: { orgId, documentType: documentType as DocumentType },
     });
-    if (!cfg) throw new NotFoundException('Конфігурацію не знайдено');
+    if (!cfg)
+      throw new NotFoundException(translateError('err.settings.configNotFound', getLocale()));
     await this.prisma.documentNumberConfig.update({
       where: { id: cfg.id, orgId },
       data: { currentSeq: 0 },
@@ -603,7 +612,10 @@ export class SettingsService {
               isActive: dto.isActive ?? undefined,
             },
           });
-          if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+          if (result.count === 0)
+            throw new NotFoundException(
+              translateError('err.settings.taxRateNotFound', getLocale()),
+            );
         },
         { timeout: 10_000 },
       );
@@ -618,7 +630,8 @@ export class SettingsService {
           isActive: dto.isActive ?? undefined,
         },
       });
-      if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+      if (result.count === 0)
+        throw new NotFoundException(translateError('err.settings.taxRateNotFound', getLocale()));
     }
     const updated = await this.prisma.taxRate.findFirstOrThrow({ where: { id, orgId } });
     this.auditSettings(orgId, 'TaxRate', id, 'UPDATE', userId, undefined, { ...dto });
@@ -635,15 +648,19 @@ export class SettingsService {
     // TaxRate referenced indirectly through invoices/lines — hard delete loses audit trail.
     // Soft-deactivate via isActive=false instead.
     const existing = await this.prisma.taxRate.findFirst({ where: { id, orgId } });
-    if (!existing) throw new NotFoundException('Ставку ПДВ не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.settings.taxRateNotFound', getLocale()));
     if (existing.isDefault)
-      throw new BadRequestException('Не можна видалити ставку за замовчуванням');
+      throw new BadRequestException(
+        translateError('err.settings.defaultTaxRateUndeletable', getLocale()),
+      );
     // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
     const result = await this.prisma.taxRate.updateMany({
       where: { id, orgId },
       data: { isActive: false },
     });
-    if (result.count === 0) throw new NotFoundException('Ставку ПДВ не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.settings.taxRateNotFound', getLocale()));
     this.auditSettings(orgId, 'TaxRate', id, 'DELETE', userId, { name: existing.name }, undefined);
   }
 
@@ -664,7 +681,8 @@ export class SettingsService {
       where: { orgId, deletedAt: null },
       select: this.orgSelect,
     });
-    if (!org) throw new NotFoundException('Організацію не знайдено');
+    if (!org)
+      throw new NotFoundException(translateError('err.settings.organisationNotFound', getLocale()));
     return this.mapOrganisation(org);
   }
 
@@ -686,8 +704,10 @@ export class SettingsService {
           })
         : Promise.resolve(null),
     ]);
-    if (!org) throw new NotFoundException('Організацію не знайдено');
-    if (dto.bankAccountId && !ba) throw new NotFoundException('Банківський рахунок не знайдено');
+    if (!org)
+      throw new NotFoundException(translateError('err.settings.organisationNotFound', getLocale()));
+    if (dto.bankAccountId && !ba)
+      throw new NotFoundException(translateError('err.bankAccount.notFound', getLocale()));
 
     const updated = await this.prisma.organisation.update({
       where: { id: org.id },
@@ -736,7 +756,7 @@ export class SettingsService {
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // licenseKey: з body (write-only) або збережений (extension дешифрує при читанні).
     let licenseKey = dto.licenseKey;

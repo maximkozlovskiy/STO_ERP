@@ -1,8 +1,9 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { runUnscoped } from '../../common/tenant/tenant-context';
+import { runUnscoped, getLocale } from '../../common/tenant/tenant-context';
 import { PaginatedDeadLetterDto } from './dead-letter.dto';
 
 const REASON_MAX = 1000;
@@ -237,7 +238,8 @@ export class DeadLetterService {
       where: { id, orgId },
       data: { resolved: true, resolvedAt: new Date() },
     });
-    if (res.count === 0) throw new NotFoundException('DLQ-запис не знайдено');
+    if (res.count === 0)
+      throw new NotFoundException(translateError('err.deadLetter.notFound', getLocale()));
     return { id, resolved: true };
   }
 }

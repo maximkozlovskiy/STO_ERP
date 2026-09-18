@@ -1,6 +1,8 @@
 import { Body, Controller, ForbiddenException, Get, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
 import { SetupService } from './setup.service';
 
@@ -29,7 +31,9 @@ export class SetupController {
   @ApiResponse({ status: 403, description: 'Систему вже налаштовано' })
   async init(@Body() dto: SetupInitDto) {
     if (await this.service.isAlreadyInitialized()) {
-      throw new ForbiddenException('Систему вже налаштовано. Повторна ініціалізація заборонена.');
+      throw new ForbiddenException(
+        translateError('err.setup.alreadyConfiguredReinit', getLocale()),
+      );
     }
     return this.service.init(dto);
   }

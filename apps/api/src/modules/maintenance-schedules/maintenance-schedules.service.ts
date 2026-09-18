@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { addDaysKyiv } from '../../common/utils/kyiv-date';
 import {
   CreateMaintenanceScheduleDto,
@@ -45,7 +47,8 @@ export class MaintenanceSchedulesService {
       where: { id, orgId, deletedAt: null },
       include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
     });
-    if (!item) throw new NotFoundException('Графік ТО не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.maintenanceSchedule.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -77,7 +80,10 @@ export class MaintenanceSchedulesService {
       where: { id: dto.vehicleId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!vehicle) throw new NotFoundException('Авто не знайдено');
+    if (!vehicle)
+      throw new NotFoundException(
+        translateError('err.maintenanceSchedule.vehicleNotFound', getLocale()),
+      );
 
     const lastDate = dto.lastMaintenanceDate ? new Date(dto.lastMaintenanceDate) : null;
     const nextDate = this.calcNextDate(lastDate, dto.intervalDays);
@@ -119,7 +125,8 @@ export class MaintenanceSchedulesService {
         nextMaintenanceMileage: true,
       },
     });
-    if (!existing) throw new NotFoundException('Графік ТО не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.maintenanceSchedule.notFound', getLocale()));
 
     // Recalculate next* only when an input that affects the calculation changes.
     const recalcAffectingFields = [
@@ -179,7 +186,8 @@ export class MaintenanceSchedulesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Графік ТО не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.maintenanceSchedule.notFound', getLocale()));
   }
 
   async updateAfterWorkOrder(

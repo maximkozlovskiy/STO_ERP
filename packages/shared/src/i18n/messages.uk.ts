@@ -568,4 +568,198 @@ export const uk: Record<string, string> = {
   'err.booking.requestNotFound': 'Заявку не знайдено',
   'err.booking.cancelledCannotConfirm': 'Скасовану заявку не можна підтвердити',
   'err.booking.slotNotFound': 'Слот не знайдено',
+
+  // ── Exception-повідомлення: auth-модуль ──
+  'err.auth.invalidCredentials': 'Невірний email або пароль',
+  'err.auth.accountBlocked': 'Обліковий запис заблоковано',
+  'err.auth.accountTempLocked':
+    'Обліковий запис тимчасово заблоковано через невдалі спроби входу. Спробуйте пізніше',
+  'err.auth.sessionExpired': 'Сесія застаріла, увійдіть знову',
+  'err.auth.userNotFound': 'Користувача не знайдено',
+  'err.auth.accountNotFound': 'Обліковий запис не знайдено',
+  'err.auth.currentPasswordWrong': 'Поточний пароль невірний',
+  'err.auth.noBranchAccess': 'Немає доступу до цієї філії',
+  'err.auth.insufficientRights': 'Недостатньо прав для виконання цієї дії',
+  'err.auth.sessionInvalid': 'Сесія недійсна',
+
+  // ── Exception-повідомлення: idempotency-interceptor ──
+  'err.idempotency.inProgress': 'Запит з цим Idempotency-Key вже обробляється',
+  'err.idempotency.keyReusedDifferentBody': 'Idempotency-Key вже використано з іншим тілом запиту',
+
+  // ── Exception-повідомлення: fsm ──
+  'err.fsm.transitionNotAllowed': 'Перехід зі статусу "{{from}}" в "{{to}}" неможливий',
+
+  // ── Exception-повідомлення: audit-модуль ──
+  'err.audit.unknownEntityType': 'Невідомий тип сутності',
+
+  // ── Exception-повідомлення: brands-модуль ──
+  'err.brand.deletedNotFound': 'Видалений бренд не знайдено',
+  'err.brand.notFound': 'Бренд не знайдено',
+  'err.brand.nameExists': 'Бренд з такою назвою вже існує',
+  'err.brand.activeNameExists': 'Активний бренд з такою назвою вже існує — відновлення неможливе',
+
+  // ── Exception-повідомлення: cash-модуль ──
+  'err.cash.amountMustBePositive': 'Сума має бути додатною',
+  'err.cash.categoryNotFound': 'Статтю не знайдено',
+  'err.cash.categoryInactive': 'Стаття вимкнена — оберіть активну',
+  'err.cash.categoryTypeIncome': 'Для внесення оберіть статтю оприбуткування',
+  'err.cash.categoryTypeExpense': 'Для видачі оберіть статтю витрат',
+  'err.cash.shiftRequiredForFiscal':
+    'Для фіскальної каси відкрийте зміну перед операціями з готівкою',
+  'err.cash.concurrentOperation': 'Каса зайнята паралельною операцією — повторіть',
+  'err.cash.expenseRequiresCategory': 'Для витрати вкажіть статтю витрат',
+  'err.cash.insufficientCash':
+    'Недостатньо готівки в касі: доступно {{available}}, потрібно {{required}}',
+
+  // ── Exception-повідомлення: comments-модуль ──
+  'err.comment.unknownEntityType': 'Невідомий тип сутності для коментарів: {{entityType}}',
+  'err.comment.entityIdRequired': "entityId обов'язковий",
+  'err.comment.entityNotFound': 'Сутність не знайдено',
+  'err.comment.notFound': 'Коментар не знайдено',
+  'err.comment.deleteForbidden': 'Видаляти коментарі можуть лише автор або адміністратор',
+
+  // ── Exception-повідомлення: document-number-модуль ──
+  'err.documentNumber.configNotFound': 'Конфігурацію нумерації для "{{documentType}}" не знайдено',
+
+  // ── Exception-повідомлення: dead-letter-модуль ──
+  'err.deadLetter.notFound': 'DLQ-запис не знайдено',
+
+  // ── Exception-повідомлення: employees-модуль ──
+  'err.employee.notFound': 'Співробітника не знайдено',
+  'err.employee.passwordRequiredWithEmail': "Пароль обов'язковий якщо вказано email для входу",
+  'err.employee.loginEmailInUse': 'Цей email вже використовується для входу',
+  'err.employee.zonesNotFound': 'Одну або кілька зон не знайдено',
+  'err.employee.liftsNotFound': 'Один або кілька підйомників не знайдено',
+  'err.employee.categoriesNotFound': 'Одну або кілька категорій не знайдено',
+  'err.employee.branchesNotFound': 'Одну або кілька філій не знайдено',
+  'err.employee.assignedToActiveOrders':
+    'Неможливо видалити: співробітник призначений на активні наряди',
+  'err.employee.invalidRateScheme': 'Невірна схема нарахування: {{details}}',
+
+  // ── Exception-повідомлення: good-statuses-модуль ──
+  'err.goodStatus.notFound': 'Статус не знайдено',
+  'err.goodStatus.nameExists': 'Статус з такою назвою вже існує',
+  'err.goodStatus.deletedNotFound': 'Видалений статус не знайдено',
+  'err.goodStatus.activeNameExists':
+    'Активний статус з такою назвою вже існує — відновлення неможливе',
+
+  // ── Exception-повідомлення: counterparty-statuses-модуль ──
+  'err.counterpartyStatus.notFound': 'Статус не знайдено',
+  'err.counterpartyStatus.nameExists': 'Статус з такою назвою вже існує',
+  'err.counterpartyStatus.deletedNotFound': 'Видалений статус не знайдено',
+  'err.counterpartyStatus.activeNameExists':
+    'Активний статус з такою назвою вже існує — відновлення неможливе',
+
+  // ── Exception-повідомлення: counterparty-import-mappings-модуль ──
+  'err.counterpartyImportMapping.counterpartyNotFound': 'Контрагента не знайдено',
+
+  // ── Exception-повідомлення: integration-logs-модуль ──
+  'err.integrationLog.invalidDateFormat': 'Невірний формат дати у полі "{{field}}"',
+
+  // ── Exception-повідомлення: maintenance-schedules-модуль ──
+  'err.maintenanceSchedule.notFound': 'Графік ТО не знайдено',
+  'err.maintenanceSchedule.vehicleNotFound': 'Авто не знайдено',
+
+  // ── Exception-повідомлення: notifications-модуль ──
+  'err.notification.templateNotFound': 'Шаблон не знайдено',
+  'err.notification.providerNotFound': 'Провайдер не знайдено',
+  'err.notification.unknownProvider': 'Невідомий провайдер',
+  'err.notification.providerChannelUnsupported':
+    'Провайдер {{provider}} не підтримує канал {{channel}}',
+  'err.notification.invalidProviderCode': 'Некоректний код провайдера',
+
+  // ── Exception-повідомлення: payment-methods-модуль ──
+  'err.paymentMethod.notFound': 'Метод оплати не знайдено',
+  'err.paymentMethod.codeExists': 'Метод оплати з кодом "{{code}}" вже існує',
+  'err.paymentMethod.systemImmutableName': 'Системний метод оплати не можна перейменовувати',
+  'err.paymentMethod.systemUndeletable': 'Системний метод оплати не можна видалити',
+
+  // ── Exception-повідомлення: payroll-модуль ──
+  'err.payroll.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
+  'err.payroll.periodNotFound': 'Період не знайдено',
+  'err.payroll.onlyDraftCalculable': 'Розрахувати можна лише період у статусі «Чернетка»',
+  'err.payroll.calculateConcurrentChange': 'Період уже розраховано або змінено іншим користувачем',
+  'err.payroll.onlyCalculatedPayable': 'Виплатити можна лише розрахований період',
+  'err.payroll.payConcurrentChange': 'Період уже виплачено або змінено іншим користувачем',
+  'err.payroll.paidNotDeletable': 'Не можна видалити виплачений період',
+
+  // ── Exception-повідомлення: report-builder-модуль ──
+  'err.reportBuilder.aggregationNotAllowed': 'Агрегація {{agg}} недозволена для "{{label}}"',
+  'err.reportBuilder.sumNotAllowedState': 'SUM недозволена для "{{label}}" (стан, не потік)',
+  'err.reportBuilder.modelUnavailable': 'Модель {{model}} недоступна',
+  'err.reportBuilder.savedReportNotFound': 'Збережений звіт не знайдено',
+  'err.reportBuilder.filterInRequiresArray': 'Фільтр "in" потребує масив',
+  'err.reportBuilder.filterContainsTextOnly': 'Фільтр "contains" лише для текстових полів',
+  'err.reportBuilder.disallowedOperator': 'Недозволений оператор: {{op}}',
+  'err.reportBuilder.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
+  'err.reportBuilder.fieldNotFilterable': 'Поле "{{label}}" не фільтрується',
+  'err.reportBuilder.unknownEntity': 'Невідома сутність звіту: {{key}}',
+  'err.reportBuilder.unknownField': 'Невідоме поле "{{key}}" для «{{entity}}»',
+  'err.reportBuilder.disallowedRelation': "Недозволений зв'язок у полі: {{prefix}}",
+  'err.reportBuilder.unknownEnum': 'Невідомий enum: {{enumName}}',
+  'err.reportBuilder.disallowedEnumValue': 'Недозволене значення "{{value}}" для {{enumName}}',
+
+  // ── Exception-повідомлення: reports-модуль ──
+  'err.report.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
+  'err.report.warehouseNotFound': 'Склад не знайдено',
+
+  // ── Exception-повідомлення: settings-модуль ──
+  'err.settings.currencyNotFound': 'Валюта з кодом "{{code}}" не знайдена',
+  'err.settings.workEndAfterStart': 'Час кінця роботи повинен бути після часу початку',
+  'err.settings.configNotFound': 'Конфігурацію не знайдено',
+  'err.settings.taxRateNotFound': 'Ставку ПДВ не знайдено',
+  'err.settings.defaultTaxRateUndeletable': 'Не можна видалити ставку за замовчуванням',
+  'err.settings.organisationNotFound': 'Організацію не знайдено',
+
+  // ── Exception-повідомлення: settlements-модуль ──
+  'err.settlement.counterpartyNotFound': 'Контрагента не знайдено',
+  'err.settlement.accountNotFound': 'Розрахунковий рахунок не знайдено',
+  'err.settlement.reconciliationActNotFound': 'Акт звірки не знайдено',
+  'err.settlement.amountMustBePositive': 'Сума транзакції повинна бути більшою за нуль',
+  'err.settlement.counterpartyAccountNotFound': 'Розрахунковий рахунок контрагента не знайдено',
+
+  // ── Exception-повідомлення: setup-модуль ──
+  'err.setup.alreadyConfiguredReinit':
+    'Систему вже налаштовано. Повторна ініціалізація заборонена.',
+  'err.setup.alreadyConfigured': 'Систему вже налаштовано',
+
+  // ── Exception-повідомлення: user-preferences-модуль ──
+  'err.userPreference.keyEmpty': 'Ключ не може бути порожнім',
+  'err.userPreference.keyTooLong': 'Ключ занадто довгий (максимум {{max}} символів)',
+  'err.userPreference.keyMismatch': 'Ключ у URL та тілі запиту мають збігатися',
+
+  // ── Exception-повідомлення: vehicles-модуль ──
+  'err.vehicle.notFound': 'Автомобіль не знайдено',
+  'err.vehicle.garageNotFound': 'Гараж не знайдено',
+  'err.vehicle.vinExists': 'Автомобіль з VIN "{{vin}}" вже існує',
+  'err.vehicle.deletedNotFound': 'Видалене авто не знайдено',
+  'err.vehicle.counterpartyDeletedRestoreFirst':
+    'Контрагента авто видалено. Спочатку відновіть контрагента.',
+  'err.vehicle.garageDeletedRestoreFirst':
+    'Гараж авто видалено. Спочатку відновіть гараж або перемістіть авто.',
+  'err.vehicle.hasActiveWorkOrders':
+    'Неможливо видалити: автомобіль має активні наряди ({{count}})',
+  'err.vehicle.nodeNotFound': 'Вузол не знайдено',
+
+  // ── Exception-повідомлення: inspection-модуль ──
+  'err.inspection.reportExists': 'Звіт огляду вже існує для цього наряду',
+  'err.inspection.workLinesStatusForbidden':
+    'Не можна додавати рядки робіт у наряд цього статусу. Огляд з критичними точками потребує редагованого наряду.',
+
+  // ── Exception-повідомлення: warehouses-модуль ──
+  'err.warehouse.notFound': 'Склад не знайдено',
+  'err.warehouse.hasStockOrReserve': 'Неможливо видалити: на складі є ненульові залишки або резерв',
+  'err.warehouse.onlyOneMain':
+    'Лише один склад може бути основним у організації. Спробуйте ще раз.',
+
+  // ── Exception-повідомлення: webhooks-модуль ──
+  'err.webhook.notFound': 'Вебхук не знайдено',
+
+  // ── Exception-повідомлення: work-order-templates-модуль ──
+  'err.workOrderTemplate.notFound': 'Шаблон не знайдено',
+
+  // ── Exception-повідомлення: works-модуль ──
+  'err.work.notFound': 'Роботу не знайдено',
+  'err.work.categoryNotFound': 'Категорію не знайдено',
+  'err.work.deletedNotFound': 'Видалену роботу не знайдено',
 };

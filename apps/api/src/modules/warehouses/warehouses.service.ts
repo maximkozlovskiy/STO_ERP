@@ -5,8 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { WarehouseType, Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CacheService } from '../../redis/cache.service';
 import { CreateWarehouseDto, UpdateWarehouseDto, WarehouseResponseDto } from './warehouses.dto';
 
@@ -48,7 +49,7 @@ export class WarehousesService {
 
   async findOne(orgId: string, id: string): Promise<WarehouseResponseDto> {
     const item = await this.prisma.warehouse.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!item) throw new NotFoundException('Склад не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.warehouse.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -58,7 +59,7 @@ export class WarehousesService {
       where: { id: dto.branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     try {
       const item = await this.prisma.$transaction(
         async tx => {
@@ -76,9 +77,7 @@ export class WarehousesService {
       return this.toDto(item);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException(
-          'Лише один склад може бути основним у організації. Спробуйте ще раз.',
-        );
+        throw new ConflictException(translateError('err.warehouse.onlyOneMain', getLocale()));
       }
       throw e;
     }
@@ -91,7 +90,7 @@ export class WarehousesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!guard) throw new NotFoundException('Склад не знайдено');
+    if (!guard) throw new NotFoundException(translateError('err.warehouse.notFound', getLocale()));
     try {
       const item = await this.prisma.$transaction(
         async tx => {
@@ -109,9 +108,7 @@ export class WarehousesService {
       return this.toDto(item);
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException(
-          'Лише один склад може бути основним у організації. Спробуйте ще раз.',
-        );
+        throw new ConflictException(translateError('err.warehouse.onlyOneMain', getLocale()));
       }
       throw e;
     }
@@ -125,7 +122,8 @@ export class WarehousesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, isMain: true },
     });
-    if (!existing) throw new NotFoundException('Склад не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.warehouse.notFound', getLocale()));
 
     // Cascade guard (MD-H1 class): не видаляти склад із ненульовими залишками
     // або резервом. Без цього soft-delete складу лишає осиротілі StockItem
@@ -141,7 +139,7 @@ export class WarehousesService {
       select: { id: true },
     });
     if (stockWithBalance) {
-      throw new BadRequestException('Неможливо видалити: на складі є ненульові залишки або резерв');
+      throw new BadRequestException(translateError('err.warehouse.hasStockOrReserve', getLocale()));
     }
 
     await this.prisma.$transaction(

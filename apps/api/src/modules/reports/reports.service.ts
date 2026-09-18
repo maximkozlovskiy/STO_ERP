@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { roundMoney } from '../../common/utils/math';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 
 // Module-level Intl singleton — locale-data init is the dominant cost; both
 // normalizeDateRange branches and report calls go through kyivOffsetMs.
@@ -25,7 +26,7 @@ function normalizeDateRange(from: string, to: string) {
   const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
   const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
   if (fromDate > toDate)
-    throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
+    throw new BadRequestException(translateError('err.report.startAfterEnd', getLocale()));
   return { fromDate, toDate };
 }
 
@@ -88,7 +89,8 @@ export class ReportsService {
         ORDER BY 1
       `,
     ]);
-    if (branchId && !branch) throw new NotFoundException('Філію не знайдено');
+    if (branchId && !branch)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // Convert raw rows to API shape; формат `YYYY-MM-DD` через Kyiv-формaтер
     // зберігається ідентичний до попередньої версії.
@@ -150,7 +152,8 @@ export class ReportsService {
         ORDER BY "totalAmount" DESC
       `,
     ]);
-    if (employeeId && !emp) throw new NotFoundException('Співробітника не знайдено');
+    if (employeeId && !emp)
+      throw new NotFoundException(translateError('err.workOrder.employeeNotFound', getLocale()));
 
     const result = rows.map(r => ({
       employeeId: r.employeeId,
@@ -218,7 +221,8 @@ export class ReportsService {
         take: 500,
       }),
     ]);
-    if (warehouseId && !wh) throw new NotFoundException('Склад не знайдено');
+    if (warehouseId && !wh)
+      throw new NotFoundException(translateError('err.report.warehouseNotFound', getLocale()));
 
     return {
       stockItems: stockItems.map(i => ({
@@ -388,7 +392,8 @@ export class ReportsService {
         take: 5000,
       }),
     ]);
-    if (branchId && !branch) throw new NotFoundException('Філію не знайдено');
+    if (branchId && !branch)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // Aggregate by lift
     const byLift: Record<

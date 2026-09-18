@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { NotificationChannel, NotificationEventType } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { NotificationProviderRegistry } from './providers/provider-registry';
 
 export type NotificationEvent = NotificationEventType;
@@ -247,7 +249,8 @@ export class NotificationsService {
       where: { id, orgId },
       select: { id: true },
     });
-    if (!template) throw new NotFoundException('Шаблон не знайдено');
+    if (!template)
+      throw new NotFoundException(translateError('err.notification.templateNotFound', getLocale()));
     const updated = await this.prisma.notificationTemplate.update({
       where: { id, orgId },
       data: { body: dto.body, subject: dto.subject, isActive: dto.isActive },
@@ -268,7 +271,8 @@ export class NotificationsService {
    */
   async verifyProvider(code: string, apiKey: string, senderName?: string) {
     const impl = this.registry.get(code);
-    if (!impl) throw new NotFoundException('Провайдер не знайдено');
+    if (!impl)
+      throw new NotFoundException(translateError('err.notification.providerNotFound', getLocale()));
     return impl.verifyCredentials({ apiKey, senderName });
   }
 
@@ -318,13 +322,21 @@ export class NotificationsService {
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // Валідація: провайдер існує і підтримує цей канал.
     const impl = this.registry.get(dto.provider);
-    if (!impl) throw new BadRequestException('Невідомий провайдер');
+    if (!impl)
+      throw new BadRequestException(
+        translateError('err.notification.unknownProvider', getLocale()),
+      );
     if (!impl.channels.includes(dto.channel)) {
-      throw new BadRequestException(`Провайдер ${dto.provider} не підтримує канал ${dto.channel}`);
+      throw new BadRequestException(
+        translateError('err.notification.providerChannelUnsupported', getLocale(), {
+          provider: dto.provider,
+          channel: dto.channel,
+        }),
+      );
     }
 
     // externalTemplateId має сенс ЛИШЕ для template-based каналів провайдера (Viber/Telegram
@@ -376,14 +388,16 @@ export class NotificationsService {
   async activateProvider(orgId: string, branchId: string, providerCode: string) {
     // Провайдер має існувати у реєстрі.
     if (!this.registry.get(providerCode)) {
-      throw new BadRequestException('Невідомий провайдер');
+      throw new BadRequestException(
+        translateError('err.notification.unknownProvider', getLocale()),
+      );
     }
     // Філія в межах org.
     const branch = await this.prisma.garageBranch.findFirst({
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     await this.prisma.$transaction([
       // Вимкнути канали всіх інших провайдерів.

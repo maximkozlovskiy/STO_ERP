@@ -4,8 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreatePaymentMethodDto,
   PaymentMethodResponseDto,
@@ -40,7 +42,8 @@ export class PaymentMethodsService {
     const item = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Метод оплати не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -52,7 +55,9 @@ export class PaymentMethodsService {
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt)
-        throw new ConflictException(`Метод оплати з кодом "${dto.code}" вже існує`);
+        throw new ConflictException(
+          translateError('err.paymentMethod.codeExists', getLocale(), { code: dto.code }),
+        );
       const restored = await this.prisma.paymentMethodConfig.update({
         where: { id: anyExisting.id, orgId },
         data: { ...dto, deletedAt: null },
@@ -75,12 +80,15 @@ export class PaymentMethodsService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, isSystem: true },
     });
-    if (!existing) throw new NotFoundException('Метод оплати не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
     // Системний метод (Готівка/Картка/…) не можна перейменовувати; isActive/sortOrder
     // (деактивація/порядок) лишаються за org (дзеркалить units isSystem — косметика дозволена).
     // code у UpdatePaymentMethodDto відсутній → змінити код неможливо за побудовою.
     if (existing.isSystem && dto.name !== undefined) {
-      throw new BadRequestException('Системний метод оплати не можна перейменовувати');
+      throw new BadRequestException(
+        translateError('err.paymentMethod.systemImmutableName', getLocale()),
+      );
     }
     const item = await this.prisma.paymentMethodConfig.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));
@@ -93,15 +101,19 @@ export class PaymentMethodsService {
       where: { id, orgId, deletedAt: null },
       select: { isSystem: true },
     });
-    if (!existing) throw new NotFoundException('Метод оплати не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
     if (existing.isSystem) {
-      throw new BadRequestException('Системний метод оплати не можна видалити');
+      throw new BadRequestException(
+        translateError('err.paymentMethod.systemUndeletable', getLocale()),
+      );
     }
     const result = await this.prisma.paymentMethodConfig.updateMany({
       where: { id, orgId, deletedAt: null, isSystem: false },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Метод оплати не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
   }
 

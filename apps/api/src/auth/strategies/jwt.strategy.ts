@@ -2,7 +2,9 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import type { JwtPayload } from '../auth.dto';
 
 export interface AuthenticatedUser {
@@ -43,7 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
 
     if (!employee) {
-      throw new UnauthorizedException('Сесія недійсна');
+      throw new UnauthorizedException(translateError('err.auth.sessionInvalid', getLocale()));
     }
 
     // B1: revocation-guard. Після logout-all/зміни пароля поточний tokenVersion інкрементовано →
@@ -51,7 +53,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // до релізу) трактується як 0.
     const currentVersion = employee.authAccount?.tokenVersion ?? 0;
     if ((payload.tokenVersion ?? 0) !== currentVersion) {
-      throw new UnauthorizedException('Сесія недійсна');
+      throw new UnauthorizedException(translateError('err.auth.sessionInvalid', getLocale()));
     }
 
     return { id: employee.id, orgId: employee.orgId, role: employee.role };

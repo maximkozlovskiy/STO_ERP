@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectQueue } from '@nestjs/bullmq';
 import { randomUUID } from 'crypto';
 import { Queue } from 'bullmq';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { validatePublicUrl } from '../../common/utils/url-guard';
 import {
   CreateWebhookDto,
@@ -84,7 +86,8 @@ export class WebhooksService {
       where: { id, orgId, deletedAt: null },
       data: dto,
     });
-    if (result.count === 0) throw new NotFoundException('Вебхук не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.webhook.notFound', getLocale()));
     const updated = await this.prisma.webhookEndpoint.findFirstOrThrow({
       where: { id, orgId },
     });
@@ -98,7 +101,8 @@ export class WebhooksService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Вебхук не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.webhook.notFound', getLocale()));
   }
 
   async findDeliveries(
@@ -110,7 +114,7 @@ export class WebhooksService {
       where: { id: endpointId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!ep) throw new NotFoundException('Вебхук не знайдено');
+    if (!ep) throw new NotFoundException(translateError('err.webhook.notFound', getLocale()));
     const [items, total] = await Promise.all([
       this.prisma.webhookDelivery.findMany({
         where: { endpointId },

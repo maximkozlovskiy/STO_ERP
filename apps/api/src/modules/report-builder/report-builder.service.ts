@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REGISTRY, REGISTRY_ENUMS, getEntity, ReportEntityDef } from './report-registry';
 import { buildQuery, ReportConfigInput } from './report-query.builder';
@@ -148,7 +150,9 @@ export class ReportBuilderService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const delegate = (this.prisma as any)[model];
     if (!delegate || typeof delegate.findMany !== 'function') {
-      throw new NotFoundException(`Модель ${model} недоступна`);
+      throw new NotFoundException(
+        translateError('err.reportBuilder.modelUnavailable', getLocale(), { model }),
+      );
     }
     return delegate.findMany(args) as Promise<Record<string, unknown>[]>;
   }
@@ -183,7 +187,10 @@ export class ReportBuilderService {
 
   async getSaved(orgId: string, id: string) {
     const rep = await this.prisma.savedReport.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!rep) throw new NotFoundException('Збережений звіт не знайдено');
+    if (!rep)
+      throw new NotFoundException(
+        translateError('err.reportBuilder.savedReportNotFound', getLocale()),
+      );
     return rep;
   }
 

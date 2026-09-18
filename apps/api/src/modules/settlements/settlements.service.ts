@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { Prisma, SettlementTransactionType } from '@prisma/client';
 
@@ -57,7 +58,9 @@ export class SettlementsService {
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
     if (!Number.isFinite(dto.amount) || dto.amount <= 0) {
-      throw new BadRequestException('Сума транзакції повинна бути більшою за нуль');
+      throw new BadRequestException(
+        translateError('err.settlement.amountMustBePositive', getLocale()),
+      );
     }
     // Мультивалюта (Фаза 2): баланс боргу зводиться у БАЗОВІЙ валюті → balanceDelta від amountBase.
     // Без currencyId → базова (rate=1, amountBase=amount) → 7 UAH-викликачів працюють без змін.
@@ -78,7 +81,10 @@ export class SettlementsService {
         where: { orgId, counterpartyId: dto.counterpartyId },
         select: { id: true },
       });
-      if (!account) throw new NotFoundException('Розрахунковий рахунок контрагента не знайдено');
+      if (!account)
+        throw new NotFoundException(
+          translateError('err.settlement.counterpartyAccountNotFound', getLocale()),
+        );
 
       // sto-optimize: create + balance update пишуть у різні таблиці (SettlementTransaction
       // та SettlementAccount), не залежать один від одного, обидва читають account.id зі scope.

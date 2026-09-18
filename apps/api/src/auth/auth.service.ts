@@ -9,8 +9,9 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import type { FastifyReply } from 'fastify';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { runUnscoped } from '../common/tenant/tenant-context';
+import { runUnscoped, getLocale } from '../common/tenant/tenant-context';
 import type { AuthResponseDto, JwtPayload, LoginDto } from './auth.dto';
 
 const REFRESH_COOKIE = 'sto_refresh';
@@ -42,15 +43,13 @@ export class AuthService {
       });
 
       if (!authRecord) {
-        throw new UnauthorizedException('Невірний email або пароль');
+        throw new UnauthorizedException(translateError('err.auth.invalidCredentials', getLocale()));
       }
 
       // B2: rate-based account lockout. Якщо акаунт заблоковано — не перевіряємо пароль зовсім
       // (не подовжуємо вікно, не витрачаємо bcrypt). Розблокування — по спливу lockedUntil.
       if (authRecord.lockedUntil && authRecord.lockedUntil.getTime() > Date.now()) {
-        throw new ForbiddenException(
-          'Обліковий запис тимчасово заблоковано через невдалі спроби входу. Спробуйте пізніше',
-        );
+        throw new ForbiddenException(translateError('err.auth.accountTempLocked', getLocale()));
       }
 
       const passwordValid = await bcrypt.compare(dto.password, authRecord.passwordHash);
@@ -66,17 +65,17 @@ export class AuthService {
               : { failedAttempts: attempts },
           })
           .catch(() => undefined); // облік невдач не має зривати відповідь 401
-        throw new UnauthorizedException('Невірний email або пароль');
+        throw new UnauthorizedException(translateError('err.auth.invalidCredentials', getLocale()));
       }
 
       const emp = authRecord.employee;
       if (!emp || emp.deletedAt !== null) {
-        throw new ForbiddenException('Обліковий запис заблоковано');
+        throw new ForbiddenException(translateError('err.auth.accountBlocked', getLocale()));
       }
 
       // Tenant guard: authAccount.orgId must match the employee's orgId
       if (authRecord.orgId !== emp.orgId) {
-        throw new ForbiddenException('Обліковий запис заблоковано');
+        throw new ForbiddenException(translateError('err.auth.accountBlocked', getLocale()));
       }
 
       // B2: успішний вхід скидає лічильник невдач (якщо він був ненульовий).
@@ -119,7 +118,7 @@ export class AuthService {
       });
     } catch (e: unknown) {
       this.logger.debug(`JWT refresh failed: ${e instanceof Error ? e.message : e}`);
-      throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
+      throw new UnauthorizedException(translateError('err.auth.sessionExpired', getLocale()));
     }
 
     const employee = await this.prisma.employee.findFirst({
@@ -127,14 +126,14 @@ export class AuthService {
       include: { authAccount: { select: { tokenVersion: true } } },
     });
     if (!employee) {
-      throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
+      throw new UnauthorizedException(translateError('err.auth.sessionExpired', getLocale()));
     }
 
     // B1: refresh теж підлягає revocation — якщо tokenVersion наміру не збігається з поточним
     // (logout-all/зміна пароля вже сталися), відмовляємо у продовженні сесії.
     const currentVersion = employee.authAccount?.tokenVersion ?? 0;
     if ((payload.tokenVersion ?? 0) !== currentVersion) {
-      throw new UnauthorizedException('Сесія застаріла, увійдіть знову');
+      throw new UnauthorizedException(translateError('err.auth.sessionExpired', getLocale()));
     }
 
     const newPayload: JwtPayload = {
@@ -183,7 +182,7 @@ export class AuthService {
       where: { id: employeeId, orgId, deletedAt: null },
       select: { id: true, orgId: true, firstName: true, lastName: true, role: true },
     });
-    if (!emp) throw new NotFoundException('Користувача не знайдено');
+    if (!emp) throw new NotFoundException(translateError('err.auth.userNotFound', getLocale()));
     const auth = await this.prisma.authAccount.findFirst({
       where: { employeeId, orgId, deletedAt: null },
       select: { email: true },
@@ -200,9 +199,10 @@ export class AuthService {
     const auth = await this.prisma.authAccount.findFirst({
       where: { employeeId, orgId, deletedAt: null },
     });
-    if (!auth) throw new NotFoundException('Обліковий запис не знайдено');
+    if (!auth) throw new NotFoundException(translateError('err.auth.accountNotFound', getLocale()));
     const valid = await bcrypt.compare(currentPassword, auth.passwordHash);
-    if (!valid) throw new UnauthorizedException('Поточний пароль невірний');
+    if (!valid)
+      throw new UnauthorizedException(translateError('err.auth.currentPasswordWrong', getLocale()));
     const hash = await bcrypt.hash(newPassword, 12);
     // B1: зміна пароля інвалідовує усі інші сесії (bump tokenVersion) — стандартна безпекова
     // поведінка: якщо пароль змінено через компрометацію, старі токени на інших пристроях мертві.

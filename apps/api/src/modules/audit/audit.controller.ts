@@ -7,6 +7,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -52,7 +54,7 @@ export class AuditController {
     @Query('entityId', new ParseUUIDPipe()) entityId: string,
   ) {
     if (!AUDIT_ENTITY_TYPES.includes(entityType as (typeof AUDIT_ENTITY_TYPES)[number])) {
-      throw new BadRequestException('Невідомий тип сутності');
+      throw new BadRequestException(translateError('err.audit.unknownEntityType', getLocale()));
     }
     return this.service.findByEntity(orgId, entityType, entityId);
   }

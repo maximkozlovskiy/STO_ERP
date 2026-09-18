@@ -16,6 +16,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { UpsertUserPreferenceDto, UserPreferenceResponseDto } from './user-preferences.dto';
 import { UserPreferencesService } from './user-preferences.service';
 
@@ -28,10 +30,12 @@ const KEY_MAX_LENGTH = 200;
  */
 function ensureValidKey(key: string): void {
   if (!key || key.length === 0) {
-    throw new BadRequestException('Ключ не може бути порожнім');
+    throw new BadRequestException(translateError('err.userPreference.keyEmpty', getLocale()));
   }
   if (key.length > KEY_MAX_LENGTH) {
-    throw new BadRequestException(`Ключ занадто довгий (максимум ${KEY_MAX_LENGTH} символів)`);
+    throw new BadRequestException(
+      translateError('err.userPreference.keyTooLong', getLocale(), { max: KEY_MAX_LENGTH }),
+    );
   }
 }
 
@@ -69,7 +73,7 @@ export class UserPreferencesController {
     // Path-параметр :key — джерело істини; body.key зберігається лише для контракту GET-відповіді.
     // Якщо клієнт надсилає неузгоджені значення — відмовляємо, щоб не плутати їх з різними записами.
     if (dto.key && dto.key !== key) {
-      throw new BadRequestException('Ключ у URL та тілі запиту мають збігатися');
+      throw new BadRequestException(translateError('err.userPreference.keyMismatch', getLocale()));
     }
     await this.service.upsert(orgId, user.id, key, dto.value);
   }

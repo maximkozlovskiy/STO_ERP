@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
@@ -117,8 +119,12 @@ export class SettlementsAccountService {
         select: { id: true, balance: true },
       }),
     ]);
-    if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
-    if (!account) throw new NotFoundException('Розрахунковий рахунок не знайдено');
+    if (!counterparty)
+      throw new NotFoundException(
+        translateError('err.settlement.counterpartyNotFound', getLocale()),
+      );
+    if (!account)
+      throw new NotFoundException(translateError('err.settlement.accountNotFound', getLocale()));
 
     // Convert Kyiv calendar boundaries to UTC using Intl (handles DST: UTC+2 winter / UTC+3 summer)
     const from = kyivStartOfDay(dto.periodFrom);
@@ -210,7 +216,10 @@ export class SettlementsAccountService {
         select: { name: true },
       }),
     ]);
-    if (!act) throw new NotFoundException('Акт звірки не знайдено');
+    if (!act)
+      throw new NotFoundException(
+        translateError('err.settlement.reconciliationActNotFound', getLocale()),
+      );
     const cp = act.counterparty;
     const cpName =
       (cp?.companyName ?? [cp?.lastName, cp?.firstName].filter(Boolean).join(' ')) || 'Контрагент';

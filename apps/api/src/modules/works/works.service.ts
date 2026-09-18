@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import {
   CreateWorkDto,
@@ -53,7 +55,7 @@ export class WorksService {
       where: { id, orgId, deletedAt: null },
       include: { category: { select: { name: true } } },
     });
-    if (!item) throw new NotFoundException('Роботу не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.work.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -63,7 +65,8 @@ export class WorksService {
       where: { id: dto.categoryId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!category) throw new NotFoundException('Категорію не знайдено');
+    if (!category)
+      throw new NotFoundException(translateError('err.work.categoryNotFound', getLocale()));
 
     const item = await this.prisma.work.create({
       data: { ...dto, orgId, price: dto.price },
@@ -86,8 +89,9 @@ export class WorksService {
           })
         : Promise.resolve(null as { id: string } | null),
     ]);
-    if (!existing) throw new NotFoundException('Роботу не знайдено');
-    if (dto.categoryId && !category) throw new NotFoundException('Категорію не знайдено');
+    if (!existing) throw new NotFoundException(translateError('err.work.notFound', getLocale()));
+    if (dto.categoryId && !category)
+      throw new NotFoundException(translateError('err.work.categoryNotFound', getLocale()));
 
     const item = await this.prisma.work.update({
       where: { id, orgId },
@@ -112,7 +116,8 @@ export class WorksService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Роботу не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.work.notFound', getLocale()));
   }
 
   async restore(orgId: string, id: string): Promise<WorkResponseDto> {
@@ -123,7 +128,8 @@ export class WorksService {
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },
     });
-    if (result.count === 0) throw new NotFoundException('Видалену роботу не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.work.deletedNotFound', getLocale()));
     const item = await this.prisma.work.findFirstOrThrow({
       where: { id, orgId },
       include: { category: { select: { name: true } } },

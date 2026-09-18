@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../tenant/tenant-context';
 
 /**
  * Validates an FSM status transition and throws BadRequestException if not allowed.
@@ -14,6 +16,8 @@ export function assertFsmTransition<S extends string>(
 ): void {
   const allowed = transitions[from] ?? ([] as S[]);
   if (!(allowed as string[]).includes(to)) {
-    throw new BadRequestException(`Перехід зі статусу "${from}" в "${to}" неможливий`);
+    throw new BadRequestException(
+      translateError('err.fsm.transitionNotAllowed', getLocale(), { from, to }),
+    );
   }
 }

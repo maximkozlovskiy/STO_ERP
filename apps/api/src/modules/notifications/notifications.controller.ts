@@ -14,6 +14,8 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, IsBoolean, IsOptional, IsInt, IsIn, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationChannel } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -99,7 +101,10 @@ export class NotificationProvidersController {
   verify(@Param('code') code: string, @Body() dto: VerifyProviderDto) {
     // @Param не проходить ValidationPipe → guard проти надто довгого/битого коду
     // (захист від log-pollution; далі code — лише ключ Map у registry.get).
-    if (!code || code.length > 64) throw new BadRequestException('Некоректний код провайдера');
+    if (!code || code.length > 64)
+      throw new BadRequestException(
+        translateError('err.notification.invalidProviderCode', getLocale()),
+      );
     return this.notifications.verifyProvider(code, dto.apiKey, dto.senderName);
   }
 }

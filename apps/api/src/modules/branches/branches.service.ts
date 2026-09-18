@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CacheService } from '../../redis/cache.service';
 import { BranchResponseDto, CreateBranchDto, UpdateBranchDto } from './branches.dto';
 
@@ -33,7 +35,7 @@ export class BranchesService {
     const item = await this.prisma.garageBranch.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Філію не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -52,7 +54,7 @@ export class BranchesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Філію не знайдено');
+    if (!existing) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     const item = await this.prisma.garageBranch.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
@@ -66,7 +68,8 @@ export class BranchesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Філію не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
   }
 

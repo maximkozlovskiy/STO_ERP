@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CashDirection, CashOperationReason, Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -49,7 +50,8 @@ export class CashService {
     tx?: Prisma.TransactionClient,
   ): Promise<CashOperationResponseDto> {
     const amount = roundMoney(input.amount);
-    if (!(amount > 0)) throw new BadRequestException('Сума має бути додатною');
+    if (!(amount > 0))
+      throw new BadRequestException(translateError('err.cash.amountMustBePositive', getLocale()));
 
     const db = tx ?? this.prisma;
 
@@ -57,7 +59,8 @@ export class CashService {
       where: { id: input.cashRegisterId, orgId, deletedAt: null },
       select: { id: true, isFiscal: true, branchId: true, currencyId: true },
     });
-    if (!register) throw new NotFoundException('Касу не знайдено');
+    if (!register)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
 
     // Мультивалюта (Фаза 1): amountBase у базовій валюті org по курсу на дату операції. Валюта —
     // з каси (моно-валютна). Базова каса → rate=1, base=amount; інша валюта без курсу на дату → 400.
@@ -75,17 +78,19 @@ export class CashService {
         where: { id: input.expenseCategoryId, orgId, deletedAt: null },
         select: { type: true, isActive: true },
       });
-      if (!cat) throw new NotFoundException('Статтю не знайдено');
+      if (!cat)
+        throw new NotFoundException(translateError('err.cash.categoryNotFound', getLocale()));
       // Bug #735: вимкнена стаття (isActive=false, напр. після toggleActive гілки) не має
       // приймати НОВІ операції — інакше вона «архівована» лише в UI, а пряме API її пропускає,
       // спотворюючи звітність по активних статтях. Історичні операції лишаються недоторканими.
-      if (!cat.isActive) throw new BadRequestException('Стаття вимкнена — оберіть активну');
+      if (!cat.isActive)
+        throw new BadRequestException(translateError('err.cash.categoryInactive', getLocale()));
       const expected = input.direction === 'IN' ? 'INCOME' : 'EXPENSE';
       if (cat.type !== expected) {
         throw new BadRequestException(
           input.direction === 'IN'
-            ? 'Для внесення оберіть статтю оприбуткування'
-            : 'Для видачі оберіть статтю витрат',
+            ? translateError('err.cash.categoryTypeIncome', getLocale())
+            : translateError('err.cash.categoryTypeExpense', getLocale()),
         );
       }
     }
@@ -99,7 +104,7 @@ export class CashService {
       });
       if (!shift)
         throw new BadRequestException(
-          'Для фіскальної каси відкрийте зміну перед операціями з готівкою',
+          translateError('err.cash.shiftRequiredForFiscal', getLocale()),
         );
       cashShiftId = shift.id;
     }
@@ -113,7 +118,10 @@ export class CashService {
         if (balance - amount < -0.001) {
           throw new BadRequestException(
             // Суми — у валюті каси (каса моно-валютна), тож без хардкоду ₴ (каса може бути USD/EUR).
-            `Недостатньо готівки в касі: доступно ${roundMoney(balance)}, потрібно ${amount}`,
+            translateError('err.cash.insufficientCash', getLocale(), {
+              available: roundMoney(balance),
+              required: amount,
+            }),
           );
         }
       }
@@ -153,7 +161,7 @@ export class CashService {
           });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') {
-        throw new BadRequestException('Каса зайнята паралельною операцією — повторіть');
+        throw new BadRequestException(translateError('err.cash.concurrentOperation', getLocale()));
       }
       throw e;
     }
@@ -179,7 +187,9 @@ export class CashService {
     userId?: string,
   ): Promise<CashOperationResponseDto> {
     if (dto.reason === 'EXPENSE' && !dto.expenseCategoryId)
-      throw new BadRequestException('Для витрати вкажіть статтю витрат');
+      throw new BadRequestException(
+        translateError('err.cash.expenseRequiresCategory', getLocale()),
+      );
     return this.createOperation(orgId, {
       cashRegisterId,
       direction: dto.direction,
@@ -207,7 +217,8 @@ export class CashService {
       where: { id: cashRegisterId, orgId, deletedAt: null },
       select: { initialBalance: true },
     });
-    if (!register) throw new NotFoundException('Касу не знайдено');
+    if (!register)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     return this.computeBalance(orgId, cashRegisterId, Number(register.initialBalance), db);
   }
 

@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import type { Agg, ReportEntityDef } from './report-registry';
 import { getField } from './report-registry';
 import { REPORT_TAKE_CAP } from './report-query.builder';
@@ -114,10 +116,17 @@ function computeAggs(
   for (const { field, agg } of aggs) {
     const fld = getField(entity, field);
     if (!fld.aggregations.includes(agg)) {
-      throw new BadRequestException(`Агрегація ${agg} недозволена для "${fld.label}"`);
+      throw new BadRequestException(
+        translateError('err.reportBuilder.aggregationNotAllowed', getLocale(), {
+          agg,
+          label: fld.label,
+        }),
+      );
     }
     if (agg === 'SUM' && fld.stateNotFlow) {
-      throw new BadRequestException(`SUM недозволена для "${fld.label}" (стан, не потік)`);
+      throw new BadRequestException(
+        translateError('err.reportBuilder.sumNotAllowedState', getLocale(), { label: fld.label }),
+      );
     }
     const alias = `${agg}_${field}`;
     if (agg === 'COUNT') {

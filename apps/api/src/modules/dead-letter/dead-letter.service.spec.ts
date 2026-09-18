@@ -5,6 +5,7 @@ import type { PrismaService } from '../../prisma/prisma.service';
 // runUnscoped просто виконує callback — стабимо, щоб unit-тест не тягнув ALS.
 vi.mock('../../common/tenant/tenant-context', () => ({
   runUnscoped: (fn: () => unknown) => fn(),
+  getLocale: () => 'uk',
 }));
 
 function makeJob(over: Record<string, unknown> = {}) {

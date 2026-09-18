@@ -1,5 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import type { AuthenticatedUser } from '../strategies/jwt.strategy';
 
 @Injectable()
@@ -33,7 +35,7 @@ export class BranchAccessGuard implements CanActivate {
     });
 
     if (!access) {
-      throw new ForbiddenException('Немає доступу до цієї філії');
+      throw new ForbiddenException(translateError('err.auth.noBranchAccess', getLocale()));
     }
 
     return true;

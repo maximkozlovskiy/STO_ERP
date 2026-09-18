@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
 import type { ReportEntityDef, FilterOp } from './report-registry';
 import {
@@ -72,7 +74,10 @@ function buildCond(op: FilterOp, value: unknown, fieldType: string): unknown {
     case 'ne':
       return { not: value };
     case 'in':
-      if (!Array.isArray(value)) throw new BadRequestException('Фільтр "in" потребує масив');
+      if (!Array.isArray(value))
+        throw new BadRequestException(
+          translateError('err.reportBuilder.filterInRequiresArray', getLocale()),
+        );
       return { in: value };
     case 'gt':
       return { gt: value };
@@ -84,13 +89,17 @@ function buildCond(op: FilterOp, value: unknown, fieldType: string): unknown {
       return { lte: value };
     case 'contains':
       if (fieldType === 'enum' || fieldType === 'number' || fieldType === 'decimal') {
-        throw new BadRequestException('Фільтр "contains" лише для текстових полів');
+        throw new BadRequestException(
+          translateError('err.reportBuilder.filterContainsTextOnly', getLocale()),
+        );
       }
       return { contains: String(value), mode: 'insensitive' };
     case 'isNull':
       return value === false ? { not: null } : null;
     default:
-      throw new BadRequestException(`Недозволений оператор: ${String(op)}`);
+      throw new BadRequestException(
+        translateError('err.reportBuilder.disallowedOperator', getLocale(), { op: String(op) }),
+      );
   }
 }
 
@@ -163,7 +172,7 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
   if (config.dateRange) {
     const { fromDate, toDate } = normalizeKyivDateRange(config.dateRange.from, config.dateRange.to);
     if (fromDate > toDate) {
-      throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
+      throw new BadRequestException(translateError('err.reportBuilder.startAfterEnd', getLocale()));
     }
     where[entity.dateField] = { gte: fromDate, lte: toDate };
   }
@@ -171,7 +180,10 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
   // filters — кожен звіряється з реєстром
   for (const f of config.filters ?? []) {
     const fld = getField(entity, f.field);
-    if (!fld.filterable) throw new BadRequestException(`Поле "${fld.label}" не фільтрується`);
+    if (!fld.filterable)
+      throw new BadRequestException(
+        translateError('err.reportBuilder.fieldNotFilterable', getLocale(), { label: fld.label }),
+      );
     assertRelationPath(entity, fld.prismaPath);
     if (fld.type === 'enum' && fld.enumName && f.op !== 'isNull') {
       assertEnumValue(fld.enumName, f.value);

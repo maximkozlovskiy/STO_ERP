@@ -12,7 +12,9 @@ import { createHash } from 'crypto';
 import type { FastifyRequest } from 'fastify';
 import { Observable, from, of } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../tenant/tenant-context';
 
 const HEADER = 'idempotency-key';
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 год — вікно, у якому retry того ж запиту дедуплікується
@@ -116,16 +118,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     if (!existing) {
       // Гонка: рядок зник між P2002 і read (purge/rollback). Безпечно трактувати як «в обробці».
-      throw new ConflictException('Запит з цим Idempotency-Key вже обробляється');
+      throw new ConflictException(translateError('err.idempotency.inProgress', getLocale()));
     }
     if (existing.requestHash !== requestHash) {
       throw new UnprocessableEntityException(
-        'Idempotency-Key вже використано з іншим тілом запиту',
+        translateError('err.idempotency.keyReusedDifferentBody', getLocale()),
       );
     }
     if (existing.responseStatus == null) {
       // Резервація ще не завершена — інший запит з тим самим ключем виконується паралельно.
-      throw new ConflictException('Запит з цим Idempotency-Key вже обробляється');
+      throw new ConflictException(translateError('err.idempotency.inProgress', getLocale()));
     }
     return { replay: true, body: existing.responseBody };
   }

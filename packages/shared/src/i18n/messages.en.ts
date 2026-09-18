@@ -579,4 +579,202 @@ export const en: Record<string, string> = {
   'err.booking.requestNotFound': 'Request not found',
   'err.booking.cancelledCannotConfirm': 'A cancelled request cannot be confirmed',
   'err.booking.slotNotFound': 'Slot not found',
+
+  // ── Exception messages: auth module ──
+  'err.auth.invalidCredentials': 'Invalid email or password',
+  'err.auth.accountBlocked': 'Account is blocked',
+  'err.auth.accountTempLocked':
+    'Account is temporarily locked due to failed login attempts. Try again later',
+  'err.auth.sessionExpired': 'Session expired, please sign in again',
+  'err.auth.userNotFound': 'User not found',
+  'err.auth.accountNotFound': 'Account not found',
+  'err.auth.currentPasswordWrong': 'Current password is incorrect',
+  'err.auth.noBranchAccess': 'No access to this branch',
+  'err.auth.insufficientRights': 'Insufficient permissions to perform this action',
+  'err.auth.sessionInvalid': 'Session is invalid',
+
+  // ── Exception messages: idempotency interceptor ──
+  'err.idempotency.inProgress': 'A request with this Idempotency-Key is already being processed',
+  'err.idempotency.keyReusedDifferentBody':
+    'Idempotency-Key has already been used with a different request body',
+
+  // ── Exception messages: fsm ──
+  'err.fsm.transitionNotAllowed': 'Transition from status "{{from}}" to "{{to}}" is not allowed',
+
+  // ── Exception messages: audit module ──
+  'err.audit.unknownEntityType': 'Unknown entity type',
+
+  // ── Exception messages: brands module ──
+  'err.brand.deletedNotFound': 'Deleted brand not found',
+  'err.brand.notFound': 'Brand not found',
+  'err.brand.nameExists': 'A brand with this name already exists',
+  'err.brand.activeNameExists':
+    'An active brand with this name already exists — restore is not possible',
+
+  // ── Exception messages: cash module ──
+  'err.cash.amountMustBePositive': 'Amount must be positive',
+  'err.cash.categoryNotFound': 'Category not found',
+  'err.cash.categoryInactive': 'Category is disabled — choose an active one',
+  'err.cash.categoryTypeIncome': 'For a deposit, choose an income category',
+  'err.cash.categoryTypeExpense': 'For a withdrawal, choose an expense category',
+  'err.cash.shiftRequiredForFiscal': 'For a fiscal register, open a shift before cash operations',
+  'err.cash.concurrentOperation': 'Register is busy with a concurrent operation — retry',
+  'err.cash.expenseRequiresCategory': 'For an expense, specify an expense category',
+  'err.cash.insufficientCash':
+    'Insufficient cash in the register: available {{available}}, required {{required}}',
+
+  // ── Exception messages: comments module ──
+  'err.comment.unknownEntityType': 'Unknown entity type for comments: {{entityType}}',
+  'err.comment.entityIdRequired': 'entityId is required',
+  'err.comment.entityNotFound': 'Entity not found',
+  'err.comment.notFound': 'Comment not found',
+  'err.comment.deleteForbidden': 'Only the author or an administrator can delete comments',
+
+  // ── Exception messages: document-number module ──
+  'err.documentNumber.configNotFound': 'Numbering configuration for "{{documentType}}" not found',
+
+  // ── Exception messages: dead-letter module ──
+  'err.deadLetter.notFound': 'DLQ record not found',
+
+  // ── Exception messages: employees module ──
+  'err.employee.notFound': 'Employee not found',
+  'err.employee.passwordRequiredWithEmail': 'Password is required when a login email is specified',
+  'err.employee.loginEmailInUse': 'This email is already used for login',
+  'err.employee.zonesNotFound': 'One or more zones not found',
+  'err.employee.liftsNotFound': 'One or more lifts not found',
+  'err.employee.categoriesNotFound': 'One or more categories not found',
+  'err.employee.branchesNotFound': 'One or more branches not found',
+  'err.employee.assignedToActiveOrders':
+    'Cannot delete: the employee is assigned to active work orders',
+  'err.employee.invalidRateScheme': 'Invalid rate scheme: {{details}}',
+
+  // ── Exception messages: good-statuses module ──
+  'err.goodStatus.notFound': 'Status not found',
+  'err.goodStatus.nameExists': 'A status with this name already exists',
+  'err.goodStatus.deletedNotFound': 'Deleted status not found',
+  'err.goodStatus.activeNameExists':
+    'An active status with this name already exists — restore is not possible',
+
+  // ── Exception messages: counterparty-statuses module ──
+  'err.counterpartyStatus.notFound': 'Status not found',
+  'err.counterpartyStatus.nameExists': 'A status with this name already exists',
+  'err.counterpartyStatus.deletedNotFound': 'Deleted status not found',
+  'err.counterpartyStatus.activeNameExists':
+    'An active status with this name already exists — restore is not possible',
+
+  // ── Exception messages: counterparty-import-mappings module ──
+  'err.counterpartyImportMapping.counterpartyNotFound': 'Counterparty not found',
+
+  // ── Exception messages: integration-logs module ──
+  'err.integrationLog.invalidDateFormat': 'Invalid date format in field "{{field}}"',
+
+  // ── Exception messages: maintenance-schedules module ──
+  'err.maintenanceSchedule.notFound': 'Maintenance schedule not found',
+  'err.maintenanceSchedule.vehicleNotFound': 'Vehicle not found',
+
+  // ── Exception messages: notifications module ──
+  'err.notification.templateNotFound': 'Template not found',
+  'err.notification.providerNotFound': 'Provider not found',
+  'err.notification.unknownProvider': 'Unknown provider',
+  'err.notification.providerChannelUnsupported':
+    'Provider {{provider}} does not support channel {{channel}}',
+  'err.notification.invalidProviderCode': 'Invalid provider code',
+
+  // ── Exception messages: payment-methods module ──
+  'err.paymentMethod.notFound': 'Payment method not found',
+  'err.paymentMethod.codeExists': 'A payment method with code "{{code}}" already exists',
+  'err.paymentMethod.systemImmutableName': 'A system payment method cannot be renamed',
+  'err.paymentMethod.systemUndeletable': 'A system payment method cannot be deleted',
+
+  // ── Exception messages: payroll module ──
+  'err.payroll.startAfterEnd': 'The start date must not be later than the end date',
+  'err.payroll.periodNotFound': 'Period not found',
+  'err.payroll.onlyDraftCalculable': 'Only a period in "Draft" status can be calculated',
+  'err.payroll.calculateConcurrentChange':
+    'The period has already been calculated or changed by another user',
+  'err.payroll.onlyCalculatedPayable': 'Only a calculated period can be paid out',
+  'err.payroll.payConcurrentChange':
+    'The period has already been paid out or changed by another user',
+  'err.payroll.paidNotDeletable': 'A paid-out period cannot be deleted',
+
+  // ── Exception messages: report-builder module ──
+  'err.reportBuilder.aggregationNotAllowed': 'Aggregation {{agg}} is not allowed for "{{label}}"',
+  'err.reportBuilder.sumNotAllowedState': 'SUM is not allowed for "{{label}}" (state, not flow)',
+  'err.reportBuilder.modelUnavailable': 'Model {{model}} is unavailable',
+  'err.reportBuilder.savedReportNotFound': 'Saved report not found',
+  'err.reportBuilder.filterInRequiresArray': 'The "in" filter requires an array',
+  'err.reportBuilder.filterContainsTextOnly': 'The "contains" filter is only for text fields',
+  'err.reportBuilder.disallowedOperator': 'Disallowed operator: {{op}}',
+  'err.reportBuilder.startAfterEnd': 'The start date must not be later than the end date',
+  'err.reportBuilder.fieldNotFilterable': 'Field "{{label}}" is not filterable',
+  'err.reportBuilder.unknownEntity': 'Unknown report entity: {{key}}',
+  'err.reportBuilder.unknownField': 'Unknown field "{{key}}" for «{{entity}}»',
+  'err.reportBuilder.disallowedRelation': 'Disallowed relation in field: {{prefix}}',
+  'err.reportBuilder.unknownEnum': 'Unknown enum: {{enumName}}',
+  'err.reportBuilder.disallowedEnumValue': 'Disallowed value "{{value}}" for {{enumName}}',
+
+  // ── Exception messages: reports module ──
+  'err.report.startAfterEnd': 'The start date must not be later than the end date',
+  'err.report.warehouseNotFound': 'Warehouse not found',
+
+  // ── Exception messages: settings module ──
+  'err.settings.currencyNotFound': 'Currency with code "{{code}}" not found',
+  'err.settings.workEndAfterStart': 'The work end time must be after the start time',
+  'err.settings.configNotFound': 'Configuration not found',
+  'err.settings.taxRateNotFound': 'VAT rate not found',
+  'err.settings.defaultTaxRateUndeletable': 'The default rate cannot be deleted',
+  'err.settings.organisationNotFound': 'Organisation not found',
+
+  // ── Exception messages: settlements module ──
+  'err.settlement.counterpartyNotFound': 'Counterparty not found',
+  'err.settlement.accountNotFound': 'Settlement account not found',
+  'err.settlement.reconciliationActNotFound': 'Reconciliation act not found',
+  'err.settlement.amountMustBePositive': 'The transaction amount must be greater than zero',
+  'err.settlement.counterpartyAccountNotFound': 'Counterparty settlement account not found',
+
+  // ── Exception messages: setup module ──
+  'err.setup.alreadyConfiguredReinit':
+    'The system is already configured. Re-initialization is forbidden.',
+  'err.setup.alreadyConfigured': 'The system is already configured',
+
+  // ── Exception messages: user-preferences module ──
+  'err.userPreference.keyEmpty': 'Key cannot be empty',
+  'err.userPreference.keyTooLong': 'Key is too long (maximum {{max}} characters)',
+  'err.userPreference.keyMismatch': 'The key in the URL and the request body must match',
+
+  // ── Exception messages: vehicles module ──
+  'err.vehicle.notFound': 'Vehicle not found',
+  'err.vehicle.garageNotFound': 'Garage not found',
+  'err.vehicle.vinExists': 'A vehicle with VIN "{{vin}}" already exists',
+  'err.vehicle.deletedNotFound': 'Deleted vehicle not found',
+  'err.vehicle.counterpartyDeletedRestoreFirst':
+    "The vehicle's counterparty has been deleted. Restore the counterparty first.",
+  'err.vehicle.garageDeletedRestoreFirst':
+    "The vehicle's garage has been deleted. Restore the garage or move the vehicle first.",
+  'err.vehicle.hasActiveWorkOrders':
+    'Cannot delete: the vehicle has active work orders ({{count}})',
+  'err.vehicle.nodeNotFound': 'Node not found',
+
+  // ── Exception messages: inspection module ──
+  'err.inspection.reportExists': 'An inspection report already exists for this work order',
+  'err.inspection.workLinesStatusForbidden':
+    'Cannot add work lines to a work order in this status. An inspection with critical points requires an editable work order.',
+
+  // ── Exception messages: warehouses module ──
+  'err.warehouse.notFound': 'Warehouse not found',
+  'err.warehouse.hasStockOrReserve':
+    'Cannot delete: the warehouse has non-zero stock or reservations',
+  'err.warehouse.onlyOneMain':
+    'Only one warehouse can be the main one in the organisation. Try again.',
+
+  // ── Exception messages: webhooks module ──
+  'err.webhook.notFound': 'Webhook not found',
+
+  // ── Exception messages: work-order-templates module ──
+  'err.workOrderTemplate.notFound': 'Template not found',
+
+  // ── Exception messages: works module ──
+  'err.work.notFound': 'Work not found',
+  'err.work.categoryNotFound': 'Category not found',
+  'err.work.deletedNotFound': 'Deleted work not found',
 };

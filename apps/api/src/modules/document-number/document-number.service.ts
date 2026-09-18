@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentType } from '@prisma/client';
 
 // Module-level Intl singleton — `new Intl.DateTimeFormat()` is expensive (locale-data init).
@@ -50,7 +51,9 @@ export class DocumentNumberService {
       `;
 
         if (!configs.length) {
-          throw new NotFoundException(`Конфігурацію нумерації для "${documentType}" не знайдено`);
+          throw new NotFoundException(
+            translateError('err.documentNumber.configNotFound', getLocale(), { documentType }),
+          );
         }
 
         const cfg = configs[0];

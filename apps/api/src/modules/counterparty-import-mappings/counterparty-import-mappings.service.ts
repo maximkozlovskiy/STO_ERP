@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   ImportMappingResponseDto,
   UpsertImportMappingDto,
@@ -64,7 +66,10 @@ export class CounterpartyImportMappingsService {
       where: { id: counterpartyId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(
+        translateError('err.counterpartyImportMapping.counterpartyNotFound', getLocale()),
+      );
   }
 
   private toDto(m: {

@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS, formatPersonName } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, formatPersonName, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
 import { roundMoney } from '../../common/utils/math';
@@ -29,7 +30,7 @@ function normalizeDateRange(from: string, to: string) {
   const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
   const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
   if (fromDate > toDate)
-    throw new BadRequestException('Дата початку має бути не пізніше дати закінчення');
+    throw new BadRequestException(translateError('err.payroll.startAfterEnd', getLocale()));
   return { fromDate, toDate };
 }
 
@@ -68,7 +69,7 @@ export class PayrollService {
         where: { id: branchId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
+      if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     }
 
     const rows = await this.prisma.$queryRaw<WorkAggRow[]>`
@@ -144,7 +145,8 @@ export class PayrollService {
         lines: { include: { employee: { select: { firstName: true, lastName: true } } } },
       },
     });
-    if (!period) throw new NotFoundException('Період не знайдено');
+    if (!period)
+      throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
     return this.toDto(period);
   }
 
@@ -160,7 +162,7 @@ export class PayrollService {
         where: { id: dto.branchId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!branch) throw new NotFoundException('Філію не знайдено');
+      if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     }
     const period = await this.prisma.payrollPeriod.create({
       data: {
@@ -190,9 +192,10 @@ export class PayrollService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true, periodStart: true, periodEnd: true, branchId: true },
     });
-    if (!period) throw new NotFoundException('Період не знайдено');
+    if (!period)
+      throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
     if (period.status !== 'DRAFT')
-      throw new BadRequestException('Розрахувати можна лише період у статусі «Чернетка»');
+      throw new BadRequestException(translateError('err.payroll.onlyDraftCalculable', getLocale()));
 
     const fromStr = period.periodStart.toISOString().slice(0, 10);
     const toStr = period.periodEnd.toISOString().slice(0, 10);
@@ -207,7 +210,9 @@ export class PayrollService {
           data: { status: 'COMPUTED', computedAt: new Date(), computedBy: userId ?? null },
         });
         if (claim.count === 0)
-          throw new BadRequestException('Період уже розраховано або змінено іншим користувачем');
+          throw new BadRequestException(
+            translateError('err.payroll.calculateConcurrentChange', getLocale()),
+          );
         // Фіксуємо рядки (перестворюємо на випадок повторного DRAFT після скидання — тут DRAFT гарантований).
         await tx.payrollLine.deleteMany({ where: { orgId, periodId: id } });
         if (lines.length > 0) {
@@ -254,9 +259,12 @@ export class PayrollService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
     });
-    if (!period) throw new NotFoundException('Період не знайдено');
+    if (!period)
+      throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
     if (period.status !== 'COMPUTED')
-      throw new BadRequestException('Виплатити можна лише розрахований період');
+      throw new BadRequestException(
+        translateError('err.payroll.onlyCalculatedPayable', getLocale()),
+      );
 
     // Рядки нарахувань (для cash-out по кожному співробітнику). take: 1 рядок = 1 співробітник періоду
     // (обмежено штатом org), але явний cap як захист від OOM (§3.2).
@@ -273,7 +281,9 @@ export class PayrollService {
           data: { status: 'PAID', paidAt: new Date(), paidBy: userId ?? null },
         });
         if (claim.count === 0)
-          throw new BadRequestException('Період уже виплачено або змінено іншим користувачем');
+          throw new BadRequestException(
+            translateError('err.payroll.payConcurrentChange', getLocale()),
+          );
         // paidAmount ← accruedAmount (повна виплата нарахованого).
         await tx.$executeRaw`
         UPDATE payroll_lines SET "paidAmount" = "accruedAmount", "updatedAt" = now()
@@ -318,11 +328,12 @@ export class PayrollService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!period) throw new NotFoundException('Період не знайдено');
+    if (!period)
+      throw new NotFoundException(translateError('err.payroll.periodNotFound', getLocale()));
     // Виплачений період — фінансовий факт, не видаляємо. DRAFT/COMPUTED/CANCELLED можна відкинути
     // (COMPUTED — це ще не проведена виплата, користувач може перерахувати після виправлення даних).
     if (period.status === 'PAID')
-      throw new BadRequestException('Не можна видалити виплачений період');
+      throw new BadRequestException(translateError('err.payroll.paidNotDeletable', getLocale()));
     await this.prisma.payrollPeriod.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },

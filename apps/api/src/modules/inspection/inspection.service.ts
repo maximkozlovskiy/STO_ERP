@@ -5,7 +5,9 @@
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CreateInspectionDto, InspectionResponseDto } from './inspection.dto';
 import { EDITABLE_STATUSES } from '../work-orders/work-orders.fsm';
 
@@ -67,8 +69,9 @@ export class InspectionService {
         select: { id: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (existing) throw new ConflictException('Звіт огляду вже існує для цього наряду');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+    if (existing)
+      throw new ConflictException(translateError('err.inspection.reportExists', getLocale()));
 
     const criticalPoints = dto.points.filter(p => p.status === 'CRITICAL');
     const hasCritical = criticalPoints.length > 0;
@@ -76,7 +79,7 @@ export class InspectionService {
     // If we will auto-create lines, the WO must still be editable.
     if (hasCritical && !EDITABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
-        'Не можна додавати рядки робіт у наряд цього статусу. Огляд з критичними точками потребує редагованого наряду.',
+        translateError('err.inspection.workLinesStatusForbidden', getLocale()),
       );
     }
 

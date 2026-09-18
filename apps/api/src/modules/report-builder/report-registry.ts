@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 
 /**
  * Метадата-реєстр конструктора звітів — ЄДИНЕ ДЖЕРЕЛО ПРАВДИ.
@@ -1307,7 +1309,9 @@ export const REGISTRY: Record<string, ReportEntityDef> = {
 
 export function getEntity(key: string): ReportEntityDef {
   if (typeof key !== 'string' || !Object.prototype.hasOwnProperty.call(REGISTRY, key)) {
-    throw new BadRequestException(`Невідома сутність звіту: ${String(key)}`);
+    throw new BadRequestException(
+      translateError('err.reportBuilder.unknownEntity', getLocale(), { key: String(key) }),
+    );
   }
   return REGISTRY[key];
 }
@@ -1315,7 +1319,12 @@ export function getEntity(key: string): ReportEntityDef {
 export function getField(entity: ReportEntityDef, key: string): ReportFieldDef {
   const field = entity.fields.find(f => f.key === key);
   if (!field) {
-    throw new BadRequestException(`Невідоме поле "${String(key)}" для «${entity.label}»`);
+    throw new BadRequestException(
+      translateError('err.reportBuilder.unknownField', getLocale(), {
+        key: String(key),
+        entity: entity.label,
+      }),
+    );
   }
   return field;
 }
@@ -1332,7 +1341,9 @@ export function assertRelationPath(entity: ReportEntityDef, prismaPath: string):
     const prefix = segments.slice(0, i).join('.');
     const rel = entity.relations.find(r => r.prismaPath === prefix);
     if (!rel) {
-      throw new BadRequestException(`Недозволений зв'язок у полі: ${prefix}`);
+      throw new BadRequestException(
+        translateError('err.reportBuilder.disallowedRelation', getLocale(), { prefix }),
+      );
     }
   }
 }
@@ -1346,13 +1357,20 @@ export function relationForPrefix(
 
 export function assertEnumValue(enumName: string, value: unknown): void {
   if (!Object.prototype.hasOwnProperty.call(REGISTRY_ENUMS, enumName)) {
-    throw new BadRequestException(`Невідомий enum: ${enumName}`);
+    throw new BadRequestException(
+      translateError('err.reportBuilder.unknownEnum', getLocale(), { enumName }),
+    );
   }
   const allowed = REGISTRY_ENUMS[enumName];
   const values = Array.isArray(value) ? value : [value];
   for (const v of values) {
     if (!allowed.includes(String(v))) {
-      throw new BadRequestException(`Недозволене значення "${String(v)}" для ${enumName}`);
+      throw new BadRequestException(
+        translateError('err.reportBuilder.disallowedEnumValue', getLocale(), {
+          value: String(v),
+          enumName,
+        }),
+      );
     }
   }
 }

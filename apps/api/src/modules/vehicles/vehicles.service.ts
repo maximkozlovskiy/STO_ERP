@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateVehicleDto,
   CreateVehicleNodeDto,
@@ -37,7 +39,7 @@ export class VehiclesService {
 
   async findOne(orgId: string, id: string): Promise<VehicleResponseDto> {
     const item = await this.prisma.vehicle.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!item) throw new NotFoundException('Автомобіль не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -47,7 +49,8 @@ export class VehiclesService {
       where: { id: dto.customerGarageId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!garage) throw new NotFoundException('Гараж не знайдено');
+    if (!garage)
+      throw new NotFoundException(translateError('err.vehicle.garageNotFound', getLocale()));
     // MD-H2: VIN — природний унікальний ключ авто (немає DB-констрейнта, лише @@index). Без
     // перевірки один авто заводиться двічі → дублі в історії/пошуку по номеру.
     await this.assertVinUnique(orgId, dto.vin, null);
@@ -60,7 +63,7 @@ export class VehiclesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Автомобіль не знайдено');
+    if (!existing) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
     // MD-M5: UpdateVehicleDto НЕ містить customerGarageId (перенос гаража недоступний через update)
     // → крос-тенант-перенос неможливий за побудовою, окремий guard не потрібен.
     // MD-H2: VIN unique (виключаючи сам авто).
@@ -80,7 +83,8 @@ export class VehiclesService {
       where: { orgId, vin, deletedAt: null, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
       select: { id: true },
     });
-    if (clash) throw new BadRequestException(`Автомобіль з VIN "${vin}" вже існує`);
+    if (clash)
+      throw new BadRequestException(translateError('err.vehicle.vinExists', getLocale(), { vin }));
   }
 
   async remove(orgId: string, id: string): Promise<void> {
@@ -97,7 +101,7 @@ export class VehiclesService {
     });
     if (activeWo > 0) {
       throw new BadRequestException(
-        `Неможливо видалити: автомобіль має активні наряди (${activeWo})`,
+        translateError('err.vehicle.hasActiveWorkOrders', getLocale(), { count: activeWo }),
       );
     }
 
@@ -107,7 +111,8 @@ export class VehiclesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Автомобіль не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
   }
 
   async restore(orgId: string, id: string): Promise<VehicleResponseDto> {
@@ -130,17 +135,20 @@ export class VehiclesService {
         },
       },
     });
-    if (!existing) throw new NotFoundException('Видалене авто не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));
     if (existing.deletedAt === null) {
       // double-restore — вже активне; лишаємо ту саму 404-семантику що для (id + orgId) misses.
-      throw new NotFoundException('Видалене авто не знайдено');
+      throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));
     }
     if (existing.customerGarage.counterparty.deletedAt !== null) {
-      throw new BadRequestException('Контрагента авто видалено. Спочатку відновіть контрагента.');
+      throw new BadRequestException(
+        translateError('err.vehicle.counterpartyDeletedRestoreFirst', getLocale()),
+      );
     }
     if (existing.customerGarage.deletedAt !== null) {
       throw new BadRequestException(
-        'Гараж авто видалено. Спочатку відновіть гараж або перемістіть авто.',
+        translateError('err.vehicle.garageDeletedRestoreFirst', getLocale()),
       );
     }
     // Atomic updateMany з `NOT: { deletedAt: null }` — один statement стверджує
@@ -150,7 +158,8 @@ export class VehiclesService {
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },
     });
-    if (result.count === 0) throw new NotFoundException('Видалене авто не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));
     const item = await this.prisma.vehicle.findFirstOrThrow({ where: { id, orgId } });
     return this.toDto(item);
   }
@@ -170,7 +179,7 @@ export class VehiclesService {
         take: 200,
       }),
     ]);
-    if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
+    if (!vehicle) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
     return items.map(item => this.toNodeDto(item));
   }
 
@@ -185,7 +194,7 @@ export class VehiclesService {
       where: { id: vehicleId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!parent) throw new NotFoundException('Автомобіль не знайдено');
+    if (!parent) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
     const item = await this.prisma.vehicleNode.create({ data: { ...dto, orgId, vehicleId } });
     return this.toNodeDto(item);
   }
@@ -202,8 +211,8 @@ export class VehiclesService {
         select: { id: true },
       }),
     ]);
-    if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
-    if (!node) throw new NotFoundException('Вузол не знайдено');
+    if (!vehicle) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
+    if (!node) throw new NotFoundException(translateError('err.vehicle.nodeNotFound', getLocale()));
     await this.prisma.vehicleNode.update({
       where: { id: nodeId, orgId },
       data: { deletedAt: new Date() },

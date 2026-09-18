@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateWorkOrderTemplateDto,
   UpdateWorkOrderTemplateDto,
@@ -29,7 +31,8 @@ export class WorkOrderTemplatesService {
     const t = await this.prisma.workOrderTemplate.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!t) throw new NotFoundException('Шаблон не знайдено');
+    if (!t)
+      throw new NotFoundException(translateError('err.workOrderTemplate.notFound', getLocale()));
     return this.toDto(t);
   }
 
@@ -69,14 +72,16 @@ export class WorkOrderTemplatesService {
         ...(dto.parts !== undefined && { parts: dto.parts as object[] }),
       },
     });
-    if (updated.count === 0) throw new NotFoundException('Шаблон не знайдено');
+    if (updated.count === 0)
+      throw new NotFoundException(translateError('err.workOrderTemplate.notFound', getLocale()));
     // Read back: updateMany не повертає updated row, тому findFirst після update.
     // 2 RTT total (замість 3 з findOne+update+toDto) — ще можна було б використати
     // raw UPDATE...RETURNING, але Prisma не підтримує RETURNING через safe API.
     const t = await this.prisma.workOrderTemplate.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!t) throw new NotFoundException('Шаблон не знайдено');
+    if (!t)
+      throw new NotFoundException(translateError('err.workOrderTemplate.notFound', getLocale()));
     return this.toDto(t);
   }
 
@@ -86,7 +91,8 @@ export class WorkOrderTemplatesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (updated.count === 0) throw new NotFoundException('Шаблон не знайдено');
+    if (updated.count === 0)
+      throw new NotFoundException(translateError('err.workOrderTemplate.notFound', getLocale()));
   }
 
   private toDto(t: {

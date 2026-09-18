@@ -1,6 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Brand } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import { CacheService } from '../../redis/cache.service';
 import { BrandResponseDto, CreateBrandDto, UpdateBrandDto } from './brands.dto';
@@ -55,15 +57,14 @@ export class BrandsService {
       where: { id, orgId, NOT: { deletedAt: null } },
       select: { name: true },
     });
-    if (!deleted) throw new NotFoundException('Видалений бренд не знайдено');
+    if (!deleted)
+      throw new NotFoundException(translateError('err.brand.deletedNotFound', getLocale()));
     const activeDuplicate = await this.prisma.brand.findFirst({
       where: { orgId, name: deleted.name, deletedAt: null, NOT: { id } },
       select: { id: true },
     });
     if (activeDuplicate)
-      throw new ConflictException(
-        'Активний бренд з такою назвою вже існує — відновлення неможливе',
-      );
+      throw new ConflictException(translateError('err.brand.activeNameExists', getLocale()));
     // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
     // 2026-05-30). One statement asserts (id, orgId, currently-deleted) — eliminates
     // the race window between separate findFirst + update().
@@ -71,7 +72,8 @@ export class BrandsService {
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },
     });
-    if (result.count === 0) throw new NotFoundException('Видалений бренд не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.brand.deletedNotFound', getLocale()));
     const item = await this.prisma.brand.findFirstOrThrow({
       where: { id, orgId },
       include: SYNONYMS_INCLUDE,
@@ -85,7 +87,7 @@ export class BrandsService {
       where: { id, orgId, deletedAt: null },
       include: SYNONYMS_INCLUDE,
     });
-    if (!item) throw new NotFoundException('Бренд не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -131,7 +133,8 @@ export class BrandsService {
       select: { id: true, deletedAt: true },
     });
     if (anyExisting) {
-      if (!anyExisting.deletedAt) throw new ConflictException('Бренд з такою назвою вже існує');
+      if (!anyExisting.deletedAt)
+        throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
       // Resurrect soft-deleted brand. Include is omitted: we re-fetch after
       // syncSynonyms() below, so the returned row would be stale anyway.
       await this.prisma.brand.update({
@@ -185,8 +188,8 @@ export class BrandsService {
         select: { id: true },
       }),
     ]);
-    if (!existing) throw new NotFoundException('Бренд не знайдено');
-    if (duplicate) throw new ConflictException('Бренд з такою назвою вже існує');
+    if (!existing) throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
+    if (duplicate) throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
 
     await this.prisma.brand.update({ where: { id, orgId }, data: { name: dto.name } });
     await this.syncSynonyms(orgId, id, synonyms);
@@ -207,7 +210,8 @@ export class BrandsService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Бренд не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
     // Soft-delete synonyms too
     await this.prisma.brandSynonym.updateMany({
       where: { brandId: id, orgId, deletedAt: null },

@@ -5,9 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import {
   AssignBranchesDto,
@@ -83,7 +84,7 @@ export class EmployeesService {
         employeeBranches: { select: { branchId: true } },
       },
     });
-    if (!item) throw new NotFoundException('Співробітника не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
     return this.toDto(item, includeRateScheme);
   }
 
@@ -91,7 +92,9 @@ export class EmployeesService {
     this.validateRateScheme(dto.rateScheme);
 
     if (dto.loginEmail && !dto.password) {
-      throw new BadRequestException("Пароль обов'язковий якщо вказано email для входу");
+      throw new BadRequestException(
+        translateError('err.employee.passwordRequiredWithEmail', getLocale()),
+      );
     }
 
     // Pre-check: active AuthAccount with this email already exists → block.
@@ -102,7 +105,7 @@ export class EmployeesService {
         select: { id: true, deletedAt: true, employeeId: true },
       });
       if (existing && existing.deletedAt === null) {
-        throw new ConflictException('Цей email вже використовується для входу');
+        throw new ConflictException(translateError('err.employee.loginEmailInUse', getLocale()));
       }
     }
 
@@ -150,7 +153,9 @@ export class EmployeesService {
           });
           if (soft) {
             if (soft.deletedAt === null) {
-              throw new ConflictException('Цей email вже використовується для входу');
+              throw new ConflictException(
+                translateError('err.employee.loginEmailInUse', getLocale()),
+              );
             }
             // soft-deleted row — resurrection
             await tx.authAccount.update({
@@ -189,7 +194,8 @@ export class EmployeesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Співробітника не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
     if (dto.rateScheme) this.validateRateScheme(dto.rateScheme);
     const item = await this.prisma.employee.update({
       where: { id, orgId },
@@ -236,7 +242,7 @@ export class EmployeesService {
     });
     if (activeLine) {
       throw new BadRequestException(
-        'Неможливо видалити: співробітник призначений на активні наряди',
+        translateError('err.employee.assignedToActiveOrders', getLocale()),
       );
     }
 
@@ -259,7 +265,8 @@ export class EmployeesService {
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );
-    if (result.empCount === 0) throw new NotFoundException('Співробітника не знайдено');
+    if (result.empCount === 0)
+      throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
   }
 
   // ─── Assignments ─────────────────────────────────────────
@@ -281,9 +288,10 @@ export class EmployeesService {
           })
         : Promise.resolve([] as Array<{ id: string }>),
     ]);
-    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (!employee)
+      throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
     if (dto.zoneIds.length > 0 && zones.length !== dto.zoneIds.length) {
-      throw new NotFoundException('Одну або кілька зон не знайдено');
+      throw new NotFoundException(translateError('err.employee.zonesNotFound', getLocale()));
     }
     // Replace assignment atomically using callback form (array form doesn't guarantee atomicity in Prisma 5)
     await this.prisma.$transaction(
@@ -314,9 +322,10 @@ export class EmployeesService {
           })
         : Promise.resolve([] as Array<{ id: string }>),
     ]);
-    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (!employee)
+      throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
     if (dto.liftIds.length > 0 && lifts.length !== dto.liftIds.length) {
-      throw new NotFoundException('Один або кілька підйомників не знайдено');
+      throw new NotFoundException(translateError('err.employee.liftsNotFound', getLocale()));
     }
     await this.prisma.$transaction(
       async tx => {
@@ -350,9 +359,10 @@ export class EmployeesService {
           })
         : Promise.resolve([] as Array<{ id: string }>),
     ]);
-    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (!employee)
+      throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
     if (dto.workCategoryIds.length > 0 && cats.length !== dto.workCategoryIds.length) {
-      throw new NotFoundException('Одну або кілька категорій не знайдено');
+      throw new NotFoundException(translateError('err.employee.categoriesNotFound', getLocale()));
     }
     await this.prisma.$transaction(
       async tx => {
@@ -386,9 +396,10 @@ export class EmployeesService {
           })
         : Promise.resolve([] as Array<{ id: string }>),
     ]);
-    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (!employee)
+      throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
     if (dto.branchIds.length > 0 && branches.length !== dto.branchIds.length) {
-      throw new NotFoundException('Одну або кілька філій не знайдено');
+      throw new NotFoundException(translateError('err.employee.branchesNotFound', getLocale()));
     }
     await this.prisma.$transaction(
       async tx => {
@@ -415,7 +426,9 @@ export class EmployeesService {
     const result = rateSchemeSchema.safeParse(scheme);
     if (!result.success) {
       throw new BadRequestException(
-        `Невірна схема нарахування: ${result.error.issues.map(i => i.message).join(', ')}`,
+        translateError('err.employee.invalidRateScheme', getLocale(), {
+          details: result.error.issues.map(i => i.message).join(', '),
+        }),
       );
     }
   }

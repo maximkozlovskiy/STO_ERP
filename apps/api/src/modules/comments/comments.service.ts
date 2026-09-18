@@ -4,7 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateCommentDto,
   CommentResponseDto,
@@ -41,10 +43,12 @@ export class CommentsService {
     // string values and bypass the polymorphic relation contract. Also keeps the composite
     // index `(orgId, entityType, entityId, createdAt)` selective.
     if (!isAllowedEntityType(entityType)) {
-      throw new BadRequestException(`Невідомий тип сутності для коментарів: ${entityType}`);
+      throw new BadRequestException(
+        translateError('err.comment.unknownEntityType', getLocale(), { entityType }),
+      );
     }
     if (!entityId || typeof entityId !== 'string') {
-      throw new BadRequestException("entityId обов'язковий");
+      throw new BadRequestException(translateError('err.comment.entityIdRequired', getLocale()));
     }
     const [items, total] = await Promise.all([
       this.prisma.comment.findMany({
@@ -106,7 +110,8 @@ export class CommentsService {
       Invoice: () => this.prisma.invoice.findFirst({ where, select: { id: true } }),
     };
     const parent = await fetchers[entityType]();
-    if (!parent) throw new NotFoundException('Сутність не знайдено');
+    if (!parent)
+      throw new NotFoundException(translateError('err.comment.entityNotFound', getLocale()));
   }
 
   async remove(orgId: string, id: string, user: { id: string; role: string }): Promise<void> {
@@ -116,19 +121,20 @@ export class CommentsService {
       where: { id, orgId },
       select: { authorId: true },
     });
-    if (!comment) throw new NotFoundException('Коментар не знайдено');
+    if (!comment) throw new NotFoundException(translateError('err.comment.notFound', getLocale()));
     // Only the comment author or an owner/admin can delete. Without this check ANY authenticated
     // employee could erase another employee's notes — a moderation/audit problem.
     const isAuthor = comment.authorId === user.id;
     const isAdmin = user.role === 'OWNER' || user.role === 'ADMIN';
     if (!isAuthor && !isAdmin) {
-      throw new ForbiddenException('Видаляти коментарі можуть лише автор або адміністратор');
+      throw new ForbiddenException(translateError('err.comment.deleteForbidden', getLocale()));
     }
     // Defense-in-depth: atomic deleteMany with orgId guard (sto-review pattern 2026-05-30).
     // Eliminates race-window between findFirst guard and hard delete that could otherwise
     // permit cross-tenant removal under concurrent sessions.
     const result = await this.prisma.comment.deleteMany({ where: { id, orgId } });
-    if (result.count === 0) throw new NotFoundException('Коментар не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.comment.notFound', getLocale()));
   }
 
   private toDto(c: CommentWithAuthor): CommentResponseDto {

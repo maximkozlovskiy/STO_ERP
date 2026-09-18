@@ -1,6 +1,8 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { IntegrationLogResponseDto, PaginatedIntegrationLogsDto } from './integration-logs.dto';
 
@@ -60,7 +62,9 @@ export class IntegrationLogService {
     if (!value) return undefined;
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) {
-      throw new BadRequestException(`Невірний формат дати у полі "${field}"`);
+      throw new BadRequestException(
+        translateError('err.integrationLog.invalidDateFormat', getLocale(), { field }),
+      );
     }
     return d;
   }

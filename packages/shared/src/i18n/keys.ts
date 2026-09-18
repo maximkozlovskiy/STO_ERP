@@ -603,6 +603,157 @@ export const VALIDATION_KEYS = [
   'err.booking.requestNotFound',
   'err.booking.cancelledCannotConfirm',
   'err.booking.slotNotFound',
+  // Exception-повідомлення: auth-модуль
+  'err.auth.invalidCredentials',
+  'err.auth.accountBlocked',
+  'err.auth.accountTempLocked',
+  'err.auth.sessionExpired',
+  'err.auth.userNotFound',
+  'err.auth.accountNotFound',
+  'err.auth.currentPasswordWrong',
+  'err.auth.noBranchAccess',
+  'err.auth.insufficientRights',
+  'err.auth.sessionInvalid',
+  // Exception-повідомлення: idempotency-interceptor
+  'err.idempotency.inProgress',
+  'err.idempotency.keyReusedDifferentBody',
+  // Exception-повідомлення: fsm
+  'err.fsm.transitionNotAllowed',
+  // Exception-повідомлення: audit-модуль
+  'err.audit.unknownEntityType',
+  // Exception-повідомлення: brands-модуль
+  'err.brand.deletedNotFound',
+  'err.brand.notFound',
+  'err.brand.nameExists',
+  'err.brand.activeNameExists',
+  // Exception-повідомлення: cash-модуль
+  'err.cash.amountMustBePositive',
+  'err.cash.categoryNotFound',
+  'err.cash.categoryInactive',
+  'err.cash.categoryTypeIncome',
+  'err.cash.categoryTypeExpense',
+  'err.cash.shiftRequiredForFiscal',
+  'err.cash.concurrentOperation',
+  'err.cash.expenseRequiresCategory',
+  'err.cash.insufficientCash',
+  // Exception-повідомлення: comments-модуль
+  'err.comment.unknownEntityType',
+  'err.comment.entityIdRequired',
+  'err.comment.entityNotFound',
+  'err.comment.notFound',
+  'err.comment.deleteForbidden',
+  // Exception-повідомлення: document-number-модуль
+  'err.documentNumber.configNotFound',
+  // Exception-повідомлення: dead-letter-модуль
+  'err.deadLetter.notFound',
+  // Exception-повідомлення: employees-модуль
+  'err.employee.notFound',
+  'err.employee.passwordRequiredWithEmail',
+  'err.employee.loginEmailInUse',
+  'err.employee.zonesNotFound',
+  'err.employee.liftsNotFound',
+  'err.employee.categoriesNotFound',
+  'err.employee.branchesNotFound',
+  'err.employee.assignedToActiveOrders',
+  'err.employee.invalidRateScheme',
+  // Exception-повідомлення: good-statuses-модуль
+  'err.goodStatus.notFound',
+  'err.goodStatus.nameExists',
+  'err.goodStatus.deletedNotFound',
+  'err.goodStatus.activeNameExists',
+  // Exception-повідомлення: counterparty-statuses-модуль
+  'err.counterpartyStatus.notFound',
+  'err.counterpartyStatus.nameExists',
+  'err.counterpartyStatus.deletedNotFound',
+  'err.counterpartyStatus.activeNameExists',
+  // Exception-повідомлення: counterparty-import-mappings-модуль
+  'err.counterpartyImportMapping.counterpartyNotFound',
+  // Exception-повідомлення: integration-logs-модуль
+  'err.integrationLog.invalidDateFormat',
+  // Exception-повідомлення: maintenance-schedules-модуль
+  'err.maintenanceSchedule.notFound',
+  'err.maintenanceSchedule.vehicleNotFound',
+  // Exception-повідомлення: notifications-модуль
+  'err.notification.templateNotFound',
+  'err.notification.providerNotFound',
+  'err.notification.unknownProvider',
+  'err.notification.providerChannelUnsupported',
+  'err.notification.invalidProviderCode',
+  // Exception-повідомлення: payment-methods-модуль
+  'err.paymentMethod.notFound',
+  'err.paymentMethod.codeExists',
+  'err.paymentMethod.systemImmutableName',
+  'err.paymentMethod.systemUndeletable',
+  // Exception-повідомлення: payroll-модуль
+  'err.payroll.startAfterEnd',
+  'err.payroll.periodNotFound',
+  'err.payroll.onlyDraftCalculable',
+  'err.payroll.calculateConcurrentChange',
+  'err.payroll.onlyCalculatedPayable',
+  'err.payroll.payConcurrentChange',
+  'err.payroll.paidNotDeletable',
+  // Exception-повідомлення: report-builder-модуль
+  'err.reportBuilder.aggregationNotAllowed',
+  'err.reportBuilder.sumNotAllowedState',
+  'err.reportBuilder.modelUnavailable',
+  'err.reportBuilder.savedReportNotFound',
+  'err.reportBuilder.filterInRequiresArray',
+  'err.reportBuilder.filterContainsTextOnly',
+  'err.reportBuilder.disallowedOperator',
+  'err.reportBuilder.startAfterEnd',
+  'err.reportBuilder.fieldNotFilterable',
+  'err.reportBuilder.unknownEntity',
+  'err.reportBuilder.unknownField',
+  'err.reportBuilder.disallowedRelation',
+  'err.reportBuilder.unknownEnum',
+  'err.reportBuilder.disallowedEnumValue',
+  // Exception-повідомлення: reports-модуль
+  'err.report.startAfterEnd',
+  'err.report.warehouseNotFound',
+  // Exception-повідомлення: settings-модуль
+  'err.settings.currencyNotFound',
+  'err.settings.workEndAfterStart',
+  'err.settings.configNotFound',
+  'err.settings.taxRateNotFound',
+  'err.settings.defaultTaxRateUndeletable',
+  'err.settings.organisationNotFound',
+  // Exception-повідомлення: settlements-модуль
+  'err.settlement.counterpartyNotFound',
+  'err.settlement.accountNotFound',
+  'err.settlement.reconciliationActNotFound',
+  'err.settlement.amountMustBePositive',
+  'err.settlement.counterpartyAccountNotFound',
+  // Exception-повідомлення: setup-модуль
+  'err.setup.alreadyConfiguredReinit',
+  'err.setup.alreadyConfigured',
+  // Exception-повідомлення: user-preferences-модуль
+  'err.userPreference.keyEmpty',
+  'err.userPreference.keyTooLong',
+  'err.userPreference.keyMismatch',
+  // Exception-повідомлення: vehicles-модуль
+  'err.vehicle.notFound',
+  'err.vehicle.garageNotFound',
+  'err.vehicle.vinExists',
+  'err.vehicle.deletedNotFound',
+  'err.vehicle.counterpartyDeletedRestoreFirst',
+  'err.vehicle.garageDeletedRestoreFirst',
+  'err.vehicle.hasActiveWorkOrders',
+  'err.vehicle.nodeNotFound',
+  // Exception-повідомлення: inspection-модуль
+  'err.inspection.reportExists',
+  'err.inspection.workLinesStatusForbidden',
+  // Exception-повідомлення: warehouses-модуль
+  'err.warehouse.notFound',
+  'err.warehouse.hasStockOrReserve',
+  'err.warehouse.onlyOneMain',
+  // Exception-повідомлення: webhooks-модуль
+  'err.webhook.notFound',
+  // Exception-повідомлення: work-order-templates-модуль
+  'err.workOrderTemplate.notFound',
+  // Exception-повідомлення: works-модуль
+  'err.work.notFound',
+  'err.work.categoryNotFound',
+  'err.work.deletedNotFound',
 ] as const;
 
 export type ValidationKey = (typeof VALIDATION_KEYS)[number];

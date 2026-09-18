@@ -1,5 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CacheService } from '../../redis/cache.service';
 import {
   CounterpartyStatusResponseDto,
@@ -62,7 +64,8 @@ export class CounterpartyStatusesService {
       where: { id, orgId, deletedAt: null },
       include: COUNT_INCLUDE,
     });
-    if (!item) throw new NotFoundException('Статус не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.counterpartyStatus.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -76,7 +79,10 @@ export class CounterpartyStatusesService {
       select: { id: true, deletedAt: true },
     });
     if (anyExisting) {
-      if (!anyExisting.deletedAt) throw new ConflictException('Статус з такою назвою вже існує');
+      if (!anyExisting.deletedAt)
+        throw new ConflictException(
+          translateError('err.counterpartyStatus.nameExists', getLocale()),
+        );
       // Воскрешаємо soft-deleted статус (унікальність @@unique[orgId,name] без partial WHERE).
       await this.prisma.counterpartyStatus.update({
         where: { id: anyExisting.id, orgId },
@@ -113,8 +119,10 @@ export class CounterpartyStatusesService {
         select: { id: true },
       }),
     ]);
-    if (!existing) throw new NotFoundException('Статус не знайдено');
-    if (duplicate) throw new ConflictException('Статус з такою назвою вже існує');
+    if (!existing)
+      throw new NotFoundException(translateError('err.counterpartyStatus.notFound', getLocale()));
+    if (duplicate)
+      throw new ConflictException(translateError('err.counterpartyStatus.nameExists', getLocale()));
 
     await this.prisma.counterpartyStatus.update({
       where: { id, orgId },
@@ -135,20 +143,26 @@ export class CounterpartyStatusesService {
       where: { id, orgId, NOT: { deletedAt: null } },
       select: { name: true },
     });
-    if (!deleted) throw new NotFoundException('Видалений статус не знайдено');
+    if (!deleted)
+      throw new NotFoundException(
+        translateError('err.counterpartyStatus.deletedNotFound', getLocale()),
+      );
     const activeDuplicate = await this.prisma.counterpartyStatus.findFirst({
       where: { orgId, name: deleted.name, deletedAt: null, NOT: { id } },
       select: { id: true },
     });
     if (activeDuplicate)
       throw new ConflictException(
-        'Активний статус з такою назвою вже існує — відновлення неможливе',
+        translateError('err.counterpartyStatus.activeNameExists', getLocale()),
       );
     const result = await this.prisma.counterpartyStatus.updateMany({
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },
     });
-    if (result.count === 0) throw new NotFoundException('Видалений статус не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(
+        translateError('err.counterpartyStatus.deletedNotFound', getLocale()),
+      );
     const item = await this.prisma.counterpartyStatus.findFirstOrThrow({
       where: { id, orgId },
       include: COUNT_INCLUDE,
@@ -173,7 +187,8 @@ export class CounterpartyStatusesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Статус не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.counterpartyStatus.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
   }
 
