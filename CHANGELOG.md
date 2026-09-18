@@ -5,6 +5,31 @@
 
 ---
 
+## 2026-09-18 — Багатомовність: фундамент + вертикальний зріз uk/en
+
+### feat(i18n) 7cc36318 + 585bfa89 + db571dd2 — i18n foundation (react-i18next)
+
+Кирилиця+латиниця, вибір мови у Налаштуваннях→Оформлення (список uk/en), дефолт українська.
+Клієнтський i18n під output:'export' (SPA, offline — каталоги в бандлі, 0 network-fetch).
+
+- Інфра: i18n/{config,resources,locale,apply,enumLabel}.ts + I18nProvider + useLanguage (дзеркалить
+  useNavConfig). format.ts → locale-aware (per-locale memo; ISO-хелпери locale-INDEPENDENT).
+- Зберігання: OrganisationSettings.language (org-default, міграція 20260918100000) + /user-preferences
+  key 'locale' (user-override). Резолюція user→org→uk.
+- Каталоги uk/en × {common,nav,settings,statuses,format}. uk statuses byte-identical до @sto/shared
+  (91 записів, 0 mismatch — fallback baseline); en авторський.
+- Зріз: enumLabel.ts tEnum + 19 обгорток (statuses.ts НЕ чіпано — backend PDF україномовний);
+  ~110 lookup-сайтів у 30 файлах LABELS[x]→wrapper(x). nav.ts +labelKey + section-keys; TopShell
+  t('nav:') для пунктів І заголовків розділів. Settings title+12 табів t('settings:'). ThemeTab селектор.
+- 585bfa89: live-реактивність — I18nProvider підписується на languageChanged → мітки/формати фліпають
+  на будь-якій відкритій сторінці без ре-маунту.
+- db571dd2 (tester Bug #762): section-headers сайдбару теж перекладаються live (був dead NAV_SECTION_KEYS).
+- Побічно: payments/[id] + estimate/[token] отримали generateStaticParams (pre-existing offline-export блокери).
+
+Свідомо поза цим блоком: ~170 розкиданих inline-рядків UI + backend-exception + shared zod (окремо потім).
+QA: sync 0 / review 0C0I / tester 1 (fixed). web 821/821 (+20 i18n), api settings+pdf 65/65, prod export
+build exit 0, offline OK.
+
 ## 2026-09-18 — Опційний апгрейд: Node 20 → 22 LTS
 
 ### chore(runtime) d85deb73 — Node 20 → 22 LTS

@@ -16,9 +16,18 @@
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2539/2539 (167 файлів) · DLQ 28 · append-only 13 · env.schema 20 · xlsx parseNumber-кома 5.
-            web: useWorkOrders 15/15, lib 163/163. web-модалки зелені.
-HEAD:       7cc36318 feat(i18n): фундамент багатомовності + вертикальний зріз uk/en
+Тести:      api 2539/2539 (167 файлів) · web 821/821 (86 файлів, +20 i18n) · settings 59.
+HEAD:       db571dd2 fix(tester): Bug #762 section-headers i18n-live (i18n foundation)
+i18n:       Багатомовність uk/en ГОТОВО (фундамент+зріз). react-i18next client-side (output:export/offline).
+            Селектор Settings→Оформлення. Зберігання org-default(OrganisationSettings.language)+user
+            (/user-preferences locale). enumLabel-обгортки (statuses.ts НЕ чіпано, backend PDF укр.),
+            nav+settings+формати перекладені. Live-фліп (I18nProvider languageChanged). Патерн: MP-F7.
+            Поза scope: ~170 inline-рядків + backend-exception + shared zod (окремо).
+Tester(i18n): 2026-09-18 (auto, коміти 7cc36318+585bfa89) — Bug #762 (MEDIUM, fixed db571dd2): section-
+            headers сайдбару не перекладались live (dead NAV_SECTION_KEYS — TopShell рендерив сирий
+            group.label без t()). web 821/821, api settings 59/59. Live auth-path SKIPPED (dev-БД не
+            demo-seed, forge-JWT заблоковано harness — правильно); pre-auth live: html lang=en + 0
+            catalog-fetch перевірено у браузері.
 Review(i18n): 2026-09-18 (auto, коміт 7cc36318, 67 файлів) — 0 Critical/0 Important, 3 Suggestion.
             tsc web 0; i18n+useLanguage vitest 12/12. Інфра чиста: format.ts memoByLocale коректний
             (per-locale rebuild, ISO-хелпери sv-SE/en-CA locale-INDEPENDENT); useLanguage дзеркалить

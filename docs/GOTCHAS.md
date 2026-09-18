@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-09-18] i18n: імперативні хелпери (enum-мітки, format.ts) НЕ реактивні самі по собі
+
+`woStatusLabel()` тощо та `fmtMoney/fmtDate` читають поточну локаль ІМПЕРАТИВНО з module-registry
+(`getCurrentLocale()`), БЕЗ `useTranslation`. Тому компонент, що їх викликає але сам не підписаний
+на i18next, НЕ ре-рендериться на зміну мови → мітки/формати «застигають» до наступного ре-маунту.
+
+Рішення (вже вбудоване): `I18nProvider` підписаний на `i18n.on('languageChanged')` і бампає key →
+все піддерево ре-рендериться раз на перемикання → LIVE-фліп усюди. Тож НЕ потрібно додавати
+`useTranslation` у кожен компонент лише заради реактивності. АЛЕ: якщо десь рендериш переклад через
+модуль-функцію (не `t()`) — переконайся що компонент під `I18nProvider` (він у root layout, тож
+завжди так). Каверза-дзеркало: «мертвий» i18n-ключ. Section-headers сайдбару мали готові
+`NAV_SECTION_KEYS` + каталоги, але TopShell рендерив сирий `{group.label}` без `t()` → не
+перекладались (Bug #762). Урок: заведення ключа+каталогу — це ще НЕ переклад; треба ВИКЛИКАТИ `t()`
+у місці рендера. Grep-детектор: `grep -rn "\.label}" TopShell` / шукати рендер сирих \*_LABELS-похідних.
+
+## [2026-09-18] i18n: format.ts форматери — per-locale memo, НЕ module-singleton; ISO-хелпери locale-INDEPENDENT
+
+Після locale-aware рефактору НЕ можна лишати `const X_FMT = new Intl.…` (застигне на першій локалі).
+Патерн: `memoByLocale(loc => new Intl.…)` — кеш `Map<locale, formatter>`, будує раз на локаль. Display-
+форматери (money/date/time) читають `getCurrentIntlLocale()`. АЛЕ ISO/machine-хелпери (`kyivToday`
+sv-SE, `kyivOffsetMs`/`isoToKyivLocalDateTime` en-CA/sv-SE, `kyivDateTimeToISO`) МУСЯТЬ лишитись
+locale-INDEPENDENT — вони дають ISO/UTC для API, зміна локалі НЕ сміє їх чіпати. Timezone ЗАВЖДИ
+Europe/Kyiv незалежно від мови.
+
 ## [2026-09-18] typedSql `generate --sql` потребує живу БД → ламає offline Docker-build
 
 Симптом: після ввімкнення `previewFeatures = ["typedSql"]` і `import { X } from '@prisma/client/sql'`

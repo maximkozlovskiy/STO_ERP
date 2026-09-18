@@ -682,6 +682,44 @@ export const goodUpdateSchema = goodFormSchema.partial(); // PATCH — усі п
 
 ---
 
+## MP-F7 — i18n: багатомовність UI (react-i18next, client-side, offline)
+
+Фундамент багатомовності під `output:'export'` (SPA). Клієнтський i18n — next-intl/RSC ВИКЛЮЧЕНО
+export-обмеженням (той самий рубіж, що й Server Components). Каталоги = статичні JSON у бандлі → offline,
+0 network. Дефолт українська, додано англійську.
+
+**Інфра** — `apps/web/src/i18n/`:
+
+- `config.ts` — i18next init (lng з `resolveInitialLocale()` sync-localStorage → no-flash), namespaces
+  `common/nav/settings/statuses/format`, `previewFeatures` немає (це фронт). Double-init guard.
+- `resources.ts` — статичні import каталогів (`locales/{uk,en}/*.json`) → бандлер інлайнить.
+- `locale.ts` — registry `getCurrentLocale/setCurrentLocale` + `INTL_LOCALE` (uk→uk-UA, en→en-US).
+- `apply.ts` — `applyLocale(l)`: i18next.changeLanguage + `<html lang>` + setCurrentLocale (format-registry).
+- `enumLabel.ts` — `tEnum(map, code)` + 19 типованих обгорток (`woStatusLabel`…). Fallback-ланцюг:
+  `i18n.t('statuses:MAP.CODE') || shared-uk-map[code] || code`; null/''→'—'.
+- `I18nProvider` — у root layout (біля ColorModeProvider); підписаний на `languageChanged` → LIVE-фліп.
+- `useLanguage()` — вибір мови (дзеркалить `useNavConfig`): localStorage+TTL + `/user-preferences` key
+  `locale`. Резолюція **user-override → org-default (`OrganisationSettings.language`) → uk**.
+
+**Зберігання**: org-default = `OrganisationSettings.language` (як `currency`/`brandTheme`); user-override =
+`/user-preferences` key `locale` (value `{locale}`).
+
+**Правила**:
+
+- `@sto/shared` `statuses.ts` НЕ чіпати — його споживає backend (PDF україномовний). Web перекладає
+  через `enumLabel`-обгортки + web-каталог `statuses.json` (uk byte-identical до shared = fallback baseline).
+- Нову enum-мітку рендерити через обгортку, НЕ `LABELS[x] ?? x`. Заведення i18n-ключа+каталогу — це ще
+  НЕ переклад; ОБОВ'ЯЗКОВО викликати `t()`/обгортку у місці рендера (див. GOTCHAS Bug #762).
+- format.ts — per-locale memo, ISO/machine-хелпери locale-INDEPENDENT (див. GOTCHAS).
+- vitest: `src/__tests__/setup.ts` імпортує `@/i18n/config` (lng='uk') → `t()` резолвить укр. у тестах.
+- Детектор недо-міграції: `grep -rn "_LABELS\[" apps/web/src --include=*.tsx | grep -v __tests__`
+  (лишились лише локальні мапи поза 19 обгортками — TRANSITION/RATE/VIEW/DELIVERY тощо).
+
+Свідомо поза foundation: ~170 розкиданих inline-рядків (тости, тексти форм) + backend-exception +
+shared zod — інкрементально.
+
+---
+
 ## Зведення grep-детекторів (для CI / review)
 
 | Патерн                   | Сигнал порушення                                                                      |
