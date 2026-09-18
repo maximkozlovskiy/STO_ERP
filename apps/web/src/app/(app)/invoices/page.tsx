@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { ElementType } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -120,17 +121,17 @@ const STATUS_TRANSITIONS = INVOICE_STATUS_TRANSITIONS;
 
 // Module-level constants — стабільні референси і JSON прекомпьютений лише раз
 // (раніше JSON.stringify(INVOICE_COLUMNS.map(c => c.key)) бігав на кожен render).
-const INVOICE_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'number', label: 'Номер', defaultVisible: true },
-  { key: 'counterparty', label: 'Контрагент', defaultVisible: true },
-  { key: 'workOrder', label: 'Наряд', defaultVisible: true },
-  { key: 'status', label: 'Статус', defaultVisible: true },
-  { key: 'documentDate', label: 'Дата документа', defaultVisible: true },
-  { key: 'amount', label: 'Сума', defaultVisible: true },
-  { key: 'dueDate', label: 'Термін оплати', defaultVisible: true },
-  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
+const INVOICE_COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'number', labelKey: 'columns.number', defaultVisible: true },
+  { key: 'counterparty', labelKey: 'columns.counterparty', defaultVisible: true },
+  { key: 'workOrder', labelKey: 'columns.workOrder', defaultVisible: true },
+  { key: 'status', labelKey: 'columns.status', defaultVisible: true },
+  { key: 'documentDate', labelKey: 'columns.documentDate', defaultVisible: true },
+  { key: 'amount', labelKey: 'columns.amount', defaultVisible: true },
+  { key: 'dueDate', labelKey: 'columns.dueDate', defaultVisible: true },
+  { key: 'linkedDocs', labelKey: 'columns.linkedDocs', defaultVisible: true },
 ];
-const INVOICE_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(INVOICE_COLUMNS.map(c => c.key));
+const INVOICE_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(INVOICE_COLUMN_DEFS.map(c => c.key));
 
 // Рахунок «активний» (термін оплати ще горить), поки не оплачений/скасований.
 const INVOICE_INACTIVE_STATUSES = new Set(['PAID', 'CANCELLED']);
@@ -152,15 +153,22 @@ const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMa
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
   Icon: ElementType;
-  label: string;
+  labelKey: string;
 }> = [
-  { field: 'workOrder', Icon: ClipboardList, label: 'Наряд' },
-  { field: 'payments', Icon: CreditCard, label: 'Оплати' },
-  { field: 'counterparty', Icon: User, label: 'Контрагент' },
+  { field: 'workOrder', Icon: ClipboardList, labelKey: 'counters.workOrder' },
+  { field: 'payments', Icon: CreditCard, labelKey: 'counters.payments' },
+  { field: 'counterparty', Icon: User, labelKey: 'counters.counterparty' },
 ];
 
 function InvoicesPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
+  const { t } = useTranslation('invoices');
+
+  // Колонки з перекладеними мітками (label = i18n, резолвиться у компоненті).
+  const INVOICE_COLUMNS = useMemo(
+    () => INVOICE_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })),
+    [t],
+  );
 
   const queryClient = useQueryClient();
   const { confirm, dialogProps } = useConfirm();
@@ -304,9 +312,18 @@ function InvoicesPageInner() {
     (name: string) => {
       const preset = saveFilter(name, { search, status, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
-    [saveFilter, search, status, dateFrom, dateTo, features.toastEnabled, setActiveSavedFilterId],
+    [
+      saveFilter,
+      search,
+      status,
+      dateFrom,
+      dateTo,
+      features.toastEnabled,
+      setActiveSavedFilterId,
+      t,
+    ],
   );
 
   const bulkCancel = useCallback(
@@ -327,27 +344,34 @@ function InvoicesPageInner() {
       invalidateBalanceAffected(queryClient);
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {
-          toast.success(`Скасовано ${succeeded} ${succeeded === 1 ? 'рахунок' : 'рахунків'}`);
-        } else if (succeeded > 0 && failed > 0) {
-          toast.warning(
-            `Скасовано ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`,
+          toast.success(
+            succeeded === 1
+              ? t('toast.cancelledOne', { count: succeeded })
+              : t('toast.cancelledMany', { count: succeeded }),
           );
+        } else if (succeeded > 0 && failed > 0) {
+          toast.warning(t('toast.cancelledPartial', { succeeded, total: results.length, failed }));
         } else {
-          toast.error('Жоден рахунок не скасовано (статус не дозволяє)');
+          toast.error(t('toast.cancelledNone'));
         }
       } else if (failed > 0) {
-        setError(`${succeeded} з ${results.length} рахунків змінено, ${failed} не вдалось`);
+        setError(t('errors.bulkCancelPartial', { succeeded, total: results.length, failed }));
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [bulkSelect, features.toastEnabled, queryClient],
+    [bulkSelect, features.toastEnabled, queryClient, t],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
     () => [
-      { id: 'cancel', label: 'Скасувати вибрані', variant: 'destructive', onClick: bulkCancel },
+      {
+        id: 'cancel',
+        label: t('actions.bulkCancel'),
+        variant: 'destructive',
+        onClick: bulkCancel,
+      },
     ],
-    [bulkCancel],
+    [bulkCancel, t],
   );
 
   useEffect(() => {
@@ -364,13 +388,13 @@ function InvoicesPageInner() {
       })
       .catch((e: unknown) => {
         if (!cancelled && !cached) {
-          setError(e instanceof Error ? e.message : 'Помилка завантаження способів оплати');
+          setError(e instanceof Error ? e.message : t('errors.loadPaymentMethods'));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [showPayment]);
+  }, [showPayment, t]);
 
   // async-init Select race condition. payForm.method defaults to 'cash'
   // and the payment modal can open BEFORE /payment-methods resolves. If 'cash' is
@@ -392,7 +416,10 @@ function InvoicesPageInner() {
   const handleTransition = async (inv: InvoiceWithOptionals, newStatus: string) => {
     if (
       !(await confirm({
-        title: `Перевести рахунок ${inv.number} → ${invoiceStatusLabel(newStatus)}?`,
+        title: t('confirm.transition', {
+          number: inv.number,
+          status: invoiceStatusLabel(newStatus),
+        }),
       }))
     )
       return;
@@ -412,7 +439,7 @@ function InvoicesPageInner() {
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
       invalidateBalanceAffected(queryClient);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
+      setError(e instanceof Error ? e.message : t('errors.transition'));
     } finally {
       setSavingId(null);
     }
@@ -459,7 +486,7 @@ function InvoicesPageInner() {
       // інвалідуємо УВЕСЬ крос-ресурс (не лише invoicesKeys), інакше баланс CRM/WO стає застарілим.
       invalidatePaymentSideEffects(queryClient);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка оплати');
+      setError(e instanceof Error ? e.message : t('errors.payment'));
     } finally {
       setSaving(false);
     }
@@ -493,7 +520,7 @@ function InvoicesPageInner() {
       // Defer revoke — Chromium can drop the download if revoke fires before the browser starts reading.
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF');
+      setError(e instanceof Error ? e.message : t('errors.downloadPdf'));
     }
   };
 
@@ -510,7 +537,7 @@ function InvoicesPageInner() {
       const clonedInvoice = await apiFetch<InvoiceWithOptionals>(`/invoices/${cloned.id}`);
       selectInvoice(clonedInvoice);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка дублювання');
+      setError(e instanceof Error ? e.message : t('errors.clone'));
     } finally {
       setCloning(false);
     }
@@ -519,7 +546,7 @@ function InvoicesPageInner() {
   const markDeleted = async (inv: InvoiceWithOptionals) => {
     if (
       !(await confirm({
-        title: `Позначити рахунок ${inv.number} на видалення?`,
+        title: t('confirm.markForDeletion', { number: inv.number }),
         variant: 'destructive',
       }))
     )
@@ -528,16 +555,16 @@ function InvoicesPageInner() {
       await apiFetch(`/invoices/${inv.id}`, { method: 'DELETE' });
       if (selectedInv?.id === inv.id) setSelectedInv(null);
       queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
-      if (features.toastEnabled) toast.success('Рахунок позначено на видалення');
+      if (features.toastEnabled) toast.success(t('toast.markedForDeletion'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      const msg = e instanceof Error ? e.message : t('errors.delete');
       if (features.toastEnabled) toast.error(msg);
       else setError(msg);
     }
   };
 
   const statuses: Array<[string, string]> = [
-    ['', 'Всі'],
+    ['', t('status.all')],
     ['DRAFT', invoiceStatusLabel('DRAFT')],
     ['SENT', invoiceStatusLabel('SENT')],
     ['PARTIALLY_PAID', invoiceStatusLabel('PARTIALLY_PAID')],
@@ -562,7 +589,7 @@ function InvoicesPageInner() {
     return [
       {
         key: 'info',
-        label: 'Основне',
+        label: t('panel.tabInfo'),
         content: (
           <div className="space-y-3">
             {/* Schema-driven fields — order + visibility from useDetailPanelConfig */}
@@ -593,7 +620,7 @@ function InvoicesPageInner() {
                 hidden={f.hidden}
               />
             ))}
-            <PanelSection title="Дії">
+            <PanelSection title={t('panel.sectionActions')}>
               <div className="flex flex-col gap-2">
                 {STATUS_TRANSITIONS[inv.status]?.map(s => (
                   <Button
@@ -606,7 +633,11 @@ function InvoicesPageInner() {
                     onClick={() => (s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s))}
                     loading={savingId === inv.id}
                   >
-                    {s === 'SENT' ? 'Надіслати' : s === 'PAID' ? 'Оплатити' : 'Скасувати'}
+                    {s === 'SENT'
+                      ? t('actions.send')
+                      : s === 'PAID'
+                        ? t('actions.pay')
+                        : t('actions.cancel')}
                   </Button>
                 ))}
                 <Button
@@ -615,7 +646,7 @@ function InvoicesPageInner() {
                   className="w-full"
                   onClick={() => void downloadPdf(inv)}
                 >
-                  Завантажити PDF
+                  {t('actions.downloadPdf')}
                 </Button>
                 <Button
                   variant="outline"
@@ -623,7 +654,7 @@ function InvoicesPageInner() {
                   className="w-full"
                   onClick={() => window.print()}
                 >
-                  Друк
+                  {t('actions.print')}
                 </Button>
                 <Button
                   variant="outline"
@@ -633,7 +664,7 @@ function InvoicesPageInner() {
                   loading={cloning}
                   disabled={cloning}
                 >
-                  Дублювати
+                  {t('actions.clone')}
                 </Button>
               </div>
             </PanelSection>
@@ -642,10 +673,10 @@ function InvoicesPageInner() {
       },
       {
         key: 'lines',
-        label: 'Позиції',
+        label: t('panel.tabLines'),
         content:
           !inv.lines || inv.lines.length === 0 ? (
-            <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+            <p className="text-[13px] text-muted-foreground">{t('panel.noLines')}</p>
           ) : (
             <div className="space-y-2">
               {inv.lines.map((line, i) => (
@@ -663,8 +694,12 @@ function InvoicesPageInner() {
                   </p>
                   {line.vatRate > 0 && (
                     <p className="text-muted-foreground text-[11px] mt-0.5">
-                      Без ПДВ: {fmtMoney(line.priceWithoutVat)} {sym} · ПДВ {line.vatRate}%:{' '}
-                      {fmtMoney(line.vatAmount)} {sym}
+                      {t('panel.lineVatBreakdown', {
+                        net: fmtMoney(line.priceWithoutVat),
+                        rate: line.vatRate,
+                        vat: fmtMoney(line.vatAmount),
+                        sym,
+                      })}
                     </p>
                   )}
                 </div>
@@ -674,7 +709,7 @@ function InvoicesPageInner() {
       },
       {
         key: 'links',
-        label: "Зв'язки",
+        label: t('panel.tabLinks'),
         content: <LinkedDocumentsPanel config={linkedConfig} entityId={inv.id} />,
       },
     ];
@@ -689,7 +724,7 @@ function InvoicesPageInner() {
       )}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Рахунки</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
@@ -728,12 +763,14 @@ function InvoicesPageInner() {
             resetPage();
             setActiveSavedFilterId(null);
           }}
-          placeholder="Пошук за номером або контрагентом..."
+          placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
           className="w-72 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('filters.dateFrom')}
+          </span>
           <DatePickerInput
             value={dateFrom}
             onChange={v => {
@@ -746,7 +783,7 @@ function InvoicesPageInner() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+          <span className="text-[13px] text-muted-foreground shrink-0">{t('filters.dateTo')}</span>
           <DatePickerInput
             value={dateTo}
             onChange={v => {
@@ -762,7 +799,7 @@ function InvoicesPageInner() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
             onClick={() => {
               setShowDeleted(d => !d);
               resetPage();
@@ -786,7 +823,7 @@ function InvoicesPageInner() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Рахунок
+            {t('addButton')}
           </Button>
         </div>
       </div>
@@ -815,7 +852,7 @@ function InvoicesPageInner() {
                       ref={selectAllRef}
                       onChange={bulkSelect.toggleAll}
                       className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
+                      aria-label={t('aria.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -863,7 +900,7 @@ function InvoicesPageInner() {
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
-                    <EmptyState icon={Receipt} title="Рахунків не знайдено" />
+                    <EmptyState icon={Receipt} title={t('empty.notFound')} />
                   </TableCell>
                 </TableRow>
               )}
@@ -900,7 +937,7 @@ function InvoicesPageInner() {
                             checked={bulkSelect.isSelected(inv.id)}
                             onChange={() => bulkSelect.toggle(inv.id)}
                             className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={`Вибрати рахунок ${inv.number}`}
+                            aria-label={t('aria.selectRow', { number: inv.number })}
                           />
                         </TableCell>
                       )}
@@ -976,7 +1013,7 @@ function InvoicesPageInner() {
                           return (
                             <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                               <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
                                   const n = counts?.[field];
                                   if (!n) return null;
                                   return (
@@ -984,7 +1021,7 @@ function InvoicesPageInner() {
                                       key={field}
                                       onClick={() => setLinkedDocPopupId(inv.id)}
                                       className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                      title={`${label}: ${n}`}
+                                      title={`${t(labelKey)}: ${n}`}
                                     >
                                       <Icon size={13} />
                                       <span>{n}</span>
@@ -1002,7 +1039,7 @@ function InvoicesPageInner() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Відкрити деталі"
+                            title={t('actions.openDetails')}
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                             onClick={() => selectInvoice(inv)}
                           >
@@ -1012,7 +1049,7 @@ function InvoicesPageInner() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="Позначити на видалення"
+                              title={t('actions.markForDeletion')}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                               onClick={() => void markDeleted(inv)}
                             >
@@ -1068,7 +1105,7 @@ function InvoicesPageInner() {
       <Modal
         open={!!showPayment}
         onClose={closePayment}
-        title={showPayment ? `Реєстрація оплати по рахунку ${showPayment.number}` : ''}
+        title={showPayment ? t('payment.modalTitle', { number: showPayment.number }) : ''}
         footer={
           payForm.method === 'monobank_qr' ? (
             <Button
@@ -1081,11 +1118,11 @@ function InvoicesPageInner() {
               }}
               className="w-full"
             >
-              Показати QR
+              {t('payment.showQr')}
             </Button>
           ) : (
             <Button onClick={handlePay} loading={saving} className="w-full">
-              Підтвердити оплату
+              {t('payment.confirmPayment')}
             </Button>
           )
         }
@@ -1101,19 +1138,19 @@ function InvoicesPageInner() {
               <div className="space-y-4">
                 <div className="p-3 bg-info-subtle rounded-lg text-sm text-info-text space-y-0.5">
                   <div>
-                    Сума рахунку: <strong>{fmtPay(showPayment.amount)}</strong>
+                    {t('payment.invoiceAmount')} <strong>{fmtPay(showPayment.amount)}</strong>
                   </div>
                   {paid > 0 && (
                     <div>
-                      Уже оплачено: <strong>{fmtPay(paid)}</strong>
+                      {t('payment.alreadyPaid')} <strong>{fmtPay(paid)}</strong>
                     </div>
                   )}
                   <div>
-                    Залишок до сплати: <strong>{fmtPay(remaining)}</strong>
+                    {t('payment.remaining')} <strong>{fmtPay(remaining)}</strong>
                   </div>
                 </div>
                 <Select
-                  label="Метод оплати"
+                  label={t('payment.method')}
                   required
                   value={payForm.method}
                   onChange={e => setPayForm(f => ({ ...f, method: e.target.value }))}
@@ -1127,14 +1164,14 @@ function InvoicesPageInner() {
                     ))
                   ) : (
                     <>
-                      <option value="cash">Готівка</option>
-                      <option value="card_terminal">Термінал</option>
-                      <option value="bank_transfer">Банківський переказ</option>
+                      <option value="cash">{t('payment.methodCash')}</option>
+                      <option value="card_terminal">{t('payment.methodTerminal')}</option>
+                      <option value="bank_transfer">{t('payment.methodBankTransfer')}</option>
                     </>
                   )}
                 </Select>
                 <Input
-                  label={`Сума, ${paySym}`}
+                  label={t('payment.amount', { sym: paySym })}
                   type="number"
                   value={payForm.amount}
                   onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
@@ -1142,11 +1179,11 @@ function InvoicesPageInner() {
                   min="0.01"
                   max={String(remaining)}
                   step="0.01"
-                  hint="Порожнє поле = оплата залишку повністю"
+                  hint={t('payment.amountHint')}
                   className="h-8 text-[13px]"
                 />
                 <Input
-                  label="Примітки"
+                  label={t('payment.notes')}
                   value={payForm.notes}
                   onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
                   className="h-8 text-[13px]"
@@ -1175,7 +1212,7 @@ function InvoicesPageInner() {
           entityId={linkedDocPopupId}
           config={linkedConfig}
           onClose={() => setLinkedDocPopupId(null)}
-          ariaLabel="Пов'язані документи рахунку"
+          ariaLabel={t('aria.linkedDocsPopup')}
         />
       )}
     </div>

@@ -31,7 +31,7 @@ if (!i18n.isInitialized) {
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: SUPPORTED_LOCALES as unknown as string[],
     defaultNS: 'common',
-    ns: ['common', 'nav', 'settings', 'statuses', 'format', 'employees'],
+    ns: ['common', 'nav', 'settings', 'statuses', 'format', 'employees', 'invoices'],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,
     react: { useSuspense: false }, // каталоги вже в бандлі — Suspense не потрібен

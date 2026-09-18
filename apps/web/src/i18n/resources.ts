@@ -6,6 +6,7 @@ import ukSettings from './locales/uk/settings.json';
 import ukStatuses from './locales/uk/statuses.json';
 import ukFormat from './locales/uk/format.json';
 import ukEmployees from './locales/uk/employees.json';
+import ukInvoices from './locales/uk/invoices.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -13,6 +14,7 @@ import enSettings from './locales/en/settings.json';
 import enStatuses from './locales/en/statuses.json';
 import enFormat from './locales/en/format.json';
 import enEmployees from './locales/en/employees.json';
+import enInvoices from './locales/en/invoices.json';
 
 export const resources = {
   uk: {
@@ -22,6 +24,7 @@ export const resources = {
     statuses: ukStatuses,
     format: ukFormat,
     employees: ukEmployees,
+    invoices: ukInvoices,
   },
   en: {
     common: enCommon,
@@ -30,5 +33,6 @@ export const resources = {
     statuses: enStatuses,
     format: enFormat,
     employees: enEmployees,
+    invoices: enInvoices,
   },
 } as const;

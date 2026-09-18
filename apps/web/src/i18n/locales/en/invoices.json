@@ -1,0 +1,92 @@
+{
+  "title": "Invoices",
+  "addButton": "Invoice",
+  "columns": {
+    "number": "Number",
+    "counterparty": "Counterparty",
+    "workOrder": "Work order",
+    "status": "Status",
+    "documentDate": "Document date",
+    "amount": "Amount",
+    "dueDate": "Due date",
+    "linkedDocs": "Links"
+  },
+  "counters": {
+    "workOrder": "Work order",
+    "payments": "Payments",
+    "counterparty": "Counterparty"
+  },
+  "filters": {
+    "searchPlaceholder": "Search by number or counterparty...",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "filterSaved": "Filter \"{{name}}\" saved"
+  },
+  "actions": {
+    "send": "Send",
+    "pay": "Pay",
+    "cancel": "Cancel",
+    "downloadPdf": "Download PDF",
+    "print": "Print",
+    "clone": "Duplicate",
+    "openDetails": "Open details",
+    "markForDeletion": "Mark for deletion",
+    "bulkCancel": "Cancel selected"
+  },
+  "confirm": {
+    "transition": "Move invoice {{number}} → {{status}}?",
+    "markForDeletion": "Mark invoice {{number}} for deletion?"
+  },
+  "empty": {
+    "notFound": "No invoices found"
+  },
+  "panel": {
+    "tabInfo": "General",
+    "tabLines": "Line items",
+    "tabLinks": "Links",
+    "sectionActions": "Actions",
+    "noLines": "No line items",
+    "lineVatBreakdown": "Net: {{net}} {{sym}} · VAT {{rate}}%: {{vat}} {{sym}}"
+  },
+  "payment": {
+    "modalTitle": "Register payment for invoice {{number}}",
+    "showQr": "Show QR",
+    "confirmPayment": "Confirm payment",
+    "invoiceAmount": "Invoice amount:",
+    "alreadyPaid": "Already paid:",
+    "remaining": "Remaining to pay:",
+    "method": "Payment method",
+    "methodCash": "Cash",
+    "methodTerminal": "Terminal",
+    "methodBankTransfer": "Bank transfer",
+    "amount": "Amount, {{sym}}",
+    "amountHint": "Empty field = pay the full remaining balance",
+    "notes": "Notes"
+  },
+  "toast": {
+    "cancelledOne": "Cancelled {{count}} invoice",
+    "cancelledMany": "Cancelled {{count}} invoices",
+    "cancelledPartial": "Cancelled {{succeeded}} of {{total}}. {{failed}} unchanged (status not allowed)",
+    "cancelledNone": "No invoices cancelled (status not allowed)",
+    "markedForDeletion": "Invoice marked for deletion"
+  },
+  "aria": {
+    "selectAll": "Select all",
+    "selectRow": "Select invoice {{number}}",
+    "linkedDocsPopup": "Related documents of the invoice"
+  },
+  "errors": {
+    "bulkCancelPartial": "{{succeeded}} of {{total}} invoices changed, {{failed}} failed",
+    "loadPaymentMethods": "Failed to load payment methods",
+    "transition": "Status change error",
+    "payment": "Payment error",
+    "downloadPdf": "PDF download error",
+    "clone": "Duplication error",
+    "delete": "Deletion error"
+  },
+  "status": {
+    "all": "All"
+  }
+}

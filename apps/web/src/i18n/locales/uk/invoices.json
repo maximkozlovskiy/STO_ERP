@@ -1,0 +1,92 @@
+{
+  "title": "Рахунки",
+  "addButton": "Рахунок",
+  "columns": {
+    "number": "Номер",
+    "counterparty": "Контрагент",
+    "workOrder": "Наряд",
+    "status": "Статус",
+    "documentDate": "Дата документа",
+    "amount": "Сума",
+    "dueDate": "Термін оплати",
+    "linkedDocs": "Зв'язки"
+  },
+  "counters": {
+    "workOrder": "Наряд",
+    "payments": "Оплати",
+    "counterparty": "Контрагент"
+  },
+  "filters": {
+    "searchPlaceholder": "Пошук за номером або контрагентом...",
+    "dateFrom": "З",
+    "dateTo": "По",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "filterSaved": "Фільтр \"{{name}}\" збережено"
+  },
+  "actions": {
+    "send": "Надіслати",
+    "pay": "Оплатити",
+    "cancel": "Скасувати",
+    "downloadPdf": "Завантажити PDF",
+    "print": "Друк",
+    "clone": "Дублювати",
+    "openDetails": "Відкрити деталі",
+    "markForDeletion": "Позначити на видалення",
+    "bulkCancel": "Скасувати вибрані"
+  },
+  "confirm": {
+    "transition": "Перевести рахунок {{number}} → {{status}}?",
+    "markForDeletion": "Позначити рахунок {{number}} на видалення?"
+  },
+  "empty": {
+    "notFound": "Рахунків не знайдено"
+  },
+  "panel": {
+    "tabInfo": "Основне",
+    "tabLines": "Позиції",
+    "tabLinks": "Зв'язки",
+    "sectionActions": "Дії",
+    "noLines": "Немає позицій",
+    "lineVatBreakdown": "Без ПДВ: {{net}} {{sym}} · ПДВ {{rate}}%: {{vat}} {{sym}}"
+  },
+  "payment": {
+    "modalTitle": "Реєстрація оплати по рахунку {{number}}",
+    "showQr": "Показати QR",
+    "confirmPayment": "Підтвердити оплату",
+    "invoiceAmount": "Сума рахунку:",
+    "alreadyPaid": "Уже оплачено:",
+    "remaining": "Залишок до сплати:",
+    "method": "Метод оплати",
+    "methodCash": "Готівка",
+    "methodTerminal": "Термінал",
+    "methodBankTransfer": "Банківський переказ",
+    "amount": "Сума, {{sym}}",
+    "amountHint": "Порожнє поле = оплата залишку повністю",
+    "notes": "Примітки"
+  },
+  "toast": {
+    "cancelledOne": "Скасовано {{count}} рахунок",
+    "cancelledMany": "Скасовано {{count}} рахунків",
+    "cancelledPartial": "Скасовано {{succeeded}} з {{total}}. {{failed}} не змінено (статус не дозволяє)",
+    "cancelledNone": "Жоден рахунок не скасовано (статус не дозволяє)",
+    "markedForDeletion": "Рахунок позначено на видалення"
+  },
+  "aria": {
+    "selectAll": "Вибрати всі",
+    "selectRow": "Вибрати рахунок {{number}}",
+    "linkedDocsPopup": "Пов'язані документи рахунку"
+  },
+  "errors": {
+    "bulkCancelPartial": "{{succeeded}} з {{total}} рахунків змінено, {{failed}} не вдалось",
+    "loadPaymentMethods": "Помилка завантаження способів оплати",
+    "transition": "Помилка зміни статусу",
+    "payment": "Помилка оплати",
+    "downloadPdf": "Помилка завантаження PDF",
+    "clone": "Помилка дублювання",
+    "delete": "Помилка видалення"
+  },
+  "status": {
+    "all": "Всі"
+  }
+}
