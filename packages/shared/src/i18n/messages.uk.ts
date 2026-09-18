@@ -126,4 +126,22 @@ export const uk: Record<string, string> = {
   'err.prisma.badId': 'Некоректний формат ідентифікатора',
   'err.prisma.tooLong': 'Значення занадто довге для поля',
   'err.prisma.nullConstraint': "Обов'язкове поле не може бути порожнім",
+
+  // ── Exception-повідомлення: currencies-модуль ──
+  'err.currency.notFound': 'Валюту не знайдено',
+  'err.currency.codeExists': 'Валюта з кодом "{{code}}" вже існує',
+  'err.currency.systemImmutable': 'Системну валюту не можна перейменовувати або змінювати код',
+  'err.currency.systemUndeletable': 'Системну валюту не можна видалити',
+
+  // ── Exception-повідомлення: bank-accounts-модуль ──
+  'err.bankAccount.notFound': 'Банківський рахунок не знайдено',
+  'err.branch.notFound': 'Філію не знайдено',
+
+  // ── Exception-повідомлення: exchange-rates-модуль ──
+  'err.exchangeRate.notFound': 'Курс валюти не знайдено',
+  'err.exchangeRate.dateExists': 'Курс на цю дату вже існує',
+  'err.exchangeRate.baseCurrencyNotConfigured':
+    'Базову валюту ({{code}}) не налаштовано — створіть її у НДІ → Валюти',
+  'err.exchangeRate.noRateForDate':
+    'Немає курсу валюти {{code}} на {{date}} — додайте курс у НДІ → Курси валют',
 };

@@ -5,9 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { convertToBase } from '../../common/utils/currency';
 import { kyivYmd } from '../../common/utils/kyiv-date';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateExchangeRateDto,
   ExchangeRateResponseDto,
@@ -57,7 +59,8 @@ export class ExchangeRatesService {
       where: { id, orgId, deletedAt: null },
       include: { currency: { select: { code: true, name: true } } },
     });
-    if (!item) throw new NotFoundException('Курс валюти не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.exchangeRate.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -124,7 +127,9 @@ export class ExchangeRatesService {
     const base = await this.getBaseCurrency(orgId);
     if (!base.id) {
       throw new BadRequestException(
-        `Базову валюту (${base.code}) не налаштовано — створіть її у НДІ → Валюти`,
+        translateError('err.exchangeRate.baseCurrencyNotConfigured', getLocale(), {
+          code: base.code,
+        }),
       );
     }
     return base.id;
@@ -160,7 +165,8 @@ export class ExchangeRatesService {
         select: { currency: true },
       }),
     ]);
-    if (!currency) throw new NotFoundException('Валюту не знайдено');
+    if (!currency)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     const baseCode = settings?.currency ?? 'UAH';
     // Базова валюта — без конвертації (rate=1). Порівнюємо за кодом (base зберігається кодом).
     if (currency.code === baseCode) {
@@ -169,7 +175,10 @@ export class ExchangeRatesService {
     const asOf = await this.getRateAsOf(orgId, currencyId, date, fallbackToLatest);
     if (!asOf) {
       throw new BadRequestException(
-        `Немає курсу валюти ${currency.code} на ${kyivYmd(date)} — додайте курс у НДІ → Курси валют`,
+        translateError('err.exchangeRate.noRateForDate', getLocale(), {
+          code: currency.code,
+          date: kyivYmd(date),
+        }),
       );
     }
     return {
@@ -193,9 +202,11 @@ export class ExchangeRatesService {
         select: { id: true, deletedAt: true },
       }),
     ]);
-    if (!currency) throw new NotFoundException('Валюту не знайдено');
+    if (!currency)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     if (anyExisting) {
-      if (!anyExisting.deletedAt) throw new ConflictException('Курс на цю дату вже існує');
+      if (!anyExisting.deletedAt)
+        throw new ConflictException(translateError('err.exchangeRate.dateExists', getLocale()));
       // Soft-deleted row occupies the unique index — resurrect it
       const restored = await this.prisma.exchangeRate.update({
         where: { id: anyExisting.id, orgId },
@@ -248,14 +259,15 @@ export class ExchangeRatesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!existing) throw new NotFoundException('Курс валюти не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.exchangeRate.notFound', getLocale()));
 
     // Date change must respect the unique index (orgId, currencyId, date): without this
     // check a PATCH on an occupied date hits DB P2002 → generic 409 instead of a
     // localized message (same invariant as create()).
     if (newDate && newDate.getTime() !== new Date(existing.date).setUTCHours(0, 0, 0, 0)) {
       if (duplicate && duplicate.currencyId === existing.currencyId) {
-        throw new ConflictException('Курс на цю дату вже існує');
+        throw new ConflictException(translateError('err.exchangeRate.dateExists', getLocale()));
       }
     }
 
@@ -269,7 +281,8 @@ export class ExchangeRatesService {
       where: { id, orgId, deletedAt: null },
       data: updateData,
     });
-    if (updated.count === 0) throw new NotFoundException('Курс валюти не знайдено');
+    if (updated.count === 0)
+      throw new NotFoundException(translateError('err.exchangeRate.notFound', getLocale()));
     const item = await this.prisma.exchangeRate.findFirstOrThrow({
       where: { id, orgId },
       include: { currency: { select: { code: true, name: true } } },
@@ -283,7 +296,8 @@ export class ExchangeRatesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Курс валюти не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.exchangeRate.notFound', getLocale()));
   }
 
   private toDto(item: {

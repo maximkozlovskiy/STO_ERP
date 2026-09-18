@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   BankAccountResponseDto,
   CreateBankAccountDto,
@@ -42,7 +44,7 @@ export class BankAccountsService {
       where: { id, orgId, deletedAt: null },
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
-    if (!item) throw new NotFoundException('Банківський рахунок не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.bankAccount.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -60,8 +62,10 @@ export class BankAccountsService {
           })
         : Promise.resolve(null),
     ]);
-    if (!currency) throw new NotFoundException('Валюту не знайдено');
-    if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
+    if (!currency)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
+    if (dto.branchId && !branch)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     const item = await this.prisma.bankAccount.create({
       data: {
@@ -107,9 +111,12 @@ export class BankAccountsService {
           })
         : Promise.resolve(true as const),
     ]);
-    if (!existing) throw new NotFoundException('Банківський рахунок не знайдено');
-    if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
-    if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.bankAccount.notFound', getLocale()));
+    if (dto.currencyId && !currency)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
+    if (dto.branchId && !branch)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
     // updateMany does not accept `include`, so re-fetch with relations afterwards.
@@ -117,7 +124,8 @@ export class BankAccountsService {
       where: { id, orgId, deletedAt: null },
       data: dto,
     });
-    if (updated.count === 0) throw new NotFoundException('Банківський рахунок не знайдено');
+    if (updated.count === 0)
+      throw new NotFoundException(translateError('err.bankAccount.notFound', getLocale()));
     const item = await this.prisma.bankAccount.findFirstOrThrow({
       where: { id, orgId },
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
@@ -134,7 +142,8 @@ export class BankAccountsService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Банківський рахунок не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.bankAccount.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
   }
 

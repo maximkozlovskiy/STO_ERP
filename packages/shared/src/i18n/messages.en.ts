@@ -123,4 +123,22 @@ export const en: Record<string, string> = {
   'err.prisma.badId': 'Invalid identifier format',
   'err.prisma.tooLong': 'Value is too long for the field',
   'err.prisma.nullConstraint': 'A required field cannot be empty',
+
+  // ── Exception messages: currencies module ──
+  'err.currency.notFound': 'Currency not found',
+  'err.currency.codeExists': 'A currency with code "{{code}}" already exists',
+  'err.currency.systemImmutable': 'A system currency cannot be renamed or have its code changed',
+  'err.currency.systemUndeletable': 'A system currency cannot be deleted',
+
+  // ── Exception messages: bank-accounts module ──
+  'err.bankAccount.notFound': 'Bank account not found',
+  'err.branch.notFound': 'Branch not found',
+
+  // ── Exception messages: exchange-rates module ──
+  'err.exchangeRate.notFound': 'Exchange rate not found',
+  'err.exchangeRate.dateExists': 'A rate for this date already exists',
+  'err.exchangeRate.baseCurrencyNotConfigured':
+    'The base currency ({{code}}) is not configured — create it in Reference → Currencies',
+  'err.exchangeRate.noRateForDate':
+    'No exchange rate for currency {{code}} on {{date}} — add a rate in Reference → Exchange rates',
 };

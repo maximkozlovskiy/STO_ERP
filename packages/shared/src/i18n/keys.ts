@@ -233,6 +233,19 @@ export const VALIDATION_KEYS = [
   'err.prisma.badId',
   'err.prisma.tooLong',
   'err.prisma.nullConstraint',
+  // Exception-повідомлення: currencies-модуль
+  'err.currency.notFound',
+  'err.currency.codeExists',
+  'err.currency.systemImmutable',
+  'err.currency.systemUndeletable',
+  // Exception-повідомлення: bank-accounts-модуль
+  'err.bankAccount.notFound',
+  'err.branch.notFound',
+  // Exception-повідомлення: exchange-rates-модуль
+  'err.exchangeRate.notFound',
+  'err.exchangeRate.dateExists',
+  'err.exchangeRate.baseCurrencyNotConfigured',
+  'err.exchangeRate.noRateForDate',
 ] as const;
 
 export type ValidationKey = (typeof VALIDATION_KEYS)[number];

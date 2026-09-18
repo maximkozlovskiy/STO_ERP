@@ -4,8 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CreateCurrencyDto, CurrencyResponseDto, UpdateCurrencyDto } from './currencies.dto';
 
 const TTL = 300;
@@ -39,7 +41,7 @@ export class CurrenciesService {
 
   async findOne(orgId: string, id: string): Promise<CurrencyResponseDto> {
     const item = await this.prisma.currency.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!item) throw new NotFoundException('Валюту не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -53,7 +55,9 @@ export class CurrenciesService {
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt) {
-        throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
+        throw new ConflictException(
+          translateError('err.currency.codeExists', getLocale(), { code: dto.code }),
+        );
       }
       // Soft-deleted row occupies the unique index — resurrect it
       const restored = await this.prisma.currency.update({
@@ -85,14 +89,17 @@ export class CurrenciesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!existing) throw new NotFoundException('Валюту не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     // Системну валюту (UAH) не можна перейменовувати/змінювати код; NBU-налаштування (fetch/markup)
     // лишаються редагованими (операційні, не ідентичність). Дзеркалить units isSystem-guard.
     if (existing.isSystem && (dto.code !== undefined || dto.name !== undefined)) {
-      throw new BadRequestException('Системну валюту не можна перейменовувати або змінювати код');
+      throw new BadRequestException(translateError('err.currency.systemImmutable', getLocale()));
     }
     if (dto.code && dto.code !== existing.code && duplicate) {
-      throw new ConflictException(`Валюта з кодом "${dto.code}" вже існує`);
+      throw new ConflictException(
+        translateError('err.currency.codeExists', getLocale(), { code: dto.code }),
+      );
     }
 
     // Defense-in-depth: updateMany with orgId guard (sto-review pattern 2026-05-30).
@@ -100,7 +107,8 @@ export class CurrenciesService {
       where: { id, orgId, deletedAt: null },
       data: dto,
     });
-    if (updated.count === 0) throw new NotFoundException('Валюту не знайдено');
+    if (updated.count === 0)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     const item = await this.prisma.currency.findFirstOrThrow({ where: { id, orgId } });
     await this.cache.del(cacheKey(orgId));
     return this.toDto(item);
@@ -112,15 +120,17 @@ export class CurrenciesService {
       where: { id, orgId, deletedAt: null },
       select: { isSystem: true },
     });
-    if (!existing) throw new NotFoundException('Валюту не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     if (existing.isSystem) {
-      throw new BadRequestException('Системну валюту не можна видалити');
+      throw new BadRequestException(translateError('err.currency.systemUndeletable', getLocale()));
     }
     const result = await this.prisma.currency.updateMany({
       where: { id, orgId, deletedAt: null, isSystem: false },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Валюту не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
   }
 
