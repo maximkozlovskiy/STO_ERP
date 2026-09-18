@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -30,10 +31,11 @@ interface CalendarStatsTabProps {
 }
 
 // Static period switcher tuples — module-level, не пересоздається на кожен render.
+// Друга позиція — i18n-ключ; переклад виконується у місці рендера.
 const PERIOD_OPTIONS: ReadonlyArray<readonly [StatsPeriod, string]> = [
-  ['day', 'День'],
-  ['month', 'Місяць'],
-  ['custom', 'Довільний'],
+  ['day', 'stats.periodDay'],
+  ['month', 'stats.periodMonth'],
+  ['custom', 'stats.periodCustom'],
 ] as const;
 
 export function CalendarStatsTab({
@@ -54,6 +56,7 @@ export function CalendarStatsTab({
   windowStart,
   windowEnd,
 }: CalendarStatsTabProps) {
+  const { t } = useTranslation('calendar');
   const WINDOW_H = windowEnd - windowStart;
 
   // sto-optimize: всі derived metrics через useMemo щоб typing у parent date-inputs
@@ -119,15 +122,15 @@ export function CalendarStatsTab({
       <div className="bg-surface border border-border rounded-xl p-4 flex flex-wrap items-end gap-4">
         {/* Pill switcher */}
         <div>
-          <p className="text-xs text-muted-foreground mb-1.5">Період</p>
+          <p className="text-xs text-muted-foreground mb-1.5">{t('stats.period')}</p>
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {PERIOD_OPTIONS.map(([v, label]) => (
+            {PERIOD_OPTIONS.map(([v, labelKey]) => (
               <button
                 key={v}
                 onClick={() => setStatsPeriod(v)}
                 className={`px-3 py-1.5 transition-colors ${statsPeriod === v ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
               >
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -136,7 +139,7 @@ export function CalendarStatsTab({
         {/* Day: date picker */}
         {statsPeriod === 'day' && (
           <div>
-            <p className="text-xs text-muted-foreground mb-1.5">День</p>
+            <p className="text-xs text-muted-foreground mb-1.5">{t('stats.day')}</p>
             <DatePickerInput value={date} onChange={setDate} className="w-40" />
           </div>
         )}
@@ -145,7 +148,7 @@ export function CalendarStatsTab({
         {statsPeriod === 'month' && (
           <div className="flex items-center gap-2">
             <div>
-              <p className="text-xs text-muted-foreground mb-1.5">Місяць</p>
+              <p className="text-xs text-muted-foreground mb-1.5">{t('stats.monthLabel')}</p>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
@@ -181,7 +184,7 @@ export function CalendarStatsTab({
         {statsPeriod === 'custom' && (
           <>
             <div>
-              <p className="text-xs text-muted-foreground mb-1.5">Від</p>
+              <p className="text-xs text-muted-foreground mb-1.5">{t('stats.from')}</p>
               <DatePickerInput
                 value={statsFrom}
                 onChange={v => {
@@ -192,7 +195,7 @@ export function CalendarStatsTab({
               />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground mb-1.5">До</p>
+              <p className="text-xs text-muted-foreground mb-1.5">{t('stats.to')}</p>
               <DatePickerInput value={statsTo} onChange={setStatsTo} className="w-36" />
             </div>
           </>
@@ -203,37 +206,41 @@ export function CalendarStatsTab({
 
       {/* Validation hints */}
       {statsPeriod === 'custom' && statsFrom && statsTo && statsFrom > statsTo && (
-        <p className="text-xs text-destructive-text">Дата «Від» повинна бути не пізніше за «До».</p>
+        <p className="text-xs text-destructive-text">{t('stats.fromAfterTo')}</p>
       )}
       {statsRangeTooLong && (
         <p className="text-xs text-warning-text">
-          Діапазон задовгий — показано перші {STATS_MAX_DAYS} днів. Звузьте період для повної
-          статистики.
+          {t('stats.rangeTooLong', { max: STATS_MAX_DAYS })}
         </p>
       )}
-      {statsError && (
-        <p className="text-xs text-destructive-text">
-          Не вдалося завантажити статистику. Перевірте з&#39;єднання та спробуйте ще раз.
-        </p>
-      )}
+      {statsError && <p className="text-xs text-destructive-text">{t('stats.loadError')}</p>}
 
       {/* Period label */}
       <p className="text-xs text-muted-foreground">
         {statsRange
-          ? `${days} ${days === 1 ? 'день' : days < 5 ? 'дні' : 'днів'} · ${periodLabel}`
-          : 'Оберіть діапазон'}
+          ? t('stats.periodSummary', {
+              days: t(
+                days === 1 ? 'stats.daysOne' : days < 5 ? 'stats.daysFew' : 'stats.daysMany',
+                { count: days },
+              ),
+              label: periodLabel,
+            })
+          : t('stats.selectRange')}
       </p>
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Всього записів', value: String(statsSlots.length) },
+          { label: t('stats.cardTotalRecords'), value: String(statsSlots.length) },
           {
-            label: 'Загальний час',
-            value: `${Math.floor(totalMinAll / 60)}г ${Math.round(totalMinAll % 60)}хв`,
+            label: t('stats.cardTotalTime'),
+            value: t('stats.hoursMinutes', {
+              h: Math.floor(totalMinAll / 60),
+              m: Math.round(totalMinAll % 60),
+            }),
           },
           {
-            label: 'Середнє завант.',
+            label: t('stats.cardAvgLoad'),
             value: avgLoadPct !== null ? `${avgLoadPct}%` : '—',
           },
         ].map(({ label, value }) => (
@@ -250,16 +257,17 @@ export function CalendarStatsTab({
           <thead>
             <tr className="border-b border-border bg-secondary">
               <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
-                Пост
+                {t('stats.colLift')}
               </th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">
-                Записів
+                {t('stats.colRecords')}
               </th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">
-                Час
+                {t('stats.colTime')}
               </th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
-                Завантаженість {days > 1 ? `(за ${days} д.)` : '(11 год)'}
+                {t('stats.colLoad')}
+                {days > 1 ? t('stats.colLoadRange', { days }) : t('stats.colLoadDefault')}
               </th>
             </tr>
           </thead>
@@ -272,7 +280,10 @@ export function CalendarStatsTab({
                 <td className="px-4 py-3 font-medium text-foreground">{lift.name}</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">{count}</td>
                 <td className="px-4 py-3 text-center text-muted-foreground">
-                  {Math.floor(totalMinutes / 60)}г {Math.round(totalMinutes % 60)}хв
+                  {t('stats.hoursMinutes', {
+                    h: Math.floor(totalMinutes / 60),
+                    m: Math.round(totalMinutes % 60),
+                  })}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -298,7 +309,7 @@ export function CalendarStatsTab({
             {liftStats.length === 0 && !statsLoading && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">
-                  {statsRange ? 'Записів за цей період немає' : 'Оберіть діапазон дат'}
+                  {statsRange ? t('stats.noRecordsPeriod') : t('stats.selectDateRange')}
                 </td>
               </tr>
             )}

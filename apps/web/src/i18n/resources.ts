@@ -15,6 +15,7 @@ import ukCounterparties from './locales/uk/counterparties.json';
 import ukCatalog from './locales/uk/catalog.json';
 import ukNdi from './locales/uk/ndi.json';
 import ukCash from './locales/uk/cash.json';
+import ukCalendar from './locales/uk/calendar.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -31,6 +32,7 @@ import enCounterparties from './locales/en/counterparties.json';
 import enCatalog from './locales/en/catalog.json';
 import enNdi from './locales/en/ndi.json';
 import enCash from './locales/en/cash.json';
+import enCalendar from './locales/en/calendar.json';
 
 export const resources = {
   uk: {
@@ -49,6 +51,7 @@ export const resources = {
     catalog: ukCatalog,
     ndi: ukNdi,
     cash: ukCash,
+    calendar: ukCalendar,
   },
   en: {
     common: enCommon,
@@ -66,5 +69,6 @@ export const resources = {
     catalog: enCatalog,
     ndi: enNdi,
     cash: enCash,
+    calendar: enCalendar,
   },
 } as const;

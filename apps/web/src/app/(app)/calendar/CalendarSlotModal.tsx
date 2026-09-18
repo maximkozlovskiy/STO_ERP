@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction, RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import dynamic from 'next/dynamic';
 import { UserPlus, FilePlus, Trash2, ExternalLink } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -100,6 +101,7 @@ interface WOPreview {
 }
 
 function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const { t } = useTranslation('calendar');
   const [wo, setWo] = useState<WOPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -113,7 +115,7 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
         if (!cancelled) setWo(data);
       })
       .catch(e => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (!cancelled) setError(e instanceof Error ? e.message : t('slot.wo.loadError'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -121,16 +123,16 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   const statusLabel = wo ? woStatusLabel(wo.status) : '';
   const statusVariant = wo ? (WO_STATUS_BADGE[wo.status] ?? 'secondary') : 'secondary';
 
   return (
-    <Modal open onClose={onClose} title="Наряд" size="md">
+    <Modal open onClose={onClose} title={t('slot.wo.title')} size="md">
       {loading ? (
         <div className="flex justify-center py-8">
-          <span className="text-muted-foreground text-sm">Завантаження…</span>
+          <span className="text-muted-foreground text-sm">{t('slot.wo.loading')}</span>
         </div>
       ) : error ? (
         <p className="text-sm text-destructive-text">{error}</p>
@@ -146,25 +148,25 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
           <div className="grid grid-cols-2 gap-3 text-[13px]">
             {wo.counterpartyName && (
               <div>
-                <div className="text-muted-foreground mb-0.5">Клієнт</div>
+                <div className="text-muted-foreground mb-0.5">{t('slot.wo.client')}</div>
                 <div className="text-foreground font-medium">{wo.counterpartyName}</div>
               </div>
             )}
             {wo.vehicleSummary && (
               <div>
-                <div className="text-muted-foreground mb-0.5">Автомобіль</div>
+                <div className="text-muted-foreground mb-0.5">{t('slot.wo.vehicle')}</div>
                 <div className="text-foreground font-medium">{wo.vehicleSummary}</div>
               </div>
             )}
             {wo.documentDate && (
               <div>
-                <div className="text-muted-foreground mb-0.5">Дата документа</div>
+                <div className="text-muted-foreground mb-0.5">{t('slot.wo.documentDate')}</div>
                 <div className="text-foreground">{fmtDate(wo.documentDate)}</div>
               </div>
             )}
             {wo.plannedAt && (
               <div>
-                <div className="text-muted-foreground mb-0.5">Заплановано</div>
+                <div className="text-muted-foreground mb-0.5">{t('slot.wo.planned')}</div>
                 <div className="text-foreground">{fmtDate(wo.plannedAt)}</div>
               </div>
             )}
@@ -172,33 +174,33 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
 
           {wo.description && (
             <div className="text-[13px]">
-              <div className="text-muted-foreground mb-0.5">Опис</div>
+              <div className="text-muted-foreground mb-0.5">{t('slot.wo.description')}</div>
               <div className="text-foreground">{wo.description}</div>
             </div>
           )}
 
           <div className="grid grid-cols-3 gap-2 bg-secondary rounded-lg p-3 text-[13px]">
             <div>
-              <div className="text-muted-foreground mb-0.5">Роботи</div>
+              <div className="text-muted-foreground mb-0.5">{t('slot.wo.labor')}</div>
               <div className="font-semibold text-foreground">{fmtMoney(wo.totalLabor)} ₴</div>
             </div>
             <div>
-              <div className="text-muted-foreground mb-0.5">Запчастини</div>
+              <div className="text-muted-foreground mb-0.5">{t('slot.wo.parts')}</div>
               <div className="font-semibold text-foreground">{fmtMoney(wo.totalParts)} ₴</div>
             </div>
             <div>
-              <div className="text-muted-foreground mb-0.5">Разом</div>
+              <div className="text-muted-foreground mb-0.5">{t('slot.wo.total')}</div>
               <div className="font-semibold text-primary">{fmtMoney(wo.totalAmount)} ₴</div>
             </div>
           </div>
 
           <div className="flex justify-between items-center pt-1">
             <Button variant="outline" onClick={onClose}>
-              Закрити
+              {t('slot.wo.close')}
             </Button>
             <Button variant="ghost" onClick={() => window.open(`/work-orders/${wo.id}`, '_blank')}>
               <ExternalLink className="h-4 w-4 mr-1.5" />
-              Відкрити повністю
+              {t('slot.wo.openFull')}
             </Button>
           </div>
         </div>
@@ -275,6 +277,7 @@ export function CalendarSlotModal({
   cpDisplay,
   setCpDisplay,
 }: CalendarSlotModalProps) {
+  const { t } = useTranslation('calendar');
   const { confirm, dialogProps } = useConfirm();
   const {
     conflict: calConflict,
@@ -350,7 +353,7 @@ export function CalendarSlotModal({
     // whitespace-only не рахується як назва — інакше backend поверне 400 із загальним
     // повідомленням, і користувач не побачить inline-помилки.
     if (!newCp.firstName.trim() && !newCp.lastName.trim() && !newCp.companyName.trim()) {
-      setCpWizardError('Вкажіть назву компанії або ім’я/прізвище контрагента');
+      setCpWizardError(t('wizard.nameRequired'));
       return;
     }
     setSavingCp(true);
@@ -375,7 +378,7 @@ export function CalendarSlotModal({
       if (defaultGarage) setCreatedGarageId(defaultGarage.id);
       setNewCpStep(2);
     } catch (e: unknown) {
-      setCpWizardError(e instanceof Error ? e.message : 'Помилка');
+      setCpWizardError(e instanceof Error ? e.message : t('slot.errGeneric'));
     } finally {
       setSavingCp(false);
     }
@@ -384,7 +387,7 @@ export function CalendarSlotModal({
   const saveWizardStep2 = async (skip = false) => {
     if (!skip) {
       if (!newVehicle.make.trim() || !newVehicle.model.trim()) {
-        setCpWizardError('Вкажіть марку та модель авто');
+        setCpWizardError(t('wizard.makeModelRequired'));
         return;
       }
       setSavingCp(true);
@@ -402,7 +405,7 @@ export function CalendarSlotModal({
           }),
         });
       } catch (e: unknown) {
-        setCpWizardError(e instanceof Error ? e.message : 'Помилка');
+        setCpWizardError(e instanceof Error ? e.message : t('slot.errGeneric'));
         setSavingCp(false);
         return;
       } finally {
@@ -412,7 +415,7 @@ export function CalendarSlotModal({
     const display =
       newCp.companyName ||
       [newCp.lastName, newCp.firstName].filter(Boolean).join(' ') ||
-      '(без імені)';
+      t('wizard.noName');
     setCpDisplay(display);
     setForm(f => ({ ...f, counterpartyId: createdCpId, counterpartyDisplay: display }));
     setNewCpOpen(false);
@@ -582,7 +585,7 @@ export function CalendarSlotModal({
 
   const addSlot = async () => {
     if (!form.startAt || !form.endAt) {
-      setError('Вкажіть час початку та завершення');
+      setError(t('slot.errStartEndRequired'));
       return;
     }
     // overflow: endAt (next-day, e.g. "10:30") < startAt ("19:00") is valid
@@ -595,27 +598,27 @@ export function CalendarSlotModal({
     const isOverflowSlot =
       !isNaN(nh2) && nh2 > 0 && startMin2 + Math.round(nh2 * 60) > SPLIT_DAY_END_H * 60;
     if (!isOverflowSlot && form.endAt <= form.startAt) {
-      setError('Час завершення повинен бути після часу початку');
+      setError(t('slot.errEndAfterStart'));
       return;
     }
     if (!form.counterpartyId && !form.workOrderId) {
-      setError('Оберіть клієнта');
+      setError(t('slot.errSelectClient'));
       return;
     }
     if (!form.liftId) {
-      setError('Оберіть підйомник');
+      setError(t('slot.errSelectLift'));
       return;
     }
     if (!UUID_RE.test(form.liftId)) {
-      setError('Некоректний підйомник — оберіть зі списку');
+      setError(t('slot.errInvalidLift'));
       return;
     }
     if (form.employeeId && !UUID_RE.test(form.employeeId)) {
-      setError('Некоректний співробітник — оберіть зі списку');
+      setError(t('slot.errInvalidEmployee'));
       return;
     }
     if (form.workOrderId && !UUID_RE.test(form.workOrderId)) {
-      setError('Оберіть наряд зі списку');
+      setError(t('slot.errSelectWorkOrder'));
       return;
     }
     if (!editingSlotId && nowMs) {
@@ -623,13 +626,13 @@ export function CalendarSlotModal({
       // .toLocaleDateString({ timeZone: KYIV_TZ }) — той самий sv-SE Kyiv-TZ формат.
       const todayKyiv = toDateString(new Date(nowMs));
       if (date < todayKyiv) {
-        setError('Не можна створити запис у минулому');
+        setError(t('slot.errPastCreate'));
         return;
       }
       if (date === todayKyiv) {
         const slotHour = parseInt(form.startAt.split(':')[0] ?? '0', 10);
         if (slotHour < minHour) {
-          setError('Не можна створити запис у минулому');
+          setError(t('slot.errPastCreate'));
           return;
         }
       }
@@ -652,7 +655,7 @@ export function CalendarSlotModal({
       : form.endAt;
     const endIso = kyivDateTimeToISO(date, endTimeForSave);
     if (!date || !form.startAt || !form.endAt || !startIso || !endIso) {
-      setError('Вкажіть коректні дату та час');
+      setError(t('slot.errInvalidDateTime'));
       return;
     }
     setSaving(true);
@@ -673,7 +676,7 @@ export function CalendarSlotModal({
           method: 'PATCH',
           body: JSON.stringify(body),
         });
-        toast.success('Слот оновлено');
+        toast.success(t('slot.toastUpdated'));
       } else {
         const res = await apiFetch<{ slots: CalendarSlot[] }>('/calendar/slots', {
           method: 'POST',
@@ -683,15 +686,21 @@ export function CalendarSlotModal({
           const s1 = res.slots[0]!;
           const s2 = res.slots[1]!;
           toast.success(
-            `Слот розбито на 2 дні: ${fmtTime(s1.startAt)}–${fmtTime(s1.endAt)} та ${fmtKyivDate(s2.startAt)} ${fmtTime(s2.startAt)}–${fmtTime(s2.endAt)}`,
+            t('slot.toastSplit', {
+              s1Start: fmtTime(s1.startAt),
+              s1End: fmtTime(s1.endAt),
+              s2Date: fmtKyivDate(s2.startAt),
+              s2Start: fmtTime(s2.startAt),
+              s2End: fmtTime(s2.endAt),
+            }),
           );
         } else {
-          toast.success('Слот створено');
+          toast.success(t('slot.toastCreated'));
         }
       }
       onSaved();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      const msg = e instanceof Error ? e.message : t('slot.errSaveFallback');
       setError(msg);
       toast.error(msg);
     } finally {
@@ -730,8 +739,8 @@ export function CalendarSlotModal({
           <h3 className="font-semibold text-foreground text-sm">
             {editingSlotId
               ? isEditingPast
-                ? 'Перегляд слоту'
-                : 'Редагування слоту'
+                ? t('slot.titleViewPast')
+                : t('slot.titleEdit')
               : pendingSlot
                 ? (() => {
                     const s = decimalHoursToHHMM(pendingSlot.startH);
@@ -742,28 +751,31 @@ export function CalendarSlotModal({
                         const d = new Date(`${date}T12:00:00Z`);
                         d.setUTCDate(d.getUTCDate() + 1);
                         const endDmy = fmtKyivDate(d.toISOString());
-                        return `Новий слот ${startDmy} ${s} – ${endDmy} ${e}`;
+                        return t('slot.titleNewRange', {
+                          start: `${startDmy} ${s}`,
+                          end: `${endDmy} ${e}`,
+                        });
                       } catch {
-                        return `Новий слот ${startDmy} ${s} – ${e}`;
+                        return t('slot.titleNewRange', { start: `${startDmy} ${s}`, end: e });
                       }
                     }
-                    return `Новий слот ${startDmy} ${s} – ${e}`;
+                    return t('slot.titleNewRange', { start: `${startDmy} ${s}`, end: e });
                   })()
-                : `Новий слот на ${date}`}
+                : t('slot.titleNewOn', { date })}
           </h3>
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
 
           {isEditingPast && (
             <div className="flex items-center gap-2 text-[13px] text-warning-text bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
               <span>🔒</span>
-              <span>Слот у закритому періоді — редагування недоступне</span>
+              <span>{t('slot.pastLocked')}</span>
             </div>
           )}
 
           <div className="grid grid-cols-4 gap-3 items-start">
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                Підйомник <span className="text-destructive">*</span>
+                {t('slot.fieldLift')} <span className="text-destructive">*</span>
               </label>
               <Select
                 value={form.liftId}
@@ -771,7 +783,7 @@ export function CalendarSlotModal({
                 onChange={e => setForm(f => ({ ...f, liftId: e.target.value }))}
                 className="h-8 text-[13px] py-0.5 px-2 pr-7"
               >
-                <option value="">— будь-який —</option>
+                <option value="">{t('slot.liftAny')}</option>
                 {lifts.map(l => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -781,7 +793,7 @@ export function CalendarSlotModal({
             </div>
             <div>
               <DateTimePickerInput
-                label="Початок"
+                label={t('slot.fieldStart')}
                 value={date && form.startAt ? `${date}T${form.startAt}` : ''}
                 minHour={editingSlotId ? windowStart : minHour}
                 maxHour={windowEnd - 1}
@@ -812,7 +824,10 @@ export function CalendarSlotModal({
             </div>
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                Норм-год <span className="font-normal text-muted-foreground/70">(авто кінець)</span>
+                {t('slot.fieldNormoHours')}{' '}
+                <span className="font-normal text-muted-foreground/70">
+                  {t('slot.normoHoursHint')}
+                </span>
               </label>
               <Input
                 type="number"
@@ -837,7 +852,7 @@ export function CalendarSlotModal({
                     return { ...f, normoHours: nh };
                   });
                 }}
-                placeholder="1.5"
+                placeholder={t('slot.normoHoursPlaceholder')}
               />
               {/* Overflow preview — uses backend split constants (SPLIT_DAY_END_H=20),
                   NOT the dynamic windowEnd, so the warning matches what the backend
@@ -867,8 +882,13 @@ export function CalendarSlotModal({
                 })();
                 return (
                   <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                    ⚠ Буде розбито: {form.startAt}–{pad(SPLIT_DAY_END_H)}:00 + {nextDayIso}{' '}
-                    {pad(SPLIT_DAY_START_H)}:00–{pad(day2H)}:{pad(day2M)}
+                    {t('slot.splitWarning', {
+                      start: form.startAt,
+                      splitEnd: `${pad(SPLIT_DAY_END_H)}:00`,
+                      nextDay: nextDayIso,
+                      dayStart: `${pad(SPLIT_DAY_START_H)}:00`,
+                      dayEnd: `${pad(day2H)}:${pad(day2M)}`,
+                    })}
                   </p>
                 );
               })()}
@@ -892,7 +912,7 @@ export function CalendarSlotModal({
                 })();
                 return (
                   <DateTimePickerInput
-                    label="Кінець"
+                    label={t('slot.fieldEnd')}
                     value={endDate && form.endAt ? `${endDate}T${form.endAt}` : ''}
                     minHour={windowStart}
                     maxHour={23}
@@ -916,14 +936,14 @@ export function CalendarSlotModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                Клієнт <span className="text-destructive-text">*</span>
+                {t('slot.fieldClient')} <span className="text-destructive-text">*</span>
               </label>
               <div className="flex items-center gap-1">
                 <div className="flex-1 min-w-0">
                   <EntityPickerField<CpItem>
                     className="h-8 text-[13px]"
                     display={form.counterpartyDisplay}
-                    placeholder="Пошук клієнта…"
+                    placeholder={t('slot.clientPlaceholder')}
                     disabled={isEditingPast}
                     hidePick={isEditingPast}
                     onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
@@ -936,8 +956,10 @@ export function CalendarSlotModal({
                         item.id !== form.counterpartyId
                       ) {
                         const ok = await confirm({
-                          title: "Зміна клієнта очистить прив'язаний наряд?",
-                          message: `Прив'язаний наряд «${form.workOrderDisplay}» буде відкріплено.`,
+                          title: t('slot.changeClientConfirmTitle'),
+                          message: t('slot.changeClientConfirmMessage', {
+                            wo: form.workOrderDisplay,
+                          }),
                           variant: 'destructive',
                         });
                         if (!ok) return;
@@ -984,7 +1006,7 @@ export function CalendarSlotModal({
                     variant="outline"
                     size="sm"
                     onClick={openNewCpWizard}
-                    title="Новий клієнт"
+                    title={t('slot.newClientTitle')}
                     className="h-8 w-8 p-0 shrink-0"
                   >
                     <UserPlus className="h-4 w-4" />
@@ -1003,7 +1025,7 @@ export function CalendarSlotModal({
 
             <div>
               <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-                Автомобіль <span className="text-destructive-text">*</span>
+                {t('slot.fieldVehicle')} <span className="text-destructive-text">*</span>
               </label>
               <select
                 className="w-full h-8 rounded-md border border-input bg-background px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
@@ -1013,11 +1035,11 @@ export function CalendarSlotModal({
               >
                 {cpVehicles.length === 0 ? (
                   <option value="">
-                    {form.counterpartyId ? 'Немає авто' : '— оберіть клієнта —'}
+                    {form.counterpartyId ? t('slot.noVehicles') : t('slot.selectClientFirst')}
                   </option>
                 ) : (
                   <>
-                    <option value="">— оберіть авто —</option>
+                    <option value="">{t('slot.selectVehicle')}</option>
                     {cpVehicles.map(v => (
                       <option key={v.id} value={v.id}>
                         {[v.make, v.model, v.licensePlate].filter(Boolean).join(' ')}
@@ -1032,14 +1054,14 @@ export function CalendarSlotModal({
           {/* Наряд */}
           <div>
             <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-              Наряд
+              {t('slot.fieldWorkOrder')}
             </label>
             <div className="flex items-center gap-1">
               <div className="flex-1 min-w-0">
                 <EntityPickerField<WoItem>
                   className="h-8 text-[13px]"
                   display={form.workOrderDisplay}
-                  placeholder="Пошук наряду…"
+                  placeholder={t('slot.workOrderPlaceholder')}
                   disabled={isEditingPast}
                   hidePick={isEditingPast}
                   onOpenDetail={
@@ -1063,8 +1085,10 @@ export function CalendarSlotModal({
                       item.counterpartyId !== form.counterpartyId
                     ) {
                       const replace = await confirm({
-                        title: 'Замінити поточного клієнта?',
-                        message: `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).`,
+                        title: t('slot.replaceClientTitle'),
+                        message: t('slot.replaceClientMessage', {
+                          client: item.counterpartyName ?? item.counterpartyId,
+                        }),
                       });
                       if (replace) {
                         const cpDisp = item.counterpartyName ?? '';
@@ -1114,7 +1138,7 @@ export function CalendarSlotModal({
                     setCreateWoEditId(undefined);
                     setCreateWoOpen(true);
                   }}
-                  title="Новий наряд"
+                  title={t('slot.newWorkOrderTitle')}
                   className="h-8 w-8 p-0 shrink-0"
                 >
                   <FilePlus className="h-4 w-4" />
@@ -1127,7 +1151,7 @@ export function CalendarSlotModal({
           <Modal
             open={newCpOpen}
             onClose={() => setNewCpOpen(false)}
-            title={newCpStep === 1 ? 'Новий клієнт' : 'Автомобіль клієнта'}
+            title={newCpStep === 1 ? t('wizard.titleClient') : t('wizard.titleVehicle')}
             size="md"
           >
             <div className="flex items-center gap-2 mb-5">
@@ -1141,7 +1165,7 @@ export function CalendarSlotModal({
                   <span
                     className={`text-xs ${s === newCpStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
                   >
-                    {s === 1 ? 'Клієнт' : 'Авто'}
+                    {s === 1 ? t('wizard.stepClient') : t('wizard.stepVehicle')}
                   </span>
                   {s < 2 && <div className="w-8 h-px bg-border mx-1" />}
                 </div>
@@ -1158,34 +1182,34 @@ export function CalendarSlotModal({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="Ім'я"
-                    placeholder="Іван"
+                    label={t('wizard.firstName')}
+                    placeholder={t('wizard.firstNamePlaceholder')}
                     value={newCp.firstName}
                     onChange={e => setNewCp(v => ({ ...v, firstName: e.target.value }))}
                   />
                   <Input
-                    label="Прізвище"
-                    placeholder="Коваль"
+                    label={t('wizard.lastName')}
+                    placeholder={t('wizard.lastNamePlaceholder')}
                     value={newCp.lastName}
                     onChange={e => setNewCp(v => ({ ...v, lastName: e.target.value }))}
                   />
                 </div>
                 <Input
-                  label="Назва компанії"
-                  placeholder="ТОВ «Авто»"
+                  label={t('wizard.companyName')}
+                  placeholder={t('wizard.companyNamePlaceholder')}
                   value={newCp.companyName}
                   onChange={e => setNewCp(v => ({ ...v, companyName: e.target.value }))}
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <PhoneInput
-                    label="Телефон"
+                    label={t('wizard.phone')}
                     value={newCp.phone}
                     onChange={e => setNewCp(v => ({ ...v, phone: e.target.value }))}
                   />
                   <Input
-                    label="Email"
+                    label={t('wizard.email')}
                     type="email"
-                    placeholder="ivan@example.com"
+                    placeholder={t('wizard.emailPlaceholder')}
                     value={newCp.email}
                     onChange={e => setNewCp(v => ({ ...v, email: e.target.value }))}
                   />
@@ -1196,10 +1220,10 @@ export function CalendarSlotModal({
                     loading={savingCp}
                     disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}
                   >
-                    Далі →
+                    {t('wizard.next')}
                   </Button>
                   <Button variant="outline" onClick={() => setNewCpOpen(false)}>
-                    Скасувати
+                    {t('wizard.cancel')}
                   </Button>
                 </div>
               </div>
@@ -1209,35 +1233,35 @@ export function CalendarSlotModal({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="Марка"
-                    placeholder="Toyota"
+                    label={t('wizard.make')}
+                    placeholder={t('wizard.makePlaceholder')}
                     value={newVehicle.make}
                     onChange={e => setNewVehicle(v => ({ ...v, make: e.target.value }))}
                   />
                   <Input
-                    label="Модель"
-                    placeholder="Camry"
+                    label={t('wizard.model')}
+                    placeholder={t('wizard.modelPlaceholder')}
                     value={newVehicle.model}
                     onChange={e => setNewVehicle(v => ({ ...v, model: e.target.value }))}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Input
-                    label="Рік"
-                    placeholder="2021"
+                    label={t('wizard.year')}
+                    placeholder={t('wizard.yearPlaceholder')}
                     value={newVehicle.year}
                     onChange={e => setNewVehicle(v => ({ ...v, year: e.target.value }))}
                   />
                   <Input
-                    label="Держ. номер"
-                    placeholder="АА 1234 ВВ"
+                    label={t('wizard.licensePlate')}
+                    placeholder={t('wizard.licensePlatePlaceholder')}
                     value={newVehicle.licensePlate}
                     onChange={e => setNewVehicle(v => ({ ...v, licensePlate: e.target.value }))}
                   />
                 </div>
                 <Input
-                  label="VIN (необов'язково)"
-                  placeholder="1HGBH41JXMN109186"
+                  label={t('wizard.vin')}
+                  placeholder={t('wizard.vinPlaceholder')}
                   value={newVehicle.vin}
                   onChange={e => setNewVehicle(v => ({ ...v, vin: e.target.value }))}
                 />
@@ -1247,10 +1271,10 @@ export function CalendarSlotModal({
                     loading={savingCp}
                     disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}
                   >
-                    Зберегти
+                    {t('wizard.save')}
                   </Button>
                   <Button variant="outline" onClick={() => saveWizardStep2(true)}>
-                    Пропустити
+                    {t('wizard.skip')}
                   </Button>
                 </div>
               </div>
@@ -1260,7 +1284,7 @@ export function CalendarSlotModal({
           {/* Notes */}
           <div>
             <label className="block text-[13px] font-medium text-muted-foreground mb-1">
-              Нотатки
+              {t('slot.fieldNotes')}
             </label>
             <Input
               value={form.notes}
@@ -1274,16 +1298,16 @@ export function CalendarSlotModal({
           <SearchPickerModal<CpItem>
             open={cpPickerOpen}
             onClose={() => setCpPickerOpen(false)}
-            title="Оберіть клієнта"
+            title={t('slot.cpPickerTitle')}
             selectedId={form.counterpartyId}
             fetchItems={fetchCpItems}
-            searchPlaceholder="Ім'я, телефон, компанія..."
-            emptyText="Клієнтів не знайдено"
+            searchPlaceholder={t('slot.cpPickerSearchPlaceholder')}
+            emptyText={t('slot.cpPickerEmpty')}
             onSelect={async item => {
               if (form.workOrderId && form.counterpartyId && item.id !== form.counterpartyId) {
                 const ok = await confirm({
-                  title: "Зміна клієнта очистить прив'язаний наряд?",
-                  message: `Прив'язаний наряд «${form.workOrderDisplay}» буде відкріплено.`,
+                  title: t('slot.changeClientConfirmTitle'),
+                  message: t('slot.changeClientConfirmMessage', { wo: form.workOrderDisplay }),
                   variant: 'destructive',
                 });
                 if (!ok) return;
@@ -1314,11 +1338,11 @@ export function CalendarSlotModal({
           <SearchPickerModal<WoItem>
             open={woPickerOpen}
             onClose={() => setWoPickerOpen(false)}
-            title={form.counterpartyId ? 'Наряди клієнта' : 'Оберіть наряд'}
+            title={form.counterpartyId ? t('slot.woPickerTitleForClient') : t('slot.woPickerTitle')}
             selectedId={form.workOrderId}
             fetchItems={fetchWoItems}
-            searchPlaceholder="Номер наряду..."
-            emptyText="Нарядів не знайдено"
+            searchPlaceholder={t('slot.woPickerSearchPlaceholder')}
+            emptyText={t('slot.woPickerEmpty')}
             renderItem={(item, selected) => (
               <div>
                 <div
@@ -1339,7 +1363,9 @@ export function CalendarSlotModal({
                     </span>
                   </div>
                 ) : (
-                  <div className="text-xs text-muted-foreground/60 mt-0.5">не заплановано</div>
+                  <div className="text-xs text-muted-foreground/60 mt-0.5">
+                    {t('slot.woNotPlanned')}
+                  </div>
                 )}
               </div>
             )}
@@ -1354,8 +1380,10 @@ export function CalendarSlotModal({
                 item.counterpartyId !== form.counterpartyId
               ) {
                 const replace = await confirm({
-                  title: 'Замінити поточного клієнта?',
-                  message: `Наряд належить іншому клієнту (${item.counterpartyName ?? item.counterpartyId}).`,
+                  title: t('slot.replaceClientTitle'),
+                  message: t('slot.replaceClientMessage', {
+                    client: item.counterpartyName ?? item.counterpartyId,
+                  }),
                 });
                 if (replace) {
                   const cpDisp = item.counterpartyName ?? '';
@@ -1400,10 +1428,11 @@ export function CalendarSlotModal({
           />
           {calConflict?.anyConflict && (
             <div className="rounded-md bg-warning-subtle border border-warning/20 px-3 py-2 text-[12px] text-warning">
-              ⚠{calConflict.liftConflict && ' Підйомник зайнятий.'}
-              {calConflict.employeeConflict && ' Механік зайнятий.'} Є перетин з{' '}
-              {calConflict.conflictSlots.length} слотом(и)
-              {conflictWoNumbers && <> ({conflictWoNumbers})</>}. Можна зберегти попри це.
+              ⚠{calConflict.liftConflict && t('slot.conflictLift')}
+              {calConflict.employeeConflict && t('slot.conflictEmployee')}
+              {t('slot.conflictOverlap', { count: calConflict.conflictSlots.length })}
+              {conflictWoNumbers && t('slot.conflictWoNumbers', { numbers: conflictWoNumbers })}
+              {t('slot.conflictCanSave')}
             </div>
           )}
           <div className="flex items-center gap-2">
@@ -1418,11 +1447,11 @@ export function CalendarSlotModal({
                   (!!form.counterpartyId && !form.vehicleId)
                 }
               >
-                {editingSlotId ? 'Оновити' : 'Зберегти'}
+                {editingSlotId ? t('slot.update') : t('slot.save')}
               </Button>
             )}
             <Button variant="outline" onClick={onClose}>
-              {isEditingPast ? 'Закрити' : 'Скасувати'}
+              {isEditingPast ? t('slot.close') : t('slot.cancel')}
             </Button>
             {editingSlotId && !isEditingPast && (
               <Button
@@ -1430,18 +1459,18 @@ export function CalendarSlotModal({
                 className="ml-auto"
                 onClick={async () => {
                   const ok = await confirm({
-                    title: 'Видалити слот?',
-                    message: 'Цю дію не можна скасувати.',
+                    title: t('slot.deleteTitle'),
+                    message: t('slot.deleteMessage'),
                     variant: 'destructive',
                   });
                   if (!ok) return;
                   setSaving(true);
                   try {
                     await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'DELETE' });
-                    toast.success('Слот видалено');
+                    toast.success(t('slot.toastDeleted'));
                     onDeleted();
                   } catch (e: unknown) {
-                    const msg = e instanceof Error ? e.message : 'Помилка видалення';
+                    const msg = e instanceof Error ? e.message : t('slot.errDeleteFallback');
                     setError(msg);
                     toast.error(msg);
                   } finally {
@@ -1450,7 +1479,7 @@ export function CalendarSlotModal({
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-1.5" />
-                Видалити
+                {t('slot.delete')}
               </Button>
             )}
           </div>

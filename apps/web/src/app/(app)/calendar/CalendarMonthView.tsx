@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
 import type { MonthSlots } from './calendar.types';
 import { toDateString } from './calendar.utils';
@@ -13,7 +14,15 @@ interface CalendarMonthViewProps {
   onDayClick: (dateStr: string) => void;
 }
 
-const DAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+const DAY_LABEL_KEYS = [
+  'month.weekdays.mon',
+  'month.weekdays.tue',
+  'month.weekdays.wed',
+  'month.weekdays.thu',
+  'month.weekdays.fri',
+  'month.weekdays.sat',
+  'month.weekdays.sun',
+] as const;
 
 export function CalendarMonthView({
   yearMonth,
@@ -23,6 +32,7 @@ export function CalendarMonthView({
   nowMs,
   onDayClick,
 }: CalendarMonthViewProps) {
+  const { t } = useTranslation('calendar');
   const [y, m] = yearMonth ? yearMonth.split('-').map(Number) : [0, 0];
   if (!y || !m) return null;
 
@@ -53,19 +63,19 @@ export function CalendarMonthView({
       )}
       {!monthLoading && monthError && (
         <div className="px-4 py-8 text-center text-sm text-destructive-text">
-          Не вдалося завантажити календар на місяць. Перевірте з&#39;єднання та оновіть сторінку.
+          {t('month.loadError')}
         </div>
       )}
       {!monthLoading && !monthError && (
         <>
           {/* Day-of-week header */}
           <div className="grid grid-cols-7 border-b border-border">
-            {DAY_LABELS.map(d => (
+            {DAY_LABEL_KEYS.map(dk => (
               <div
-                key={d}
+                key={dk}
                 className="py-2 text-center text-xs font-medium text-muted-foreground bg-secondary"
               >
-                {d}
+                {t(dk)}
               </div>
             ))}
           </div>
@@ -108,7 +118,14 @@ export function CalendarMonthView({
                     </span>
                     {total > 0 && (
                       <span className="text-[11px] text-primary font-medium leading-none">
-                        {total} {total === 1 ? 'запис' : total < 5 ? 'записи' : 'записів'}
+                        {t(
+                          total === 1
+                            ? 'month.recordsOne'
+                            : total < 5
+                              ? 'month.recordsFew'
+                              : 'month.recordsMany',
+                          { count: total },
+                        )}
                       </span>
                     )}
                   </button>

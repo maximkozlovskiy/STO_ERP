@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Plus,
   ChevronLeft,
@@ -28,13 +29,14 @@ import { useCalendarState, EMPTY_FORM } from './useCalendarState';
 const VIEW_SWITCHER: ReadonlyArray<
   readonly ['day' | 'month' | 'stats', string, typeof CalendarDays]
 > = [
-  ['day', 'День', CalendarDays],
-  ['month', 'Місяць', CalendarRange],
-  ['stats', 'Статистика', BarChart2],
+  ['day', 'views.day', CalendarDays],
+  ['month', 'views.month', CalendarRange],
+  ['stats', 'views.stats', BarChart2],
 ] as const;
 
 function CalendarPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC']);
+  const { t } = useTranslation('calendar');
 
   const cs = useCalendarState();
 
@@ -49,11 +51,11 @@ function CalendarPageClient() {
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
-        <h1 className="page-title">Календар</h1>
+        <h1 className="page-title">{t('title')}</h1>
         <div className="flex items-center gap-6">
           {/* View switcher */}
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {VIEW_SWITCHER.map(([v, label, Icon]) => (
+            {VIEW_SWITCHER.map(([v, labelKey, Icon]) => (
               <button
                 key={v}
                 type="button"
@@ -67,7 +69,7 @@ function CalendarPageClient() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 transition-colors ${cs.calView === v ? 'bg-primary text-primary-foreground' : 'bg-surface text-muted-foreground hover:bg-secondary'}`}
               >
                 <Icon className="h-3.5 w-3.5" />
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -93,7 +95,7 @@ function CalendarPageClient() {
                   }}
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Попередній
+                  {t('nav.prev')}
                 </Button>
                 <span className="text-sm font-medium text-foreground capitalize">
                   {cs.date ? fmtKyivMonthYear(cs.date) : ''}
@@ -109,7 +111,7 @@ function CalendarPageClient() {
                     );
                   }}
                 >
-                  Наступний
+                  {t('nav.next')}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <Button
@@ -117,7 +119,7 @@ function CalendarPageClient() {
                   size="sm"
                   onClick={() => cs.setDate(toDateString(new Date()))}
                 >
-                  Цей місяць
+                  {t('nav.thisMonth')}
                 </Button>
                 <Button
                   className="ml-auto"
@@ -131,31 +133,31 @@ function CalendarPageClient() {
                   }}
                 >
                   <Plus className="h-4 w-4" />
-                  Слот
+                  {t('nav.slot')}
                 </Button>
               </>
             ) : (
               <>
                 <Button variant="outline" size="sm" onClick={cs.prevDay}>
                   <ChevronLeft className="h-4 w-4" />
-                  Попередній
+                  {t('nav.prev')}
                 </Button>
                 <div className="flex items-center gap-2">
                   <DatePickerInput
                     value={cs.date}
                     onChange={cs.setDate}
-                    placeholder="Дата"
+                    placeholder={t('nav.datePlaceholder')}
                     className="w-48"
                   />
                   <span
                     className={`text-sm capitalize ${isPastDay ? 'text-destructive-text font-medium' : 'text-muted-foreground'}`}
                   >
                     {formatKyivDate(cs.date)}
-                    {isPastDay ? ' — минулий день' : ''}
+                    {isPastDay ? t('nav.pastDaySuffix') : ''}
                   </span>
                 </div>
                 <Button variant="outline" size="sm" onClick={cs.nextDay}>
-                  Наступний
+                  {t('nav.next')}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
                 <Button
@@ -163,7 +165,7 @@ function CalendarPageClient() {
                   size="sm"
                   onClick={() => cs.setDate(toDateString(new Date()))}
                 >
-                  Сьогодні
+                  {t('nav.today')}
                 </Button>
                 <Button
                   className="ml-auto"
@@ -177,7 +179,7 @@ function CalendarPageClient() {
                   }}
                 >
                   <Plus className="h-4 w-4" />
-                  Слот
+                  {t('nav.slot')}
                 </Button>
               </>
             )}

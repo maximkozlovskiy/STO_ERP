@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Trash2, Plus } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -41,6 +42,7 @@ const DraggableSlot = memo(function DraggableSlot({
   onEdit,
   onResizeStart,
 }: DraggableSlotProps) {
+  const { t } = useTranslation('calendar');
   const startH = kyivHours(slot.startAt);
   const endH = kyivHours(slot.endAt);
   const left = ((startH - windowStart) / totalHours) * 100;
@@ -85,7 +87,7 @@ const DraggableSlot = memo(function DraggableSlot({
           e.stopPropagation();
           onResizeStart(e, slot.id, 'start');
         }}
-        aria-label="Змінити початок"
+        aria-label={t('day.editStart')}
       >
         <div className="w-0.5 h-4 bg-white/50 rounded" />
       </div>
@@ -132,7 +134,7 @@ const DraggableSlot = memo(function DraggableSlot({
           e.stopPropagation();
           onResizeStart(e, slot.id, 'end');
         }}
-        aria-label="Змінити кінець"
+        aria-label={t('day.editEnd')}
       >
         <div className="w-0.5 h-4 bg-white/50 rounded" />
       </div>
@@ -159,6 +161,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
   onCancel,
   onPendingResizeStart,
 }: PendingSlotBlockProps) {
+  const { t } = useTranslation('calendar');
   const left = ((pending.startH - windowStart) / totalHours) * 100;
   const width = ((pending.endH - pending.startH) / totalHours) * 100;
 
@@ -181,7 +184,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
       data-pending-slot
       className="absolute top-1 bottom-1 bg-primary/20 border-2 border-primary rounded flex items-center overflow-hidden group select-none z-10"
       style={style}
-      title="Перетягніть щоб змінити підйомник або час. Натисніть щоб відкрити форму"
+      title={t('day.pendingTooltip')}
     >
       <div
         className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-20 hover:bg-primary/20 rounded-l flex items-center justify-center"
@@ -189,7 +192,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
           e.stopPropagation();
           onPendingResizeStart(e, 'start');
         }}
-        aria-label="Змінити початок"
+        aria-label={t('day.editStart')}
       >
         <div className="w-0.5 h-4 bg-primary/60 rounded" />
       </div>
@@ -211,7 +214,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
           onCancel();
         }}
         className="mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-primary/70 hover:text-primary shrink-0"
-        aria-label="Скасувати"
+        aria-label={t('day.cancel')}
       >
         <Plus className="h-3 w-3 rotate-45" />
       </button>
@@ -222,7 +225,7 @@ const PendingSlotBlock = memo(function PendingSlotBlock({
           e.stopPropagation();
           onPendingResizeStart(e, 'end');
         }}
-        aria-label="Змінити кінець"
+        aria-label={t('day.editEnd')}
       >
         <div className="w-0.5 h-4 bg-primary/60 rounded" />
       </div>
@@ -243,6 +246,7 @@ const BookingSlotBlock = memo(function BookingSlotBlock({
   windowEnd: number;
   totalHours: number;
 }) {
+  const { t } = useTranslation('calendar');
   const startH = kyivHours(slot.startAt);
   const endH = kyivHours(slot.endAt);
   if (endH <= windowStart || startH >= windowEnd) return null;
@@ -255,7 +259,7 @@ const BookingSlotBlock = memo(function BookingSlotBlock({
   return (
     <a
       href="/bookings"
-      title={`Онлайн-запис: ${slot.clientName} ${slot.clientPhone}\n${timeLabel}`}
+      title={`${t('booking.onlineTooltip', { name: slot.clientName, phone: slot.clientPhone })}\n${timeLabel}`}
       className="absolute top-1 bottom-1 rounded border-2 border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs overflow-hidden flex flex-col px-2 py-1 z-10 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
       style={{ left: `${left}%`, width: `${width}%` }}
     >
@@ -405,6 +409,7 @@ interface CalendarDayGridProps {
  * list. All state and handlers come from `useCalendarState()` via `state`.
  */
 export function CalendarDayGrid({ state }: CalendarDayGridProps) {
+  const { t } = useTranslation('calendar');
   const {
     loading,
     lifts,
@@ -448,15 +453,10 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
     <div className="flex-1 min-h-0 flex flex-col">
       {/* ── Hint ───────────────────────────────────────────────────────────── */}
       {!loading && lifts.length > 0 && !pendingSlot && !showAdd && (
-        <p className="text-xs text-muted-foreground mb-2">
-          Затисніть і перетягніть по рядку підйомника щоб створити слот. Тягніть краї для зміни
-          тривалості. Натисніть на проміжок щоб зберегти.
-        </p>
+        <p className="text-xs text-muted-foreground mb-2">{t('day.hintDraw')}</p>
       )}
       {pendingSlot && !showAdd && (
-        <p className="text-xs text-primary mb-2 font-medium">
-          ↑ Налаштуйте проміжок і натисніть на нього щоб відкрити форму збереження.
-        </p>
+        <p className="text-xs text-primary mb-2 font-medium">{t('day.hintPending')}</p>
       )}
 
       {/* ── Loading / empty ────────────────────────────────────────────────── */}
@@ -468,9 +468,9 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
 
       {!loading && lifts.length === 0 && (
         <div className="bg-surface border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
-          Немає підйомників. Додайте їх у розділі{' '}
+          {t('day.noLifts')}{' '}
           <a href="/infrastructure" className="text-primary hover:underline">
-            Інфраструктура
+            {t('day.infrastructure')}
           </a>
           .
         </div>
@@ -496,7 +496,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                 style={{ gridTemplateColumns: `${SIDEBAR_W}px repeat(${totalHours}, 1fr)` }}
               >
                 <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-secondary border-r border-border">
-                  Підйомник
+                  {t('day.colLift')}
                 </div>
                 {hours.map(h => (
                   <div
@@ -521,7 +521,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                       </span>
                       {nextSlotByLift.get(lift.id) === 'now' ? (
                         <span className="text-[10px] font-medium text-success-text leading-none">
-                          ● зараз
+                          {t('day.now')}
                         </span>
                       ) : nextSlotByLift.has(lift.id) ? (
                         <span className="text-[10px] text-muted-foreground leading-none">
@@ -560,7 +560,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
       {/* ── Unassigned slots ───────────────────────────────────────────────── */}
       {unassignedSlots.length > 0 && (
         <div className="mt-6 bg-surface border border-border rounded-xl p-5">
-          <h3 className="font-semibold text-foreground mb-3 text-sm">Без підйомника</h3>
+          <h3 className="font-semibold text-foreground mb-3 text-sm">{t('day.unassignedTitle')}</h3>
           <div className="space-y-2">
             {unassignedSlots.map(s => (
               <div
@@ -572,7 +572,9 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                     {fmtTime(s.startAt)} – {fmtTime(s.endAt)}
                   </span>
                   {s.workOrderNumber && (
-                    <span className="ml-2 text-xs text-primary">Наряд {s.workOrderNumber}</span>
+                    <span className="ml-2 text-xs text-primary">
+                      {t('day.woPrefix', { number: s.workOrderNumber })}
+                    </span>
                   )}
                   {s.counterpartyName && (
                     <span className="ml-2 text-xs text-muted-foreground">{s.counterpartyName}</span>
@@ -583,8 +585,10 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                   variant="ghost"
                   size="sm"
                   onClick={() => removeSlot(s.id)}
-                  title="Видалити слот"
-                  aria-label={`Видалити слот ${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`}
+                  title={t('day.deleteSlotTitle')}
+                  aria-label={t('day.deleteSlotAria', {
+                    time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,
+                  })}
                 >
                   <Trash2 className="h-3.5 w-3.5 text-destructive" />
                 </Button>
