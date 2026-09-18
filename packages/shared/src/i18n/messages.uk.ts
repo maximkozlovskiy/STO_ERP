@@ -247,4 +247,215 @@ export const uk: Record<string, string> = {
   'err.expenseCategory.ownParent': 'Стаття не може бути власним батьком',
   'err.expenseCategory.parentTypeMismatch': 'Батьківська стаття має бути того ж типу',
   'err.expenseCategory.moveIntoDescendant': 'Не можна перенести статтю у власного нащадка',
+
+  // ── Exception-повідомлення: invoices-модуль ──
+  'err.invoice.notFound': 'Рахунок не знайдено',
+  'err.invoice.workOrderNotFound': 'Наряд не знайдено',
+  'err.invoice.onlyCompletedInvoiceable': 'Рахунок можна виставити лише для завершеного наряду',
+  'err.invoice.activeExists': 'Для цього наряду вже існує активний рахунок',
+  'err.invoice.counterpartyNotFound': 'Контрагента не знайдено',
+  'err.invoice.onlyDraftEditable': 'Редагувати можна лише чернетку',
+  'err.invoice.statusChanged': 'Статус рахунку змінився — повторіть дію',
+  'err.invoice.counterpartyDeletedNoClone': 'Контрагента було видалено — клонування неможливе',
+  'err.invoice.linesOnlyDraftAdd': 'Рядки можна додавати лише до чернетки',
+  'err.invoice.partNotFound': 'Запчастину не знайдено',
+  'err.invoice.workNotFound': 'Роботу не знайдено',
+  'err.invoice.unitNotFoundForGood': 'Одиницю виміру не знайдено для цього товару',
+  'err.invoice.linesOnlyDraftEdit': 'Рядки можна редагувати лише у чернетці',
+  'err.invoice.lineNotFound': 'Рядок не знайдено',
+  'err.invoice.linesOnlyDraftRemove': 'Рядки можна видаляти лише з чернетки',
+  'err.invoice.activeNotFound': 'Активний рахунок не знайдено',
+  'err.invoice.onlyDraftRefresh':
+    'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
+  'err.invoice.onlyDraftDeletable': 'Видалити можна лише чернетку',
+  'err.invoice.concurrentIssueConflict':
+    'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
+  'err.invoice.concurrentRefreshConflict':
+    'Інший користувач щойно оновив цей рахунок. Оновіть сторінку та повторіть.',
+
+  // ── Exception-повідомлення: payments-модуль ──
+  'err.payment.counterpartyNotFound': 'Контрагента не знайдено',
+  'err.payment.notFound': 'Платіж не знайдено',
+  'err.payment.receiptAlreadyIssued': 'Чек уже пробито — повтор не потрібен',
+  'err.payment.retryOnlyFailed': 'Повтор можливий лише для чеків у статусі «Помилка»',
+  'err.payment.workOrderStatusNoPayment': 'Наряд у статусі "{{status}}" — оплата неможлива',
+  'err.payment.fiscalOnlyBaseCurrency':
+    'Фіскалізація можлива лише у базовій валюті ({{code}}). Оберіть касу/рахунок у {{code}} або спосіб оплати без ПРРО.',
+  'err.payment.currencyMustMatchWorkOrder': 'Валюта оплати має збігатися з валютою наряду',
+  'err.payment.invoiceStatusNoPayment': 'Рахунок у статусі "{{status}}" — оплата неможлива',
+  'err.payment.invoiceNotForWorkOrder': 'Рахунок не належить до вказаного наряду',
+  'err.payment.currencyMustMatchInvoice': 'Валюта оплати має збігатися з валютою рахунку',
+  'err.payment.amountExceedsInvoiceRemaining': 'Сума перевищує залишок за рахунком ({{remaining}})',
+  'err.payment.invoiceConcurrentChange': 'Рахунок змінено паралельною операцією — повторіть',
+  'err.payment.bankAccountNotSpecified': 'Не вказано банківський рахунок',
+  'err.payment.bankAccountNotFound': 'Банківський рахунок не знайдено',
+  'err.payment.cashRegisterNotSpecified': 'Не вказано касу',
+  'err.payment.cashRegisterNotFound': 'Касу не знайдено',
+  // cash-shift
+  'err.cashShift.fiscalNotConfigured': 'Фіскалізацію не налаштовано (провайдер/креди/увімкнення)',
+  'err.cashShift.unknownProvider': 'Невідомий провайдер ПРРО: {{provider}}',
+  'err.cashShift.noCashRegisterForBranch': 'Немає каси для цієї філії',
+  'err.cashShift.alreadyOpen': 'Зміна вже відкрита',
+  'err.cashShift.notFound': 'Зміну не знайдено',
+  'err.cashShift.alreadyClosed': 'Зміна вже закрита',
+  'err.cashShift.fiscalNotConfiguredToken': 'Фіскалізацію не налаштовано — неможливо оновити токен',
+  // fiscal / gateway / provider-config controllers + online-payment
+  'err.fiscalProvider.invalidCode': 'Некоректний код провайдера',
+  'err.fiscalProvider.unknown': 'Невідомий провайдер ПРРО: {{code}}',
+  'err.paymentGateway.invalidCode': 'Некоректний код шлюзу',
+  'err.paymentGateway.unknown': 'Невідомий платіжний шлюз: {{code}}',
+  'err.onlinePayment.invoiceNotFound': 'Рахунок не знайдено',
+  'err.onlinePayment.invoiceStatusNoPayment': 'Рахунок у статусі "{{status}}" — оплата неможлива',
+  'err.onlinePayment.noRemaining': 'Немає залишку до сплати',
+  'err.onlinePayment.amountExceedsRemaining': 'Сума перевищує залишок ({{remaining}} грн)',
+  'err.onlinePayment.acquiringNotConfigured': 'Онлайн-оплату (еквайринг) не налаштовано',
+  'err.onlinePayment.unknownGateway': 'Невідомий платіжний шлюз: {{provider}}',
+  'err.onlinePayment.gatewayCreateFailed': '{{name}}: не вдалося створити рахунок — {{error}}',
+  'err.onlinePayment.intentNotFound': 'Намір оплати не знайдено',
+  'err.providerConfig.invalidCode': 'Некоректний код провайдера',
+  'err.providerConfig.notConfiguredForBranch': 'Провайдера не налаштовано для цієї філії',
+  'err.providerConfig.enterCredentialsFirst': 'Спершу введіть креди провайдера',
+  'err.providerConfig.branchNotFound': 'Філію не знайдено',
+
+  // ── Exception-повідомлення: supplier-payments-модуль ──
+  'err.supplierPayment.dateXorTarget': 'Потрібно вказати рівно одне: date АБО target',
+  'err.supplierPayment.supplierNotFound': 'Постачальника не знайдено',
+  'err.supplierPayment.fromDateAfterTo': 'Дата "від" не може бути пізнішою за дату "до"',
+  'err.supplierPayment.windowExceedsLimit': 'Вікно графіка не може перевищувати 100 днів',
+  'err.supplierPayment.notFound': 'Оплату не знайдено',
+  'err.supplierPayment.notASupplier': 'Контрагент не є постачальником',
+  'err.supplierPayment.bankAccountNotFound': 'Банківський рахунок не знайдено',
+  'err.supplierPayment.cashRegisterNotFound': 'Касу не знайдено',
+  'err.supplierPayment.purchaseOrderNotFound': 'Замовлення постачальнику не знайдено',
+  'err.supplierPayment.orderNotForSupplier': 'Замовлення не належить вказаному постачальнику',
+  'err.supplierPayment.sourceHasNoCurrency': 'Рахунок-джерело не має валюти',
+  'err.supplierPayment.onlyDraftEditable': 'Редагування дозволено лише у статусі "Чернетка"',
+  'err.supplierPayment.currencyMustMatchOrder': 'Валюта оплати має збігатися з валютою замовлення',
+  'err.supplierPayment.cannotConfirmFromStatus':
+    'Неможливо провести оплату зі статусу "{{status}}"',
+  'err.supplierPayment.alreadyConfirmedOrChanged':
+    'Оплату вже проведено або статус змінився — оновіть сторінку',
+  'err.supplierPayment.orderConcurrentChange':
+    'Замовлення змінено паралельною операцією — повторіть',
+  'err.supplierPayment.cannotCancelFromStatus':
+    'Неможливо скасувати оплату зі статусу "{{status}}"',
+  'err.supplierPayment.confirmedNotDeletable': 'Проведену оплату видалити неможливо',
+  'err.supplierPayment.bankRequiresAccount':
+    'Для оплати з банку потрібно вказати банківський рахунок',
+  'err.supplierPayment.sourceConflict': 'Не можна одночасно вказувати банківський рахунок і касу',
+  'err.supplierPayment.cashRequiresRegister': 'Для оплати з каси потрібно вказати касу',
+
+  // ── Exception-повідомлення: purchase-orders-модуль ──
+  'err.deliveryProvider.invalidCode': 'Некоректний код служби',
+  'err.deliveryProvider.unknown': 'Невідома служба доставки: {{code}}',
+  'err.purchaseOrder.goodNotFound': 'Товар не знайдено: {{missing}}',
+  'err.purchaseOrder.notFound': 'Замовлення не знайдено',
+  'err.purchaseOrder.supplierNotFound': 'Постачальника не знайдено',
+  'err.purchaseOrder.warehouseNotFound': 'Склад не знайдено',
+  'err.purchaseOrder.contractNotFound': 'Договір не знайдено',
+  'err.purchaseOrder.onlyDraftEditable': 'Редагувати можна лише чернетку',
+  'err.purchaseOrder.receiveOnlyOrderedOrPartial':
+    'Прийом можливий лише для замовлень зі статусом ORDERED або PARTIAL',
+  'err.purchaseOrder.unitNotFoundInOrg': 'Одиницю виміру не знайдено в межах організації',
+  'err.purchaseOrder.receiveLineMustBeUnique': 'Кожен рядок прийому має бути унікальним',
+  'err.purchaseOrder.receiveExceedsLineRemaining':
+    'Кількість прийому перевищує залишок за рядком (замовлено {{quantity}}, ' +
+    'вже прийнято {{received}}, до прийому {{remaining}})',
+  'err.purchaseOrder.statusChangedRetry':
+    'Статус замовлення змінився на "{{status}}" — повторіть прийом',
+  'err.purchaseOrder.receiveAlreadyProcessed':
+    'Прийом уже опрацьовано або рядок змінено іншою операцією — повторіть',
+  'err.purchaseOrder.onlyDraftDeletable': 'Видалити можна лише чернетку',
+  'err.purchaseOrder.priceOnlyReceived':
+    'Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)',
+
+  // ── Exception-повідомлення: supplier-returns-модуль ──
+  'err.supplierReturn.notFound': 'Повернення не знайдено',
+  'err.supplierReturn.supplierNotFound': 'Постачальника не знайдено',
+  'err.supplierReturn.warehouseNotFound': 'Склад не знайдено',
+  'err.supplierReturn.orderNotFound': 'Замовлення не знайдено',
+  'err.supplierReturn.onlyDraftEditable': 'Редагування дозволено лише у статусі "Чернетка"',
+  'err.supplierReturn.cannotConfirmFromStatus':
+    'Неможливо підтвердити повернення зі статусу "{{status}}"',
+  'err.supplierReturn.confirmRequiresLines': 'Повернення не може бути підтверджено без рядків',
+  'err.supplierReturn.alreadyConfirmedOrChanged':
+    'Повернення вже підтверджено або статус змінився — оновіть сторінку',
+  'err.supplierReturn.cannotCancelFromStatus':
+    'Неможливо скасувати повернення зі статусу "{{status}}"',
+  'err.supplierReturn.onlyDraftDeletable': 'Видалити можна лише повернення зі статусом "Чернетка"',
+  'err.supplierReturn.goodNotFound': 'Товар не знайдено: {{missing}}',
+  'err.supplierReturn.unitNotFound': 'Одиницю виміру не знайдено: {{missing}}',
+
+  // ── Exception-повідомлення: stock-documents-модуль ──
+  'err.stockDocument.notFound': 'Документ не знайдено',
+  'err.stockDocument.goodNotFound': 'Товар не знайдено: {{missing}}',
+  'err.stockDocument.branchNotFound': 'Філію не знайдено',
+  'err.stockDocument.warehouseNotFound': 'Склад не знайдено',
+  'err.stockDocument.orderNotFound': 'Замовлення не знайдено',
+  'err.stockDocument.transferTargetRequired': 'Для переміщення потрібен склад призначення',
+  'err.stockDocument.targetWarehouseNotFound': 'Склад призначення не знайдено',
+  'err.stockDocument.sourceTargetSame': 'Склад джерела і призначення не можуть збігатись',
+  'err.stockDocument.onlyDraftEditable': 'Редагувати можна лише чернетку',
+  'err.stockDocument.confirmRequiresLines': 'Документ не може бути підтверджено без позицій',
+  'err.stockDocument.statusChanged': 'Статус документу змінився — повторіть дію',
+  'err.stockDocument.unsupportedType': 'Непідтримуваний тип документу: {{type}}',
+  'err.stockDocument.onlyDraftDeletable': 'Видалити можна лише чернетку',
+
+  // ── Exception-повідомлення: goods-модуль ──
+  'err.good.maxBulkGoods': 'Максимум 100 товарів за раз',
+  'err.good.invalidGoodId': 'Некоректний goodId: {{invalid}}',
+  'err.good.notFound': 'Товар не знайдено',
+  'err.good.statusNotFound': 'Статус не знайдено',
+  'err.good.statusNotAssigned': 'Статус не призначено цьому товару',
+  'err.good.skuExists': 'Товар з артикулом "{{sku}}" вже існує',
+  'err.good.hasStockOrReserve': 'Неможливо видалити: товар має ненульові залишки або резерв',
+  'err.good.deletedNotFound': 'Видалений товар не знайдено',
+  'err.good.restoreSkuExists':
+    'Неможливо відновити: активний товар з артикулом "{{sku}}" вже існує',
+  'err.good.restoreCodeExists': 'Неможливо відновити: активний товар з кодом "{{code}}" вже існує',
+  'err.good.brandNotFound': 'Бренд не знайдено',
+  'err.good.unitNotFound': 'Одиницю виміру не знайдено',
+  'err.good.supplierNotFound': 'Постачальника не знайдено',
+  'err.good.categoryNotFound': 'Категорію товарів не знайдено',
+  'err.good.barcodeEmpty': 'Штрихкод не може бути порожнім',
+  'err.good.barcodeInUse': 'Штрихкод уже використовується',
+  'err.good.barcodeNotFound': 'Штрихкод не знайдено',
+  'err.good.uomAlreadyAdded': 'Ця одиниця виміру вже додана до товару',
+  'err.good.uomRecordNotFound': 'Запис одиниці виміру не знайдено',
+  'err.good.cannotDeleteOnlyUom': 'Не можна видалити єдину одиницю виміру',
+  'err.good.goodUomNotFound': 'Одиницю виміру товару не знайдено',
+
+  // ── Exception-повідомлення: inventory-модуль ──
+  'err.inventory.goodNotFound': 'Товар не знайдено',
+  'err.inventory.batchConcurrentChange': 'Партію змінено іншою транзакцією — повторіть операцію',
+  'err.inventory.insufficientBatches':
+    'Недостатньо партій для списання: бракує {{remaining}} одиниць товару',
+  'err.inventory.batchNotFound': 'Партію не знайдено',
+  'err.inventory.returnExceedsBatchReceived': 'Повернення перевищує отриману кількість партії',
+  'err.inventory.quantityZero': 'Кількість не може бути нульовою',
+  'err.inventory.invalidQuantity': 'Невірне значення кількості',
+  'err.inventory.invalidPrice': 'Невірне значення ціни',
+  'err.inventory.reservationReleaseNegative': "Зняття резерву: кількість повинна бути від'ємною",
+  'err.inventory.returnMustBePositive': 'Повернення на склад: кількість повинна бути додатною',
+  'err.inventory.returnRequiresSourceDoc': 'Повернення на склад потребує документа-джерела',
+  'err.inventory.unitNotFoundInOrg': 'Одиницю виміру не знайдено в межах організації',
+  'err.inventory.insufficientStock': 'Недостатньо товару на складі',
+  'err.inventory.insufficientAvailableForReservation':
+    'Недостатньо доступного товару для резервування',
+  'err.inventory.cannotReleaseMoreThanReserved':
+    'Неможливо зняти резерв: зарезервована кількість менша за запитану',
+  'err.inventory.insufficientStockConcurrentWriteoff':
+    'Недостатньо товару на складі (concurrent WRITEOFF)',
+  'err.inventory.reservedNegativeConcurrentRelease':
+    "Резерв не може стати від'ємним (concurrent RESERVATION_RELEASE)",
+  'err.inventory.insufficientAvailableConcurrentReservation':
+    'Недостатньо доступного товару для резервування (concurrent RESERVATION)',
+  'err.inventory.writeoffBelowReserved':
+    'Списання опустило б залишок нижче зарезервованого — спершу зніміть резерв',
+  'err.inventory.stockItemNotFound': 'Залишок не знайдено',
+  'err.inventory.unknownMovementType': 'Невідомий тип руху',
+  'err.pricingRule.goodNotFound': 'Товар не знайдено',
+  'err.pricingRule.brandNotFound': 'Бренд не знайдено',
+  'err.pricingRule.supplierNotFound': 'Постачальника не знайдено',
+  'err.pricingRule.notFound': 'Правило не знайдено',
 };

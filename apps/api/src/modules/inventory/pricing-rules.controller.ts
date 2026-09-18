@@ -13,6 +13,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -142,9 +144,12 @@ export class PricingRulesController {
           })
         : Promise.resolve(null),
     ]);
-    if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
-    if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
-    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
+    if (dto.goodId && !good)
+      throw new NotFoundException(translateError('err.pricingRule.goodNotFound', getLocale()));
+    if (dto.brandId && !brand)
+      throw new NotFoundException(translateError('err.pricingRule.brandNotFound', getLocale()));
+    if (dto.supplierId && !supplier)
+      throw new NotFoundException(translateError('err.pricingRule.supplierNotFound', getLocale()));
     const normalized = this.normalizeScope(dto);
     const cleanValues = this.cleanValuesForType(normalized);
     const { tiers, ...ruleData } = cleanValues;
@@ -209,10 +214,14 @@ export class PricingRulesController {
           })
         : Promise.resolve(null),
     ]);
-    if (!existing) throw new NotFoundException('Правило не знайдено');
-    if (dto.goodId && !good) throw new NotFoundException('Товар не знайдено');
-    if (dto.brandId && !brand) throw new NotFoundException('Бренд не знайдено');
-    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.pricingRule.notFound', getLocale()));
+    if (dto.goodId && !good)
+      throw new NotFoundException(translateError('err.pricingRule.goodNotFound', getLocale()));
+    if (dto.brandId && !brand)
+      throw new NotFoundException(translateError('err.pricingRule.brandNotFound', getLocale()));
+    if (dto.supplierId && !supplier)
+      throw new NotFoundException(translateError('err.pricingRule.supplierNotFound', getLocale()));
 
     // PATCH must apply scope hierarchy considering existing
     // стану. Якщо клієнт надсилає лише `goodCategory` (без явного `goodId: null`),
@@ -330,7 +339,8 @@ export class PricingRulesController {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (res.count === 0) throw new NotFoundException('Правило не знайдено');
+    if (res.count === 0)
+      throw new NotFoundException(translateError('err.pricingRule.notFound', getLocale()));
     this.auditRule(orgId, id, 'DELETE', user?.id, { id }, undefined);
   }
 
@@ -342,7 +352,8 @@ export class PricingRulesController {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Правило не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.pricingRule.notFound', getLocale()));
     const updated = await this.pricingService.applyRuleToGoods(orgId, id);
     return { updated, message: `Перераховано ${updated} товарів` };
   }

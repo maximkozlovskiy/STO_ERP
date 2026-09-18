@@ -19,6 +19,8 @@ import {
 } from '@nestjs/swagger';
 import { IsString, IsOptional, IsBoolean, IsObject, IsIn } from 'class-validator';
 import { ShiftMode } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -76,9 +78,13 @@ export class FiscalProvidersController {
     @Param('code') code: string,
     @Body() dto: VerifyFiscalDto,
   ) {
-    if (!code || code.length > 64) throw new BadRequestException('Некоректний код провайдера');
+    if (!code || code.length > 64)
+      throw new BadRequestException(translateError('err.fiscalProvider.invalidCode', getLocale()));
     const provider = this.registry.get(code);
-    if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${code}`);
+    if (!provider)
+      throw new BadRequestException(
+        translateError('err.fiscalProvider.unknown', getLocale(), { code }),
+      );
     return this.integrationLog.wrap({ orgId, provider: code, operation: 'verifyCredentials' }, () =>
       provider.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials }),
     );

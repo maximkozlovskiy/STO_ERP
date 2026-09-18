@@ -19,9 +19,11 @@ import {
   UUID_REGEX,
   goodFormSchema,
   goodUpdateSchema,
+  translateError,
   type GoodFormValues,
   type GoodUpdateValues,
 } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -76,11 +78,15 @@ export class GoodsController {
           .map(s => s.trim())
           .filter(Boolean)
       : [];
-    if (goodIds.length > 100) throw new BadRequestException('Максимум 100 товарів за раз');
+    if (goodIds.length > 100)
+      throw new BadRequestException(translateError('err.good.maxBulkGoods', getLocale()));
     // Defence-in-depth: invalid UUID would reach Postgres as `invalid input syntax for type uuid`
     // (500 with cryptic message). Validate up-front and reject with 400.
     const invalid = goodIds.find(id => !UUID_REGEX.test(id));
-    if (invalid) throw new BadRequestException(`Некоректний goodId: ${invalid}`);
+    if (invalid)
+      throw new BadRequestException(
+        translateError('err.good.invalidGoodId', getLocale(), { invalid }),
+      );
     return this.service.stockTotals(orgId, goodIds);
   }
 
@@ -275,7 +281,7 @@ export class GoodsController {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     const [items, total] = await Promise.all([
       this.batchService.getBatchesForGood(orgId, id, warehouseId),
       this.prisma.stockBatch.count({
@@ -293,7 +299,7 @@ export class GoodsController {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.priceHistory.findMany({
         where: { orgId, goodId: id },

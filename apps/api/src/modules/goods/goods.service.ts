@@ -6,7 +6,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -120,7 +121,7 @@ export class GoodsService {
         ...STATUS_LINKS_INCLUDE,
       },
     });
-    if (!item) throw new NotFoundException('Товар не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     return this.toDto(item, userRole);
   }
 
@@ -141,8 +142,9 @@ export class GoodsService {
         select: { id: true },
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
-    if (!status) throw new NotFoundException('Статус не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    if (!status)
+      throw new NotFoundException(translateError('err.good.statusNotFound', getLocale()));
 
     // Ідемпотентно: @@unique[goodId,statusId] → повторний assign не дублює (P2002 ловимо як no-op).
     await this.prisma.goodStatusLink
@@ -166,7 +168,8 @@ export class GoodsService {
     const result = await this.prisma.goodStatusLink.deleteMany({
       where: { orgId, goodId, statusId },
     });
-    if (result.count === 0) throw new NotFoundException('Статус не призначено цьому товару');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.good.statusNotAssigned', getLocale()));
     await this.goodStatuses.invalidateCache(orgId);
     return this.findOne(orgId, goodId, userRole);
   }
@@ -183,7 +186,9 @@ export class GoodsService {
       this.validateFkReferences(orgId, dto),
     ]);
     if (dto.sku && existing)
-      throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
+      throw new ConflictException(
+        translateError('err.good.skuExists', getLocale(), { sku: dto.sku }),
+      );
     const internalCode = await this.docNumbers.next(orgId, 'GOOD_INTERNAL_CODE');
     const item = await this.prisma.good.create({
       // skuNormalized — SOT: обчислюється тут (і в update()), ніде більше. Порожній sku → null,
@@ -230,9 +235,11 @@ export class GoodsService {
         : Promise.resolve(null),
       this.validateFkReferences(orgId, dto),
     ]);
-    if (!existing) throw new NotFoundException('Товар не знайдено');
+    if (!existing) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     if (dto.sku && skuConflict)
-      throw new ConflictException(`Товар з артикулом "${dto.sku}" вже існує`);
+      throw new ConflictException(
+        translateError('err.good.skuExists', getLocale(), { sku: dto.sku }),
+      );
     const item = await this.prisma.good.update({
       where: { id, orgId },
       // skuNormalized — SOT: перераховуємо ЛИШЕ коли клієнт торкнувся sku (ключ присутній у dto).
@@ -264,7 +271,7 @@ export class GoodsService {
       select: { id: true },
     });
     if (stockWithBalance) {
-      throw new BadRequestException('Неможливо видалити: товар має ненульові залишки або резерв');
+      throw new BadRequestException(translateError('err.good.hasStockOrReserve', getLocale()));
     }
 
     // sto-optimize (2026-05-31 pattern): `findOne + update` 2-RTT → atomic `updateMany`
@@ -274,7 +281,8 @@ export class GoodsService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Товар не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     // Soft-delete товару прибирає його з goodCount (_count.links where good.deletedAt:null),
     // але кешований довідник good-statuses тримає старе значення до TTL → скидаємо, якщо
     // товар мав мітки (інакше лічильники завищені до 5 хв).
@@ -289,7 +297,8 @@ export class GoodsService {
       where: { id, orgId, NOT: { deletedAt: null } },
       select: { sku: true, internalCode: true },
     });
-    if (!deleted) throw new NotFoundException('Видалений товар не знайдено');
+    if (!deleted)
+      throw new NotFoundException(translateError('err.good.deletedNotFound', getLocale()));
     if (deleted.sku) {
       const clash = await this.prisma.good.findFirst({
         where: { orgId, sku: deleted.sku, deletedAt: null, NOT: { id } },
@@ -297,7 +306,7 @@ export class GoodsService {
       });
       if (clash)
         throw new ConflictException(
-          `Неможливо відновити: активний товар з артикулом "${deleted.sku}" вже існує`,
+          translateError('err.good.restoreSkuExists', getLocale(), { sku: deleted.sku }),
         );
     }
     if (deleted.internalCode) {
@@ -307,7 +316,9 @@ export class GoodsService {
       });
       if (codeClash)
         throw new ConflictException(
-          `Неможливо відновити: активний товар з кодом "${deleted.internalCode}" вже існує`,
+          translateError('err.good.restoreCodeExists', getLocale(), {
+            code: deleted.internalCode,
+          }),
         );
     }
 
@@ -317,7 +328,8 @@ export class GoodsService {
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },
     });
-    if (result.count === 0) throw new NotFoundException('Видалений товар не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.good.deletedNotFound', getLocale()));
     // Restore повертає товар у goodCount (_count.links) → скидаємо кеш довідника, якщо мав мітки.
     await this.invalidateStatusesCacheIfLabeled(orgId, id);
     const item = await this.prisma.good.findFirstOrThrow({
@@ -386,12 +398,14 @@ export class GoodsService {
           })
         : Promise.resolve(null),
     ]);
-    if (dto.brandId && !brand) throw new BadRequestException('Бренд не знайдено');
-    if (dto.unitId && !unit) throw new BadRequestException('Одиницю виміру не знайдено');
+    if (dto.brandId && !brand)
+      throw new BadRequestException(translateError('err.good.brandNotFound', getLocale()));
+    if (dto.unitId && !unit)
+      throw new BadRequestException(translateError('err.good.unitNotFound', getLocale()));
     if (dto.preferredSupplierId && !supplier)
-      throw new BadRequestException('Постачальника не знайдено');
+      throw new BadRequestException(translateError('err.good.supplierNotFound', getLocale()));
     if (dto.goodCategoryId && !goodCategory)
-      throw new BadRequestException('Категорію товарів не знайдено');
+      throw new BadRequestException(translateError('err.good.categoryNotFound', getLocale()));
   }
 
   // ─── Barcodes ────────────────────────────────────────────────────────────────
@@ -409,7 +423,7 @@ export class GoodsService {
         take: 100,
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     return barcodes.map(b => this.toBarcodeDto(b));
   }
 
@@ -419,7 +433,7 @@ export class GoodsService {
     dto: CreateGoodBarcodeDto,
   ): Promise<GoodBarcodeResponseDto> {
     if (!dto.barcode || !dto.barcode.trim()) {
-      throw new BadRequestException('Штрихкод не може бути порожнім');
+      throw new BadRequestException(translateError('err.good.barcodeEmpty', getLocale()));
     }
 
     // Parallel: parent-good guard + duplicate-barcode check — independent reads.
@@ -433,9 +447,9 @@ export class GoodsService {
         select: { id: true },
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     if (existing) {
-      throw new ConflictException('Штрихкод уже використовується');
+      throw new ConflictException(translateError('err.good.barcodeInUse', getLocale()));
     }
 
     // When creating isPrimary=true → unset previous primaries atomically; otherwise multiple primaries per good.
@@ -477,7 +491,8 @@ export class GoodsService {
       where: { id: barcodeId, orgId, goodId },
       select: { id: true, isPrimary: true },
     });
-    if (!existing) throw new NotFoundException('Штрихкод не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.good.barcodeNotFound', getLocale()));
 
     await this.prisma.$transaction(
       async tx => {
@@ -531,7 +546,7 @@ export class GoodsService {
         take: 50,
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
     return uoms.map(u => this.toUoMDto(u));
   }
 
@@ -542,8 +557,8 @@ export class GoodsService {
         where: { id: dto.unitOfMeasureId, orgId, deletedAt: null },
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
-    if (!unit) throw new NotFoundException('Одиницю виміру не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    if (!unit) throw new NotFoundException(translateError('err.good.unitNotFound', getLocale()));
 
     // Parallel: existing-row dup check + count of all UoMs for this good — independent reads.
     const [existing, count] = await Promise.all([
@@ -553,7 +568,8 @@ export class GoodsService {
       }),
       this.prisma.goodUoM.count({ where: { orgId, goodId } }),
     ]);
-    if (existing) throw new ConflictException('Ця одиниця виміру вже додана до товару');
+    if (existing)
+      throw new ConflictException(translateError('err.good.uomAlreadyAdded', getLocale()));
     const isFirst = count === 0;
 
     let uom;
@@ -605,7 +621,7 @@ export class GoodsService {
       // TOCTOU: two concurrent identical adds both pass precheck, one hits the
       // (orgId, goodId, unitOfMeasureId) unique constraint → map P2002 to 409 instead of leaking Prisma 500.
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('Ця одиниця виміру вже додана до товару');
+        throw new ConflictException(translateError('err.good.uomAlreadyAdded', getLocale()));
       }
       throw e;
     }
@@ -637,8 +653,9 @@ export class GoodsService {
         },
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
-    if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    if (!uom)
+      throw new NotFoundException(translateError('err.good.uomRecordNotFound', getLocale()));
 
     await this.prisma.$transaction([
       this.prisma.goodUoM.updateMany({ where: { orgId, goodId }, data: { isDefault: false } }),
@@ -667,9 +684,11 @@ export class GoodsService {
       }),
       this.prisma.goodUoM.count({ where: { orgId, goodId } }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
-    if (!uom) throw new NotFoundException('Запис одиниці виміру не знайдено');
-    if (total === 1) throw new BadRequestException('Не можна видалити єдину одиницю виміру');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    if (!uom)
+      throw new NotFoundException(translateError('err.good.uomRecordNotFound', getLocale()));
+    if (total === 1)
+      throw new BadRequestException(translateError('err.good.cannotDeleteOnlyUom', getLocale()));
 
     await this.prisma.$transaction(
       async tx => {
@@ -720,8 +739,8 @@ export class GoodsService {
         select: { id: true },
       }),
     ]);
-    if (!good) throw new NotFoundException('Товар не знайдено');
-    if (!uom) throw new NotFoundException('Одиницю виміру товару не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    if (!uom) throw new NotFoundException(translateError('err.good.goodUomNotFound', getLocale()));
 
     const updated = await this.prisma.goodUoM.update({
       where: { id: uomId, orgId },

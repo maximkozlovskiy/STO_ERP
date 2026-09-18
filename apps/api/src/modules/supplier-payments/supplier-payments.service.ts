@@ -10,8 +10,9 @@ import { kyivToday } from '../../common/utils/kyiv-date';
 import { roundMoney } from '../../common/utils/math';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -78,7 +79,10 @@ export class SupplierPaymentsService {
         where: { id: supplierId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!cp) throw new NotFoundException('Постачальника не знайдено');
+      if (!cp)
+        throw new NotFoundException(
+          translateError('err.supplierPayment.supplierNotFound', getLocale()),
+        );
       where.supplierId = supplierId;
     }
     if (q) {
@@ -301,14 +305,18 @@ export class SupplierPaymentsService {
     // Cross-field guard: без цього from > to тихо перевертає bucket-логіку —
     // всі PO потрапляють у planned/overdue, вікно порожнє, користувач не розуміє чому.
     if (from > to) {
-      throw new BadRequestException('Дата "від" не може бути пізнішою за дату "до"');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.fromDateAfterTo', getLocale()),
+      );
     }
     const fromDate = new Date(from + 'T00:00:00.000Z');
     const toDate = new Date(to + 'T23:59:59.999Z');
     // Кап на розмір вікна — 100 днів жорсткий upper bound (некоректний ввід роздув би відповідь).
     const windowDays = Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000);
     if (windowDays > 100) {
-      throw new BadRequestException('Вікно графіка не може перевищувати 100 днів');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.windowExceedsLimit', getLocale()),
+      );
     }
 
     const [orders, payableAccounts, contracts] = await Promise.all([
@@ -526,7 +534,8 @@ export class SupplierPaymentsService {
         currency: { select: { code: true } },
       },
     });
-    if (!sp) throw new NotFoundException('Оплату не знайдено');
+    if (!sp)
+      throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
     return this.toDto(sp);
   }
 
@@ -566,20 +575,34 @@ export class SupplierPaymentsService {
         : Promise.resolve(null),
     ]);
 
-    if (!supplier) throw new NotFoundException('Постачальника не знайдено');
+    if (!supplier)
+      throw new NotFoundException(
+        translateError('err.supplierPayment.supplierNotFound', getLocale()),
+      );
     if (supplier.type === 'CLIENT') {
-      throw new BadRequestException('Контрагент не є постачальником');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.notASupplier', getLocale()),
+      );
     }
     if (dto.bankAccountId && !bankAccount) {
-      throw new NotFoundException('Банківський рахунок не знайдено');
+      throw new NotFoundException(
+        translateError('err.supplierPayment.bankAccountNotFound', getLocale()),
+      );
     }
     if (dto.cashRegisterId && !cashRegister) {
-      throw new NotFoundException('Касу не знайдено');
+      throw new NotFoundException(
+        translateError('err.supplierPayment.cashRegisterNotFound', getLocale()),
+      );
     }
     if (dto.purchaseOrderId) {
-      if (!purchaseOrder) throw new NotFoundException('Замовлення постачальнику не знайдено');
+      if (!purchaseOrder)
+        throw new NotFoundException(
+          translateError('err.supplierPayment.purchaseOrderNotFound', getLocale()),
+        );
       if (purchaseOrder.supplierId !== dto.supplierId) {
-        throw new BadRequestException('Замовлення не належить вказаному постачальнику');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.orderNotForSupplier', getLocale()),
+        );
       }
     }
 
@@ -593,7 +616,9 @@ export class SupplierPaymentsService {
         ? bankAccount?.currencyId
         : cashRegister?.currencyId;
     if (!currencyId) {
-      throw new BadRequestException('Рахунок-джерело не має валюти');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.sourceHasNoCurrency', getLocale()),
+      );
     }
 
     const sp = await this.prisma.supplierPayment.create({
@@ -641,9 +666,12 @@ export class SupplierPaymentsService {
         purchaseOrderId: true,
       },
     });
-    if (!sp) throw new NotFoundException('Оплату не знайдено');
+    if (!sp)
+      throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
     if (sp.status !== SupplierPaymentStatus.DRAFT) {
-      throw new BadRequestException('Редагування дозволено лише у статусі "Чернетка"');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.onlyDraftEditable', getLocale()),
+      );
     }
 
     const nextSupplierId = dto.supplierId ?? sp.supplierId;
@@ -698,20 +726,34 @@ export class SupplierPaymentsService {
     ]);
 
     if (dto.supplierId) {
-      if (!supplier) throw new NotFoundException('Постачальника не знайдено');
+      if (!supplier)
+        throw new NotFoundException(
+          translateError('err.supplierPayment.supplierNotFound', getLocale()),
+        );
       if (supplier.type === 'CLIENT')
-        throw new BadRequestException('Контрагент не є постачальником');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.notASupplier', getLocale()),
+        );
     }
     if (nextSourceType === PaymentSourceType.BANK_ACCOUNT && nextBankAccountId && !bankAccount) {
-      throw new NotFoundException('Банківський рахунок не знайдено');
+      throw new NotFoundException(
+        translateError('err.supplierPayment.bankAccountNotFound', getLocale()),
+      );
     }
     if (nextSourceType === PaymentSourceType.CASH_REGISTER && nextCashRegisterId && !cashRegister) {
-      throw new NotFoundException('Касу не знайдено');
+      throw new NotFoundException(
+        translateError('err.supplierPayment.cashRegisterNotFound', getLocale()),
+      );
     }
     if (dto.purchaseOrderId) {
-      if (!purchaseOrder) throw new NotFoundException('Замовлення постачальнику не знайдено');
+      if (!purchaseOrder)
+        throw new NotFoundException(
+          translateError('err.supplierPayment.purchaseOrderNotFound', getLocale()),
+        );
       if (purchaseOrder.supplierId !== nextSupplierId) {
-        throw new BadRequestException('Замовлення не належить вказаному постачальнику');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.orderNotForSupplier', getLocale()),
+        );
       }
     }
 
@@ -755,7 +797,8 @@ export class SupplierPaymentsService {
         purchaseOrderId: true,
       },
     });
-    if (!pre) throw new NotFoundException('Оплату не знайдено');
+    if (!pre)
+      throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
 
     // Payables FX (Фаза 5): якщо оплата привʼязана до PO — валюта оплати мусить збігатися з валютою PO
     // (інакше крос-валютна алокація = FX-політика поза scope; залишок тоді = чиста курсова різниця).
@@ -776,7 +819,9 @@ export class SupplierPaymentsService {
         po &&
         !(await this.exchangeRates.sameCurrency(orgId, pre.currencyId ?? null, po.currencyId))
       ) {
-        throw new BadRequestException('Валюта оплати має збігатися з валютою замовлення');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.currencyMustMatchOrder', getLocale()),
+        );
       }
     }
 
@@ -794,7 +839,11 @@ export class SupplierPaymentsService {
 
     const allowed = SP_TRANSITIONS[pre.status];
     if (!allowed.includes(SupplierPaymentStatus.CONFIRMED)) {
-      throw new BadRequestException(`Неможливо провести оплату зі статусу "${pre.status}"`);
+      throw new BadRequestException(
+        translateError('err.supplierPayment.cannotConfirmFromStatus', getLocale(), {
+          status: pre.status,
+        }),
+      );
     }
 
     await this.prisma.$transaction(
@@ -813,7 +862,7 @@ export class SupplierPaymentsService {
         });
         if (cas.count === 0) {
           throw new BadRequestException(
-            'Оплату вже проведено або статус змінився — оновіть сторінку',
+            translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
           );
         }
 
@@ -874,7 +923,9 @@ export class SupplierPaymentsService {
             data: { paidAmount: newPaid, ...(becameFullyPaid ? { paidAt: kyivToday() } : {}) },
           });
           if (paidCas.count === 0) {
-            throw new BadRequestException('Замовлення змінено паралельною операцією — повторіть');
+            throw new BadRequestException(
+              translateError('err.supplierPayment.orderConcurrentChange', getLocale()),
+            );
           }
 
           // FX лише коли PO вперше повністю сплачено + не-базова валюта. Курс нарахування (дата
@@ -959,11 +1010,16 @@ export class SupplierPaymentsService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
     });
-    if (!sp) throw new NotFoundException('Оплату не знайдено');
+    if (!sp)
+      throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
 
     const allowed = SP_TRANSITIONS[sp.status];
     if (!allowed.includes(SupplierPaymentStatus.CANCELLED)) {
-      throw new BadRequestException(`Неможливо скасувати оплату зі статусу "${sp.status}"`);
+      throw new BadRequestException(
+        translateError('err.supplierPayment.cannotCancelFromStatus', getLocale(), {
+          status: sp.status,
+        }),
+      );
     }
 
     await this.prisma.supplierPayment.update({
@@ -979,9 +1035,12 @@ export class SupplierPaymentsService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!sp) throw new NotFoundException('Оплату не знайдено');
+    if (!sp)
+      throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
     if (sp.status === SupplierPaymentStatus.CONFIRMED) {
-      throw new BadRequestException('Проведену оплату видалити неможливо');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.confirmedNotDeletable', getLocale()),
+      );
     }
 
     await this.prisma.supplierPayment.update({
@@ -1002,17 +1061,25 @@ export class SupplierPaymentsService {
   ): void {
     if (sourceType === PaymentSourceType.BANK_ACCOUNT) {
       if (!bankAccountId) {
-        throw new BadRequestException('Для оплати з банку потрібно вказати банківський рахунок');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.bankRequiresAccount', getLocale()),
+        );
       }
       if (cashRegisterId) {
-        throw new BadRequestException('Не можна одночасно вказувати банківський рахунок і касу');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.sourceConflict', getLocale()),
+        );
       }
     } else {
       if (!cashRegisterId) {
-        throw new BadRequestException('Для оплати з каси потрібно вказати касу');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.cashRequiresRegister', getLocale()),
+        );
       }
       if (bankAccountId) {
-        throw new BadRequestException('Не можна одночасно вказувати банківський рахунок і касу');
+        throw new BadRequestException(
+          translateError('err.supplierPayment.sourceConflict', getLocale()),
+        );
       }
     }
   }

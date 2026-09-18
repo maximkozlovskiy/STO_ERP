@@ -6,8 +6,14 @@ import { roundMoney } from '../../common/utils/math';
 import { calculatePagination } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
+import {
+  formatPersonName,
+  TRANSACTION_TIMEOUT_MS,
+  MAX_QUERY_LIMIT,
+  translateError,
+} from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -122,7 +128,8 @@ export class SupplierReturnsService {
         },
       },
     });
-    if (!sr) throw new NotFoundException('Повернення не знайдено');
+    if (!sr)
+      throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
     return this.toDto(sr);
   }
 
@@ -145,10 +152,18 @@ export class SupplierReturnsService {
           })
         : Promise.resolve(null),
     ]);
-    if (!supplier) throw new NotFoundException('Постачальника не знайдено');
-    if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    if (!supplier)
+      throw new NotFoundException(
+        translateError('err.supplierReturn.supplierNotFound', getLocale()),
+      );
+    if (!warehouse)
+      throw new NotFoundException(
+        translateError('err.supplierReturn.warehouseNotFound', getLocale()),
+      );
     if (dto.purchaseOrderId && !purchaseOrder) {
-      throw new BadRequestException('Замовлення не знайдено');
+      throw new BadRequestException(
+        translateError('err.supplierReturn.orderNotFound', getLocale()),
+      );
     }
 
     const lines = dto.lines ?? [];
@@ -214,9 +229,12 @@ export class SupplierReturnsService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
     });
-    if (!sr) throw new NotFoundException('Повернення не знайдено');
+    if (!sr)
+      throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
     if (sr.status !== SupplierReturnStatus.DRAFT) {
-      throw new BadRequestException('Редагування дозволено лише у статусі "Чернетка"');
+      throw new BadRequestException(
+        translateError('err.supplierReturn.onlyDraftEditable', getLocale()),
+      );
     }
 
     // Parallel validation: supplier + warehouse (independent queries)
@@ -234,8 +252,14 @@ export class SupplierReturnsService {
           })
         : Promise.resolve(null),
     ]);
-    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
-    if (dto.warehouseId && !warehouse) throw new NotFoundException('Склад не знайдено');
+    if (dto.supplierId && !supplier)
+      throw new NotFoundException(
+        translateError('err.supplierReturn.supplierNotFound', getLocale()),
+      );
+    if (dto.warehouseId && !warehouse)
+      throw new NotFoundException(
+        translateError('err.supplierReturn.warehouseNotFound', getLocale()),
+      );
 
     // cross-tenant FK guard for update() — кожен новий goodId/unitOfMeasureId
     // має існувати у цій організації. Валідація ПЕРЕД $transaction (read-only).
@@ -302,14 +326,21 @@ export class SupplierReturnsService {
         _count: { select: { lines: { where: { deletedAt: null } } } },
       },
     });
-    if (!pre) throw new NotFoundException('Повернення не знайдено');
+    if (!pre)
+      throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
 
     const allowed = SR_TRANSITIONS[pre.status];
     if (!allowed.includes(SupplierReturnStatus.CONFIRMED)) {
-      throw new BadRequestException(`Неможливо підтвердити повернення зі статусу "${pre.status}"`);
+      throw new BadRequestException(
+        translateError('err.supplierReturn.cannotConfirmFromStatus', getLocale(), {
+          status: pre.status,
+        }),
+      );
     }
     if (pre._count.lines === 0) {
-      throw new BadRequestException('Повернення не може бути підтверджено без рядків');
+      throw new BadRequestException(
+        translateError('err.supplierReturn.confirmRequiresLines', getLocale()),
+      );
     }
 
     await this.prisma.$transaction(
@@ -324,7 +355,7 @@ export class SupplierReturnsService {
         });
         if (cas.count === 0) {
           throw new BadRequestException(
-            'Повернення вже підтверджено або статус змінився — оновіть сторінку',
+            translateError('err.supplierReturn.alreadyConfirmedOrChanged', getLocale()),
           );
         }
         const sr = await tx.supplierReturn.findFirstOrThrow({
@@ -400,11 +431,16 @@ export class SupplierReturnsService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true },
     });
-    if (!sr) throw new NotFoundException('Повернення не знайдено');
+    if (!sr)
+      throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
 
     const allowed = SR_TRANSITIONS[sr.status];
     if (!allowed.includes(SupplierReturnStatus.CANCELLED)) {
-      throw new BadRequestException(`Неможливо скасувати повернення зі статусу "${sr.status}"`);
+      throw new BadRequestException(
+        translateError('err.supplierReturn.cannotCancelFromStatus', getLocale(), {
+          status: sr.status,
+        }),
+      );
     }
 
     await this.prisma.supplierReturn.update({
@@ -420,9 +456,12 @@ export class SupplierReturnsService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!sr) throw new NotFoundException('Повернення не знайдено');
+    if (!sr)
+      throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
     if (sr.status !== SupplierReturnStatus.DRAFT) {
-      throw new BadRequestException('Видалити можна лише повернення зі статусом "Чернетка"');
+      throw new BadRequestException(
+        translateError('err.supplierReturn.onlyDraftDeletable', getLocale()),
+      );
     }
 
     await this.prisma.supplierReturn.update({
@@ -463,12 +502,16 @@ export class SupplierReturnsService {
     if (goods.length !== goodIds.length) {
       const found = new Set(goods.map(g => g.id));
       const missing = goodIds.filter(id => !found.has(id));
-      throw new NotFoundException(`Товар не знайдено: ${missing[0]}`);
+      throw new NotFoundException(
+        translateError('err.supplierReturn.goodNotFound', getLocale(), { missing: missing[0] }),
+      );
     }
     if (uoms.length !== uomIds.length) {
       const found = new Set(uoms.map(u => u.id));
       const missing = uomIds.filter(id => !found.has(id));
-      throw new NotFoundException(`Одиницю виміру не знайдено: ${missing[0]}`);
+      throw new NotFoundException(
+        translateError('err.supplierReturn.unitNotFound', getLocale(), { missing: missing[0] }),
+      );
     }
   }
 

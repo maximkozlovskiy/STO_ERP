@@ -13,6 +13,8 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -91,7 +93,9 @@ export class SupplierPaymentsController {
   ) {
     // date XOR target — рівно одне має бути задане (клітинка byDate АБО бакет overdue/planned).
     if ((query.date && query.target) || (!query.date && !query.target)) {
-      throw new BadRequestException('Потрібно вказати рівно одне: date АБО target');
+      throw new BadRequestException(
+        translateError('err.supplierPayment.dateXorTarget', getLocale()),
+      );
     }
     const target = query.date
       ? ({ kind: 'date', date: query.date } as const)

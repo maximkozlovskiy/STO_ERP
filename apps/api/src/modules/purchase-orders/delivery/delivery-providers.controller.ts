@@ -18,6 +18,8 @@ import {
   ApiPropertyOptional,
 } from '@nestjs/swagger';
 import { IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../auth/guards/roles.guard';
 import { Roles } from '../../../auth/decorators/roles.decorator';
@@ -71,9 +73,15 @@ export class DeliveryProvidersController {
     @Param('code') code: string,
     @Body() dto: VerifyDeliveryDto,
   ) {
-    if (!code || code.length > 64) throw new BadRequestException('Некоректний код служби');
+    if (!code || code.length > 64)
+      throw new BadRequestException(
+        translateError('err.deliveryProvider.invalidCode', getLocale()),
+      );
     const provider = this.registry.get(code);
-    if (!provider) throw new BadRequestException(`Невідома служба доставки: ${code}`);
+    if (!provider)
+      throw new BadRequestException(
+        translateError('err.deliveryProvider.unknown', getLocale(), { code }),
+      );
     return this.integrationLog.wrap({ orgId, provider: code, operation: 'verifyCredentials' }, () =>
       provider.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials }),
     );

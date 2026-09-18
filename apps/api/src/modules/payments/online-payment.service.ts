@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymentGatewayRegistry } from './gateways/payment-gateway-registry';
 import { ProviderConfigService } from './provider-config.service';
@@ -54,20 +56,30 @@ export class OnlinePaymentService {
         status: true,
       },
     });
-    if (!invoice) throw new NotFoundException('Рахунок не знайдено');
+    if (!invoice)
+      throw new NotFoundException(translateError('err.onlinePayment.invoiceNotFound', getLocale()));
     if (
       invoice.status !== 'SENT' &&
       invoice.status !== 'PARTIALLY_PAID' &&
       invoice.status !== 'OVERDUE'
     ) {
-      throw new BadRequestException(`Рахунок у статусі "${invoice.status}" — оплата неможлива`);
+      throw new BadRequestException(
+        translateError('err.onlinePayment.invoiceStatusNoPayment', getLocale(), {
+          status: invoice.status,
+        }),
+      );
     }
 
     const remaining = Number(invoice.amount) - Number(invoice.paidAmount);
     const amount = input.amount ?? remaining;
-    if (amount <= 0) throw new BadRequestException('Немає залишку до сплати');
+    if (amount <= 0)
+      throw new BadRequestException(translateError('err.onlinePayment.noRemaining', getLocale()));
     if (amount > remaining + 1e-9) {
-      throw new BadRequestException(`Сума перевищує залишок (${remaining.toFixed(2)} грн)`);
+      throw new BadRequestException(
+        translateError('err.onlinePayment.amountExceedsRemaining', getLocale(), {
+          remaining: remaining.toFixed(2),
+        }),
+      );
     }
 
     // Активний платіжний шлюз філії (гілка наряду або перша філія org), з legacy-fallback.
@@ -81,11 +93,17 @@ export class OnlinePaymentService {
       : undefined;
     const active = await this.providerConfig.resolveActive(orgId, branchId, 'PAYMENT');
     if (!active) {
-      throw new BadRequestException('Онлайн-оплату (еквайринг) не налаштовано');
+      throw new BadRequestException(
+        translateError('err.onlinePayment.acquiringNotConfigured', getLocale()),
+      );
     }
     const gateway = this.gateways.get(active.provider);
     if (!gateway) {
-      throw new BadRequestException(`Невідомий платіжний шлюз: ${active.provider}`);
+      throw new BadRequestException(
+        translateError('err.onlinePayment.unknownGateway', getLocale(), {
+          provider: active.provider,
+        }),
+      );
     }
 
     // Створюємо намір ПЕРШИМ (щоб reference був стабільним id), потім gateway-рахунок.
@@ -167,7 +185,10 @@ export class OnlinePaymentService {
         })
         .catch(() => undefined);
       throw new BadRequestException(
-        `${gateway.name}: не вдалося створити рахунок — ${e instanceof Error ? e.message : 'помилка'}`,
+        translateError('err.onlinePayment.gatewayCreateFailed', getLocale(), {
+          name: gateway.name,
+          error: e instanceof Error ? e.message : 'помилка',
+        }),
       );
     }
   }
@@ -178,7 +199,8 @@ export class OnlinePaymentService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true, pageUrl: true, amount: true, paymentId: true, error: true },
     });
-    if (!intent) throw new NotFoundException('Намір оплати не знайдено');
+    if (!intent)
+      throw new NotFoundException(translateError('err.onlinePayment.intentNotFound', getLocale()));
     return this.toDto(intent);
   }
 

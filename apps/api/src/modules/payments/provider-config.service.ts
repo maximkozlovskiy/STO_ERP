@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProviderKind, ShiftMode } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /** DTO апсерту конфіга провайдера (creds write-only — порожнє → зберегти наявні). */
@@ -166,7 +168,7 @@ export class ProviderConfigService {
   ): Promise<ProviderConfigView> {
     await this.assertBranchInOrg(orgId, branchId);
     if (!input.provider || input.provider.length > 64) {
-      throw new BadRequestException('Некоректний код провайдера');
+      throw new BadRequestException(translateError('err.providerConfig.invalidCode', getLocale()));
     }
 
     const existing = await this.prisma.branchProviderConfig.findFirst({
@@ -223,9 +225,14 @@ export class ProviderConfigService {
       where: { orgId, branchId, kind, provider, deletedAt: null },
       select: { id: true, credentials: true },
     });
-    if (!target) throw new NotFoundException('Провайдера не налаштовано для цієї філії');
+    if (!target)
+      throw new NotFoundException(
+        translateError('err.providerConfig.notConfiguredForBranch', getLocale()),
+      );
     if (!this.hasCreds(this.parseCreds(target.credentials))) {
-      throw new BadRequestException('Спершу введіть креди провайдера');
+      throw new BadRequestException(
+        translateError('err.providerConfig.enterCredentialsFirst', getLocale()),
+      );
     }
 
     await this.prisma.$transaction([
@@ -255,7 +262,8 @@ export class ProviderConfigService {
       where: { id: branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch)
+      throw new NotFoundException(translateError('err.providerConfig.branchNotFound', getLocale()));
   }
 
   private async legacyFromBranchSettings(

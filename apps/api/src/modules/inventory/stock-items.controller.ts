@@ -12,6 +12,8 @@ import {
 import { StockMovementType } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProperty } from '@nestjs/swagger';
 import { IsNumber, IsOptional, Min } from 'class-validator';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -118,7 +120,9 @@ export class StockItemsController {
     // valueOf/hasOwnProperty), тож `?type=constructor` пройшов би guard → долетів би до
     // Prisma enum-колонки → P2009 invalid enum → HTTP 500 (не-i18n, Sentry-шум) замість 400.
     if (type && !Object.prototype.hasOwnProperty.call(StockMovementType, type)) {
-      throw new BadRequestException('Невідомий тип руху');
+      throw new BadRequestException(
+        translateError('err.inventory.unknownMovementType', getLocale()),
+      );
     }
     return this.inventory.findMovements(orgId, {
       goodId,

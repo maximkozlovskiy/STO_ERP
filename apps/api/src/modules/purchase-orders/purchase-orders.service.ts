@@ -7,8 +7,14 @@ import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
+import {
+  formatPersonName,
+  TRANSACTION_TIMEOUT_MS,
+  MAX_QUERY_LIMIT,
+  translateError,
+} from '@sto/shared';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -109,7 +115,9 @@ export class PurchaseOrdersService {
     if (goods.length !== goodIds.length) {
       const found = new Set(goods.map(g => g.id));
       const missing = goodIds.find(gid => !found.has(gid));
-      throw new NotFoundException(`Товар не знайдено: ${missing}`);
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.goodNotFound', getLocale(), { missing: String(missing) }),
+      );
     }
   }
 
@@ -225,7 +233,7 @@ export class PurchaseOrdersService {
         },
       },
     });
-    if (!po) throw new NotFoundException('Замовлення не знайдено');
+    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
     return this.toDto(po);
   }
 
@@ -268,9 +276,18 @@ export class PurchaseOrdersService {
             select: { id: true },
           }),
     ]);
-    if (!supplier) throw new NotFoundException('Постачальника не знайдено');
-    if (!warehouse) throw new NotFoundException('Склад не знайдено');
-    if (hasContractId && !contract) throw new NotFoundException('Договір не знайдено');
+    if (!supplier)
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.supplierNotFound', getLocale()),
+      );
+    if (!warehouse)
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.warehouseNotFound', getLocale()),
+      );
+    if (hasContractId && !contract)
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.contractNotFound', getLocale()),
+      );
     const contractId: string | null = hasContractId
       ? (contract as { id: string }).id
       : (contract?.id ?? null);
@@ -385,9 +402,11 @@ export class PurchaseOrdersService {
         documentDate: true,
       },
     });
-    if (!po) throw new NotFoundException('Замовлення не знайдено');
+    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
     if (po.status !== PurchaseOrderStatus.DRAFT)
-      throw new BadRequestException('Редагувати можна лише чернетку');
+      throw new BadRequestException(
+        translateError('err.purchaseOrder.onlyDraftEditable', getLocale()),
+      );
 
     // Доставка: обробляємо ЕН лише коли клієнт явно надіслав поле (undefined → не чіпати).
     //  - непорожній новий ЕН (змінився)  → deliveryStatus=PENDING + запустити опитування;
@@ -445,9 +464,18 @@ export class PurchaseOrdersService {
         : Promise.resolve(null),
     ]);
 
-    if (dto.supplierId && !supplier) throw new NotFoundException('Постачальника не знайдено');
-    if (dto.warehouseId && !warehouse) throw new NotFoundException('Склад не знайдено');
-    if (shouldValidateContract && !contract) throw new NotFoundException('Договір не знайдено');
+    if (dto.supplierId && !supplier)
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.supplierNotFound', getLocale()),
+      );
+    if (dto.warehouseId && !warehouse)
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.warehouseNotFound', getLocale()),
+      );
+    if (shouldValidateContract && !contract)
+      throw new NotFoundException(
+        translateError('err.purchaseOrder.contractNotFound', getLocale()),
+      );
 
     const newContractId: string | null | undefined =
       shouldValidateContract && contract
@@ -565,7 +593,8 @@ export class PurchaseOrdersService {
           where: { id, orgId, deletedAt: null },
           select: { status: true },
         });
-        if (!po) throw new NotFoundException('Замовлення не знайдено');
+        if (!po)
+          throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
 
         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
 
@@ -595,10 +624,10 @@ export class PurchaseOrdersService {
         contract: { select: { paymentDeferDays: true, deletedAt: true } },
       },
     });
-    if (!po) throw new NotFoundException('Замовлення не знайдено');
+    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
     if (po.status !== PurchaseOrderStatus.ORDERED && po.status !== PurchaseOrderStatus.PARTIAL) {
       throw new BadRequestException(
-        'Прийом можливий лише для замовлень зі статусом ORDERED або PARTIAL',
+        translateError('err.purchaseOrder.receiveOnlyOrderedOrPartial', getLocale()),
       );
     }
 
@@ -624,7 +653,9 @@ export class PurchaseOrdersService {
       allowedUomIds = new Set(allowed.map(u => u.id));
       const missing = overrideUomIds.filter(id => !allowedUomIds.has(id));
       if (missing.length) {
-        throw new BadRequestException('Одиницю виміру не знайдено в межах організації');
+        throw new BadRequestException(
+          translateError('err.purchaseOrder.unitNotFoundInOrg', getLocale()),
+        );
       }
     }
 
@@ -633,7 +664,9 @@ export class PurchaseOrdersService {
     const seen = new Set<string>();
     for (const recv of dto.lines) {
       if (seen.has(recv.lineId)) {
-        throw new BadRequestException('Кожен рядок прийому має бути унікальним');
+        throw new BadRequestException(
+          translateError('err.purchaseOrder.receiveLineMustBeUnique', getLocale()),
+        );
       }
       seen.add(recv.lineId);
     }
@@ -665,8 +698,11 @@ export class PurchaseOrdersService {
       if (line.receivedQty + recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) {
         const remaining = roundMoney(Math.max(0, line.quantity - line.receivedQty));
         throw new BadRequestException(
-          `Кількість прийому перевищує залишок за рядком (замовлено ${line.quantity}, ` +
-            `вже прийнято ${line.receivedQty}, до прийому ${remaining})`,
+          translateError('err.purchaseOrder.receiveExceedsLineRemaining', getLocale(), {
+            quantity: line.quantity,
+            received: line.receivedQty,
+            remaining,
+          }),
         );
       }
     }
@@ -688,10 +724,13 @@ export class PurchaseOrdersService {
           where: { id, orgId, deletedAt: null },
           select: { status: true },
         });
-        if (!fresh) throw new NotFoundException('Замовлення не знайдено');
+        if (!fresh)
+          throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
         if (fresh.status !== po.status) {
           throw new BadRequestException(
-            `Статус замовлення змінився на "${fresh.status}" — повторіть прийом`,
+            translateError('err.purchaseOrder.statusChangedRetry', getLocale(), {
+              status: fresh.status,
+            }),
           );
         }
 
@@ -716,7 +755,7 @@ export class PurchaseOrdersService {
           });
           if (casResult.count === 0) {
             throw new BadRequestException(
-              'Прийом уже опрацьовано або рядок змінено іншою операцією — повторіть',
+              translateError('err.purchaseOrder.receiveAlreadyProcessed', getLocale()),
             );
           }
         }
@@ -811,9 +850,11 @@ export class PurchaseOrdersService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!po) throw new NotFoundException('Замовлення не знайдено');
+    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
     if (po.status !== PurchaseOrderStatus.DRAFT)
-      throw new BadRequestException('Видалити можна лише чернетку');
+      throw new BadRequestException(
+        translateError('err.purchaseOrder.onlyDraftDeletable', getLocale()),
+      );
     // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
     await this.prisma.purchaseOrder.updateMany({
       where: { id, orgId, deletedAt: null },
@@ -864,12 +905,12 @@ export class PurchaseOrdersService {
         },
       },
     });
-    if (!po) throw new NotFoundException('Замовлення не знайдено');
+    if (!po) throw new NotFoundException(translateError('err.purchaseOrder.notFound', getLocale()));
     // Defense-in-depth: розцінювати можна лише отримані товари (UI рендерить кнопку
     // тільки для RECEIVED/PARTIAL, але клієнт міг бути обійдений)
     if (po.status !== PurchaseOrderStatus.RECEIVED && po.status !== PurchaseOrderStatus.PARTIAL) {
       throw new BadRequestException(
-        'Розцінити можна лише отримані товари (статус RECEIVED або PARTIAL)',
+        translateError('err.purchaseOrder.priceOnlyReceived', getLocale()),
       );
     }
 

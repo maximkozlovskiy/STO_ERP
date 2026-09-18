@@ -7,6 +7,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -48,7 +50,8 @@ export class BatchesController {
       this.batchService.getAvgCost(orgId, goodId, warehouseId),
     ]);
 
-    if (!good) throw new NotFoundException('Товар не знайдено');
+    if (!good)
+      throw new NotFoundException(translateError('err.inventory.goodNotFound', getLocale()));
 
     return {
       good: { ...good, salePrice: Number(good.salePrice) },

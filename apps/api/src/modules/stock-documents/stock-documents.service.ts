@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 
+import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -122,7 +123,8 @@ export class StockDocumentsService {
         },
       },
     });
-    if (!doc) throw new NotFoundException('Документ не знайдено');
+    if (!doc)
+      throw new NotFoundException(translateError('err.stockDocument.notFound', getLocale()));
     return this.toDto(doc);
   }
 
@@ -143,7 +145,9 @@ export class StockDocumentsService {
     if (goods.length !== goodIds.length) {
       const found = new Set(goods.map(g => g.id));
       const missing = goodIds.find(gid => !found.has(gid));
-      throw new NotFoundException(`Товар не знайдено: ${missing}`);
+      throw new NotFoundException(
+        translateError('err.stockDocument.goodNotFound', getLocale(), { missing: String(missing) }),
+      );
     }
   }
 
@@ -176,19 +180,30 @@ export class StockDocumentsService {
           })
         : Promise.resolve(null),
     ]);
-    if (!branch) throw new NotFoundException('Філію не знайдено');
-    if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    if (!branch)
+      throw new NotFoundException(translateError('err.stockDocument.branchNotFound', getLocale()));
+    if (!warehouse)
+      throw new NotFoundException(
+        translateError('err.stockDocument.warehouseNotFound', getLocale()),
+      );
     if (dto.purchaseOrderId && !purchaseOrder) {
-      throw new BadRequestException('Замовлення не знайдено');
+      throw new BadRequestException(translateError('err.stockDocument.orderNotFound', getLocale()));
     }
 
     if (dto.type === 'TRANSFER' && !dto.targetWarehouseId) {
-      throw new BadRequestException('Для переміщення потрібен склад призначення');
+      throw new BadRequestException(
+        translateError('err.stockDocument.transferTargetRequired', getLocale()),
+      );
     }
     if (dto.targetWarehouseId) {
-      if (!target) throw new NotFoundException('Склад призначення не знайдено');
+      if (!target)
+        throw new NotFoundException(
+          translateError('err.stockDocument.targetWarehouseNotFound', getLocale()),
+        );
       if (dto.targetWarehouseId === dto.warehouseId) {
-        throw new BadRequestException('Склад джерела і призначення не можуть збігатись');
+        throw new BadRequestException(
+          translateError('err.stockDocument.sourceTargetSame', getLocale()),
+        );
       }
     }
 
@@ -272,8 +287,12 @@ export class StockDocumentsService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!doc) throw new NotFoundException('Документ не знайдено');
-    if (doc.status !== 'DRAFT') throw new BadRequestException('Редагувати можна лише чернетку');
+    if (!doc)
+      throw new NotFoundException(translateError('err.stockDocument.notFound', getLocale()));
+    if (doc.status !== 'DRAFT')
+      throw new BadRequestException(
+        translateError('err.stockDocument.onlyDraftEditable', getLocale()),
+      );
     // Tenant-guard goodId рядків (pre-prod audit) — див. коментар у create().
     if (dto.lines) await this.validateLineGoodIds(orgId, dto.lines);
 
@@ -346,13 +365,16 @@ export class StockDocumentsService {
         },
       },
     });
-    if (!doc) throw new NotFoundException('Документ не знайдено');
+    if (!doc)
+      throw new NotFoundException(translateError('err.stockDocument.notFound', getLocale()));
 
     assertFsmTransition(DOC_TRANSITIONS, doc.status, newStatus);
 
     if (newStatus === 'CONFIRMED') {
       if (!doc.lines.length) {
-        throw new BadRequestException('Документ не може бути підтверджено без позицій');
+        throw new BadRequestException(
+          translateError('err.stockDocument.confirmRequiresLines', getLocale()),
+        );
       }
 
       await this.prisma.$transaction(
@@ -369,12 +391,16 @@ export class StockDocumentsService {
             data: { status: 'CONFIRMED', confirmedAt: new Date(), confirmedBy: userId ?? null },
           });
           if (cas.count === 0) {
-            throw new BadRequestException('Статус документу змінився — повторіть дію');
+            throw new BadRequestException(
+              translateError('err.stockDocument.statusChanged', getLocale()),
+            );
           }
 
           const movType = MOVEMENT_TYPES[doc.type];
           if (doc.type !== 'TRANSFER' && !movType)
-            throw new BadRequestException(`Непідтримуваний тип документу: ${doc.type}`);
+            throw new BadRequestException(
+              translateError('err.stockDocument.unsupportedType', getLocale(), { type: doc.type }),
+            );
 
           // sto-optimize: всі лінії незалежні (різні goodId/warehouseId rows) — паралелимо.
           // Всередині кожної лінії: createMovement і UoM-update пишуть у різні таблиці — теж
@@ -461,8 +487,12 @@ export class StockDocumentsService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!doc) throw new NotFoundException('Документ не знайдено');
-    if (doc.status !== 'DRAFT') throw new BadRequestException('Видалити можна лише чернетку');
+    if (!doc)
+      throw new NotFoundException(translateError('err.stockDocument.notFound', getLocale()));
+    if (doc.status !== 'DRAFT')
+      throw new BadRequestException(
+        translateError('err.stockDocument.onlyDraftDeletable', getLocale()),
+      );
     // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
     await this.prisma.stockDocument.updateMany({
       where: { id, orgId, deletedAt: null },

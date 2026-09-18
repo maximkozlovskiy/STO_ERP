@@ -1,7 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, translateError } from '@sto/shared';
 
+import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
 import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
@@ -161,7 +162,7 @@ export class InvoicesService {
         payments: { select: { amount: true } },
       },
     });
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     return this.toDto(inv, true);
   }
 
@@ -188,13 +189,17 @@ export class InvoicesService {
         select: { id: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo)
+      throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
     // shared INVOICEABLE_STATUSES: раніше inline `['COMPLETED', 'INVOICED']` — будь-який
     // новий статус у whitelist оновлюється тільки у одному місці.
     if (!INVOICEABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
+      throw new BadRequestException(
+        translateError('err.invoice.onlyCompletedInvoiceable', getLocale()),
+      );
     }
-    if (existingPre) throw new BadRequestException('Для цього наряду вже існує активний рахунок');
+    if (existingPre)
+      throw new BadRequestException(translateError('err.invoice.activeExists', getLocale()));
 
     // docNumbers.next() opens its own $tx (SELECT FOR UPDATE counter) — must run BEFORE
     // the outer Serializable tx to avoid nested-tx deadlock. Trade-off: if outer tx aborts
@@ -236,7 +241,7 @@ export class InvoicesService {
             select: { id: true },
           });
           if (existing)
-            throw new BadRequestException('Для цього наряду вже існує активний рахунок');
+            throw new BadRequestException(translateError('err.invoice.activeExists', getLocale()));
 
           return tx.invoice.create({
             data: {
@@ -271,7 +276,7 @@ export class InvoicesService {
     } catch (err) {
       throwIfSerializationConflict(
         err,
-        'Інший користувач щойно виставив рахунок для цього наряду. Оновіть сторінку.',
+        translateError('err.invoice.concurrentIssueConflict', getLocale()),
       );
     }
   }
@@ -313,8 +318,10 @@ export class InvoicesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
-    if (dto.workOrderId && !wo) throw new NotFoundException('Наряд не знайдено');
+    if (!counterparty)
+      throw new NotFoundException(translateError('err.invoice.counterpartyNotFound', getLocale()));
+    if (dto.workOrderId && !wo)
+      throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
 
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
@@ -381,9 +388,9 @@ export class InvoicesService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException('Редагувати можна лише чернетку');
+      throw new BadRequestException(translateError('err.invoice.onlyDraftEditable', getLocale()));
 
     const updated = await this.prisma.invoice.update({
       where: { id, orgId },
@@ -428,7 +435,7 @@ export class InvoicesService {
         documentDate: true,
       },
     });
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
     assertFsmTransition(INV_TRANSITIONS, inv.status, newStatus);
 
@@ -463,7 +470,7 @@ export class InvoicesService {
               : { status: newStatus },
         });
         if (moved.count === 0) {
-          throw new BadRequestException('Статус рахунку змінився — повторіть дію');
+          throw new BadRequestException(translateError('err.invoice.statusChanged', getLocale()));
         }
         if (chargesStandaloneOnSend) {
           await this.settlements.createTransaction(
@@ -592,7 +599,7 @@ export class InvoicesService {
         },
       },
     });
-    if (!original) throw new NotFoundException('Рахунок не знайдено');
+    if (!original) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
     // Validate counterparty still exists (not soft-deleted) BEFORE create:
     // Prisma P2003 would surface as HTTP 500 instead of a friendly 404.
@@ -601,7 +608,9 @@ export class InvoicesService {
       select: { id: true },
     });
     if (!counterparty)
-      throw new NotFoundException('Контрагента було видалено — клонування неможливе');
+      throw new NotFoundException(
+        translateError('err.invoice.counterpartyDeletedNoClone', getLocale()),
+      );
 
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 
@@ -699,13 +708,15 @@ export class InvoicesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException('Рядки можна додавати лише до чернетки');
-    if (dto.goodId && !good) throw new NotFoundException('Запчастину не знайдено');
-    if (dto.workId && !work) throw new NotFoundException('Роботу не знайдено');
+      throw new BadRequestException(translateError('err.invoice.linesOnlyDraftAdd', getLocale()));
+    if (dto.goodId && !good)
+      throw new NotFoundException(translateError('err.invoice.partNotFound', getLocale()));
+    if (dto.workId && !work)
+      throw new NotFoundException(translateError('err.invoice.workNotFound', getLocale()));
     if (dto.unitOfMeasureId && dto.goodId && !goodUoM)
-      throw new NotFoundException('Одиницю виміру не знайдено для цього товару');
+      throw new NotFoundException(translateError('err.invoice.unitNotFoundForGood', getLocale()));
 
     // §13: без явного vatRate — дефолт org (getDefaultVatRate вже дає 0 для vatMode NONE),
     // НЕ хардкод 20% (інакше NONE-org отримав би 20% ПДВ на ручному рядку). Дзеркалить
@@ -766,10 +777,11 @@ export class InvoicesService {
         where: { id: lineId, invoiceId, orgId },
       }),
     ]);
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException('Рядки можна редагувати лише у чернетці');
-    if (!existing) throw new NotFoundException('Рядок не знайдено');
+      throw new BadRequestException(translateError('err.invoice.linesOnlyDraftEdit', getLocale()));
+    if (!existing)
+      throw new NotFoundException(translateError('err.invoice.lineNotFound', getLocale()));
 
     const quantity = dto.quantity ?? existing.quantity;
     const unitPrice = dto.unitPrice !== undefined ? dto.unitPrice : Number(existing.unitPrice);
@@ -819,17 +831,21 @@ export class InvoicesService {
         select: { id: true },
       }),
     ]);
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException('Рядки можна видаляти лише з чернетки');
-    if (!existing) throw new NotFoundException('Рядок не знайдено');
+      throw new BadRequestException(
+        translateError('err.invoice.linesOnlyDraftRemove', getLocale()),
+      );
+    if (!existing)
+      throw new NotFoundException(translateError('err.invoice.lineNotFound', getLocale()));
 
     // Defense-in-depth: atomic deleteMany with full compound where (sto-review pattern 2026-05-30).
     // Removes the race-window between the findFirst guard above and a plain delete-by-id.
     const result = await this.prisma.invoiceLine.deleteMany({
       where: { id: lineId, invoiceId, orgId },
     });
-    if (result.count === 0) throw new NotFoundException('Рядок не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.invoice.lineNotFound', getLocale()));
     await this.recalcTotals(orgId, invoiceId);
   }
 
@@ -934,15 +950,17 @@ export class InvoicesService {
         select: { id: true, status: true },
       }),
     ]);
-    if (!woPre) throw new NotFoundException('Наряд не знайдено');
+    if (!woPre)
+      throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
     if (!INVOICEABLE_STATUSES.includes(woPre.status))
-      throw new BadRequestException('Рахунок можна виставити лише для завершеного наряду');
-    if (!existing) throw new NotFoundException('Активний рахунок не знайдено');
+      throw new BadRequestException(
+        translateError('err.invoice.onlyCompletedInvoiceable', getLocale()),
+      );
+    if (!existing)
+      throw new NotFoundException(translateError('err.invoice.activeNotFound', getLocale()));
     // Guard: refreshFromWorkOrder must not overwrite SENT/PAID/OVERDUE lines — breaks bookkeeping.
     if (existing.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException(
-        'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
-      );
+      throw new BadRequestException(translateError('err.invoice.onlyDraftRefresh', getLocale()));
 
     // VAT-режим і ставка з налаштувань org (НЕ хардкод 20%) — інакше для org із vatMode=NONE
     // рахунок роздувався на неіснуючий ПДВ, а для нестандартної ставки давав хибну суму.
@@ -975,12 +993,16 @@ export class InvoicesService {
               },
             }),
           ]);
-          if (!invInTx) throw new NotFoundException('Активний рахунок не знайдено');
+          if (!invInTx)
+            throw new NotFoundException(translateError('err.invoice.activeNotFound', getLocale()));
           if (invInTx.status !== InvoiceStatus.DRAFT)
             throw new BadRequestException(
-              'Оновити можна лише чернетку рахунку. Скасуйте поточний і виставте новий.',
+              translateError('err.invoice.onlyDraftRefresh', getLocale()),
             );
-          if (!wo) throw new NotFoundException('Наряд не знайдено');
+          if (!wo)
+            throw new NotFoundException(
+              translateError('err.invoice.workOrderNotFound', getLocale()),
+            );
 
           await tx.invoiceLine.deleteMany({
             where: { invoiceId: existing.id, orgId },
@@ -1036,7 +1058,7 @@ export class InvoicesService {
     } catch (err) {
       throwIfSerializationConflict(
         err,
-        'Інший користувач щойно оновив цей рахунок. Оновіть сторінку та повторіть.',
+        translateError('err.invoice.concurrentRefreshConflict', getLocale()),
       );
     }
 
@@ -1049,9 +1071,9 @@ export class InvoicesService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
-      throw new BadRequestException('Видалити можна лише чернетку');
+      throw new BadRequestException(translateError('err.invoice.onlyDraftDeletable', getLocale()));
     // Race-safe: updateMany з повним compound where (id+orgId+deletedAt:null)
     // блокує double-delete race.
     await this.prisma.invoice.updateMany({
@@ -1198,7 +1220,7 @@ export class InvoicesService {
         select: { name: true, edrpou: true },
       }),
     ]);
-    if (!inv) throw new NotFoundException('Рахунок не знайдено');
+    if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
 
     const cp = inv.counterparty;
     // `companyName ?? [...].join(' ') ?? ''` had dead `?? ''` (join always returns string),

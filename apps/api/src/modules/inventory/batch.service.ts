@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma, BatchCostMethod, StockBatch } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from './pricing.service';
 
@@ -84,7 +85,8 @@ export class BatchService {
       }),
       this.pricing.getActiveRulesForOrg(orgId),
     ]);
-    if (!good) throw new BadRequestException('Товар не знайдено');
+    if (!good)
+      throw new BadRequestException(translateError('err.inventory.goodNotFound', getLocale()));
 
     const resolvedUnitOfMeasureId = dto.unitOfMeasureId ?? good.unitId ?? null;
 
@@ -257,7 +259,9 @@ export class BatchService {
           // Race lost: інший tx декрементив партію між findMany і updateMany. Скасовуємо
           // batchConsumption через throw → $transaction rollback (Promise.all виконаний, але
           // весь ланцюг ще у tx). Наступний retry рівня викликача (WO/Invoice) з'ясує стан.
-          throw new BadRequestException('Партію змінено іншою транзакцією — повторіть операцію');
+          throw new BadRequestException(
+            translateError('err.inventory.batchConcurrentChange', getLocale()),
+          );
         }
 
         results.push({ batchId: batch.id, quantity: take, costPrice: Number(batch.costPrice) });
@@ -274,7 +278,7 @@ export class BatchService {
     // законне повне списання дробової кількості кидало б хибне «бракує 2.7e-17 одиниць».
     if (remaining > QTY_EPSILON) {
       throw new BadRequestException(
-        `Недостатньо партій для списання: бракує ${remaining} одиниць товару`,
+        translateError('err.inventory.insufficientBatches', getLocale(), { remaining }),
       );
     }
 
@@ -388,7 +392,8 @@ export class BatchService {
       where: { id: batchId, orgId },
       select: { goodId: true, receivedQty: true },
     });
-    if (!batch) throw new BadRequestException('Партію не знайдено');
+    if (!batch)
+      throw new BadRequestException(translateError('err.inventory.batchNotFound', getLocale()));
 
     // Ідемпотентність: повторний виклик на той самий (батч, документ) не подвоює повернення
     // (BullMQ retry / double-click). Return-consumption має quantity > 0 (споживання — < 0).
@@ -413,7 +418,9 @@ export class BatchService {
     ]);
     if (updated.count === 0) {
       // throw → $transaction rollback (скасовує batchConsumption).
-      throw new BadRequestException('Повернення перевищує отриману кількість партії');
+      throw new BadRequestException(
+        translateError('err.inventory.returnExceedsBatchReceived', getLocale()),
+      );
     }
   }
 }

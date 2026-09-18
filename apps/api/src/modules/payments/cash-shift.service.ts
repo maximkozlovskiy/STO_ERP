@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FiscalProviderRegistry } from './fiscal/fiscal-provider-registry';
 import { ProviderConfigService } from './provider-config.service';
@@ -48,10 +50,17 @@ export class CashShiftService {
       ? await this.providerConfig.resolveByCode(orgId, branchId, 'FISCAL', providerCode)
       : await this.providerConfig.resolveActive(orgId, branchId, 'FISCAL');
     if (!active) {
-      throw new BadRequestException('Фіскалізацію не налаштовано (провайдер/креди/увімкнення)');
+      throw new BadRequestException(
+        translateError('err.cashShift.fiscalNotConfigured', getLocale()),
+      );
     }
     const provider = this.registry.get(active.provider);
-    if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${active.provider}`);
+    if (!provider)
+      throw new BadRequestException(
+        translateError('err.cashShift.unknownProvider', getLocale(), {
+          provider: active.provider,
+        }),
+      );
     const cfg: FiscalConfig = { apiUrl: active.apiUrl, credentials: active.credentials };
     return { provider, cfg };
   }
@@ -95,7 +104,10 @@ export class CashShiftService {
       orderBy: { createdAt: 'asc' },
       select: { id: true, fiscalProvider: true },
     });
-    if (!register) throw new BadRequestException('Немає каси для цієї філії');
+    if (!register)
+      throw new BadRequestException(
+        translateError('err.cashShift.noCashRegisterForBranch', getLocale()),
+      );
 
     // Провайдер зміни: якщо каса привʼязана (fiscalProvider) — саме він; інакше активний per-branch.
     // CashShift.provider = provider.code (нижче) → sell/ensureToken працюють проти правильного ПРРО.
@@ -106,7 +118,8 @@ export class CashShiftService {
       where: { orgId, cashRegisterId: register.id, status: 'OPEN', deletedAt: null },
       select: { id: true },
     });
-    if (existing) throw new BadRequestException('Зміна вже відкрита');
+    if (existing)
+      throw new BadRequestException(translateError('err.cashShift.alreadyOpen', getLocale()));
 
     const logCtx = { orgId, branchId, provider: provider.code, documentType: 'CashShift' };
     const token = await this.integrationLog.wrap({ ...logCtx, operation: 'signIn' }, () =>
@@ -156,8 +169,9 @@ export class CashShiftService {
       where: { id: shiftId, orgId, deletedAt: null },
       include: { cashRegister: { select: { name: true } } },
     });
-    if (!shift) throw new NotFoundException('Зміну не знайдено');
-    if (shift.status !== 'OPEN') throw new BadRequestException('Зміна вже закрита');
+    if (!shift) throw new NotFoundException(translateError('err.cashShift.notFound', getLocale()));
+    if (shift.status !== 'OPEN')
+      throw new BadRequestException(translateError('err.cashShift.alreadyClosed', getLocale()));
 
     // Bug #711 — CAS-claim OPEN→CLOSED ПЕРЕД зовнішнім Z-звітом. Статус-перевірка вище — це
     // STALE read: два concurrent close() (подвійний клік / retry) обидва бачать OPEN і обидва
@@ -168,7 +182,8 @@ export class CashShiftService {
       where: { id: shift.id, orgId, status: 'OPEN', deletedAt: null },
       data: { status: 'CLOSED', closedAt: new Date() },
     });
-    if (claim.count === 0) throw new BadRequestException('Зміна вже закрита');
+    if (claim.count === 0)
+      throw new BadRequestException(translateError('err.cashShift.alreadyClosed', getLocale()));
 
     let zReportId: string | null | undefined;
     try {
@@ -221,7 +236,7 @@ export class CashShiftService {
       where: { id: shiftId, orgId },
       select: { branchId: true, provider: true, checkboxAccessToken: true, tokenExpiresAt: true },
     });
-    if (!shift) throw new NotFoundException('Зміну не знайдено');
+    if (!shift) throw new NotFoundException(translateError('err.cashShift.notFound', getLocale()));
 
     // Резолвимо КОНКРЕТНИЙ провайдер зміни (не «активний» — зміна могла відкритись іншим).
     const active = await this.providerConfig.resolveByCode(
@@ -231,10 +246,15 @@ export class CashShiftService {
       shift.provider,
     );
     if (!active) {
-      throw new BadRequestException('Фіскалізацію не налаштовано — неможливо оновити токен');
+      throw new BadRequestException(
+        translateError('err.cashShift.fiscalNotConfiguredToken', getLocale()),
+      );
     }
     const provider = this.registry.get(shift.provider);
-    if (!provider) throw new BadRequestException(`Невідомий провайдер ПРРО: ${shift.provider}`);
+    if (!provider)
+      throw new BadRequestException(
+        translateError('err.cashShift.unknownProvider', getLocale(), { provider: shift.provider }),
+      );
     const cfg: FiscalConfig = { apiUrl: active.apiUrl, credentials: active.credentials };
 
     const valid =

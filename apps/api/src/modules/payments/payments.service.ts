@@ -1,8 +1,9 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { Queue } from 'bullmq';
 import { Prisma, FiscalReceiptStatus } from '@prisma/client';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { CashService } from '../cash/cash.service';
@@ -71,7 +72,10 @@ export class PaymentsService {
         where: { id: opts.counterpartyId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!cp) throw new NotFoundException('Контрагента не знайдено');
+      if (!cp)
+        throw new NotFoundException(
+          translateError('err.payment.counterpartyNotFound', getLocale()),
+        );
       where.counterpartyId = opts.counterpartyId;
     }
     // Діапазон дат за createdAt (date-only рядки YYYY-MM-DD від фронту).
@@ -113,7 +117,7 @@ export class PaymentsService {
       where: { id, orgId },
       include: PAYMENT_INCLUDE,
     });
-    if (!payment) throw new NotFoundException('Платіж не знайдено');
+    if (!payment) throw new NotFoundException(translateError('err.payment.notFound', getLocale()));
     return this.toDto(payment);
   }
 
@@ -134,12 +138,14 @@ export class PaymentsService {
         workOrderId: true,
       },
     });
-    if (!payment) throw new NotFoundException('Платіж не знайдено');
+    if (!payment) throw new NotFoundException(translateError('err.payment.notFound', getLocale()));
     if (payment.fiscalReceiptId) {
-      throw new BadRequestException('Чек уже пробито — повтор не потрібен');
+      throw new BadRequestException(
+        translateError('err.payment.receiptAlreadyIssued', getLocale()),
+      );
     }
     if (payment.fiscalStatus !== 'FAILED') {
-      throw new BadRequestException('Повтор можливий лише для чеків у статусі «Помилка»');
+      throw new BadRequestException(translateError('err.payment.retryOnlyFailed', getLocale()));
     }
 
     const branchId =
@@ -226,7 +232,8 @@ export class PaymentsService {
         },
       }),
     ]);
-    if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
+    if (!counterparty)
+      throw new NotFoundException(translateError('err.payment.counterpartyNotFound', getLocale()));
 
     // Рахунок-призначення: DTO задає явно, інакше дефолт з methodConfig. sourceType↔id узгоджені.
     const resolvedSource = await this.resolveDestinationAccount(orgId, dto, methodConfig);
@@ -234,7 +241,11 @@ export class PaymentsService {
     // Pre-validate work order status before opening transaction to avoid partial commit.
     // Status was fetched in the parallel batch above — no extra query needed.
     if (dto.workOrderId && workOrder && workOrder.status !== 'INVOICED') {
-      throw new BadRequestException(`Наряд у статусі "${workOrder.status}" — оплата неможлива`);
+      throw new BadRequestException(
+        translateError('err.payment.workOrderStatusNoPayment', getLocale(), {
+          status: workOrder.status,
+        }),
+      );
     }
 
     // Тригер чека ПРРО = спосіб оплати вимагає (requiresFiscal) АБО оплата йде у ФІСКАЛЬНУ касу
@@ -266,7 +277,7 @@ export class PaymentsService {
       const base = await this.exchangeRates.getBaseCurrency(orgId);
       if (paymentCurrencyId !== base.id) {
         throw new BadRequestException(
-          `Фіскалізація можлива лише у базовій валюті (${base.code}). Оберіть касу/рахунок у ${base.code} або спосіб оплати без ПРРО.`,
+          translateError('err.payment.fiscalOnlyBaseCurrency', getLocale(), { code: base.code }),
         );
       }
     }
@@ -280,7 +291,9 @@ export class PaymentsService {
       if (
         !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, workOrder.currencyId))
       ) {
-        throw new BadRequestException('Валюта оплати має збігатися з валютою наряду');
+        throw new BadRequestException(
+          translateError('err.payment.currencyMustMatchWorkOrder', getLocale()),
+        );
       }
     }
 
@@ -315,10 +328,16 @@ export class PaymentsService {
               inv.status !== 'PARTIALLY_PAID' &&
               inv.status !== 'OVERDUE'
             ) {
-              throw new BadRequestException(`Рахунок у статусі "${inv.status}" — оплата неможлива`);
+              throw new BadRequestException(
+                translateError('err.payment.invoiceStatusNoPayment', getLocale(), {
+                  status: inv.status,
+                }),
+              );
             }
             if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {
-              throw new BadRequestException('Рахунок не належить до вказаного наряду');
+              throw new BadRequestException(
+                translateError('err.payment.invoiceNotForWorkOrder', getLocale()),
+              );
             }
             // Мультивалюта (Фаза 3): валюта оплати мусить збігатися з валютою рахунку — інакше
             // крос-валютна алокація (яким курсом закрити залишок = FX-політика, поза scope).
@@ -326,7 +345,9 @@ export class PaymentsService {
             if (
               !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, inv.currencyId))
             ) {
-              throw new BadRequestException('Валюта оплати має збігатися з валютою рахунку');
+              throw new BadRequestException(
+                translateError('err.payment.currencyMustMatchInvoice', getLocale()),
+              );
             }
             const invAmount = Number(inv.amount);
             const prevPaid = Number(inv.paidAmount);
@@ -336,7 +357,9 @@ export class PaymentsService {
             // НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
             if (dto.amount > remaining + 1e-9) {
               throw new BadRequestException(
-                `Сума перевищує залишок за рахунком (${remaining.toFixed(2)})`,
+                translateError('err.payment.amountExceedsInvoiceRemaining', getLocale(), {
+                  remaining: remaining.toFixed(2),
+                }),
               );
             }
             const newPaid = prevPaid + dto.amount;
@@ -347,7 +370,9 @@ export class PaymentsService {
               data: { paidAmount: newPaid, status: newStatus },
             });
             if (updated.count === 0) {
-              throw new BadRequestException('Рахунок змінено паралельною операцією — повторіть');
+              throw new BadRequestException(
+                translateError('err.payment.invoiceConcurrentChange', getLocale()),
+              );
             }
             // Курсові різниці (Фаза 4): рахунок став PAID цим платежем + валюта НЕ базова →
             // після запису PAYMENT-settlement визнаємо realized FX. CHARGE нараховувався проти
@@ -654,7 +679,10 @@ export class PaymentsService {
     if (sourceType === 'BANK_ACCOUNT') {
       if (!bankAccountId) {
         // Explicit sourceType без id — помилка вводу. Config-дефолт без id — просто ігноруємо.
-        if (fromDto) throw new BadRequestException('Не вказано банківський рахунок');
+        if (fromDto)
+          throw new BadRequestException(
+            translateError('err.payment.bankAccountNotSpecified', getLocale()),
+          );
         return empty;
       }
       const acc = await this.prisma.bankAccount.findFirst({
@@ -662,14 +690,20 @@ export class PaymentsService {
         select: { id: true, currencyId: true },
       });
       if (!acc) {
-        if (fromDto) throw new NotFoundException('Банківський рахунок не знайдено');
+        if (fromDto)
+          throw new NotFoundException(
+            translateError('err.payment.bankAccountNotFound', getLocale()),
+          );
         return empty; // stale config default → degrade, не валимо платіж
       }
       return { sourceType, bankAccountId, cashRegisterId: null, currencyId: acc.currencyId };
     }
     // CASH_REGISTER
     if (!cashRegisterId) {
-      if (fromDto) throw new BadRequestException('Не вказано касу');
+      if (fromDto)
+        throw new BadRequestException(
+          translateError('err.payment.cashRegisterNotSpecified', getLocale()),
+        );
       return empty;
     }
     const reg = await this.prisma.cashRegister.findFirst({
@@ -677,7 +711,10 @@ export class PaymentsService {
       select: { id: true, isFiscal: true, currencyId: true },
     });
     if (!reg) {
-      if (fromDto) throw new NotFoundException('Касу не знайдено');
+      if (fromDto)
+        throw new NotFoundException(
+          translateError('err.payment.cashRegisterNotFound', getLocale()),
+        );
       return empty; // stale config default → degrade, не валимо платіж
     }
     return {

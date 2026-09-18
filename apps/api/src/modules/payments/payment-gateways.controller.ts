@@ -18,6 +18,8 @@ import {
   ApiPropertyOptional,
 } from '@nestjs/swagger';
 import { IsString, IsOptional, IsBoolean, IsObject } from 'class-validator';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -71,9 +73,13 @@ export class PaymentGatewaysController {
     @Param('code') code: string,
     @Body() dto: VerifyGatewayDto,
   ) {
-    if (!code || code.length > 64) throw new BadRequestException('Некоректний код шлюзу');
+    if (!code || code.length > 64)
+      throw new BadRequestException(translateError('err.paymentGateway.invalidCode', getLocale()));
     const gateway = this.gateways.get(code);
-    if (!gateway) throw new BadRequestException(`Невідомий платіжний шлюз: ${code}`);
+    if (!gateway)
+      throw new BadRequestException(
+        translateError('err.paymentGateway.unknown', getLocale(), { code }),
+      );
     return this.integrationLog.wrap({ orgId, provider: code, operation: 'verifyCredentials' }, () =>
       gateway.verifyCredentials({ apiUrl: dto.apiUrl ?? null, credentials: dto.credentials }),
     );

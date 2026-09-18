@@ -6,6 +6,8 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { Prisma, StockMovementType, BatchCostMethod } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService, BatchConsumeResult } from './batch.service';
 import { SettingsService } from '../settings/settings.service';
@@ -82,24 +84,31 @@ export class InventoryService {
     dto: CreateMovementDto,
     tx?: Prisma.TransactionClient,
   ): Promise<CreateMovementResult> {
-    if (dto.quantity === 0) throw new BadRequestException('Кількість не може бути нульовою');
+    if (dto.quantity === 0)
+      throw new BadRequestException(translateError('err.inventory.quantityZero', getLocale()));
     if (!Number.isFinite(dto.quantity)) {
-      throw new BadRequestException('Невірне значення кількості');
+      throw new BadRequestException(translateError('err.inventory.invalidQuantity', getLocale()));
     }
     if (dto.price !== undefined && dto.price !== null && !Number.isFinite(dto.price)) {
-      throw new BadRequestException('Невірне значення ціни');
+      throw new BadRequestException(translateError('err.inventory.invalidPrice', getLocale()));
     }
     if (dto.type === 'RESERVATION_RELEASE' && dto.quantity > 0) {
-      throw new BadRequestException("Зняття резерву: кількість повинна бути від'ємною");
+      throw new BadRequestException(
+        translateError('err.inventory.reservationReleaseNegative', getLocale()),
+      );
     }
     // RETURN (реверс WRITEOFF) — позитивна к-сть; мусить посилатись на документ-джерело,
     // бо повертає у ті самі партії, з яких документ списував (пошук BatchConsumption).
     if (dto.type === 'RETURN') {
       if (dto.quantity < 0) {
-        throw new BadRequestException('Повернення на склад: кількість повинна бути додатною');
+        throw new BadRequestException(
+          translateError('err.inventory.returnMustBePositive', getLocale()),
+        );
       }
       if (!dto.documentType || !dto.documentId) {
-        throw new BadRequestException('Повернення на склад потребує документа-джерела');
+        throw new BadRequestException(
+          translateError('err.inventory.returnRequiresSourceDoc', getLocale()),
+        );
       }
     }
 
@@ -142,7 +151,7 @@ export class InventoryService {
         : Promise.resolve(null),
     ]);
     if (needsUomGuard && !uom) {
-      throw new BadRequestException('Одиницю виміру не знайдено в межах організації');
+      throw new BadRequestException(translateError('err.inventory.unitNotFoundInOrg', getLocale()));
     }
     let resolvedCostPrice: number | null = dto.price ?? null;
     if (needsCostLookup) {
@@ -164,14 +173,18 @@ export class InventoryService {
         dto.type !== 'RESERVATION_RELEASE' &&
         available < Math.abs(dto.quantity)
       ) {
-        throw new BadRequestException('Недостатньо товару на складі');
+        throw new BadRequestException(
+          translateError('err.inventory.insufficientStock', getLocale()),
+        );
       }
       if (dto.type === 'RESERVATION' && dto.quantity > available) {
-        throw new BadRequestException('Недостатньо доступного товару для резервування');
+        throw new BadRequestException(
+          translateError('err.inventory.insufficientAvailableForReservation', getLocale()),
+        );
       }
       if (dto.type === 'RESERVATION_RELEASE' && Math.abs(dto.quantity) > reserved) {
         throw new BadRequestException(
-          'Неможливо зняти резерв: зарезервована кількість менша за запитану',
+          translateError('err.inventory.cannotReleaseMoreThanReserved', getLocale()),
         );
       }
     }
@@ -253,11 +266,13 @@ export class InventoryService {
     // (20260902210000) — джерело-правди backstop; ці throw дають локалізоване повідомлення.
     // Гейтимо за знаком дельти — на RECEIPT/RESERVATION приріст не може стати від'ємним.
     if (quantityDelta < 0 && upserted.quantity < 0) {
-      throw new BadRequestException('Недостатньо товару на складі (concurrent WRITEOFF)');
+      throw new BadRequestException(
+        translateError('err.inventory.insufficientStockConcurrentWriteoff', getLocale()),
+      );
     }
     if (reservedDelta < 0 && upserted.reserved < 0) {
       throw new BadRequestException(
-        "Резерв не може стати від'ємним (concurrent RESERVATION_RELEASE)",
+        translateError('err.inventory.reservedNegativeConcurrentRelease', getLocale()),
       );
     }
     // Симетричний race-guard проти НАД-резервування: pre-check (рядок ~143) читає stale snapshot,
@@ -266,7 +281,7 @@ export class InventoryService {
     // комплекту). Post-check row-locked значень → throw → rollback.
     if (reservedDelta > 0 && upserted.reserved > upserted.quantity) {
       throw new BadRequestException(
-        'Недостатньо доступного товару для резервування (concurrent RESERVATION)',
+        translateError('err.inventory.insufficientAvailableConcurrentReservation', getLocale()),
       );
     }
     // Симетрично для decrement quantity (WRITEOFF/TRANSFER-out): якщо фізичний залишок опустився
@@ -275,7 +290,7 @@ export class InventoryService {
     // але createMovement — публічна поверхня (ручні коригування/майбутні викликачі). Throw→rollback.
     if (quantityDelta < 0 && upserted.reserved > upserted.quantity) {
       throw new BadRequestException(
-        'Списання опустило б залишок нижче зарезервованого — спершу зніміть резерв',
+        translateError('err.inventory.writeoffBelowReserved', getLocale()),
       );
     }
 
@@ -825,7 +840,8 @@ export class InventoryService {
       where: { id: stockItemId, orgId, deletedAt: null },
       data: { minStock },
     });
-    if (res.count === 0) throw new NotFoundException('Залишок не знайдено');
+    if (res.count === 0)
+      throw new NotFoundException(translateError('err.inventory.stockItemNotFound', getLocale()));
     return { id: stockItemId, minStock };
   }
 }
