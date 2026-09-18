@@ -18,5 +18,352 @@
   "languageOptions": {
     "uk": "Ukrainian",
     "en": "English"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "error": "Error",
+    "saveError": "Failed to save",
+    "loadError": "Failed to load settings",
+    "saved": "Saved",
+    "active": "Active",
+    "disabled": "Disabled"
+  },
+  "numbers": {
+    "docTypes": {
+      "WORK_ORDER": "Work order",
+      "INVOICE": "Invoice",
+      "PURCHASE_ORDER": "Purchase order",
+      "SUPPLIER_RETURN": "Supplier return",
+      "STOCK_RECEIPT": "Stock receipt",
+      "STOCK_WRITEOFF": "Stock write-off",
+      "STOCK_TRANSFER": "Stock transfer",
+      "STOCK_OPENING": "Opening balances",
+      "RECONCILIATION_ACT": "Reconciliation act",
+      "COMPLETION_ACT": "Completion act",
+      "COUNTERPARTY_AGREEMENT": "Counterparty agreement",
+      "GOOD_INTERNAL_CODE": "Internal product code",
+      "SUPPLIER_PAYMENT": "Supplier payment"
+    },
+    "resetConfirm": "Reset the counter for {{documentType}}?",
+    "noConfigs": "No configurations found",
+    "prefix": "Prefix",
+    "prefixPlaceholder": "No prefix",
+    "prefixSaveError": "Failed to save prefix",
+    "separator": "Separator",
+    "separatorSaveError": "Failed to save separator",
+    "resetLabel": "Reset:",
+    "resetPeriod": {
+      "NEVER": "Never",
+      "YEARLY": "Yearly",
+      "MONTHLY": "Monthly"
+    },
+    "resetCounter": "Reset counter"
+  },
+  "workdays": {
+    "days": {
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat",
+      "7": "Sun"
+    },
+    "branch": "Branch",
+    "saved": "Branch settings saved",
+    "workDays": "Working days",
+    "workStart": "Opening time",
+    "workEnd": "Closing time",
+    "slotDuration": "Slot duration (min)"
+  },
+  "documents": {
+    "workOrders": "Work orders",
+    "recalcPlanned": {
+      "title": "Recalculate planned labor hours from work lines",
+      "tooltip": "When enabled, adding or removing work lines automatically raises the “Planned labor hours” field to the sum of line hours. Manual reduction is allowed.",
+      "description": "When adding or removing work lines, the “Planned labor hours” field is automatically raised to the sum of line hours. If a higher value was set manually, it is not reduced automatically."
+    },
+    "recalcActual": {
+      "title": "Recalculate actual labor hours from work lines",
+      "tooltip": "When enabled, saving a work order automatically calculates the “Actual labor hours” field as the sum of lines: if a line has “Hrs (actual)” it is used, otherwise “Hrs (planned)”.",
+      "description": "When a work order is saved, the “Actual labor hours” field is automatically calculated as the sum of work lines. For each line “Hrs (actual)” is used if filled, otherwise “Hrs (planned)”."
+    },
+    "syncSlot": {
+      "title": "Sync calendar slot when work order planned hours change",
+      "tooltip": "When enabled, saving a work order checks whether the planned dates match the calendar slots and offers to sync.",
+      "description": "When a work order is saved, if the planned dates differ from the calendar slot, the system will offer to sync the slot."
+    },
+    "noChanges": "No changes",
+    "saving": "Saving..."
+  },
+  "notifications": {
+    "eventLabels": {
+      "WO_CREATED": "Work order created",
+      "WO_ESTIMATE_READY": "Estimate ready",
+      "WO_APPROVED": "Work order approved",
+      "WO_IN_PROGRESS": "Work order in progress",
+      "WO_COMPLETED": "Work order completed",
+      "WO_READY_FOR_PICKUP": "Vehicle ready for pickup",
+      "PAYMENT_RECEIVED": "Payment received",
+      "INVOICE_SENT": "Invoice sent",
+      "LOW_STOCK_ALERT": "Low stock",
+      "FOLLOWUP_REMINDER": "Scheduled maintenance reminder",
+      "BOOKING_CONFIRMATION": "Booking confirmation"
+    },
+    "templatesLoadError": "Failed to load templates",
+    "templateSaved": "Template saved",
+    "templateSaveError": "Failed to save template",
+    "templatesTitle": "Message templates",
+    "variablesHint": "Use variables in double braces: {{vars}}",
+    "noTemplates": "No templates found",
+    "channelSms": "SMS notifications",
+    "channelViber": "Viber notifications",
+    "channelEmail": "Email notifications",
+    "channelTelegram": "Telegram notifications",
+    "emailSubjectPlaceholder": "Email subject",
+    "active": "Active",
+    "inactive": "Disabled",
+    "subject": "Subject: {{subject}}",
+    "edit": "Edit"
+  },
+  "providers": {
+    "channelLabels": {
+      "SMS": "SMS",
+      "VIBER": "Viber",
+      "TELEGRAM": "Telegram",
+      "EMAIL": "Email",
+      "PUSH": "Push"
+    },
+    "loadError": "Failed to load providers",
+    "activateExclusiveError": "First activate this provider (toggle on the card) — only one can be active",
+    "credsSaved": "Credentials saved",
+    "setupChannelFirst": "First set up a provider channel (click the name and enter credentials)",
+    "providerActivated": "Provider activated",
+    "activateError": "Activation error",
+    "title": "Providers and channels",
+    "configureCredsAria": "Configure credentials for {{name}}",
+    "activateProviderAria": "Activate provider {{name}}",
+    "noProviders": "No providers found",
+    "fallbackHint": "Retry order (fallback): top to bottom. If a channel fails, the system tries the next one.",
+    "raisePriorityAria": "Raise priority",
+    "lowerPriorityAria": "Lower priority",
+    "noKey": "no key",
+    "enableChannelAria": "Enable",
+    "disableChannelAria": "Disable",
+    "toggleChannelAria": "{{action}} channel {{channel}}",
+    "credsTitle": "{{name}} — credentials",
+    "channel": "Channel",
+    "smtpHost": "SMTP server",
+    "smtpPort": "Port",
+    "smtpUser": "User (login)",
+    "smtpPassword": "Password",
+    "smtpTls": "TLS/SSL (port 465)",
+    "apiToken": "API token",
+    "apiTokenPlaceholder": "Enter provider token",
+    "senderFrom": "Sender (From)",
+    "senderName": "Sender name",
+    "senderFromPlaceholder": "Service <sto@ukr.net>",
+    "externalTemplateId": "Template ID in provider account",
+    "externalTemplateIdPlaceholder": "e.g. 12345",
+    "externalTemplateHint": "{{channel}} in eSputnik is sent using a ready template from its account. ",
+    "telegramHint": "Telegram — subscribed recipients only.",
+    "verify": "Verify",
+    "verifyError": "Verification error",
+    "tokenValid": "Token valid",
+    "balance": " · balance: {{balance}}",
+    "tokenInvalid": "Invalid token"
+  },
+  "registry": {
+    "verifyError": "Verification error",
+    "saved": "Settings saved",
+    "saveError": "Failed to save",
+    "activateCredsFirst": "First enter provider credentials (click the name)",
+    "providerActivated": "Provider activated",
+    "activateError": "Activation error",
+    "configureCredsAria": "Configure credentials for {{name}}",
+    "activateProviderAria": "Activate provider {{name}}",
+    "credsSaved": "Credentials saved",
+    "notConfigured": "Not configured",
+    "active": "Active",
+    "disabled": "Disabled",
+    "noProviders": "No providers found",
+    "credsSettingsTitle": "{{name}} — settings",
+    "secretSavedPlaceholder": "Saved — enter to change",
+    "apiUrl": "API URL (optional)",
+    "apiUrlPlaceholder": "Leave empty for default",
+    "shiftMode": "Shift mode",
+    "shiftModeManual": "Manual — cashier opens/closes the shift",
+    "shiftModeAutoOpen": "Auto-open — before the first receipt",
+    "verify": "Verify",
+    "credsValid": "Valid credentials",
+    "credsInvalid": "Invalid credentials"
+  },
+  "followup": {
+    "intro": "Automatic SMS reminders to clients after a long absence and before scheduled maintenance.",
+    "enableTitle": "Enable reminders",
+    "enableDescription": "The system will fetch the list of vehicles without visits daily and send SMS",
+    "daysLabel": "Remind after (days without a visit)",
+    "daysHint": "Minimum 30 days, maximum 365"
+  },
+  "loyalty": {
+    "intro": "Loyalty points: clients accrue points for payments and redeem them as a discount. Accrual is automatic on every payment; redemption is available on the counterparty card.",
+    "enableTitle": "Accrue points",
+    "enableDescription": "When disabled, points are not accrued (already accrued points can still be redeemed)",
+    "earnPer": "Per every (UAH paid)",
+    "earnPoints": "Accrue (points)",
+    "earnExample": "Example: for every {{earnPer}} UAH paid the client earns {{earnPoints}} point(s).",
+    "redeemRate": "Redemption rate (UAH per 1 point)",
+    "redeemExample": "1 point = {{redeemRate}} UAH discount on redemption."
+  },
+  "fiscal": {
+    "checkboxLicenseKey": "Cash register license key",
+    "checkboxPinCode": "Cashier PIN",
+    "checkboxCashRegisterId": "Cash register ID",
+    "checkboxCashRegisterIdPlaceholder": "e.g. 0e5b...",
+    "vchasnoToken": "API token",
+    "monobankToken": "X-Token merchant",
+    "liqpayPublicKey": "Public key",
+    "liqpayPrivateKey": "Private key",
+    "prroTitle": "Fiscalization (PRRO)",
+    "acquiringTitle": "Online payment (acquiring)",
+    "footer": "Only one PRRO provider and one payment gateway per branch can be active. Cash shift management is on the “Cash register” page."
+  },
+  "delivery": {
+    "novaposhtaApiKey": "API key",
+    "serviceTitle": "Delivery service",
+    "intervalError": "Interval must be between 5 and 1440 minutes",
+    "intervalSaved": "Interval saved",
+    "pollTitle": "Status polling",
+    "pollDescription": "As soon as a tracking number is entered on a purchase document, the delivery status updates automatically. Service polling interval:",
+    "intervalLabel": "Interval (min)"
+  },
+  "integrations": {
+    "urlEventRequired": "Enter a URL and at least one event",
+    "webhookAdded": "Webhook added",
+    "deleteConfirm": "Delete webhook?",
+    "webhookDeleted": "Webhook deleted",
+    "eventOptions": {
+      "WO_STATUS_CHANGED": "Work order status change",
+      "PAYMENT_RECEIVED": "Payment received",
+      "LOW_STOCK_ALERT": "Low stock"
+    },
+    "addWebhook": "Add webhook",
+    "url": "URL",
+    "urlPlaceholder": "https://example.com/webhook",
+    "secret": "Secret (HMAC, optional)",
+    "secretPlaceholder": "Secret key for signing",
+    "events": "Events",
+    "noWebhooks": "No webhooks configured",
+    "hideLog": "Hide log",
+    "log": "Log",
+    "active": "Active",
+    "inactive": "Inactive",
+    "noDeliveries": "No deliveries yet",
+    "delivered": "Delivered",
+    "deliveryError": "Error"
+  },
+  "integrationLogs": {
+    "allProviders": "All providers",
+    "retentionLabel": "Keep logs (days)",
+    "retentionHint": "Older logs are deleted nightly (1–365 days). Logs contain only exchange metadata — no secrets or request bodies.",
+    "providerAria": "Provider",
+    "statusAria": "Status",
+    "allStatuses": "All statuses",
+    "statusSuccess": "Success",
+    "statusErrors": "Errors",
+    "dateFromAria": "Date from",
+    "dateToAria": "Date to",
+    "colTime": "Time",
+    "colProvider": "Provider",
+    "colOperation": "Operation",
+    "colStatus": "Status",
+    "colHttp": "HTTP",
+    "colDuration": "Time, ms",
+    "colDocument": "Document",
+    "colError": "Error",
+    "loading": "Loading…",
+    "notFound": "No logs found",
+    "ok": "OK",
+    "statusErrorCell": "Error",
+    "pageInfo": "Page {{page}} of {{totalPages}} · total {{total}}",
+    "prev": "Back",
+    "next": "Next"
+  },
+  "ui": {
+    "features": {
+      "toastEnabled": {
+        "label": "Notifications (Toast)",
+        "description": "Show pop-up messages about action results"
+      },
+      "unsavedGuardEnabled": {
+        "label": "Unsaved changes guard",
+        "description": "Warn when closing a form with unsaved data"
+      },
+      "stockIndicatorEnabled": {
+        "label": "Stock indicator",
+        "description": "Show available quantity when adding a spare part"
+      },
+      "commandPaletteEnabled": {
+        "label": "Command palette",
+        "description": "Quick search and navigation via Ctrl+K"
+      },
+      "keyboardShortcutsEnabled": {
+        "label": "Keyboard shortcuts",
+        "description": "Hotkeys for frequent actions"
+      },
+      "savedFiltersEnabled": {
+        "label": "Saved filters",
+        "description": "Save and restore filters in lists"
+      },
+      "inlineEditEnabled": {
+        "label": "Inline editing",
+        "description": "Edit fields directly in tables without opening a form"
+      },
+      "syncIndicatorEnabled": {
+        "label": "Sync indicator",
+        "description": "Show data synchronization status"
+      },
+      "notificationCenterEnabled": {
+        "label": "Notification center",
+        "description": "Panel with all notifications and events"
+      },
+      "bulkActionsEnabled": {
+        "label": "Bulk actions",
+        "description": "Select multiple records for bulk operations"
+      }
+    },
+    "saved": "Interface settings saved",
+    "intro": "Enable or disable interface features. Settings are saved for the whole organization."
+  },
+  "theme": {
+    "loadError": "Failed to load settings",
+    "themeSaved": "Theme saved",
+    "palettePrompt": "Choose the interface color palette",
+    "saveTheme": "Save theme",
+    "navMode": "Navigation mode",
+    "navSections": "By sections",
+    "navFunctions": "By functions",
+    "savedLocally": "Saved locally in the browser",
+    "colorMode": "Theme",
+    "colorLight": "Light",
+    "colorDark": "Dark",
+    "colorSystem": "System"
+  },
+  "sync": {
+    "title": "Cloud Sync",
+    "intro": "Synchronization between branches and cloud backup. Optional feature — the system works fully without it.",
+    "completed": "Synchronization complete. Received {{pulledCount}} records. Sent: {{accepted}} accepted, {{conflicts}} conflicts.",
+    "syncError": "Synchronization error",
+    "loadStatusError": "Failed to load synchronization status.",
+    "errors": "Errors",
+    "pending": "Pending",
+    "lastSync": "Last synchronization",
+    "currentVersion": "Current version (syncVersion)",
+    "hasErrors": "There are synchronization errors — check the log",
+    "hasPending": "There are queued tasks",
+    "allSynced": "All synchronized",
+    "syncNow": "↻ Sync now",
+    "autoSyncHint": "Automatic synchronization happens when an internet connection is available"
   }
 }

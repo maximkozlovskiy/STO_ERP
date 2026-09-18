@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { type OrgSettings } from './shared';
 
 export default function FollowupTab() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -16,10 +18,8 @@ export default function FollowupTab() {
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
       .then(setOrgSettings)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
-      );
-  }, []);
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('common.loadError')));
+  }, [t]);
 
   const save = async () => {
     if (!orgSettings) return;
@@ -34,9 +34,9 @@ export default function FollowupTab() {
         }),
       });
       setOrgSettings(updated);
-      if (currentFeatures.toastEnabled) toast.success('Збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      const errMsg = e instanceof Error ? e.message : t('common.saveError');
       setError(errMsg);
       if (currentFeatures.toastEnabled) toast.error(errMsg);
     } finally {
@@ -55,15 +55,12 @@ export default function FollowupTab() {
       )}
 
       <div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Автоматичні SMS нагадування клієнтам після тривалої відсутності та перед технічним
-          обслуговуванням.
-        </p>
+        <p className="text-sm text-muted-foreground mb-4">{t('followup.intro')}</p>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-foreground">Включити нагадування</p>
+            <p className="text-sm font-medium text-foreground">{t('followup.enableTitle')}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Система щодня отримуватиме список авто без візитів і надсилатиме SMS
+              {t('followup.enableDescription')}
             </p>
           </div>
           <input
@@ -78,7 +75,7 @@ export default function FollowupTab() {
       {(orgSettings.followUpActive ?? false) && (
         <div className="mt-4 pt-4 border-t border-border">
           <label className="block text-sm font-medium text-foreground mb-2">
-            Нагадувати через (днів без візиту)
+            {t('followup.daysLabel')}
           </label>
           <input
             type="number"
@@ -93,12 +90,12 @@ export default function FollowupTab() {
             }
             className="w-32 px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
-          <p className="text-xs text-muted-foreground mt-1.5">Мінімум 30 днів, максимум 365</p>
+          <p className="text-xs text-muted-foreground mt-1.5">{t('followup.daysHint')}</p>
         </div>
       )}
 
       <Button onClick={() => void save()} loading={saving} className="w-full mt-4">
-        Зберегти
+        {t('common.save')}
       </Button>
     </div>
   );

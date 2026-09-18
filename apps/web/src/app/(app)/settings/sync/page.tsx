@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSyncStatus, syncKeys } from '@/hooks/api/useSyncStatus';
 import type { SyncRecord } from '@sto/shared';
@@ -13,6 +14,7 @@ import { fmtDateTime } from '@/lib/format';
 
 export default function SyncPage() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const { t } = useTranslation('settings');
   const qc = useQueryClient();
   const { data: status, isLoading: loading, error: statusError } = useSyncStatus();
   const [syncing, setSyncing] = useState(false);
@@ -42,12 +44,15 @@ export default function SyncPage() {
       const pulledCount = Array.isArray(pulled) ? pulled.length : 0;
 
       setMsg(
-        `Синхронізація завершена. Отримано ${pulledCount} записів. ` +
-          `Відправлено: ${pushResult.accepted} прийнято, ${pushResult.conflicts} конфліктів.`,
+        t('sync.completed', {
+          pulledCount,
+          accepted: pushResult.accepted,
+          conflicts: pushResult.conflicts,
+        }),
       );
       qc.invalidateQueries({ queryKey: syncKeys.all });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка синхронізації');
+      setError(e instanceof Error ? e.message : t('sync.syncError'));
     } finally {
       setSyncing(false);
     }
@@ -59,11 +64,8 @@ export default function SyncPage() {
 
   return (
     <div className="page-container max-w-2xl">
-      <h1 className="page-title mb-2">Cloud Sync</h1>
-      <p className="text-sm text-muted-foreground mb-6">
-        Синхронізація між філіями та хмарний резервний бекап. Опціональна функція — система повністю
-        працює без неї.
-      </p>
+      <h1 className="page-title mb-2">{t('sync.title')}</h1>
+      <p className="text-sm text-muted-foreground mb-6">{t('sync.intro')}</p>
 
       {msg && (
         <div className="mb-4 text-sm text-success bg-success-subtle border border-success/20 rounded-lg p-3">
@@ -81,9 +83,7 @@ export default function SyncPage() {
           <Spinner size="lg" />
         </div>
       ) : !status ? (
-        <div className="text-center py-12 text-muted-foreground">
-          Не вдалося завантажити статус синхронізації.
-        </div>
+        <div className="text-center py-12 text-muted-foreground">{t('sync.loadStatusError')}</div>
       ) : (
         <>
           {/* Status cards */}
@@ -95,7 +95,7 @@ export default function SyncPage() {
               )}
             >
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                Помилки
+                {t('sync.errors')}
               </div>
               <div
                 className={cn(
@@ -113,7 +113,7 @@ export default function SyncPage() {
               )}
             >
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
-                Очікують
+                {t('sync.pending')}
               </div>
               <div
                 className={cn(
@@ -128,11 +128,11 @@ export default function SyncPage() {
 
           <div className="bg-surface rounded-xl border border-border p-5 mb-6 space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Остання синхронізація</span>
+              <span className="text-muted-foreground">{t('sync.lastSync')}</span>
               <span className="font-medium text-foreground">{fmtDate(status.lastSyncAt)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Поточна версія (syncVersion)</span>
+              <span className="text-muted-foreground">{t('sync.currentVersion')}</span>
               <span className="font-medium text-foreground font-mono">{status.maxSyncVersion}</span>
             </div>
             <div className="flex items-center gap-2 pt-1">
@@ -148,21 +148,19 @@ export default function SyncPage() {
               />
               <span className="text-sm text-muted-foreground">
                 {status.failedJobs > 0
-                  ? 'Є помилки синхронізації — перевірте журнал'
+                  ? t('sync.hasErrors')
                   : status.pendingJobs > 0
-                    ? 'Є задачі в черзі'
-                    : 'Все синхронізовано'}
+                    ? t('sync.hasPending')
+                    : t('sync.allSynced')}
               </span>
             </div>
           </div>
 
           <Button onClick={triggerSync} loading={syncing} className="w-full">
-            ↻ Синхронізувати зараз
+            {t('sync.syncNow')}
           </Button>
 
-          <p className="mt-3 text-xs text-muted-foreground text-center">
-            Автоматична синхронізація відбувається при наявності інтернет-з&apos;єднання
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground text-center">{t('sync.autoSyncHint')}</p>
         </>
       )}
     </div>

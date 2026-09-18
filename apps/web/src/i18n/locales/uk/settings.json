@@ -18,5 +18,352 @@
   "languageOptions": {
     "uk": "Українська",
     "en": "Англійська"
+  },
+  "common": {
+    "save": "Зберегти",
+    "cancel": "Скасувати",
+    "error": "Помилка",
+    "saveError": "Помилка збереження",
+    "loadError": "Помилка завантаження налаштувань",
+    "saved": "Збережено",
+    "active": "Активний",
+    "disabled": "Вимкнено"
+  },
+  "numbers": {
+    "docTypes": {
+      "WORK_ORDER": "Наряд-замовлення",
+      "INVOICE": "Рахунок-фактура",
+      "PURCHASE_ORDER": "Замовлення постачальнику",
+      "SUPPLIER_RETURN": "Повернення постачальнику",
+      "STOCK_RECEIPT": "Прихід на склад",
+      "STOCK_WRITEOFF": "Списання зі складу",
+      "STOCK_TRANSFER": "Переміщення між складами",
+      "STOCK_OPENING": "Початкові залишки",
+      "RECONCILIATION_ACT": "Акт звірки",
+      "COMPLETION_ACT": "Акт виконаних робіт",
+      "COUNTERPARTY_AGREEMENT": "Договір контрагента",
+      "GOOD_INTERNAL_CODE": "Внутрішній код товару",
+      "SUPPLIER_PAYMENT": "Оплата постачальнику"
+    },
+    "resetConfirm": "Скинути лічильник для {{documentType}}?",
+    "noConfigs": "Конфігурацій не знайдено",
+    "prefix": "Префікс",
+    "prefixPlaceholder": "Без префіксу",
+    "prefixSaveError": "Помилка збереження префікса",
+    "separator": "Роздільник",
+    "separatorSaveError": "Помилка збереження роздільника",
+    "resetLabel": "Скидати:",
+    "resetPeriod": {
+      "NEVER": "Ніколи",
+      "YEARLY": "Щороку",
+      "MONTHLY": "Щомісяця"
+    },
+    "resetCounter": "Скинути лічильник"
+  },
+  "workdays": {
+    "days": {
+      "1": "Пн",
+      "2": "Вт",
+      "3": "Ср",
+      "4": "Чт",
+      "5": "Пт",
+      "6": "Сб",
+      "7": "Нд"
+    },
+    "branch": "Філія",
+    "saved": "Налаштування філії збережено",
+    "workDays": "Робочі дні",
+    "workStart": "Початок роботи",
+    "workEnd": "Кінець роботи",
+    "slotDuration": "Тривалість слоту (хв)"
+  },
+  "documents": {
+    "workOrders": "Наряди",
+    "recalcPlanned": {
+      "title": "Перераховувати планові нормогодини по роботах",
+      "tooltip": "Якщо увімкнено, при додаванні або видаленні робіт поле «Планові нормогодини» автоматично збільшується до суми нормогодин по рядках. Зменшення вручну — дозволено.",
+      "description": "При додаванні або видаленні рядків робіт поле «Планові нормогодини» автоматично збільшується до суми нормогодин по рядках. Якщо вручну встановлено більше значення — воно не зменшується автоматично."
+    },
+    "recalcActual": {
+      "title": "Перераховувати фактичні нормогодини по роботах",
+      "tooltip": "Якщо увімкнено, при збереженні наряду поле «Фактичні нормогодини» автоматично розраховується як сума по рядках: якщо рядок має «Год (факт.)» — береться він, інакше «Год (план)».",
+      "description": "При збереженні наряду поле «Фактичні нормогодини» автоматично розраховується як сума по рядках робіт. Для кожного рядка береться «Год (факт.)», якщо заповнено, або «Год (план)» інакше."
+    },
+    "syncSlot": {
+      "title": "Синхронізувати слот календаря при зміні планових годин наряду",
+      "tooltip": "Якщо увімкнено, при збереженні наряду перевіряє чи планові дати збігаються зі слотами в календарі та пропонує синхронізувати.",
+      "description": "При збереженні наряду, якщо планові дати відрізняються від слоту в календарі — система запропонує синхронізувати слот."
+    },
+    "noChanges": "Змін немає",
+    "saving": "Збереження..."
+  },
+  "notifications": {
+    "eventLabels": {
+      "WO_CREATED": "Наряд створено",
+      "WO_ESTIMATE_READY": "Кошторис готовий",
+      "WO_APPROVED": "Наряд підтверджено",
+      "WO_IN_PROGRESS": "Наряд в роботі",
+      "WO_COMPLETED": "Наряд завершено",
+      "WO_READY_FOR_PICKUP": "Авто готове до видачі",
+      "PAYMENT_RECEIVED": "Оплата отримана",
+      "INVOICE_SENT": "Рахунок надіслано",
+      "LOW_STOCK_ALERT": "Низький залишок",
+      "FOLLOWUP_REMINDER": "Нагадування про планове ТО",
+      "BOOKING_CONFIRMATION": "Підтвердження запису"
+    },
+    "templatesLoadError": "Помилка завантаження шаблонів",
+    "templateSaved": "Шаблон збережено",
+    "templateSaveError": "Помилка збереження шаблону",
+    "templatesTitle": "Шаблони повідомлень",
+    "variablesHint": "Використовуйте змінні у подвійних дужках: {{vars}}",
+    "noTemplates": "Шаблони не знайдено",
+    "channelSms": "SMS-сповіщення",
+    "channelViber": "Viber-сповіщення",
+    "channelEmail": "Email-сповіщення",
+    "channelTelegram": "Telegram-сповіщення",
+    "emailSubjectPlaceholder": "Тема листа",
+    "active": "Активний",
+    "inactive": "Вимкнено",
+    "subject": "Тема: {{subject}}",
+    "edit": "Редагувати"
+  },
+  "providers": {
+    "channelLabels": {
+      "SMS": "SMS",
+      "VIBER": "Viber",
+      "TELEGRAM": "Telegram",
+      "EMAIL": "Email",
+      "PUSH": "Push"
+    },
+    "loadError": "Помилка завантаження провайдерів",
+    "activateExclusiveError": "Спершу активуйте цього провайдера (перемикач на картці) — активним може бути лише один",
+    "credsSaved": "Креди збережено",
+    "setupChannelFirst": "Спершу налаштуйте канал провайдера (натисніть назву та введіть креди)",
+    "providerActivated": "Провайдера активовано",
+    "activateError": "Помилка активації",
+    "title": "Провайдери та канали",
+    "configureCredsAria": "Налаштувати креди {{name}}",
+    "activateProviderAria": "Активувати провайдера {{name}}",
+    "noProviders": "Провайдери не знайдено",
+    "fallbackHint": "Порядок спроб (fallback): зверху вниз. Якщо канал не спрацював — система пробує наступний.",
+    "raisePriorityAria": "Підняти пріоритет",
+    "lowerPriorityAria": "Знизити пріоритет",
+    "noKey": "без ключа",
+    "enableChannelAria": "Увімкнути",
+    "disableChannelAria": "Вимкнути",
+    "toggleChannelAria": "{{action}} канал {{channel}}",
+    "credsTitle": "{{name}} — креди",
+    "channel": "Канал",
+    "smtpHost": "SMTP-сервер",
+    "smtpPort": "Порт",
+    "smtpUser": "Користувач (логін)",
+    "smtpPassword": "Пароль",
+    "smtpTls": "TLS/SSL (порт 465)",
+    "apiToken": "API-токен",
+    "apiTokenPlaceholder": "Введіть токен провайдера",
+    "senderFrom": "Відправник (From)",
+    "senderName": "Імʼя відправника (sender)",
+    "senderFromPlaceholder": "СТО <sto@ukr.net>",
+    "externalTemplateId": "ID шаблону в кабінеті провайдера",
+    "externalTemplateIdPlaceholder": "напр. 12345",
+    "externalTemplateHint": "{{channel}} у eSputnik надсилається за готовим шаблоном зі свого кабінету. ",
+    "telegramHint": "Telegram — лише підписаним отримувачам.",
+    "verify": "Перевірити",
+    "verifyError": "Помилка перевірки",
+    "tokenValid": "Токен дійсний",
+    "balance": " · баланс: {{balance}}",
+    "tokenInvalid": "Невірний токен"
+  },
+  "registry": {
+    "verifyError": "Помилка перевірки",
+    "saved": "Налаштування збережено",
+    "saveError": "Помилка збереження",
+    "activateCredsFirst": "Спершу введіть креди провайдера (натисніть назву)",
+    "providerActivated": "Провайдера активовано",
+    "activateError": "Помилка активації",
+    "configureCredsAria": "Налаштувати креди {{name}}",
+    "activateProviderAria": "Активувати провайдера {{name}}",
+    "credsSaved": "Креди збережено",
+    "notConfigured": "Не налаштовано",
+    "active": "Активний",
+    "disabled": "Вимкнено",
+    "noProviders": "Провайдери не знайдено",
+    "credsSettingsTitle": "{{name}} — налаштування",
+    "secretSavedPlaceholder": "Збережено — введіть, щоб змінити",
+    "apiUrl": "API URL (необовʼязково)",
+    "apiUrlPlaceholder": "Залиште порожнім для стандартного",
+    "shiftMode": "Режим зміни",
+    "shiftModeManual": "Ручний — касир відкриває/закриває зміну",
+    "shiftModeAutoOpen": "Авто-відкриття — перед першим чеком",
+    "verify": "Перевірити",
+    "credsValid": "Дійсні креди",
+    "credsInvalid": "Невірні креди"
+  },
+  "followup": {
+    "intro": "Автоматичні SMS нагадування клієнтам після тривалої відсутності та перед технічним обслуговуванням.",
+    "enableTitle": "Включити нагадування",
+    "enableDescription": "Система щодня отримуватиме список авто без візитів і надсилатиме SMS",
+    "daysLabel": "Нагадувати через (днів без візиту)",
+    "daysHint": "Мінімум 30 днів, максимум 365"
+  },
+  "loyalty": {
+    "intro": "Бали лояльності: клієнти накопичують бали за оплати й списують їх як знижку. Нарахування — автоматичне при кожній оплаті; списання доступне на картці контрагента.",
+    "enableTitle": "Нараховувати бали",
+    "enableDescription": "Коли вимкнено — бали не нараховуються (уже накопичені можна списувати)",
+    "earnPer": "За кожні (грн оплати)",
+    "earnPoints": "Нараховувати (балів)",
+    "earnExample": "Приклад: за кожні {{earnPer}} грн оплати клієнт отримує {{earnPoints}} бал(ів).",
+    "redeemRate": "Курс списання (грн за 1 бал)",
+    "redeemExample": "1 бал = {{redeemRate}} грн знижки при списанні."
+  },
+  "fiscal": {
+    "checkboxLicenseKey": "Ліцензійний ключ каси",
+    "checkboxPinCode": "PIN касира",
+    "checkboxCashRegisterId": "ID каси (cash register)",
+    "checkboxCashRegisterIdPlaceholder": "напр. 0e5b...",
+    "vchasnoToken": "API-токен",
+    "monobankToken": "X-Token merchant",
+    "liqpayPublicKey": "Public key",
+    "liqpayPrivateKey": "Private key",
+    "prroTitle": "Фіскалізація (ПРРО)",
+    "acquiringTitle": "Онлайн-оплата (еквайринг)",
+    "footer": "Активним може бути лише один провайдер ПРРО і один платіжний шлюз на філію. Керування касовою зміною — на сторінці «Каса»."
+  },
+  "delivery": {
+    "novaposhtaApiKey": "API-ключ",
+    "serviceTitle": "Служба доставки",
+    "intervalError": "Інтервал має бути від 5 до 1440 хвилин",
+    "intervalSaved": "Інтервал збережено",
+    "pollTitle": "Опитування статусу",
+    "pollDescription": "Щойно у документі купівлі вказано номер накладної — статус доставки оновлюється автоматично. Інтервал опитування служби:",
+    "intervalLabel": "Інтервал (хв)"
+  },
+  "integrations": {
+    "urlEventRequired": "Вкажіть URL та хоча б одну подію",
+    "webhookAdded": "Вебхук додано",
+    "deleteConfirm": "Видалити вебхук?",
+    "webhookDeleted": "Вебхук видалено",
+    "eventOptions": {
+      "WO_STATUS_CHANGED": "Зміна статусу наряду",
+      "PAYMENT_RECEIVED": "Отримання оплати",
+      "LOW_STOCK_ALERT": "Низький залишок"
+    },
+    "addWebhook": "Додати вебхук",
+    "url": "URL",
+    "urlPlaceholder": "https://example.com/webhook",
+    "secret": "Секрет (HMAC, необов'язково)",
+    "secretPlaceholder": "Секретний ключ для підпису",
+    "events": "Події",
+    "noWebhooks": "Вебхуків не налаштовано",
+    "hideLog": "Сховати лог",
+    "log": "Лог",
+    "active": "Активний",
+    "inactive": "Неактивний",
+    "noDeliveries": "Доставок не було",
+    "delivered": "Доставлено",
+    "deliveryError": "Помилка"
+  },
+  "integrationLogs": {
+    "allProviders": "Усі провайдери",
+    "retentionLabel": "Зберігати логи (днів)",
+    "retentionHint": "Старіші логи щоночі видаляються (1–365 днів). Логи містять лише метадані обмінів — без секретів і тіл запитів.",
+    "providerAria": "Провайдер",
+    "statusAria": "Статус",
+    "allStatuses": "Усі статуси",
+    "statusSuccess": "Успіх",
+    "statusErrors": "Помилки",
+    "dateFromAria": "Дата від",
+    "dateToAria": "Дата до",
+    "colTime": "Час",
+    "colProvider": "Провайдер",
+    "colOperation": "Операція",
+    "colStatus": "Статус",
+    "colHttp": "HTTP",
+    "colDuration": "Час, мс",
+    "colDocument": "Документ",
+    "colError": "Помилка",
+    "loading": "Завантаження…",
+    "notFound": "Логів не знайдено",
+    "ok": "OK",
+    "statusErrorCell": "Помилка",
+    "pageInfo": "Сторінка {{page}} з {{totalPages}} · всього {{total}}",
+    "prev": "Назад",
+    "next": "Далі"
+  },
+  "ui": {
+    "features": {
+      "toastEnabled": {
+        "label": "Сповіщення (Toast)",
+        "description": "Показувати спливаючі повідомлення про результат дій"
+      },
+      "unsavedGuardEnabled": {
+        "label": "Захист незбережених змін",
+        "description": "Попереджати при закритті форми з незбереженими даними"
+      },
+      "stockIndicatorEnabled": {
+        "label": "Індикатор залишку",
+        "description": "Показувати доступну кількість при додаванні запчастини"
+      },
+      "commandPaletteEnabled": {
+        "label": "Командна палітра",
+        "description": "Швидкий пошук та навігація через Ctrl+K"
+      },
+      "keyboardShortcutsEnabled": {
+        "label": "Клавіатурні скорочення",
+        "description": "Гарячі клавіші для частих дій"
+      },
+      "savedFiltersEnabled": {
+        "label": "Збережені фільтри",
+        "description": "Зберігати та відновлювати фільтри у списках"
+      },
+      "inlineEditEnabled": {
+        "label": "Редагування в рядку",
+        "description": "Редагувати поля прямо в таблицях без переходу на форму"
+      },
+      "syncIndicatorEnabled": {
+        "label": "Індикатор синхронізації",
+        "description": "Показувати статус синхронізації даних"
+      },
+      "notificationCenterEnabled": {
+        "label": "Центр сповіщень",
+        "description": "Панель з усіма сповіщеннями та подіями"
+      },
+      "bulkActionsEnabled": {
+        "label": "Групові дії",
+        "description": "Вибір кількох записів для масових операцій"
+      }
+    },
+    "saved": "Налаштування інтерфейсу збережено",
+    "intro": "Вмикайте або вимикайте функції інтерфейсу. Налаштування зберігаються для всієї організації."
+  },
+  "theme": {
+    "loadError": "Помилка завантаження налаштувань",
+    "themeSaved": "Тему збережено",
+    "palettePrompt": "Оберіть кольорову палітру інтерфейсу",
+    "saveTheme": "Зберегти тему",
+    "navMode": "Режим навігації",
+    "navSections": "По розділах",
+    "navFunctions": "По функціях",
+    "savedLocally": "Зберігається локально у браузері",
+    "colorMode": "Тема",
+    "colorLight": "Світла",
+    "colorDark": "Темна",
+    "colorSystem": "Системна"
+  },
+  "sync": {
+    "title": "Cloud Sync",
+    "intro": "Синхронізація між філіями та хмарний резервний бекап. Опціональна функція — система повністю працює без неї.",
+    "completed": "Синхронізація завершена. Отримано {{pulledCount}} записів. Відправлено: {{accepted}} прийнято, {{conflicts}} конфліктів.",
+    "syncError": "Помилка синхронізації",
+    "loadStatusError": "Не вдалося завантажити статус синхронізації.",
+    "errors": "Помилки",
+    "pending": "Очікують",
+    "lastSync": "Остання синхронізація",
+    "currentVersion": "Поточна версія (syncVersion)",
+    "hasErrors": "Є помилки синхронізації — перевірте журнал",
+    "hasPending": "Є задачі в черзі",
+    "allSynced": "Все синхронізовано",
+    "syncNow": "↻ Синхронізувати зараз",
+    "autoSyncHint": "Автоматична синхронізація відбувається при наявності інтернет-з'єднання"
   }
 }

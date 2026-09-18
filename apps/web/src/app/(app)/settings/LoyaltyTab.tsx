@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -18,6 +19,7 @@ import { type OrgSettings } from './shared';
  *  - loyaltyEnabled    — вимикач НАРАХУВАННЯ (списання балів працює завжди).
  */
 export default function LoyaltyTab() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -26,10 +28,8 @@ export default function LoyaltyTab() {
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
       .then(setOrgSettings)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
-      );
-  }, []);
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('common.loadError')));
+  }, [t]);
 
   const save = async () => {
     if (!orgSettings) return;
@@ -46,9 +46,9 @@ export default function LoyaltyTab() {
         }),
       });
       setOrgSettings(updated);
-      if (currentFeatures.toastEnabled) toast.success('Збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      const errMsg = e instanceof Error ? e.message : t('common.saveError');
       setError(errMsg);
       if (currentFeatures.toastEnabled) toast.error(errMsg);
     } finally {
@@ -72,16 +72,11 @@ export default function LoyaltyTab() {
       )}
 
       <div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Бали лояльності: клієнти накопичують бали за оплати й списують їх як знижку. Нарахування —
-          автоматичне при кожній оплаті; списання доступне на картці контрагента.
-        </p>
+        <p className="text-sm text-muted-foreground mb-4">{t('loyalty.intro')}</p>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-foreground">Нараховувати бали</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Коли вимкнено — бали не нараховуються (уже накопичені можна списувати)
-            </p>
+            <p className="text-sm font-medium text-foreground">{t('loyalty.enableTitle')}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('loyalty.enableDescription')}</p>
           </div>
           <input
             type="checkbox"
@@ -98,7 +93,7 @@ export default function LoyaltyTab() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                За кожні (грн оплати)
+                {t('loyalty.earnPer')}
               </label>
               <input
                 type="number"
@@ -116,7 +111,7 @@ export default function LoyaltyTab() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Нараховувати (балів)
+                {t('loyalty.earnPoints')}
               </label>
               <input
                 type="number"
@@ -134,13 +129,13 @@ export default function LoyaltyTab() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Приклад: за кожні {earnPer} грн оплати клієнт отримує {earnPoints} бал(ів).
+            {t('loyalty.earnExample', { earnPer, earnPoints })}
           </p>
 
           {/* redeemRate — курс списання */}
           <div className="pt-2 border-t border-border">
             <label className="block text-sm font-medium text-foreground mb-2">
-              Курс списання (грн за 1 бал)
+              {t('loyalty.redeemRate')}
             </label>
             <input
               type="number"
@@ -156,14 +151,14 @@ export default function LoyaltyTab() {
               className="w-32 px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             <p className="text-xs text-muted-foreground mt-1.5">
-              1 бал = {redeemRate} грн знижки при списанні.
+              {t('loyalty.redeemExample', { redeemRate })}
             </p>
           </div>
         </div>
       )}
 
       <Button onClick={() => void save()} loading={saving} className="w-full mt-4">
-        Зберегти
+        {t('common.save')}
       </Button>
     </div>
   );

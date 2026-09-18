@@ -110,23 +110,21 @@ export const VAT_LABELS: Record<string, string> = {
   INCLUSIVE: 'ПДВ включено',
 };
 
-// Дзеркалить NotificationEventType enum (schema.prisma) — усі 11 значень.
-export const EVENT_LABELS: Record<string, string> = {
-  WO_CREATED: 'Наряд створено',
-  WO_ESTIMATE_READY: 'Кошторис готовий',
-  WO_APPROVED: 'Наряд підтверджено',
-  WO_IN_PROGRESS: 'Наряд в роботі',
-  WO_COMPLETED: 'Наряд завершено',
-  WO_READY_FOR_PICKUP: 'Авто готове до видачі',
-  PAYMENT_RECEIVED: 'Оплата отримана',
-  INVOICE_SENT: 'Рахунок надіслано',
-  LOW_STOCK_ALERT: 'Низький залишок',
-  FOLLOWUP_REMINDER: 'Нагадування про планове ТО',
-  BOOKING_CONFIRMATION: 'Підтвердження запису',
-};
-
-export const WEBHOOK_EVENT_OPTIONS = [
-  { value: 'WO_STATUS_CHANGED', label: 'Зміна статусу наряду' },
-  { value: 'PAYMENT_RECEIVED', label: 'Отримання оплати' },
-  { value: 'LOW_STOCK_ALERT', label: 'Низький залишок' },
+// Дзеркалить NotificationEventType enum (schema.prisma) — усі 11 значень (порядок збережено).
+// Підписи — у settings-каталозі (notifications.eventLabels.<code>); тут лише коди.
+export const EVENT_KEYS = [
+  'WO_CREATED',
+  'WO_ESTIMATE_READY',
+  'WO_APPROVED',
+  'WO_IN_PROGRESS',
+  'WO_COMPLETED',
+  'WO_READY_FOR_PICKUP',
+  'PAYMENT_RECEIVED',
+  'INVOICE_SENT',
+  'LOW_STOCK_ALERT',
+  'FOLLOWUP_REMINDER',
+  'BOOKING_CONFIRMATION',
 ];
+
+// Події вебхуків (порядок збережено). Підписи — settings-каталог (integrations.eventOptions.<value>).
+export const WEBHOOK_EVENT_VALUES = ['WO_STATUS_CHANGED', 'PAYMENT_RECEIVED', 'LOW_STOCK_ALERT'];

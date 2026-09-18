@@ -1,16 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { type NotificationTemplate, EVENT_LABELS } from './shared';
+import { type NotificationTemplate, EVENT_KEYS } from './shared';
 import NotificationProvidersPanel from './NotificationProvidersPanel';
 
 export default function NotificationsTab() {
+  // `tr` alias — у розмітці нижче є map-цикл із loop-var `t` (шаблон), тож не називаємо переклад `t`.
+  const { t: tr } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
+  const eventLabel = (code: string): string =>
+    EVENT_KEYS.includes(code) ? tr(`notifications.eventLabels.${code}`) : code;
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [saving, setSaving] = useState(false);
@@ -20,9 +25,9 @@ export default function NotificationsTab() {
     apiFetch<NotificationTemplate[]>('/notification-templates')
       .then(setTemplates)
       .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження шаблонів'),
+        setError(e instanceof Error ? e.message : tr('notifications.templatesLoadError')),
       );
-  }, []);
+  }, [tr]);
 
   const saveTemplate = async () => {
     if (!editingTemplate) return;
@@ -41,9 +46,9 @@ export default function NotificationsTab() {
       );
       setTemplates(ts => ts.map(t => (t.id === updated.id ? updated : t)));
       setEditingTemplate(null);
-      if (currentFeatures.toastEnabled) toast.success('Шаблон збережено');
+      if (currentFeatures.toastEnabled) toast.success(tr('notifications.templateSaved'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження шаблону';
+      const msg = e instanceof Error ? e.message : tr('notifications.templateSaveError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     } finally {
@@ -62,16 +67,19 @@ export default function NotificationsTab() {
       <NotificationProvidersPanel />
 
       <div className="border-t border-border pt-6">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Шаблони повідомлень</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">
+          {tr('notifications.templatesTitle')}
+        </h3>
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Використовуйте змінні у подвійних дужках: {'{{workOrderNumber}}'}, {'{{clientName}}'},{' '}
-        {'{{amount}}'}
+        {tr('notifications.variablesHint', {
+          vars: '{{workOrderNumber}}, {{clientName}}, {{amount}}',
+        })}
       </p>
 
       {templates.length === 0 && (
-        <p className="text-muted-foreground text-sm">Шаблони не знайдено</p>
+        <p className="text-muted-foreground text-sm">{tr('notifications.noTemplates')}</p>
       )}
 
       {/* Канали дзеркалять NotificationChannel enum (schema.prisma): SMS/VIBER/EMAIL/TELEGRAM.
@@ -83,10 +91,10 @@ export default function NotificationsTab() {
           <div key={channel}>
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <span className="px-2 py-0.5 bg-secondary rounded text-xs font-mono">{channel}</span>
-              {channel === 'SMS' && 'SMS-сповіщення'}
-              {channel === 'VIBER' && 'Viber-сповіщення'}
-              {channel === 'EMAIL' && 'Email-сповіщення'}
-              {channel === 'TELEGRAM' && 'Telegram-сповіщення'}
+              {channel === 'SMS' && tr('notifications.channelSms')}
+              {channel === 'VIBER' && tr('notifications.channelViber')}
+              {channel === 'EMAIL' && tr('notifications.channelEmail')}
+              {channel === 'TELEGRAM' && tr('notifications.channelTelegram')}
             </h3>
             <div className="space-y-3">
               {channelTemplates.map(t => (
@@ -94,7 +102,7 @@ export default function NotificationsTab() {
                   {editingTemplate?.id === t.id ? (
                     <div className="space-y-3">
                       <span className="text-sm font-medium text-foreground">
-                        {EVENT_LABELS[t.eventType] ?? t.eventType}
+                        {eventLabel(t.eventType)}
                       </span>
                       {channel === 'EMAIL' && (
                         <input
@@ -103,7 +111,7 @@ export default function NotificationsTab() {
                           onChange={e =>
                             setEditingTemplate(et => (et ? { ...et, subject: e.target.value } : et))
                           }
-                          placeholder="Тема листа"
+                          placeholder={tr('notifications.emailSubjectPlaceholder')}
                           className="w-full px-3 py-1.5 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-surface text-foreground"
                         />
                       )}
@@ -127,19 +135,21 @@ export default function NotificationsTab() {
                             }
                             className="rounded border-border"
                           />
-                          <span className="text-sm text-foreground">Активний</span>
+                          <span className="text-sm text-foreground">
+                            {tr('notifications.active')}
+                          </span>
                         </label>
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => void saveTemplate()} loading={saving}>
-                          Зберегти
+                          {tr('common.save')}
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => setEditingTemplate(null)}
                         >
-                          Скасувати
+                          {tr('common.cancel')}
                         </Button>
                       </div>
                     </div>
@@ -148,7 +158,7 @@ export default function NotificationsTab() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium text-foreground">
-                            {EVENT_LABELS[t.eventType] ?? t.eventType}
+                            {eventLabel(t.eventType)}
                           </span>
                           <span
                             className={cn(
@@ -158,18 +168,20 @@ export default function NotificationsTab() {
                                 : 'bg-secondary text-muted-foreground',
                             )}
                           >
-                            {t.isActive ? 'Активний' : 'Вимкнено'}
+                            {t.isActive ? tr('notifications.active') : tr('notifications.inactive')}
                           </span>
                         </div>
                         {t.subject && (
-                          <p className="text-xs text-muted-foreground mb-1">Тема: {t.subject}</p>
+                          <p className="text-xs text-muted-foreground mb-1">
+                            {tr('notifications.subject', { subject: t.subject })}
+                          </p>
                         )}
                         <p className="text-xs text-muted-foreground font-mono bg-secondary rounded p-2">
                           {t.body}
                         </p>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => setEditingTemplate(t)}>
-                        Редагувати
+                        {tr('notifications.edit')}
                       </Button>
                     </div>
                   )}

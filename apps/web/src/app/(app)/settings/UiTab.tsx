@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures, invalidateUiFeaturesCache, type UiFeatures } from '@/hooks/useUiFeatures';
@@ -37,60 +38,22 @@ function Toggle({
   );
 }
 
-const UI_FEATURE_ITEMS: { key: keyof UiFeatures; label: string; description: string }[] = [
-  {
-    key: 'toastEnabled',
-    label: 'Сповіщення (Toast)',
-    description: 'Показувати спливаючі повідомлення про результат дій',
-  },
-  {
-    key: 'unsavedGuardEnabled',
-    label: 'Захист незбережених змін',
-    description: 'Попереджати при закритті форми з незбереженими даними',
-  },
-  {
-    key: 'stockIndicatorEnabled',
-    label: 'Індикатор залишку',
-    description: 'Показувати доступну кількість при додаванні запчастини',
-  },
-  {
-    key: 'commandPaletteEnabled',
-    label: 'Командна палітра',
-    description: 'Швидкий пошук та навігація через Ctrl+K',
-  },
-  {
-    key: 'keyboardShortcutsEnabled',
-    label: 'Клавіатурні скорочення',
-    description: 'Гарячі клавіші для частих дій',
-  },
-  {
-    key: 'savedFiltersEnabled',
-    label: 'Збережені фільтри',
-    description: 'Зберігати та відновлювати фільтри у списках',
-  },
-  {
-    key: 'inlineEditEnabled',
-    label: 'Редагування в рядку',
-    description: 'Редагувати поля прямо в таблицях без переходу на форму',
-  },
-  {
-    key: 'syncIndicatorEnabled',
-    label: 'Індикатор синхронізації',
-    description: 'Показувати статус синхронізації даних',
-  },
-  {
-    key: 'notificationCenterEnabled',
-    label: 'Центр сповіщень',
-    description: 'Панель з усіма сповіщеннями та подіями',
-  },
-  {
-    key: 'bulkActionsEnabled',
-    label: 'Групові дії',
-    description: 'Вибір кількох записів для масових операцій',
-  },
+// Ключі фіч у порядку відображення; підписи/описи — у settings-каталозі (ui.features.<key>.*).
+const UI_FEATURE_KEYS: (keyof UiFeatures)[] = [
+  'toastEnabled',
+  'unsavedGuardEnabled',
+  'stockIndicatorEnabled',
+  'commandPaletteEnabled',
+  'keyboardShortcutsEnabled',
+  'savedFiltersEnabled',
+  'inlineEditEnabled',
+  'syncIndicatorEnabled',
+  'notificationCenterEnabled',
+  'bulkActionsEnabled',
 ];
 
 export default function UiTab() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
   const [uiFeatures, setUiFeatures] = useState<UiFeatures | null>(null);
   const [saving, setSaving] = useState(false);
@@ -112,9 +75,9 @@ export default function UiTab() {
       });
       invalidateUiFeaturesCache();
       window.dispatchEvent(new CustomEvent('sto:ui-features-change'));
-      toast.success('Налаштування інтерфейсу збережено');
+      toast.success(t('ui.saved'));
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      const errMsg = e instanceof Error ? e.message : t('common.saveError');
       setError(errMsg);
       toast.error(errMsg);
     } finally {
@@ -132,18 +95,18 @@ export default function UiTab() {
         </div>
       )}
 
-      <p className="text-sm text-muted-foreground">
-        Вмикайте або вимикайте функції інтерфейсу. Налаштування зберігаються для всієї організації.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('ui.intro')}</p>
 
-      {UI_FEATURE_ITEMS.map(({ key, label, description }) => (
+      {UI_FEATURE_KEYS.map(key => (
         <div
           key={key}
           className="flex items-center justify-between gap-4 py-2 border-b border-border last:border-0"
         >
           <div>
-            <p className="text-sm font-medium text-foreground">{label}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+            <p className="text-sm font-medium text-foreground">{t(`ui.features.${key}.label`)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t(`ui.features.${key}.description`)}
+            </p>
           </div>
           <Toggle
             label=""
@@ -154,7 +117,7 @@ export default function UiTab() {
       ))}
 
       <Button onClick={() => void saveUiFeatures()} loading={saving} className="w-full mt-2">
-        Зберегти
+        {t('common.save')}
       </Button>
     </div>
   );

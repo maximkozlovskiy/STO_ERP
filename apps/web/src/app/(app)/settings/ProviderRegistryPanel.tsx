@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, KeyRound, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -60,6 +61,7 @@ interface Props {
  * з verify. На відміну від сповіщень — без fallback-ланцюга (активний лише 1, без пріоритетів).
  */
 export default function ProviderRegistryPanel({ title, endpoint, providers }: Props) {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
@@ -151,7 +153,7 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
     } catch (e: unknown) {
       setVerifyResult({
         valid: false,
-        error: e instanceof Error ? e.message : 'Помилка перевірки',
+        error: e instanceof Error ? e.message : t('registry.verifyError'),
       });
     } finally {
       setVerifying(false);
@@ -178,10 +180,10 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
         }),
       });
       loadConfigs(selectedBranch);
-      if (currentFeatures.toastEnabled) toast.success('Налаштування збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('registry.saved'));
       closeCreds();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      const msg = e instanceof Error ? e.message : t('registry.saveError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     } finally {
@@ -193,7 +195,7 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
     if (!selectedBranch || activeProvider === providerCode) return;
     // Empty-state guard: активація без збережених кредів → бек кине 400. Спершу вимагаємо креди.
     if (!existingHasCreds(providerCode)) {
-      const msg = 'Спершу введіть креди провайдера (натисніть назву)';
+      const msg = t('registry.activateCredsFirst');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
       return;
@@ -204,9 +206,9 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
         body: JSON.stringify({ provider: providerCode }),
       });
       loadConfigs(selectedBranch);
-      if (currentFeatures.toastEnabled) toast.success('Провайдера активовано');
+      if (currentFeatures.toastEnabled) toast.success(t('registry.providerActivated'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка активації';
+      const msg = e instanceof Error ? e.message : t('registry.activateError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     }
@@ -259,20 +261,20 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
                     openCreds(p);
                   }
                 }}
-                aria-label={`Налаштувати креди ${p.name}`}
+                aria-label={t('registry.configureCredsAria', { name: p.name })}
                 className="flex flex-1 items-center gap-2 text-left cursor-pointer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
               >
                 <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <div className="text-sm font-medium text-foreground">{p.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {cfg?.hasCredentials ? 'Креди збережено' : 'Не налаштовано'}
+                    {cfg?.hasCredentials ? t('registry.credsSaved') : t('registry.notConfigured')}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-xs text-muted-foreground">
-                  {isActive ? 'Активний' : 'Вимкнено'}
+                  {isActive ? t('registry.active') : t('registry.disabled')}
                 </span>
                 <Switch
                   checked={isActive}
@@ -280,30 +282,30 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
                     if (v) void activate(p.code);
                   }}
                   disabled={isActive}
-                  ariaLabel={`Активувати провайдера ${p.name}`}
+                  ariaLabel={t('registry.activateProviderAria', { name: p.name })}
                 />
               </div>
             </div>
           );
         })}
         {providers.length === 0 && (
-          <p className="text-muted-foreground text-sm">Провайдери не знайдено</p>
+          <p className="text-muted-foreground text-sm">{t('registry.noProviders')}</p>
         )}
       </div>
 
       <Modal
         open={credsProvider !== null}
         onClose={closeCreds}
-        title={credsProvider ? `${credsProvider.name} — налаштування` : ''}
+        title={credsProvider ? t('registry.credsSettingsTitle', { name: credsProvider.name }) : ''}
         size="sm"
         onSubmit={() => void saveCreds()}
         footer={
           <ModalFooter>
             <Button variant="outline" onClick={closeCreds}>
-              Скасувати
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void saveCreds()} loading={savingCreds} disabled={!credsReady}>
-              Зберегти
+              {t('common.save')}
             </Button>
           </ModalFooter>
         }
@@ -319,28 +321,28 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
                 onChange={e => setCreds(c => ({ ...c, [f.key]: e.target.value }))}
                 placeholder={
                   f.secret && existingHasCreds(credsProvider.code)
-                    ? 'Збережено — введіть, щоб змінити'
+                    ? t('registry.secretSavedPlaceholder')
                     : (f.placeholder ?? '')
                 }
                 autoComplete="off"
               />
             ))}
             <Input
-              label="API URL (необовʼязково)"
+              label={t('registry.apiUrl')}
               value={apiUrl}
               onChange={e => setApiUrl(e.target.value)}
-              placeholder="Залиште порожнім для стандартного"
+              placeholder={t('registry.apiUrlPlaceholder')}
             />
             {credsProvider.hasShiftMode && (
               <label className="block">
-                <span className="text-sm text-foreground">Режим зміни</span>
+                <span className="text-sm text-foreground">{t('registry.shiftMode')}</span>
                 <Select
                   value={shiftMode}
                   onChange={e => setShiftMode(e.target.value)}
                   className="mt-1"
                 >
-                  <option value="MANUAL">Ручний — касир відкриває/закриває зміну</option>
-                  <option value="AUTO_OPEN">Авто-відкриття — перед першим чеком</option>
+                  <option value="MANUAL">{t('registry.shiftModeManual')}</option>
+                  <option value="AUTO_OPEN">{t('registry.shiftModeAutoOpen')}</option>
                 </Select>
               </label>
             )}
@@ -352,7 +354,7 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
                 loading={verifying}
                 disabled={!credsReady}
               >
-                Перевірити
+                {t('registry.verify')}
               </Button>
               {verifyResult && (
                 <span
@@ -364,13 +366,13 @@ export default function ProviderRegistryPanel({ title, endpoint, providers }: Pr
                   {verifyResult.valid ? (
                     <>
                       <Check className="h-4 w-4" />
-                      Дійсні креди
+                      {t('registry.credsValid')}
                       {verifyResult.cashRegisterName && ` · ${verifyResult.cashRegisterName}`}
                     </>
                   ) : (
                     <>
                       <X className="h-4 w-4" />
-                      {verifyResult.error ?? 'Невірні креди'}
+                      {verifyResult.error ?? t('registry.credsInvalid')}
                     </>
                   )}
                 </span>

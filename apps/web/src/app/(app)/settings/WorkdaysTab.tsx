@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -11,7 +12,8 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
 import { type BranchInfo } from './shared';
 
-const WORK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+// День тижня → номер (1=Пн … 7=Нд); підписи у settings-каталозі (workdays.days.*).
+const WORK_DAY_NUMS = [1, 2, 3, 4, 5, 6, 7];
 
 interface BranchSettings {
   workStartTime: string;
@@ -21,6 +23,7 @@ interface BranchSettings {
 }
 
 export default function WorkdaysTab() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
@@ -80,9 +83,9 @@ export default function WorkdaysTab() {
         method: 'PATCH',
         body: JSON.stringify(branchSettings),
       });
-      if (currentFeatures.toastEnabled) toast.success('Налаштування філії збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('workdays.saved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingBranch(false);
     }
@@ -98,7 +101,7 @@ export default function WorkdaysTab() {
 
       {branches.length > 1 && (
         <Select
-          label="Філія"
+          label={t('workdays.branch')}
           value={selectedBranch}
           onChange={e => setSelectedBranch(e.target.value)}
           className="h-8 text-[13px] py-0.5 px-2 pr-7"
@@ -114,20 +117,20 @@ export default function WorkdaysTab() {
       {branchSettings && (
         <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
           <div>
-            <p className="text-[13px] font-medium text-foreground mb-2">Робочі дні</p>
+            <p className="text-[13px] font-medium text-foreground mb-2">{t('workdays.workDays')}</p>
             <div className="flex gap-2">
-              {WORK_DAYS.map((label, i) => (
+              {WORK_DAY_NUMS.map(day => (
                 <button
-                  key={i}
-                  onClick={() => toggleWorkDay(i + 1)}
+                  key={day}
+                  onClick={() => toggleWorkDay(day)}
                   className={cn(
                     'w-9 h-9 rounded-full text-sm font-medium transition-colors',
-                    branchSettings.workDays.includes(i + 1)
+                    branchSettings.workDays.includes(day)
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-secondary text-muted-foreground hover:bg-secondary/80',
                   )}
                 >
-                  {label}
+                  {t(`workdays.days.${day}`)}
                 </button>
               ))}
             </div>
@@ -135,7 +138,7 @@ export default function WorkdaysTab() {
           <div className="flex flex-wrap gap-4">
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">
-                Початок роботи
+                {t('workdays.workStart')}
               </label>
               <Input
                 type="time"
@@ -148,7 +151,7 @@ export default function WorkdaysTab() {
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">
-                Кінець роботи
+                {t('workdays.workEnd')}
               </label>
               <Input
                 type="time"
@@ -161,7 +164,7 @@ export default function WorkdaysTab() {
             </div>
             <div>
               <label className="block text-[13px] font-medium text-foreground mb-1">
-                Тривалість слоту (хв)
+                {t('workdays.slotDuration')}
               </label>
               <Input
                 type="number"
@@ -179,7 +182,7 @@ export default function WorkdaysTab() {
             </div>
           </div>
           <Button onClick={() => void saveBranchSettings()} loading={savingBranch}>
-            Зберегти
+            {t('common.save')}
           </Button>
         </div>
       )}

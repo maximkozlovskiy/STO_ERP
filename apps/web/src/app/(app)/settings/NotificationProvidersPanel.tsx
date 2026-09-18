@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp, Check, KeyRound, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -42,16 +43,14 @@ interface VerifyResult {
   error?: string;
 }
 
-const CHANNEL_LABELS: Record<string, string> = {
-  SMS: 'SMS',
-  VIBER: 'Viber',
-  TELEGRAM: 'Telegram',
-  EMAIL: 'Email',
-  PUSH: 'Push',
-};
-
 export default function NotificationProvidersPanel() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
+  // Підписи каналів — з settings-каталогу (providers.channelLabels.<code>); невідомі → код як є.
+  const channelLabel = (code: string): string =>
+    ['SMS', 'VIBER', 'TELEGRAM', 'EMAIL', 'PUSH'].includes(code)
+      ? t(`providers.channelLabels.${code}`)
+      : code;
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [selectedBranch, setSelectedBranch] = useState('');
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
@@ -90,10 +89,8 @@ export default function NotificationProvidersPanel() {
       );
     apiFetch<ProviderMeta[]>('/notification-providers')
       .then(setProviders)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження провайдерів'),
-      );
-  }, []);
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('providers.loadError')));
+  }, [t]);
 
   const loadChannels = useCallback((branchId: string) => {
     apiFetch<ChannelConfig[]>(`/notification-channels/${branchId}`)
@@ -126,7 +123,7 @@ export default function NotificationProvidersPanel() {
       loadChannels(selectedBranch);
       return true;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      const msg = e instanceof Error ? e.message : t('common.saveError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
       return false;
@@ -140,8 +137,7 @@ export default function NotificationProvidersPanel() {
   // ланцюг, напр. лишити тільки SMS). Активація іншого провайдера — через Switch на картці.
   const toggleEnabled = (c: ChannelConfig, enabled: boolean) => {
     if (enabled && activeProvider !== null && c.provider !== activeProvider) {
-      const msg =
-        'Спершу активуйте цього провайдера (перемикач на картці) — активним може бути лише один';
+      const msg = t('providers.activateExclusiveError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
       return;
@@ -239,7 +235,7 @@ export default function NotificationProvidersPanel() {
     } catch (e: unknown) {
       setVerifyResult({
         valid: false,
-        error: e instanceof Error ? e.message : 'Помилка перевірки',
+        error: e instanceof Error ? e.message : t('providers.verifyError'),
       });
     } finally {
       setVerifying(false);
@@ -260,7 +256,7 @@ export default function NotificationProvidersPanel() {
           : undefined,
       });
       if (!ok) return; // помилка вже показана в patchChannel — не закриваємо модалку
-      if (currentFeatures.toastEnabled) toast.success('Креди збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('providers.credsSaved'));
       closeCreds();
     } finally {
       setSavingCreds(false);
@@ -280,7 +276,7 @@ export default function NotificationProvidersPanel() {
     // «активовано» і Switch відскочив би назад. Спершу вимагаємо налаштувати канал (креди).
     const hasChannel = channels.some(c => c.provider === providerCode);
     if (!hasChannel) {
-      const msg = 'Спершу налаштуйте канал провайдера (натисніть назву та введіть креди)';
+      const msg = t('providers.setupChannelFirst');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
       return;
@@ -291,9 +287,9 @@ export default function NotificationProvidersPanel() {
         body: JSON.stringify({ provider: providerCode }),
       });
       loadChannels(selectedBranch);
-      if (currentFeatures.toastEnabled) toast.success('Провайдера активовано');
+      if (currentFeatures.toastEnabled) toast.success(t('providers.providerActivated'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка активації';
+      const msg = e instanceof Error ? e.message : t('providers.activateError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     }
@@ -302,7 +298,7 @@ export default function NotificationProvidersPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">Провайдери та канали</h3>
+        <h3 className="text-sm font-semibold text-foreground">{t('providers.title')}</h3>
         {branches.length > 1 && (
           <Select
             value={selectedBranch}
@@ -346,20 +342,20 @@ export default function NotificationProvidersPanel() {
                     openCreds(p);
                   }
                 }}
-                aria-label={`Налаштувати креди ${p.name}`}
+                aria-label={t('providers.configureCredsAria', { name: p.name })}
                 className="flex flex-1 items-center gap-2 text-left cursor-pointer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
               >
                 <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div>
                   <div className="text-sm font-medium text-foreground">{p.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {p.channels.map(ch => CHANNEL_LABELS[ch] ?? ch).join(' · ')}
+                    {p.channels.map(ch => channelLabel(ch)).join(' · ')}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-xs text-muted-foreground">
-                  {isActive ? 'Активний' : 'Вимкнено'}
+                  {isActive ? t('common.active') : t('common.disabled')}
                 </span>
                 <Switch
                   checked={isActive}
@@ -367,24 +363,21 @@ export default function NotificationProvidersPanel() {
                     if (v) void activateProvider(p.code);
                   }}
                   disabled={isActive}
-                  ariaLabel={`Активувати провайдера ${p.name}`}
+                  ariaLabel={t('providers.activateProviderAria', { name: p.name })}
                 />
               </div>
             </div>
           );
         })}
         {providers.length === 0 && (
-          <p className="text-muted-foreground text-sm">Провайдери не знайдено</p>
+          <p className="text-muted-foreground text-sm">{t('providers.noProviders')}</p>
         )}
       </div>
 
       {/* Пріоритет каналів (fallback: зверху вниз) */}
       {sortedChannels.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Порядок спроб (fallback): зверху вниз. Якщо канал не спрацював — система пробує
-            наступний.
-          </p>
+          <p className="text-xs text-muted-foreground">{t('providers.fallbackHint')}</p>
           <div className="space-y-2">
             {sortedChannels.map((c, i) => (
               <div
@@ -396,7 +389,7 @@ export default function NotificationProvidersPanel() {
                     type="button"
                     onClick={() => void move(i, -1)}
                     disabled={i === 0 || movingId !== null}
-                    aria-label="Підняти пріоритет"
+                    aria-label={t('providers.raisePriorityAria')}
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
@@ -405,7 +398,7 @@ export default function NotificationProvidersPanel() {
                     type="button"
                     onClick={() => void move(i, 1)}
                     disabled={i === sortedChannels.length - 1 || movingId !== null}
-                    aria-label="Знизити пріоритет"
+                    aria-label={t('providers.lowerPriorityAria')}
                     className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
@@ -414,10 +407,12 @@ export default function NotificationProvidersPanel() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 bg-secondary rounded text-xs font-mono">
-                      {CHANNEL_LABELS[c.channel] ?? c.channel}
+                      {channelLabel(c.channel)}
                     </span>
                     <span className="text-sm text-foreground">{c.provider}</span>
-                    {!c.hasApiKey && <span className="text-xs text-warning">без ключа</span>}
+                    {!c.hasApiKey && (
+                      <span className="text-xs text-warning">{t('providers.noKey')}</span>
+                    )}
                   </div>
                 </div>
                 <Switch
@@ -426,7 +421,12 @@ export default function NotificationProvidersPanel() {
                   // Канал неактивного провайдера не можна увімкнути окремо (порушило б
                   // ексклюзивність) — блокуємо Switch поки він вимкнений і провайдер не активний.
                   disabled={!c.enabled && activeProvider !== null && c.provider !== activeProvider}
-                  ariaLabel={`${c.enabled ? 'Вимкнути' : 'Увімкнути'} канал ${CHANNEL_LABELS[c.channel] ?? c.channel}`}
+                  ariaLabel={t('providers.toggleChannelAria', {
+                    action: c.enabled
+                      ? t('providers.disableChannelAria')
+                      : t('providers.enableChannelAria'),
+                    channel: channelLabel(c.channel),
+                  })}
                 />
               </div>
             ))}
@@ -438,16 +438,16 @@ export default function NotificationProvidersPanel() {
       <Modal
         open={credsProvider !== null}
         onClose={closeCreds}
-        title={credsProvider ? `${credsProvider.name} — креди` : ''}
+        title={credsProvider ? t('providers.credsTitle', { name: credsProvider.name }) : ''}
         size="sm"
         onSubmit={() => void saveCreds()}
         footer={
           <ModalFooter>
             <Button variant="outline" onClick={closeCreds}>
-              Скасувати
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void saveCreds()} loading={savingCreds} disabled={!credsReady}>
-              Зберегти
+              {t('common.save')}
             </Button>
           </ModalFooter>
         }
@@ -456,7 +456,7 @@ export default function NotificationProvidersPanel() {
           <div className="space-y-3">
             {credsProvider.channels.length > 1 && (
               <label className="block">
-                <span className="text-sm text-foreground">Канал</span>
+                <span className="text-sm text-foreground">{t('providers.channel')}</span>
                 <Select
                   value={credsChannel}
                   onChange={e => onCredsChannelChange(e.target.value)}
@@ -464,7 +464,7 @@ export default function NotificationProvidersPanel() {
                 >
                   {credsProvider.channels.map(ch => (
                     <option key={ch} value={ch}>
-                      {CHANNEL_LABELS[ch] ?? ch}
+                      {channelLabel(ch)}
                     </option>
                   ))}
                 </Select>
@@ -475,14 +475,14 @@ export default function NotificationProvidersPanel() {
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-2">
                     <Input
-                      label="SMTP-сервер"
+                      label={t('providers.smtpHost')}
                       value={smtp.host}
                       onChange={e => setSmtp(s => ({ ...s, host: e.target.value }))}
                       placeholder="smtp.ukr.net"
                     />
                   </div>
                   <Input
-                    label="Порт"
+                    label={t('providers.smtpPort')}
                     type="number"
                     value={smtp.port}
                     onChange={e => setSmtp(s => ({ ...s, port: e.target.value }))}
@@ -490,14 +490,14 @@ export default function NotificationProvidersPanel() {
                   />
                 </div>
                 <Input
-                  label="Користувач (логін)"
+                  label={t('providers.smtpUser')}
                   value={smtp.user}
                   onChange={e => setSmtp(s => ({ ...s, user: e.target.value }))}
                   placeholder="sto@ukr.net"
                   autoComplete="off"
                 />
                 <Input
-                  label="Пароль"
+                  label={t('providers.smtpPassword')}
                   type="password"
                   value={smtp.pass}
                   onChange={e => setSmtp(s => ({ ...s, pass: e.target.value }))}
@@ -511,37 +511,36 @@ export default function NotificationProvidersPanel() {
                     onChange={e => setSmtp(s => ({ ...s, secure: e.target.checked }))}
                     className="rounded border-border"
                   />
-                  <span className="text-sm text-foreground">TLS/SSL (порт 465)</span>
+                  <span className="text-sm text-foreground">{t('providers.smtpTls')}</span>
                 </label>
               </>
             ) : (
               <Input
-                label="API-токен"
+                label={t('providers.apiToken')}
                 type="password"
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
-                placeholder="Введіть токен провайдера"
+                placeholder={t('providers.apiTokenPlaceholder')}
                 autoComplete="off"
               />
             )}
             <Input
-              label={isSmtp ? 'Відправник (From)' : 'Імʼя відправника (sender)'}
+              label={isSmtp ? t('providers.senderFrom') : t('providers.senderName')}
               value={senderName}
               onChange={e => setSenderName(e.target.value)}
-              placeholder={isSmtp ? 'СТО <sto@ukr.net>' : 'STO ERP'}
+              placeholder={isSmtp ? t('providers.senderFromPlaceholder') : 'STO ERP'}
             />
             {needsExternalTemplate(credsProvider.code, credsChannel) && (
               <div>
                 <Input
-                  label="ID шаблону в кабінеті провайдера"
+                  label={t('providers.externalTemplateId')}
                   value={externalTemplateId}
                   onChange={e => setExternalTemplateId(e.target.value)}
-                  placeholder="напр. 12345"
+                  placeholder={t('providers.externalTemplateIdPlaceholder')}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {CHANNEL_LABELS[credsChannel]} у eSputnik надсилається за готовим шаблоном зі
-                  свого кабінету.{' '}
-                  {credsChannel === 'TELEGRAM' && 'Telegram — лише підписаним отримувачам.'}
+                  {t('providers.externalTemplateHint', { channel: channelLabel(credsChannel) })}
+                  {credsChannel === 'TELEGRAM' && t('providers.telegramHint')}
                 </p>
               </div>
             )}
@@ -553,7 +552,7 @@ export default function NotificationProvidersPanel() {
                 loading={verifying}
                 disabled={!credsReady}
               >
-                Перевірити
+                {t('providers.verify')}
               </Button>
               {verifyResult && (
                 <span
@@ -565,14 +564,14 @@ export default function NotificationProvidersPanel() {
                   {verifyResult.valid ? (
                     <>
                       <Check className="h-4 w-4" />
-                      Токен дійсний
+                      {t('providers.tokenValid')}
                       {typeof verifyResult.balance === 'number' &&
-                        ` · баланс: ${verifyResult.balance}`}
+                        t('providers.balance', { balance: verifyResult.balance })}
                     </>
                   ) : (
                     <>
                       <X className="h-4 w-4" />
-                      {verifyResult.error ?? 'Невірний токен'}
+                      {verifyResult.error ?? t('providers.tokenInvalid')}
                     </>
                   )}
                 </span>

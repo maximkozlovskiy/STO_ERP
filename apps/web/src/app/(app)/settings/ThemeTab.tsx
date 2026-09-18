@@ -43,10 +43,8 @@ export default function ThemeTab() {
         setOrgSettings(s);
         applyTheme(s.brandTheme);
       })
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
-      );
-  }, []);
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('theme.loadError')));
+  }, [t]);
 
   const changeNavMode = (mode: NavMode) => {
     setNavModeState(mode);
@@ -68,9 +66,9 @@ export default function ThemeTab() {
       });
       applyTheme(updated.brandTheme);
       setOrgSettings(updated);
-      if (currentFeatures.toastEnabled) toast.success('Тему збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('theme.themeSaved'));
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      const errMsg = e instanceof Error ? e.message : t('common.saveError');
       setError(errMsg);
       if (currentFeatures.toastEnabled) toast.error(errMsg);
     } finally {
@@ -89,7 +87,7 @@ export default function ThemeTab() {
       )}
 
       <div className="bg-surface rounded-xl border border-border p-6">
-        <p className="text-sm text-muted-foreground mb-4">Оберіть кольорову палітру інтерфейсу</p>
+        <p className="text-sm text-muted-foreground mb-4">{t('theme.palettePrompt')}</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
           {(Object.entries(THEMES) as [ThemeName, (typeof THEMES)[ThemeName]][]).map(
             ([key, theme]) => (
@@ -116,16 +114,16 @@ export default function ThemeTab() {
           )}
         </div>
         <Button onClick={() => void saveTheme()} loading={saving} className="w-full">
-          Зберегти тему
+          {t('theme.saveTheme')}
         </Button>
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-6">
-        <p className="text-[13px] font-medium text-foreground mb-3">Режим навігації</p>
+        <p className="text-[13px] font-medium text-foreground mb-3">{t('theme.navMode')}</p>
         <div className="flex gap-1.5">
           {[
-            { mode: 'sections' as NavMode, label: 'По розділах' },
-            { mode: 'functions' as NavMode, label: 'По функціях' },
+            { mode: 'sections' as NavMode, label: t('theme.navSections') },
+            { mode: 'functions' as NavMode, label: t('theme.navFunctions') },
           ].map(({ mode, label }) => (
             <button
               key={mode}
@@ -141,17 +139,17 @@ export default function ThemeTab() {
             </button>
           ))}
         </div>
-        <p className="text-[12px] text-muted-foreground mt-2">Зберігається локально у браузері</p>
+        <p className="text-[12px] text-muted-foreground mt-2">{t('theme.savedLocally')}</p>
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-6">
-        <p className="text-[13px] font-medium text-foreground mb-3">Тема</p>
+        <p className="text-[13px] font-medium text-foreground mb-3">{t('theme.colorMode')}</p>
         <div className="flex gap-1.5">
           {(
             [
-              { mode: 'light' as ColorMode, label: 'Світла', icon: Sun },
-              { mode: 'dark' as ColorMode, label: 'Темна', icon: Moon },
-              { mode: 'system' as ColorMode, label: 'Системна', icon: Monitor },
+              { mode: 'light' as ColorMode, label: t('theme.colorLight'), icon: Sun },
+              { mode: 'dark' as ColorMode, label: t('theme.colorDark'), icon: Moon },
+              { mode: 'system' as ColorMode, label: t('theme.colorSystem'), icon: Monitor },
             ] as const
           ).map(({ mode, label, icon: Icon }) => (
             <button
@@ -172,7 +170,7 @@ export default function ThemeTab() {
             </button>
           ))}
         </div>
-        <p className="text-[12px] text-muted-foreground mt-2">Зберігається локально у браузері</p>
+        <p className="text-[12px] text-muted-foreground mt-2">{t('theme.savedLocally')}</p>
       </div>
 
       <div className="bg-surface rounded-xl border border-border p-6">

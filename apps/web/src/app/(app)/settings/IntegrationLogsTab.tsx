@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -8,14 +9,15 @@ import { Button } from '@/components/ui/button';
 import { useIntegrationLogs, type IntegrationLogsFilter } from '@/hooks/api/useIntegrationLogs';
 import { type OrgSettings } from './shared';
 
-const PROVIDERS = [
-  { code: '', name: 'Усі провайдери' },
-  { code: 'liqpay', name: 'LiqPay' },
-  { code: 'monobank', name: 'monobank' },
-  { code: 'checkbox', name: 'Checkbox' },
-  { code: 'vchasno', name: 'Вчасно.Каса' },
-  { code: 'novaposhta', name: 'Нова Пошта' },
-];
+// Провайдери фільтра. Порожній код = «Усі провайдери» (підпис із каталогу); решта — бренди.
+const PROVIDER_CODES = ['', 'liqpay', 'monobank', 'checkbox', 'vchasno', 'novaposhta'];
+const PROVIDER_BRAND_NAMES: Record<string, string> = {
+  liqpay: 'LiqPay',
+  monobank: 'monobank',
+  checkbox: 'Checkbox',
+  vchasno: 'Вчасно.Каса',
+  novaposhta: 'Нова Пошта',
+};
 
 const PAGE_SIZE = 50;
 
@@ -35,7 +37,10 @@ const inputCls =
   'px-3 py-2 text-sm border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20';
 
 export default function IntegrationLogsTab() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
+  const providerName = (code: string): string =>
+    code === '' ? t('integrationLogs.allProviders') : (PROVIDER_BRAND_NAMES[code] ?? code);
 
   // ── Retention (OrganisationSettings) ───────────────────────────────────────
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
@@ -58,10 +63,10 @@ export default function IntegrationLogsTab() {
         }),
       });
       setOrgSettings(updated);
-      if (currentFeatures.toastEnabled) toast.success('Збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
       if (currentFeatures.toastEnabled) {
-        toast.error(e instanceof Error ? e.message : 'Помилка збереження');
+        toast.error(e instanceof Error ? e.message : t('common.saveError'));
       }
     } finally {
       setSavingRetention(false);
@@ -101,7 +106,7 @@ export default function IntegrationLogsTab() {
       {/* Retention */}
       <div className="bg-surface rounded-xl border border-border p-6">
         <label className="block text-sm font-medium text-foreground mb-2">
-          Зберігати логи (днів)
+          {t('integrationLogs.retentionLabel')}
         </label>
         <div className="flex items-end gap-3">
           <input
@@ -124,13 +129,10 @@ export default function IntegrationLogsTab() {
             loading={savingRetention}
             disabled={!orgSettings}
           >
-            Зберегти
+            {t('common.save')}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-1.5">
-          Старіші логи щоночі видаляються (1–365 днів). Логи містять лише метадані обмінів — без
-          секретів і тіл запитів.
-        </p>
+        <p className="text-xs text-muted-foreground mt-1.5">{t('integrationLogs.retentionHint')}</p>
       </div>
 
       {/* Filters */}
@@ -139,11 +141,11 @@ export default function IntegrationLogsTab() {
           value={provider}
           onChange={e => resetTo(setProvider)(e.target.value)}
           className={inputCls}
-          aria-label="Провайдер"
+          aria-label={t('integrationLogs.providerAria')}
         >
-          {PROVIDERS.map(p => (
-            <option key={p.code} value={p.code}>
-              {p.name}
+          {PROVIDER_CODES.map(code => (
+            <option key={code} value={code}>
+              {providerName(code)}
             </option>
           ))}
         </select>
@@ -151,25 +153,25 @@ export default function IntegrationLogsTab() {
           value={ok}
           onChange={e => resetTo(setOk)(e.target.value)}
           className={inputCls}
-          aria-label="Статус"
+          aria-label={t('integrationLogs.statusAria')}
         >
-          <option value="">Усі статуси</option>
-          <option value="true">Успіх</option>
-          <option value="false">Помилки</option>
+          <option value="">{t('integrationLogs.allStatuses')}</option>
+          <option value="true">{t('integrationLogs.statusSuccess')}</option>
+          <option value="false">{t('integrationLogs.statusErrors')}</option>
         </select>
         <input
           type="date"
           value={dateFrom}
           onChange={e => resetTo(setDateFrom)(e.target.value)}
           className={inputCls}
-          aria-label="Дата від"
+          aria-label={t('integrationLogs.dateFromAria')}
         />
         <input
           type="date"
           value={dateTo}
           onChange={e => resetTo(setDateTo)(e.target.value)}
           className={inputCls}
-          aria-label="Дата до"
+          aria-label={t('integrationLogs.dateToAria')}
         />
       </div>
 
@@ -179,27 +181,31 @@ export default function IntegrationLogsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-                <th className="px-4 py-3 font-medium">Час</th>
-                <th className="px-4 py-3 font-medium">Провайдер</th>
-                <th className="px-4 py-3 font-medium">Операція</th>
-                <th className="px-4 py-3 font-medium">Статус</th>
-                <th className="px-4 py-3 font-medium text-right tabular-nums">HTTP</th>
-                <th className="px-4 py-3 font-medium text-right tabular-nums">Час, мс</th>
-                <th className="px-4 py-3 font-medium">Документ</th>
-                <th className="px-4 py-3 font-medium">Помилка</th>
+                <th className="px-4 py-3 font-medium">{t('integrationLogs.colTime')}</th>
+                <th className="px-4 py-3 font-medium">{t('integrationLogs.colProvider')}</th>
+                <th className="px-4 py-3 font-medium">{t('integrationLogs.colOperation')}</th>
+                <th className="px-4 py-3 font-medium">{t('integrationLogs.colStatus')}</th>
+                <th className="px-4 py-3 font-medium text-right tabular-nums">
+                  {t('integrationLogs.colHttp')}
+                </th>
+                <th className="px-4 py-3 font-medium text-right tabular-nums">
+                  {t('integrationLogs.colDuration')}
+                </th>
+                <th className="px-4 py-3 font-medium">{t('integrationLogs.colDocument')}</th>
+                <th className="px-4 py-3 font-medium">{t('integrationLogs.colError')}</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    Завантаження…
+                    {t('integrationLogs.loading')}
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    Логів не знайдено
+                    {t('integrationLogs.notFound')}
                   </td>
                 </tr>
               ) : (
@@ -218,7 +224,7 @@ export default function IntegrationLogsTab() {
                             : 'text-destructive-text bg-destructive-subtle border border-destructive-border rounded-full px-2 py-0.5 text-xs'
                         }
                       >
-                        {log.ok ? 'OK' : 'Помилка'}
+                        {log.ok ? t('integrationLogs.ok') : t('integrationLogs.statusErrorCell')}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{log.httpStatus ?? '—'}</td>
@@ -243,7 +249,7 @@ export default function IntegrationLogsTab() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <span className="text-xs text-muted-foreground">
-              Сторінка {page} з {totalPages} · всього {total}
+              {t('integrationLogs.pageInfo', { page, totalPages, total })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -251,14 +257,14 @@ export default function IntegrationLogsTab() {
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page <= 1}
               >
-                Назад
+                {t('integrationLogs.prev')}
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
               >
-                Далі
+                {t('integrationLogs.next')}
               </Button>
             </div>
           </div>

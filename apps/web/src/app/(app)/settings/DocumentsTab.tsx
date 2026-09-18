@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -39,6 +40,7 @@ function Toggle({
 }
 
 export default function DocumentsTab() {
+  const { t } = useTranslation('settings');
   const features = useUiFeatures();
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -62,10 +64,8 @@ export default function DocumentsTab() {
           syncCalendarSlotWithPlannedHours: s.syncCalendarSlotWithPlannedHours ?? true,
         };
       })
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань'),
-      );
-  }, []);
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('common.loadError')));
+  }, [t]);
 
   const save = async () => {
     if (!orgSettings) return;
@@ -92,7 +92,7 @@ export default function DocumentsTab() {
       }
       // Nothing actually changed — short-circuit без RTT і без зайвого toast.
       if (Object.keys(patch).length === 0) {
-        if (features.toastEnabled) toast.info('Змін немає');
+        if (features.toastEnabled) toast.info(t('documents.noChanges'));
         return;
       }
       const updated = await apiFetch<OrgSettings>('/settings/organisation', {
@@ -105,9 +105,9 @@ export default function DocumentsTab() {
         recalcActualHoursFromLines: updated.recalcActualHoursFromLines ?? true,
         syncCalendarSlotWithPlannedHours: updated.syncCalendarSlotWithPlannedHours ?? true,
       };
-      if (features.toastEnabled) toast.success('Збережено');
+      if (features.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      const errMsg = e instanceof Error ? e.message : t('common.saveError');
       setError(errMsg);
       if (features.toastEnabled) toast.error(errMsg);
     } finally {
@@ -126,20 +126,18 @@ export default function DocumentsTab() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">Наряди</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t('documents.workOrders')}</h2>
 
         <div
           className="flex items-center justify-between gap-4 py-2 border-b border-border"
-          title="Якщо увімкнено, при додаванні або видаленні робіт поле «Планові нормогодини» автоматично збільшується до суми нормогодин по рядках. Зменшення вручну — дозволено."
+          title={t('documents.recalcPlanned.tooltip')}
         >
           <div>
             <p className="text-sm font-medium text-foreground">
-              Перераховувати планові нормогодини по роботах
+              {t('documents.recalcPlanned.title')}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              При додаванні або видаленні рядків робіт поле «Планові нормогодини» автоматично
-              збільшується до суми нормогодин по рядках. Якщо вручну встановлено більше значення —
-              воно не зменшується автоматично.
+              {t('documents.recalcPlanned.description')}
             </p>
           </div>
           <Toggle
@@ -150,16 +148,14 @@ export default function DocumentsTab() {
 
         <div
           className="flex items-center justify-between gap-4 py-2 border-b border-border"
-          title="Якщо увімкнено, при збереженні наряду поле «Фактичні нормогодини» автоматично розраховується як сума по рядках: якщо рядок має «Год (факт.)» — береться він, інакше «Год (план)»."
+          title={t('documents.recalcActual.tooltip')}
         >
           <div>
             <p className="text-sm font-medium text-foreground">
-              Перераховувати фактичні нормогодини по роботах
+              {t('documents.recalcActual.title')}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              При збереженні наряду поле «Фактичні нормогодини» автоматично розраховується як сума
-              по рядках робіт. Для кожного рядка береться «Год (факт.)», якщо заповнено, або «Год
-              (план)» інакше.
+              {t('documents.recalcActual.description')}
             </p>
           </div>
           <Toggle
@@ -170,15 +166,12 @@ export default function DocumentsTab() {
 
         <div
           className="flex items-center justify-between gap-4 py-2 border-b border-border"
-          title="Якщо увімкнено, при збереженні наряду перевіряє чи планові дати збігаються зі слотами в календарі та пропонує синхронізувати."
+          title={t('documents.syncSlot.tooltip')}
         >
           <div>
-            <p className="text-sm font-medium text-foreground">
-              Синхронізувати слот календаря при зміні планових годин наряду
-            </p>
+            <p className="text-sm font-medium text-foreground">{t('documents.syncSlot.title')}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              При збереженні наряду, якщо планові дати відрізняються від слоту в календарі — система
-              запропонує синхронізувати слот.
+              {t('documents.syncSlot.description')}
             </p>
           </div>
           <Toggle
@@ -190,7 +183,7 @@ export default function DocumentsTab() {
 
       <div>
         <Button onClick={() => void save()} disabled={saving}>
-          {saving ? 'Збереження...' : 'Зберегти'}
+          {saving ? t('documents.saving') : t('common.save')}
         </Button>
       </div>
     </div>

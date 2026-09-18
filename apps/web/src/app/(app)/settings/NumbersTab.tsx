@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -10,24 +11,28 @@ import { type DocNumberConfig } from './shared';
 
 // Повний перелік DocumentType (schema.prisma) — усі 13 значень мають людський підпис,
 // інакше засіяні setup-ом типи (STOCK_OPENING, RECONCILIATION_ACT) показуються сирим кодом.
-const DOC_TYPE_LABELS: Record<string, string> = {
-  WORK_ORDER: 'Наряд-замовлення',
-  INVOICE: 'Рахунок-фактура',
-  PURCHASE_ORDER: 'Замовлення постачальнику',
-  SUPPLIER_RETURN: 'Повернення постачальнику',
-  STOCK_RECEIPT: 'Прихід на склад',
-  STOCK_WRITEOFF: 'Списання зі складу',
-  STOCK_TRANSFER: 'Переміщення між складами',
-  STOCK_OPENING: 'Початкові залишки',
-  RECONCILIATION_ACT: 'Акт звірки',
-  COMPLETION_ACT: 'Акт виконаних робіт',
-  COUNTERPARTY_AGREEMENT: 'Договір контрагента',
-  GOOD_INTERNAL_CODE: 'Внутрішній код товару',
-  SUPPLIER_PAYMENT: 'Оплата постачальнику',
-};
+// Підписи — у settings-каталозі (numbers.docTypes.*); тут лише ключі (порядок збережено).
+const DOC_TYPE_KEYS = [
+  'WORK_ORDER',
+  'INVOICE',
+  'PURCHASE_ORDER',
+  'SUPPLIER_RETURN',
+  'STOCK_RECEIPT',
+  'STOCK_WRITEOFF',
+  'STOCK_TRANSFER',
+  'STOCK_OPENING',
+  'RECONCILIATION_ACT',
+  'COMPLETION_ACT',
+  'COUNTERPARTY_AGREEMENT',
+  'GOOD_INTERNAL_CODE',
+  'SUPPLIER_PAYMENT',
+];
 
 export default function NumbersTab() {
+  const { t } = useTranslation('settings');
   const { confirm, dialogProps } = useConfirm();
+  const docTypeLabel = (code: string): string =>
+    DOC_TYPE_KEYS.includes(code) ? t(`numbers.docTypes.${code}`) : code;
   const [docNumbers, setDocNumbers] = useState<DocNumberConfig[]>([]);
   const [error, setError] = useState('');
 
@@ -43,14 +48,14 @@ export default function NumbersTab() {
   }, []);
 
   const resetDocNumber = async (documentType: string) => {
-    if (!(await confirm({ title: `Скинути лічильник для ${documentType}?` }))) return;
+    if (!(await confirm({ title: t('numbers.resetConfirm', { documentType }) }))) return;
     try {
       await apiFetch(`/settings/document-numbers/${documentType}/reset`, { method: 'POST' });
       setDocNumbers(prev =>
         prev.map(c => (c.documentType === documentType ? { ...c, currentSeq: 0 } : c)),
       );
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
@@ -63,20 +68,20 @@ export default function NumbersTab() {
       )}
 
       {docNumbers.length === 0 && (
-        <p className="text-sm text-muted-foreground">Конфігурацій не знайдено</p>
+        <p className="text-sm text-muted-foreground">{t('numbers.noConfigs')}</p>
       )}
 
       {docNumbers.map(cfg => (
         <div key={cfg.id} className="bg-surface rounded-xl border border-border p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground">
-              {DOC_TYPE_LABELS[cfg.documentType] ?? cfg.documentType}
+              {docTypeLabel(cfg.documentType)}
             </span>
             <span className="text-xs text-muted-foreground font-mono">#{cfg.currentSeq}</span>
           </div>
           <div className="grid grid-cols-2 gap-3 text-[13px]">
             <div>
-              <label className="block text-muted-foreground mb-1">Префікс</label>
+              <label className="block text-muted-foreground mb-1">{t('numbers.prefix')}</label>
               <Input
                 value={cfg.prefix ?? ''}
                 onChange={e => {
@@ -91,15 +96,15 @@ export default function NumbersTab() {
                     method: 'PATCH',
                     body: JSON.stringify({ prefix }),
                   }).catch((err: unknown) =>
-                    setError(err instanceof Error ? err.message : 'Помилка збереження префікса'),
+                    setError(err instanceof Error ? err.message : t('numbers.prefixSaveError')),
                   );
                 }}
                 className="h-8 text-[13px]"
-                placeholder="Без префіксу"
+                placeholder={t('numbers.prefixPlaceholder')}
               />
             </div>
             <div>
-              <label className="block text-muted-foreground mb-1">Роздільник</label>
+              <label className="block text-muted-foreground mb-1">{t('numbers.separator')}</label>
               <Input
                 value={cfg.separator}
                 onChange={e => {
@@ -114,7 +119,7 @@ export default function NumbersTab() {
                     method: 'PATCH',
                     body: JSON.stringify({ separator }),
                   }).catch((err: unknown) =>
-                    setError(err instanceof Error ? err.message : 'Помилка збереження роздільника'),
+                    setError(err instanceof Error ? err.message : t('numbers.separatorSaveError')),
                   );
                 }}
                 className="h-8 text-[13px] w-16"
@@ -123,12 +128,12 @@ export default function NumbersTab() {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[13px] text-muted-foreground">
-              Скидати:{' '}
+              {t('numbers.resetLabel')}{' '}
               {cfg.resetPeriod === 'NEVER'
-                ? 'Ніколи'
+                ? t('numbers.resetPeriod.NEVER')
                 : cfg.resetPeriod === 'YEARLY'
-                  ? 'Щороку'
-                  : 'Щомісяця'}
+                  ? t('numbers.resetPeriod.YEARLY')
+                  : t('numbers.resetPeriod.MONTHLY')}
             </span>
             {cfg.resetPeriod !== 'NEVER' && (
               <Button
@@ -137,7 +142,7 @@ export default function NumbersTab() {
                 onClick={() => void resetDocNumber(cfg.documentType)}
                 className="h-7 text-xs"
               >
-                Скинути лічильник
+                {t('numbers.resetCounter')}
               </Button>
             )}
           </div>

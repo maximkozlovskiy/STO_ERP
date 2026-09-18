@@ -1,21 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ProviderRegistryPanel, { type PanelProviderMeta } from './ProviderRegistryPanel';
-
-// Схема полів кредів служб доставки (бекенд list() дає лише code/name).
-const DELIVERY_PROVIDERS: PanelProviderMeta[] = [
-  {
-    code: 'novaposhta',
-    name: 'Нова Пошта',
-    fields: [{ key: 'apiKey', label: 'API-ключ', secret: true }],
-  },
-];
 
 interface OrgSettings {
   deliveryPollIntervalMinutes?: number;
@@ -27,10 +19,23 @@ interface OrgSettings {
  * автоматично з цим інтервалом.
  */
 export default function DeliveryTab() {
+  const { t } = useTranslation('settings');
   const currentFeatures = useUiFeatures();
   const [interval, setInterval] = useState('30');
   const [savingInterval, setSavingInterval] = useState(false);
   const [error, setError] = useState('');
+
+  // Схема полів кредів служб доставки (бекенд list() дає лише code/name). Назва — бренд.
+  const deliveryProviders: PanelProviderMeta[] = useMemo(
+    () => [
+      {
+        code: 'novaposhta',
+        name: 'Нова Пошта',
+        fields: [{ key: 'apiKey', label: t('delivery.novaposhtaApiKey'), secret: true }],
+      },
+    ],
+    [t],
+  );
 
   useEffect(() => {
     apiFetch<OrgSettings>('/settings/organisation')
@@ -47,7 +52,7 @@ export default function DeliveryTab() {
   const saveInterval = async () => {
     const n = Number(interval);
     if (!Number.isFinite(n) || n < 5 || n > 1440) {
-      setError('Інтервал має бути від 5 до 1440 хвилин');
+      setError(t('delivery.intervalError'));
       return;
     }
     setSavingInterval(true);
@@ -57,9 +62,9 @@ export default function DeliveryTab() {
         method: 'PATCH',
         body: JSON.stringify({ deliveryPollIntervalMinutes: n }),
       });
-      if (currentFeatures.toastEnabled) toast.success('Інтервал збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('delivery.intervalSaved'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      const msg = e instanceof Error ? e.message : t('common.saveError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     } finally {
@@ -70,17 +75,14 @@ export default function DeliveryTab() {
   return (
     <div className="space-y-8 max-w-2xl">
       <ProviderRegistryPanel
-        title="Служба доставки"
+        title={t('delivery.serviceTitle')}
         endpoint="delivery-providers"
-        providers={DELIVERY_PROVIDERS}
+        providers={deliveryProviders}
       />
 
       <div className="border-t border-border pt-6 space-y-3">
-        <h3 className="text-sm font-semibold text-foreground">Опитування статусу</h3>
-        <p className="text-xs text-muted-foreground">
-          Щойно у документі купівлі вказано номер накладної — статус доставки оновлюється
-          автоматично. Інтервал опитування служби:
-        </p>
+        <h3 className="text-sm font-semibold text-foreground">{t('delivery.pollTitle')}</h3>
+        <p className="text-xs text-muted-foreground">{t('delivery.pollDescription')}</p>
         {error && (
           <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg p-3">
             {error}
@@ -89,7 +91,7 @@ export default function DeliveryTab() {
         <div className="flex items-end gap-3">
           <div className="w-40">
             <Input
-              label="Інтервал (хв)"
+              label={t('delivery.intervalLabel')}
               type="number"
               min={5}
               max={1440}
@@ -98,7 +100,7 @@ export default function DeliveryTab() {
             />
           </div>
           <Button onClick={() => void saveInterval()} loading={savingInterval}>
-            Зберегти
+            {t('common.save')}
           </Button>
         </div>
       </div>
