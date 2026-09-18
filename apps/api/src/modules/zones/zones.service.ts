@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { LiftStatus, LiftType, ZoneType } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateLiftDto,
   CreateZoneDto,
@@ -53,7 +55,7 @@ export class ZonesService {
 
   async findOneZone(orgId: string, id: string): Promise<ZoneResponseDto> {
     const item = await this.prisma.zone.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!item) throw new NotFoundException('Зону не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.zone.notFound', getLocale()));
     return this.toZoneDto(item);
   }
 
@@ -63,7 +65,7 @@ export class ZonesService {
       where: { id: dto.branchId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
     const item = await this.prisma.zone.create({ data: { ...dto, orgId } });
     await this.cache.delPattern(`ref:zones:${orgId}*`);
     return this.toZoneDto(item);
@@ -76,7 +78,7 @@ export class ZonesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!guard) throw new NotFoundException('Зону не знайдено');
+    if (!guard) throw new NotFoundException(translateError('err.zone.notFound', getLocale()));
     const item = await this.prisma.zone.update({ where: { id, orgId }, data: dto });
     await this.cache.delPattern(`ref:zones:${orgId}*`);
     return this.toZoneDto(item);
@@ -92,9 +94,7 @@ export class ZonesService {
       select: { id: true },
     });
     if (activeLift) {
-      throw new BadRequestException(
-        'Неможливо видалити: у зоні є активні підйомники. Спочатку видаліть або перенесіть їх',
-      );
+      throw new BadRequestException(translateError('err.zone.hasActiveLifts', getLocale()));
     }
     // sto-optimize: `findOne + update` 2-RTT → atomic `updateMany` with compound
     // where (id+orgId+deletedAt:null). -1 RTT per delete; race-safe.
@@ -102,7 +102,8 @@ export class ZonesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Зону не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.zone.notFound', getLocale()));
     await this.cache.delPattern(`ref:zones:${orgId}*`);
   }
 
@@ -131,7 +132,7 @@ export class ZonesService {
 
   async findOneLift(orgId: string, id: string): Promise<LiftResponseDto> {
     const item = await this.prisma.lift.findFirst({ where: { id, orgId, deletedAt: null } });
-    if (!item) throw new NotFoundException('Підйомник не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     return this.toLiftDto(item);
   }
 
@@ -141,7 +142,7 @@ export class ZonesService {
       where: { id: dto.zoneId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!zone) throw new NotFoundException('Зону не знайдено');
+    if (!zone) throw new NotFoundException(translateError('err.zone.notFound', getLocale()));
     const item = await this.prisma.lift.create({ data: { ...dto, orgId } });
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
     return this.toLiftDto(item);
@@ -154,7 +155,7 @@ export class ZonesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!guard) throw new NotFoundException('Підйомник не знайдено');
+    if (!guard) throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     const { purchaseDate, warrantyUntil, lastMaintenanceDate, ...rest } = dto;
     const item = await this.prisma.lift.update({
       where: { id, orgId },
@@ -182,7 +183,8 @@ export class ZonesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Підйомник не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     await this.cache.delPattern(`ref:lifts:${orgId}*`);
   }
 

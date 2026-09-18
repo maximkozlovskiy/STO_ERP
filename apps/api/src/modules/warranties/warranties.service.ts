@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { addDaysKyiv } from '../../common/utils/kyiv-date';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateWarrantyDto,
   ClaimWarrantyDto,
@@ -94,16 +96,20 @@ export class WarrantiesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
-    if (dto.workOrderLineId && !line) throw new NotFoundException('Рядок наряду не знайдено');
-    if (dto.workOrderPartId && !part) throw new NotFoundException('Запчастину наряду не знайдено');
+    if (!wo)
+      throw new NotFoundException(translateError('err.warranty.workOrderNotFound', getLocale()));
+    if (!cp)
+      throw new NotFoundException(translateError('err.warranty.counterpartyNotFound', getLocale()));
+    if (dto.workOrderLineId && !line)
+      throw new NotFoundException(translateError('err.warranty.lineNotFound', getLocale()));
+    if (dto.workOrderPartId && !part)
+      throw new NotFoundException(translateError('err.warranty.partNotFound', getLocale()));
 
     // expiresAt must be in the future — past-dated warranties make no business sense
     // and would immediately appear as expired in /warranties/expiring.
     const expiresAt = new Date(dto.expiresAt);
     if (expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Дата завершення гарантії має бути в майбутньому');
+      throw new BadRequestException(translateError('err.warranty.endDateFuture', getLocale()));
     }
 
     const w = await this.prisma.warranty.create({
@@ -169,7 +175,8 @@ export class WarrantiesService {
       where: { id: counterpartyId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(translateError('err.warranty.counterpartyNotFound', getLocale()));
 
     const [items, total] = await Promise.all([
       this.prisma.warranty.findMany({
@@ -213,7 +220,8 @@ export class WarrantiesService {
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo)
+      throw new NotFoundException(translateError('err.warranty.workOrderNotFound', getLocale()));
 
     const [items, total] = await Promise.all([
       this.prisma.warranty.findMany({
@@ -246,19 +254,22 @@ export class WarrantiesService {
         select: { id: true },
       }),
     ]);
-    if (!w) throw new NotFoundException('Гарантію не знайдено');
+    if (!w) throw new NotFoundException(translateError('err.warranty.notFound', getLocale()));
 
     // Business rule: a warranty can be claimed exactly once. Re-claiming would silently
     // overwrite the previous claim metadata and break the warranty journal.
     if (w.claimedAt) {
-      throw new BadRequestException('Гарантія вже використана');
+      throw new BadRequestException(translateError('err.warranty.alreadyClaimed', getLocale()));
     }
     // Business rule: cannot claim an expired warranty.
     if (w.expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Термін гарантії минув');
+      throw new BadRequestException(translateError('err.warranty.expired', getLocale()));
     }
 
-    if (!claimWo) throw new NotFoundException('Гарантійний наряд не знайдено');
+    if (!claimWo)
+      throw new NotFoundException(
+        translateError('err.warranty.claimWorkOrderNotFound', getLocale()),
+      );
 
     // Defense-in-depth: scope update by orgId (compound where) so a race-window
     // between the findFirst guard and update cannot let a cross-org record be mutated.

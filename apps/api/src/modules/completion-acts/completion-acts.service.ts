@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
-import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import {
+  formatPersonName,
+  formatVehicleLabel,
+  TRANSACTION_TIMEOUT_MS,
+  translateError,
+} from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { roundMoney } from '../../common/utils/math';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
@@ -96,7 +102,8 @@ export class CompletionActsService {
         },
       },
     });
-    if (!item) throw new NotFoundException('Акт не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.completionAct.notFound', getLocale()));
     const lines = this.buildLines(item.workOrder);
     return this.toDto(item, lines);
   }
@@ -134,13 +141,19 @@ export class CompletionActsService {
         select: { id: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo)
+      throw new NotFoundException(
+        translateError('err.completionAct.workOrderNotFound', getLocale()),
+      );
     // Use shared INVOICEABLE_STATUSES — same whitelist as InvoicesService.createFromWorkOrder,
     // avoids drift between the two guards.
     if (!INVOICEABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Акт можна сформувати лише для завершеного наряду');
+      throw new BadRequestException(
+        translateError('err.completionAct.workOrderNotCompleted', getLocale()),
+      );
     }
-    if (existing) throw new BadRequestException('Для цього наряду вже існує активний акт');
+    if (existing)
+      throw new BadRequestException(translateError('err.completionAct.activeExists', getLocale()));
 
     const number = await this.docNumbers.next(orgId, 'COMPLETION_ACT');
 
@@ -176,9 +189,12 @@ export class CompletionActsService {
           where: { id, orgId, deletedAt: null },
           select: { status: true, workOrder: { select: { id: true, status: true } } },
         });
-        if (!act) throw new NotFoundException('Акт не знайдено');
+        if (!act)
+          throw new NotFoundException(translateError('err.completionAct.notFound', getLocale()));
         if (act.status !== CompletionActStatus.DRAFT) {
-          throw new BadRequestException('Підписати можна лише чернетку акту');
+          throw new BadRequestException(
+            translateError('err.completionAct.onlyDraftSignable', getLocale()),
+          );
         }
 
         // Ідемпотентність sign (анти-race/анти-retry): findFirst вище — plain SELECT під
@@ -198,7 +214,9 @@ export class CompletionActsService {
           },
         });
         if (cas.count === 0) {
-          throw new BadRequestException('Статус акту змінився — повторіть дію');
+          throw new BadRequestException(
+            translateError('err.completionAct.statusChanged', getLocale()),
+          );
         }
 
         if (act.workOrder?.status === 'COMPLETED') {
@@ -234,9 +252,12 @@ export class CompletionActsService {
       where: { id, orgId, deletedAt: null },
       select: { status: true },
     });
-    if (!act) throw new NotFoundException('Акт не знайдено');
+    if (!act)
+      throw new NotFoundException(translateError('err.completionAct.notFound', getLocale()));
     if (act.status === CompletionActStatus.SIGNED) {
-      throw new BadRequestException('Підписаний акт не можна скасувати');
+      throw new BadRequestException(
+        translateError('err.completionAct.signedNotCancelable', getLocale()),
+      );
     }
     await this.prisma.completionAct.update({
       where: { id, orgId },
@@ -303,7 +324,8 @@ export class CompletionActsService {
         },
       }),
     ]);
-    if (!act) throw new NotFoundException('Акт не знайдено');
+    if (!act)
+      throw new NotFoundException(translateError('err.completionAct.notFound', getLocale()));
 
     const cp = act.workOrder?.counterparty;
     const cpName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || 'Клієнт';

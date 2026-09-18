@@ -1,7 +1,9 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { FilesService } from '../files/files.service';
 import { WorkOrderMediaResponseDto, WorkOrderMediaListDto } from './work-order-media.dto';
 
@@ -55,23 +57,30 @@ export class WorkOrderMediaService {
     file: UploadFileInput,
   ): Promise<WorkOrderMediaResponseDto> {
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      throw new BadRequestException('Дозволені формати: JPEG, PNG, HEIC, HEIF, PDF');
+      throw new BadRequestException(
+        translateError('err.workOrderMedia.disallowedFormat', getLocale()),
+      );
     }
     if (file.size > MAX_SIZE_BYTES) {
-      throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
+      throw new BadRequestException(translateError('err.workOrderMedia.tooLarge', getLocale()));
     }
 
     const filename = sanitizeFilename(file.filename);
     const ext = (filename.split('.').pop() ?? '').toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext)) {
-      throw new BadRequestException('Недозволене розширення файлу');
+      throw new BadRequestException(
+        translateError('err.workOrderMedia.disallowedExtension', getLocale()),
+      );
     }
 
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo)
+      throw new NotFoundException(
+        translateError('err.workOrderMedia.workOrderNotFound', getLocale()),
+      );
 
     const objectName = `org/${orgId}/work-orders/${workOrderId}/${crypto.randomUUID()}.${ext}`;
 
@@ -98,7 +107,10 @@ export class WorkOrderMediaService {
       where: { id: workOrderId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo)
+      throw new NotFoundException(
+        translateError('err.workOrderMedia.workOrderNotFound', getLocale()),
+      );
 
     // total must reflect actual DB count, not the take-capped length —
     // otherwise UI thinks the user sees everything when 51+ items exist.
@@ -130,7 +142,8 @@ export class WorkOrderMediaService {
       where: { id: mediaId, orgId, workOrderId },
       select: { fileKey: true },
     });
-    if (!record) throw new NotFoundException('Медіа не знайдено');
+    if (!record)
+      throw new NotFoundException(translateError('err.workOrderMedia.notFound', getLocale()));
 
     // Delete DB row FIRST. If MinIO deletion fails (network / 5xx),
     // we prefer zero rows pointing at a missing object over the alternative
@@ -139,7 +152,8 @@ export class WorkOrderMediaService {
     const result = await this.prisma.workOrderMedia.deleteMany({
       where: { id: mediaId, orgId, workOrderId },
     });
-    if (result.count === 0) throw new NotFoundException('Медіа не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.workOrderMedia.notFound', getLocale()));
     try {
       await this.files.deleteObject(record.fileKey);
     } catch (e) {

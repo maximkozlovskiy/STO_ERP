@@ -6,8 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { translateError } from '@sto/shared';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 
 const ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif', 'pdf']);
 
@@ -107,17 +109,22 @@ export class FilesService implements OnModuleInit {
     file: UploadFile,
     workOrderId?: string,
   ): Promise<{ fileId: string; url: string; filename: string }> {
-    if (!this.client) throw new InternalServerErrorException('Сервіс файлів недоступний');
+    if (!this.client)
+      throw new InternalServerErrorException(
+        translateError('err.file.serviceUnavailable', getLocale()),
+      );
 
     const ext = (file.originalname.split('.').pop() ?? '').toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext)) throw new BadRequestException('Недозволений формат файлу');
+    if (!ALLOWED_EXTENSIONS.has(ext))
+      throw new BadRequestException(translateError('err.file.disallowedFormat', getLocale()));
 
     if (workOrderId) {
       const wo = await this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!wo) throw new NotFoundException('Наряд не знайдено');
+      if (!wo)
+        throw new NotFoundException(translateError('err.file.workOrderNotFound', getLocale()));
     }
 
     const fileId = crypto.randomUUID();
@@ -131,7 +138,7 @@ export class FilesService implements OnModuleInit {
         'Content-Type': file.mimetype,
       });
     } catch {
-      throw new InternalServerErrorException('Помилка збереження файлу');
+      throw new InternalServerErrorException(translateError('err.file.saveFailed', getLocale()));
     }
 
     return {
@@ -142,13 +149,16 @@ export class FilesService implements OnModuleInit {
   }
 
   async uploadRaw(buffer: Buffer, objectName: string, mimeType: string): Promise<void> {
-    if (!this.client) throw new InternalServerErrorException('Сервіс файлів недоступний');
+    if (!this.client)
+      throw new InternalServerErrorException(
+        translateError('err.file.serviceUnavailable', getLocale()),
+      );
     try {
       await this.client.putObject(this.bucket, objectName, buffer, buffer.length, {
         'Content-Type': mimeType,
       });
     } catch {
-      throw new InternalServerErrorException('Помилка збереження файлу');
+      throw new InternalServerErrorException(translateError('err.file.saveFailed', getLocale()));
     }
   }
 

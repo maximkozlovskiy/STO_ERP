@@ -4,8 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CreateUnitDto, UpdateUnitDto, UnitResponseDto } from './units.dto';
 
 const TTL = 300;
@@ -44,11 +46,12 @@ export class UnitsService {
       where: { id, orgId, NOT: { deletedAt: null } },
       select: { id: true, isSystem: true, shortName: true },
     });
-    if (!existing) throw new NotFoundException('Видалену одиницю виміру не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.unit.deletedNotFound', getLocale()));
     // Defense-in-depth: system units must never be soft-deleted (remove() blocks it).
     // If a system unit appears soft-deleted (direct SQL / seed bug) — reject restore via API.
     if (existing.isSystem)
-      throw new BadRequestException('Системну одиницю виміру не можна відновити');
+      throw new BadRequestException(translateError('err.unit.systemUnrestorable', getLocale()));
     // Guard against an active duplicate with the same shortName (created after old was soft-deleted)
     // — without this, restore() triggers P2002 unique violation → 500 instead of 409.
     const activeDuplicate = await this.prisma.unitOfMeasure.findFirst({
@@ -56,9 +59,7 @@ export class UnitsService {
       select: { id: true },
     });
     if (activeDuplicate)
-      throw new ConflictException(
-        'Активна одиниця з такою скороченою назвою вже існує — відновлення неможливе',
-      );
+      throw new ConflictException(translateError('err.unit.activeShortNameExists', getLocale()));
     const item = await this.prisma.unitOfMeasure.update({
       where: { id, orgId },
       data: { deletedAt: null },
@@ -71,7 +72,7 @@ export class UnitsService {
     const item = await this.prisma.unitOfMeasure.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Одиниця виміру не знайдена');
+    if (!item) throw new NotFoundException(translateError('err.unit.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -83,7 +84,7 @@ export class UnitsService {
     });
     if (anyExisting) {
       if (!anyExisting.deletedAt)
-        throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
+        throw new ConflictException(translateError('err.unit.shortNameExists', getLocale()));
       const restored = await this.prisma.unitOfMeasure.update({
         where: { id: anyExisting.id, orgId },
         data: { ...dto, deletedAt: null },
@@ -119,14 +120,12 @@ export class UnitsService {
           })
         : Promise.resolve(null),
     ]);
-    if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
+    if (!existing) throw new NotFoundException(translateError('err.unit.notFound', getLocale()));
     if (dto.shortName && existing.shortName !== dto.shortName && duplicate) {
       if (duplicate.deletedAt) {
-        throw new ConflictException(
-          'Одиниця з такою скороченою назвою існує у архіві. Спочатку відновіть її або оберіть інше скорочення.',
-        );
+        throw new ConflictException(translateError('err.unit.shortNameInArchive', getLocale()));
       }
-      throw new ConflictException('Одиниця з такою скороченою назвою вже існує');
+      throw new ConflictException(translateError('err.unit.shortNameExists', getLocale()));
     }
     const item = await this.prisma.unitOfMeasure.update({ where: { id, orgId }, data: dto });
     await this.cache.del(cacheKey(orgId));
@@ -148,11 +147,11 @@ export class UnitsService {
         where: { id, orgId, deletedAt: null },
         select: { isSystem: true },
       });
-      if (!existing) throw new NotFoundException('Одиниця виміру не знайдена');
+      if (!existing) throw new NotFoundException(translateError('err.unit.notFound', getLocale()));
       if (existing.isSystem)
-        throw new BadRequestException('Системну одиницю виміру не можна видалити');
+        throw new BadRequestException(translateError('err.unit.systemUndeletable', getLocale()));
       // Race: hard-deleted between updateMany and findFirst
-      throw new NotFoundException('Одиниця виміру не знайдена');
+      throw new NotFoundException(translateError('err.unit.notFound', getLocale()));
     }
     await this.cache.del(cacheKey(orgId));
   }

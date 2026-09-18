@@ -141,4 +141,107 @@ export const en: Record<string, string> = {
     'The base currency ({{code}}) is not configured — create it in Reference → Currencies',
   'err.exchangeRate.noRateForDate':
     'No exchange rate for currency {{code}} on {{date}} — add a rate in Reference → Exchange rates',
+
+  // ── Exception messages: good-categories module ──
+  'err.goodCategory.notFound': 'Product category not found',
+  'err.goodCategory.parentNotFound': 'Parent category not found',
+  'err.goodCategory.systemImmutable': 'A system category cannot be renamed or moved',
+  'err.goodCategory.ownParent': 'A category cannot be its own parent',
+  'err.goodCategory.systemUndeletable': 'A system category cannot be deleted',
+  'err.goodCategory.moveIntoDescendant':
+    'A category cannot be moved into its own subcategory (this would create a cycle)',
+
+  // ── Exception messages: work-categories module ──
+  'err.workCategory.notFound': 'Category not found',
+  'err.workCategory.parentNotFound': 'Parent category not found',
+  'err.workCategory.systemImmutable': 'A system category cannot be renamed or moved',
+  'err.workCategory.systemUndeletable': 'A system category cannot be deleted',
+
+  // ── Exception messages: units module ──
+  'err.unit.deletedNotFound': 'Deleted unit of measure not found',
+  'err.unit.systemUnrestorable': 'A system unit of measure cannot be restored',
+  'err.unit.notFound': 'Unit of measure not found',
+  'err.unit.shortNameExists': 'A unit with this short name already exists',
+  'err.unit.systemUndeletable': 'A system unit of measure cannot be deleted',
+  'err.unit.activeShortNameExists':
+    'An active unit with this short name already exists — restoration is not possible',
+  'err.unit.shortNameInArchive':
+    'A unit with this short name exists in the archive. First restore it or choose a different short name.',
+
+  // ── Exception messages: zones module ──
+  'err.zone.notFound': 'Zone not found',
+  'err.lift.notFound': 'Lift not found',
+  'err.zone.hasActiveLifts': 'Cannot delete: the zone has active lifts. First delete or move them',
+
+  // ── Exception messages: services module ──
+  'err.service.notFound': 'Service not found',
+  'err.service.deletedNotFound': 'Deleted service not found',
+  'err.service.worksNotFound': 'One or more works not found',
+  'err.service.goodsNotFound': 'One or more products not found',
+
+  // ── Exception messages: loyalty module ──
+  'err.loyalty.counterpartyNotFound': 'Counterparty not found',
+  'err.loyalty.pointsPositive': 'The number of points must be > 0',
+  'err.loyalty.accountNotFound': 'Loyalty account not found',
+  'err.loyalty.insufficientPoints': 'Insufficient points',
+
+  // ── Exception messages: cash-registers module ──
+  'err.cashRegister.notFound': 'Cash register not found',
+  'err.cashRegister.prroOnlyFiscal':
+    'A PRRO provider can be linked only to a fiscal cash register (enable "Fiscal cash register")',
+  'err.cashRegister.prroNotConfigured':
+    'The PRRO provider is not configured for this branch — first enter its credentials in Settings',
+
+  // ── Exception messages: warranties module ──
+  'err.warranty.notFound': 'Warranty not found',
+  'err.warranty.workOrderNotFound': 'Work order not found',
+  'err.warranty.counterpartyNotFound': 'Counterparty not found',
+  'err.warranty.lineNotFound': 'Work order line not found',
+  'err.warranty.partNotFound': 'Work order part not found',
+  'err.warranty.endDateFuture': 'The warranty end date must be in the future',
+  'err.warranty.alreadyClaimed': 'The warranty has already been claimed',
+  'err.warranty.expired': 'The warranty has expired',
+  'err.warranty.claimWorkOrderNotFound': 'Warranty work order not found',
+
+  // ── Exception messages: completion-acts module ──
+  'err.completionAct.notFound': 'Act not found',
+  'err.completionAct.workOrderNotFound': 'Work order not found',
+  'err.completionAct.workOrderNotCompleted':
+    'An act can be created only for a completed work order',
+  'err.completionAct.activeExists': 'An active act already exists for this work order',
+  'err.completionAct.onlyDraftSignable': 'Only a draft act can be signed',
+  'err.completionAct.statusChanged': 'The act status has changed — repeat the action',
+  'err.completionAct.signedNotCancelable': 'A signed act cannot be cancelled',
+
+  // ── Exception messages: files module ──
+  'err.file.multipartExpected': 'multipart/form-data is expected',
+  'err.file.notReceived': 'File not received',
+  'err.file.onlyImages': 'Only images are allowed',
+  'err.file.tooLarge': 'The file is too large (maximum 10 MB)',
+  'err.file.serviceUnavailable': 'The file service is unavailable',
+  'err.file.disallowedFormat': 'Disallowed file format',
+  'err.file.workOrderNotFound': 'Work order not found',
+  'err.file.saveFailed': 'File save error',
+
+  // ── Exception messages: work-order-media module ──
+  'err.workOrderMedia.multipartExpected': 'multipart/form-data is expected',
+  'err.workOrderMedia.tooLarge': 'The file is too large (maximum 10 MB)',
+  'err.workOrderMedia.notReceived': 'File not received',
+  'err.workOrderMedia.disallowedFormat': 'Allowed formats: JPEG, PNG, HEIC, HEIF, PDF',
+  'err.workOrderMedia.disallowedExtension': 'Disallowed file extension',
+  'err.workOrderMedia.workOrderNotFound': 'Work order not found',
+  'err.workOrderMedia.notFound': 'Media not found',
+
+  // ── Exception messages: expense-categories module ──
+  'err.expenseCategory.notFound': 'Expense category not found',
+  'err.expenseCategory.deletedNotFound': 'Deleted expense category not found',
+  'err.expenseCategory.parentNotFound': 'Parent category not found',
+  'err.expenseCategory.typeMismatchParent': 'The category type must match the parent category type',
+  'err.expenseCategory.maxDepth': 'Maximum category nesting depth reached',
+  'err.expenseCategory.nameExists': 'A category with this name already exists',
+  'err.expenseCategory.activeNameExists':
+    'An active category with this name already exists — restoration is not possible',
+  'err.expenseCategory.ownParent': 'A category cannot be its own parent',
+  'err.expenseCategory.parentTypeMismatch': 'The parent category must be of the same type',
+  'err.expenseCategory.moveIntoDescendant': 'A category cannot be moved into its own descendant',
 };

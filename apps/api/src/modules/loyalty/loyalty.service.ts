@@ -1,10 +1,11 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { roundMoney } from '../../common/utils/math';
+import { getLocale } from '../../common/tenant/tenant-context';
 
 @Injectable()
 export class LoyaltyService {
@@ -19,7 +20,8 @@ export class LoyaltyService {
       where: { id: counterpartyId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
   }
 
   async getOrCreateAccount(orgId: string, counterpartyId: string) {
@@ -49,7 +51,8 @@ export class LoyaltyService {
         select: { balance: true },
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
     return { balance: acc ? Number(acc.balance) : 0, counterpartyId };
   }
 
@@ -66,7 +69,8 @@ export class LoyaltyService {
         select: { id: true },
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
     if (!acc) return { items: [], total: 0 };
     const [items, total] = await Promise.all([
       this.prisma.loyaltyTransaction.findMany({
@@ -134,7 +138,8 @@ export class LoyaltyService {
       }),
     ]);
     if (!settings?.loyaltyEnabled) return;
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
 
     const earnPer = Number(settings.loyaltyEarnPer ?? 100);
     const earnPoints = Number(settings.loyaltyEarnPoints ?? 1);
@@ -205,13 +210,14 @@ export class LoyaltyService {
     pointsInput: number,
   ): Promise<{ discountAmount: number }> {
     if (!Number.isFinite(pointsInput) || pointsInput <= 0) {
-      throw new BadRequestException('Кількість балів має бути > 0');
+      throw new BadRequestException(translateError('err.loyalty.pointsPositive', getLocale()));
     }
     // Квантуємо до 2 знаків (LoyaltyAccount.balance/LoyaltyTransaction.points — Decimal(12,2)):
     // атомарний gte/decrement і рядок леджера мусять використати ІДЕНТИЧНЕ значення, інакше
     // balance (decrement сирим pointsInput) розходиться з Σ(ledger, збережений 2dp) — audit fail.
     const points = roundMoney(pointsInput);
-    if (points <= 0) throw new BadRequestException('Кількість балів має бути > 0');
+    if (points <= 0)
+      throw new BadRequestException(translateError('err.loyalty.pointsPositive', getLocale()));
 
     // Parallel tenant guard + settings read — обидва незалежні reads на різних таблицях.
     // assertCounterparty залишається як NotFound контракт, settings знадобиться у будь-якому
@@ -227,7 +233,8 @@ export class LoyaltyService {
         select: { loyaltyRedeemRate: true },
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp)
+      throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
     // roundMoney: знижка у грн (points × дробовий redeemRate) — грошовий результат до копійки.
     const discountAmount = roundMoney(points * redeemRate);
@@ -243,14 +250,17 @@ export class LoyaltyService {
           where: { counterpartyId, orgId },
           select: { id: true },
         });
-        if (!acc) throw new NotFoundException('Рахунок лояльності не знайдено');
+        if (!acc)
+          throw new NotFoundException(translateError('err.loyalty.accountNotFound', getLocale()));
 
         const updated = await tx.loyaltyAccount.updateMany({
           where: { id: acc.id, orgId, balance: { gte: points } },
           data: { balance: { decrement: points } },
         });
         if (updated.count === 0) {
-          throw new BadRequestException('Недостатньо балів');
+          throw new BadRequestException(
+            translateError('err.loyalty.insufficientPoints', getLocale()),
+          );
         }
 
         await tx.loyaltyTransaction.create({

@@ -144,4 +144,107 @@ export const uk: Record<string, string> = {
     'Базову валюту ({{code}}) не налаштовано — створіть її у НДІ → Валюти',
   'err.exchangeRate.noRateForDate':
     'Немає курсу валюти {{code}} на {{date}} — додайте курс у НДІ → Курси валют',
+
+  // ── Exception-повідомлення: good-categories-модуль ──
+  'err.goodCategory.notFound': 'Категорію товарів не знайдено',
+  'err.goodCategory.parentNotFound': 'Батьківську категорію не знайдено',
+  'err.goodCategory.systemImmutable': 'Системну категорію не можна перейменовувати або переносити',
+  'err.goodCategory.ownParent': 'Категорія не може бути власним батьком',
+  'err.goodCategory.systemUndeletable': 'Системну категорію не можна видалити',
+  'err.goodCategory.moveIntoDescendant':
+    'Неможливо перенести категорію у власну підкатегорію (утворився б цикл)',
+
+  // ── Exception-повідомлення: work-categories-модуль ──
+  'err.workCategory.notFound': 'Категорію не знайдено',
+  'err.workCategory.parentNotFound': 'Батьківську категорію не знайдено',
+  'err.workCategory.systemImmutable': 'Системну категорію не можна перейменовувати або переносити',
+  'err.workCategory.systemUndeletable': 'Системну категорію не можна видалити',
+
+  // ── Exception-повідомлення: units-модуль ──
+  'err.unit.deletedNotFound': 'Видалену одиницю виміру не знайдено',
+  'err.unit.systemUnrestorable': 'Системну одиницю виміру не можна відновити',
+  'err.unit.notFound': 'Одиниця виміру не знайдена',
+  'err.unit.shortNameExists': 'Одиниця з такою скороченою назвою вже існує',
+  'err.unit.systemUndeletable': 'Системну одиницю виміру не можна видалити',
+  'err.unit.activeShortNameExists':
+    'Активна одиниця з такою скороченою назвою вже існує — відновлення неможливе',
+  'err.unit.shortNameInArchive':
+    'Одиниця з такою скороченою назвою існує у архіві. Спочатку відновіть її або оберіть інше скорочення.',
+
+  // ── Exception-повідомлення: zones-модуль ──
+  'err.zone.notFound': 'Зону не знайдено',
+  'err.lift.notFound': 'Підйомник не знайдено',
+  'err.zone.hasActiveLifts':
+    'Неможливо видалити: у зоні є активні підйомники. Спочатку видаліть або перенесіть їх',
+
+  // ── Exception-повідомлення: services-модуль ──
+  'err.service.notFound': 'Послугу не знайдено',
+  'err.service.deletedNotFound': 'Видалену послугу не знайдено',
+  'err.service.worksNotFound': 'Одну або кілька робіт не знайдено',
+  'err.service.goodsNotFound': 'Один або кілька товарів не знайдено',
+
+  // ── Exception-повідомлення: loyalty-модуль ──
+  'err.loyalty.counterpartyNotFound': 'Контрагента не знайдено',
+  'err.loyalty.pointsPositive': 'Кількість балів має бути > 0',
+  'err.loyalty.accountNotFound': 'Рахунок лояльності не знайдено',
+  'err.loyalty.insufficientPoints': 'Недостатньо балів',
+
+  // ── Exception-повідомлення: cash-registers-модуль ──
+  'err.cashRegister.notFound': 'Касу не знайдено',
+  'err.cashRegister.prroOnlyFiscal':
+    'Провайдера ПРРО можна привʼязати лише до фіскальної каси (увімкніть «Фіскальна каса»)',
+  'err.cashRegister.prroNotConfigured':
+    'Провайдера ПРРО не налаштовано для цієї філії — спершу введіть його креди у Налаштуваннях',
+
+  // ── Exception-повідомлення: warranties-модуль ──
+  'err.warranty.notFound': 'Гарантію не знайдено',
+  'err.warranty.workOrderNotFound': 'Наряд не знайдено',
+  'err.warranty.counterpartyNotFound': 'Контрагента не знайдено',
+  'err.warranty.lineNotFound': 'Рядок наряду не знайдено',
+  'err.warranty.partNotFound': 'Запчастину наряду не знайдено',
+  'err.warranty.endDateFuture': 'Дата завершення гарантії має бути в майбутньому',
+  'err.warranty.alreadyClaimed': 'Гарантія вже використана',
+  'err.warranty.expired': 'Термін гарантії минув',
+  'err.warranty.claimWorkOrderNotFound': 'Гарантійний наряд не знайдено',
+
+  // ── Exception-повідомлення: completion-acts-модуль ──
+  'err.completionAct.notFound': 'Акт не знайдено',
+  'err.completionAct.workOrderNotFound': 'Наряд не знайдено',
+  'err.completionAct.workOrderNotCompleted': 'Акт можна сформувати лише для завершеного наряду',
+  'err.completionAct.activeExists': 'Для цього наряду вже існує активний акт',
+  'err.completionAct.onlyDraftSignable': 'Підписати можна лише чернетку акту',
+  'err.completionAct.statusChanged': 'Статус акту змінився — повторіть дію',
+  'err.completionAct.signedNotCancelable': 'Підписаний акт не можна скасувати',
+
+  // ── Exception-повідомлення: files-модуль ──
+  'err.file.multipartExpected': 'Очікується multipart/form-data',
+  'err.file.notReceived': 'Файл не отримано',
+  'err.file.onlyImages': 'Дозволені тільки зображення',
+  'err.file.tooLarge': 'Файл завеликий (максимум 10 МБ)',
+  'err.file.serviceUnavailable': 'Сервіс файлів недоступний',
+  'err.file.disallowedFormat': 'Недозволений формат файлу',
+  'err.file.workOrderNotFound': 'Наряд не знайдено',
+  'err.file.saveFailed': 'Помилка збереження файлу',
+
+  // ── Exception-повідомлення: work-order-media-модуль ──
+  'err.workOrderMedia.multipartExpected': 'Очікується multipart/form-data',
+  'err.workOrderMedia.tooLarge': 'Файл завеликий (максимум 10 МБ)',
+  'err.workOrderMedia.notReceived': 'Файл не отримано',
+  'err.workOrderMedia.disallowedFormat': 'Дозволені формати: JPEG, PNG, HEIC, HEIF, PDF',
+  'err.workOrderMedia.disallowedExtension': 'Недозволене розширення файлу',
+  'err.workOrderMedia.workOrderNotFound': 'Наряд не знайдено',
+  'err.workOrderMedia.notFound': 'Медіа не знайдено',
+
+  // ── Exception-повідомлення: expense-categories-модуль ──
+  'err.expenseCategory.notFound': 'Статтю не знайдено',
+  'err.expenseCategory.deletedNotFound': 'Видалену статтю не знайдено',
+  'err.expenseCategory.parentNotFound': 'Батьківську статтю не знайдено',
+  'err.expenseCategory.typeMismatchParent': 'Тип статті має збігатися з типом батьківської статті',
+  'err.expenseCategory.maxDepth': 'Досягнуто максимальної глибини вкладеності статей',
+  'err.expenseCategory.nameExists': 'Стаття з такою назвою вже існує',
+  'err.expenseCategory.activeNameExists':
+    'Активна стаття з такою назвою вже існує — відновлення неможливе',
+  'err.expenseCategory.ownParent': 'Стаття не може бути власним батьком',
+  'err.expenseCategory.parentTypeMismatch': 'Батьківська стаття має бути того ж типу',
+  'err.expenseCategory.moveIntoDescendant': 'Не можна перенести статтю у власного нащадка',
 };

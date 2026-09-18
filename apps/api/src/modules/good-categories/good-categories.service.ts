@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateGoodCategoryDto,
   UpdateGoodCategoryDto,
@@ -36,7 +37,8 @@ export class GoodCategoriesService {
     const item = await this.prisma.goodCategory.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Категорію товарів не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.goodCategory.notFound', getLocale()));
     return { ...this.toDto(item), children: [] };
   }
 
@@ -46,7 +48,8 @@ export class GoodCategoriesService {
         where: { id: dto.parentId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
+      if (!parent)
+        throw new NotFoundException(translateError('err.goodCategory.parentNotFound', getLocale()));
     }
     const item = await this.prisma.goodCategory.create({
       data: { ...dto, orgId, isSystem: false },
@@ -72,25 +75,29 @@ export class GoodCategoriesService {
           })
         : Promise.resolve(null as { id: string } | null),
     ]);
-    if (!existing) throw new NotFoundException('Категорію товарів не знайдено');
-    if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.goodCategory.notFound', getLocale()));
+    if (dto.parentId && !parent)
+      throw new NotFoundException(translateError('err.goodCategory.parentNotFound', getLocale()));
 
     // System categories cannot be renamed or re-parented — cosmetic fields (sortOrder) are allowed.
     // Перевіряємо ПЕРЕД cycle-guard: системну категорію не переносять узагалі, зайвий обхід дерева.
     if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
-      throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
+      throw new BadRequestException(
+        translateError('err.goodCategory.systemImmutable', getLocale()),
+      );
     }
 
     // MD-M2: захист від циклів у дереві. Без нього перенос категорії у власного нащадка
     // (A→B→A) створює цикл → getDescendantIds при remove/toggleActive зациклюється (OOM/hang).
     if (dto.parentId) {
       if (dto.parentId === id) {
-        throw new BadRequestException('Категорія не може бути власним батьком');
+        throw new BadRequestException(translateError('err.goodCategory.ownParent', getLocale()));
       }
       const descendants = await this.getDescendantIds(orgId, id);
       if (descendants.includes(dto.parentId)) {
         throw new BadRequestException(
-          'Неможливо перенести категорію у власну підкатегорію (утворився б цикл)',
+          translateError('err.goodCategory.moveIntoDescendant', getLocale()),
         );
       }
     }
@@ -99,7 +106,8 @@ export class GoodCategoriesService {
       where: { id, orgId, deletedAt: null },
       data: dto,
     });
-    if (result.count === 0) throw new NotFoundException('Категорію товарів не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.goodCategory.notFound', getLocale()));
     const item = await this.prisma.goodCategory.findFirstOrThrow({
       where: { id, orgId, deletedAt: null },
     });
@@ -113,9 +121,12 @@ export class GoodCategoriesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, isSystem: true },
     });
-    if (!item) throw new NotFoundException('Категорію товарів не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.goodCategory.notFound', getLocale()));
     if (item.isSystem) {
-      throw new BadRequestException('Системну категорію не можна видалити');
+      throw new BadRequestException(
+        translateError('err.goodCategory.systemUndeletable', getLocale()),
+      );
     }
 
     const descendants = await this.getDescendantIds(orgId, id);
@@ -150,7 +161,8 @@ export class GoodCategoriesService {
       where: { id, orgId, deletedAt: null },
       data: { isActive },
     });
-    if (result.count === 0) throw new NotFoundException('Категорію товарів не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.goodCategory.notFound', getLocale()));
 
     // Каскадно застосовуємо до всіх нащадків
     const descendantIds = await this.getDescendantIds(orgId, id);

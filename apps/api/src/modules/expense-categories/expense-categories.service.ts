@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ExpenseCategoryType } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateExpenseCategoryDto,
   ExpenseCategoryResponseDto,
@@ -77,7 +79,8 @@ export class ExpenseCategoriesService {
     const item = await this.prisma.expenseCategory.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Статтю не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.expenseCategory.notFound', getLocale()));
     return { ...this.toDto(item), children: [] };
   }
 
@@ -89,16 +92,21 @@ export class ExpenseCategoriesService {
         where: { id: dto.parentId, orgId, deletedAt: null },
         select: { type: true },
       });
-      if (!parent) throw new NotFoundException('Батьківську статтю не знайдено');
+      if (!parent)
+        throw new NotFoundException(
+          translateError('err.expenseCategory.parentNotFound', getLocale()),
+        );
       // Дитина успадковує тип батька — гілка дерева одного типу (EXPENSE/INCOME не змішуються).
       if (dto.type && dto.type !== parent.type) {
-        throw new BadRequestException('Тип статті має збігатися з типом батьківської статті');
+        throw new BadRequestException(
+          translateError('err.expenseCategory.typeMismatchParent', getLocale()),
+        );
       }
       type = parent.type;
       // Bug #736: нова дитина = глибина батька + 1; не може перевищувати MAX_DEPTH.
       const parentDepth = await this.getDepth(orgId, dto.parentId);
       if (parentDepth + 1 > MAX_DEPTH)
-        throw new BadRequestException('Досягнуто максимальної глибини вкладеності статей');
+        throw new BadRequestException(translateError('err.expenseCategory.maxDepth', getLocale()));
     }
 
     // resurrect-vs-409 по (orgId,name) — @@unique включає soft-deleted.
@@ -107,7 +115,8 @@ export class ExpenseCategoriesService {
       select: { id: true, deletedAt: true },
     });
     if (anyExisting) {
-      if (!anyExisting.deletedAt) throw new ConflictException('Стаття з такою назвою вже існує');
+      if (!anyExisting.deletedAt)
+        throw new ConflictException(translateError('err.expenseCategory.nameExists', getLocale()));
       await this.prisma.expenseCategory.update({
         where: { id: anyExisting.id, orgId },
         data: {
@@ -142,39 +151,49 @@ export class ExpenseCategoriesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, type: true },
     });
-    if (!existing) throw new NotFoundException('Статтю не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.expenseCategory.notFound', getLocale()));
 
     if (dto.name) {
       const duplicate = await this.prisma.expenseCategory.findFirst({
         where: { orgId, name: dto.name, NOT: { id }, deletedAt: null },
         select: { id: true },
       });
-      if (duplicate) throw new ConflictException('Стаття з такою назвою вже існує');
+      if (duplicate)
+        throw new ConflictException(translateError('err.expenseCategory.nameExists', getLocale()));
     }
 
     // Перенесення гілки: новий батько має існувати, бути того ж типу і НЕ бути нащадком (цикл).
     if (dto.parentId !== undefined && dto.parentId !== null) {
-      if (dto.parentId === id) throw new BadRequestException('Стаття не може бути власним батьком');
+      if (dto.parentId === id)
+        throw new BadRequestException(translateError('err.expenseCategory.ownParent', getLocale()));
       const parent = await this.prisma.expenseCategory.findFirst({
         where: { id: dto.parentId, orgId, deletedAt: null },
         select: { type: true },
       });
-      if (!parent) throw new NotFoundException('Батьківську статтю не знайдено');
+      if (!parent)
+        throw new NotFoundException(
+          translateError('err.expenseCategory.parentNotFound', getLocale()),
+        );
       if (parent.type !== existing.type)
-        throw new BadRequestException('Батьківська стаття має бути того ж типу');
+        throw new BadRequestException(
+          translateError('err.expenseCategory.parentTypeMismatch', getLocale()),
+        );
       // Perf: гілка-перенос потребує трьох метрик дерева (нащадки-цикл, глибина нового
       // батька, висота піддерева). Раніше кожна робила власний findMany(усе дерево) → 3
       // ідентичні full-scan на один update. Тепер один знімок дерева → усі три у памʼяті.
       const tree = await this.loadTree(orgId);
       const descendants = this.descendantsFrom(tree.childrenByParent, id);
       if (descendants.includes(dto.parentId))
-        throw new BadRequestException('Не можна перенести статтю у власного нащадка');
+        throw new BadRequestException(
+          translateError('err.expenseCategory.moveIntoDescendant', getLocale()),
+        );
       // Bug #736: після переносу глибина найглибшого нащадка = глибина_нового_батька + 1
       // (сам вузол) + висота_піддерева. Не може перевищувати MAX_DEPTH.
       const parentDepth = this.depthFrom(tree.parentOf, dto.parentId);
       const subtreeHeight = this.subtreeHeightFrom(tree.childrenByParent, id);
       if (parentDepth + 1 + subtreeHeight > MAX_DEPTH)
-        throw new BadRequestException('Досягнуто максимальної глибини вкладеності статей');
+        throw new BadRequestException(translateError('err.expenseCategory.maxDepth', getLocale()));
     }
 
     await this.prisma.expenseCategory.update({
@@ -199,7 +218,8 @@ export class ExpenseCategoriesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Статтю не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.expenseCategory.notFound', getLocale()));
     const descendantIds = await this.getDescendantIds(orgId, id);
     await this.prisma.expenseCategory.updateMany({
       where: { id: { in: [id, ...descendantIds] }, orgId, deletedAt: null },
@@ -213,14 +233,17 @@ export class ExpenseCategoriesService {
       where: { id, orgId, NOT: { deletedAt: null } },
       select: { name: true, parentId: true },
     });
-    if (!deleted) throw new NotFoundException('Видалену статтю не знайдено');
+    if (!deleted)
+      throw new NotFoundException(
+        translateError('err.expenseCategory.deletedNotFound', getLocale()),
+      );
     const activeDuplicate = await this.prisma.expenseCategory.findFirst({
       where: { orgId, name: deleted.name, deletedAt: null, NOT: { id } },
       select: { id: true },
     });
     if (activeDuplicate)
       throw new ConflictException(
-        'Активна стаття з такою назвою вже існує — відновлення неможливе',
+        translateError('err.expenseCategory.activeNameExists', getLocale()),
       );
     // Bug #734: якщо батько soft-deleted (каскадне видалення батька забрало й нащадка),
     // відновлення лише цього вузла лишило б його сиротою — parentId вказує на видалений
@@ -239,7 +262,10 @@ export class ExpenseCategoriesService {
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null, ...(reparentToRoot ? { parentId: null } : {}) },
     });
-    if (result.count === 0) throw new NotFoundException('Видалену статтю не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(
+        translateError('err.expenseCategory.deletedNotFound', getLocale()),
+      );
     return this.finish(orgId, id);
   }
 
@@ -249,7 +275,8 @@ export class ExpenseCategoriesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Статтю не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.expenseCategory.notFound', getLocale()));
     const descendants = await this.getDescendantIds(orgId, id);
     await this.prisma.expenseCategory.updateMany({
       where: { id: { in: [id, ...descendants] }, orgId, deletedAt: null },

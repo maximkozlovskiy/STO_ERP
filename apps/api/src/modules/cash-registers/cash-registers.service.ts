@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { CashService } from '../cash/cash.service';
 import {
   CashRegisterResponseDto,
@@ -64,7 +66,8 @@ export class CashRegistersService {
         branch: { select: { name: true } },
       },
     });
-    if (!item) throw new NotFoundException('Касу не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     const dto = this.toDto(item);
     dto.balance = await this.cash.getBalance(orgId, id);
     return dto;
@@ -82,8 +85,9 @@ export class CashRegistersService {
         select: { id: true },
       }),
     ]);
-    if (!currency) throw new NotFoundException('Валюту не знайдено');
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!currency)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     const isFiscal = dto.isFiscal ?? false;
     await this.assertFiscalProvider(orgId, dto.branchId, isFiscal, dto.fiscalProvider);
@@ -135,9 +139,12 @@ export class CashRegistersService {
           })
         : Promise.resolve(true as const),
     ]);
-    if (!existing) throw new NotFoundException('Касу не знайдено');
-    if (dto.currencyId && !currency) throw new NotFoundException('Валюту не знайдено');
-    if (dto.branchId && !branch) throw new NotFoundException('Філію не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
+    if (dto.currencyId && !currency)
+      throw new NotFoundException(translateError('err.currency.notFound', getLocale()));
+    if (dto.branchId && !branch)
+      throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
 
     // Ефективні значення після мерджу (dto перекриває наявне) — валідуємо привʼязку до ПРРО.
     const effectiveBranchId = dto.branchId ?? existing.branchId;
@@ -167,7 +174,8 @@ export class CashRegistersService {
       where: { id, orgId, deletedAt: null },
       data,
     });
-    if (updated.count === 0) throw new NotFoundException('Касу не знайдено');
+    if (updated.count === 0)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     const item = await this.prisma.cashRegister.findFirstOrThrow({
       where: { id, orgId },
       include: {
@@ -192,12 +200,14 @@ export class CashRegistersService {
       where: { id, orgId, deletedAt: null },
       select: { branchId: true },
     });
-    if (!existing) throw new NotFoundException('Касу не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     const result = await this.prisma.cashRegister.updateMany({
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Касу не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
     await this.cache.del(cacheKey(orgId));
     await this.cache.del(cacheKey(orgId, existing.branchId));
   }
@@ -216,9 +226,7 @@ export class CashRegistersService {
   ): Promise<void> {
     if (!fiscalProvider) return; // не привʼязано — ок (fallback на per-branch провайдера)
     if (!isFiscal) {
-      throw new BadRequestException(
-        'Провайдера ПРРО можна привʼязати лише до фіскальної каси (увімкніть «Фіскальна каса»)',
-      );
+      throw new BadRequestException(translateError('err.cashRegister.prroOnlyFiscal', getLocale()));
     }
     const cfg = await this.prisma.branchProviderConfig.findFirst({
       where: { orgId, branchId, kind: 'FISCAL', provider: fiscalProvider, deletedAt: null },
@@ -231,7 +239,7 @@ export class CashRegistersService {
     // і вимагаємо хоча б одне непорожнє значення — так само, як резолвер.
     if (!cfg || !this.hasUsableCredentials(cfg.credentials)) {
       throw new BadRequestException(
-        'Провайдера ПРРО не налаштовано для цієї філії — спершу введіть його креди у Налаштуваннях',
+        translateError('err.cashRegister.prroNotConfigured', getLocale()),
       );
     }
   }

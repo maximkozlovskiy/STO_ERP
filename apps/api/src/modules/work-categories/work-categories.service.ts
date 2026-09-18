@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateWorkCategoryDto,
   UpdateWorkCategoryDto,
@@ -49,7 +51,8 @@ export class WorkCategoriesService {
     const item = await this.prisma.workCategory.findFirst({
       where: { id, orgId, deletedAt: null },
     });
-    if (!item) throw new NotFoundException('Категорію не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.workCategory.notFound', getLocale()));
     return { ...this.toDto(item), children: [] };
   }
 
@@ -59,7 +62,8 @@ export class WorkCategoriesService {
         where: { id: dto.parentId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!parent) throw new NotFoundException('Батьківську категорію не знайдено');
+      if (!parent)
+        throw new NotFoundException(translateError('err.workCategory.parentNotFound', getLocale()));
     }
     const item = await this.prisma.workCategory.create({ data: { ...dto, orgId } });
     await this.cache.del(cacheKey(orgId));
@@ -84,13 +88,17 @@ export class WorkCategoriesService {
           })
         : Promise.resolve(null as { id: string } | null),
     ]);
-    if (!existing) throw new NotFoundException('Категорію не знайдено');
-    if (dto.parentId && !parent) throw new NotFoundException('Батьківську категорію не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.workCategory.notFound', getLocale()));
+    if (dto.parentId && !parent)
+      throw new NotFoundException(translateError('err.workCategory.parentNotFound', getLocale()));
 
     // System categories must not be renamed or moved (name/parentId changes).
     // Cosmetic fields (sortOrder, icon) are allowed — they are per-org preferences.
     if (existing.isSystem && (dto.name !== undefined || dto.parentId !== undefined)) {
-      throw new BadRequestException('Системну категорію не можна перейменовувати або переносити');
+      throw new BadRequestException(
+        translateError('err.workCategory.systemImmutable', getLocale()),
+      );
     }
 
     // Atomic updateMany with deletedAt: null in where — prevents a race between
@@ -99,7 +107,8 @@ export class WorkCategoriesService {
       where: { id, orgId, deletedAt: null },
       data: dto,
     });
-    if (result.count === 0) throw new NotFoundException('Категорію не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.workCategory.notFound', getLocale()));
     const item = await this.prisma.workCategory.findFirstOrThrow({
       where: { id, orgId, deletedAt: null },
     });
@@ -114,9 +123,12 @@ export class WorkCategoriesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, isSystem: true },
     });
-    if (!existing) throw new NotFoundException('Категорію не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.workCategory.notFound', getLocale()));
     if (existing.isSystem) {
-      throw new BadRequestException('Системну категорію не можна видалити');
+      throw new BadRequestException(
+        translateError('err.workCategory.systemUndeletable', getLocale()),
+      );
     }
 
     const descendants = await this.getDescendantIds(orgId, id);
@@ -137,7 +149,8 @@ export class WorkCategoriesService {
       where: { id, orgId, deletedAt: null },
       data: { isActive },
     });
-    if (result.count === 0) throw new NotFoundException('Категорію не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.workCategory.notFound', getLocale()));
 
     // Каскадно застосовуємо до всіх нащадків
     const descendantIds = await this.getDescendantIds(orgId, id);

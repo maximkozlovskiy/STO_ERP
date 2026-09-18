@@ -2,7 +2,9 @@ import { Controller, Post, Req, UseGuards, BadRequestException } from '@nestjs/c
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
+import { translateError } from '@sto/shared';
 import * as path from 'path';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -35,7 +37,7 @@ export class FilesController {
   @ApiConsumes('multipart/form-data')
   async upload(@OrgContext() orgId: string, @Req() req: FastifyRequest) {
     if (!req.isMultipart()) {
-      throw new BadRequestException('Очікується multipart/form-data');
+      throw new BadRequestException(translateError('err.file.multipartExpected', getLocale()));
     }
 
     const parts = req.parts();
@@ -58,11 +60,12 @@ export class FilesController {
       }
     }
 
-    if (!fileBuffer) throw new BadRequestException('Файл не отримано');
+    if (!fileBuffer)
+      throw new BadRequestException(translateError('err.file.notReceived', getLocale()));
     if (!mimetype.startsWith('image/'))
-      throw new BadRequestException('Дозволені тільки зображення');
+      throw new BadRequestException(translateError('err.file.onlyImages', getLocale()));
     if (fileBuffer.length > 10 * 1024 * 1024)
-      throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
+      throw new BadRequestException(translateError('err.file.tooLarge', getLocale()));
 
     // Захист від path traversal у назві файлу + DB overflow guard (узгоджено
     // з work-order-media.service.ts sanitizeFilename).

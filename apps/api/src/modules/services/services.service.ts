@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { calculatePagination } from '../../common/utils/pagination';
+import { getLocale } from '../../common/tenant/tenant-context';
 import {
   CreateServiceDto,
   UpdateServiceDto,
@@ -28,7 +29,7 @@ export class ServicesService {
         },
       },
     });
-    if (!item) throw new NotFoundException('Послугу не знайдено');
+    if (!item) throw new NotFoundException(translateError('err.service.notFound', getLocale()));
     return this.toDto(item);
   }
 
@@ -62,7 +63,7 @@ export class ServicesService {
         ]);
         if (dto.works?.length) {
           if (foundWorksCount !== dto.works.length)
-            throw new NotFoundException('Одну або кілька робіт не знайдено');
+            throw new NotFoundException(translateError('err.service.worksNotFound', getLocale()));
           await tx.serviceWork.createMany({
             data: dto.works.map(w => ({
               serviceId: svc.id,
@@ -73,7 +74,7 @@ export class ServicesService {
         }
         if (dto.goods?.length) {
           if (foundGoodsCount !== dto.goods.length)
-            throw new NotFoundException('Один або кілька товарів не знайдено');
+            throw new NotFoundException(translateError('err.service.goodsNotFound', getLocale()));
           await tx.serviceGood.createMany({
             data: dto.goods.map(g => ({
               serviceId: svc.id,
@@ -110,7 +111,7 @@ export class ServicesService {
       where: { id, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!existing) throw new NotFoundException('Послугу не знайдено');
+    if (!existing) throw new NotFoundException(translateError('err.service.notFound', getLocale()));
 
     const item = await this.prisma.$transaction(
       async tx => {
@@ -140,7 +141,7 @@ export class ServicesService {
         ]);
         if (dto.works !== undefined) {
           if (dto.works.length && foundWorksCount !== dto.works.length) {
-            throw new NotFoundException('Одну або кілька робіт не знайдено');
+            throw new NotFoundException(translateError('err.service.worksNotFound', getLocale()));
           }
           await tx.serviceWork.deleteMany({ where: { serviceId: id } });
           if (dto.works.length) {
@@ -155,7 +156,7 @@ export class ServicesService {
         }
         if (dto.goods !== undefined) {
           if (dto.goods.length && foundGoodsCount !== dto.goods.length) {
-            throw new NotFoundException('Один або кілька товарів не знайдено');
+            throw new NotFoundException(translateError('err.service.goodsNotFound', getLocale()));
           }
           await tx.serviceGood.deleteMany({ where: { serviceId: id } });
           if (dto.goods.length) {
@@ -197,7 +198,8 @@ export class ServicesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Послугу не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.service.notFound', getLocale()));
   }
 
   async restore(orgId: string, id: string): Promise<ServiceResponseDto> {
@@ -211,7 +213,8 @@ export class ServicesService {
       where: { id, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null },
     });
-    if (result.count === 0) throw new NotFoundException('Видалену послугу не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.service.deletedNotFound', getLocale()));
 
     const item = await this.prisma.service.findFirstOrThrow({
       where: { id, orgId },

@@ -12,7 +12,9 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiParam } from '@nestjs/swagger';
+import { translateError } from '@sto/shared';
 import { FastifyRequest } from 'fastify';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -40,7 +42,9 @@ export class WorkOrderMediaController {
     @Req() req: FastifyRequest,
   ): Promise<WorkOrderMediaResponseDto> {
     if (!req.isMultipart()) {
-      throw new BadRequestException('Очікується multipart/form-data');
+      throw new BadRequestException(
+        translateError('err.workOrderMedia.multipartExpected', getLocale()),
+      );
     }
 
     // Hard cap у controller (memory-safe): абортуємо stream щойно перевищено ліміт
@@ -64,7 +68,9 @@ export class WorkOrderMediaController {
         for await (const chunk of part.file) {
           accumulated += chunk.length;
           if (accumulated > HARD_CAP_BYTES) {
-            throw new BadRequestException('Файл завеликий (максимум 10 МБ)');
+            throw new BadRequestException(
+              translateError('err.workOrderMedia.tooLarge', getLocale()),
+            );
           }
           chunks.push(chunk);
         }
@@ -75,7 +81,8 @@ export class WorkOrderMediaController {
       }
     }
 
-    if (!fileBuffer) throw new BadRequestException('Файл не отримано');
+    if (!fileBuffer)
+      throw new BadRequestException(translateError('err.workOrderMedia.notReceived', getLocale()));
 
     return this.service.upload(orgId, workOrderId, user.id, {
       buffer: fileBuffer,
