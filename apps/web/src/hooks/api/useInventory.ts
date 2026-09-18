@@ -26,7 +26,7 @@ export interface GoodWithDocuments {
   documents: GoodMovementDoc[];
 }
 
-// BatchConsumption schema (packages/database/prisma/schema.prisma:1196)
+// BatchConsumption schema (packages/database/prisma/schema/07_inventory.prisma)
 // has `documentType String` + `documentId String` — both NON-null. Backend
 // `byBatch()` maps them verbatim without `?? null`. Previously typed as
 // `string | null` here — over-permissive, would TS-allow dead null checks.

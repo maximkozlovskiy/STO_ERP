@@ -9,23 +9,23 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-17
-Фаза:       Аудит стеку — FRONT (#1 zod+RHF 6 модалок, React 19 ref-as-prop, code-splitting=вже готово,
-            оптимістика+гранулярна інвалідація) + BACKEND (#1 env, #2 DLQ, #3 /api/v1) + ДАНІ/ІНФРА
-            (non-root Docker, immutability-тригери) ЗАВЕРШЕНО. Follow-up (UA-кома, DLQ retention v1.1,
-            index runbook) — ЗРОБЛЕНО. RLS: розглянуто → ВІДКЛАДЕНО (ADR-010: owner оминає RLS +
-            single-tenant-per-install + вже є fail-closed guard). Scope «Цінні front + RLS» ЗАКРИТО.
+Дата:       2026-09-18
+Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
+            (schema.prisma→11 доменних файлів) + typedSql-інфра ГОТОВО (гібрид: wiring відкладено — потребує
+            ephemeral-PG у build, див. GOTCHAS). Лишились опційні: NestJS 11, Node 22 — за запитом.
+            PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM.
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2539/2539 (167 файлів) · DLQ 28 · append-only 13 · env.schema 20 · xlsx parseNumber-кома 5.
-            web: useWorkOrders 15/15 (+3 оптимістичні), lib 163/163. web-модалки зелені.
-HEAD:       8ddaf309 perf(web): оптимістичні WO-мутації + гранулярна інвалідація списків
-Review:     2026-09-17 (auto, оптимістика+гранулярна інвалідація, коміт 8ddaf309) — 0 проблем (1 косметичний
-            nit: надлишковий cast context-типу, лишено). patchListItem rollback = true snapshot-restore
-            (fresh object per setQueryData); cancelQueries перед патчем = canonical v5; .lists()-префікс матчить
-            усі 5 list-query-ключів; counterparties.detail ніде не query-key → dropping .all безпечно.
-Tester:     2026-09-17 (auto, той самий коміт 8ddaf309) — CLEAN 0 багів. bulkSelect авто-прунить зниклий
-            optimistic-id (prune useEffect); linkedCounts keyed-by-map не by-index; selectedWO очищується
-            лише при успіху mutateAsync. useWorkOrders 15/15, lib 163/163, tsc 0.
+            web: useWorkOrders 15/15, lib 163/163. web-модалки зелені.
+HEAD:       44b45b28 refactor(db): prismaSchemaFolder split (11 доменів) + typedSql-інфра
+Review:     2026-09-18 (auto, prismaSchemaFolder split, коміт 44b45b28) — 0 проблем. ZERO drift:
+            block-sets byte-identical (45 enums+98 models), validate OK, migrate status up-to-date/138.
+            SyncJobStatus+ExpenseCategoryType релоковано у 01_enums (cross-file refs резолвляться).
+            typedSql inert; dashboard.service.ts НЕ чіпано; Dockerfile plain generate (offline-safe).
+Tester:     2026-09-18 (auto, той самий коміт 44b45b28) — CLEAN 0 багів. api 2539/2539 baseline preserved;
+            seeds path-agnostic (bare new PrismaClient); 0 функціональних old-path refs; typedSql inert.
+            Нотатка (pre-existing, не в scope): @sto/database exports вказує на неіснуючий path — harmless
+            (ніхто не імпортує @sto/database, всі через @prisma/client).
 Review(попередній): 2026-09-17 (auto, аудит Дані/Інфра — append-only ledger тригери, коміт 7ac27c41) — 1 IMPORTANT
             (ledger integrity). stock_movements-тригер дозволяв «batchId серед іншого»: перелік IS NOT
             DISTINCT НЕ покривав price/notes/createdBy/unitOfMeasureId → ledger-money-поле price мутабельне

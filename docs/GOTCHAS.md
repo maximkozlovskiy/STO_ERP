@@ -4,6 +4,34 @@
 
 ---
 
+## [2026-09-18] typedSql `generate --sql` потребує живу БД → ламає offline Docker-build
+
+Симптом: після ввімкнення `previewFeatures = ["typedSql"]` і `import { X } from '@prisma/client/sql'`
+у сервісі — локально все ОК (бо `prisma generate --sql` бігли проти dev-БД), але Docker-образ НЕ
+збирається / рантайм падає на `Cannot find module '@prisma/client/sql'`.
+
+Причина: `@prisma/client/sql` re-export генерується ЛИШЕ командою `prisma generate --sql`, яка
+потребує живу БД для інтроспекції типів `.sql`-файлів. Docker-build (`apps/api/Dockerfile` рядки
+17/46) біжить PLAIN `prisma generate` БЕЗ БД → re-export НЕ створюється (перевірено: після plain
+generate `node_modules/@prisma/client/sql.d.ts` ЗНИКАЄ, лишається тільки `.prisma/client/sql/`).
+Обидва — у gitignored node_modules, тож закомітити артефакт напряму НЕ можна.
+
+Правило: НЕ вмикати typedSql-wiring (`$queryRawTyped` + `@prisma/client/sql` import) у код, доки
+build не має способу зробити `generate --sql`. Варіанти коли знадобиться: (а) ephemeral-Postgres у
+builder-стадії Dockerfile (`db push` throwaway → `generate --sql` → stop) — офіційний шлях; (б)
+custom `output` dir + закомічений client. Інфраструктура (`prisma/sql/*.sql`, `generate:sql`-скрипт,
+flag) безпечна сама по собі — небезпечний лише import у рантайм-коді. Пілот lowStockCount.sql лишено
+як inert-заготовку; dashboard.service.ts НЕ конвертовано (ADR-хід «гібрид», коміт 44b45b28).
+
+## [2026-09-18] prismaSchemaFolder у 5.22 — ще preview (GA лише у 6.0)
+
+При розбитті `schema.prisma` на теку `prisma/schema/*.prisma` у Prisma 5.22 ОБОВ'ЯЗКОВО тримати
+`previewFeatures = ["prismaSchemaFolder"]` у generator — інакше `prisma validate` падає з
+`"prismaSchemaFolder" preview feature must be enabled`. IDE-розширення новішого Prisma може
+показувати цей флаг як deprecated/GA — це стосується 6.0, а НЕ встановленого 5.22 CLI. Не прибирати
+флаг до апгрейду на Prisma 6. Міграції лишаються у `prisma/migrations/` (сиблінг теки, НЕ переносяться
+всередину). Розбиття = чиста реорганізація → `migrate status` має лишатись «up to date», 0 drift.
+
 ## [2026-09-17] Cookie `path` мусить синхронно змінюватись разом з версійним префіксом роуту
 
 Симптом: після додавання `enableVersioning({type:URI, defaultVersion:'1'})` (усі роути → `/api/v1/*`)

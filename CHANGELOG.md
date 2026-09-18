@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-09-18 — Опційні: prismaSchemaFolder + typedSql-інфра
+
+### refactor(db) 44b45b28 — prismaSchemaFolder split (11 доменів) + typedSql-інфра
+
+- `schema.prisma` (3055 рядків) → `prisma/schema/` з 11 доменних файлів (config/enums/infrastructure/
+  employees/crm/catalog/work-orders/inventory/finance/settings/scheduling-sync-misc). 145 блоків
+  (2 config+45 enums+98 models) byte-for-byte; SyncJobStatus+ExpenseCategoryType → 01_enums.
+- `previewFeatures = ["typedSql","prismaSchemaFolder"]` (обидва preview у 5.22; GA у 6.0).
+- ZERO drift: migrate status «up to date» (138 міграцій), block-sets byte-identical, schema-integrity 8/8.
+  Міграції лишились у `prisma/migrations/` (CI-glob + installer migrate deploy цілі).
+- typedSql — ІНФРА готова, wiring ВІДКЛАДЕНО (гібрид): `prisma/sql/lowStockCount.sql` + `generate:sql`
+  скрипт. dashboard.service.ts НЕ конвертовано — V7 показав, що PLAIN `prisma generate` (Docker, БЕЗ БД)
+  НЕ емітить `@prisma/client/sql` → import зламав би offline-build. Потребує ephemeral-PG у builder
+  (див. GOTCHAS 2026-09-18). Docker plain generate незмінний → offline-build safe.
+- QA: review 0 / tester 0 CLEAN. api tsc 0; повний api-suite 2539/2539.
+
 ## 2026-09-17 — Аудит: RLS розглянуто → відкладено (ADR-010)
 
 ### docs(adr) — ADR-010 Row-Level Security, статус «розглянуто, відкладено»

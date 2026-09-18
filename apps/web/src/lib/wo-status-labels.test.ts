@@ -13,7 +13,7 @@ import { WO_STATUS_LABELS, WO_STATUS_BADGE, WO_STATUS_DESCRIPTIONS } from '@sto/
  * Якщо backend додасть новий статус — цей тест МАЄ впасти ПЕРШИМ.
  */
 describe('WO_STATUS_LABELS — contract з backend WorkOrderStatus enum', () => {
-  // Source of truth: prisma/schema.prisma WorkOrderStatus enum.
+  // Source of truth: prisma/schema/01_enums.prisma WorkOrderStatus enum.
   // Дзеркало списку — синхронізовано вручну, оновлювати при додаванні нового статусу.
   const EXPECTED_STATUSES = [
     'DRAFT',
