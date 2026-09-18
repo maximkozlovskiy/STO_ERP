@@ -18,6 +18,7 @@ import ukCash from './locales/uk/cash.json';
 import ukCalendar from './locales/uk/calendar.json';
 import ukWorkOrders from './locales/uk/workOrders.json';
 import ukReports from './locales/uk/reports.json';
+import ukInfrastructure from './locales/uk/infrastructure.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -37,6 +38,7 @@ import enCash from './locales/en/cash.json';
 import enCalendar from './locales/en/calendar.json';
 import enWorkOrders from './locales/en/workOrders.json';
 import enReports from './locales/en/reports.json';
+import enInfrastructure from './locales/en/infrastructure.json';
 
 export const resources = {
   uk: {
@@ -58,6 +60,7 @@ export const resources = {
     calendar: ukCalendar,
     workOrders: ukWorkOrders,
     reports: ukReports,
+    infrastructure: ukInfrastructure,
   },
   en: {
     common: enCommon,
@@ -78,5 +81,6 @@ export const resources = {
     calendar: enCalendar,
     workOrders: enWorkOrders,
     reports: enReports,
+    infrastructure: enInfrastructure,
   },
 } as const;

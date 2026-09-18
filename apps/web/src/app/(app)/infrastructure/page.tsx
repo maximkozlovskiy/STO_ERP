@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
@@ -73,56 +74,45 @@ interface Warehouse {
 
 type Tab = 'branches' | 'zones' | 'lifts' | 'warehouses';
 
-// Static tab definitions — module-level так, що масив не пересоздається
+// Static tab keys — module-level так, що масив не пересоздається
 // на кожен render (стабільна ref → менше work для React diff на NAV-рядках).
-const TABS: { key: Tab; label: string; addLabel: string }[] = [
-  { key: 'branches', label: 'Філії', addLabel: 'Філія' },
-  { key: 'zones', label: 'Зони', addLabel: 'Зона' },
-  { key: 'lifts', label: 'Пости', addLabel: 'Пост' },
-  { key: 'warehouses', label: 'Склади', addLabel: 'Склад' },
-];
+// Мітки резолвляться через t('tabs.*') / t('add.*') у місці рендера.
+const TABS: readonly Tab[] = ['branches', 'zones', 'lifts', 'warehouses'];
 
-const ZONE_TYPE_LABELS: Record<string, string> = {
-  MECHANICAL: 'Механічна',
-  BODY: 'Кузовна',
-  TIRE: 'Шиномонтажна',
-  WASH: 'Мийка',
-  ELECTRICAL: 'Електрика',
-  OTHER: 'Інша',
-};
-const LIFT_TYPE_LABELS: Record<string, string> = {
-  TWO_POST: '2-стійковий',
-  FOUR_POST: '4-стійковий',
-  ALIGNMENT: 'Розвал-сход',
-  STENCIL: 'Стапель',
-  STAND: 'Стенд',
-  PIT: 'Яма',
-  RAMP: 'Естакада',
-  OTHER: 'Інший',
-};
-const LIFT_STATUS_LABELS: Record<string, string> = {
-  ACTIVE: 'Активний',
-  MAINTENANCE: 'ТО',
-  BROKEN: 'Несправний',
-  DECOMMISSIONED: 'Списаний',
-};
+// Порядок ключів для селектів (заміняє старі *_LABELS-мапи) —
+// мітки беруться з namespace infrastructure (zoneType/liftType/liftStatus/warehouseType.*).
+const ZONE_TYPE_KEYS: readonly string[] = [
+  'MECHANICAL',
+  'BODY',
+  'TIRE',
+  'WASH',
+  'ELECTRICAL',
+  'OTHER',
+];
+const LIFT_TYPE_KEYS: readonly string[] = [
+  'TWO_POST',
+  'FOUR_POST',
+  'ALIGNMENT',
+  'STENCIL',
+  'STAND',
+  'PIT',
+  'RAMP',
+  'OTHER',
+];
+const LIFT_STATUS_KEYS: readonly string[] = ['ACTIVE', 'MAINTENANCE', 'BROKEN', 'DECOMMISSIONED'];
 const LIFT_STATUS_BADGE: Record<string, BadgeVariant> = {
   ACTIVE: 'success',
   MAINTENANCE: 'warning',
   BROKEN: 'destructive',
   DECOMMISSIONED: 'secondary',
 };
-const WAREHOUSE_TYPE_LABELS: Record<string, string> = {
-  MAIN: 'Товарний',
-  WORKSHOP: 'Цеховий',
-  TIRE_HOTEL: 'Шиновий готель',
-  MOBILE: 'Мобільний',
-};
+const WAREHOUSE_TYPE_KEYS: readonly string[] = ['MAIN', 'WORKSHOP', 'TIRE_HOTEL', 'MOBILE'];
 
 // ─── Main Page ───────────────────────────────────────────
 
 function InfrastructurePageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const { t } = useTranslation('infrastructure');
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'branches') as Tab;
@@ -257,7 +247,7 @@ function InfrastructurePageClient() {
     if (modal === 'lift' && form.maxWeightKg) {
       const w = Number(form.maxWeightKg);
       if (!Number.isFinite(w) || w <= 0) {
-        setError('Вантажність має бути додатнім числом');
+        setError(t('lifts.maxWeightPositive'));
         return;
       }
     }
@@ -315,14 +305,14 @@ function InfrastructurePageClient() {
       closeModal();
       loadAll();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
       setSaving(false);
     }
   };
 
   const remove = async (endpoint: string, id: string) => {
-    if (!(await confirm({ title: 'Видалити запис?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('common.confirmDeleteTitle'), variant: 'destructive' }))) return;
     setSaving(true);
     setError('');
     try {
@@ -336,7 +326,7 @@ function InfrastructurePageClient() {
       if (isNotFound) {
         loadAll();
       } else {
-        setError(msg || 'Помилка видалення');
+        setError(msg || t('common.deleteError'));
       }
     } finally {
       setSaving(false);
@@ -370,24 +360,24 @@ function InfrastructurePageClient() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Інфраструктура</h1>
+          <h1 className="page-title">{t('page.title')}</h1>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {TABS.map(t => (
+        {TABS.map(tabKey => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+            key={tabKey}
+            onClick={() => setTab(tabKey)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === t.key
+              tab === tabKey
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {t(`tabs.${tabKey}`)}
           </button>
         ))}
       </div>
@@ -397,7 +387,7 @@ function InfrastructurePageClient() {
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Пошук..."
+          placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
           className="flex-1 min-w-48 h-8 text-[13px]"
         />
@@ -405,14 +395,14 @@ function InfrastructurePageClient() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
             onClick={() => setShowDeleted(v => !v)}
             className={showDeleted ? 'border-primary text-primary' : ''}
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={ADD_ACTIONS[tab]}>
-            {TABS.find(t => t.key === tab)?.addLabel ?? 'Додати'}
+            {TABS.includes(tab) ? t(`add.${tab}`) : t('add.fallback')}
           </Button>
         </div>
       </div>
@@ -435,9 +425,9 @@ function InfrastructurePageClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Адреса</TableHead>
-                  <TableHead>Часовий пояс</TableHead>
+                  <TableHead>{t('branches.colName')}</TableHead>
+                  <TableHead>{t('branches.colAddress')}</TableHead>
+                  <TableHead>{t('branches.colTimezone')}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -448,7 +438,7 @@ function InfrastructurePageClient() {
                       {b.name}
                       {b.deletedAt && (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          видалено
+                          {t('badge.deleted')}
                         </Badge>
                       )}
                     </TableCell>
@@ -493,9 +483,9 @@ function InfrastructurePageClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Філія</TableHead>
+                  <TableHead>{t('zones.colName')}</TableHead>
+                  <TableHead>{t('zones.colType')}</TableHead>
+                  <TableHead>{t('zones.colBranch')}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -506,15 +496,15 @@ function InfrastructurePageClient() {
                       {z.name}
                       {z.deletedAt && (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          видалено
+                          {t('badge.deleted')}
                         </Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {ZONE_TYPE_LABELS[z.type] ?? z.type}
+                      {ZONE_TYPE_KEYS.includes(z.type) ? t(`zoneType.${z.type}`) : z.type}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {branches.find(b => b.id === z.branchId)?.name ?? '—'}
+                      {branches.find(b => b.id === z.branchId)?.name ?? t('common.dash')}
                     </TableCell>
                     <TableCell className="text-right">
                       {!z.deletedAt && (
@@ -559,11 +549,11 @@ function InfrastructurePageClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead>Вантажність, кг</TableHead>
-                  <TableHead>Зона</TableHead>
+                  <TableHead>{t('lifts.colName')}</TableHead>
+                  <TableHead>{t('lifts.colType')}</TableHead>
+                  <TableHead>{t('lifts.colStatus')}</TableHead>
+                  <TableHead>{t('lifts.colMaxWeight')}</TableHead>
+                  <TableHead>{t('lifts.colZone')}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -572,7 +562,7 @@ function InfrastructurePageClient() {
                   <LiftRow
                     key={l.id}
                     lift={l}
-                    zoneName={zones.find(z => z.id === l.zoneId)?.name ?? '—'}
+                    zoneName={zones.find(z => z.id === l.zoneId)?.name ?? t('common.dash')}
                     onEdit={() =>
                       openEditModal('lift', l.id, {
                         zoneId: l.zoneId,
@@ -609,10 +599,10 @@ function InfrastructurePageClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Назва</TableHead>
-                  <TableHead>Тип</TableHead>
-                  <TableHead>Філія</TableHead>
-                  <TableHead>Основний</TableHead>
+                  <TableHead>{t('warehouses.colName')}</TableHead>
+                  <TableHead>{t('warehouses.colType')}</TableHead>
+                  <TableHead>{t('warehouses.colBranch')}</TableHead>
+                  <TableHead>{t('warehouses.colIsMain')}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -623,21 +613,21 @@ function InfrastructurePageClient() {
                       {w.name}
                       {w.deletedAt && (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          видалено
+                          {t('badge.deleted')}
                         </Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {WAREHOUSE_TYPE_LABELS[w.type] ?? w.type}
+                      {WAREHOUSE_TYPE_KEYS.includes(w.type) ? t(`warehouseType.${w.type}`) : w.type}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {branches.find(b => b.id === w.branchId)?.name ?? '—'}
+                      {branches.find(b => b.id === w.branchId)?.name ?? t('common.dash')}
                     </TableCell>
                     <TableCell>
                       {!w.deletedAt && (
                         <button
                           type="button"
-                          title={w.isMain ? 'Основний склад' : 'Зробити основним'}
+                          title={w.isMain ? t('warehouses.isMainTitle') : t('warehouses.makeMain')}
                           onClick={async () => {
                             if (w.isMain) return;
                             setSaving(true);
@@ -649,7 +639,7 @@ function InfrastructurePageClient() {
                               });
                               loadAll();
                             } catch (e: unknown) {
-                              setError(e instanceof Error ? e.message : 'Помилка');
+                              setError(e instanceof Error ? e.message : t('common.error'));
                             } finally {
                               setSaving(false);
                             }
@@ -706,7 +696,7 @@ function InfrastructurePageClient() {
       <Modal
         open={modal === 'branch'}
         onClose={closeModal}
-        title={editingId ? 'Редагувати філію' : 'Нова філія'}
+        title={editingId ? t('branches.modalTitleEdit') : t('branches.modalTitleNew')}
         footer={
           <Button
             onClick={save}
@@ -714,7 +704,7 @@ function InfrastructurePageClient() {
             disabled={!form.name || !form.address}
             className="w-full"
           >
-            Зберегти
+            {t('common.save')}
           </Button>
         }
       >
@@ -725,19 +715,19 @@ function InfrastructurePageClient() {
         )}
         <div className="space-y-4">
           <Input
-            label="Назва"
+            label={t('branches.fieldName')}
             required
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Головна філія"
+            placeholder={t('branches.namePlaceholder')}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Адреса"
+            label={t('branches.fieldAddress')}
             required
             value={form.address ?? ''}
             onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-            placeholder="вул. Гагаріна 12, Київ"
+            placeholder={t('branches.addressPlaceholder')}
             className="h-8 text-[13px]"
           />
         </div>
@@ -747,7 +737,7 @@ function InfrastructurePageClient() {
       <Modal
         open={modal === 'zone'}
         onClose={closeModal}
-        title={editingId ? 'Редагувати зону' : 'Нова зона'}
+        title={editingId ? t('zones.modalTitleEdit') : t('zones.modalTitleNew')}
         footer={
           <Button
             onClick={save}
@@ -755,7 +745,7 @@ function InfrastructurePageClient() {
             disabled={!form.name || !form.branchId}
             className="w-full"
           >
-            Зберегти
+            {t('common.save')}
           </Button>
         }
       >
@@ -766,7 +756,7 @@ function InfrastructurePageClient() {
         )}
         <div className="space-y-4">
           <Select
-            label="Філія"
+            label={t('zones.fieldBranch')}
             required
             value={form.branchId ?? ''}
             onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
@@ -779,23 +769,23 @@ function InfrastructurePageClient() {
             ))}
           </Select>
           <Input
-            label="Назва"
+            label={t('zones.fieldName')}
             required
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Механічна зона А"
+            placeholder={t('zones.namePlaceholder')}
             className="h-8 text-[13px]"
           />
           <Select
-            label="Тип"
+            label={t('zones.fieldType')}
             required
             value={form.type ?? 'MECHANICAL'}
             onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
             className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
-            {Object.entries(ZONE_TYPE_LABELS).map(([k, v]) => (
+            {ZONE_TYPE_KEYS.map(k => (
               <option key={k} value={k}>
-                {v}
+                {t(`zoneType.${k}`)}
               </option>
             ))}
           </Select>
@@ -806,7 +796,7 @@ function InfrastructurePageClient() {
       <Modal
         open={modal === 'lift'}
         onClose={closeModal}
-        title={editingId ? 'Редагувати пост' : 'Новий пост'}
+        title={editingId ? t('lifts.modalTitleEdit') : t('lifts.modalTitleNew')}
         footer={
           <Button
             onClick={save}
@@ -814,7 +804,7 @@ function InfrastructurePageClient() {
             disabled={!form.name || !form.zoneId}
             className="w-full"
           >
-            Зберегти
+            {t('common.save')}
           </Button>
         }
       >
@@ -825,7 +815,7 @@ function InfrastructurePageClient() {
         )}
         <div className="space-y-4">
           <Select
-            label="Зона"
+            label={t('lifts.fieldZone')}
             required
             value={form.zoneId ?? ''}
             onChange={e => setForm(f => ({ ...f, zoneId: e.target.value }))}
@@ -838,79 +828,79 @@ function InfrastructurePageClient() {
             ))}
           </Select>
           <Input
-            label="Назва"
+            label={t('lifts.fieldName')}
             required
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Пост №1"
+            placeholder={t('lifts.namePlaceholder')}
             className="h-8 text-[13px]"
           />
           <Select
-            label="Тип"
+            label={t('lifts.fieldType')}
             required
             value={form.type ?? 'TWO_POST'}
             onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
             className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
-            {Object.entries(LIFT_TYPE_LABELS).map(([k, v]) => (
+            {LIFT_TYPE_KEYS.map(k => (
               <option key={k} value={k}>
-                {v}
+                {t(`liftType.${k}`)}
               </option>
             ))}
           </Select>
           <Select
-            label="Статус"
+            label={t('lifts.fieldStatus')}
             required
             value={form.status ?? 'ACTIVE'}
             onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
             className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
-            {Object.entries(LIFT_STATUS_LABELS).map(([k, v]) => (
+            {LIFT_STATUS_KEYS.map(k => (
               <option key={k} value={k}>
-                {v}
+                {t(`liftStatus.${k}`)}
               </option>
             ))}
           </Select>
           <Input
-            label="Вантажність, кг"
+            label={t('lifts.fieldMaxWeight')}
             type="number"
             min="0"
             value={form.maxWeightKg ?? ''}
             onChange={e => setForm(f => ({ ...f, maxWeightKg: e.target.value }))}
-            placeholder="3500"
+            placeholder={t('lifts.maxWeightPlaceholder')}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Серійний номер"
+            label={t('lifts.fieldSerialNumber')}
             value={form.serialNumber ?? ''}
             onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))}
-            placeholder="SN-12345"
+            placeholder={t('lifts.serialNumberPlaceholder')}
             className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-2 gap-3">
             <DatePickerInput
-              label="Дата купівлі"
+              label={t('lifts.fieldPurchaseDate')}
               value={form.purchaseDate ?? ''}
               onChange={v => setForm(f => ({ ...f, purchaseDate: v }))}
             />
             <DatePickerInput
-              label="Гарантія до"
+              label={t('lifts.fieldWarrantyUntil')}
               value={form.warrantyUntil ?? ''}
               onChange={v => setForm(f => ({ ...f, warrantyUntil: v }))}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Інтервал ТО (днів)"
+              label={t('lifts.fieldMaintenanceInterval')}
               type="number"
               min="0"
               value={form.maintenanceIntervalDays ?? ''}
               onChange={e => setForm(f => ({ ...f, maintenanceIntervalDays: e.target.value }))}
-              placeholder="180"
+              placeholder={t('lifts.maintenanceIntervalPlaceholder')}
               className="h-8 text-[13px]"
             />
             <DatePickerInput
-              label="Дата останнього ТО"
+              label={t('lifts.fieldLastMaintenance')}
               value={form.lastMaintenanceDate ?? ''}
               onChange={v => setForm(f => ({ ...f, lastMaintenanceDate: v }))}
             />
@@ -922,7 +912,7 @@ function InfrastructurePageClient() {
       <Modal
         open={modal === 'warehouse'}
         onClose={closeModal}
-        title={editingId ? 'Редагувати склад' : 'Новий склад'}
+        title={editingId ? t('warehouses.modalTitleEdit') : t('warehouses.modalTitleNew')}
         footer={
           <Button
             onClick={save}
@@ -930,7 +920,7 @@ function InfrastructurePageClient() {
             disabled={!form.name || !form.branchId}
             className="w-full"
           >
-            Зберегти
+            {t('common.save')}
           </Button>
         }
       >
@@ -941,7 +931,7 @@ function InfrastructurePageClient() {
         )}
         <div className="space-y-4">
           <Select
-            label="Філія"
+            label={t('warehouses.fieldBranch')}
             required
             value={form.branchId ?? ''}
             onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
@@ -954,23 +944,23 @@ function InfrastructurePageClient() {
             ))}
           </Select>
           <Input
-            label="Назва"
+            label={t('warehouses.fieldName')}
             required
             value={form.name ?? ''}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Основний склад"
+            placeholder={t('warehouses.namePlaceholder')}
             className="h-8 text-[13px]"
           />
           <Select
-            label="Тип"
+            label={t('warehouses.fieldType')}
             required
             value={form.type ?? 'MAIN'}
             onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
             className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
-            {Object.entries(WAREHOUSE_TYPE_LABELS).map(([k, v]) => (
+            {WAREHOUSE_TYPE_KEYS.map(k => (
               <option key={k} value={k}>
-                {v}
+                {t(`warehouseType.${k}`)}
               </option>
             ))}
           </Select>
@@ -1008,6 +998,7 @@ function WarehouseMainCheckbox({
   warehouses: Warehouse[];
   editingId: string | null;
 }) {
+  const { t } = useTranslation('infrastructure');
   const currentMain = warehouses.find(w => w.isMain && !w.deletedAt);
   const anotherMainExists = !!currentMain && editingId !== currentMain.id;
   return (
@@ -1019,11 +1010,11 @@ function WarehouseMainCheckbox({
           onChange={e => onChange(e.target.checked)}
           className="w-4 h-4 accent-primary"
         />
-        <span className="text-foreground">Основний склад</span>
+        <span className="text-foreground">{t('warehouses.checkboxMain')}</span>
       </label>
       {checked && anotherMainExists && (
         <p className="text-xs text-warning-text bg-warning-subtle border border-warning-border rounded-lg px-3 py-2">
-          «{currentMain.name}» буде знятий з основного
+          {t('warehouses.mainWillBeUnset', { name: currentMain.name })}
         </p>
       )}
     </>
@@ -1051,6 +1042,7 @@ function LiftRow({
   onRemove: () => void;
   nowMs: number;
 }) {
+  const { t } = useTranslation('infrastructure');
   const [expanded, setExpanded] = useState(false);
   const hasDetail = lift.nextMaintenanceDate ?? lift.lastMaintenanceDate;
   const nextSoon = isWithin14Days(lift.nextMaintenanceDate, nowMs);
@@ -1069,12 +1061,12 @@ function LiftRow({
           {lift.name}
           {isDeleted && (
             <Badge variant="secondary" className="ml-2 text-xs">
-              видалено
+              {t('badge.deleted')}
             </Badge>
           )}
         </TableCell>
         <TableCell className="text-muted-foreground">
-          {LIFT_TYPE_LABELS[lift.type] ?? lift.type}
+          {LIFT_TYPE_KEYS.includes(lift.type) ? t(`liftType.${lift.type}`) : lift.type}
         </TableCell>
         <TableCell>
           <Badge
@@ -1082,10 +1074,12 @@ function LiftRow({
             dot
             tooltip={LIFT_STATUS_DESCRIPTIONS[lift.status]}
           >
-            {LIFT_STATUS_LABELS[lift.status] ?? lift.status}
+            {LIFT_STATUS_KEYS.includes(lift.status) ? t(`liftStatus.${lift.status}`) : lift.status}
           </Badge>
         </TableCell>
-        <TableCell className="text-muted-foreground">{lift.maxWeightKg ?? '—'}</TableCell>
+        <TableCell className="text-muted-foreground">
+          {lift.maxWeightKg ?? t('common.dash')}
+        </TableCell>
         <TableCell className="text-muted-foreground">{zoneName}</TableCell>
         <TableCell className="text-right">
           {!isDeleted && (
@@ -1122,7 +1116,7 @@ function LiftRow({
             <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
               {lift.lastMaintenanceDate && (
                 <span className="text-muted-foreground">
-                  Останнє ТО:{' '}
+                  {t('lifts.detailLastMaintenance')}{' '}
                   <span className="text-foreground font-medium">
                     {formatDate(lift.lastMaintenanceDate)}
                   </span>
@@ -1132,13 +1126,13 @@ function LiftRow({
                 <span
                   className={cn('text-muted-foreground', nextSoon && 'text-warning font-medium')}
                 >
-                  Наступне ТО:{' '}
+                  {t('lifts.detailNextMaintenance')}{' '}
                   <span
                     className={cn('font-medium', nextSoon ? 'text-warning' : 'text-foreground')}
                   >
                     {formatDate(lift.nextMaintenanceDate)}
                   </span>
-                  {nextSoon && <span className="ml-1 text-xs">(незабаром)</span>}
+                  {nextSoon && <span className="ml-1 text-xs">{t('lifts.detailSoon')}</span>}
                 </span>
               )}
             </div>

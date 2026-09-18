@@ -1,0 +1,129 @@
+{
+  "page": {
+    "title": "Інфраструктура"
+  },
+  "tabs": {
+    "branches": "Філії",
+    "zones": "Зони",
+    "lifts": "Пости",
+    "warehouses": "Склади"
+  },
+  "add": {
+    "branches": "Філія",
+    "zones": "Зона",
+    "lifts": "Пост",
+    "warehouses": "Склад",
+    "fallback": "Додати"
+  },
+  "filters": {
+    "searchPlaceholder": "Пошук...",
+    "hideDeleted": "Сховати видалені",
+    "showDeleted": "Показати видалені"
+  },
+  "badge": {
+    "deleted": "видалено"
+  },
+  "common": {
+    "dash": "—",
+    "saveError": "Помилка збереження",
+    "deleteError": "Помилка видалення",
+    "error": "Помилка",
+    "save": "Зберегти",
+    "confirmDeleteTitle": "Видалити запис?"
+  },
+  "zoneType": {
+    "MECHANICAL": "Механічна",
+    "BODY": "Кузовна",
+    "TIRE": "Шиномонтажна",
+    "WASH": "Мийка",
+    "ELECTRICAL": "Електрика",
+    "OTHER": "Інша"
+  },
+  "liftType": {
+    "TWO_POST": "2-стійковий",
+    "FOUR_POST": "4-стійковий",
+    "ALIGNMENT": "Розвал-сход",
+    "STENCIL": "Стапель",
+    "STAND": "Стенд",
+    "PIT": "Яма",
+    "RAMP": "Естакада",
+    "OTHER": "Інший"
+  },
+  "liftStatus": {
+    "ACTIVE": "Активний",
+    "MAINTENANCE": "ТО",
+    "BROKEN": "Несправний",
+    "DECOMMISSIONED": "Списаний"
+  },
+  "warehouseType": {
+    "MAIN": "Товарний",
+    "WORKSHOP": "Цеховий",
+    "TIRE_HOTEL": "Шиновий готель",
+    "MOBILE": "Мобільний"
+  },
+  "branches": {
+    "colName": "Назва",
+    "colAddress": "Адреса",
+    "colTimezone": "Часовий пояс",
+    "modalTitleEdit": "Редагувати філію",
+    "modalTitleNew": "Нова філія",
+    "fieldName": "Назва",
+    "fieldAddress": "Адреса",
+    "namePlaceholder": "Головна філія",
+    "addressPlaceholder": "вул. Гагаріна 12, Київ"
+  },
+  "zones": {
+    "colName": "Назва",
+    "colType": "Тип",
+    "colBranch": "Філія",
+    "modalTitleEdit": "Редагувати зону",
+    "modalTitleNew": "Нова зона",
+    "fieldBranch": "Філія",
+    "fieldName": "Назва",
+    "fieldType": "Тип",
+    "namePlaceholder": "Механічна зона А"
+  },
+  "lifts": {
+    "colName": "Назва",
+    "colType": "Тип",
+    "colStatus": "Статус",
+    "colMaxWeight": "Вантажність, кг",
+    "colZone": "Зона",
+    "modalTitleEdit": "Редагувати пост",
+    "modalTitleNew": "Новий пост",
+    "fieldZone": "Зона",
+    "fieldName": "Назва",
+    "fieldType": "Тип",
+    "fieldStatus": "Статус",
+    "fieldMaxWeight": "Вантажність, кг",
+    "fieldSerialNumber": "Серійний номер",
+    "fieldPurchaseDate": "Дата купівлі",
+    "fieldWarrantyUntil": "Гарантія до",
+    "fieldMaintenanceInterval": "Інтервал ТО (днів)",
+    "fieldLastMaintenance": "Дата останнього ТО",
+    "namePlaceholder": "Пост №1",
+    "serialNumberPlaceholder": "SN-12345",
+    "maxWeightPlaceholder": "3500",
+    "maintenanceIntervalPlaceholder": "180",
+    "maxWeightPositive": "Вантажність має бути додатнім числом",
+    "detailLastMaintenance": "Останнє ТО:",
+    "detailNextMaintenance": "Наступне ТО:",
+    "detailSoon": "(незабаром)"
+  },
+  "warehouses": {
+    "colName": "Назва",
+    "colType": "Тип",
+    "colBranch": "Філія",
+    "colIsMain": "Основний",
+    "makeMain": "Зробити основним",
+    "isMainTitle": "Основний склад",
+    "modalTitleEdit": "Редагувати склад",
+    "modalTitleNew": "Новий склад",
+    "fieldBranch": "Філія",
+    "fieldName": "Назва",
+    "fieldType": "Тип",
+    "namePlaceholder": "Основний склад",
+    "checkboxMain": "Основний склад",
+    "mainWillBeUnset": "«{{name}}» буде знятий з основного"
+  }
+}

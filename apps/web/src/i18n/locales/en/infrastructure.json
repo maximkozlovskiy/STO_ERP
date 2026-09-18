@@ -1,0 +1,129 @@
+{
+  "page": {
+    "title": "Infrastructure"
+  },
+  "tabs": {
+    "branches": "Branches",
+    "zones": "Zones",
+    "lifts": "Bays",
+    "warehouses": "Warehouses"
+  },
+  "add": {
+    "branches": "Branch",
+    "zones": "Zone",
+    "lifts": "Bay",
+    "warehouses": "Warehouse",
+    "fallback": "Add"
+  },
+  "filters": {
+    "searchPlaceholder": "Search...",
+    "hideDeleted": "Hide deleted",
+    "showDeleted": "Show deleted"
+  },
+  "badge": {
+    "deleted": "deleted"
+  },
+  "common": {
+    "dash": "—",
+    "saveError": "Failed to save",
+    "deleteError": "Failed to delete",
+    "error": "Error",
+    "save": "Save",
+    "confirmDeleteTitle": "Delete record?"
+  },
+  "zoneType": {
+    "MECHANICAL": "Mechanical",
+    "BODY": "Body shop",
+    "TIRE": "Tire service",
+    "WASH": "Car wash",
+    "ELECTRICAL": "Electrical",
+    "OTHER": "Other"
+  },
+  "liftType": {
+    "TWO_POST": "2-post",
+    "FOUR_POST": "4-post",
+    "ALIGNMENT": "Wheel alignment",
+    "STENCIL": "Frame bench",
+    "STAND": "Stand",
+    "PIT": "Pit",
+    "RAMP": "Ramp",
+    "OTHER": "Other"
+  },
+  "liftStatus": {
+    "ACTIVE": "Active",
+    "MAINTENANCE": "Maintenance",
+    "BROKEN": "Out of order",
+    "DECOMMISSIONED": "Decommissioned"
+  },
+  "warehouseType": {
+    "MAIN": "Goods",
+    "WORKSHOP": "Workshop",
+    "TIRE_HOTEL": "Tire hotel",
+    "MOBILE": "Mobile"
+  },
+  "branches": {
+    "colName": "Name",
+    "colAddress": "Address",
+    "colTimezone": "Timezone",
+    "modalTitleEdit": "Edit branch",
+    "modalTitleNew": "New branch",
+    "fieldName": "Name",
+    "fieldAddress": "Address",
+    "namePlaceholder": "Main branch",
+    "addressPlaceholder": "12 Haharina St, Kyiv"
+  },
+  "zones": {
+    "colName": "Name",
+    "colType": "Type",
+    "colBranch": "Branch",
+    "modalTitleEdit": "Edit zone",
+    "modalTitleNew": "New zone",
+    "fieldBranch": "Branch",
+    "fieldName": "Name",
+    "fieldType": "Type",
+    "namePlaceholder": "Mechanical zone A"
+  },
+  "lifts": {
+    "colName": "Name",
+    "colType": "Type",
+    "colStatus": "Status",
+    "colMaxWeight": "Capacity, kg",
+    "colZone": "Zone",
+    "modalTitleEdit": "Edit bay",
+    "modalTitleNew": "New bay",
+    "fieldZone": "Zone",
+    "fieldName": "Name",
+    "fieldType": "Type",
+    "fieldStatus": "Status",
+    "fieldMaxWeight": "Capacity, kg",
+    "fieldSerialNumber": "Serial number",
+    "fieldPurchaseDate": "Purchase date",
+    "fieldWarrantyUntil": "Warranty until",
+    "fieldMaintenanceInterval": "Maintenance interval (days)",
+    "fieldLastMaintenance": "Last maintenance date",
+    "namePlaceholder": "Bay #1",
+    "serialNumberPlaceholder": "SN-12345",
+    "maxWeightPlaceholder": "3500",
+    "maintenanceIntervalPlaceholder": "180",
+    "maxWeightPositive": "Capacity must be a positive number",
+    "detailLastMaintenance": "Last maintenance:",
+    "detailNextMaintenance": "Next maintenance:",
+    "detailSoon": "(soon)"
+  },
+  "warehouses": {
+    "colName": "Name",
+    "colType": "Type",
+    "colBranch": "Branch",
+    "colIsMain": "Main",
+    "makeMain": "Set as main",
+    "isMainTitle": "Main warehouse",
+    "modalTitleEdit": "Edit warehouse",
+    "modalTitleNew": "New warehouse",
+    "fieldBranch": "Branch",
+    "fieldName": "Name",
+    "fieldType": "Type",
+    "namePlaceholder": "Main warehouse",
+    "checkboxMain": "Main warehouse",
+    "mainWillBeUnset": "“{{name}}” will be unset as main"
+  }
+}
