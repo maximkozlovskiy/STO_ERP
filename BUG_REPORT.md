@@ -5640,3 +5640,39 @@ web schema+form тести 23 passed, tsc усі 0.
 
 - E2E `estimate-share.spec.ts:214 «work-order modal shows Друк/Поділитись/SMS»` — 1 flaky-фейл: timeout на кліку кнопки «Кошторис» на списку `/work-orders` (авторизований modal-flow, залежить від date-фільтра/refresh-таймінгу — сам тест документує цю крихкість коментарями Bug #567/#572). API-рівневі public-endpoint тести і сам public-estimate-page тест — зелені. Не пов'язано з `/api/v1`.
 - `apps/web/e2e/playwright.config.ts` не вантажить `.env.e2e` через dotenv → `setup-auth.ts` падає на дефолтний пароль `admin123` якщо `E2E_EMAIL/E2E_PASSWORD` не в env (треба експортувати вручну / CI-env). Pre-existing harness-деталь, не регресія версіонування.
+
+## Session 2026-09-18 — Bug hunt i18n foundation (commits 7cc36318 + 585bfa89), live language switch
+
+**Baseline:** web vitest **818/818 зелені (86 файлів)**, web tsc 0, api settings tests **59/59** — жодної регресії від i18n-роботи. Live-перевірка: web up (3001), API up (3000, health 200 після старту). Auth-логін недоступний — поточна dev-БД НЕ демо-seed (146 employees, немає `admin@sto.local`; форжити JWT заборонено класифікатором), тож ПОВНИЙ live-тест sidebar через логін ПРОПУЩЕНО. Live-перевірено без auth: persistence + head-script (нижче).
+
+### [x] Bug #762 — заголовки розділів sidebar НЕ перекладаються LIVE (i18n / frontend) — MEDIUM
+
+**Файли:** `apps/web/src/components/TopShell.tsx` (activeGroups + import), `apps/web/src/lib/nav.ts` (`NAV_SECTION_KEYS` — був dead-code).
+
+**Симптом:** У дефолтному режимі навігації `'sections'` заголовки розділів бокової панелі
+(«Документи», «Взаєморозрахунки», «Звіти», «Довідники», «Налаштування») лишалися українськими
+при перемиканні на англійську, тоді як самі пункти меню фліпали коректно (через `t(item.labelKey)`).
+
+**Причина:** `resolveNav()` повертає `label = NAV_SECTION_LABELS[id]` — жорсткий укр. рядок. TopShell
+рендерив `{group.label}` БЕЗ `t()`. Інфраструктура перекладу вже існувала й була готова, але не
+під'єднана: `NAV_SECTION_KEYS` (мапа section→i18n-ключ) визначена в nav.ts, а каталоги
+`nav:section.documents…` заповнені і в uk, і в en — але `NAV_SECTION_KEYS` НІДЕ не викликалась
+(dead export). Це не «інтенційно немігрований inline-рядок» — це готова-але-невикликана i18n-логіка.
+
+**Фікс:** У `TopShell.activeGroups` (режим 'sections') дефолтні (не-custom) розділи тепер
+перекладаються через `t(NAV_SECTION_KEYS[s.id], { defaultValue: s.label })`; кастомні розділи
+(`s.custom`) зберігають user-визначену назву без перекладу. Section 'top' (ключ `''`) безпечно
+падає на `s.label || undefined` (заголовка немає). Мапінг реактивний до `languageChanged` бо
+TopShell вже має `useTranslation('nav')` → фліпає LIVE разом із пунктами меню.
+
+**Регрес-тест:** `apps/web/src/components/__tests__/TopShell.navSections.i18n.test.tsx` (3 тести) —
+дзеркалить точний activeGroups-мапінг: uk→['Документи','Взаєморозрахунки'], en→['Documents','Settlements'],
+кастомний розділ зберігає назву. tsc 0.
+
+**Live-перевірка суміжного (без auth):** `localStorage.sto_locale='en'` + reload /login →
+`document.documentElement.lang === 'en'` (head inline-script + config.ts resolveInitialLocale),
+0 network-fetch каталогів (bundled) → підтверджує persistence (Focus 3) + offline (Focus 6) для pre-auth path.
+
+**Де шукати ще:** будь-який раз, коли `resolveNav`/`NAV_SECTION_LABELS` віддають готовий рядок у JSX
+без `t()`; «Закладки» header у TopShell (рядок, без ключа — свідомо inline, поза scope);
+custom-section назви (правильно НЕ перекладаються).
