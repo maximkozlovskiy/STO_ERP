@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContractType, CounterpartyType, LegalForm, Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
 import { initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -128,7 +129,8 @@ export class CounterpartiesService {
         },
       },
     });
-    if (!item) throw new NotFoundException('Контрагента не знайдено');
+    if (!item)
+      throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     return this.toDto(item, true);
   }
 
@@ -149,8 +151,9 @@ export class CounterpartiesService {
         select: { id: true },
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
-    if (!status) throw new NotFoundException('Статус не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
+    if (!status)
+      throw new NotFoundException(translateError('err.counterparty.statusNotFound', getLocale()));
 
     // Ідемпотентно: @@unique[counterpartyId,statusId] → повторний assign не дублює (P2002 ловимо як no-op).
     await this.prisma.counterpartyStatusLink
@@ -181,7 +184,10 @@ export class CounterpartiesService {
     const result = await this.prisma.counterpartyStatusLink.deleteMany({
       where: { orgId, counterpartyId, statusId },
     });
-    if (result.count === 0) throw new NotFoundException('Статус не призначено цьому контрагенту');
+    if (result.count === 0)
+      throw new NotFoundException(
+        translateError('err.counterparty.statusNotAssigned', getLocale()),
+      );
     // counterpartyCount у кешованому довіднику статусів застаріває → скидаємо.
     await this.counterpartyStatuses.invalidateCache(orgId);
     if (userId) {
@@ -200,7 +206,7 @@ export class CounterpartiesService {
     userId?: string,
   ): Promise<CounterpartyResponseDto> {
     if (!hasCounterpartyName(dto)) {
-      throw new BadRequestException('Вкажіть назву компанії або ім’я/прізвище контрагента');
+      throw new BadRequestException(translateError('err.counterparty.nameRequired', getLocale()));
     }
     // Pre-allocate contract number via DocumentNumberService BEFORE entering the main $transaction.
     // next() uses its own $transaction with SELECT FOR UPDATE — nesting transactions would deadlock or hide the lock.
@@ -308,7 +314,8 @@ export class CounterpartiesService {
         taxNumber: true,
       },
     });
-    if (!existing) throw new NotFoundException('Контрагента не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     // Merged-стан: PATCH частковий → перевіряємо результат після застосування dto
     // (undefined = не чіпаємо, лишається наявне; '' = очищення).
     const merged = {
@@ -320,7 +327,7 @@ export class CounterpartiesService {
       lastName: dto.lastName !== undefined ? dto.lastName : existing.lastName,
     };
     if (!hasCounterpartyName(merged)) {
-      throw new BadRequestException('Вкажіть назву компанії або ім’я/прізвище контрагента');
+      throw new BadRequestException(translateError('err.counterparty.nameRequired', getLocale()));
     }
     const item = await this.prisma.counterparty.update({
       where: { id, orgId },
@@ -360,10 +367,10 @@ export class CounterpartiesService {
       where: { id, orgId, deletedAt: null },
       select: { settlementAccount: { select: { balance: true } } },
     });
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     if (cp.settlementAccount && Number(cp.settlementAccount.balance) !== 0) {
       throw new BadRequestException(
-        'Неможливо видалити контрагента з ненульовим балансом (є заборгованість)',
+        translateError('err.counterparty.hasNonZeroBalance', getLocale()),
       );
     }
     // Активні (не-фінальні) наряди / незакриті замовлення / відкриті рахунки блокують видалення.
@@ -397,13 +404,17 @@ export class CounterpartiesService {
       }),
     ]);
     if (activeWo > 0) {
-      throw new BadRequestException('Неможливо видалити: контрагент має активні наряди');
+      throw new BadRequestException(
+        translateError('err.counterparty.hasActiveWorkOrders', getLocale()),
+      );
     }
     if (openPo > 0) {
-      throw new BadRequestException('Неможливо видалити: контрагент має незакриті замовлення');
+      throw new BadRequestException(translateError('err.counterparty.hasOpenOrders', getLocale()));
     }
     if (openInvoice > 0) {
-      throw new BadRequestException('Неможливо видалити: контрагент має відкриті рахунки');
+      throw new BadRequestException(
+        translateError('err.counterparty.hasOpenInvoices', getLocale()),
+      );
     }
 
     // sto-optimize: atomic updateMany with compound where — no race window between guard and write.
@@ -411,7 +422,8 @@ export class CounterpartiesService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Контрагента не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     // goodCount-паритет (Bug #725-клас): soft-delete контрагента з міткою міняє
     // counterpartyCount (_count.links filtered by counterparty.deletedAt:null) → скидаємо кеш довідника.
     await this.invalidateStatusesCacheIfLabeled(orgId, id);
@@ -452,7 +464,7 @@ export class CounterpartiesService {
         take: 50,
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     return items.map(item => this.toGarageDto(item));
   }
 
@@ -467,7 +479,7 @@ export class CounterpartiesService {
       where: { id: counterpartyId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     // Інваріант: лише один гараж може бути default per counterparty.
     // updateMany(isDefault→false) є no-op коли нема default-гаражу або isDefault=false передано.
     const item = await this.prisma.$transaction(
@@ -500,8 +512,9 @@ export class CounterpartiesService {
         select: { id: true, isDefault: true },
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
-    if (!garage) throw new NotFoundException('Гараж не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
+    if (!garage)
+      throw new NotFoundException(translateError('err.counterparty.garageNotFound', getLocale()));
     // Auto-promote the oldest active sibling as new default — otherwise the invariant
     // «counterparty always has a default garage» is silently broken.
     await this.prisma.$transaction(
@@ -537,9 +550,13 @@ export class CounterpartiesService {
 
   private validateContractType(cpType: CounterpartyType, contractType: ContractType): void {
     if (cpType === CounterpartyType.SUPPLIER && contractType === ContractType.SALE)
-      throw new BadRequestException('Постачальник може мати лише договір Купівлі');
+      throw new BadRequestException(
+        translateError('err.counterparty.supplierOnlyPurchaseContract', getLocale()),
+      );
     if (cpType === CounterpartyType.CLIENT && contractType === ContractType.PURCHASE)
-      throw new BadRequestException('Клієнт може мати лише договір Продажу');
+      throw new BadRequestException(
+        translateError('err.counterparty.clientOnlySaleContract', getLocale()),
+      );
   }
 
   async findContracts(
@@ -561,7 +578,7 @@ export class CounterpartiesService {
         take: 200,
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     return items.map(c => this.toContractDto(c));
   }
 
@@ -577,7 +594,7 @@ export class CounterpartiesService {
       where: { id: counterpartyId, orgId, deletedAt: null },
       select: { id: true },
     });
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     // Atomic updateMany з `NOT: { deletedAt: null }` (еталон brands.service.restore).
     // isPrimary → false при відновленні: інакше можливий ДРУГИЙ головний того ж
     // contractType (якщо за час видалення інший став головним). Користувач за потреби
@@ -586,7 +603,10 @@ export class CounterpartiesService {
       where: { id: contractId, counterpartyId, orgId, NOT: { deletedAt: null } },
       data: { deletedAt: null, isPrimary: false },
     });
-    if (result.count === 0) throw new NotFoundException('Видалений договір не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(
+        translateError('err.counterparty.deletedContractNotFound', getLocale()),
+      );
     const contract = await this.prisma.counterpartyContract.findFirstOrThrow({
       where: { id: contractId, orgId },
     });
@@ -618,9 +638,13 @@ export class CounterpartiesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
     if (dto.currencyCode !== undefined && !currencyExists) {
-      throw new BadRequestException(`Валюта з кодом "${dto.currencyCode}" не знайдена`);
+      throw new BadRequestException(
+        translateError('err.counterparty.currencyNotFound', getLocale(), {
+          code: dto.currencyCode,
+        }),
+      );
     }
     this.validateContractType(cp.type, dto.contractType);
 
@@ -685,10 +709,15 @@ export class CounterpartiesService {
           })
         : Promise.resolve(null),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
-    if (!contract) throw new NotFoundException('Договір не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
+    if (!contract)
+      throw new NotFoundException(translateError('err.counterparty.contractNotFound', getLocale()));
     if (dto.currencyCode !== undefined && !currencyExists) {
-      throw new BadRequestException(`Валюта з кодом "${dto.currencyCode}" не знайдена`);
+      throw new BadRequestException(
+        translateError('err.counterparty.currencyNotFound', getLocale(), {
+          code: dto.currencyCode,
+        }),
+      );
     }
 
     if (dto.contractType) {
@@ -747,8 +776,9 @@ export class CounterpartiesService {
         select: { id: true, contractType: true, isPrimary: true },
       }),
     ]);
-    if (!cp) throw new NotFoundException('Контрагента не знайдено');
-    if (!contract) throw new NotFoundException('Договір не знайдено');
+    if (!cp) throw new NotFoundException(translateError('err.counterparty.notFound', getLocale()));
+    if (!contract)
+      throw new NotFoundException(translateError('err.counterparty.contractNotFound', getLocale()));
 
     // Guard + soft-delete + auto-promote must be atomic. Counting OUTSIDE the transaction
     // creates a race: two concurrent deletes both see count=2 and both proceed → SUPPLIER
@@ -768,7 +798,9 @@ export class CounterpartiesService {
             },
           });
           if (purchaseCount <= 1) {
-            throw new BadRequestException('Постачальник повинен мати хоча б один договір');
+            throw new BadRequestException(
+              translateError('err.counterparty.supplierNeedsAtLeastOneContract', getLocale()),
+            );
           }
         }
 

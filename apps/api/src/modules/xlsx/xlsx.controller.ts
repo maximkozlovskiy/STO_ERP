@@ -18,6 +18,8 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { Request } from '@nestjs/common';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
 import { ApplyImportDto } from './import.dto';
@@ -85,7 +87,7 @@ export class XlsxController {
         filename = 'pricing-list-template.csv';
         break;
       default:
-        throw new BadRequestException('Невідомий тип шаблону');
+        throw new BadRequestException(translateError('err.xlsx.unknownTemplateType', getLocale()));
     }
 
     return {
@@ -318,10 +320,11 @@ export class XlsxController {
 
     const docType = str('docType') as ImportDocType;
     if (!IMPORT_DOC_TYPES.includes(docType)) {
-      throw new BadRequestException('Невідомий тип документа');
+      throw new BadRequestException(translateError('err.xlsx.unknownDocumentType', getLocale()));
     }
     const docId = str('docId');
-    if (!UUID_RE.test(docId)) throw new BadRequestException('Некоректний ідентифікатор документа');
+    if (!UUID_RE.test(docId))
+      throw new BadRequestException(translateError('err.xlsx.invalidDocumentId', getLocale()));
 
     const mapping: ImportMapping = {
       startRow: num('startRow') ?? 2,
@@ -368,12 +371,18 @@ export class XlsxController {
     try {
       data = await req.file();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'невідома помилка';
+      const msg =
+        e instanceof Error ? e.message : translateError('err.xlsx.rowErrorUnknown', getLocale());
       throw new BadRequestException(
-        `Файл не завантажено: ${msg.includes('not multipart') ? 'очікується multipart/form-data' : msg}`,
+        translateError('err.xlsx.fileNotUploadedDetail', getLocale(), {
+          detail: msg.includes('not multipart')
+            ? translateError('err.xlsx.fileNotUploadedMultipart', getLocale())
+            : msg,
+        }),
       );
     }
-    if (!data) throw new BadRequestException('Файл не завантажено');
+    if (!data)
+      throw new BadRequestException(translateError('err.xlsx.fileNotUploaded', getLocale()));
     return data;
   }
 }

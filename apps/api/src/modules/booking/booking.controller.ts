@@ -16,7 +16,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { UUID_REGEX } from '@sto/shared';
+import { UUID_REGEX, translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -61,10 +62,10 @@ export class BookingController {
   ) {
     // Lightweight runtime validation — avoid Prisma P2023 → 500 on bad UUID/date
     if (!branchId || !UUID_REGEX.test(branchId)) {
-      throw new BadRequestException('Некоректний branchId');
+      throw new BadRequestException(translateError('err.booking.invalidBranchId', getLocale()));
     }
     if (!date || !DATE_RE.test(date)) {
-      throw new BadRequestException('Дата у форматі YYYY-MM-DD');
+      throw new BadRequestException(translateError('err.booking.dateFormatExpected', getLocale()));
     }
     // Soft-deleted branches must be invisible to public booking.
     const branch = await this.service.findBranchForBooking(branchId);
@@ -86,7 +87,8 @@ export class BookingController {
   async createPublic(@Body() dto: CreateBookingRequestDto) {
     // Soft-deleted branches must be invisible to public booking.
     const branch = await this.service.findBranchForBooking(dto.branchId);
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch)
+      throw new NotFoundException(translateError('err.booking.branchNotFound', getLocale()));
     return this.service.create(branch.orgId, dto);
   }
 

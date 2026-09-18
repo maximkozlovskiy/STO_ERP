@@ -10,7 +10,13 @@ import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { InvoiceStatus, RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
-import { formatPersonName, formatVehicleLabel, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import {
+  formatPersonName,
+  formatVehicleLabel,
+  TRANSACTION_TIMEOUT_MS,
+  translateError,
+} from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
 import {
@@ -215,7 +221,7 @@ export class WorkOrdersService {
         },
       },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
 
     // Batch-fetch GoodUoM coefficients for parts that have unitOfMeasureId set.
     // WO-C3: part.unitOfMeasureId — FK на UnitOfMeasure.id, тож lookup за парою
@@ -322,13 +328,19 @@ export class WorkOrdersService {
             select: { id: true },
           }),
     ]);
-    if (!branch) throw new NotFoundException('Філію не знайдено');
-    if (!vehicle) throw new NotFoundException('Автомобіль не знайдено');
-    if (!counterparty) throw new NotFoundException('Контрагента не знайдено');
-    if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
+    if (!vehicle)
+      throw new NotFoundException(translateError('err.workOrder.vehicleNotFound', getLocale()));
+    if (!counterparty)
+      throw new NotFoundException(
+        translateError('err.workOrder.counterpartyNotFound', getLocale()),
+      );
+    if (dto.liftId && !lift)
+      throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     // When client supplies contractId, contractResult must be a match — otherwise 404.
     // When omitted, primaryContract auto-pick — null is OK (no contract assigned).
-    if (dto.contractId && !contractResult) throw new NotFoundException('Договір не знайдено');
+    if (dto.contractId && !contractResult)
+      throw new NotFoundException(translateError('err.workOrder.contractNotFound', getLocale()));
     const contractId: string | null = contractResult?.id ?? null;
     // Примітка: outMileage у CreateWorkOrderDto немає (виставляється лише на update/завершенні),
     // тож guard монотонності пробігу потрібен лише в update() — тут перевіряти нічого.
@@ -402,18 +414,21 @@ export class WorkOrdersService {
           })
         : Promise.resolve(null),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (CLOSED_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати закритий наряд');
+      throw new BadRequestException(translateError('err.workOrder.cannotEditClosed', getLocale()));
     }
-    if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
+    if (dto.liftId && !lift)
+      throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
 
     // Пробіг монотонний: вихідний ≥ вхідного. Одрук (out<in) інакше зберігся б (обидва @Min(0))
     // і зіпсував би синхронізацію Vehicle.currentMileage + розрахунок наступного ТО.
     const effIn = dto.inMileage ?? wo.inMileage;
     const effOut = dto.outMileage ?? wo.outMileage;
     if (effIn != null && effOut != null && effOut < effIn) {
-      throw new BadRequestException('Вихідний пробіг не може бути меншим за вхідний');
+      throw new BadRequestException(
+        translateError('err.workOrder.outMileageLessThanIn', getLocale()),
+      );
     }
 
     // Capture old field-values BEFORE update so AuditEvent.diff is meaningful.
@@ -510,9 +525,11 @@ export class WorkOrdersService {
       where: { id, orgId, deletedAt: null },
       select: { status: true, number: true },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!DELETABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Можна видалити лише наряд у статусі Чернетка або Скасовано');
+      throw new BadRequestException(
+        translateError('err.workOrder.onlyDraftOrCancelledDeletable', getLocale()),
+      );
     }
     // Race-safe updateMany з повним compound where (id+orgId+deletedAt:null).
     await this.prisma.workOrder.updateMany({
@@ -573,7 +590,8 @@ export class WorkOrdersService {
         },
       },
     });
-    if (!original) throw new NotFoundException('Наряд не знайдено');
+    if (!original)
+      throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
 
     // Validate FK references still exist (not soft-deleted) BEFORE create.
     // Without this, FK violation surfaces as P2003 (HTTP 500) instead of a friendly 404.
@@ -593,10 +611,18 @@ export class WorkOrdersService {
       }),
       this.docNumbers.next(orgId, 'WORK_ORDER'),
     ]);
-    if (!vehicle) throw new NotFoundException('Автомобіль було видалено — клонування неможливе');
+    if (!vehicle)
+      throw new NotFoundException(
+        translateError('err.workOrder.vehicleDeletedNoClone', getLocale()),
+      );
     if (!counterparty)
-      throw new NotFoundException('Контрагента було видалено — клонування неможливе');
-    if (!branch) throw new NotFoundException('Філію було видалено — клонування неможливе');
+      throw new NotFoundException(
+        translateError('err.workOrder.counterpartyDeletedNoClone', getLocale()),
+      );
+    if (!branch)
+      throw new NotFoundException(
+        translateError('err.workOrder.branchDeletedNoClone', getLocale()),
+      );
 
     // 3. Pre-compute totals from the original's lines/parts so the cloned WO
     // ships consistent totalLabor/totalParts/totalAmount. Without this,
@@ -716,7 +742,7 @@ export class WorkOrdersService {
         totalAmount: true,
       },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
 
     assertFsmTransition(WORK_ORDER_TRANSITIONS, wo.status, newStatus);
 
@@ -738,7 +764,7 @@ export class WorkOrdersService {
           data: updates,
         });
         if (cas.count === 0) {
-          throw new BadRequestException('Статус наряду змінився — повторіть дію');
+          throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
         }
 
         // Резервувати ЛИШЕ при першому вході у IN_PROGRESS (з APPROVED). ON_HOLD зберігає
@@ -856,12 +882,16 @@ export class WorkOrdersService {
         select: { id: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!EDITABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+      throw new BadRequestException(
+        translateError('err.workOrder.cannotEditLinesInStatus', getLocale()),
+      );
     }
-    if (!work) throw new NotFoundException('Роботу не знайдено');
-    if (!employee) throw new NotFoundException('Співробітника не знайдено');
+    if (!work)
+      throw new NotFoundException(translateError('err.workOrder.workNotFound', getLocale()));
+    if (!employee)
+      throw new NotFoundException(translateError('err.workOrder.employeeNotFound', getLocale()));
 
     const normoHours = dto.normoHours ?? work.normoHours;
     const price = dto.price !== undefined ? dto.price : Number(work.price);
@@ -915,7 +945,7 @@ export class WorkOrdersService {
         select: { normoHours: true, price: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     // Allow IN_PROGRESS/ON_HOLD ONLY for patches that touch exclusively actualHours
     // (mechanic closing actual hours). Other fields in those statuses → 400.
     // In EDITABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) all fields are allowed.
@@ -929,9 +959,12 @@ export class WorkOrdersService {
     const inEditable = EDITABLE_STATUSES.includes(wo.status);
     const inActualOnly = LINE_ACTUAL_EDITABLE_STATUSES.includes(wo.status) && isLineActualOnlyPatch;
     if (!inEditable && !inActualOnly) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+      throw new BadRequestException(
+        translateError('err.workOrder.cannotEditLinesInStatus', getLocale()),
+      );
     }
-    if (!line) throw new NotFoundException('Позицію не знайдено');
+    if (!line)
+      throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
 
     const normoHours = dto.normoHours ?? line.normoHours;
     const price = dto.price !== undefined ? dto.price : Number(line.price);
@@ -978,11 +1011,14 @@ export class WorkOrdersService {
         select: { id: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!EDITABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+      throw new BadRequestException(
+        translateError('err.workOrder.cannotEditLinesInStatus', getLocale()),
+      );
     }
-    if (!line) throw new NotFoundException('Позицію не знайдено');
+    if (!line)
+      throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
     await this.prisma.$transaction(
       async tx => {
         await tx.workOrderLine.update({
@@ -1028,18 +1064,21 @@ export class WorkOrdersService {
           })
         : Promise.resolve(null),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!EDITABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+      throw new BadRequestException(
+        translateError('err.workOrder.cannotEditLinesInStatus', getLocale()),
+      );
     }
-    if (!good) throw new NotFoundException('Товар не знайдено');
-    if (!warehouse) throw new NotFoundException('Склад не знайдено');
+    if (!good) throw new NotFoundException(translateError('err.good.notFound', getLocale()));
+    if (!warehouse)
+      throw new NotFoundException(translateError('err.workOrder.warehouseNotFound', getLocale()));
     // Fail-loudly on unknown unitOfMeasureId: silent null-store masks frontend contract bugs
     // (WorkOrderAddPartModal sent GoodUoM.id in the UnitOfMeasure.id field; backend silently
     // stored null with no signal about data loss). If provided but GoodUoM is missing → 404.
     if (dto.unitOfMeasureId && !uomJunction) {
       throw new NotFoundException(
-        'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
+        translateError('err.workOrder.unitNotConfiguredForGood', getLocale()),
       );
     }
 
@@ -1092,11 +1131,14 @@ export class WorkOrdersService {
         select: { quantity: true, price: true, goodId: true, unitOfMeasureId: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!EDITABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+      throw new BadRequestException(
+        translateError('err.workOrder.cannotEditLinesInStatus', getLocale()),
+      );
     }
-    if (!part) throw new NotFoundException('Позицію не знайдено');
+    if (!part)
+      throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
 
     const quantity = dto.quantity ?? part.quantity;
     const price = dto.price !== undefined ? dto.price : Number(part.price);
@@ -1116,7 +1158,7 @@ export class WorkOrdersService {
       // Fail-loudly: silent null-store masks frontend contract bugs.
       if (!uomJunction) {
         throw new NotFoundException(
-          'Одиницю виміру не сконфігуровано для цього товару. Налаштуйте у каталозі (Товари → Одиниці виміру) або виберіть базову.',
+          translateError('err.workOrder.unitNotConfiguredForGood', getLocale()),
         );
       }
     }
@@ -1159,11 +1201,14 @@ export class WorkOrdersService {
         select: { id: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!EDITABLE_STATUSES.includes(wo.status)) {
-      throw new BadRequestException('Не можна редагувати позиції наряду в поточному статусі');
+      throw new BadRequestException(
+        translateError('err.workOrder.cannotEditLinesInStatus', getLocale()),
+      );
     }
-    if (!part) throw new NotFoundException('Позицію не знайдено');
+    if (!part)
+      throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
     await this.prisma.$transaction(
       async tx => {
         await tx.workOrderPart.update({
@@ -1298,7 +1343,7 @@ export class WorkOrdersService {
         select: { name: true, edrpou: true },
       }),
     ]);
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
 
     const cp = wo.counterparty;
     const counterpartyName = formatPersonName(cp?.lastName, cp?.firstName, cp?.companyName) || '';

@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, CalendarSlotStatus } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { runUnscoped } from '../../common/tenant/tenant-context';
+import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import {
@@ -323,23 +324,29 @@ export class BookingService {
           })
         : Promise.resolve(null),
     ]);
-    if (!branch) throw new NotFoundException('Філію не знайдено');
+    if (!branch)
+      throw new NotFoundException(translateError('err.booking.branchNotFound', getLocale()));
     if (dto.serviceIds?.length && serviceCount !== dto.serviceIds.length) {
-      throw new BadRequestException('Деякі послуги не знайдено');
+      throw new BadRequestException(
+        translateError('err.booking.someServicesNotFound', getLocale()),
+      );
     }
-    if (dto.liftId && !lift) throw new BadRequestException('Обраний підйомник не знайдено');
+    if (dto.liftId && !lift)
+      throw new BadRequestException(
+        translateError('err.booking.selectedLiftNotFound', getLocale()),
+      );
 
     // Server-side guard для working hours. У Kyiv-локальній TZ.
     const requestedAt = new Date(dto.requestedDate);
     if (Number.isNaN(requestedAt.getTime())) {
-      throw new BadRequestException('Невірний формат дати');
+      throw new BadRequestException(translateError('err.booking.invalidDateFormat', getLocale()));
     }
     // CAL-H2: public widget must not accept a booking in the past. Without this the
     // widget (or a curl bypass) can create requests for yesterday, cluttering the
     // reception queue and firing an SMS for a date that already passed.
     // Compared as absolute instants — Date already carries the client-supplied offset.
     if (requestedAt.getTime() < Date.now()) {
-      throw new BadRequestException('Дата запису не може бути в минулому');
+      throw new BadRequestException(translateError('err.booking.dateInPast', getLocale()));
     }
     const workStart = branchSettings?.workStartTime ?? '09:00';
     const workEnd = branchSettings?.workEndTime ?? '18:00';
@@ -350,11 +357,16 @@ export class BookingService {
     const weekdayShort = KYIV_WEEKDAY_FMT.format(requestedAt);
     const isoWeekday = WEEKDAY_TO_ISO[weekdayShort] ?? 0;
     if (!workDays.includes(isoWeekday)) {
-      throw new BadRequestException('Запит на неробочий день');
+      throw new BadRequestException(translateError('err.booking.nonWorkingDay', getLocale()));
     }
     const requestedHHMM = KYIV_HM_FMT.format(requestedAt);
     if (requestedHHMM < workStart || requestedHHMM >= workEnd) {
-      throw new BadRequestException(`Час поза робочими годинами (${workStart}–${workEnd})`);
+      throw new BadRequestException(
+        translateError('err.booking.outsideWorkingHours', getLocale(), {
+          start: workStart,
+          end: workEnd,
+        }),
+      );
     }
 
     const req = await this.prisma.bookingRequest.create({
@@ -434,11 +446,14 @@ export class BookingService {
         serviceIds: true,
       },
     });
-    if (!req) throw new NotFoundException('Заявку не знайдено');
+    if (!req)
+      throw new NotFoundException(translateError('err.booking.requestNotFound', getLocale()));
     // Скасовану заявку підтвердити НЕ можна. Уже CONFIRMED — ідемпотентний no-op (Bug #700:
     // повторний confirm/double-click повертає поточний стан, БЕЗ пересоздання слота/повторного CAS).
     if (req.status === 'CANCELLED') {
-      throw new BadRequestException('Скасовану заявку не можна підтвердити');
+      throw new BadRequestException(
+        translateError('err.booking.cancelledCannotConfirm', getLocale()),
+      );
     }
     if (req.status === 'CONFIRMED') {
       const current = await this.prisma.bookingRequest.findFirstOrThrow({
@@ -455,7 +470,8 @@ export class BookingService {
         where: { id: slotId, orgId, deletedAt: null },
         select: { id: true },
       });
-      if (!slot) throw new NotFoundException('Слот не знайдено');
+      if (!slot)
+        throw new NotFoundException(translateError('err.booking.slotNotFound', getLocale()));
     }
 
     // Матеріалізація слота на ліфті — лише якщо ліфт обрано і слот ще не створено (ідемпотентно).
@@ -495,7 +511,7 @@ export class BookingService {
           })
           .catch(() => undefined);
       }
-      throw new NotFoundException('Заявку не знайдено');
+      throw new NotFoundException(translateError('err.booking.requestNotFound', getLocale()));
     }
     const updated = await this.prisma.bookingRequest.findFirstOrThrow({
       where: { id, orgId },
@@ -564,7 +580,8 @@ export class BookingService {
       },
       { timeout: 10000 },
     );
-    if (result.count === 0) throw new NotFoundException('Заявку не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.booking.requestNotFound', getLocale()));
   }
 
   private toDto(r: {

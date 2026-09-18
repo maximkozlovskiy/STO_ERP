@@ -1,5 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { roundMoney } from '../../common/utils/math';
 import { calcLineVat } from '../../common/utils/vat';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -64,7 +66,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
 
   assertDraft(status: string): void {
     if (status !== 'DRAFT') {
-      throw new ForbiddenException('Замовлення постачальника не в статусі DRAFT');
+      throw new ForbiddenException(translateError('err.xlsx.purchaseOrderNotDraft', getLocale()));
     }
   }
 
@@ -145,7 +147,7 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
 
   assertDraft(status: string): void {
     if (status !== 'DRAFT') {
-      throw new ForbiddenException('Складський документ не в статусі DRAFT');
+      throw new ForbiddenException(translateError('err.xlsx.stockDocumentNotDraft', getLocale()));
     }
   }
 

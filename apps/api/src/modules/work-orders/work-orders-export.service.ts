@@ -3,8 +3,9 @@ import ExcelJS from 'exceljs';
 import PizZip from 'pizzip';
 import * as path from 'path';
 import * as fs from 'fs';
+import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { runUnscoped } from '../../common/tenant/tenant-context';
+import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { SHAREABLE_STATUSES } from './work-orders.fsm';
 
 /**
@@ -87,7 +88,8 @@ export class EstimateExportService {
           },
         },
       });
-      if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
+      if (!wo)
+        throw new NotFoundException(translateError('err.workOrder.shareLinkInvalid', getLocale()));
 
       // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
       // від wo (orgId + parts.unitOfMeasureId). Раніше: 2 RTT sequential. Тепер

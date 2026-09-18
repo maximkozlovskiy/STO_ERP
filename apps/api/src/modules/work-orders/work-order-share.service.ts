@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
-import { formatPersonName } from '@sto/shared';
+import { formatPersonName, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { runUnscoped } from '../../common/tenant/tenant-context';
+import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
 import { SHAREABLE_STATUSES } from './work-orders.fsm';
 import type { EstimatePublicDto } from './work-orders.dto';
 
@@ -35,10 +35,10 @@ export class WorkOrderShareService {
       where: { id, orgId, deletedAt: null },
       select: { id: true, status: true, shareToken: true },
     });
-    if (!wo) throw new NotFoundException('Наряд не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
     if (!SHAREABLE_STATUSES.includes(wo.status)) {
       throw new BadRequestException(
-        'Поділитися кошторисом можна лише у статусі чернетка / кошторис / затверджено',
+        translateError('err.workOrder.shareOnlyDraftEstimateApproved', getLocale()),
       );
     }
     if (wo.shareToken) return { token: wo.shareToken };
@@ -57,7 +57,9 @@ export class WorkOrderShareService {
       });
       if (fresh?.shareToken) return { token: fresh.shareToken };
       // Малоймовірний випадок — токен зник між викликами; кидаємо як conflict.
-      throw new BadRequestException('Не вдалося згенерувати токен — спробуйте ще раз');
+      throw new BadRequestException(
+        translateError('err.workOrder.generateTokenFailed', getLocale()),
+      );
     }
     return { token };
   }
@@ -114,7 +116,8 @@ export class WorkOrderShareService {
           },
         },
       });
-      if (!wo) throw new NotFoundException('Посилання не дійсне або термін дії минув');
+      if (!wo)
+        throw new NotFoundException(translateError('err.workOrder.shareLinkInvalid', getLocale()));
 
       // sto-optimize 2026-06-17: tier merger — org та uoms обидва залежать лише
       // від wo (orgId + parts.unitOfMeasureId), один від одного — ні. Раніше:
@@ -219,13 +222,15 @@ export class WorkOrderShareService {
       },
     });
     if (!wo?.counterparty?.phone) {
-      throw new BadRequestException('Телефон клієнта не вказано');
+      throw new BadRequestException(
+        translateError('err.workOrder.customerPhoneMissing', getLocale()),
+      );
     }
 
     const publicUrl = this.config.get<string>('WEB_PUBLIC_URL');
     if (!publicUrl) {
       throw new BadRequestException(
-        'Публічний URL не налаштовано (WEB_PUBLIC_URL) — зверніться до адміністратора',
+        translateError('err.workOrder.publicUrlNotConfigured', getLocale()),
       );
     }
     // Підрізаємо trailing slash для уніфікації — щоб не отримати `https://x.com//estimate/...`

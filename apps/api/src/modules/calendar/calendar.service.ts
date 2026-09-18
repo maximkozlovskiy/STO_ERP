@@ -1,7 +1,8 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CalendarSlotStatus, CalendarSlotType } from '@prisma/client';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
 import {
   CreateCalendarSlotDto,
@@ -154,7 +155,9 @@ export class CalendarService {
     employeeId?: string,
   ): Promise<CalendarSlotResponseDto[]> {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
-      throw new BadRequestException('Невірний формат дати. Очікується YYYY-MM-DD');
+      throw new BadRequestException(
+        translateError('err.calendar.invalidDateFormatExpected', getLocale()),
+      );
     // Convert Kyiv calendar date to UTC range using Intl (handles DST correctly)
     const kyivOffset = this.kyivOffsetMs(new Date(`${date}T12:00:00Z`));
     const start = new Date(new Date(`${date}T00:00:00Z`).getTime() - kyivOffset);
@@ -241,7 +244,8 @@ export class CalendarService {
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
 
-    if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
+    if (endAt <= startAt)
+      throw new BadRequestException(translateError('err.calendar.endBeforeStart', getLocale()));
 
     // Validate FK ownership to prevent cross-tenant injection — independent checks run in parallel.
     // Narrow projection — потрібне лише існування (NotFoundException), не дані.
@@ -279,11 +283,16 @@ export class CalendarService {
           })
         : Promise.resolve(null),
     ]);
-    if (dto.liftId && !lift) throw new NotFoundException('Підйомник не знайдено');
-    if (dto.employeeId && !employee) throw new NotFoundException('Співробітника не знайдено');
-    if (dto.workOrderId && !workOrder) throw new NotFoundException('Наряд не знайдено');
-    if (dto.counterpartyId && !counterparty) throw new NotFoundException('Клієнта не знайдено');
-    if (dto.vehicleId && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
+    if (dto.liftId && !lift)
+      throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
+    if (dto.employeeId && !employee)
+      throw new NotFoundException(translateError('err.calendar.employeeNotFound', getLocale()));
+    if (dto.workOrderId && !workOrder)
+      throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
+    if (dto.counterpartyId && !counterparty)
+      throw new NotFoundException(translateError('err.calendar.clientNotFound', getLocale()));
+    if (dto.vehicleId && !vehicle)
+      throw new NotFoundException(translateError('err.calendar.vehicleNotFound', getLocale()));
 
     // §13: межі робочого дня per-branch (BranchSettings.workStartTime/workEndTime).
     // Резолвимо філію через lift.zone.branchId; без підйомника → дефолт 8..20.
@@ -353,13 +362,17 @@ export class CalendarService {
               : Promise.resolve(null),
           ]);
           if (dto.liftId && conflict1)
-            throw new BadRequestException('Підйомник вже зайнятий на цей час');
+            throw new BadRequestException(translateError('err.calendar.liftBusy', getLocale()));
           if (dto.employeeId && empConflict1)
-            throw new BadRequestException('Співробітник вже зайнятий на цей час');
+            throw new BadRequestException(translateError('err.calendar.employeeBusy', getLocale()));
           if (dto.liftId && conflict2)
-            throw new BadRequestException('Підйомник вже зайнятий на наступний день');
+            throw new BadRequestException(
+              translateError('err.calendar.liftBusyNextDay', getLocale()),
+            );
           if (dto.employeeId && empConflict2)
-            throw new BadRequestException('Співробітник вже зайнятий на наступний день');
+            throw new BadRequestException(
+              translateError('err.calendar.employeeBusyNextDay', getLocale()),
+            );
 
           const slotData = {
             orgId,
@@ -419,7 +432,7 @@ export class CalendarService {
       select: { id: true },
     });
     if (hasContinuation) {
-      throw new BadRequestException('Слот розбитий на 2 дні — редагуйте кожен окремо');
+      throw new BadRequestException(translateError('err.calendar.slotSplitTwoDays', getLocale()));
     }
 
     // Existing slot + independent FK ownership checks run in parallel; error priority preserved below
@@ -463,16 +476,23 @@ export class CalendarService {
           })
         : Promise.resolve(null),
     ]);
-    if (!existing) throw new NotFoundException('Слот не знайдено');
-    if (checkLift && !lift) throw new NotFoundException('Підйомник не знайдено');
-    if (checkEmployee && !employee) throw new NotFoundException('Співробітника не знайдено');
-    if (checkWorkOrder && !workOrder) throw new NotFoundException('Наряд не знайдено');
-    if (checkCounterparty && !counterparty) throw new NotFoundException('Клієнта не знайдено');
-    if (checkVehicle && !vehicle) throw new NotFoundException('Автомобіль не знайдено');
+    if (!existing)
+      throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
+    if (checkLift && !lift)
+      throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
+    if (checkEmployee && !employee)
+      throw new NotFoundException(translateError('err.calendar.employeeNotFound', getLocale()));
+    if (checkWorkOrder && !workOrder)
+      throw new NotFoundException(translateError('err.calendar.workOrderNotFound', getLocale()));
+    if (checkCounterparty && !counterparty)
+      throw new NotFoundException(translateError('err.calendar.clientNotFound', getLocale()));
+    if (checkVehicle && !vehicle)
+      throw new NotFoundException(translateError('err.calendar.vehicleNotFound', getLocale()));
 
     const startAt = dto.startAt ? new Date(dto.startAt) : existing.startAt;
     const endAt = dto.endAt ? new Date(dto.endAt) : existing.endAt;
-    if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
+    if (endAt <= startAt)
+      throw new BadRequestException(translateError('err.calendar.endBeforeStart', getLocale()));
 
     const liftId = dto.liftId !== undefined ? dto.liftId : existing.liftId;
 
@@ -511,10 +531,10 @@ export class CalendarService {
               : Promise.resolve(null),
           ]);
           if (liftId && conflict) {
-            throw new BadRequestException('Підйомник вже зайнятий на цей час');
+            throw new BadRequestException(translateError('err.calendar.liftBusy', getLocale()));
           }
           if (employeeId && empConflict) {
-            throw new BadRequestException('Співробітник вже зайнятий на цей час');
+            throw new BadRequestException(translateError('err.calendar.employeeBusy', getLocale()));
           }
 
           return tx.calendarSlot.update({
@@ -574,7 +594,9 @@ export class CalendarService {
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
     if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()) || endAt <= startAt) {
-      throw new BadRequestException('Невірний інтервал часу');
+      throw new BadRequestException(
+        translateError('err.calendar.invalidTimeInterval', getLocale()),
+      );
     }
     const excludeFilter = dto.excludeSlotId ? { not: dto.excludeSlotId } : undefined;
     // excludeWorkOrderId filter — excludes slots of the current WO when editing its planned period.
@@ -639,9 +661,10 @@ export class CalendarService {
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
     if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
-      throw new BadRequestException('Невірний формат дати');
+      throw new BadRequestException(translateError('err.calendar.invalidDateFormat', getLocale()));
     }
-    if (endAt <= startAt) throw new BadRequestException('Час завершення має бути після початку');
+    if (endAt <= startAt)
+      throw new BadRequestException(translateError('err.calendar.endBeforeStart', getLocale()));
 
     // Slots can be split across working-day boundary (parent + continuation children).
     // Collapsing all of them onto the same {startAt, endAt} corrupts the parent/child interval.
@@ -670,7 +693,10 @@ export class CalendarService {
               select: { id: true, liftId: true, employeeId: true },
             }),
           ]);
-          if (!workOrder) throw new NotFoundException('Наряд не знайдено');
+          if (!workOrder)
+            throw new NotFoundException(
+              translateError('err.calendar.workOrderNotFound', getLocale()),
+            );
 
           // Conflict check vs OTHER WO slots on same lift/employee. This alternate mutation
           // endpoint must replicate the guard from createSlot()/updateSlot() — without it,
@@ -695,9 +721,11 @@ export class CalendarService {
             });
             if (conflict) {
               if (parentSlot.liftId && conflict.liftId === parentSlot.liftId) {
-                throw new BadRequestException('Підйомник вже зайнятий на цей час');
+                throw new BadRequestException(translateError('err.calendar.liftBusy', getLocale()));
               }
-              throw new BadRequestException('Співробітник вже зайнятий на цей час');
+              throw new BadRequestException(
+                translateError('err.calendar.employeeBusy', getLocale()),
+              );
             }
           }
 
@@ -740,7 +768,8 @@ export class CalendarService {
       where: { id, orgId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Слот не знайдено');
+    if (result.count === 0)
+      throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
   }
 
   private kyivOffsetMs(d: Date): number {

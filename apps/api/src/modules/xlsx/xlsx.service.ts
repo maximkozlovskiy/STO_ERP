@@ -6,8 +6,9 @@ import {
 } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
-import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT } from '@sto/shared';
+import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT, translateError } from '@sto/shared';
 import { Prisma } from '@prisma/client';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
@@ -210,7 +211,8 @@ export class XlsxService {
     await workbook.xlsx.load(this.toArrayBuffer(buffer));
     const sheet = workbook.getWorksheet('Товари') || workbook.worksheets[0];
 
-    if (!sheet) throw new BadRequestException('Аркуш "Товари" не знайдено');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.sheetGoodsNotFound', getLocale()));
 
     const rows: GoodRow[] = [];
     let rowNum = 0;
@@ -232,12 +234,19 @@ export class XlsxService {
         });
       } catch (e: unknown) {
         throw new BadRequestException(
-          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+          translateError('err.xlsx.rowError', getLocale(), {
+            row: rowNum,
+            detail:
+              e instanceof Error
+                ? e.message
+                : translateError('err.xlsx.rowErrorUnknown', getLocale()),
+          }),
         );
       }
     });
 
-    if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.tableNoDataRows', getLocale()));
     return rows;
   }
 
@@ -246,7 +255,8 @@ export class XlsxService {
     await workbook.xlsx.load(this.toArrayBuffer(buffer));
     const sheet = workbook.getWorksheet('Роботи') || workbook.worksheets[0];
 
-    if (!sheet) throw new BadRequestException('Аркуш "Роботи" не знайдено');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.sheetWorksNotFound', getLocale()));
 
     const rows: WorkRow[] = [];
     let rowNum = 0;
@@ -267,12 +277,19 @@ export class XlsxService {
         });
       } catch (e: unknown) {
         throw new BadRequestException(
-          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+          translateError('err.xlsx.rowError', getLocale(), {
+            row: rowNum,
+            detail:
+              e instanceof Error
+                ? e.message
+                : translateError('err.xlsx.rowErrorUnknown', getLocale()),
+          }),
         );
       }
     });
 
-    if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.tableNoDataRows', getLocale()));
     return rows;
   }
 
@@ -281,7 +298,8 @@ export class XlsxService {
     await workbook.xlsx.load(this.toArrayBuffer(buffer));
     const sheet = workbook.getWorksheet('Бренди') || workbook.worksheets[0];
 
-    if (!sheet) throw new BadRequestException('Аркуш "Бренди" не знайдено');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.sheetBrandsNotFound', getLocale()));
 
     const rows: BrandRow[] = [];
     let rowNum = 0;
@@ -295,12 +313,19 @@ export class XlsxService {
         if (name) rows.push({ name });
       } catch (e: unknown) {
         throw new BadRequestException(
-          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+          translateError('err.xlsx.rowError', getLocale(), {
+            row: rowNum,
+            detail:
+              e instanceof Error
+                ? e.message
+                : translateError('err.xlsx.rowErrorUnknown', getLocale()),
+          }),
         );
       }
     });
 
-    if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.tableNoDataRows', getLocale()));
     return rows;
   }
 
@@ -309,7 +334,8 @@ export class XlsxService {
     await workbook.xlsx.load(this.toArrayBuffer(buffer));
     const sheet = workbook.getWorksheet('Одиниці') || workbook.worksheets[0];
 
-    if (!sheet) throw new BadRequestException('Аркуш "Одиниці" не знайдено');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.sheetUnitsNotFound', getLocale()));
 
     const rows: UnitRow[] = [];
     let rowNum = 0;
@@ -324,12 +350,19 @@ export class XlsxService {
         if (name && shortName) rows.push({ name, shortName });
       } catch (e: unknown) {
         throw new BadRequestException(
-          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+          translateError('err.xlsx.rowError', getLocale(), {
+            row: rowNum,
+            detail:
+              e instanceof Error
+                ? e.message
+                : translateError('err.xlsx.rowErrorUnknown', getLocale()),
+          }),
         );
       }
     });
 
-    if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.tableNoDataRows', getLocale()));
     return rows;
   }
 
@@ -396,8 +429,10 @@ export class XlsxService {
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id: poId, orgId, deletedAt: null },
     });
-    if (!po) throw new NotFoundException('Замовлення постачальника не знайдено');
-    if (po.status !== 'DRAFT') throw new ForbiddenException('Замовлення не в статусі DRAFT');
+    if (!po)
+      throw new NotFoundException(translateError('err.xlsx.purchaseOrderNotFound', getLocale()));
+    if (po.status !== 'DRAFT')
+      throw new ForbiddenException(translateError('err.xlsx.orderNotDraft', getLocale()));
 
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
@@ -508,8 +543,10 @@ export class XlsxService {
     const doc = await this.prisma.stockDocument.findFirst({
       where: { id: docId, orgId, deletedAt: null },
     });
-    if (!doc) throw new NotFoundException('Складський документ не знайдено');
-    if (doc.status !== 'DRAFT') throw new ForbiddenException('Документ не в статусі DRAFT');
+    if (!doc)
+      throw new NotFoundException(translateError('err.xlsx.stockDocumentNotFound', getLocale()));
+    if (doc.status !== 'DRAFT')
+      throw new ForbiddenException(translateError('err.xlsx.documentNotDraft', getLocale()));
 
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
@@ -612,9 +649,11 @@ export class XlsxService {
     const wo = await this.prisma.workOrder.findFirst({
       where: { id: woId, orgId, deletedAt: null },
     });
-    if (!wo) throw new NotFoundException('Наряд-замовлення не знайдено');
+    if (!wo) throw new NotFoundException(translateError('err.xlsx.workOrderNotFound', getLocale()));
     if (!['DRAFT', 'ESTIMATE'].includes(wo.status))
-      throw new ForbiddenException('Наряд не в статусі DRAFT або ESTIMATE');
+      throw new ForbiddenException(
+        translateError('err.xlsx.workOrderNotDraftOrEstimate', getLocale()),
+      );
 
     const rows = await this.parsePOLines(buffer);
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
@@ -730,7 +769,8 @@ export class XlsxService {
     await workbook.xlsx.load(this.toArrayBuffer(buffer));
     const sheet = workbook.worksheets[0];
 
-    if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
 
     const rows: POLineRow[] = [];
     let rowNum = 0;
@@ -751,12 +791,19 @@ export class XlsxService {
         });
       } catch (e: unknown) {
         throw new BadRequestException(
-          `Помилка в рядку ${rowNum}: ${e instanceof Error ? e.message : 'невідома помилка'}`,
+          translateError('err.xlsx.rowError', getLocale(), {
+            row: rowNum,
+            detail:
+              e instanceof Error
+                ? e.message
+                : translateError('err.xlsx.rowErrorUnknown', getLocale()),
+          }),
         );
       }
     });
 
-    if (rows.length === 0) throw new BadRequestException('Таблиця не містить жодного рядка даних');
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.tableNoDataRows', getLocale()));
     return rows;
   }
 
@@ -797,7 +844,8 @@ export class XlsxService {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(this.toArrayBuffer(buffer));
       const sheet = workbook.worksheets[0];
-      if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+      if (!sheet)
+        throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
       items = [];
       sheet.eachRow((row, idx) => {
         if (idx === 1) return; // skip header
@@ -808,7 +856,8 @@ export class XlsxService {
       });
     }
 
-    if (items.length === 0) throw new BadRequestException('Файл не містить жодного рядка даних');
+    if (items.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.fileNoDataRows', getLocale()));
 
     const notFound: string[] = [];
     const details: {
@@ -995,7 +1044,7 @@ export class XlsxService {
   ): Promise<PreviewRowDto[]> {
     const adapter = this.importAdapters.get(docType);
     const doc = await adapter.loadDoc(orgId, docId);
-    if (!doc) throw new NotFoundException('Документ не знайдено');
+    if (!doc) throw new NotFoundException(translateError('err.xlsx.documentNotFound', getLocale()));
     adapter.assertDraft(doc.status);
 
     const parsed = await this.parseMappedRows(buffer, mapping);
@@ -1119,7 +1168,7 @@ export class XlsxService {
   ): Promise<void> {
     const adapter = this.importAdapters.get(docType);
     const doc = await adapter.loadDoc(orgId, docId);
-    if (!doc) throw new NotFoundException('Документ не знайдено');
+    if (!doc) throw new NotFoundException(translateError('err.xlsx.documentNotFound', getLocale()));
     adapter.assertDraft(doc.status);
 
     const lines: ImportLineInput[] = [];
@@ -1136,7 +1185,7 @@ export class XlsxService {
       if (row.action === 'create') {
         if (!row.createData?.name) {
           throw new BadRequestException(
-            `Рядок ${row.rowIndex}: назва товару обовʼязкова для створення`,
+            translateError('err.xlsx.rowGoodNameRequired', getLocale(), { row: row.rowIndex }),
           );
         }
         // Резолв або створення бренду (якщо rawBrand задано).
@@ -1159,13 +1208,18 @@ export class XlsxService {
         goodId = created.id;
       } else {
         if (!row.goodId) {
-          throw new BadRequestException(`Рядок ${row.rowIndex}: не вказано товар`);
+          throw new BadRequestException(
+            translateError('err.xlsx.rowGoodMissing', getLocale(), { row: row.rowIndex }),
+          );
         }
         const good = await this.prisma.good.findFirst({
           where: { id: row.goodId, orgId, deletedAt: null },
           select: { id: true },
         });
-        if (!good) throw new NotFoundException(`Рядок ${row.rowIndex}: товар не знайдено`);
+        if (!good)
+          throw new NotFoundException(
+            translateError('err.xlsx.rowGoodNotFound', getLocale(), { row: row.rowIndex }),
+          );
         goodId = good.id;
       }
       // Дублікат goodId у межах імпорту → пропускаємо (лишається перше входження).
@@ -1209,12 +1263,11 @@ export class XlsxService {
       // Bug #751: не-xlsx/пошкоджений буфер → jszip кидає сирий Error ("Can't find end of
       // central directory…") → 500 з англомовним стеком. Передперегляд запускається одразу
       // після вибору БУДЬ-ЯКОГО файлу — віддаємо дружній український 400 замість 500.
-      throw new BadRequestException(
-        'Не вдалося прочитати файл — очікується коректний Excel (.xlsx)',
-      );
+      throw new BadRequestException(translateError('err.xlsx.fileReadFailed', getLocale()));
     }
     const sheet = workbook.worksheets[0];
-    if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
 
     const cap = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
     const rows: string[][] = [];
@@ -1277,7 +1330,8 @@ export class XlsxService {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(this.toArrayBuffer(buffer));
     const sheet = workbook.worksheets[0];
-    if (!sheet) throw new BadRequestException('Таблиця не знайдена');
+    if (!sheet)
+      throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
 
     const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 2;
     const cell = (values: unknown[], col?: number): string | null =>
@@ -1304,7 +1358,8 @@ export class XlsxService {
       });
     });
 
-    if (rows.length === 0) throw new BadRequestException('Файл не містить рядків товарів');
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.fileNoGoodRows', getLocale()));
     return rows;
   }
 

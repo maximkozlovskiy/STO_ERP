@@ -1,6 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { translateError } from '@sto/shared';
 import { safeCoeff, roundMoney } from '../../common/utils/math';
+import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
@@ -162,7 +164,9 @@ export class WorkOrderStockEffectsService {
     });
     const chargeAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
     if (chargeAmount <= 0)
-      throw new BadRequestException('Загальна сума наряду дорівнює нулю — завершення неможливе');
+      throw new BadRequestException(
+        translateError('err.workOrder.totalZeroCannotComplete', getLocale()),
+      );
     await this.settlements.createTransaction(
       orgId,
       {
