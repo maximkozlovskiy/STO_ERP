@@ -18,7 +18,21 @@
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2539/2539 (167 файлів) · DLQ 28 · append-only 13 · env.schema 20 · xlsx parseNumber-кома 5.
             web: useWorkOrders 15/15, lib 163/163. web-модалки зелені.
-HEAD:       d85deb73 chore(runtime): Node 20 → 22 LTS
+HEAD:       7cc36318 feat(i18n): фундамент багатомовності + вертикальний зріз uk/en
+Review(i18n): 2026-09-18 (auto, коміт 7cc36318, 67 файлів) — 0 Critical/0 Important, 3 Suggestion.
+            tsc web 0; i18n+useLanguage vitest 12/12. Інфра чиста: format.ts memoByLocale коректний
+            (per-locale rebuild, ISO-хелпери sv-SE/en-CA locale-INDEPENDENT); useLanguage дзеркалить
+            useNavConfig (localeRef, abort-dedup PUT, cancelled-guard, TTL-skip+I18nProvider applyLocale
+            покриває format-registry); tEnum fallback-ланцюг коректний (defaultValue:''→shared map→code,
+            null/''→'—'); no-flash (config sync-read + inline head-script + suppressHydrationWarning);
+            static-export shells (payments/[id], estimate/[token]) правильні, EstimateClient 'use client'
+            інтакт; 0 runtime catalog-fetch (i18next-http-backend відсутній, статичні import→offline OK);
+            settings DTO language @IsIn(['uk','en']) + міграція 20260918100000 присутня. SUGGESTION:
+            (1) imperative enum-wrappers (woStatusLabel тощо) + format.ts НЕ підписані на languageChanged →
+            відкрита list-сторінка НЕ оновлює мітки live при зміні мови до ре-маунту (свідомий trade-off
+            ради мін. churn; Settings-селектор оновлюється, навігація ре-монтує); (2) counterparties/[id]
+            local TYPE_LABELS[cp.type] лишився сирим хоча counterpartyTypeLabel існує (у scope ~170
+            un-migrated, future work); (3) — . Правок не потребує.
 Review:     2026-09-18 (auto, Node 20→22 LTS, коміт d85deb73) — 0 проблем, bump повний+консистентний.
             Стрáглерів немає (усі node:20-hits у lockfile/archive/disk-check). @types/node вже ^22.
             engines-only diff, @nestjs/fastify не зачеплено. FLAG: VM smoke-test МУСИТЬ `docker compose
