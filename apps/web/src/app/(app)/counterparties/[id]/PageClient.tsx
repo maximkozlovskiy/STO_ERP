@@ -40,7 +40,7 @@ import {
   SETTLEMENT_BALANCE_UP_TYPES,
   SETTLEMENT_TX_CHARGE_LIKE_TYPES,
 } from '@sto/shared';
-import { contractTypeLabel, woStatusLabel } from '@/i18n/enumLabel';
+import { contractTypeLabel, woStatusLabel, counterpartyTypeLabel } from '@/i18n/enumLabel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -607,7 +607,7 @@ export default function CounterpartyCardPage() {
               variant={TYPE_BADGE[cp.type] ?? 'secondary'}
               tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
             >
-              {t(`card.typeLabel.${cp.type}`, { defaultValue: cp.type })}
+              {counterpartyTypeLabel(cp.type)}
             </Badge>
             {cp.vatPayer && <Badge variant="secondary">{t('card.vatPayer')}</Badge>}
           </div>

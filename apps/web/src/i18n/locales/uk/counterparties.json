@@ -113,11 +113,6 @@
       "warranties": "Гарантії",
       "loyalty": "Лояльність"
     },
-    "typeLabel": {
-      "CLIENT": "Клієнт",
-      "SUPPLIER": "Постачальник",
-      "BOTH": "Клієнт / Постачальник"
-    },
     "legalForm": {
       "INDIVIDUAL": "Фіз. особа",
       "FOP": "ФОП",

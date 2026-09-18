@@ -116,7 +116,7 @@
   "COUNTERPARTY_TYPE": {
     "CLIENT": "Client",
     "SUPPLIER": "Supplier",
-    "BOTH": "Both"
+    "BOTH": "Client - Supplier"
   },
   "CONTRACT_TYPE": {
     "PURCHASE": "Purchase",

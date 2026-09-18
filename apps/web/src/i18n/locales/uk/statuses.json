@@ -116,7 +116,7 @@
   "COUNTERPARTY_TYPE": {
     "CLIENT": "Клієнт",
     "SUPPLIER": "Постачальник",
-    "BOTH": "Обидва"
+    "BOTH": "Клієнт - Постачальник"
   },
   "CONTRACT_TYPE": {
     "PURCHASE": "Купівля",

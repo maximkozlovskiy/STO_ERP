@@ -455,7 +455,7 @@ export const EMPLOYEE_ROLE_BADGE: Record<string, BadgeVariant> = {
 export const COUNTERPARTY_TYPE_LABELS: Record<string, string> = {
   CLIENT: 'Клієнт',
   SUPPLIER: 'Постачальник',
-  BOTH: 'Обидва',
+  BOTH: 'Клієнт - Постачальник',
 };
 
 export const COUNTERPARTY_TYPE_BADGE: Record<string, BadgeVariant> = {

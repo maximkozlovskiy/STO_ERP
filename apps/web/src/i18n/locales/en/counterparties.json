@@ -113,11 +113,6 @@
       "warranties": "Warranties",
       "loyalty": "Loyalty"
     },
-    "typeLabel": {
-      "CLIENT": "Client",
-      "SUPPLIER": "Supplier",
-      "BOTH": "Client / Supplier"
-    },
     "legalForm": {
       "INDIVIDUAL": "Individual",
       "FOP": "Sole proprietor",
