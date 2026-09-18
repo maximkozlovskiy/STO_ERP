@@ -98,7 +98,7 @@ services:
       NODE_ENV: production
       TZ: Europe/Kyiv
     healthcheck:
-      # node:20-alpine has no curl; use Node's built-in http (always present).
+      # node:22-alpine has no curl; use Node's built-in http (always present).
       # D1: б'ємо /api/health/LIVE (не /ready) — liveness не залежить від Redis/MinIO. Інакше
       # блимання залежності (ready→degraded) валило б api-контейнер → web+caddy cascade dead.
       # /ready лишається для оркестрації/моніторингу, не для container-healthcheck.

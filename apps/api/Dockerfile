@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY . .
 RUN pnpm --filter @sto/database exec prisma generate
 RUN pnpm --filter @sto/api build
 
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 ENV NODE_ENV=production
@@ -47,7 +47,7 @@ RUN pnpm --filter @sto/database exec prisma generate
 RUN pnpm prune --prod
 
 # Security hardening (аудит Дані/Інфра): не працювати від root. `node`-user (uid 1000) уже є в
-# node:20-alpine. chown /app ПІСЛЯ install/generate/prune (усі потребують root-запису у node_modules),
+# node:22-alpine. chown /app ПІСЛЯ install/generate/prune (усі потребують root-запису у node_modules),
 # щоб рантайм-процес і `docker compose exec/run api npx prisma migrate deploy` (installer First-Run/Update)
 # писали від node. $HOME=/home/node писабельний → prisma engine temp/cache без проблем.
 RUN chown -R node:node /app
