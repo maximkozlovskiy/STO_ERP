@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   purchaseOrderFormSchema,
   type PurchaseOrderFormInput,
@@ -151,7 +151,7 @@ export function PurchaseOrderCreateModal({
     getValues,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<PurchaseOrderFormInput, unknown, PurchaseOrderFormValues>({
-    resolver: zodResolver(purchaseOrderFormSchema),
+    resolver: i18nZodResolver(purchaseOrderFormSchema),
     defaultValues: emptyDefaults(),
     mode: 'onBlur',
   });

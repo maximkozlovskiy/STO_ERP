@@ -22,7 +22,7 @@ describe('invoiceHeaderSchema (POST /invoices)', () => {
   it('відхиляє amount < 0.01 (дзеркалить @Min(0.01))', () => {
     const r = invoiceHeaderSchema.safeParse({ counterpartyId: CP, amount: '0' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toContain('0.01');
+    if (!r.success) expect(r.error.issues[0]?.message).toBe('v.invoice.amount.min');
   });
 
   it('битий dueDate → помилка (validation-parity: @IsDateString)', () => {
@@ -32,8 +32,7 @@ describe('invoiceHeaderSchema (POST /invoices)', () => {
       dueDate: 'not-a-date',
     });
     expect(r.success).toBe(false);
-    if (!r.success)
-      expect(r.error.issues.some(i => i.message === 'Невірний формат дати')).toBe(true);
+    if (!r.success) expect(r.error.issues.some(i => i.message === 'v.dateFormat')).toBe(true);
   });
 
   it("порожня дата ('') → undefined, не помилка", () => {
@@ -84,7 +83,9 @@ describe('invoiceLineSchema (POST /invoices/:id/lines)', () => {
     const r = invoiceLineSchema.safeParse({ description: '  ', quantity: '1', unitPrice: '10' });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.some(i => i.message === 'Вкажіть опис позиції')).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.invoice.line.description.required')).toBe(
+        true,
+      );
   });
 
   it('відхиляє quantity <= 0 (@Min(0.001))', () => {

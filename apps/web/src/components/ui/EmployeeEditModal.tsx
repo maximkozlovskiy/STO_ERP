@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
@@ -169,7 +169,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     watch,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<EmployeeFormInput, unknown, EmployeeFormValues>({
-    resolver: zodResolver(employeeFormSchema),
+    resolver: i18nZodResolver(employeeFormSchema),
     defaultValues: EMPTY_FORM,
     mode: 'onBlur',
   });

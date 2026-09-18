@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   supplierPaymentFormSchema,
   type SupplierPaymentFormInput,
@@ -107,7 +107,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     handleSubmit,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<SupplierPaymentFormInput, unknown, SupplierPaymentFormValues>({
-    resolver: zodResolver(supplierPaymentFormSchema),
+    resolver: i18nZodResolver(supplierPaymentFormSchema),
     defaultValues: emptyDefaults(),
     mode: 'onBlur',
   });

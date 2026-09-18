@@ -10,7 +10,7 @@ import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { StatusManager } from '@/components/ui/CounterpartyStatusManager';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   counterpartyFormSchema,
   type CounterpartyFormInput,
@@ -322,7 +322,7 @@ export default function CounterpartyCardPage() {
     watch,
     formState: { errors },
   } = useForm<CounterpartyFormInput, unknown, CounterpartyFormValues>({
-    resolver: zodResolver(counterpartyFormSchema),
+    resolver: i18nZodResolver(counterpartyFormSchema),
     defaultValues: emptyCounterpartyForm(),
     mode: 'onBlur',
   });

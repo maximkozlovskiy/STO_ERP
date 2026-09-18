@@ -31,7 +31,7 @@ describe('workOrderHeaderSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success)
       expect(r.error.issues.find(i => i.path[0] === 'counterpartyId')?.message).toBe(
-        'Оберіть контрагента',
+        'v.workOrder.counterparty.required',
       );
   });
 
@@ -104,7 +104,7 @@ describe('workOrderLineSchema (POST /lines)', () => {
     expect(r.success).toBe(false);
     if (!r.success)
       expect(r.error.issues.find(i => i.path[0] === 'employeeId')?.message).toBe(
-        'Оберіть виконавця',
+        'v.workOrder.line.employee.required',
       );
   });
 
@@ -138,6 +138,8 @@ describe('workOrderPartSchema (POST /parts)', () => {
     const r = workOrderPartSchema.safeParse({ goodId: GOOD, warehouseId: '', quantity: '1' });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.find(i => i.path[0] === 'warehouseId')?.message).toBe('Оберіть склад');
+      expect(r.error.issues.find(i => i.path[0] === 'warehouseId')?.message).toBe(
+        'v.workOrder.part.warehouse.required',
+      );
   });
 });

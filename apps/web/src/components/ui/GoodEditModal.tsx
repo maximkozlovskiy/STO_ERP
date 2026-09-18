@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { goodFormSchema, type GoodFormInput } from '@sto/shared';
 import { Barcode, Package, TrendingUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -138,7 +138,7 @@ export function GoodEditModal({
     watch,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<GoodFormInput>({
-    resolver: zodResolver(goodFormSchema),
+    resolver: i18nZodResolver(goodFormSchema),
     defaultValues: EMPTY_FORM,
     mode: 'onBlur',
   });

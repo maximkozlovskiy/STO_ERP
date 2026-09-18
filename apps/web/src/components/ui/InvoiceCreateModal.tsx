@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   invoiceFormSchema,
   INVOICE_TYPE_VALUES,
@@ -177,7 +177,7 @@ export function InvoiceCreateModal({
     handleSubmit,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<InvoiceFormInput, unknown, InvoiceFormValues>({
-    resolver: zodResolver(invoiceFormSchema),
+    resolver: i18nZodResolver(invoiceFormSchema),
     defaultValues: {
       counterpartyId: '',
       invoiceType: 'STANDARD',

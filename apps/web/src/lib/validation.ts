@@ -6,7 +6,8 @@
  * Використання: перед submit викликати validateFields({...}) → повертає перше повідомлення про
  * помилку (українською) або null, якщо все валідне.
  */
-import { phoneUaSchema, emailSchema, ibanUaSchema } from '@sto/shared';
+import { phoneUaSchema, emailSchema, ibanUaSchema, translateValidation } from '@sto/shared';
+import { getCurrentLocale } from '@/i18n/locale';
 
 type OptionalStr = string | null | undefined;
 
@@ -20,7 +21,9 @@ function checkOptional(
   const trimmed = value?.trim();
   if (!trimmed) return null; // порожнє необов'язкове поле — валідне
   const res = schema.safeParse(trimmed);
-  return res.success ? null : (res.error?.issues[0]?.message ?? 'Невірне значення');
+  if (res.success) return null;
+  // issue.message — validation-KEY (schemas у @sto/shared) → резолвимо у поточну мову.
+  return translateValidation(res.error?.issues[0]?.message ?? 'v.invalid', getCurrentLocale());
 }
 
 export interface ContactFields {

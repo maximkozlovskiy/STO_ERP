@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import type { PipeTransform } from '@nestjs/common';
 import type { ZodSchema, ZodIssue } from 'zod';
+import { translateValidation, type ValidationLocale } from '@sto/shared';
+import { getLocale } from '../tenant/tenant-context';
 
 /**
  * Валідація тіла запиту спільною zod-схемою (packages/shared) — ЄДИНЕ джерело правди з web.
@@ -22,24 +24,26 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
     const result = this.schema.safeParse(value);
     if (result.success) return result.data;
 
-    const messages = result.error.issues.map(formatIssue);
+    // i18n: issue.message — це KEY (schemas у @sto/shared емітять ключі). Резолвимо у мову запиту
+    // (ALS getLocale(), default 'uk'). Контракт 400 незмінний: { statusCode, message: string[], error }.
+    const locale = getLocale();
+    const messages = result.error.issues.map(i => formatIssue(i, locale));
     throw new BadRequestException({
       statusCode: 400,
-      message: messages.length > 0 ? messages : ['Помилка валідації'],
+      message: messages.length > 0 ? messages : [translateValidation('v.validationFailed', locale)],
       error: 'Bad Request',
     });
   }
 }
 
 /**
- * zod-issue → рядок українською. Повідомлення схеми вже локалізовані (validators.ts), тож
- * беремо `issue.message` як є; шлях поля додаємо префіксом лише коли він інформативний
+ * zod-issue → локалізований рядок. `issue.message` = validation-KEY → translateValidation.
+ * Шлях поля додаємо суфіксом (локалізований v.fieldSuffix) лише коли він інформативний
  * (щоб форма могла зіставити помилку з полем, як у class-validator-факторі «Поле "x" ...»).
  */
-function formatIssue(issue: ZodIssue): string {
+function formatIssue(issue: ZodIssue, locale: ValidationLocale): string {
   const path = issue.path.filter(p => typeof p === 'string' || typeof p === 'number').join('.');
-  // Уникнення дублю «Поле "name": Вкажіть назву…» коли меседж уже самодостатній без поля —
-  // додаємо префікс лише якщо повідомлення не згадує поле і шлях є.
-  if (!path) return issue.message;
-  return `${issue.message} (поле "${path}")`;
+  const msg = translateValidation(issue.message, locale);
+  if (!path) return msg;
+  return `${msg} ${translateValidation('v.fieldSuffix', locale, { path })}`;
 }

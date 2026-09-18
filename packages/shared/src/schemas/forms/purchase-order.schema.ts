@@ -22,11 +22,11 @@ import {
 
 // Рядок ордера: goodId(uuid) + quantity(≥0.001) + price(≥0, обовʼязкова) + pricedSalePrice?(≥0).
 export const purchaseOrderLineSchema = z.object({
-  goodId: z.string().uuid('Оберіть товар'),
+  goodId: z.string().uuid('v.purchaseOrder.line.good.required'),
   // moneyString/optionalMoneyNumber (UA-кома backstop) замість numericString/optionalNonNegNumber —
   // захищає програмні/Excel-значення '1,5' (Number('1,5')=NaN інакше). Numeric JSON з фронта проходить.
-  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
-  price: moneyString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
+  quantity: moneyString().pipe(z.number().min(0.001, 'v.purchaseOrder.line.quantity.min')),
+  price: moneyString().pipe(z.number().min(0, 'v.purchaseOrder.line.price.nonNeg')),
   pricedSalePrice: optionalMoneyNumber(),
 });
 export type PurchaseOrderLineInput = z.input<typeof purchaseOrderLineSchema>;
@@ -35,13 +35,13 @@ export type PurchaseOrderLineValues = z.infer<typeof purchaseOrderLineSchema>;
 // trackingNumber: '' → undefined, інакше рядок ≤ 64 (дзеркалить @MaxLength(64)).
 const trackingNumberField = z.preprocess(
   v => (v === '' || v === null || v === undefined ? undefined : v),
-  z.string().max(64, 'Номер накладної не більше 64 символів').optional(),
+  z.string().max(64, 'v.purchaseOrder.trackingNumber.max').optional(),
 );
 
 // Форма/create: обовʼязкові supplierId/warehouseId; решта опційні.
 export const purchaseOrderFormSchema = z.object({
-  supplierId: z.string().uuid('Оберіть постачальника'),
-  warehouseId: z.string().uuid('Оберіть склад'),
+  supplierId: z.string().uuid('v.purchaseOrder.supplier.required'),
+  warehouseId: z.string().uuid('v.purchaseOrder.warehouse.required'),
   contractId: optionalUuid(),
   notes: optionalString(),
   documentDate: optionalDateString(),
@@ -59,11 +59,11 @@ export type PurchaseOrderCreateValues = PurchaseOrderFormValues;
 // nullable UUID/рядок для update: null → очистити; '' → undefined (не чіпати); UUID/рядок → встановити.
 const nullableUuidField = z.preprocess(
   v => (v === '' || v === undefined ? undefined : v),
-  z.union([z.string().uuid('Невірний UUID формат'), z.null()]).optional(),
+  z.union([z.string().uuid('v.purchaseOrder.uuid.invalid'), z.null()]).optional(),
 );
 const nullableTrackingField = z.preprocess(
   v => (v === '' || v === undefined ? undefined : v),
-  z.union([z.string().max(64, 'Номер накладної не більше 64 символів'), z.null()]).optional(),
+  z.union([z.string().max(64, 'v.purchaseOrder.trackingNumber.max'), z.null()]).optional(),
 );
 
 // Update — усі поля опційні; contractId/trackingNumber nullable (null очищає).

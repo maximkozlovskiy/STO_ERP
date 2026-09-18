@@ -62,25 +62,22 @@ const optionalYear = () =>
     emptyToUndefined,
     z.coerce
       .number()
-      .int('Має бути цілим числом')
-      .min(1900, 'Рік не раніше 1900')
-      .max(new Date().getFullYear() + 1, 'Рік у майбутньому')
+      .int('v.vehicle.year.int')
+      .min(1900, 'v.vehicle.year.min')
+      .max(new Date().getFullYear() + 1, 'v.vehicle.year.max')
       .optional(),
   );
 /** Опційне невідʼємне ціле (пробіг). */
 const optionalNonNegInt = () =>
-  z.preprocess(
-    emptyToUndefined,
-    z.coerce.number().int().min(0, "Не може бути від'ємним").optional(),
-  );
+  z.preprocess(emptyToUndefined, z.coerce.number().int().min(0, 'v.vehicle.nonNegInt').optional());
 /** Опційне невідʼємне число (обʼєм двигуна, Float). */
 const optionalNonNegFloat = () =>
-  z.preprocess(emptyToUndefined, z.coerce.number().min(0, "Не може бути від'ємним").optional());
+  z.preprocess(emptyToUndefined, z.coerce.number().min(0, 'v.vehicle.nonNegFloat').optional());
 
 // Базові поля Vehicle (без customerGarageId — його додає create-схема окремо: update його не має).
 const vehicleBaseShape = {
-  make: z.string().trim().min(1, 'Вкажіть марку').max(100, 'Занадто довго'),
-  model: z.string().trim().min(1, 'Вкажіть модель').max(100, 'Занадто довго'),
+  make: z.string().trim().min(1, 'v.vehicle.make.required').max(100, 'v.vehicle.make.max'),
+  model: z.string().trim().min(1, 'v.vehicle.model.required').max(100, 'v.vehicle.model.max'),
   vin: optionalString(),
   licensePlate: optionalString(),
   year: optionalYear(),
@@ -111,7 +108,7 @@ export type VehicleFormInput = z.input<typeof vehicleFormSchema>;
 
 /** Бек-create: customerGarageId обовʼязковий UUID. */
 export const vehicleCreateSchema = z.object({
-  customerGarageId: z.string().uuid('Оберіть гараж клієнта'),
+  customerGarageId: z.string().uuid('v.vehicle.customerGarage.required'),
   ...vehicleBaseShape,
 });
 export type VehicleCreateValues = z.infer<typeof vehicleCreateSchema>;

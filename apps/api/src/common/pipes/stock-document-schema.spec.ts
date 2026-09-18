@@ -33,7 +33,7 @@ describe('stockDocumentFormSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'targetWarehouseId');
-      expect(issue?.message).toBe('Для переміщення оберіть склад призначення');
+      expect(issue?.message).toBe('v.stockDocument.transfer.targetRequired');
     }
   });
 
@@ -48,7 +48,7 @@ describe('stockDocumentFormSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'targetWarehouseId');
-      expect(issue?.message).toBe('Склад джерела і призначення не можуть збігатись');
+      expect(issue?.message).toBe('v.stockDocument.transfer.targetSame');
     }
   });
 
@@ -83,7 +83,9 @@ describe('stockDocumentFormSchema (спільна, web ↔ api)', () => {
     });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.some(i => i.message.includes('більшою за нуль'))).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.stockDocument.line.quantity.min')).toBe(
+        true,
+      );
   });
 
   it('goodId не UUID → помилка «Оберіть товар»', () => {

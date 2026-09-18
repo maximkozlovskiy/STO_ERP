@@ -19,14 +19,14 @@ describe('counterpartyFormSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'companyName');
-      expect(issue?.message).toContain("ім'я/прізвище");
+      expect(issue?.message).toBe('v.counterparty.name.any');
     }
   });
 
   it('SUPPLIER без companyName → помилка (навіть з firstName)', () => {
     const r = counterpartyFormSchema.safeParse({ type: 'SUPPLIER', firstName: 'Іван' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toBe('Вкажіть назву компанії постачальника');
+    if (!r.success) expect(r.error.issues[0]?.message).toBe('v.counterparty.name.supplier');
   });
 
   it('SUPPLIER з companyName — валідний', () => {

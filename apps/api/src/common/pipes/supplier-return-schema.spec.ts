@@ -30,7 +30,7 @@ describe('supplierReturnFormSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'supplierId');
-      expect(issue?.message).toBe('Оберіть постачальника');
+      expect(issue?.message).toBe('v.supplierReturn.supplier.required');
     }
   });
 
@@ -51,7 +51,9 @@ describe('supplierReturnFormSchema (спільна, web ↔ api)', () => {
     });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.some(i => i.message.includes('більшою за нуль'))).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.supplierReturn.line.quantity.min')).toBe(
+        true,
+      );
   });
 
   it("price від'ємна → помилка", () => {

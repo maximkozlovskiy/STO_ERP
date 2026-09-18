@@ -28,7 +28,8 @@ describe('employeeFormSchema (плоска форма)', () => {
   it("відхиляє порожнє ім'я/прізвище укр. повідомленням", () => {
     const r = employeeFormSchema.safeParse({ ...base, firstName: '  ' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues.some(i => i.message === "Вкажіть ім'я")).toBe(true);
+    if (!r.success)
+      expect(r.error.issues.some(i => i.message === 'v.employee.firstName.required')).toBe(true);
   });
 
   it('відхиляє невалідну посаду', () => {
@@ -41,7 +42,7 @@ describe('employeeFormSchema (плоска форма)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'percent');
-      expect(issue?.message).toBe('Відсоток має бути від 1 до 100');
+      expect(issue?.message).toBe('v.employee.percent.range');
     }
   });
 
@@ -79,9 +80,7 @@ describe('employeeFormSchema (плоска форма)', () => {
     });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.some(i => i.message === 'Пароль має бути не менше 6 символів')).toBe(
-        true,
-      );
+      expect(r.error.issues.some(i => i.message === 'v.employee.password.min')).toBe(true);
   });
 
   // Robustness: неактивні (за rateType) числові поля можуть бути ПОРОЖНІ — не блокують
@@ -105,7 +104,7 @@ describe('employeeFormSchema (плоска форма)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'percent');
-      expect(issue?.message).toBe('Відсоток має бути від 1 до 100');
+      expect(issue?.message).toBe('v.employee.percent.range');
     }
   });
 });

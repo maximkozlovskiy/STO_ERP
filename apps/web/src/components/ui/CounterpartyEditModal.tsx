@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   counterpartyFormSchema,
   vehicleFormSchema,
@@ -187,7 +187,7 @@ export function CounterpartyEditModal({
     watch,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<CounterpartyFormInput, unknown, CounterpartyFormValues>({
-    resolver: zodResolver(counterpartyFormSchema),
+    resolver: i18nZodResolver(counterpartyFormSchema),
     defaultValues: emptyCounterpartyForm('CLIENT'),
     mode: 'onBlur',
   });
@@ -224,7 +224,7 @@ export function CounterpartyEditModal({
   const [showDeletedVehicles, setShowDeletedVehicles] = useState(false);
   // Окрема RHF-форма для вкладки авто (compact VehicleForm) — незалежна від counterparty-форми.
   const vehicleForm = useForm<VehicleFormInput, unknown, VehicleFormValues>({
-    resolver: zodResolver(vehicleFormSchema),
+    resolver: i18nZodResolver(vehicleFormSchema),
     defaultValues: emptyVehicleForm(),
     mode: 'onBlur',
   });

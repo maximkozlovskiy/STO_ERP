@@ -13,7 +13,7 @@ describe('goodFormSchema (спільна zod-схема, web ↔ api)', () => {
   it('відхиляє порожню назву з укр. повідомленням', () => {
     const r = goodFormSchema.safeParse({ name: '   ' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toBe('Вкажіть назву товару');
+    if (!r.success) expect(r.error.issues[0]?.message).toBe('v.good.name.required');
   });
 
   it("коерсить ціну з рядка у число; '' → undefined", () => {
@@ -28,7 +28,7 @@ describe('goodFormSchema (спільна zod-схема, web ↔ api)', () => {
   it("відхиляє від'ємну ціну", () => {
     const r = goodFormSchema.safeParse({ name: 'X', salePrice: '-5' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toBe("Значення не може бути від'ємним");
+    if (!r.success) expect(r.error.issues[0]?.message).toBe('v.nonNeg');
   });
 
   it("порожній опційний UUID ('') → undefined, не помилка", () => {
@@ -43,7 +43,7 @@ describe('goodFormSchema (спільна zod-схема, web ↔ api)', () => {
   it('відхиляє невалідний UUID бренду', () => {
     const r = goodFormSchema.safeParse({ name: 'X', brandId: 'not-a-uuid' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toBe('Невірний UUID формат');
+    if (!r.success) expect(r.error.issues[0]?.message).toBe('v.uuid');
   });
 
   it('приймає валідний goodType; невідомий — відхиляє', () => {

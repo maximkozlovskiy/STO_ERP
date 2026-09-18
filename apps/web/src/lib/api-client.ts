@@ -1,4 +1,5 @@
 import { TOKEN_KEY } from './auth';
+import { getCurrentLocale } from '@/i18n/locale';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 // API-версіонування (backend #3): усі бізнес-роути під /api/v1. Version-neutral винятки
@@ -8,6 +9,24 @@ const API_BASE = `${API_URL}/api/v1`;
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return sessionStorage.getItem(TOKEN_KEY);
+}
+
+/**
+ * Спільна побудова заголовків для всіх 4 fetch-обгорток. Accept-Language=getCurrentLocale() (uk/en)
+ * на КОЖНОМУ запиті (вкл. public/unauth) → бек локалізує zod/повідомлення per-request (ALS getLocale).
+ * json → Content-Type (не для multipart — браузер сам ставить boundary; не для порожнього body).
+ */
+function buildHeaders(opts: {
+  json?: boolean;
+  auth?: string | null;
+  extra?: HeadersInit;
+}): HeadersInit {
+  return {
+    'Accept-Language': getCurrentLocale(),
+    ...(opts.json ? { 'Content-Type': 'application/json' } : {}),
+    ...(opts.auth ? { Authorization: `Bearer ${opts.auth}` } : {}),
+    ...opts.extra,
+  };
 }
 
 // R3 (pre-prod re-review): сигналимо SyncIndicator про доступність ЛОКАЛЬНОГО API. navigator.onLine
@@ -76,11 +95,7 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     fetch(`${API_BASE}${path}`, {
       credentials: 'include',
       ...init,
-      headers: {
-        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        ...init?.headers,
-      },
+      headers: buildHeaders({ json: hasBody, auth: accessToken, extra: init?.headers }),
     });
 
   let res: Response;
@@ -138,10 +153,7 @@ export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Bl
     fetch(`${API_BASE}${path}`, {
       credentials: 'include',
       ...init,
-      headers: {
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        ...init?.headers,
-      },
+      headers: buildHeaders({ auth: accessToken, extra: init?.headers }),
     });
 
   let res = await makeRequest(token);
@@ -193,9 +205,7 @@ export async function apiMultipartFetch<T>(
       method: 'POST',
       credentials: 'include',
       ...init,
-      headers: {
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
+      headers: buildHeaders({ auth: accessToken }),
       body: formData,
     });
 
@@ -259,10 +269,7 @@ async function _publicFetch<T>(base: string, path: string, init?: RequestInit): 
   const hasBody = init?.body != null;
   const res = await fetch(`${base}${path}`, {
     ...init,
-    headers: {
-      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
-    },
+    headers: buildHeaders({ json: hasBody, extra: init?.headers }),
   });
 
   if (!res.ok) {

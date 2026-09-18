@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   workOrderFormSchema,
   type WorkOrderFormInput,
@@ -353,7 +353,7 @@ export function CreateWorkOrderModal({
 
   // ── react-hook-form + спільна zod-схема (шапка + lines[] + parts[]) ──────────
   // Multi-request submit (Invoice-архітектура): шапка → POST /work-orders, рядки/деталі —
-  // окремими POST/PATCH /lines та /parts. Валідація через zodResolver(workOrderFormSchema).
+  // окремими POST/PATCH /lines та /parts. Валідація через i18nZodResolver(workOrderFormSchema).
   const {
     control,
     reset,
@@ -362,7 +362,7 @@ export function CreateWorkOrderModal({
     getValues,
     formState: { isDirty: rhfDirty },
   } = useForm<WorkOrderFormInput, unknown, WorkOrderFormValues>({
-    resolver: zodResolver(workOrderFormSchema),
+    resolver: i18nZodResolver(workOrderFormSchema),
     defaultValues: emptyDefaults(),
     mode: 'onBlur',
   });

@@ -23,7 +23,7 @@ describe('supplierPaymentFormSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'cashRegisterId');
-      expect(issue?.message).toBe('Для оплати з каси вкажіть касу');
+      expect(issue?.message).toBe('v.supplierPayment.cash.required');
     }
   });
 
@@ -42,9 +42,9 @@ describe('supplierPaymentFormSchema (спільна, web ↔ api)', () => {
     });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(
-        r.error.issues.some(i => i.message === 'Не можна одночасно вказувати банк і касу'),
-      ).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.supplierPayment.source.conflict')).toBe(
+        true,
+      );
   });
 
   it('amount < 0.01 → помилка', () => {
@@ -56,7 +56,7 @@ describe('supplierPaymentFormSchema (спільна, web ↔ api)', () => {
     });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.some(i => i.message.includes('більшою за нуль'))).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.supplierPayment.amount.min')).toBe(true);
   });
 
   it('порожній method → помилка', () => {

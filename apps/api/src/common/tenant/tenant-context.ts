@@ -12,6 +12,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * Плоский модуль (не Nest-provider), щоб guard-extension — теж плоска функція — імпортував напряму
  * без DI (дзеркалить `for-each-active-org.ts`).
  */
+/** Мова відповідей per-request (i18n). Береться з Accept-Language у TenantContextInterceptor. */
+export type Locale = 'uk' | 'en';
+
 export interface TenantContext {
   /** Активний orgId для стемпу create-даних. undefined на public/unauth-роутах. */
   orgId?: string;
@@ -20,6 +23,8 @@ export interface TenantContext {
    * public share-token, cross-org scheduler). Встановлюється лише через `runUnscoped`.
    */
   bypass?: boolean;
+  /** Мова запиту (uk/en) для локалізації повідомлень. undefined поза request-scope. */
+  locale?: Locale;
 }
 
 const tenantStore = new AsyncLocalStorage<TenantContext>();
@@ -45,6 +50,14 @@ export function getTenantOrgId(): string | undefined {
 /** Чи активний bypass — guard тоді пропускає запит без tenant-перевірки. */
 export function isTenantBypassed(): boolean {
   return tenantStore.getStore()?.bypass === true;
+}
+
+/**
+ * Поточна мова запиту (uk/en). Default 'uk' коли немає scope (BullMQ-процесори, cron, seed) —
+ * узгоджено з uk byte-identical fallback у shared-каталозі, тож поведінка поза request незмінна.
+ */
+export function getLocale(): Locale {
+  return tenantStore.getStore()?.locale ?? 'uk';
 }
 
 /**

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   vehicleFormSchema,
   optionLabel,
@@ -124,7 +124,7 @@ export default function VehicleCardPage() {
     control: editControl,
     formState: { errors: editErrors },
   } = useForm<VehicleFormInput, unknown, VehicleFormValues>({
-    resolver: zodResolver(vehicleFormSchema),
+    resolver: i18nZodResolver(vehicleFormSchema),
     mode: 'onBlur',
   });
   const [editError, setEditError] = useState('');

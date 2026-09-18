@@ -30,10 +30,10 @@ export type StockDocumentTypeValue = (typeof STOCK_DOCUMENT_TYPE_VALUES)[number]
 
 // Рядок документа: goodId(uuid) + quantity(≥0.001) + price?(≥0). Дзеркалить StockDocumentLineDto.
 export const stockDocumentLineSchema = z.object({
-  goodId: z.string().uuid('Оберіть товар'),
+  goodId: z.string().uuid('v.stockDocument.line.good.required'),
   // moneyString/optionalMoneyNumber (UA-кома backstop) замість numericString/optionalNonNegNumber:
   // захищає програмні/Excel-значення '1,5' (Number('1,5')=NaN інакше). Numeric JSON з фронта проходить.
-  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
+  quantity: moneyString().pipe(z.number().min(0.001, 'v.stockDocument.line.quantity.min')),
   price: optionalMoneyNumber(),
 });
 export type StockDocumentLineInput = z.input<typeof stockDocumentLineSchema>;
@@ -41,10 +41,10 @@ export type StockDocumentLineValues = z.infer<typeof stockDocumentLineSchema>;
 
 const stockDocumentShape = {
   type: z.enum(STOCK_DOCUMENT_TYPE_VALUES, {
-    errorMap: () => ({ message: 'Оберіть тип документа' }),
+    errorMap: () => ({ message: 'v.stockDocument.type.required' }),
   }),
-  branchId: z.string().uuid('Оберіть філію'),
-  warehouseId: z.string().uuid('Оберіть склад'),
+  branchId: z.string().uuid('v.stockDocument.branch.required'),
+  warehouseId: z.string().uuid('v.stockDocument.warehouse.required'),
   targetWarehouseId: optionalUuid(),
   purchaseOrderId: optionalUuid(),
   notes: optionalString(),
@@ -66,13 +66,13 @@ const transferRefine = (
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['targetWarehouseId'],
-        message: 'Для переміщення оберіть склад призначення',
+        message: 'v.stockDocument.transfer.targetRequired',
       });
     } else if (v.targetWarehouseId === v.warehouseId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['targetWarehouseId'],
-        message: 'Склад джерела і призначення не можуть збігатись',
+        message: 'v.stockDocument.transfer.targetSame',
       });
     }
   }

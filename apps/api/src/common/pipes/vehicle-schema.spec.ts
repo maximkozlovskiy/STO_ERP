@@ -13,8 +13,8 @@ describe('vehicleCreateSchema (спільна, web ↔ api)', () => {
     const r = vehicleCreateSchema.safeParse({ customerGarageId: GARAGE, make: '', model: '' });
     expect(r.success).toBe(false);
     if (!r.success) {
-      expect(r.error.issues.some(i => i.message === 'Вкажіть марку')).toBe(true);
-      expect(r.error.issues.some(i => i.message === 'Вкажіть модель')).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.vehicle.make.required')).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.vehicle.model.required')).toBe(true);
     }
   });
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   stockDocumentFormSchema,
   type StockDocumentFormInput,
@@ -197,7 +197,7 @@ export function StockDocumentCreateModal({
     handleSubmit,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<StockDocumentFormInput, unknown, StockDocumentFormValues>({
-    resolver: zodResolver(stockDocumentFormSchema),
+    resolver: i18nZodResolver(stockDocumentFormSchema),
     defaultValues: emptyDefaults(),
     mode: 'onBlur',
   });

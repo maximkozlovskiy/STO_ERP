@@ -12,18 +12,18 @@ import { optionalString, optionalUuid, optionalDateString, moneyString } from '.
 
 // Рядок повернення: goodId(uuid) + quantity(≥0.001) + price(≥0, обовʼязкова) + unitOfMeasureId?.
 export const supplierReturnLineSchema = z.object({
-  goodId: z.string().uuid('Оберіть товар'),
+  goodId: z.string().uuid('v.supplierReturn.line.good.required'),
   // moneyString (UA-кома backstop) замість numericString — захищає програмні/Excel-значення '1,5'.
-  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
-  price: moneyString().pipe(z.number().min(0, "Ціна не може бути від'ємною")),
+  quantity: moneyString().pipe(z.number().min(0.001, 'v.supplierReturn.line.quantity.min')),
+  price: moneyString().pipe(z.number().min(0, 'v.supplierReturn.line.price.nonNeg')),
   unitOfMeasureId: optionalUuid(),
 });
 export type SupplierReturnLineInput = z.input<typeof supplierReturnLineSchema>;
 export type SupplierReturnLineValues = z.infer<typeof supplierReturnLineSchema>;
 
 const supplierReturnBaseShape = {
-  supplierId: z.string().uuid('Оберіть постачальника'),
-  warehouseId: z.string().uuid('Оберіть склад'),
+  supplierId: z.string().uuid('v.supplierReturn.supplier.required'),
+  warehouseId: z.string().uuid('v.supplierReturn.warehouse.required'),
   notes: optionalString(),
   documentDate: optionalDateString(),
   lines: z.array(supplierReturnLineSchema).default([]),

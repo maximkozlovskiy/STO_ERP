@@ -54,16 +54,16 @@ const optionalNonNegInt = () =>
     v => (v === '' || v === null || v === undefined ? undefined : v),
     z.coerce
       .number()
-      .int('Значення має бути цілим')
-      .min(0, "Значення не може бути від'ємним")
+      .int('v.workOrder.nonNegInt.int')
+      .min(0, 'v.workOrder.nonNegInt.min')
       .optional(),
   );
 
 // ─── Шапка (POST /work-orders) ───────────────────────────────────────────────
 export const workOrderHeaderSchema = z.object({
-  branchId: z.string().uuid('Оберіть філію'),
-  vehicleId: z.string().uuid('Оберіть авто'),
-  counterpartyId: z.string().uuid('Оберіть контрагента'),
+  branchId: z.string().uuid('v.workOrder.branch.required'),
+  vehicleId: z.string().uuid('v.workOrder.vehicle.required'),
+  counterpartyId: z.string().uuid('v.workOrder.counterparty.required'),
   contractId: optionalUuid(),
   description: optionalString(),
   inMileage: optionalNonNegInt(),
@@ -96,25 +96,27 @@ export const workOrderUpdateSchema = z.object({
   priority: optionalPriority,
   repairCategory: optionalRepairCategory,
   clientApproval: z.boolean().optional(),
-  plannedAt: nullable(z.string().refine(v => !Number.isNaN(Date.parse(v)), 'Невірний формат дати')),
-  dueDate: nullable(z.string().refine(v => !Number.isNaN(Date.parse(v)), 'Невірний формат дати')),
+  plannedAt: nullable(
+    z.string().refine(v => !Number.isNaN(Date.parse(v)), 'v.workOrder.dateFormat'),
+  ),
+  dueDate: nullable(z.string().refine(v => !Number.isNaN(Date.parse(v)), 'v.workOrder.dateFormat')),
   documentDate: optionalDateString(),
   currencyId: optionalUuid(),
-  liftId: nullable(z.string().uuid('Невірний UUID формат')),
-  plannedHours: nullable(z.coerce.number().min(0, "Значення не може бути від'ємним")),
-  actualHours: nullable(z.coerce.number().min(0, "Значення не може бути від'ємним")),
+  liftId: nullable(z.string().uuid('v.workOrder.uuid.invalid')),
+  plannedHours: nullable(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg')),
+  actualHours: nullable(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg')),
 });
 export type WorkOrderUpdateValues = z.infer<typeof workOrderUpdateSchema>;
 
 // ─── Рядок-робота (POST /work-orders/:id/lines) ──────────────────────────────
 export const workOrderLineSchema = z.object({
-  workId: z.string().uuid('Оберіть роботу'),
-  employeeId: z.string().uuid('Оберіть виконавця'),
+  workId: z.string().uuid('v.workOrder.line.work.required'),
+  employeeId: z.string().uuid('v.workOrder.line.employee.required'),
   liftId: optionalUuid(),
   // normoHours опційна на беку (@Min(0.01)); price/actualHours опційні (@Min(0)).
   normoHours: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.01, 'Нормо-години повинні бути більшими за нуль').optional(),
+    z.coerce.number().min(0.01, 'v.workOrder.line.normoHours.min').optional(),
   ),
   actualHours: optionalNonNegNumber(),
   price: optionalNonNegNumber(),
@@ -130,9 +132,9 @@ export const workOrderLineUpdateSchema = z.object({
   liftId: optionalUuid(),
   normoHours: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.01, 'Нормо-години повинні бути більшими за нуль').optional(),
+    z.coerce.number().min(0.01, 'v.workOrder.line.normoHours.min').optional(),
   ),
-  actualHours: nullable(z.coerce.number().min(0, "Значення не може бути від'ємним")),
+  actualHours: nullable(z.coerce.number().min(0, 'v.workOrder.hours.nonNeg')),
   price: optionalNonNegNumber(),
   notes: optionalString(),
 });
@@ -140,9 +142,9 @@ export type WorkOrderLineUpdateValues = z.infer<typeof workOrderLineUpdateSchema
 
 // ─── Деталь-запчастина (POST /work-orders/:id/parts) ─────────────────────────
 export const workOrderPartSchema = z.object({
-  goodId: z.string().uuid('Оберіть товар'),
-  warehouseId: z.string().uuid('Оберіть склад'),
-  quantity: numericString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
+  goodId: z.string().uuid('v.workOrder.part.good.required'),
+  warehouseId: z.string().uuid('v.workOrder.part.warehouse.required'),
+  quantity: numericString().pipe(z.number().min(0.001, 'v.workOrder.part.quantity.min')),
   price: optionalNonNegNumber(),
   unitOfMeasureId: optionalUuid(),
 });
@@ -154,7 +156,7 @@ export const workOrderPartUpdateSchema = z.object({
   warehouseId: optionalUuid(),
   quantity: z.preprocess(
     v => (v === '' || v === null || v === undefined ? undefined : v),
-    z.coerce.number().min(0.001, 'Кількість повинна бути більшою за нуль').optional(),
+    z.coerce.number().min(0.001, 'v.workOrder.part.quantity.min').optional(),
   ),
   price: optionalNonNegNumber(),
   unitOfMeasureId: optionalUuid(),
@@ -171,8 +173,8 @@ export type WorkOrderPartUpdateValues = z.infer<typeof workOrderPartUpdateSchema
 export const workOrderFormLineSchema = z.object({
   _key: z.string().optional(),
   id: z.string().optional(),
-  workId: z.string().uuid('Оберіть роботу'),
-  employeeId: z.string().uuid('Оберіть виконавця'),
+  workId: z.string().uuid('v.workOrder.line.work.required'),
+  employeeId: z.string().uuid('v.workOrder.line.employee.required'),
   normoHours: z.preprocess(
     v =>
       v === '' || v === null || v === undefined
@@ -180,7 +182,7 @@ export const workOrderFormLineSchema = z.object({
         : typeof v === 'string'
           ? Number(v.replace(',', '.'))
           : v,
-    z.number().min(0.01, 'Нормо-години повинні бути більшими за нуль').optional(),
+    z.number().min(0.01, 'v.workOrder.line.normoHours.min').optional(),
   ),
   actualHours: optionalMoneyNumber(),
   price: optionalMoneyNumber(),
@@ -189,17 +191,17 @@ export const workOrderFormLineSchema = z.object({
 export const workOrderFormPartSchema = z.object({
   _key: z.string().optional(),
   id: z.string().optional(),
-  goodId: z.string().uuid('Оберіть товар'),
-  warehouseId: z.string().uuid('Оберіть склад'),
-  quantity: moneyString().pipe(z.number().min(0.001, 'Кількість повинна бути більшою за нуль')),
+  goodId: z.string().uuid('v.workOrder.part.good.required'),
+  warehouseId: z.string().uuid('v.workOrder.part.warehouse.required'),
+  quantity: moneyString().pipe(z.number().min(0.001, 'v.workOrder.part.quantity.min')),
   price: optionalMoneyNumber(),
   unitOfMeasureId: optionalUuid(),
 });
 
 export const workOrderFormSchema = z.object({
-  branchId: z.string().uuid('Оберіть філію'),
-  vehicleId: z.string().uuid('Оберіть авто'),
-  counterpartyId: z.string().uuid('Оберіть контрагента'),
+  branchId: z.string().uuid('v.workOrder.branch.required'),
+  vehicleId: z.string().uuid('v.workOrder.vehicle.required'),
+  counterpartyId: z.string().uuid('v.workOrder.counterparty.required'),
   contractId: optionalUuid(),
   currencyId: optionalUuid(),
   liftId: optionalUuid(),

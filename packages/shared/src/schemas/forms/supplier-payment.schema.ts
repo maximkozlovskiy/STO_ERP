@@ -13,16 +13,16 @@ export const PAYMENT_SOURCE_TYPE_VALUES = ['BANK_ACCOUNT', 'CASH_REGISTER'] as c
 export type PaymentSourceTypeValue = (typeof PAYMENT_SOURCE_TYPE_VALUES)[number];
 
 const supplierPaymentShape = {
-  supplierId: z.string().uuid('Оберіть постачальника'),
+  supplierId: z.string().uuid('v.supplierPayment.supplier.required'),
   sourceType: z.enum(PAYMENT_SOURCE_TYPE_VALUES, {
-    errorMap: () => ({ message: 'Оберіть джерело коштів' }),
+    errorMap: () => ({ message: 'v.supplierPayment.sourceType.required' }),
   }),
   bankAccountId: optionalUuid(),
   cashRegisterId: optionalUuid(),
   purchaseOrderId: optionalUuid(),
   // amount — UA-кома підтримується (moneyString); мінімум 0.01 (дзеркалить @Min(0.01)).
-  amount: moneyString().pipe(z.number().min(0.01, 'Сума оплати повинна бути більшою за нуль')),
-  method: z.string().trim().min(1, 'Оберіть спосіб оплати'),
+  amount: moneyString().pipe(z.number().min(0.01, 'v.supplierPayment.amount.min')),
+  method: z.string().trim().min(1, 'v.supplierPayment.method.required'),
   notes: optionalString(),
   documentDate: optionalDateString(),
 };
@@ -41,14 +41,14 @@ const sourceRefine = (
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['bankAccountId'],
-        message: 'Для оплати з банку вкажіть рахунок',
+        message: 'v.supplierPayment.bank.required',
       });
     }
     if (v.cashRegisterId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['cashRegisterId'],
-        message: 'Не можна одночасно вказувати банк і касу',
+        message: 'v.supplierPayment.source.conflict',
       });
     }
   } else if (v.sourceType === 'CASH_REGISTER') {
@@ -56,14 +56,14 @@ const sourceRefine = (
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['cashRegisterId'],
-        message: 'Для оплати з каси вкажіть касу',
+        message: 'v.supplierPayment.cash.required',
       });
     }
     if (v.bankAccountId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['bankAccountId'],
-        message: 'Не можна одночасно вказувати банк і касу',
+        message: 'v.supplierPayment.source.conflict',
       });
     }
   }

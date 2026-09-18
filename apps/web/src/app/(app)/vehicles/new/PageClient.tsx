@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { vehicleFormSchema, type VehicleFormInput, type VehicleFormValues } from '@sto/shared';
 import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
@@ -56,7 +56,7 @@ export default function NewVehiclePageClient() {
     control,
     formState: { errors },
   } = useForm<VehicleFormInput, unknown, VehicleFormValues>({
-    resolver: zodResolver(vehicleFormSchema),
+    resolver: i18nZodResolver(vehicleFormSchema),
     defaultValues: { ...EMPTY, customerGarageId: garageId },
     mode: 'onBlur',
   });

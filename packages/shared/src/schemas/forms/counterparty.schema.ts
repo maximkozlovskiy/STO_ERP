@@ -28,7 +28,7 @@ export function hasCounterpartyName(f: {
 // Базові поля контрагента (15 + type). Рядкові опційні: '' → undefined.
 const counterpartyBaseShape = {
   type: z.enum(COUNTERPARTY_TYPE_VALUES, {
-    errorMap: () => ({ message: 'Оберіть тип контрагента' }),
+    errorMap: () => ({ message: 'v.counterparty.type.required' }),
   }),
   firstName: optionalString(),
   lastName: optionalString(),
@@ -38,7 +38,7 @@ const counterpartyBaseShape = {
   phone: optionalString(),
   email: z.preprocess(
     v => (v === '' || v === null ? undefined : v),
-    z.string().email('Невірний формат email').optional(),
+    z.string().email('v.counterparty.email.invalid').optional(),
   ),
   contactPerson: optionalString(),
   notes: optionalString(),
@@ -67,10 +67,7 @@ const nameByType = (
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['companyName'],
-      message:
-        v.type === 'SUPPLIER'
-          ? 'Вкажіть назву компанії постачальника'
-          : "Вкажіть назву компанії або ім'я/прізвище контрагента",
+      message: v.type === 'SUPPLIER' ? 'v.counterparty.name.supplier' : 'v.counterparty.name.any',
     });
   }
 };

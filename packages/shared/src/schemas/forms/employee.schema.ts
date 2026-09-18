@@ -64,9 +64,17 @@ export const EMPLOYEE_STATUS_VALUES = ['ACTIVE', 'ON_LEAVE', 'FIRED'] as const;
 // ─── Плоска форма (web-стан) ─────────────────────────────────────────────────
 export const employeeFormSchema = z
   .object({
-    firstName: z.string().trim().min(1, "Вкажіть ім'я").max(100, "Ім'я занадто довге"),
-    lastName: z.string().trim().min(1, 'Вкажіть прізвище').max(100, 'Прізвище занадто довге'),
-    role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'Оберіть посаду' }) }),
+    firstName: z
+      .string()
+      .trim()
+      .min(1, 'v.employee.firstName.required')
+      .max(100, 'v.employee.firstName.max'),
+    lastName: z
+      .string()
+      .trim()
+      .min(1, 'v.employee.lastName.required')
+      .max(100, 'v.employee.lastName.max'),
+    role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'v.employee.role.required' }) }),
     phone: optionalString(),
     email: optionalString(),
     status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
@@ -96,7 +104,7 @@ export const employeeFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['percent'],
-          message: 'Відсоток має бути від 1 до 100',
+          message: 'v.employee.percent.range',
         });
       }
     }
@@ -105,7 +113,7 @@ export const employeeFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['ratePerHour'],
-          message: "Ставка за нормо-годину повинна бути невід'ємним числом",
+          message: 'v.employee.ratePerHour.nonNeg',
         });
       }
     }
@@ -114,14 +122,14 @@ export const employeeFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['fixedMonthly'],
-          message: "Фіксована ставка повинна бути невід'ємним числом",
+          message: 'v.employee.fixedMonthly.nonNeg',
         });
       }
       if (!Number.isFinite(v.bonusPercent) || v.bonusPercent < 0 || v.bonusPercent > 100) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['bonusPercent'],
-          message: 'Бонус має бути від 0 до 100',
+          message: 'v.employee.bonusPercent.range',
         });
       }
     }
@@ -131,20 +139,20 @@ export const employeeFormSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['loginEmail'],
-          message: 'Вкажіть email для входу',
+          message: 'v.employee.loginEmail.required',
         });
       }
       if (!v.password) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['password'],
-          message: 'Вкажіть пароль',
+          message: 'v.employee.password.required',
         });
       } else if (v.password.length < 6) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['password'],
-          message: 'Пароль має бути не менше 6 символів',
+          message: 'v.employee.password.min',
         });
       }
     }
@@ -180,9 +188,9 @@ export function buildRateScheme(v: {
 // ─── Бек-payload схеми (POST/PATCH /employees) ───────────────────────────────
 // Валідують те, що реально шле модалка: базові поля + nested rateScheme + опційний доступ.
 const employeeBaseFields = {
-  firstName: z.string().trim().min(1, "Вкажіть ім'я").max(100),
-  lastName: z.string().trim().min(1, 'Вкажіть прізвище').max(100),
-  role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'Оберіть посаду' }) }),
+  firstName: z.string().trim().min(1, 'v.employee.firstName.required').max(100),
+  lastName: z.string().trim().min(1, 'v.employee.lastName.required').max(100),
+  role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'v.employee.role.required' }) }),
   phone: optionalString(),
   email: optionalString(),
   status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
@@ -195,11 +203,11 @@ export const employeeCreateSchema = z.object({
   ...employeeBaseFields,
   loginEmail: z.preprocess(
     emptyToUndefined,
-    z.string().email('Невірний формат email для логіну').max(254).optional(),
+    z.string().email('v.employee.loginEmail.invalid').max(254).optional(),
   ),
   password: z.preprocess(
     emptyToUndefined,
-    z.string().min(6, 'Пароль має бути не менше 6 символів').max(128).optional(),
+    z.string().min(6, 'v.employee.password.min').max(128).optional(),
   ),
 });
 export type EmployeeCreateValues = z.infer<typeof employeeCreateSchema>;

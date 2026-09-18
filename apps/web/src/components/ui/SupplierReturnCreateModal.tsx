@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
   supplierReturnFormSchema,
   type SupplierReturnFormInput,
@@ -158,7 +158,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     handleSubmit,
     formState: { errors, isDirty: rhfDirty },
   } = useForm<SupplierReturnFormInput, unknown, SupplierReturnFormValues>({
-    resolver: zodResolver(supplierReturnFormSchema),
+    resolver: i18nZodResolver(supplierReturnFormSchema),
     defaultValues: emptyDefaults(),
     mode: 'onBlur',
   });

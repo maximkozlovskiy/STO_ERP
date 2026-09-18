@@ -51,7 +51,8 @@ describe('counterpartyFormSchema (name-by-type, Bug #739)', () => {
     expect(hasCounterpartyName({ type: 'SUPPLIER', firstName: 'Іван' })).toBe(false);
     const r = counterpartyFormSchema.safeParse({ type: 'SUPPLIER', firstName: 'Іван' });
     expect(r.success).toBe(false);
-    if (!r.success) expect(r.error.issues[0]?.message).toMatch(/назву компанії постачальника/);
+    // i18n: schema емітить validation-KEY (не укр.); rendered-рядок покрито i18nZodResolver/pipe.
+    if (!r.success) expect(r.error.issues[0]?.message).toBe('v.counterparty.name.supplier');
   });
 
   it('SUPPLIER з companyName → проходить', () => {
@@ -71,7 +72,7 @@ describe('counterpartyFormSchema (name-by-type, Bug #739)', () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       const issue = r.error.issues.find(i => i.path[0] === 'companyName');
-      expect(issue?.message).toMatch(/назву компанії або/);
+      expect(issue?.message).toBe('v.counterparty.name.any');
     }
   });
 });

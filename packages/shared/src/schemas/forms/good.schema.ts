@@ -13,7 +13,7 @@ export const GOOD_TYPE_VALUES = ['SPARE_PART', 'CONSUMABLE', 'MATERIAL', 'TOOL']
 export type GoodTypeValue = (typeof GOOD_TYPE_VALUES)[number];
 
 export const goodFormSchema = z.object({
-  name: z.string().trim().min(1, 'Вкажіть назву товару').max(300, 'Назва занадто довга'),
+  name: z.string().trim().min(1, 'v.good.name.required').max(300, 'v.good.name.max'),
   sku: optionalString(),
   unit: optionalString(),
   unitId: optionalUuid(),

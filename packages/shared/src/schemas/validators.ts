@@ -5,15 +5,13 @@ export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const IBAN_UA_REGEX = /^UA\d{27}$/;
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const phoneUaSchema = z
-  .string()
-  .regex(PHONE_UA_REGEX, 'Невірний формат телефону (+380XXXXXXXXX)');
-export const emailSchema = z.string().email('Невірний формат email');
-export const ibanUaSchema = z.string().regex(IBAN_UA_REGEX, 'Невірний формат IBAN (UA + 27 цифр)');
+export const phoneUaSchema = z.string().regex(PHONE_UA_REGEX, 'v.phone');
+export const emailSchema = z.string().email('v.email');
+export const ibanUaSchema = z.string().regex(IBAN_UA_REGEX, 'v.iban');
 /** Field-level UUID validator (regex-based). See also uuidSchema in schemas.ts for Zod .uuid(). */
-export const uuidFieldSchema = z.string().regex(UUID_REGEX, 'Невірний UUID формат');
-export const positiveNumberSchema = z.number().positive('Значення має бути більше нуля');
-export const nonNegativeNumberSchema = z.number().min(0, "Значення не може бути від'ємним");
+export const uuidFieldSchema = z.string().regex(UUID_REGEX, 'v.uuid');
+export const positiveNumberSchema = z.number().positive('v.positive');
+export const nonNegativeNumberSchema = z.number().min(0, 'v.nonNeg');
 
 /**
  * Форма-хелпери для спільних zod-схем (web ↔ api).
@@ -43,7 +41,7 @@ export const optionalDateString = () =>
     emptyToUndefined,
     z
       .string()
-      .refine(v => !Number.isNaN(Date.parse(v)), { message: 'Невірний формат дати' })
+      .refine(v => !Number.isNaN(Date.parse(v)), { message: 'v.dateFormat' })
       .optional(),
   );
 
@@ -52,10 +50,7 @@ export const optionalDateString = () =>
  * `z.coerce.number()` перетворює рядок; порожнє відсікаємо ДО коерції (інакше '' → 0).
  */
 export const optionalNonNegNumber = () =>
-  z.preprocess(
-    emptyToUndefined,
-    z.coerce.number().min(0, "Значення не може бути від'ємним").optional(),
-  );
+  z.preprocess(emptyToUndefined, z.coerce.number().min(0, 'v.nonNeg').optional());
 
 /**
  * Обовʼязкове число з рядка форми: `z.input` приймає рядок web-стану, `z.output` = number.
@@ -89,4 +84,4 @@ export const optionalMoneyNumber = () =>
     if (v === '' || v === null || v === undefined) return undefined;
     if (typeof v === 'string') return Number(v.replace(',', '.'));
     return v;
-  }, z.number().min(0, "Значення не може бути від'ємним").optional());
+  }, z.number().min(0, 'v.nonNeg').optional());

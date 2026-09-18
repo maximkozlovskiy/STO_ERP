@@ -48,7 +48,7 @@ describe('purchaseOrderFormSchema (спільна, web ↔ api)', () => {
     expect(r.success).toBe(false);
     if (!r.success)
       expect(r.error.issues.find(i => i.path[0] === 'supplierId')?.message).toBe(
-        'Оберіть постачальника',
+        'v.purchaseOrder.supplier.required',
       );
   });
 
@@ -69,7 +69,9 @@ describe('purchaseOrderFormSchema (спільна, web ↔ api)', () => {
     });
     expect(r.success).toBe(false);
     if (!r.success)
-      expect(r.error.issues.some(i => i.message.includes('більшою за нуль'))).toBe(true);
+      expect(r.error.issues.some(i => i.message === 'v.purchaseOrder.line.quantity.min')).toBe(
+        true,
+      );
   });
 
   it('trackingNumber > 64 символів → помилка (validation-parity @MaxLength(64))', () => {

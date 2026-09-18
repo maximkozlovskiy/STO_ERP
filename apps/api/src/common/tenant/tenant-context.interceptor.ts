@@ -1,7 +1,18 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { Observable } from 'rxjs';
-import { runWithTenant } from './tenant-context';
+import { runWithTenant, type Locale } from './tenant-context';
+
+/**
+ * Accept-Language → 'uk'|'en'. Web-клієнт шле голе 'uk'|'en' (getCurrentLocale), але браузер може
+ * прислати 'en-US,uk;q=0.9' — беремо перший тег, перші 2 літери. Невідоме/відсутнє → 'uk' (default).
+ */
+function resolveLocale(header: string | string[] | undefined): Locale {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (!raw) return 'uk';
+  const first = raw.split(',')[0]?.trim().slice(0, 2).toLowerCase();
+  return first === 'en' ? 'en' : 'uk';
+}
 
 /**
  * Глобальний interceptor, що входить у tenant-scope (AsyncLocalStorage) на весь час обробки запиту
@@ -25,9 +36,10 @@ export class TenantContextInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest<FastifyRequest & { user?: { orgId?: string } }>();
     const orgId = req?.user?.orgId;
+    const locale = resolveLocale(req?.headers?.['accept-language']);
 
     return new Observable(subscriber => {
-      return runWithTenant({ orgId }, () => next.handle().subscribe(subscriber));
+      return runWithTenant({ orgId, locale }, () => next.handle().subscribe(subscriber));
     });
   }
 }
