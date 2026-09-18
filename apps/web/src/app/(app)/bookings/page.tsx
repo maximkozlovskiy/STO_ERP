@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,12 +11,6 @@ import { Spinner } from '@/components/ui/spinner';
 import { fmtDate, fmtDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Очікує',
-  CONFIRMED: 'Підтверджено',
-  CANCELLED: 'Скасовано',
-};
-
 const STATUS_COLORS: Record<string, string> = {
   PENDING: 'bg-warning-subtle text-warning',
   CONFIRMED: 'bg-success-subtle text-success',
@@ -23,6 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function BookingsPage() {
+  const { t } = useTranslation('bookings');
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
 
   const qc = useQueryClient();
@@ -40,7 +36,7 @@ export default function BookingsPage() {
       await apiFetch(`/booking/${id}/confirm`, { method: 'PATCH' });
       invalidate();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка підтвердження');
+      setError(e instanceof Error ? e.message : t('errors.confirm'));
     } finally {
       setConfirmingId(null);
     }
@@ -53,7 +49,7 @@ export default function BookingsPage() {
       await apiFetch(`/booking/${id}`, { method: 'DELETE' });
       invalidate();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка скасування');
+      setError(e instanceof Error ? e.message : t('errors.cancel'));
     } finally {
       setCancellingId(null);
     }
@@ -64,9 +60,9 @@ export default function BookingsPage() {
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
-        <h1 className="page-title">Онлайн-запис</h1>
+        <h1 className="page-title">{t('title')}</h1>
         <Button variant="outline" size="sm" onClick={invalidate} disabled={loading}>
-          Оновити
+          {t('refresh')}
         </Button>
       </div>
 
@@ -83,7 +79,7 @@ export default function BookingsPage() {
           </div>
         ) : requests.length === 0 ? (
           <div className="bg-surface rounded-xl border border-border p-12 text-center">
-            <p className="text-muted-foreground text-sm">Заявок на запис немає</p>
+            <p className="text-muted-foreground text-sm">{t('empty')}</p>
           </div>
         ) : (
           <div className="bg-surface rounded-xl border border-border overflow-hidden">
@@ -99,7 +95,7 @@ export default function BookingsPage() {
                           STATUS_COLORS[r.status] ?? 'bg-secondary text-muted-foreground',
                         )}
                       >
-                        {STATUS_LABELS[r.status] ?? r.status}
+                        {t(`status.${r.status}`, { defaultValue: r.status })}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -110,7 +106,7 @@ export default function BookingsPage() {
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.notes}</p>
                     )}
                     <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                      Заявка від {fmtDateTime(r.createdAt)}
+                      {t('requestFrom', { date: fmtDateTime(r.createdAt) })}
                     </p>
                   </div>
                   {r.status === 'PENDING' && (
@@ -122,7 +118,7 @@ export default function BookingsPage() {
                         loading={confirmingId === r.id}
                         disabled={confirmingId === r.id || cancellingId === r.id}
                       >
-                        Підтвердити
+                        {t('confirm')}
                       </Button>
                       <Button
                         size="sm"
@@ -131,7 +127,7 @@ export default function BookingsPage() {
                         loading={cancellingId === r.id}
                         disabled={confirmingId === r.id || cancellingId === r.id}
                       >
-                        Скасувати
+                        {t('cancel')}
                       </Button>
                     </div>
                   )}

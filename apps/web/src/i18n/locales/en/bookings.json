@@ -1,0 +1,17 @@
+{
+  "title": "Online booking",
+  "refresh": "Refresh",
+  "status": {
+    "PENDING": "Pending",
+    "CONFIRMED": "Confirmed",
+    "CANCELLED": "Cancelled"
+  },
+  "empty": "No booking requests",
+  "requestFrom": "Request from {{date}}",
+  "confirm": "Confirm",
+  "cancel": "Cancel",
+  "errors": {
+    "confirm": "Failed to confirm",
+    "cancel": "Failed to cancel"
+  }
+}

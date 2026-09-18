@@ -24,6 +24,10 @@ import ukInventory from './locales/uk/inventory.json';
 import ukPayroll from './locales/uk/payroll.json';
 import ukPricingRules from './locales/uk/pricingRules.json';
 import ukSettlements from './locales/uk/settlements.json';
+import ukDashboard from './locales/uk/dashboard.json';
+import ukProfile from './locales/uk/profile.json';
+import ukBookings from './locales/uk/bookings.json';
+import ukErrorPages from './locales/uk/errorPages.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -49,6 +53,10 @@ import enInventory from './locales/en/inventory.json';
 import enPayroll from './locales/en/payroll.json';
 import enPricingRules from './locales/en/pricingRules.json';
 import enSettlements from './locales/en/settlements.json';
+import enDashboard from './locales/en/dashboard.json';
+import enProfile from './locales/en/profile.json';
+import enBookings from './locales/en/bookings.json';
+import enErrorPages from './locales/en/errorPages.json';
 
 export const resources = {
   uk: {
@@ -76,6 +84,10 @@ export const resources = {
     payroll: ukPayroll,
     pricingRules: ukPricingRules,
     settlements: ukSettlements,
+    dashboard: ukDashboard,
+    profile: ukProfile,
+    bookings: ukBookings,
+    errorPages: ukErrorPages,
   },
   en: {
     common: enCommon,
@@ -102,5 +114,9 @@ export const resources = {
     payroll: enPayroll,
     pricingRules: enPricingRules,
     settlements: enSettlements,
+    dashboard: enDashboard,
+    profile: enProfile,
+    bookings: enBookings,
+    errorPages: enErrorPages,
   },
 } as const;

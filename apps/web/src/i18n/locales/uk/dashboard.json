@@ -1,0 +1,55 @@
+{
+  "loadError": "Не вдалося завантажити частину показників — дані можуть бути неповними. Оновіть сторінку.",
+  "greeting": {
+    "default": "Вітаємо",
+    "morning": "Доброго ранку",
+    "afternoon": "Доброго дня",
+    "evening": "Доброго вечора"
+  },
+  "empty": {
+    "title": "Немає даних",
+    "description": "Не вдалося завантажити показники"
+  },
+  "quickActions": {
+    "workOrders": "Новий наряд",
+    "counterparties": "Новий клієнт",
+    "purchaseOrders": "Замовлення",
+    "invoices": "Рахунок",
+    "calendar": "Календар",
+    "inventory": "Склад"
+  },
+  "kpi": {
+    "inProgress": "В роботі",
+    "completedToday": "{{n}} завершено сьогодні",
+    "open": "Очікують",
+    "revenueToday": "Виручка сьогодні",
+    "revenueMonth": "Виручка за місяць",
+    "unpaidInvoices": "Несплачені рахунки",
+    "lowStock": "Низький залишок"
+  },
+  "revenue": {
+    "title": "Виручка за 7 днів",
+    "allReports": "Всі звіти →"
+  },
+  "maintenance": {
+    "title": "Наближається ТО ({{n}})",
+    "allClients": "Всі клієнти →",
+    "regular": "Планове ТО",
+    "seasonal": "Сезонне ТО",
+    "overdue": "Прострочено"
+  },
+  "warranties": {
+    "title": "Гарантії, що закінчуються ({{n}})",
+    "client": "Клієнт",
+    "workOrder": "Наряд №{{number}}"
+  },
+  "quickActionsCard": {
+    "title": "Швидкі дії",
+    "configure": "Налаштувати",
+    "chooseActions": "Оберіть дії",
+    "empty": "Немає активних дій — натисніть ⚙ щоб налаштувати"
+  },
+  "chart": {
+    "revenue": "Виручка"
+  }
+}

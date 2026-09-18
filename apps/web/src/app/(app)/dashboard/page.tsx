@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WO_EDITABLE_STATUSES } from '@sto/shared';
 import { useRequireAuth } from '@/lib/auth';
 import {
@@ -138,18 +139,19 @@ const KYIV_HOUR_FMT = new Intl.DateTimeFormat('uk-UA', {
 });
 
 const ALL_QUICK_ACTIONS = [
-  { href: '/work-orders', label: 'Новий наряд', icon: Wrench },
-  { href: '/counterparties', label: 'Новий клієнт', icon: Users },
-  { href: '/purchase-orders', label: 'Замовлення', icon: ShoppingCart },
-  { href: '/invoices', label: 'Рахунок', icon: Receipt },
-  { href: '/calendar', label: 'Календар', icon: CalendarClock },
-  { href: '/inventory', label: 'Склад', icon: BarChart2 },
+  { href: '/work-orders', labelKey: 'workOrders', icon: Wrench },
+  { href: '/counterparties', labelKey: 'counterparties', icon: Users },
+  { href: '/purchase-orders', labelKey: 'purchaseOrders', icon: ShoppingCart },
+  { href: '/invoices', labelKey: 'invoices', icon: Receipt },
+  { href: '/calendar', labelKey: 'calendar', icon: CalendarClock },
+  { href: '/inventory', labelKey: 'inventory', icon: BarChart2 },
 ];
 
 const DEFAULT_QUICK_ACTIONS = ['/work-orders', '/counterparties', '/purchase-orders', '/invoices'];
 const QA_STORAGE_KEY = 'sto_quick_actions';
 
 export default function DashboardPage() {
+  const { t } = useTranslation('dashboard');
   const { employee } = useRequireAuth();
   const enabled = !!employee;
   // Виручка — чутлива фін-інформація: /reports/revenue дозволений лише OWNER/ADMIN/ACCOUNTANT.
@@ -184,12 +186,9 @@ export default function DashboardPage() {
   // (silent wrong number). Тепер піднімаємо реальний стан помилки з хуків: будь-який fail із
   // core-показників → банер помилки замість оманливих нулів. revenueError окремо не блокує KPI,
   // але додає банер (щоб revenueMonth=0 не читалось як «виторгу немає»).
-  const error =
-    ordersError || lowStockError || invoicesError || revenueError
-      ? 'Не вдалося завантажити частину показників — дані можуть бути неповними. Оновіть сторінку.'
-      : '';
+  const error = ordersError || lowStockError || invoicesError || revenueError ? t('loadError') : '';
   const [todayStr, setTodayStr] = useState('');
-  const [greeting, setGreeting] = useState('Вітаємо');
+  const [greeting, setGreeting] = useState(() => t('greeting.default'));
   const [enabledQA, setEnabledQA] = useState<string[]>(DEFAULT_QUICK_ACTIONS);
   const [qaConfigOpen, setQaConfigOpen] = useState(false);
   // F7: Live SSE dashboard stream
@@ -244,14 +243,16 @@ export default function DashboardPage() {
   useEffect(() => {
     setTodayStr(KYIV_FULL_DATE_FMT.format(new Date()));
     const h = parseInt(KYIV_HOUR_FMT.format(new Date()), 10);
-    setGreeting(h < 12 ? 'Доброго ранку' : h < 18 ? 'Доброго дня' : 'Доброго вечора');
+    setGreeting(
+      h < 12 ? t('greeting.morning') : h < 18 ? t('greeting.afternoon') : t('greeting.evening'),
+    );
     try {
       const saved = localStorage.getItem(QA_STORAGE_KEY);
       if (saved) setEnabledQA(JSON.parse(saved) as string[]);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [t]);
 
   const toggleQA = useCallback((href: string) => {
     setEnabledQA(prev => {
@@ -288,7 +289,7 @@ export default function DashboardPage() {
       {loading ? (
         <PageSpinner />
       ) : !kpi ? (
-        <EmptyState title="Немає даних" description="Не вдалося завантажити показники" />
+        <EmptyState title={t('empty.title')} description={t('empty.description')} />
       ) : (
         <>
           {/* Live indicator — F7: SSE stream */}
@@ -306,12 +307,12 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             <Link href="/work-orders" className="flex">
               <KpiCard
-                label="В роботі"
+                label={t('kpi.inProgress')}
                 value={streamData?.activeWo ?? kpi.inProgressOrders}
                 icon={<Wrench />}
                 colorClass="kpi-card-blue"
                 trend={{
-                  value: `${kpi.completedToday} завершено сьогодні`,
+                  value: t('kpi.completedToday', { n: kpi.completedToday }),
                   up: kpi.completedToday > 0,
                 }}
                 className="w-full"
@@ -319,7 +320,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/work-orders" className="flex">
               <KpiCard
-                label="Очікують"
+                label={t('kpi.open')}
                 value={kpi.openOrders}
                 icon={<Clock />}
                 colorClass="kpi-card-amber"
@@ -328,7 +329,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/reports" className="flex">
               <KpiCard
-                label="Виручка сьогодні"
+                label={t('kpi.revenueToday')}
                 value={fmt(streamData?.todayRevenue ?? kpi.revenueToday)}
                 icon={<TrendingUp />}
                 colorClass="kpi-card-green"
@@ -337,7 +338,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/reports" className="flex">
               <KpiCard
-                label="Виручка за місяць"
+                label={t('kpi.revenueMonth')}
                 value={fmt(kpi.revenueMonth)}
                 icon={<BarChart2 />}
                 colorClass="kpi-card-violet"
@@ -346,7 +347,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/invoices" className="flex">
               <KpiCard
-                label="Несплачені рахунки"
+                label={t('kpi.unpaidInvoices')}
                 value={streamData?.pendingInvoices ?? kpi.unpaidInvoices}
                 icon={<FileX />}
                 colorClass={
@@ -362,7 +363,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/inventory" className="flex">
               <KpiCard
-                label="Низький залишок"
+                label={t('kpi.lowStock')}
                 value={streamData?.lowStockCount ?? kpi.lowStockCount}
                 icon={<AlertTriangle />}
                 colorClass={
@@ -380,12 +381,12 @@ export default function DashboardPage() {
             <Card className="mb-6">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Виручка за 7 днів</CardTitle>
+                  <CardTitle>{t('revenue.title')}</CardTitle>
                   <Link
                     href="/reports"
                     className="text-[12px] text-primary hover:underline font-medium"
                   >
-                    Всі звіти →
+                    {t('revenue.allReports')}
                   </Link>
                 </div>
               </CardHeader>
@@ -402,13 +403,13 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <CalendarClock className="h-4 w-4 text-warning" />
-                    Наближається ТО ({upcomingTO.length})
+                    {t('maintenance.title', { n: upcomingTO.length })}
                   </CardTitle>
                   <Link
                     href="/counterparties"
                     className="text-[12px] text-primary hover:underline font-medium"
                   >
-                    Всі клієнти →
+                    {t('maintenance.allClients')}
                   </Link>
                 </div>
               </CardHeader>
@@ -433,9 +434,9 @@ export default function DashboardPage() {
                           </p>
                           <p className="text-[12px] text-muted-foreground">
                             {item.maintenanceType === 'REGULAR'
-                              ? 'Планове ТО'
+                              ? t('maintenance.regular')
                               : item.maintenanceType === 'SEASONAL'
-                                ? 'Сезонне ТО'
+                                ? t('maintenance.seasonal')
                                 : item.maintenanceType}
                             {item.nextMaintenanceMileage
                               ? ` · ${fmtInt(item.nextMaintenanceMileage)} км`
@@ -446,7 +447,7 @@ export default function DashboardPage() {
                           <span
                             className={`text-[12px] font-medium px-2 py-0.5 rounded-md ${isOverdue ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning'}`}
                           >
-                            {isOverdue ? 'Прострочено' : dateStr}
+                            {isOverdue ? t('maintenance.overdue') : dateStr}
                           </span>
                         )}
                       </div>
@@ -463,7 +464,7 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-warning" />
-                  Гарантії, що закінчуються ({expiringWarranties.length})
+                  {t('warranties.title', { n: expiringWarranties.length })}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -478,10 +479,11 @@ export default function DashboardPage() {
                       <div key={w.id} className="flex items-center justify-between py-2">
                         <div className="min-w-0">
                           <p className="text-[13px] font-medium text-foreground truncate">
-                            {w.counterpartyName ?? 'Клієнт'}
+                            {w.counterpartyName ?? t('warranties.client')}
                           </p>
                           <p className="text-[12px] text-muted-foreground truncate">
-                            {w.description || `Наряд №${w.workOrderNumber ?? ''}`}
+                            {w.description ||
+                              t('warranties.workOrder', { number: w.workOrderNumber ?? '' })}
                           </p>
                         </div>
                         {dateStr && (
@@ -503,11 +505,11 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Швидкі дії</CardTitle>
+                <CardTitle>{t('quickActionsCard.title')}</CardTitle>
                 <button
                   onClick={() => setQaConfigOpen(o => !o)}
                   className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                  title="Налаштувати"
+                  title={t('quickActionsCard.configure')}
                 >
                   <Settings2 className="h-3.5 w-3.5" />
                 </button>
@@ -517,10 +519,10 @@ export default function DashboardPage() {
               {qaConfigOpen && (
                 <div className="mb-4 p-3 bg-secondary rounded-lg border border-border">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                    Оберіть дії
+                    {t('quickActionsCard.chooseActions')}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {ALL_QUICK_ACTIONS.map(({ href, label, icon: Icon }) => {
+                    {ALL_QUICK_ACTIONS.map(({ href, labelKey, icon: Icon }) => {
                       const on = enabledQA.includes(href);
                       return (
                         <button
@@ -535,7 +537,7 @@ export default function DashboardPage() {
                         >
                           {on && <Check className="h-3 w-3" />}
                           <Icon className="h-3 w-3" />
-                          {label}
+                          {t(`quickActions.${labelKey}`)}
                         </button>
                       );
                     })}
@@ -544,21 +546,19 @@ export default function DashboardPage() {
               )}
               <div className="flex flex-wrap gap-2.5">
                 {ALL_QUICK_ACTIONS.filter(a => enabledQA.includes(a.href)).map(
-                  ({ href, label, icon: Icon }) => (
+                  ({ href, labelKey, icon: Icon }) => (
                     <Link
                       key={href}
                       href={href}
                       className="inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium rounded-lg border border-border bg-surface text-foreground hover:bg-secondary hover:border-border-hover transition-all duration-150"
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      {label}
+                      {t(`quickActions.${labelKey}`)}
                     </Link>
                   ),
                 )}
                 {enabledQA.length === 0 && (
-                  <p className="text-[13px] text-muted-foreground">
-                    Немає активних дій — натисніть ⚙ щоб налаштувати
-                  </p>
+                  <p className="text-[13px] text-muted-foreground">{t('quickActionsCard.empty')}</p>
                 )}
               </div>
             </CardContent>

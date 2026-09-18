@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -17,16 +18,8 @@ interface Me {
   email: string | null;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: 'Власник',
-  ADMIN: 'Адміністратор',
-  MECHANIC: 'Механік',
-  RECEPTIONIST: 'Адміністратор СТО',
-  STOREKEEPER: 'Комірник',
-  ACCOUNTANT: 'Бухгалтер',
-};
-
 export default function ProfilePage() {
+  const { t } = useTranslation('profile');
   const { employee } = useRequireAuth();
 
   const {
@@ -52,11 +45,11 @@ export default function ProfilePage() {
     setPwError('');
     setPwSuccess('');
     if (pwForm.next !== pwForm.confirm) {
-      setPwError('Паролі не збігаються');
+      setPwError(t('changePassword.mismatch'));
       return;
     }
     if (pwForm.next.length < 8) {
-      setPwError('Новий пароль має бути не менше 8 символів');
+      setPwError(t('changePassword.tooShort'));
       return;
     }
     setPwSaving(true);
@@ -65,10 +58,10 @@ export default function ProfilePage() {
         method: 'POST',
         body: JSON.stringify({ currentPassword: pwForm.current, newPassword: pwForm.next }),
       });
-      setPwSuccess('Пароль успішно змінено');
+      setPwSuccess(t('changePassword.success'));
       setPwForm({ current: '', next: '', confirm: '' });
     } catch (e: unknown) {
-      setPwError(e instanceof Error ? e.message : 'Помилка зміни пароля');
+      setPwError(e instanceof Error ? e.message : t('changePassword.error'));
     } finally {
       setPwSaving(false);
     }
@@ -85,14 +78,14 @@ export default function ProfilePage() {
     return (
       <div className="page-container">
         <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
-          {error || 'Профіль не знайдено'}
+          {error || t('notFound')}
         </div>
       </div>
     );
 
   return (
     <div className="page-container max-w-lg space-y-6">
-      <h1 className="page-title">Профіль</h1>
+      <h1 className="page-title">{t('title')}</h1>
 
       {/* Info card */}
       <div className="bg-surface rounded-xl border border-border p-5 space-y-3">
@@ -104,12 +97,14 @@ export default function ProfilePage() {
             <p className="font-semibold text-foreground text-lg">
               {me.lastName} {me.firstName}
             </p>
-            <p className="text-sm text-muted-foreground">{ROLE_LABELS[me.role] ?? me.role}</p>
+            <p className="text-sm text-muted-foreground">
+              {t(`roles.${me.role}`, { defaultValue: me.role })}
+            </p>
           </div>
         </div>
         {me.email && (
           <div>
-            <p className="text-xs text-muted-foreground">Email</p>
+            <p className="text-xs text-muted-foreground">{t('email')}</p>
             <p className="text-sm text-foreground">{me.email}</p>
           </div>
         )}
@@ -117,7 +112,7 @@ export default function ProfilePage() {
 
       {/* Change password */}
       <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
-        <h2 className="font-semibold text-foreground">Зміна пароля</h2>
+        <h2 className="font-semibold text-foreground">{t('changePassword.heading')}</h2>
         {pwError && (
           <div className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
             {pwError}
@@ -129,7 +124,7 @@ export default function ProfilePage() {
           </div>
         )}
         <Input
-          label="Поточний пароль"
+          label={t('changePassword.current')}
           type="password"
           value={pwForm.current}
           onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))}
@@ -137,16 +132,16 @@ export default function ProfilePage() {
           className="h-8 text-[13px]"
         />
         <Input
-          label="Новий пароль"
+          label={t('changePassword.new')}
           type="password"
           value={pwForm.next}
           onChange={e => setPwForm(f => ({ ...f, next: e.target.value }))}
-          hint="Не менше 8 символів"
+          hint={t('changePassword.newHint')}
           autoComplete="new-password"
           className="h-8 text-[13px]"
         />
         <Input
-          label="Підтвердження нового пароля"
+          label={t('changePassword.confirm')}
           type="password"
           value={pwForm.confirm}
           onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
@@ -158,7 +153,7 @@ export default function ProfilePage() {
           loading={pwSaving}
           disabled={!pwForm.current || !pwForm.next || !pwForm.confirm}
         >
-          Змінити пароль
+          {t('changePassword.submit')}
         </Button>
       </div>
     </div>

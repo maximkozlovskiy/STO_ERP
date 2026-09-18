@@ -1,0 +1,55 @@
+{
+  "loadError": "Failed to load some metrics — the data may be incomplete. Refresh the page.",
+  "greeting": {
+    "default": "Welcome",
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening"
+  },
+  "empty": {
+    "title": "No data",
+    "description": "Failed to load metrics"
+  },
+  "quickActions": {
+    "workOrders": "New work order",
+    "counterparties": "New client",
+    "purchaseOrders": "Purchase order",
+    "invoices": "Invoice",
+    "calendar": "Calendar",
+    "inventory": "Inventory"
+  },
+  "kpi": {
+    "inProgress": "In progress",
+    "completedToday": "{{n}} completed today",
+    "open": "Pending",
+    "revenueToday": "Revenue today",
+    "revenueMonth": "Revenue this month",
+    "unpaidInvoices": "Unpaid invoices",
+    "lowStock": "Low stock"
+  },
+  "revenue": {
+    "title": "Revenue over 7 days",
+    "allReports": "All reports →"
+  },
+  "maintenance": {
+    "title": "Upcoming service ({{n}})",
+    "allClients": "All clients →",
+    "regular": "Scheduled service",
+    "seasonal": "Seasonal service",
+    "overdue": "Overdue"
+  },
+  "warranties": {
+    "title": "Expiring warranties ({{n}})",
+    "client": "Client",
+    "workOrder": "Work order #{{number}}"
+  },
+  "quickActionsCard": {
+    "title": "Quick actions",
+    "configure": "Configure",
+    "chooseActions": "Choose actions",
+    "empty": "No active actions — click ⚙ to configure"
+  },
+  "chart": {
+    "revenue": "Revenue"
+  }
+}

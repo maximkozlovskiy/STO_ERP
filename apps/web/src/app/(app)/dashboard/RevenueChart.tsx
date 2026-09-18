@@ -1,5 +1,6 @@
 'use client';
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { fmtMoney, fmtDate } from '@/lib/format';
 
@@ -34,6 +35,7 @@ function yFmt(v: number): string {
 // (useDashboardStream) + локальний стан (todayStr/greeting/enabledQA/qaConfigOpen) — без memo
 // recharts проходить повний reconcile на кожен такий ре-рендер попри незмінні дані.
 function RevenueChart({ data }: { data: RevenuePoint[] }) {
+  const { t } = useTranslation('dashboard');
   return (
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} margin={{ left: -10 }}>
@@ -65,7 +67,7 @@ function RevenueChart({ data }: { data: RevenuePoint[] }) {
             fontSize: 12,
             boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           }}
-          formatter={v => [fmt(Number(v ?? 0)), 'Виручка']}
+          formatter={v => [fmt(Number(v ?? 0)), t('chart.revenue')]}
           labelFormatter={d => fmtDate(new Date(d + 'T12:00:00'))}
         />
         <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />

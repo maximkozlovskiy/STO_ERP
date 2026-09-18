@@ -56,6 +56,10 @@ if (!i18n.isInitialized) {
       'payroll',
       'pricingRules',
       'settlements',
+      'dashboard',
+      'profile',
+      'bookings',
+      'errorPages',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

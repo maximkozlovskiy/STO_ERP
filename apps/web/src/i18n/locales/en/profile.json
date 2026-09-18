@@ -1,0 +1,25 @@
+{
+  "title": "Profile",
+  "roles": {
+    "OWNER": "Owner",
+    "ADMIN": "Administrator",
+    "MECHANIC": "Mechanic",
+    "RECEPTIONIST": "Service advisor",
+    "STOREKEEPER": "Storekeeper",
+    "ACCOUNTANT": "Accountant"
+  },
+  "notFound": "Profile not found",
+  "email": "Email",
+  "changePassword": {
+    "heading": "Change password",
+    "current": "Current password",
+    "new": "New password",
+    "newHint": "At least 8 characters",
+    "confirm": "Confirm new password",
+    "submit": "Change password",
+    "mismatch": "Passwords do not match",
+    "tooShort": "New password must be at least 8 characters",
+    "success": "Password changed successfully",
+    "error": "Failed to change password"
+  }
+}
