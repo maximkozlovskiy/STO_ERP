@@ -17,12 +17,13 @@
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2539/2539 (167 файлів) · web 821/821 (86 файлів, +20 i18n) · settings 59.
-HEAD:       db571dd2 fix(tester): Bug #762 section-headers i18n-live (i18n foundation)
-i18n:       Багатомовність uk/en ГОТОВО (фундамент+зріз). react-i18next client-side (output:export/offline).
-            Селектор Settings→Оформлення. Зберігання org-default(OrganisationSettings.language)+user
-            (/user-preferences locale). enumLabel-обгортки (statuses.ts НЕ чіпано, backend PDF укр.),
-            nav+settings+формати перекладені. Live-фліп (I18nProvider languageChanged). Патерн: MP-F7.
-            Поза scope: ~170 inline-рядків + backend-exception + shared zod (окремо).
+HEAD:       i18n черга ЗАВЕРШЕНА (останній батч dashboard/profile/bookings/403)
+i18n:       Багатомовність uk/en ГОТОВО ПОВНІСТЮ — УВЕСЬ (app) UI (28 namespaces, 2612 ключів × 2 мови).
+            react-i18next client-side (output:export/offline, каталоги inlined). Селектор Settings→Оформлення.
+            Зберігання org-default(OrganisationSettings.language)+user(/user-preferences locale). Live-фліп
+            (I18nProvider languageChanged). enumLabel-обгортки (statuses.ts НЕ чіпано, backend PDF укр.).
+            Патерн MP-F7. 21 батч / 24 області, 4 консолідовані review — 0 defects. prod export build OK.
+            Поза scope (окремо, TBD): backend-exception (709) + shared zod (308) — лишились укр.
 Tester(i18n): 2026-09-18 (auto, коміти 7cc36318+585bfa89) — Bug #762 (MEDIUM, fixed db571dd2): section-
             headers сайдбару не перекладались live (dead NAV_SECTION_KEYS — TopShell рендерив сирий
             group.label без t()). web 821/821, api settings 59/59. Live auth-path SKIPPED (dev-БД не

@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-09-18 — Багатомовність: УВЕСЬ (app) UI перекладено uk/en
+
+### feat(i18n) #1-#21 — повний переклад inline-рядків (28 namespaces)
+
+Після foundation — інкрементальний переклад УСІХ inline-UI-рядків по областях (21 батч / 24 області),
+кожна через QA (byte-identical uk + uk/en parity + tsc + area-тести):
+
+- Документи: employees, invoices, purchase-orders, payments, supplier-payments, stock-documents.
+- Довідники: counterparties, catalog, ndi. Операції: cash, calendar. work-orders (найбільша, FSM/money).
+  reports, settings. Далі (після корекції неповної черги): infrastructure, vehicles, inventory, payroll,
+  pricing-rules, settlements, dashboard, profile, bookings, 403.
+- Патерн MP-F7: новий namespace на область, uk byte-identical (fallback baseline), en авторський,
+  enum-мітки через enumLabel-обгортки (statuses.ts НЕ чіпано), локальні мапи→namespace (порядок збережено),
+  column-persistence keyed by key, reserved-count→{{n}} guard, t/loop-var collisions вирішено.
+- **28 namespaces, 2612 ключів × 2 мови, повна uk↔en симетрія.**
+- QA: 4 консолідовані review (batches 1-3/4-6/7-9/10-21) — 0 defects. web 821/821; prod export build
+  exit 0; en-каталоги inlined (offline). Live-фліп працює на всьому UI.
+- Поза scope (окремо): backend-exception (709) + shared zod (308) — лишились укр.
+
 ## 2026-09-18 — Багатомовність: фундамент + вертикальний зріз uk/en
 
 ### feat(i18n) 7cc36318 + 585bfa89 + db571dd2 — i18n foundation (react-i18next)
