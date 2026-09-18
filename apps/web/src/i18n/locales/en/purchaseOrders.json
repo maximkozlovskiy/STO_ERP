@@ -1,0 +1,100 @@
+{
+  "title": "Purchasing",
+  "tabs": {
+    "orders": "Purchase orders",
+    "returns": "Supplier returns"
+  },
+  "columns": {
+    "number": "Number",
+    "supplier": "Supplier",
+    "warehouse": "Warehouse",
+    "status": "Status",
+    "amount": "Amount",
+    "date": "Document date",
+    "paymentDate": "Payment date",
+    "payDue": "Days to payment",
+    "priced": "Priced",
+    "linkedDocs": "Links"
+  },
+  "counters": {
+    "supplierPayments": "Payments",
+    "counterparty": "Counterparty",
+    "purchaseOrder": "Order",
+    "supplier": "Supplier",
+    "warehouse": "Warehouse"
+  },
+  "filters": {
+    "all": "All",
+    "searchPlaceholder": "Search by number or supplier...",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "filterSaved": "Filter \"{{name}}\" saved"
+  },
+  "actions": {
+    "addOrder": "Order",
+    "addReturn": "Return",
+    "edit": "Edit",
+    "markForDeletion": "Mark for deletion",
+    "open": "Open",
+    "openReturn": "Open return {{number}}",
+    "deleteReturn": "Delete return {{number}}",
+    "delete": "Delete",
+    "bulkDelete": "Delete selected"
+  },
+  "confirm": {
+    "bulkDeleteTitle": "Delete {{count}} orders?",
+    "bulkDeleteConfirm": "Delete",
+    "markForDeletion": "Mark order {{number}} for deletion?"
+  },
+  "empty": {
+    "ordersNotFound": "No orders found",
+    "returnsNotFound": "No returns found"
+  },
+  "priced": {
+    "yes": "Yes",
+    "no": "No"
+  },
+  "payDue": {
+    "overdue": "Overdue by {{days}} days",
+    "soon": "{{days}} days"
+  },
+  "badges": {
+    "deleted": "deleted"
+  },
+  "panel": {
+    "tabInfo": "General",
+    "tabLines": "Line items",
+    "tabLinks": "Links",
+    "openOrder": "Open order",
+    "noLines": "No line items"
+  },
+  "receive": {
+    "modalTitle": "Receiving for order {{number}}",
+    "confirmButton": "Confirm receipt",
+    "hint": "Enter the quantity actually received for each line item",
+    "ordered": "Ordered: {{quantity}} {{unit}} · Received earlier: {{received}}",
+    "maxPlaceholder": "max. {{max}}"
+  },
+  "toast": {
+    "bulkDeletedAll": "Deleted {{count}} orders",
+    "bulkDeletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
+    "bulkDeleteNone": "Failed to delete orders",
+    "markedForDeletion": "Order marked for deletion",
+    "returnDeleted": "Return deleted"
+  },
+  "aria": {
+    "selectAll": "Select all",
+    "selectRow": "Select order {{number}}",
+    "linkedDocsPopupOrder": "Related documents of the order",
+    "linkedDocsPopupReturn": "Related documents of the return"
+  },
+  "errors": {
+    "deleteFailed": "Deletion error",
+    "returnDeleteFailed": "Failed to delete",
+    "loadLines": "Failed to load line items",
+    "receiveNoQty": "Enter a quantity for at least one line item",
+    "receiveFailed": "Goods receipt error"
+  }
+}

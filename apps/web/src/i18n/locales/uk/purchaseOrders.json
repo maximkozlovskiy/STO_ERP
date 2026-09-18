@@ -1,0 +1,100 @@
+{
+  "title": "Купівля",
+  "tabs": {
+    "orders": "Замовлення постачальникам",
+    "returns": "Повернення постачальнику"
+  },
+  "columns": {
+    "number": "Номер",
+    "supplier": "Постачальник",
+    "warehouse": "Склад",
+    "status": "Статус",
+    "amount": "Сума",
+    "date": "Дата документа",
+    "paymentDate": "Дата оплати",
+    "payDue": "Днів до оплати",
+    "priced": "Розцінено",
+    "linkedDocs": "Зв'язки"
+  },
+  "counters": {
+    "supplierPayments": "Оплати",
+    "counterparty": "Контрагент",
+    "purchaseOrder": "Замовлення",
+    "supplier": "Постачальник",
+    "warehouse": "Склад"
+  },
+  "filters": {
+    "all": "Всі",
+    "searchPlaceholder": "Пошук за номером, постачальником...",
+    "dateFrom": "З",
+    "dateTo": "По",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "filterSaved": "Фільтр \"{{name}}\" збережено"
+  },
+  "actions": {
+    "addOrder": "Замовлення",
+    "addReturn": "Повернення",
+    "edit": "Редагувати",
+    "markForDeletion": "Позначити на видалення",
+    "open": "Відкрити",
+    "openReturn": "Відкрити повернення {{number}}",
+    "deleteReturn": "Видалити повернення {{number}}",
+    "delete": "Видалити",
+    "bulkDelete": "Видалити вибрані"
+  },
+  "confirm": {
+    "bulkDeleteTitle": "Видалити {{count}} замовлень?",
+    "bulkDeleteConfirm": "Видалити",
+    "markForDeletion": "Позначити замовлення {{number}} на видалення?"
+  },
+  "empty": {
+    "ordersNotFound": "Замовлень не знайдено",
+    "returnsNotFound": "Повернень не знайдено"
+  },
+  "priced": {
+    "yes": "Так",
+    "no": "Ні"
+  },
+  "payDue": {
+    "overdue": "Прострочено {{days}} дн.",
+    "soon": "{{days}} дн."
+  },
+  "badges": {
+    "deleted": "видалено"
+  },
+  "panel": {
+    "tabInfo": "Основне",
+    "tabLines": "Позиції",
+    "tabLinks": "Зв'язки",
+    "openOrder": "Відкрити замовлення",
+    "noLines": "Немає позицій"
+  },
+  "receive": {
+    "modalTitle": "Прийом по замовленню {{number}}",
+    "confirmButton": "Підтвердити прийом",
+    "hint": "Вкажіть кількість, яку фактично отримано по кожній позиції",
+    "ordered": "Замовлено: {{quantity}} {{unit}} · Отримано раніше: {{received}}",
+    "maxPlaceholder": "макс. {{max}}"
+  },
+  "toast": {
+    "bulkDeletedAll": "Видалено {{count}} замовлень",
+    "bulkDeletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
+    "bulkDeleteNone": "Не вдалося видалити замовлення",
+    "markedForDeletion": "Замовлення позначено на видалення",
+    "returnDeleted": "Повернення видалено"
+  },
+  "aria": {
+    "selectAll": "Вибрати всі",
+    "selectRow": "Вибрати замовлення {{number}}",
+    "linkedDocsPopupOrder": "Пов'язані документи замовлення",
+    "linkedDocsPopupReturn": "Пов'язані документи повернення"
+  },
+  "errors": {
+    "deleteFailed": "Помилка видалення",
+    "returnDeleteFailed": "Не вдалось видалити",
+    "loadLines": "Не вдалось завантажити позиції",
+    "receiveNoQty": "Вкажіть кількість для хоча б однієї позиції",
+    "receiveFailed": "Помилка прийому товару"
+  }
+}

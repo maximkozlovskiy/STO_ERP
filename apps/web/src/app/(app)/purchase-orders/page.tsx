@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { ElementType } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
@@ -113,20 +114,21 @@ interface PoFilters extends Record<string, unknown> {
 
 const STATUS_BADGE = PO_STATUS_BADGE;
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'number', label: 'Номер', defaultVisible: true },
-  { key: 'supplier', label: 'Постачальник', defaultVisible: true },
-  { key: 'warehouse', label: 'Склад', defaultVisible: true },
-  { key: 'status', label: 'Статус', defaultVisible: true },
-  { key: 'amount', label: 'Сума', defaultVisible: true },
-  { key: 'date', label: 'Дата документа', defaultVisible: true },
-  { key: 'paymentDate', label: 'Дата оплати', defaultVisible: true },
-  { key: 'payDue', label: 'Днів до оплати', defaultVisible: true },
-  { key: 'priced', label: 'Розцінено', defaultVisible: true },
-  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
+// Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'number', labelKey: 'columns.number', defaultVisible: true },
+  { key: 'supplier', labelKey: 'columns.supplier', defaultVisible: true },
+  { key: 'warehouse', labelKey: 'columns.warehouse', defaultVisible: true },
+  { key: 'status', labelKey: 'columns.status', defaultVisible: true },
+  { key: 'amount', labelKey: 'columns.amount', defaultVisible: true },
+  { key: 'date', labelKey: 'columns.date', defaultVisible: true },
+  { key: 'paymentDate', labelKey: 'columns.paymentDate', defaultVisible: true },
+  { key: 'payDue', labelKey: 'columns.payDue', defaultVisible: true },
+  { key: 'priced', labelKey: 'columns.priced', defaultVisible: true },
+  { key: 'linkedDocs', labelKey: 'columns.linkedDocs', defaultVisible: true },
 ];
-const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 
 // Замовлення «активне» (дата оплати ще горить), поки не отримане/скасоване.
 const PO_INACTIVE_STATUSES = new Set(['RECEIVED', 'CANCELLED']);
@@ -146,22 +148,22 @@ const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMa
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
   Icon: ElementType;
-  label: string;
+  labelKey: string;
 }> = [
-  { field: 'supplierPayments', Icon: Wallet, label: 'Оплати' },
-  { field: 'counterparty', Icon: User, label: 'Контрагент' },
+  { field: 'supplierPayments', Icon: Wallet, labelKey: 'counters.supplierPayments' },
+  { field: 'counterparty', Icon: User, labelKey: 'counters.counterparty' },
 ];
 
-const COLUMNS_SR: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'number', label: 'Номер', defaultVisible: true },
-  { key: 'supplier', label: 'Постачальник', defaultVisible: true },
-  { key: 'warehouse', label: 'Склад', defaultVisible: true },
-  { key: 'status', label: 'Статус', defaultVisible: true },
-  { key: 'amount', label: 'Сума', defaultVisible: true },
-  { key: 'date', label: 'Дата документа', defaultVisible: true },
-  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
+const COLUMN_SR_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'number', labelKey: 'columns.number', defaultVisible: true },
+  { key: 'supplier', labelKey: 'columns.supplier', defaultVisible: true },
+  { key: 'warehouse', labelKey: 'columns.warehouse', defaultVisible: true },
+  { key: 'status', labelKey: 'columns.status', defaultVisible: true },
+  { key: 'amount', labelKey: 'columns.amount', defaultVisible: true },
+  { key: 'date', labelKey: 'columns.date', defaultVisible: true },
+  { key: 'linkedDocs', labelKey: 'columns.linkedDocs', defaultVisible: true },
 ];
-const COLUMNS_SR_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS_SR.map(c => c.key));
+const COLUMNS_SR_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_SR_DEFS.map(c => c.key));
 
 // Ключі секцій дзеркалять backend supplier-returns.getLinkedCounts
 // (purchaseOrder/counterparty/warehouse).
@@ -171,22 +173,25 @@ type SrLinkedCountsMap = Record<string, SrLinkedCountsEntry>;
 
 const EMPTY_SR_LINKED_COUNTS: SrLinkedCountsMap = Object.freeze({}) as SrLinkedCountsMap;
 
-const DOC_COUNTERS_SR: Array<{ field: SrLinkedCountsField; Icon: ElementType; label: string }> = [
-  { field: 'purchaseOrder', Icon: ClipboardList, label: 'Замовлення' },
-  { field: 'counterparty', Icon: User, label: 'Постачальник' },
-  { field: 'warehouse', Icon: Warehouse, label: 'Склад' },
+const DOC_COUNTERS_SR: Array<{
+  field: SrLinkedCountsField;
+  Icon: ElementType;
+  labelKey: string;
+}> = [
+  { field: 'purchaseOrder', Icon: ClipboardList, labelKey: 'counters.purchaseOrder' },
+  { field: 'counterparty', Icon: User, labelKey: 'counters.supplier' },
+  { field: 'warehouse', Icon: Warehouse, labelKey: 'counters.warehouse' },
 ];
 
-// Опції фільтра статусу — повністю статичні (лейбли через poStatusLabel).
-// Раніше створювались у тілі компонента на кожен render разом з рядками StatusPill.
-const PO_STATUS_FILTER_OPTIONS: Array<[string, string]> = [
-  ['', 'Всі'],
-  ['DRAFT', poStatusLabel('DRAFT')],
-  ['ORDERED', poStatusLabel('ORDERED')],
-  ['PARTIAL', poStatusLabel('PARTIAL')],
-  ['RECEIVED', poStatusLabel('RECEIVED')],
-  ['CANCELLED', poStatusLabel('CANCELLED')],
-];
+// Статус-коди фільтра PO (лейбл 'Всі' + poStatusLabel резолвляться у компоненті).
+const PO_STATUS_FILTER_CODES = [
+  '',
+  'DRAFT',
+  'ORDERED',
+  'PARTIAL',
+  'RECEIVED',
+  'CANCELLED',
+] as const;
 
 interface SrFilters extends Record<string, unknown> {
   status: string;
@@ -200,6 +205,17 @@ type PurchaseTab = 'orders' | 'returns';
 
 function PurchaseOrdersPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
+  const { t } = useTranslation('purchaseOrders');
+
+  // Колонки з перекладеними мітками (label = i18n, резолвиться у компоненті).
+  const COLUMNS = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
+  const COLUMNS_SR = useMemo(() => COLUMN_SR_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
+
+  // Опції фільтра статусу PO (лейбли через t / poStatusLabel).
+  const statuses = useMemo<Array<[string, string]>>(
+    () => PO_STATUS_FILTER_CODES.map(code => [code, code ? poStatusLabel(code) : t('filters.all')]),
+    [t],
+  );
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -331,7 +347,7 @@ function PurchaseOrdersPageClient() {
     (name: string) => {
       const preset = saveFilter(name, { status, q, showDeleted, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
     [
       saveFilter,
@@ -342,6 +358,7 @@ function PurchaseOrdersPageClient() {
       dateTo,
       features.toastEnabled,
       setActiveSavedFilterId,
+      t,
     ],
   );
 
@@ -371,7 +388,7 @@ function PurchaseOrdersPageClient() {
       return [
         {
           key: 'info',
-          label: 'Основне',
+          label: t('panel.tabInfo'),
           content: (
             <div className="space-y-3">
               {buildPanelFields(po, PURCHASE_ORDER_PANEL_SCHEMA, panelConfig.config, {
@@ -414,7 +431,7 @@ function PurchaseOrdersPageClient() {
                   className="w-full"
                   onClick={() => setEditingPOId(po.id)}
                 >
-                  Відкрити замовлення
+                  {t('panel.openOrder')}
                 </Button>
               </div>
             </div>
@@ -422,10 +439,10 @@ function PurchaseOrdersPageClient() {
         },
         {
           key: 'lines',
-          label: 'Позиції',
+          label: t('panel.tabLines'),
           content:
             po.lines.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Немає позицій</p>
+              <p className="text-[13px] text-muted-foreground">{t('panel.noLines')}</p>
             ) : (
               <div className="space-y-2">
                 {po.lines.map((line, i) => (
@@ -449,12 +466,12 @@ function PurchaseOrdersPageClient() {
         },
         {
           key: 'links',
-          label: "Зв'язки",
+          label: t('panel.tabLinks'),
           content: <LinkedDocumentsPanel config={linkedConfig} entityId={po.id} />,
         },
       ];
     },
-    [panelConfig.config, linkedConfig, baseCode, baseSymbol],
+    [panelConfig.config, linkedConfig, baseCode, baseSymbol, t],
   );
 
   // Ref з id поточно вибраного PO — щоб toggle-логіка не залежала від стейл-замикання
@@ -569,7 +586,7 @@ function PurchaseOrdersPageClient() {
         dateTo: srDateTo,
       });
       setSrActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
     [
       saveSrFilter,
@@ -580,6 +597,7 @@ function PurchaseOrdersPageClient() {
       srDateTo,
       features.toastEnabled,
       setSrActiveSavedFilterId,
+      t,
     ],
   );
 
@@ -632,8 +650,8 @@ function PurchaseOrdersPageClient() {
     async (ids: string[]) => {
       if (
         !(await confirm({
-          title: `Видалити ${ids.length} замовлень?`,
-          confirmLabel: 'Видалити',
+          title: t('confirm.bulkDeleteTitle', { count: ids.length }),
+          confirmLabel: t('confirm.bulkDeleteConfirm'),
           variant: 'destructive',
         }))
       )
@@ -648,32 +666,35 @@ function PurchaseOrdersPageClient() {
       // CHARGE) → інвалідуємо повний набір side-effects, а не лише список PO.
       invalidatePurchaseSideEffects(queryClient);
       if (features.toastEnabled) {
-        if (succeeded > 0 && failed === 0) toast.success(`Видалено ${succeeded} замовлень`);
+        if (succeeded > 0 && failed === 0)
+          toast.success(t('toast.bulkDeletedAll', { count: succeeded }));
         else if (succeeded > 0)
-          toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
-        else toast.error('Не вдалося видалити замовлення');
+          toast.warning(
+            t('toast.bulkDeletedPartial', { succeeded, total: results.length, failed }),
+          );
+        else toast.error(t('toast.bulkDeleteNone'));
       }
     },
-    [confirm, bulkSelect, features.toastEnabled, queryClient],
+    [confirm, bulkSelect, features.toastEnabled, queryClient, t],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибрані',
+        label: t('actions.bulkDelete'),
         variant: 'destructive',
         onClick: bulkDeleteSelected,
       },
     ],
-    [bulkDeleteSelected],
+    [bulkDeleteSelected, t],
   );
 
   const markDeleted = useCallback(
     async (po: PurchaseOrder) => {
       if (
         !(await confirm({
-          title: `Позначити замовлення ${po.number} на видалення?`,
+          title: t('confirm.markForDeletion', { number: po.number }),
           variant: 'destructive',
         }))
       )
@@ -683,13 +704,13 @@ function PurchaseOrdersPageClient() {
         setSelectedPO(prev => (prev?.id === po.id ? null : prev));
         // Отримане PO при видаленні реверсить склад/баланс → повний side-effects набір.
         invalidatePurchaseSideEffects(queryClient);
-        if (features.toastEnabled) toast.success('Замовлення позначено на видалення');
+        if (features.toastEnabled) toast.success(t('toast.markedForDeletion'));
       } catch (e: unknown) {
         if (features.toastEnabled)
-          toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+          toast.error(e instanceof Error ? e.message : t('errors.deleteFailed'));
       }
     },
-    [confirm, queryClient, features.toastEnabled],
+    [confirm, queryClient, features.toastEnabled, t],
   );
 
   const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
@@ -708,10 +729,10 @@ function PurchaseOrdersPageClient() {
         const full = await apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`);
         openReceiveWithLines(full);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Не вдалось завантажити позиції');
+        setError(e instanceof Error ? e.message : t('errors.loadLines'));
       }
     },
-    [openReceiveWithLines],
+    [openReceiveWithLines, t],
   );
 
   const handleReceive = async () => {
@@ -720,7 +741,7 @@ function PurchaseOrdersPageClient() {
       .filter(l => parseFloat(l.receivedQty) > 0)
       .map(l => ({ lineId: l.lineId, receivedQty: parseFloat(l.receivedQty) }));
     if (!receivedLines.length) {
-      setError('Вкажіть кількість для хоча б однієї позиції');
+      setError(t('errors.receiveNoQty'));
       return;
     }
     setSaving(true);
@@ -734,13 +755,11 @@ function PurchaseOrdersPageClient() {
       dirty.resetDirty();
       invalidatePoReceiptCaches();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка прийому товару');
+      setError(e instanceof Error ? e.message : t('errors.receiveFailed'));
     } finally {
       setSaving(false);
     }
   };
-
-  const statuses = PO_STATUS_FILTER_OPTIONS;
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -751,7 +770,7 @@ function PurchaseOrdersPageClient() {
       )}
       <div className="page-header">
         <div>
-          <h1 className="page-title">Купівля</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
@@ -759,8 +778,8 @@ function PurchaseOrdersPageClient() {
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {(
           [
-            { key: 'orders', label: 'Замовлення постачальникам' },
-            { key: 'returns', label: 'Повернення постачальнику' },
+            { key: 'orders', label: t('tabs.orders') },
+            { key: 'returns', label: t('tabs.returns') },
           ] as const
         ).map(tab => (
           <button
@@ -807,7 +826,7 @@ function PurchaseOrdersPageClient() {
               <StatusPill
                 key={s}
                 value={s}
-                label={s ? supplierReturnStatusLabel(s) : 'Всі'}
+                label={s ? supplierReturnStatusLabel(s) : t('filters.all')}
                 active={srStatus === s}
                 description={s ? SUPPLIER_RETURN_STATUS_DESCRIPTIONS[s] : undefined}
                 onSelect={v => {
@@ -828,12 +847,14 @@ function PurchaseOrdersPageClient() {
                 resetSrPage();
                 setSrActiveSavedFilterId(null);
               }}
-              placeholder="Пошук за номером, постачальником..."
+              placeholder={t('filters.searchPlaceholder')}
               leftElement={<Search />}
               className="w-64 h-8 text-[13px]"
             />
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+              <span className="text-[13px] text-muted-foreground shrink-0">
+                {t('filters.dateFrom')}
+              </span>
               <DatePickerInput
                 value={srDateFrom}
                 onChange={v => {
@@ -846,7 +867,9 @@ function PurchaseOrdersPageClient() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+              <span className="text-[13px] text-muted-foreground shrink-0">
+                {t('filters.dateTo')}
+              </span>
               <DatePickerInput
                 value={srDateTo}
                 onChange={v => {
@@ -862,7 +885,7 @@ function PurchaseOrdersPageClient() {
               <Button
                 variant="outline"
                 size="icon-sm"
-                title={srShowDeleted ? 'Сховати видалені' : 'Показати видалені'}
+                title={srShowDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
                 onClick={() => {
                   setSrShowDeleted(v => !v);
                   resetSrPage();
@@ -893,7 +916,7 @@ function PurchaseOrdersPageClient() {
                 }}
                 leftIcon={<Plus className="h-4 w-4" />}
               >
-                Повернення
+                {t('actions.addReturn')}
               </Button>
             </div>
           </div>
@@ -934,7 +957,7 @@ function PurchaseOrdersPageClient() {
                       <TableCell colSpan={srVisibleColumns.length + 1} className="p-0">
                         <EmptyState
                           icon={ShoppingCart}
-                          title="Повернень не знайдено"
+                          title={t('empty.returnsNotFound')}
                           action={
                             <Button
                               size="sm"
@@ -944,7 +967,7 @@ function PurchaseOrdersPageClient() {
                               }}
                             >
                               <Plus className="mr-1 h-4 w-4" />
-                              Повернення
+                              {t('actions.addReturn')}
                             </Button>
                           }
                         />
@@ -1014,7 +1037,7 @@ function PurchaseOrdersPageClient() {
                             return (
                               <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                                 <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                  {DOC_COUNTERS_SR.map(({ field, Icon, label }) => {
+                                  {DOC_COUNTERS_SR.map(({ field, Icon, labelKey }) => {
                                     const n = counts?.[field];
                                     if (!n) return null;
                                     return (
@@ -1022,7 +1045,7 @@ function PurchaseOrdersPageClient() {
                                         key={field}
                                         onClick={() => setSrLinkedDocPopupId(sr.id)}
                                         className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                        title={`${label}: ${n}`}
+                                        title={`${t(labelKey)}: ${n}`}
                                       >
                                         <Icon size={13} />
                                         <span>{n}</span>
@@ -1040,8 +1063,8 @@ function PurchaseOrdersPageClient() {
                             <button
                               type="button"
                               className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-                              title="Відкрити"
-                              aria-label={`Відкрити повернення ${sr.number}`}
+                              title={t('actions.open')}
+                              aria-label={t('actions.openReturn', { number: sr.number })}
                               onClick={() => {
                                 setSrEditId(sr.id);
                                 setSrCreateOpen(true);
@@ -1053,8 +1076,8 @@ function PurchaseOrdersPageClient() {
                               <button
                                 type="button"
                                 className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-                                title="Видалити"
-                                aria-label={`Видалити повернення ${sr.number}`}
+                                title={t('actions.delete')}
+                                aria-label={t('actions.deleteReturn', { number: sr.number })}
                                 disabled={
                                   deleteSupplierReturn.isPending &&
                                   deleteSupplierReturn.variables === sr.id
@@ -1065,11 +1088,14 @@ function PurchaseOrdersPageClient() {
                                   // (TanStack Query не має глобального MutationCache.onError у проекті).
                                   try {
                                     await deleteSupplierReturn.mutateAsync(sr.id);
-                                    if (features.toastEnabled) toast.success('Повернення видалено');
+                                    if (features.toastEnabled)
+                                      toast.success(t('toast.returnDeleted'));
                                   } catch (err: unknown) {
                                     if (features.toastEnabled)
                                       toast.error(
-                                        err instanceof Error ? err.message : 'Не вдалось видалити',
+                                        err instanceof Error
+                                          ? err.message
+                                          : t('errors.returnDeleteFailed'),
                                       );
                                   }
                                 }}
@@ -1129,12 +1155,14 @@ function PurchaseOrdersPageClient() {
                 resetPage();
                 setActiveSavedFilterId(null);
               }}
-              placeholder="Пошук за номером, постачальником..."
+              placeholder={t('filters.searchPlaceholder')}
               leftElement={<Search />}
               className="w-64 h-8 text-[13px]"
             />
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+              <span className="text-[13px] text-muted-foreground shrink-0">
+                {t('filters.dateFrom')}
+              </span>
               <DatePickerInput
                 value={dateFrom}
                 onChange={v => {
@@ -1147,7 +1175,9 @@ function PurchaseOrdersPageClient() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+              <span className="text-[13px] text-muted-foreground shrink-0">
+                {t('filters.dateTo')}
+              </span>
               <DatePickerInput
                 value={dateTo}
                 onChange={v => {
@@ -1164,7 +1194,7 @@ function PurchaseOrdersPageClient() {
               <Button
                 variant="outline"
                 size="icon-sm"
-                title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+                title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
                 onClick={() => {
                   setShowDeleted(v => !v);
                   resetPage();
@@ -1189,7 +1219,7 @@ function PurchaseOrdersPageClient() {
               />
               <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
               <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-                Замовлення
+                {t('actions.addOrder')}
               </Button>
             </div>
           </div>
@@ -1218,7 +1248,7 @@ function PurchaseOrdersPageClient() {
                           ref={selectAllRef}
                           onChange={bulkSelect.toggleAll}
                           className="h-3.5 w-3.5 rounded border-border"
-                          aria-label="Вибрати всі"
+                          aria-label={t('aria.selectAll')}
                         />
                       </TableHead>
                     )}
@@ -1271,7 +1301,7 @@ function PurchaseOrdersPageClient() {
                         colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                         className="p-0"
                       >
-                        <EmptyState icon={ShoppingCart} title="Замовлень не знайдено" />
+                        <EmptyState icon={ShoppingCart} title={t('empty.ordersNotFound')} />
                       </TableCell>
                     </TableRow>
                   )}
@@ -1312,7 +1342,7 @@ function PurchaseOrdersPageClient() {
                                 checked={bulkSelect.isSelected(po.id)}
                                 onChange={() => bulkSelect.toggle(po.id)}
                                 className="h-3.5 w-3.5 rounded border-border"
-                                aria-label={`Вибрати замовлення ${po.number}`}
+                                aria-label={t('aria.selectRow', { number: po.number })}
                               />
                             </TableCell>
                           )}
@@ -1326,7 +1356,7 @@ function PurchaseOrdersPageClient() {
                                       variant="destructive"
                                       className="ml-2 text-[10px] px-1 py-0"
                                     >
-                                      видалено
+                                      {t('badges.deleted')}
                                     </Badge>
                                   )}
                                 </TableCell>
@@ -1403,8 +1433,8 @@ function PurchaseOrdersPageClient() {
                                     <ExpiryBadge
                                       date={po.paymentDate}
                                       nowMs={nowMs}
-                                      expiredLabel={`Прострочено ${Math.abs(dpd)} дн.`}
-                                      soonLabel={`${dpd} дн.`}
+                                      expiredLabel={t('payDue.overdue', { days: Math.abs(dpd) })}
+                                      soonLabel={t('payDue.soon', { days: dpd })}
                                       soonDays={20}
                                     />
                                   )}
@@ -1415,9 +1445,11 @@ function PurchaseOrdersPageClient() {
                               return (
                                 <TableCell key="priced" className="text-[13px]">
                                   {po.pricedAt ? (
-                                    <span className="text-success font-medium">Так</span>
+                                    <span className="text-success font-medium">
+                                      {t('priced.yes')}
+                                    </span>
                                   ) : (
-                                    <span className="text-muted-foreground">Ні</span>
+                                    <span className="text-muted-foreground">{t('priced.no')}</span>
                                   )}
                                 </TableCell>
                               );
@@ -1426,7 +1458,7 @@ function PurchaseOrdersPageClient() {
                               return (
                                 <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                                   <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                    {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                    {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
                                       const n = counts?.[field];
                                       if (!n) return null;
                                       return (
@@ -1434,7 +1466,7 @@ function PurchaseOrdersPageClient() {
                                           key={field}
                                           onClick={() => setLinkedDocPopupId(po.id)}
                                           className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                          title={`${label}: ${n}`}
+                                          title={`${t(labelKey)}: ${n}`}
                                         >
                                           <Icon size={13} />
                                           <span>{n}</span>
@@ -1453,7 +1485,7 @@ function PurchaseOrdersPageClient() {
                                 type="button"
                                 variant="ghost"
                                 size="icon-sm"
-                                title="Редагувати"
+                                title={t('actions.edit')}
                                 className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                                 onClick={() => setEditingPOId(po.id)}
                               >
@@ -1463,7 +1495,7 @@ function PurchaseOrdersPageClient() {
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  title="Позначити на видалення"
+                                  title={t('actions.markForDeletion')}
                                   className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                                   onClick={() => void markDeleted(po)}
                                 >
@@ -1523,19 +1555,17 @@ function PurchaseOrdersPageClient() {
           setShowReceive(null);
           dirty.resetDirty();
         }}
-        title={showReceive ? `Прийом по замовленню ${showReceive.number}` : ''}
+        title={showReceive ? t('receive.modalTitle', { number: showReceive.number }) : ''}
         size="lg"
         footer={
           <Button onClick={handleReceive} loading={saving} className="w-full">
-            Підтвердити прийом
+            {t('receive.confirmButton')}
           </Button>
         }
       >
         {showReceive && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Вкажіть кількість, яку фактично отримано по кожній позиції
-            </p>
+            <p className="text-sm text-muted-foreground">{t('receive.hint')}</p>
             <div className="space-y-3">
               {showReceive.lines.map((line, i) => (
                 <div
@@ -1545,8 +1575,11 @@ function PurchaseOrdersPageClient() {
                   <div className="flex-1">
                     <div className="text-sm font-medium text-foreground">{line.goodName}</div>
                     <div className="text-xs text-muted-foreground">
-                      Замовлено: {line.quantity} {line.unitShortName ?? line.unit} · Отримано
-                      раніше: {line.receivedQty ?? 0}
+                      {t('receive.ordered', {
+                        quantity: line.quantity,
+                        unit: line.unitShortName ?? line.unit,
+                        received: line.receivedQty ?? 0,
+                      })}
                     </div>
                   </div>
                   <Input
@@ -1558,7 +1591,9 @@ function PurchaseOrdersPageClient() {
                       );
                       dirty.markDirty();
                     }}
-                    placeholder={`макс. ${line.quantity - (line.receivedQty ?? 0)}`}
+                    placeholder={t('receive.maxPlaceholder', {
+                      max: line.quantity - (line.receivedQty ?? 0),
+                    })}
                     min="0"
                     max={line.quantity - (line.receivedQty ?? 0)}
                     step="0.001"
@@ -1595,7 +1630,7 @@ function PurchaseOrdersPageClient() {
           entityId={linkedDocPopupId}
           config={linkedConfig}
           onClose={() => setLinkedDocPopupId(null)}
-          ariaLabel="Пов'язані документи замовлення"
+          ariaLabel={t('aria.linkedDocsPopupOrder')}
         />
       )}
 
@@ -1604,7 +1639,7 @@ function PurchaseOrdersPageClient() {
           entityId={srLinkedDocPopupId}
           config={srLinkedConfig}
           onClose={() => setSrLinkedDocPopupId(null)}
-          ariaLabel="Пов'язані документи повернення"
+          ariaLabel={t('aria.linkedDocsPopupReturn')}
         />
       )}
     </div>
