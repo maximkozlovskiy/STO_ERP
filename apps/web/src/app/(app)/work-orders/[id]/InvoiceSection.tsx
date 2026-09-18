@@ -10,6 +10,7 @@
 // + invoiceRef !== undefined (тобто apiFetch завершився, або null=немає).
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import {
   INVOICE_STATUS_BADGE,
@@ -68,6 +69,7 @@ export function InvoiceSection({
   invoiceRef,
   onChange,
 }: InvoiceSectionProps) {
+  const { t } = useTranslation('workOrders');
   const router = useRouter();
   const features = useUiFeatures();
   const { data: baseCurrency } = useBaseCurrency();
@@ -91,9 +93,9 @@ export function InvoiceSection({
         method: 'POST',
       });
       onChange(toInvoiceRef(inv));
-      if (features.toastEnabled) toast.success(`Рахунок № ${inv.number} створено`);
+      if (features.toastEnabled) toast.success(t('invoice.createdToast', { number: inv.number }));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка створення рахунку';
+      const msg = e instanceof Error ? e.message : t('invoice.createError');
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setCreatingInvoice(false);
@@ -108,9 +110,9 @@ export function InvoiceSection({
         { method: 'POST' },
       );
       onChange(toInvoiceRef(inv));
-      if (features.toastEnabled) toast.success('Рядки рахунку оновлено з наряду');
+      if (features.toastEnabled) toast.success(t('invoice.refreshedToast'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка оновлення рахунку';
+      const msg = e instanceof Error ? e.message : t('invoice.refreshError');
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setRefreshingInvoice(false);
@@ -134,7 +136,7 @@ export function InvoiceSection({
       // the browser starts reading.
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка завантаження PDF';
+      const msg = e instanceof Error ? e.message : t('invoice.pdfError');
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setDownloadingInvoicePdf(false);
@@ -144,7 +146,7 @@ export function InvoiceSection({
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold text-foreground">Рахунок</h2>
+        <h2 className="font-semibold text-foreground">{t('invoice.title')}</h2>
         {!invoiceRef && (
           <Button
             variant="outline"
@@ -153,13 +155,15 @@ export function InvoiceSection({
             loading={creatingInvoice}
             disabled={creatingInvoice}
           >
-            Виставити рахунок
+            {t('invoice.create')}
           </Button>
         )}
       </div>
       {invoiceRef ? (
         <div className="flex items-center gap-4 flex-wrap">
-          <p className="text-sm font-medium text-foreground">Рахунок № {invoiceRef.number}</p>
+          <p className="text-sm font-medium text-foreground">
+            {t('invoice.number', { number: invoiceRef.number })}
+          </p>
           <Badge
             variant={INVOICE_STATUS_BADGE[invoiceRef.status] ?? 'secondary'}
             tooltip={INVOICE_STATUS_DESCRIPTIONS[invoiceRef.status]}
@@ -179,7 +183,8 @@ export function InvoiceSection({
                 {!isBase && invoiceRef.totalAmountBase != null && (
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {fmtMoney(invoiceRef.totalAmountBase)} {baseSymbol}
-                    {invoiceRef.rateUsed != null && ` · курс ${invoiceRef.rateUsed}`}
+                    {invoiceRef.rateUsed != null &&
+                      t('invoice.rateSuffix', { rate: invoiceRef.rateUsed })}
                   </span>
                 )}
               </span>
@@ -196,7 +201,7 @@ export function InvoiceSection({
               loading={refreshingInvoice}
               disabled={refreshingInvoice}
             >
-              Оновити з наряду
+              {t('invoice.refresh')}
             </Button>
           )}
           <Button
@@ -206,14 +211,14 @@ export function InvoiceSection({
             loading={downloadingInvoicePdf}
             disabled={downloadingInvoicePdf}
           >
-            PDF рахунку
+            {t('invoice.pdf')}
           </Button>
           <Button variant="outline" size="sm" onClick={() => router.push('/invoices')}>
-            Відкрити рахунки ↗
+            {t('invoice.openInvoices')}
           </Button>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">Рахунок не виставлено</p>
+        <p className="text-sm text-muted-foreground">{t('invoice.notCreated')}</p>
       )}
     </div>
   );

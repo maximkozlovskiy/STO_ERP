@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -59,21 +60,22 @@ export function WorkOrderPartsSection({
   disabled,
   onError,
 }: WorkOrderPartsSectionProps) {
+  const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
   const { confirm, dialogProps } = useConfirm();
   const [partModal, setPartModal] = useState(false);
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
 
   const removePart = async (partId: string) => {
-    if (!(await confirm({ title: 'Видалити запчастину?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('parts.confirmDelete'), variant: 'destructive' }))) return;
     setDeletingPartId(partId);
     onError?.('');
     try {
       await apiFetch<void>(`/work-orders/${woId}/parts/${partId}`, { method: 'DELETE' });
-      if (features.toastEnabled) toast.success('Запчастину видалено');
+      if (features.toastEnabled) toast.success(t('parts.deletedToast'));
       onChanged();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      const msg = e instanceof Error ? e.message : t('parts.deleteError');
       onError?.(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -87,7 +89,7 @@ export function WorkOrderPartsSection({
     <>
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-foreground">Запчастини та матеріали</h2>
+          <h2 className="font-semibold text-foreground">{t('parts.title')}</h2>
           {canEdit && (
             <div className="flex items-center gap-3">
               <XlsxImportButton
@@ -103,13 +105,13 @@ export function WorkOrderPartsSection({
                 }}
                 className="text-sm text-primary hover:underline"
               >
-                + Запчастина
+                {t('parts.add')}
               </button>
             </div>
           )}
         </div>
         {(parts?.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">Запчастини не додані</p>
+          <p className="text-sm text-muted-foreground">{t('parts.empty')}</p>
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
             {parts.map(p => (
@@ -122,7 +124,7 @@ export function WorkOrderPartsSection({
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {p.quantity} {p.unitShortName ?? 'шт'} × {fmtMoney(p.price)} ₴
+                    {p.quantity} {p.unitShortName ?? t('parts.unitDefault')} × {fmtMoney(p.price)} ₴
                   </p>
                 </div>
                 <div className="text-right mr-3">
@@ -131,7 +133,7 @@ export function WorkOrderPartsSection({
                 {canEdit && (
                   <button
                     type="button"
-                    aria-label="Видалити запчастину"
+                    aria-label={t('parts.deleteAria')}
                     onClick={() => removePart(p.id)}
                     disabled={deletingPartId === p.id}
                     className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 
@@ -30,6 +31,7 @@ export function WorkOrderMediaSection({
   onChanged,
   onError,
 }: WorkOrderMediaSectionProps) {
+  const { t } = useTranslation('workOrders');
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
@@ -63,7 +65,7 @@ export function WorkOrderMediaSection({
     );
     const failures = results.filter(r => r.status === 'rejected').length;
     if (failures > 0) {
-      onError?.(`Не вдалося завантажити ${failures} файл(ів)`);
+      onError?.(t('media.uploadError', { count: failures }));
     }
     onChanged();
     setUploadingMedia(false);
@@ -73,7 +75,9 @@ export function WorkOrderMediaSection({
     <>
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
-          <h3 className="font-medium text-foreground text-sm">Фото ({media.length})</h3>
+          <h3 className="font-medium text-foreground text-sm">
+            {t('media.title', { count: media.length })}
+          </h3>
           <label className="cursor-pointer">
             <input
               type="file"
@@ -90,7 +94,7 @@ export function WorkOrderMediaSection({
               loading={uploadingMedia}
               onClick={e => e.preventDefault()}
             >
-              Додати фото
+              {t('media.add')}
             </Button>
           </label>
         </div>
@@ -104,7 +108,7 @@ export function WorkOrderMediaSection({
         >
           {media.length === 0 ? (
             <div className="text-center text-muted-foreground text-sm py-6 border-2 border-dashed border-border rounded-lg">
-              Перетягніть фото сюди або натисніть &quot;Додати фото&quot;
+              {t('media.dropHint')}
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-3">
@@ -129,7 +133,7 @@ export function WorkOrderMediaSection({
                   )}
                   <button
                     type="button"
-                    aria-label="Видалити файл"
+                    aria-label={t('media.deleteAria')}
                     onClick={async e => {
                       e.stopPropagation();
                       await apiFetch(`/work-orders/${woId}/media/${m.id}`, { method: 'DELETE' });
@@ -151,13 +155,13 @@ export function WorkOrderMediaSection({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Перегляд фото"
+          aria-label={t('media.lightboxAria')}
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
           onClick={() => setLightboxUrl(null)}
         >
           <img
             src={lightboxUrl}
-            alt="Фото"
+            alt={t('media.photoAlt')}
             className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
             decoding="async"
           />

@@ -48,6 +48,7 @@ if (!i18n.isInitialized) {
       'ndi',
       'cash',
       'calendar',
+      'workOrders',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

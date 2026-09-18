@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WO_INVOICE_VISIBLE_STATUSES } from '@sto/shared';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -22,23 +23,24 @@ interface Props {
 
 /** Стан гарантії з claimedAt+expiresAt (бекенд не має enum). Дзеркалить counterparties tab. */
 function StateBadge({ w }: { w: Warranty }) {
+  const { t } = useTranslation('workOrders');
   if (w.isActive) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success">
-        Активна
+        {t('warranty.active')}
       </span>
     );
   }
   if (w.claimedAt) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-warning/10 text-warning">
-        {"Пред'явлена"}
+        {t('warranty.claimed')}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
-      Закінчилась
+      {t('warranty.expired')}
     </span>
   );
 }
@@ -49,6 +51,7 @@ function StateBadge({ w }: { w: Warranty }) {
  * InvoiceSection: гейт за статусом, обгортка error-boundary — у батьківському PageClient.
  */
 export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }: Props) {
+  const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
   const [createOpen, setCreateOpen] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -68,10 +71,10 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
     try {
       // Пред'являємо гарантію у ПОТОЧНИЙ наряд (той, який відкрито) — типовий сценарій.
       await claim.mutateAsync({ id: w.id, claimWoId: workOrderId });
-      if (features.toastEnabled) toast.success('Гарантію пред’явлено');
+      if (features.toastEnabled) toast.success(t('warranty.claimedToast'));
       await refetch();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка пред’явлення гарантії';
+      const msg = e instanceof Error ? e.message : t('warranty.claimError');
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setClaimingId(null);
@@ -81,9 +84,9 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
   return (
     <div className="bg-surface rounded-xl border border-border overflow-hidden mb-6">
       <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
-        <h3 className="font-medium text-foreground text-sm">Гарантії</h3>
+        <h3 className="font-medium text-foreground text-sm">{t('warranty.title')}</h3>
         <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-          + Гарантія
+          {t('warranty.add')}
         </Button>
       </div>
 
@@ -93,7 +96,7 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
         </div>
       ) : items.length === 0 ? (
         <div className="p-4 text-center text-muted-foreground text-[13px]">
-          Гарантій за нарядом немає
+          {t('warranty.empty')}
         </div>
       ) : (
         <div className="divide-y divide-border">
@@ -101,9 +104,11 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
             <div key={w.id} className="px-5 py-3 flex items-center justify-between gap-3 text-sm">
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-foreground">
-                  {w.description || 'Гарантія за нарядом'}
+                  {w.description || t('warranty.defaultDescription')}
                 </div>
-                <div className="text-[12px] text-muted-foreground">до {fmtDate(w.expiresAt)}</div>
+                <div className="text-[12px] text-muted-foreground">
+                  {t('warranty.until', { date: fmtDate(w.expiresAt) })}
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <StateBadge w={w} />
@@ -114,7 +119,7 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
                     loading={claimingId === w.id}
                     onClick={() => void handleClaim(w)}
                   >
-                    Пред’явити
+                    {t('warranty.claim')}
                   </Button>
                 )}
               </div>

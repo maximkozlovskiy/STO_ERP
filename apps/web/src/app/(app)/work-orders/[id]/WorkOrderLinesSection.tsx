@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -64,21 +65,22 @@ export function WorkOrderLinesSection({
   disabled,
   onError,
 }: WorkOrderLinesSectionProps) {
+  const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
   const { confirm, dialogProps } = useConfirm();
   const [lineModal, setLineModal] = useState(false);
   const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
 
   const removeLine = async (lineId: string) => {
-    if (!(await confirm({ title: 'Видалити роботу?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('lines.confirmDelete'), variant: 'destructive' }))) return;
     setDeletingLineId(lineId);
     onError?.('');
     try {
       await apiFetch<void>(`/work-orders/${woId}/lines/${lineId}`, { method: 'DELETE' });
-      if (features.toastEnabled) toast.success('Роботу видалено');
+      if (features.toastEnabled) toast.success(t('lines.deletedToast'));
       onChanged();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      const msg = e instanceof Error ? e.message : t('lines.deleteError');
       onError?.(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -92,7 +94,7 @@ export function WorkOrderLinesSection({
     <>
       <div className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-foreground">Роботи</h2>
+          <h2 className="font-semibold text-foreground">{t('lines.title')}</h2>
           {canEdit && (
             <button
               type="button"
@@ -102,12 +104,12 @@ export function WorkOrderLinesSection({
               }}
               className="text-sm text-primary hover:underline"
             >
-              + Робота
+              {t('lines.add')}
             </button>
           )}
         </div>
         {(lines?.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">Роботи не додані</p>
+          <p className="text-sm text-muted-foreground">{t('lines.empty')}</p>
         ) : (
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
             {lines.map(l => (
@@ -115,7 +117,8 @@ export function WorkOrderLinesSection({
                 <div className="flex-1">
                   <p className="text-sm font-medium text-foreground">{l.workName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {l.employeeName} · <span>{l.normoHours} н/г норм.</span>
+                    {l.employeeName} ·{' '}
+                    <span>{t('lines.normHoursSuffix', { hours: l.normoHours })}</span>
                     {l.actualHours != null && (
                       <span
                         className={cn(
@@ -125,7 +128,7 @@ export function WorkOrderLinesSection({
                             : 'text-muted-foreground/70',
                         )}
                       >
-                        {l.actualHours} н/г факт.
+                        {t('lines.actualHoursSuffix', { hours: l.actualHours })}
                       </span>
                     )}
                   </p>
@@ -140,7 +143,7 @@ export function WorkOrderLinesSection({
                 {canEdit && (
                   <button
                     type="button"
-                    aria-label="Видалити роботу"
+                    aria-label={t('lines.deleteAria')}
                     onClick={() => removeLine(l.id)}
                     disabled={deletingLineId === l.id}
                     className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"

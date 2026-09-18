@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
@@ -216,18 +217,20 @@ const STATUS_COLORS: Record<string, string> = {
 // backend WORK_ORDER_TRANSITIONS map. Local fallback for terminal statuses
 // (ARCHIVED/CANCELLED → []) so `?? []` is unnecessary at call sites.
 const TRANSITIONS = WO_STATUS_TRANSITIONS;
-const TRANSITION_LABELS: Record<string, string> = {
-  ESTIMATE: 'Кошторис',
-  APPROVED: 'Затвердити',
-  IN_PROGRESS: 'В роботу',
-  ON_HOLD: 'Призупинити',
-  COMPLETED: 'Виконано',
-  INVOICED: 'Виставити рахунок',
-  PAID: 'Оплачено',
-  ARCHIVED: 'В архів',
-  CANCELLED: 'Скасувати',
-  DRAFT: 'Повернути в чернетку',
-};
+// FSM transition display labels — keys are status values (logic unchanged), labels resolved
+// via t('detail.transitions.<KEY>'). Order preserved for the translated map built in-component.
+const TRANSITION_LABEL_KEYS: readonly string[] = [
+  'ESTIMATE',
+  'APPROVED',
+  'IN_PROGRESS',
+  'ON_HOLD',
+  'COMPLETED',
+  'INVOICED',
+  'PAID',
+  'ARCHIVED',
+  'CANCELLED',
+  'DRAFT',
+];
 const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'> = {
   CANCELLED: 'destructive',
   COMPLETED: 'default',
@@ -240,6 +243,12 @@ const TRANSITION_VARIANTS: Record<string, 'default' | 'destructive' | 'outline'>
 
 export default function WorkOrderCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
+  const { t } = useTranslation('workOrders');
+  // Translated FSM transition labels — Object.keys(order) preserved; values via t() (display only).
+  const TRANSITION_LABELS = useMemo<Record<string, string>>(
+    () => Object.fromEntries(TRANSITION_LABEL_KEYS.map(k => [k, t(`detail.transitions.${k}`)])),
+    [t],
+  );
   const { confirm, dialogProps } = useConfirm();
   const { employee } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -322,15 +331,13 @@ export default function WorkOrderCardPage() {
       if (woResult.kind === 'wo') {
         setWo(woResult.data);
       } else {
-        setError(
-          woResult.error instanceof Error ? woResult.error.message : 'Помилка завантаження наряду',
-        );
+        setError(woResult.error instanceof Error ? woResult.error.message : t('detail.loadError'));
       }
       if (acts.items.length > 0) setCompletionAct(acts.items[0]);
       setInspection(inspectionData);
       setInvoiceRef(invoiceData);
     });
-  }, [id]);
+  }, [id, t]);
 
   // Load secondary data (comments, media, audit) in parallel — single effect, single mount
   const loadSecondary = useCallback(() => {
@@ -384,7 +391,10 @@ export default function WorkOrderCardPage() {
 
   const saveAsTemplate = async () => {
     if (!wo) return;
-    const name = window.prompt('Назва шаблону:', wo.number || 'Новий шаблон');
+    const name = window.prompt(
+      t('detail.template_.prompt'),
+      wo.number || t('detail.template_.default'),
+    );
     if (!name?.trim()) return;
     setSavingTemplate(true);
     try {
@@ -400,9 +410,9 @@ export default function WorkOrderCardPage() {
           parts: wo.parts.map(p => ({ goodId: p.goodId, quantity: p.quantity })),
         }),
       });
-      if (features.toastEnabled) toast.success(`Шаблон "${name.trim()}" збережено`);
+      if (features.toastEnabled) toast.success(t('detail.template_.saved', { name: name.trim() }));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження шаблону';
+      const msg = e instanceof Error ? e.message : t('detail.template_.saveError');
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setSavingTemplate(false);
@@ -419,9 +429,9 @@ export default function WorkOrderCardPage() {
       });
       setCommentBody('');
       loadComments();
-      if (features.toastEnabled) toast.success('Коментар додано');
+      if (features.toastEnabled) toast.success(t('detail.comments.added'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка';
+      const msg = e instanceof Error ? e.message : t('detail.comments.error');
       if (features.toastEnabled) toast.error(msg);
     } finally {
       setCommentSaving(false);
@@ -452,7 +462,7 @@ export default function WorkOrderCardPage() {
       })
       .catch((e: unknown) => {
         if (mountedRef.current && !cachedWorks)
-          setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+          setRefsError(e instanceof Error ? e.message : t('detail.refsLoadError'));
       });
     apiFetch<{ items: Employee[] }>('/employees?limit=200')
       .then((r: { items?: Employee[] } | Employee[]) => {
@@ -462,7 +472,7 @@ export default function WorkOrderCardPage() {
       })
       .catch((e: unknown) => {
         if (mountedRef.current && !cachedEmployees)
-          setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+          setRefsError(e instanceof Error ? e.message : t('detail.refsLoadError'));
       });
     apiFetch<Warehouse[]>('/warehouses')
       .then(data => {
@@ -476,7 +486,7 @@ export default function WorkOrderCardPage() {
       })
       .catch((e: unknown) => {
         if (mountedRef.current && !cachedWarehouses)
-          setRefsError(e instanceof Error ? e.message : 'Помилка завантаження довідників');
+          setRefsError(e instanceof Error ? e.message : t('detail.refsLoadError'));
       });
     apiFetch<InspectionPoint[]>(`/work-orders/${id}/inspection/default-points`)
       .then(d => {
@@ -487,11 +497,11 @@ export default function WorkOrderCardPage() {
         // debug-ability fix (тісно з review patten 88d2c8d).
         console.warn('Помилка завантаження точок огляду:', e);
       });
-  }, [id]);
+  }, [id, t]);
 
   const transition = async (newStatus: string) => {
     const label = woStatusLabel(newStatus);
-    if (!(await confirm({ title: `Перевести наряд у статус "${label}"?` }))) return;
+    if (!(await confirm({ title: t('detail.confirmTransition', { label }) }))) return;
     if (!wo) return;
 
     const previousStatus = wo.status;
@@ -510,11 +520,11 @@ export default function WorkOrderCardPage() {
       // WEB-H1: перехід рухає склад (writeoff) + баланс (CHARGE) → інвалідувати сусідні кеші
       // (інвентар/взаєморозрахунки/звіти/дашборд), інакше інші вкладки застарілі.
       invalidateWorkOrderSideEffects(queryClient);
-      if (features.toastEnabled) toast.success(`Статус змінено: ${label}`);
+      if (features.toastEnabled) toast.success(t('detail.statusChanged', { label }));
     } catch (e: unknown) {
       // Rollback
       setWo(prev => (prev ? { ...prev, status: previousStatus } : prev));
-      const msg = e instanceof Error ? e.message : 'Помилка переходу';
+      const msg = e instanceof Error ? e.message : t('detail.transitionError');
       setError(msg);
       if (features.toastEnabled) toast.error(msg);
     } finally {
@@ -531,7 +541,7 @@ export default function WorkOrderCardPage() {
       });
       setCompletionAct(act);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка формування акту');
+      setError(e instanceof Error ? e.message : t('detail.act.generateError'));
     } finally {
       setGeneratingAct(false);
     }
@@ -586,9 +596,9 @@ export default function WorkOrderCardPage() {
       // PATCH returns WorkOrderResponseDto without lines/parts — merge to preserve them
       setWo(prev => (prev ? { ...prev, ...updated } : prev));
       setEditModal(false);
-      toast.success('Реквізити збережено');
+      toast.success(t('detail.requisitesSaved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('detail.saveError'));
     } finally {
       setEditSaving(false);
     }
@@ -610,7 +620,7 @@ export default function WorkOrderCardPage() {
       // Defer revoke — Chromium can drop the download if revoke fires before the browser starts reading.
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF');
+      setError(e instanceof Error ? e.message : t('detail.pdfError'));
     }
   };
 
@@ -621,7 +631,7 @@ export default function WorkOrderCardPage() {
       const cloned = await apiFetch<{ id: string }>(`/work-orders/${id}/clone`, { method: 'POST' });
       router.push(`/work-orders/${cloned.id}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка дублювання');
+      setError(e instanceof Error ? e.message : t('detail.cloneError'));
     } finally {
       setCloning(false);
     }
@@ -642,7 +652,7 @@ export default function WorkOrderCardPage() {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка завантаження PDF акту');
+      setError(e instanceof Error ? e.message : t('detail.act.pdfError'));
     } finally {
       setDownloadingActPdf(false);
     }
@@ -657,23 +667,22 @@ export default function WorkOrderCardPage() {
       });
       setCompletionAct(act);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка підписання акту');
+      setError(e instanceof Error ? e.message : t('detail.act.signError'));
     } finally {
       setSigningAct(false);
     }
   };
 
   const cancelAct = async (actId: string) => {
-    if (!(await confirm({ title: 'Скасувати акт виконаних робіт?', variant: 'destructive' })))
-      return;
+    if (!(await confirm({ title: t('detail.act.confirmCancel'), variant: 'destructive' }))) return;
     setCancellingAct(true);
     setError('');
     try {
       await apiFetch(`/completion-acts/${actId}`, { method: 'DELETE' });
       setCompletionAct(null);
-      if (features.toastEnabled) toast.success('Акт скасовано');
+      if (features.toastEnabled) toast.success(t('detail.act.cancelledToast'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка скасування акту');
+      setError(e instanceof Error ? e.message : t('detail.act.cancelError'));
     } finally {
       setCancellingAct(false);
     }
@@ -697,9 +706,9 @@ export default function WorkOrderCardPage() {
       if (result.autoCreatedLines > 0) {
         load();
       }
-      if (features.toastEnabled) toast.success('Огляд збережено');
+      if (features.toastEnabled) toast.success(t('detail.inspection.saved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження огляду');
+      setError(e instanceof Error ? e.message : t('detail.inspection.saveError'));
     } finally {
       setSavingInspection(false);
     }
@@ -715,7 +724,7 @@ export default function WorkOrderCardPage() {
         ) : woLoading ? (
           <Spinner size="lg" />
         ) : (
-          <p className="text-[13px] text-muted-foreground">Наряд не знайдено</p>
+          <p className="text-[13px] text-muted-foreground">{t('detail.notFound')}</p>
         )}
       </div>
     );
@@ -738,7 +747,7 @@ export default function WorkOrderCardPage() {
       )}
       {refsError && (
         <p className="text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-4 py-2">
-          Довідники: {refsError}
+          {t('detail.refsPrefix', { error: refsError })}
         </p>
       )}
 
@@ -748,7 +757,7 @@ export default function WorkOrderCardPage() {
           onClick={() => router.back()}
           className="mt-1 text-muted-foreground hover:text-foreground text-sm"
         >
-          ← Назад
+          {t('detail.back')}
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
@@ -773,10 +782,10 @@ export default function WorkOrderCardPage() {
           {!isBase && wo.totalAmountBase != null && (
             <p className="text-xs text-muted-foreground tabular-nums">
               {fmtMoney(wo.totalAmountBase)} {baseSymbol}
-              {wo.rateUsed != null && ` · курс ${wo.rateUsed}`}
+              {wo.rateUsed != null && t('detail.rateSuffix', { rate: wo.rateUsed })}
             </p>
           )}
-          <p className="text-xs text-muted-foreground">загальна сума</p>
+          <p className="text-xs text-muted-foreground">{t('detail.totalAmountLabel')}</p>
         </div>
       </div>
 
@@ -784,7 +793,7 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5 text-sm">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-            Реквізити
+            {t('detail.requisites')}
           </p>
           <Button
             variant="outline"
@@ -793,31 +802,31 @@ export default function WorkOrderCardPage() {
             className="h-7 text-[12px] gap-1.5"
           >
             <Pencil className="h-3.5 w-3.5" />
-            Редагувати
+            {t('detail.edit')}
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {wo.documentDate && (
             <div>
-              <p className="text-xs text-muted-foreground">Дата документа</p>
+              <p className="text-xs text-muted-foreground">{t('detail.documentDate')}</p>
               <p className="text-foreground font-medium">{fmtDate(wo.documentDate)}</p>
             </div>
           )}
           {wo.branchName && (
             <div>
-              <p className="text-xs text-muted-foreground">Філія</p>
+              <p className="text-xs text-muted-foreground">{t('detail.branch')}</p>
               <p className="text-foreground">{wo.branchName}</p>
             </div>
           )}
           {wo.contractNumber && (
             <div>
-              <p className="text-xs text-muted-foreground">Договір</p>
+              <p className="text-xs text-muted-foreground">{t('detail.contract')}</p>
               <p className="text-foreground">{wo.contractNumber}</p>
             </div>
           )}
           {wo.priority && (
             <div>
-              <p className="text-xs text-muted-foreground">Пріоритет</p>
+              <p className="text-xs text-muted-foreground">{t('detail.priority')}</p>
               <Badge
                 variant={WO_PRIORITY_BADGE[wo.priority] ?? 'secondary'}
                 className="mt-0.5"
@@ -829,43 +838,49 @@ export default function WorkOrderCardPage() {
           )}
           {wo.repairCategory && (
             <div>
-              <p className="text-xs text-muted-foreground">Категорія ремонту</p>
+              <p className="text-xs text-muted-foreground">{t('detail.repairCategory')}</p>
               <p className="text-foreground">{woCategoryLabel(wo.repairCategory)}</p>
             </div>
           )}
           {wo.dueDate && (
             <div>
-              <p className="text-xs text-muted-foreground">Дедлайн</p>
+              <p className="text-xs text-muted-foreground">{t('detail.dueDate')}</p>
               <p className="text-foreground">{fmtDate(wo.dueDate)}</p>
             </div>
           )}
           {wo.clientApproval != null && (
             <div>
-              <p className="text-xs text-muted-foreground">Погодження клієнта</p>
-              <p className="text-foreground">{wo.clientApproval === true ? 'Так' : 'Ні'}</p>
+              <p className="text-xs text-muted-foreground">{t('detail.clientApproval')}</p>
+              <p className="text-foreground">
+                {wo.clientApproval === true ? t('detail.yes') : t('detail.no')}
+              </p>
             </div>
           )}
           {wo.inMileage != null && (
             <div>
-              <p className="text-xs text-muted-foreground">Пробіг (вхід)</p>
-              <p className="text-foreground">{fmtInt(wo.inMileage)} км</p>
+              <p className="text-xs text-muted-foreground">{t('detail.inMileage')}</p>
+              <p className="text-foreground">
+                {fmtInt(wo.inMileage)} {t('detail.mileageUnit')}
+              </p>
             </div>
           )}
           {wo.outMileage != null && (
             <div>
-              <p className="text-xs text-muted-foreground">Пробіг (вихід)</p>
-              <p className="text-foreground">{fmtInt(wo.outMileage)} км</p>
+              <p className="text-xs text-muted-foreground">{t('detail.outMileage')}</p>
+              <p className="text-foreground">
+                {fmtInt(wo.outMileage)} {t('detail.mileageUnit')}
+              </p>
             </div>
           )}
           {wo.plannedAt && (
             <div>
-              <p className="text-xs text-muted-foreground">Заплановано</p>
+              <p className="text-xs text-muted-foreground">{t('detail.plannedAt')}</p>
               <p className="text-foreground">{fmtDateTime(wo.plannedAt)}</p>
             </div>
           )}
           {wo.description && (
             <div className="col-span-2">
-              <p className="text-xs text-muted-foreground">Опис</p>
+              <p className="text-xs text-muted-foreground">{t('detail.description')}</p>
               <p className="text-foreground">{wo.description}</p>
             </div>
           )}
@@ -886,10 +901,10 @@ export default function WorkOrderCardPage() {
           </Button>
         ))}
         <Button variant="outline" size="sm" onClick={downloadPdf}>
-          PDF
+          {t('detail.pdf')}
         </Button>
         <Button variant="outline" size="sm" onClick={() => window.print()}>
-          Друк
+          {t('detail.print')}
         </Button>
         <Button
           variant="outline"
@@ -898,7 +913,7 @@ export default function WorkOrderCardPage() {
           loading={cloning}
           disabled={cloning}
         >
-          Дублювати
+          {t('detail.clone')}
         </Button>
         <Button
           variant="outline"
@@ -907,7 +922,7 @@ export default function WorkOrderCardPage() {
           loading={savingTemplate}
           disabled={savingTemplate || (!wo?.lines.length && !wo?.parts.length)}
         >
-          Шаблон ↓
+          {t('detail.template')}
         </Button>
       </div>
 
@@ -918,14 +933,14 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
         <div>
           <p className="text-xs text-muted-foreground">
-            {wo.totalActualLabor !== wo.totalLabor ? 'Роботи (план)' : 'Роботи'}
+            {wo.totalActualLabor !== wo.totalLabor ? t('detail.laborPlan') : t('detail.labor')}
           </p>
           <p className="text-lg font-semibold text-foreground tabular-nums">
             {fmtMoney(wo.totalLabor)} {sym}
           </p>
           {wo.totalActualLabor !== wo.totalLabor && (
             <p className="text-xs text-muted-foreground mt-1">
-              факт.:{' '}
+              {t('detail.actualPrefix')}
               <span className="font-medium text-foreground tabular-nums">
                 {fmtMoney(wo.totalActualLabor)} {sym}
               </span>
@@ -933,13 +948,13 @@ export default function WorkOrderCardPage() {
           )}
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">Запчастини</p>
+          <p className="text-xs text-muted-foreground">{t('detail.parts')}</p>
           <p className="text-lg font-semibold text-foreground tabular-nums">
             {fmtMoney(wo.totalParts)} {sym}
           </p>
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">Оплачено</p>
+          <p className="text-xs text-muted-foreground">{t('detail.paid')}</p>
           <p
             className={cn(
               'text-lg font-semibold tabular-nums',
@@ -955,16 +970,18 @@ export default function WorkOrderCardPage() {
       {(WO_INVOICEABLE_STATUSES.includes(wo.status) || completionAct) && (
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-foreground">Акт виконаних робіт</h2>
+            <h2 className="font-semibold text-foreground">{t('detail.act.title')}</h2>
             {WO_INVOICEABLE_STATUSES.includes(wo.status) && !completionAct && (
               <Button variant="outline" size="sm" onClick={generateAct} loading={generatingAct}>
-                Сформувати акт
+                {t('detail.act.generate')}
               </Button>
             )}
           </div>
           {completionAct ? (
             <div className="flex items-center gap-4 flex-wrap">
-              <p className="text-sm font-medium text-foreground">Акт № {completionAct.number}</p>
+              <p className="text-sm font-medium text-foreground">
+                {t('detail.act.number', { number: completionAct.number })}
+              </p>
               <span
                 className={cn(
                   'text-xs font-medium px-2 py-0.5 rounded-full',
@@ -974,10 +991,10 @@ export default function WorkOrderCardPage() {
                 )}
               >
                 {completionAct.status === 'DRAFT'
-                  ? 'Чернетка'
+                  ? t('detail.act.statusDraft')
                   : completionAct.status === 'SIGNED'
-                    ? 'Підписано'
-                    : 'Скасовано'}
+                    ? t('detail.act.statusSigned')
+                    : t('detail.act.statusCancelled')}
               </span>
               {completionAct.signedAt && (
                 <p className="text-xs text-muted-foreground">
@@ -991,7 +1008,7 @@ export default function WorkOrderCardPage() {
                   onClick={() => signAct(completionAct.id)}
                   loading={signingAct}
                 >
-                  Позначити як підписано
+                  {t('detail.act.markSigned')}
                 </Button>
               )}
               <Button
@@ -1000,7 +1017,7 @@ export default function WorkOrderCardPage() {
                 onClick={() => downloadActPdf(completionAct.id)}
                 loading={downloadingActPdf}
               >
-                PDF акту
+                {t('detail.act.pdf')}
               </Button>
               {completionAct.status === 'DRAFT' && (
                 <Button
@@ -1010,19 +1027,19 @@ export default function WorkOrderCardPage() {
                   loading={cancellingAct}
                   disabled={cancellingAct}
                 >
-                  Скасувати акт
+                  {t('detail.act.cancel')}
                 </Button>
               )}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Акт не сформовано</p>
+            <p className="text-sm text-muted-foreground">{t('detail.act.notGenerated')}</p>
           )}
         </div>
       )}
 
       {/* Invoice slot. Bug #510: винесено у InvoiceSection для component-test. */}
       {/* E3: money-секція під error-boundary — краш рахунку не валить усю картку наряду. */}
-      <SectionErrorBoundary label="Рахунок">
+      <SectionErrorBoundary label={t('detail.sectionInvoice')}>
         <InvoiceSection
           workOrderId={id}
           workOrderStatus={wo.status}
@@ -1032,7 +1049,7 @@ export default function WorkOrderCardPage() {
       </SectionErrorBoundary>
 
       {/* Гарантії наряду (by-work-order + claim + ручний create). Гейт за статусом усередині секції. */}
-      <SectionErrorBoundary label="Гарантії">
+      <SectionErrorBoundary label={t('detail.sectionWarranty')}>
         <WarrantySection
           workOrderId={id}
           counterpartyId={wo.counterpartyId}
@@ -1064,10 +1081,10 @@ export default function WorkOrderCardPage() {
       {/* Inspection section */}
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
-          <h3 className="font-semibold text-foreground text-sm">Огляд авто</h3>
+          <h3 className="font-semibold text-foreground text-sm">{t('detail.inspection.title')}</h3>
           {!inspection && (
             <Button variant="outline" size="sm" onClick={() => setShowInspection(v => !v)}>
-              {showInspection ? 'Згорнути' : 'Провести огляд'}
+              {showInspection ? t('detail.inspection.collapse') : t('detail.inspection.start')}
             </Button>
           )}
         </div>
@@ -1076,7 +1093,8 @@ export default function WorkOrderCardPage() {
           <div className="p-4 space-y-2">
             <div className="text-[12px] text-muted-foreground mb-3">
               {fmtDateTime(inspection.createdAt)}
-              {inspection.mileage != null && ` · ${fmtInt(inspection.mileage)} км`}
+              {inspection.mileage != null &&
+                t('detail.inspection.mileageSuffix', { mileage: fmtInt(inspection.mileage) })}
             </div>
             {inspection.points.map((p, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
@@ -1097,7 +1115,7 @@ export default function WorkOrderCardPage() {
                 </span>
                 {p.status === 'CRITICAL' && (
                   <span className="text-[11px] text-destructive-text bg-destructive-subtle px-1.5 py-0.5 rounded">
-                    Критично
+                    {t('detail.inspection.critical')}
                   </span>
                 )}
               </div>
@@ -1106,11 +1124,11 @@ export default function WorkOrderCardPage() {
         ) : showInspection ? (
           <AnimatedBody className="p-4 space-y-3">
             <Input
-              label="Пробіг (км)"
+              label={t('detail.inspection.mileageLabel')}
               type="number"
               value={inspMileage}
               onChange={e => setInspMileage(e.target.value)}
-              placeholder="Поточний пробіг"
+              placeholder={t('detail.inspection.mileagePlaceholder')}
               className="h-8 text-[13px]"
             />
             <div className="space-y-2">
@@ -1125,7 +1143,7 @@ export default function WorkOrderCardPage() {
                         pts[i] = { ...pts[i], value: e.target.value };
                         setInspectionPoints(pts);
                       }}
-                      placeholder={point.unit || 'значення'}
+                      placeholder={point.unit || t('detail.inspection.valuePlaceholder')}
                       className="h-8 text-[13px]"
                     />
                   </div>
@@ -1142,9 +1160,9 @@ export default function WorkOrderCardPage() {
                       }}
                       className="w-full h-8 rounded-lg border border-border bg-input px-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      <option value="OK">✓ OK</option>
-                      <option value="WARN">⚠ Увага</option>
-                      <option value="CRITICAL">✗ Критично</option>
+                      <option value="OK">{t('detail.inspection.statusOk')}</option>
+                      <option value="WARN">{t('detail.inspection.statusWarn')}</option>
+                      <option value="CRITICAL">{t('detail.inspection.statusCritical')}</option>
                     </select>
                   </div>
                 </div>
@@ -1155,19 +1173,19 @@ export default function WorkOrderCardPage() {
               loading={savingInspection}
               className="w-full"
             >
-              Зберегти огляд
+              {t('detail.inspection.save')}
             </Button>
           </AnimatedBody>
         ) : (
           <div className="p-4 text-center text-muted-foreground text-[13px]">
-            Огляд не проводився
+            {t('detail.inspection.notConducted')}
           </div>
         )}
       </div>
 
       {/* Comments */}
       <div className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="font-semibold text-foreground mb-4">Коментарі</h2>
+        <h2 className="font-semibold text-foreground mb-4">{t('detail.comments.title')}</h2>
         {comments.length > 0 && (
           <div className="space-y-3 mb-4">
             {comments.map(c => (
@@ -1180,7 +1198,7 @@ export default function WorkOrderCardPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[12px] font-medium text-foreground">
-                      {c.authorName ?? 'Невідомо'}
+                      {c.authorName ?? t('detail.comments.unknownAuthor')}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
                       {fmtShortDateTime(c.createdAt)}
@@ -1195,7 +1213,7 @@ export default function WorkOrderCardPage() {
           </div>
         )}
         {comments.length === 0 && (
-          <p className="text-sm text-muted-foreground mb-4">Коментарів немає</p>
+          <p className="text-sm text-muted-foreground mb-4">{t('detail.comments.empty')}</p>
         )}
         {employee && (
           <div className="flex gap-2">
@@ -1207,7 +1225,7 @@ export default function WorkOrderCardPage() {
                   void submitComment();
                 }
               }}
-              placeholder="Напишіть коментар... (Ctrl+Enter для відправки)"
+              placeholder={t('detail.comments.placeholder')}
               rows={2}
               className="flex-1 rounded-lg border border-border bg-transparent px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 resize-none"
             />
@@ -1218,14 +1236,14 @@ export default function WorkOrderCardPage() {
               disabled={!commentBody.trim()}
               className="self-end"
             >
-              Надіслати
+              {t('detail.comments.send')}
             </Button>
           </div>
         )}
       </div>
 
       {/* E3: медіа-секція під error-boundary — краш рендеру медіа не валить картку наряду. */}
-      <SectionErrorBoundary label="Медіа наряду">
+      <SectionErrorBoundary label={t('detail.sectionMedia')}>
         <WorkOrderMediaSection woId={id} media={media} onChanged={loadMedia} onError={setError} />
       </SectionErrorBoundary>
 
@@ -1237,15 +1255,15 @@ export default function WorkOrderCardPage() {
       <Modal
         open={editModal}
         onClose={() => setEditModal(false)}
-        title="Редагування реквізитів"
+        title={t('detail.editModal.title')}
         size="md"
         footer={
           <div className="flex justify-end gap-2 w-full">
             <Button variant="outline" onClick={() => setEditModal(false)}>
-              Скасувати
+              {t('detail.editModal.cancel')}
             </Button>
             <Button onClick={saveEdit} loading={editSaving}>
-              Зберегти
+              {t('detail.editModal.save')}
             </Button>
           </div>
         }
@@ -1253,57 +1271,61 @@ export default function WorkOrderCardPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1">
-              Дата документа
+              {t('detail.editModal.documentDate')}
             </label>
             <DatePickerInput
               value={editForm.documentDate}
               onChange={v => setEditForm(f => ({ ...f, documentDate: v }))}
-              placeholder="ДД.ММ.РРРР"
+              placeholder={t('detail.editModal.datePlaceholder')}
             />
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1">Пріоритет</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              {t('detail.editModal.priority')}
+            </label>
             <Select
               value={editForm.priority}
               onChange={e => setEditForm(f => ({ ...f, priority: e.target.value }))}
               className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
-              <option value="LOW">Низький</option>
-              <option value="NORMAL">Звичайний</option>
-              <option value="HIGH">Високий</option>
-              <option value="URGENT">Терміново</option>
+              <option value="LOW">{t('detail.editModal.priorityLow')}</option>
+              <option value="NORMAL">{t('detail.editModal.priorityNormal')}</option>
+              <option value="HIGH">{t('detail.editModal.priorityHigh')}</option>
+              <option value="URGENT">{t('detail.editModal.priorityUrgent')}</option>
             </Select>
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1">
-              Категорія ремонту
+              {t('detail.editModal.repairCategory')}
             </label>
             <Select
               value={editForm.repairCategory}
               onChange={e => setEditForm(f => ({ ...f, repairCategory: e.target.value }))}
               className="h-8 text-[13px] py-0.5 px-2 pr-7"
             >
-              <option value="">— не вказано —</option>
-              <option value="MAINTENANCE">ТО</option>
-              <option value="CURRENT_REPAIR">Поточний ремонт</option>
-              <option value="MAJOR_REPAIR">Кап. ремонт</option>
-              <option value="BODY_REPAIR">Кузовний</option>
-              <option value="DIAGNOSTICS">Діагностика</option>
-              <option value="WARRANTY">Гарантійний</option>
-              <option value="SEASONAL">Сезонне</option>
+              <option value="">{t('detail.editModal.categoryNone')}</option>
+              <option value="MAINTENANCE">{t('detail.editModal.categoryMaintenance')}</option>
+              <option value="CURRENT_REPAIR">{t('detail.editModal.categoryCurrentRepair')}</option>
+              <option value="MAJOR_REPAIR">{t('detail.editModal.categoryMajorRepair')}</option>
+              <option value="BODY_REPAIR">{t('detail.editModal.categoryBodyRepair')}</option>
+              <option value="DIAGNOSTICS">{t('detail.editModal.categoryDiagnostics')}</option>
+              <option value="WARRANTY">{t('detail.editModal.categoryWarranty')}</option>
+              <option value="SEASONAL">{t('detail.editModal.categorySeasonal')}</option>
             </Select>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1">Дедлайн</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              {t('detail.editModal.dueDate')}
+            </label>
             <DatePickerInput
               value={editForm.dueDate}
               onChange={v => setEditForm(f => ({ ...f, dueDate: v }))}
-              placeholder="ДД.ММ.РРРР"
+              placeholder={t('detail.editModal.datePlaceholder')}
             />
           </div>
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1">
-              Пробіг (вхід), км
+              {t('detail.editModal.inMileageLabel')}
             </label>
             <Input
               type="number"
@@ -1322,16 +1344,18 @@ export default function WorkOrderCardPage() {
                 onChange={e => setEditForm(f => ({ ...f, clientApproval: e.target.checked }))}
                 className="h-4 w-4 rounded border-border accent-primary"
               />
-              Погодження клієнта
+              {t('detail.editModal.clientApproval')}
             </label>
           </div>
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1">Опис</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1">
+              {t('detail.editModal.description')}
+            </label>
             <textarea
               value={editForm.description}
               onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
               rows={3}
-              placeholder="Опис робіт..."
+              placeholder={t('detail.editModal.descriptionPlaceholder')}
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>

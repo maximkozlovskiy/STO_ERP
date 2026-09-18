@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense, memo } from 'react';
 import type { ElementType } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -113,18 +114,19 @@ const STATUS_BADGE = WO_STATUS_BADGE;
 const STATUS_DESCRIPTIONS = WO_STATUS_DESCRIPTIONS;
 const PRIORITY_BADGE = WO_PRIORITY_BADGE;
 
+// [status value, labelKey] — labels resolved via t() in-component (labelKey idiom).
 const STATUS_TABS: Array<[string, string]> = [
-  ['', 'Всі'],
-  ['DRAFT', 'Чернетка'],
-  ['ESTIMATE', 'Кошторис'],
-  ['APPROVED', 'Затверджено'],
-  ['IN_PROGRESS', 'В роботі'],
-  ['ON_HOLD', 'Призупинено'],
-  ['COMPLETED', 'Виконано'],
-  ['INVOICED', 'Виставлено'],
-  ['PAID', 'Оплачено'],
-  ['ARCHIVED', 'Архів'],
-  ['CANCELLED', 'Скасовано'],
+  ['', 'list.tabs.all'],
+  ['DRAFT', 'list.tabs.draft'],
+  ['ESTIMATE', 'list.tabs.estimate'],
+  ['APPROVED', 'list.tabs.approved'],
+  ['IN_PROGRESS', 'list.tabs.inProgress'],
+  ['ON_HOLD', 'list.tabs.onHold'],
+  ['COMPLETED', 'list.tabs.completed'],
+  ['INVOICED', 'list.tabs.invoiced'],
+  ['PAID', 'list.tabs.paid'],
+  ['ARCHIVED', 'list.tabs.archived'],
+  ['CANCELLED', 'list.tabs.cancelled'],
 ];
 
 type LinkedCountsEntry = {
@@ -144,12 +146,12 @@ const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMa
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
   Icon: ElementType;
-  label: string;
+  labelKey: string;
 }> = [
-  { field: 'invoices', Icon: Receipt, label: 'Рахунки' },
-  { field: 'payments', Icon: CreditCard, label: 'Оплати' },
-  { field: 'calendarSlots', Icon: Calendar, label: 'Записи календаря' },
-  { field: 'warranties', Icon: Shield, label: 'Гарантії' },
+  { field: 'invoices', Icon: Receipt, labelKey: 'list.docCounters.invoices' },
+  { field: 'payments', Icon: CreditCard, labelKey: 'list.docCounters.payments' },
+  { field: 'calendarSlots', Icon: Calendar, labelKey: 'list.docCounters.calendarSlots' },
+  { field: 'warranties', Icon: Shield, labelKey: 'list.docCounters.warranties' },
 ];
 
 function isOverdue(dueDateIso: string, nowMs: number): boolean {
@@ -164,19 +166,19 @@ const WO_INACTIVE_STATUSES = new Set(['CANCELLED', 'ARCHIVED', 'PAID']);
 // Module-level constants — стабільні референси між рендерами, замість per-render
 // allocate у useMemo. WO_COLUMNS_DEFAULT_KEYS_JSON знімає `JSON.stringify(map())`
 // з кожного render (hasCustomization comparison у toolbar).
-const WO_COLUMNS: Array<{ key: string; label: string }> = [
-  { key: 'number', label: 'Номер' },
-  { key: 'client', label: 'Клієнт / Авто' },
-  { key: 'status', label: 'Статус' },
-  { key: 'lift', label: 'Підйомник' },
-  { key: 'priority', label: 'Пріоритет' },
-  { key: 'amount', label: 'Сума' },
-  { key: 'documentDate', label: 'Дата документа' },
-  { key: 'plannedAt', label: 'Заплановано' },
-  { key: 'dueDate', label: 'Дедлайн' },
-  { key: 'linkedDocs', label: 'Документи' },
+const WO_COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [
+  { key: 'number', labelKey: 'list.columns.number' },
+  { key: 'client', labelKey: 'list.columns.client' },
+  { key: 'status', labelKey: 'list.columns.status' },
+  { key: 'lift', labelKey: 'list.columns.lift' },
+  { key: 'priority', labelKey: 'list.columns.priority' },
+  { key: 'amount', labelKey: 'list.columns.amount' },
+  { key: 'documentDate', labelKey: 'list.columns.documentDate' },
+  { key: 'plannedAt', labelKey: 'list.columns.plannedAt' },
+  { key: 'dueDate', labelKey: 'list.columns.dueDate' },
+  { key: 'linkedDocs', labelKey: 'list.columns.linkedDocs' },
 ];
-const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMNS.map(c => c.key));
+const WO_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WO_COLUMN_DEFS.map(c => c.key));
 
 // Suspense обгортка для useSearchParams (Next.js static-export вимога).
 // Inner-функція тримає всю логіку, default-export лише wrapper.
@@ -190,6 +192,7 @@ export default function WorkOrdersPage() {
 
 function WorkOrdersPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT']);
+  const { t } = useTranslation('workOrders');
   const queryClient = useQueryClient();
   const { employee } = useAuth();
   const router = useRouter();
@@ -202,6 +205,9 @@ function WorkOrdersPageInner() {
 
   const linkedNav = useLinkedNav();
   const linkedConfig = useMemo(() => workOrderLinkedConfig(linkedNav), [linkedNav]);
+
+  // Translated column defs — label resolved via t() (labelKey idiom); persistence keyed by `key`.
+  const WO_COLUMNS = useMemo(() => WO_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -354,7 +360,7 @@ function WorkOrdersPageInner() {
         },
       );
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Подання "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('list.toast.savePresetSuccess', { name }));
     },
     [
       saveFilter,
@@ -370,6 +376,7 @@ function WorkOrdersPageInner() {
       woSort.sortBy,
       woSort.sortDir,
       features.toastEnabled,
+      t,
     ],
   );
 
@@ -383,10 +390,10 @@ function WorkOrdersPageInner() {
           method: 'PATCH',
           body: JSON.stringify({ [field]: value === '' ? null : value }),
         });
-        if (features.toastEnabled) toast.success('Збережено');
+        if (features.toastEnabled) toast.success(t('list.toast.saved'));
         queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Помилка збереження';
+        const msg = e instanceof Error ? e.message : t('list.toast.saveError');
         if (features.toastEnabled) toast.error(msg);
         else setError(msg);
         throw e; // bubble so useInlineEdit keeps editing state for retry
@@ -420,10 +427,21 @@ function WorkOrdersPageInner() {
 
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {
-          toast.success(`${successLabel} ${succeeded} ${succeeded === 1 ? 'наряд' : 'нарядів'}`);
+          toast.success(
+            t('list.toast.cancelledCount', {
+              label: successLabel,
+              count: succeeded,
+              noun: succeeded === 1 ? t('list.nounOne') : t('list.nounMany'),
+            }),
+          );
         } else if (succeeded > 0 && failed > 0) {
           toast.warning(
-            `${successLabel} ${succeeded} з ${results.length}. ${failed} не змінено (статус не дозволяє)`,
+            t('list.toast.partialCount', {
+              label: successLabel,
+              succeeded,
+              total: results.length,
+              failed,
+            }),
           );
         } else {
           // 0 succeeded — surface first error message if any
@@ -433,31 +451,31 @@ function WorkOrdersPageInner() {
           const errMsg =
             firstError?.reason instanceof Error
               ? firstError.reason.message
-              : 'жоден наряд не змінено (статус не дозволяє)';
+              : t('list.toast.noneChanged');
           toast.error(errMsg);
         }
       } else if (failed > 0) {
-        setError(`${succeeded} з ${results.length} нарядів змінено, ${failed} не вдалось`);
+        setError(t('list.toast.partialError', { succeeded, total: results.length, failed }));
       }
     },
-    [bulkSelect, features.toastEnabled, queryClient],
+    [bulkSelect, features.toastEnabled, queryClient, t],
   );
 
   const bulkCancel = useCallback(
-    (ids: string[]) => bulkTransition(ids, 'CANCELLED', 'Скасовано'),
-    [bulkTransition],
+    (ids: string[]) => bulkTransition(ids, 'CANCELLED', t('list.toast.cancelled')),
+    [bulkTransition, t],
   );
   const bulkArchive = useCallback(
-    (ids: string[]) => bulkTransition(ids, 'ARCHIVED', 'Архівовано'),
-    [bulkTransition],
+    (ids: string[]) => bulkTransition(ids, 'ARCHIVED', t('list.toast.archived')),
+    [bulkTransition, t],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
     () => [
-      { id: 'cancel', label: 'Скасувати', variant: 'destructive', onClick: bulkCancel },
-      { id: 'archive', label: 'Архівувати', variant: 'outline', onClick: bulkArchive },
+      { id: 'cancel', label: t('list.bulk.cancel'), variant: 'destructive', onClick: bulkCancel },
+      { id: 'archive', label: t('list.bulk.archive'), variant: 'outline', onClick: bulkArchive },
     ],
-    [bulkCancel, bulkArchive],
+    [bulkCancel, bulkArchive, t],
   );
 
   // sto-optimize: stable onClick для 11 StatusPill, інакше memo() не може пропустити
@@ -491,7 +509,7 @@ function WorkOrdersPageInner() {
   const markDeleted = async (wo: WorkOrder) => {
     if (
       !(await confirm({
-        title: `Позначити наряд ${wo.number} на видалення?`,
+        title: t('list.confirmMarkDeletion', { number: wo.number }),
         variant: 'destructive',
       }))
     )
@@ -501,9 +519,9 @@ function WorkOrdersPageInner() {
       // повна cross-cache інвалідація у onSettled (delete рухає й склад/баланс).
       await deleteWorkOrder.mutateAsync(wo.id);
       if (selectedWO?.id === wo.id) setSelectedWO(null);
-      toast.success('Наряд позначено на видалення');
+      toast.success(t('list.toast.marked'));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      toast.error(e instanceof Error ? e.message : t('list.toast.deleteError'));
     }
   };
 
@@ -524,11 +542,11 @@ function WorkOrdersPageInner() {
           method: 'POST',
         });
         queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
-        if (features.toastEnabled) toast.success('Наряд створено на основі');
+        if (features.toastEnabled) toast.success(t('list.toast.cloned'));
         setEditWoId(cloned.id);
       } catch (e: unknown) {
         if (features.toastEnabled)
-          toast.error(e instanceof Error ? e.message : 'Помилка дублювання');
+          toast.error(e instanceof Error ? e.message : t('list.toast.cloneError'));
       } finally {
         setCloningId(null);
       }
@@ -553,7 +571,7 @@ function WorkOrdersPageInner() {
     return [
       {
         key: 'info',
-        label: 'Основне',
+        label: t('list.panelInfoTab'),
         content: (
           <div className="space-y-3">
             {buildPanelFields(wo, WORK_ORDER_PANEL_SCHEMA, panelConfig.config, {
@@ -583,7 +601,7 @@ function WorkOrdersPageInner() {
                   >
                     {fmtDate(String(v))}
                     {isOverdue(String(v), nowMs) && (
-                      <span className="ml-1 text-[11px]">(прострочено)</span>
+                      <span className="ml-1 text-[11px]">{t('list.overdue')}</span>
                     )}
                   </span>
                 ) : undefined,
@@ -597,13 +615,13 @@ function WorkOrdersPageInner() {
               />
             ))}
             <Button className="w-full" size="sm" onClick={() => handleOpenEdit(wo.id)}>
-              Відкрити наряд
+              {t('list.openWorkOrderButton')}
             </Button>
           </div>
         ),
       },
     ];
-  }, [selectedWO, panelConfig.config, nowMs, handleOpenEdit]);
+  }, [selectedWO, panelConfig.config, nowMs, handleOpenEdit, t]);
 
   const panelConfigFields = useMemo(
     () => schemaToPanelConfigFields(WORK_ORDER_PANEL_SCHEMA, panelConfig.config),
@@ -614,7 +632,7 @@ function WorkOrdersPageInner() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Наряди</h1>
+          <h1 className="page-title">{t('list.title')}</h1>
         </div>
       </div>
 
@@ -639,11 +657,11 @@ function WorkOrdersPageInner() {
       {/* Status filter pills + Мої наряди */}
       <div className="flex gap-1.5 flex-wrap items-center justify-between shrink-0">
         <div className="flex gap-1.5 flex-wrap items-center">
-          {STATUS_TABS.map(([v, l]) => (
+          {STATUS_TABS.map(([v, labelKey]) => (
             <StatusPill
               key={v}
               value={v}
-              label={l}
+              label={t(labelKey)}
               active={statusFilter === v}
               description={STATUS_DESCRIPTIONS[v]}
               onSelect={handleSelectStatus}
@@ -665,7 +683,7 @@ function WorkOrdersPageInner() {
             )}
           >
             <User className="h-3 w-3 shrink-0" />
-            Мої наряди
+            {t('list.myOrders')}
           </button>
         )}
       </div>
@@ -679,12 +697,12 @@ function WorkOrdersPageInner() {
             resetPage();
             setActiveSavedFilterId(null);
           }}
-          placeholder="Пошук за номером або клієнтом..."
+          placeholder={t('list.searchPlaceholder')}
           leftElement={<Search />}
           className="w-72 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+          <span className="text-[13px] text-muted-foreground shrink-0">{t('list.dateFrom')}</span>
           <DatePickerInput
             value={dateFrom}
             onChange={v => {
@@ -697,7 +715,7 @@ function WorkOrdersPageInner() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+          <span className="text-[13px] text-muted-foreground shrink-0">{t('list.dateTo')}</span>
           <DatePickerInput
             value={dateTo}
             onChange={v => {
@@ -719,7 +737,7 @@ function WorkOrdersPageInner() {
           }}
           className="w-52 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
-          <option value="">Всі категорії</option>
+          <option value="">{t('list.allCategories')}</option>
           {Object.keys(WO_CATEGORY_LABELS).map(value => (
             <option key={value} value={value}>
               {woCategoryLabel(value)}
@@ -731,7 +749,7 @@ function WorkOrdersPageInner() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('list.hideDeleted') : t('list.showDeleted')}
             onClick={() => {
               setShowDeleted(v => !v);
               resetPage();
@@ -762,7 +780,7 @@ function WorkOrdersPageInner() {
             }}
             leftIcon={<Plus className="h-4 w-4" />}
           >
-            Наряд
+            {t('list.createButton')}
           </Button>
         </div>
       </div>
@@ -791,7 +809,7 @@ function WorkOrdersPageInner() {
                       ref={selectAllRef}
                       onChange={bulkSelect.toggleAll}
                       className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
+                      aria-label={t('list.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -844,11 +862,9 @@ function WorkOrdersPageInner() {
                   >
                     <EmptyState
                       icon={ClipboardList}
-                      title="Нарядів не знайдено"
+                      title={t('list.empty.title')}
                       description={
-                        statusFilter
-                          ? 'Спробуйте змінити фільтр статусу'
-                          : 'Створіть перший наряд, натиснувши кнопку вище'
+                        statusFilter ? t('list.empty.descFilter') : t('list.empty.descCreate')
                       }
                       size="sm"
                     />
@@ -891,7 +907,7 @@ function WorkOrdersPageInner() {
                             checked={bulkSelect.isSelected(wo.id)}
                             onChange={() => bulkSelect.toggle(wo.id)}
                             className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={`Вибрати наряд ${wo.number}`}
+                            aria-label={t('list.selectRow', { number: wo.number })}
                           />
                         </TableCell>
                       )}
@@ -1079,7 +1095,7 @@ function WorkOrdersPageInner() {
                           return (
                             <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                               <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                                {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                                {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
                                   const n = counts?.[field];
                                   if (!n) return null;
                                   return (
@@ -1087,7 +1103,7 @@ function WorkOrdersPageInner() {
                                       key={field}
                                       onClick={() => setLinkedDocPopupId(wo.id)}
                                       className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                      title={`${label}: ${n}`}
+                                      title={`${t(labelKey)}: ${n}`}
                                     >
                                       <Icon size={13} />
                                       <span>{n}</span>
@@ -1105,7 +1121,7 @@ function WorkOrdersPageInner() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Відкрити наряд"
+                            title={t('list.openWorkOrder')}
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                             onClick={() => setEditWoId(wo.id)}
                           >
@@ -1115,7 +1131,7 @@ function WorkOrdersPageInner() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="Створити на основі"
+                              title={t('list.cloneFromThis')}
                               disabled={cloningId === wo.id}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               onClick={() => void handleClone(wo)}
@@ -1127,7 +1143,7 @@ function WorkOrdersPageInner() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="Позначити на видалення"
+                              title={t('list.markForDeletion')}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                               onClick={() => void markDeleted(wo)}
                             >
@@ -1186,7 +1202,7 @@ function WorkOrdersPageInner() {
           entityId={linkedDocPopupId}
           config={linkedConfig}
           onClose={() => setLinkedDocPopupId(null)}
-          ariaLabel="Пов'язані документи наряду"
+          ariaLabel={t('list.linkedPopupAria')}
         />
       )}
     </div>
