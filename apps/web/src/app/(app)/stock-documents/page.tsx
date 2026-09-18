@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
 import type { ElementType } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
@@ -109,17 +110,18 @@ interface StockDocFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const COLUMNS: Array<{ key: string; label: string }> = [
-  { key: 'number', label: 'Номер' },
-  { key: 'type', label: 'Тип' },
-  { key: 'warehouse', label: 'Склад' },
-  { key: 'status', label: 'Статус' },
-  { key: 'lines', label: 'Позицій' },
-  { key: 'date', label: 'Дата документа' },
-  { key: 'linkedDocs', label: "Зв'язки" },
+// Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [
+  { key: 'number', labelKey: 'columns.number' },
+  { key: 'type', labelKey: 'columns.type' },
+  { key: 'warehouse', labelKey: 'columns.warehouse' },
+  { key: 'status', labelKey: 'columns.status' },
+  { key: 'lines', labelKey: 'columns.lines' },
+  { key: 'date', labelKey: 'columns.date' },
+  { key: 'linkedDocs', labelKey: 'columns.linkedDocs' },
 ];
-const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 
 // ─── Пов'язані документи (badge column) ────────────────────
 // Ключі секцій дзеркалять backend stock-documents.getLinkedCounts (purchaseOrder/warehouses).
@@ -130,9 +132,9 @@ type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 // Stable empty fallback — module-level frozen reference avoids fresh {} per render.
 const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
 
-const DOC_COUNTERS: Array<{ field: LinkedCountsField; Icon: ElementType; label: string }> = [
-  { field: 'purchaseOrder', Icon: ClipboardList, label: 'Замовлення' },
-  { field: 'warehouses', Icon: Warehouse, label: 'Склади' },
+const DOC_COUNTERS: Array<{ field: LinkedCountsField; Icon: ElementType; labelKey: string }> = [
+  { field: 'purchaseOrder', Icon: ClipboardList, labelKey: 'counters.purchaseOrder' },
+  { field: 'warehouses', Icon: Warehouse, labelKey: 'counters.warehouses' },
 ];
 
 // Filter tab arrays derived from shared constants — single source of truth.
@@ -147,7 +149,11 @@ const STATUS_FILTERS: readonly string[] = Object.freeze([
 const VALID_TYPES: ReadonlySet<string> = new Set(Object.keys(STOCK_DOC_TYPE_LABELS));
 
 function StockDocumentsPageClient() {
+  const { t } = useTranslation('stockDocuments');
   const { confirm, dialogProps } = useConfirm();
+
+  // Колонки з i18n-мітками — резолвляться у компоненті (labelKey → t), memo по `t`.
+  const COLUMNS = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -290,7 +296,7 @@ function StockDocumentsPageClient() {
     (name: string) => {
       const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
     [
       saveFilter,
@@ -301,6 +307,7 @@ function StockDocumentsPageClient() {
       dateTo,
       features.toastEnabled,
       setActiveSavedFilterId,
+      t,
     ],
   );
 
@@ -313,8 +320,8 @@ function StockDocumentsPageClient() {
     async (ids: string[]) => {
       if (
         !(await confirm({
-          title: `Видалити ${ids.length} документ(ів)?`,
-          confirmLabel: 'Видалити',
+          title: t('confirm.bulkDeleteTitle', { count: ids.length }),
+          confirmLabel: t('confirm.bulkDeleteConfirm'),
           variant: 'destructive',
         }))
       )
@@ -328,31 +335,33 @@ function StockDocumentsPageClient() {
       load();
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0) {
-          toast.success(`Видалено ${succeeded} документ(ів)`);
+          toast.success(t('toast.bulkDeletedAll', { count: succeeded }));
         } else if (succeeded > 0 && failed > 0) {
-          toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+          toast.warning(
+            t('toast.bulkDeletedPartial', { succeeded, total: results.length, failed }),
+          );
         } else {
-          toast.error('Не вдалося видалити документи');
+          toast.error(t('toast.bulkDeleteNone'));
         }
       } else if (failed > 0) {
-        setError(`${succeeded} з ${results.length} документів видалено, ${failed} не вдалось`);
+        setError(t('errors.bulkDeletePartial', { succeeded, total: results.length, failed }));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bulkSelect, confirm, features.toastEnabled],
+    [bulkSelect, confirm, features.toastEnabled, t],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибрані',
+        label: t('actions.bulkDelete'),
         variant: 'destructive',
         icon: <Trash2 className="h-3.5 w-3.5 mr-1.5" />,
         onClick: handleBulkDelete,
       },
     ],
-    [handleBulkDelete],
+    [handleBulkDelete, t],
   );
 
   const totalPages = Math.ceil(total / limit) || 1;
@@ -362,8 +371,10 @@ function StockDocumentsPageClient() {
   // `load` ref recreates on each invalidation, але семантика та сама — deps eslint-disable.
   const handleTransition = useCallback(
     async (doc: StockDoc, newStatus: string) => {
-      const label = newStatus === 'CONFIRMED' ? 'підтвердити' : 'скасувати';
-      if (!(await confirm({ title: `Бажаєте ${label} документ ${doc.number}?` }))) return;
+      const action =
+        newStatus === 'CONFIRMED' ? t('confirm.transitionConfirm') : t('confirm.transitionCancel');
+      if (!(await confirm({ title: t('confirm.transition', { action, number: doc.number }) })))
+        return;
       setSaving(true);
       setError('');
       try {
@@ -374,20 +385,20 @@ function StockDocumentsPageClient() {
         setShowDetail(null);
         load();
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Помилка зміни статусу');
+        setError(e instanceof Error ? e.message : t('errors.transitionFailed'));
       } finally {
         setSaving(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [confirm],
+    [confirm, t],
   );
 
   const markDeleted = useCallback(
     async (doc: StockDoc) => {
       if (
         !(await confirm({
-          title: `Позначити документ ${doc.number} на видалення?`,
+          title: t('confirm.markForDeletion', { number: doc.number }),
           variant: 'destructive',
         }))
       )
@@ -395,13 +406,13 @@ function StockDocumentsPageClient() {
       try {
         await apiFetch(`/stock-documents/${doc.id}`, { method: 'DELETE' });
         load();
-        toast.success('Документ позначено на видалення');
+        toast.success(t('toast.markedForDeletion'));
       } catch (e: unknown) {
-        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+        toast.error(e instanceof Error ? e.message : t('errors.deleteFailed'));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [confirm],
+    [confirm, t],
   );
 
   return (
@@ -426,23 +437,23 @@ function StockDocumentsPageClient() {
 
       {/* Type tabs */}
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {TYPE_FILTERS.map(t => (
+        {TYPE_FILTERS.map(t2 => (
           <button
-            key={t}
+            key={t2}
             type="button"
             onClick={() => {
-              setTypeFilter(t);
+              setTypeFilter(t2);
               resetPage();
               setActiveSavedFilterId(null);
             }}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
-              typeFilter === t
+              typeFilter === t2
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
             )}
           >
-            {t ? stockDocTypeLabel(t) : 'Всі'}
+            {t2 ? stockDocTypeLabel(t2) : t('filters.all')}
           </button>
         ))}
       </div>
@@ -452,13 +463,13 @@ function StockDocumentsPageClient() {
         {/* Status filters */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
-            Статус
+            {t('filters.status')}
           </span>
           {STATUS_FILTERS.map(s => (
             <StatusPill
               key={s}
               value={s}
-              label={s ? stockDocStatusLabel(s) : 'Всі'}
+              label={s ? stockDocStatusLabel(s) : t('filters.all')}
               active={statusFilter === s}
               description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
               onSelect={v => {
@@ -470,7 +481,9 @@ function StockDocumentsPageClient() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('filters.dateFrom')}
+          </span>
           <DatePickerInput
             value={dateFrom}
             onChange={v => {
@@ -483,7 +496,7 @@ function StockDocumentsPageClient() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+          <span className="text-[13px] text-muted-foreground shrink-0">{t('filters.dateTo')}</span>
           <DatePickerInput
             value={dateTo}
             onChange={v => {
@@ -499,7 +512,7 @@ function StockDocumentsPageClient() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
             onClick={() => {
               setShowDeleted(v => !v);
               resetPage();
@@ -524,7 +537,7 @@ function StockDocumentsPageClient() {
           />
           {/* Bug #505: DetailPanelToggle видалено — toggle нічого не контролював (DetailPanel мертвий, Bug #504). */}
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            {typeFilter ? stockDocTypeLabel(typeFilter) : 'Документ'}
+            {typeFilter ? stockDocTypeLabel(typeFilter) : t('actions.addDocument')}
           </Button>
         </div>
       </div>
@@ -553,7 +566,7 @@ function StockDocumentsPageClient() {
                       ref={selectAllRef}
                       onChange={bulkSelect.toggleAll}
                       className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
+                      aria-label={t('aria.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -603,7 +616,7 @@ function StockDocumentsPageClient() {
                     colSpan={visibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
-                    <EmptyState icon={FileText} title="Документів не знайдено" />
+                    <EmptyState icon={FileText} title={t('empty.documentsNotFound')} />
                   </TableCell>
                 </TableRow>
               )}
@@ -627,7 +640,7 @@ function StockDocumentsPageClient() {
                           checked={bulkSelect.isSelected(doc.id)}
                           onChange={() => bulkSelect.toggle(doc.id)}
                           className="h-3.5 w-3.5 rounded border-border"
-                          aria-label={`Вибрати документ ${doc.number}`}
+                          aria-label={t('aria.selectRow', { number: doc.number })}
                         />
                       </TableCell>
                     )}
@@ -638,7 +651,7 @@ function StockDocumentsPageClient() {
                             {doc.number}
                             {doc.deletedAt && (
                               <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
-                                видалено
+                                {t('badges.deleted')}
                               </Badge>
                             )}
                           </TableCell>
@@ -691,7 +704,7 @@ function StockDocumentsPageClient() {
                         return (
                           <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-                              {DOC_COUNTERS.map(({ field, Icon, label }) => {
+                              {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
                                 const n = counts?.[field];
                                 if (!n) return null;
                                 return (
@@ -699,7 +712,7 @@ function StockDocumentsPageClient() {
                                     key={field}
                                     onClick={() => setLinkedDocPopupId(doc.id)}
                                     className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                                    title={`${label}: ${n}`}
+                                    title={`${t(labelKey)}: ${n}`}
                                   >
                                     <Icon size={13} />
                                     <span>{n}</span>
@@ -717,7 +730,7 @@ function StockDocumentsPageClient() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          title="Відкрити деталі"
+                          title={t('actions.openDetails')}
                           className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                           onClick={() => void openDetailModal(doc)}
                         >
@@ -727,7 +740,7 @@ function StockDocumentsPageClient() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Позначити на видалення"
+                            title={t('actions.markForDeletion')}
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                             onClick={() => void markDeleted(doc)}
                           >
@@ -782,14 +795,14 @@ function StockDocumentsPageClient() {
                 loading={saving}
                 className="flex-1"
               >
-                Підтвердити документ
+                {t('detail.confirmButton')}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => handleTransition(showDetail, 'CANCELLED')}
                 loading={saving}
               >
-                Скасувати
+                {t('detail.cancelButton')}
               </Button>
             </div>
           ) : undefined
@@ -822,17 +835,25 @@ function StockDocumentsPageClient() {
               <table className="w-full text-xs">
                 <thead className="bg-secondary">
                   <tr>
-                    <th className="text-left px-3 py-2 text-muted-foreground">Товар</th>
-                    <th className="text-left px-3 py-2 text-muted-foreground">Артикул</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">Кількість</th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">Ціна</th>
+                    <th className="text-left px-3 py-2 text-muted-foreground">
+                      {t('detail.colGood')}
+                    </th>
+                    <th className="text-left px-3 py-2 text-muted-foreground">
+                      {t('detail.colSku')}
+                    </th>
+                    <th className="text-right px-3 py-2 text-muted-foreground">
+                      {t('detail.colQuantity')}
+                    </th>
+                    <th className="text-right px-3 py-2 text-muted-foreground">
+                      {t('detail.colPrice')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {showDetail.lines === undefined ? (
                     <tr>
                       <td colSpan={4} className="px-3 py-2 text-center text-muted-foreground">
-                        Завантаження…
+                        {t('detail.loading')}
                       </td>
                     </tr>
                   ) : (
@@ -861,13 +882,13 @@ function StockDocumentsPageClient() {
 
             {showDetail.confirmedAt && (
               <p className="text-xs text-foreground-faint">
-                Підтверджено: {fmtDateTime(showDetail.confirmedAt)}
+                {t('detail.confirmedAt', { date: fmtDateTime(showDetail.confirmedAt) })}
               </p>
             )}
 
             <div>
               <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                Пов&apos;язані документи
+                {t('detail.linkedDocuments')}
               </h3>
               <LinkedDocumentsPanel config={linkedConfig} entityId={showDetail.id} />
             </div>
@@ -881,7 +902,7 @@ function StockDocumentsPageClient() {
           entityId={linkedDocPopupId}
           config={linkedConfig}
           onClose={() => setLinkedDocPopupId(null)}
-          ariaLabel="Пов'язані документи складського документа"
+          ariaLabel={t('aria.linkedDocsPopup')}
         />
       )}
     </>
@@ -891,10 +912,10 @@ function StockDocumentsPageClient() {
 type StockTab = 'documents' | 'stock' | 'movements';
 // `restricted` — вкладка лише для OWNER/ADMIN/STOREKEEPER (backend @Roles; містить ціни/собівартість).
 // RECEPTIONIST бачить лише «Залишки».
-const STOCK_TABS: { key: StockTab; label: string; restricted: boolean }[] = [
-  { key: 'documents', label: 'Документи складу', restricted: true },
-  { key: 'stock', label: 'Залишки', restricted: false },
-  { key: 'movements', label: 'Рухи', restricted: true },
+const STOCK_TABS: { key: StockTab; labelKey: string; restricted: boolean }[] = [
+  { key: 'documents', labelKey: 'tabs.documents', restricted: true },
+  { key: 'stock', labelKey: 'tabs.stock', restricted: false },
+  { key: 'movements', labelKey: 'tabs.movements', restricted: true },
 ];
 
 // Ролі, яким backend дозволяє «Документи складу» + «Рухи» (stock-documents/stock-items movements
@@ -904,6 +925,7 @@ const DOCS_TAB_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'];
 // Таб-обгортка сторінки «Склад»: вкладка «Документи складу» (наявний список) + «Залишки»
 // (колишня сторінка /inventory як InventoryTab). Обидві вкладки — без власного page-shell.
 function StockTabsShell() {
+  const { t } = useTranslation('stockDocuments');
   // Ширший guard — «Залишки» доступні і RECEPTIONIST (як була сторінка /inventory).
   const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
   const router = useRouter();
@@ -912,15 +934,15 @@ function StockTabsShell() {
   // RECEPTIONIST допущений до обгортки заради «Залишків», але backend /stock-documents
   // 403-ить для нього → вкладку «Документи складу» приховуємо і форсуємо активну «stock».
   const canSeeRestricted = !!employee && DOCS_TAB_ROLES.includes(employee.role);
-  const visibleTabs = canSeeRestricted ? STOCK_TABS : STOCK_TABS.filter(t => !t.restricted);
+  const visibleTabs = canSeeRestricted ? STOCK_TABS : STOCK_TABS.filter(tab2 => !tab2.restricted);
   const rawTab = searchParams.get('tab');
   const requestedTab: StockTab =
     rawTab === 'stock' ? 'stock' : rawTab === 'movements' ? 'movements' : 'documents';
   // Обмежені вкладки недоступні RECEPTIONIST → форсуємо «Залишки».
   const tab: StockTab = !canSeeRestricted && requestedTab !== 'stock' ? 'stock' : requestedTab;
 
-  const setTab = (t: StockTab) =>
-    router.replace(t === 'documents' ? '/stock-documents' : `/stock-documents?tab=${t}`, {
+  const setTab = (next: StockTab) =>
+    router.replace(next === 'documents' ? '/stock-documents' : `/stock-documents?tab=${next}`, {
       scroll: false,
     });
 
@@ -928,26 +950,26 @@ function StockTabsShell() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Склад</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {visibleTabs.map(t => (
+        {visibleTabs.map(tab2 => (
           <button
-            key={t.key}
+            key={tab2.key}
             onMouseEnter={() => {
-              if (t.key === 'stock') void import('../inventory/InventoryTab');
+              if (tab2.key === 'stock') void import('../inventory/InventoryTab');
             }}
-            onClick={() => setTab(t.key)}
+            onClick={() => setTab(tab2.key)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === t.key
+              tab === tab2.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {t(tab2.labelKey)}
           </button>
         ))}
       </div>

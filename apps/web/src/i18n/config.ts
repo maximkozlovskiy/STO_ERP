@@ -42,6 +42,7 @@ if (!i18n.isInitialized) {
       'purchaseOrders',
       'payments',
       'supplierPayments',
+      'stockDocuments',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

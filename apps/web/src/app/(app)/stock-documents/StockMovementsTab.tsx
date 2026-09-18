@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PackageSearch } from 'lucide-react';
 import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
 import { stockMovementTypeLabel } from '@/i18n/enumLabel';
@@ -34,6 +35,7 @@ import { useStockMovements } from '@/hooks/api/useInventory';
 const PAGE_SIZE = 50;
 
 export function StockMovementsTab() {
+  const { t } = useTranslation('stockDocuments');
   const { data: warehouses } = useWarehouses();
   const [warehouseId, setWarehouseId] = useState('');
   const [type, setType] = useState('');
@@ -69,13 +71,15 @@ export function StockMovementsTab() {
       {/* Фільтри */}
       <div className="flex flex-wrap items-end gap-2 shrink-0">
         <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">Склад</label>
+          <label className="block text-[12px] text-muted-foreground mb-1">
+            {t('movements.filterWarehouse')}
+          </label>
           <Select
             value={warehouseId}
             onChange={e => resetAnd(() => setWarehouseId(e.target.value))}
             className="w-44 h-8 text-[13px]"
           >
-            <option value="">Усі склади</option>
+            <option value="">{t('movements.allWarehouses')}</option>
             {warehouses?.map(w => (
               <option key={w.id} value={w.id}>
                 {w.name}
@@ -84,13 +88,15 @@ export function StockMovementsTab() {
           </Select>
         </div>
         <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">Тип руху</label>
+          <label className="block text-[12px] text-muted-foreground mb-1">
+            {t('movements.filterType')}
+          </label>
           <Select
             value={type}
             onChange={e => resetAnd(() => setType(e.target.value))}
             className="w-44 h-8 text-[13px]"
           >
-            <option value="">Усі типи</option>
+            <option value="">{t('movements.allTypes')}</option>
             {Object.keys(STOCK_MOVEMENT_TYPE_LABELS).map(k => (
               <option key={k} value={k}>
                 {stockMovementTypeLabel(k)}
@@ -99,7 +105,9 @@ export function StockMovementsTab() {
           </Select>
         </div>
         <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">З</label>
+          <label className="block text-[12px] text-muted-foreground mb-1">
+            {t('movements.dateFrom')}
+          </label>
           <Input
             type="date"
             value={from}
@@ -108,7 +116,9 @@ export function StockMovementsTab() {
           />
         </div>
         <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">По</label>
+          <label className="block text-[12px] text-muted-foreground mb-1">
+            {t('movements.dateTo')}
+          </label>
           <Input
             type="date"
             value={to}
@@ -129,7 +139,7 @@ export function StockMovementsTab() {
               })
             }
           >
-            Скинути
+            {t('movements.reset')}
           </Button>
         )}
       </div>
@@ -139,12 +149,12 @@ export function StockMovementsTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Дата</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Товар</TableHead>
-              <TableHead>Склад</TableHead>
-              <TableHead className="text-right">Кількість</TableHead>
-              <TableHead className="text-right">Ціна</TableHead>
+              <TableHead>{t('movements.colDate')}</TableHead>
+              <TableHead>{t('movements.colType')}</TableHead>
+              <TableHead>{t('movements.colGood')}</TableHead>
+              <TableHead>{t('movements.colWarehouse')}</TableHead>
+              <TableHead className="text-right">{t('movements.colQuantity')}</TableHead>
+              <TableHead className="text-right">{t('movements.colPrice')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -162,8 +172,8 @@ export function StockMovementsTab() {
                 <TableCell colSpan={6} className="p-0">
                   <EmptyState
                     icon={PackageSearch}
-                    title="Рухів немає"
-                    description="За обраними фільтрами рухів по складу не знайдено"
+                    title={t('movements.emptyTitle')}
+                    description={t('movements.emptyDescription')}
                   />
                 </TableCell>
               </TableRow>
@@ -209,8 +219,8 @@ export function StockMovementsTab() {
       {/* Пагінація */}
       <div className="flex items-center justify-between gap-3 shrink-0 text-[13px] text-muted-foreground">
         <span>
-          Всього: <b className="tabular-nums">{total}</b>
-          {isFetching ? ' · оновлення…' : ''}
+          {t('movements.total')} <b className="tabular-nums">{total}</b>
+          {isFetching ? t('movements.updating') : ''}
         </span>
         <div className="flex items-center gap-2">
           <Button
@@ -219,7 +229,7 @@ export function StockMovementsTab() {
             disabled={page <= 1}
             onClick={() => setPage(p => Math.max(1, p - 1))}
           >
-            Назад
+            {t('movements.prev')}
           </Button>
           <span className="tabular-nums">
             {page} / {totalPages}
@@ -230,7 +240,7 @@ export function StockMovementsTab() {
             disabled={page >= totalPages}
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
           >
-            Далі
+            {t('movements.next')}
           </Button>
         </div>
       </div>

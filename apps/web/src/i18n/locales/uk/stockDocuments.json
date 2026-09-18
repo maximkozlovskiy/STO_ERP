@@ -1,0 +1,98 @@
+{
+  "title": "Склад",
+  "tabs": {
+    "documents": "Документи складу",
+    "stock": "Залишки",
+    "movements": "Рухи"
+  },
+  "columns": {
+    "number": "Номер",
+    "type": "Тип",
+    "warehouse": "Склад",
+    "status": "Статус",
+    "lines": "Позицій",
+    "date": "Дата документа",
+    "linkedDocs": "Зв'язки"
+  },
+  "counters": {
+    "purchaseOrder": "Замовлення",
+    "warehouses": "Склади"
+  },
+  "filters": {
+    "all": "Всі",
+    "status": "Статус",
+    "dateFrom": "З",
+    "dateTo": "По",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "filterSaved": "Фільтр \"{{name}}\" збережено"
+  },
+  "actions": {
+    "addDocument": "Документ",
+    "openDetails": "Відкрити деталі",
+    "markForDeletion": "Позначити на видалення",
+    "bulkDelete": "Видалити вибрані"
+  },
+  "confirm": {
+    "bulkDeleteTitle": "Видалити {{count}} документ(ів)?",
+    "bulkDeleteConfirm": "Видалити",
+    "transition": "Бажаєте {{action}} документ {{number}}?",
+    "transitionConfirm": "підтвердити",
+    "transitionCancel": "скасувати",
+    "markForDeletion": "Позначити документ {{number}} на видалення?"
+  },
+  "empty": {
+    "documentsNotFound": "Документів не знайдено"
+  },
+  "badges": {
+    "deleted": "видалено"
+  },
+  "detail": {
+    "confirmButton": "Підтвердити документ",
+    "cancelButton": "Скасувати",
+    "colGood": "Товар",
+    "colSku": "Артикул",
+    "colQuantity": "Кількість",
+    "colPrice": "Ціна",
+    "loading": "Завантаження…",
+    "confirmedAt": "Підтверджено: {{date}}",
+    "linkedDocuments": "Пов'язані документи"
+  },
+  "toast": {
+    "bulkDeletedAll": "Видалено {{count}} документ(ів)",
+    "bulkDeletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
+    "bulkDeleteNone": "Не вдалося видалити документи",
+    "markedForDeletion": "Документ позначено на видалення"
+  },
+  "aria": {
+    "selectAll": "Вибрати всі",
+    "selectRow": "Вибрати документ {{number}}",
+    "linkedDocsPopup": "Пов'язані документи складського документа"
+  },
+  "errors": {
+    "bulkDeletePartial": "{{succeeded}} з {{total}} документів видалено, {{failed}} не вдалось",
+    "transitionFailed": "Помилка зміни статусу",
+    "deleteFailed": "Помилка видалення"
+  },
+  "movements": {
+    "filterWarehouse": "Склад",
+    "allWarehouses": "Усі склади",
+    "filterType": "Тип руху",
+    "allTypes": "Усі типи",
+    "dateFrom": "З",
+    "dateTo": "По",
+    "reset": "Скинути",
+    "colDate": "Дата",
+    "colType": "Тип",
+    "colGood": "Товар",
+    "colWarehouse": "Склад",
+    "colQuantity": "Кількість",
+    "colPrice": "Ціна",
+    "emptyTitle": "Рухів немає",
+    "emptyDescription": "За обраними фільтрами рухів по складу не знайдено",
+    "total": "Всього:",
+    "updating": " · оновлення…",
+    "prev": "Назад",
+    "next": "Далі"
+  }
+}

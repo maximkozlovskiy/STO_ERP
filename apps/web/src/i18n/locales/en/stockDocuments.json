@@ -1,0 +1,98 @@
+{
+  "title": "Warehouse",
+  "tabs": {
+    "documents": "Warehouse documents",
+    "stock": "Stock",
+    "movements": "Movements"
+  },
+  "columns": {
+    "number": "Number",
+    "type": "Type",
+    "warehouse": "Warehouse",
+    "status": "Status",
+    "lines": "Line items",
+    "date": "Document date",
+    "linkedDocs": "Links"
+  },
+  "counters": {
+    "purchaseOrder": "Orders",
+    "warehouses": "Warehouses"
+  },
+  "filters": {
+    "all": "All",
+    "status": "Status",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "filterSaved": "Filter \"{{name}}\" saved"
+  },
+  "actions": {
+    "addDocument": "Document",
+    "openDetails": "Open details",
+    "markForDeletion": "Mark for deletion",
+    "bulkDelete": "Delete selected"
+  },
+  "confirm": {
+    "bulkDeleteTitle": "Delete {{count}} document(s)?",
+    "bulkDeleteConfirm": "Delete",
+    "transition": "Do you want to {{action}} document {{number}}?",
+    "transitionConfirm": "confirm",
+    "transitionCancel": "cancel",
+    "markForDeletion": "Mark document {{number}} for deletion?"
+  },
+  "empty": {
+    "documentsNotFound": "No documents found"
+  },
+  "badges": {
+    "deleted": "deleted"
+  },
+  "detail": {
+    "confirmButton": "Confirm document",
+    "cancelButton": "Cancel",
+    "colGood": "Item",
+    "colSku": "SKU",
+    "colQuantity": "Quantity",
+    "colPrice": "Price",
+    "loading": "Loading…",
+    "confirmedAt": "Confirmed: {{date}}",
+    "linkedDocuments": "Related documents"
+  },
+  "toast": {
+    "bulkDeletedAll": "Deleted {{count}} document(s)",
+    "bulkDeletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
+    "bulkDeleteNone": "Failed to delete documents",
+    "markedForDeletion": "Document marked for deletion"
+  },
+  "aria": {
+    "selectAll": "Select all",
+    "selectRow": "Select document {{number}}",
+    "linkedDocsPopup": "Related documents of the warehouse document"
+  },
+  "errors": {
+    "bulkDeletePartial": "{{succeeded}} of {{total}} documents deleted, {{failed}} failed",
+    "transitionFailed": "Status change error",
+    "deleteFailed": "Deletion error"
+  },
+  "movements": {
+    "filterWarehouse": "Warehouse",
+    "allWarehouses": "All warehouses",
+    "filterType": "Movement type",
+    "allTypes": "All types",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "reset": "Reset",
+    "colDate": "Date",
+    "colType": "Type",
+    "colGood": "Item",
+    "colWarehouse": "Warehouse",
+    "colQuantity": "Quantity",
+    "colPrice": "Price",
+    "emptyTitle": "No movements",
+    "emptyDescription": "No stock movements found for the selected filters",
+    "total": "Total:",
+    "updating": " · updating…",
+    "prev": "Back",
+    "next": "Next"
+  }
+}
