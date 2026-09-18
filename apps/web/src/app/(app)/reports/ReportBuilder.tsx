@@ -2,6 +2,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { DragEvent, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   X,
   ChevronRight,
@@ -70,23 +72,6 @@ function enumLabel(enumName: string | undefined, value: unknown): string {
   return fn ? fn(v) : v;
 }
 
-const AGG_LABELS: Record<Agg, string> = {
-  SUM: 'Сума',
-  COUNT: 'Кількість',
-  AVG: 'Середнє',
-  MIN: 'Мінімум',
-  MAX: 'Максимум',
-};
-
-/** Короткі позначки агрегатів для заголовків колонок результату (щоб не було «Сума: Сума»). */
-const AGG_SHORT: Record<Agg, string> = {
-  SUM: 'Σ',
-  COUNT: 'К-сть',
-  AVG: 'сер.',
-  MIN: 'мін.',
-  MAX: 'макс.',
-};
-
 /** Колір чіпа за типом поля. */
 function chipTone(type: string): string {
   switch (type) {
@@ -153,6 +138,7 @@ function ColorLegendItem({ className, label }: { className: string; label: strin
 }
 
 export function ReportBuilder() {
+  const { t } = useTranslation('reports');
   const { data: meta, isLoading: metaLoading } = useReportMetadata();
   const runMut = useRunReport();
   const { data: saved } = useSavedReports();
@@ -218,14 +204,14 @@ export function ReportBuilder() {
       // інакше клік по вже-активному 6-му полі (при 5/5) кидає toast
       // «Максимум 5 рівнів», хоча поле в списку вже є (Bug #606).
       if (groupBy.includes(key)) return;
-      if (!f.groupable) return toast.warning('Це поле не можна групувати');
-      if (groupBy.length >= 5) return toast.warning('Максимум 5 рівнів групування');
+      if (!f.groupable) return toast.warning(t('builder.toastNotGroupable'));
+      if (groupBy.length >= 5) return toast.warning(t('builder.toastMaxGroupLevels'));
       setGroupBy([...groupBy, key]);
     } else if (zone === 'columns') {
       if (!columns.includes(key)) setColumns([...columns, key]);
     } else {
       if (filters.some(x => x.field === key)) return;
-      if (!f.filterable) return toast.warning('Це поле не фільтрується');
+      if (!f.filterable) return toast.warning(t('builder.toastNotFilterable'));
       setFilters([...filters, { field: key, op: 'eq' }]);
     }
   };
@@ -256,8 +242,8 @@ export function ReportBuilder() {
   /** Швидко додати поле у фільтри (кнопка «+ фільтр» на чіпі колонки/групування). */
   const addFilter = (key: string) => {
     const f = fieldByKey.get(key);
-    if (!f?.filterable) return toast.warning('Це поле не фільтрується');
-    if (filters.some(x => x.field === key)) return toast.info('Фільтр за цим полем уже є');
+    if (!f?.filterable) return toast.warning(t('builder.toastNotFilterable'));
+    if (filters.some(x => x.field === key)) return toast.info(t('builder.toastAlreadyFiltered'));
     setFilters([...filters, { field: key, op: 'eq' }]);
   };
   const isFiltered = (key: string) => filters.some(f => f.field === key);
@@ -282,8 +268,8 @@ export function ReportBuilder() {
   };
 
   const run = async (sortOverride?: { alias: string; dir: 'asc' | 'desc' } | null) => {
-    if (!entityKey) return toast.warning('Оберіть джерело даних');
-    if (!columns.length && !groupBy.length) return toast.warning('Додайте хоча б одну колонку');
+    if (!entityKey) return toast.warning(t('builder.toastChooseSource'));
+    if (!columns.length && !groupBy.length) return toast.warning(t('builder.toastAddColumn'));
     try {
       setResult(await runMut.mutateAsync(buildConfig(sortOverride)));
       // Після ручного «Сформувати» — авто-згортати налаштування (звільнити місце під звіт).
@@ -291,7 +277,7 @@ export function ReportBuilder() {
       // (не ховає контроли повністю, як раніше — тоді групування ставало недосяжним).
       if (sortOverride === undefined) setConfigCollapsed(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка звіту');
+      toast.error(e instanceof Error ? e.message : t('builder.toastReportError'));
     }
   };
 
@@ -306,14 +292,14 @@ export function ReportBuilder() {
   };
 
   const doSave = async () => {
-    if (!saveName.trim()) return toast.warning('Вкажіть назву');
+    if (!saveName.trim()) return toast.warning(t('builder.toastEnterName'));
     try {
       await saveMut.mutateAsync({ name: saveName.trim(), config: buildConfig() });
-      toast.success('Звіт збережено');
+      toast.success(t('builder.toastSaved'));
       setSaveOpen(false);
       setSaveName('');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не вдалося зберегти');
+      toast.error(e instanceof Error ? e.message : t('builder.toastSaveFailed'));
     }
   };
 
@@ -328,13 +314,13 @@ export function ReportBuilder() {
   const closeRename = useCallback(() => setRenameTarget(null), []);
 
   const doRename = async () => {
-    if (!renameTarget || !renameName.trim()) return toast.warning('Вкажіть назву');
+    if (!renameTarget || !renameName.trim()) return toast.warning(t('builder.toastEnterName'));
     try {
       await updateSavedMut.mutateAsync({ id: renameTarget.id, name: renameName.trim() });
-      toast.success('Перейменовано');
+      toast.success(t('builder.toastRenamed'));
       setRenameTarget(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не вдалося перейменувати');
+      toast.error(e instanceof Error ? e.message : t('builder.toastRenameFailed'));
     }
   };
 
@@ -369,7 +355,7 @@ export function ReportBuilder() {
           onChange={e => resetSelection(e.target.value)}
           className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
         >
-          <option value="">— Джерело даних —</option>
+          <option value="">{t('builder.dataSource')}</option>
           {meta?.entities.map(e => (
             <option key={e.key} value={e.key}>
               {e.label}
@@ -379,34 +365,34 @@ export function ReportBuilder() {
         {entity && (
           <>
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground">З</span>
+              <span className="text-[13px] text-muted-foreground">{t('builder.from')}</span>
               <DatePickerInput
                 value={from}
                 onChange={setFrom}
-                placeholder="ДД.ММ.РРРР"
+                placeholder={t('builder.datePlaceholder')}
                 className="w-32"
               />
-              <span className="text-[13px] text-muted-foreground">По</span>
+              <span className="text-[13px] text-muted-foreground">{t('builder.to')}</span>
               <DatePickerInput
                 value={to}
                 onChange={setTo}
-                placeholder="ДД.ММ.РРРР"
+                placeholder={t('builder.datePlaceholder')}
                 className="w-32"
               />
             </div>
             <Button onClick={() => run()} disabled={runMut.isPending}>
-              <Play className="size-4" /> Сформувати
+              <Play className="size-4" /> {t('builder.run')}
             </Button>
             <Button variant="outline" onClick={() => setSaveOpen(true)}>
-              <Save className="size-4" /> Зберегти
+              <Save className="size-4" /> {t('builder.save')}
             </Button>
             {result && (
               <>
-                <Button variant="outline" onClick={() => exportReport(result, 'csv')}>
-                  <Download className="size-4" /> CSV
+                <Button variant="outline" onClick={() => exportReport(result, 'csv', t)}>
+                  <Download className="size-4" /> {t('builder.csv')}
                 </Button>
-                <Button variant="outline" onClick={() => exportReport(result, 'xlsx')}>
-                  <Download className="size-4" /> XLSX
+                <Button variant="outline" onClick={() => exportReport(result, 'xlsx', t)}>
+                  <Download className="size-4" /> {t('builder.xlsx')}
                 </Button>
               </>
             )}
@@ -414,15 +400,15 @@ export function ReportBuilder() {
               variant="outline"
               onClick={() => setConfigCollapsed(c => !c)}
               aria-expanded={!configCollapsed}
-              title={configCollapsed ? 'Показати налаштування звіту' : 'Згорнути налаштування'}
+              title={configCollapsed ? t('builder.showSettings') : t('builder.collapseSettings')}
             >
               {configCollapsed ? (
                 <>
-                  <ChevronDown className="size-4" /> Налаштування
+                  <ChevronDown className="size-4" /> {t('builder.settings')}
                 </>
               ) : (
                 <>
-                  <ChevronUp className="size-4" /> Згорнути
+                  <ChevronUp className="size-4" /> {t('builder.collapse')}
                 </>
               )}
             </Button>
@@ -433,7 +419,7 @@ export function ReportBuilder() {
       {/* Збережені звіти */}
       {saved && saved.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Збережені:</span>
+          <span className="text-xs text-muted-foreground">{t('builder.saved')}</span>
           {saved.map(s => (
             <span
               key={s.id}
@@ -448,7 +434,7 @@ export function ReportBuilder() {
               </button>
               <button
                 type="button"
-                aria-label="Перейменувати"
+                aria-label={t('builder.rename')}
                 className="text-muted-foreground hover:text-primary"
                 onClick={() => openRename(s)}
               >
@@ -456,7 +442,7 @@ export function ReportBuilder() {
               </button>
               <button
                 type="button"
-                aria-label="Видалити"
+                aria-label={t('builder.delete')}
                 className="text-muted-foreground hover:text-destructive"
                 onClick={() => delMut.mutate(s.id)}
               >
@@ -469,7 +455,7 @@ export function ReportBuilder() {
 
       {!entity ? (
         <div className="text-muted-foreground text-sm py-10 text-center">
-          Оберіть джерело даних, щоб почати конструювати звіт.
+          {t('builder.chooseSourceToStart')}
         </div>
       ) : null}
 
@@ -481,21 +467,25 @@ export function ReportBuilder() {
           onClick={() => setConfigCollapsed(false)}
           aria-expanded={false}
           className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-          title="Розгорнути налаштування звіту"
+          title={t('builder.expandSettings')}
         >
           <span className="flex items-center gap-1.5 font-medium text-primary">
-            <ChevronDown className="size-4" /> Налаштування
+            <ChevronDown className="size-4" /> {t('builder.settings')}
           </span>
           <span className="text-muted-foreground">
-            Групування:{' '}
+            {t('builder.grouping')}{' '}
             <span className="text-foreground">
-              {groupBy.length ? groupBy.map(k => fieldByKey.get(k)?.label ?? k).join(' → ') : '—'}
+              {groupBy.length
+                ? groupBy.map(k => fieldByKey.get(k)?.label ?? k).join(' → ')
+                : t('builder.none')}
             </span>
           </span>
           <span className="text-muted-foreground">
-            Колонки:{' '}
+            {t('builder.columns')}{' '}
             <span className="text-foreground">
-              {columns.length ? columns.map(k => fieldByKey.get(k)?.label ?? k).join(', ') : '—'}
+              {columns.length
+                ? columns.map(k => fieldByKey.get(k)?.label ?? k).join(', ')
+                : t('builder.none')}
             </span>
           </span>
         </button>
@@ -511,9 +501,13 @@ export function ReportBuilder() {
           {/* Палітра полів */}
           <div className="rounded-xl border border-border bg-surface p-3">
             <div className="text-xs font-medium text-muted-foreground mb-2">
-              Поля «{entity.label}» — натисніть <b className="text-foreground">К</b> (колонка),{' '}
-              <b className="text-foreground">Г</b> (групування) або{' '}
-              <b className="text-foreground">Ф</b> (фільтр). Або перетягніть у зону.
+              {t('builder.paletteHintPrefix', { entity: entity.label })}{' '}
+              <b className="text-foreground">{t('builder.paletteHintColumn')}</b>{' '}
+              {t('builder.paletteHintColumnWord')}{' '}
+              <b className="text-foreground">{t('builder.paletteHintGroup')}</b>{' '}
+              {t('builder.paletteHintGroupWord')}{' '}
+              <b className="text-foreground">{t('builder.paletteHintFilter')}</b>{' '}
+              {t('builder.paletteHintFilterWord')}
             </div>
             <div className="flex flex-col gap-1">
               {paletteFields.map(f => (
@@ -525,26 +519,28 @@ export function ReportBuilder() {
                     'flex items-center justify-between gap-1 rounded-lg px-2 py-1 text-xs',
                     chipTone(f.type),
                   )}
-                  title={isRelation(f.key) ? `Зв'язане поле: ${f.key}` : f.key}
+                  title={isRelation(f.key) ? t('builder.relationField', { key: f.key }) : f.key}
                 >
                   <span className="cursor-grab select-none truncate">{f.label}</span>
                   <span className="flex items-center gap-0.5 shrink-0">
                     <ZoneBtn
-                      letter="К"
-                      title="Додати у колонки"
+                      letter={t('builder.paletteHintColumn')}
+                      title={t('builder.addToColumns')}
                       active={columns.includes(f.key)}
                       onClick={() => addToZone('columns', f.key)}
                     />
                     <ZoneBtn
-                      letter="Г"
-                      title={f.groupable ? 'Додати у групування' : 'Це поле не можна групувати'}
+                      letter={t('builder.paletteHintGroup')}
+                      title={f.groupable ? t('builder.addToGroupTitle') : t('builder.notGroupable')}
                       active={groupBy.includes(f.key)}
                       disabled={!f.groupable}
                       onClick={() => addToZone('groupBy', f.key)}
                     />
                     <ZoneBtn
-                      letter="Ф"
-                      title={f.filterable ? 'Додати у фільтри' : 'Це поле не фільтрується'}
+                      letter={t('builder.paletteHintFilter')}
+                      title={
+                        f.filterable ? t('builder.addToFiltersTitle') : t('builder.notFilterable')
+                      }
                       active={filters.some(x => x.field === f.key)}
                       disabled={!f.filterable}
                       onClick={() => addToZone('filters', f.key)}
@@ -555,18 +551,30 @@ export function ReportBuilder() {
             </div>
             {/* Легенда кольорів чіпів */}
             <div className="mt-3 pt-2 border-t border-border flex flex-col gap-1 text-[11px] text-muted-foreground">
-              <ColorLegendItem className="bg-warning-subtle text-warning" label="число / сума" />
-              <ColorLegendItem className="bg-success-subtle text-success" label="список / статус" />
-              <ColorLegendItem className="bg-primary/10 text-primary" label="дата" />
-              <ColorLegendItem className="bg-secondary text-foreground" label="текст" />
+              <ColorLegendItem
+                className="bg-warning-subtle text-warning"
+                label={t('builder.legendNumber')}
+              />
+              <ColorLegendItem
+                className="bg-success-subtle text-success"
+                label={t('builder.legendEnum')}
+              />
+              <ColorLegendItem
+                className="bg-primary/10 text-primary"
+                label={t('builder.legendDate')}
+              />
+              <ColorLegendItem
+                className="bg-secondary text-foreground"
+                label={t('builder.legendText')}
+              />
             </div>
           </div>
 
           {/* Зони + результат */}
           <div className="flex flex-col gap-3 min-w-0">
             <DropZone
-              title="Колонки"
-              hint="що показувати"
+              title={t('builder.zoneColumns')}
+              hint={t('builder.zoneColumnsHint')}
               zone="columns"
               onDrop={onDropToZone}
               items={columns.map(k => ({ key: k, field: fieldByKey.get(k) }))}
@@ -588,10 +596,10 @@ export function ReportBuilder() {
                     onClick={e => e.stopPropagation()}
                     className="ml-1 rounded border border-border bg-surface text-[11px] px-1 py-0.5"
                   >
-                    <option value="">—</option>
+                    <option value="">{t('builder.none')}</option>
                     {f.aggregations.map(a => (
                       <option key={a} value={a}>
-                        {AGG_LABELS[a]}
+                        {t(`agg.${a}`)}
                       </option>
                     ))}
                   </select>
@@ -599,8 +607,8 @@ export function ReportBuilder() {
               }
             />
             <DropZone
-              title={`Групування (${groupBy.length}/5)`}
-              hint="ієрархія рядків, до 5 рівнів"
+              title={t('builder.zoneGroupBy', { count: groupBy.length })}
+              hint={t('builder.zoneGroupByHint')}
               zone="groupBy"
               onDrop={onDropToZone}
               items={groupBy.map(k => ({ key: k, field: fieldByKey.get(k) }))}
@@ -623,14 +631,20 @@ export function ReportBuilder() {
 
       {/* Результат — на всю ширину (щоб згорнуті налаштування давали більше місця) */}
       {entity && result && (
-        <ResultView result={result} sort={sortAgg} onSort={onSortByAgg} enumByField={enumByField} />
+        <ResultView
+          result={result}
+          sort={sortAgg}
+          onSort={onSortByAgg}
+          enumByField={enumByField}
+          t={t}
+        />
       )}
 
       {/* Modal керує own mount/unmount + exit-анімацією; НЕ обгортати у {open && …} — це ламає exit. */}
       <NamePromptModal
         open={saveOpen}
         onClose={closeSave}
-        title="Зберегти звіт"
+        title={t('builder.saveTitle')}
         value={saveName}
         onChange={setSaveName}
         onSubmit={doSave}
@@ -640,12 +654,12 @@ export function ReportBuilder() {
       <NamePromptModal
         open={!!renameTarget}
         onClose={closeRename}
-        title="Перейменувати звіт"
+        title={t('builder.renameTitle')}
         value={renameName}
         onChange={setRenameName}
         onSubmit={doRename}
         pending={updateSavedMut.isPending}
-        submitLabel="Перейменувати"
+        submitLabel={t('builder.rename')}
       />
     </div>
   );
@@ -660,7 +674,7 @@ function NamePromptModal({
   onChange,
   onSubmit,
   pending,
-  submitLabel = 'Зберегти',
+  submitLabel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -671,6 +685,7 @@ function NamePromptModal({
   pending: boolean;
   submitLabel?: string;
 }) {
+  const { t } = useTranslation('reports');
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <div className="flex flex-col gap-3 p-1">
@@ -678,15 +693,15 @@ function NamePromptModal({
           autoFocus
           value={value}
           onChange={e => onChange(e.target.value)}
-          placeholder="Назва звіту"
+          placeholder={t('builder.reportNamePlaceholder')}
           className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px]"
         />
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>
-            Скасувати
+            {t('builder.cancel')}
           </Button>
           <Button onClick={onSubmit} disabled={pending}>
-            {submitLabel}
+            {submitLabel ?? t('builder.save')}
           </Button>
         </div>
       </div>
@@ -718,6 +733,7 @@ function DropZone({
   renderExtra?: (f: MetaField | undefined) => ReactNode;
   ordered?: boolean;
 }) {
+  const { t } = useTranslation('reports');
   const [over, setOver] = useState(false);
   return (
     <div
@@ -740,7 +756,9 @@ function DropZone({
       </div>
       <div className="flex flex-wrap gap-1.5 min-h-8">
         {items.length === 0 && (
-          <span className="text-xs text-muted-foreground italic">Перетягніть поля сюди</span>
+          <span className="text-xs text-muted-foreground italic">
+            {t('builder.dropFieldsHere')}
+          </span>
         )}
         {items.map((it, i) => (
           <span
@@ -756,8 +774,12 @@ function DropZone({
             {onFilter && it.field?.filterable && (
               <button
                 type="button"
-                aria-label={isFiltered?.(it.key) ? 'Уже у фільтрах' : 'Додати у фільтри'}
-                title={isFiltered?.(it.key) ? 'Уже у фільтрах' : 'Додати у фільтри'}
+                aria-label={
+                  isFiltered?.(it.key) ? t('builder.alreadyFiltered') : t('builder.addToFilters')
+                }
+                title={
+                  isFiltered?.(it.key) ? t('builder.alreadyFiltered') : t('builder.addToFilters')
+                }
                 className={cn(
                   'transition-colors',
                   isFiltered?.(it.key) ? 'text-primary' : 'opacity-60 hover:opacity-100',
@@ -769,7 +791,7 @@ function DropZone({
             )}
             <button
               type="button"
-              aria-label="Прибрати"
+              aria-label={t('builder.remove')}
               className="hover:text-destructive"
               onClick={() => onRemove(zone, it.key)}
             >
@@ -798,6 +820,7 @@ function FilterZone({
   onRemove: (key: string) => void;
   onChange: (f: ReportFilter[]) => void;
 }) {
+  const { t } = useTranslation('reports');
   const [over, setOver] = useState(false);
   const update = (i: number, patch: Partial<ReportFilter>) => {
     onChange(filters.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
@@ -819,10 +842,11 @@ function FilterZone({
       )}
     >
       <div className="text-xs font-medium text-foreground mb-2">
-        Фільтри <span className="text-muted-foreground font-normal">· умови вибірки</span>
+        {t('builder.zoneFilters')}{' '}
+        <span className="text-muted-foreground font-normal">· {t('builder.zoneFiltersHint')}</span>
       </div>
       {filters.length === 0 ? (
-        <span className="text-xs text-muted-foreground italic">Перетягніть поля сюди</span>
+        <span className="text-xs text-muted-foreground italic">{t('builder.dropFieldsHere')}</span>
       ) : (
         <div className="flex flex-col gap-2">
           {filters.map((f, i) => {
@@ -838,15 +862,15 @@ function FilterZone({
                   onChange={e => update(i, { op: e.target.value as ReportFilter['op'] })}
                   className="rounded border border-border bg-surface px-1.5 py-1"
                 >
-                  <option value="eq">=</option>
-                  <option value="ne">≠</option>
-                  <option value="in">в списку</option>
-                  <option value="contains">містить</option>
-                  <option value="gt">&gt;</option>
-                  <option value="gte">≥</option>
-                  <option value="lt">&lt;</option>
-                  <option value="lte">≤</option>
-                  <option value="isNull">порожнє</option>
+                  <option value="eq">{t('builder.opEq')}</option>
+                  <option value="ne">{t('builder.opNe')}</option>
+                  <option value="in">{t('builder.opIn')}</option>
+                  <option value="contains">{t('builder.opContains')}</option>
+                  <option value="gt">{t('builder.opGt')}</option>
+                  <option value="gte">{t('builder.opGte')}</option>
+                  <option value="lt">{t('builder.opLt')}</option>
+                  <option value="lte">{t('builder.opLte')}</option>
+                  <option value="isNull">{t('builder.opIsNull')}</option>
                 </select>
                 {f.op !== 'isNull' &&
                   (f.op === 'in' ? (
@@ -881,7 +905,7 @@ function FilterZone({
                               : [],
                           })
                         }
-                        placeholder="знач1,знач2"
+                        placeholder={t('builder.valuesPlaceholder')}
                         className="rounded border border-border bg-surface px-2 py-1 w-40"
                       />
                     )
@@ -902,13 +926,13 @@ function FilterZone({
                     <input
                       value={String(f.value ?? '')}
                       onChange={e => update(i, { value: e.target.value })}
-                      placeholder="значення"
+                      placeholder={t('builder.valuePlaceholder')}
                       className="rounded border border-border bg-surface px-2 py-1 w-40"
                     />
                   ))}
                 <button
                   type="button"
-                  aria-label="Прибрати"
+                  aria-label={t('builder.remove')}
                   className="text-muted-foreground hover:text-destructive"
                   onClick={() => onRemove(f.field)}
                 >
@@ -961,8 +985,14 @@ export function fmtAggValue(
 
 /** Форматує значення детальної колонки за типом. `number` — кількість (без валюти),
  *  `decimal` — грошове (2 знаки). `boolean === false` пропускає early-return (строгі порівняння). */
-function fmtCell(value: unknown, type: string, enumName?: string): string {
-  if (type === 'boolean' && typeof value === 'boolean') return value ? 'Так' : 'Ні';
+function fmtCell(
+  value: unknown,
+  type: string,
+  enumName: string | undefined,
+  t: TFunction<'reports'>,
+): string {
+  if (type === 'boolean' && typeof value === 'boolean')
+    return value ? t('result.boolYes') : t('result.boolNo');
   if (value === null || value === undefined || value === '') return '—';
   if (type === 'enum') return enumLabel(enumName, value);
   if (type === 'decimal') return fmtMoney(Number(value));
@@ -976,10 +1006,14 @@ function fmtCell(value: unknown, type: string, enumName?: string): string {
 }
 
 /** enumName поля групування (за node.field). */
-function displayGroupValue(node: GroupNode, enumByField: Record<string, string>): string {
-  if (node.key === '∅') return '(порожньо)';
+function displayGroupValue(
+  node: GroupNode,
+  enumByField: Record<string, string>,
+  t: TFunction<'reports'>,
+): string {
+  if (node.key === '∅') return t('result.emptyGroup');
   const v = node.value;
-  if (typeof v === 'boolean') return v ? 'Так' : 'Ні';
+  if (typeof v === 'boolean') return v ? t('result.boolYes') : t('result.boolNo');
   const enumName = enumByField[node.field];
   if (enumName) return enumLabel(enumName, v);
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
@@ -993,11 +1027,13 @@ function ResultView({
   sort,
   onSort,
   enumByField,
+  t,
 }: {
   result: ReportRunResult;
   sort: { alias: string; dir: 'asc' | 'desc' } | null;
   onSort: (alias: string) => void;
   enumByField: Record<string, string>;
+  t: TFunction<'reports'>;
 }) {
   const aggAliases = result.aggregations.map(a => `${a.agg}_${a.field}`);
   const cols = result.columns; // детальні колонки
@@ -1016,8 +1052,8 @@ function ResultView({
     <div className="flex flex-1 min-h-0 flex-col rounded-xl border border-border bg-surface overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary shrink-0">
         <span className="text-sm font-medium">
-          Результат · рядків: {result.result.rowCount}
-          {result.result.truncated && ' (обрізано до 5000 — звузьте період)'}
+          {t('result.summary', { count: result.result.rowCount })}
+          {result.result.truncated && t('result.truncated')}
         </span>
       </div>
       {!hasGroups && (
@@ -1027,9 +1063,9 @@ function ResultView({
         >
           <span aria-hidden>ℹ️</span>
           <span>
-            Групування не задано — показано детальні рядки. Щоб згрупувати (напр. за контрагентом,
-            датою чи статусом) і побачити суми — натисніть кнопку{' '}
-            <span className="font-semibold">Г</span> на потрібному полі в палітрі зліва.
+            {t('result.noGroupingBefore')}{' '}
+            <span className="font-semibold">{t('builder.paletteHintGroup')}</span>{' '}
+            {t('result.noGroupingAfter')}
           </span>
         </div>
       )}
@@ -1038,7 +1074,7 @@ function ResultView({
           <thead className="sticky top-0 bg-secondary text-muted-foreground">
             <tr>
               <th className="text-left font-medium px-4 py-2 border-b border-border">
-                {hasGroups ? 'Група' : '№'}
+                {hasGroups ? t('result.colGroup') : t('result.colNumber')}
               </th>
               {cols.map(c => (
                 <th
@@ -1057,7 +1093,7 @@ function ResultView({
                       назва «Склеєно», щоб не збігатися з користувацькою колонкою даних «Кількість»
                       (напр. quantity), яка стоїть поруч і має інший сенс (сума). У режимі груп —
                       це кількість записів у групі (node.count), історична назва «Кількість». */}
-                  {hasGroups ? 'Кількість' : 'Склеєно'}
+                  {hasGroups ? t('result.colCountGroup') : t('result.colCountMerged')}
                 </th>
               )}
               {aggAliases.map(a => {
@@ -1076,13 +1112,13 @@ function ResultView({
                     <button
                       type="button"
                       onClick={() => onSort(a)}
-                      title="Сортувати групи за цим показником"
+                      title={t('result.sortByAgg')}
                       className={cn(
                         'inline-flex items-center gap-0.5 rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         active && 'text-primary',
                       )}
                     >
-                      {aggAliasLabel(a, result)}
+                      {aggAliasLabel(a, result, t)}
                       {active && (sort!.dir === 'desc' ? '↓' : '↑')}
                     </button>
                   </th>
@@ -1101,6 +1137,7 @@ function ResultView({
                     aggAliases={aggAliases}
                     aggregations={result.aggregations}
                     enumByField={enumByField}
+                    t={t}
                   />
                 ))
               : // Без групування — плоска таблиця детальних рядків (діра #5).
@@ -1115,7 +1152,7 @@ function ResultView({
                           c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
                         )}
                       >
-                        {fmtCell(row[c.key], c.type, c.enumName)}
+                        {fmtCell(row[c.key], c.type, c.enumName, t)}
                       </td>
                     ))}
                     {showCount && (
@@ -1133,14 +1170,14 @@ function ResultView({
             {!hasGroups && result.result.detailRows.length === 0 && (
               <tr>
                 <td colSpan={totalCols} className="px-4 py-6 text-center text-muted-foreground">
-                  Немає даних
+                  {t('result.noData')}
                 </td>
               </tr>
             )}
           </tbody>
           <tfoot>
             <tr className="font-semibold bg-muted/40">
-              <td className="px-4 py-2 border-t border-border">Разом</td>
+              <td className="px-4 py-2 border-t border-border">{t('result.totals')}</td>
               {cols.map(c => (
                 <td key={c.key} className="border-t border-border" />
               ))}
@@ -1162,7 +1199,7 @@ function ResultView({
   );
 }
 
-function aggAliasLabel(alias: string, result: ReportRunResult): string {
+function aggAliasLabel(alias: string, result: ReportRunResult, t: TFunction<'reports'>): string {
   const us = alias.indexOf('_');
   const agg = alias.slice(0, us);
   const fieldKey = alias.slice(us + 1);
@@ -1173,7 +1210,10 @@ function aggAliasLabel(alias: string, result: ReportRunResult): string {
   const col = result.columns.find(c => c.key === fieldKey);
   const label = aggMeta?.label ?? col?.label ?? fieldKey;
   // Короткий префікс (Σ Сума, сер. Ціна) — уникає «Сума: Сума» для авто-SUM грошових колонок.
-  return `${AGG_SHORT[agg as Agg] ?? agg} ${label}`;
+  const short = (['SUM', 'COUNT', 'AVG', 'MIN', 'MAX'] as Agg[]).includes(agg as Agg)
+    ? t(`aggShort.${agg as Agg}`)
+    : agg;
+  return `${short} ${label}`;
 }
 
 function GroupRows({
@@ -1183,6 +1223,7 @@ function GroupRows({
   aggAliases,
   aggregations,
   enumByField,
+  t,
 }: {
   node: GroupNode;
   depth: number;
@@ -1190,6 +1231,7 @@ function GroupRows({
   aggAliases: string[];
   aggregations: { field: string; agg: string; type?: string; label?: string }[];
   enumByField: Record<string, string>;
+  t: TFunction<'reports'>;
 }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
@@ -1220,7 +1262,7 @@ function GroupRows({
               <span className="inline-block w-3.5" />
             )}
             <span className={cn(depth === 0 && 'font-medium')}>
-              {displayGroupValue(node, enumByField)}
+              {displayGroupValue(node, enumByField, t)}
             </span>
           </button>
         </td>
@@ -1246,6 +1288,7 @@ function GroupRows({
             aggAliases={aggAliases}
             aggregations={aggregations}
             enumByField={enumByField}
+            t={t}
           />
         ))}
       {open &&
@@ -1253,7 +1296,9 @@ function GroupRows({
         node.rows!.map((row, i) => (
           <tr key={`r${i}`} className="border-b border-border/50 bg-secondary/20">
             <td className="px-4 py-1" style={{ paddingLeft: `${16 + (depth + 1) * 20}px` }}>
-              <span className="text-muted-foreground text-[12px]">запис {i + 1}</span>
+              <span className="text-muted-foreground text-[12px]">
+                {t('result.recordLabel', { index: i + 1 })}
+              </span>
             </td>
             {cols.map(c => (
               <td
@@ -1263,7 +1308,7 @@ function GroupRows({
                   c.type === 'decimal' || c.type === 'number' ? 'text-right' : 'text-left',
                 )}
               >
-                {fmtCell(row[c.key], c.type, c.enumName)}
+                {fmtCell(row[c.key], c.type, c.enumName, t)}
               </td>
             ))}
             <td />
@@ -1277,11 +1322,16 @@ function GroupRows({
 }
 
 // ── Експорт CSV / XLSX (клієнтський, з дерева) ──────────────────────────────────
-function flattenTree(nodes: GroupNode[], aggAliases: string[], depth = 0): string[][] {
+function flattenTree(
+  nodes: GroupNode[],
+  aggAliases: string[],
+  t: TFunction<'reports'>,
+  depth = 0,
+): string[][] {
   const rows: string[][] = [];
   for (const n of nodes) {
     const indent = '  '.repeat(depth);
-    const label = n.key === '∅' ? '(порожньо)' : String(n.value ?? n.key);
+    const label = n.key === '∅' ? t('result.emptyGroup') : String(n.value ?? n.key);
     rows.push([
       indent + label,
       String(n.count),
@@ -1290,7 +1340,7 @@ function flattenTree(nodes: GroupNode[], aggAliases: string[], depth = 0): strin
         return v === null || v === undefined ? '' : String(v);
       }),
     ]);
-    if (n.children.length) rows.push(...flattenTree(n.children, aggAliases, depth + 1));
+    if (n.children.length) rows.push(...flattenTree(n.children, aggAliases, t, depth + 1));
   }
   return rows;
 }
@@ -1301,24 +1351,34 @@ function flattenTree(nodes: GroupNode[], aggAliases: string[], depth = 0): strin
  * Мусить давати ТІ САМІ лейбли, що й fmtCell на екрані (окрім числового форматування,
  * яке в експорті лишається сирим навмисно) — інакше розбіжність екран↔файл.
  */
-function exportCell(value: unknown, type: string, enumName?: string): string {
-  if (type === 'boolean' && typeof value === 'boolean') return value ? 'Так' : 'Ні';
+function exportCell(
+  value: unknown,
+  type: string,
+  enumName: string | undefined,
+  t: TFunction<'reports'>,
+): string {
+  if (type === 'boolean' && typeof value === 'boolean')
+    return value ? t('result.boolYes') : t('result.boolNo');
   if (value === null || value === undefined) return '';
   if (enumName) return enumLabel(enumName, value);
   if (type === 'date') return fmtDate(String(value));
   return String(value);
 }
 
-function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
+function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx', t: TFunction<'reports'>) {
   const aggAliases = Object.keys(result.result.grandTotals);
   let rows: string[][];
 
   if (result.groupBy.length) {
     // Групований режим — дерево груп (як на екрані), відступ = рівень ієрархії.
-    const header = ['Група', 'Кількість', ...aggAliases.map(a => aggAliasLabel(a, result))];
-    const body = flattenTree(result.result.tree, aggAliases);
+    const header = [
+      t('export.group'),
+      t('export.count'),
+      ...aggAliases.map(a => aggAliasLabel(a, result, t)),
+    ];
+    const body = flattenTree(result.result.tree, aggAliases, t);
     const totals = [
-      'Разом',
+      t('export.totals'),
       String(result.result.rowCount),
       ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
     ];
@@ -1331,19 +1391,19 @@ function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
       r => typeof r.__mergedCount === 'number' && (r.__mergedCount as number) > 1,
     );
     const header = [
-      '№',
+      t('export.number'),
       ...cols.map(c => c.label),
-      ...(showCount ? ['Склеєно'] : []),
-      ...aggAliases.map(a => aggAliasLabel(a, result)),
+      ...(showCount ? [t('export.merged')] : []),
+      ...aggAliases.map(a => aggAliasLabel(a, result, t)),
     ];
     const body = detail.map((row, i) => [
       String(i + 1),
-      ...cols.map(c => exportCell(row[c.key], c.type, c.enumName)),
+      ...cols.map(c => exportCell(row[c.key], c.type, c.enumName, t)),
       ...(showCount ? [String(typeof row.__mergedCount === 'number' ? row.__mergedCount : 1)] : []),
       ...aggAliases.map(() => ''),
     ]);
     const totals = [
-      'Разом',
+      t('export.totals'),
       ...cols.map(() => ''),
       ...(showCount ? [String(result.result.rowCount)] : []),
       ...aggAliases.map(a => String(result.result.grandTotals[a] ?? '')),
@@ -1360,7 +1420,7 @@ function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
     );
   } else {
     // XLSX через SpreadsheetML (простий, без бібліотеки) — відкривається Excel-ом.
-    const xml = buildXlsxXml(rows);
+    const xml = buildXlsxXml(rows, t);
     downloadBlob(
       new Blob([xml], { type: 'application/vnd.ms-excel' }),
       `report-${result.entity}.xls`,
@@ -1368,7 +1428,7 @@ function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx') {
   }
 }
 
-function buildXlsxXml(rows: string[][]): string {
+function buildXlsxXml(rows: string[][], t: TFunction<'reports'>): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const cells = (r: string[], isHeader: boolean) =>
     r
@@ -1383,5 +1443,5 @@ function buildXlsxXml(rows: string[][]): string {
   return `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-<Worksheet ss:Name="Звіт"><Table>${body}</Table></Worksheet></Workbook>`;
+<Worksheet ss:Name="${t('export.sheetName')}"><Table>${body}</Table></Worksheet></Workbook>`;
 }

@@ -14,6 +14,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import { fmtMoney } from '@/lib/format';
 
 type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
@@ -50,10 +51,11 @@ function yFmt(v: number): string {
 }
 
 export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
+  const { t } = useTranslation('reports');
   return (
     <>
       <div className="bg-surface rounded-xl border border-border p-5">
-        <h3 className="font-medium text-foreground mb-4">Виручка по днях</h3>
+        <h3 className="font-medium text-foreground mb-4">{t('charts.revenueByDay')}</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -66,12 +68,17 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
               width={52}
             />
             <Tooltip formatter={v => fmt(Number(v ?? 0))} />
-            <Bar dataKey="revenue" fill="#3b82f6" name="Виручка" radius={[4, 4, 0, 0]} />
+            <Bar
+              dataKey="revenue"
+              fill="#3b82f6"
+              name={t('charts.revenue')}
+              radius={[4, 4, 0, 0]}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="bg-surface rounded-xl border border-border p-5">
-        <h3 className="font-medium text-foreground mb-4">Роботи vs Запчастини</h3>
+        <h3 className="font-medium text-foreground mb-4">{t('charts.laborVsParts')}</h3>
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -88,7 +95,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
               type="monotone"
               dataKey="labor"
               stroke="#10b981"
-              name="Роботи"
+              name={t('charts.labor')}
               dot={false}
               strokeWidth={2}
             />
@@ -96,7 +103,7 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
               type="monotone"
               dataKey="parts"
               stroke="#f59e0b"
-              name="Запчастини"
+              name={t('charts.parts')}
               dot={false}
               strokeWidth={2}
             />
@@ -109,17 +116,18 @@ export function RevenueCharts({ rows }: { rows: RevenueRow[] }) {
 }
 
 export function SettlementsChart({ rows }: { rows: SettlementRow[] }) {
+  const { t } = useTranslation('reports');
   const debit = rows.filter(r => r.balance > 0).reduce((s, r) => s + r.balance, 0);
   const credit = Math.abs(rows.filter(r => r.balance < 0).reduce((s, r) => s + r.balance, 0));
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
-      <h3 className="font-medium text-foreground mb-4">Структура</h3>
+      <h3 className="font-medium text-foreground mb-4">{t('charts.structure')}</h3>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie
             data={[
-              { name: 'Дебіторська', value: debit },
-              { name: 'Кредиторська', value: credit },
+              { name: t('charts.debit'), value: debit },
+              { name: t('charts.credit'), value: credit },
             ]}
             cx="50%"
             cy="50%"
@@ -138,16 +146,17 @@ export function SettlementsChart({ rows }: { rows: SettlementRow[] }) {
 }
 
 export function ProfitabilityChart({ data }: { data: ProfitabilityData }) {
+  const { t } = useTranslation('reports');
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
-      <h3 className="font-medium text-foreground mb-4">Структура витрат</h3>
+      <h3 className="font-medium text-foreground mb-4">{t('charts.costStructure')}</h3>
       <ResponsiveContainer width="100%" height={220}>
         <PieChart>
           <Pie
             data={[
-              { name: 'Запчастини', value: data.totalCostParts },
-              { name: 'Праця (40%)', value: data.totalCostLabor },
-              { name: 'Прибуток', value: Math.max(0, data.grossProfit) },
+              { name: t('charts.profParts'), value: data.totalCostParts },
+              { name: t('charts.profLabor'), value: data.totalCostLabor },
+              { name: t('charts.profProfit'), value: Math.max(0, data.grossProfit) },
             ]}
             cx="50%"
             cy="50%"
@@ -167,9 +176,10 @@ export function ProfitabilityChart({ data }: { data: ProfitabilityData }) {
 }
 
 export function LoadChart({ rows }: { rows: LoadRow[] }) {
+  const { t } = useTranslation('reports');
   return (
     <div className="bg-surface rounded-xl border border-border p-5">
-      <h3 className="font-medium text-foreground mb-4">Завантаженість підйомників (%)</h3>
+      <h3 className="font-medium text-foreground mb-4">{t('charts.liftLoad')}</h3>
       <ResponsiveContainer width="100%" height={Math.max(200, rows.length * 48 + 40)}>
         <BarChart data={rows} layout="vertical">
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -183,7 +193,7 @@ export function LoadChart({ rows }: { rows: LoadRow[] }) {
           />
           <YAxis type="category" dataKey="liftName" tick={{ fontSize: 11 }} width={120} />
           <Tooltip formatter={v => Number(v ?? 0).toFixed(1) + '%'} />
-          <Bar dataKey="loadPercent" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Завантаженість">
+          <Bar dataKey="loadPercent" fill="#3b82f6" radius={[0, 4, 4, 0]} name={t('charts.load')}>
             {rows.map((_, idx: number) => (
               <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
             ))}

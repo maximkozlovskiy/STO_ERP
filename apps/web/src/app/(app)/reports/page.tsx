@@ -2,6 +2,8 @@
 
 import { Suspense } from 'react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { useReport, type ReportTab } from '@/hooks/api/useReports';
@@ -115,6 +117,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 
 function ReportsPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
+  const { t } = useTranslation('reports');
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'revenue') as Tab;
@@ -138,15 +141,15 @@ function ReportsPageClient() {
   const error = queryError instanceof Error ? queryError.message : '';
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'revenue', label: 'Виручка' },
-    { id: 'work-orders', label: 'Наряди' },
-    { id: 'stock', label: 'Залишки' },
-    { id: 'settlements', label: 'Взаєморозрахунки' },
-    { id: 'settlements-detail', label: 'Розрахунки' },
-    { id: 'load', label: 'Завантаженість' },
-    { id: 'profitability', label: 'Рентабельність' },
-    { id: 'vat', label: 'ПДВ' },
-    { id: 'builder', label: 'Конструктор' },
+    { id: 'revenue', label: t('page.tabs.revenue') },
+    { id: 'work-orders', label: t('page.tabs.workOrders') },
+    { id: 'stock', label: t('page.tabs.stock') },
+    { id: 'settlements', label: t('page.tabs.settlements') },
+    { id: 'settlements-detail', label: t('page.tabs.settlementsDetail') },
+    { id: 'load', label: t('page.tabs.load') },
+    { id: 'profitability', label: t('page.tabs.profitability') },
+    { id: 'vat', label: t('page.tabs.vat') },
+    { id: 'builder', label: t('page.tabs.builder') },
   ];
 
   const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability', 'vat'].includes(
@@ -161,7 +164,7 @@ function ReportsPageClient() {
           {error}
         </div>
       )}
-      <h1 className="page-title shrink-0">Звіти</h1>
+      <h1 className="page-title shrink-0">{t('page.title')}</h1>
 
       {/* Tabs — стандарт каталогу: border по всій ширині */}
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
@@ -191,38 +194,44 @@ function ReportsPageClient() {
           {needsDates && (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-[13px] text-muted-foreground shrink-0">З</span>
+                <span className="text-[13px] text-muted-foreground shrink-0">
+                  {t('page.filters.from')}
+                </span>
                 <DatePickerInput
                   value={from}
                   onChange={setFrom}
-                  placeholder="ДД.ММ.РРРР"
+                  placeholder={t('page.filters.datePlaceholder')}
                   className="w-36"
                 />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[13px] text-muted-foreground shrink-0">По</span>
+                <span className="text-[13px] text-muted-foreground shrink-0">
+                  {t('page.filters.to')}
+                </span>
                 <DatePickerInput
                   value={to}
                   onChange={setTo}
-                  placeholder="ДД.ММ.РРРР"
+                  placeholder={t('page.filters.datePlaceholder')}
                   className="w-36"
                 />
               </div>
             </>
           )}
           {loading && (
-            <span className="text-xs text-muted-foreground animate-pulse">Завантаження…</span>
+            <span className="text-xs text-muted-foreground animate-pulse">
+              {t('page.filters.loading')}
+            </span>
           )}
           {data && (
             <Button
               variant="outline"
               onClick={() => {
-                const csv = buildCsv(tab, data);
+                const csv = buildCsv(tab, data, t);
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 downloadBlob(blob, `${tab}-report.csv`);
               }}
             >
-              Експорт CSV
+              {t('page.filters.exportCsv')}
             </Button>
           )}
         </div>
@@ -238,7 +247,7 @@ function ReportsPageClient() {
 
           {!isSettlementsDetail && !data && !loading && (
             <div className="flex items-center justify-center h-64 text-muted-foreground text-[13px]">
-              Оберіть параметри і натисніть «Сформувати»
+              {t('page.empty')}
             </div>
           )}
 
@@ -252,10 +261,10 @@ function ReportsPageClient() {
           {data && data._tab === 'revenue' && (
             <div className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
-                <StatCard label="Загальна виручка" value={fmt(data.totalRevenue)} />
-                <StatCard label="Кількість нарядів" value={String(data.totalOrders)} />
+                <StatCard label={t('page.revenue.totalRevenue')} value={fmt(data.totalRevenue)} />
+                <StatCard label={t('page.revenue.totalOrders')} value={String(data.totalOrders)} />
                 <StatCard
-                  label="Середній чек"
+                  label={t('page.revenue.avgCheck')}
                   value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'}
                 />
               </div>
@@ -267,18 +276,23 @@ function ReportsPageClient() {
           {data && data._tab === 'work-orders' && (
             <div className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
-                <StatCard label="Всього норм-годин" value={fmtNum(data.totalNormoHours)} />
-                <StatCard label="Сума робіт" value={fmt(data.totalAmount)} />
-                <StatCard label="Механіків" value={String(data.rows.length)} />
+                <StatCard
+                  label={t('page.workOrders.totalNormoHours')}
+                  value={fmtNum(data.totalNormoHours)}
+                />
+                <StatCard label={t('page.workOrders.totalAmount')} value={fmt(data.totalAmount)} />
+                <StatCard label={t('page.workOrders.mechanics')} value={String(data.rows.length)} />
               </div>
               <div className="bg-surface rounded-xl border border-border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Механік</TableHead>
-                      <TableHead className="text-right">Норм-год</TableHead>
-                      <TableHead className="text-right">Позицій</TableHead>
-                      <TableHead className="text-right">Сума</TableHead>
+                      <TableHead>{t('page.workOrders.colMechanic')}</TableHead>
+                      <TableHead className="text-right">
+                        {t('page.workOrders.colNormoHours')}
+                      </TableHead>
+                      <TableHead className="text-right">{t('page.workOrders.colLines')}</TableHead>
+                      <TableHead className="text-right">{t('page.workOrders.colAmount')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -306,18 +320,21 @@ function ReportsPageClient() {
           {data && data._tab === 'stock' && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
-                <StatCard label="Позицій на складах" value={String(data.stockItems.length)} />
-                <StatCard label="Загальна вартість" value={fmt(data.totalValue)} />
+                <StatCard
+                  label={t('page.stock.itemsCount')}
+                  value={String(data.stockItems.length)}
+                />
+                <StatCard label={t('page.stock.totalValue')} value={fmt(data.totalValue)} />
               </div>
               <div className="bg-surface rounded-xl border border-border overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Товар</TableHead>
-                      <TableHead>Склад</TableHead>
-                      <TableHead className="text-right">Кількість</TableHead>
-                      <TableHead className="text-right">Доступно</TableHead>
-                      <TableHead className="text-right">Вартість</TableHead>
+                      <TableHead>{t('page.stock.colGood')}</TableHead>
+                      <TableHead>{t('page.stock.colWarehouse')}</TableHead>
+                      <TableHead className="text-right">{t('page.stock.colQuantity')}</TableHead>
+                      <TableHead className="text-right">{t('page.stock.colAvailable')}</TableHead>
+                      <TableHead className="text-right">{t('page.stock.colValue')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -355,14 +372,14 @@ function ReportsPageClient() {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <StatCard
-                  label="Дебіторська заборгованість"
+                  label={t('page.settlements.totalDebit')}
                   value={fmt(data.totalDebit)}
-                  sub="Клієнти нам"
+                  sub={t('page.settlements.totalDebitSub')}
                 />
                 <StatCard
-                  label="Кредиторська заборгованість"
+                  label={t('page.settlements.totalCredit')}
                   value={fmt(data.totalCredit)}
-                  sub="Ми постачальникам"
+                  sub={t('page.settlements.totalCreditSub')}
                 />
               </div>
               <div className="grid grid-cols-2 gap-6">
@@ -371,8 +388,10 @@ function ReportsPageClient() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Контрагент</TableHead>
-                        <TableHead className="text-right">Баланс</TableHead>
+                        <TableHead>{t('page.settlements.colCounterparty')}</TableHead>
+                        <TableHead className="text-right">
+                          {t('page.settlements.colBalance')}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -404,20 +423,27 @@ function ReportsPageClient() {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <StatCard
-                  label="Виручка"
+                  label={t('page.profitability.revenue')}
                   value={fmt(data.totalRevenue)}
-                  sub={`${data.ordersCount} нарядів`}
+                  sub={t('page.profitability.revenueSub', { count: data.ordersCount })}
                 />
                 <StatCard
-                  label="Собівартість"
+                  label={t('page.profitability.cost')}
                   value={fmt(data.totalCost)}
-                  sub={`Запч: ${fmt(data.totalCostParts)}`}
+                  sub={t('page.profitability.costSub', { parts: fmt(data.totalCostParts) })}
                 />
-                <StatCard label="Валовий прибуток" value={fmt(data.grossProfit)} />
                 <StatCard
-                  label="Маржинальність"
+                  label={t('page.profitability.grossProfit')}
+                  value={fmt(data.grossProfit)}
+                />
+                <StatCard
+                  label={t('page.profitability.margin')}
                   value={`${data.margin.toFixed(1)}%`}
-                  sub={data.margin >= 30 ? '✓ Норма' : '↓ Нижче норми'}
+                  sub={
+                    data.margin >= 30
+                      ? t('page.profitability.marginOk')
+                      : t('page.profitability.marginLow')
+                  }
                 />
               </div>
               <ProfitabilityChart data={data} />
@@ -425,16 +451,26 @@ function ReportsPageClient() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Показник</TableHead>
-                      <TableHead className="text-right">Сума</TableHead>
-                      <TableHead className="text-right">% до виручки</TableHead>
+                      <TableHead>{t('page.profitability.colIndicator')}</TableHead>
+                      <TableHead className="text-right">
+                        {t('page.profitability.colAmount')}
+                      </TableHead>
+                      <TableHead className="text-right">
+                        {t('page.profitability.colPctOfRevenue')}
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {[
-                      { label: 'Виручка', value: data.totalRevenue, pct: 100 },
                       {
-                        label: '— Запчастини (собівартість)',
+                        id: 'revenue',
+                        label: t('page.profitability.rowRevenue'),
+                        value: data.totalRevenue,
+                        pct: 100,
+                      },
+                      {
+                        id: 'parts',
+                        label: t('page.profitability.rowParts'),
                         value: data.totalCostParts,
                         pct:
                           data.totalRevenue > 0
@@ -442,21 +478,27 @@ function ReportsPageClient() {
                             : 0,
                       },
                       {
-                        label: '— Праця (оцінка 40%)',
+                        id: 'labor',
+                        label: t('page.profitability.rowLabor'),
                         value: data.totalCostLabor,
                         pct:
                           data.totalRevenue > 0
                             ? (data.totalCostLabor / data.totalRevenue) * 100
                             : 0,
                       },
-                      { label: 'Валовий прибуток', value: data.grossProfit, pct: data.margin },
+                      {
+                        id: 'grossProfit',
+                        label: t('page.profitability.rowGrossProfit'),
+                        value: data.grossProfit,
+                        pct: data.margin,
+                      },
                     ].map(row => (
-                      <TableRow key={row.label}>
+                      <TableRow key={row.id}>
                         <TableCell className="text-foreground">{row.label}</TableCell>
                         <TableCell
                           className={cn(
                             'text-right font-semibold',
-                            row.label === 'Валовий прибуток'
+                            row.id === 'grossProfit'
                               ? row.value >= 0
                                 ? 'text-success'
                                 : 'text-destructive'
@@ -484,11 +526,11 @@ function ReportsPageClient() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Підйомник</TableHead>
-                      <TableHead>Зона</TableHead>
-                      <TableHead className="text-right">Слотів</TableHead>
-                      <TableHead className="text-right">Годин</TableHead>
-                      <TableHead className="text-right">Завантаженість</TableHead>
+                      <TableHead>{t('page.load.colLift')}</TableHead>
+                      <TableHead>{t('page.load.colZone')}</TableHead>
+                      <TableHead className="text-right">{t('page.load.colSlots')}</TableHead>
+                      <TableHead className="text-right">{t('page.load.colHours')}</TableHead>
+                      <TableHead className="text-right">{t('page.load.colLoad')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -497,7 +539,10 @@ function ReportsPageClient() {
                         <TableCell className="font-medium text-foreground">{r.liftName}</TableCell>
                         <TableCell className="text-muted-foreground">{r.zoneName}</TableCell>
                         <TableCell className="text-right">{r.totalSlots}</TableCell>
-                        <TableCell className="text-right">{fmtNum(r.totalHours)}г</TableCell>
+                        <TableCell className="text-right">
+                          {fmtNum(r.totalHours)}
+                          {t('page.load.hoursSuffix')}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="w-24 bg-secondary rounded-full h-2">
@@ -532,19 +577,19 @@ function ReportsPageClient() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <StatCard
-                  label="ПДВ нараховано (з рахунків)"
+                  label={t('page.vat.invoiced')}
                   value={fmt(data.invoiced)}
-                  sub="Виставлені рахунки покупцям"
+                  sub={t('page.vat.invoicedSub')}
                 />
                 <StatCard
-                  label="ПДВ сплачено (закупівлі)"
+                  label={t('page.vat.purchases')}
                   value={fmt(data.purchases)}
-                  sub="Замовлення купівлі постачальникам"
+                  sub={t('page.vat.purchasesSub')}
                 />
                 <StatCard
-                  label="Чисте зобов'язання перед ДПС"
+                  label={t('page.vat.net')}
                   value={fmt(data.net)}
-                  sub={data.net >= 0 ? 'До сплати' : 'Відшкодування'}
+                  sub={data.net >= 0 ? t('page.vat.netToPay') : t('page.vat.netRefund')}
                 />
               </div>
             </div>
@@ -563,35 +608,56 @@ export default function ReportsPage() {
   );
 }
 
-function buildCsv(tab: Tab, data: ReportData): string {
+function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
   if (tab === 'revenue' && data._tab === 'revenue') {
     const rows = [
-      ['Дата', 'Виручка', 'Роботи', 'Запчастини', 'Нарядів'],
+      [
+        t('page.csv.date'),
+        t('page.csv.revenue'),
+        t('page.csv.labor'),
+        t('page.csv.parts'),
+        t('page.csv.ordersCount'),
+      ],
       ...data.rows.map(r => [r.date, r.revenue, r.labor, r.parts, r.count]),
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'work-orders' && data._tab === 'work-orders') {
     const rows = [
-      ['Механік', 'Норм-год', 'Позицій', 'Сума'],
+      [t('page.csv.mechanic'), t('page.csv.normoHours'), t('page.csv.lines'), t('page.csv.amount')],
       ...data.rows.map(r => [r.employeeName, r.totalNormoHours, r.linesCount, r.totalAmount]),
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'stock' && data._tab === 'stock') {
     const rows = [
-      ['Товар', 'Склад', 'Кількість', 'Доступно', 'Вартість'],
+      [
+        t('page.csv.good'),
+        t('page.csv.warehouse'),
+        t('page.csv.quantity'),
+        t('page.csv.available'),
+        t('page.csv.value'),
+      ],
       ...data.stockItems.map(i => [i.goodName, i.warehouseName, i.quantity, i.available, i.value]),
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'settlements' && data._tab === 'settlements') {
-    const rows = [['Контрагент', 'Баланс'], ...data.rows.map(r => [r.counterpartyName, r.balance])];
+    const rows = [
+      [t('page.csv.counterparty'), t('page.csv.balance')],
+      ...data.rows.map(r => [r.counterpartyName, r.balance]),
+    ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
   if (tab === 'load' && data._tab === 'load') {
     const rows = [
-      ['Підйомник', 'Зона', 'Слотів', 'Годин', 'Завантаженість%'],
+      [
+        t('page.csv.lift'),
+        t('page.csv.zone'),
+        t('page.csv.slots'),
+        t('page.csv.hours'),
+        t('page.csv.loadPercent'),
+      ],
       ...data.rows.map(r => [
         r.liftName,
         r.zoneName,
@@ -604,19 +670,19 @@ function buildCsv(tab: Tab, data: ReportData): string {
   }
   if (tab === 'profitability' && data._tab === 'profitability') {
     const rows = [
-      ['Показник', 'Сума', '% до виручки'],
-      ['Виручка', data.totalRevenue, '100.0'],
+      [t('page.csv.indicator'), t('page.csv.amount'), t('page.csv.pctOfRevenue')],
+      [t('page.csv.revenue'), data.totalRevenue, '100.0'],
       [
-        'Запчастини',
+        t('page.csv.profParts'),
         data.totalCostParts,
         data.totalRevenue > 0 ? ((data.totalCostParts / data.totalRevenue) * 100).toFixed(1) : '0',
       ],
       [
-        'Праця',
+        t('page.csv.profLabor'),
         data.totalCostLabor,
         data.totalRevenue > 0 ? ((data.totalCostLabor / data.totalRevenue) * 100).toFixed(1) : '0',
       ],
-      ['Валовий прибуток', data.grossProfit, data.margin.toFixed(1)],
+      [t('page.csv.grossProfit'), data.grossProfit, data.margin.toFixed(1)],
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }
