@@ -1,0 +1,71 @@
+{
+  "title": "Payroll",
+  "preview": {
+    "heading": "Period calculation",
+    "from": "Period from",
+    "to": "to",
+    "calculate": "Calculate",
+    "createPeriod": "Create period",
+    "totalToAccrue": "Total to accrue"
+  },
+  "columns": {
+    "employee": "Employee",
+    "scheme": "Scheme",
+    "normoHours": "Norm-hours",
+    "baseAmount": "Works total, ₴",
+    "accrued": "Accrued, ₴",
+    "paid": "Paid, ₴"
+  },
+  "empty": {
+    "previewTitle": "No accruals",
+    "previewDescription": "No completed works with assignees for this period",
+    "periodsTitle": "No periods",
+    "periodsDescription": "Calculate a period above and click «Create period»"
+  },
+  "periods": {
+    "heading": "Payroll periods",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "compute": "Calculate",
+    "pay": "Pay",
+    "delete": "Delete",
+    "notComputed": "Not calculated yet — click «Calculate».",
+    "noAccruals": "No accruals."
+  },
+  "payModal": {
+    "title": "Process payment",
+    "payButton": "Pay",
+    "periodInfo": "Period {{from}} — {{to}}, to pay ",
+    "cannotUndo": ". This action cannot be undone.",
+    "cashRegisterLabel": "Pay from cash register (cash)",
+    "noCashRegister": "— no cash register (record only) —",
+    "cashRegisterOption": "{{name}} — balance {{balance}} {{currency}}",
+    "note": "If a cash register is selected — the amount is disbursed from it (cash-out per employee). A fiscal register requires an open shift."
+  },
+  "confirm": {
+    "deleteTitle": "Delete period?",
+    "deleteMessage": "The draft will be deleted."
+  },
+  "toast": {
+    "periodCreated": "Period created (draft)",
+    "createError": "Failed to create",
+    "computed": "Accruals calculated",
+    "computeError": "Calculation failed",
+    "paid": "Payment processed",
+    "payError": "Payment failed",
+    "periodDeleted": "Period deleted",
+    "deleteError": "Failed to delete"
+  },
+  "status": {
+    "DRAFT": "Draft",
+    "COMPUTED": "Calculated",
+    "PAID": "Paid",
+    "CANCELLED": "Cancelled"
+  },
+  "rateScheme": {
+    "percent_normo": "% of works total",
+    "per_normo_hour": "Rate × norm-hour",
+    "fixed_plus_bonus": "Rate + bonus",
+    "unknown": "Not specified"
+  }
+}

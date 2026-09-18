@@ -1,0 +1,71 @@
+{
+  "title": "Зарплата",
+  "preview": {
+    "heading": "Розрахунок за період",
+    "from": "Період з",
+    "to": "по",
+    "calculate": "Розрахувати",
+    "createPeriod": "Створити період",
+    "totalToAccrue": "Всього до нарахування"
+  },
+  "columns": {
+    "employee": "Співробітник",
+    "scheme": "Схема",
+    "normoHours": "Нормо-год",
+    "baseAmount": "Сума робіт, ₴",
+    "accrued": "Нараховано, ₴",
+    "paid": "Виплачено, ₴"
+  },
+  "empty": {
+    "previewTitle": "Немає нарахувань",
+    "previewDescription": "За цей період немає завершених робіт із виконавцями",
+    "periodsTitle": "Періодів немає",
+    "periodsDescription": "Розрахуйте період вище і натисніть «Створити період»"
+  },
+  "periods": {
+    "heading": "Зарплатні періоди",
+    "expand": "Розгорнути",
+    "collapse": "Згорнути",
+    "compute": "Розрахувати",
+    "pay": "Виплатити",
+    "delete": "Видалити",
+    "notComputed": "Ще не розраховано — натисніть «Розрахувати».",
+    "noAccruals": "Немає нарахувань."
+  },
+  "payModal": {
+    "title": "Провести виплату",
+    "payButton": "Виплатити",
+    "periodInfo": "Період {{from}} — {{to}}, до виплати ",
+    "cannotUndo": ". Дію не можна скасувати.",
+    "cashRegisterLabel": "Виплатити з каси (готівкою)",
+    "noCashRegister": "— без каси (лише фіксація) —",
+    "cashRegisterOption": "{{name}} — залишок {{balance}} {{currency}}",
+    "note": "Якщо обрати касу — сума видається з неї (cash-out по кожному співробітнику). Фіскальна каса вимагає відкриту зміну."
+  },
+  "confirm": {
+    "deleteTitle": "Видалити період?",
+    "deleteMessage": "Чернетку буде видалено."
+  },
+  "toast": {
+    "periodCreated": "Період створено (чернетка)",
+    "createError": "Помилка створення",
+    "computed": "Нарахування розраховано",
+    "computeError": "Помилка розрахунку",
+    "paid": "Виплату проведено",
+    "payError": "Помилка виплати",
+    "periodDeleted": "Період видалено",
+    "deleteError": "Помилка видалення"
+  },
+  "status": {
+    "DRAFT": "Чернетка",
+    "COMPUTED": "Розраховано",
+    "PAID": "Виплачено",
+    "CANCELLED": "Скасовано"
+  },
+  "rateScheme": {
+    "percent_normo": "% від суми робіт",
+    "per_normo_hour": "Ставка × нормо-год",
+    "fixed_plus_bonus": "Ставка + бонус",
+    "unknown": "Не вказано"
+  }
+}

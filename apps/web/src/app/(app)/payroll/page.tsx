@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Calculator, Wallet, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -29,8 +30,6 @@ import {
   useComputePayrollPeriod,
   usePayPayrollPeriod,
   useDeletePayrollPeriod,
-  PAYROLL_STATUS_LABELS,
-  RATE_SCHEME_LABELS,
   type PayrollPeriod,
 } from '@/hooks/api/usePayroll';
 import { useCashRegisters } from '@/hooks/api/useCash';
@@ -43,10 +42,30 @@ const STATUS_BADGE: Record<PayrollPeriod['status'], BadgeVariant> = {
 };
 
 export default function PayrollPage() {
+  const { t } = useTranslation('payroll');
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
   const { employee } = useAuth();
   const canPay = ['OWNER', 'ADMIN'].includes(employee?.role ?? '');
   const { confirm, dialogProps } = useConfirm();
+
+  const STATUS_LABELS = useMemo<Record<PayrollPeriod['status'], string>>(
+    () => ({
+      DRAFT: t('status.DRAFT'),
+      COMPUTED: t('status.COMPUTED'),
+      PAID: t('status.PAID'),
+      CANCELLED: t('status.CANCELLED'),
+    }),
+    [t],
+  );
+  const RATE_LABELS = useMemo<Record<string, string>>(
+    () => ({
+      percent_normo: t('rateScheme.percent_normo'),
+      per_normo_hour: t('rateScheme.per_normo_hour'),
+      fixed_plus_bonus: t('rateScheme.fixed_plus_bonus'),
+      unknown: t('rateScheme.unknown'),
+    }),
+    [t],
+  );
 
   const [from, setFrom] = useState(() => `${kyivToday().slice(0, 7)}-01`);
   const [to, setTo] = useState(() => kyivToday());
@@ -71,18 +90,18 @@ export default function PayrollPage() {
   const createPeriod = async () => {
     try {
       await createMut.mutateAsync({ periodStart: from, periodEnd: to });
-      toast.success('Період створено (чернетка)');
+      toast.success(t('toast.periodCreated'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка створення');
+      toast.error(e instanceof Error ? e.message : t('toast.createError'));
     }
   };
 
   const compute = async (id: string) => {
     try {
       await computeMut.mutateAsync(id);
-      toast.success('Нарахування розраховано');
+      toast.success(t('toast.computed'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка розрахунку');
+      toast.error(e instanceof Error ? e.message : t('toast.computeError'));
     }
   };
 
@@ -99,26 +118,26 @@ export default function PayrollPage() {
         cashRegisterId: payCashRegisterId || undefined,
       });
       setPayPeriod(null);
-      toast.success('Виплату проведено');
+      toast.success(t('toast.paid'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка виплати');
+      toast.error(e instanceof Error ? e.message : t('toast.payError'));
     }
   };
 
   const remove = async (p: PayrollPeriod) => {
     if (
       !(await confirm({
-        title: 'Видалити період?',
-        message: 'Чернетку буде видалено.',
+        title: t('confirm.deleteTitle'),
+        message: t('confirm.deleteMessage'),
         variant: 'destructive',
       }))
     )
       return;
     try {
       await deleteMut.mutateAsync(p.id);
-      toast.success('Період видалено');
+      toast.success(t('toast.periodDeleted'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      toast.error(e instanceof Error ? e.message : t('toast.deleteError'));
     }
   };
 
@@ -126,16 +145,18 @@ export default function PayrollPage() {
     <div className="page-container max-w-5xl space-y-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Зарплата</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
       {/* Розрахунок за період */}
       <div className="bg-surface rounded-xl border border-border p-5 space-y-4">
-        <h2 className="text-[15px] font-semibold text-foreground">Розрахунок за період</h2>
+        <h2 className="text-[15px] font-semibold text-foreground">{t('preview.heading')}</h2>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-[12px] text-muted-foreground mb-1">Період з</label>
+            <label className="block text-[12px] text-muted-foreground mb-1">
+              {t('preview.from')}
+            </label>
             <Input
               type="date"
               value={from}
@@ -144,7 +165,9 @@ export default function PayrollPage() {
             />
           </div>
           <div>
-            <label className="block text-[12px] text-muted-foreground mb-1">по</label>
+            <label className="block text-[12px] text-muted-foreground mb-1">
+              {t('preview.to')}
+            </label>
             <Input
               type="date"
               value={to}
@@ -153,7 +176,7 @@ export default function PayrollPage() {
             />
           </div>
           <Button leftIcon={<Calculator className="h-4 w-4" />} onClick={runPreview}>
-            Розрахувати
+            {t('preview.calculate')}
           </Button>
           {previewEnabled && preview.data && preview.data.lines.length > 0 && (
             <Button
@@ -162,7 +185,7 @@ export default function PayrollPage() {
               loading={createMut.isPending}
               className="ml-auto"
             >
-              Створити період
+              {t('preview.createPeriod')}
             </Button>
           )}
         </div>
@@ -177,11 +200,11 @@ export default function PayrollPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Співробітник</TableHead>
-                  <TableHead>Схема</TableHead>
-                  <TableHead className="text-right">Нормо-год</TableHead>
-                  <TableHead className="text-right">Сума робіт, ₴</TableHead>
-                  <TableHead className="text-right">Нараховано, ₴</TableHead>
+                  <TableHead>{t('columns.employee')}</TableHead>
+                  <TableHead>{t('columns.scheme')}</TableHead>
+                  <TableHead className="text-right">{t('columns.normoHours')}</TableHead>
+                  <TableHead className="text-right">{t('columns.baseAmount')}</TableHead>
+                  <TableHead className="text-right">{t('columns.accrued')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -190,8 +213,8 @@ export default function PayrollPage() {
                     <TableCell colSpan={5} className="p-0">
                       <EmptyState
                         icon={Calculator}
-                        title="Немає нарахувань"
-                        description="За цей період немає завершених робіт із виконавцями"
+                        title={t('empty.previewTitle')}
+                        description={t('empty.previewDescription')}
                       />
                     </TableCell>
                   </TableRow>
@@ -200,7 +223,7 @@ export default function PayrollPage() {
                   <TableRow key={l.employeeId}>
                     <TableCell className="font-medium">{l.employeeName}</TableCell>
                     <TableCell className="text-[13px] text-muted-foreground">
-                      {RATE_SCHEME_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
+                      {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{l.normoHours}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -215,7 +238,7 @@ export default function PayrollPage() {
             </Table>
             {preview.data.lines.length > 0 && (
               <div className="flex justify-between items-center px-4 py-2.5 border-t border-border bg-secondary/30 text-[13px]">
-                <span className="text-muted-foreground">Всього до нарахування</span>
+                <span className="text-muted-foreground">{t('preview.totalToAccrue')}</span>
                 <span className="font-bold tabular-nums">
                   {fmtMoney(preview.data.totalAccrued)} ₴
                 </span>
@@ -227,7 +250,7 @@ export default function PayrollPage() {
 
       {/* Періоди */}
       <div className="bg-surface rounded-xl border border-border p-5 space-y-3">
-        <h2 className="text-[15px] font-semibold text-foreground">Зарплатні періоди</h2>
+        <h2 className="text-[15px] font-semibold text-foreground">{t('periods.heading')}</h2>
         {periodsQuery.isLoading && (
           <div className="flex justify-center py-6">
             <Spinner size="md" />
@@ -236,8 +259,8 @@ export default function PayrollPage() {
         {!periodsQuery.isLoading && periods.length === 0 && (
           <EmptyState
             icon={Wallet}
-            title="Періодів немає"
-            description="Розрахуйте період вище і натисніть «Створити період»"
+            title={t('empty.periodsTitle')}
+            description={t('empty.periodsDescription')}
           />
         )}
         {periods.map(p => {
@@ -252,7 +275,7 @@ export default function PayrollPage() {
                 <button
                   onClick={() => setExpanded(isOpen ? null : p.id)}
                   className="text-muted-foreground hover:text-foreground"
-                  aria-label={isOpen ? 'Згорнути' : 'Розгорнути'}
+                  aria-label={isOpen ? t('periods.collapse') : t('periods.expand')}
                 >
                   {isOpen ? (
                     <ChevronDown className="h-4 w-4" />
@@ -266,7 +289,7 @@ export default function PayrollPage() {
                     {p.note ? <span className="text-muted-foreground"> · {p.note}</span> : null}
                   </div>
                 </div>
-                <Badge variant={STATUS_BADGE[p.status]}>{PAYROLL_STATUS_LABELS[p.status]}</Badge>
+                <Badge variant={STATUS_BADGE[p.status]}>{STATUS_LABELS[p.status]}</Badge>
                 <span className="text-[13px] tabular-nums font-semibold w-28 text-right">
                   {fmtMoney(p.status === 'PAID' ? p.totalPaid : p.totalAccrued)} ₴
                 </span>
@@ -277,7 +300,7 @@ export default function PayrollPage() {
                       onClick={() => void compute(p.id)}
                       loading={computeMut.isPending && computeMut.variables === p.id}
                     >
-                      Розрахувати
+                      {t('periods.compute')}
                     </Button>
                   )}
                   {p.status === 'COMPUTED' && canPay && (
@@ -286,7 +309,7 @@ export default function PayrollPage() {
                       onClick={() => void pay(p)}
                       loading={payMut.isPending && payMut.variables?.id === p.id}
                     >
-                      Виплатити
+                      {t('periods.pay')}
                     </Button>
                   )}
                   {p.status !== 'PAID' && canPay && (
@@ -294,7 +317,7 @@ export default function PayrollPage() {
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => void remove(p)}
-                      title="Видалити"
+                      title={t('periods.delete')}
                       className="text-destructive/70 hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -307,19 +330,17 @@ export default function PayrollPage() {
                 <div className="border-t border-border px-4 py-2">
                   {!p.lines || p.lines.length === 0 ? (
                     <p className="text-[12px] text-muted-foreground py-2">
-                      {p.status === 'DRAFT'
-                        ? 'Ще не розраховано — натисніть «Розрахувати».'
-                        : 'Немає нарахувань.'}
+                      {p.status === 'DRAFT' ? t('periods.notComputed') : t('periods.noAccruals')}
                     </p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Співробітник</TableHead>
-                          <TableHead>Схема</TableHead>
-                          <TableHead className="text-right">Нормо-год</TableHead>
-                          <TableHead className="text-right">Нараховано, ₴</TableHead>
-                          <TableHead className="text-right">Виплачено, ₴</TableHead>
+                          <TableHead>{t('columns.employee')}</TableHead>
+                          <TableHead>{t('columns.scheme')}</TableHead>
+                          <TableHead className="text-right">{t('columns.normoHours')}</TableHead>
+                          <TableHead className="text-right">{t('columns.accrued')}</TableHead>
+                          <TableHead className="text-right">{t('columns.paid')}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -327,7 +348,7 @@ export default function PayrollPage() {
                           <TableRow key={l.employeeId}>
                             <TableCell className="font-medium">{l.employeeName}</TableCell>
                             <TableCell className="text-[13px] text-muted-foreground">
-                              {RATE_SCHEME_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
+                              {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {l.normoHours}
@@ -354,35 +375,40 @@ export default function PayrollPage() {
       <Modal
         open={!!payPeriod}
         onClose={() => setPayPeriod(null)}
-        title="Провести виплату"
+        title={t('payModal.title')}
         footer={
           <Button onClick={confirmPay} loading={payMut.isPending} className="w-full">
-            Виплатити {payPeriod ? fmtMoney(payPeriod.totalAccrued) : ''} ₴
+            {t('periods.pay')} {payPeriod ? fmtMoney(payPeriod.totalAccrued) : ''} ₴
           </Button>
         }
       >
         {payPeriod && (
           <div className="space-y-4">
             <p className="text-[13px] text-muted-foreground">
-              Період {payPeriod.periodStart} — {payPeriod.periodEnd}, до виплати{' '}
-              <b>{fmtMoney(payPeriod.totalAccrued)} ₴</b>. Дію не можна скасувати.
+              {t('payModal.periodInfo', {
+                from: payPeriod.periodStart,
+                to: payPeriod.periodEnd,
+              })}
+              <b>{fmtMoney(payPeriod.totalAccrued)} ₴</b>
+              {t('payModal.cannotUndo')}
             </p>
             <Select
-              label="Виплатити з каси (готівкою)"
+              label={t('payModal.cashRegisterLabel')}
               value={payCashRegisterId}
               onChange={e => setPayCashRegisterId(e.target.value)}
             >
-              <option value="">— без каси (лише фіксація) —</option>
+              <option value="">{t('payModal.noCashRegister')}</option>
               {cashRegisters?.map(r => (
                 <option key={r.id} value={r.id}>
-                  {r.name} — залишок {fmtMoney(r.balance)} {r.currencySymbol ?? r.currencyCode}
+                  {t('payModal.cashRegisterOption', {
+                    name: r.name,
+                    balance: fmtMoney(r.balance),
+                    currency: r.currencySymbol ?? r.currencyCode,
+                  })}
                 </option>
               ))}
             </Select>
-            <p className="text-[12px] text-muted-foreground">
-              Якщо обрати касу — сума видається з неї (cash-out по кожному співробітнику). Фіскальна
-              каса вимагає відкриту зміну.
-            </p>
+            <p className="text-[12px] text-muted-foreground">{t('payModal.note')}</p>
           </div>
         )}
       </Modal>

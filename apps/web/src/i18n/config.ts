@@ -53,6 +53,7 @@ if (!i18n.isInitialized) {
       'infrastructure',
       'vehicles',
       'inventory',
+      'payroll',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,
