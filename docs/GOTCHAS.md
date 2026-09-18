@@ -4,6 +4,33 @@
 
 ---
 
+## [2026-09-19] i18n backend: @sto/shared rebuild ОБОВ'ЯЗКОВИЙ перед api tsc/тестом
+
+Api споживає @sto/shared як КОМПІЛЬОВАНИЙ `dist/cjs` (`main: ./dist/cjs/index.js`), web — source через
+`transpilePackages`. Тому будь-яка зміна у `packages/shared/src/**` (нові i18n-каталоги, key-rewrite
+схем, translateValidation) видима api ЛИШЕ після `pnpm --filter @sto/shared build`. Забути → api tsc/тести
+біжать на СТАРОМУ dist → фальшиво-зелені або mismatch web(keys)↔api(старі-укр-рядки). ПРАВИЛО: `build
+@sto/shared` ПЕРШИМ у кожному кроці, що чіпає api після shared-зміни. (Дзеркалить давню gotcha про
+`build:cjs` для типів — тут те саме для рантайм-каталогу.)
+
+## [2026-09-19] i18n zod: recursive tree-walk skip-list за ІМЕНЕМ ключа = поле форми (Bug #763)
+
+`i18nZodResolver.translateErrorTree` рекурсивно обходить RHF-errors-дерево й перекладає кожен leaf
+`.message` (validation-KEY→локаль). Спокуса — пропустити RHF-метадані ключі (`message`/`ref`/`type`).
+АЛЕ `'type'` — ще й ІМ'Я реального поля форми (`counterparty`/`stock-document` мають `type: z.enum`) →
+пропуск лишав `errors.type.message` сирим ключем у UI. Пропускати можна ЛИШЕ `'message'` (уже оброблено)
+і `'ref'` (DOM-нода, рекурсія циклічна/марна). Універсальний детектор при tree-walk зі skip-list:
+`grep "key === '(type|name|root|value|ref)'"` — якщо ім'я збігається з полем домену, skip = баг.
+
+## [2026-09-19] i18n zod: повідомлення схем = KEYS, не рядки → safeParse().message повертає key
+
+Після backend-i18n shared-zod повідомлення стали KEY-ами (`.min(1,'v.good.name.required')`). `issue.message`
+тепер KEY; локалізований рядок дає ЛИШЕ переклад-seam (api pipe / web i18nZodResolver / validateContactFields).
+Тому тести, що звіряють raw `schema.safeParse(...).error.issues[0].message` — асертять KEY (`'v.good.name.required'`),
+НЕ укр. рядок. uk-рендер лишається byte-identical (каталог = точні старі рядки). Новий validation-key
+ОБОВ'ЯЗКОВО додати у messages.uk + messages.en + VALIDATION_KEYS (guard: validation-i18n-parity.spec),
+інакше fallback locale→uk→key покаже сирий ключ у UI.
+
 ## [2026-09-18] i18n: імперативні хелпери (enum-мітки, format.ts) НЕ реактивні самі по собі
 
 `woStatusLabel()` тощо та `fmtMoney/fmtDate` читають поточну локаль ІМПЕРАТИВНО з module-registry

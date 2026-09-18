@@ -715,8 +715,26 @@ export-обмеженням (той самий рубіж, що й Server Compon
 - Детектор недо-міграції: `grep -rn "_LABELS\[" apps/web/src --include=*.tsx | grep -v __tests__`
   (лишились лише локальні мапи поза 19 обгортками — TRANSITION/RATE/VIEW/DELIVERY тощо).
 
-Свідомо поза foundation: ~170 розкиданих inline-рядків (тости, тексти форм) + backend-exception +
-shared zod — інкрементально.
+Увесь (app) UI перекладено (28 namespaces, 21 батч). Свідомо поза цим блоком: backend-exception (694) —
+окремий блок (споживатиме getLocale, нижче).
+
+### MP-F7b — Backend-локаль + shared-zod повідомлення (uk/en)
+
+Спільна zod-схема біжить на web (zodResolver) І api (safeParse), тож повідомлення НЕ можуть бути
+локалізовані у місці визначення. Рішення — **messages-as-KEYS + переклад per-side**:
+
+- **Локаль per-request**: web `buildHeaders()` (api-client.ts) шле `Accept-Language=getCurrentLocale()`;
+  api `TenantContextInterceptor.resolveLocale()` кладе локаль у tenant-ALS; `getLocale()` (tenant-context.ts,
+  default 'uk' поза request — BullMQ/cron/seed) читається будь-де.
+- **Каталог**: `packages/shared/src/i18n/` — `translateValidation(key, locale, params?)` (fallback
+  locale→uk→key), `messages.uk.ts` (byte-identical до старих рядків = baseline), `messages.en.ts`,
+  `keys.ts` (V + VALIDATION_KEYS). Offline (статичний TS у бандлі).
+- **Схеми**: zod-повідомлення = KEY (`.min(1,'v.good.name.required')`). issue.message = key.
+- **Seams**: api `ZodValidationPipe.formatIssue` (translateValidation + getLocale + `v.fieldSuffix`);
+  web `i18nZodResolver` (обгортка zodResolver, РЕКУРСИВНО перекладає nested errors — skip лише
+  `message`/`ref`, НЕ `type` бо це поле, Bug #763); `validateContactFields`. 400-контракт незмінний.
+- **Guard**: `validation-i18n-parity.spec` (uk===en===VALIDATION_KEYS). Новий key → у ОБИДВА каталоги.
+- Правило: не забути `pnpm --filter @sto/shared build` перед api tsc/тестом (api на dist/cjs). Див. GOTCHAS.
 
 ---
 

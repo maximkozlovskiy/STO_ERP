@@ -17,13 +17,25 @@
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2539/2539 (167 файлів) · web 821/821 (86 файлів, +20 i18n) · settings 59.
-HEAD:       i18n черга ЗАВЕРШЕНА (останній батч dashboard/profile/bookings/403)
-i18n:       Багатомовність uk/en ГОТОВО ПОВНІСТЮ — УВЕСЬ (app) UI (28 namespaces, 2612 ключів × 2 мови).
-            react-i18next client-side (output:export/offline, каталоги inlined). Селектор Settings→Оформлення.
-            Зберігання org-default(OrganisationSettings.language)+user(/user-preferences locale). Live-фліп
-            (I18nProvider languageChanged). enumLabel-обгортки (statuses.ts НЕ чіпано, backend PDF укр.).
-            Патерн MP-F7. 21 батч / 24 області, 4 консолідовані review — 0 defects. prod export build OK.
-            Поза scope (окремо, TBD): backend-exception (709) + shared zod (308) — лишились укр.
+HEAD:       backend-i18n фундамент + shared-zod uk/en ЗАВЕРШЕНО (QA green)
+i18n:       Багатомовність uk/en: (1) УВЕСЬ (app) UI — 28 web-namespaces, 2612 ключів×2 (react-i18next,
+            output:export/offline, MP-F7). (2) Backend-фундамент + shared-zod: Accept-Language(web
+            getCurrentLocale)→tenant-ALS getLocale()→pipe/resolver translate. @sto/shared/i18n каталог
+            (87 keys, translateValidation, uk byte-identical, offline). Zod-messages=KEYS; api
+            ZodValidationPipe + web i18nZodResolver(рекурс.) + validateContactFields перекладають.
+            CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts backend PDF укр.).
+            ВІДКЛАДЕНО: 694 exception-throws + class-validator DTO + http-exception.filter Prisma-строки
+            лишились укр. (споживатимуть getLocale() у наступному блоці).
+Sync(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 mismatches. 400-контракт незмінний; header round-trip
+            (getCurrentLocale→'uk'/'en', Fastify lowercase); key-consistency (84 schema keys ⊆ 87 catalog).
+Review(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 defects. ПОВНИЙ byte-identity аудит 87 keys +
+            структурний діф 11 схем (0 logic drift на money/FSM — лише Prettier reflow). i18nZodResolver
+            рекурсія OK; getLocale default 'uk'; header parse safe; buildHeaders spread-order OK.
+Tester(backend-i18n): 2026-09-19 (auto, cfbd30f0) — Bug #763 (MEDIUM, fixed 28c149bf): i18nZodResolver
+            skip-list `key==='type'` збігся з ІМЕНЕМ поля (counterparty/stock-doc type:z.enum) → errors.type
+            лишалось raw-key. Fix: skip лише 'message'/'ref'. api 2549, web 824. Live HTTP SKIP (endpoints
+            за JwtGuard, seed-креденшел відхилено, brute заборонено) → real-pipe+real-ALS integration:
+            uk byte-identical «(поле "x")» + en «(field "x")» + no-header→uk + concurrent-locale isolation.
 Tester(i18n): 2026-09-18 (auto, коміти 7cc36318+585bfa89) — Bug #762 (MEDIUM, fixed db571dd2): section-
             headers сайдбару не перекладались live (dead NAV_SECTION_KEYS — TopShell рендерив сирий
             group.label без t()). web 821/821, api settings 59/59. Live auth-path SKIPPED (dev-БД не

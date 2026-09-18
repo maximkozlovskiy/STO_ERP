@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-09-19 — Багатомовність: backend-фундамент + shared-zod uk/en
+
+### feat(i18n) cfbd30f0 (+134d191a, 28c149bf) — локаль per-request + shared-zod повідомлення
+
+Фундамент локалі на бекенді + повна локалізація shared-zod валідації (найвидиміше — помилки форм).
+Механізм: **messages-as-KEYS + переклад per-side** (та сама schema web+api → issue.message=KEY).
+
+- Локаль-резолюція: web `buildHeaders()` → `Accept-Language=getCurrentLocale()` (усі 4 fetch); api
+  `TenantContextInterceptor.resolveLocale()` → tenant-ALS; `getLocale()` (default 'uk' — BullMQ/cron/seed).
+- `@sto/shared/i18n`: `translateValidation(key, locale, params?)` fallback locale→uk→key; 87 ключів,
+  uk===en parity, uk BYTE-IDENTICAL, offline (статичний TS у бандлі).
+- Key-rewrite: validators.ts + 10 forms/*.schema.ts (три zod-ідіоми → keys), 0 logic-drift (review-verified).
+- Seams: api `ZodValidationPipe.formatIssue` (getLocale + v.fieldSuffix); web `i18nZodResolver` (РЕКУРСИВНИЙ)
+  - 12 swaps; `validateContactFields`. 400-контракт незмінний.
+- CRM `COUNTERPARTY_TYPE.BOTH` уніфіковано → «Клієнт - Постачальник» / «Client - Supplier» (5740b3f5).
+- QA: sync 0 / review 0 (byte-identity+schema-diff) / tester Bug #763 fixed (i18nZodResolver skip-list vs
+  field-name 'type'). key-parity guard-тест (134d191a). api 2549, web 824; live uk byte-identical + en OK.
+- ВІДКЛАДЕНО: 694 exception-throws + class-validator DTO + Prisma-filter строки — лишились укр.
+
 ## 2026-09-18 — Багатомовність: УВЕСЬ (app) UI перекладено uk/en
 
 ### feat(i18n) #1-#21 — повний переклад inline-рядків (28 namespaces)
