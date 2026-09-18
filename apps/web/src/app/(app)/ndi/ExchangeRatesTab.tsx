@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -21,6 +22,7 @@ interface NbuSettings {
 }
 
 export default function ExchangeRatesTab() {
+  const { t } = useTranslation('ndi');
   const { confirm, dialogProps } = useConfirm();
   const currentFeatures = useUiFeatures();
   const [error, setError] = useState('');
@@ -66,10 +68,10 @@ export default function ExchangeRatesTab() {
         setLoadingRates(false);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        setError(e instanceof Error ? e.message : t('common.loadError'));
         setLoadingRates(false);
       });
-  }, []);
+  }, [t]);
 
   const openRateModal = (r?: ExchangeRate) => {
     setEditingRate(r ?? null);
@@ -96,14 +98,14 @@ export default function ExchangeRatesTab() {
 
   const saveRate = async () => {
     const errs: typeof rateErrors = {};
-    if (!editingRate && !rateForm.currencyId) errs.currencyId = 'Оберіть валюту';
-    if (!rateForm.date) errs.date = 'Вкажіть дату';
+    if (!editingRate && !rateForm.currencyId) errs.currencyId = t('exchangeRates.currencyRequired');
+    if (!rateForm.date) errs.date = t('exchangeRates.dateRequired');
     const rateNum = Number(rateForm.rate);
     if (!rateForm.rate || !Number.isFinite(rateNum) || rateNum <= 0)
-      errs.rate = 'Курс має бути більше 0';
+      errs.rate = t('exchangeRates.ratePositive');
     const coefNum = Number(rateForm.coefficient);
     if (!Number.isFinite(coefNum) || coefNum <= 0)
-      errs.coefficient = 'Кількість одиниць має бути більше 0';
+      errs.coefficient = t('exchangeRates.coefficientPositive');
     if (Object.keys(errs).length > 0) {
       setRateErrors(errs);
       return;
@@ -131,21 +133,22 @@ export default function ExchangeRatesTab() {
         setExchangeRates(prev => [created, ...prev]);
       }
       setRateModal(false);
-      if (currentFeatures.toastEnabled) toast.success('Збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingRate(false);
     }
   };
 
   const deleteRate = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити курс?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('exchangeRates.deleteConfirmTitle'), variant: 'destructive' })))
+      return;
     try {
       await apiFetch(`/exchange-rates/${id}`, { method: 'DELETE' });
       setExchangeRates(prev => prev.filter(r => r.id !== id));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
@@ -156,9 +159,9 @@ export default function ExchangeRatesTab() {
         method: 'PATCH',
         body: JSON.stringify({ nbuFetchHour }),
       });
-      if (currentFeatures.toastEnabled) toast.success('Час завантаження збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('exchangeRates.hourSaved'));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка збереження';
+      const msg = e instanceof Error ? e.message : t('exchangeRates.saveHourError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     } finally {
@@ -171,7 +174,7 @@ export default function ExchangeRatesTab() {
     setError('');
     try {
       await apiFetch('/exchange-rates/nbu-fetch', { method: 'POST' });
-      if (currentFeatures.toastEnabled) toast.success('Завантаження курсів НБУ поставлено в чергу');
+      if (currentFeatures.toastEnabled) toast.success(t('exchangeRates.queued'));
       // Reload rates after 3s to show newly fetched data
       if (nbuReloadTimerRef.current !== null) clearTimeout(nbuReloadTimerRef.current);
       nbuReloadTimerRef.current = setTimeout(() => {
@@ -182,7 +185,7 @@ export default function ExchangeRatesTab() {
           );
       }, 3_000);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка запуску завантаження';
+      const msg = e instanceof Error ? e.message : t('exchangeRates.triggerError');
       setError(msg);
       if (currentFeatures.toastEnabled) toast.error(msg);
     } finally {
@@ -199,11 +202,11 @@ export default function ExchangeRatesTab() {
       )}
       {/* NBU auto-fetch controls */}
       <div className="bg-surface border border-border rounded-lg px-4 py-3 space-y-3">
-        <p className="text-sm font-medium text-foreground">Автозавантаження курсів НБУ</p>
+        <p className="text-sm font-medium text-foreground">{t('exchangeRates.autoFetchTitle')}</p>
         <div className="flex items-end gap-3 flex-wrap">
           <div>
             <label className="text-[13px] text-muted-foreground mb-1 block">
-              Година завантаження (0–23)
+              {t('exchangeRates.fetchHourLabel')}
             </label>
             <input
               type="number"
@@ -217,12 +220,12 @@ export default function ExchangeRatesTab() {
               className="w-20 h-8 px-2 text-[13px] border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Щодня о {nbuFetchHour}:00 (за Києвом)
+              {t('exchangeRates.fetchHourDaily', { hour: nbuFetchHour })}
             </p>
           </div>
           <div className="flex gap-2 pb-6">
             <Button size="sm" onClick={() => void saveNbuFetchHour()} loading={savingNbu}>
-              Зберегти час
+              {t('exchangeRates.saveHour')}
             </Button>
             <Button
               size="sm"
@@ -230,7 +233,7 @@ export default function ExchangeRatesTab() {
               loading={fetchingNbu}
               onClick={() => void triggerNbuFetch()}
             >
-              Завантажити зараз
+              {t('exchangeRates.fetchNow')}
             </Button>
           </div>
         </div>
@@ -239,12 +242,12 @@ export default function ExchangeRatesTab() {
       <div className="flex justify-end">
         <Button onClick={() => openRateModal()}>
           <Plus className="w-4 h-4 mr-1" />
-          Додати курс
+          {t('exchangeRates.addButton')}
         </Button>
       </div>
-      {loadingRates && <p className="text-muted-foreground text-sm">Завантаження...</p>}
+      {loadingRates && <p className="text-muted-foreground text-sm">{t('common.loading')}</p>}
       {!loadingRates && exchangeRates.length === 0 && (
-        <p className="text-muted-foreground text-sm">Курси не додано</p>
+        <p className="text-muted-foreground text-sm">{t('exchangeRates.empty')}</p>
       )}
       <div className="space-y-2">
         {exchangeRates.map(r => (
@@ -261,14 +264,14 @@ export default function ExchangeRatesTab() {
             </div>
             <div className="flex gap-2">
               <button
-                aria-label="Редагувати курс"
+                aria-label={t('exchangeRates.editAria')}
                 onClick={() => openRateModal(r)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Pencil className="w-4 h-4" />
               </button>
               <button
-                aria-label="Видалити курс"
+                aria-label={t('exchangeRates.deleteAria')}
                 onClick={() => void deleteRate(r.id)}
                 className="text-destructive/70 hover:text-destructive transition-colors"
               >
@@ -282,14 +285,14 @@ export default function ExchangeRatesTab() {
       <Modal
         open={rateModal}
         onClose={() => setRateModal(false)}
-        title={editingRate ? 'Редагувати курс' : 'Новий курс'}
+        title={editingRate ? t('exchangeRates.editTitle') : t('exchangeRates.createTitle')}
         footer={
           <>
             <Button variant="outline" onClick={() => setRateModal(false)}>
-              Скасувати
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void saveRate()} loading={savingRate}>
-              Зберегти
+              {t('common.save')}
             </Button>
           </>
         }
@@ -297,7 +300,9 @@ export default function ExchangeRatesTab() {
         <div className="space-y-4">
           {!editingRate && (
             <div>
-              <label className="block text-[13px] font-medium text-foreground mb-1">Валюта *</label>
+              <label className="block text-[13px] font-medium text-foreground mb-1">
+                {t('exchangeRates.fieldCurrency')}
+              </label>
               <SearchCombobox<Currency>
                 value={rateForm.currencyId}
                 displayValue={rateForm.currencyDisplay}
@@ -320,7 +325,7 @@ export default function ExchangeRatesTab() {
                     secondary: c.symbol ?? undefined,
                   }));
                 }}
-                placeholder="Пошук валюти..."
+                placeholder={t('exchangeRates.currencyPlaceholder')}
               />
               {rateErrors.currencyId && (
                 <p className="text-xs text-destructive-text mt-1">{rateErrors.currencyId}</p>
@@ -328,7 +333,7 @@ export default function ExchangeRatesTab() {
             </div>
           )}
           <Input
-            label="Дата"
+            label={t('exchangeRates.fieldDate')}
             required
             type="date"
             value={rateForm.date}
@@ -340,7 +345,7 @@ export default function ExchangeRatesTab() {
             className="h-8 text-[13px]"
           />
           <Input
-            label="Курс (UAH)"
+            label={t('exchangeRates.fieldRate')}
             required
             type="number"
             step="0.000001"
@@ -353,7 +358,7 @@ export default function ExchangeRatesTab() {
             className="h-8 text-[13px]"
           />
           <Input
-            label="Кількість одиниць"
+            label={t('exchangeRates.fieldCoefficient')}
             type="number"
             step="1"
             value={rateForm.coefficient}
@@ -362,7 +367,7 @@ export default function ExchangeRatesTab() {
               setRateForm({ ...rateForm, coefficient: e.target.value });
               if (rateErrors.coefficient) setRateErrors(p => ({ ...p, coefficient: undefined }));
             }}
-            hint="Скільки одиниць валюти відповідають вказаному курсу"
+            hint={t('exchangeRates.coefficientHint')}
             className="h-8 text-[13px]"
           />
         </div>

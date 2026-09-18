@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { type PaymentMethod } from './shared';
 
 export default function PaymentsTab() {
+  const { t } = useTranslation('ndi');
   const { confirm, dialogProps } = useConfirm();
   const [payments, setPayments] = useState<PaymentMethod[]>([]);
   const [error, setError] = useState('');
@@ -32,10 +34,8 @@ export default function PaymentsTab() {
   useEffect(() => {
     apiFetch<PaymentMethod[]>('/payment-methods')
       .then(setPayments)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : 'Помилка завантаження методів оплати'),
-      );
-  }, []);
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : t('payments.loadError')));
+  }, [t]);
 
   const togglePayment = async (pm: PaymentMethod) => {
     setTogglingId(pm.id);
@@ -46,7 +46,7 @@ export default function PaymentsTab() {
       });
       setPayments(prev => prev.map(p => (p.id === updated.id ? updated : p)));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setTogglingId(null);
     }
@@ -74,7 +74,7 @@ export default function PaymentsTab() {
       setPayments(prev => prev.map(p => (p.id === updated.id ? updated : p)));
       setEditPayment(null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingPayment(false);
     }
@@ -82,7 +82,7 @@ export default function PaymentsTab() {
 
   const createPaymentMethod = async () => {
     if (!newPaymentForm.code.trim() || !newPaymentForm.name.trim()) {
-      setError("Код і назва є обов'язковими");
+      setError(t('payments.codeNameRequired'));
       return;
     }
     setSavingPayment(true);
@@ -99,7 +99,7 @@ export default function PaymentsTab() {
       setPaymentModal(false);
       setNewPaymentForm({ code: '', name: '', requiresFiscal: false });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingPayment(false);
     }
@@ -127,12 +127,13 @@ export default function PaymentsTab() {
   };
 
   const deletePaymentMethod = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити метод оплати?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('payments.deleteConfirmTitle'), variant: 'destructive' })))
+      return;
     try {
       await apiFetch(`/payment-methods/${id}`, { method: 'DELETE' });
       setPayments(prev => prev.filter(p => p.id !== id));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
@@ -146,7 +147,7 @@ export default function PaymentsTab() {
 
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => setPaymentTemplatePicker(true)}>
-          З шаблону
+          {t('common.fromTemplate')}
         </Button>
         <Button
           leftIcon={<Plus className="h-4 w-4" />}
@@ -155,7 +156,7 @@ export default function PaymentsTab() {
             setPaymentModal(true);
           }}
         >
-          Метод оплати
+          {t('payments.addButton')}
         </Button>
       </div>
 
@@ -163,14 +164,14 @@ export default function PaymentsTab() {
         open={paymentTemplatePicker}
         onClose={() => setPaymentTemplatePicker(false)}
         entityType="payment_method"
-        title="Додати методи оплати з шаблону"
+        title={t('payments.templateTitle')}
         existingKeys={payments.map(p => p.code)}
         onImport={importPaymentsFromTemplates}
       />
 
       <div className="bg-surface rounded-xl border border-border divide-y divide-border">
         {payments.length === 0 && (
-          <p className="p-6 text-sm text-muted-foreground">Методи оплати не знайдено</p>
+          <p className="p-6 text-sm text-muted-foreground">{t('payments.empty')}</p>
         )}
         {payments.map(pm => (
           <div key={pm.id} className="flex items-center justify-between px-5 py-4">
@@ -179,13 +180,13 @@ export default function PaymentsTab() {
                 <p className="text-sm font-medium text-foreground">{pm.name}</p>
                 {pm.isSystem && (
                   <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground bg-muted rounded px-1.5 py-0.5">
-                    Системний
+                    {t('payments.system')}
                   </span>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {pm.code}
-                {pm.requiresFiscal ? ' · фіскальний' : ''}
+                {pm.requiresFiscal ? t('payments.fiscalSuffix') : ''}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -228,26 +229,23 @@ export default function PaymentsTab() {
         <Modal
           open={!!editPayment}
           onClose={() => setEditPayment(null)}
-          title="Редагувати метод оплати"
+          title={t('payments.editTitle')}
           footer={
             <Button
               onClick={() => void saveEditPayment()}
               loading={savingPayment}
               className="w-full"
             >
-              Зберегти
+              {t('common.save')}
             </Button>
           }
         >
           <div className="space-y-4">
             {editPayment.isSystem && (
-              <p className="text-xs text-muted-foreground">
-                Системний метод оплати не можна перейменовувати. Доступне лише налаштування
-                фіскалізації.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('payments.systemHint')}</p>
             )}
             <Input
-              label="Назва"
+              label={t('payments.fieldName')}
               value={editPaymentForm.name}
               onChange={e => setEditPaymentForm(f => ({ ...f, name: e.target.value }))}
               required
@@ -263,7 +261,7 @@ export default function PaymentsTab() {
                 }
                 className="rounded border-border"
               />
-              <span className="text-[13px] text-foreground">Фіскальний (потребує ПРРО)</span>
+              <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
             </label>
           </div>
         </Modal>
@@ -273,7 +271,7 @@ export default function PaymentsTab() {
       <Modal
         open={paymentModal}
         onClose={() => setPaymentModal(false)}
-        title="Новий метод оплати"
+        title={t('payments.createTitle')}
         footer={
           <Button
             onClick={() => void createPaymentMethod()}
@@ -281,25 +279,25 @@ export default function PaymentsTab() {
             disabled={!newPaymentForm.code || !newPaymentForm.name}
             className="w-full"
           >
-            Додати
+            {t('payments.addSubmit')}
           </Button>
         }
       >
         <div className="space-y-4">
           <Input
-            label="Код"
+            label={t('payments.fieldCode')}
             value={newPaymentForm.code}
             onChange={e => setNewPaymentForm(f => ({ ...f, code: e.target.value }))}
-            placeholder="CASH, CARD, BANK"
+            placeholder={t('payments.codePlaceholder')}
             required
-            hint="Унікальний ідентифікатор (латиниця, великі літери)"
+            hint={t('payments.codeHint')}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Назва"
+            label={t('payments.fieldName')}
             value={newPaymentForm.name}
             onChange={e => setNewPaymentForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Готівка"
+            placeholder={t('payments.namePlaceholder')}
             required
             className="h-8 text-[13px]"
           />
@@ -310,7 +308,7 @@ export default function PaymentsTab() {
               onChange={e => setNewPaymentForm(f => ({ ...f, requiresFiscal: e.target.checked }))}
               className="rounded border-border"
             />
-            <span className="text-[13px] text-foreground">Фіскальний (потребує ПРРО)</span>
+            <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
           </label>
         </div>
       </Modal>

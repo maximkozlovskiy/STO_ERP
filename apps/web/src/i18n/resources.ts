@@ -13,6 +13,7 @@ import ukSupplierPayments from './locales/uk/supplierPayments.json';
 import ukStockDocuments from './locales/uk/stockDocuments.json';
 import ukCounterparties from './locales/uk/counterparties.json';
 import ukCatalog from './locales/uk/catalog.json';
+import ukNdi from './locales/uk/ndi.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -27,6 +28,7 @@ import enSupplierPayments from './locales/en/supplierPayments.json';
 import enStockDocuments from './locales/en/stockDocuments.json';
 import enCounterparties from './locales/en/counterparties.json';
 import enCatalog from './locales/en/catalog.json';
+import enNdi from './locales/en/ndi.json';
 
 export const resources = {
   uk: {
@@ -43,6 +45,7 @@ export const resources = {
     stockDocuments: ukStockDocuments,
     counterparties: ukCounterparties,
     catalog: ukCatalog,
+    ndi: ukNdi,
   },
   en: {
     common: enCommon,
@@ -58,5 +61,6 @@ export const resources = {
     stockDocuments: enStockDocuments,
     counterparties: enCounterparties,
     catalog: enCatalog,
+    ndi: enNdi,
   },
 } as const;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils';
 import type { TaxRateItem } from './types';
 
 export default function TaxRatesTab() {
+  const { t } = useTranslation('ndi');
   const { confirm, dialogProps } = useConfirm();
   const [error, setError] = useState('');
 
@@ -34,7 +36,7 @@ export default function TaxRatesTab() {
   const addTaxRate = async () => {
     const rate = Number(newTaxRate.rate);
     if (!newTaxRate.name || !Number.isFinite(rate) || rate < 0 || rate > 100) {
-      setError('Некоректні дані');
+      setError(t('taxRates.invalidData'));
       return;
     }
     setSavingTax(true);
@@ -47,7 +49,7 @@ export default function TaxRatesTab() {
       setNewTaxRate({ name: '', rate: '' });
       setError('');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingTax(false);
     }
@@ -61,17 +63,18 @@ export default function TaxRatesTab() {
       });
       setTaxRates(prev => prev.map(r => (r.id === updated.id ? updated : r)));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
   const deleteTaxRate = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити ставку ПДВ?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('taxRates.deleteConfirmTitle'), variant: 'destructive' })))
+      return;
     try {
       await apiFetch(`/settings/tax-rates/${id}`, { method: 'DELETE' });
       setTaxRates(prev => prev.filter(r => r.id !== id));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
@@ -84,7 +87,7 @@ export default function TaxRatesTab() {
     if (!editTaxRate) return;
     const rate = Number(editTaxForm.rate);
     if (!editTaxForm.name || !Number.isFinite(rate) || rate < 0 || rate > 100) {
-      setError('Некоректні дані');
+      setError(t('taxRates.invalidData'));
       return;
     }
     setSavingTax(true);
@@ -97,7 +100,7 @@ export default function TaxRatesTab() {
       setEditTaxRate(null);
       setError('');
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingTax(false);
     }
@@ -112,7 +115,7 @@ export default function TaxRatesTab() {
       )}
       <div className="bg-surface rounded-xl border border-border divide-y divide-border">
         {taxRates.length === 0 && (
-          <p className="p-4 text-sm text-muted-foreground">Ставок ПДВ не знайдено</p>
+          <p className="p-4 text-sm text-muted-foreground">{t('taxRates.empty')}</p>
         )}
         {taxRates.map(tr => (
           <div key={tr.id} className="px-4 py-3">
@@ -134,10 +137,10 @@ export default function TaxRatesTab() {
                 />
                 <span className="text-muted-foreground text-sm">%</span>
                 <Button size="sm" onClick={() => void saveEditTaxRate()} loading={savingTax}>
-                  Зберегти
+                  {t('taxRates.save')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setEditTaxRate(null)}>
-                  Скасувати
+                  {t('taxRates.cancel')}
                 </Button>
               </div>
             ) : (
@@ -146,7 +149,7 @@ export default function TaxRatesTab() {
                   <span className="text-sm font-medium text-foreground">{tr.name}</span>
                   <span className="ml-2 text-xs text-muted-foreground">{tr.rate}%</span>
                   {tr.isDefault && (
-                    <span className="ml-2 text-xs text-primary">(за замовчуванням)</span>
+                    <span className="ml-2 text-xs text-primary">{t('taxRates.isDefault')}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -183,17 +186,17 @@ export default function TaxRatesTab() {
         ))}
       </div>
       <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
-        <p className="text-[13px] font-medium text-foreground">Нова ставка</p>
+        <p className="text-[13px] font-medium text-foreground">{t('taxRates.newRateTitle')}</p>
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Назва"
+            label={t('taxRates.fieldName')}
             value={newTaxRate.name}
             onChange={e => setNewTaxRate(f => ({ ...f, name: e.target.value }))}
-            placeholder="ПДВ 20%"
+            placeholder={t('taxRates.namePlaceholder')}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Ставка, %"
+            label={t('taxRates.fieldRate')}
             type="number"
             min="0"
             max="100"
@@ -207,7 +210,7 @@ export default function TaxRatesTab() {
           loading={savingTax}
           disabled={!newTaxRate.name || !newTaxRate.rate}
         >
-          Додати ставку
+          {t('taxRates.addButton')}
         </Button>
       </div>
       <ConfirmDialog {...dialogProps} />

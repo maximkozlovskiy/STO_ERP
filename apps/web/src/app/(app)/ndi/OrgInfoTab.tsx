@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ImageIcon, Upload, Trash2, X, ZoomIn } from 'lucide-react';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { type OrgInfo } from './shared';
 
 export default function OrgInfoTab() {
+  const { t } = useTranslation('ndi');
   const currentFeatures = useUiFeatures();
   const [orgInfo, setOrgInfo] = useState<OrgInfo | null>(null);
   const [orgInfoForm, setOrgInfoForm] = useState({
@@ -54,13 +56,12 @@ export default function OrgInfoTab() {
         });
       })
       .catch((e: unknown) => {
-        if (!cancelled)
-          setError(e instanceof Error ? e.message : 'Помилка завантаження реквізитів');
+        if (!cancelled) setError(e instanceof Error ? e.message : t('orgInfo.loadError'));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const saveOrgInfo = async () => {
     setSavingOrgInfo(true);
@@ -76,9 +77,9 @@ export default function OrgInfoTab() {
         }),
       });
       setOrgInfo(updated);
-      if (currentFeatures.toastEnabled) toast.success('Збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingOrgInfo(false);
     }
@@ -98,10 +99,10 @@ export default function OrgInfoTab() {
       });
       setOrgInfo(prev => (prev ? { ...prev, logoUrl: result.url } : prev));
       setLogoPreview(null);
-      if (currentFeatures.toastEnabled) toast.success('Логотип завантажено');
+      if (currentFeatures.toastEnabled) toast.success(t('orgInfo.logoUploaded'));
     } catch (e: unknown) {
       setLogoPreview(null);
-      setError(e instanceof Error ? e.message : 'Помилка завантаження логотипу');
+      setError(e instanceof Error ? e.message : t('orgInfo.logoUploadError'));
     } finally {
       setUploadingLogo(false);
       setTimeout(() => URL.revokeObjectURL(objectUrl), 100);
@@ -118,9 +119,9 @@ export default function OrgInfoTab() {
       setOrgInfo(prev => (prev ? { ...prev, logoUrl: null } : prev));
       setLogoPreview(null);
       if (logoInputRef.current) logoInputRef.current.value = '';
-      if (currentFeatures.toastEnabled) toast.success('Логотип видалено');
+      if (currentFeatures.toastEnabled) toast.success(t('orgInfo.logoRemoved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення логотипу');
+      setError(e instanceof Error ? e.message : t('orgInfo.logoRemoveError'));
     } finally {
       setRemovingLogo(false);
     }
@@ -136,13 +137,15 @@ export default function OrgInfoTab() {
 
       {/* Logo */}
       <div>
-        <label className="block text-[13px] font-medium text-foreground mb-3">Логотип</label>
+        <label className="block text-[13px] font-medium text-foreground mb-3">
+          {t('orgInfo.logoLabel')}
+        </label>
         <div className="flex items-start gap-5">
           {/* Preview box */}
           <div
             role={logoPreview || orgInfo?.logoUrl ? 'button' : undefined}
             tabIndex={logoPreview || orgInfo?.logoUrl ? 0 : -1}
-            aria-label={logoPreview || orgInfo?.logoUrl ? 'Збільшити логотип' : undefined}
+            aria-label={logoPreview || orgInfo?.logoUrl ? t('orgInfo.zoomAria') : undefined}
             className={`group relative shrink-0 w-48 h-28 rounded-xl border-2 border-dashed border-border bg-secondary flex items-center justify-center overflow-hidden transition-all ${logoPreview || orgInfo?.logoUrl ? 'cursor-zoom-in hover:border-primary/50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary' : ''}`}
             onClick={() => {
               const src = logoPreview ?? orgInfo?.logoUrl;
@@ -159,7 +162,7 @@ export default function OrgInfoTab() {
             {logoPreview || orgInfo?.logoUrl ? (
               <img
                 src={logoPreview ?? orgInfo!.logoUrl!}
-                alt="Логотип організації"
+                alt={t('orgInfo.logoAlt')}
                 className="w-full h-full object-contain p-3"
                 loading="lazy"
                 decoding="async"
@@ -181,7 +184,7 @@ export default function OrgInfoTab() {
               className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground"
             >
               <ImageIcon className="w-10 h-10 opacity-30" />
-              <span className="text-xs opacity-50">Немає логотипу</span>
+              <span className="text-xs opacity-50">{t('orgInfo.noLogo')}</span>
             </div>
             {/* Zoom hint */}
             {(logoPreview || orgInfo?.logoUrl) && (
@@ -210,7 +213,7 @@ export default function OrgInfoTab() {
               loading={uploadingLogo}
             >
               <Upload className="w-4 h-4 mr-2" />
-              {orgInfo?.logoUrl || logoPreview ? 'Замінити логотип' : 'Завантажити логотип'}
+              {orgInfo?.logoUrl || logoPreview ? t('orgInfo.replaceLogo') : t('orgInfo.uploadLogo')}
             </Button>
             {(orgInfo?.logoUrl || logoPreview) && (
               <Button
@@ -221,10 +224,10 @@ export default function OrgInfoTab() {
                 className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
-                Видалити
+                {t('orgInfo.removeLogo')}
               </Button>
             )}
-            <p className="text-xs text-muted-foreground">PNG, JPG, SVG · макс. 2 МБ</p>
+            <p className="text-xs text-muted-foreground">{t('orgInfo.logoHint')}</p>
           </div>
         </div>
       </div>
@@ -234,19 +237,19 @@ export default function OrgInfoTab() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Перегляд логотипу"
+          aria-label={t('orgInfo.lightboxAria')}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setLogoLightbox(null)}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
             <img
               src={logoLightbox}
-              alt="Логотип організації"
+              alt={t('orgInfo.logoAlt')}
               className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
             />
             <button
               type="button"
-              aria-label="Закрити перегляд"
+              aria-label={t('orgInfo.closeLightboxAria')}
               onClick={() => setLogoLightbox(null)}
               className="absolute -top-3 -right-3 w-8 h-8 bg-surface rounded-full border border-border flex items-center justify-center text-foreground hover:bg-secondary transition-colors shadow-lg"
             >
@@ -257,32 +260,32 @@ export default function OrgInfoTab() {
       )}
 
       <Input
-        label="Назва організації"
+        label={t('orgInfo.fieldName')}
         value={orgInfoForm.name}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, name: e.target.value })}
         className="h-8 text-[13px]"
       />
       <Input
-        label="ЄДРПОУ"
+        label={t('orgInfo.fieldEdrpou')}
         value={orgInfoForm.edrpou}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, edrpou: e.target.value })}
         className="h-8 text-[13px]"
       />
       <Input
-        label="Юридична адреса"
+        label={t('orgInfo.fieldLegalAddress')}
         value={orgInfoForm.legalAddress}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, legalAddress: e.target.value })}
         className="h-8 text-[13px]"
       />
       <Input
-        label="Фактична адреса"
+        label={t('orgInfo.fieldActualAddress')}
         value={orgInfoForm.actualAddress}
         onChange={e => setOrgInfoForm({ ...orgInfoForm, actualAddress: e.target.value })}
         className="h-8 text-[13px]"
       />
 
       <Button onClick={() => void saveOrgInfo()} loading={savingOrgInfo} className="w-full">
-        Зберегти
+        {t('orgInfo.save')}
       </Button>
     </div>
   );

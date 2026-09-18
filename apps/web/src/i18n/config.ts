@@ -45,6 +45,7 @@ if (!i18n.isInitialized) {
       'stockDocuments',
       'counterparties',
       'catalog',
+      'ndi',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

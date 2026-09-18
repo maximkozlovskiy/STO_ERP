@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -15,6 +16,7 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import type { Currency } from './types';
 
 export default function CurrenciesTab() {
+  const { t } = useTranslation('ndi');
   const { confirm, dialogProps } = useConfirm();
   const currentFeatures = useUiFeatures();
   const [error, setError] = useState('');
@@ -50,10 +52,10 @@ export default function CurrenciesTab() {
         setLoadingCurrencies(false);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        setError(e instanceof Error ? e.message : t('common.loadError'));
         setLoadingCurrencies(false);
       });
-  }, []);
+  }, [t]);
 
   const openCurrencyModal = (c?: Currency) => {
     setEditingCurrency(c ?? null);
@@ -84,8 +86,8 @@ export default function CurrenciesTab() {
 
   const saveCurrency = async () => {
     const errs: typeof currencyErrors = {};
-    if (!currencyForm.name.trim()) errs.name = 'Введіть назву валюти';
-    if (!currencyForm.code.trim()) errs.code = 'Введіть код валюти';
+    if (!currencyForm.name.trim()) errs.name = t('currencies.nameRequired');
+    if (!currencyForm.code.trim()) errs.code = t('currencies.codeRequired');
     if (Object.keys(errs).length > 0) {
       setCurrencyErrors(errs);
       return;
@@ -131,16 +133,17 @@ export default function CurrenciesTab() {
       }
       setCurrencyModal(false);
       if (currentFeatures.toastEnabled)
-        toast.success(editingCurrency ? 'Збережено' : 'Валюту додано');
+        toast.success(editingCurrency ? t('common.saved') : t('currencies.created'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingCurrency(false);
     }
   };
 
   const deleteCurrency = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити валюту?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('currencies.deleteConfirmTitle'), variant: 'destructive' })))
+      return;
     try {
       await apiFetch(`/currencies/${id}`, { method: 'DELETE' });
       setCurrencies(prev => {
@@ -149,7 +152,7 @@ export default function CurrenciesTab() {
         return next;
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
@@ -187,24 +190,24 @@ export default function CurrenciesTab() {
       )}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => setCurrencyTemplatePicker(true)}>
-          З шаблону
+          {t('common.fromTemplate')}
         </Button>
         <Button onClick={() => openCurrencyModal()}>
           <Plus className="w-4 h-4 mr-1" />
-          Валюта
+          {t('currencies.addButton')}
         </Button>
       </div>
       <TemplatePickerModal
         open={currencyTemplatePicker}
         onClose={() => setCurrencyTemplatePicker(false)}
         entityType="currency"
-        title="Додати валюти з шаблону"
+        title={t('currencies.templateTitle')}
         existingKeys={currencies.map(c => c.code)}
         onImport={importCurrenciesFromTemplates}
       />
-      {loadingCurrencies && <p className="text-muted-foreground text-sm">Завантаження...</p>}
+      {loadingCurrencies && <p className="text-muted-foreground text-sm">{t('common.loading')}</p>}
       {!loadingCurrencies && currencies.length === 0 && (
-        <p className="text-muted-foreground text-sm">Валюти не додано</p>
+        <p className="text-muted-foreground text-sm">{t('currencies.empty')}</p>
       )}
       <div className="space-y-2">
         {currencies.map(c => (
@@ -221,7 +224,7 @@ export default function CurrenciesTab() {
                 </span>
                 {c.isSystem && (
                   <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground bg-muted rounded px-1.5 py-0.5">
-                    Системна
+                    {t('currencies.system')}
                   </span>
                 )}
               </div>
@@ -234,14 +237,16 @@ export default function CurrenciesTab() {
                 readOnly
                 className="h-4 w-4 rounded border-border accent-primary pointer-events-none"
               />
-              <span className="text-xs text-muted-foreground whitespace-nowrap">НБУ</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {t('currencies.nbu')}
+              </span>
             </div>
             <span className="text-xs text-muted-foreground shrink-0 w-14 text-right">
               {c.nbuMarkupPercent != null ? `+${c.nbuMarkupPercent}%` : '—'}
             </span>
             <div className="flex gap-2 shrink-0">
               <button
-                aria-label="Редагувати валюту"
+                aria-label={t('currencies.editAria')}
                 onClick={() => openCurrencyModal(c)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
@@ -249,7 +254,7 @@ export default function CurrenciesTab() {
               </button>
               {!c.isSystem && (
                 <button
-                  aria-label="Видалити валюту"
+                  aria-label={t('currencies.deleteAria')}
                   onClick={() => void deleteCurrency(c.id)}
                   className="text-destructive/70 hover:text-destructive transition-colors"
                 >
@@ -264,27 +269,24 @@ export default function CurrenciesTab() {
       <Modal
         open={currencyModal}
         onClose={() => setCurrencyModal(false)}
-        title={editingCurrency ? 'Редагувати валюту' : 'Нова валюта'}
+        title={editingCurrency ? t('currencies.editTitle') : t('currencies.createTitle')}
         footer={
           <>
             <Button variant="outline" onClick={() => setCurrencyModal(false)}>
-              Скасувати
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void saveCurrency()} loading={savingCurrency}>
-              Зберегти
+              {t('common.save')}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
           {editingCurrency?.isSystem && (
-            <p className="text-xs text-muted-foreground">
-              Системну валюту не можна перейменовувати або змінювати код. Доступні лише налаштування
-              курсу НБУ.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('currencies.systemHint')}</p>
           )}
           <Input
-            label="Назва"
+            label={t('currencies.fieldName')}
             required
             value={currencyForm.name}
             errorMessage={currencyErrors.name}
@@ -296,7 +298,7 @@ export default function CurrenciesTab() {
             className="h-8 text-[13px]"
           />
           <Input
-            label="Код (ISO 4217)"
+            label={t('currencies.fieldCode')}
             required
             value={currencyForm.code}
             errorMessage={currencyErrors.code}
@@ -309,31 +311,29 @@ export default function CurrenciesTab() {
             className="h-8 text-[13px]"
           />
           <Input
-            label="Символ"
+            label={t('currencies.fieldSymbol')}
             value={currencyForm.symbol}
             onChange={e => setCurrencyForm({ ...currencyForm, symbol: e.target.value })}
             placeholder="₴"
             className="h-8 text-[13px]"
           />
           <Input
-            label="Повна назва"
+            label={t('currencies.fieldFullName')}
             value={currencyForm.fullName}
             onChange={e => setCurrencyForm({ ...currencyForm, fullName: e.target.value })}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Міжнародна назва"
+            label={t('currencies.fieldInternationalName')}
             value={currencyForm.internationalName}
             onChange={e => setCurrencyForm({ ...currencyForm, internationalName: e.target.value })}
-            placeholder="наприклад: US Dollar"
+            placeholder={t('currencies.internationalNamePlaceholder')}
             className="h-8 text-[13px]"
           />
           <div className="flex items-center justify-between pt-2 border-t border-border">
             <div>
-              <p className="text-sm font-medium text-foreground">Завантажувати курс з НБУ</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Автоматично підтягувати офіційний курс щодня
-              </p>
+              <p className="text-sm font-medium text-foreground">{t('currencies.nbuFetchLabel')}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('currencies.nbuFetchHint')}</p>
             </div>
             <input
               type="checkbox"
@@ -345,7 +345,7 @@ export default function CurrenciesTab() {
             />
           </div>
           <Input
-            label="Відсоток нарахування (%)"
+            label={t('currencies.markupLabel')}
             type="number"
             min={0}
             max={100}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -15,6 +16,7 @@ import { getCached, setCache } from '@/lib/ref-cache';
 import type { BankAccount, BranchInfo, Currency } from './types';
 
 export default function BankAccountsTab() {
+  const { t } = useTranslation('ndi');
   const { confirm, dialogProps } = useConfirm();
   const currentFeatures = useUiFeatures();
   const [error, setError] = useState('');
@@ -72,10 +74,10 @@ export default function BankAccountsTab() {
         setLoadingBa(false);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        setError(e instanceof Error ? e.message : t('common.loadError'));
         setLoadingBa(false);
       });
-  }, []);
+  }, [t]);
 
   const openBaModal = (ba?: BankAccount) => {
     setEditingBa(ba ?? null);
@@ -108,11 +110,10 @@ export default function BankAccountsTab() {
 
   const saveBa = async () => {
     const errs: typeof baErrors = {};
-    if (!baForm.name.trim()) errs.name = 'Введіть назву рахунку';
-    if (!baForm.ibanUA.trim()) errs.ibanUA = 'Введіть IBAN';
-    else if (!/^UA\d{27}$/.test(baForm.ibanUA))
-      errs.ibanUA = 'Невірний формат IBAN. Має починатись з UA та містити 29 символів';
-    if (!baForm.currencyId) errs.currencyId = 'Оберіть валюту';
+    if (!baForm.name.trim()) errs.name = t('bankAccounts.nameRequired');
+    if (!baForm.ibanUA.trim()) errs.ibanUA = t('bankAccounts.ibanRequired');
+    else if (!/^UA\d{27}$/.test(baForm.ibanUA)) errs.ibanUA = t('bankAccounts.ibanInvalid');
+    if (!baForm.currencyId) errs.currencyId = t('bankAccounts.currencyRequired');
     if (Object.keys(errs).length > 0) {
       setBaErrors(errs);
       return;
@@ -152,16 +153,16 @@ export default function BankAccountsTab() {
         });
       }
       setBaModal(false);
-      if (currentFeatures.toastEnabled) toast.success('Збережено');
+      if (currentFeatures.toastEnabled) toast.success(t('common.saved'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setSavingBa(false);
     }
   };
 
   const deleteBa = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити банківський рахунок?', variant: 'destructive' })))
+    if (!(await confirm({ title: t('bankAccounts.deleteConfirmTitle'), variant: 'destructive' })))
       return;
     try {
       await apiFetch(`/bank-accounts/${id}`, { method: 'DELETE' });
@@ -171,7 +172,7 @@ export default function BankAccountsTab() {
         return next;
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.error'));
     }
   };
 
@@ -185,12 +186,12 @@ export default function BankAccountsTab() {
       <div className="flex justify-end">
         <Button onClick={() => openBaModal()}>
           <Plus className="w-4 h-4 mr-1" />
-          Додати рахунок
+          {t('bankAccounts.addButton')}
         </Button>
       </div>
-      {loadingBa && <p className="text-muted-foreground text-sm">Завантаження...</p>}
+      {loadingBa && <p className="text-muted-foreground text-sm">{t('common.loading')}</p>}
       {!loadingBa && bankAccounts.length === 0 && (
-        <p className="text-muted-foreground text-sm">Рахунки не додано</p>
+        <p className="text-muted-foreground text-sm">{t('bankAccounts.empty')}</p>
       )}
       <div className="space-y-2">
         {bankAccounts.map(b => (
@@ -209,14 +210,14 @@ export default function BankAccountsTab() {
             </div>
             <div className="flex gap-2">
               <button
-                aria-label="Редагувати рахунок"
+                aria-label={t('bankAccounts.editAria')}
                 onClick={() => openBaModal(b)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Pencil className="w-4 h-4" />
               </button>
               <button
-                aria-label="Видалити рахунок"
+                aria-label={t('bankAccounts.deleteAria')}
                 onClick={() => void deleteBa(b.id)}
                 className="text-destructive/70 hover:text-destructive transition-colors"
               >
@@ -230,21 +231,21 @@ export default function BankAccountsTab() {
       <Modal
         open={baModal}
         onClose={() => setBaModal(false)}
-        title={editingBa ? 'Редагувати рахунок' : 'Новий банківський рахунок'}
+        title={editingBa ? t('bankAccounts.editTitle') : t('bankAccounts.createTitle')}
         footer={
           <>
             <Button variant="outline" onClick={() => setBaModal(false)}>
-              Скасувати
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void saveBa()} loading={savingBa}>
-              Зберегти
+              {t('common.save')}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
           <Input
-            label="Назва рахунку"
+            label={t('bankAccounts.fieldName')}
             required
             value={baForm.name}
             onChange={e => {
@@ -255,7 +256,7 @@ export default function BankAccountsTab() {
             className="h-8 text-[13px]"
           />
           <Input
-            label="IBAN"
+            label={t('bankAccounts.fieldIban')}
             required
             value={baForm.ibanUA}
             onChange={e => {
@@ -267,7 +268,7 @@ export default function BankAccountsTab() {
             className="h-8 text-[13px]"
           />
           <Select
-            label="Валюта"
+            label={t('bankAccounts.fieldCurrency')}
             required
             value={baForm.currencyId}
             onChange={e => {
@@ -275,7 +276,7 @@ export default function BankAccountsTab() {
               if (baErrors.currencyId) setBaErrors(p => ({ ...p, currencyId: undefined }));
             }}
             errorMessage={baErrors.currencyId}
-            placeholder="Оберіть валюту..."
+            placeholder={t('bankAccounts.currencyPlaceholder')}
             className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {currencies.map(c => (
@@ -285,10 +286,10 @@ export default function BankAccountsTab() {
             ))}
           </Select>
           <Select
-            label="Філія"
+            label={t('bankAccounts.fieldBranch')}
             value={baForm.branchId}
             onChange={e => setBaForm({ ...baForm, branchId: e.target.value })}
-            placeholder="Не прив'язано до філії"
+            placeholder={t('bankAccounts.branchPlaceholder')}
             className="h-8 text-[13px] py-0.5 px-2 pr-7"
           >
             {branches.map(b => (
@@ -298,25 +299,25 @@ export default function BankAccountsTab() {
             ))}
           </Select>
           <Input
-            label="Назва банку"
+            label={t('bankAccounts.fieldBankName')}
             value={baForm.bankName}
             onChange={e => setBaForm({ ...baForm, bankName: e.target.value })}
             className="h-8 text-[13px]"
           />
           <Input
-            label="МФО"
+            label={t('bankAccounts.fieldMfo')}
             value={baForm.mfo}
             onChange={e => setBaForm({ ...baForm, mfo: e.target.value })}
             className="h-8 text-[13px]"
           />
           <Input
-            label="ЄДРПОУ банку"
+            label={t('bankAccounts.fieldEdrpou')}
             value={baForm.edrpou}
             onChange={e => setBaForm({ ...baForm, edrpou: e.target.value })}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Адреса банку"
+            label={t('bankAccounts.fieldBankAddress')}
             value={baForm.bankAddress}
             onChange={e => setBaForm({ ...baForm, bankAddress: e.target.value })}
             className="h-8 text-[13px]"

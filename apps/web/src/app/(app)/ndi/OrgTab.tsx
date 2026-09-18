@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
 import { applyTheme } from '@/lib/theme';
@@ -11,7 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/utils';
-import { type OrgSettings, type CostMethod, COST_METHOD_OPTIONS, VAT_LABELS } from './shared';
+import { type OrgSettings, type CostMethod, COST_METHOD_OPTIONS } from './shared';
+
+// Порядок режимів ПДВ у селекторі (значення-ключі; мітки з ndi-каталогу через t()).
+const VAT_MODE_KEYS = ['NONE', 'EXCLUSIVE', 'INCLUSIVE'] as const;
 
 function NumberField({
   label,
@@ -79,8 +83,21 @@ interface Currency {
 }
 
 export default function OrgTab() {
+  const { t } = useTranslation('ndi');
   const { confirm, dialogProps } = useConfirm();
   const currentFeatures = useUiFeatures();
+
+  // Локальні мапи міток (VAT / метод списання) перекладаються з ndi-каталогу.
+  // Ключі значень (value/code) лишаються у shared — перекладається лише label/hint.
+  const costMethodOptions = useMemo(
+    () =>
+      COST_METHOD_OPTIONS.map(o => ({
+        value: o.value,
+        label: t(`org.costMethod.${o.value}.label`),
+        hint: t(`org.costMethod.${o.value}.hint`),
+      })),
+    [t],
+  );
   const [orgSettings, setOrgSettings] = useState<OrgSettings | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [saving, setSaving] = useState(false);
@@ -99,14 +116,14 @@ export default function OrgTab() {
         applyTheme(settingsRes.value.brandTheme);
       } else {
         const e = settingsRes.reason;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження налаштувань');
+        setError(e instanceof Error ? e.message : t('org.loadError'));
       }
       if (currRes.status === 'fulfilled') setCurrencies(currRes.value.items ?? []);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const saveOrgSettings = async () => {
     if (!orgSettings) return;
@@ -130,10 +147,10 @@ export default function OrgTab() {
       });
       applyTheme(updated.brandTheme);
       setOrgSettings(updated);
-      setMsg('Збережено');
-      if (currentFeatures.toastEnabled) toast.success('Налаштування збережено');
+      setMsg(t('org.saved'));
+      if (currentFeatures.toastEnabled) toast.success(t('org.settingsSaved'));
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Помилка збереження';
+      const errMsg = e instanceof Error ? e.message : t('org.saveError');
       setError(errMsg);
       if (currentFeatures.toastEnabled) toast.error(errMsg);
     } finally {
@@ -158,7 +175,7 @@ export default function OrgTab() {
       <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
         <div>
           <label className="block text-[13px] font-medium text-foreground mb-1">
-            Валюта обліку
+            {t('org.currencyLabel')}
           </label>
           {currencies.length > 0 ? (
             <Select
@@ -182,46 +199,46 @@ export default function OrgTab() {
                 })
               }
               className="w-32 h-8 text-[13px]"
-              placeholder="UAH"
+              placeholder={t('org.currencyPlaceholder')}
               maxLength={10}
             />
           )}
-          <p className="text-xs text-muted-foreground mt-1">
-            Використовується за замовчуванням у договорах і звітах
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{t('org.currencyHint')}</p>
         </div>
 
         <div>
-          <label className="block text-[13px] font-medium text-foreground mb-1">Режим ПДВ</label>
+          <label className="block text-[13px] font-medium text-foreground mb-1">
+            {t('org.vatModeLabel')}
+          </label>
           <Select
             value={orgSettings.vatMode}
             onChange={e => setOrgSettings({ ...orgSettings, vatMode: e.target.value })}
             className="w-auto h-8 text-[13px] py-0.5 px-2 pr-7"
           >
-            {Object.entries(VAT_LABELS).map(([k, v]) => (
+            {VAT_MODE_KEYS.map(k => (
               <option key={k} value={k}>
-                {v}
+                {t(`org.vatMode.${k}`)}
               </option>
             ))}
           </Select>
         </div>
 
         <NumberField
-          label="Термін оплати рахунку (днів)"
+          label={t('org.invoiceDueDaysLabel')}
           value={orgSettings.invoiceDueDays}
           onChange={v => setOrgSettings({ ...orgSettings, invoiceDueDays: v })}
           min={1}
           max={365}
         />
         <NumberField
-          label="Авто-архівування (днів після закриття)"
+          label={t('org.autoArchiveDaysLabel')}
           value={orgSettings.autoArchiveDays}
           onChange={v => setOrgSettings({ ...orgSettings, autoArchiveDays: v })}
           min={1}
           max={365}
         />
         <NumberField
-          label="Гарантійний термін за замовчуванням (днів)"
+          label={t('org.defaultWarrantyDaysLabel')}
           value={orgSettings.defaultWarrantyDays}
           onChange={v => setOrgSettings({ ...orgSettings, defaultWarrantyDays: v })}
           min={0}
@@ -230,26 +247,24 @@ export default function OrgTab() {
 
         <div className="space-y-3">
           <Toggle
-            label="Вимагати підтвердження клієнта"
+            label={t('org.requireClientApproval')}
             checked={orgSettings.requireClientApproval}
             onChange={v => setOrgSettings({ ...orgSettings, requireClientApproval: v })}
           />
           <Toggle
-            label="Дозволити часткову оплату"
+            label={t('org.allowPartialPayment')}
             checked={orgSettings.allowPartialPayment}
             onChange={v => setOrgSettings({ ...orgSettings, allowPartialPayment: v })}
           />
         </div>
 
-        <div role="radiogroup" aria-label="Метод списання партій">
+        <div role="radiogroup" aria-label={t('org.costMethodAria')}>
           <label className="block text-[13px] font-medium text-foreground mb-1">
-            Метод списання партій
+            {t('org.costMethodLabel')}
           </label>
-          <p className="text-xs text-muted-foreground mb-2">
-            Визначає порядок списання запчастин з партійного обліку при виконанні нарядів
-          </p>
+          <p className="text-xs text-muted-foreground mb-2">{t('org.costMethodHint')}</p>
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            {COST_METHOD_OPTIONS.map(({ value, label, hint }) => {
+            {costMethodOptions.map(({ value, label, hint }) => {
               const selected = orgSettings.costMethod === value;
               return (
                 <button
@@ -259,10 +274,13 @@ export default function OrgTab() {
                   aria-checked={selected}
                   onClick={async () => {
                     if (selected) return;
+                    const fromLabel =
+                      costMethodOptions.find(o => o.value === orgSettings.costMethod)?.label ??
+                      orgSettings.costMethod;
                     const ok = await confirm({
-                      title: 'Змінити метод списання партій?',
-                      message: `Зміна з ${COST_METHOD_OPTIONS.find(o => o.value === orgSettings.costMethod)?.label ?? orgSettings.costMethod} на ${label} вплине на всі майбутні списання запчастин у нарядах. Поточні залишки та вже закриті наряди не змінюються, але собівартість нових нарядів буде розраховуватись за новим методом. Переконайтеся, що ви розумієте наслідки для фінансової звітності.`,
-                      confirmLabel: `Так, змінити на ${label}`,
+                      title: t('org.costMethodChangeTitle'),
+                      message: t('org.costMethodChangeMessage', { from: fromLabel, to: label }),
+                      confirmLabel: t('org.costMethodChangeConfirm', { to: label }),
                       variant: 'destructive',
                     });
                     if (!ok) return;
@@ -284,7 +302,7 @@ export default function OrgTab() {
         </div>
 
         <Button onClick={() => void saveOrgSettings()} loading={saving} className="w-full">
-          Зберегти
+          {t('org.save')}
         </Button>
       </div>
       <ConfirmDialog {...dialogProps} />

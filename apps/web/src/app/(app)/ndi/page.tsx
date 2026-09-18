@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useRequireAuth } from '@/lib/auth';
 
@@ -19,40 +20,43 @@ const BankAccountsTab = dynamic(() => import('./BankAccountsTab'), { ssr: false 
 type Tab =
   'org' | 'org-info' | 'payments' | 'taxrates' | 'currencies' | 'exchange-rates' | 'bank-accounts';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'org', label: 'Організація' },
-  { id: 'org-info', label: 'Реквізити організації' },
-  { id: 'payments', label: 'Оплата' },
-  { id: 'taxrates', label: 'Ставки ПДВ' },
-  { id: 'currencies', label: 'Валюти' },
-  { id: 'exchange-rates', label: 'Курси валют' },
-  { id: 'bank-accounts', label: 'Банк. рахунки' },
+const TAB_DEFS: { id: Tab; labelKey: string }[] = [
+  { id: 'org', labelKey: 'tabs.org' },
+  { id: 'org-info', labelKey: 'tabs.orgInfo' },
+  { id: 'payments', labelKey: 'tabs.payments' },
+  { id: 'taxrates', labelKey: 'tabs.taxRates' },
+  { id: 'currencies', labelKey: 'tabs.currencies' },
+  { id: 'exchange-rates', labelKey: 'tabs.exchangeRates' },
+  { id: 'bank-accounts', labelKey: 'tabs.bankAccounts' },
 ];
 
 function NdiPageClient() {
   useRequireAuth(['OWNER', 'ADMIN']);
+  const { t } = useTranslation('ndi');
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'org') as Tab;
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
 
+  const TABS = useMemo(() => TAB_DEFS.map(d => ({ ...d, label: t(d.labelKey) })), [t]);
+
   return (
     <div className="page-fill p-6 overflow-y-auto">
-      <h1 className="page-title mb-6">Нормативно-довідкова інформація</h1>
+      <h1 className="page-title mb-6">{t('title')}</h1>
 
       <div className="flex gap-1 border-b border-border mb-6 flex-wrap">
-        {TABS.map(t => (
+        {TABS.map(tabDef => (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
+            key={tabDef.id}
+            onClick={() => setTab(tabDef.id)}
             className={cn(
               'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === t.id
+              tab === tabDef.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {tabDef.label}
           </button>
         ))}
       </div>
