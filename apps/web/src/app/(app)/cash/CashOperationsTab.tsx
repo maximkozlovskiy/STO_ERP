@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DoorOpen,
   DoorClosed,
@@ -32,13 +33,13 @@ import {
   useCashOperations,
   useCreateCashOperation,
   useBaseCurrency,
-  CASH_REASON_LABELS,
   MANUAL_IN_REASONS,
   MANUAL_OUT_REASONS,
 } from '@/hooks/api/useCash';
 import { useExpenseCategories, flattenActiveByType } from '@/hooks/api/useExpenseCategories';
 
 export default function CashOperationsTab({ canOperate = false }: { canOperate?: boolean }) {
+  const { t } = useTranslation('cash');
   const { data: registers, isLoading: regLoading } = useCashRegisters();
   const [selectedId, setSelectedId] = useState('');
   const selected = useMemo(
@@ -94,11 +95,11 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     if (!opModal || !selected) return;
     const amount = Number(opForm.amount);
     if (!(amount > 0)) {
-      setOpError('Вкажіть суму більше 0');
+      setOpError(t('operations.amountRequired'));
       return;
     }
     if (opForm.reason === 'EXPENSE' && !opForm.expenseCategoryId) {
-      setOpError('Оберіть статтю витрат');
+      setOpError(t('operations.categoryRequired'));
       return;
     }
     try {
@@ -111,9 +112,9 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         notes: opForm.notes || undefined,
       });
       setOpModal(null);
-      toast.success(opModal === 'IN' ? 'Готівку внесено' : 'Готівку видано');
+      toast.success(opModal === 'IN' ? t('operations.deposited') : t('operations.withdrawn'));
     } catch (e) {
-      setOpError(e instanceof Error ? e.message : 'Помилка операції');
+      setOpError(e instanceof Error ? e.message : t('operations.opError'));
     }
   };
 
@@ -121,18 +122,18 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     if (!selected) return;
     try {
       await openShift.mutateAsync(selected.branchId);
-      toast.success('Зміну відкрито');
+      toast.success(t('operations.shiftOpened'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не вдалося відкрити зміну');
+      toast.error(e instanceof Error ? e.message : t('operations.openShiftError'));
     }
   };
   const onCloseShift = async () => {
     if (!shift) return;
     try {
       await closeShift.mutateAsync(shift.id);
-      toast.success('Зміну закрито (Z-звіт)');
+      toast.success(t('operations.shiftClosedToast'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Не вдалося закрити зміну');
+      toast.error(e instanceof Error ? e.message : t('operations.closeShiftError'));
     }
   };
 
@@ -150,8 +151,8 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     return (
       <EmptyState
         icon={Wallet}
-        title="Кас немає"
-        description="Створіть касу у вкладці «Каси», щоб проводити операції"
+        title={t('operations.noRegisters')}
+        description={t('operations.noRegistersDescription')}
       />
     );
   }
@@ -168,13 +169,15 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         <Select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-56">
           {registers?.map(r => (
             <option key={r.id} value={r.id}>
-              {r.name} {r.isFiscal ? '(фіскальна)' : ''}
+              {r.name} {r.isFiscal ? t('operations.fiscalSuffix') : ''}
             </option>
           ))}
         </Select>
         {selected && (
           <div className="bg-surface border border-border rounded-lg px-4 py-2">
-            <span className="text-[12px] text-muted-foreground">Залишок: </span>
+            <span className="text-[12px] text-muted-foreground">
+              {t('operations.balanceLabel')}
+            </span>
             <span className="text-lg font-bold tabular-nums">
               {fmtMoney(selected.balance)} {selected.currencySymbol ?? selected.currencyCode}
             </span>
@@ -187,7 +190,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
               onClick={() => openOpModal('IN')}
               disabled={fiscalBlocked}
             >
-              Внести
+              {t('operations.deposit')}
             </Button>
             <Button
               variant="outline"
@@ -195,7 +198,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
               onClick={() => openOpModal('OUT')}
               disabled={fiscalBlocked}
             >
-              Видати
+              {t('operations.withdraw')}
             </Button>
           </div>
         )}
@@ -209,11 +212,11 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
           ) : shift ? (
             <>
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-success" />
-              <span className="text-[13px] font-medium">Зміна відкрита</span>
+              <span className="text-[13px] font-medium">{t('operations.shiftOpen')}</span>
               {!!shift.pendingReceipts && shift.pendingReceipts > 0 && (
                 <span className="flex items-center gap-1 text-[12px] text-warning-text">
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  Чеків очікує: {shift.pendingReceipts}
+                  {t('operations.pendingReceipts', { n: shift.pendingReceipts })}
                 </span>
               )}
               <Button
@@ -224,14 +227,14 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                 loading={closeShift.isPending}
               >
                 <DoorClosed className="h-3.5 w-3.5 mr-1" />
-                Закрити зміну (Z-звіт)
+                {t('operations.closeShift')}
               </Button>
             </>
           ) : (
             <>
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-muted-foreground" />
               <span className="text-[13px] text-muted-foreground">
-                Зміну закрито — операції з готівкою недоступні
+                {t('operations.shiftClosed')}
               </span>
               <Button
                 size="sm"
@@ -240,7 +243,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                 loading={openShift.isPending}
               >
                 <DoorOpen className="h-3.5 w-3.5 mr-1" />
-                Відкрити зміну
+                {t('operations.openShift')}
               </Button>
             </>
           )}
@@ -252,12 +255,14 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Дата</TableHead>
-              <TableHead>Операція</TableHead>
-              <TableHead>Привід</TableHead>
-              <TableHead className="text-right">Сума</TableHead>
+              <TableHead>{t('operations.colDate')}</TableHead>
+              <TableHead>{t('operations.colOperation')}</TableHead>
+              <TableHead>{t('operations.colReason')}</TableHead>
+              <TableHead className="text-right">{t('operations.colAmount')}</TableHead>
               {!isBaseCurrency && (
-                <TableHead className="text-right">У базовій ({baseSymbol})</TableHead>
+                <TableHead className="text-right">
+                  {t('operations.colInBase', { symbol: baseSymbol })}
+                </TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -276,8 +281,8 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                 <TableCell colSpan={isBaseCurrency ? 4 : 5} className="p-0">
                   <EmptyState
                     icon={Wallet}
-                    title="Операцій немає"
-                    description="Внесіть або видайте готівку"
+                    title={t('operations.empty')}
+                    description={t('operations.emptyDescription')}
                   />
                 </TableCell>
               </TableRow>
@@ -299,11 +304,13 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                     ) : (
                       <ArrowUpCircle className="h-3.5 w-3.5" />
                     )}
-                    {op.direction === 'IN' ? 'Внесення' : 'Видача'}
+                    {op.direction === 'IN'
+                      ? t('operations.directionIn')
+                      : t('operations.directionOut')}
                   </span>
                 </TableCell>
                 <TableCell className="text-[13px] text-muted-foreground">
-                  {CASH_REASON_LABELS[op.reason] ?? op.reason}
+                  {t(`reasons.${op.reason}`, { defaultValue: op.reason })}
                   {op.expenseCategoryName ? ` · ${op.expenseCategoryName}` : ''}
                   {op.notes ? ` · ${op.notes}` : ''}
                 </TableCell>
@@ -331,7 +338,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
       <Modal
         open={!!opModal}
         onClose={() => setOpModal(null)}
-        title={opModal === 'IN' ? 'Внести готівку' : 'Видати готівку'}
+        title={opModal === 'IN' ? t('operations.modalTitleIn') : t('operations.modalTitleOut')}
         footer={
           <Button
             onClick={submitOp}
@@ -339,7 +346,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             disabled={!(Number(opForm.amount) > 0)}
             className="w-full"
           >
-            {opModal === 'IN' ? 'Внести' : 'Видати'}
+            {opModal === 'IN' ? t('operations.deposit') : t('operations.withdraw')}
           </Button>
         }
       >
@@ -350,7 +357,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         )}
         <div className="space-y-4">
           <Input
-            label="Сума"
+            label={t('operations.fieldAmount')}
             type="number"
             required
             value={opForm.amount}
@@ -360,28 +367,28 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             className="h-8 text-[13px]"
           />
           <Select
-            label="Привід"
+            label={t('operations.fieldReason')}
             value={opForm.reason}
             onChange={e => setOpForm(f => ({ ...f, reason: e.target.value }))}
           >
             {reasonOptions.map(r => (
               <option key={r} value={r}>
-                {CASH_REASON_LABELS[r]}
+                {t(`reasons.${r}`, { defaultValue: r })}
               </option>
             ))}
           </Select>
           <Select
             label={
               opForm.reason === 'EXPENSE'
-                ? 'Стаття витрат'
+                ? t('operations.fieldCategoryExpense')
                 : opModal === 'IN'
-                  ? 'Стаття оприбуткування (необовʼязково)'
-                  : 'Стаття витрат (необовʼязково)'
+                  ? t('operations.fieldCategoryIncomeOptional')
+                  : t('operations.fieldCategoryExpenseOptional')
             }
             value={opForm.expenseCategoryId}
             onChange={e => setOpForm(f => ({ ...f, expenseCategoryId: e.target.value }))}
           >
-            <option value="">— без статті —</option>
+            <option value="">{t('operations.categoryNone')}</option>
             {categoryOptions.map(c => (
               <option key={c.id} value={c.id}>
                 {'  '.repeat(c.depth)}
@@ -390,10 +397,10 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             ))}
           </Select>
           <Input
-            label="Нотатка"
+            label={t('operations.fieldNotes')}
             value={opForm.notes}
             onChange={e => setOpForm(f => ({ ...f, notes: e.target.value }))}
-            placeholder="необов'язково"
+            placeholder={t('operations.notesPlaceholder')}
             className="h-8 text-[13px]"
           />
         </div>

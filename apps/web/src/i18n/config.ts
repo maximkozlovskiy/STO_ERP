@@ -46,6 +46,7 @@ if (!i18n.isInitialized) {
       'counterparties',
       'catalog',
       'ndi',
+      'cash',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

@@ -14,6 +14,7 @@ import ukStockDocuments from './locales/uk/stockDocuments.json';
 import ukCounterparties from './locales/uk/counterparties.json';
 import ukCatalog from './locales/uk/catalog.json';
 import ukNdi from './locales/uk/ndi.json';
+import ukCash from './locales/uk/cash.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -29,6 +30,7 @@ import enStockDocuments from './locales/en/stockDocuments.json';
 import enCounterparties from './locales/en/counterparties.json';
 import enCatalog from './locales/en/catalog.json';
 import enNdi from './locales/en/ndi.json';
+import enCash from './locales/en/cash.json';
 
 export const resources = {
   uk: {
@@ -46,6 +48,7 @@ export const resources = {
     counterparties: ukCounterparties,
     catalog: ukCatalog,
     ndi: ukNdi,
+    cash: ukCash,
   },
   en: {
     common: enCommon,
@@ -62,5 +65,6 @@ export const resources = {
     counterparties: enCounterparties,
     catalog: enCatalog,
     ndi: enNdi,
+    cash: enCash,
   },
 } as const;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Landmark } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -52,6 +53,7 @@ const fiscalProviderLabel = (code?: string | null) =>
   code ? (FISCAL_PROVIDER_LABELS[code] ?? code) : '';
 
 export default function CashRegistersTab({ canManage = false }: { canManage?: boolean }) {
+  const { t } = useTranslation('cash');
   const { confirm, dialogProps } = useConfirm();
   const { data: registers, isLoading } = useCashRegisters();
   const createMut = useCreateCashRegister();
@@ -134,11 +136,11 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
 
   const save = async () => {
     if (!form.name.trim()) {
-      setError("Назва є обов'язковою");
+      setError(t('registers.nameRequired'));
       return;
     }
     if (!form.currencyId) {
-      setError('Оберіть валюту каси');
+      setError(t('registers.currencyRequired'));
       return;
     }
     // Прив'язку до ПРРО шлемо лише для фіскальної каси; для звичайної — очищаємо (порожній рядок).
@@ -167,38 +169,36 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
         });
       }
       setModal(false);
-      toast.success('Збережено');
+      toast.success(t('common.saved'));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('registers.saveError'));
     }
   };
 
   const remove = async (r: CashRegister) => {
     if (
       !(await confirm({
-        title: 'Видалити касу?',
-        message: `Касу «${r.name}» буде видалено. Історія операцій залишиться.`,
+        title: t('registers.deleteConfirmTitle'),
+        message: t('registers.deleteConfirmMessage', { name: r.name }),
         variant: 'destructive',
       }))
     )
       return;
     try {
       await deleteMut.mutateAsync(r.id);
-      toast.success('Касу видалено');
+      toast.success(t('registers.deleted'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      toast.error(e instanceof Error ? e.message : t('registers.deleteError'));
     }
   };
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-2">
       <div className="flex items-center justify-between gap-3 shrink-0">
-        <p className="text-[13px] text-muted-foreground">
-          Каси організації. Фіскальна каса вимагає відкриту зміну для операцій з готівкою.
-        </p>
+        <p className="text-[13px] text-muted-foreground">{t('registers.description')}</p>
         {canManage && (
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            Каса
+            {t('registers.addButton')}
           </Button>
         )}
       </div>
@@ -207,10 +207,10 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Назва</TableHead>
-              <TableHead>Філія</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead className="text-right">Залишок</TableHead>
+              <TableHead>{t('registers.colName')}</TableHead>
+              <TableHead>{t('registers.colBranch')}</TableHead>
+              <TableHead>{t('registers.colType')}</TableHead>
+              <TableHead className="text-right">{t('registers.colBalance')}</TableHead>
               {canManage && <TableHead />}
             </TableRow>
           </TableHeader>
@@ -227,7 +227,11 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
             {!isLoading && (registers?.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell colSpan={canManage ? 5 : 4} className="p-0">
-                  <EmptyState icon={Landmark} title="Кас немає" description="Додайте першу касу" />
+                  <EmptyState
+                    icon={Landmark}
+                    title={t('registers.empty')}
+                    description={t('registers.emptyDescription')}
+                  />
                 </TableCell>
               </TableRow>
             )}
@@ -238,13 +242,15 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-1">
                     {r.isFiscal ? (
-                      <Badge variant="warning">Фіскальна</Badge>
+                      <Badge variant="warning">{t('registers.typeFiscal')}</Badge>
                     ) : (
-                      <Badge variant="secondary">Звичайна</Badge>
+                      <Badge variant="secondary">{t('registers.typeRegular')}</Badge>
                     )}
                     {r.isFiscal && r.fiscalProvider && (
-                      <Badge variant="secondary" title="Підключений провайдер ПРРО">
-                        ПРРО: {fiscalProviderLabel(r.fiscalProvider)}
+                      <Badge variant="secondary" title={t('registers.prroBadgeTitle')}>
+                        {t('registers.prroBadge', {
+                          provider: fiscalProviderLabel(r.fiscalProvider),
+                        })}
                       </Badge>
                     )}
                   </div>
@@ -268,7 +274,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
                         size="sm"
                         onClick={() => void remove(r)}
                         className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        title="Видалити"
+                        title={t('registers.deleteAria')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -284,7 +290,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title={editing ? 'Редагувати касу' : 'Нова каса'}
+        title={editing ? t('registers.modalTitleEdit') : t('registers.modalTitleCreate')}
         footer={
           <Button
             onClick={save}
@@ -292,7 +298,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
             disabled={!form.name.trim()}
             className="w-full"
           >
-            Зберегти
+            {t('common.save')}
           </Button>
         }
       >
@@ -303,17 +309,17 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
         )}
         <div className="space-y-4">
           <Input
-            label="Назва каси"
+            label={t('registers.fieldName')}
             required
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="наприклад: Головна каса"
+            placeholder={t('registers.fieldNamePlaceholder')}
             autoFocus
             className="h-8 text-[13px]"
           />
           {!editing && (
             <Select
-              label="Філія"
+              label={t('registers.fieldBranch')}
               value={form.branchId}
               onChange={e => setForm(f => ({ ...f, branchId: e.target.value }))}
             >
@@ -328,12 +334,12 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
               операції з готівкою (currencyId NOT NULL на бекенді). Дозволяємо виправити
               валюту наявної каси, у якої вона не задана/некоректна. */}
           <Select
-            label="Валюта"
+            label={t('registers.fieldCurrency')}
             required
             value={form.currencyId}
             onChange={e => setForm(f => ({ ...f, currencyId: e.target.value }))}
           >
-            <option value="">— Оберіть валюту —</option>
+            <option value="">{t('registers.currencyPlaceholder')}</option>
             {currencies.map(c => (
               <option key={c.id} value={c.id}>
                 {c.code}
@@ -341,7 +347,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
             ))}
           </Select>
           <Input
-            label="Стартовий залишок"
+            label={t('registers.fieldInitialBalance')}
             type="number"
             value={form.initialBalance}
             onChange={e => setForm(f => ({ ...f, initialBalance: e.target.value }))}
@@ -354,17 +360,17 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
               onChange={e => setForm(f => ({ ...f, isFiscal: e.target.checked }))}
               className="h-4 w-4 rounded border-border accent-primary"
             />
-            <span className="text-sm text-foreground">Фіскальна каса (ПРРО, вимагає зміну)</span>
+            <span className="text-sm text-foreground">{t('registers.fiscalCheckbox')}</span>
           </label>
           {form.isFiscal && (
             <div className="space-y-4 border-l-2 border-border pl-3">
               <div>
                 <Select
-                  label="Провайдер ПРРО"
+                  label={t('registers.fieldProvider')}
                   value={form.fiscalProvider}
                   onChange={e => setForm(f => ({ ...f, fiscalProvider: e.target.value }))}
                 >
-                  <option value="">Активний провайдер філії (за замовчуванням)</option>
+                  <option value="">{t('registers.providerDefault')}</option>
                   {fiscalProviders.map(p => (
                     <option key={p.provider} value={p.provider}>
                       {fiscalProviderLabel(p.provider)}
@@ -373,16 +379,15 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
                 </Select>
                 {fiscalProviders.length === 0 && (
                   <p className="mt-1 text-[12px] text-muted-foreground">
-                    Немає налаштованих провайдерів ПРРО для філії. Додайте їх у Налаштування →
-                    Фіскалізація.
+                    {t('registers.noProviders')}
                   </p>
                 )}
               </div>
               <Input
-                label="ID каси провайдера (необовʼязково)"
+                label={t('registers.fieldProviderRegId')}
                 value={form.providerCashRegisterId}
                 onChange={e => setForm(f => ({ ...f, providerCashRegisterId: e.target.value }))}
-                placeholder="Checkbox cashRegisterId; Вчасно — у токені"
+                placeholder={t('registers.providerRegIdPlaceholder')}
                 className="h-8 text-[13px]"
               />
             </div>
