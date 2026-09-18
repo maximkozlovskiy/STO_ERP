@@ -333,6 +333,44 @@ const [pageError, setPageError] = useState<string | null>(null);
 const [formError, setFormError] = useState<string | null>(null);
 ```
 
+### i18n — двомовність uk/en ОБОВ'ЯЗКОВА у новому UI (патерн MP-F7 / MP-F7b, docs/PATTERNS.md)
+
+Увесь `(app)` UI перекладено (28 namespaces). НОВИЙ user-facing текст НЕ хардкодиться — одразу `t()`.
+
+```typescript
+// ❌ Хардкод-кирилиця у JSX/атрибутах/тостах
+<button>Зберегти</button>;
+toast.success('Збережено');
+<Input label="Найменування" />;
+
+// ✅ react-i18next: namespace на область
+const { t } = useTranslation('workOrders');   // або 'common' для generic
+<button>{t('common:save')}</button>;
+toast.success(t('toast.saved'));
+<Input label={t('columns.name')} />;
+
+// ❌ enum-мітка через shared-мапу напряму
+{WO_STATUS_LABELS[status] ?? status}
+// ✅ enum-обгортка (statuses.ts НЕ чіпати — backend PDF україномовний)
+{woStatusLabel(status)}   // з @/i18n/enumLabel; 19 обгорток
+
+// ❌ zod-повідомлення інлайн-рядком (шейр-схема біжить web+api)
+z.string().min(1, 'Вкажіть назву');
+// ✅ validation-KEY (резолвиться api-pipe / web i18nZodResolver / validateContactFields)
+z.string().min(1, 'v.good.name.required');   // + додати у messages.uk + messages.en + VALIDATION_KEYS
+
+// ❌ zodResolver напряму (не перекладе key-и)
+useForm({ resolver: zodResolver(schema) });
+// ✅ i18nZodResolver (перекладає validation-key-и рекурсивно)
+useForm({ resolver: i18nZodResolver(schema) });   // @/lib/i18nZodResolver
+```
+
+Правила: (1) новий namespace → зареєструвати у `i18n/resources.ts` + `config.ts` ns[]; (2) uk-значення
+byte-identical якщо мігруєш наявний рядок (тести асертять); (3) generic (Save/Cancel/Delete/Search) →
+`common` namespace; (4) дати/числа/гроші — через `@/lib/format` (locale-aware, НЕ хардкод `uk-UA`);
+(5) не перекладати: em-dash-плейсхолдери, `₴`, бренди, POST-data-defaults (напр. `maintenanceType:'ТО'`),
+коментарі; (6) `t`-змінна конфліктує з `.map(t=>...)` loop-var → перейменувати loop-var. Деталі — MP-F7/MP-F7b.
+
 ### Event handler cleanup — завжди повертай cleanup з useEffect
 
 ```typescript

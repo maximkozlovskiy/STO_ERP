@@ -172,6 +172,21 @@ interface Employee {
 // + guard у JSX: {emp.rateScheme && <span>{emp.rateScheme.type}</span>}
 ```
 
+### i18n locale-контракт (двомовність uk/en)
+
+Локаль тече web→api через `Accept-Language`; shared-zod повідомлення = KEYS, резолвляться обома боками.
+При зміні валідації/повідомлень перевір консистентність:
+
+- [ ] Новий validation-key зі схеми (`packages/shared/src/schemas`) існує у `messages.uk` І `messages.en`
+      (інакше web+api обидва покажуть raw-key). Guard: `validation-i18n-parity.spec`.
+- [ ] 400-контракт незмінний: `{ statusCode, message: string[], error }` — web `api-client` читає `message`
+      мовно-агностично (`Array.isArray ? join('; ')`). Жоден web-код НЕ гілкується на укр. рядок повідомлення.
+- [ ] `getCurrentLocale()` (web) повертає голе `'uk'|'en'` для `Accept-Language` (НЕ `uk-UA`); api
+      `resolveLocale` читає `accept-language` (Fastify lowercase). Round-trip чистий.
+- [ ] Змінив `packages/shared` → `pnpm --filter @sto/shared build` ПЕРЕД api tsc (api на dist/cjs, web на source).
+- [ ] Відомий ліміт (НЕ регресія): exception-`throw` + class-validator DTO + `http-exception.filter`
+      Prisma-строки досі укр. незалежно від Accept-Language (окремий блок). Підтвердити, не «фіксити».
+
 ---
 
 ## Крок 4 — TypeScript перевірка

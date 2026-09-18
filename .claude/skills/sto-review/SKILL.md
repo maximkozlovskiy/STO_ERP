@@ -545,6 +545,26 @@ grep -rnE "setForm.*[a-zA-Z]+Id:\s*['\"]['\"]|useState\(\{[^}]*[a-zA-Z]+Id:\s*['
 
 - [ ] `<Select value={form.xxxId}>` де options асинхронні → `useEffect` синхронізація: `if (!form.xxxId && options[0]) setForm(f => ({...f, xxxId: options[0].id}))`
 
+#### §8.2.2 i18n — двомовність uk/en (патерн MP-F7/MP-F7b)
+
+```bash
+# Хардкод-кирилиця у НОВОМУ/зміненому UI (має бути t()) — виключаємо коментарі/em-dash/₴/defaultValue
+grep -rnE "'[^']*[А-Яа-яІіЇїЄєҐґ][^']*'|>[^<]*[А-Яа-яІіЇїЄєҐґ][^<]*<" apps/web/src/app apps/web/src/components \
+  --include="*.tsx" | grep -vE "__tests__|// |'—'|₴|defaultValue|labelKey"
+# zod-повідомлення інлайн-рядком (мають бути KEY 'v.*')
+grep -rnE "\.(min|max|regex|email|refine)\([^)]*['\"][А-Яа-яІіЇїЄєҐґ]" packages/shared/src/schemas
+# zodResolver напряму (має бути i18nZodResolver)
+grep -rn "zodResolver(" apps/web/src --include="*.tsx" | grep -v "i18nZodResolver\|__tests__"
+```
+
+- [ ] Новий user-facing текст → `t('<ns>:<key>')`, НЕ хардкод-кирилиця (enum → `*Label()`-обгортка з `@/i18n/enumLabel`)
+- [ ] Новий namespace зареєстровано у `i18n/resources.ts` + `config.ts` ns[]; uk/en leaf-key parity (flatten+compare)
+- [ ] Мігрований рядок: uk-значення BYTE-IDENTICAL до оригіналу (тести асертять; звірити проти `git show <sha>~1`)
+- [ ] Новий validation-key → у `messages.uk` + `messages.en` + `VALIDATION_KEYS` (guard: `validation-i18n-parity.spec`)
+- [ ] Форми: `i18nZodResolver` (не `zodResolver`); recursive tree-walk skip-list не пропускає ім'я поля (`type`/`name`/`root`) — Bug #763
+- [ ] Dead-translation: новий ключ-мапа має споживача (`t()` у рендері), інакше mute-гілка (Bug #762)
+- [ ] `@sto/shared` змінено → `pnpm --filter @sto/shared build` перед api tsc (api на dist/cjs)
+
 #### §8.3 Hydration Safety
 
 ```bash
