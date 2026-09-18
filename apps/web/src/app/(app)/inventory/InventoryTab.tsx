@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, memo, useEffect, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronRight, Package, Search } from 'lucide-react';
@@ -55,10 +56,12 @@ interface Warehouse {
 
 type ViewMode = 'goods' | 'documents' | 'batches';
 
-const VIEW_LABELS: Record<ViewMode, string> = {
-  goods: 'По товарах',
-  documents: 'По документах',
-  batches: 'По партіях',
+// label = i18n key (views.*), резолвиться у компоненті через t() — порядок ключів
+// зберігає порядок вкладок перемикача режиму.
+const VIEW_LABEL_KEYS: Record<ViewMode, string> = {
+  goods: 'views.goods',
+  documents: 'views.documents',
+  batches: 'views.batches',
 };
 
 function fmt(n: number) {
@@ -78,6 +81,7 @@ function toggle(set: Set<string>, key: string): Set<string> {
  * таб-обгортка. Кнопка «Нижче мінімуму» перенесена у рядок фільтрів.
  */
 export function InventoryTab() {
+  const { t } = useTranslation('inventory');
   const queryClient = useQueryClient();
   const panelConfig = useDetailPanelConfig('inventory-panel');
   // Тогл бокової панелі — стандарт для всіх списків (enabled персиститься у localStorage).
@@ -180,9 +184,9 @@ export function InventoryTab() {
       setWarehouses(list);
       setCache('cache:warehouses', list);
     } catch (e: unknown) {
-      if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження складів');
+      if (!cached) setError(e instanceof Error ? e.message : t('errors.loadWarehouses'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadWarehouses();
@@ -192,7 +196,7 @@ export function InventoryTab() {
     if (!selectedItem) return;
     const val = minStockVal.trim() === '' ? null : Number(minStockVal);
     if (val !== null && (!Number.isFinite(val) || val < 0)) {
-      setError('Некоректне значення мінімального залишку');
+      setError(t('errors.invalidMinStock'));
       return;
     }
     setSavingMinStock(true);
@@ -207,7 +211,7 @@ export function InventoryTab() {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.items() });
       setEditingMinStock(false);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('errors.save'));
     } finally {
       setSavingMinStock(false);
     }
@@ -233,7 +237,7 @@ export function InventoryTab() {
       <div className="flex flex-wrap gap-3 shrink-0 items-center">
         {/* View mode switcher */}
         <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
-          {(Object.keys(VIEW_LABELS) as ViewMode[]).map(m => (
+          {(Object.keys(VIEW_LABEL_KEYS) as ViewMode[]).map(m => (
             <button
               key={m}
               onClick={() => handleSwitchView(m)}
@@ -244,7 +248,7 @@ export function InventoryTab() {
                   : 'bg-surface text-muted-foreground hover:bg-surface-hover',
               )}
             >
-              {VIEW_LABELS[m]}
+              {t(VIEW_LABEL_KEYS[m])}
             </button>
           ))}
         </div>
@@ -252,7 +256,7 @@ export function InventoryTab() {
         <Input
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Пошук по назві..."
+          placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />
@@ -261,7 +265,7 @@ export function InventoryTab() {
           onChange={e => setWarehouseId(e.target.value)}
           className="h-8 text-[13px] py-0.5 px-2 pr-7"
         >
-          <option value="">Всі склади</option>
+          <option value="">{t('filters.allWarehouses')}</option>
           {warehouses.map(w => (
             <option key={w.id} value={w.id}>
               {w.name}
@@ -297,7 +301,7 @@ export function InventoryTab() {
               onChange={e => setShowLow(e.target.checked)}
               className="rounded"
             />
-            Тільки з низьким залишком
+            {t('filters.lowOnly')}
           </label>
         )}
 
@@ -312,7 +316,7 @@ export function InventoryTab() {
             className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
           >
             <AlertTriangle className="h-4 w-4" />
-            Нижче мінімуму
+            {t('filters.belowMin')}
           </Button>
           {/* Тогл бокової панелі — лише у режимі «Товари» (DetailPanel goods-only). */}
           {viewMode === 'goods' && (
@@ -336,27 +340,27 @@ export function InventoryTab() {
               <TableHeader>
                 <TableRow>
                   <SortableHead sortKey="goodName" currentSort={invSort} onSort={toggleInvSort}>
-                    Товар
+                    {t('columns.good')}
                   </SortableHead>
-                  <TableHead>Артикул</TableHead>
-                  <TableHead>Бренд</TableHead>
-                  <TableHead>Склад</TableHead>
+                  <TableHead>{t('columns.sku')}</TableHead>
+                  <TableHead>{t('columns.brand')}</TableHead>
+                  <TableHead>{t('columns.warehouse')}</TableHead>
                   <SortableHead
                     sortKey="quantity"
                     currentSort={invSort}
                     onSort={toggleInvSort}
                     className="text-right"
                   >
-                    Кількість
+                    {t('columns.quantity')}
                   </SortableHead>
-                  <TableHead className="text-right">Резерв</TableHead>
+                  <TableHead className="text-right">{t('columns.reserved')}</TableHead>
                   <SortableHead
                     sortKey="available"
                     currentSort={invSort}
                     onSort={toggleInvSort}
                     className="text-right"
                   >
-                    Доступно
+                    {t('columns.available')}
                   </SortableHead>
                   <SortableHead
                     sortKey="salePrice"
@@ -364,16 +368,16 @@ export function InventoryTab() {
                     onSort={toggleInvSort}
                     className="text-right"
                   >
-                    Ціна продажу
+                    {t('columns.salePrice')}
                   </SortableHead>
-                  <TableHead>Мін. залишок</TableHead>
+                  <TableHead>{t('columns.minStock')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {displayed.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} className="p-0">
-                      <EmptyState icon={Package} title="Позицій не знайдено" />
+                      <EmptyState icon={Package} title={t('empty.noItems')} />
                     </TableCell>
                   </TableRow>
                 )}
@@ -475,12 +479,10 @@ export function InventoryTab() {
       <Modal
         open={showLowModal}
         onClose={() => setShowLowModal(false)}
-        title="Товари нижче мінімального залишку"
+        title={t('lowStock.modalTitle')}
       >
         {lowItems.length === 0 ? (
-          <p className="text-muted-foreground text-center py-4">
-            Все гаразд — критичних позицій немає
-          </p>
+          <p className="text-muted-foreground text-center py-4">{t('lowStock.allGood')}</p>
         ) : (
           <div className="space-y-2">
             {lowItems.map(item => (
@@ -496,7 +498,9 @@ export function InventoryTab() {
                   <div className="font-semibold text-destructive">
                     {item.quantity} {item.unit}
                   </div>
-                  <div className="text-foreground-faint">мін: {item.minStock}</div>
+                  <div className="text-foreground-faint">
+                    {t('lowStock.min', { value: item.minStock })}
+                  </div>
                 </div>
               </div>
             ))}
@@ -533,6 +537,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
   onToggle,
   q,
 }: ByDocumentsViewProps) {
+  const { t } = useTranslation('inventory');
   const filtered = useMemo(() => {
     if (!q) return goods;
     const lower = q.toLowerCase();
@@ -540,7 +545,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
   }, [goods, q]);
 
   if (filtered.length === 0) {
-    return <EmptyState icon={Package} title="Позицій не знайдено" />;
+    return <EmptyState icon={Package} title={t('empty.noItems')} />;
   }
 
   return (
@@ -548,14 +553,14 @@ const ByDocumentsView = memo(function ByDocumentsView({
       <TableHeader>
         <TableRow>
           <TableHead className="w-8" />
-          <TableHead>Товар</TableHead>
-          <TableHead>Артикул</TableHead>
-          <TableHead>Бренд</TableHead>
-          <TableHead className="text-right">На складі</TableHead>
-          <TableHead>Документ</TableHead>
-          <TableHead>Тип руху</TableHead>
-          <TableHead className="text-right">Кількість</TableHead>
-          <TableHead>Дата</TableHead>
+          <TableHead>{t('columns.good')}</TableHead>
+          <TableHead>{t('columns.sku')}</TableHead>
+          <TableHead>{t('columns.brand')}</TableHead>
+          <TableHead className="text-right">{t('columns.inStock')}</TableHead>
+          <TableHead>{t('columns.document')}</TableHead>
+          <TableHead>{t('columns.movementType')}</TableHead>
+          <TableHead className="text-right">{t('columns.quantity')}</TableHead>
+          <TableHead>{t('columns.date')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -588,8 +593,8 @@ const ByDocumentsView = memo(function ByDocumentsView({
                 </TableCell>
                 <TableCell colSpan={4} className="text-muted-foreground text-[12px]">
                   {good.documents.length > 0
-                    ? `${good.documents.length} документ(ів)`
-                    : 'Рухів не знайдено'}
+                    ? t('documents.count', { count: good.documents.length })
+                    : t('documents.noMovements')}
                 </TableCell>
               </TableRow>
 
@@ -606,7 +611,7 @@ const ByDocumentsView = memo(function ByDocumentsView({
                         {doc.docLabel}
                       </TableCell>
                       <TableCell colSpan={4} className="text-[12px] text-muted-foreground">
-                        {doc.movements.length} рух(ів)
+                        {t('documents.movementsCount', { count: doc.movements.length })}
                       </TableCell>
                     </TableRow>
                     {doc.movements.map((mv, i) => (
@@ -661,6 +666,7 @@ const ByBatchesView = memo(function ByBatchesView({
   onToggle,
   q,
 }: ByBatchesViewProps) {
+  const { t } = useTranslation('inventory');
   const filtered = useMemo(() => {
     if (!q) return batches;
     const lower = q.toLowerCase();
@@ -670,7 +676,7 @@ const ByBatchesView = memo(function ByBatchesView({
   }, [batches, q]);
 
   if (filtered.length === 0) {
-    return <EmptyState icon={Package} title="Партій не знайдено" />;
+    return <EmptyState icon={Package} title={t('empty.noBatches')} />;
   }
 
   return (
@@ -678,23 +684,25 @@ const ByBatchesView = memo(function ByBatchesView({
       <TableHeader>
         <TableRow>
           <TableHead className="w-8" />
-          <TableHead>Партія / Товар</TableHead>
-          <TableHead>Артикул</TableHead>
-          <TableHead>Бренд</TableHead>
-          <TableHead>Склад</TableHead>
-          <TableHead className="text-right">Отримано</TableHead>
-          <TableHead className="text-right">Залишок</TableHead>
-          <TableHead>Документ руху</TableHead>
-          <TableHead className="text-right">К-ть</TableHead>
-          <TableHead>Дата</TableHead>
+          <TableHead>{t('columns.batchGood')}</TableHead>
+          <TableHead>{t('columns.sku')}</TableHead>
+          <TableHead>{t('columns.brand')}</TableHead>
+          <TableHead>{t('columns.warehouse')}</TableHead>
+          <TableHead className="text-right">{t('columns.received')}</TableHead>
+          <TableHead className="text-right">{t('columns.remaining')}</TableHead>
+          <TableHead>{t('columns.movementDocument')}</TableHead>
+          <TableHead className="text-right">{t('columns.qtyShort')}</TableHead>
+          <TableHead>{t('columns.date')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {filtered.map(bg => {
           const bgOpen = expanded.has(bg.batchGroupKey);
           const bgLabel = bg.poNumber
-            ? `Замовлення ${bg.poNumber}${bg.poDate ? ` від ${fmtDate(bg.poDate)}` : ''}`
-            : `Партія без ЗП`;
+            ? bg.poDate
+              ? t('batches.orderWithDate', { poNumber: bg.poNumber, date: fmtDate(bg.poDate) })
+              : t('batches.order', { poNumber: bg.poNumber })
+            : t('batches.noOrder');
 
           return (
             <Fragment key={bg.batchGroupKey}>
@@ -718,7 +726,7 @@ const ByBatchesView = memo(function ByBatchesView({
                   {bg.warehouseName}
                 </TableCell>
                 <TableCell colSpan={5} className="text-muted-foreground text-[12px]">
-                  {bg.goods.length} товар(ів)
+                  {t('batches.goodsCount', { count: bg.goods.length })}
                 </TableCell>
               </TableRow>
 
@@ -761,8 +769,8 @@ const ByBatchesView = memo(function ByBatchesView({
                         </TableCell>
                         <TableCell colSpan={3} className="text-muted-foreground text-[12px]">
                           {g.consumptions.length > 0
-                            ? `${g.consumptions.length} рух(ів)`
-                            : 'Не витрачалась'}
+                            ? t('batches.movementsCount', { count: g.consumptions.length })
+                            : t('batches.notConsumed')}
                         </TableCell>
                       </TableRow>
 
@@ -829,19 +837,20 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
   onChangeMinStockVal,
   onSaveMinStock,
 }: InventoryDetailPanelProps) {
+  const { t } = useTranslation('inventory');
   const tabs = useMemo<DetailPanelTab[] | undefined>(() => {
     if (!selectedItem) return undefined;
     const item = selectedItem;
     return [
       {
         key: 'info',
-        label: 'Основне',
+        label: t('panel.info'),
         content: (
           <div className="space-y-4">
             {item.isLow && (
               <div className="flex items-center gap-2 p-2.5 bg-warning-subtle border border-warning-border rounded-lg text-[13px] text-warning-text">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>Залишок нижче мінімального</span>
+                <span>{t('panel.belowMinWarning')}</span>
               </div>
             )}
             <div className="space-y-3">
@@ -880,14 +889,14 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
-                    Мінімальний залишок
+                    {t('panel.minStock')}
                   </span>
                   {!editingMinStock && (
                     <button
                       className="text-xs text-primary hover:underline"
                       onClick={onStartEditMinStock}
                     >
-                      змінити
+                      {t('panel.edit')}
                     </button>
                   )}
                 </div>
@@ -908,7 +917,7 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
                       loading={savingMinStock}
                       className="h-7 px-2 text-xs"
                     >
-                      Зберегти
+                      {t('panel.save')}
                     </Button>
                     <Button
                       size="sm"
@@ -926,7 +935,7 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
                         ≥ {item.minStock} {item.unit}
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground text-[12px]">не встановлено</span>
+                      <span className="text-muted-foreground text-[12px]">{t('panel.notSet')}</span>
                     )}
                   </div>
                 )}
@@ -937,6 +946,7 @@ const InventoryDetailPanel = memo(function InventoryDetailPanel({
       },
     ];
   }, [
+    t,
     selectedItem,
     panelConfig,
     editingMinStock,

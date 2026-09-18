@@ -1,0 +1,68 @@
+{
+  "views": {
+    "goods": "By goods",
+    "documents": "By documents",
+    "batches": "By batches"
+  },
+  "filters": {
+    "searchPlaceholder": "Search by name...",
+    "allWarehouses": "All warehouses",
+    "lowOnly": "Low stock only",
+    "belowMin": "Below minimum"
+  },
+  "columns": {
+    "good": "Good",
+    "sku": "SKU",
+    "brand": "Brand",
+    "warehouse": "Warehouse",
+    "quantity": "Quantity",
+    "reserved": "Reserved",
+    "available": "Available",
+    "salePrice": "Sale price",
+    "minStock": "Min. stock",
+    "inStock": "In stock",
+    "document": "Document",
+    "movementType": "Movement type",
+    "date": "Date",
+    "batchGood": "Batch / Good",
+    "received": "Received",
+    "remaining": "Remaining",
+    "movementDocument": "Movement document",
+    "qtyShort": "Qty"
+  },
+  "empty": {
+    "noItems": "No items found",
+    "noBatches": "No batches found"
+  },
+  "documents": {
+    "count": "{{count}} document(s)",
+    "noMovements": "No movements found",
+    "movementsCount": "{{count}} movement(s)"
+  },
+  "batches": {
+    "order": "Order {{poNumber}}",
+    "orderWithDate": "Order {{poNumber}} of {{date}}",
+    "noOrder": "Batch without PO",
+    "goodsCount": "{{count}} good(s)",
+    "movementsCount": "{{count}} movement(s)",
+    "notConsumed": "Not consumed"
+  },
+  "lowStock": {
+    "modalTitle": "Goods below minimum stock",
+    "allGood": "All good — no critical items",
+    "min": "min: {{value}}"
+  },
+  "panel": {
+    "info": "General",
+    "belowMinWarning": "Stock below minimum",
+    "minStock": "Minimum stock",
+    "edit": "edit",
+    "save": "Save",
+    "notSet": "not set"
+  },
+  "errors": {
+    "loadWarehouses": "Failed to load warehouses",
+    "invalidMinStock": "Invalid minimum stock value",
+    "save": "Failed to save"
+  }
+}

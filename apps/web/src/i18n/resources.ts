@@ -20,6 +20,7 @@ import ukWorkOrders from './locales/uk/workOrders.json';
 import ukReports from './locales/uk/reports.json';
 import ukInfrastructure from './locales/uk/infrastructure.json';
 import ukVehicles from './locales/uk/vehicles.json';
+import ukInventory from './locales/uk/inventory.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -41,6 +42,7 @@ import enWorkOrders from './locales/en/workOrders.json';
 import enReports from './locales/en/reports.json';
 import enInfrastructure from './locales/en/infrastructure.json';
 import enVehicles from './locales/en/vehicles.json';
+import enInventory from './locales/en/inventory.json';
 
 export const resources = {
   uk: {
@@ -64,6 +66,7 @@ export const resources = {
     reports: ukReports,
     infrastructure: ukInfrastructure,
     vehicles: ukVehicles,
+    inventory: ukInventory,
   },
   en: {
     common: enCommon,
@@ -86,5 +89,6 @@ export const resources = {
     reports: enReports,
     infrastructure: enInfrastructure,
     vehicles: enVehicles,
+    inventory: enInventory,
   },
 } as const;

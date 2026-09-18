@@ -1,0 +1,68 @@
+{
+  "views": {
+    "goods": "По товарах",
+    "documents": "По документах",
+    "batches": "По партіях"
+  },
+  "filters": {
+    "searchPlaceholder": "Пошук по назві...",
+    "allWarehouses": "Всі склади",
+    "lowOnly": "Тільки з низьким залишком",
+    "belowMin": "Нижче мінімуму"
+  },
+  "columns": {
+    "good": "Товар",
+    "sku": "Артикул",
+    "brand": "Бренд",
+    "warehouse": "Склад",
+    "quantity": "Кількість",
+    "reserved": "Резерв",
+    "available": "Доступно",
+    "salePrice": "Ціна продажу",
+    "minStock": "Мін. залишок",
+    "inStock": "На складі",
+    "document": "Документ",
+    "movementType": "Тип руху",
+    "date": "Дата",
+    "batchGood": "Партія / Товар",
+    "received": "Отримано",
+    "remaining": "Залишок",
+    "movementDocument": "Документ руху",
+    "qtyShort": "К-ть"
+  },
+  "empty": {
+    "noItems": "Позицій не знайдено",
+    "noBatches": "Партій не знайдено"
+  },
+  "documents": {
+    "count": "{{count}} документ(ів)",
+    "noMovements": "Рухів не знайдено",
+    "movementsCount": "{{count}} рух(ів)"
+  },
+  "batches": {
+    "order": "Замовлення {{poNumber}}",
+    "orderWithDate": "Замовлення {{poNumber}} від {{date}}",
+    "noOrder": "Партія без ЗП",
+    "goodsCount": "{{count}} товар(ів)",
+    "movementsCount": "{{count}} рух(ів)",
+    "notConsumed": "Не витрачалась"
+  },
+  "lowStock": {
+    "modalTitle": "Товари нижче мінімального залишку",
+    "allGood": "Все гаразд — критичних позицій немає",
+    "min": "мін: {{value}}"
+  },
+  "panel": {
+    "info": "Основне",
+    "belowMinWarning": "Залишок нижче мінімального",
+    "minStock": "Мінімальний залишок",
+    "edit": "змінити",
+    "save": "Зберегти",
+    "notSet": "не встановлено"
+  },
+  "errors": {
+    "loadWarehouses": "Помилка завантаження складів",
+    "invalidMinStock": "Некоректне значення мінімального залишку",
+    "save": "Помилка збереження"
+  }
+}
