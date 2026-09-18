@@ -2792,3 +2792,19 @@ for f in $(git diff HEAD~N --name-only | grep -E 'client\.ts$|gateway\.ts$'); do
 **Severity:** MEDIUM (частковий переклад UI — косметика/довіра; не ламає дані). LOW якщо це один текст поза дефолтним режимом; піднімати якщо це видимо на КОЖНІЙ сторінці (nav sidebar) у ДЕФОЛТНОМУ режимі.
 
 **Де шукати ще:** будь-який i18n-namespace з ключами що дзеркалять константну мапу (`*_LABELS`/`*_SECTION_KEYS`/`tabs.*`); резолвери що віддають готовий label у JSX (`resolveNav`, breadcrumb-білдери, badge/tone-мапи що отримали переклад); «Закладки»/секційні заголовки та інші рядки що рендеряться поза `t()` попри наявний ключ. Bug #762.
+
+---
+
+### 2026-09-19 — Generic tree-walk skip-list за іменем ключа збігається з іменем реального поля → піддерево не обходиться (Bug #763) — Area: frontend / i18n / RHF
+
+**Сигнал:** рекурсивна утиліта що обходить структуру (помилки/дані) і має skip-list за ІМЕНЕМ ключа: `if (key === 'type' || key === 'ref' || key === 'message') continue;`. Статичний сигнал — skip-ключ, що збігається з валідним іменем поля форми. Runtime-сигнал — сирий `v.*`-key протікає у UI замість перекладу для конкретного поля.
+
+**Причина виникнення:** розробник додає skip щоб оминути МЕТАдані leaf-ноди (у RHF error-ноді: `type`=назва validation-правила, `ref`=DOM-нода, `message`=текст). Виглядає як безпечна оптимізація. Пастка: namespace метаключів контейнера НЕ ізольований від namespace імен полів — `errors.type` (де `type` = ім'я поля з `type: z.enum`) і `error.type` (де `type` = назва правила) неможливо розрізнити за іменем ключа. Skip батьківського рівня викидає ціле піддерево однойменного поля.
+
+**Підхід до виявлення:** для кожного name-based skip-list — класифікувати кожен skip-ключ: чи МОЖЕ це ім'я бути полем-контейнером? `message`/`ref` — ні (RHF-метадані, не бувають іменами полів); `type`/`name`/`root` — так (`root` спеціальний у RHF v7 `errors.root`; `type`/`name` — звичайні доменні поля). Крос-чек зі схемами: `grep -rnE "\b(type|name|root):\s*z\.(enum|string|literal|object)" packages/shared/src/schemas` — якщо схема має поле з таким іменем → resolver його глушить. Reproduce БЕЗ сервера: викликати resolver на об'єкті що провалює однойменне поле, асертити `errors.<field>.message` перекладений (не сирий key). Загальний принцип: name-based фільтр у рекурсії безпечний ЛИШЕ для ключів чий namespace не перетинається з даними, які обходиш.
+
+**Підхід до фіксу:** прибрати зі skip-списку будь-який ключ що може бути іменем поля. Рекурсія у примітив-leaf (рядок-правило `type`, DOM-`ref` якщо не skip) — безпечний no-op завдяки type-guard на вході (`typeof node !== 'object' → return`), тож skip був непотрібний для коректності. Лишити skip лише для `message` (уже оброблено вище у функції) і `ref` (DOM-нода — рекурсія марна й потенційно циклічна). Загальний принцип: skip-ити метаключі за їх РОЛЛЮ (вже-оброблено / не-структура), а не за іменем що конкурує з даними.
+
+**Severity:** MEDIUM (сирий i18n-key у UI — косметика/довіра; дані не ламаються). HIGH якщо skip-нуте поле критичне у money/FSM-формі де користувач не бачить чому валідація провалилась. У цьому кейсі практично важко досягти через `<select>` з дефолтом, але латентно (programmatic reset, undefined defaultValues, майбутні форми з вільним type-вводом).
+
+**Де шукати ще:** будь-яка recursive translate/redact/mask/serialize-утиліта з name-based skip-list; `i18nZodResolver` покриває всі 12 zodResolver-форм (counterparty/stock-document мають поле `type`); RHF-форми з полями `type`/`name`/`root`. Регрес-тест: `apps/web/src/lib/__tests__/i18nZodResolver.test.ts`. Live-конвеєр (integration, оскільки zod-endpoints за JwtAuthGuard недосяжні анонімно): `apps/api/src/common/pipes/zod-validation.i18n.e2e.spec.ts` — pipe + `runWithTenant({locale})` ALS + shared dist → uk byte-identical / en / no-scope→uk / ALS-ізоляція. Bug #763.
