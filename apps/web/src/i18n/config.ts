@@ -40,6 +40,7 @@ if (!i18n.isInitialized) {
       'employees',
       'invoices',
       'purchaseOrders',
+      'payments',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

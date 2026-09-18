@@ -8,6 +8,7 @@ import ukFormat from './locales/uk/format.json';
 import ukEmployees from './locales/uk/employees.json';
 import ukInvoices from './locales/uk/invoices.json';
 import ukPurchaseOrders from './locales/uk/purchaseOrders.json';
+import ukPayments from './locales/uk/payments.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -17,6 +18,7 @@ import enFormat from './locales/en/format.json';
 import enEmployees from './locales/en/employees.json';
 import enInvoices from './locales/en/invoices.json';
 import enPurchaseOrders from './locales/en/purchaseOrders.json';
+import enPayments from './locales/en/payments.json';
 
 export const resources = {
   uk: {
@@ -28,6 +30,7 @@ export const resources = {
     employees: ukEmployees,
     invoices: ukInvoices,
     purchaseOrders: ukPurchaseOrders,
+    payments: ukPayments,
   },
   en: {
     common: enCommon,
@@ -38,5 +41,6 @@ export const resources = {
     employees: enEmployees,
     invoices: enInvoices,
     purchaseOrders: enPurchaseOrders,
+    payments: enPayments,
   },
 } as const;

@@ -1,0 +1,56 @@
+{
+  "page": {
+    "title": "Оплати клієнтів",
+    "filters": {
+      "dateFrom": "Від",
+      "dateTo": "До",
+      "method": "Метод",
+      "allMethods": "Усі методи",
+      "fiscalStatus": "Фіскальний статус",
+      "all": "Усі",
+      "noFiscal": "Без фіскалізації"
+    },
+    "columns": {
+      "date": "Дата",
+      "counterparty": "Контрагент",
+      "method": "Метод",
+      "source": "Рахунок",
+      "amount": "Сума",
+      "receipt": "Чек (ПРРО)"
+    },
+    "actions": {
+      "retry": "Повторити"
+    },
+    "empty": {
+      "notFound": "Платежів не знайдено"
+    }
+  },
+  "detail": {
+    "back": "До списку оплат",
+    "title": "Оплата від {{date}}",
+    "rateSuffix": " · курс {{rate}}",
+    "notFound": "Платіж не знайдено",
+    "fields": {
+      "counterparty": "Контрагент",
+      "method": "Метод оплати",
+      "source": "Рахунок-призначення",
+      "date": "Дата",
+      "currency": "Валюта",
+      "notes": "Примітки"
+    },
+    "links": {
+      "invoice": "Рахунок",
+      "workOrder": "Наряд"
+    },
+    "fiscal": {
+      "heading": "Фіскальний чек (ПРРО)",
+      "receiptNumber": "№ {{number}}",
+      "retry": "Повторити фіскалізацію",
+      "notApplicable": "Фіскалізація не застосовується до цього методу."
+    }
+  },
+  "toast": {
+    "retryQueued": "Фіскалізацію поставлено в чергу повторно",
+    "retryError": "Помилка повтору"
+  }
+}

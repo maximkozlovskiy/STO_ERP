@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayment, useRetryFiscal } from '@/hooks/api/usePayments';
@@ -25,6 +26,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 export default function PaymentDetailClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
+  const { t } = useTranslation('payments');
   const params = useParams();
   const router = useRouter();
   const id = typeof params.id === 'string' ? params.id : null;
@@ -39,9 +41,9 @@ export default function PaymentDetailClient() {
     if (!id) return;
     try {
       await retryFiscal.mutateAsync(id);
-      toast.success('Фіскалізацію поставлено в чергу повторно');
+      toast.success(t('toast.retryQueued'));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка повтору');
+      toast.error(e instanceof Error ? e.message : t('toast.retryError'));
     }
   };
 
@@ -53,7 +55,7 @@ export default function PaymentDetailClient() {
     );
   }
   if (!p) {
-    return <div className="p-6 text-muted-foreground">Платіж не знайдено</div>;
+    return <div className="p-6 text-muted-foreground">{t('detail.notFound')}</div>;
   }
 
   // Валюта оплати: код рядка або базовий (історичні/UAH).
@@ -68,11 +70,11 @@ export default function PaymentDetailClient() {
         className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
       >
         <ArrowLeft className="h-4 w-4" />
-        До списку оплат
+        {t('detail.back')}
       </button>
 
       <div className="flex items-center justify-between gap-3 mb-6">
-        <h1 className="page-title">Оплата від {fmtDate(p.createdAt)}</h1>
+        <h1 className="page-title">{t('detail.title', { date: fmtDate(p.createdAt) })}</h1>
         <div className="flex flex-col items-end">
           <div className="text-xl font-semibold tabular-nums">
             {fmtMoney(p.amount)} {paymentSymbol}
@@ -80,7 +82,7 @@ export default function PaymentDetailClient() {
           {!isBase && p.amountBase != null && (
             <div className="text-sm text-muted-foreground tabular-nums">
               {fmtMoney(p.amountBase)} {baseSymbol}
-              {p.rateUsed != null && ` · курс ${p.rateUsed}`}
+              {p.rateUsed != null && t('detail.rateSuffix', { rate: p.rateUsed })}
             </div>
           )}
         </div>
@@ -88,30 +90,32 @@ export default function PaymentDetailClient() {
 
       <div className="bg-surface rounded-xl border border-border p-4 space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Контрагент">{p.counterpartyName ?? '—'}</Field>
-          <Field label="Метод оплати">{p.method}</Field>
-          <Field label="Рахунок-призначення">
+          <Field label={t('detail.fields.counterparty')}>{p.counterpartyName ?? '—'}</Field>
+          <Field label={t('detail.fields.method')}>{p.method}</Field>
+          <Field label={t('detail.fields.source')}>
             {p.sourceType
               ? `${paymentSourceTypeLabel(p.sourceType)}${p.sourceName ? ` · ${p.sourceName}` : ''}`
               : '—'}
           </Field>
-          <Field label="Дата">{fmtDate(p.createdAt)}</Field>
+          <Field label={t('detail.fields.date')}>{fmtDate(p.createdAt)}</Field>
           {!isBase && (
-            <Field label="Валюта">
+            <Field label={t('detail.fields.currency')}>
               {p.currencyCode}
               {p.rateUsed != null && (
-                <span className="text-muted-foreground"> · курс {p.rateUsed}</span>
+                <span className="text-muted-foreground">
+                  {t('detail.rateSuffix', { rate: p.rateUsed })}
+                </span>
               )}
             </Field>
           )}
-          {p.notes && <Field label="Примітки">{p.notes}</Field>}
+          {p.notes && <Field label={t('detail.fields.notes')}>{p.notes}</Field>}
         </div>
 
         {/* Зв'язки */}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
           {p.invoiceId && (
             <Button variant="outline" size="sm" onClick={() => router.push('/invoices')}>
-              Рахунок
+              {t('detail.links.invoice')}
             </Button>
           )}
           {p.workOrderId && (
@@ -120,7 +124,7 @@ export default function PaymentDetailClient() {
               size="sm"
               onClick={() => router.push(`/work-orders?open=${p.workOrderId}`)}
             >
-              Наряд
+              {t('detail.links.workOrder')}
             </Button>
           )}
         </div>
@@ -128,7 +132,7 @@ export default function PaymentDetailClient() {
 
       {/* Фіскальний чек (ПРРО) */}
       <div className="bg-surface rounded-xl border border-border p-4 mt-4 space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">Фіскальний чек (ПРРО)</h2>
+        <h2 className="text-sm font-semibold text-foreground">{t('detail.fiscal.heading')}</h2>
         {p.fiscalStatus ? (
           <>
             <div className="flex items-center gap-2">
@@ -139,7 +143,9 @@ export default function PaymentDetailClient() {
                 {fiscalStatusLabel(p.fiscalStatus)}
               </Badge>
               {p.fiscalReceiptId && (
-                <span className="text-sm text-muted-foreground">№ {p.fiscalReceiptId}</span>
+                <span className="text-sm text-muted-foreground">
+                  {t('detail.fiscal.receiptNumber', { number: p.fiscalReceiptId })}
+                </span>
               )}
             </div>
             {p.fiscalError && <p className="text-sm text-destructive-text">{p.fiscalError}</p>}
@@ -151,14 +157,12 @@ export default function PaymentDetailClient() {
                 loading={retryFiscal.isPending}
               >
                 <RotateCw className="h-3.5 w-3.5 mr-1" />
-                Повторити фіскалізацію
+                {t('detail.fiscal.retry')}
               </Button>
             )}
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Фіскалізація не застосовується до цього методу.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('detail.fiscal.notApplicable')}</p>
         )}
       </div>
     </div>

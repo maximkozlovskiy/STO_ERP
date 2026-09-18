@@ -1,0 +1,56 @@
+{
+  "page": {
+    "title": "Customer payments",
+    "filters": {
+      "dateFrom": "From",
+      "dateTo": "To",
+      "method": "Method",
+      "allMethods": "All methods",
+      "fiscalStatus": "Fiscal status",
+      "all": "All",
+      "noFiscal": "Without fiscalization"
+    },
+    "columns": {
+      "date": "Date",
+      "counterparty": "Counterparty",
+      "method": "Method",
+      "source": "Account",
+      "amount": "Amount",
+      "receipt": "Receipt (PRRO)"
+    },
+    "actions": {
+      "retry": "Retry"
+    },
+    "empty": {
+      "notFound": "No payments found"
+    }
+  },
+  "detail": {
+    "back": "Back to payments",
+    "title": "Payment from {{date}}",
+    "rateSuffix": " · rate {{rate}}",
+    "notFound": "Payment not found",
+    "fields": {
+      "counterparty": "Counterparty",
+      "method": "Payment method",
+      "source": "Destination account",
+      "date": "Date",
+      "currency": "Currency",
+      "notes": "Notes"
+    },
+    "links": {
+      "invoice": "Invoice",
+      "workOrder": "Work order"
+    },
+    "fiscal": {
+      "heading": "Fiscal receipt (PRRO)",
+      "receiptNumber": "No. {{number}}",
+      "retry": "Retry fiscalization",
+      "notApplicable": "Fiscalization does not apply to this method."
+    }
+  },
+  "toast": {
+    "retryQueued": "Fiscalization re-queued",
+    "retryError": "Retry failed"
+  }
+}

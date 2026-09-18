@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { HandCoins, Search, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayments, useRetryFiscal, type PaymentsFilter } from '@/hooks/api/usePayments';
@@ -46,6 +47,7 @@ function FiscalBadge({ status }: { status: string | null }) {
 function PaymentsPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST']);
   const router = useRouter();
+  const { t } = useTranslation('payments');
 
   const [page, setPage] = useState(1);
   const [dateFrom, setDateFrom] = useState('');
@@ -91,9 +93,9 @@ function PaymentsPageInner() {
     setRetryingId(id);
     try {
       await retryFiscal.mutateAsync(id);
-      toast.success('Фіскалізацію поставлено в чергу повторно');
+      toast.success(t('toast.retryQueued'));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Помилка повтору');
+      toast.error(e instanceof Error ? e.message : t('toast.retryError'));
     } finally {
       setRetryingId(null);
     }
@@ -106,31 +108,31 @@ function PaymentsPageInner() {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-6">
-      <h1 className="page-title mb-6">Оплати клієнтів</h1>
+      <h1 className="page-title mb-6">{t('page.title')}</h1>
 
       {/* Фільтри */}
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div className="w-40">
           <DatePickerInput
-            label="Від"
+            label={t('page.filters.dateFrom')}
             value={dateFrom}
             onChange={v => resetPageAnd(() => setDateFrom(v))}
           />
         </div>
         <div className="w-40">
           <DatePickerInput
-            label="До"
+            label={t('page.filters.dateTo')}
             value={dateTo}
             onChange={v => resetPageAnd(() => setDateTo(v))}
           />
         </div>
         <div className="w-48">
           <Select
-            label="Метод"
+            label={t('page.filters.method')}
             value={method}
             onChange={e => resetPageAnd(() => setMethod(e.target.value))}
           >
-            <option value="">Усі методи</option>
+            <option value="">{t('page.filters.allMethods')}</option>
             {methods.map(m => (
               <option key={m.code} value={m.code}>
                 {m.name}
@@ -140,17 +142,17 @@ function PaymentsPageInner() {
         </div>
         <div className="w-48">
           <Select
-            label="Фіскальний статус"
+            label={t('page.filters.fiscalStatus')}
             value={fiscalStatus}
             onChange={e => resetPageAnd(() => setFiscalStatus(e.target.value))}
           >
-            <option value="">Усі</option>
+            <option value="">{t('page.filters.all')}</option>
             {Object.keys(FISCAL_STATUS_LABELS).map(code => (
               <option key={code} value={code}>
                 {fiscalStatusLabel(code)}
               </option>
             ))}
-            <option value="none">Без фіскалізації</option>
+            <option value="none">{t('page.filters.noFiscal')}</option>
           </Select>
         </div>
       </div>
@@ -160,19 +162,19 @@ function PaymentsPageInner() {
           <Spinner />
         </div>
       ) : items.length === 0 ? (
-        <EmptyState icon={HandCoins} title="Платежів не знайдено" />
+        <EmptyState icon={HandCoins} title={t('page.empty.notFound')} />
       ) : (
         <>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Контрагент</TableHead>
-                  <TableHead>Метод</TableHead>
-                  <TableHead>Рахунок</TableHead>
-                  <TableHead className="text-right">Сума</TableHead>
-                  <TableHead>Чек (ПРРО)</TableHead>
+                  <TableHead>{t('page.columns.date')}</TableHead>
+                  <TableHead>{t('page.columns.counterparty')}</TableHead>
+                  <TableHead>{t('page.columns.method')}</TableHead>
+                  <TableHead>{t('page.columns.source')}</TableHead>
+                  <TableHead className="text-right">{t('page.columns.amount')}</TableHead>
+                  <TableHead>{t('page.columns.receipt')}</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -222,7 +224,7 @@ function PaymentsPageInner() {
                           loading={retryingId === p.id}
                         >
                           <RotateCw className="h-3.5 w-3.5 mr-1" />
-                          Повторити
+                          {t('page.actions.retry')}
                         </Button>
                       )}
                     </TableCell>
