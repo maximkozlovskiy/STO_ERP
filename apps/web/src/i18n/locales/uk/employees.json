@@ -1,0 +1,58 @@
+{
+  "title": "Співробітники",
+  "addButton": "Співробітник",
+  "columns": {
+    "name": "ПІБ",
+    "role": "Посада",
+    "status": "Статус",
+    "rate": "Схема нарахування",
+    "zones": "Зони",
+    "lifts": "Підйомники"
+  },
+  "filters": {
+    "searchPlaceholder": "Пошук за ім'ям...",
+    "allRoles": "Всі посади",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "filterSaved": "Фільтр \"{{name}}\" збережено"
+  },
+  "rateScheme": {
+    "percent_normo": "% від суми робіт",
+    "per_normo_hour": "Ставка × нормо-год",
+    "fixed_plus_bonus": "Ставка + бонус"
+  },
+  "actions": {
+    "edit": "Редагувати",
+    "markForDeletion": "Помітити на видалення",
+    "bulkDelete": "Видалити вибраних",
+    "bulkFire": "Звільнити вибраних"
+  },
+  "confirm": {
+    "bulkDelete": "Помітити {{count}} співробітників на видалення?",
+    "bulkFire": "Змінити статус {{count}} співробітників на \"Звільнений\"?",
+    "markForDeletion": "Помітити співробітника на видалення?"
+  },
+  "aria": {
+    "selectAll": "Вибрати всі",
+    "selectRow": "Вибрати {{name}}"
+  },
+  "badge": {
+    "deleted": "видалено"
+  },
+  "empty": {
+    "title": "Немає співробітників",
+    "description": "Додайте першого співробітника",
+    "noRecords": "Немає записів",
+    "notAssigned": "Не призначено"
+  },
+  "panel": {
+    "tabInfo": "Основне",
+    "tabZones": "Зони/Підйомники",
+    "rateScheme": "Схема нарахування",
+    "zones": "Зони",
+    "lifts": "Підйомники"
+  },
+  "errors": {
+    "delete": "Помилка видалення"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "title": "Employees",
+  "addButton": "Employee",
+  "columns": {
+    "name": "Full name",
+    "role": "Role",
+    "status": "Status",
+    "rate": "Pay scheme",
+    "zones": "Zones",
+    "lifts": "Lifts"
+  },
+  "filters": {
+    "searchPlaceholder": "Search by name...",
+    "allRoles": "All roles",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "filterSaved": "Filter \"{{name}}\" saved"
+  },
+  "rateScheme": {
+    "percent_normo": "% of labor total",
+    "per_normo_hour": "Rate × standard hours",
+    "fixed_plus_bonus": "Rate + bonus"
+  },
+  "actions": {
+    "edit": "Edit",
+    "markForDeletion": "Mark for deletion",
+    "bulkDelete": "Delete selected",
+    "bulkFire": "Dismiss selected"
+  },
+  "confirm": {
+    "bulkDelete": "Mark {{count}} employees for deletion?",
+    "bulkFire": "Change status of {{count}} employees to \"Dismissed\"?",
+    "markForDeletion": "Mark employee for deletion?"
+  },
+  "aria": {
+    "selectAll": "Select all",
+    "selectRow": "Select {{name}}"
+  },
+  "badge": {
+    "deleted": "deleted"
+  },
+  "empty": {
+    "title": "No employees",
+    "description": "Add your first employee",
+    "noRecords": "No records",
+    "notAssigned": "Not assigned"
+  },
+  "panel": {
+    "tabInfo": "General",
+    "tabZones": "Zones/Lifts",
+    "rateScheme": "Pay scheme",
+    "zones": "Zones",
+    "lifts": "Lifts"
+  },
+  "errors": {
+    "delete": "Deletion error"
+  }
+}

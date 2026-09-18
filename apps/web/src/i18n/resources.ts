@@ -5,12 +5,14 @@ import ukNav from './locales/uk/nav.json';
 import ukSettings from './locales/uk/settings.json';
 import ukStatuses from './locales/uk/statuses.json';
 import ukFormat from './locales/uk/format.json';
+import ukEmployees from './locales/uk/employees.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
 import enSettings from './locales/en/settings.json';
 import enStatuses from './locales/en/statuses.json';
 import enFormat from './locales/en/format.json';
+import enEmployees from './locales/en/employees.json';
 
 export const resources = {
   uk: {
@@ -19,6 +21,7 @@ export const resources = {
     settings: ukSettings,
     statuses: ukStatuses,
     format: ukFormat,
+    employees: ukEmployees,
   },
   en: {
     common: enCommon,
@@ -26,5 +29,6 @@ export const resources = {
     settings: enSettings,
     statuses: enStatuses,
     format: enFormat,
+    employees: enEmployees,
   },
 } as const;

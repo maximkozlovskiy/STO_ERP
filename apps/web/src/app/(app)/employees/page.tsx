@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEmployees, employeesKeys } from '@/hooks/api/useEmployees';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -107,23 +108,19 @@ interface EmployeeFilters extends Record<string, unknown> {
 
 // Role/status labels via i18n wrappers; badge constants imported from @sto/shared
 const ROLE_BADGE = EMPLOYEE_ROLE_BADGE;
-const RATE_LABELS: Record<string, string> = {
-  percent_normo: '% від суми робіт',
-  per_normo_hour: 'Ставка × нормо-год',
-  fixed_plus_bonus: 'Ставка + бонус',
-};
 const STATUS_BADGE = EMPLOYEE_STATUS_BADGE;
 
-const ROLE_FILTER_OPTIONS: [string, string][] = [
-  ['', 'Всі посади'],
-  ['OWNER', 'Власник'],
-  ['ADMIN', 'Адміністратор'],
-  ['RECEPTIONIST', 'Приймальник'],
-  ['MECHANIC', 'Механік'],
-  ['STOREKEEPER', 'Комірник'],
-  ['ACCOUNTANT', 'Бухгалтер'],
-  ['XLSX_MANAGER', 'Менеджер імпорту'],
-];
+// Role filter: code list; '' = «Всі посади» (i18n), інші коди рендеряться через employeeRoleLabel().
+const ROLE_FILTER_CODES = [
+  '',
+  'OWNER',
+  'ADMIN',
+  'RECEPTIONIST',
+  'MECHANIC',
+  'STOREKEEPER',
+  'ACCOUNTANT',
+  'XLSX_MANAGER',
+] as const;
 
 function CheckboxList({
   label,
@@ -136,6 +133,7 @@ function CheckboxList({
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
+  const { t } = useTranslation('employees');
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
   return (
@@ -143,7 +141,7 @@ function CheckboxList({
       <label className="block text-[13px] font-medium text-foreground mb-2">{label}</label>
       <div className="border border-border rounded-lg max-h-36 overflow-y-auto divide-y divide-border">
         {items.length === 0 && (
-          <p className="px-3 py-2 text-[12px] text-muted-foreground">Немає записів</p>
+          <p className="px-3 py-2 text-[12px] text-muted-foreground">{t('empty.noRecords')}</p>
         )}
         {items.map(item => (
           <label
@@ -168,22 +166,36 @@ function flattenTree(cats: WorkCategory[]): { id: string; name: string }[] {
   return cats.flatMap(c => [{ id: c.id, name: c.name }, ...flattenTree(c.children)]);
 }
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'name', label: 'ПІБ', defaultVisible: true },
-  { key: 'role', label: 'Посада', defaultVisible: true },
-  { key: 'status', label: 'Статус', defaultVisible: true },
-  { key: 'rate', label: 'Схема нарахування', defaultVisible: false },
-  { key: 'zones', label: 'Зони', defaultVisible: false },
-  { key: 'lifts', label: 'Підйомники', defaultVisible: false },
+// Module-level — статичні колонки (label = i18n-ключ, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'name', labelKey: 'columns.name', defaultVisible: true },
+  { key: 'role', labelKey: 'columns.role', defaultVisible: true },
+  { key: 'status', labelKey: 'columns.status', defaultVisible: true },
+  { key: 'rate', labelKey: 'columns.rate', defaultVisible: false },
+  { key: 'zones', labelKey: 'columns.zones', defaultVisible: false },
+  { key: 'lifts', labelKey: 'columns.lifts', defaultVisible: false },
 ];
-const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 
 // ─── Main Page ───────────────────────────────────────────
 
 export default function EmployeesPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST']);
+  const { t } = useTranslation('employees');
   const { confirm, dialogProps } = useConfirm();
+
+  // Колонки з перекладеними мітками (label = i18n).
+  const COLUMNS = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
+  // Rate-scheme мітки (i18n) — використовуються у таблиці і в detail-панелі.
+  const RATE_LABELS = useMemo<Record<string, string>>(
+    () => ({
+      percent_normo: t('rateScheme.percent_normo'),
+      per_normo_hour: t('rateScheme.per_normo_hour'),
+      fixed_plus_bonus: t('rateScheme.fixed_plus_bonus'),
+    }),
+    [t],
+  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -273,9 +285,9 @@ export default function EmployeesPage() {
     (name: string) => {
       const preset = saveFilter(name, { search, roleFilter, showDeleted });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
-    [saveFilter, search, roleFilter, showDeleted, features.toastEnabled, setActiveSavedFilterId],
+    [saveFilter, search, roleFilter, showDeleted, features.toastEnabled, setActiveSavedFilterId, t],
   );
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(employees);
@@ -288,13 +300,13 @@ export default function EmployeesPage() {
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибраних',
+        label: t('actions.bulkDelete'),
         variant: 'destructive',
         icon: <Trash2 className="h-3.5 w-3.5" />,
         onClick: async ids => {
           if (
             !(await confirm({
-              title: `Помітити ${ids.length} співробітників на видалення?`,
+              title: t('confirm.bulkDelete', { count: ids.length }),
               variant: 'destructive',
             }))
           )
@@ -308,12 +320,12 @@ export default function EmployeesPage() {
       },
       {
         id: 'fire',
-        label: 'Звільнити вибраних',
+        label: t('actions.bulkFire'),
         variant: 'outline',
         onClick: async ids => {
           if (
             !(await confirm({
-              title: `Змінити статус ${ids.length} співробітників на "Звільнений"?`,
+              title: t('confirm.bulkFire', { count: ids.length }),
               variant: 'destructive',
             }))
           )
@@ -332,14 +344,13 @@ export default function EmployeesPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [confirm, bulkSelect],
+    [confirm, bulkSelect, t],
   );
 
   const load = () => qc.invalidateQueries({ queryKey: employeesKeys.all });
 
   const markForDeletion = async (id: string) => {
-    if (!(await confirm({ title: 'Помітити співробітника на видалення?', variant: 'destructive' })))
-      return;
+    if (!(await confirm({ title: t('confirm.markForDeletion'), variant: 'destructive' }))) return;
     setMarkingId(id);
     setError('');
     try {
@@ -350,7 +361,7 @@ export default function EmployeesPage() {
       setSelectedEmp(prev => (prev?.id === id ? null : prev));
       load();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      const msg = e instanceof Error ? e.message : t('errors.delete');
       // 404 = запис уже видалений (stale UI або паралельний запит) — оновлюємо список
       // та закриваємо panel якщо він показував цей запис. Дзеркалить infrastructure/page.tsx.
       if (/не знайдено|not found/i.test(msg)) {
@@ -378,7 +389,7 @@ export default function EmployeesPage() {
   const buildEmployeeTabs = (emp: Employee): DetailPanelTab[] => [
     {
       key: 'info',
-      label: 'Основне',
+      label: t('panel.tabInfo'),
       content: (
         <div className="space-y-3">
           {buildPanelFields(emp, EMPLOYEE_PANEL_SCHEMA, panelConfig.config, {
@@ -410,7 +421,7 @@ export default function EmployeesPage() {
             />
           ))}
           <PanelField
-            label="Схема нарахування"
+            label={t('panel.rateScheme')}
             fieldKey="rateScheme"
             hidden={panelConfig.isFieldHidden('rateScheme')}
             value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined}
@@ -420,12 +431,12 @@ export default function EmployeesPage() {
     },
     {
       key: 'zones',
-      label: 'Зони/Підйомники',
+      label: t('panel.tabZones'),
       content: (
         <div className="space-y-3">
-          <PanelSection title="Зони">
+          <PanelSection title={t('panel.zones')}>
             {emp.zoneIds.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Не призначено</p>
+              <p className="text-[13px] text-muted-foreground">{t('empty.notAssigned')}</p>
             ) : (
               emp.zoneIds.map(id => (
                 <p key={id} className="text-[13px] text-foreground">
@@ -434,9 +445,9 @@ export default function EmployeesPage() {
               ))
             )}
           </PanelSection>
-          <PanelSection title="Підйомники">
+          <PanelSection title={t('panel.lifts')}>
             {emp.liftIds.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Не призначено</p>
+              <p className="text-[13px] text-muted-foreground">{t('empty.notAssigned')}</p>
             ) : (
               emp.liftIds.map(id => (
                 <p key={id} className="text-[13px] text-foreground">
@@ -454,7 +465,7 @@ export default function EmployeesPage() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Співробітники</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
@@ -485,7 +496,7 @@ export default function EmployeesPage() {
             resetPage();
             setActiveSavedFilterId(null);
           }}
-          placeholder="Пошук за ім'ям..."
+          placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
           className="flex-1 min-w-48 h-8 text-[13px]"
         />
@@ -498,9 +509,9 @@ export default function EmployeesPage() {
           }}
           className="w-48 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
-          {ROLE_FILTER_OPTIONS.map(([v, l]) => (
-            <option key={v} value={v}>
-              {l}
+          {ROLE_FILTER_CODES.map(code => (
+            <option key={code} value={code}>
+              {code === '' ? t('filters.allRoles') : employeeRoleLabel(code)}
             </option>
           ))}
         </Select>
@@ -508,7 +519,7 @@ export default function EmployeesPage() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
             onClick={() => {
               setShowDeleted(d => !d);
               resetPage();
@@ -533,7 +544,7 @@ export default function EmployeesPage() {
           />
           <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={() => setModalEmp('create')} leftIcon={<Plus className="h-4 w-4" />}>
-            Співробітник
+            {t('addButton')}
           </Button>
         </div>
       </div>
@@ -562,7 +573,7 @@ export default function EmployeesPage() {
                       ref={selectAllRef}
                       onChange={bulkSelect.toggleAll}
                       className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всі"
+                      aria-label={t('aria.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -607,8 +618,8 @@ export default function EmployeesPage() {
                   >
                     <EmptyState
                       icon={Users}
-                      title="Немає співробітників"
-                      description="Додайте першого співробітника"
+                      title={t('empty.title')}
+                      description={t('empty.description')}
                     />
                   </TableCell>
                 </TableRow>
@@ -639,7 +650,9 @@ export default function EmployeesPage() {
                             checked={bulkSelect.isSelected(emp.id)}
                             onChange={() => bulkSelect.toggle(emp.id)}
                             className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={`Вибрати ${emp.lastName} ${emp.firstName}`}
+                            aria-label={t('aria.selectRow', {
+                              name: `${emp.lastName} ${emp.firstName}`,
+                            })}
                           />
                         </TableCell>
                       )}
@@ -651,7 +664,9 @@ export default function EmployeesPage() {
                                 <span className="text-[13px] font-medium text-foreground">
                                   {emp.lastName} {emp.firstName}
                                 </span>
-                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                                {isDeleted && (
+                                  <Badge variant="secondary">{t('badge.deleted')}</Badge>
+                                )}
                               </div>
                               {emp.phone && (
                                 <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -726,7 +741,7 @@ export default function EmployeesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title="Редагувати"
+                            title={t('actions.edit')}
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                             onClick={() => void openEditModal(emp)}
                           >
@@ -736,7 +751,7 @@ export default function EmployeesPage() {
                             variant="ghost"
                             size="icon-sm"
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                            title="Помітити на видалення"
+                            title={t('actions.markForDeletion')}
                             disabled={isMarking || !!markingId || isDeleted}
                             onClick={() => markForDeletion(emp.id)}
                           >
