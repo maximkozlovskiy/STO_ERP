@@ -2,6 +2,7 @@
 
 import { useState, useMemo, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useRequireAuth } from '@/lib/auth';
 import { Check, Ban, Trash2, ExternalLink, Pencil } from 'lucide-react';
 import { SupplierPaymentCreateModal } from '@/components/ui/SupplierPaymentCreateModal';
@@ -42,6 +43,7 @@ function Field({ label, value }: { label: string; value?: ReactNode }) {
 
 export default function SupplierPaymentCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
+  const { t } = useTranslation('supplierPayments');
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { confirm, dialogProps } = useConfirm();
@@ -57,49 +59,52 @@ export default function SupplierPaymentCardPage() {
 
   const handleConfirm = async (payment: SupplierPayment) => {
     const ok = await confirm({
-      title: 'Провести оплату?',
-      message: `Оплата ${payment.number} на суму ${fmt(payment.amount)} зменшить борг перед постачальником. Після проведення документ не можна редагувати.`,
-      confirmLabel: 'Провести',
+      title: t('confirmDialog.confirm.title'),
+      message: t('confirmDialog.confirm.message', {
+        number: payment.number,
+        amount: fmt(payment.amount),
+      }),
+      confirmLabel: t('confirmDialog.confirm.confirmLabel'),
     });
     if (!ok) return;
     try {
       await confirmMut.mutateAsync(payment.id);
-      toast.success('Оплату проведено');
+      toast.success(t('toast.confirmed'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка проведення');
+      toast.error(e instanceof Error ? e.message : t('toast.confirmError'));
     }
   };
 
   const handleCancel = async (payment: SupplierPayment) => {
     const ok = await confirm({
-      title: 'Скасувати оплату?',
-      message: `Оплату ${payment.number} буде скасовано.`,
-      confirmLabel: 'Скасувати оплату',
+      title: t('confirmDialog.cancel.title'),
+      message: t('confirmDialog.cancel.message', { number: payment.number }),
+      confirmLabel: t('confirmDialog.cancel.confirmLabel'),
       variant: 'destructive',
     });
     if (!ok) return;
     try {
       await cancelMut.mutateAsync(payment.id);
-      toast.success('Оплату скасовано');
+      toast.success(t('toast.cancelled'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка скасування');
+      toast.error(e instanceof Error ? e.message : t('toast.cancelError'));
     }
   };
 
   const handleDelete = async (payment: SupplierPayment) => {
     const ok = await confirm({
-      title: 'Помітити на видалення?',
-      message: `Оплату ${payment.number} буде помічено як видалену.`,
-      confirmLabel: 'Видалити',
+      title: t('confirmDialog.delete.title'),
+      message: t('confirmDialog.delete.message', { number: payment.number }),
+      confirmLabel: t('confirmDialog.delete.confirmLabel'),
       variant: 'destructive',
     });
     if (!ok) return;
     try {
       await deleteMut.mutateAsync(payment.id);
-      toast.success('Оплату видалено');
+      toast.success(t('toast.deleted'));
       router.push('/supplier-payments');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+      toast.error(e instanceof Error ? e.message : t('toast.deleteError'));
     }
   };
 
@@ -108,12 +113,12 @@ export default function SupplierPaymentCardPage() {
       <div className="flex items-center justify-center min-h-screen flex-col gap-4">
         {error ? (
           <p className="text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2">
-            {error instanceof Error ? error.message : 'Помилка завантаження'}
+            {error instanceof Error ? error.message : t('detail.error.load')}
           </p>
         ) : isLoading ? (
           <Spinner size="lg" />
         ) : (
-          <p className="text-[13px] text-muted-foreground">Оплату не знайдено</p>
+          <p className="text-[13px] text-muted-foreground">{t('detail.notFound')}</p>
         )}
       </div>
     );
@@ -129,7 +134,7 @@ export default function SupplierPaymentCardPage() {
           onClick={() => router.back()}
           className="mt-1 text-muted-foreground hover:text-foreground text-sm"
         >
-          ← Назад
+          ← {t('detail.back')}
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
@@ -142,7 +147,7 @@ export default function SupplierPaymentCardPage() {
             </Badge>
             {sp.deletedAt && (
               <Badge variant="destructive" className="text-[10px]">
-                видалено
+                {t('detail.badge.deleted')}
               </Badge>
             )}
           </div>
@@ -150,19 +155,19 @@ export default function SupplierPaymentCardPage() {
         </div>
         <div className="text-right">
           <p className="text-lg font-bold text-foreground">{fmt(sp.amount)}</p>
-          <p className="text-xs text-muted-foreground">сума оплати</p>
+          <p className="text-xs text-muted-foreground">{t('detail.amountLabel')}</p>
         </div>
       </div>
 
       {/* Реквізити — усі поля */}
       <div className="bg-surface rounded-xl border border-border p-5 text-sm">
         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Реквізити
+          {t('detail.requisites')}
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Номер" value={sp.number} />
+          <Field label={t('detail.fields.number')} value={sp.number} />
           <Field
-            label="Статус"
+            label={t('detail.fields.status')}
             value={
               <Badge
                 variant={SUPPLIER_PAYMENT_STATUS_BADGE[sp.status] ?? 'secondary'}
@@ -173,13 +178,19 @@ export default function SupplierPaymentCardPage() {
               </Badge>
             }
           />
-          <Field label="Постачальник" value={sp.supplierName} />
-          <Field label="Тип джерела" value={paymentSourceTypeLabel(sp.sourceType)} />
-          <Field label="Джерело коштів" value={sp.sourceName} />
-          <Field label="Метод оплати" value={sp.method} />
-          <Field label="Сума" value={<span className="tabular-nums">{fmt(sp.amount)}</span>} />
+          <Field label={t('detail.fields.supplier')} value={sp.supplierName} />
           <Field
-            label="Замовлення постачальнику"
+            label={t('detail.fields.sourceType')}
+            value={paymentSourceTypeLabel(sp.sourceType)}
+          />
+          <Field label={t('detail.fields.sourceName')} value={sp.sourceName} />
+          <Field label={t('detail.fields.method')} value={sp.method} />
+          <Field
+            label={t('detail.fields.amount')}
+            value={<span className="tabular-nums">{fmt(sp.amount)}</span>}
+          />
+          <Field
+            label={t('detail.fields.purchaseOrder')}
             value={
               sp.purchaseOrderNumber ? (
                 <button
@@ -197,20 +208,25 @@ export default function SupplierPaymentCardPage() {
               ) : null
             }
           />
-          <Field label="Дата документа" value={sp.documentDate ? fmtDate(sp.documentDate) : null} />
+          <Field
+            label={t('detail.fields.documentDate')}
+            value={sp.documentDate ? fmtDate(sp.documentDate) : null}
+          />
           <div className="col-span-2">
-            <Field label="Нотатки" value={sp.notes} />
+            <Field label={t('detail.fields.notes')} value={sp.notes} />
           </div>
-          <Field label="Створено" value={fmtShortDateTime(sp.createdAt)} />
-          <Field label="Оновлено" value={fmtShortDateTime(sp.updatedAt)} />
-          {sp.deletedAt && <Field label="Видалено" value={fmtShortDateTime(sp.deletedAt)} />}
+          <Field label={t('detail.fields.createdAt')} value={fmtShortDateTime(sp.createdAt)} />
+          <Field label={t('detail.fields.updatedAt')} value={fmtShortDateTime(sp.updatedAt)} />
+          {sp.deletedAt && (
+            <Field label={t('detail.fields.deletedAt')} value={fmtShortDateTime(sp.deletedAt)} />
+          )}
         </div>
       </div>
 
       {/* Зв'язки — пов'язані документи (замовлення / контрагент / рахунок) */}
       <div className="bg-surface rounded-xl border border-border p-5">
         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-          Зв&apos;язки
+          {t('detail.links')}
         </p>
         <LinkedDocumentsPanel config={linkedConfig} entityId={sp.id} />
       </div>
@@ -227,7 +243,7 @@ export default function SupplierPaymentCardPage() {
                 disabled={isPending}
                 onClick={() => void handleConfirm(sp)}
               >
-                Провести
+                {t('detail.actions.confirm')}
               </Button>
               <Button
                 variant="outline"
@@ -235,7 +251,7 @@ export default function SupplierPaymentCardPage() {
                 disabled={isPending}
                 onClick={() => setEditOpen(true)}
               >
-                Редагувати
+                {t('detail.actions.edit')}
               </Button>
               <Button
                 variant="outline"
@@ -244,7 +260,7 @@ export default function SupplierPaymentCardPage() {
                 disabled={isPending}
                 onClick={() => void handleCancel(sp)}
               >
-                Скасувати
+                {t('detail.actions.cancel')}
               </Button>
             </>
           )}
@@ -256,7 +272,7 @@ export default function SupplierPaymentCardPage() {
             className="text-destructive/80 hover:text-destructive"
             onClick={() => void handleDelete(sp)}
           >
-            Помітити на видалення
+            {t('detail.actions.markDeleted')}
           </Button>
         </div>
       )}

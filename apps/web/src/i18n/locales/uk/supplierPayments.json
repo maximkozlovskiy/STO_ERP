@@ -1,0 +1,169 @@
+{
+  "page": {
+    "title": "Оплати постачальникам",
+    "newPayment": "Нова оплата",
+    "tabs": {
+      "list": "Список",
+      "schedule": "Графік оплат"
+    },
+    "pills": {
+      "all": "Усі"
+    },
+    "filters": {
+      "searchPlaceholder": "Пошук за номером / постачальником…",
+      "dateFrom": "Від",
+      "dateTo": "До",
+      "showDeleted": "Показати видалені",
+      "hideDeleted": "Сховати видалені"
+    },
+    "columns": {
+      "number": "Номер",
+      "supplier": "Постачальник",
+      "source": "Джерело",
+      "method": "Метод",
+      "amount": "Сума",
+      "date": "Дата",
+      "status": "Статус",
+      "linkedDocs": "Зв'язки"
+    },
+    "counters": {
+      "purchaseOrder": "Замовлення",
+      "counterparty": "Контрагент",
+      "account": "Рахунок"
+    },
+    "badge": {
+      "deleted": "видалено"
+    },
+    "aria": {
+      "selectAll": "Вибрати всі",
+      "selectPayment": "Вибрати оплату {{number}}",
+      "editPayment": "Редагувати оплату {{number}}",
+      "openPayment": "Відкрити оплату {{number}}",
+      "deletePayment": "Видалити оплату {{number}}",
+      "linkedDocs": "Пов'язані документи оплати"
+    },
+    "row": {
+      "edit": "Редагувати",
+      "openCard": "Відкрити картку",
+      "markDeleted": "Помітити на видалення"
+    },
+    "empty": {
+      "title": "Оплат ще немає",
+      "description": "Створіть першу оплату постачальнику для закриття боргу."
+    },
+    "error": {
+      "load": "Помилка завантаження"
+    },
+    "bulk": {
+      "deleteSelected": "Видалити вибрані"
+    },
+    "actions": {
+      "title": "Дії",
+      "confirm": "Провести",
+      "cancel": "Скасувати",
+      "markDeleted": "Помітити на видалення"
+    }
+  },
+  "detail": {
+    "back": "Назад",
+    "amountLabel": "сума оплати",
+    "badge": {
+      "deleted": "видалено"
+    },
+    "requisites": "Реквізити",
+    "links": "Зв'язки",
+    "notFound": "Оплату не знайдено",
+    "error": {
+      "load": "Помилка завантаження"
+    },
+    "fields": {
+      "number": "Номер",
+      "status": "Статус",
+      "supplier": "Постачальник",
+      "sourceType": "Тип джерела",
+      "sourceName": "Джерело коштів",
+      "method": "Метод оплати",
+      "amount": "Сума",
+      "purchaseOrder": "Замовлення постачальнику",
+      "documentDate": "Дата документа",
+      "notes": "Нотатки",
+      "createdAt": "Створено",
+      "updatedAt": "Оновлено",
+      "deletedAt": "Видалено"
+    },
+    "actions": {
+      "confirm": "Провести",
+      "edit": "Редагувати",
+      "cancel": "Скасувати",
+      "markDeleted": "Помітити на видалення"
+    }
+  },
+  "schedule": {
+    "error": {
+      "load": "Помилка завантаження"
+    },
+    "empty": {
+      "title": "Немає запланованих оплат",
+      "description": "Тут з'являться борги постачальникам за отриманими замовленнями з датою оплати."
+    },
+    "allSuppliers": "Усі постачальники",
+    "buckets": {
+      "overdue": "Протерміновані",
+      "planned": "Планові"
+    },
+    "table": {
+      "supplier": "Постачальник",
+      "overdue": "Протерміновані",
+      "planned": "Планові",
+      "total": "Разом:"
+    },
+    "docs": {
+      "heading": "Документи: {{label}}",
+      "close": "Закрити",
+      "empty": "Немає документів",
+      "columns": {
+        "number": "№",
+        "supplier": "Постачальник",
+        "paymentDate": "Дата оплати",
+        "amount": "Сума",
+        "outstanding": "Залишок"
+      },
+      "openOrder": "Відкрити замовлення {{number}}"
+    }
+  },
+  "confirmDialog": {
+    "confirm": {
+      "title": "Провести оплату?",
+      "message": "Оплата {{number}} на суму {{amount}} зменшить борг перед постачальником. Після проведення документ не можна редагувати.",
+      "confirmLabel": "Провести"
+    },
+    "cancel": {
+      "title": "Скасувати оплату?",
+      "message": "Оплату {{number}} буде скасовано.",
+      "confirmLabel": "Скасувати оплату"
+    },
+    "delete": {
+      "title": "Помітити на видалення?",
+      "message": "Оплату {{number}} буде помічено як видалену.",
+      "confirmLabel": "Видалити"
+    },
+    "bulkDelete": {
+      "title": "Видалити {{count}} оплат?",
+      "message": "{{skipped}} проведених оплат буде пропущено (їх не можна видалити).",
+      "confirmLabel": "Видалити"
+    }
+  },
+  "toast": {
+    "filterSaved": "Фільтр \"{{name}}\" збережено",
+    "confirmed": "Оплату проведено",
+    "confirmError": "Помилка проведення",
+    "cancelled": "Оплату скасовано",
+    "cancelError": "Помилка скасування",
+    "deleted": "Оплату видалено",
+    "deleteError": "Помилка видалення",
+    "confirmedOnlyDeletable": "Проведені оплати не можна видалити",
+    "bulkDeleted": "Видалено {{count}} оплат",
+    "bulkPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
+    "bulkDeleteError": "Не вдалося видалити оплати"
+  }
+}

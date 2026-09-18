@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Wallet, X, ChevronRight } from 'lucide-react';
 import {
   useSupplierPaymentsSchedule,
@@ -33,6 +34,7 @@ interface Selection {
 }
 
 export function SupplierPaymentScheduleTab() {
+  const { t } = useTranslation('supplierPayments');
   const from = useMemo(() => kyivToday(), []);
   const to = useMemo(() => addDaysISO(from, WINDOW_DAYS - 1), [from]);
 
@@ -49,7 +51,7 @@ export function SupplierPaymentScheduleTab() {
   if (error) {
     return (
       <div className="text-destructive text-sm py-8 text-center">
-        {error instanceof Error ? error.message : 'Помилка завантаження'}
+        {error instanceof Error ? error.message : t('schedule.error.load')}
       </div>
     );
   }
@@ -66,8 +68,8 @@ export function SupplierPaymentScheduleTab() {
     return (
       <EmptyState
         icon={Wallet}
-        title="Немає запланованих оплат"
-        description="Тут з'являться борги постачальникам за отриманими замовленнями з датою оплати."
+        title={t('schedule.empty.title')}
+        description={t('schedule.empty.description')}
       />
     );
   }
@@ -93,8 +95,12 @@ export function SupplierPaymentScheduleTab() {
     const params: SupplierPaymentDocumentsParams = isDate
       ? { ...base, date: bucket }
       : { ...base, target: bucket as 'overdue' | 'planned' };
-    const who = supplierName ?? 'Усі постачальники';
-    const what = isDate ? ddmm(bucket) : bucket === 'overdue' ? 'Протерміновані' : 'Планові';
+    const who = supplierName ?? t('schedule.allSuppliers');
+    const what = isDate
+      ? ddmm(bucket)
+      : bucket === 'overdue'
+        ? t('schedule.buckets.overdue')
+        : t('schedule.buckets.planned');
     const key = `${supplierId ?? ''}|${bucket}`;
     // Повторний клік по тій самій клітинці — закрити панель.
     if (selKey === key) setSelected(null);
@@ -110,10 +116,10 @@ export function SupplierPaymentScheduleTab() {
           <thead className="sticky top-0 z-10 bg-secondary">
             <tr className="text-muted-foreground">
               <th className="sticky left-0 z-20 bg-secondary text-left font-medium px-3 py-2 min-w-40 border-b border-r border-border">
-                Постачальник
+                {t('schedule.table.supplier')}
               </th>
               <th className="text-right font-medium px-2 py-2 min-w-24 border-b border-border bg-destructive-subtle text-destructive-text">
-                Протерміновані
+                {t('schedule.table.overdue')}
               </th>
               {dates.map(d => (
                 <th
@@ -124,7 +130,7 @@ export function SupplierPaymentScheduleTab() {
                 </th>
               ))}
               <th className="sticky right-0 z-20 text-right font-medium px-2 py-2 min-w-24 border-b border-l border-border bg-success-subtle text-success">
-                Планові
+                {t('schedule.table.planned')}
               </th>
             </tr>
           </thead>
@@ -132,7 +138,7 @@ export function SupplierPaymentScheduleTab() {
             {/* Підсумковий рядок «Разом» — клік показує документи ВСІХ постачальників */}
             <tr className="font-semibold bg-muted/40">
               <td className="sticky left-0 z-10 bg-muted/40 px-3 py-1.5 border-b border-r border-border">
-                Разом:
+                {t('schedule.table.total')}
               </td>
               <TotalCell
                 value={totals.overdue}
@@ -203,19 +209,21 @@ export function SupplierPaymentScheduleTab() {
       {selected && (
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary">
-            <span className="text-sm font-medium text-foreground">Документи: {selected.label}</span>
+            <span className="text-sm font-medium text-foreground">
+              {t('schedule.docs.heading', { label: selected.label })}
+            </span>
             <button
               type="button"
               onClick={() => setSelected(null)}
               className="text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Закрити"
+              aria-label={t('schedule.docs.close')}
             >
               <X className="size-4" />
             </button>
           </div>
           {docsError ? (
             <div className="text-destructive text-sm px-4 py-6 text-center">
-              {docsError instanceof Error ? docsError.message : 'Помилка завантаження'}
+              {docsError instanceof Error ? docsError.message : t('schedule.error.load')}
             </div>
           ) : docsLoading && !docs ? (
             <div className="flex justify-center py-8">
@@ -223,27 +231,29 @@ export function SupplierPaymentScheduleTab() {
             </div>
           ) : !docs || docs.length === 0 ? (
             <div className="text-muted-foreground text-sm px-4 py-6 text-center">
-              Немає документів
+              {t('schedule.docs.empty')}
             </div>
           ) : (
             <div className="overflow-auto max-h-72">
               <table className="w-full text-[13px] tabular-nums border-collapse">
                 <thead className="sticky top-0 bg-secondary text-muted-foreground">
                   <tr>
-                    <th className="text-left font-medium px-4 py-2 border-b border-border">№</th>
+                    <th className="text-left font-medium px-4 py-2 border-b border-border">
+                      {t('schedule.docs.columns.number')}
+                    </th>
                     {!selected.params.supplierId && (
                       <th className="text-left font-medium px-3 py-2 border-b border-border whitespace-nowrap">
-                        Постачальник
+                        {t('schedule.docs.columns.supplier')}
                       </th>
                     )}
                     <th className="text-left font-medium px-3 py-2 border-b border-border whitespace-nowrap">
-                      Дата оплати
+                      {t('schedule.docs.columns.paymentDate')}
                     </th>
                     <th className="text-right font-medium px-3 py-2 border-b border-border">
-                      Сума
+                      {t('schedule.docs.columns.amount')}
                     </th>
                     <th className="text-right font-medium px-3 py-2 border-b border-border">
-                      Залишок
+                      {t('schedule.docs.columns.outstanding')}
                     </th>
                     <th className="w-8 border-b border-border" />
                   </tr>
@@ -268,7 +278,11 @@ export function SupplierPaymentScheduleTab() {
                         }
                         role={clickable ? 'button' : undefined}
                         tabIndex={clickable ? 0 : undefined}
-                        aria-label={clickable ? `Відкрити замовлення ${doc.number}` : undefined}
+                        aria-label={
+                          clickable
+                            ? t('schedule.docs.openOrder', { number: doc.number })
+                            : undefined
+                        }
                         className={cn(
                           'transition-colors',
                           clickable

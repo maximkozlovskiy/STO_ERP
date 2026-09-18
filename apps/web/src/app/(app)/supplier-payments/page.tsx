@@ -3,6 +3,7 @@
 import { Suspense, useState, useCallback, useMemo } from 'react';
 import type { ElementType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
 import {
   Plus,
@@ -87,18 +88,19 @@ interface SpFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'number', label: 'Номер', defaultVisible: true },
-  { key: 'supplier', label: 'Постачальник', defaultVisible: true },
-  { key: 'source', label: 'Джерело', defaultVisible: true },
-  { key: 'method', label: 'Метод', defaultVisible: true },
-  { key: 'amount', label: 'Сума', defaultVisible: true },
-  { key: 'date', label: 'Дата', defaultVisible: true },
-  { key: 'status', label: 'Статус', defaultVisible: true },
-  { key: 'linkedDocs', label: "Зв'язки", defaultVisible: true },
+// Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'number', labelKey: 'page.columns.number', defaultVisible: true },
+  { key: 'supplier', labelKey: 'page.columns.supplier', defaultVisible: true },
+  { key: 'source', labelKey: 'page.columns.source', defaultVisible: true },
+  { key: 'method', labelKey: 'page.columns.method', defaultVisible: true },
+  { key: 'amount', labelKey: 'page.columns.amount', defaultVisible: true },
+  { key: 'date', labelKey: 'page.columns.date', defaultVisible: true },
+  { key: 'status', labelKey: 'page.columns.status', defaultVisible: true },
+  { key: 'linkedDocs', labelKey: 'page.columns.linkedDocs', defaultVisible: true },
 ];
-const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMNS.map(c => c.key));
+const COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(COLUMN_DEFS.map(c => c.key));
 
 // ─── Пов'язані документи (badge column) ────────────────────
 // Ключі секцій дзеркалять backend supplier-payments.getLinkedCounts (purchaseOrder/counterparty/account).
@@ -116,11 +118,11 @@ const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMa
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
   Icon: ElementType;
-  label: string;
+  labelKey: string;
 }> = [
-  { field: 'purchaseOrder', Icon: ClipboardList, label: 'Замовлення' },
-  { field: 'counterparty', Icon: User, label: 'Контрагент' },
-  { field: 'account', Icon: Landmark, label: 'Рахунок' },
+  { field: 'purchaseOrder', Icon: ClipboardList, labelKey: 'page.counters.purchaseOrder' },
+  { field: 'counterparty', Icon: User, labelKey: 'page.counters.counterparty' },
+  { field: 'account', Icon: Landmark, labelKey: 'page.counters.account' },
 ];
 
 // Whitelist сортовних колонок → поле бекенду (SP_SORT_FIELDS у service). Module-level:
@@ -134,6 +136,11 @@ const SP_SORTABLE_BY_COL: Record<string, string> = {
 
 function SupplierPaymentsPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
+  const { t } = useTranslation('supplierPayments');
+
+  // Колонки з перекладеними мітками (label = i18n, резолвиться у компоненті).
+  const COLUMNS = useMemo(() => COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })), [t]);
+
   const { confirm, dialogProps } = useConfirm();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -244,7 +251,7 @@ function SupplierPaymentsPageInner() {
     (name: string) => {
       const preset = saveFilter(name, { status, q, showDeleted, dateFrom, dateTo });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('toast.filterSaved', { name }));
     },
     [
       saveFilter,
@@ -255,66 +262,70 @@ function SupplierPaymentsPageInner() {
       dateTo,
       features.toastEnabled,
       setActiveSavedFilterId,
+      t,
     ],
   );
 
   const handleConfirm = useCallback(
     async (sp: SupplierPayment) => {
       const ok = await confirm({
-        title: 'Провести оплату?',
-        message: `Оплата ${sp.number} на суму ${fmt(sp.amount)} зменшить борг перед постачальником. Після проведення документ не можна редагувати.`,
-        confirmLabel: 'Провести',
+        title: t('confirmDialog.confirm.title'),
+        message: t('confirmDialog.confirm.message', {
+          number: sp.number,
+          amount: fmt(sp.amount),
+        }),
+        confirmLabel: t('confirmDialog.confirm.confirmLabel'),
       });
       if (!ok) return;
       try {
         const updated = await confirmMut.mutateAsync(sp.id);
         setSelected(updated);
-        toast.success('Оплату проведено');
+        toast.success(t('toast.confirmed'));
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Помилка проведення');
+        toast.error(e instanceof Error ? e.message : t('toast.confirmError'));
       }
     },
-    [confirm, confirmMut],
+    [confirm, confirmMut, t],
   );
 
   const handleCancel = useCallback(
     async (sp: SupplierPayment) => {
       const ok = await confirm({
-        title: 'Скасувати оплату?',
-        message: `Оплату ${sp.number} буде скасовано.`,
-        confirmLabel: 'Скасувати оплату',
+        title: t('confirmDialog.cancel.title'),
+        message: t('confirmDialog.cancel.message', { number: sp.number }),
+        confirmLabel: t('confirmDialog.cancel.confirmLabel'),
         variant: 'destructive',
       });
       if (!ok) return;
       try {
         const updated = await cancelMut.mutateAsync(sp.id);
         setSelected(updated);
-        toast.success('Оплату скасовано');
+        toast.success(t('toast.cancelled'));
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Помилка скасування');
+        toast.error(e instanceof Error ? e.message : t('toast.cancelError'));
       }
     },
-    [confirm, cancelMut],
+    [confirm, cancelMut, t],
   );
 
   const handleDelete = useCallback(
     async (sp: SupplierPayment) => {
       const ok = await confirm({
-        title: 'Помітити на видалення?',
-        message: `Оплату ${sp.number} буде помічено як видалену.`,
-        confirmLabel: 'Видалити',
+        title: t('confirmDialog.delete.title'),
+        message: t('confirmDialog.delete.message', { number: sp.number }),
+        confirmLabel: t('confirmDialog.delete.confirmLabel'),
         variant: 'destructive',
       });
       if (!ok) return;
       try {
         await deleteMut.mutateAsync(sp.id);
         setSelected(null);
-        toast.success('Оплату видалено');
+        toast.success(t('toast.deleted'));
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+        toast.error(e instanceof Error ? e.message : t('toast.deleteError'));
       }
     },
-    [confirm, deleteMut],
+    [confirm, deleteMut, t],
   );
 
   const bulkDeleteSelected = useCallback(
@@ -329,17 +340,14 @@ function SupplierPaymentsPageInner() {
       const skipped = ids.length - deletable.length;
 
       if (deletable.length === 0) {
-        toast.warning('Проведені оплати не можна видалити');
+        toast.warning(t('toast.confirmedOnlyDeletable'));
         return;
       }
       if (
         !(await confirm({
-          title: `Видалити ${deletable.length} оплат?`,
-          message:
-            skipped > 0
-              ? `${skipped} проведених оплат буде пропущено (їх не можна видалити).`
-              : undefined,
-          confirmLabel: 'Видалити',
+          title: t('confirmDialog.bulkDelete.title', { count: deletable.length }),
+          message: skipped > 0 ? t('confirmDialog.bulkDelete.message', { skipped }) : undefined,
+          confirmLabel: t('confirmDialog.bulkDelete.confirmLabel'),
           variant: 'destructive',
         }))
       )
@@ -352,25 +360,26 @@ function SupplierPaymentsPageInner() {
       bulkSelect.clear();
       queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
       if (features.toastEnabled) {
-        if (succeeded > 0 && failed === 0) toast.success(`Видалено ${succeeded} оплат`);
+        if (succeeded > 0 && failed === 0)
+          toast.success(t('toast.bulkDeleted', { count: succeeded }));
         else if (succeeded > 0)
-          toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
-        else toast.error('Не вдалося видалити оплати');
+          toast.warning(t('toast.bulkPartial', { succeeded, total: results.length, failed }));
+        else toast.error(t('toast.bulkDeleteError'));
       }
     },
-    [confirm, bulkSelect, features.toastEnabled, queryClient, items],
+    [confirm, bulkSelect, features.toastEnabled, queryClient, items, t],
   );
 
   const bulkActions = useMemo<BulkAction[]>(
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибрані',
+        label: t('page.bulk.deleteSelected'),
         variant: 'destructive',
         onClick: bulkDeleteSelected,
       },
     ],
-    [bulkDeleteSelected],
+    [bulkDeleteSelected, t],
   );
 
   const panelConfigFields = useMemo(
@@ -400,7 +409,7 @@ function SupplierPaymentsPageInner() {
             {sp.number}
             {sp.deletedAt && (
               <Badge variant="destructive" className="ml-2 text-[10px] px-1 py-0">
-                видалено
+                {t('page.badge.deleted')}
               </Badge>
             )}
           </TableCell>
@@ -452,7 +461,7 @@ function SupplierPaymentsPageInner() {
         return (
           <TableCell key="linkedDocs" onClick={e => e.stopPropagation()}>
             <div className="flex gap-1.5 items-center text-xs text-muted-foreground">
-              {DOC_COUNTERS.map(({ field, Icon, label }) => {
+              {DOC_COUNTERS.map(({ field, Icon, labelKey }) => {
                 const n = counts?.[field];
                 if (!n) return null;
                 return (
@@ -460,7 +469,7 @@ function SupplierPaymentsPageInner() {
                     key={field}
                     onClick={() => setLinkedDocPopupId(sp.id)}
                     className="flex items-center gap-0.5 hover:text-foreground transition-colors"
-                    title={`${label}: ${n}`}
+                    title={`${t(labelKey)}: ${n}`}
                   >
                     <Icon size={13} />
                     <span>{n}</span>
@@ -481,11 +490,11 @@ function SupplierPaymentsPageInner() {
       <div className="page-header">
         <h1 className="page-title flex items-center gap-2">
           <Wallet className="h-5 w-5" />
-          Оплати постачальникам
+          {t('page.title')}
         </h1>
         {activeTab === 'list' && (
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Нова оплата
+            {t('page.newPayment')}
           </Button>
         )}
       </div>
@@ -494,8 +503,8 @@ function SupplierPaymentsPageInner() {
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {(
           [
-            { key: 'list', label: 'Список' },
-            { key: 'schedule', label: 'Графік оплат' },
+            { key: 'list', label: t('page.tabs.list') },
+            { key: 'schedule', label: t('page.tabs.schedule') },
           ] as const
         ).map(tab => (
           <button
@@ -520,7 +529,7 @@ function SupplierPaymentsPageInner() {
         <>
           {error && (
             <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-              {error instanceof Error ? error.message : 'Помилка завантаження'}
+              {error instanceof Error ? error.message : t('page.error.load')}
             </div>
           )}
 
@@ -540,7 +549,7 @@ function SupplierPaymentsPageInner() {
           <div className="flex flex-wrap gap-1.5 shrink-0">
             <StatusPill
               value=""
-              label="Усі"
+              label={t('page.pills.all')}
               active={status === ''}
               onSelect={() => {
                 setStatus('');
@@ -573,12 +582,14 @@ function SupplierPaymentsPageInner() {
                 resetPage();
                 setActiveSavedFilterId(null);
               }}
-              placeholder="Пошук за номером / постачальником…"
+              placeholder={t('page.filters.searchPlaceholder')}
               leftElement={<Search />}
               className="w-64 h-8 text-[13px]"
             />
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">Від</span>
+              <span className="text-[13px] text-muted-foreground shrink-0">
+                {t('page.filters.dateFrom')}
+              </span>
               <DatePickerInput
                 value={dateFrom}
                 onChange={v => {
@@ -591,7 +602,9 @@ function SupplierPaymentsPageInner() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">До</span>
+              <span className="text-[13px] text-muted-foreground shrink-0">
+                {t('page.filters.dateTo')}
+              </span>
               <DatePickerInput
                 value={dateTo}
                 onChange={v => {
@@ -608,7 +621,7 @@ function SupplierPaymentsPageInner() {
               <Button
                 variant="outline"
                 size="icon-sm"
-                title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+                title={showDeleted ? t('page.filters.hideDeleted') : t('page.filters.showDeleted')}
                 onClick={() => {
                   setShowDeleted(v => !v);
                   resetPage();
@@ -659,7 +672,7 @@ function SupplierPaymentsPageInner() {
                           ref={selectAllRef}
                           onChange={bulkSelect.toggleAll}
                           className="h-3.5 w-3.5 rounded border-border"
-                          aria-label="Вибрати всі"
+                          aria-label={t('page.aria.selectAll')}
                         />
                       </TableHead>
                     )}
@@ -709,8 +722,8 @@ function SupplierPaymentsPageInner() {
                       >
                         <EmptyState
                           icon={Wallet}
-                          title="Оплат ще немає"
-                          description="Створіть першу оплату постачальнику для закриття боргу."
+                          title={t('page.empty.title')}
+                          description={t('page.empty.description')}
                         />
                       </TableCell>
                     </TableRow>
@@ -739,7 +752,7 @@ function SupplierPaymentsPageInner() {
                               checked={bulkSelect.isSelected(sp.id)}
                               onChange={() => bulkSelect.toggle(sp.id)}
                               className="h-3.5 w-3.5 rounded border-border"
-                              aria-label={`Вибрати оплату ${sp.number}`}
+                              aria-label={t('page.aria.selectPayment', { number: sp.number })}
                             />
                           </TableCell>
                         )}
@@ -751,11 +764,15 @@ function SupplierPaymentsPageInner() {
                                 type="button"
                                 variant="ghost"
                                 size="icon-sm"
-                                title={sp.status === 'DRAFT' ? 'Редагувати' : 'Відкрити картку'}
+                                title={
+                                  sp.status === 'DRAFT'
+                                    ? t('page.row.edit')
+                                    : t('page.row.openCard')
+                                }
                                 aria-label={
                                   sp.status === 'DRAFT'
-                                    ? `Редагувати оплату ${sp.number}`
-                                    : `Відкрити оплату ${sp.number}`
+                                    ? t('page.aria.editPayment', { number: sp.number })
+                                    : t('page.aria.openPayment', { number: sp.number })
                                 }
                                 className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                                 onClick={() =>
@@ -773,8 +790,8 @@ function SupplierPaymentsPageInner() {
                                 type="button"
                                 variant="ghost"
                                 size="icon-sm"
-                                title="Помітити на видалення"
-                                aria-label={`Видалити оплату ${sp.number}`}
+                                title={t('page.row.markDeleted')}
+                                aria-label={t('page.aria.deletePayment', { number: sp.number })}
                                 className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => void handleDelete(sp)}
                               >
@@ -813,7 +830,7 @@ function SupplierPaymentsPageInner() {
                   ))}
 
                   {!selected.deletedAt && (
-                    <PanelSection title="Дії">
+                    <PanelSection title={t('page.actions.title')}>
                       <div className="flex flex-col gap-2">
                         {selected.status === 'DRAFT' && (
                           <>
@@ -824,7 +841,7 @@ function SupplierPaymentsPageInner() {
                               loading={confirmMut.isPending}
                               onClick={() => void handleConfirm(selected)}
                             >
-                              Провести
+                              {t('page.actions.confirm')}
                             </Button>
                             <Button
                               variant="ghost"
@@ -833,7 +850,7 @@ function SupplierPaymentsPageInner() {
                               loading={cancelMut.isPending}
                               onClick={() => void handleCancel(selected)}
                             >
-                              Скасувати
+                              {t('page.actions.cancel')}
                             </Button>
                             <Button
                               variant="ghost"
@@ -842,7 +859,7 @@ function SupplierPaymentsPageInner() {
                               loading={deleteMut.isPending}
                               onClick={() => void handleDelete(selected)}
                             >
-                              Помітити на видалення
+                              {t('page.actions.markDeleted')}
                             </Button>
                           </>
                         )}
@@ -854,7 +871,7 @@ function SupplierPaymentsPageInner() {
                             loading={deleteMut.isPending}
                             onClick={() => void handleDelete(selected)}
                           >
-                            Помітити на видалення
+                            {t('page.actions.markDeleted')}
                           </Button>
                         )}
                       </div>
@@ -889,7 +906,7 @@ function SupplierPaymentsPageInner() {
           entityId={linkedDocPopupId}
           config={linkedConfig}
           onClose={() => setLinkedDocPopupId(null)}
-          ariaLabel="Пов'язані документи оплати"
+          ariaLabel={t('page.aria.linkedDocs')}
         />
       )}
 

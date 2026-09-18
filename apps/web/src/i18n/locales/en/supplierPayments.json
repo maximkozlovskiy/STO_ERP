@@ -1,0 +1,169 @@
+{
+  "page": {
+    "title": "Supplier payments",
+    "newPayment": "New payment",
+    "tabs": {
+      "list": "List",
+      "schedule": "Payment schedule"
+    },
+    "pills": {
+      "all": "All"
+    },
+    "filters": {
+      "searchPlaceholder": "Search by number / supplier…",
+      "dateFrom": "From",
+      "dateTo": "To",
+      "showDeleted": "Show deleted",
+      "hideDeleted": "Hide deleted"
+    },
+    "columns": {
+      "number": "Number",
+      "supplier": "Supplier",
+      "source": "Source",
+      "method": "Method",
+      "amount": "Amount",
+      "date": "Date",
+      "status": "Status",
+      "linkedDocs": "Links"
+    },
+    "counters": {
+      "purchaseOrder": "Order",
+      "counterparty": "Counterparty",
+      "account": "Account"
+    },
+    "badge": {
+      "deleted": "deleted"
+    },
+    "aria": {
+      "selectAll": "Select all",
+      "selectPayment": "Select payment {{number}}",
+      "editPayment": "Edit payment {{number}}",
+      "openPayment": "Open payment {{number}}",
+      "deletePayment": "Delete payment {{number}}",
+      "linkedDocs": "Payment linked documents"
+    },
+    "row": {
+      "edit": "Edit",
+      "openCard": "Open card",
+      "markDeleted": "Mark for deletion"
+    },
+    "empty": {
+      "title": "No payments yet",
+      "description": "Create the first supplier payment to settle the debt."
+    },
+    "error": {
+      "load": "Failed to load"
+    },
+    "bulk": {
+      "deleteSelected": "Delete selected"
+    },
+    "actions": {
+      "title": "Actions",
+      "confirm": "Post",
+      "cancel": "Cancel",
+      "markDeleted": "Mark for deletion"
+    }
+  },
+  "detail": {
+    "back": "Back",
+    "amountLabel": "payment amount",
+    "badge": {
+      "deleted": "deleted"
+    },
+    "requisites": "Details",
+    "links": "Links",
+    "notFound": "Payment not found",
+    "error": {
+      "load": "Failed to load"
+    },
+    "fields": {
+      "number": "Number",
+      "status": "Status",
+      "supplier": "Supplier",
+      "sourceType": "Source type",
+      "sourceName": "Funds source",
+      "method": "Payment method",
+      "amount": "Amount",
+      "purchaseOrder": "Purchase order",
+      "documentDate": "Document date",
+      "notes": "Notes",
+      "createdAt": "Created",
+      "updatedAt": "Updated",
+      "deletedAt": "Deleted"
+    },
+    "actions": {
+      "confirm": "Post",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "markDeleted": "Mark for deletion"
+    }
+  },
+  "schedule": {
+    "error": {
+      "load": "Failed to load"
+    },
+    "empty": {
+      "title": "No scheduled payments",
+      "description": "Debts to suppliers for received orders with a payment date will appear here."
+    },
+    "allSuppliers": "All suppliers",
+    "buckets": {
+      "overdue": "Overdue",
+      "planned": "Planned"
+    },
+    "table": {
+      "supplier": "Supplier",
+      "overdue": "Overdue",
+      "planned": "Planned",
+      "total": "Total:"
+    },
+    "docs": {
+      "heading": "Documents: {{label}}",
+      "close": "Close",
+      "empty": "No documents",
+      "columns": {
+        "number": "No.",
+        "supplier": "Supplier",
+        "paymentDate": "Payment date",
+        "amount": "Amount",
+        "outstanding": "Outstanding"
+      },
+      "openOrder": "Open order {{number}}"
+    }
+  },
+  "confirmDialog": {
+    "confirm": {
+      "title": "Post payment?",
+      "message": "Payment {{number}} for {{amount}} will reduce the debt to the supplier. Once posted, the document cannot be edited.",
+      "confirmLabel": "Post"
+    },
+    "cancel": {
+      "title": "Cancel payment?",
+      "message": "Payment {{number}} will be cancelled.",
+      "confirmLabel": "Cancel payment"
+    },
+    "delete": {
+      "title": "Mark for deletion?",
+      "message": "Payment {{number}} will be marked as deleted.",
+      "confirmLabel": "Delete"
+    },
+    "bulkDelete": {
+      "title": "Delete {{count}} payments?",
+      "message": "{{skipped}} posted payments will be skipped (they cannot be deleted).",
+      "confirmLabel": "Delete"
+    }
+  },
+  "toast": {
+    "filterSaved": "Filter \"{{name}}\" saved",
+    "confirmed": "Payment posted",
+    "confirmError": "Failed to post",
+    "cancelled": "Payment cancelled",
+    "cancelError": "Failed to cancel",
+    "deleted": "Payment deleted",
+    "deleteError": "Failed to delete",
+    "confirmedOnlyDeletable": "Posted payments cannot be deleted",
+    "bulkDeleted": "Deleted {{count}} payments",
+    "bulkPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
+    "bulkDeleteError": "Failed to delete payments"
+  }
+}
