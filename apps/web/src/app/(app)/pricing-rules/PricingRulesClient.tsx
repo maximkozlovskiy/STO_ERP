@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import dynamic from 'next/dynamic';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
@@ -45,7 +47,7 @@ import {
 // потрібні поки користувач переглядає таблицю правил.
 const RuleFormModal = dynamic(() => import('./RuleFormModal'), { ssr: false });
 
-function valueLabel(rule: PricingRule): string {
+function valueLabel(rule: PricingRule, t: TFunction): string {
   switch (rule.type) {
     case 'PERCENT':
     case 'COMPETITOR_PLUS':
@@ -55,7 +57,9 @@ function valueLabel(rule: PricingRule): string {
     case 'FIXED_PRICE':
       return rule.fixedPrice != null ? `${fmtMoney(rule.fixedPrice)} ₴` : '—';
     case 'COST_TIER':
-      return rule.tiers && rule.tiers.length > 0 ? `${rule.tiers.length} грейд(ів)` : '—';
+      return rule.tiers && rule.tiers.length > 0
+        ? t('value.grades', { count: rule.tiers.length })
+        : '—';
     default:
       return '—';
   }
@@ -66,6 +70,7 @@ function valueLabel(rule: PricingRule): string {
 export default function PricingRulesClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
 
+  const { t } = useTranslation('pricingRules');
   const { confirm, dialogProps } = useConfirm();
   const qc = useQueryClient();
   const { data: rules = [], isLoading: loading } = useQuery<PricingRule[]>({
@@ -160,12 +165,12 @@ export default function PricingRulesClient() {
       .catch((e: unknown) => {
         // не ковтаємо помилку мовчки. Логуємо для діагностики,
         // але не блокуємо UI (правила можна редагувати без списку товарів/брендів).
-        console.warn('Не вдалося завантажити довідники для форми правила:', e);
+        console.warn(t('errors.refDataLoad'), e);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   // надсилаємо лише значення, релевантне для обраного type, щоб не зберігати
   // "сміттєві" поля з минулої редакції форми.
@@ -210,14 +215,13 @@ export default function PricingRulesClient() {
   };
 
   const deleteRule = async (id: string) => {
-    if (!(await confirm({ title: 'Видалити правило ціноутворення?', variant: 'destructive' })))
-      return;
+    if (!(await confirm({ title: t('confirm.deleteTitle'), variant: 'destructive' }))) return;
     setDeletingId(id);
     try {
       await apiFetch<void>(`/pricing-rules/${id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка видалення');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : t('errors.delete'));
     } finally {
       if (mountedRef.current) setDeletingId(null);
     }
@@ -228,8 +232,8 @@ export default function PricingRulesClient() {
   const applyRule = async (rule: PricingRule) => {
     if (
       !(await confirm({
-        title: `Перерахувати ціни за правилом «${rule.name}»?`,
-        message: 'Ціни продажу всіх відповідних товарів буде оновлено негайно.',
+        title: t('confirm.applyTitle', { name: rule.name }),
+        message: t('confirm.applyMessage'),
       }))
     )
       return;
@@ -242,7 +246,7 @@ export default function PricingRulesClient() {
       if (mountedRef.current) setError('');
       toast.success(res.message);
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Помилка застосування');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : t('errors.apply'));
     } finally {
       if (mountedRef.current) setApplyingId(null);
     }
@@ -272,10 +276,8 @@ export default function PricingRulesClient() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Правила ціноутворення</h1>
-          <p className="page-subtitle">
-            Автоматичне розрахування ціни продажу при оприбуткуванні товарів
-          </p>
+          <h1 className="page-title">{t('title')}</h1>
+          <p className="page-subtitle">{t('subtitle')}</p>
         </div>
       </div>
 
@@ -284,7 +286,7 @@ export default function PricingRulesClient() {
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Пошук по назві, постачальнику, бренду…"
+          placeholder={t('searchPlaceholder')}
           className="w-72 h-8 text-[13px]"
         />
         <div className="flex items-center gap-2 ml-auto">
@@ -297,7 +299,7 @@ export default function PricingRulesClient() {
               setPricingImportResult(null);
             }}
           >
-            Розцінити список
+            {t('actions.priceList')}
           </Button>
           <Button
             leftIcon={<Plus className="h-4 w-4" />}
@@ -306,7 +308,7 @@ export default function PricingRulesClient() {
               setModal(true);
             }}
           >
-            Правило
+            {t('actions.rule')}
           </Button>
         </div>
       </div>
@@ -314,9 +316,7 @@ export default function PricingRulesClient() {
       {showPricingImport && (
         <AnimatedBody className="mb-6 rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium text-foreground">
-              Розцінити товари за списком
-            </span>
+            <span className="text-[13px] font-medium text-foreground">{t('import.heading')}</span>
             <button
               type="button"
               className="text-[12px] text-primary hover:underline"
@@ -329,16 +329,15 @@ export default function PricingRulesClient() {
                   const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
                   downloadBlob(blob, data.filename);
                 } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : 'Помилка завантаження шаблону');
+                  setError(e instanceof Error ? e.message : t('errors.template'));
                 }
               }}
             >
-              Завантажити шаблон CSV
+              {t('import.downloadTemplate')}
             </button>
           </div>
           <p className="text-[12px] text-muted-foreground">
-            Завантажте XLSX або CSV файл з колонками: <code>sku</code>, <code>barcode</code>,{' '}
-            <code>name</code>
+            {t('import.hint')} <code>sku</code>, <code>barcode</code>, <code>name</code>
           </p>
           <div className="flex items-center gap-3">
             <input
@@ -370,27 +369,29 @@ export default function PricingRulesClient() {
                   setPricingImportResult(result);
                   if (result.updated > 0) setError('');
                 } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : 'Помилка розцінки');
+                  setError(e instanceof Error ? e.message : t('errors.import'));
                 } finally {
                   setPricingImporting(false);
                 }
               }}
             >
-              Розцінити
+              {t('import.run')}
             </Button>
           </div>
           {pricingImportResult && (
             <div className="space-y-2">
               <div className="flex gap-4 text-[12px]">
                 <span className="text-muted-foreground">
-                  Знайдено: <strong className="text-foreground">{pricingImportResult.found}</strong>
+                  {t('import.found')}{' '}
+                  <strong className="text-foreground">{pricingImportResult.found}</strong>
                 </span>
                 <span className="text-muted-foreground">
-                  Оновлено: <strong className="text-success">{pricingImportResult.updated}</strong>
+                  {t('import.updated')}{' '}
+                  <strong className="text-success">{pricingImportResult.updated}</strong>
                 </span>
                 {pricingImportResult.notFound.length > 0 && (
                   <span className="text-muted-foreground">
-                    Не знайдено:{' '}
+                    {t('import.notFoundLabel')}{' '}
                     <strong className="text-destructive">
                       {pricingImportResult.notFound.length}
                     </strong>
@@ -399,7 +400,7 @@ export default function PricingRulesClient() {
               </div>
               {pricingImportResult.notFound.length > 0 && (
                 <p className="text-[11px] text-destructive">
-                  Не знайдено: {pricingImportResult.notFound.join(', ')}
+                  {t('import.notFoundList', { items: pricingImportResult.notFound.join(', ') })}
                 </p>
               )}
               {pricingImportResult.details.length > 0 && (
@@ -408,19 +409,19 @@ export default function PricingRulesClient() {
                     <thead className="bg-secondary border-b border-border">
                       <tr>
                         <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">
-                          Товар
+                          {t('import.columns.good')}
                         </th>
                         <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">
-                          SKU
+                          {t('import.columns.sku')}
                         </th>
                         <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">
-                          Собів.
+                          {t('import.columns.cost')}
                         </th>
                         <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">
-                          Стара
+                          {t('import.columns.old')}
                         </th>
                         <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">
-                          Нова
+                          {t('import.columns.new')}
                         </th>
                       </tr>
                     </thead>
@@ -468,15 +469,15 @@ export default function PricingRulesClient() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Дата</TableHead>
-              <TableHead>Назва</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Постачальник</TableHead>
-              <TableHead>Бренд</TableHead>
-              <TableHead>Область</TableHead>
-              <TableHead>Значення</TableHead>
-              <TableHead>Пріоритет</TableHead>
-              <TableHead>Статус</TableHead>
+              <TableHead>{t('table.date')}</TableHead>
+              <TableHead>{t('table.name')}</TableHead>
+              <TableHead>{t('table.type')}</TableHead>
+              <TableHead>{t('table.supplier')}</TableHead>
+              <TableHead>{t('table.brand')}</TableHead>
+              <TableHead>{t('table.scope')}</TableHead>
+              <TableHead>{t('table.value')}</TableHead>
+              <TableHead>{t('table.priority')}</TableHead>
+              <TableHead>{t('table.status')}</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -495,8 +496,8 @@ export default function PricingRulesClient() {
                 <TableCell colSpan={10} className="p-0">
                   <EmptyState
                     icon={Tag}
-                    title="Правил немає"
-                    description="Створіть перше правило ціноутворення щоб автоматизувати встановлення цін при оприбуткуванні"
+                    title={t('empty.title')}
+                    description={t('empty.description')}
                   />
                 </TableCell>
               </TableRow>
@@ -514,15 +515,15 @@ export default function PricingRulesClient() {
                     <p className="text-[13px] font-medium text-foreground">{rule.name}</p>
                     {rule.roundTo != null && (
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        Округлення до {rule.roundTo} ₴
+                        {t('row.roundTo', { value: rule.roundTo })}
                       </p>
                     )}
                   </TableCell>
                   <TableCell className="text-[13px] text-muted-foreground">
-                    {TYPE_LABELS[rule.type] ?? rule.type}
+                    {TYPE_LABELS[rule.type] ? t(TYPE_LABELS[rule.type]) : rule.type}
                   </TableCell>
                   <TableCell className="text-[13px] text-muted-foreground">
-                    {rule.supplierId ? (rule.supplierName ?? '—') : 'Весь асортимент'}
+                    {rule.supplierId ? (rule.supplierName ?? '—') : t('row.allAssortment')}
                   </TableCell>
                   <TableCell className="text-[13px] text-muted-foreground">
                     {rule.brandName ? (
@@ -533,25 +534,27 @@ export default function PricingRulesClient() {
                   </TableCell>
                   <TableCell className="text-[13px] text-muted-foreground">
                     {rule.goodId && rule.good
-                      ? `Товар: ${rule.good.name}`
+                      ? t('row.good', { name: rule.good.name })
                       : rule.goodType
-                        ? (GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType)?.label ??
-                          rule.goodType)
+                        ? (() => {
+                            const opt = GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType);
+                            return opt ? t(opt.labelKey) : rule.goodType;
+                          })()
                         : rule.goodCategory
-                          ? `Категорія: ${rule.goodCategory}`
-                          : 'Весь асортимент'}
+                          ? t('row.category', { name: rule.goodCategory })
+                          : t('row.allAssortment')}
                   </TableCell>
                   <TableCell className="text-[13px] font-medium text-foreground">
                     {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
                       <div className="text-[12px] text-muted-foreground space-y-0.5">
-                        {rule.tiers.map((t, i) => (
+                        {rule.tiers.map((tier, i) => (
                           <div key={i}>
-                            {t.costMin}–{t.costMax ?? '∞'} ₴ → {t.percentValue}%
+                            {tier.costMin}–{tier.costMax ?? '∞'} ₴ → {tier.percentValue}%
                           </div>
                         ))}
                       </div>
                     ) : (
-                      valueLabel(rule)
+                      valueLabel(rule, t)
                     )}
                   </TableCell>
                   <TableCell className="text-[13px] text-muted-foreground text-center">
@@ -559,7 +562,7 @@ export default function PricingRulesClient() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={rule.isActive ? 'success' : 'secondary'}>
-                      {rule.isActive ? 'Активне' : 'Вимкнено'}
+                      {rule.isActive ? t('row.active') : t('row.inactive')}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -569,7 +572,7 @@ export default function PricingRulesClient() {
                         size="icon-sm"
                         onClick={() => void applyRule(rule)}
                         disabled={applyingId === rule.id}
-                        title="Перерахувати ціни всіх відповідних товарів зараз"
+                        title={t('rowActions.apply')}
                         className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       >
                         <RefreshCw
@@ -580,7 +583,7 @@ export default function PricingRulesClient() {
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => setEditRule(rule)}
-                        title="Редагувати"
+                        title={t('rowActions.edit')}
                         className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -590,7 +593,7 @@ export default function PricingRulesClient() {
                         size="icon-sm"
                         onClick={() => deleteRule(rule.id)}
                         disabled={deletingId === rule.id}
-                        title="Видалити"
+                        title={t('rowActions.delete')}
                         className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

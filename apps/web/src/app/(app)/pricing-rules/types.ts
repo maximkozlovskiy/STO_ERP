@@ -77,18 +77,20 @@ export const EMPTY_FORM: RuleForm = {
   tiers: [],
 };
 
+// i18n: значення = ключі каталогу `pricingRules`; рендер через t(TYPE_LABELS[type]).
 export const TYPE_LABELS: Record<string, string> = {
-  PERCENT: 'Відсоток від собівартості',
-  FIXED_AMOUNT: 'Фіксована надбавка',
-  FIXED_PRICE: 'Фіксована ціна',
-  COMPETITOR_PLUS: 'Від ціни конкурента',
-  COST_TIER: 'Грейди (за собівартістю)',
+  PERCENT: 'typeLabels.PERCENT',
+  FIXED_AMOUNT: 'typeLabels.FIXED_AMOUNT',
+  FIXED_PRICE: 'typeLabels.FIXED_PRICE',
+  COMPETITOR_PLUS: 'typeLabels.COMPETITOR_PLUS',
+  COST_TIER: 'typeLabels.COST_TIER',
 };
 
+// i18n: `labelKey` = ключ каталогу `pricingRules`; рендер через t(o.labelKey).
 export const GOOD_TYPE_OPTIONS = [
-  { value: '', label: '— Будь-який —' },
-  { value: 'SPARE_PART', label: 'Запчастина' },
-  { value: 'CONSUMABLE', label: 'Витратний матеріал' },
-  { value: 'MATERIAL', label: 'Матеріал' },
-  { value: 'TOOL', label: 'Інструмент' },
+  { value: '', labelKey: 'goodTypeOptions.ANY' },
+  { value: 'SPARE_PART', labelKey: 'goodTypeOptions.SPARE_PART' },
+  { value: 'CONSUMABLE', labelKey: 'goodTypeOptions.CONSUMABLE' },
+  { value: 'MATERIAL', labelKey: 'goodTypeOptions.MATERIAL' },
+  { value: 'TOOL', labelKey: 'goodTypeOptions.TOOL' },
 ];

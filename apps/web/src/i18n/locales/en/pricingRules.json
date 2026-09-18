@@ -1,0 +1,140 @@
+{
+  "title": "Pricing rules",
+  "subtitle": "Automatic sale price calculation when goods are received into stock",
+  "searchPlaceholder": "Search by name, supplier, brand…",
+  "actions": {
+    "priceList": "Price a list",
+    "rule": "Rule"
+  },
+  "import": {
+    "heading": "Price goods from a list",
+    "downloadTemplate": "Download CSV template",
+    "hint": "Upload an XLSX or CSV file with columns:",
+    "run": "Apply pricing",
+    "found": "Found:",
+    "updated": "Updated:",
+    "notFoundLabel": "Not found:",
+    "notFoundList": "Not found: {{items}}",
+    "columns": {
+      "good": "Good",
+      "sku": "SKU",
+      "cost": "Cost",
+      "old": "Old",
+      "new": "New"
+    }
+  },
+  "table": {
+    "date": "Date",
+    "name": "Name",
+    "type": "Type",
+    "supplier": "Supplier",
+    "brand": "Brand",
+    "scope": "Scope",
+    "value": "Value",
+    "priority": "Priority",
+    "status": "Status"
+  },
+  "empty": {
+    "title": "No rules",
+    "description": "Create your first pricing rule to automate price setting when goods are received"
+  },
+  "row": {
+    "roundTo": "Round to {{value}} ₴",
+    "allAssortment": "Entire assortment",
+    "good": "Good: {{name}}",
+    "category": "Category: {{name}}",
+    "active": "Active",
+    "inactive": "Disabled"
+  },
+  "rowActions": {
+    "apply": "Recalculate prices of all matching goods now",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "value": {
+    "grades": "{{count}} tier(s)"
+  },
+  "confirm": {
+    "deleteTitle": "Delete pricing rule?",
+    "applyTitle": "Recalculate prices by rule «{{name}}»?",
+    "applyMessage": "Sale prices of all matching goods will be updated immediately."
+  },
+  "errors": {
+    "delete": "Deletion error",
+    "apply": "Application error",
+    "template": "Template download error",
+    "import": "Pricing error",
+    "refDataLoad": "Failed to load reference data for the rule form:"
+  },
+  "typeLabels": {
+    "PERCENT": "Percent of cost",
+    "FIXED_AMOUNT": "Fixed markup",
+    "FIXED_PRICE": "Fixed price",
+    "COMPETITOR_PLUS": "Over competitor price",
+    "COST_TIER": "Tiers (by cost)"
+  },
+  "goodTypeOptions": {
+    "ANY": "— Any —",
+    "SPARE_PART": "Spare part",
+    "CONSUMABLE": "Consumable",
+    "MATERIAL": "Material",
+    "TOOL": "Tool"
+  },
+  "form": {
+    "editTitle": "Edit rule",
+    "createTitle": "New pricing rule",
+    "save": "Save",
+    "cancel": "Cancel",
+    "createdAt": "Created at",
+    "name": "Rule name",
+    "namePlaceholder": "Spare parts +35%",
+    "type": "Type",
+    "percentValue": "Markup, %",
+    "percentPlaceholder": "35",
+    "fixedAmount": "Markup, ₴",
+    "fixedAmountPlaceholder": "50",
+    "fixedPrice": "Fixed price, ₴",
+    "fixedPricePlaceholder": "320",
+    "tiersHeading": "Tiers by cost",
+    "addTier": "Add tier",
+    "tierEmpty": "Add at least one tier",
+    "tierFrom": "From (₴)",
+    "tierTo": "To (₴)",
+    "tierMarkup": "Markup (%)",
+    "removeTier": "Delete tier",
+    "roundTo": "Round to, ₴ (optional)",
+    "roundToHint": "E.g. 0.5 → to 50 kop, 1 → to hryvnia",
+    "roundToPlaceholder": "0.5",
+    "scopeTitle": "Application scope",
+    "scopeOrder": "Supplier {{gt}} Good {{gt}} Brand {{gt}} Category {{gt}} Type {{gt}} Entire assortment",
+    "supplier": "Supplier (optional)",
+    "supplierSearchPlaceholder": "Search supplier…",
+    "supplierScopeHint": "The rule will apply only when pricing orders from this supplier",
+    "good": "Specific good (optional)",
+    "goodNotSpecified": "— Not specified —",
+    "brand": "Brand (optional)",
+    "brandAny": "— Any brand —",
+    "goodType": "Good type (optional)",
+    "category": "Category (optional)",
+    "categoryPlaceholder": "Brake system",
+    "categoryHint": "Text category from the good card",
+    "priority": "Priority",
+    "priorityHint": "Lower number = higher priority",
+    "isActive": "Active rule"
+  },
+  "formErrors": {
+    "name": "Enter the rule name",
+    "percent": "Enter the markup percent",
+    "fixedAmount": "Enter the markup amount",
+    "fixedPrice": "Enter the fixed price",
+    "tierRequired": "Add at least one tier",
+    "tierMaxGtMin": "Tier {{index}}: the \"To\" value must be greater than \"From\"",
+    "tierPercentRange": "Tier {{index}}: percent must be between 0 and 999",
+    "save": "Save error"
+  },
+  "supplierPicker": {
+    "title": "Select a supplier",
+    "searchPlaceholder": "Name, phone, company...",
+    "empty": "No suppliers found"
+  }
+}
