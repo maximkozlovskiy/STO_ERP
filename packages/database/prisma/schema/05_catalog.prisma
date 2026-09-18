@@ -1,0 +1,314 @@
+model WorkCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  parentId    String?   @db.Uuid
+  name        String
+  code        String?
+  icon        String?
+  sortOrder   Int       @default(0)
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  parent                 WorkCategory?          @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children               WorkCategory[]         @relation("CategoryHierarchy")
+  works                  Work[]
+  employeeWorkCategories EmployeeWorkCategory[]
+  goodLinks              WorkGoodCategoryLink[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("work_categories")
+}
+
+model GoodCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  parentId    String?   @db.Uuid
+  name        String
+  code        String?
+  isSystem    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  parent    GoodCategory?          @relation("GoodCatHierarchy", fields: [parentId], references: [id])
+  children  GoodCategory[]         @relation("GoodCatHierarchy")
+  goods     Good[]
+  workLinks WorkGoodCategoryLink[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, parentId])
+  @@index([orgId, syncVersion])
+  @@map("good_categories")
+}
+
+model WorkGoodCategoryLink {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String @db.Uuid
+  workCategoryId String @db.Uuid
+  goodCategoryId String @db.Uuid
+
+  workCategory WorkCategory @relation(fields: [workCategoryId], references: [id])
+  goodCategory GoodCategory @relation(fields: [goodCategoryId], references: [id])
+
+  @@unique([orgId, workCategoryId, goodCategoryId])
+  // [orgId,workCategoryId] надлишковий — префікс @@unique вище
+  @@index([orgId, goodCategoryId])
+  @@map("work_good_category_links")
+}
+
+model Work {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  categoryId  String    @db.Uuid
+  name        String
+  normoHours  Float
+  price       Decimal   @db.Decimal(12, 2)
+  description String?
+  isWarranty  Boolean   @default(false)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  category       WorkCategory    @relation(fields: [categoryId], references: [id])
+  serviceWorks   ServiceWork[]
+  workOrderLines WorkOrderLine[]
+  invoiceLines   InvoiceLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("works")
+}
+
+model Brand {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  goods        Good[]
+  pricingRules PricingRule[]
+  synonyms     BrandSynonym[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@map("brands")
+}
+
+model BrandSynonym {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  brandId     String    @db.Uuid
+  synonym     String
+  normalizedSynonym String? // upper + strip non-alnum із synonym — для резолву бренду при Excel-імпорті
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@unique([orgId, synonym])
+  @@index([orgId, brandId, deletedAt])
+  @@index([orgId, normalizedSynonym])
+  @@map("brand_synonyms")
+}
+
+// Збережений мапінг колонок Excel per-контрагент для майстра завантаження товарів.
+// Дзеркалить патерн BranchProviderConfig: окрема таблиця, @@unique, атомарний upsert.
+model CounterpartyImportMapping {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @unique @db.Uuid // 1:1 з контрагентом (один мапінг на контрагента)
+  startRow       Int      @default(2) // рядок з якого починається читання товарів
+  codeCol        Int? // номер колонки коду (1-based)
+  articleCol     Int? // номер колонки артикулу
+  brandCol       Int? // номер колонки бренду
+  nameCol        Int? // номер колонки найменування
+  quantityCol    Int? // номер колонки кількості
+  priceCol       Int? // номер колонки ціни
+  syncVersion    BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+
+  @@index([orgId, counterpartyId])
+  @@map("counterparty_import_mappings")
+}
+
+model Good {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  brandId        String?   @db.Uuid
+  unitId         String?   @db.Uuid
+  goodCategoryId String?   @db.Uuid
+  internalCode   String?
+  sku            String?
+  skuNormalized  String?   // upper + strip non-alnum з sku — для exact-пошуку при Excel-імпорті (заповнюється у GoodsService)
+  name           String
+  unit           String    @default("шт")
+  purchasePrice  Decimal?  @db.Decimal(12, 2)
+  salePrice      Decimal   @db.Decimal(12, 2)
+  category       String?
+  barcode        String?
+  notes          String?
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  goodType            GoodType?
+  preferredSupplierId String?   @db.Uuid
+
+  brand               Brand?               @relation(fields: [brandId], references: [id])
+  unitOfMeasure       UnitOfMeasure?       @relation(fields: [unitId], references: [id])
+  goodCategory        GoodCategory?        @relation(fields: [goodCategoryId], references: [id])
+  preferredSupplier   Counterparty?        @relation("GoodSupplier", fields: [preferredSupplierId], references: [id])
+  barcodes            GoodBarcode[]
+  uoms                GoodUoM[]
+  stockItems          StockItem[]
+  movements           StockMovement[]
+  serviceGoods        ServiceGood[]
+  workOrderParts      WorkOrderPart[]
+  purchaseOrderLines  PurchaseOrderLine[]
+  supplierReturnLines SupplierReturnLine[]
+  stockDocumentLines  StockDocumentLine[]
+  invoiceLines        InvoiceLine[]
+  stockBatches        StockBatch[]
+  pricingRules        PricingRule[]
+  priceHistory        PriceHistory[]
+  statusLinks         GoodStatusLink[]
+
+  @@unique([orgId, internalCode])
+  @@index([orgId, deletedAt])
+  @@index([orgId, goodCategoryId, deletedAt]) // фільтр каталогу по категорії — раніше без індексу
+  @@index([orgId, sku])
+  @@index([orgId, skuNormalized])
+  @@index([orgId, goodType, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("goods")
+}
+
+model GoodBarcode {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @db.Uuid
+  goodId    String   @db.Uuid
+  barcode   String
+  type      String   @default("EAN13")
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  good Good @relation(fields: [goodId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, barcode])
+  @@index([orgId, goodId])
+  @@map("good_barcodes")
+}
+
+model GoodUoM {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String   @db.Uuid
+  goodId          String   @db.Uuid
+  unitOfMeasureId String   @db.Uuid
+  isDefault       Boolean  @default(false)
+  coefficient     Float    @default(1)
+  width           Float?
+  height          Float?
+  depth           Float?
+  volume          Float?
+  weight          Float?
+  createdAt       DateTime @default(now())
+
+  good          Good          @relation(fields: [goodId], references: [id], onDelete: Cascade)
+  unitOfMeasure UnitOfMeasure @relation(fields: [unitOfMeasureId], references: [id])
+
+  @@unique([orgId, goodId, unitOfMeasureId])
+  // [orgId,goodId] надлишковий — префікс @@unique([orgId,goodId,unitOfMeasureId]) вище
+  @@map("good_uom")
+}
+
+model UnitOfMeasure {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  shortName   String
+  isSystem    Boolean   @default(false)
+  coefficient Float     @default(1)
+  width       Float?
+  height      Float?
+  depth       Float?
+  volume      Float?
+  weight      Float?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  goods               Good[]
+  goodUoms            GoodUoM[]
+  stockBatches        StockBatch[]         @relation("StockBatchUoM")
+  purchaseOrderLines  PurchaseOrderLine[]  @relation("POLineUoM")
+  supplierReturnLines SupplierReturnLine[] @relation("SupplierReturnLineUoM")
+  stockDocumentLines  StockDocumentLine[]  @relation("SDLineUoM")
+  stockMovements      StockMovement[]      @relation("StockMovementUoM")
+  workOrderParts      WorkOrderPart[]      @relation("WorkOrderPartUoM")
+  invoiceLines        InvoiceLine[]        @relation("InvoiceLineUoM")
+
+  @@unique([orgId, shortName])
+  @@index([orgId, deletedAt])
+  @@map("units_of_measure")
+}
+
+model Service {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  description String?
+  price       Decimal?  @db.Decimal(12, 2)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  serviceWorks ServiceWork[]
+  serviceGoods ServiceGood[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("services")
+}
+
+model ServiceWork {
+  serviceId String  @db.Uuid
+  workId    String  @db.Uuid
+  quantity  Float   @default(1)
+  service   Service @relation(fields: [serviceId], references: [id])
+  work      Work    @relation(fields: [workId], references: [id])
+
+  @@id([serviceId, workId])
+  @@map("service_works")
+}
+
+model ServiceGood {
+  serviceId String  @db.Uuid
+  goodId    String  @db.Uuid
+  quantity  Float   @default(1)
+  service   Service @relation(fields: [serviceId], references: [id])
+  good      Good    @relation(fields: [goodId], references: [id])
+
+  @@id([serviceId, goodId])
+  @@map("service_goods")
+}

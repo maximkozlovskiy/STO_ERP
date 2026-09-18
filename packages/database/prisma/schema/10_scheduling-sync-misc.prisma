@@ -1,0 +1,144 @@
+model CalendarSlot {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String             @db.Uuid
+  liftId         String?            @db.Uuid
+  employeeId     String?            @db.Uuid
+  workOrderId    String?            @db.Uuid
+  counterpartyId String?            @db.Uuid
+  vehicleId      String?            @db.Uuid
+  parentSlotId   String?            @db.Uuid
+  startAt        DateTime
+  endAt          DateTime
+  status         CalendarSlotStatus @default(BOOKED)
+  type           CalendarSlotType   @default(WORK)
+  notes          String?
+  syncVersion    BigInt             @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+
+  lift         Lift?          @relation(fields: [liftId], references: [id])
+  workOrder    WorkOrder?     @relation(fields: [workOrderId], references: [id])
+  counterparty Counterparty?  @relation(fields: [counterpartyId], references: [id])
+  vehicle      Vehicle?       @relation(fields: [vehicleId], references: [id])
+  parent       CalendarSlot?  @relation("SlotContinuation", fields: [parentSlotId], references: [id])
+  continuation CalendarSlot[] @relation("SlotContinuation")
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, startAt, deletedAt])
+  @@index([orgId, liftId, startAt, endAt])
+  @@index([orgId, employeeId, startAt])
+  @@index([orgId, syncVersion])
+  // Covering index for getLinkedDocuments + getLinkedCounts (linked-docs panel).
+  // WHERE: workOrderId/orgId/deletedAt + ORDER BY startAt DESC. Без нього Postgres
+  // ішов через (orgId, deletedAt) і фільтрував workOrderId по-рядково.
+  @@index([orgId, workOrderId, deletedAt, startAt])
+  @@map("calendar_slots")
+}
+
+model WebhookEndpoint {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  url         String
+  secret      String    @default("")
+  events      String[]
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  syncVersion BigInt    @default(0)
+
+  org        Organisation      @relation(fields: [orgId], references: [id])
+  deliveries WebhookDelivery[]
+
+  // Covering index: findAll сортує по createdAt DESC + filter deletedAt. Без createdAt
+  // у індексі Postgres робив Sort node поверх Index Scan на (orgId, deletedAt).
+  @@index([orgId, deletedAt, createdAt])
+  @@index([orgId, isActive])
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  endpointId   String   @db.Uuid
+  event        String
+  payload      Json
+  status       String   @default("PENDING")
+  attempts     Int      @default(0)
+  responseCode Int?
+  responseBody String?
+  createdAt    DateTime @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id])
+
+  @@index([endpointId, createdAt])
+  @@map("webhook_deliveries")
+}
+
+model SyncJob {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String        @db.Uuid
+  tableName   String
+  recordId    String        @db.Uuid
+  operation   String // INSERT | UPDATE | DELETE
+  syncVersion BigInt
+  payload     Json
+  status      SyncJobStatus @default(PENDING)
+  attempts    Int           @default(0)
+  lastError   String?
+  createdAt   DateTime      @default(now())
+  processedAt DateTime?
+
+  @@index([orgId, status])
+  @@index([orgId, tableName, syncVersion])
+  @@map("sync_jobs")
+}
+
+model BookingRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String    @db.Uuid
+  branchId        String    @db.Uuid
+  status          String    @default("PENDING")
+  clientName      String
+  clientPhone     String
+  serviceIds      String[]
+  requestedDate   DateTime
+  liftId          String?   @db.Uuid // обраний ліфт слота (getAvailability присвоює вільний; блокує саме його, не всі)
+  confirmedSlotId String?   @db.Uuid
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  org    Organisation @relation(fields: [orgId], references: [id])
+  branch GarageBranch @relation(fields: [branchId], references: [id])
+
+  // Covering index: findAll сортує по createdAt DESC + filter deletedAt. Existing
+  // (orgId, createdAt) покривав unfiltered scan; для findAll з deletedAt=null фільтром
+  // (orgId, deletedAt, createdAt) даs covering без heap-read для розбраковки soft-deleted.
+  @@index([orgId, status, deletedAt])
+  @@index([orgId, deletedAt, createdAt])
+  // Covering index для публічного hot-path `BookingService.getAvailability()`:
+  // WHERE orgId=X AND branchId=Y AND status='CONFIRMED' AND requestedDate BETWEEN ... AND deletedAt IS NULL.
+  // Existing indexes покривають orgId+status, але branchId+requestedDate range залишались
+  // heap-row filter. Цей індекс ставить equality columns першими (orgId, branchId, status)
+  // + range column останнім (requestedDate) для single index-range scan без heap re-filter.
+  @@index([orgId, branchId, status, requestedDate])
+  @@map("booking_requests")
+}
+
+model UserPreference {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId      String   @db.Uuid
+  employeeId String   @db.Uuid
+  key        String
+  value      Json
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([orgId, employeeId, key])
+  // sto-optimize: @@index([orgId, employeeId]) is redundant — @@unique([orgId, employeeId, key])
+  // covers prefix lookups on (orgId, employeeId).
+  @@map("user_preferences")
+}

@@ -1,0 +1,125 @@
+model Employee {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String         @db.Uuid
+  userId      String?        @db.Uuid
+  firstName   String
+  lastName    String
+  phone       String?
+  email       String?
+  role        UserRole
+  status      EmployeeStatus @default(ACTIVE)
+  rateScheme  Json
+  dateOfHire  DateTime?
+  dateOfFire  DateTime?
+  syncVersion BigInt         @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  allBranches Boolean @default(false)
+
+  org                    Organisation            @relation(fields: [orgId], references: [id])
+  employeeZones          EmployeeZone[]
+  employeeLifts          EmployeeLift[]
+  employeeWorkCategories EmployeeWorkCategory[]
+  workOrderLines         WorkOrderLine[]
+  workOrderLineAssists   WorkOrderLineEmployee[]
+  authAccount            AuthAccount?
+  employeeBranches       EmployeeBranch[]
+  comments               Comment[]
+  uploadedMedia          WorkOrderMedia[]
+  auditEvents            AuditEvent[]
+  inspectionReports      InspectionReport[]
+  preferences            UserPreference[]
+  payrollLines           PayrollLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("employees")
+}
+
+model EmployeeZone {
+  employeeId String   @db.Uuid
+  zoneId     String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  zone       Zone     @relation(fields: [zoneId], references: [id])
+
+  @@id([employeeId, zoneId])
+  @@map("employee_zones")
+}
+
+model EmployeeLift {
+  employeeId String   @db.Uuid
+  liftId     String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  lift       Lift     @relation(fields: [liftId], references: [id])
+
+  @@id([employeeId, liftId])
+  @@map("employee_lifts")
+}
+
+model EmployeeWorkCategory {
+  employeeId     String       @db.Uuid
+  workCategoryId String       @db.Uuid
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  workCategory   WorkCategory @relation(fields: [workCategoryId], references: [id])
+
+  @@id([employeeId, workCategoryId])
+  @@map("employee_work_categories")
+}
+
+// B10: Branch ACL
+model EmployeeBranch {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId String   @db.Uuid
+  branchId   String   @db.Uuid
+  orgId      String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  employee Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  branch   GarageBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  org      Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, branchId])
+  // sto-optimize: @@index([employeeId]) is redundant — @@unique([employeeId, branchId])
+  // already creates a B-tree that serves equality lookups on (employeeId) alone.
+  @@index([orgId])
+  @@map("employee_branches")
+}
+
+// F8: Comments (polymorphic)
+model Comment {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  entityType  String
+  entityId    String   @db.Uuid
+  body        String
+  authorId    String   @db.Uuid
+  createdAt   DateTime @default(now())
+  syncVersion BigInt   @default(0)
+
+  org    Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  author Employee     @relation(fields: [authorId], references: [id])
+
+  @@index([orgId, entityType, entityId, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("comments")
+}
+
+// F10: Work Order Templates
+model WorkOrderTemplate {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  lines       Json      @default("[]")
+  parts       Json      @default("[]")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  syncVersion BigInt    @default(0)
+
+  org Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, deletedAt])
+  @@map("work_order_templates")
+}

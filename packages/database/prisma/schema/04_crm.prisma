@@ -1,0 +1,233 @@
+model Counterparty {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String           @db.Uuid
+  type          CounterpartyType
+  firstName     String?
+  lastName      String?
+  companyName   String?
+  edrpou        String?
+  vatPayer      Boolean          @default(false)
+  phone         String?
+  email         String?
+  notes         String?
+  legalForm     LegalForm?
+  legalAddress  String?
+  actualAddress String?
+  bankAccount   String?
+  bankName      String?
+  contactPerson String?
+  taxNumber     String?
+  syncVersion   BigInt           @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+
+  org                Organisation           @relation(fields: [orgId], references: [id])
+  customerGarages    CustomerGarage[]
+  contracts          CounterpartyContract[]
+  importMapping      CounterpartyImportMapping?
+  settlementAccount  SettlementAccount?
+  loyaltyAccount     LoyaltyAccount?
+  purchaseOrders     PurchaseOrder[]
+  supplierReturns    SupplierReturn[]
+  supplierPayments   SupplierPayment[]
+  invoices           Invoice[]
+  workOrders         WorkOrder[]
+  payments           Payment[]
+  reconciliationActs ReconciliationAct[]
+  goodsAsSupplier    Good[]                 @relation("GoodSupplier")
+  pricingRules       PricingRule[]          @relation("PricingRuleSupplier")
+  warranties         Warranty[]
+  calendarSlots      CalendarSlot[]
+  statusLinks        CounterpartyStatusLink[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, type, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("counterparties")
+}
+
+// Кастомні мітки-статуси контрагентів (VIP / Постійний / Проблемний / Чорний список тощо).
+// Per-org довідник, керований через вкладку «Статуси» на сторінці контрагентів. M:N із Counterparty
+// через CounterpartyStatusLink. Дзеркалить патерн Brand (директорія name+soft-delete).
+model CounterpartyStatus {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  color       String    @default("#6b7280") // hex-колір бейджа (дефолт — сірий)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org   Organisation             @relation(fields: [orgId], references: [id])
+  links CounterpartyStatusLink[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("counterparty_statuses")
+}
+
+// Junction M:N: призначення статусу контрагенту. Без syncVersion (як інші junction-таблиці).
+model CounterpartyStatusLink {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @db.Uuid
+  statusId       String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  counterparty Counterparty       @relation(fields: [counterpartyId], references: [id])
+  status       CounterpartyStatus @relation(fields: [statusId], references: [id])
+
+  @@unique([counterpartyId, statusId])
+  @@index([orgId, counterpartyId])
+  @@index([orgId, statusId])
+  @@map("counterparty_status_links")
+}
+
+// Кастомні мітки-статуси товарів. Per-org довідник, керований через вкладку «Статуси» у Каталозі.
+// M:N із Good через GoodStatusLink. Дзеркалить CounterpartyStatus.
+model GoodStatus {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  color       String    @default("#6b7280") // hex-колір бейджа (дефолт — сірий)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org   Organisation     @relation(fields: [orgId], references: [id])
+  links GoodStatusLink[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("good_statuses")
+}
+
+// Junction M:N: призначення статусу товару. Без syncVersion (як інші junction-таблиці).
+model GoodStatusLink {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId     String   @db.Uuid
+  goodId    String   @db.Uuid
+  statusId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  good   Good       @relation(fields: [goodId], references: [id])
+  status GoodStatus @relation(fields: [statusId], references: [id])
+
+  @@unique([goodId, statusId])
+  @@index([orgId, goodId])
+  @@index([orgId, statusId])
+  @@map("good_status_links")
+}
+
+model CounterpartyContract {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String       @db.Uuid
+  counterpartyId   String       @db.Uuid
+  number           String
+  contractType     ContractType
+  startDate        DateTime     @db.Date
+  endDate          DateTime?    @db.Date
+  isPrimary        Boolean      @default(false)
+  creditLimit      Decimal?     @db.Decimal(15, 2)
+  currencyCode     String       @default("UAH") @db.VarChar(10)
+  paymentDeferDays Int?
+  syncVersion      BigInt       @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  counterparty   Counterparty    @relation(fields: [counterpartyId], references: [id])
+  workOrders     WorkOrder[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([orgId, counterpartyId, deletedAt])
+  // sto-optimize (2026-08-30): hot-path getSchedule — filter by (orgId, contractType='PURCHASE'),
+  // не використовує counterpartyId — існуючий базовий індекс не покривав.
+  @@index([orgId, contractType, deletedAt])
+  @@index([orgId, syncVersion])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
+  @@map("counterparty_contracts")
+}
+
+model CustomerGarage {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  counterpartyId String    @db.Uuid
+  name           String
+  address        String?
+  notes          String?
+  isDefault      Boolean   @default(false)
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+  vehicles     Vehicle[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("customer_garages")
+}
+
+model Vehicle {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String    @db.Uuid
+  customerGarageId String    @db.Uuid
+  vin              String?
+  licensePlate     String?
+  make             String
+  model            String
+  year             Int?
+  engineVolume     Float?
+  fuelType         String?
+  currentMileage   Int?
+  color            String?
+  notes            String?
+  transmissionType String?
+  driveType        String?
+  bodyType         String?
+  engineCode       String?
+  insuranceExpiry  DateTime?
+  inspectionExpiry DateTime?
+  syncVersion      BigInt    @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  customerGarage       CustomerGarage        @relation(fields: [customerGarageId], references: [id])
+  vehicleNodes         VehicleNode[]
+  workOrders           WorkOrder[]
+  maintenanceSchedules MaintenanceSchedule[]
+  calendarSlots        CalendarSlot[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, vin])
+  @@index([orgId, syncVersion])
+  @@map("vehicles")
+}
+
+model VehicleNode {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String    @db.Uuid
+  vehicleId        String    @db.Uuid
+  category         String
+  name             String
+  mileageAtInstall Int?
+  notes            String?
+  syncVersion      BigInt    @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([orgId, vehicleId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("vehicle_nodes")
+}

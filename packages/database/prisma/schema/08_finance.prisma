@@ -1,0 +1,540 @@
+model Invoice {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String        @db.Uuid
+  counterpartyId  String        @db.Uuid
+  workOrderId     String?       @db.Uuid
+  number          String
+  amount          Decimal       @db.Decimal(12, 2)
+  // Сплачена сума (сума всіх Payment цього рахунку). Часткова оплата: status=PARTIALLY_PAID
+  // поки paidAmount<amount, PAID коли paidAmount>=amount. Backfill: наявним PAID → paidAmount=amount.
+  paidAmount      Decimal       @default(0) @db.Decimal(12, 2)
+  status          InvoiceStatus @default(DRAFT)
+  dueDate         DateTime?
+  invoiceType     String        @default("INVOICE")
+  notes           String?
+  totalWithoutVat Decimal       @default(0) @db.Decimal(12, 2)
+  totalVat        Decimal       @default(0) @db.Decimal(12, 2)
+  totalWithVat    Decimal       @default(0) @db.Decimal(12, 2)
+  // Мультивалюта (Фаза 3): валюта документа. amount/paidAmount/total* — у ЦІЙ валюті (оплата має
+  // збігатися з валютою рахунку); totalAmountBase — у БАЗОВІЙ валюті org по курсу на documentDate;
+  // rateUsed — курс. TD1 (2026-09-14): currencyId NOT NULL — база сідиться на setup.
+  currencyId      String        @db.Uuid
+  totalAmountBase Decimal?      @db.Decimal(12, 2)
+  rateUsed        Decimal?      @db.Decimal(18, 6)
+  documentDate    DateTime      @default(now()) @db.Date
+  syncVersion     BigInt        @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  counterparty Counterparty  @relation(fields: [counterpartyId], references: [id])
+  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  currency     Currency?     @relation("InvoiceCurrency", fields: [currencyId], references: [id])
+  payments     Payment[]
+  lines        InvoiceLine[]
+
+  @@index([orgId, status, deletedAt, createdAt])
+  @@index([orgId, syncVersion])
+  @@index([orgId, deletedAt, createdAt])
+  @@index([orgId, documentDate, deletedAt])
+  // Covering index for getLinkedDocuments + getLinkedCounts (work-orders page badges,
+  // modal Documents tab). WHERE: workOrderId/orgId/deletedAt + status≠CANCELLED, ORDER BY
+  // createdAt DESC. Без цього індекса Postgres ішов через (orgId, status, deletedAt)
+  // partial scan + per-row workOrderId filter — O(N) на кожен WO у groupBy.
+  @@index([orgId, workOrderId, deletedAt, createdAt])
+  // T14: ручний partial-unique (orgId, number) WHERE deletedAt IS NULL — міграція 20260909210000 (Prisma не виражає partial-unique у @@unique).
+  @@map("invoices")
+}
+
+// Append-only — ніколи не редагується
+model Payment {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String   @db.Uuid
+  counterpartyId  String   @db.Uuid
+  workOrderId     String?  @db.Uuid
+  invoiceId       String?  @db.Uuid
+  amount          Decimal  @db.Decimal(12, 2) // у валюті оплати (currencyId — з рахунку-призначення)
+  // Мультивалюта (Фаза 2): currencyId — валюта оплати (з sourceType-рахунку bank/cash); amountBase —
+  // у БАЗОВІЙ валюті org (UAH) по курсу на дату; rateUsed — курс. nullable — backfill=UAH.
+  currencyId      String?  @db.Uuid
+  amountBase      Decimal? @db.Decimal(12, 2)
+  rateUsed        Decimal? @db.Decimal(18, 6)
+  method          String
+  notes           String?
+  fiscalReceiptId String?
+  // Фіскальний статус (ПРРО). null = фіскалізація не застосовна (метод без requiresFiscal).
+  // QUEUED = у черзі; DONE = чек пробито (fiscalReceiptId заповнено); FAILED = вичерпано ретраї
+  // (fiscalError); SKIPPED = фіскалізація вимкнена на філії. Оновлюється processor-ом (delivery-
+  // метадані — сам платіж лишається незмінним).
+  fiscalStatus    FiscalReceiptStatus?
+  fiscalError     String?
+  // Рахунок-призначення: куди фізично лягли гроші (дзеркало SupplierPayment). null для старих
+  // рядків / коли не вказано. sourceType↔(bankAccountId|cashRegisterId) узгоджені у сервісі.
+  sourceType      PaymentSourceType?
+  bankAccountId   String?  @db.Uuid
+  cashRegisterId  String?  @db.Uuid
+  // Лінк на онлайн-намір (QR monobank), з якого створено цей Payment. @unique = idempotency-guard:
+  // реконсиляція наміру (PAID але paymentId ще не залінковано) може повторити payments.create після
+  // збою link-write — унікальний констрейнт відкидає дубль (P2002), finalize знаходить наявний
+  // Payment по цьому полю і лінкує. null для звичайних (не-онлайн) платежів. Bug #688.
+  onlinePaymentIntentId String? @unique @db.Uuid
+  syncVersion     BigInt   @default(0)
+  createdAt       DateTime @default(now())
+
+  counterparty Counterparty  @relation(fields: [counterpartyId], references: [id])
+  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
+  bankAccount  BankAccount?  @relation(fields: [bankAccountId], references: [id])
+  cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id])
+  currency     Currency?     @relation(fields: [currencyId], references: [id])
+
+  @@index([orgId, workOrderId])
+  // Covering: list endpoint sorts by createdAt DESC + filters by counterpartyId.
+  // Замінює `(orgId, counterpartyId)` → Postgres віддає рядки в індекс-order, sort node зникає.
+  @@index([orgId, counterpartyId, createdAt])
+  // For unfiltered list (no counterpartyId): orgId + createdAt DESC + take
+  @@index([orgId, createdAt])
+  // sto-optimize (2026-09-06): invoices.getLinkedCounts робить groupBy(by: invoiceId,
+  // where invoiceId IN [...до 500], orgId) на КОЖНУ сторінку списку рахунків. FK
+  // payments.invoiceId мав лише FK-constraint (Postgres не індексує FK автоматично) →
+  // org-wide seq/index-only scan по orgId + per-row invoiceId filter. Covering index
+  // по (orgId, invoiceId) робить groupBy index-only.
+  @@index([orgId, invoiceId])
+  // sto-optimize (2026-09-09, Цикл 2): /payments findAll фільтрує по fiscalStatus
+  // (дропдаун-фільтр — домінантний use-case: пошук FAILED-чеків для повторної фіскалізації).
+  // WHERE (orgId, fiscalStatus=X) ORDER BY createdAt DESC — наявний (orgId, createdAt) веде
+  // лише сортування, fiscalStatus-рівність не покрита (leftmost-prefix miss) → org-wide scan
+  // усіх платежів орг у createdAt-порядку + heap-filter fiscalStatus. Payment append-only
+  // high-volume (1 рядок на грошову операцію). Covering (orgId, fiscalStatus, createdAt):
+  // fiscalStatus equality leftmost, createdAt sort/range у tail → index-range scan + готовий
+  // порядок (без external sort). fiscalStatus nullable ('none'→IS NULL теж покрито).
+  @@index([orgId, fiscalStatus, createdAt])
+  @@index([orgId, syncVersion]) // T5: delta-pull курсор (Payment — append-only high-volume)
+  @@map("payments")
+}
+
+// Намір онлайн-оплати (QR через monobank/LiqPay). Payment створюється ЛИШЕ коли gateway
+// підтвердив (polling PENDING→PAID через CAS). paymentId лінкує створений Payment (idempotency).
+model OnlinePaymentIntent {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId            String              @db.Uuid
+  gateway          String              @default("monobank")
+  gatewayInvoiceId String? // invoiceId у gateway
+  pageUrl          String? // сторінка оплати gateway (рендериться як QR)
+  amount           Decimal             @db.Decimal(12, 2)
+  counterpartyId   String              @db.Uuid
+  invoiceId        String?             @db.Uuid
+  workOrderId      String?             @db.Uuid
+  status           OnlinePaymentStatus @default(PENDING)
+  paymentId        String?             @db.Uuid // Payment, створений при PAID (idempotency-лінк)
+  error            String?
+  expiresAt        DateTime? // жорсткий wall-clock таймаут polling → EXPIRED
+  syncVersion      BigInt              @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime?
+
+  @@index([orgId, status])
+  @@index([orgId, createdAt])
+  @@map("online_payment_intents")
+}
+
+// Конфіг провайдера per-branch per-kind (ПРРО / еквайринг). Дзеркалить NotificationChannelConfig:
+// кілька провайдерів на філію, активний = enabled (рівно 1 per kind — ексклюзивна активація).
+// credentials — JSON-рядок (checkbox: {licenseKey,pinCode,cashRegisterId}; vchasno: {token};
+// monobank: {token}; liqpay: {publicKey,privateKey}) — шифрується at-rest цілим полем
+// (prisma.service ENCRYPTED_FIELDS). ВИКЛЮЧено з PULL_TABLES (містить секрети — mobile не бачить).
+model BranchProviderConfig {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String       @db.Uuid
+  branchId    String       @db.Uuid
+  kind        ProviderKind // FISCAL | PAYMENT | DELIVERY
+  provider    String // 'checkbox' | 'vchasno' | 'monobank' | 'liqpay' | 'nova-poshta'
+  enabled     Boolean      @default(false) // активний провайдер = enabled (лише 1 per kind per branch)
+  apiUrl      String? // необовʼязковий override базового URL провайдера
+  credentials String? // JSON-рядок секретів, шифрується at-rest (ENCRYPTED_FIELDS)
+  shiftMode   ShiftMode    @default(MANUAL) // лише FISCAL: MANUAL / AUTO_OPEN
+  syncVersion BigInt       @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([branchId, kind, provider]) // 1 рядок на провайдера у межах філії+типу
+  @@index([orgId, branchId, kind])
+  @@map("branch_provider_configs")
+}
+
+model SettlementAccount {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @unique @db.Uuid
+  balance        Decimal  @default(0) @db.Decimal(12, 2)
+  syncVersion    BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
+
+  counterparty Counterparty            @relation(fields: [counterpartyId], references: [id])
+  transactions SettlementTransaction[]
+
+  @@index([orgId])
+  @@map("settlement_accounts")
+}
+
+// Append-only — ніколи не редагується
+model SettlementTransaction {
+  id                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String                    @db.Uuid
+  settlementAccountId String                    @db.Uuid
+  type                SettlementTransactionType
+  amount              Decimal                   @db.Decimal(12, 2) // у валюті транзакції (currencyId)
+  // Мультивалюта (Фаза 2): currencyId — валюта транзакції; amountBase — сума у БАЗОВІЙ валюті org (UAH)
+  // по курсу на дату; rateUsed — застосований курс. Баланс боргу (SettlementAccount.balance) рахується
+  // від amountBase (Σ sign×amountBase) → зведення різновалютних боргів у base. nullable — backfill=UAH.
+  currencyId          String?                   @db.Uuid
+  amountBase          Decimal?                  @db.Decimal(12, 2)
+  rateUsed            Decimal?                  @db.Decimal(18, 6)
+  documentType        String?
+  documentId          String?                   @db.Uuid
+  notes               String?
+  createdAt           DateTime                  @default(now())
+  createdBy           String?                   @db.Uuid
+
+  account  SettlementAccount @relation(fields: [settlementAccountId], references: [id])
+  currency Currency?         @relation(fields: [currencyId], references: [id])
+
+  // Covering for getTransactions (paginated list per account) + reconciliation period scans:
+  // WHERE settlementAccountId/orgId + ORDER BY createdAt DESC + sometimes BETWEEN periodFrom/periodTo.
+  @@index([orgId, settlementAccountId, createdAt])
+  @@index([orgId, documentType, documentId])
+  // sto-optimize (2026-09-06): dashboard.getSummary "виручка сьогодні" робить
+  // aggregate({ where: { orgId, type: 'PAYMENT', createdAt: { gte: todayStart } }, _sum: amount }).
+  // Ця гілка НЕ фільтрує по settlementAccountId → існуючий (orgId, settlementAccountId, createdAt)
+  // не вибирається (leftmost-prefix miss на settlementAccountId), (orgId, documentType, documentId) —
+  // нерелевантний. Дашборд опитується SSE кожні 30s (кеш 25s) для КОЖНОГО активного користувача,
+  // а settlement_transactions — append-only high-volume (кожен charge/payment/prepayment по всіх
+  // контрагентах). Без цього індексу aggregate робить org-wide scan + heap-filter type+createdAt.
+  // Covering (orgId, type, createdAt): type=equality → leftmost, createdAt=range → tail → index-range scan.
+  @@index([orgId, type, createdAt])
+  @@map("settlement_transactions")
+}
+
+// Зарплатний період — контейнер розрахунку нарахувань за проміжок дат. FSM DRAFT→COMPUTED→PAID.
+// На COMPUTED нарахування ФІКСУЮТЬСЯ у PayrollLine[] (snapshot, як фінансовий документ).
+model PayrollPeriod {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @db.Uuid
+  branchId    String?             @db.Uuid // null = усі філії
+  periodStart DateTime            @db.Date
+  periodEnd   DateTime            @db.Date
+  status      PayrollPeriodStatus @default(DRAFT)
+  note        String?
+  computedAt  DateTime?
+  computedBy  String?             @db.Uuid
+  paidAt      DateTime?
+  paidBy      String?             @db.Uuid
+  syncVersion BigInt              @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  org   Organisation  @relation(fields: [orgId], references: [id])
+  lines PayrollLine[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, status])
+  @@index([orgId, syncVersion])
+  @@map("payroll_periods")
+}
+
+// Нарахування одному співробітнику за період (зафіксоване на момент COMPUTED).
+model PayrollLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  periodId       String   @db.Uuid
+  employeeId     String   @db.Uuid
+  rateSchemeType String // 'percent_normo' | 'per_normo_hour' | 'fixed_plus_bonus' (snapshot типу)
+  baseAmount     Decimal  @db.Decimal(12, 2) // Σ amount завершених робіт (база для %)
+  normoHours     Float // Σ normoHours завершених робіт
+  linesCount     Int // к-сть врахованих ліній нарядів
+  accruedAmount  Decimal  @db.Decimal(12, 2) // нараховано до виплати
+  paidAmount     Decimal  @default(0) @db.Decimal(12, 2) // фактично виплачено
+  syncVersion    BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  period   PayrollPeriod @relation(fields: [periodId], references: [id])
+  employee Employee      @relation(fields: [employeeId], references: [id])
+
+  @@unique([periodId, employeeId])
+  @@index([orgId, employeeId])
+  @@index([orgId, syncVersion])
+  @@map("payroll_lines")
+}
+
+model ReconciliationAct {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @db.Uuid
+  periodFrom     DateTime
+  periodTo       DateTime
+  openingBalance Decimal  @db.Decimal(12, 2)
+  closingBalance Decimal  @db.Decimal(12, 2)
+  snapshotJson   Json
+  syncVersion    BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  createdBy      String?  @db.Uuid
+
+  counterparty Counterparty @relation(fields: [counterpartyId], references: [id])
+
+  // sto-optimize: covering index — getReconciliationActs sortує по createdAt DESC + filter
+  // по orgId+counterpartyId. Колишній (orgId, counterpartyId) без createdAt → Postgres
+  // Sort node поверх Index Scan. Index-order DESC scan усуває Sort node на типовому
+  // навантаженні (~200 акт. на контрагента) — index-only scan без heap-read для sort.
+  @@index([orgId, counterpartyId, createdAt])
+  @@index([orgId, syncVersion])
+  @@map("reconciliation_acts")
+}
+
+model LoyaltyAccount {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  counterpartyId String   @unique @db.Uuid
+  balance        Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  syncVersion    BigInt   @default(0)
+
+  org          Organisation         @relation(fields: [orgId], references: [id])
+  counterparty Counterparty         @relation(fields: [counterpartyId], references: [id])
+  transactions LoyaltyTransaction[]
+
+  // [orgId] надлишковий — префікс [orgId,syncVersion] нижче
+  @@index([orgId, syncVersion])
+  @@map("loyalty_accounts")
+}
+
+// Append-only — ніколи не редагується
+model LoyaltyTransaction {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId    String   @db.Uuid
+  type         String // EARN | REDEEM
+  points       Decimal  @db.Decimal(12, 2)
+  documentId   String?  @db.Uuid
+  documentType String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, createdAt])
+  // Idempotency EARN per (account, document): один EARN на документ. Prisma не підтримує
+  // partial unique з WHERE → індекс живе у міграції "loyalty_earn_one_per_document_uq"
+  // (WHERE type='EARN' AND "documentId" IS NOT NULL). Захищає від подвійного нарахування при
+  // паралельних/повторних BullMQ-джобах (read-then-write guard ловить лише послідовні).
+  @@map("loyalty_transactions")
+}
+
+model Currency {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String    @db.Uuid
+  name              String
+  fullName          String?
+  internationalName String?
+  code              String
+  symbol            String?
+  isSystem          Boolean   @default(false)
+  nbuFetchEnabled   Boolean   @default(false)
+  nbuMarkupPercent  Decimal?  @db.Decimal(6, 2)
+  syncVersion       BigInt    @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  organisation           Organisation            @relation(fields: [orgId], references: [id])
+  exchangeRates          ExchangeRate[]
+  bankAccounts           BankAccount[]
+  cashRegisters          CashRegister[]
+  payments               Payment[]
+  settlementTransactions SettlementTransaction[]
+  workOrders             WorkOrder[]             @relation("WorkOrderCurrency")
+  purchaseOrders         PurchaseOrder[]         @relation("PurchaseOrderCurrency")
+  invoices               Invoice[]               @relation("InvoiceCurrency")
+  supplierPayments       SupplierPayment[]       @relation("SupplierPaymentCurrency")
+
+  @@unique([orgId, code])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  currencyId  String    @db.Uuid
+  date        DateTime  @db.Date
+  rate        Decimal   @db.Decimal(18, 6)
+  coefficient Decimal   @default(1) @db.Decimal(18, 6)
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organisation Organisation @relation(fields: [orgId], references: [id])
+  currency     Currency     @relation(fields: [currencyId], references: [id])
+
+  @@unique([orgId, currencyId, date])
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("exchange_rates")
+}
+
+model BankAccount {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  ibanUA      String
+  currencyId  String    @db.Uuid
+  bankName    String?
+  branchId    String?   @db.Uuid
+  mfo         String?
+  edrpou      String?
+  bankAddress String?
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organisation     Organisation      @relation(fields: [orgId], references: [id])
+  currency         Currency          @relation(fields: [currencyId], references: [id])
+  branch           GarageBranch?     @relation(fields: [branchId], references: [id])
+  primaryForOrgs   Organisation[]    @relation("OrgPrimaryBankAccount")
+  supplierPayments SupplierPayment[]
+  payments         Payment[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("bank_accounts")
+}
+
+model CashRegister {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  name           String
+  currencyId     String    @db.Uuid
+  branchId       String    @db.Uuid
+  isFiscal       Boolean   @default(false) // фіскальна каса → операції лише у відкриту зміну + ПРРО
+  // Привʼязка фіскальної каси до ПРРО-провайдера (код 'checkbox'|'vchasno' з BranchProviderConfig
+  // тієї ж філії; не FK — provider там текстовий код). null → фіскалізується активним per-branch
+  // провайдером (зворотна сумісність). CashShift.provider береться звідси при відкритті зміни.
+  fiscalProvider          String? // код ПРРО-провайдера цієї каси
+  providerCashRegisterId  String? // id каси на боці провайдера (Checkbox cashRegisterId; Вчасно — у токені)
+  initialBalance Decimal   @default(0) @db.Decimal(12, 2) // стартовий залишок готівки
+  syncVersion    BigInt    @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organisation     Organisation      @relation(fields: [orgId], references: [id])
+  currency         Currency          @relation(fields: [currencyId], references: [id])
+  branch           GarageBranch      @relation(fields: [branchId], references: [id])
+  supplierPayments SupplierPayment[]
+  payments         Payment[]
+  cashShifts       CashShift[]
+  operations       CashOperation[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("cash_registers")
+}
+
+// Касова операція — рух готівки (append-only, шаблон SettlementTransaction: без deletedAt/updatedAt/
+// syncVersion, ніколи не редагується). Виправлення — сторно-операцією протилежного напряму.
+// ЄДИНА точка руху готівки — CashService.createOperation. Баланс каси = initialBalance + Σ(sign*amount).
+model CashOperation {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String              @db.Uuid
+  cashRegisterId    String              @db.Uuid
+  cashShiftId       String?             @db.Uuid // для фіскальної каси — зміна, у якій проведено
+  direction         CashDirection // IN (внесення) | OUT (видача)
+  amount            Decimal             @db.Decimal(12, 2) // завжди > 0, знак з direction (у валюті каси)
+  // Мультивалюта (Фаза 1): amountBase = amount у БАЗОВІЙ валюті org (UAH) по курсу на дату операції;
+  // rateUsed — застосований курс (rate/coefficient). Для базової валюти каси rateUsed=1, amountBase=amount.
+  // nullable — backfill наявних (усе=UAH). Баланс каси лишається у валюті каси (amount); base — для звітності.
+  amountBase        Decimal?            @db.Decimal(12, 2)
+  rateUsed          Decimal?            @db.Decimal(18, 6)
+  reason            CashOperationReason
+  expenseCategoryId String?             @db.Uuid // стаття витрат (для reason=EXPENSE)
+  counterpartyId    String?             @db.Uuid // клієнт/постачальник (для SALE_PAYMENT/REFUND/SUPPLIER_PAYMENT)
+  employeeId        String?             @db.Uuid // співробітник (для PAYROLL)
+  documentType      String? // 'Payment' | 'PayrollPeriod' | ...
+  documentId        String?             @db.Uuid
+  notes             String?
+  createdBy         String?             @db.Uuid
+  createdAt         DateTime            @default(now())
+
+  cashRegister    CashRegister     @relation(fields: [cashRegisterId], references: [id])
+  expenseCategory ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+
+  @@index([orgId, cashRegisterId, createdAt])
+  @@index([orgId, cashShiftId])
+  @@index([orgId, reason, createdAt])
+  @@map("cash_operations")
+}
+
+// Довідник «Статті руху коштів» (per-org, ієрархічний). Дзеркалить ієрархію WorkCategory.
+// Тип (EXPENSE/INCOME) задає напрям касової операції. Прив'язується до касових IN/OUT операцій.
+model ExpenseCategory {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @db.Uuid
+  parentId    String?             @db.Uuid // null = корінь дерева
+  name        String
+  type        ExpenseCategoryType @default(EXPENSE) // напрям (EXPENSE=OUT, INCOME=IN); гілка дерева одного типу
+  sortOrder   Int                 @default(0)
+  isActive    Boolean             @default(true)
+  syncVersion BigInt              @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  org        Organisation      @relation(fields: [orgId], references: [id])
+  parent     ExpenseCategory?  @relation("ExpenseCatHierarchy", fields: [parentId], references: [id])
+  children   ExpenseCategory[] @relation("ExpenseCatHierarchy")
+  operations CashOperation[]
+
+  @@unique([orgId, name])
+  @@index([orgId, deletedAt])
+  @@index([orgId, parentId])
+  @@index([orgId, syncVersion])
+  @@map("expense_categories")
+}
+
+// Касова зміна (ПРРО). Чек пробивається лише у відкриту зміну; закриття = Z-звіт (щодня).
+// checkboxAccessToken — короткоживучий cashier-token від Checkbox (шифрується at-rest).
+model CashShift {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId               String          @db.Uuid
+  branchId            String          @db.Uuid
+  cashRegisterId      String          @db.Uuid
+  provider            String          @default("checkbox") // ПРРО-провайдер, яким відкрито зміну (токен-семантика різна)
+  checkboxShiftId     String? // id зміни у провайдера (Checkbox shift id / Вчасно)
+  status              CashShiftStatus @default(OPEN)
+  openedById          String?         @db.Uuid // Employee, що відкрив
+  openedAt            DateTime        @default(now())
+  closedAt            DateTime?
+  zReportId           String? // id Z-звіту при закритті
+  checkboxAccessToken String? // cashier access-token (шифрується — див. prisma.service ENCRYPTED_FIELDS)
+  tokenExpiresAt      DateTime?
+  syncVersion         BigInt          @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?
+
+  cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id])
+
+  // Один OPEN на касу гарантуємо частковим unique-індексом на рівні БД (CLOSED багато, тому
+  // повний @@unique не годиться; Prisma не підтримує WHERE у @@unique → індекс живе у міграції:
+  // "cash_shifts_one_open_per_register_uq" WHERE status='OPEN' AND deletedAt IS NULL). Захищає від
+  // гонки findFirst-then-create у open() (у т.ч. AUTO_OPEN у processor concurrency:3).
+  @@index([orgId, branchId, status])
+  @@index([orgId, cashRegisterId, status])
+  @@map("cash_shifts")
+}

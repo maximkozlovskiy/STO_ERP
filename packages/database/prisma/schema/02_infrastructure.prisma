@@ -1,0 +1,201 @@
+model Organisation {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String    @db.Uuid
+  name          String
+  edrpou        String?   @unique
+  logoUrl       String?
+  legalAddress  String?
+  actualAddress String?
+  bankAccountId String?   @db.Uuid
+  syncVersion   BigInt    @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  branches              GarageBranch[]
+  employees             Employee[]
+  counterparties        Counterparty[]
+  documentNumberConfigs DocumentNumberConfig[]
+  settings              OrganisationSettings?
+  notificationTemplates NotificationTemplate[]
+  taxRates              TaxRate[]
+  paymentMethods        PaymentMethodConfig[]
+  employeeBranches      EmployeeBranch[]
+  comments              Comment[]
+  workOrderTemplates    WorkOrderTemplate[]
+  workOrderMedia        WorkOrderMedia[]
+  auditEvents           AuditEvent[]
+  warranties            Warranty[]
+  inspectionReports     InspectionReport[]
+  webhookEndpoints      WebhookEndpoint[]
+  loyaltyAccounts       LoyaltyAccount[]
+  bookingRequests       BookingRequest[]
+  currencies            Currency[]
+  exchangeRates         ExchangeRate[]
+  bankAccounts          BankAccount[]
+  cashRegisters         CashRegister[]
+  savedReports          SavedReport[]
+  counterpartyStatuses  CounterpartyStatus[]
+  goodStatuses          GoodStatus[]
+  payrollPeriods        PayrollPeriod[]
+  expenseCategories     ExpenseCategory[]
+  primaryBankAccount    BankAccount?           @relation("OrgPrimaryBankAccount", fields: [bankAccountId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("organisations")
+}
+
+/// Збережена конфігурація звіту конструктора (report-builder). config — ReportConfig як JSON.
+model SavedReport {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  entity      String // ключ реєстру (валідність — на app-рівні при run)
+  config      Json
+  createdBy   String?   @db.Uuid
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("saved_reports")
+}
+
+model AuthAccount {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String    @db.Uuid
+  employeeId   String    @unique @db.Uuid
+  email        String
+  passwordHash String
+  // Session revocation (B1): bump-иться при logout-all і зміні пароля. Кладеться у JWT payload;
+  // jwt.strategy порівнює payload.tokenVersion з поточним → mismatch = 401 (усі старі токени мертві).
+  tokenVersion Int       @default(0)
+  // Brute-force lockout (B2): лічильник невдалих спроб + вікно блокування. throttle 10/min прикриває
+  // burst, lockout — стійкі атаки на відомий email на спільному ПК каси.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  syncVersion  BigInt    @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  // @@unique([orgId, email]) already creates a btree index on (orgId, email),
+  // used by both uniqueness enforcement AND equality lookups (orgId_email composite key).
+  // A separate @@index([orgId, email]) was redundant — dropped to reduce write overhead
+  // on every AuthAccount INSERT/UPDATE (every employee create/update with login).
+  @@unique([orgId, email])
+  @@index([orgId, syncVersion])
+  @@map("auth_accounts")
+}
+
+model GarageBranch {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  name        String
+  address     String
+  timezone    String    @default("Europe/Kyiv")
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  org              Organisation     @relation(fields: [orgId], references: [id])
+  zones            Zone[]
+  warehouses       Warehouse[]
+  branchSettings   BranchSettings?
+  notificationChannelConfigs NotificationChannelConfig[]
+  workOrders       WorkOrder[]
+  stockDocuments   StockDocument[]
+  employeeBranches EmployeeBranch[]
+  bookingRequests  BookingRequest[]
+  bankAccounts     BankAccount[]
+  cashRegisters    CashRegister[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("garage_branches")
+}
+
+model Zone {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String    @db.Uuid
+  branchId    String    @db.Uuid
+  name        String
+  type        ZoneType
+  syncVersion BigInt    @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  branch        GarageBranch   @relation(fields: [branchId], references: [id])
+  lifts         Lift[]
+  employeeZones EmployeeZone[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("zones")
+}
+
+model Lift {
+  id                      String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId                   String     @db.Uuid
+  zoneId                  String     @db.Uuid
+  name                    String
+  type                    LiftType
+  maxWeightKg             Int?
+  status                  LiftStatus @default(ACTIVE)
+  serialNumber            String?
+  purchaseDate            DateTime?
+  warrantyUntil           DateTime?
+  maintenanceIntervalDays Int?
+  lastMaintenanceDate     DateTime?
+  nextMaintenanceDate     DateTime?
+  syncVersion             BigInt     @default(0)
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+  deletedAt               DateTime?
+
+  zone           Zone            @relation(fields: [zoneId], references: [id])
+  employeeLifts  EmployeeLift[]
+  calendarSlots  CalendarSlot[]
+  workOrderLines WorkOrderLine[]
+  workOrders     WorkOrder[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("lifts")
+}
+
+model Warehouse {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String        @db.Uuid
+  branchId    String        @db.Uuid
+  name        String
+  type        WarehouseType @default(MAIN)
+  isMain      Boolean       @default(false)
+  syncVersion BigInt        @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  branch               GarageBranch     @relation(fields: [branchId], references: [id])
+  stockItems           StockItem[]
+  movements            StockMovement[]
+  workOrderParts       WorkOrderPart[]
+  purchaseOrders       PurchaseOrder[]
+  supplierReturns      SupplierReturn[]
+  stockDocumentsSource StockDocument[]  @relation("SourceWarehouse")
+  stockDocumentsTarget StockDocument[]  @relation("TargetWarehouse")
+  stockBatches         StockBatch[]
+
+  @@index([orgId, deletedAt])
+  @@index([orgId, syncVersion])
+  @@map("warehouses")
+}

@@ -1,0 +1,328 @@
+model DocumentNumberConfig {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String       @db.Uuid
+  documentType   DocumentType
+  prefix         String?
+  includeDate    Boolean      @default(true)
+  dateFormat     String       @default("YYYYMMDD")
+  separator      String       @default("-")
+  padding        Int          @default(6)
+  currentSeq     BigInt       @default(0)
+  resetPeriod    ResetPeriod  @default(NEVER)
+  lastResetYear  Int?
+  lastResetMonth Int?
+  syncVersion    BigInt       @default(0)
+  updatedAt      DateTime     @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, documentType])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, documentType])
+  // already covers equality lookups on (orgId) alone.
+  @@index([orgId, syncVersion])
+  @@map("document_number_configs")
+}
+
+model OrganisationSettings {
+  orgId                            String          @id @db.Uuid
+  currency                         String          @default("UAH")
+  vatMode                          VatMode         @default(EXCLUSIVE)
+  defaultVatRateId                 String?         @db.Uuid
+  invoiceDueDays                   Int             @default(7)
+  autoArchiveDays                  Int             @default(30)
+  defaultWarrantyDays              Int             @default(30)
+  requireClientApproval            Boolean         @default(true)
+  allowPartialPayment              Boolean         @default(true)
+  brandTheme                       String          @default("blue")
+  costMethod                       BatchCostMethod @default(FIFO)
+  followUpActive                   Boolean         @default(false)
+  followUpDays                     Int             @default(90)
+  maintenanceForecastDays          Int             @default(14) // T13: горизонт прогнозу нагадувань про ТО
+  nbuFetchHour                     Int             @default(12)
+  // Інтервал опитування служби доставки (хв). Читається polling-процесором (НЕ hardcoded). clamp [5,1440].
+  deliveryPollIntervalMinutes      Int             @default(30)
+  // Частка ФОП механіків у виручці з робіт (для звіту рентабельності). 0.4=40% — типово для UA SMB.
+  // Читається reports.profitability per-org (НЕ hardcoded). clamp [0,1].
+  laborCostRatio                   Decimal         @default(0.4) @db.Decimal(4, 3)
+  // Скільки днів зберігати логи зовнішніх обмінів (IntegrationLog). Читається purge-scheduler
+  // (НЕ hardcoded). Append-only таблиця → щоденне очищення старших за N днів. clamp [1,365].
+  integrationLogRetentionDays      Int             @default(30)
+  // Скільки днів зберігати РОЗВ'ЯЗАНІ (resolved=true) DLQ-записи (DeadLetterJob). Нерозв'язані
+  // (money/legal фіскальні провали) НІКОЛИ не авто-видаляються. Довша retention за лог (legal).
+  // clamp [7,730]. Читається dead-letter-purge processor (не hardcoded).
+  deadLetterRetentionDays          Int             @default(180)
+  uiFeatures                       Json            @default("{}")
+  // B4: Loyalty program settings
+  loyaltyEnabled                   Boolean         @default(false)
+  loyaltyEarnPer                   Decimal         @default(100) @db.Decimal(10, 2)
+  loyaltyEarnPoints                Decimal         @default(1) @db.Decimal(10, 2)
+  loyaltyRedeemRate                Decimal         @default(1) @db.Decimal(10, 2)
+  recalcPlannedHoursFromLines      Boolean         @default(true)
+  recalcActualHoursFromLines       Boolean         @default(true)
+  syncCalendarSlotWithPlannedHours Boolean         @default(true)
+  syncVersion                      BigInt          @default(0)
+  updatedAt                        DateTime        @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@map("organisation_settings")
+}
+
+model BranchSettings {
+  branchId               String   @id @db.Uuid
+  orgId                  String   @db.Uuid
+  workStartTime          String   @default("09:00")
+  workEndTime            String   @default("18:00")
+  workDays               Json     @default("[1,2,3,4,5]")
+  slotDurationMinutes    Int      @default(60)
+  fiscalEnabled          Boolean  @default(false)
+  checkboxApiUrl         String?
+  checkboxLicenseKey     String?
+  checkboxPinCode        String?
+  checkboxCashRegisterId String?
+  shiftMode              ShiftMode @default(MANUAL) // ручне vs авто-відкриття зміни
+  monobankToken          String? // X-Token merchant-еквайрингу monobank (шифрується at-rest)
+  monobankApiUrl         String? // база API monobank (не секрет)
+  smsEnabled             Boolean  @default(false)
+  smsProvider            String?
+  smsApiKey              String?
+  smsSenderName          String?
+  syncVersion            BigInt   @default(0)
+  updatedAt              DateTime @updatedAt
+
+  branch GarageBranch @relation(fields: [branchId], references: [id])
+
+  @@map("branch_settings")
+}
+
+model NotificationTemplate {
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String                @db.Uuid
+  eventType   NotificationEventType
+  channel     NotificationChannel
+  subject     String?
+  body        String
+  isActive    Boolean               @default(true)
+  syncVersion BigInt                @default(0)
+  updatedAt   DateTime              @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, eventType, channel])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, eventType, channel])
+  // covers prefix lookups on (orgId).
+  @@map("notification_templates")
+}
+
+// Конфіг каналу сповіщень per-філія: який провайдер, чи ввімкнено, пріоритет у
+// fallback-ланцюгу, і креди (write-only; Phase 4 — шифрування at-rest). Дозволяє N
+// каналів на філію з упорядкуванням: fallback пробує enabled-канали за зростанням priority.
+model NotificationChannelConfig {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String              @db.Uuid
+  branchId    String              @db.Uuid
+  channel     NotificationChannel
+  provider    String // код провайдера (NotificationProviderRegistry), напр. 'turbosms'
+  enabled     Boolean             @default(true)
+  priority    Int                 @default(0) // менше = раніше у fallback-ланцюгу
+  // Креди провайдера (apiKey/senderName тощо). Phase 4: шифрування at-rest.
+  // apiKey тут — write-only на рівні API (response DTO його не повертає).
+  apiKey      String?
+  senderName  String?
+  // ID готового шаблону в кабінеті провайдера (напр. eSputnik Viber/Telegram через smartsend).
+  // Для inline-каналів (SMS усіх провайдерів) — null. НЕ секрет (не шифрується, віддається у GET).
+  externalTemplateId String?
+  syncVersion BigInt              @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  branch GarageBranch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, channel])
+  @@index([orgId, branchId, enabled, priority])
+  @@map("notification_channel_configs")
+}
+
+// Журнал спроб доставки сповіщень — для fallback (знати, чи канал прийнято) та
+// спостережуваності. Append-only (немає deletedAt). Одна подія може мати кілька рядків
+// (по одному на канал у fallback-ланцюгу).
+model NotificationLog {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String                     @db.Uuid
+  branchId          String?                    @db.Uuid
+  eventType         NotificationEventType
+  channel           NotificationChannel
+  provider          String
+  recipient         String // отримувач: телефон (SMS/Viber/TG) або email (EMAIL)
+  providerMessageId String?
+  status            NotificationDeliveryStatus @default(QUEUED)
+  error             String?
+  attempt           Int                        @default(1)
+  createdAt         DateTime                   @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([orgId, eventType, channel])
+  @@map("notification_logs")
+}
+
+// Журнал зовнішніх HTTP-обмінів з інтеграціями (LiqPay/Checkbox/Вчасно/Нова Пошта/monobank) —
+// спостережуваність «чому впало / коли останній успіх». МЕТАДАНІ ЛИШЕ (без тіл запиту/відповіді
+// й БЕЗ секретів — див. IntegrationLogService.wrap). Append-only (немає updatedAt/deletedAt/
+// syncVersion, як NotificationLog). Очищення — integration-log-purge scheduler за
+// OrganisationSettings.integrationLogRetentionDays.
+model IntegrationLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String   @db.Uuid
+  branchId     String?  @db.Uuid
+  provider     String // код провайдера: liqpay/monobank/checkbox/vchasno/novaposhta
+  operation    String // ім'я методу: getStatus/createInvoice/sellReceipt/openShift/closeShift/signIn/verifyCredentials
+  ok           Boolean // true=успіх, false=помилка/timeout
+  httpStatus   Int? // HTTP-статус (парситься з error-тексту на fail; null на успіху)
+  durationMs   Int? // тривалість обміну, мс
+  documentType String? // WorkOrder/PurchaseOrder/Payment/OnlinePaymentIntent тощо
+  documentId   String?  @db.Uuid
+  error        String? // короткий текст помилки (response body провайдера, truncate 500; без секретів)
+  createdAt    DateTime @default(now())
+
+  @@index([orgId, createdAt])
+  @@index([orgId, documentType, documentId])
+  // Covering-індекс під головний UI-фільтр findAll: WHERE (orgId, provider) ORDER BY createdAt desc.
+  // Без нього provider-фільтр не покривався (orgId,createdAt)-індексом → org-wide scan усіх логів
+  // у createdAt-порядку + heap-filter provider. З (orgId, provider, createdAt): index-range scan +
+  // готовий порядок (без сортування). provider — equality leftmost, createdAt (range/sort) tail.
+  @@index([orgId, provider, createdAt])
+  @@map("integration_logs")
+}
+
+/// Централізований dead-letter: job, що вичерпав УСІ спроби (attempts) у будь-якій з BullMQ-черг.
+/// Durable — переживає Redis flush/рестарт (на відміну від removeOnFail:200, після якого job тихо
+/// зникає). Критично для offline-first: втрачений ПРРО-чек/SMS = юридична/бізнес-проблема. Черга
+/// `checkbox` має власний domain-DLQ (Payment.fiscalStatus=FAILED) — тут unified-запис усіх черг.
+/// orgId NULLABLE (org-agnostic scheduler-jobs: nbu-fetch/purges без job.data.orgId) → TENANT_EXEMPT.
+/// Server-local infra: БЕЗ deletedAt/syncVersion (не sync-иться на mobile). updatedAt — для resolved.
+model DeadLetterJob {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String?   @db.Uuid // best-effort з job.data.orgId; null для org-agnostic черг
+  queueName    String // 'checkbox' | 'sms' | 'outbound-webhook' | ...
+  jobName      String // job.name ('send-sms', 'purge', ...)
+  bullJobId    String // job.id у Redis (діагностика / можливий re-enqueue)
+  attemptsMade Int
+  maxAttempts  Int // job.opts.attempts ?? 1
+  failedReason String    @db.Text // err.message (truncate ~1000)
+  stacktrace   String?   @db.Text // job.stacktrace join (truncate)
+  payload      Json // job.data (секрети НЕ у job.data за конвенцією; sanitize defensively)
+  resolved     Boolean   @default(false) // оператор/retry позначив опрацьованим
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([orgId, createdAt])
+  @@index([queueName, createdAt])
+  @@index([resolved, createdAt]) // UI: активні (unresolved) зверху
+  @@map("dead_letter_jobs")
+}
+
+/// Idempotency-Key (A1): дедуплікація create-документів під offline-retry. Клієнт шле заголовок
+/// `Idempotency-Key: <uuid>`; interceptor РЕЗЕРВУЄ рядок ПЕРЕД викликом handler (unique(orgId,key)
+/// як лок проти конкурентних дублів), потім кешує 2xx-відповідь для replay. Server-local infra:
+/// БЕЗ syncVersion/deletedAt (не sync-иться на mobile — не додавати до PULL/PUSH_SAFE_TABLES).
+/// TTL-очищення scheduler-ом (expiresAt). requestHash — детект reuse ключа з іншим тілом → 422.
+model IdempotencyKey {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String   @db.Uuid
+  key            String // клієнтський UUID із заголовка Idempotency-Key
+  method         String // HTTP-метод (POST)
+  path           String // маршрут запиту
+  requestHash    String // хеш тіла — reuse того самого key з іншим тілом → 422
+  responseStatus Int? // статус закешованої відповіді (null поки резервація не завершена успіхом)
+  responseBody   Json? // тіло закешованої 2xx-відповіді (null у резервації/на fail)
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime // TTL: старіші purge-иться scheduler-ом
+
+  @@unique([orgId, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+model TaxRate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId       String   @db.Uuid
+  name        String
+  rate        Decimal  @db.Decimal(5, 2)
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  syncVersion BigInt   @default(0)
+  updatedAt   DateTime @updatedAt
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, rate])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, rate]) covers
+  // prefix lookups on (orgId).
+  @@map("tax_rates")
+}
+
+model PaymentMethodConfig {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId          String    @db.Uuid
+  code           String
+  name           String
+  isActive       Boolean   @default(true)
+  isSystem       Boolean   @default(false)
+  sortOrder      Int       @default(0)
+  requiresFiscal Boolean   @default(false)
+  // Дефолтний рахунок-призначення для цього методу (мапінг method→куди лягають гроші):
+  // напр. monobank_qr→BANK_ACCOUNT+моно-рахунок, cash→CASH_REGISTER+каса. Опційно; сервіс
+  // підставляє у Payment якщо DTO не задав явно. Без FK-relation — конфіг-підказка, валідується
+  // за org у сервісі при використанні.
+  defaultSourceType     PaymentSourceType?
+  defaultBankAccountId  String?   @db.Uuid
+  defaultCashRegisterId String?   @db.Uuid
+  syncVersion    BigInt    @default(0)
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  org Organisation @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  // sto-optimize: @@index([orgId]) is redundant — @@unique([orgId, code]) covers
+  // prefix lookups on (orgId).
+  @@map("payment_method_configs")
+}
+
+model AuditEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId      String   @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  action     String
+  userId     String   @db.Uuid
+  diff       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  org  Organisation @relation(fields: [orgId], references: [id])
+  user Employee     @relation(fields: [userId], references: [id])
+
+  // Covering index for findByEntity (entity timeline tab): WHERE orgId/entityType/entityId
+  // + ORDER BY createdAt DESC. Without createdAt in the index, Postgres sorts matching rows in memory.
+  @@index([orgId, entityType, entityId, createdAt])
+  @@index([orgId, createdAt])
+  @@map("audit_events")
+}
+
+// Глобальні шаблони довідників — не per-org, заповнюються через seed.
+// Використовуються як джерело для масового заповнення:
+// валюти, одиниці виміру, методи оплати, категорії робіт.
+model SystemTemplate {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityType String // 'currency' | 'unit_of_measure' | 'payment_method' | 'work_category'
+  key        String // унікальний ключ: 'USD', 'шт', 'cash', 'MAINTENANCE'
+  name       String // відображувана назва для UI
+  data       Json // повний набір полів для створення запису
+  sortOrder  Int    @default(0)
+
+  @@unique([entityType, key])
+  @@index([entityType, sortOrder])
+  @@map("system_templates")
+}

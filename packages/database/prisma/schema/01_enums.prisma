@@ -1,0 +1,365 @@
+enum UserRole {
+  OWNER
+  ADMIN
+  RECEPTIONIST
+  MECHANIC
+  STOREKEEPER
+  ACCOUNTANT
+  XLSX_MANAGER
+  CLIENT
+}
+
+enum WorkOrderStatus {
+  DRAFT
+  ESTIMATE
+  APPROVED
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  INVOICED
+  PAID
+  ARCHIVED
+  CANCELLED
+}
+
+enum ZoneType {
+  MECHANICAL
+  BODY
+  TIRE
+  WASH
+  ELECTRICAL
+  OTHER
+}
+
+enum LiftType {
+  TWO_POST
+  FOUR_POST
+  ALIGNMENT
+  STENCIL
+  STAND
+  PIT
+  RAMP
+  OTHER
+}
+
+enum WarehouseType {
+  MAIN
+  WORKSHOP
+  TIRE_HOTEL
+  MOBILE
+}
+
+enum CounterpartyType {
+  CLIENT
+  SUPPLIER
+  BOTH
+}
+
+enum StockMovementType {
+  RECEIPT
+  WRITEOFF
+  TRANSFER
+  RESERVATION
+  RESERVATION_RELEASE
+  OPENING_BALANCE
+  RETURN               // Повернення на склад (реверс WRITEOFF): скасування завершеного наряду
+}
+
+enum StockDocumentType {
+  WRITEOFF
+  TRANSFER
+  OPENING_BALANCE
+  RECEIPT
+}
+
+enum StockDocumentStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum DocumentType {
+  WORK_ORDER
+  INVOICE
+  PURCHASE_ORDER
+  SUPPLIER_RETURN
+  STOCK_RECEIPT
+  STOCK_WRITEOFF
+  STOCK_TRANSFER
+  STOCK_OPENING
+  RECONCILIATION_ACT
+  COMPLETION_ACT
+  COUNTERPARTY_AGREEMENT
+  GOOD_INTERNAL_CODE
+  SUPPLIER_PAYMENT
+}
+
+enum ContractType {
+  PURCHASE
+  SALE
+}
+
+enum ResetPeriod {
+  NEVER
+  YEARLY
+  MONTHLY
+}
+
+enum VatMode {
+  NONE
+  EXCLUSIVE
+  INCLUSIVE
+}
+
+enum NotificationEventType {
+  WO_CREATED
+  WO_ESTIMATE_READY
+  WO_APPROVED
+  WO_IN_PROGRESS
+  WO_COMPLETED
+  WO_READY_FOR_PICKUP
+  PAYMENT_RECEIVED
+  INVOICE_SENT
+  LOW_STOCK_ALERT
+  FOLLOWUP_REMINDER
+  BOOKING_CONFIRMATION
+}
+
+enum NotificationChannel {
+  SMS
+  VIBER
+  EMAIL
+  TELEGRAM
+}
+
+// Статус спроби доставки (per-канал). SENT = провайдер прийняв у чергу (accepted);
+// REJECTED = провайдер відхилив (переходимо до наступного каналу у fallback);
+// FAILED = вичерпано ретраї/усі канали. QUEUED = у процесі.
+enum NotificationDeliveryStatus {
+  QUEUED
+  SENT
+  REJECTED
+  FAILED
+}
+
+enum FiscalReceiptStatus {
+  QUEUED // у черзі на фіскалізацію
+  DONE // чек пробито (fiscalReceiptId заповнено)
+  FAILED // вичерпано ретраї (fiscalError містить причину)
+  SKIPPED // фіскалізація вимкнена на філії, хоча метод її потребує
+}
+
+enum CashShiftStatus {
+  OPEN // зміна відкрита — чеки пробиваються
+  CLOSED // зміна закрита (Z-звіт зроблено)
+}
+
+// Напрям касової операції.
+enum CashDirection {
+  IN // внесення готівки (+)
+  OUT // видача готівки (−)
+}
+
+// Привід касової операції (визначає семантику й звʼязки).
+enum CashOperationReason {
+  SALE_PAYMENT // оплата клієнта готівкою (авто з payments)
+  REFUND // повернення клієнту
+  PAYROLL // виплата ЗП (авто з payroll)
+  SUPPLIER_PAYMENT // оплата постачальнику готівкою
+  EXPENSE // витрата (стаття витрат)
+  COLLECTION // інкасація / виїмка готівки
+  MANUAL_IN // ручне внесення
+  MANUAL_OUT // ручна видача
+}
+
+enum ShiftMode {
+  MANUAL // касир вручну відкриває/закриває зміну
+  AUTO_OPEN // зміна авто-відкривається перед першим чеком (Z-звіт усе одно ручний)
+}
+
+enum OnlinePaymentStatus {
+  PENDING // намір створено, чекаємо підтвердження gateway (polling)
+  PAID // gateway підтвердив — Payment створено (paymentId заповнено)
+  FAILED // gateway відхилив
+  EXPIRED // клієнт не оплатив у відведений час
+}
+
+// Тип провайдера у BranchProviderConfig: фіскалізація (ПРРО) або еквайринг (онлайн-оплата).
+enum ProviderKind {
+  FISCAL // ПРРО: Checkbox, Вчасно.Каса
+  PAYMENT // еквайринг/онлайн-оплата: monobank, LiqPay
+  DELIVERY // служба доставки/трекінг: Нова Пошта
+}
+
+enum SettlementTransactionType {
+  CHARGE
+  PAYMENT
+  REFUND
+  PREPAYMENT
+  CREDIT_NOTE
+  // Постачальницькі типи — окрема семантика знаку (див. BALANCE_SIGN у settlements.service):
+  // ми отримали товар → ми винні (balance↓); заплатили/повернули → борг меншає (balance↑).
+  // Клієнтські CHARGE(+1)/PAYMENT(−1) НЕ можна переюзати — знак протилежний.
+  SUPPLIER_CHARGE
+  SUPPLIER_PAYMENT
+  SUPPLIER_REFUND
+  // Курсові різниці (мультивалюта Фаза 4): realized FX при повній оплаті іновалютного документа.
+  // FX_GAIN(+1) гасить від'ємний base-залишок (отримали більше base), FX_LOSS(−1) — додатний
+  // (отримали менше base ніж нараховано). amount=amountBase=|fx| у БАЗОВІЙ валюті (currencyId=null).
+  FX_GAIN
+  FX_LOSS
+}
+
+// Зарплатний період (payroll). FSM: DRAFT → COMPUTED (нарахування зафіксовано) → PAID; або CANCELLED.
+enum PayrollPeriodStatus {
+  DRAFT
+  COMPUTED
+  PAID
+  CANCELLED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  PARTIAL
+  CANCELLED
+}
+
+// Нормалізований статус доставки (мапиться зі StatusCode служби доставки, напр. Нової Пошти).
+// Окремий від PurchaseOrderStatus (FSM закупівлі) — це стан фізичної доставки за накладною.
+enum DeliveryStatus {
+  PENDING // ЕН створено, очікує надходження у службу доставки
+  IN_TRANSIT // у дорозі / прямує до відділення
+  ARRIVED // прибув на відділення (готове до отримання)
+  DELIVERED // отримано (термінальний)
+  RETURNED // повернення / видалено (термінальний)
+  NOT_FOUND // накладну не знайдено у службі доставки (термінальний)
+}
+
+enum SupplierReturnStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum SupplierPaymentStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentSourceType {
+  BANK_ACCOUNT
+  CASH_REGISTER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum MovementDocumentType {
+  WORK_ORDER
+  PURCHASE_ORDER
+  SUPPLIER_RETURN
+  STOCK_DOCUMENT
+  MANUAL
+}
+
+enum CalendarSlotStatus {
+  AVAILABLE
+  BOOKED
+  BLOCKED
+}
+
+enum CalendarSlotType {
+  WORK
+  MAINTENANCE
+  BREAK
+  MEETING
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  FIRED
+}
+
+enum WorkOrderPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum RepairCategory {
+  MAINTENANCE
+  CURRENT_REPAIR
+  MAJOR_REPAIR
+  BODY_REPAIR
+  DIAGNOSTICS
+  WARRANTY
+  SEASONAL
+}
+
+enum GoodType {
+  SPARE_PART
+  CONSUMABLE
+  MATERIAL
+  TOOL
+}
+
+enum LegalForm {
+  INDIVIDUAL
+  FOP
+  TOV
+  AT
+  PP
+  OTHER
+}
+
+enum LiftStatus {
+  ACTIVE
+  MAINTENANCE
+  BROKEN
+  DECOMMISSIONED
+}
+
+enum CompletionActStatus {
+  DRAFT
+  SIGNED
+  CANCELLED
+}
+
+enum BatchCostMethod {
+  FIFO
+  FEFO
+  LIFO
+  AVG_COST
+}
+
+enum PricingRuleType {
+  PERCENT
+  FIXED_AMOUNT
+  FIXED_PRICE
+  COMPETITOR_PLUS
+  COST_TIER
+}
+
+enum SyncJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// Тип статті руху коштів: витрата (OUT) чи оприбуткування (IN). Immutable після створення.
+enum ExpenseCategoryType {
+  EXPENSE // витрата → касова OUT-операція
+  INCOME // оприбуткування → касова IN-операція
+}
