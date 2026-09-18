@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorks, worksKeys } from '@/hooks/api/useWorks';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -65,20 +66,26 @@ interface WorksFilters extends Record<string, unknown> {
 
 import { Pagination } from '@/components/ui/pagination';
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const WORKS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'name', label: 'Назва', defaultVisible: true },
-  { key: 'category', label: 'Категорія', defaultVisible: true },
-  { key: 'normo', label: 'Нормо-год', defaultVisible: true },
-  { key: 'price', label: 'Ціна, ₴', defaultVisible: true },
+// Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const WORKS_COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'name', labelKey: 'works.columns.name', defaultVisible: true },
+  { key: 'category', labelKey: 'works.columns.category', defaultVisible: true },
+  { key: 'normo', labelKey: 'works.columns.normo', defaultVisible: true },
+  { key: 'price', labelKey: 'works.columns.price', defaultVisible: true },
 ];
-const WORKS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WORKS_COLUMNS.map(c => c.key));
+const WORKS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(WORKS_COLUMN_DEFS.map(c => c.key));
 
 // ─── Works Tab ────────────────────────────────────────────────────────────────
 
 export default function WorksTab() {
+  const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const WORKS_COLUMNS = useMemo(
+    () => WORKS_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })),
+    [t],
+  );
   const detailPanel = useDetailPanel('catalog-works');
   const panelConfig = useDetailPanelConfig('catalog-works-panel');
   const qc = useQueryClient();
@@ -165,9 +172,9 @@ export default function WorksTab() {
     (name: string) => {
       const preset = saveFilter(name, { search: q, categoryId: selectedCat ?? '' });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('common.filterSaved', { name }));
     },
-    [saveFilter, q, selectedCat, features.toastEnabled],
+    [saveFilter, q, selectedCat, features.toastEnabled, t],
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
@@ -192,14 +199,17 @@ export default function WorksTab() {
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибрані',
+        label: t('common.bulkDelete'),
         variant: 'destructive',
         // стилізований діалог useConfirm замість нативного блокуючого window.confirm —
         // парність з work-orders/counterparties/employees.
         onClick: async ids => {
           if (
             !(await confirm({
-              title: `Видалити ${ids.length} ${ids.length === 1 ? 'роботу' : 'робіт'}?`,
+              title: t('works.confirmDeleteTitle', {
+                count: ids.length,
+                noun: ids.length === 1 ? t('works.nounOne') : t('works.nounMany'),
+              }),
               variant: 'destructive',
             }))
           )
@@ -213,13 +223,21 @@ export default function WorksTab() {
           worksLoadRef.current?.();
           if (features.toastEnabled) {
             if (failed === 0)
-              toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'роботу' : 'робіт'}`);
-            else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+              toast.success(
+                t('works.deletedAll', {
+                  count: succeeded,
+                  noun: succeeded === 1 ? t('works.nounOne') : t('works.nounMany'),
+                }),
+              );
+            else
+              toast.warning(
+                t('works.deletedPartial', { succeeded, total: results.length, failed }),
+              );
           }
         },
       },
     ],
-    [bulkSelect, features.toastEnabled, confirm],
+    [bulkSelect, features.toastEnabled, confirm, t],
   );
 
   // ── Unsaved guard ────────────────────────────────────────────────────────────
@@ -263,9 +281,10 @@ export default function WorksTab() {
       .catch((e: unknown) => {
         if (catReqRef.current !== reqId) return;
         if (e instanceof DOMException && e.name === 'AbortError') return;
-        if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження категорій');
+        if (!cached) setError(e instanceof Error ? e.message : t('works.loadCategoriesError'));
       });
     return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync categoryId when categories load after modal is already open (race condition fix)
@@ -292,11 +311,11 @@ export default function WorksTab() {
     const normo = Number(form.normoHours);
     const price = Number(form.price);
     if (!Number.isFinite(normo) || normo <= 0) {
-      setError('Норма-годин повинна бути більше нуля');
+      setError(t('works.normoValidation'));
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setError("Ціна повинна бути невід'ємним числом");
+      setError(t('works.priceValidation'));
       return;
     }
     setSaving(true);
@@ -325,7 +344,7 @@ export default function WorksTab() {
       worksFormDirty.resetDirty();
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.genericError'));
     } finally {
       setSaving(false);
     }
@@ -334,8 +353,8 @@ export default function WorksTab() {
   const remove = async (id: string) => {
     if (
       !(await confirm({
-        title: 'Помітити роботу на видалення?',
-        message: 'Можна відновити пізніше.',
+        title: t('works.removeConfirmTitle'),
+        message: t('works.removeConfirmMessage'),
         variant: 'destructive',
       }))
     )
@@ -346,7 +365,7 @@ export default function WorksTab() {
       await apiFetch<void>(`/works/${id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      setError(e instanceof Error ? e.message : t('common.deleteError'));
     } finally {
       setDeletingId(null);
     }
@@ -360,9 +379,9 @@ export default function WorksTab() {
     try {
       await apiFetch<Work>(`/works/${id}/restore`, { method: 'POST' });
       load();
-      if (features.toastEnabled) toast.success('Роботу відновлено');
+      if (features.toastEnabled) toast.success(t('works.restored'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+      setError(e instanceof Error ? e.message : t('common.restoreError'));
     } finally {
       setRestoringIds(prev => {
         const next = new Set(prev);
@@ -391,11 +410,11 @@ export default function WorksTab() {
     const normo = Number(editForm.normoHours);
     const price = Number(editForm.price);
     if (!Number.isFinite(normo) || normo <= 0) {
-      setEditError('Норма-годин повинна бути більше нуля');
+      setEditError(t('works.normoValidation'));
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setEditError("Ціна повинна бути невід'ємним числом");
+      setEditError(t('works.priceValidation'));
       return;
     }
     setEditSaving(true);
@@ -416,7 +435,7 @@ export default function WorksTab() {
       setEditWork(null);
       load();
     } catch (e: unknown) {
-      setEditError(e instanceof Error ? e.message : 'Помилка збереження');
+      setEditError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
       setEditSaving(false);
     }
@@ -451,7 +470,7 @@ export default function WorksTab() {
             setPage(1);
             setActiveSavedFilterId(null);
           }}
-          placeholder="Пошук робіт..."
+          placeholder={t('works.search')}
           leftElement={<Search />}
           className="flex-1 min-w-48 h-8 text-[13px]"
         />
@@ -464,7 +483,7 @@ export default function WorksTab() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
             onClick={() => {
               setShowDeleted(d => !d);
               setPage(1);
@@ -503,7 +522,7 @@ export default function WorksTab() {
               setModal(true);
             }}
           >
-            Робота
+            {t('works.addButton')}
           </Button>
         </div>
       </div>
@@ -538,7 +557,7 @@ export default function WorksTab() {
                       checked={bulkSelect.allSelected}
                       onChange={bulkSelect.toggleAll}
                       className="h-4 w-4 accent-primary"
-                      aria-label="Обрати всі"
+                      aria-label={t('common.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -581,7 +600,7 @@ export default function WorksTab() {
                     colSpan={worksVisibleColumns.length + (features.bulkActionsEnabled ? 2 : 1)}
                     className="p-0"
                   >
-                    <EmptyState icon={BookOpen} title="Нічого не знайдено" />
+                    <EmptyState icon={BookOpen} title={t('works.empty')} />
                   </TableCell>
                 </TableRow>
               )}
@@ -612,7 +631,7 @@ export default function WorksTab() {
                             checked={bulkSelect.isSelected(w.id)}
                             onChange={() => bulkSelect.toggle(w.id)}
                             className="h-4 w-4 accent-primary"
-                            aria-label={`Обрати ${w.name}`}
+                            aria-label={t('works.selectRow', { name: w.name })}
                           />
                         </TableCell>
                       )}
@@ -631,10 +650,14 @@ export default function WorksTab() {
                                 >
                                   {w.name}
                                 </p>
-                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                                {isDeleted && (
+                                  <Badge variant="secondary">{t('common.deleted')}</Badge>
+                                )}
                               </div>
                               {!isDeleted && w.isWarranty && (
-                                <span className="text-[11px] text-success">Гарантійна</span>
+                                <span className="text-[11px] text-success">
+                                  {t('works.warranty')}
+                                </span>
                               )}
                               {!isDeleted && w.description && (
                                 <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -676,7 +699,7 @@ export default function WorksTab() {
                                 void restore(w.id);
                               }}
                               className="text-success/70 hover:text-success hover:bg-success/10"
-                              title="Відновити"
+                              title={t('common.restore')}
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
@@ -703,7 +726,7 @@ export default function WorksTab() {
                                 disabled={deletingId === w.id}
                                 loading={deletingId === w.id}
                                 className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                                title="Помітити на видалення"
+                                title={t('common.markForDeletion')}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -722,11 +745,11 @@ export default function WorksTab() {
           const buildWorkTabs = (w: Work): DetailPanelTab[] => [
             {
               key: 'info',
-              label: 'Основне',
+              label: t('works.panelInfoTab'),
               content: (
                 <div className="space-y-3">
                   {buildPanelFields(w, WORK_PANEL_SCHEMA, panelConfig.config, {
-                    isWarranty: v => (v ? 'Так' : undefined),
+                    isWarranty: v => (v ? t('works.panelWarrantyYes') : undefined),
                   }).map(f => (
                     <PanelField
                       key={f.key}
@@ -764,7 +787,7 @@ export default function WorksTab() {
             setPage(1);
           }}
           onManage={() => setCategoryManagerOpen(true)}
-          label="Категорії робіт"
+          label={t('works.categoriesLabel')}
         />
       </div>
 
@@ -776,7 +799,7 @@ export default function WorksTab() {
           if (!(await worksFormDirty.confirmClose())) return;
           setModal(false);
         }}
-        title="Нова робота"
+        title={t('works.createModalTitle')}
         size="lg"
         footer={
           <Button
@@ -785,7 +808,7 @@ export default function WorksTab() {
             disabled={!form.name || !form.categoryId || !form.normoHours || !form.price}
             className="w-full"
           >
-            Зберегти
+            {t('works.save')}
           </Button>
         }
       >
@@ -796,7 +819,7 @@ export default function WorksTab() {
         )}
         <div className="space-y-4">
           <Select
-            label="Категорія"
+            label={t('works.fieldCategory')}
             required
             value={form.categoryId}
             onChange={e => {
@@ -813,19 +836,19 @@ export default function WorksTab() {
             ))}
           </Select>
           <Input
-            label="Назва"
+            label={t('works.fieldName')}
             required
             value={form.name}
             onChange={e => {
               setForm(f => ({ ...f, name: e.target.value }));
               worksFormDirty.markDirty();
             }}
-            placeholder="Заміна масла"
+            placeholder={t('works.fieldNamePlaceholder')}
             className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Нормо-год"
+              label={t('works.fieldNormo')}
               required
               type="number"
               min="0"
@@ -834,11 +857,11 @@ export default function WorksTab() {
                 setForm(f => ({ ...f, normoHours: e.target.value }));
                 worksFormDirty.markDirty();
               }}
-              placeholder="1.5"
+              placeholder={t('works.fieldNormoPlaceholder')}
               className="h-8 text-[13px]"
             />
             <Input
-              label="Ціна/год, ₴"
+              label={t('works.fieldPricePerHour')}
               required
               type="number"
               min="0"
@@ -847,12 +870,12 @@ export default function WorksTab() {
                 setForm(f => ({ ...f, price: e.target.value }));
                 worksFormDirty.markDirty();
               }}
-              placeholder="500"
+              placeholder={t('works.fieldPricePlaceholder')}
               className="h-8 text-[13px]"
             />
           </div>
           <Input
-            label="Опис"
+            label={t('works.fieldDescription')}
             value={form.description}
             onChange={e => {
               setForm(f => ({ ...f, description: e.target.value }));
@@ -870,9 +893,7 @@ export default function WorksTab() {
               }}
               className="h-4 w-4 accent-primary"
             />
-            <span className="text-[13px] text-foreground">
-              Гарантійна робота (виконується безкоштовно)
-            </span>
+            <span className="text-[13px] text-foreground">{t('works.fieldWarranty')}</span>
           </label>
         </div>
       </Modal>
@@ -883,7 +904,7 @@ export default function WorksTab() {
           if (!(await editWorkDirty.confirmClose())) return;
           setEditWork(null);
         }}
-        title="Редагування роботи"
+        title={t('works.editModalTitle')}
         footer={
           <>
             <Button
@@ -893,7 +914,7 @@ export default function WorksTab() {
                 !editForm.name || !editForm.categoryId || !editForm.normoHours || !editForm.price
               }
             >
-              Зберегти
+              {t('works.save')}
             </Button>
             <Button
               variant="outline"
@@ -902,7 +923,7 @@ export default function WorksTab() {
                 setEditWork(null);
               }}
             >
-              Скасувати
+              {t('works.cancel')}
             </Button>
           </>
         }
@@ -914,7 +935,7 @@ export default function WorksTab() {
         )}
         <div className="space-y-4">
           <Select
-            label="Категорія"
+            label={t('works.fieldCategory')}
             required
             value={editForm.categoryId}
             onChange={e => {
@@ -931,19 +952,19 @@ export default function WorksTab() {
             ))}
           </Select>
           <Input
-            label="Назва"
+            label={t('works.fieldName')}
             required
             value={editForm.name}
             onChange={e => {
               setEditForm(f => ({ ...f, name: e.target.value }));
               editWorkDirty.markDirty();
             }}
-            placeholder="Заміна масла"
+            placeholder={t('works.fieldNamePlaceholder')}
             className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Нормо-год"
+              label={t('works.fieldNormo')}
               required
               type="number"
               min="0"
@@ -952,11 +973,11 @@ export default function WorksTab() {
                 setEditForm(f => ({ ...f, normoHours: e.target.value }));
                 editWorkDirty.markDirty();
               }}
-              placeholder="1.5"
+              placeholder={t('works.fieldNormoPlaceholder')}
               className="h-8 text-[13px]"
             />
             <Input
-              label="Ціна/год, ₴"
+              label={t('works.fieldPricePerHour')}
               required
               type="number"
               min="0"
@@ -965,12 +986,12 @@ export default function WorksTab() {
                 setEditForm(f => ({ ...f, price: e.target.value }));
                 editWorkDirty.markDirty();
               }}
-              placeholder="500"
+              placeholder={t('works.fieldPricePlaceholder')}
               className="h-8 text-[13px]"
             />
           </div>
           <Input
-            label="Опис"
+            label={t('works.fieldDescription')}
             value={editForm.description}
             onChange={e => {
               setEditForm(f => ({ ...f, description: e.target.value }));
@@ -988,9 +1009,7 @@ export default function WorksTab() {
               }}
               className="h-4 w-4 accent-primary"
             />
-            <span className="text-[13px] text-foreground">
-              Гарантійна робота (виконується безкоштовно)
-            </span>
+            <span className="text-[13px] text-foreground">{t('works.fieldWarranty')}</span>
           </label>
         </div>
       </Modal>

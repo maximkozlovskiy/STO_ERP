@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -36,6 +37,7 @@ interface Brand {
 // ─── Brands Tab ───────────────────────────────────────────────────────────────
 
 export default function BrandsTab() {
+  const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,13 +72,13 @@ export default function BrandsTab() {
         })
         .catch((e: unknown) => {
           if (loadReqRef.current !== reqId) return;
-          if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+          if (!cached) setError(e instanceof Error ? e.message : t('common.loadError'));
         })
         .finally(() => {
           if (loadReqRef.current === reqId) setLoading(false);
         });
     },
-    [showDeleted],
+    [showDeleted, t],
   );
 
   useEffect(() => {
@@ -116,7 +118,7 @@ export default function BrandsTab() {
 
   const save = async () => {
     if (!form.name.trim()) {
-      setError("Назва є обов'язковою");
+      setError(t('brands.nameRequired'));
       return;
     }
     setSaving(true);
@@ -137,7 +139,7 @@ export default function BrandsTab() {
       setModal(false);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
       setSaving(false);
     }
@@ -146,8 +148,8 @@ export default function BrandsTab() {
   const remove = async (id: string) => {
     if (
       !(await confirm({
-        title: 'Помітити бренд на видалення?',
-        message: 'Товари з цим брендом не будуть видалені. Можна відновити.',
+        title: t('brands.removeConfirmTitle'),
+        message: t('brands.removeConfirmMessage'),
         variant: 'destructive',
       }))
     )
@@ -157,7 +159,7 @@ export default function BrandsTab() {
       await apiFetch<void>(`/brands/${id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      setError(e instanceof Error ? e.message : t('common.deleteError'));
     } finally {
       setDeletingId(null);
     }
@@ -172,9 +174,9 @@ export default function BrandsTab() {
     try {
       await apiFetch<Brand>(`/brands/${id}/restore`, { method: 'POST' });
       load();
-      toast.success('Бренд відновлено');
+      toast.success(t('brands.restored'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+      setError(e instanceof Error ? e.message : t('common.restoreError'));
     } finally {
       setRestoringIds(prev => {
         const next = new Set(prev);
@@ -195,7 +197,7 @@ export default function BrandsTab() {
         </div>
       )}
       <div className="flex items-center justify-between gap-3 shrink-0">
-        <p className="text-[13px] text-muted-foreground">Бренди та виробники запчастин і товарів</p>
+        <p className="text-[13px] text-muted-foreground">{t('brands.description')}</p>
         <div className="flex items-center gap-2">
           <XlsxImportButton
             templateType="brands"
@@ -205,14 +207,14 @@ export default function BrandsTab() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
             onClick={() => setShowDeleted(d => !d)}
             className={cn(showDeleted && 'border-primary text-primary')}
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            Бренд
+            {t('brands.addButton')}
           </Button>
         </div>
       </div>
@@ -221,13 +223,15 @@ export default function BrandsTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Назва бренду</TableHead>
-              <TableHead>Синоніми</TableHead>
+              <TableHead>{t('brands.colName')}</TableHead>
+              <TableHead>{t('brands.colSynonyms')}</TableHead>
               <TableHead className="text-right">
                 {activeCount > 0 && (
                   <span className="text-[12px] text-muted-foreground font-normal">
-                    {activeCount} активних
-                    {deletedCount > 0 && !showDeleted && ` · ${deletedCount} архів`}
+                    {t('brands.active', { count: activeCount })}
+                    {deletedCount > 0 &&
+                      !showDeleted &&
+                      t('brands.archived', { count: deletedCount })}
                   </span>
                 )}
               </TableHead>
@@ -248,8 +252,8 @@ export default function BrandsTab() {
                 <TableCell colSpan={3} className="p-0">
                   <EmptyState
                     icon={Tag}
-                    title="Бренди відсутні"
-                    description="Додайте перший бренд"
+                    title={t('brands.emptyTitle')}
+                    description={t('brands.emptyDescription')}
                   />
                 </TableCell>
               </TableRow>
@@ -275,7 +279,7 @@ export default function BrandsTab() {
                         >
                           {b.name}
                         </span>
-                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                        {isDeleted && <Badge variant="secondary">{t('common.deleted')}</Badge>}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -305,7 +309,7 @@ export default function BrandsTab() {
                             disabled={restoringIds.has(b.id)}
                             onClick={() => void restore(b.id)}
                             className="text-success/70 hover:text-success hover:bg-success/10"
-                            title="Відновити"
+                            title={t('common.restore')}
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
                           </Button>
@@ -325,7 +329,7 @@ export default function BrandsTab() {
                               loading={deletingId === b.id}
                               onClick={() => void remove(b.id)}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title="Помітити на видалення"
+                              title={t('common.markForDeletion')}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -343,10 +347,10 @@ export default function BrandsTab() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title={editBrand ? 'Редагувати бренд' : 'Новий бренд'}
+        title={editBrand ? t('brands.editTitle') : t('brands.createTitle')}
         footer={
           <Button onClick={save} loading={saving} disabled={!form.name.trim()} className="w-full">
-            Зберегти
+            {t('brands.save')}
           </Button>
         }
       >
@@ -357,22 +361,23 @@ export default function BrandsTab() {
         )}
         <div className="space-y-4">
           <Input
-            label="Назва бренду"
+            label={t('brands.fieldName')}
             required
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="наприклад: Bosch, NGK, Brembo"
+            placeholder={t('brands.fieldNamePlaceholder')}
             autoFocus
             className="h-8 text-[13px]"
           />
 
           <div>
             <label className="block text-[13px] font-medium text-foreground mb-1.5">
-              Синоніми <span className="text-muted-foreground font-normal">(необов'язково)</span>
+              {t('brands.synonyms')}{' '}
+              <span className="text-muted-foreground font-normal">
+                {t('brands.synonymsOptional')}
+              </span>
             </label>
-            <p className="text-[12px] text-muted-foreground mb-2">
-              Альтернативні написання бренду від різних постачальників (Bosh, БОШ, BOSCH)
-            </p>
+            <p className="text-[12px] text-muted-foreground mb-2">{t('brands.synonymsHint')}</p>
 
             {/* Existing synonym chips */}
             {form.synonyms.length > 0 && (
@@ -387,7 +392,7 @@ export default function BrandsTab() {
                       type="button"
                       onClick={() => removeSynonym(s)}
                       className="text-muted-foreground hover:text-destructive transition-colors"
-                      aria-label={`Видалити синонім ${s}`}
+                      aria-label={t('brands.removeSynonym', { synonym: s })}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -408,7 +413,7 @@ export default function BrandsTab() {
                     addSynonym();
                   }
                 }}
-                placeholder="Введіть синонім і натисніть Enter або +"
+                placeholder={t('brands.synonymPlaceholder')}
                 className="flex-1 h-8 rounded-lg border border-border bg-transparent px-3 text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
               <Button

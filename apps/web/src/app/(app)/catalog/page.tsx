@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useRequireAuth } from '@/lib/auth';
@@ -16,13 +17,13 @@ const GoodStatusesTab = dynamic(() => import('./GoodStatusesTab'), { ssr: false 
 
 type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands' | 'good-statuses';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'works', label: 'Роботи' },
-  { key: 'goods', label: 'Товари та запчастини' },
-  { key: 'services', label: 'Комплексні послуги' },
-  { key: 'units', label: 'Одиниці виміру' },
-  { key: 'brands', label: 'Бренди' },
-  { key: 'good-statuses', label: 'Статуси товарів' },
+const TAB_DEFS: { key: Tab; labelKey: string }[] = [
+  { key: 'works', labelKey: 'tabs.works' },
+  { key: 'goods', labelKey: 'tabs.goods' },
+  { key: 'services', labelKey: 'tabs.services' },
+  { key: 'units', labelKey: 'tabs.units' },
+  { key: 'brands', labelKey: 'tabs.brands' },
+  { key: 'good-statuses', labelKey: 'tabs.goodStatuses' },
 ];
 
 // Preload JS bundle + first API request for heavy tabs on hover
@@ -46,34 +47,37 @@ const PRELOAD_MAP: Partial<Record<Tab, () => void>> = {
 
 function CatalogPageClient() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER']);
+  const { t } = useTranslation('catalog');
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'works') as Tab;
 
-  const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
+  const TABS = useMemo(() => TAB_DEFS.map(d => ({ ...d, label: t(d.labelKey) })), [t]);
+
+  const setTab = (tabKey: Tab) => router.replace(`?tab=${tabKey}`, { scroll: false });
 
   return (
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Каталог</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {TABS.map(t => (
+        {TABS.map(tabDef => (
           <button
-            key={t.key}
-            onMouseEnter={() => PRELOAD_MAP[t.key]?.()}
-            onClick={() => setTab(t.key)}
+            key={tabDef.key}
+            onMouseEnter={() => PRELOAD_MAP[tabDef.key]?.()}
+            onClick={() => setTab(tabDef.key)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === t.key
+              tab === tabDef.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {tabDef.label}
           </button>
         ))}
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   Plus,
@@ -131,35 +132,41 @@ import { Pagination } from '@/components/ui/pagination';
 // ─── Goods Tab ────────────────────────────────────────────────────────────────
 
 const GOODS_PANEL_FIELDS = [
-  { key: 'internal_code', label: 'Внутрішній код' },
-  { key: 'sku', label: 'Артикул' },
-  { key: 'type', label: 'Тип' },
-  { key: 'unit', label: 'Одиниця' },
-  { key: 'cost_price', label: 'Ціна закупки' },
-  { key: 'sale_price', label: 'Ціна продажу' },
-  { key: 'category', label: 'Категорія' },
-  { key: 'barcode', label: 'Штрихкод' },
-  { key: 'supplier', label: 'Постачальник' },
-  { key: 'notes', label: 'Нотатки' },
+  { key: 'internal_code', labelKey: 'goods.panel.internalCode' },
+  { key: 'sku', labelKey: 'goods.panel.sku' },
+  { key: 'type', labelKey: 'goods.panel.type' },
+  { key: 'unit', labelKey: 'goods.panel.unit' },
+  { key: 'cost_price', labelKey: 'goods.panel.costPrice' },
+  { key: 'sale_price', labelKey: 'goods.panel.salePrice' },
+  { key: 'category', labelKey: 'goods.panel.category' },
+  { key: 'barcode', labelKey: 'goods.panel.barcode' },
+  { key: 'supplier', labelKey: 'goods.panel.supplier' },
+  { key: 'notes', labelKey: 'goods.panel.notes' },
 ] as const;
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const GOODS_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'code', label: 'Код', defaultVisible: true },
-  { key: 'sku', label: 'Артикул', defaultVisible: true },
-  { key: 'name', label: 'Назва', defaultVisible: true },
-  { key: 'statuses', label: 'Статуси', defaultVisible: true },
-  { key: 'brand', label: 'Бренд', defaultVisible: true },
-  { key: 'category', label: 'Категорія', defaultVisible: true },
-  { key: 'unit', label: 'Одиниця', defaultVisible: false },
-  { key: 'purchase', label: 'Закупівля, ₴', defaultVisible: true },
-  { key: 'sale', label: 'Продаж, ₴', defaultVisible: true },
+// Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const GOODS_COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'code', labelKey: 'goods.columns.code', defaultVisible: true },
+  { key: 'sku', labelKey: 'goods.columns.sku', defaultVisible: true },
+  { key: 'name', labelKey: 'goods.columns.name', defaultVisible: true },
+  { key: 'statuses', labelKey: 'goods.columns.statuses', defaultVisible: true },
+  { key: 'brand', labelKey: 'goods.columns.brand', defaultVisible: true },
+  { key: 'category', labelKey: 'goods.columns.category', defaultVisible: true },
+  { key: 'unit', labelKey: 'goods.columns.unit', defaultVisible: false },
+  { key: 'purchase', labelKey: 'goods.columns.purchase', defaultVisible: true },
+  { key: 'sale', labelKey: 'goods.columns.sale', defaultVisible: true },
 ];
-const GOODS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(GOODS_COLUMNS.map(c => c.key));
+const GOODS_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(GOODS_COLUMN_DEFS.map(c => c.key));
 
 export default function GoodsTab() {
+  const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
   const features = useUiFeatures();
+  const GOODS_COLUMNS = useMemo(
+    () => GOODS_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })),
+    [t],
+  );
   const detailPanel = useDetailPanel('catalog-goods');
   const panelConfig = useDetailPanelConfig('catalog-goods-panel');
   const [goods, setGoods] = useState<PaginatedGoods | null>(null);
@@ -227,9 +234,9 @@ export default function GoodsTab() {
     (name: string) => {
       const preset = saveFilter(name, { search: q });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('common.filterSaved', { name }));
     },
-    [saveFilter, q, features.toastEnabled],
+    [saveFilter, q, features.toastEnabled, t],
   );
 
   // ── Bulk select ──────────────────────────────────────────────────────────────
@@ -254,12 +261,15 @@ export default function GoodsTab() {
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибрані',
+        label: t('common.bulkDelete'),
         variant: 'destructive',
         onClick: async ids => {
           if (
             !(await confirm({
-              title: `Видалити ${ids.length} ${ids.length === 1 ? 'товар' : 'товарів'}?`,
+              title: t('goods.confirmDeleteTitle', {
+                count: ids.length,
+                noun: ids.length === 1 ? t('goods.nounOne') : t('goods.nounMany'),
+              }),
               variant: 'destructive',
             }))
           )
@@ -273,13 +283,25 @@ export default function GoodsTab() {
           goodsLoadRef.current?.();
           if (features.toastEnabled) {
             if (failed === 0)
-              toast.success(`Видалено ${succeeded} ${succeeded === 1 ? 'товар' : 'товарів'}`);
-            else toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+              toast.success(
+                t('goods.deletedAll', {
+                  count: succeeded,
+                  noun: succeeded === 1 ? t('goods.nounOne') : t('goods.nounMany'),
+                }),
+              );
+            else
+              toast.warning(
+                t('goods.deletedPartial', {
+                  succeeded,
+                  total: results.length,
+                  failed,
+                }),
+              );
           }
         },
       },
     ],
-    [bulkSelect, features.toastEnabled, confirm],
+    [bulkSelect, features.toastEnabled, confirm, t],
   );
 
   // race-guard для CategoryManagerModal refetch: rapid CRUD (rename → add → toggle)
@@ -365,12 +387,12 @@ export default function GoodsTab() {
       })
       .catch((e: unknown) => {
         if (loadReqRef.current !== reqId) return;
-        setError(e instanceof Error ? e.message : 'Помилка завантаження');
+        setError(e instanceof Error ? e.message : t('common.loadError'));
       })
       .finally(() => {
         if (loadReqRef.current === reqId) setLoading(false);
       });
-  }, [page, debouncedQ, showDeleted, selectedGoodCat, goodCategoryIds]);
+  }, [page, debouncedQ, showDeleted, selectedGoodCat, goodCategoryIds, t]);
 
   // Keep ref in sync so goodsActions can call load() without depending on it
   useEffect(() => {
@@ -400,19 +422,20 @@ export default function GoodsTab() {
       setNewBarcode('');
       loadBarcodes(goodId);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка додавання штрихкоду');
+      setError(e instanceof Error ? e.message : t('goods.addBarcodeError'));
     } finally {
       setAddingBarcode(false);
     }
   };
 
   const deleteBarcode = async (goodId: string, barcodeId: string) => {
-    if (!(await confirm({ title: 'Видалити штрихкод?', variant: 'destructive' }))) return;
+    if (!(await confirm({ title: t('goods.deleteBarcodeConfirm'), variant: 'destructive' })))
+      return;
     try {
       await apiFetch<void>(`/goods/${goodId}/barcodes/${barcodeId}`, { method: 'DELETE' });
       loadBarcodes(goodId);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення штрихкоду');
+      setError(e instanceof Error ? e.message : t('goods.deleteBarcodeError'));
     }
   };
 
@@ -425,7 +448,7 @@ export default function GoodsTab() {
       if (selectedGood?.id === id) setSelectedGood(null);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      setError(e instanceof Error ? e.message : t('common.deleteError'));
     } finally {
       setDeleting(false);
     }
@@ -439,9 +462,9 @@ export default function GoodsTab() {
     try {
       await apiFetch<Good>(`/goods/${id}/restore`, { method: 'POST' });
       load();
-      if (features.toastEnabled) toast.success('Товар відновлено');
+      if (features.toastEnabled) toast.success(t('goods.restored'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+      setError(e instanceof Error ? e.message : t('goods.restoreError'));
     } finally {
       setRestoringIds(prev => {
         const next = new Set(prev);
@@ -503,7 +526,7 @@ export default function GoodsTab() {
             setPage(1);
             setActiveSavedFilterId(null);
           }}
-          placeholder="Пошук за назвою, артикулом, штрихкодом..."
+          placeholder={t('goods.search')}
           leftElement={<Search />}
           className="flex-1 min-w-48 h-8 text-[13px]"
         />
@@ -516,7 +539,7 @@ export default function GoodsTab() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
             onClick={() => {
               setShowDeleted(d => !d);
               setPage(1);
@@ -547,7 +570,7 @@ export default function GoodsTab() {
               setGoodModalOpen(true);
             }}
           >
-            Товар
+            {t('goods.addButton')}
           </Button>
         </div>
       </div>
@@ -574,7 +597,7 @@ export default function GoodsTab() {
                       checked={bulkSelect.allSelected}
                       onChange={bulkSelect.toggleAll}
                       className="h-4 w-4 accent-primary"
-                      aria-label="Обрати всі"
+                      aria-label={t('common.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -595,7 +618,7 @@ export default function GoodsTab() {
                     </TableHead>
                   ),
                 )}
-                <TableHead>Тип</TableHead>
+                <TableHead>{t('goods.columns.type')}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -618,7 +641,7 @@ export default function GoodsTab() {
                     colSpan={goodsVisibleColumns.length + (features.bulkActionsEnabled ? 4 : 3)}
                     className="p-0"
                   >
-                    <EmptyState icon={Package} title="Нічого не знайдено" />
+                    <EmptyState icon={Package} title={t('goods.empty')} />
                   </TableCell>
                 </TableRow>
               )}
@@ -642,7 +665,7 @@ export default function GoodsTab() {
                             checked={bulkSelect.isSelected(g.id)}
                             onChange={() => bulkSelect.toggle(g.id)}
                             className="h-4 w-4 accent-primary"
-                            aria-label={`Обрати ${g.name}`}
+                            aria-label={t('goods.selectRow', { name: g.name })}
                           />
                         </TableCell>
                       )}
@@ -656,7 +679,9 @@ export default function GoodsTab() {
                                 >
                                   {g.name}
                                 </p>
-                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                                {isDeleted && (
+                                  <Badge variant="secondary">{t('common.deleted')}</Badge>
+                                )}
                               </div>
                             </TableCell>
                           );
@@ -752,7 +777,7 @@ export default function GoodsTab() {
                                 void restoreGood(g.id);
                               }}
                               className="text-success/70 hover:text-success hover:bg-success/10"
-                              title="Відновити"
+                              title={t('common.restore')}
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
@@ -777,7 +802,7 @@ export default function GoodsTab() {
                                   setConfirmDeleteId(g.id);
                                 }}
                                 className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                                title="Помітити на видалення"
+                                title={t('common.markForDeletion')}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -797,7 +822,8 @@ export default function GoodsTab() {
           onClose={() => selectGood(null)}
           title={selectedGood?.name ?? ''}
           configFields={GOODS_PANEL_FIELDS.map(f => ({
-            ...f,
+            key: f.key,
+            label: t(f.labelKey),
             hidden: panelConfig.isFieldHidden(f.key),
           }))}
           onToggleField={panelConfig.toggleField}
@@ -809,8 +835,12 @@ export default function GoodsTab() {
               <div className="flex gap-1 bg-secondary rounded-lg p-0.5 mb-3">
                 {(
                   [
-                    { key: 'info' as const, label: 'Інформація', icon: Package },
-                    { key: 'barcodes' as const, label: 'Штрихкоди', icon: Barcode },
+                    { key: 'info' as const, label: t('goods.detailTabInfo'), icon: Package },
+                    {
+                      key: 'barcodes' as const,
+                      label: t('goods.detailTabBarcodes'),
+                      icon: Barcode,
+                    },
                   ] as const
                 ).map(({ key, label, icon: Icon }) => (
                   <button
@@ -832,19 +862,19 @@ export default function GoodsTab() {
                 <div className="space-y-3">
                   <PanelField
                     fieldKey="internal_code"
-                    label="Внутрішній код"
+                    label={t('goods.panel.internalCode')}
                     value={selectedGood.internalCode}
                     hidden={panelConfig.isFieldHidden('internal_code')}
                   />
                   <PanelField
                     fieldKey="sku"
-                    label="Артикул"
+                    label={t('goods.panel.sku')}
                     value={selectedGood.sku}
                     hidden={panelConfig.isFieldHidden('sku')}
                   />
                   <PanelField
                     fieldKey="type"
-                    label="Тип"
+                    label={t('goods.panel.type')}
                     hidden={panelConfig.isFieldHidden('type')}
                     value={
                       selectedGood.goodType ? (
@@ -859,13 +889,13 @@ export default function GoodsTab() {
                   />
                   <PanelField
                     fieldKey="unit"
-                    label="Одиниця"
+                    label={t('goods.panel.unit')}
                     value={selectedGood.unit}
                     hidden={panelConfig.isFieldHidden('unit')}
                   />
                   <PanelField
                     fieldKey="cost_price"
-                    label="Ціна закупки"
+                    label={t('goods.panel.costPrice')}
                     value={
                       selectedGood.purchasePrice != null
                         ? `${fmtMoney(selectedGood.purchasePrice)} ₴`
@@ -875,31 +905,31 @@ export default function GoodsTab() {
                   />
                   <PanelField
                     fieldKey="sale_price"
-                    label="Ціна продажу"
+                    label={t('goods.panel.salePrice')}
                     value={`${fmtMoney(selectedGood.salePrice)} ₴`}
                     hidden={panelConfig.isFieldHidden('sale_price')}
                   />
                   <PanelField
                     fieldKey="category"
-                    label="Категорія"
+                    label={t('goods.panel.category')}
                     value={selectedGood.goodCategoryName ?? selectedGood.category}
                     hidden={panelConfig.isFieldHidden('category')}
                   />
                   <PanelField
                     fieldKey="barcode"
-                    label="Штрихкод"
+                    label={t('goods.panel.barcode')}
                     value={selectedGood.barcode}
                     hidden={panelConfig.isFieldHidden('barcode')}
                   />
                   <PanelField
                     fieldKey="supplier"
-                    label="Постачальник"
+                    label={t('goods.panel.supplier')}
                     value={selectedGood.preferredSupplierName}
                     hidden={panelConfig.isFieldHidden('supplier')}
                   />
                   <PanelField
                     fieldKey="notes"
-                    label="Нотатки"
+                    label={t('goods.panel.notes')}
                     value={selectedGood.notes}
                     hidden={panelConfig.isFieldHidden('notes')}
                   />
@@ -917,7 +947,7 @@ export default function GoodsTab() {
                     <>
                       {barcodes.length === 0 && (
                         <p className="text-[12px] text-muted-foreground text-center py-3">
-                          Штрихкоди відсутні
+                          {t('goods.noBarcodes')}
                         </p>
                       )}
                       {barcodes.map(bc => (
@@ -933,14 +963,14 @@ export default function GoodsTab() {
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             {bc.isPrimary && (
-                              <span title="Основний">
+                              <span title={t('goods.primary')}>
                                 <Star className="h-3.5 w-3.5 text-amber-400 fill-current" />
                               </span>
                             )}
                             <button
                               onClick={() => deleteBarcode(selectedGood.id, bc.id)}
                               className="h-5 w-5 flex items-center justify-center rounded text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                              title="Видалити"
+                              title={t('goods.delete')}
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
@@ -953,10 +983,10 @@ export default function GoodsTab() {
                   {/* Add barcode form */}
                   <div className="border-t border-border pt-3 space-y-2">
                     <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                      Додати штрихкод
+                      {t('goods.addBarcodeTitle')}
                     </p>
                     <Input
-                      placeholder="Штрихкод"
+                      placeholder={t('goods.barcodePlaceholder')}
                       value={newBarcode}
                       onChange={e => setNewBarcode(e.target.value)}
                       className="h-8 text-[13px]"
@@ -966,9 +996,9 @@ export default function GoodsTab() {
                       onChange={e => setNewBarcodeType(e.target.value)}
                       className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
-                      {['EAN13', 'UPC', 'QR', 'CODE128'].map(t => (
-                        <option key={t} value={t}>
-                          {t}
+                      {['EAN13', 'UPC', 'QR', 'CODE128'].map(bcType => (
+                        <option key={bcType} value={bcType}>
+                          {bcType}
                         </option>
                       ))}
                     </Select>
@@ -979,7 +1009,7 @@ export default function GoodsTab() {
                       loading={addingBarcode}
                       onClick={() => addBarcode(selectedGood.id)}
                     >
-                      Додати
+                      {t('goods.addBarcodeButton')}
                     </Button>
                   </div>
                 </div>
@@ -997,7 +1027,7 @@ export default function GoodsTab() {
             setPage(1);
           }}
           onManage={() => setGoodCatManagerOpen(true)}
-          label="Категорії товарів"
+          label={t('goods.categoriesLabel')}
         />
       </div>
 
@@ -1024,11 +1054,11 @@ export default function GoodsTab() {
       <Modal
         open={!!confirmDeleteId}
         onClose={() => setConfirmDeleteId(null)}
-        title="Помітити товар на видалення"
+        title={t('goods.markForDeletionModalTitle')}
         footer={
           <div className="flex gap-2 w-full">
             <Button variant="outline" onClick={() => setConfirmDeleteId(null)} className="flex-1">
-              Скасувати
+              {t('goods.cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -1037,15 +1067,12 @@ export default function GoodsTab() {
               className="flex-1"
               leftIcon={<Trash2 className="h-4 w-4" />}
             >
-              Помітити на видалення
+              {t('goods.markForDeletion')}
             </Button>
           </div>
         }
       >
-        <p className="text-sm text-muted-foreground">
-          Товар буде позначено як видалений (soft delete). Він зникне зі списків, але залишиться в
-          базі даних для архіву.
-        </p>
+        <p className="text-sm text-muted-foreground">{t('goods.markForDeletionDescription')}</p>
       </Modal>
 
       <GoodEditModal

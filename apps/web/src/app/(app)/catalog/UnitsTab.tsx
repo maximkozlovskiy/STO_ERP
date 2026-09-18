@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, Ruler, Pencil, Check, X, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -66,6 +67,7 @@ interface InlineEditRowProps {
 }
 
 function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
+  const { t } = useTranslation('catalog');
   const [form, setForm] = useState<EditForm>({
     name: unit.name,
     shortName: unit.shortName,
@@ -95,7 +97,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
           value={form.shortName}
           onChange={e => setForm(f => ({ ...f, shortName: e.target.value }))}
           onKeyDown={handleKeyDown}
-          placeholder="шт"
+          placeholder={t('units.placeholderShort')}
           className="w-full rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
       </TableCell>
@@ -104,7 +106,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
           value={form.name}
           onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
           onKeyDown={handleKeyDown}
-          placeholder="штука"
+          placeholder={t('units.placeholderName')}
           className="w-full rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
       </TableCell>
@@ -116,7 +118,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
           type="number"
           min="0"
           step="any"
-          placeholder="1"
+          placeholder={t('units.placeholderCoefficient')}
           className="w-24 rounded border border-primary/40 bg-surface px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
       </TableCell>
@@ -128,7 +130,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
             onClick={() => onSave(unit.id, form)}
             disabled={!valid || saving}
             className="text-success/80 hover:text-success hover:bg-success/10"
-            title="Зберегти (Enter)"
+            title={t('units.saveHint')}
           >
             {saving ? <Spinner size="xs" /> : <Check className="h-3.5 w-3.5" />}
           </Button>
@@ -138,7 +140,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
             onClick={onCancel}
             disabled={saving}
             className="text-muted-foreground hover:text-foreground"
-            title="Скасувати (Esc)"
+            title={t('units.cancelHint')}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -151,6 +153,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
 // ─── Units Tab ────────────────────────────────────────────────────────────────
 
 export default function UnitsTab() {
+  const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,14 +194,14 @@ export default function UnitsTab() {
         .catch((e: unknown) => {
           if (opts?.signal?.aborted) return;
           if (e instanceof Error && e.name === 'AbortError') return;
-          if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+          if (!cached) setError(e instanceof Error ? e.message : t('common.loadError'));
         })
         .finally(() => {
           if (opts?.signal?.aborted) return;
           setLoading(false);
         });
     },
-    [showDeleted],
+    [showDeleted, t],
   );
 
   useEffect(() => {
@@ -212,14 +215,14 @@ export default function UnitsTab() {
 
   const create = async () => {
     if (!form.name.trim() || !form.shortName.trim()) {
-      setError("Усі поля є обов'язковими");
+      setError(t('units.allFieldsRequired'));
       return;
     }
     // coefficient — множник (qty_base = qty * coefficient); 0/negative знулили б/зіпсували б
     // кількість → frontend guard (беку safeCoeff підстрахує legacy=0 → 1).
     const coeff = form.coefficient ? Number(form.coefficient) : undefined;
     if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
-      setError('Коефіцієнт має бути більший 0');
+      setError(t('units.coefficientValidation'));
       return;
     }
     setSaving(true);
@@ -242,7 +245,7 @@ export default function UnitsTab() {
       setForm(EMPTY_FORM);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка');
+      setError(e instanceof Error ? e.message : t('common.genericError'));
     } finally {
       setSaving(false);
     }
@@ -252,13 +255,13 @@ export default function UnitsTab() {
 
   const saveEdit = async (id: string, editForm: EditForm) => {
     if (!editForm.name.trim() || !editForm.shortName.trim()) {
-      setEditError("Скорочення та назва є обов'язковими");
+      setEditError(t('units.editRequired'));
       return;
     }
     // coefficient — множник (qty_base = qty * coefficient); 0/negative знулили б/зіпсували б кількість.
     const coeff = editForm.coefficient ? Number(editForm.coefficient) : undefined;
     if (coeff !== undefined && (!Number.isFinite(coeff) || coeff <= 0)) {
-      setEditError('Коефіцієнт має бути більший 0');
+      setEditError(t('units.coefficientValidation'));
       return;
     }
     setEditSaving(true);
@@ -275,7 +278,7 @@ export default function UnitsTab() {
       setEditingId(null);
       load();
     } catch (e: unknown) {
-      setEditError(e instanceof Error ? e.message : 'Помилка збереження');
+      setEditError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
       setEditSaving(false);
     }
@@ -286,8 +289,8 @@ export default function UnitsTab() {
   const remove = async (id: string) => {
     if (
       !(await confirm({
-        title: 'Помітити на видалення?',
-        message: 'Одиницю буде деактивовано. Можна відновити.',
+        title: t('units.removeConfirmTitle'),
+        message: t('units.removeConfirmMessage'),
         variant: 'destructive',
       }))
     )
@@ -297,7 +300,7 @@ export default function UnitsTab() {
       await apiFetch<void>(`/units/${id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      setError(e instanceof Error ? e.message : t('common.deleteError'));
     }
   };
 
@@ -316,7 +319,7 @@ export default function UnitsTab() {
       await apiFetch<Unit>(`/units/${id}/restore`, { method: 'POST' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+      setError(e instanceof Error ? e.message : t('common.restoreError'));
     } finally {
       setRestoringIds(prev => {
         const next = new Set(prev);
@@ -340,9 +343,7 @@ export default function UnitsTab() {
       )}
 
       <div className="flex items-center justify-between gap-3 shrink-0">
-        <p className="text-[13px] text-muted-foreground">
-          Одиниці виміру, що використовуються в каталозі товарів
-        </p>
+        <p className="text-[13px] text-muted-foreground">{t('units.description')}</p>
         <div className="flex items-center gap-2">
           <XlsxImportButton
             templateType="units"
@@ -352,14 +353,14 @@ export default function UnitsTab() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
             onClick={() => setShowDeleted(d => !d)}
             className={cn(showDeleted && 'border-primary text-primary')}
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button variant="outline" onClick={() => setTemplatePicker(true)}>
-            З шаблону
+            {t('units.fromTemplate')}
           </Button>
           <Button
             leftIcon={<Plus className="h-4 w-4" />}
@@ -368,7 +369,7 @@ export default function UnitsTab() {
               setModal(true);
             }}
           >
-            Одиниця
+            {t('units.addButton')}
           </Button>
         </div>
       </div>
@@ -377,17 +378,17 @@ export default function UnitsTab() {
         open={templatePicker}
         onClose={() => setTemplatePicker(false)}
         entityType="unit_of_measure"
-        title="Додати одиниці виміру з шаблону"
+        title={t('units.templateModalTitle')}
         existingKeys={units.filter(u => !u.deletedAt).map(u => u.shortName)}
         onImport={async (templates: SystemTemplate[]) => {
           // sto-optimize: bulk-create templates паралель — кожен POST незалежний
           // (унікальні shortName у шаблонах). N × RTT sequential → max single RTT.
           // Promise.allSettled — load() однаково перезавантажує повний список.
           await Promise.allSettled(
-            templates.map(t =>
+            templates.map(tpl =>
               apiFetch<Unit>('/units', {
                 method: 'POST',
-                body: JSON.stringify(t.data),
+                body: JSON.stringify(tpl.data),
               }),
             ),
           );
@@ -399,9 +400,9 @@ export default function UnitsTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Скорочення</TableHead>
-              <TableHead>Назва</TableHead>
-              <TableHead>Коефіцієнт</TableHead>
+              <TableHead>{t('units.colShortName')}</TableHead>
+              <TableHead>{t('units.colName')}</TableHead>
+              <TableHead>{t('units.colCoefficient')}</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -418,7 +419,7 @@ export default function UnitsTab() {
             {!loading && units.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="p-0">
-                  <EmptyState icon={Ruler} title="Одиниці відсутні" />
+                  <EmptyState icon={Ruler} title={t('units.empty')} />
                 </TableCell>
               </TableRow>
             )}
@@ -489,7 +490,7 @@ export default function UnitsTab() {
                             }}
                             disabled={restoringIds.has(u.id)}
                             className="text-success/70 hover:text-success hover:bg-success/10"
-                            title="Відновити"
+                            title={t('common.restore')}
                           >
                             {restoringIds.has(u.id) ? (
                               <Spinner size="xs" />
@@ -499,7 +500,7 @@ export default function UnitsTab() {
                           </Button>
                         ) : u.isSystem ? (
                           <span className="text-[11px] px-1.5 py-0.5 bg-info-subtle text-info rounded">
-                            системна
+                            {t('units.system')}
                           </span>
                         ) : (
                           <>
@@ -512,7 +513,7 @@ export default function UnitsTab() {
                                 setEditingId(u.id);
                               }}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground"
-                              title="Редагувати"
+                              title={t('units.editTitle')}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -524,7 +525,7 @@ export default function UnitsTab() {
                                 void remove(u.id);
                               }}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title="Позначити на видалення"
+                              title={t('units.markForDeletion')}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -543,7 +544,7 @@ export default function UnitsTab() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title="Нова одиниця виміру"
+        title={t('units.createModalTitle')}
         footer={
           <Button
             onClick={create}
@@ -551,7 +552,7 @@ export default function UnitsTab() {
             disabled={!form.name || !form.shortName}
             className="w-full"
           >
-            Зберегти
+            {t('units.save')}
           </Button>
         }
       >
@@ -562,77 +563,77 @@ export default function UnitsTab() {
         )}
         <div className="space-y-4">
           <Input
-            label="Скорочення"
+            label={t('units.fieldShortName')}
             required
             value={form.shortName}
             onChange={e => setForm(f => ({ ...f, shortName: e.target.value }))}
-            placeholder="шт"
+            placeholder={t('units.placeholderShort')}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Повна назва"
+            label={t('units.fieldName')}
             required
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="штука"
+            placeholder={t('units.placeholderName')}
             className="h-8 text-[13px]"
           />
           <Input
-            label="Коефіцієнт"
+            label={t('units.fieldCoefficient')}
             type="number"
             min="0"
             value={form.coefficient}
             onChange={e => setForm(f => ({ ...f, coefficient: e.target.value }))}
-            placeholder="1"
-            hint="Коефіцієнт перерахунку до базової одиниці"
+            placeholder={t('units.placeholderCoefficient')}
+            hint={t('units.coefficientHint')}
             className="h-8 text-[13px]"
           />
           <div className="grid grid-cols-3 gap-2">
             <Input
-              label="Ширина, м"
+              label={t('units.fieldWidth')}
               type="number"
               min="0"
               value={form.width}
               onChange={e => setForm(f => ({ ...f, width: e.target.value }))}
-              placeholder="0.0"
+              placeholder={t('units.dimPlaceholder')}
               className="h-8 text-[13px]"
             />
             <Input
-              label="Висота, м"
+              label={t('units.fieldHeight')}
               type="number"
               min="0"
               value={form.height}
               onChange={e => setForm(f => ({ ...f, height: e.target.value }))}
-              placeholder="0.0"
+              placeholder={t('units.dimPlaceholder')}
               className="h-8 text-[13px]"
             />
             <Input
-              label="Глибина, м"
+              label={t('units.fieldDepth')}
               type="number"
               min="0"
               value={form.depth}
               onChange={e => setForm(f => ({ ...f, depth: e.target.value }))}
-              placeholder="0.0"
+              placeholder={t('units.dimPlaceholder')}
               className="h-8 text-[13px]"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Input
-              label="Об'єм, м³"
+              label={t('units.fieldVolume')}
               type="number"
               min="0"
               value={form.volume}
               onChange={e => setForm(f => ({ ...f, volume: e.target.value }))}
-              placeholder="0.0"
+              placeholder={t('units.dimPlaceholder')}
               className="h-8 text-[13px]"
             />
             <Input
-              label="Вага, кг"
+              label={t('units.fieldWeight')}
               type="number"
               min="0"
               value={form.weight}
               onChange={e => setForm(f => ({ ...f, weight: e.target.value }))}
-              placeholder="0.0"
+              placeholder={t('units.dimPlaceholder')}
               className="h-8 text-[13px]"
             />
           </div>

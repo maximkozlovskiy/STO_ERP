@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -50,6 +51,7 @@ const PRESET_COLORS = [
 // ─── Statuses Tab (кастомні мітки товарів) ─────────────────────────────────
 
 export default function GoodStatusesTab() {
+  const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
   const [statuses, setStatuses] = useState<GoodStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,13 +86,13 @@ export default function GoodStatusesTab() {
         })
         .catch((e: unknown) => {
           if (loadReqRef.current !== reqId) return;
-          if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+          if (!cached) setError(e instanceof Error ? e.message : t('common.loadError'));
         })
         .finally(() => {
           if (loadReqRef.current === reqId) setLoading(false);
         });
     },
-    [showDeleted],
+    [showDeleted, t],
   );
 
   useEffect(() => {
@@ -112,7 +114,7 @@ export default function GoodStatusesTab() {
 
   const save = async () => {
     if (!form.name.trim()) {
-      setError("Назва є обов'язковою");
+      setError(t('goodStatuses.nameRequired'));
       return;
     }
     setSaving(true);
@@ -133,7 +135,7 @@ export default function GoodStatusesTab() {
       setModal(false);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('common.saveError'));
     } finally {
       setSaving(false);
     }
@@ -142,10 +144,10 @@ export default function GoodStatusesTab() {
   const remove = async (s: GoodStatus) => {
     if (
       !(await confirm({
-        title: 'Помітити статус на видалення?',
+        title: t('goodStatuses.removeConfirmTitle'),
         message: s.goodCount
-          ? `Статус призначено ${s.goodCount} товарам — мітка зникне з їхніх карток. Можна відновити.`
-          : 'Статус можна відновити пізніше.',
+          ? t('goodStatuses.removeConfirmMessageAssigned', { count: s.goodCount })
+          : t('goodStatuses.removeConfirmMessagePlain'),
         variant: 'destructive',
       }))
     )
@@ -155,7 +157,7 @@ export default function GoodStatusesTab() {
       await apiFetch<void>(`/good-statuses/${s.id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      setError(e instanceof Error ? e.message : t('common.deleteError'));
     } finally {
       setDeletingId(null);
     }
@@ -171,9 +173,9 @@ export default function GoodStatusesTab() {
         method: 'POST',
       });
       load();
-      toast.success('Статус відновлено');
+      toast.success(t('goodStatuses.restored'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+      setError(e instanceof Error ? e.message : t('common.restoreError'));
     } finally {
       setRestoringIds(prev => {
         const next = new Set(prev);
@@ -194,21 +196,19 @@ export default function GoodStatusesTab() {
         </div>
       )}
       <div className="flex items-center justify-between gap-3 shrink-0">
-        <p className="text-[13px] text-muted-foreground">
-          Кастомні мітки товарів (Акція, Новинка, Хіт продажів, Розпродаж)
-        </p>
+        <p className="text-[13px] text-muted-foreground">{t('goodStatuses.description')}</p>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('common.hideDeleted') : t('common.showDeleted')}
             onClick={() => setShowDeleted(d => !d)}
             className={cn(showDeleted && 'border-primary text-primary')}
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            Статус
+            {t('goodStatuses.addButton')}
           </Button>
         </div>
       </div>
@@ -217,13 +217,15 @@ export default function GoodStatusesTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Назва статусу</TableHead>
-              <TableHead>Товарів</TableHead>
+              <TableHead>{t('goodStatuses.colName')}</TableHead>
+              <TableHead>{t('goodStatuses.colGoods')}</TableHead>
               <TableHead className="text-right">
                 {activeCount > 0 && (
                   <span className="text-[12px] text-muted-foreground font-normal">
-                    {activeCount} активних
-                    {deletedCount > 0 && !showDeleted && ` · ${deletedCount} архів`}
+                    {t('goodStatuses.active', { count: activeCount })}
+                    {deletedCount > 0 &&
+                      !showDeleted &&
+                      t('goodStatuses.archived', { count: deletedCount })}
                   </span>
                 )}
               </TableHead>
@@ -244,8 +246,8 @@ export default function GoodStatusesTab() {
                 <TableCell colSpan={3} className="p-0">
                   <EmptyState
                     icon={Tag}
-                    title="Статуси відсутні"
-                    description="Додайте перший статус-мітку"
+                    title={t('goodStatuses.emptyTitle')}
+                    description={t('goodStatuses.emptyDescription')}
                   />
                 </TableCell>
               </TableRow>
@@ -266,7 +268,7 @@ export default function GoodStatusesTab() {
                         >
                           {s.name}
                         </span>
-                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                        {isDeleted && <Badge variant="secondary">{t('common.deleted')}</Badge>}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -284,7 +286,7 @@ export default function GoodStatusesTab() {
                             disabled={restoringIds.has(s.id)}
                             onClick={() => void restore(s.id)}
                             className="text-success/70 hover:text-success hover:bg-success/10"
-                            title="Відновити"
+                            title={t('common.restore')}
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
                           </Button>
@@ -304,7 +306,7 @@ export default function GoodStatusesTab() {
                               loading={deletingId === s.id}
                               onClick={() => void remove(s)}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title="Помітити на видалення"
+                              title={t('common.markForDeletion')}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -322,10 +324,10 @@ export default function GoodStatusesTab() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title={editStatus ? 'Редагувати статус' : 'Новий статус'}
+        title={editStatus ? t('goodStatuses.editTitle') : t('goodStatuses.createTitle')}
         footer={
           <Button onClick={save} loading={saving} disabled={!form.name.trim()} className="w-full">
-            Зберегти
+            {t('goodStatuses.save')}
           </Button>
         }
       >
@@ -336,17 +338,19 @@ export default function GoodStatusesTab() {
         )}
         <div className="space-y-4">
           <Input
-            label="Назва статусу"
+            label={t('goodStatuses.fieldName')}
             required
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="наприклад: Акція, Новинка, Розпродаж"
+            placeholder={t('goodStatuses.fieldNamePlaceholder')}
             autoFocus
             className="h-8 text-[13px]"
           />
 
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Колір</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              {t('goodStatuses.color')}
+            </label>
             <div className="flex items-center gap-2 flex-wrap">
               {PRESET_COLORS.map(c => (
                 <button
@@ -358,7 +362,7 @@ export default function GoodStatusesTab() {
                     form.color === c ? 'border-foreground' : 'border-transparent',
                   )}
                   style={{ backgroundColor: c }}
-                  aria-label={`Колір ${c}`}
+                  aria-label={t('goodStatuses.colorAria', { color: c })}
                 />
               ))}
               <input
@@ -366,18 +370,20 @@ export default function GoodStatusesTab() {
                 value={form.color}
                 onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
                 className="h-7 w-9 rounded border border-border bg-transparent cursor-pointer"
-                aria-label="Власний колір"
+                aria-label={t('goodStatuses.customColor')}
               />
             </div>
 
             {/* Preview */}
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-[12px] text-muted-foreground">Вигляд мітки:</span>
+              <span className="text-[12px] text-muted-foreground">
+                {t('goodStatuses.previewLabel')}
+              </span>
               <span
                 className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[12px] font-medium text-white"
                 style={{ backgroundColor: form.color }}
               >
-                {form.name.trim() || 'Назва'}
+                {form.name.trim() || t('goodStatuses.previewFallback')}
               </span>
             </div>
           </div>
