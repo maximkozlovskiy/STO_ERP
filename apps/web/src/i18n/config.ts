@@ -43,6 +43,7 @@ if (!i18n.isInitialized) {
       'payments',
       'supplierPayments',
       'stockDocuments',
+      'counterparties',
     ],
     interpolation: { escapeValue: false }, // React вже екранує
     returnNull: false,

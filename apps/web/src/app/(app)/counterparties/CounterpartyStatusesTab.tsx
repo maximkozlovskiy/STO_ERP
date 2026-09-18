@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2, Tag, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
@@ -50,6 +51,7 @@ const PRESET_COLORS = [
 // ─── Statuses Tab (кастомні мітки контрагентів) ─────────────────────────────────
 
 export default function CounterpartyStatusesTab() {
+  const { t } = useTranslation('counterparties');
   const { confirm, dialogProps } = useConfirm();
   const [statuses, setStatuses] = useState<CounterpartyStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,13 +90,13 @@ export default function CounterpartyStatusesTab() {
         })
         .catch((e: unknown) => {
           if (loadReqRef.current !== reqId) return;
-          if (!cached) setError(e instanceof Error ? e.message : 'Помилка завантаження');
+          if (!cached) setError(e instanceof Error ? e.message : t('statusesTab.loadFailed'));
         })
         .finally(() => {
           if (loadReqRef.current === reqId) setLoading(false);
         });
     },
-    [showDeleted],
+    [showDeleted, t],
   );
 
   useEffect(() => {
@@ -116,7 +118,7 @@ export default function CounterpartyStatusesTab() {
 
   const save = async () => {
     if (!form.name.trim()) {
-      setError("Назва є обов'язковою");
+      setError(t('statusesTab.nameRequired'));
       return;
     }
     setSaving(true);
@@ -137,7 +139,7 @@ export default function CounterpartyStatusesTab() {
       setModal(false);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка збереження');
+      setError(e instanceof Error ? e.message : t('statusesTab.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -146,10 +148,10 @@ export default function CounterpartyStatusesTab() {
   const remove = async (s: CounterpartyStatus) => {
     if (
       !(await confirm({
-        title: 'Помітити статус на видалення?',
+        title: t('statusesTab.confirmDeleteTitle'),
         message: s.counterpartyCount
-          ? `Статус призначено ${s.counterpartyCount} контрагентам — мітка зникне з їхніх карток. Можна відновити.`
-          : 'Статус можна відновити пізніше.',
+          ? t('statusesTab.confirmDeleteAssigned', { count: s.counterpartyCount })
+          : t('statusesTab.confirmDeleteUnassigned'),
         variant: 'destructive',
       }))
     )
@@ -159,7 +161,7 @@ export default function CounterpartyStatusesTab() {
       await apiFetch<void>(`/counterparty-statuses/${s.id}`, { method: 'DELETE' });
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка видалення');
+      setError(e instanceof Error ? e.message : t('statusesTab.deleteFailed'));
     } finally {
       setDeletingId(null);
     }
@@ -175,9 +177,9 @@ export default function CounterpartyStatusesTab() {
         method: 'POST',
       });
       load();
-      toast.success('Статус відновлено');
+      toast.success(t('statusesTab.restored'));
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Помилка відновлення');
+      setError(e instanceof Error ? e.message : t('statusesTab.restoreFailed'));
     } finally {
       setRestoringIds(prev => {
         const next = new Set(prev);
@@ -198,21 +200,19 @@ export default function CounterpartyStatusesTab() {
         </div>
       )}
       <div className="flex items-center justify-between gap-3 shrink-0">
-        <p className="text-[13px] text-muted-foreground">
-          Кастомні мітки контрагентів (VIP, Постійний, Проблемний, Чорний список)
-        </p>
+        <p className="text-[13px] text-muted-foreground">{t('statusesTab.description')}</p>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('statusesTab.hideDeleted') : t('statusesTab.showDeleted')}
             onClick={() => setShowDeleted(d => !d)}
             className={cn(showDeleted && 'border-primary text-primary')}
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
           <Button leftIcon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-            Статус
+            {t('statusesTab.addStatus')}
           </Button>
         </div>
       </div>
@@ -221,13 +221,15 @@ export default function CounterpartyStatusesTab() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Назва статусу</TableHead>
-              <TableHead>Контрагентів</TableHead>
+              <TableHead>{t('statusesTab.colName')}</TableHead>
+              <TableHead>{t('statusesTab.colCounterparties')}</TableHead>
               <TableHead className="text-right">
                 {activeCount > 0 && (
                   <span className="text-[12px] text-muted-foreground font-normal">
-                    {activeCount} активних
-                    {deletedCount > 0 && !showDeleted && ` · ${deletedCount} архів`}
+                    {t('statusesTab.activeCount', { count: activeCount })}
+                    {deletedCount > 0 &&
+                      !showDeleted &&
+                      t('statusesTab.archiveSuffix', { count: deletedCount })}
                   </span>
                 )}
               </TableHead>
@@ -248,8 +250,8 @@ export default function CounterpartyStatusesTab() {
                 <TableCell colSpan={3} className="p-0">
                   <EmptyState
                     icon={Tag}
-                    title="Статуси відсутні"
-                    description="Додайте перший статус-мітку"
+                    title={t('statusesTab.emptyTitle')}
+                    description={t('statusesTab.emptyDescription')}
                   />
                 </TableCell>
               </TableRow>
@@ -270,7 +272,7 @@ export default function CounterpartyStatusesTab() {
                         >
                           {s.name}
                         </span>
-                        {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                        {isDeleted && <Badge variant="secondary">{t('badges.deleted')}</Badge>}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -288,7 +290,7 @@ export default function CounterpartyStatusesTab() {
                             disabled={restoringIds.has(s.id)}
                             onClick={() => void restore(s.id)}
                             className="text-success/70 hover:text-success hover:bg-success/10"
-                            title="Відновити"
+                            title={t('statusesTab.restore')}
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
                           </Button>
@@ -308,7 +310,7 @@ export default function CounterpartyStatusesTab() {
                               loading={deletingId === s.id}
                               onClick={() => void remove(s)}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title="Помітити на видалення"
+                              title={t('statusesTab.markForDeletion')}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -326,10 +328,10 @@ export default function CounterpartyStatusesTab() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title={editStatus ? 'Редагувати статус' : 'Новий статус'}
+        title={editStatus ? t('statusesTab.modalEditTitle') : t('statusesTab.modalCreateTitle')}
         footer={
           <Button onClick={save} loading={saving} disabled={!form.name.trim()} className="w-full">
-            Зберегти
+            {t('statusesTab.save')}
           </Button>
         }
       >
@@ -340,17 +342,19 @@ export default function CounterpartyStatusesTab() {
         )}
         <div className="space-y-4">
           <Input
-            label="Назва статусу"
+            label={t('statusesTab.nameLabel')}
             required
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="наприклад: VIP, Постійний, Чорний список"
+            placeholder={t('statusesTab.namePlaceholder')}
             autoFocus
             className="h-8 text-[13px]"
           />
 
           <div>
-            <label className="block text-[13px] font-medium text-foreground mb-1.5">Колір</label>
+            <label className="block text-[13px] font-medium text-foreground mb-1.5">
+              {t('statusesTab.colorLabel')}
+            </label>
             <div className="flex items-center gap-2 flex-wrap">
               {PRESET_COLORS.map(c => (
                 <button
@@ -362,7 +366,7 @@ export default function CounterpartyStatusesTab() {
                     form.color === c ? 'border-foreground' : 'border-transparent',
                   )}
                   style={{ backgroundColor: c }}
-                  aria-label={`Колір ${c}`}
+                  aria-label={t('statusesTab.colorAria', { color: c })}
                 />
               ))}
               <input
@@ -370,18 +374,20 @@ export default function CounterpartyStatusesTab() {
                 value={form.color}
                 onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
                 className="h-7 w-9 rounded border border-border bg-transparent cursor-pointer"
-                aria-label="Власний колір"
+                aria-label={t('statusesTab.customColorAria')}
               />
             </div>
 
             {/* Preview */}
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-[12px] text-muted-foreground">Вигляд мітки:</span>
+              <span className="text-[12px] text-muted-foreground">
+                {t('statusesTab.previewLabel')}
+              </span>
               <span
                 className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[12px] font-medium text-white"
                 style={{ backgroundColor: form.color }}
               >
-                {form.name.trim() || 'Назва'}
+                {form.name.trim() || t('statusesTab.previewFallback')}
               </span>
             </div>
           </div>

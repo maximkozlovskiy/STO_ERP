@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -60,22 +61,23 @@ interface CrmFilters extends Record<string, unknown> {
 
 const TYPE_BADGE = COUNTERPARTY_TYPE_BADGE;
 const TYPE_FILTER_OPTIONS = [
-  ['', 'Всі'],
-  ['CLIENT', 'Клієнти'],
-  ['SUPPLIER', 'Постачальники'],
-  ['BOTH', 'Обидва'],
+  ['', 'typeFilter.all'],
+  ['CLIENT', 'typeFilter.client'],
+  ['SUPPLIER', 'typeFilter.supplier'],
+  ['BOTH', 'typeFilter.both'],
 ] as const;
 
-// Module-level — статичні колонки + прекомпьютений JSON для hasCustomization.
-const CRM_COLUMNS: Array<{ key: string; label: string; defaultVisible?: boolean }> = [
-  { key: 'name', label: 'Контрагент', defaultVisible: true },
-  { key: 'type', label: 'Тип', defaultVisible: true },
-  { key: 'statuses', label: 'Статуси', defaultVisible: true },
-  { key: 'phone', label: 'Телефон', defaultVisible: true },
-  { key: 'edrpou', label: 'ЄДРПОУ', defaultVisible: false },
-  { key: 'balance', label: 'Баланс, ₴', defaultVisible: true },
+// Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
+// прекомпьютений JSON для hasCustomization.
+const CRM_COLUMN_DEFS: Array<{ key: string; labelKey: string; defaultVisible?: boolean }> = [
+  { key: 'name', labelKey: 'columns.name', defaultVisible: true },
+  { key: 'type', labelKey: 'columns.type', defaultVisible: true },
+  { key: 'statuses', labelKey: 'columns.statuses', defaultVisible: true },
+  { key: 'phone', labelKey: 'columns.phone', defaultVisible: true },
+  { key: 'edrpou', labelKey: 'columns.edrpou', defaultVisible: false },
+  { key: 'balance', labelKey: 'columns.balance', defaultVisible: true },
 ];
-const CRM_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(CRM_COLUMNS.map(c => c.key));
+const CRM_COLUMNS_DEFAULT_KEYS_JSON = JSON.stringify(CRM_COLUMN_DEFS.map(c => c.key));
 
 // Suspense обгортка для useSearchParams — Next.js static-export вимога.
 // Верхній рівень = таб-роутер: список контрагентів + довідник статусів-міток.
@@ -90,12 +92,13 @@ export default function CrmPage() {
 const CounterpartyStatusesTab = dynamic(() => import('./CounterpartyStatusesTab'), { ssr: false });
 
 type CrmTab = 'list' | 'statuses';
-const CRM_TABS: { key: CrmTab; label: string }[] = [
-  { key: 'list', label: 'Контрагенти' },
-  { key: 'statuses', label: 'Статуси' },
+const CRM_TABS: { key: CrmTab; labelKey: string }[] = [
+  { key: 'list', labelKey: 'tabs.list' },
+  { key: 'statuses', labelKey: 'tabs.statuses' },
 ];
 
 function CrmTabsShell() {
+  const { t } = useTranslation('counterparties');
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = (searchParams.get('tab') ?? 'list') as CrmTab;
@@ -108,26 +111,26 @@ function CrmTabsShell() {
     <div className="page-fill p-4 md:p-6">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Контрагенти</h1>
+          <h1 className="page-title">{t('title')}</h1>
         </div>
       </div>
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {CRM_TABS.map(t => (
+        {CRM_TABS.map(tabItem => (
           <button
-            key={t.key}
+            key={tabItem.key}
             onMouseEnter={() => {
-              if (t.key === 'statuses') void import('./CounterpartyStatusesTab');
+              if (tabItem.key === 'statuses') void import('./CounterpartyStatusesTab');
             }}
-            onClick={() => setTab(t.key)}
+            onClick={() => setTab(tabItem.key)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === t.key
+              tab === tabItem.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {t(tabItem.labelKey)}
           </button>
         ))}
       </div>
@@ -139,11 +142,18 @@ function CrmTabsShell() {
 
 function CrmPageInner() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
+  const { t } = useTranslation('counterparties');
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const { confirm, dialogProps } = useConfirm();
+
+  // Колонки з i18n-мітками — резолвляться у компоненті (labelKey → t), memo по `t`.
+  const CRM_COLUMNS = useMemo(
+    () => CRM_COLUMN_DEFS.map(c => ({ ...c, label: t(c.labelKey) })),
+    [t],
+  );
 
   // useListPage: shared table/panel/filter infrastructure
   const {
@@ -236,9 +246,9 @@ function CrmPageInner() {
     (name: string) => {
       const preset = saveFilter(name, { search, typeFilter, showDeleted });
       setActiveSavedFilterId(preset.id);
-      if (features.toastEnabled) toast.success(`Фільтр "${name}" збережено`);
+      if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
-    [saveFilter, search, typeFilter, showDeleted, setActiveSavedFilterId, features.toastEnabled],
+    [saveFilter, search, typeFilter, showDeleted, setActiveSavedFilterId, features.toastEnabled, t],
   );
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(counterparties);
@@ -247,7 +257,7 @@ function CrmPageInner() {
     () => [
       {
         id: 'delete',
-        label: 'Видалити вибраних',
+        label: t('actions.bulkDelete'),
         variant: 'destructive',
         onClick: async (ids: string[]) => {
           const results = await Promise.allSettled(
@@ -259,23 +269,29 @@ function CrmPageInner() {
           queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
           if (features.toastEnabled) {
             if (succeeded > 0 && failed === 0) {
-              toast.success(`Видалено ${succeeded} контрагент${succeeded === 1 ? 'а' : 'ів'}`);
+              toast.success(
+                succeeded === 1
+                  ? t('toast.deletedOne', { count: succeeded })
+                  : t('toast.deletedMany', { count: succeeded }),
+              );
             } else if (succeeded > 0) {
-              toast.warning(`Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`);
+              toast.warning(
+                t('toast.deletedPartial', { succeeded, total: results.length, failed }),
+              );
             } else {
-              toast.error('Не вдалося видалити контрагентів');
+              toast.error(t('toast.bulkDeleteNone'));
             }
           } else if (failed > 0) {
             setActionError(
               succeeded > 0
-                ? `Видалено ${succeeded} з ${results.length}. ${failed} не вдалось`
-                : 'Не вдалося видалити контрагентів',
+                ? t('errors.deletedPartial', { succeeded, total: results.length, failed })
+                : t('errors.bulkDeleteNone'),
             );
           }
         },
       },
     ],
-    [bulkSelect, queryClient, features.toastEnabled],
+    [bulkSelect, queryClient, features.toastEnabled, t],
   ); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -316,15 +332,14 @@ function CrmPageInner() {
   };
 
   const markDeleted = async (id: string) => {
-    if (!(await confirm({ title: 'Позначити контрагента на видалення?', variant: 'destructive' })))
-      return;
+    if (!(await confirm({ title: t('confirm.markForDeletion'), variant: 'destructive' }))) return;
     try {
       await apiFetch(`/counterparties/${id}`, { method: 'DELETE' });
-      if (features.toastEnabled) toast.success('Контрагента позначено на видалення');
+      if (features.toastEnabled) toast.success(t('toast.markedForDeletion'));
       if (selectedCp?.id === id) setSelectedCp(null);
       queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка видалення';
+      const msg = e instanceof Error ? e.message : t('errors.deleteFailed');
       if (features.toastEnabled) toast.error(msg);
       else setActionError(msg);
     }
@@ -343,7 +358,7 @@ function CrmPageInner() {
   const buildCpTabs = (cp: Counterparty): DetailPanelTab[] => [
     {
       key: 'info',
-      label: 'Основне',
+      label: t('detail.info'),
       content: (
         <div className="space-y-3">
           {buildPanelFields(cp, COUNTERPARTY_PANEL_SCHEMA, panelConfig.config, {
@@ -355,8 +370,8 @@ function CrmPageInner() {
                 >
                   {counterpartyTypeLabel(String(v))}
                 </Badge>
-                {cp.vatPayer && <Badge variant="warning">ПДВ</Badge>}
-                {cp.deletedAt && <Badge variant="secondary">видалено</Badge>}
+                {cp.vatPayer && <Badge variant="warning">{t('badges.vat')}</Badge>}
+                {cp.deletedAt && <Badge variant="secondary">{t('badges.deleted')}</Badge>}
               </div>
             ),
             balance: v => (
@@ -385,13 +400,13 @@ function CrmPageInner() {
     },
     {
       key: 'vehicles',
-      label: 'Авто',
+      label: t('detail.vehicles'),
       content: vehiclesLoading ? (
         <div className="flex justify-center py-6">
           <Spinner size="sm" />
         </div>
       ) : cpVehicles.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">Авто не додано</p>
+        <p className="text-[13px] text-muted-foreground">{t('detail.noVehicles')}</p>
       ) : (
         <div className="space-y-2">
           {cpVehicles.map(v => (
@@ -404,7 +419,7 @@ function CrmPageInner() {
               </p>
               <p className="text-muted-foreground text-[12px] mt-0.5">
                 {v.year && `${v.year} · `}
-                {v.licensePlate || 'без держномера'}
+                {v.licensePlate || t('detail.noLicensePlate')}
               </p>
             </div>
           ))}
@@ -431,7 +446,7 @@ function CrmPageInner() {
             type="button"
             onClick={() => setActionError('')}
             className="shrink-0 text-destructive/70 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
-            aria-label="Закрити повідомлення"
+            aria-label={t('aria.closeMessage')}
           >
             <X className="h-4 w-4" />
           </button>
@@ -459,7 +474,7 @@ function CrmPageInner() {
             resetPage();
             setActiveSavedFilterId(null);
           }}
-          placeholder="Пошук за ім'ям, телефоном, ЄДРПОУ..."
+          placeholder={t('filters.searchPlaceholder')}
           leftElement={<Search />}
           className="flex-1 min-w-48 h-8 text-[13px]"
         />
@@ -472,9 +487,9 @@ function CrmPageInner() {
           }}
           className="w-44 h-8 text-[13px] py-0.5 px-2 pr-7"
         >
-          {TYPE_FILTER_OPTIONS.map(([v, l]) => (
+          {TYPE_FILTER_OPTIONS.map(([v, labelKey]) => (
             <option key={v} value={v}>
-              {l}
+              {t(labelKey)}
             </option>
           ))}
         </Select>
@@ -482,7 +497,7 @@ function CrmPageInner() {
           <Button
             variant="outline"
             size="icon-sm"
-            title={showDeleted ? 'Сховати видалені' : 'Показати видалені'}
+            title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
             onClick={() => {
               setShowDeleted(d => !d);
               resetPage();
@@ -513,7 +528,7 @@ function CrmPageInner() {
               setModal(true);
             }}
           >
-            Контрагент
+            {t('actions.addCounterparty')}
           </Button>
         </div>
       </div>
@@ -542,7 +557,7 @@ function CrmPageInner() {
                       ref={selectAllRef}
                       onChange={bulkSelect.toggleAll}
                       className="h-3.5 w-3.5 rounded border-border"
-                      aria-label="Вибрати всіх"
+                      aria-label={t('aria.selectAll')}
                     />
                   </TableHead>
                 )}
@@ -587,8 +602,8 @@ function CrmPageInner() {
                   >
                     <EmptyState
                       icon={Users}
-                      title="Нічого не знайдено"
-                      description="Спробуйте змінити параметри пошуку"
+                      title={t('empty.title')}
+                      description={t('empty.description')}
                       size="sm"
                     />
                   </TableCell>
@@ -619,7 +634,7 @@ function CrmPageInner() {
                             checked={bulkSelect.isSelected(cp.id)}
                             onChange={() => bulkSelect.toggle(cp.id)}
                             className="h-3.5 w-3.5 rounded border-border"
-                            aria-label={`Вибрати ${displayName(cp)}`}
+                            aria-label={t('aria.selectRow', { name: displayName(cp) })}
                           />
                         </TableCell>
                       )}
@@ -631,7 +646,9 @@ function CrmPageInner() {
                                 <p className="text-[13px] font-medium text-primary">
                                   {displayName(cp)}
                                 </p>
-                                {isDeleted && <Badge variant="secondary">видалено</Badge>}
+                                {isDeleted && (
+                                  <Badge variant="secondary">{t('badges.deleted')}</Badge>
+                                )}
                               </div>
                               {cp.email && (
                                 <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -706,7 +723,7 @@ function CrmPageInner() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              title="Редагувати"
+                              title={t('actions.edit')}
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               onClick={() => openEdit(cp)}
                             >
@@ -718,7 +735,7 @@ function CrmPageInner() {
                               variant="ghost"
                               size="icon-sm"
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                              title="Позначити на видалення"
+                              title={t('actions.markForDeletion')}
                               onClick={() => markDeleted(cp.id)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />

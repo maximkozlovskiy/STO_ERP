@@ -1,0 +1,222 @@
+{
+  "title": "Контрагенти",
+  "tabs": {
+    "list": "Контрагенти",
+    "statuses": "Статуси"
+  },
+  "typeFilter": {
+    "all": "Всі",
+    "client": "Клієнти",
+    "supplier": "Постачальники",
+    "both": "Обидва"
+  },
+  "columns": {
+    "name": "Контрагент",
+    "type": "Тип",
+    "statuses": "Статуси",
+    "phone": "Телефон",
+    "edrpou": "ЄДРПОУ",
+    "balance": "Баланс, ₴"
+  },
+  "filters": {
+    "searchPlaceholder": "Пошук за ім'ям, телефоном, ЄДРПОУ...",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "filterSaved": "Фільтр \"{{name}}\" збережено"
+  },
+  "actions": {
+    "addCounterparty": "Контрагент",
+    "edit": "Редагувати",
+    "markForDeletion": "Позначити на видалення",
+    "bulkDelete": "Видалити вибраних"
+  },
+  "confirm": {
+    "markForDeletion": "Позначити контрагента на видалення?"
+  },
+  "badges": {
+    "vat": "ПДВ",
+    "deleted": "видалено"
+  },
+  "empty": {
+    "title": "Нічого не знайдено",
+    "description": "Спробуйте змінити параметри пошуку"
+  },
+  "detail": {
+    "info": "Основне",
+    "vehicles": "Авто",
+    "noVehicles": "Авто не додано",
+    "noLicensePlate": "без держномера"
+  },
+  "toast": {
+    "deletedOne": "Видалено {{count}} контрагента",
+    "deletedMany": "Видалено {{count}} контрагентів",
+    "deletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
+    "bulkDeleteNone": "Не вдалося видалити контрагентів",
+    "markedForDeletion": "Контрагента позначено на видалення"
+  },
+  "errors": {
+    "deletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
+    "bulkDeleteNone": "Не вдалося видалити контрагентів",
+    "deleteFailed": "Помилка видалення"
+  },
+  "aria": {
+    "selectAll": "Вибрати всіх",
+    "selectRow": "Вибрати {{name}}",
+    "closeMessage": "Закрити повідомлення"
+  },
+  "statusesTab": {
+    "description": "Кастомні мітки контрагентів (VIP, Постійний, Проблемний, Чорний список)",
+    "addStatus": "Статус",
+    "showDeleted": "Показати видалені",
+    "hideDeleted": "Сховати видалені",
+    "colName": "Назва статусу",
+    "colCounterparties": "Контрагентів",
+    "activeCount": "{{count}} активних",
+    "archiveSuffix": " · {{count}} архів",
+    "emptyTitle": "Статуси відсутні",
+    "emptyDescription": "Додайте перший статус-мітку",
+    "restore": "Відновити",
+    "markForDeletion": "Помітити на видалення",
+    "confirmDeleteTitle": "Помітити статус на видалення?",
+    "confirmDeleteAssigned": "Статус призначено {{count}} контрагентам — мітка зникне з їхніх карток. Можна відновити.",
+    "confirmDeleteUnassigned": "Статус можна відновити пізніше.",
+    "restored": "Статус відновлено",
+    "modalEditTitle": "Редагувати статус",
+    "modalCreateTitle": "Новий статус",
+    "save": "Зберегти",
+    "nameLabel": "Назва статусу",
+    "namePlaceholder": "наприклад: VIP, Постійний, Чорний список",
+    "colorLabel": "Колір",
+    "colorAria": "Колір {{color}}",
+    "customColorAria": "Власний колір",
+    "previewLabel": "Вигляд мітки:",
+    "previewFallback": "Назва",
+    "nameRequired": "Назва є обов'язковою",
+    "saveFailed": "Помилка збереження",
+    "loadFailed": "Помилка завантаження",
+    "deleteFailed": "Помилка видалення",
+    "restoreFailed": "Помилка відновлення"
+  },
+  "card": {
+    "back": "Назад",
+    "vatPayer": "Платник ПДВ",
+    "balanceLabel": "баланс",
+    "loadFailed": "Помилка завантаження",
+    "saveFailed": "Помилка збереження",
+    "tabs": {
+      "info": "Загальна інформація",
+      "garages": "Гаражі та авто",
+      "contracts": "Договори",
+      "settlements": "Взаєморозрахунки",
+      "workOrders": "Наряди",
+      "documents": "Документи",
+      "warranties": "Гарантії",
+      "loyalty": "Лояльність"
+    },
+    "typeLabel": {
+      "CLIENT": "Клієнт",
+      "SUPPLIER": "Постачальник",
+      "BOTH": "Клієнт / Постачальник"
+    },
+    "legalForm": {
+      "INDIVIDUAL": "Фіз. особа",
+      "FOP": "ФОП",
+      "TOV": "ТОВ",
+      "AT": "АТ",
+      "PP": "ПП",
+      "OTHER": "Інше"
+    },
+    "info": {
+      "heading": "Контактна інформація",
+      "edit": "Редагувати",
+      "save": "Зберегти",
+      "nameOrCompany": "Ім'я / Назва",
+      "phone": "Телефон",
+      "email": "Email",
+      "edrpou": "ЄДРПОУ",
+      "notes": "Нотатки",
+      "legalForm": "Форма власності",
+      "legalAddress": "Юр. адреса",
+      "actualAddress": "Факт. адреса",
+      "iban": "IBAN",
+      "bank": "Банк",
+      "contactPerson": "Контактна особа",
+      "taxNumber": "ІПН"
+    },
+    "garages": {
+      "heading": "Гаражі та автомобілі",
+      "addGarage": "Гараж",
+      "nameLabel": "Назва гаражу",
+      "namePlaceholder": "Основний гараж",
+      "addressLabel": "Адреса (необов'язково)",
+      "addressPlaceholder": "вул. Шевченка 1",
+      "save": "Зберегти",
+      "cancel": "Скасувати",
+      "empty": "Немає гаражів",
+      "default": "Основний",
+      "vehicleCount": "{{count}} авто",
+      "vehicles": "Автомобілі",
+      "addVehicle": "Авто",
+      "noVehicles": "Немає автомобілів",
+      "mileage": "{{value}} км",
+      "maintenance": "ТО: {{type}}",
+      "nextMaintenance": "· Наступне: {{date}}",
+      "soon": "⚠ Скоро"
+    },
+    "contracts": {
+      "add": "Додати договір",
+      "newContract": "Новий договір",
+      "contractType": "Вид договору",
+      "chooseType": "Оберіть вид",
+      "primary": "Головний",
+      "startDate": "Дата початку",
+      "endDate": "Дата завершення",
+      "currency": "Валюта",
+      "creditLimit": "Кредитний ліміт",
+      "deferDays": "Відтермінування (днів)",
+      "cancel": "Скасувати",
+      "save": "Зберегти",
+      "empty": "Немає договорів",
+      "colNumber": "Номер",
+      "colType": "Тип",
+      "colStart": "Початок",
+      "colEnd": "Завершення",
+      "colCreditLimit": "Кред. ліміт",
+      "colDeferDays": "Відт., дн.",
+      "delete": "Видалити",
+      "confirmDelete": "Видалити договір {{number}}?",
+      "loadFailed": "Помилка завантаження",
+      "saveFailed": "Помилка збереження",
+      "deleteFailed": "Помилка видалення"
+    },
+    "settlements": {
+      "currentBalance": "Поточний баланс",
+      "empty": "Немає транзакцій"
+    },
+    "workOrders": {
+      "empty": "Немає нарядів"
+    },
+    "warranties": {
+      "heading": "Гарантії",
+      "recordsCount": "{{count}} записів",
+      "empty": "Гарантій немає",
+      "workOrderNumber": "Наряд №{{number}}",
+      "until": "до {{date}}",
+      "active": "Активна",
+      "claimed": "Пред'явлена",
+      "expired": "Закінчилась"
+    },
+    "loyalty": {
+      "points": "Бали лояльності",
+      "pointsValue": "{{value}} балів",
+      "redeemPlaceholder": "Кількість балів",
+      "redeem": "Списати",
+      "empty": "Немає транзакцій",
+      "earn": "Нарахування балів",
+      "spend": "Списання балів",
+      "loadFailed": "Помилка завантаження",
+      "redeemFailed": "Помилка списання"
+    },
+    "garagesError": "Помилка гаражів"
+  }
+}

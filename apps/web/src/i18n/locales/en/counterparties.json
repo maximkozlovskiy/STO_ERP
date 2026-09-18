@@ -1,0 +1,222 @@
+{
+  "title": "Counterparties",
+  "tabs": {
+    "list": "Counterparties",
+    "statuses": "Statuses"
+  },
+  "typeFilter": {
+    "all": "All",
+    "client": "Clients",
+    "supplier": "Suppliers",
+    "both": "Both"
+  },
+  "columns": {
+    "name": "Counterparty",
+    "type": "Type",
+    "statuses": "Statuses",
+    "phone": "Phone",
+    "edrpou": "EDRPOU",
+    "balance": "Balance, ₴"
+  },
+  "filters": {
+    "searchPlaceholder": "Search by name, phone, EDRPOU...",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "filterSaved": "Filter \"{{name}}\" saved"
+  },
+  "actions": {
+    "addCounterparty": "Counterparty",
+    "edit": "Edit",
+    "markForDeletion": "Mark for deletion",
+    "bulkDelete": "Delete selected"
+  },
+  "confirm": {
+    "markForDeletion": "Mark counterparty for deletion?"
+  },
+  "badges": {
+    "vat": "VAT",
+    "deleted": "deleted"
+  },
+  "empty": {
+    "title": "Nothing found",
+    "description": "Try changing the search parameters"
+  },
+  "detail": {
+    "info": "General",
+    "vehicles": "Vehicles",
+    "noVehicles": "No vehicles added",
+    "noLicensePlate": "no plate number"
+  },
+  "toast": {
+    "deletedOne": "Deleted {{count}} counterparty",
+    "deletedMany": "Deleted {{count}} counterparties",
+    "deletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
+    "bulkDeleteNone": "Failed to delete counterparties",
+    "markedForDeletion": "Counterparty marked for deletion"
+  },
+  "errors": {
+    "deletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
+    "bulkDeleteNone": "Failed to delete counterparties",
+    "deleteFailed": "Deletion error"
+  },
+  "aria": {
+    "selectAll": "Select all",
+    "selectRow": "Select {{name}}",
+    "closeMessage": "Close message"
+  },
+  "statusesTab": {
+    "description": "Custom counterparty labels (VIP, Regular, Problematic, Blacklist)",
+    "addStatus": "Status",
+    "showDeleted": "Show deleted",
+    "hideDeleted": "Hide deleted",
+    "colName": "Status name",
+    "colCounterparties": "Counterparties",
+    "activeCount": "{{count}} active",
+    "archiveSuffix": " · {{count}} archived",
+    "emptyTitle": "No statuses",
+    "emptyDescription": "Add the first status label",
+    "restore": "Restore",
+    "markForDeletion": "Mark for deletion",
+    "confirmDeleteTitle": "Mark status for deletion?",
+    "confirmDeleteAssigned": "The status is assigned to {{count}} counterparties — the label will disappear from their cards. Can be restored.",
+    "confirmDeleteUnassigned": "The status can be restored later.",
+    "restored": "Status restored",
+    "modalEditTitle": "Edit status",
+    "modalCreateTitle": "New status",
+    "save": "Save",
+    "nameLabel": "Status name",
+    "namePlaceholder": "e.g.: VIP, Regular, Blacklist",
+    "colorLabel": "Color",
+    "colorAria": "Color {{color}}",
+    "customColorAria": "Custom color",
+    "previewLabel": "Label preview:",
+    "previewFallback": "Name",
+    "nameRequired": "Name is required",
+    "saveFailed": "Save error",
+    "loadFailed": "Load error",
+    "deleteFailed": "Deletion error",
+    "restoreFailed": "Restore error"
+  },
+  "card": {
+    "back": "Back",
+    "vatPayer": "VAT payer",
+    "balanceLabel": "balance",
+    "loadFailed": "Load error",
+    "saveFailed": "Save error",
+    "tabs": {
+      "info": "General information",
+      "garages": "Garages & vehicles",
+      "contracts": "Contracts",
+      "settlements": "Settlements",
+      "workOrders": "Work orders",
+      "documents": "Documents",
+      "warranties": "Warranties",
+      "loyalty": "Loyalty"
+    },
+    "typeLabel": {
+      "CLIENT": "Client",
+      "SUPPLIER": "Supplier",
+      "BOTH": "Client / Supplier"
+    },
+    "legalForm": {
+      "INDIVIDUAL": "Individual",
+      "FOP": "Sole proprietor",
+      "TOV": "LLC",
+      "AT": "JSC",
+      "PP": "Private enterprise",
+      "OTHER": "Other"
+    },
+    "info": {
+      "heading": "Contact information",
+      "edit": "Edit",
+      "save": "Save",
+      "nameOrCompany": "Name / Company",
+      "phone": "Phone",
+      "email": "Email",
+      "edrpou": "EDRPOU",
+      "notes": "Notes",
+      "legalForm": "Legal form",
+      "legalAddress": "Legal address",
+      "actualAddress": "Actual address",
+      "iban": "IBAN",
+      "bank": "Bank",
+      "contactPerson": "Contact person",
+      "taxNumber": "Tax number"
+    },
+    "garages": {
+      "heading": "Garages & vehicles",
+      "addGarage": "Garage",
+      "nameLabel": "Garage name",
+      "namePlaceholder": "Main garage",
+      "addressLabel": "Address (optional)",
+      "addressPlaceholder": "1 Shevchenka St.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "empty": "No garages",
+      "default": "Main",
+      "vehicleCount": "{{count}} vehicles",
+      "vehicles": "Vehicles",
+      "addVehicle": "Vehicle",
+      "noVehicles": "No vehicles",
+      "mileage": "{{value}} km",
+      "maintenance": "Service: {{type}}",
+      "nextMaintenance": "· Next: {{date}}",
+      "soon": "⚠ Soon"
+    },
+    "contracts": {
+      "add": "Add contract",
+      "newContract": "New contract",
+      "contractType": "Contract type",
+      "chooseType": "Choose type",
+      "primary": "Primary",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "currency": "Currency",
+      "creditLimit": "Credit limit",
+      "deferDays": "Deferral (days)",
+      "cancel": "Cancel",
+      "save": "Save",
+      "empty": "No contracts",
+      "colNumber": "Number",
+      "colType": "Type",
+      "colStart": "Start",
+      "colEnd": "End",
+      "colCreditLimit": "Credit limit",
+      "colDeferDays": "Defer, days",
+      "delete": "Delete",
+      "confirmDelete": "Delete contract {{number}}?",
+      "loadFailed": "Load error",
+      "saveFailed": "Save error",
+      "deleteFailed": "Deletion error"
+    },
+    "settlements": {
+      "currentBalance": "Current balance",
+      "empty": "No transactions"
+    },
+    "workOrders": {
+      "empty": "No work orders"
+    },
+    "warranties": {
+      "heading": "Warranties",
+      "recordsCount": "{{count}} records",
+      "empty": "No warranties",
+      "workOrderNumber": "Work order #{{number}}",
+      "until": "until {{date}}",
+      "active": "Active",
+      "claimed": "Claimed",
+      "expired": "Expired"
+    },
+    "loyalty": {
+      "points": "Loyalty points",
+      "pointsValue": "{{value}} points",
+      "redeemPlaceholder": "Number of points",
+      "redeem": "Redeem",
+      "empty": "No transactions",
+      "earn": "Points earned",
+      "spend": "Points redeemed",
+      "loadFailed": "Load error",
+      "redeemFailed": "Redemption error"
+    },
+    "garagesError": "Garages error"
+  }
+}

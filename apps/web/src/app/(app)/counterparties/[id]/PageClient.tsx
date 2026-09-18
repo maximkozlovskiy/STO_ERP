@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -164,31 +165,20 @@ type CrmTab =
   | 'warranties'
   | 'loyalty';
 
-// Static tab labels — module-level, не пересоздається на кожен render.
-const CRM_TABS: { key: CrmTab; label: string }[] = [
-  { key: 'info', label: 'Загальна інформація' },
-  { key: 'garages', label: 'Гаражі та авто' },
-  { key: 'contracts', label: 'Договори' },
-  { key: 'settlements', label: 'Взаєморозрахунки' },
-  { key: 'work-orders', label: 'Наряди' },
-  { key: 'documents', label: 'Документи' },
-  { key: 'warranties', label: 'Гарантії' },
-  { key: 'loyalty', label: 'Лояльність' },
+// Static tab labels — module-level, i18n labelKey резолвиться у компоненті.
+const CRM_TABS: { key: CrmTab; labelKey: string }[] = [
+  { key: 'info', labelKey: 'card.tabs.info' },
+  { key: 'garages', labelKey: 'card.tabs.garages' },
+  { key: 'contracts', labelKey: 'card.tabs.contracts' },
+  { key: 'settlements', labelKey: 'card.tabs.settlements' },
+  { key: 'work-orders', labelKey: 'card.tabs.workOrders' },
+  { key: 'documents', labelKey: 'card.tabs.documents' },
+  { key: 'warranties', labelKey: 'card.tabs.warranties' },
+  { key: 'loyalty', labelKey: 'card.tabs.loyalty' },
 ];
 
-const TYPE_LABELS: Record<string, string> = {
-  CLIENT: 'Клієнт',
-  SUPPLIER: 'Постачальник',
-  BOTH: 'Клієнт / Постачальник',
-};
-const LEGAL_FORM_LABELS: Record<string, string> = {
-  INDIVIDUAL: 'Фіз. особа',
-  FOP: 'ФОП',
-  TOV: 'ТОВ',
-  AT: 'АТ',
-  PP: 'ПП',
-  OTHER: 'Інше',
-};
+// Коди форм власності — мітки page-specific через counterparties:card.legalForm.<CODE>.
+const LEGAL_FORM_CODES = ['INDIVIDUAL', 'FOP', 'TOV', 'AT', 'PP', 'OTHER'] as const;
 const TYPE_BADGE = COUNTERPARTY_TYPE_BADGE;
 
 // woStatusLabel from @/i18n/enumLabel — single source of truth for status labels
@@ -226,7 +216,13 @@ const CHARGE_LIKE_TX_TYPES = SETTLEMENT_TX_CHARGE_LIKE_TYPES;
 
 export default function CounterpartyCardPage() {
   useRequireAuth(['OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT']);
+  const { t } = useTranslation('counterparties');
   const { employee } = useAuth();
+  // Мітки форм власності — page-specific мапа (не shared enum), будується через counterparties-каталог.
+  const legalFormLabels = useMemo(
+    () => Object.fromEntries(LEGAL_FORM_CODES.map(c => [c, t(`card.legalForm.${c}`)])),
+    [t],
+  );
   // Призначати/знімати статуси можуть OWNER/ADMIN/RECEPTIONIST (як assign-endpoint @Roles).
   const canManageStatuses = ['OWNER', 'ADMIN', 'RECEPTIONIST'].includes(employee?.role ?? '');
   const { id } = useParams<{ id: string }>();
@@ -338,8 +334,8 @@ export default function CounterpartyCardPage() {
         setCp(c);
         resetEditForm(counterpartyToForm(c));
       })
-      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Помилка завантаження'));
-  }, [id, resetEditForm]);
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : t('card.loadFailed')));
+  }, [id, resetEditForm, t]);
 
   const loadGarages = useCallback(() => {
     // cancelled guard mirrors loadWarranties: prevents two concurrent staged loads
@@ -383,7 +379,7 @@ export default function CounterpartyCardPage() {
           setMaintenanceSchedules(schedules);
         }
       } catch (e: unknown) {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Помилка гаражів');
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : t('card.garagesError'));
       } finally {
         if (!cancelled) setGaragesLoading(false);
       }
@@ -391,7 +387,7 @@ export default function CounterpartyCardPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   const loadSettlements = useCallback(() => {
     // cancelled guard: tab-switch during fetch must not mutate state for the previous tab.
@@ -461,7 +457,8 @@ export default function CounterpartyCardPage() {
         if (!cancelled) setContracts(items ?? []);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setContractsError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (!cancelled)
+          setContractsError(e instanceof Error ? e.message : t('card.contracts.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setContractsLoading(false);
@@ -469,7 +466,7 @@ export default function CounterpartyCardPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   const loadLoyalty = useCallback(() => {
     let cancelled = false;
@@ -485,7 +482,8 @@ export default function CounterpartyCardPage() {
         setLoyaltyTxs(txs.items ?? []);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setLoyaltyError(e instanceof Error ? e.message : 'Помилка завантаження');
+        if (!cancelled)
+          setLoyaltyError(e instanceof Error ? e.message : t('card.loyalty.loadFailed'));
       })
       .finally(() => {
         if (!cancelled) setLoyaltyLoading(false);
@@ -493,7 +491,7 @@ export default function CounterpartyCardPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     loadCp();
@@ -535,7 +533,7 @@ export default function CounterpartyCardPage() {
       setShowAddGarage(false);
       loadGarages();
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка збереження');
+      setLoadError(e instanceof Error ? e.message : t('card.saveFailed'));
     } finally {
       setSavingGarage(false);
     }
@@ -557,7 +555,7 @@ export default function CounterpartyCardPage() {
       setCp({ ...updated, statuses: updated.statuses ?? cp.statuses });
       setEditing(false);
     } catch (e: unknown) {
-      setLoadError(e instanceof Error ? e.message : 'Помилка збереження');
+      setLoadError(e instanceof Error ? e.message : t('card.saveFailed'));
     } finally {
       setSavingEdit(false);
     }
@@ -600,7 +598,7 @@ export default function CounterpartyCardPage() {
       <div className="flex items-start gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()} className="mt-1">
           <ArrowLeft className="h-4 w-4" />
-          Назад
+          {t('card.back')}
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">{displayName(cp)}</h1>
@@ -609,9 +607,9 @@ export default function CounterpartyCardPage() {
               variant={TYPE_BADGE[cp.type] ?? 'secondary'}
               tooltip={COUNTERPARTY_TYPE_DESCRIPTIONS[cp.type]}
             >
-              {TYPE_LABELS[cp.type] ?? cp.type}
+              {t(`card.typeLabel.${cp.type}`, { defaultValue: cp.type })}
             </Badge>
-            {cp.vatPayer && <Badge variant="secondary">Платник ПДВ</Badge>}
+            {cp.vatPayer && <Badge variant="secondary">{t('card.vatPayer')}</Badge>}
           </div>
           {/* Кастомні статуси-мітки (M:N) — badge-и + керування */}
           <div className="mt-2">
@@ -634,24 +632,26 @@ export default function CounterpartyCardPage() {
           )}
         >
           {fmtMoney(cp.balance)} {baseSymbol}
-          <p className="text-xs font-normal text-muted-foreground text-right">баланс</p>
+          <p className="text-xs font-normal text-muted-foreground text-right">
+            {t('card.balanceLabel')}
+          </p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border">
-        {CRM_TABS.map(t => (
+        {CRM_TABS.map(tabItem => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+            key={tabItem.key}
+            onClick={() => setTab(tabItem.key)}
             className={cn(
               'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              tab === t.key
+              tab === tabItem.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.label}
+            {t(tabItem.labelKey)}
           </button>
         ))}
       </div>
@@ -660,11 +660,11 @@ export default function CounterpartyCardPage() {
       {tab === 'info' && (
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-foreground">Контактна інформація</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t('card.info.heading')}</h2>
             {!editing ? (
               <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
                 <Pencil className="h-3.5 w-3.5 mr-1" />
-                Редагувати
+                {t('card.info.edit')}
               </Button>
             ) : (
               <div className="flex gap-1.5">
@@ -680,7 +680,7 @@ export default function CounterpartyCardPage() {
                 </Button>
                 <Button size="sm" loading={savingEdit} onClick={saveEdit}>
                   <Check className="h-3.5 w-3.5 mr-1" />
-                  Зберегти
+                  {t('card.info.save')}
                 </Button>
               </div>
             )}
@@ -689,11 +689,11 @@ export default function CounterpartyCardPage() {
           {!editing ? (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Ім'я / Назва" value={displayName(cp)} />
-                <Field label="Телефон" value={cp.phone} />
-                <Field label="Email" value={cp.email} />
-                <Field label="ЄДРПОУ" value={cp.edrpou} />
-                <Field label="Нотатки" value={cp.notes} />
+                <Field label={t('card.info.nameOrCompany')} value={displayName(cp)} />
+                <Field label={t('card.info.phone')} value={cp.phone} />
+                <Field label={t('card.info.email')} value={cp.email} />
+                <Field label={t('card.info.edrpou')} value={cp.edrpou} />
+                <Field label={t('card.info.notes')} value={cp.notes} />
               </div>
               {(cp.legalForm ||
                 cp.legalAddress ||
@@ -706,15 +706,15 @@ export default function CounterpartyCardPage() {
                   {(
                     [
                       [
-                        'Форма власності',
-                        cp.legalForm ? (LEGAL_FORM_LABELS[cp.legalForm] ?? cp.legalForm) : null,
+                        t('card.info.legalForm'),
+                        cp.legalForm ? (legalFormLabels[cp.legalForm] ?? cp.legalForm) : null,
                       ],
-                      ['Юр. адреса', cp.legalAddress],
-                      ['Факт. адреса', cp.actualAddress],
-                      ['IBAN', cp.bankAccount],
-                      ['Банк', cp.bankName],
-                      ['Контактна особа', cp.contactPerson],
-                      ['ІПН', cp.taxNumber],
+                      [t('card.info.legalAddress'), cp.legalAddress],
+                      [t('card.info.actualAddress'), cp.actualAddress],
+                      [t('card.info.iban'), cp.bankAccount],
+                      [t('card.info.bank'), cp.bankName],
+                      [t('card.info.contactPerson'), cp.contactPerson],
+                      [t('card.info.taxNumber'), cp.taxNumber],
                     ] as [string, string | null | undefined][]
                   )
                     .filter(([, v]) => v)
@@ -737,28 +737,28 @@ export default function CounterpartyCardPage() {
       {tab === 'garages' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Гаражі та автомобілі</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t('card.garages.heading')}</h2>
             <Button variant="ghost" size="sm" onClick={() => setShowAddGarage(v => !v)}>
               <Plus className="h-4 w-4 mr-1" />
-              Гараж
+              {t('card.garages.addGarage')}
             </Button>
           </div>
 
           {showAddGarage && (
             <AnimatedBody className="p-4 bg-secondary rounded-xl border border-border space-y-3">
               <Input
-                label="Назва гаражу"
+                label={t('card.garages.nameLabel')}
                 required
                 value={garageName}
                 onChange={e => setGarageName(e.target.value)}
-                placeholder="Основний гараж"
+                placeholder={t('card.garages.namePlaceholder')}
                 className="h-8 text-[13px]"
               />
               <Input
-                label="Адреса (необов'язково)"
+                label={t('card.garages.addressLabel')}
                 value={garageAddress}
                 onChange={e => setGarageAddress(e.target.value)}
-                placeholder="вул. Шевченка 1"
+                placeholder={t('card.garages.addressPlaceholder')}
                 className="h-8 text-[13px]"
               />
               <div className="flex gap-2">
@@ -768,10 +768,10 @@ export default function CounterpartyCardPage() {
                   loading={savingGarage}
                   disabled={!garageName.trim()}
                 >
-                  Зберегти
+                  {t('card.garages.save')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowAddGarage(false)}>
-                  Скасувати
+                  {t('card.garages.cancel')}
                 </Button>
               </div>
             </AnimatedBody>
@@ -784,7 +784,9 @@ export default function CounterpartyCardPage() {
           )}
 
           {!garagesLoading && garages.length === 0 && !showAddGarage && (
-            <p className="text-sm text-muted-foreground text-center py-8">Немає гаражів</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {t('card.garages.empty')}
+            </p>
           )}
 
           {!garagesLoading &&
@@ -801,7 +803,7 @@ export default function CounterpartyCardPage() {
                     <span className="text-sm font-medium text-foreground">{garage.name}</span>
                     {garage.isDefault && (
                       <span className="text-[11px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-medium">
-                        Основний
+                        {t('card.garages.default')}
                       </span>
                     )}
                     {garage.address && (
@@ -810,7 +812,9 @@ export default function CounterpartyCardPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
-                      {garageVehicles[garage.id]?.length ?? 0} авто
+                      {t('card.garages.vehicleCount', {
+                        count: garageVehicles[garage.id]?.length ?? 0,
+                      })}
                     </span>
                     <span
                       className={cn(
@@ -827,7 +831,7 @@ export default function CounterpartyCardPage() {
                   <div className="border-t border-border">
                     <div className="flex items-center justify-between px-4 py-2 bg-secondary/50">
                       <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wide">
-                        Автомобілі
+                        {t('card.garages.vehicles')}
                       </span>
                       <Button
                         variant="ghost"
@@ -839,7 +843,7 @@ export default function CounterpartyCardPage() {
                         }
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" />
-                        Авто
+                        {t('card.garages.addVehicle')}
                       </Button>
                     </div>
                     {!garageVehicles[garage.id] ? (
@@ -847,7 +851,9 @@ export default function CounterpartyCardPage() {
                         <Spinner size="sm" />
                       </div>
                     ) : garageVehicles[garage.id].length === 0 ? (
-                      <p className="text-sm text-muted-foreground px-4 py-3">Немає автомобілів</p>
+                      <p className="text-sm text-muted-foreground px-4 py-3">
+                        {t('card.garages.noVehicles')}
+                      </p>
                     ) : (
                       <div>
                         {garageVehicles[garage.id].map(v => {
@@ -874,7 +880,11 @@ export default function CounterpartyCardPage() {
                                     {[
                                       v.licensePlate,
                                       v.year,
-                                      v.currentMileage ? `${fmtInt(v.currentMileage)} км` : null,
+                                      v.currentMileage
+                                        ? t('card.garages.mileage', {
+                                            value: fmtInt(v.currentMileage),
+                                          })
+                                        : null,
                                     ]
                                       .filter(Boolean)
                                       .join(' · ')}
@@ -897,13 +907,21 @@ export default function CounterpartyCardPage() {
                                         key={s.id}
                                         className="flex items-center gap-2 text-[12px] text-muted-foreground"
                                       >
-                                        <span>ТО: {s.maintenanceType}</span>
+                                        <span>
+                                          {t('card.garages.maintenance', {
+                                            type: s.maintenanceType,
+                                          })}
+                                        </span>
                                         {s.nextMaintenanceDate && (
-                                          <span>· Наступне: {fmtDate(s.nextMaintenanceDate)}</span>
+                                          <span>
+                                            {t('card.garages.nextMaintenance', {
+                                              date: fmtDate(s.nextMaintenanceDate),
+                                            })}
+                                          </span>
                                         )}
                                         {isSoon && (
                                           <span className="px-1.5 py-0.5 bg-warning-subtle text-warning rounded text-[11px] font-medium">
-                                            ⚠ Скоро
+                                            {t('card.garages.soon')}
                                           </span>
                                         )}
                                       </div>
@@ -935,19 +953,22 @@ export default function CounterpartyCardPage() {
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setShowAddContract(v => !v)}>
               <Plus className="h-4 w-4 mr-1" />
-              Додати договір
+              {t('card.contracts.add')}
             </Button>
           </div>
 
           {/* Add contract form */}
           {showAddContract && (
             <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">Новий договір</h3>
+              <h3 className="text-sm font-semibold text-foreground">
+                {t('card.contracts.newContract')}
+              </h3>
               {/* Рядок 1: вид договору + checkbox Головний */}
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <label className="text-[13px] text-muted-foreground mb-1 block">
-                    Вид договору{cp.type === 'BOTH' && <span className="text-destructive"> *</span>}
+                    {t('card.contracts.contractType')}
+                    {cp.type === 'BOTH' && <span className="text-destructive"> *</span>}
                   </label>
                   {cp.type === 'BOTH' ? (
                     <Select
@@ -955,13 +976,15 @@ export default function CounterpartyCardPage() {
                       onChange={e => setContractForm(f => ({ ...f, contractType: e.target.value }))}
                       className="h-8 text-[13px] py-0.5 px-2 pr-7"
                     >
-                      <option value="">Оберіть вид</option>
-                      <option value="PURCHASE">Купівля</option>
-                      <option value="SALE">Продаж</option>
+                      <option value="">{t('card.contracts.chooseType')}</option>
+                      <option value="PURCHASE">{contractTypeLabel('PURCHASE')}</option>
+                      <option value="SALE">{contractTypeLabel('SALE')}</option>
                     </Select>
                   ) : (
                     <div className="px-3 py-2 rounded-lg border border-border bg-secondary text-[13px] text-foreground">
-                      {cp.type === 'CLIENT' ? 'Продаж' : 'Купівля'}
+                      {cp.type === 'CLIENT'
+                        ? contractTypeLabel('SALE')
+                        : contractTypeLabel('PURCHASE')}
                     </div>
                   )}
                 </div>
@@ -972,14 +995,16 @@ export default function CounterpartyCardPage() {
                     onChange={e => setContractForm(f => ({ ...f, isPrimary: e.target.checked }))}
                     className="h-4 w-4 rounded border-border accent-primary"
                   />
-                  <span className="text-[13px] text-foreground whitespace-nowrap">Головний</span>
+                  <span className="text-[13px] text-foreground whitespace-nowrap">
+                    {t('card.contracts.primary')}
+                  </span>
                 </label>
               </div>
               {/* Рядок 2: дати */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[13px] text-muted-foreground mb-1 block">
-                    Дата початку <span className="text-destructive">*</span>
+                    {t('card.contracts.startDate')} <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="date"
@@ -990,7 +1015,7 @@ export default function CounterpartyCardPage() {
                 </div>
                 <div>
                   <label className="text-[13px] text-muted-foreground mb-1 block">
-                    Дата завершення
+                    {t('card.contracts.endDate')}
                   </label>
                   <Input
                     type="date"
@@ -1002,7 +1027,9 @@ export default function CounterpartyCardPage() {
               </div>
               {/* Рядок 3: валюта */}
               <div>
-                <label className="text-[13px] text-muted-foreground mb-1 block">Валюта</label>
+                <label className="text-[13px] text-muted-foreground mb-1 block">
+                  {t('card.contracts.currency')}
+                </label>
                 {currencies.length > 0 ? (
                   <select
                     value={contractForm.currencyCode || orgCurrency}
@@ -1037,7 +1064,7 @@ export default function CounterpartyCardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[13px] text-muted-foreground mb-1 block">
-                    Кредитний ліміт
+                    {t('card.contracts.creditLimit')}
                   </label>
                   <Input
                     type="number"
@@ -1051,7 +1078,7 @@ export default function CounterpartyCardPage() {
                 </div>
                 <div>
                   <label className="text-[13px] text-muted-foreground mb-1 block">
-                    Відтермінування (днів)
+                    {t('card.contracts.deferDays')}
                   </label>
                   <Input
                     type="number"
@@ -1071,7 +1098,7 @@ export default function CounterpartyCardPage() {
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="ghost" size="sm" onClick={() => setShowAddContract(false)}>
-                  Скасувати
+                  {t('card.contracts.cancel')}
                 </Button>
                 <Button
                   size="sm"
@@ -1117,13 +1144,15 @@ export default function CounterpartyCardPage() {
                       setShowAddContract(false);
                       loadContracts();
                     } catch (e: unknown) {
-                      setContractsError(e instanceof Error ? e.message : 'Помилка збереження');
+                      setContractsError(
+                        e instanceof Error ? e.message : t('card.contracts.saveFailed'),
+                      );
                     } finally {
                       setSavingContract(false);
                     }
                   }}
                 >
-                  Зберегти
+                  {t('card.contracts.save')}
                 </Button>
               </div>
             </div>
@@ -1134,29 +1163,31 @@ export default function CounterpartyCardPage() {
               <Spinner size="md" />
             </div>
           ) : contracts.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Немає договорів</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {t('card.contracts.empty')}
+            </p>
           ) : (
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-secondary">
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-                      Номер
+                      {t('card.contracts.colNumber')}
                     </th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-                      Тип
+                      {t('card.contracts.colType')}
                     </th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-                      Початок
+                      {t('card.contracts.colStart')}
                     </th>
                     <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
-                      Завершення
+                      {t('card.contracts.colEnd')}
                     </th>
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">
-                      Кред. ліміт
+                      {t('card.contracts.colCreditLimit')}
                     </th>
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">
-                      Відт., дн.
+                      {t('card.contracts.colDeferDays')}
                     </th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
@@ -1169,7 +1200,7 @@ export default function CounterpartyCardPage() {
                           <span className="font-medium text-foreground">{c.number}</span>
                           {c.isPrimary && (
                             <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-primary/10 text-primary">
-                              Головний
+                              {t('card.contracts.primary')}
                             </span>
                           )}
                         </div>
@@ -1198,7 +1229,7 @@ export default function CounterpartyCardPage() {
                             onClick={async () => {
                               if (
                                 !(await confirm({
-                                  title: `Видалити договір ${c.number}?`,
+                                  title: t('card.contracts.confirmDelete', { number: c.number }),
                                   variant: 'destructive',
                                 }))
                               )
@@ -1210,12 +1241,12 @@ export default function CounterpartyCardPage() {
                                 loadContracts();
                               } catch (e: unknown) {
                                 setContractsError(
-                                  e instanceof Error ? e.message : 'Помилка видалення',
+                                  e instanceof Error ? e.message : t('card.contracts.deleteFailed'),
                                 );
                               }
                             }}
                           >
-                            Видалити
+                            {t('card.contracts.delete')}
                           </Button>
                         )}
                       </td>
@@ -1233,7 +1264,9 @@ export default function CounterpartyCardPage() {
         <div className="space-y-4">
           <div className="bg-surface rounded-xl border border-border p-4 flex items-center gap-4">
             <div>
-              <p className="text-xs text-muted-foreground mb-0.5">Поточний баланс</p>
+              <p className="text-xs text-muted-foreground mb-0.5">
+                {t('card.settlements.currentBalance')}
+              </p>
               <p
                 className={cn(
                   'text-xl font-bold',
@@ -1254,24 +1287,28 @@ export default function CounterpartyCardPage() {
               <Spinner size="md" />
             </div>
           ) : transactions.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Немає транзакцій</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {t('card.settlements.empty')}
+            </p>
           ) : (
             <div className="bg-surface rounded-xl border border-border divide-y divide-border overflow-hidden">
-              {transactions.map(t => (
-                <div key={t.id} className="flex items-center justify-between px-4 py-3">
+              {transactions.map(tx => (
+                <div key={tx.id} className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-sm text-foreground">{t.notes ?? t.documentType ?? t.type}</p>
-                    <p className="text-xs text-muted-foreground">{fmtDate(t.createdAt)}</p>
+                    <p className="text-sm text-foreground">
+                      {tx.notes ?? tx.documentType ?? tx.type}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{fmtDate(tx.createdAt)}</p>
                   </div>
                   <div className="text-right">
                     {(() => {
                       // Знак = дзеркало бекового BALANCE_SIGN. +1: CHARGE, SUPPLIER_PAYMENT,
                       // SUPPLIER_REFUND; −1: PAYMENT, PREPAYMENT, REFUND, CREDIT_NOTE, SUPPLIER_CHARGE.
-                      const sign = BALANCE_UP_TX_TYPES.has(t.type) ? '+' : '−';
-                      const isBase = !t.currencyCode || t.currencyCode === orgCurrency;
+                      const sign = BALANCE_UP_TX_TYPES.has(tx.type) ? '+' : '−';
+                      const isBase = !tx.currencyCode || tx.currencyCode === orgCurrency;
                       // Bug #742: символ базової валюти з useBaseCurrency (не хардкод '₴' — база
                       // орг може бути USD/EUR). Дзеркалить payments/page.tsx та SettlementsTabContent.
-                      const sym = isBase ? baseSymbol : t.currencyCode!;
+                      const sym = isBase ? baseSymbol : tx.currencyCode!;
                       return (
                         <>
                           <span
@@ -1280,18 +1317,18 @@ export default function CounterpartyCardPage() {
                               // Колір за семантикою (як у SettlementsTabContent): нарахування (наш
                               // борг/клієнт винен) → destructive; оплата/повернення → success.
                               // Курсові різниці (Фаза 4): FX_LOSS — destructive, FX_GAIN — success.
-                              CHARGE_LIKE_TX_TYPES.has(t.type) || t.type === 'FX_LOSS'
+                              CHARGE_LIKE_TX_TYPES.has(tx.type) || tx.type === 'FX_LOSS'
                                 ? 'text-destructive-text'
                                 : 'text-success',
                             )}
                           >
                             {sign}
-                            {fmtMoney(Math.abs(t.amount))} {sym}
+                            {fmtMoney(Math.abs(tx.amount))} {sym}
                           </span>
-                          {!isBase && t.amountBase != null && (
+                          {!isBase && tx.amountBase != null && (
                             <div className="text-[11px] text-muted-foreground tabular-nums">
                               {sign}
-                              {fmtMoney(Math.abs(t.amountBase))} {baseSymbol}
+                              {fmtMoney(Math.abs(tx.amountBase))} {baseSymbol}
                             </div>
                           )}
                         </>
@@ -1313,7 +1350,9 @@ export default function CounterpartyCardPage() {
               <Spinner size="md" />
             </div>
           ) : workOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">Немає нарядів</p>
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {t('card.workOrders.empty')}
+            </p>
           ) : (
             <div className="bg-surface rounded-xl border border-border divide-y divide-border overflow-hidden">
               {workOrders.map(wo => (
@@ -1368,12 +1407,16 @@ export default function CounterpartyCardPage() {
           ) : (
             <div className="bg-surface rounded-xl border border-border overflow-hidden">
               <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
-                <h3 className="font-medium text-foreground text-sm">Гарантії</h3>
-                <span className="text-xs text-muted-foreground">{warranties.length} записів</span>
+                <h3 className="font-medium text-foreground text-sm">
+                  {t('card.warranties.heading')}
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  {t('card.warranties.recordsCount', { count: warranties.length })}
+                </span>
               </div>
               {warranties.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground text-[13px]">
-                  Гарантій немає
+                  {t('card.warranties.empty')}
                 </div>
               ) : (
                 <div className="divide-y divide-border">
@@ -1384,7 +1427,9 @@ export default function CounterpartyCardPage() {
                     >
                       <div className="flex-1">
                         <div className="font-medium text-foreground">
-                          Наряд №{w.workOrderNumber ?? w.workOrderId.slice(0, 8)}
+                          {t('card.warranties.workOrderNumber', {
+                            number: w.workOrderNumber ?? w.workOrderId.slice(0, 8),
+                          })}
                         </div>
                         {w.description && (
                           <div className="text-[12px] text-muted-foreground">{w.description}</div>
@@ -1392,19 +1437,19 @@ export default function CounterpartyCardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="text-[12px] text-muted-foreground">
-                          до {fmtDate(w.expiresAt)}
+                          {t('card.warranties.until', { date: fmtDate(w.expiresAt) })}
                         </div>
                         {w.isActive ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success/10 text-success">
-                            Активна
+                            {t('card.warranties.active')}
                           </span>
                         ) : w.claimedAt ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-warning/10 text-warning">
-                            {"Пред'явлена"}
+                            {t('card.warranties.claimed')}
                           </span>
                         ) : (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
-                            Закінчилась
+                            {t('card.warranties.expired')}
                           </span>
                         )}
                       </div>
@@ -1434,16 +1479,18 @@ export default function CounterpartyCardPage() {
               {/* Balance + redeem */}
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                  <div className="text-[13px] text-muted-foreground">Бали лояльності</div>
+                  <div className="text-[13px] text-muted-foreground">
+                    {t('card.loyalty.points')}
+                  </div>
                   <div className="text-2xl font-bold text-foreground">
-                    {fmtInt(loyaltyBalance)} балів
+                    {t('card.loyalty.pointsValue', { value: fmtInt(loyaltyBalance) })}
                   </div>
                 </div>
                 <div className="flex gap-2 items-center">
                   <Input
                     value={redeemPoints}
                     onChange={e => setRedeemPoints(e.target.value)}
-                    placeholder="Кількість балів"
+                    placeholder={t('card.loyalty.redeemPlaceholder')}
                     type="number"
                     min="0"
                     className="w-36 h-8 text-[13px]"
@@ -1468,36 +1515,41 @@ export default function CounterpartyCardPage() {
                         setRedeemPoints('');
                         loadLoyalty();
                       } catch (e: unknown) {
-                        setLoyaltyError(e instanceof Error ? e.message : 'Помилка списання');
+                        setLoyaltyError(
+                          e instanceof Error ? e.message : t('card.loyalty.redeemFailed'),
+                        );
                       } finally {
                         setRedeemSaving(false);
                       }
                     }}
                   >
-                    Списати
+                    {t('card.loyalty.redeem')}
                   </Button>
                 </div>
               </div>
 
               {/* Transaction history */}
               {loyaltyTxs.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Немає транзакцій</p>
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {t('card.loyalty.empty')}
+                </p>
               ) : (
                 <div className="divide-y divide-border max-h-60 overflow-y-auto">
-                  {loyaltyTxs.map(t => (
-                    <div key={t.id} className="flex items-center justify-between py-2 text-[12px]">
-                      <span className="text-muted-foreground">{fmtDate(t.createdAt)}</span>
+                  {loyaltyTxs.map(tx => (
+                    <div key={tx.id} className="flex items-center justify-between py-2 text-[12px]">
+                      <span className="text-muted-foreground">{fmtDate(tx.createdAt)}</span>
                       <span className="text-foreground flex-1 px-3 truncate">
-                        {t.notes ?? (t.type === 'EARN' ? 'Нарахування балів' : 'Списання балів')}
+                        {tx.notes ??
+                          (tx.type === 'EARN' ? t('card.loyalty.earn') : t('card.loyalty.spend'))}
                       </span>
                       <span
                         className={cn(
                           'font-medium',
-                          t.type === 'EARN' ? 'text-success' : 'text-destructive',
+                          tx.type === 'EARN' ? 'text-success' : 'text-destructive',
                         )}
                       >
-                        {t.type === 'EARN' ? '+' : '-'}
-                        {t.points}
+                        {tx.type === 'EARN' ? '+' : '-'}
+                        {tx.points}
                       </span>
                     </div>
                   ))}
