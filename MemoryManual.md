@@ -11,14 +11,19 @@
 ```
 Дата:       2026-09-18
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
-            (schema.prisma→11 доменних файлів) + typedSql-інфра ГОТОВО (гібрид: wiring відкладено — потребує
-            ephemeral-PG у build, див. GOTCHAS). Лишились опційні: NestJS 11, Node 22 — за запитом.
-            PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM.
+            +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
+            блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
+            PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
+            build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
 Тести:      api 2539/2539 (167 файлів) · DLQ 28 · append-only 13 · env.schema 20 · xlsx parseNumber-кома 5.
             web: useWorkOrders 15/15, lib 163/163. web-модалки зелені.
-HEAD:       44b45b28 refactor(db): prismaSchemaFolder split (11 доменів) + typedSql-інфра
-Review:     2026-09-18 (auto, prismaSchemaFolder split, коміт 44b45b28) — 0 проблем. ZERO drift:
+HEAD:       d85deb73 chore(runtime): Node 20 → 22 LTS
+Review:     2026-09-18 (auto, Node 20→22 LTS, коміт d85deb73) — 0 проблем, bump повний+консистентний.
+            Стрáглерів немає (усі node:20-hits у lockfile/archive/disk-check). @types/node вже ^22.
+            engines-only diff, @nestjs/fastify не зачеплено. FLAG: VM smoke-test МУСИТЬ `docker compose
+            build` обидва образи (native-ABI recompile sharp/bcrypt/argon ловить лише реальний build).
+Review(prismaSchemaFolder): 2026-09-18 (auto, коміт 44b45b28) — 0 проблем. ZERO drift:
             block-sets byte-identical (45 enums+98 models), validate OK, migrate status up-to-date/138.
             SyncJobStatus+ExpenseCategoryType релоковано у 01_enums (cross-file refs резолвляться).
             typedSql inert; dashboard.service.ts НЕ чіпано; Dockerfile plain generate (offline-safe).

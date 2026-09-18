@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-18 — Опційний апгрейд: Node 20 → 22 LTS
+
+### chore(runtime) d85deb73 — Node 20 → 22 LTS
+
+- engines node >=20 → >=22; Docker base node:20-alpine → node:22-alpine (api base+runner, web base);
+  CI ci.yml + release.yml node-version 20 → 22; compose healthcheck-коментар.
+- @types/node вже ^22 (типи без змін); локальний рантайм Node 24 → тести й так на ≥22.
+- Nest 10 / Fastify 4 НЕ зачеплено (Nest 11 = окремий блок: Fastify 5 + 5 плагінів + bull-board + E2E).
+- QA: review 0 (bump повний+консистентний, стрáглерів немає). install --frozen-lockfile OK; api+web tsc 0;
+  api-suite 2539/2539.
+- ВІДКРИТЕ: offline Docker-build з node:22-alpine — VM smoke-test МУСИТЬ `docker compose build` обидва
+  образи (native-ABI recompile sharp/bcrypt/argon ловить лише реальний build).
+
 ## 2026-09-18 — Опційні: prismaSchemaFolder + typedSql-інфра
 
 ### refactor(db) 44b45b28 — prismaSchemaFolder split (11 доменів) + typedSql-інфра
