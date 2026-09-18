@@ -112,4 +112,15 @@ export const en: Record<string, string> = {
   'v.workOrder.part.good.required': 'Select the product',
   'v.workOrder.part.warehouse.required': 'Select the warehouse',
   'v.workOrder.part.quantity.min': 'Quantity must be greater than zero',
+
+  // ── Exception messages: http-exception.filter own strings (Prisma/fallback/Fastify) ──
+  'err.internal': 'Internal server error',
+  'err.badRequest': 'Invalid request data',
+  'err.fastifyBadRequest': 'Malformed request: check the body and Content-Type',
+  'err.prisma.unique': 'A record with this value already exists ({{fields}})',
+  'err.prisma.foreignKey': 'Foreign key violation: the related record was not found',
+  'err.prisma.notFound': 'Record not found',
+  'err.prisma.badId': 'Invalid identifier format',
+  'err.prisma.tooLong': 'Value is too long for the field',
+  'err.prisma.nullConstraint': 'A required field cannot be empty',
 };

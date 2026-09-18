@@ -36,3 +36,10 @@ export function translateValidation(
   }
   return msg;
 }
+
+/**
+ * Той самий резолвер, семантичний alias для exception-повідомлень (`err.*`-ключі). Той самий каталог,
+ * fallback locale→uk→key. Використовується на throw-site (`throw new X(translateError('err.key', getLocale())`)
+ * та у http-exception.filter (getLocale з tenant-ALS).
+ */
+export const translateError = translateValidation;

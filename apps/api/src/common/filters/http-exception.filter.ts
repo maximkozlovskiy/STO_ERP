@@ -8,7 +8,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { translateError, type ValidationLocale } from '@sto/shared';
 import { TenantIsolationError } from '../../prisma/tenant-isolation.error';
+import { getLocale } from '../tenant/tenant-context';
 
 /**
  * Маппінг відомих Prisma error codes у HTTP-статуси.
@@ -18,37 +20,29 @@ import { TenantIsolationError } from '../../prisma/tenant-isolation.error';
  * Очікувана клієнтська поведінка: 4xx (400 для bad input, 404 для not-found,
  * 409 для конфлікту унікальності) — БЕЗ відправки у Sentry.
  */
+/**
+ * Prisma error code → HTTP-статус + i18n-KEY (+params). Локалізується у catch() через translateError
+ * (getLocale з tenant-ALS). Без мапінгу `findFirst({where:{id:'not-uuid'}})` → P2023 → 500 + Sentry-шум.
+ */
 function mapPrismaErrorToHttp(
   e: Prisma.PrismaClientKnownRequestError,
-): { status: number; message: string } | null {
+): { status: number; key: string; params?: Record<string, string> } | null {
   switch (e.code) {
     case 'P2002': {
-      // Unique constraint violation
       const target = (e.meta as { target?: string[] } | undefined)?.target;
       const fields = Array.isArray(target) ? target.join(', ') : 'поле';
-      return {
-        status: HttpStatus.CONFLICT,
-        message: `Запис з таким значенням вже існує (${fields})`,
-      };
+      return { status: HttpStatus.CONFLICT, key: 'err.prisma.unique', params: { fields } };
     }
     case 'P2003':
-      // Foreign key constraint violation
-      return {
-        status: HttpStatus.BAD_REQUEST,
-        message: "Порушення зовнішнього ключа: пов'язаний запис не знайдено",
-      };
+      return { status: HttpStatus.BAD_REQUEST, key: 'err.prisma.foreignKey' };
     case 'P2025':
-      // Record not found in update/delete
-      return { status: HttpStatus.NOT_FOUND, message: 'Запис не знайдено' };
+      return { status: HttpStatus.NOT_FOUND, key: 'err.prisma.notFound' };
     case 'P2023':
-      // Inconsistent column data (e.g. invalid UUID)
-      return { status: HttpStatus.BAD_REQUEST, message: 'Некоректний формат ідентифікатора' };
+      return { status: HttpStatus.BAD_REQUEST, key: 'err.prisma.badId' };
     case 'P2000':
-      // Value too long for column
-      return { status: HttpStatus.BAD_REQUEST, message: 'Значення занадто довге для поля' };
+      return { status: HttpStatus.BAD_REQUEST, key: 'err.prisma.tooLong' };
     case 'P2011':
-      // Null constraint violation
-      return { status: HttpStatus.BAD_REQUEST, message: "Обов'язкове поле не може бути порожнім" };
+      return { status: HttpStatus.BAD_REQUEST, key: 'err.prisma.nullConstraint' };
     default:
       return null;
   }
@@ -84,8 +78,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const reply = ctx.getResponse<FastifyReply>();
     const request = ctx.getRequest<FastifyRequest>();
 
+    const locale: ValidationLocale = getLocale();
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Внутрішня помилка сервера';
+    // Власні строки фільтра — через i18n-KEY (translateError у кінці). HttpException-гілка з сервісу
+    // передає вже-рендерений `message` (сервісні throw-и локалізуються окремими батчами).
+    let message = translateError('err.internal', locale);
 
     if (exception instanceof TenantIsolationError) {
       // A1: забутий tenant-фільтр на tenant-моделі — це СЕРВЕРНИЙ баг (не client-error). Логуємо
@@ -95,7 +92,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         exception.stack,
       );
       status = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Внутрішня помилка сервера';
+      message = translateError('err.internal', locale);
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const response = exception.getResponse();
@@ -110,7 +107,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const mapped = mapPrismaErrorToHttp(exception);
       if (mapped) {
         status = mapped.status;
-        message = mapped.message;
+        message = translateError(mapped.key, locale, mapped.params);
       } else {
         // Невідомий Prisma код — лишаємо як 500, але логуємо для діагностики.
         this.logger.error(
@@ -125,7 +122,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // use `include` or `select`, but not both at the same time". Тепер логуємо `warn`
       // із першим рядком повідомлення Prisma (без stack — не критично, не 500).
       status = HttpStatus.BAD_REQUEST;
-      message = 'Некоректні дані запиту';
+      message = translateError('err.badRequest', locale);
       const firstLine = String(exception.message ?? '')
         .split('\n')
         .map(s => s.trim())
@@ -144,7 +141,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // Веб-клієнт вже не шле Content-Type без тіла (api-client.ts), але сервер має бути
       // стійким незалежно від клієнта (mobile/sync/зовнішні інтеграції).
       status = exception.statusCode;
-      message = 'Некоректний запит: перевірте тіло та Content-Type';
+      message = translateError('err.fastifyBadRequest', locale);
       this.logger.warn(
         `Fastify request error ${exception.code} on ${request.method} ${request.url}`,
       );

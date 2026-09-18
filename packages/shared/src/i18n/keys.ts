@@ -223,6 +223,16 @@ export const VALIDATION_KEYS = [
   'v.workOrder.part.good.required',
   'v.workOrder.part.warehouse.required',
   'v.workOrder.part.quantity.min',
+  // Exception-повідомлення (http-exception.filter власні строки)
+  'err.internal',
+  'err.badRequest',
+  'err.fastifyBadRequest',
+  'err.prisma.unique',
+  'err.prisma.foreignKey',
+  'err.prisma.notFound',
+  'err.prisma.badId',
+  'err.prisma.tooLong',
+  'err.prisma.nullConstraint',
 ] as const;
 
 export type ValidationKey = (typeof VALIDATION_KEYS)[number];

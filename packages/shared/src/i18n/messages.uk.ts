@@ -115,4 +115,15 @@ export const uk: Record<string, string> = {
   'v.workOrder.part.good.required': 'Оберіть товар',
   'v.workOrder.part.warehouse.required': 'Оберіть склад',
   'v.workOrder.part.quantity.min': 'Кількість повинна бути більшою за нуль',
+
+  // ── Exception-повідомлення: http-exception.filter власні строки (Prisma/fallback/Fastify) ──
+  'err.internal': 'Внутрішня помилка сервера',
+  'err.badRequest': 'Некоректні дані запиту',
+  'err.fastifyBadRequest': 'Некоректний запит: перевірте тіло та Content-Type',
+  'err.prisma.unique': 'Запис з таким значенням вже існує ({{fields}})',
+  'err.prisma.foreignKey': "Порушення зовнішнього ключа: пов'язаний запис не знайдено",
+  'err.prisma.notFound': 'Запис не знайдено',
+  'err.prisma.badId': 'Некоректний формат ідентифікатора',
+  'err.prisma.tooLong': 'Значення занадто довге для поля',
+  'err.prisma.nullConstraint': "Обов'язкове поле не може бути порожнім",
 };
