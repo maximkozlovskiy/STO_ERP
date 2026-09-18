@@ -23,7 +23,13 @@ import {
   SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
-import { NAV_GROUPS_FUNCTIONS, MASTER_NAV_ITEMS, type NavItem } from '@/lib/nav';
+import {
+  NAV_GROUPS_FUNCTIONS,
+  MASTER_NAV_ITEMS,
+  NAV_SECTION_KEYS,
+  type NavItem,
+  type NavSection,
+} from '@/lib/nav';
 import { resolveNav } from '@/lib/nav-layout';
 import { useNavConfig } from '@/hooks/useNavConfig';
 import { NavEditor } from '@/components/ui/NavEditor';
@@ -623,7 +629,13 @@ export function TopShell({ children }: { children: ReactNode }) {
   const activeGroups =
     navMode === 'sections'
       ? resolveNav(MASTER_NAV_ITEMS, navConfig.layout, role).map(s => ({
-          label: s.label || undefined,
+          // Дефолтні розділи мають i18n-ключ (NAV_SECTION_KEYS) → перекладаються LIVE.
+          // Кастомні розділи (custom) несуть user-визначену назву — лишаємо як є.
+          label: s.custom
+            ? s.label || undefined
+            : NAV_SECTION_KEYS[s.id as NavSection]
+              ? t(NAV_SECTION_KEYS[s.id as NavSection], { defaultValue: s.label })
+              : s.label || undefined,
           items: s.items,
         }))
       : NAV_GROUPS_FUNCTIONS;
