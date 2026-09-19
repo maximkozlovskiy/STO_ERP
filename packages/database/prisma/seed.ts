@@ -323,9 +323,19 @@ async function main() {
     },
   });
   const adminPasswordHash = await bcrypt.hash('admin123', 12);
+  // Re-seed МУСИТЬ відновлювати демо/E2E-креденшел (admin@sto.local/admin123) авторитетно:
+  // якщо authAccount уже існував із іншим паролем (стара сесія, ручна зміна) або заблокований
+  // lockout-лічильником — update:{} лишав би його недоступним і глушив E2E globalSetup-логін.
+  // Тому оновлюємо passwordHash+email і скидаємо lockout. (Інші demo-upsert-и лишаються
+  // idempotent-by-design — не затирають дані, які користувач міг змінити після сідингу.)
   await prisma.authAccount.upsert({
     where: { employeeId: EMPLOYEE_ID },
-    update: {},
+    update: {
+      email: 'admin@sto.local',
+      passwordHash: adminPasswordHash,
+      failedAttempts: 0,
+      lockedUntil: null,
+    },
     create: {
       orgId: ORG_ID,
       employeeId: EMPLOYEE_ID,
