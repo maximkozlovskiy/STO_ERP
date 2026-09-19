@@ -51,6 +51,7 @@ async function tryRefresh(): Promise<string | null> {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
+      headers: buildHeaders({}),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { accessToken?: string };

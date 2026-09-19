@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Spinner } from '@/components/ui/spinner';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { getCurrentLocale } from '@/i18n/locale';
 
 interface Branch {
   id: string;
@@ -39,7 +40,11 @@ async function publicFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // Публічна сторінка /booking лишається стабільним URL — версіонується лише її API-виклик.
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept-Language': getCurrentLocale(),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!res.ok) {
     // NestJS class-validator повертає `message: string[]` при 400 — join з '; '.

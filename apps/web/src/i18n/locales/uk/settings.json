@@ -12,7 +12,8 @@
     "fiscal": "Фіскалізація",
     "delivery": "Доставка",
     "integrations": "Інтеграції",
-    "integration-logs": "Логи інтеграцій"
+    "integration-logs": "Логи інтеграцій",
+    "dead-letter": "Невдалі задачі"
   },
   "language": "Мова інтерфейсу",
   "languageOptions": {
@@ -286,6 +287,29 @@
     "notFound": "Логів не знайдено",
     "ok": "OK",
     "statusErrorCell": "Помилка",
+    "pageInfo": "Сторінка {{page}} з {{totalPages}} · всього {{total}}",
+    "prev": "Назад",
+    "next": "Далі"
+  },
+  "deadLetter": {
+    "hint": "Задачі фонових черг (SMS, ПРРО, вебхуки тощо), що вичерпали всі спроби повтору. Позначте опрацьованою після розбору причини.",
+    "queueFilterPlaceholder": "Назва черги",
+    "queueFilterAria": "Фільтр за чергою",
+    "statusAria": "Статус",
+    "statusActive": "Активні",
+    "statusResolved": "Опрацьовані",
+    "statusAll": "Усі",
+    "colTime": "Час",
+    "colQueue": "Черга",
+    "colJob": "Задача",
+    "colAttempts": "Спроби",
+    "colReason": "Причина провалу",
+    "colStatus": "Статус",
+    "loading": "Завантаження…",
+    "notFound": "Невдалих задач не знайдено",
+    "resolve": "Опрацьовано",
+    "resolved": "Позначено опрацьованим",
+    "resolveError": "Не вдалося оновити статус",
     "pageInfo": "Сторінка {{page}} з {{totalPages}} · всього {{total}}",
     "prev": "Назад",
     "next": "Далі"

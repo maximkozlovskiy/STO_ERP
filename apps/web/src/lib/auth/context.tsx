@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { AuthEmployee, AuthState } from './types';
+import { getCurrentLocale } from '@/i18n/locale';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TOKEN_KEY = 'sto_access_token';
@@ -127,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
+        headers: { 'Accept-Language': getCurrentLocale() },
       });
       if (!res.ok) return false;
       const data = (await res.json()) as { accessToken: string; employee?: AuthEmployee };
@@ -207,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch(`${API_URL}/api/v1/auth/login`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept-Language': getCurrentLocale() },
       body: JSON.stringify({ email, password }),
     });
 
@@ -236,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
         headers: {
           Authorization: `Bearer ${state.accessToken ?? ''}`,
+          'Accept-Language': getCurrentLocale(),
         },
       });
     } finally {
@@ -256,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
         headers: {
           Authorization: `Bearer ${state.accessToken ?? ''}`,
+          'Accept-Language': getCurrentLocale(),
         },
       });
     } finally {

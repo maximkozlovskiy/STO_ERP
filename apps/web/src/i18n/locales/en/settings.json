@@ -12,7 +12,8 @@
     "fiscal": "Fiscalization",
     "delivery": "Delivery",
     "integrations": "Integrations",
-    "integration-logs": "Integration logs"
+    "integration-logs": "Integration logs",
+    "dead-letter": "Failed jobs"
   },
   "language": "Interface language",
   "languageOptions": {
@@ -286,6 +287,29 @@
     "notFound": "No logs found",
     "ok": "OK",
     "statusErrorCell": "Error",
+    "pageInfo": "Page {{page}} of {{totalPages}} · total {{total}}",
+    "prev": "Back",
+    "next": "Next"
+  },
+  "deadLetter": {
+    "hint": "Background queue jobs (SMS, fiscal, webhooks, etc.) that exhausted all retry attempts. Mark as resolved after investigating the cause.",
+    "queueFilterPlaceholder": "Queue name",
+    "queueFilterAria": "Filter by queue",
+    "statusAria": "Status",
+    "statusActive": "Active",
+    "statusResolved": "Resolved",
+    "statusAll": "All",
+    "colTime": "Time",
+    "colQueue": "Queue",
+    "colJob": "Job",
+    "colAttempts": "Attempts",
+    "colReason": "Failure reason",
+    "colStatus": "Status",
+    "loading": "Loading…",
+    "notFound": "No failed jobs found",
+    "resolve": "Resolve",
+    "resolved": "Marked as resolved",
+    "resolveError": "Failed to update status",
     "pageInfo": "Page {{page}} of {{totalPages}} · total {{total}}",
     "prev": "Back",
     "next": "Next"
