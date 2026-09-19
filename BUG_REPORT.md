@@ -5724,3 +5724,49 @@ custom-section назви (правильно НЕ перекладаються)
 - **Key-parity guard (Focus #5):** `validation-i18n-parity.spec.ts` асертить VALIDATION_KEYS === ukKeys === enKeys + translateValidation(k)≠k для кожного. Видалення будь-якого uk-ключа зламало б parity + resolve-assertion → guard РЕАЛЬНО ловить missing key (підтверджено логікою, файли не мутовано).
 - **Web i18nZodResolver behavioral (Focus #3):** ДО цієї сесії не існувало тесту, що рендерить перекладену помилку форми — `CounterpartyForm.test.tsx` асертить сирі schema-KEY-и, harness використовує plain `zodResolver` (не i18nZodResolver). Прогалину закрито новим `i18nZodResolver.test.ts` (uk-переклад через resolver).
 - **Offline (Focus #6):** каталоги — статичний TS у бандлі (`packages/shared/src/i18n/messages.{uk,en}.ts` → dist/cjs). 0 network-fetch. Підтверджено (import-only, жодного fetch у i18n-модулі).
+
+---
+
+## Session 2026-09-19 — class-validator DTO-локалізація (commit 29eaad2f) — behavioral hunt
+
+**Скоуп:** фінальний батч backend-i18n — переписаний `validation-error.factory.ts`
+(TEMPLATES→CV_TEMPLATE_KEYS, translateLeaf через translateError) + 65 inline @IsX({message})
+→ err.dto.* ключі. Мета: BEHAVIORAL баги на class-validator seam-і, які static-review міг пропустити.
+
+**Результат: НУЛЬ нових продакшн-багів.** Seam поводиться коректно у всіх зонах ризику
+(locale round-trip, nested recursion, {{field}} interpolation, empty-errors fallback,
+reachable inline err.dto.* override). Прямого юніт-покриття seam-у НЕ існувало — створено
+регрес-гвардію (аналог zod-pipe spec-у).
+
+### Створено (не баг — закриття прогалини покриття)
+
+**`apps/api/src/common/pipes/validation-error.factory.spec.ts`** (14 тестів) — прямий
+locale-round-trip guard на `validationExceptionFactory` через `runWithTenant({locale})`:
+
+- generic err.cv.* (isNotEmpty/maxLength/matches/isEnum/isEmail) рендеряться uk↔en, 0 leak сирого
+  constraint-рядка / `err.cv.` ключа;
+- `{{field}}` інтерполюється у обидві мови (немає літерального `{{field}}`);
+- reachable inline `err.dto.*` override (IsHexColor → `err.dto.counterpartyStatus.color.hex`,
+  НЕ shadowed бо `isHexColor` відсутній у CV_TEMPLATE_KEYS) → каталог-значення uk («Колір…HEX»)
+  та en («Color…HEX»);
+- nested @ValidateNested children: parentPath join будує `address.city` / `items.0.qty`
+  (рекурсія коректна — аналог web Bug #763);
+- empty-errors fallback → локалізований `v.validationFailed` (не сирий key), uk≠en;
+- unknown constraint raw default виживає verbatim (fallback locale→uk→сам рядок);
+- `isIn`→`err.cv.isEnum`; default locale (без ALS store)→uk.
+
+### Перевірено (без змін коду — підтвердження коректності)
+
+- **matches-shadowing — НЕ регресія:** inline `@Matches(RE,{message:'err.dto.*'})` дає constraint-key
+  `matches` → мапиться на generic `err.cv.matches` (специфічний err.dto.* ключ shadowed). Це той
+  самий вивід, що й у СТАРОМУ коді (`matches` завжди був у TEMPLATES) → поведінка незмінна. Shadowed
+  err.dto-ключі (bankAccount.iban.format, settings.time.format, supplierPayment.*.dateFormat) —
+  «dead keys» у каталозі, але parity-spec тримає симетрію; не runtime-баг.
+- **main.ts** коректно wire-ить `validationExceptionFactory` у глобальний ValidationPipe (продакшн-seam реальний).
+- **Test-fidelity gap (не баг, не чіпано):** `bank-accounts.contract.spec.ts` використовує bare
+  ValidationPipe БЕЗ `exceptionFactory` — оминає продакшн-фабрику. Асертить лише statusCode 400
+  (не текст) → не ламається, не дає невірного результату. settings.contract.spec.ts у цьому ж коміті
+  було підсилено exceptionFactory; bank-accounts лишилось bare. Кандидат на майбутнє підсилення, поза scope.
+
+**Регресія suite (must stay green):** shared build ✅; api tsc 0; api **2563 passed**
+(2549 baseline + 14 нових). Жодного НОВОГО падіння від commit-у.
