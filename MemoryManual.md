@@ -9,14 +9,14 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-19 (tester full-branch cycle 2/3 — E2E suite unblocked)
+Дата:       2026-09-19 (tester full-branch cycle 3/3 FINAL — release-ready, E2E 339/339)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2573/2573 · web 831 component · E2E 339/339 (повний auth-gated suite, seeded DB).
+Тести:      api 2573/2573 · web 834 component (+3 CurrencySelect регрес) · E2E 339/339 (повний auth-gated, seeded DB).
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
 HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
 i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
@@ -284,17 +284,17 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Tester full-branch cycle 2/3 — E2E suite unblocked — 2026-09-19, HEAD ac535ff4:
-  be48551d fix(tester): Bug #765 PO receive key-mismatch (CRITICAL) + #766 currency dirty-guard (HIGH/UX).
-        #765: useFieldArray field.id (синтетичний) vs data db-id — receiveQtys кейсилось по field.id в
-        input, по db-id у handleReceive+«Оприбуткувати все» → NaN → прийом товару НЕ працював через UI
-        (backend коректний). Fix: уніфіковано ключ=field.id, db-lineId резолвиться по індексу на сабміт.
-        #766: CurrencySelect авто-дефолт валюти через field.onChange → модалка «брудна» на open →
-        Escape заблоковано dirty-guard. Fix: onAutoDefault prop → setValue(shouldDirty:false). Клас #639/#747.
-        +3 стале-E2E оновлено (counterparty-detail /api→/api/v1 seed; crud-employee zod always-enabled;
-        vehicles flat form no-h2). Cycle-1 фікси (DLQ NaN, cash getBalances, throwFromResponse) revalidated.
-  ac535ff4 docs(skills): +RHF field.id key-mismatch +currency dirty-guard +E2E-flag(NEXT_PUBLIC_E2E=1) prereq.
-  Suite: api tsc 0/2573 · web tsc 0/831 component · shared 0 · E2E 339/339 (0 fail, 0 skip).
+Tester full-branch cycle 3/3 FINAL — release-ready — 2026-09-19, HEAD 46392fcd:
+  46392fcd docs(tester): cycle 3/3 (FINAL) — валідаційний прохід, НУЛЬ нових багів. Реліз-гейт GREEN.
+        Функціональний diff be48551d..HEAD = 3 frontend файли: f53e7c1d CreateWorkOrderModal мігровано на
+        onAutoDefault prop (той самий dirty-guard патерн що Invoice/PO, Bug #766-class consistency);
+        8835afaa PO receiveQtys key уніфіковано на field.id (усі 3 сайти); db3f5254 CurrencySelect регрес-тест.
+        Валідовано: WO-модалка non-dirty on open + currency auto-default + user-change dirties (доведено
+        CurrencySelect.test.tsx 3 інваріанти). Backend/schema дрейф за ВСІ 3 цикли = 0 (git diff порожній).
+        Bug #764/#765/#766 фікси тримаються. E2E ПЕРЕзапущено на свіжому NEXT_PUBLIC_E2E=1 сервері.
+  Попередні: be48551d Bug #765 PO receive key-mismatch (CRITICAL) + #766 currency dirty-guard (HIGH/UX);
+        ac535ff4 skills +RHF field.id key-mismatch +currency dirty-guard +E2E-flag prereq.
+  Suite: api tsc 0/2573 · web tsc 0/834 component · shared 0 · E2E 339/339 (0 fail, 0 skip, 0 flaky, 2.8m).
 
 Optimize full-branch cycle 1/3 — 2026-09-19, HEAD 38da9dd9:
   38da9dd9 perf(cash-registers): findAll рахував balance ЧЕРЕЗ cash.getBalance() у map(async) — N+1
