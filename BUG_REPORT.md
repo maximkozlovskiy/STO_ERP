@@ -5890,3 +5890,48 @@ throwFromResponse refactor) — перевалідовано статично: �
 
 **Регресія suite (final):** api tsc 0 / **2573 unit**; web tsc 0 / **831 component**; shared tsc 0;
 **E2E 339/339** (0 fail, 0 skip). Cycle-1 фікси інтактні.
+
+## Session 2026-09-19 — Full-branch QA cycle 3/3 (FINAL release gate) — валідаційний прохід
+
+**Контекст:** фінальний tester-прохід. Cycle 1 → Bug #764 (фікс), Cycle 2 → Bug #765 CRITICAL +
+Bug #766 HIGH (фікс) + E2E 339/339. Cycle 3 задача: підтвердити що всі фікси тримаються, вполювати
+регресії від churn-у cycle-2/3, і ПЕРЕзапустити повний auth-gated E2E як фінальний реліз-гейт.
+
+**Функціональний diff `be48551d..HEAD` (без docs/skills) — 3 файли:**
+
+- `8835afaa` — PO `receiveQtys` key уніфіковано на `field.id` в усіх 3 сайтах (спрощення Bug #765).
+- `db3f5254` — `CurrencySelect.test.tsx` (тест-онлі, +3 регрес-тести auto-default dirty-routing).
+- `f53e7c1d` — `CreateWorkOrderModal` мігровано з inline dirty-guard на `onAutoDefault` prop —
+  ТОЙ САМИЙ патерн що Invoice/PO (Bug #766-class consistency). Найновіша функціональна зміна.
+
+**Нових багів НЕ знайдено.** Усі 3 зміни — валідні, семантика збережена:
+
+### Валідація f53e7c1d (CreateWorkOrderModal currency dirty-guard міграція) — PASS
+
+- **CurrencySelect** експонує `onAutoDefault?` prop (context.tsx-стиль): auto-default маршрутизується
+  через `(onAutoDefault ?? onChange)(baseCur.id)`, user-вибір ЗАВЖДИ через `onChange` (line 80).
+- **WO-модалка** тепер: `onChange={id => field.onChange(id)}` (user → RHF dirty), `onAutoDefault={id =>
+setValue('currencyId', id, {shouldDirty:false})}` (auto-default → НЕ dirty). Ідентично Invoice
+  (line 928) + PO (line 1347). Видалено inline `prevVal`-guard — стрижнів не лишилось.
+- **Три WO-інваріанти доведено** component-тестом `CurrencySelect.test.tsx` (у web suite): (1) non-dirty
+  on open — auto-default → onAutoDefault рівно 1×, НЕ onChange; (2) currency auto-default працює —
+  onAutoDefault отримує base id; (3) user-зміна дірти-ть — onChange → field.onChange → RHF dirty.
+- WO creation end-to-end — валідується E2E `work-orders` spec.
+
+### Валідація 8835afaa (PO receiveQtys `field.id` уніфікація) — PASS
+
+- Усі 3 сайти кейсяться по `field.id`: input value/onChange (1729/1731), «отримати все» (1446),
+  `handleReceive` (870). Display-row `<tr key={field.id}>` (1693) — `line` = той самий field через
+  cast → `line.id === field.id`. Немає розходження read-key vs write-key (корінь Bug #765 усунено).
+
+### Інваріантний sweep money/FSM/inventory — 0 регресій
+
+- `git diff` по `apps/api/**` + `packages/database/**` за ВСІ 3 цикли = **ПОРОЖНІЙ**. Жодного
+  backend/schema-дотику; усі зміни frontend-only (3 create-модалки). Backend money/FSM/inventory
+  інваріанти недоторкані → 2573 api-тести підтверджують нуль-дрейф.
+
+**Регресія suite (final):** api tsc 0 / **2573 unit** (170 файлів); web tsc 0 / **834 component**
+(90 файлів; 831 baseline + 3 нові CurrencySelect регрес-тести з db3f5254); shared tsc 0 (не чіпано);
+**E2E 339/339** (0 fail, 0 skip, 0 flaky, 2.8m; свіжий web-сервер з `NEXT_PUBLIC_E2E=1`). Реліз-гейт:
+**GREEN — гілка готова до релізу.** 3 цикли QA (Bug #764/#765/#766 усі фікшено й тримаються), нуль
+нових багів у cycle 3, нуль backend/schema дрейфу, усі 4 suite зелені.
