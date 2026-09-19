@@ -9,15 +9,15 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-19 (optimize full-branch cycle 1/3)
+Дата:       2026-09-19 (tester full-branch cycle 2/3 — E2E suite unblocked)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2549/2549 · web 824 · settings 59. (backend-i18n повний: усі *-schema.spec + money/FSM
-            byte-identity green; parity 5/5 uk===en===VALIDATION_KEYS.)
+Тести:      api 2573/2573 · web 831 component · E2E 339/339 (повний auth-gated suite, seeded DB).
+            (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
 HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
 i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
             2612 ключів×2 (react-i18next, output:export/offline, MP-F7). (2) Backend ПОВНІСТЮ: Accept-Language
@@ -284,6 +284,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Tester full-branch cycle 2/3 — E2E suite unblocked — 2026-09-19, HEAD ac535ff4:
+  be48551d fix(tester): Bug #765 PO receive key-mismatch (CRITICAL) + #766 currency dirty-guard (HIGH/UX).
+        #765: useFieldArray field.id (синтетичний) vs data db-id — receiveQtys кейсилось по field.id в
+        input, по db-id у handleReceive+«Оприбуткувати все» → NaN → прийом товару НЕ працював через UI
+        (backend коректний). Fix: уніфіковано ключ=field.id, db-lineId резолвиться по індексу на сабміт.
+        #766: CurrencySelect авто-дефолт валюти через field.onChange → модалка «брудна» на open →
+        Escape заблоковано dirty-guard. Fix: onAutoDefault prop → setValue(shouldDirty:false). Клас #639/#747.
+        +3 стале-E2E оновлено (counterparty-detail /api→/api/v1 seed; crud-employee zod always-enabled;
+        vehicles flat form no-h2). Cycle-1 фікси (DLQ NaN, cash getBalances, throwFromResponse) revalidated.
+  ac535ff4 docs(skills): +RHF field.id key-mismatch +currency dirty-guard +E2E-flag(NEXT_PUBLIC_E2E=1) prereq.
+  Suite: api tsc 0/2573 · web tsc 0/831 component · shared 0 · E2E 339/339 (0 fail, 0 skip).
+
 Optimize full-branch cycle 1/3 — 2026-09-19, HEAD 38da9dd9:
   38da9dd9 perf(cash-registers): findAll рахував balance ЧЕРЕЗ cash.getBalance() у map(async) — N+1
         (3 запити/касу: findFirst + 2 aggregate → до 3×N=600 при take:200), введено на цій гілці
