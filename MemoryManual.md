@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-19
+Дата:       2026-09-19 (optimize full-branch cycle 1/3)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
@@ -271,6 +271,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Optimize full-branch cycle 1/3 — 2026-09-19, HEAD 38da9dd9:
+  38da9dd9 perf(cash-registers): findAll рахував balance ЧЕРЕЗ cash.getBalance() у map(async) — N+1
+        (3 запити/касу: findFirst + 2 aggregate → до 3×N=600 при take:200), введено на цій гілці
+        (origin/main віддавав кешовані items без balance) + обходив ref-кеш на КОЖНОМУ запиті.
+        Fix: CashService.getBalances(orgId, initials) — ОДИН groupBy по (cashRegisterId, direction)
+        з cashRegisterId IN [ids]; семантика byte-identical (initial+ΣIN−ΣOUT, roundMoney);
+        initialBalance уже у кеш-DTO (реєстри не перечитуються); index-covered
+        (orgId,cashRegisterId,createdAt) prefix. +3 тести. tsc api/web 0, cash 43/43.
+  Решта гілки (~340 файлів) — механічне i18n string-wrapping (translateError/getLocale) — НЕ perf.
+  Нова DLQ (dead-letter.service.findAll) — вже оптимальна (Promise.all findMany+count, take:200,
+        0 N+1, 0 include). buildHeaders getCurrentLocale() — module-var read, не localStorage.
+
 Review аудит Дані/Інфра — append-only ledger тригери — 2026-09-17, HEAD 31c5ec2:
   31c5ec2 fix(review): forbid_mutation_stock_movements — перелік IS NOT DISTINCT (id/orgId/goodId/
         warehouseId/type/quantity/documentType/documentId/createdAt) НЕ покривав price/notes/createdBy/
