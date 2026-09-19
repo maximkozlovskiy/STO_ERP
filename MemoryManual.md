@@ -33,6 +33,18 @@ i18n:       Багатомовність uk/en ЗАВЕРШЕНА повніст
             verbatim заради byte-identity (окремий дефект, поза scope).
 Sync(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 mismatches. 400-контракт незмінний; header round-trip
             (getCurrentLocale→'uk'/'en', Fastify lowercase); key-consistency (84 schema keys ⊆ 87 catalog).
+Sync(full-branch cycle 1/3): 2026-09-19 (auto, 911fe19d) — full-branch sweep dafacc8b..HEAD (652 файли).
+            Знайдено+виправлено: (1) 6 raw-fetch сайтів (api-client tryRefresh, auth/context.tsx
+            refresh/login/logout/logoutAll, booking/page.tsx publicFetch) НЕ слали Accept-Language →
+            resolveLocale дефолтить 'uk' без header → EN-користувачі бачили укр. помилки на
+            login/refresh/logout/booking. useWorkOrderActions.ts public export fetch залишено (blob,
+            без JSON error body — Accept-Language не load-bearing). (2) DeadLetterController
+            (GET /dead-letter, PATCH /:id/resolve) — 0 frontend-споживачів, лише bull-board (dev-only,
+            /admin/queues відсутній у prod) → доданий мінімальний settings-tab (useDeadLetter hook +
+            DeadLetterTab: список/фільтр/resolve, uk+en i18n). Перевірено чисто: provider-registry
+            (fiscal/payment-gateways/delivery/notification-providers) — усі 5 routes + shape матчать;
+            payments/supplier-payments/cash-shifts/payment-methods — повністю wired. tsc web 0 / api 0
+            (api файли не чіплялись). web suite 824/824 без регресій.
 Review(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 defects. ПОВНИЙ byte-identity аудит 87 keys +
             структурний діф 11 схем (0 logic drift на money/FSM — лише Prettier reflow). i18nZodResolver
             рекурсія OK; getLocale default 'uk'; header parse safe; buildHeaders spread-order OK.
