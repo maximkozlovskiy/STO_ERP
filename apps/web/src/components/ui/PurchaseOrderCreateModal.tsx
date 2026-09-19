@@ -1723,9 +1723,12 @@ export function PurchaseOrderCreateModal({
                                   min="0"
                                   max={maxQty}
                                   step="1"
-                                  value={receiveQtys[line.id ?? ''] ?? ''}
+                                  // Ключ — RHF field.id (той самий синтетичний id, за яким
+                                  // читають handleReceive та «отримати все»); line.id === field.id
+                                  // (line — це той самий field через cast), тож усі 3 сайти єдині.
+                                  value={receiveQtys[field.id] ?? ''}
                                   onChange={e =>
-                                    setReceiveQtys(q => ({ ...q, [line.id ?? '']: e.target.value }))
+                                    setReceiveQtys(q => ({ ...q, [field.id]: e.target.value }))
                                   }
                                   placeholder={`макс. ${maxQty}`}
                                   className="w-24 rounded border border-primary/50 bg-primary/5 px-2 py-1 text-[12px] text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
