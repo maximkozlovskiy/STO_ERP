@@ -2120,15 +2120,13 @@ export function CreateWorkOrderModal({
                           render={({ field }) => (
                             <CurrencySelect
                               value={typeof field.value === 'string' ? field.value : ''}
-                              onChange={id => {
-                                const prevVal = typeof field.value === 'string' ? field.value : '';
-                                if (prevVal === id) return;
-                                // Bug #747: CurrencySelect авто-виставляє базову валюту async на open
-                                // (порожнє currencyId→UAH) — програмний defaultToBase, не правка
-                                // користувача. shouldDirty:false → форма лишається «чистою» й
-                                // закривається без confirm. Зміна з непорожнього → правка → dirty.
-                                setValue('currencyId', id, { shouldDirty: prevVal !== '' });
-                              }}
+                              onChange={id => field.onChange(id)}
+                              // Bug #747/#766-клас: авто-дефолт базової валюти — програмна зміна,
+                              // не дія користувача → shouldDirty:false, щоб незаймана модалка не
+                              // вважалась брудною (єдиний патерн із Invoice/PO модалками).
+                              onAutoDefault={id =>
+                                setValue('currencyId', id, { shouldDirty: false })
+                              }
                               disabled={!canEdit}
                             />
                           )}
