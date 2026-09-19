@@ -30,10 +30,6 @@ export function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-function isPublicPathname(pathname: string): boolean {
-  return isPublicRoute(pathname);
-}
-
 // ─── State ───────────────────────────────────────────────
 
 type Action =
@@ -152,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-    const isPublic = isPublicPathname(pathname);
+    const isPublic = isPublicRoute(pathname);
     const stored = sessionStorage.getItem(TOKEN_KEY);
 
     if (isPublic && !stored) {

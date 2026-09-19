@@ -46,6 +46,20 @@ function clearToken(): void {
   if (typeof window !== 'undefined') sessionStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * Спільний парсинг error-body → throw Error. NestJS class-validator повертає `message: string[]`
+ * при 400 → join '; '; інакше рядок; не-JSON body → fallback. Централізує 3 копії цієї логіки
+ * (apiFetch/apiBlobFetch/apiMultipartFetch). Ніколи не повертає — завжди кидає.
+ * (_publicFetch має інший fallback для non-JSON vs null-message → лишений inline.)
+ */
+async function throwFromResponse(res: Response, fallback: string): Promise<never> {
+  const body = (await res.json().catch(() => ({ message: fallback }))) as {
+    message?: string | string[];
+  };
+  const msg = Array.isArray(body.message) ? body.message.join('; ') : (body.message ?? fallback);
+  throw new Error(msg);
+}
+
 async function tryRefresh(): Promise<string | null> {
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
@@ -128,13 +142,7 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    const error = (await res.json().catch(() => ({ message: res.statusText }))) as {
-      message: string | string[];
-    };
-    const msg = Array.isArray(error.message)
-      ? error.message.join('; ')
-      : (error.message ?? res.statusText);
-    throw new Error(msg);
+    await throwFromResponse(res, res.statusText);
   }
 
   // 204 No Content
@@ -173,17 +181,7 @@ export async function apiBlobFetch(path: string, init?: RequestInit): Promise<Bl
   }
 
   if (!res.ok) {
-    // Try to parse error body as JSON (most likely shape from NestJS) — fall back to status text.
-    // NestJS class-validator returns `message: string[]` on 400 → join with '; '.
-    const errBody = (await res
-      .json()
-      .catch(() => ({ message: `Помилка завантаження файлу (${res.status})` }))) as {
-      message?: string | string[];
-    };
-    const errMsg = Array.isArray(errBody.message)
-      ? errBody.message.join('; ')
-      : (errBody.message ?? `Помилка завантаження файлу (${res.status})`);
-    throw new Error(errMsg);
+    await throwFromResponse(res, `Помилка завантаження файлу (${res.status})`);
   }
 
   return await res.blob();
@@ -226,16 +224,7 @@ export async function apiMultipartFetch<T>(
   }
 
   if (!res.ok) {
-    // NestJS class-validator returns `message: string[]` on 400 → join with '; '.
-    const errBody = (await res
-      .json()
-      .catch(() => ({ message: `Помилка завантаження (${res.status})` }))) as {
-      message?: string | string[];
-    };
-    const errMsg = Array.isArray(errBody.message)
-      ? errBody.message.join('; ')
-      : (errBody.message ?? `Помилка завантаження (${res.status})`);
-    throw new Error(errMsg);
+    await throwFromResponse(res, `Помилка завантаження (${res.status})`);
   }
 
   if (res.status === 204) return undefined as T;
