@@ -922,6 +922,10 @@ export function InvoiceCreateModal({
                       <CurrencySelect
                         value={typeof field.value === 'string' ? field.value : ''}
                         onChange={id => field.onChange(id)}
+                        // Bug #639-клас: авто-дефолт базової валюти — програмна зміна, не дія
+                        // користувача → shouldDirty:false, щоб незаймана модалка не вважалась брудною
+                        // (інакше Escape на щойно відкритій формі показує «Є незбережені зміни»).
+                        onAutoDefault={id => setValue('currencyId', id, { shouldDirty: false })}
                         disabled={!canEdit}
                       />
                     )}

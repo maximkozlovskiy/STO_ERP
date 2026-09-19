@@ -96,7 +96,7 @@ test.describe('Персонал — CRUD співробітника', () => {
     if (await confirmBtn.isVisible({ timeout: 3_000 })) await confirmBtn.click();
   });
 
-  test("форма — кнопка Зберегти disabled без обов'язкових полів", async ({ page }) => {
+  test("форма — валідація блокує сабміт без обов'язкових полів", async ({ page }) => {
     await page.goto('/employees');
     // Add-button renamed to single noun "Співробітник" (commit 3785721/c3cd333).
     // Page header is "Співробітники" — exclude that.
@@ -109,12 +109,21 @@ test.describe('Персонал — CRUD співробітника', () => {
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    // Порожня форма — disabled
-    await expect(modal.locator('button:has-text("Зберегти")')).toBeDisabled();
+    // Форма мігрувала на zod + react-hook-form (commit eb3582cb): кнопка «Зберегти» ЗАВЖДИ
+    // активна, а валідація відбувається на сабміт (mode:'onBlur' + zodResolver). Порожня форма
+    // при кліку не закривається і показує inline-помилки; жодного співробітника не створюється.
+    const saveBtn = modal.locator('button:has-text("Зберегти")');
+    await saveBtn.click();
+    // firstName + lastName required → показуються локалізовані помилки, модалка лишається відкрита.
+    await expect(modal.locator("text=Вкажіть ім'я")).toBeVisible({ timeout: 5_000 });
+    await expect(modal.locator('text=Вкажіть прізвище')).toBeVisible();
+    await expect(modal).toBeVisible();
 
-    // Тільки ім'я — ще disabled
+    // Тільки ім'я — сабміт усе ще блокується помилкою прізвища.
     await modal.locator('input[placeholder="Іван"]').fill('Тест');
-    await expect(modal.locator('button:has-text("Зберегти")')).toBeDisabled();
+    await saveBtn.click();
+    await expect(modal.locator('text=Вкажіть прізвище')).toBeVisible({ timeout: 5_000 });
+    await expect(modal).toBeVisible();
 
     await modal.getByRole('button', { name: 'Закрити' }).click();
     // useDirtyForm guard fires because the "Ім'я" input was modified.

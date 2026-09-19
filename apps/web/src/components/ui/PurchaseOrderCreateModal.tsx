@@ -857,10 +857,18 @@ export function PurchaseOrderCreateModal({
 
   const handleReceive = async () => {
     if (!purchaseOrderId) return;
-    // lineId живе у display-полях RHF-рядка (id); читаємо через getValues+cast.
-    const currentLines = (getValues('lines') ?? []) as unknown as LocalLine[];
-    const receivedLines = currentLines
-      .map(l => ({ lineId: l.id!, receivedQty: parseFloat(receiveQtys[l.id ?? ''] ?? '') }))
+    // Bug: `receiveQtys` кейситься по RHF field.id (input рендериться з field-об'єкта, де RHF
+    // ПЕРЕЗАПИСУЄ data.id власним синтетичним id). А getValues('lines')[i].id — це РЕАЛЬНИЙ
+    // db-lineId (RHF не чіпає значення, лише field-обгортку). Тож читати receiveQtys треба по
+    // fields[i].id (синтетичний, збігається з ключем input-а), а lineId на бек слати з
+    // getValues (реальний). Раніше обидва бралися з getValues → ключ не збігався → усі позиції
+    // фільтрувались → «Вкажіть кількість…» навіть коли користувач ввів кількість.
+    const dbLines = (getValues('lines') ?? []) as unknown as LocalLine[];
+    const receivedLines = fields
+      .map((field, i) => ({
+        lineId: dbLines[i]?.id ?? '',
+        receivedQty: parseFloat(receiveQtys[field.id] ?? ''),
+      }))
       .filter(l => l.lineId && !isNaN(l.receivedQty) && l.receivedQty > 0);
     if (!receivedLines.length) {
       setError('Вкажіть кількість для хоча б однієї позиції');
@@ -1334,6 +1342,9 @@ export function PurchaseOrderCreateModal({
                       <CurrencySelect
                         value={typeof field.value === 'string' ? field.value : ''}
                         onChange={id => field.onChange(id)}
+                        // Bug #639-клас: авто-дефолт базової валюти — програмна зміна → shouldDirty:false,
+                        // щоб незаймана модалка не вважалась брудною (Escape/закриття без хибного guard-у).
+                        onAutoDefault={id => setValue('currencyId', id, { shouldDirty: false })}
                         disabled={!canEdit}
                       />
                     )}
@@ -1422,12 +1433,17 @@ export function PurchaseOrderCreateModal({
                         size="sm"
                         disabled={receiving}
                         onClick={() => {
+                          // receiveQtys кейситься по RHF field.id (той самий ключ, що й input
+                          // рендериться нижче: value={receiveQtys[field.id]}). Кількість/залишок
+                          // читаємо з даних поля (field як LocalLine). Раніше ключем був l.id з
+                          // getValues (реальний db-id) → не збігався з field.id input-а → «все»
+                          // не заповнювало жодного видимого поля.
                           const all: Record<string, string> = {};
-                          const currentLines = (getValues('lines') ?? []) as unknown as LocalLine[];
-                          currentLines.forEach(l => {
+                          fields.forEach(field => {
+                            const l = field as unknown as LocalLine;
                             const max =
                               (parseFloat(String(l.quantity)) || 0) - (l.receivedQty ?? 0);
-                            if (max > 0) all[l.id ?? ''] = String(max);
+                            if (max > 0) all[field.id] = String(max);
                           });
                           setReceiveQtys(all);
                         }}

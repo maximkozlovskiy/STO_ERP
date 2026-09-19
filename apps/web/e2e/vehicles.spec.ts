@@ -125,10 +125,12 @@ test.describe('Автомобілі', () => {
     expect(garageId).toBeTruthy();
     await page.goto(`/vehicles/new?garageId=${garageId}`);
     await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
-    // 3 секції форми
-    await expect(page.locator('h2:has-text("Основна інформація")').first()).toBeVisible();
-    await expect(page.locator('h2:has-text("Технічні характеристики")').first()).toBeVisible();
-    await expect(page.locator('h2:has-text("Документи")').first()).toBeVisible();
+    // Форма мігрувала на спільний RHF-native VehicleForm (commit 2bd77ba9): плоский layout полів
+    // без h2-секцій. Перевіряємо, що ключові поля форми присутні (марка/модель/VIN/технічні).
+    await expect(page.getByText('Марка', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('Модель', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('VIN', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('Пальне', { exact: false }).first()).toBeVisible();
   });
 
   test('/vehicles/new — кнопка "Створити" без обовязкових полів задізейблена або show error', async ({

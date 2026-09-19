@@ -26,6 +26,14 @@ interface CurrencySelectProps {
   disabled?: boolean;
   /** Якщо value порожнє — авто-обрати базову валюту org (за замовчуванням true). */
   defaultToBase?: boolean;
+  /**
+   * Bug #639-клас: авто-вибір базової валюти — ПРОГРАМНА зміна, не дія користувача. Якщо форма
+   * має dirty-guard, застосовувати це значення треба через setValue({shouldDirty:false}), інакше
+   * незаймана модалка вважається брудною і Escape/закриття хибно показує «Є незбережені зміни».
+   * Коли задано — авто-дефолт іде сюди (не в onChange); user-вибір завжди йде в onChange.
+   * Не задано → fallback у onChange (BC для викликачів без dirty-guard).
+   */
+  onAutoDefault?: (currencyId: string) => void;
 }
 
 export function CurrencySelect({
@@ -36,6 +44,7 @@ export function CurrencySelect({
   required,
   disabled,
   defaultToBase = true,
+  onAutoDefault,
 }: CurrencySelectProps) {
   const [currencies, setCurrencies] = useState<CurrencyItem[]>([]);
   const { data: base } = useBaseCurrency();
@@ -53,11 +62,12 @@ export function CurrencySelect({
   }, []);
 
   // Авто-вибір базової валюти, коли нічого не обрано (лише один раз, коли з'явились дані).
+  // Програмна зміна → onAutoDefault (якщо задано, для форм з dirty-guard), інакше onChange.
   useEffect(() => {
     if (!defaultToBase || value || currencies.length === 0 || !base?.code) return;
     const baseCur = currencies.find(c => c.code === base.code);
-    if (baseCur) onChange(baseCur.id);
-  }, [defaultToBase, value, currencies, base?.code, onChange]);
+    if (baseCur) (onAutoDefault ?? onChange)(baseCur.id);
+  }, [defaultToBase, value, currencies, base?.code, onChange, onAutoDefault]);
 
   return (
     <Select

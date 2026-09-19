@@ -5822,3 +5822,71 @@ getCurrentLocale()`; `buildHeaders` мержить `extra` останнім (cal
 
 **Регресія suite (must stay green):** api tsc 0; web tsc 0; dead-letter 24/24 (+8);
 payments/settlements/work-orders 460/460; DeadLetterTab 7/7 (new). Жодного НОВОГО падіння.
+
+---
+
+## Session 2026-09-19 — Full-branch QA cycle 2/3 (E2E suite unblocked, seeded DB)
+
+**Контекст:** dev DB засіяно (admin@sto.local/admin123 → login 200), globalSetup успішний,
+повний auth-gated Playwright suite УВІМКНЕНО вперше. Baseline: api tsc 0 / 2573 unit, web tsc 0 /
+831 component, shared tsc 0. Cycle-1 фікси (DLQ NaN-guard #764, cash getBalances batch,
+throwFromResponse refactor) — перевалідовано статично: усі коректні, семантика збережена.
+
+### Bug #765 — PO receive UI повністю зламано (receiveQtys кейситься по RHF field.id, читається по db-id) — CRITICAL
+
+- **Файл:** `apps/web/src/components/ui/PurchaseOrderCreateModal.tsx`
+- **Симптом (E2E `purchase-orders-receive.spec.ts:143,198`):** клік «Підтвердити прийом» після
+  вводу кількості (або «Оприбуткувати все») → помилка «Вкажіть кількість для хоча б однієї позиції»;
+  прийом товару НЕ відбувався ЖОДНОГО разу через UI (ні частковий PARTIAL, ні повний RECEIVED).
+- **Причина:** `useFieldArray` ПЕРЕЗАПИСУЄ `field.id` власним синтетичним uuid (data.id → shadowed).
+  Input рендериться з field-об'єкта → `receiveQtys` кейситься по СИНТЕТИЧНОМУ field.id. Але
+  `handleReceive` і «Оприбуткувати все» читали/писали `receiveQtys` по `getValues('lines')[i].id` =
+  РЕАЛЬНИЙ db-lineId. Ключі не збігались → `parseFloat(undefined)=NaN` → всі позиції відфільтровані
+  → порожній масив прийому. Backend (`POST /purchase-orders/:id/receive`, `receivedQty`) — коректний
+  (перевірено curl: PARTIAL/RECEIVED 200).
+- **Фікс:** уніфіковано ключ `receiveQtys` = RHF `field.id` у ВСІХ трьох місцях (input render,
+  «Оприбуткувати все», `handleReceive`); реальний db-`lineId` резолвиться на сабміт по індексу з
+  `getValues('lines')[i].id`. Обидва handler-и тепер ітерують `fields`, не `getValues`.
+- **Регресія:** `purchase-orders-receive.spec.ts` 4/4 green; web component 831/831.
+- **Статус:** [x] виправлено
+
+### Bug #766 — Invoice/PO create-модалка «брудна» одразу на open (CurrencySelect авто-дефолт валюти дірти-гейт) — HIGH (UX)
+
+- **Файли:** `apps/web/src/components/ui/CurrencySelect.tsx`, `InvoiceCreateModal.tsx`,
+  `PurchaseOrderCreateModal.tsx`
+- **Симптом (E2E `invoices.spec.ts:127`):** щойно відкриту, НЕзайману модалку «Новий рахунок»
+  неможливо закрити Escape без confirm «Є незбережені зміни» → dirty-guard + beforeunload-діалог.
+- **Причина:** `CurrencySelect` (defaultToBase=true) на mount кличе `onChange(baseId)` для авто-
+  вибору базової валюти. У Invoice/PO модалці цей `onChange` = `field.onChange` (RHF) → `rhfDirty=true`
+  → форма вважається брудною. Це ПРОГРАМНА зміна, не дія користувача (клас Bug #639/#747 — уже
+  пофікшено у WorkOrder-модалці, але Invoice/PO пропущені).
+- **Фікс:** додано `onAutoDefault?` prop у `CurrencySelect` — авто-дефкт іде окремим callback-ом
+  (не `onChange`); Invoice/PO передають `onAutoDefault={id => setValue('currencyId', id,
+{shouldDirty:false})}`. User-вибір далі йде в `onChange` (dirty). BC: без prop → fallback у onChange.
+- **Регресія:** `invoices.spec.ts` green; web component 831/831 (WorkOrder currency-тести інтактні).
+- **Статус:** [x] виправлено
+
+### Стале-тести оновлено (не баги коду — тести асертили застарілий контракт)
+
+- **`counterparty-detail.spec.ts:31`** — `apiCall` хелпер бив по `/api${path}` (без /v1) → seed POST
+  404 → `seededCpId=null` → перший serial-тест падав, решта skip. Виправлено на `/api/v1${path}`
+  (API-версіонування прийнято на гілці). (+9 залежних тестів розблоковано.)
+- **`crud-employee.spec.ts:99`** — асертив `Зберегти disabled` на порожній формі. EmployeeEditModal
+  мігрував на zod+RHF (commit eb3582cb): кнопка ЗАВЖДИ активна, валідація on-submit. Live-перевірено:
+  порожній сабміт НЕ створює співробітника, показує inline-помилки «Вкажіть ім'я/прізвище». Тест
+  переписано на актуальний контракт (сабміт блокується помилками, модалка лишається відкрита).
+- **`vehicles.spec.ts:124`** — асертив 3 h2-секції («Основна інформація» тощо). Спільний RHF-native
+  VehicleForm (commit 2bd77ba9) — плоский layout БЕЗ h2. Live-перевірено: h1 + усі поля present.
+  Тест переписано на присутність ключових полів (Марка/Модель/VIN/Пальне).
+
+### Environmental (не баг гілки)
+
+- **Web dev server стартував БЕЗ `NEXT_PUBLIC_E2E=1`** → E2E auth-hatch tree-shake-нувся → усі
+  storageState-специ (bookings/crm/console-errors/counterparty/…) падали (сторінки не гідрувались як
+  auth). Перезапущено сервер з прапором → globalSetup регенерував admin.json → усе зелене. Урок:
+  для повного auth-gated suite web-сервер МУСИТЬ мати `NEXT_PUBLIC_E2E=1`.
+- **`status-tooltip.spec.ts:5`** — transient flake під паралельним навантаженням (4 workers × важкий
+  work-orders list → 20s render-timeout). В ізоляції 2/2 green за 1.1s. Не баг коду.
+
+**Регресія suite (final):** api tsc 0 / **2573 unit**; web tsc 0 / **831 component**; shared tsc 0;
+**E2E 339/339** (0 fail, 0 skip). Cycle-1 фікси інтактні.

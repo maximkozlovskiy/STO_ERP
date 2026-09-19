@@ -28,7 +28,9 @@ async function apiCall(
     async ({ token, method, path, body }) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       if (body) headers['Content-Type'] = 'application/json';
-      const r = await fetch(`${'http://localhost:3000'}/api${path}`, {
+      // API-версіонування: бізнес-роути під /api/v1 (counterparties — versioned).
+      // Раніше хелпер бив по /api${path} → 404 → seed повертав null → перший serial-тест падав.
+      const r = await fetch(`${'http://localhost:3000'}/api/v1${path}`, {
         method,
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
