@@ -5770,3 +5770,55 @@ locale-round-trip guard на `validationExceptionFactory` через `runWithTen
 
 **Регресія suite (must stay green):** shared build ✅; api tsc 0; api **2563 passed**
 (2549 baseline + 14 нових). Жодного НОВОГО падіння від commit-у.
+
+## Session 2026-09-19 — CYCLE 1/3 full-branch QA (DLQ admin UI + money/FSM priority)
+
+Фокус: найновіший/найменш-покритий код гілки vs origin/main (merge-base dafacc8b).
+Пріоритет — DeadLetter admin UI (0 покриття), Accept-Language raw-fetch fixes,
+money/FSM/inventory інваріанти. i18n-каталог НЕ ре-тестувався (green попередні цикли).
+
+### Bug #764 — DLQ findAll: NaN page/limit → Prisma-crash (HTTP 500) [MEDIUM] [x] виправлено
+
+**Файл:** `apps/api/src/modules/dead-letter/dead-letter.service.ts` (findAll)
+**Сигнал:** `DeadLetterController.findAll` бере raw `@Query('page') page='1'` / `@Query('limit')`
+БЕЗ ParseIntPipe і передає `+page`/`+limit` у сервіс. `+'abc' === NaN`. У сервісі
+`Math.max(NaN,1)=NaN` → `skip=NaN`, `take=NaN` → `prisma.deadLetterJob.findMany({skip:NaN})`
+кидає Prisma validation-error → **HTTP 500** замість graceful clamp. `findAll` не мав ЖОДНОГО
+unit-тесту (spec покривав лише capture/resolve), тож дефект був невидимий.
+**Причина:** припущення що клієнт завжди шле числа. Web-клієнт (usePaginatedList) справді шле
+числовий page, але endpoint (OWNER/ADMIN) публічний у Swagger → malformed query реальний.
+**Фікс:** `Number.isFinite(limit) ? Math.floor(limit) : 50` та аналогічно для page ПЕРЕД
+clamp; `page:` у відповіді теж від safePage. `+''===0` коректно клампиться до 1 (не NaN) —
+окремо покрито тестом.
+**Severity:** MEDIUM (500 на malformed input; лише admin-роль; web-клієнт не тригерить).
+**Тести:** +8 unit до `dead-letter.service.spec.ts` (findAll: orgId-scope, фільтри,
+пагінація clamp 200, NaN-guard, empty-limit→1, page<1→1). 24/24 green.
+
+### Component coverage gap closed — DeadLetterTab (не баг)
+
+**Файл:** `apps/web/src/app/(app)/settings/__tests__/DeadLetterTab.test.tsx` (NEW, +7 тестів)
+DLQ admin UI (useDeadLetter/DeadLetterTab) не мав компонент-тестів. Створено regression-guard:
+рендер рядка, isLoading/empty-стани, «Опрацьовано» лише на resolved=false, mutateAsync(id),
+resetTo (зміна фільтра → page=1), і **review-fix per-row spinner** (loading=isPending &&
+variables===job.id → спінер лише на клікнутому рядку, обидві кнопки disabled). 7/7 green.
+
+### Перевірено без змін коду (коректно — 0 багів)
+
+- **Accept-Language 6 raw-fetch sites** (api-client tryRefresh/_publicFetch; auth context
+  refresh/login/logout/logoutAll; booking publicFetch): усі шлють `Accept-Language:
+getCurrentLocale()`; `buildHeaders` мержить `extra` останнім (caller-header wins, Accept-Language
+  дефолт). 401-redirect збережено (tryRefresh→clearToken→location.replace('/login')). Регресій нема.
+- **payments multicurrency FX** (payments.service.ts 435-487): realized-FX проводка обнуляє
+  base-залишок після повної оплати в іновалюті. Знак коректний: fx=chargeBase-paidBase;
+  fx>0→FX_LOSS(sign −1) гасить +залишок; fx<0→FX_GAIN(sign +1) гасить −залишок. Idempotent
+  (fxExisting count guard). paidBase агрегує ВКЛючно з just-created Payment (той самий tx). EPS 0.005.
+- **settlements.createTransaction**: positive-amount guard; BALANCE_SIGN чиста функція типу;
+  base-conversion; FX БЕЗ currencyId → без re-конвертації. Клієнт/постачальник типи розділені.
+- **work-orders FSM transition**: CAS-flip (updateMany where status=wo.status) ПЕРШИМ →
+  жодного подвійного CHARGE/WRITEOFF/RETURN під concurrency. completedAt set при COMPLETED
+  (line 750) → `updates.completedAt!` безпечний. CANCELLED-from-COMPLETED реверс single-shot.
+- **work-order-dto.mapper.ts** (NEW +219): чисті мапери; costPrice fail-closed (undefined
+  default, лише OWNER/ADMIN/STOREKEEPER/ACCOUNTANT). safeCoeff guard на coefficient=0.
+
+**Регресія suite (must stay green):** api tsc 0; web tsc 0; dead-letter 24/24 (+8);
+payments/settlements/work-orders 460/460; DeadLetterTab 7/7 (new). Жодного НОВОГО падіння.

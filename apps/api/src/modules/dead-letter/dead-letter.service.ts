@@ -201,8 +201,13 @@ export class DeadLetterService {
     const where: Prisma.DeadLetterJobWhereInput = { orgId };
     if (queueName) where.queueName = queueName;
     if (resolved !== undefined) where.resolved = resolved;
-    const take = Math.min(Math.max(limit, 1), 200);
-    const skip = (Math.max(page, 1) - 1) * take;
+    // Guard NaN/Infinity: controller передає `+page`/`+limit` з raw query-string (без ParseIntPipe),
+    // тож `?page=abc`/`?limit=` дають NaN → Math.max(NaN,1)=NaN → skip/take=NaN → Prisma кидає
+    // validation-error (HTTP 500). Нормалізуємо у безпечні дефолти (сторінка 1, ліміт 50).
+    const safeLimit = Number.isFinite(limit) ? Math.floor(limit) : 50;
+    const safePage = Number.isFinite(page) ? Math.floor(page) : 1;
+    const take = Math.min(Math.max(safeLimit, 1), 200);
+    const skip = (Math.max(safePage, 1) - 1) * take;
     const [rows, total] = await Promise.all([
       this.prisma.deadLetterJob.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take }),
       this.prisma.deadLetterJob.count({ where }),
@@ -224,7 +229,7 @@ export class DeadLetterService {
         createdAt: r.createdAt.toISOString(),
       })),
       total,
-      page: Math.max(page, 1),
+      page: Math.max(safePage, 1),
       limit: take,
     };
   }

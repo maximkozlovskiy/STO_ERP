@@ -117,6 +117,97 @@ describe('DeadLetterService.resolve', () => {
   });
 });
 
+describe('DeadLetterService.findAll', () => {
+  let prisma: {
+    deadLetterJob: {
+      findMany: ReturnType<typeof vi.fn>;
+      count: ReturnType<typeof vi.fn>;
+    };
+  };
+  let service: DeadLetterService;
+
+  const row = {
+    id: 'dl-1',
+    orgId: 'org-1',
+    queueName: 'sms',
+    jobName: 'send-sms',
+    bullJobId: 'job-1',
+    attemptsMade: 10,
+    maxAttempts: 10,
+    failedReason: 'boom',
+    stacktrace: 'at a',
+    payload: { orgId: 'org-1' },
+    resolved: false,
+    resolvedAt: null,
+    createdAt: new Date('2026-01-02T03:04:05.000Z'),
+  };
+
+  beforeEach(() => {
+    prisma = {
+      deadLetterJob: {
+        findMany: vi.fn().mockResolvedValue([row]),
+        count: vi.fn().mockResolvedValue(1),
+      },
+    };
+    service = new DeadLetterService(prisma as unknown as PrismaService);
+  });
+
+  it('scope-иться по orgId; резолвить дати у ISO', async () => {
+    const res = await service.findAll('org-1');
+    const where = prisma.deadLetterJob.findMany.mock.calls[0][0].where;
+    expect(where.orgId).toBe('org-1');
+    expect(prisma.deadLetterJob.count.mock.calls[0][0].where.orgId).toBe('org-1');
+    expect(res.items[0].createdAt).toBe('2026-01-02T03:04:05.000Z');
+    expect(res.total).toBe(1);
+  });
+
+  it('додає queueName/resolved у where лише коли задані', async () => {
+    await service.findAll('org-1', 1, 50, 'sms', false);
+    const where = prisma.deadLetterJob.findMany.mock.calls[0][0].where;
+    expect(where.queueName).toBe('sms');
+    expect(where.resolved).toBe(false);
+  });
+
+  it('resolved=undefined → фільтр НЕ додається (показує всі)', async () => {
+    await service.findAll('org-1', 1, 50, undefined, undefined);
+    const where = prisma.deadLetterJob.findMany.mock.calls[0][0].where;
+    expect('resolved' in where).toBe(false);
+    expect('queueName' in where).toBe(false);
+  });
+
+  it('пагінація: page/limit → коректні skip/take; limit клампиться до 200', async () => {
+    await service.findAll('org-1', 3, 500);
+    const args = prisma.deadLetterJob.findMany.mock.calls[0][0];
+    expect(args.take).toBe(200); // 500 clamped
+    expect(args.skip).toBe(400); // (3-1)*200
+  });
+
+  it('NaN page/limit (raw ?page=abc → +"abc"=NaN) → безпечні дефолти, НЕ Prisma-crash', async () => {
+    // +'abc' === NaN (на відміну від +'' === 0). Саме NaN зривав би Prisma: findMany({skip:NaN}).
+    await service.findAll('org-1', Number('abc'), Number('abc'));
+    const args = prisma.deadLetterJob.findMany.mock.calls[0][0];
+    // NaN → page=1, limit=50 (жодного NaN у skip/take, інакше Prisma кинув би validation-error → 500).
+    expect(Number.isNaN(args.skip)).toBe(false);
+    expect(Number.isNaN(args.take)).toBe(false);
+    expect(args.skip).toBe(0);
+    expect(args.take).toBe(50);
+  });
+
+  it('порожній ?limit= (+""=0) клампиться до 1, не NaN', async () => {
+    await service.findAll('org-1', Number(''), Number(''));
+    const args = prisma.deadLetterJob.findMany.mock.calls[0][0];
+    expect(args.skip).toBe(0);
+    expect(args.take).toBe(1); // 0 → Math.max(0,1)
+  });
+
+  it('page<1 клампиться до 1 (skip не стає відʼємним)', async () => {
+    const res = await service.findAll('org-1', 0, 50);
+    const args = prisma.deadLetterJob.findMany.mock.calls[0][0];
+    expect(args.skip).toBe(0);
+    expect(res.page).toBe(1);
+  });
+});
+
 describe('sanitizePayload', () => {
   it('редагує різні варіанти імен ключів (case-insensitive, api_key/apiKey/token/password)', () => {
     const out = sanitizePayload({
