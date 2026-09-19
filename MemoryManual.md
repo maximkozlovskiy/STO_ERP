@@ -33,6 +33,19 @@ i18n:       Багатомовність uk/en ЗАВЕРШЕНА повніст
             verbatim заради byte-identity (окремий дефект, поза scope).
 Sync(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 mismatches. 400-контракт незмінний; header round-trip
             (getCurrentLocale→'uk'/'en', Fastify lowercase); key-consistency (84 schema keys ⊆ 87 catalog).
+Sync(full-branch cycle 2/3): 2026-09-19 (auto, 0 fixes, коміт не потрібен) — re-verify cycle 1 fixes
+            + delta-sweep 911fe19d..HEAD (8 реальних файлів: cash-registers/cash getBalances batch,
+            dead-letter NaN-guard, DeadLetterTab per-row loading, api-client/auth-context simplify-refactor).
+            Усе інтактно: DeadLetterService.findAll {items,total} DTO-shape byte-identical після NaN-guard
+            (лише safePage/safeLimit математика, поля мапінгу не чіплялись) ↔ useDeadLetter.ts DeadLetterJob
+            interface field-by-field match; 5 Accept-Language сайтів (tryRefresh/login/refresh/logout/
+            logout-all/booking) усі досі через buildHeaders()/inline getCurrentLocale() — simplify-refактор
+            13f9ee41 чіпав лише error-body parsing (throwFromResponse), headers-код не зачеплено. НАЙВИЩИЙ
+            РИЗИК cash-registers findAll (getBalances batch, 38da9dd9): CashService.getBalances() Map<string,
+            number> ↔ getBalance() number — identical type; frontend CashRegister.balance:number unchanged.
+            0 інших contract-розбіжностей на гілці (endpoint↔UI, URL, interface↔DTO) — spot-checked provider-
+            registry/payments/notifications (Cycle 1 verified, no new touches). tsc shared+api+web 0. Коміт
+            не потрібен (0 фіксів).
 Sync(full-branch cycle 1/3): 2026-09-19 (auto, 911fe19d) — full-branch sweep dafacc8b..HEAD (652 файли).
             Знайдено+виправлено: (1) 6 raw-fetch сайтів (api-client tryRefresh, auth/context.tsx
             refresh/login/logout/logoutAll, booking/page.tsx publicFetch) НЕ слали Accept-Language →
