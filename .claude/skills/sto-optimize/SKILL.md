@@ -55,6 +55,10 @@ grep -rn "include:.*true\b" apps/api/src/modules/ --include="*.service.ts" | gre
 # getAncestors) викликані ПІДРЯД у одному mutation — кожен робить власний findMany(усе піддерево)
 grep -rn "await this\.get\(Depth\|SubtreeHeight\|DescendantIds\|Ancestors\|Descendants\|Children\)" \
   apps/api/src/modules/ --include="*.service.ts" | grep -v spec
+# Cache-bypass N+1: cached findAll додає «свіже/поза кешем» derived-поле per-row через service-виклик,
+# а той сам ≥2 запити (getBalance/getStock/getStatus). N+1 І обхід ref-кешу одночасно.
+grep -rn "\.map(async" apps/api/src/modules/ --include="*.service.ts" -B4 | grep -iE "cache\.get|cache\.set|поза кеш|свіж|fresh|always" | grep -v spec
+grep -rn "await this\.\w\+\.get\(Balance\|Stock\|Total\|Status\|Count\)" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | grep -iE "\.map|for "
 ```
 
 **Фікс:**
@@ -547,6 +551,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат кожного запису: **Сигнал** (+grep) · **Причина** · **Виявлення** · **Фікс** · **Impact** · **Де шукати ще**. Записи від найновіших до найстаріших.
+
+### 2026-09-19 (Цикл 1/3) — Cache-bypass N+1: cached list-endpoint додає «свіже/поза кешем» derived-поле per-row через service-виклик, а той сам = ≥2 запити → N+1 І обхід ref-кешу одночасно
+
+**Сигнал:** `findAll` довідника має ref-кеш (Redis TTL) на СТАТИЧНУ частину, але один derived-стовпець (`balance`/`stock`/`availableQty`/`liveStatus`) свідомо рахується «свіжим, поза кешем» ПІСЛЯ читки кешу через `payload.items.map(async i => ({ ...i, balance: await this.svc.getX(orgId, i.id) }))`. Коментар прямо каже «завжди свіже / поза кешем / fresh / always» — і це присипляє: кеш ЛИШЕ на статику, а derived-поле б'є БД на КОЖНОМУ запиті. Гірше: сам `getX(id)` — не один запит, а КОМПОЗИТ (напр. `getBalance` = `findFirst(register)` + 2× `aggregate(IN/OUT)` = 3 запити). Разом = 3×N запитів на список + повний обхід кешу. Не просто «map з await» (1.1) — тут ще й (а) ref-кеш присутній але не покриває derived-поле, (б) per-item виклик — багатозапитний service-метод, не голий Prisma-call. Кеш маскує проблему при аудиті («findAll кешований → швидкий»), але derived-гілка нижче нівелює кеш.
+**Grep:** `grep -rn "\.map(async" ... -B4 | grep -iE "cache\.get|поза кеш|свіж|fresh|always"` — map(async) одразу після/поряд з кеш-читкою + fresh-коментар. Плюс `grep "await this\.\w+\.get(Balance|Stock|Total|Status|Count)"` у `.map`/`for` — per-item виклик агрегуючого хелпера. Cross-check: чи `getX(id)` усередині робить ≥2 запити (findFirst+aggregate/2×aggregate)? чи derived-поле рахується per-row у циклі? Обидва «так» → cache-bypass N+1.
+**Причина:** «static кешуємо, але баланс змінюється кожною операцією → мушу рахувати свіжим». Автор кешує правильну частину, а derived-поле лишає per-row бо «getBalance уже є, просто виклич його в map». Ніхто не бачить що (1) getBalance сам 3 запити, (2) виклик у map = ×N, (3) весь сенс кешу (не бити БД) зникає бо derived-гілка все одно б'є 3×N. Часто регресія: раніше endpoint віддавав чистий кеш, derived-поле додали пізніше під нову вимогу.
+**Виявлення:** будь-який cached `findAll`/`list` що після кеш-читки МАПить derived/live-поле через service-виклик. Особливо money/inventory-довідники (cash-registers.balance, warehouses.stockTotal, accounts.balance) де «поточне значення» — агрегат append-only-руху. Момент коли до кешованого списку додають «а ще покажи актуальний баланс/залишок» = момент народження патерну.
+**Фікс:** додати ПАКЕТНИЙ хелпер `getXs(orgId, initials: Map<id, seed>)` — ОДИН `groupBy` по `(entityId, discriminator)` з `entityId IN [ids]`, акумулювати sign*value у памʼяті, повернути `Map<id, value>`. Виклик у `findAll`: зібрати `initials` з уже-кешованих DTO (seed-поле типу `initialBalance` вже в кеші → сутність НЕ перечитується), викликати batch, змапити `balances.get(id) ?? seed`. Семантика byte-identical (та сама формула, менше запитів). Index: `groupBy` без discriminator-у WHERE → `(orgId, entityId)`-prefix наявного composite покриває (краще за per-item що heap-filter-ив discriminator). Zero-risk. НЕ прибирати кеш — прибрати САМЕ per-row derived-fan-out.
+**Impact:** cash-registers findAll: 3×N (до 600 при take:200) → 1 запит. Масштабується з кількістю сутностей × частотою list-load; найбільше на дашборд-віджетах що ганяють список часто.
+**Де шукати ще:** cash-registers.balance (fixed), warehouses/stock-totals, settlement-accounts.balance, bank-accounts.balance, будь-який довідник з «поточний залишок/лічильник» derived-полем над append-only рухом. Родич 1.1 (map-await N+1) і 1.4 (ref-кеш) — тут ОБИДВА разом: кеш є, але derived-гілка його обходить N+1-но.
 
 ### 2026-09-15 (Цикл 3/3) — Redundant re-fetch: mutation робить guard-`getX` → `updateMany` (tenant-scoped where) → повторний `getX` для return-значення = 3 RTT там де вистачає 2 (write-op повертає рядок через RETURNING)
 
