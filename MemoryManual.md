@@ -9,23 +9,28 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-18
+Дата:       2026-09-19
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2539/2539 (167 файлів) · web 821/821 (86 файлів, +20 i18n) · settings 59.
-HEAD:       backend-i18n фундамент + shared-zod uk/en ЗАВЕРШЕНО (QA green)
-i18n:       Багатомовність uk/en: (1) УВЕСЬ (app) UI — 28 web-namespaces, 2612 ключів×2 (react-i18next,
-            output:export/offline, MP-F7). (2) Backend-фундамент + shared-zod: Accept-Language(web
-            getCurrentLocale)→tenant-ALS getLocale()→pipe/resolver translate. @sto/shared/i18n каталог
-            (87 keys, translateValidation, uk byte-identical, offline). Zod-messages=KEYS; api
-            ZodValidationPipe + web i18nZodResolver(рекурс.) + validateContactFields перекладають.
-            CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts backend PDF укр.).
-            ВІДКЛАДЕНО: 694 exception-throws + class-validator DTO + http-exception.filter Prisma-строки
-            лишились укр. (споживатимуть getLocale() у наступному блоці).
+Тести:      api 2549/2549 · web 824 · settings 59. (backend-i18n повний: усі *-schema.spec + money/FSM
+            byte-identity green; parity 5/5 uk===en===VALIDATION_KEYS.)
+HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
+i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
+            2612 ключів×2 (react-i18next, output:export/offline, MP-F7). (2) Backend ПОВНІСТЮ: Accept-Language
+            (web getCurrentLocale)→tenant-ALS getLocale()→translate у КОЖНОМУ seam. @sto/shared/i18n каталог
+            (~550 keys: 87 zod/v.* + 472 err.*, translateValidation/translateError alias, uk BYTE-IDENTICAL,
+            offline). Локалізовано: (a) zod-messages=KEYS → api ZodValidationPipe + web i18nZodResolver(рекурс.)
+            + validateContactFields; (b) 693 exception-throws у ~85 сервісах → translateError('err.<module>.*',
+            getLocale()) (черги #1-#5, коміти 42cfad62..b79ecd3a); (c) http-exception.filter Prisma-строки →
+            err.prisma.*/err.internal (mapPrismaErrorToHttp повертає {status,key,params}); (d) class-validator:
+            validation-error.factory CV_TEMPLATE_KEYS(30 err.cv) + 65 inline @IsX({message}) DTO→err.dto.*(48)
+            (29eaad2f). CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts — backend
+            PDF свідомо лишається укр.). Pre-existing mojibake у employees/services/settings.dto — скопійовано
+            verbatim заради byte-identity (окремий дефект, поза scope).
 Sync(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 mismatches. 400-контракт незмінний; header round-trip
             (getCurrentLocale→'uk'/'en', Fastify lowercase); key-consistency (84 schema keys ⊆ 87 catalog).
 Review(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 defects. ПОВНИЙ byte-identity аудит 87 keys +

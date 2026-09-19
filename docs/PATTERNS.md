@@ -736,6 +736,28 @@ export-обмеженням (той самий рубіж, що й Server Compon
 - **Guard**: `validation-i18n-parity.spec` (uk===en===VALIDATION_KEYS). Новий key → у ОБИДВА каталоги.
 - Правило: не забути `pnpm --filter @sto/shared build` перед api tsc/тестом (api на dist/cjs). Див. GOTCHAS.
 
+### MP-F7c — Backend exception + class-validator локалізація (ЗАВЕРШЕНО 2026-09-19)
+
+Розширення MP-F7b на ВЕСЬ backend-вивід. 0 захардкодженого укр у throws/zod/class-validator/filter.
+Той самий каталог (`err.*` ключі, `translateError` = alias `translateValidation`), той самий `getLocale()`.
+
+- **Exception-throws** (~693 сайтів): `throw new X(translateError('err.<module>.<what>', getLocale(), {params}))`.
+  Interpolated (`Валюта "${code}"`) → `{code}`-параметр + `{{code}}` у каталозі. Import `translateError`
+  з '@sto/shared' + `getLocale` з правильної глибини '../../common/tenant/tenant-context'.
+- **http-exception.filter**: `mapPrismaErrorToHttp` повертає `{status, key, params?}` (НЕ рядок); `catch()`
+  робить `translateError(key, getLocale(), params)`. Ключі err.prisma.P2002/P2003/P2025/… + err.internal +
+  err.badRequest + err.fastifyBadRequest.
+- **class-validator** (єдиний seam — `validationExceptionFactory` у validation-error.factory.ts):
+  `CV_TEMPLATE_KEYS` мапить constraint→`err.cv.<constraint>` (30 ключів, isIn→isEnum). `translateLeaf`
+  резолвить БУДЬ-ЯКИЙ constraint-рядок через translateError → generic-constraint дає err.cv._, а inline
+  `@IsX({message:'err.dto.*'})` override (тепер ключ) дає err.dto._; не-ключ default → fallback locale→uk→
+  сам рядок. getLocale(); порожній fallback → v.validationFailed. 400-контракт {statusCode,message:string[],
+  error} незмінний, дзеркалить ZodValidationPipe.
+- **DTO inline** (65 сайтів / 25 файлів): `@IsX({message:'err.dto.<domain>.<field>.<what>'})`.
+- Каталог виріс до ~550 keys (87 v.* + 472 err.*), uk BYTE-IDENTICAL (тести асертять thrown message).
+- ⚠ Pre-existing mojibake (employees/services/settings.dto) скопійовано verbatim заради byte-identity —
+  окремий дефект (перекодувати початкові рядки), НЕ частина i18n.
+
 ---
 
 ## Зведення grep-детекторів (для CI / review)

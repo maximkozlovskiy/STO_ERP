@@ -22,7 +22,37 @@
 - CRM `COUNTERPARTY_TYPE.BOTH` уніфіковано → «Клієнт - Постачальник» / «Client - Supplier» (5740b3f5).
 - QA: sync 0 / review 0 (byte-identity+schema-diff) / tester Bug #763 fixed (i18nZodResolver skip-list vs
   field-name 'type'). key-parity guard-тест (134d191a). api 2549, web 824; live uk byte-identical + en OK.
-- ВІДКЛАДЕНО: 694 exception-throws + class-validator DTO + Prisma-filter строки — лишились укр.
+- ДАЛІ (окремі коміти нижче): 693 exception-throws + class-validator DTO + Prisma-filter строки локалізовано.
+
+## 2026-09-19 — Багатомовність: backend ЗАВЕРШЕНО (exceptions + class-validator)
+
+### feat(i18n) 29eaad2f — class-validator DTO-локалізація (ФІНАЛ backend)
+
+Останній seam: class-validator 400-помилки. 0 захардкодженого укр у throws/zod/class-validator/filter.
+
+- `validation-error.factory.ts` — TEMPLATES(укр-функції) → `CV_TEMPLATE_KEYS` (constraint→`err.cv.<constraint>`,
+  30 ключів; isIn→isEnum). translateLeaf резолвить будь-який constraint-рядок через translateError (generic→
+  err.cv._; inline override→err.dto._; не-ключ default→fallback locale→uk→сам рядок). getLocale(); 400-контракт
+  {statusCode,message:string[],error} незмінний, дзеркалить ZodValidationPipe.
+- 25 *.dto.ts — 65 inline `@IsX({message:'укр'})` → `err.dto.<domain>.<field>.<what>` (48 унікальних ключів).
+- Каталог: +30 err.cv +48 err.dto (uk byte-identical, en авторський, parity 5/5).
+- settings.contract.spec.ts — тест підсилено: exceptionFactory додано у ValidationPipe спеки (раніше bare pipe
+  оминав продакшн-фабрику); асершн /ГГ:ХХ/→/некоректний формат/ (реальний продакшн-вивід matches→err.cv.matches).
+- Примітка: pre-existing mojibake (employees ×7, services ×2, settings currencyCode) — скопійовано verbatim
+  заради byte-identity (зіпсовані байти вже у HEAD, @ApiProperty descriptions, поза scope).
+- Верифікація: shared build ✅, api tsc 0, api 2549/2549, parity 5/5, 0 residual DTO Cyrillic.
+
+### feat(i18n) 42cfad62 → b79ecd3a (черги #1-#5) — exception-локалізація 693 throws
+
+693 `throw new X('укр')` у ~85 сервісах/контролерах → `translateError('err.<module>.<what>', getLocale(), {params})`.
+Розбито на 5 черг по модулях (currencies/bank-accounts → reference/support → money/document → work-orders/
+calendar/xlsx/counterparties/booking → решта+auth). +http-exception.filter: mapPrismaErrorToHttp→{status,key,
+params}, err.prisma._/err.internal/err.badRequest. Каталог виріс на ~394 err._ ключі (uk byte-identical до
+оригінальних throws — критично, ~30 *-schema.spec + money/FSM асертять thrown message регексами).
+
+- Верифікація кожної черги: shared build → api tsc 0 → parity → повний api suite. Exception-class гістограма
+  (NotFound 396/396, BadRequest 255/255 тощо) — 0 status-code drift. UTF-8 BOM (inspection.service) знайдено
+  через Python-read (ripgrep пропускав). getLocale default 'uk' → BullMQ/cron/seed byte-identical.
 
 ## 2026-09-18 — Багатомовність: УВЕСЬ (app) UI перекладено uk/en
 
