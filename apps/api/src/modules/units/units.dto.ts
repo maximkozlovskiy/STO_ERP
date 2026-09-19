@@ -2,19 +2,19 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateUnitDto {
-  @ApiProperty({ example: 'С€С‚СѓРєР°' })
+  @ApiProperty({ example: 'штука' })
   @IsString()
   @IsNotEmpty()
   name!: string;
 
-  @ApiProperty({ example: 'С€С‚' })
+  @ApiProperty({ example: 'шт' })
   @IsString()
   @IsNotEmpty()
   shortName!: string;
 
   @ApiPropertyOptional({
     example: 1,
-    description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ РґРѕ Р±Р°Р·РѕРІРѕС— РѕРґРёРЅРёС†С–',
+    description: 'Коефіцієнт перерахунку до базової одиниці',
   })
   @IsOptional()
   @IsNumber()
@@ -22,31 +22,31 @@ export class CreateUnitDto {
   @Min(0.000001)
   coefficient?: number;
 
-  @ApiPropertyOptional({ description: 'РЁРёСЂРёРЅР° (Рј)' })
+  @ApiPropertyOptional({ description: 'Ширина (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   width?: number;
 
-  @ApiPropertyOptional({ description: 'Р’РёСЃРѕС‚Р° (Рј)' })
+  @ApiPropertyOptional({ description: 'Висота (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   height?: number;
 
-  @ApiPropertyOptional({ description: 'Р“Р»РёР±РёРЅР°/РґРѕРІР¶РёРЅР° (Рј)' })
+  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   depth?: number;
 
-  @ApiPropertyOptional({ description: "РћР±'С”Рј (РјВі)" })
+  @ApiPropertyOptional({ description: "Об'єм (м³)" })
   @IsOptional()
   @IsNumber()
   @Min(0)
   volume?: number;
 
-  @ApiPropertyOptional({ description: 'Р’Р°РіР° (РєРі)' })
+  @ApiPropertyOptional({ description: 'Вага (кг)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -54,13 +54,13 @@ export class CreateUnitDto {
 }
 
 export class UpdateUnitDto {
-  @ApiPropertyOptional({ example: 'С€С‚СѓРєР°' })
+  @ApiPropertyOptional({ example: 'штука' })
   @IsOptional()
   @IsString()
   @IsNotEmpty()
   name?: string;
 
-  @ApiPropertyOptional({ example: 'С€С‚' })
+  @ApiPropertyOptional({ example: 'шт' })
   @IsOptional()
   @IsString()
   @IsNotEmpty()

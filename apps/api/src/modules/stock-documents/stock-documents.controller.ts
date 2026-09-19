@@ -43,7 +43,7 @@ export class StockDocumentsController {
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'РЎРїРёСЃРѕРє СЃРєР»Р°РґСЃСЊРєРёС… РґРѕРєСѓРјРµРЅС‚С–РІ' })
+  @ApiOperation({ summary: 'Список складських документів' })
   findAll(@OrgContext() orgId: string, @Query() query: StockDocumentQueryDto) {
     return this.service.findAll(
       orgId,
@@ -77,7 +77,7 @@ export class StockDocumentsController {
 
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'РЎРєР»Р°РґСЃСЊРєРёР№ РґРѕРєСѓРјРµРЅС‚ РїРѕ ID' })
+  @ApiOperation({ summary: 'Складський документ по ID' })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -85,7 +85,7 @@ export class StockDocumentsController {
   @Post()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
-  @ApiOperation({ summary: 'РЎС‚РІРѕСЂРёС‚Рё СЃРєР»Р°РґСЃСЊРєРёР№ РґРѕРєСѓРјРµРЅС‚' })
+  @ApiOperation({ summary: 'Створити складський документ' })
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(stockDocumentCreateSchema)) dto: StockDocumentCreateValues,
@@ -95,7 +95,7 @@ export class StockDocumentsController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'РћРЅРѕРІРёС‚Рё С‡РµСЂРЅРµС‚РєСѓ РґРѕРєСѓРјРµРЅС‚Р°' })
+  @ApiOperation({ summary: 'Оновити чернетку документа' })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -107,14 +107,14 @@ export class StockDocumentsController {
   @Delete(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Р’РёРґР°Р»РёС‚Рё С‡РµСЂРЅРµС‚РєСѓ РґРѕРєСѓРјРµРЅС‚Р°' })
+  @ApiOperation({ summary: 'Видалити чернетку документа' })
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
 
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
-  @ApiOperation({ summary: 'Р—РјС–РЅРёС‚Рё СЃС‚Р°С‚СѓСЃ РґРѕРєСѓРјРµРЅС‚Р° (FSM)' })
+  @ApiOperation({ summary: 'Змінити статус документа (FSM)' })
   transition(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

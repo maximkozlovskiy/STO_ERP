@@ -22,7 +22,7 @@ import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 export class CreateGoodDto {
   @ApiPropertyOptional() @IsOptional() @IsString() sku?: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiPropertyOptional({ default: 'С€С‚' }) @IsOptional() @IsString() unit?: string;
+  @ApiPropertyOptional({ default: 'шт' }) @IsOptional() @IsString() unit?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -47,7 +47,7 @@ export class CreateGoodDto {
   salePrice?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() category?: string;
-  @ApiPropertyOptional({ description: 'UUID РєР°С‚РµРіРѕСЂС–С— С‚РѕРІР°СЂС–РІ (GoodCategory)' })
+  @ApiPropertyOptional({ description: 'UUID категорії товарів (GoodCategory)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
@@ -109,7 +109,7 @@ export class GoodQueryDto {
   @Max(200)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
+  @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
@@ -156,13 +156,13 @@ export class PaginatedGoodsDto {
 // в”Ђв”Ђв”Ђ Good UoM в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateGoodUoMDto {
-  @ApiProperty({ description: 'ID РѕРґРёРЅРёС†С– РІРёРјС–СЂСѓ' })
+  @ApiProperty({ description: 'ID одиниці виміру' })
   @IsUUID('4')
   unitOfMeasureId!: string;
 
   @ApiPropertyOptional({
     example: 1,
-    description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ (default: Р· UnitOfMeasure)',
+    description: 'Коефіцієнт перерахунку (default: з UnitOfMeasure)',
   })
   @IsOptional()
   @IsNumber()
@@ -170,31 +170,31 @@ export class CreateGoodUoMDto {
   @Min(0.000001)
   coefficient?: number;
 
-  @ApiPropertyOptional({ description: 'РЁРёСЂРёРЅР° (Рј)' })
+  @ApiPropertyOptional({ description: 'Ширина (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   width?: number;
 
-  @ApiPropertyOptional({ description: 'Р’РёСЃРѕС‚Р° (Рј)' })
+  @ApiPropertyOptional({ description: 'Висота (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   height?: number;
 
-  @ApiPropertyOptional({ description: 'Р“Р»РёР±РёРЅР°/РґРѕРІР¶РёРЅР° (Рј)' })
+  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   depth?: number;
 
-  @ApiPropertyOptional({ description: "РћР±'С”Рј (РјВі)" })
+  @ApiPropertyOptional({ description: "Об'єм (м³)" })
   @IsOptional()
   @IsNumber()
   @Min(0)
   volume?: number;
 
-  @ApiPropertyOptional({ description: 'Р’Р°РіР° (РєРі)' })
+  @ApiPropertyOptional({ description: 'Вага (кг)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -204,38 +204,38 @@ export class CreateGoodUoMDto {
 export class UpdateGoodUoMDto {
   @ApiPropertyOptional({
     example: 1,
-    description: 'РљРѕРµС„С–С†С–С”РЅС‚ РїРµСЂРµСЂР°С…СѓРЅРєСѓ РґРѕ Р±Р°Р·РѕРІРѕС— РѕРґРёРЅРёС†С–',
+    description: 'Коефіцієнт перерахунку до базової одиниці',
   })
   @IsOptional()
   // coefficient — множник: qty_base = qty * coefficient (1 альт. од. = coefficient базових). 0 → guard→1.
   @Min(0.000001)
   coefficient?: number;
 
-  @ApiPropertyOptional({ description: 'РЁРёСЂРёРЅР° (Рј)' })
+  @ApiPropertyOptional({ description: 'Ширина (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   width?: number;
 
-  @ApiPropertyOptional({ description: 'Р’РёСЃРѕС‚Р° (Рј)' })
+  @ApiPropertyOptional({ description: 'Висота (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   height?: number;
 
-  @ApiPropertyOptional({ description: 'Р“Р»РёР±РёРЅР°/РґРѕРІР¶РёРЅР° (Рј)' })
+  @ApiPropertyOptional({ description: 'Глибина/довжина (м)' })
   @IsOptional()
   @IsNumber()
   @Min(0)
   depth?: number;
 
-  @ApiPropertyOptional({ description: "РћР±'С”Рј (РјВі)" })
+  @ApiPropertyOptional({ description: "Об'єм (м³)" })
   @IsOptional()
   @IsNumber()
   @Min(0)
   volume?: number;
 
-  @ApiPropertyOptional({ description: 'Р’Р°РіР° (РєРі)' })
+  @ApiPropertyOptional({ description: 'Вага (кг)' })
   @IsOptional()
   @IsNumber()
   @Min(0)

@@ -813,8 +813,7 @@ export const uk: Record<string, string> = {
   'err.dto.purchaseOrder.receiveLines.max': 'Не більше 500 рядків у частковому прийнятті',
   'err.dto.reportBuilder.groupBy.max': 'Не більше 5 рівнів групування',
   'err.dto.search.query.min': 'Запит має містити мінімум 2 символи',
-  'err.dto.settings.currencyCode.max':
-    'РљРѕРґ РІР°Р»СЋС‚Рё РЅРµ РјРѕР¶Рµ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё 10 СЃРёРјРІРѕР»С–РІ',
+  'err.dto.settings.currencyCode.max': 'Код валюти не може перевищувати 10 символів',
   'err.dto.settings.time.format': 'Формат “ГГ:ХХ” (00:00–23:59)',
   'err.dto.settings.workingDays.max': 'Не більше 7 робочих днів',
   'err.dto.setup.email.invalid': 'Невірний формат email',
@@ -837,17 +836,13 @@ export const uk: Record<string, string> = {
   'err.dto.workOrderTemplate.parts.max': 'Не більше 200 запчастин у шаблоні',
   'err.dto.work.categories.max': 'Не більше 100 категорій у фільтрі',
   'err.dto.xlsx.rows.max': 'Не більше 1000 рядків за один імпорт',
-  'err.dto.employee.loginEmail.invalid': 'РќРµРІС–СЂРЅРёР№ С„РѕСЂРјР°С‚ email РґР»СЏ Р»РѕРіС–РЅСѓ',
-  'err.dto.employee.password.min':
-    'РџР°СЂРѕР»СЊ РјР°С” Р±СѓС‚Рё РЅРµ РјРµРЅС€Рµ 6 СЃРёРјРІРѕР»С–РІ',
-  'err.dto.employee.password.max':
-    'РџР°СЂРѕР»СЊ Р·Р°РЅР°РґС‚Рѕ РґРѕРІРіРёР№ (РјР°РєСЃРёРјСѓРј 128 СЃРёРјРІРѕР»С–РІ)',
-  'err.dto.employee.branches.max': 'РњР°РєСЃРёРјСѓРј 50 С„С–Р»С–Р№ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
-  'err.dto.employee.zones.max': 'РњР°РєСЃРёРјСѓРј 30 Р·РѕРЅ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
-  'err.dto.employee.lifts.max':
-    'РњР°РєСЃРёРјСѓРј 30 РїС–РґР№РѕРјРЅРёРєС–РІ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
-  'err.dto.employee.categories.max':
-    'РњР°РєСЃРёРјСѓРј 50 РєР°С‚РµРіРѕСЂС–Р№ СЂРѕР±С–С‚ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
-  'err.dto.service.works.max': 'РќРµ Р±С–Р»СЊС€Рµ 100 СЂРѕР±С–С‚ Сѓ РїРѕСЃР»СѓР·С–',
-  'err.dto.service.goods.max': 'РќРµ Р±С–Р»СЊС€Рµ 100 Р·Р°РїС‡Р°СЃС‚РёРЅ Сѓ РїРѕСЃР»СѓР·С–',
+  'err.dto.employee.loginEmail.invalid': 'Невірний формат email для логіну',
+  'err.dto.employee.password.min': 'Пароль має бути не менше 6 символів',
+  'err.dto.employee.password.max': 'Пароль занадто довгий (максимум 128 символів)',
+  'err.dto.employee.branches.max': 'Максимум 50 філій на співробітника',
+  'err.dto.employee.zones.max': 'Максимум 30 зон на співробітника',
+  'err.dto.employee.lifts.max': 'Максимум 30 підйомників на співробітника',
+  'err.dto.employee.categories.max': 'Максимум 50 категорій робіт на співробітника',
+  'err.dto.service.works.max': 'Не більше 100 робіт у послузі',
+  'err.dto.service.goods.max': 'Не більше 100 запчастин у послузі',
 };

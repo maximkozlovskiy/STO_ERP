@@ -45,7 +45,7 @@ export class CreateServiceDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
 
   @ApiPropertyOptional({
-    description: 'Р¤С–РєСЃРѕРІР°РЅР° С†С–РЅР° (null = Р°РІС‚Рѕ-РїС–РґСЂР°С…СѓРЅРѕРє)',
+    description: 'Фіксована ціна (null = авто-підрахунок)',
   })
   @IsOptional()
   @IsNumber()
@@ -93,7 +93,7 @@ export class ServiceQueryDto {
   @Max(200)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
+  @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()

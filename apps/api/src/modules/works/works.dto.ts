@@ -23,8 +23,8 @@ export class CreateWorkDto {
   @Matches(UUID_REGEX, { message: 'categoryId must be a UUID' })
   categoryId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiProperty({ description: 'РќРѕСЂРјРѕ-РіРѕРґРёРЅ' }) @IsNumber() @Min(0) normoHours!: number;
-  @ApiProperty({ description: 'Р¦С–РЅР°, в‚ґ' }) @IsNumber() @Min(0) price!: number;
+  @ApiProperty({ description: 'Нормо-годин' }) @IsNumber() @Min(0) normoHours!: number;
+  @ApiProperty({ description: 'Ціна, в‚ґ' }) @IsNumber() @Min(0) price!: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -32,8 +32,7 @@ export class CreateWorkDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Р“Р°СЂР°РЅС‚С–Р№РЅР° СЂРѕР±РѕС‚Р° (РІРёРєРѕРЅСѓС”С‚СЊСЃСЏ Р±РµР·РєРѕС€С‚РѕРІРЅРѕ)',
+    description: 'Гарантійна робота (виконується безкоштовно)',
   })
   @IsOptional()
   @IsBoolean()
@@ -49,7 +48,7 @@ export class WorkQueryDto {
   @Matches(UUID_REGEX, { message: 'categoryId must be a UUID' })
   categoryId?: string;
 
-  // РњР°СЃРёРІ ID РєР°С‚РµРіРѕСЂС–Р№ (Р±Р°С‚СЊРєРѕ + РІСЃС– РЅР°С‰Р°РґРєРё) вЂ” РґР»СЏ С„С–Р»СЊС‚СЂР°С†С–С— РїРѕ РїС–РґРґРµСЂРµРІСѓ
+  // Масив ID категорій (батько + всі нащадки) — для фільтрації по піддереву
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
@@ -81,7 +80,7 @@ export class WorkQueryDto {
   @Max(200)
   limit: number = 50;
 
-  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
+  @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()

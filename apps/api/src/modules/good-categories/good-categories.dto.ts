@@ -4,13 +4,13 @@ import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateGoodCategoryDto {
-  @ApiProperty({ example: 'Р”РІРёРіСѓРЅ' })
+  @ApiProperty({ example: 'Двигун' })
   @IsString()
   @IsNotEmpty()
   name!: string;
 
   @ApiPropertyOptional({
-    description: 'UUID Р±Р°С‚СЊРєС–РІСЃСЊРєРѕС— РєР°С‚РµРіРѕСЂС–С— (null = РєРѕСЂРµРЅРµРІР°)',
+    description: 'UUID батьківської категорії (null = коренева)',
   })
   @IsOptional()
   @Transform(emptyToUndefined)

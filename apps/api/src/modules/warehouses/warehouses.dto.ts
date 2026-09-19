@@ -11,7 +11,7 @@ export class CreateWarehouseDto {
   @Matches(UUID_REGEX, { message: 'branchId must be a UUID' })
   branchId!: string;
 
-  @ApiProperty({ example: 'РћСЃРЅРѕРІРЅРёР№ СЃРєР»Р°Рґ' })
+  @ApiProperty({ example: 'Основний склад' })
   @IsString()
   @IsNotEmpty()
   name!: string;

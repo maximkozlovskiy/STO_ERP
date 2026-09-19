@@ -30,13 +30,13 @@ import type { RateScheme } from '@sto/shared';
 // в”Ђв”Ђв”Ђ DTOs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateEmployeeDto {
-  @ApiProperty({ example: 'Р†РІР°РЅ' })
+  @ApiProperty({ example: 'Іван' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
   firstName!: string;
 
-  @ApiProperty({ example: 'РљРѕРІР°Р»СЊ' })
+  @ApiProperty({ example: 'Коваль' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
@@ -84,8 +84,7 @@ export class CreateEmployeeDto {
   dateOfFire?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Email РґР»СЏ РІС…РѕРґСѓ РІ СЃРёСЃС‚РµРјСѓ (Р»РѕРіС–РЅ). РЇРєС‰Рѕ РІРєР°Р·Р°РЅРѕ вЂ” СЃС‚РІРѕСЂСЋС” AuthAccount',
+    description: 'Email для входу в систему (логін). Якщо вказано — створює AuthAccount',
   })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -94,8 +93,7 @@ export class CreateEmployeeDto {
   loginEmail?: string;
 
   @ApiPropertyOptional({
-    description:
-      "РџР°СЂРѕР»СЊ РґР»СЏ РІС…РѕРґСѓ. РћР±РѕРІ'СЏР·РєРѕРІРёР№ СЏРєС‰Рѕ РІРєР°Р·Р°РЅРѕ loginEmail",
+    description: "Пароль для входу. Обов'язковий якщо вказано loginEmail",
   })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -166,19 +164,19 @@ export class UpdateEmployeeDto {
 // (NestJS @Query without DTO has no whitelisting, so the params arrived but were never read).
 export class EmployeesQueryDto {
   @ApiPropertyOptional({
-    description: "РџРѕС€СѓРє Р·Р° С–Рј'СЏРј, РїСЂС–Р·РІРёС‰РµРј Р°Р±Рѕ С‚РµР»РµС„РѕРЅРѕРј",
+    description: "Пошук за ім'ям, прізвищем або телефоном",
   })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   q?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, description: 'Р¤С–Р»СЊС‚СЂ Р·Р° РїРѕСЃР°РґРѕСЋ' })
+  @ApiPropertyOptional({ enum: UserRole, description: 'Фільтр за посадою' })
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
 
-  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё soft-deleted' })
+  @ApiPropertyOptional({ description: 'Показати soft-deleted' })
   @IsOptional()
   @IsBooleanString()
   showDeleted?: string;
@@ -192,14 +190,14 @@ export class EmployeesQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    description: 'РџРѕР»Рµ СЃРѕСЂС‚СѓРІР°РЅРЅСЏ',
+    description: 'Поле сортування',
     enum: ['lastName', 'createdAt'],
   })
   @IsOptional()
   @IsIn(['lastName', 'createdAt'])
   sortBy?: string;
 
-  @ApiPropertyOptional({ description: 'РќР°РїСЂСЏРј СЃРѕСЂС‚СѓРІР°РЅРЅСЏ', enum: ['asc', 'desc'] })
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc';
@@ -213,26 +211,26 @@ export class EmployeesQueryDto {
 }
 
 export class AssignBranchesDto {
-  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID С„С–Р»С–Р№' })
+  @ApiProperty({ type: [String], description: 'Масив UUID філій' })
   @IsUUID(undefined, { each: true })
   @ArrayMaxSize(50, { message: 'err.dto.employee.branches.max' })
   branchIds!: string[];
 
-  @ApiPropertyOptional({ description: 'Р”РѕСЃС‚СѓРї РґРѕ РІСЃС–С… С„С–Р»С–Р№ (OWNER/ADMIN)' })
+  @ApiPropertyOptional({ description: 'Доступ до всіх філій (OWNER/ADMIN)' })
   @IsOptional()
   @IsBoolean()
   allBranches?: boolean;
 }
 
 export class AssignZonesDto {
-  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID Р·РѕРЅ' })
+  @ApiProperty({ type: [String], description: 'Масив UUID зон' })
   @IsUUID(undefined, { each: true })
   @ArrayMaxSize(30, { message: 'err.dto.employee.zones.max' })
   zoneIds!: string[];
 }
 
 export class AssignLiftsDto {
-  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID РїС–РґР№РѕРјРЅРёРєС–РІ' })
+  @ApiProperty({ type: [String], description: 'Масив UUID підйомників' })
   @IsUUID(undefined, { each: true })
   @ArrayMaxSize(30, {
     message: 'err.dto.employee.lifts.max',
@@ -241,7 +239,7 @@ export class AssignLiftsDto {
 }
 
 export class AssignWorkCategoriesDto {
-  @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID РєР°С‚РµРіРѕСЂС–Р№ СЂРѕР±С–С‚' })
+  @ApiProperty({ type: [String], description: 'Масив UUID категорій робіт' })
   @IsUUID(undefined, { each: true })
   @ArrayMaxSize(50, {
     message: 'err.dto.employee.categories.max',
@@ -273,6 +271,6 @@ export class EmployeeResponseDto {
 }
 
 export class EmployeeDetailDto extends EmployeeResponseDto {
-  @ApiProperty({ description: 'РЎС…РµРјР° РЅР°СЂР°С…СѓРІР°РЅРЅСЏ (С‚С–Р»СЊРєРё OWNER/ADMIN)' })
+  @ApiProperty({ description: 'Схема нарахування (тільки OWNER/ADMIN)' })
   rateScheme!: RateScheme;
 }

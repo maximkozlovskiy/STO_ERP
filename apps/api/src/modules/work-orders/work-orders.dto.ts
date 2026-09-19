@@ -36,8 +36,7 @@ export class CreateWorkOrderDto {
   counterpartyId!: string;
 
   @ApiPropertyOptional({
-    description:
-      'Р”РѕРіРѕРІС–СЂ РєРѕРЅС‚СЂР°РіРµРЅС‚Р° (SALE). РђРІС‚Рѕ-РІРёР±С–СЂ СЏРєС‰Рѕ РЅРµ РїРµСЂРµРґР°РЅРѕ.',
+    description: 'Договір контрагента (SALE). Авто-вибір якщо не передано.',
   })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -47,8 +46,8 @@ export class CreateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
 
-  // emptyToUndefined gap вЂ” sprint cycle 3 РїСЂРѕРїСѓСЃС‚РёРІ work-orders DTO.
-  // Frontend СЃРµР»РµРєС‚Рё С‰Рѕ С€Р»СЋС‚СЊ `''` РїСЂРё default state в†’ 400 Р±РµР· С‚СЂР°РЅСЃС„РѕСЂРјСѓ.
+  // emptyToUndefined gap вЂ” sprint cycle 3 пропустив work-orders DTO.
+  // Frontend селекти що шлють `''` при default state в†’ 400 без трансформу.
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -61,7 +60,7 @@ export class CreateWorkOrderDto {
   @IsEnum(RepairCategory)
   repairCategory?: RepairCategory;
 
-  // emptyToUndefined gap вЂ” datetime-local input С€Р»Рµ `''` РїСЂРё reset в†’ 400.
+  // emptyToUndefined gap вЂ” datetime-local input шле `''` при reset в†’ 400.
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -75,8 +74,7 @@ export class CreateWorkOrderDto {
   dueDate?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р° (YYYY-MM-DD), Р·Р° Р·Р°РјРѕРІС‡СѓРІР°РЅРЅСЏРј вЂ” СЃСЊРѕРіРѕРґРЅС–',
+    description: 'Дата документа (YYYY-MM-DD), за замовчуванням — сьогодні',
   })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -89,13 +87,13 @@ export class CreateWorkOrderDto {
   @IsUUID()
   currencyId?: string;
 
-  @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє' })
+  @ApiPropertyOptional({ description: 'Підйомник' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string;
 
-  @ApiPropertyOptional({ description: 'РџР»Р°РЅРѕРІС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё' })
+  @ApiPropertyOptional({ description: 'Планові нормогодини' })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -107,7 +105,7 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) inMileage?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) outMileage?: number;
 
-  // emptyToUndefined gap Сѓ PATCH-С€Р»СЏС…Сѓ.
+  // emptyToUndefined gap у PATCH-шляху.
   @ApiPropertyOptional({ enum: WorkOrderPriority })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -123,7 +121,7 @@ export class UpdateWorkOrderDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() clientApproval?: boolean;
 
   // Nullable: passing `null` explicitly clears the field; omitting keeps it.
-  // emptyToUndefined: `''` РІС–Рґ UI С€Р»Рµ СЃРєРёРЅСѓС‚Рµ РїРѕР»Рµ в†’ undefined в†’ omit (keeps existing).
+  // emptyToUndefined: `''` від UI шле скинуте поле → undefined в†’ omit (keeps existing).
   @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -136,7 +134,7 @@ export class UpdateWorkOrderDto {
   @IsISO8601()
   dueDate?: string | null;
 
-  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р° (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Дата документа (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
@@ -151,14 +149,14 @@ export class UpdateWorkOrderDto {
   @IsUUID()
   currencyId?: string;
 
-  @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє', type: String, nullable: true })
+  @ApiPropertyOptional({ description: 'Підйомник', type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
   liftId?: string | null;
 
   @ApiPropertyOptional({
-    description: 'РџР»Р°РЅРѕРІС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё',
+    description: 'Планові нормогодини',
     type: Number,
     nullable: true,
   })
@@ -168,7 +166,7 @@ export class UpdateWorkOrderDto {
   plannedHours?: number | null;
 
   @ApiPropertyOptional({
-    description: 'Р¤Р°РєС‚РёС‡РЅС– РЅРѕСЂРјРѕРіРѕРґРёРЅРё',
+    description: 'Фактичні нормогодини',
     type: Number,
     nullable: true,
   })
@@ -209,10 +207,10 @@ export class WorkOrderQueryDto {
   @IsUUID()
   vehicleId?: string;
 
-  // F6: "РњРѕС— РЅР°СЂСЏРґРё" chip вЂ” filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
+  // F6: "Мої наряди" chip вЂ” filter by assigned mechanic. The filter joins through workOrderLines.employeeId,
   // so an employee sees an order if ANY of its line items reference them as the executor.
   @ApiPropertyOptional({
-    description: 'Р¤С–Р»СЊС‚СЂ Р·Р° РІРёРєРѕРЅР°РІС†РµРј (С‡РµСЂРµР· СЂСЏРґРєРё СЂРѕР±С–С‚)',
+    description: 'Фільтр за виконавцем (через рядки робіт)',
   })
   @IsOptional()
   @Transform(emptyToUndefined)
@@ -220,7 +218,7 @@ export class WorkOrderQueryDto {
   employeeId?: string;
 
   @ApiPropertyOptional({
-    description: 'РџРѕС€СѓРє Р·Р° РЅРѕРјРµСЂРѕРј Р°Р±Рѕ РЅР°Р·РІРѕСЋ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°',
+    description: 'Пошук за номером або назвою контрагента',
   })
   @IsOptional()
   @IsString()
@@ -249,34 +247,34 @@ export class WorkOrderQueryDto {
   ])
   repairCategory?: string;
 
-  @ApiPropertyOptional({ description: 'РџРѕРєР°Р·Р°С‚Рё РІРёРґР°Р»РµРЅС–' })
+  @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @IsBooleanString()
   showDeleted?: string;
 
-  // @IsISO8601() РїСЂРёР№РјР°С” datetime СЂСЏРґРєРё Р· С‡Р°СЃРѕРІРѕСЋ РєРѕРјРїРѕРЅРµРЅС‚РѕСЋ в†’ С…РёР±РЅР° С„С–Р»СЊС‚СЂР°С†С–СЏ.
-  // @IsDateString() РїСЂРёР№РјР°С” Р»РёС€Рµ YYYY-MM-DD С„РѕСЂРјР°С‚ вЂ” РІС–РґРїРѕРІС–РґРЅРѕ РґРѕ СЂРµС€С‚Рё РјРѕРґСѓР»С–РІ.
-  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р° РІС–Рґ (YYYY-MM-DD)' })
+  // @IsISO8601() приймає datetime рядки з часовою компонентою → хибна фільтрація.
+  // @IsDateString() приймає лише YYYY-MM-DD формат — відповідно до решти модулів.
+  @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
   dateFrom?: string;
 
-  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р° РґРѕ (YYYY-MM-DD)' })
+  @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsDateString()
   dateTo?: string;
 
   @ApiPropertyOptional({
-    description: 'РџРѕР»Рµ СЃРѕСЂС‚СѓРІР°РЅРЅСЏ',
+    description: 'Поле сортування',
     enum: ['documentDate', 'createdAt', 'plannedAt', 'dueDate', 'totalAmount'],
   })
   @IsOptional()
   @IsIn(['documentDate', 'createdAt', 'plannedAt', 'dueDate', 'totalAmount'])
   sortBy?: string;
 
-  @ApiPropertyOptional({ description: 'РќР°РїСЂСЏРј СЃРѕСЂС‚СѓРІР°РЅРЅСЏ', enum: ['asc', 'desc'] })
+  @ApiPropertyOptional({ description: 'Напрям сортування', enum: ['asc', 'desc'] })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc';
@@ -310,11 +308,10 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() vehicleSummary?: string;
   @ApiProperty() counterpartyId!: string;
   @ApiPropertyOptional() counterpartyName?: string;
-  @ApiPropertyOptional({ description: 'Р”РѕРіРѕРІС–СЂ РєРѕРЅС‚СЂР°РіРµРЅС‚Р°' }) contractId?:
-    string | null;
+  @ApiPropertyOptional({ description: 'Договір контрагента' }) contractId?: string | null;
   @ApiPropertyOptional() contractNumber?: string | null;
-  @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє' }) liftId?: string | null;
-  @ApiPropertyOptional({ description: 'РќР°Р·РІР° РїС–РґР№РѕРјРЅРёРєР°' }) liftName?: string | null;
+  @ApiPropertyOptional({ description: 'Підйомник' }) liftId?: string | null;
+  @ApiPropertyOptional({ description: 'Назва підйомника' }) liftName?: string | null;
   @ApiPropertyOptional() description?: string | null;
   @ApiPropertyOptional() inMileage?: number | null;
   @ApiPropertyOptional() outMileage?: number | null;
@@ -335,20 +332,20 @@ export class WorkOrderResponseDto {
   @ApiPropertyOptional() currencyCode?: string | null;
   @ApiPropertyOptional() totalAmountBase?: number | null;
   @ApiPropertyOptional() rateUsed?: number | null;
-  @ApiPropertyOptional({ description: 'Р”Р°С‚Р° РґРѕРєСѓРјРµРЅС‚Р°' }) documentDate?: string | null;
+  @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
-  @ApiPropertyOptional({ description: 'Р„ Р°РєС‚РёРІРЅР° РіР°СЂР°РЅС‚С–СЏ' })
+  @ApiPropertyOptional({ description: 'Є активна гарантія' })
   hasActiveWarranty?: boolean;
   @ApiPropertyOptional({
-    description: 'РќР°Р№Р±Р»РёР¶С‡РёР№ СЃР»РѕС‚ Сѓ РєР°Р»РµРЅРґР°СЂС–: РїРѕС‡Р°С‚РѕРє',
+    description: 'Найближчий слот у календарі: початок',
   })
   slotStartAt?: string | null;
   @ApiPropertyOptional({
-    description: 'РќР°Р№Р±Р»РёР¶С‡РёР№ СЃР»РѕС‚ Сѓ РєР°Р»РµРЅРґР°СЂС–: РєС–РЅРµС†СЊ',
+    description: 'Найближчий слот у календарі: кінець',
   })
   slotEndAt?: string | null;
-  @ApiPropertyOptional({ description: 'РџС–РґР№РѕРјРЅРёРє СЃР»РѕС‚Р° Сѓ РєР°Р»РµРЅРґР°СЂС–' })
+  @ApiPropertyOptional({ description: 'Підйомник слота у календарі' })
   slotLiftName?: string | null;
   @ApiPropertyOptional({ description: 'Set when the work order is soft-deleted' })
   deletedAt?: string | null;
@@ -381,19 +378,19 @@ export class CreateWorkOrderLineDto {
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }
 
-// actualHours РІРёРєР»СЋС‡Р°С”РјРѕ Р· PartialType Р±Рѕ РЅР°Рј РїРѕС‚СЂС–Р±РµРЅ С€РёСЂС€РёР№ С‚РёРї
-// `number | null` (Р° CreateWorkOrderLineDto.actualHours = `number`). РџС–СЃР»СЏ Omit
-// РґРѕРґР°С”РјРѕ СЏРІРЅСѓ РІРµСЂСЃС–СЋ Р· nullable handling.
+// actualHours виключаємо з PartialType бо нам потрібен ширший тип
+// `number | null` (а CreateWorkOrderLineDto.actualHours = `number`). Після Omit
+// додаємо явну версію з nullable handling.
 export class UpdateWorkOrderLineDto extends PartialType(
   OmitType(CreateWorkOrderLineDto, ['actualHours'] as const),
 ) {
-  // nullable handling вЂ” frontend save() РЅР°РґСЃРёР»Р°С” `null` РєРѕР»Рё РєРѕСЂРёСЃС‚СѓРІР°С‡
-  // РѕС‡РёСЃС‚РёРІ inline "Р“РѕРґ (С„Р°РєС‚.)" в†’ Р±РµР· `ValidateIf(o => o.actualHours !== null)`
-  // class-validator РєРёРґР°РІ 400 С– Р±СѓРґСЊ-СЏРєРёР№ save() Р· РїРѕСЂРѕР¶РЅС–Рј actualHours Р»Р°РіР°РІ
-  // partial-PATCH (work-order СЂС–РІРµРЅСЊ РїСЂРѕР№С€РѕРІ, line PATCH вЂ” fail в†’ corrupted state).
-  // РЎРёРјРµС‚СЂС–СЏ Р· UpdateWorkOrderDto.actualHours (work-orders.dto.ts:148) С‚Р° Bug #426.
+  // nullable handling вЂ” frontend save() надсилає `null` коли користувач
+  // очистив inline "Год (факт.)" → без `ValidateIf(o => o.actualHours !== null)`
+  // class-validator кидав 400 і будь-який save() з порожнім actualHours лагав
+  // partial-PATCH (work-order рівень пройшов, line PATCH вЂ” fail в†’ corrupted state).
+  // Симетрія з UpdateWorkOrderDto.actualHours (work-orders.dto.ts:148) та Bug #426.
   @ApiPropertyOptional({
-    description: 'Р¤Р°РєС‚РёС‡РЅРѕ РІРёС‚СЂР°С‡РµРЅС– РіРѕРґРёРЅРё',
+    description: 'Фактично витрачені години',
     type: Number,
     nullable: true,
   })
@@ -432,8 +429,7 @@ export class CreateWorkOrderPartDto {
   @ApiProperty() @IsNumber() @Min(0.001) quantity!: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) price?: number;
   @ApiPropertyOptional({
-    description:
-      'ID РѕРґРёРЅРёС†С– РІРёРјС–СЂСѓ Р· GoodUoM. РЇРєС‰Рѕ РЅРµ РїРµСЂРµРґР°РЅРѕ вЂ” Р±Р°Р·РѕРІР° РѕРґРёРЅРёС†СЏ С‚РѕРІР°СЂСѓ.',
+    description: 'ID одиниці виміру з GoodUoM. Якщо не передано — базова одиниця товару.',
   })
   @IsOptional()
   @IsUUID('4')
@@ -469,10 +465,10 @@ export class WorkOrderDetailDto extends WorkOrderResponseDto {
 }
 
 // в”Ђв”Ђв”Ђ Public Estimate (shared via shareToken вЂ” no auth) в”Ђв”Ђв”Ђв”Ђ
-// IMPORTANT: С†РµР№ DTO РЅР°РІРјРёСЃРЅРѕ РќР• РјС–СЃС‚РёС‚СЊ orgId, РІСЃС– FK (vehicleId, counterpartyId,
+// IMPORTANT: цей DTO навмисно НЕ містить orgId, всі FK (vehicleId, counterpartyId,
 // contractId, branchId, liftId, employeeId), paidAmount, clientApproval, slot*,
-// outMileage, dueDate, syncVersion, deletedAt С‚РѕС‰Рѕ.
-// Р’СЃРµ С‰Рѕ РєР»С–С”РЅС‚ Р±Р°С‡РёС‚СЊ РїСѓР±Р»С–С‡РЅРѕ вЂ” РѕР±РјРµР¶РµРЅРѕ РјС–РЅС–РјСѓРјРѕРј РґР»СЏ РґСЂСѓРєСѓ РєРѕС€С‚РѕСЂРёСЃСѓ.
+// outMileage, dueDate, syncVersion, deletedAt тощо.
+// Все що клієнт бачить публічно — обмежено мінімумом для друку кошторису.
 
 export class EstimatePublicLineDto {
   @ApiProperty() id!: string;
@@ -511,21 +507,21 @@ export class EstimatePublicDto {
 }
 
 // в”Ђв”Ђв”Ђ Send estimate SMS (authenticated) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-// baseUrl РЅР°РІРјРёСЃРЅРѕ РќР• РїСЂРёР№РјР°С”С‚СЊСЃСЏ Р· РєР»С–С”РЅС‚Р° (open-redirect/phishing СЂРёР·РёРє):
-// СЃРµСЂРІРµСЂ СЃР°Рј РІРёР·РЅР°С‡Р°С” РїСѓР±Р»С–С‡РЅРёР№ URL С‡РµСЂРµР· ConfigService('WEB_PUBLIC_URL').
+// baseUrl навмисно НЕ приймається з клієнта (open-redirect/phishing ризик):
+// сервер сам визначає публічний URL через ConfigService('WEB_PUBLIC_URL').
 
 export class SendEstimateSmsDto {
-  // РџРѕСЂРѕР¶РЅС” С‚С–Р»Рѕ вЂ” РЅР°РІРјРёСЃРЅРѕ. Р—Р°Р»РёС€РµРЅРѕ РґР»СЏ РјР°Р№Р±СѓС‚РЅС–С… РїР°СЂР°РјРµС‚СЂС–РІ (lang, channel),
-  // class-validator Р·Р°Р±РµР·РїРµС‡РёС‚СЊ С‰Рѕ Р¶РѕРґРЅС– Р·Р°Р№РІС– РїРѕР»СЏ РЅРµ РїСЂРёР№РјР°СЋС‚СЊСЃСЏ (whitelist Сѓ ValidationPipe).
+  // Порожнє тіло — навмисно. Залишено для майбутніх параметрів (lang, channel),
+  // class-validator забезпечить що жодні зайві поля не приймаються (whitelist у ValidationPipe).
 }
 
 // в”Ђв”Ђв”Ђ Linked documents (batch counts) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-// В§2.3 Input validation: Р±РµР· DTO @Body() РїСЂРёР№РјР°РІ РґРѕРІС–Р»СЊРЅРёР№ JSON в†’ DoS-РІРµРєС‚РѕСЂ
-// (РјС–Р»СЊР№РѕРЅ IDs Сѓ where: { in: [...] } СЃРїСЂРёС‡РёРЅСЏС” РІР°Р¶РєРёР№ B-tree lookup) + РїРѕС‚РµРЅС†С–Р№РЅРѕ
-// non-UUID Р·РЅР°С‡РµРЅРЅСЏ РґРѕС…РѕРґРёР»Рё РґРѕ Prisma. ArrayMaxSize РѕР±РјРµР¶СѓС” batch РґРѕ page-size+Р·Р°РїР°СЃ.
+// В§2.3 Input validation: без DTO @Body() приймав довільний JSON в†’ DoS-вектор
+// (мільйон IDs у where: { in: [...] } спричиняє важкий B-tree lookup) + потенційно
+// non-UUID значення доходили до Prisma. ArrayMaxSize обмежує batch до page-size+запас.
 
 export class LinkedCountsDto {
-  @ApiProperty({ type: [String], description: 'UUID РЅР°СЂСЏРґС–РІ (РјР°РєСЃ. 500)' })
+  @ApiProperty({ type: [String], description: 'UUID нарядів (макс. 500)' })
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(500)

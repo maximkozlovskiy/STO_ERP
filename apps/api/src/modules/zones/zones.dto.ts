@@ -24,7 +24,7 @@ export class CreateZoneDto {
   @Matches(UUID_REGEX, { message: 'branchId must be a UUID' })
   branchId!: string;
 
-  @ApiProperty({ example: 'РњРµС…Р°РЅС–С‡РЅР° Р·РѕРЅР° Рђ' })
+  @ApiProperty({ example: 'Механічна зона А' })
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -65,7 +65,7 @@ export class CreateLiftDto {
   @Matches(UUID_REGEX, { message: 'zoneId must be a UUID' })
   zoneId!: string;
 
-  @ApiProperty({ example: 'РџС–РґР№РѕРјРЅРёРє в„–1' })
+  @ApiProperty({ example: 'Підйомник №1' })
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -76,7 +76,7 @@ export class CreateLiftDto {
 
   @ApiPropertyOptional({
     example: 3500,
-    description: 'РњР°РєСЃРёРјР°Р»СЊРЅР° РІР°РіР°, РєРі (0..50000)',
+    description: 'Максимальна вага, кг (0..50000)',
   })
   @IsOptional()
   @Type(() => Number)
@@ -100,7 +100,7 @@ export class UpdateLiftDto {
 
   @ApiPropertyOptional({
     example: 3500,
-    description: 'РњР°РєСЃРёРјР°Р»СЊРЅР° РІР°РіР°, РєРі (0..50000)',
+    description: 'Максимальна вага, кг (0..50000)',
   })
   @IsOptional()
   @Type(() => Number)

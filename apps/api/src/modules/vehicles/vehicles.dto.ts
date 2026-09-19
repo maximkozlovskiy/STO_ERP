@@ -99,7 +99,7 @@ export class VehicleResponseDto {
 
 export class CreateVehicleNodeDto {
   @ApiProperty({ example: 'engine' }) @IsString() @IsNotEmpty() category!: string;
-  @ApiProperty({ example: 'Р”РІРёРіСѓРЅ 2.0 TSI' }) @IsString() @IsNotEmpty() name!: string;
+  @ApiProperty({ example: 'Двигун 2.0 TSI' }) @IsString() @IsNotEmpty() name!: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) mileageAtInstall?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() notes?: string;
 }

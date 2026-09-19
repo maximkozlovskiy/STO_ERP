@@ -7,7 +7,7 @@ export class CreatePaymentMethodDto {
   @IsNotEmpty()
   code!: string;
 
-  @ApiProperty({ example: 'Р“РѕС‚С–РІРєР°' })
+  @ApiProperty({ example: 'Готівка' })
   @IsString()
   @IsNotEmpty()
   name!: string;
