@@ -54,7 +54,7 @@ export class CreateWorkOrderTemplateDto {
   @ApiProperty({ type: [TemplateLineDto], required: false })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(200, { message: 'Не більше 200 рядків робіт у шаблоні' })
+  @ArrayMaxSize(200, { message: 'err.dto.workOrderTemplate.workLines.max' })
   @ValidateNested({ each: true })
   @Type(() => TemplateLineDto)
   lines?: TemplateLineDto[];
@@ -62,7 +62,7 @@ export class CreateWorkOrderTemplateDto {
   @ApiProperty({ type: [TemplatePartDto], required: false })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(200, { message: 'Не більше 200 запчастин у шаблоні' })
+  @ArrayMaxSize(200, { message: 'err.dto.workOrderTemplate.parts.max' })
   @ValidateNested({ each: true })
   @Type(() => TemplatePartDto)
   parts?: TemplatePartDto[];
@@ -78,7 +78,7 @@ export class UpdateWorkOrderTemplateDto {
   @ApiProperty({ type: [TemplateLineDto], required: false })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(200, { message: 'Не більше 200 рядків робіт у шаблоні' })
+  @ArrayMaxSize(200, { message: 'err.dto.workOrderTemplate.workLines.max' })
   @ValidateNested({ each: true })
   @Type(() => TemplateLineDto)
   lines?: TemplateLineDto[];
@@ -86,7 +86,7 @@ export class UpdateWorkOrderTemplateDto {
   @ApiProperty({ type: [TemplatePartDto], required: false })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(200, { message: 'Не більше 200 запчастин у шаблоні' })
+  @ArrayMaxSize(200, { message: 'err.dto.workOrderTemplate.parts.max' })
   @ValidateNested({ each: true })
   @Type(() => TemplatePartDto)
   parts?: TemplatePartDto[];

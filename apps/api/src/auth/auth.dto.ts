@@ -3,13 +3,13 @@ import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'admin@sto.local' })
-  @IsEmail({}, { message: 'Невірний формат email' })
+  @IsEmail({}, { message: 'err.dto.auth.email.invalid' })
   email!: string;
 
   @ApiProperty({ example: 'secret' })
   @IsString()
-  @IsNotEmpty({ message: 'Пароль не може бути порожнім' })
-  @MinLength(4, { message: 'Пароль занадто короткий' })
+  @IsNotEmpty({ message: 'err.dto.auth.password.notEmpty' })
+  @MinLength(4, { message: 'err.dto.auth.password.tooShort' })
   password!: string;
 }
 

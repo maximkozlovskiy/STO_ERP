@@ -56,7 +56,7 @@ export class CreateServiceDto {
   @IsOptional()
   @IsArray()
   // Anti-DoS cap: 100 works is a realistic maximum for a single service.
-  @ArrayMaxSize(100, { message: 'РќРµ Р±С–Р»СЊС€Рµ 100 СЂРѕР±С–С‚ Сѓ РїРѕСЃР»СѓР·С–' })
+  @ArrayMaxSize(100, { message: 'err.dto.service.works.max' })
   @ValidateNested({ each: true })
   @Type(() => ServiceWorkItemDto)
   works?: ServiceWorkItemDto[];
@@ -64,7 +64,7 @@ export class CreateServiceDto {
   @ApiPropertyOptional({ type: [ServiceGoodItemDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(100, { message: 'РќРµ Р±С–Р»СЊС€Рµ 100 Р·Р°РїС‡Р°СЃС‚РёРЅ Сѓ РїРѕСЃР»СѓР·С–' })
+  @ArrayMaxSize(100, { message: 'err.dto.service.goods.max' })
   @ValidateNested({ each: true })
   @Type(() => ServiceGoodItemDto)
   goods?: ServiceGoodItemDto[];

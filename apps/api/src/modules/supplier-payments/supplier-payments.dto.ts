@@ -48,7 +48,7 @@ export class CreateSupplierPaymentDto {
 
   @ApiProperty()
   @IsNumber()
-  @Min(0.01, { message: 'Сума оплати повинна бути більшою за нуль' })
+  @Min(0.01, { message: 'err.dto.supplierPayment.amount.min' })
   amount!: number;
 
   @ApiProperty({ description: 'Метод оплати (код з PaymentMethodConfig)' })
@@ -101,7 +101,7 @@ export class UpdateSupplierPaymentDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsNumber()
-  @Min(0.01, { message: 'Сума оплати повинна бути більшою за нуль' })
+  @Min(0.01, { message: 'err.dto.supplierPayment.amount.min' })
   amount?: number;
 
   @ApiPropertyOptional()
@@ -236,13 +236,13 @@ const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 // (YMD-only, не ISO-8601 з часом) = strict validation + user-friendly error.
 export class SupplierPaymentScheduleQueryDto {
   @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD), зазвичай сьогодні' })
-  @IsDateString({ strict: true }, { message: 'from має бути валідною датою' })
-  @Matches(YMD_RE, { message: 'from має бути у форматі YYYY-MM-DD' })
+  @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.from.dateValid' })
+  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.from.dateFormat' })
   from!: string;
 
   @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD), зазвичай from + 19 днів' })
-  @IsDateString({ strict: true }, { message: 'to має бути валідною датою' })
-  @Matches(YMD_RE, { message: 'to має бути у форматі YYYY-MM-DD' })
+  @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.to.dateValid' })
+  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.to.dateFormat' })
   to!: string;
 }
 
@@ -279,13 +279,13 @@ export class SupplierPaymentScheduleDocumentsQueryDto {
   supplierId?: string;
 
   @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD) — той самий що у /schedule' })
-  @IsDateString({ strict: true }, { message: 'from має бути валідною датою' })
-  @Matches(YMD_RE, { message: 'from має бути у форматі YYYY-MM-DD' })
+  @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.from.dateValid' })
+  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.from.dateFormat' })
   from!: string;
 
   @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD) — той самий що у /schedule' })
-  @IsDateString({ strict: true }, { message: 'to має бути валідною датою' })
-  @Matches(YMD_RE, { message: 'to має бути у форматі YYYY-MM-DD' })
+  @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.to.dateValid' })
+  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.to.dateFormat' })
   to!: string;
 
   // Bug #616: тільки `@Matches(YMD_RE)` пропускає семантично-невалідні дати
@@ -296,13 +296,13 @@ export class SupplierPaymentScheduleDocumentsQueryDto {
   // `from`/`to` у цьому ж DTO (Bug #595).
   @ApiPropertyOptional({ description: 'Конкретна дата колонки byDate (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString({ strict: true }, { message: 'date має бути валідною датою' })
-  @Matches(YMD_RE, { message: 'date має бути у форматі YYYY-MM-DD' })
+  @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.date.dateValid' })
+  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.date.dateFormat' })
   date?: string;
 
   @ApiPropertyOptional({ description: 'Бакет: overdue (протерміновані) або planned (планові)' })
   @IsOptional()
-  @IsIn(['overdue', 'planned'], { message: 'target має бути overdue або planned' })
+  @IsIn(['overdue', 'planned'], { message: 'err.dto.supplierPayment.target.in' })
   target?: 'overdue' | 'planned';
 }
 

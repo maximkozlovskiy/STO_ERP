@@ -60,7 +60,7 @@ export class ReportConfigDto {
 
   @ApiProperty({ type: [String], description: 'До 5 рівнів ієрархічного групування' })
   @IsArray()
-  @ArrayMaxSize(5, { message: 'Не більше 5 рівнів групування' })
+  @ArrayMaxSize(5, { message: 'err.dto.reportBuilder.groupBy.max' })
   @IsString({ each: true })
   groupBy!: string[];
 

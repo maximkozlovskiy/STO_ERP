@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { validationExceptionFactory } from '../../common/pipes/validation-error.factory';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { SettingsController } from './settings.controller';
@@ -137,7 +138,12 @@ describe('Settings — HTTP Contract', () => {
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.useGlobalPipes(
-      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        exceptionFactory: validationExceptionFactory,
+      }),
     );
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
@@ -538,7 +544,8 @@ describe('Settings — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
       const body = res.json() as { message: string | string[] };
       const msg = Array.isArray(body.message) ? body.message.join('; ') : body.message;
-      expect(msg).toMatch(/ГГ:ХХ/);
+      // Через глобальний exceptionFactory constraint `matches` рендериться як err.cv.matches (uk).
+      expect(msg).toMatch(/некоректний формат/);
     });
 
     it('PATCH з workStartTime="foo" → 400', async () => {

@@ -89,7 +89,7 @@ export class CreateEmployeeDto {
   })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsEmail({}, { message: 'РќРµРІС–СЂРЅРёР№ С„РѕСЂРјР°С‚ email РґР»СЏ Р»РѕРіС–РЅСѓ' })
+  @IsEmail({}, { message: 'err.dto.employee.loginEmail.invalid' })
   @MaxLength(254)
   loginEmail?: string;
 
@@ -100,9 +100,9 @@ export class CreateEmployeeDto {
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsString()
-  @MinLength(6, { message: 'РџР°СЂРѕР»СЊ РјР°С” Р±СѓС‚Рё РЅРµ РјРµРЅС€Рµ 6 СЃРёРјРІРѕР»С–РІ' })
+  @MinLength(6, { message: 'err.dto.employee.password.min' })
   @MaxLength(128, {
-    message: 'РџР°СЂРѕР»СЊ Р·Р°РЅР°РґС‚Рѕ РґРѕРІРіРёР№ (РјР°РєСЃРёРјСѓРј 128 СЃРёРјРІРѕР»С–РІ)',
+    message: 'err.dto.employee.password.max',
   })
   password?: string;
 }
@@ -215,7 +215,7 @@ export class EmployeesQueryDto {
 export class AssignBranchesDto {
   @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID С„С–Р»С–Р№' })
   @IsUUID(undefined, { each: true })
-  @ArrayMaxSize(50, { message: 'РњР°РєСЃРёРјСѓРј 50 С„С–Р»С–Р№ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°' })
+  @ArrayMaxSize(50, { message: 'err.dto.employee.branches.max' })
   branchIds!: string[];
 
   @ApiPropertyOptional({ description: 'Р”РѕСЃС‚СѓРї РґРѕ РІСЃС–С… С„С–Р»С–Р№ (OWNER/ADMIN)' })
@@ -227,7 +227,7 @@ export class AssignBranchesDto {
 export class AssignZonesDto {
   @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID Р·РѕРЅ' })
   @IsUUID(undefined, { each: true })
-  @ArrayMaxSize(30, { message: 'РњР°РєСЃРёРјСѓРј 30 Р·РѕРЅ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°' })
+  @ArrayMaxSize(30, { message: 'err.dto.employee.zones.max' })
   zoneIds!: string[];
 }
 
@@ -235,7 +235,7 @@ export class AssignLiftsDto {
   @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID РїС–РґР№РѕРјРЅРёРєС–РІ' })
   @IsUUID(undefined, { each: true })
   @ArrayMaxSize(30, {
-    message: 'РњР°РєСЃРёРјСѓРј 30 РїС–РґР№РѕРјРЅРёРєС–РІ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
+    message: 'err.dto.employee.lifts.max',
   })
   liftIds!: string[];
 }
@@ -244,7 +244,7 @@ export class AssignWorkCategoriesDto {
   @ApiProperty({ type: [String], description: 'РњР°СЃРёРІ UUID РєР°С‚РµРіРѕСЂС–Р№ СЂРѕР±С–С‚' })
   @IsUUID(undefined, { each: true })
   @ArrayMaxSize(50, {
-    message: 'РњР°РєСЃРёРјСѓРј 50 РєР°С‚РµРіРѕСЂС–Р№ СЂРѕР±С–С‚ РЅР° СЃРїС–РІСЂРѕР±С–С‚РЅРёРєР°',
+    message: 'err.dto.employee.categories.max',
   })
   workCategoryIds!: string[];
 }

@@ -160,7 +160,7 @@ export class ApplyImportDto {
 
   @ApiProperty({ type: [ApplyImportRowDto] })
   @IsArray()
-  @ArrayMaxSize(1000, { message: 'Не більше 1000 рядків за один імпорт' })
+  @ArrayMaxSize(1000, { message: 'err.dto.xlsx.rows.max' })
   @ValidateNested({ each: true })
   @Type(() => ApplyImportRowDto)
   rows!: ApplyImportRowDto[];

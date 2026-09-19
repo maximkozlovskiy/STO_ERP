@@ -60,7 +60,7 @@ export class CreateSupplierReturnDto {
   @ApiPropertyOptional({ type: [SupplierReturnLineDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у поверненні' })
+  @ArrayMaxSize(500, { message: 'err.dto.supplierReturn.lines.max' })
   @ValidateNested({ each: true })
   @Type(() => SupplierReturnLineDto)
   lines?: SupplierReturnLineDto[];
@@ -93,7 +93,7 @@ export class UpdateSupplierReturnDto {
   @ApiPropertyOptional({ type: [SupplierReturnLineDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у поверненні' })
+  @ArrayMaxSize(500, { message: 'err.dto.supplierReturn.lines.max' })
   @ValidateNested({ each: true })
   @Type(() => SupplierReturnLineDto)
   lines?: SupplierReturnLineDto[];

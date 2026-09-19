@@ -25,7 +25,7 @@ export class BookingAvailabilityQueryDto {
   // Cap unbounded array on PUBLIC endpoint — без cap зловмисник може
   // POST-ити Array(1_000_000).fill(UUID) → ValidationPipe виконає N×regex (DoS).
   // 50 — реалістичний максимум для одного бронювання (узгоджено з inspection.dto).
-  @ArrayMaxSize(50, { message: 'Не більше 50 послуг' })
+  @ArrayMaxSize(50, { message: 'err.dto.booking.services.max' })
   @IsUUID(undefined, { each: true })
   serviceIds?: string[];
 }
@@ -37,7 +37,7 @@ export class CreateBookingRequestDto {
   @ApiProperty() @IsString() @MaxLength(200) clientName!: string;
   @ApiProperty()
   @IsString()
-  @Matches(PHONE_UA_REGEX, { message: 'Телефон має бути у форматі +380XXXXXXXXX' })
+  @Matches(PHONE_UA_REGEX, { message: 'err.dto.booking.phone.format' })
   clientPhone!: string;
   @ApiProperty() @IsDateString() requestedDate!: string;
   // Обраний ліфт слота (getAvailability повертає його у кожному слоті). Заявка блокує САМЕ цей
@@ -52,7 +52,7 @@ export class CreateBookingRequestDto {
   @Transform(emptyToUndefined)
   @IsArray()
   // Cap unbounded array on PUBLIC endpoint (DoS guard — see AvailabilityQueryDto above).
-  @ArrayMaxSize(50, { message: 'Не більше 50 послуг' })
+  @ArrayMaxSize(50, { message: 'err.dto.booking.services.max' })
   @IsUUID(undefined, { each: true })
   serviceIds?: string[];
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;

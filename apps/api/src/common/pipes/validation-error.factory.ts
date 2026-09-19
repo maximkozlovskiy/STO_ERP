@@ -1,83 +1,79 @@
 import type { ValidationError } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
+import { translateError, type ValidationLocale } from '@sto/shared';
+import { getLocale } from '../tenant/tenant-context';
 
 /**
- * Maps class-validator constraint keys to Ukrainian messages.
- * Used by global ValidationPipe `exceptionFactory` to localize 400-responses
- * shown to end users in toasts/forms.
+ * Локалізація class-validator 400-помилок (uk/en). Generic-констрейнти → err.cv.<constraint>-ключі
+ * (translateError з getLocale, {{field}}-параметр). Inline @IsX({message:'err.dto.*'})-оверрайди у DTO
+ * теж стали ключами → translateLeaf резолвить будь-який рядок-ключ через translateError (fallback
+ * locale→uk→сам рядок, тож не-ключ default-message лишається як є). Контракт 400 незмінний.
  *
- * Generic templates use `{field}` and `{constraint}` placeholders.
+ * Дзеркалить ZodValidationPipe.formatIssue — обидва шляхи 400 тепер локалізовані однаково.
  */
-const TEMPLATES: Record<string, (field: string, args?: unknown) => string> = {
-  // Common
-  isNotEmpty: f => `Поле "${f}" не може бути порожнім`,
-  isDefined: f => `Поле "${f}" обов'язкове`,
-  isOptional: f => `Поле "${f}" має невалідне значення`,
-
-  // Strings
-  isString: f => `Поле "${f}" має бути рядком`,
-  minLength: f => `Поле "${f}" занадто коротке`,
-  maxLength: f => `Поле "${f}" занадто довге`,
-  length: f => `Поле "${f}" має некоректну довжину`,
-  matches: f => `Поле "${f}" має некоректний формат`,
-
-  // Numbers
-  isNumber: f => `Поле "${f}" має бути числом`,
-  isInt: f => `Поле "${f}" має бути цілим числом`,
-  isPositive: f => `Поле "${f}" має бути додатнім числом`,
-  isNegative: f => `Поле "${f}" має бути від'ємним числом`,
-  min: f => `Поле "${f}" менше за допустимий мінімум`,
-  max: f => `Поле "${f}" більше за допустимий максимум`,
-
-  // Booleans
-  isBoolean: f => `Поле "${f}" має бути логічним (true/false)`,
-  isBooleanString: f => `Поле "${f}" має бути "true" або "false"`,
-
-  // Specials
-  isUuid: f => `Поле "${f}" має бути UUID`,
-  isEmail: f => `Поле "${f}" має бути email-адресою`,
-  isUrl: f => `Поле "${f}" має бути URL`,
-  isIso8601: f => `Поле "${f}" має бути датою у форматі ISO 8601 (YYYY-MM-DD)`,
-  isDateString: f => `Поле "${f}" має бути коректною датою`,
-  isPhoneNumber: f => `Поле "${f}" має бути номером телефону`,
-  isJson: f => `Поле "${f}" має бути валідним JSON`,
-
-  // Enums
-  isEnum: f => `Поле "${f}" має одне з допустимих значень`,
-  isIn: f => `Поле "${f}" має одне з допустимих значень`,
-
-  // Arrays
-  isArray: f => `Поле "${f}" має бути масивом`,
-  arrayMinSize: f => `Масив "${f}" містить замало елементів`,
-  arrayMaxSize: f => `Масив "${f}" містить забагато елементів`,
-  arrayUnique: f => `Масив "${f}" має містити унікальні елементи`,
-
-  // Nested
-  nestedValidation: f => `Вкладене поле "${f}" має некоректні значення`,
-
-  // Whitelist
-  whitelistValidation: f => `Поле "${f}" недозволене`,
+const CV_TEMPLATE_KEYS: Record<string, string> = {
+  isNotEmpty: 'err.cv.isNotEmpty',
+  isDefined: 'err.cv.isDefined',
+  isOptional: 'err.cv.isOptional',
+  isString: 'err.cv.isString',
+  minLength: 'err.cv.minLength',
+  maxLength: 'err.cv.maxLength',
+  length: 'err.cv.length',
+  matches: 'err.cv.matches',
+  isNumber: 'err.cv.isNumber',
+  isInt: 'err.cv.isInt',
+  isPositive: 'err.cv.isPositive',
+  isNegative: 'err.cv.isNegative',
+  min: 'err.cv.min',
+  max: 'err.cv.max',
+  isBoolean: 'err.cv.isBoolean',
+  isBooleanString: 'err.cv.isBooleanString',
+  isUuid: 'err.cv.isUuid',
+  isEmail: 'err.cv.isEmail',
+  isUrl: 'err.cv.isUrl',
+  isIso8601: 'err.cv.isIso8601',
+  isDateString: 'err.cv.isDateString',
+  isPhoneNumber: 'err.cv.isPhoneNumber',
+  isJson: 'err.cv.isJson',
+  isEnum: 'err.cv.isEnum',
+  isIn: 'err.cv.isEnum',
+  isArray: 'err.cv.isArray',
+  arrayMinSize: 'err.cv.arrayMinSize',
+  arrayMaxSize: 'err.cv.arrayMaxSize',
+  arrayUnique: 'err.cv.arrayUnique',
+  nestedValidation: 'err.cv.nestedValidation',
+  whitelistValidation: 'err.cv.whitelistValidation',
 };
 
 /**
- * Translates a single ValidationError leaf (constraints map) to Ukrainian.
- * Falls back to English message if a constraint is unknown.
+ * Translates a single ValidationError leaf (constraints map) to the request locale.
+ * Generic constraint → err.cv.<key> template with {{field}}. Any other constraint value
+ * (a DTO @IsX({message:'err.dto.*'}) override, now a key) is resolved via translateError too;
+ * a non-key default-message falls back to itself (fallback chain locale→uk→key).
  */
-function translateLeaf(error: ValidationError, parentPath: string[] = []): string[] {
+function translateLeaf(
+  error: ValidationError,
+  locale: ValidationLocale,
+  parentPath: string[] = [],
+): string[] {
   const path = [...parentPath, error.property];
   const fieldPath = path.join('.');
   const messages: string[] = [];
 
   if (error.constraints) {
     for (const [key, defaultMessage] of Object.entries(error.constraints)) {
-      const tpl = TEMPLATES[key];
-      messages.push(tpl ? tpl(fieldPath) : defaultMessage);
+      const tplKey = CV_TEMPLATE_KEYS[key];
+      messages.push(
+        tplKey
+          ? translateError(tplKey, locale, { field: fieldPath })
+          : translateError(defaultMessage, locale, { field: fieldPath }),
+      );
     }
   }
 
   if (error.children?.length) {
     for (const child of error.children) {
-      messages.push(...translateLeaf(child, path));
+      messages.push(...translateLeaf(child, locale, path));
     }
   }
 
@@ -86,13 +82,14 @@ function translateLeaf(error: ValidationError, parentPath: string[] = []): strin
 
 /**
  * Global exceptionFactory — receives ValidationError[] from class-validator,
- * returns BadRequestException with Ukrainian, user-facing messages.
+ * returns a localized 400 BadRequestException. Contract shape unchanged.
  */
 export function validationExceptionFactory(errors: ValidationError[]): BadRequestException {
-  const messages = errors.flatMap(e => translateLeaf(e));
+  const locale = getLocale();
+  const messages = errors.flatMap(e => translateLeaf(e, locale));
   return new BadRequestException({
     statusCode: 400,
-    message: messages.length > 0 ? messages : ['Помилка валідації'],
+    message: messages.length > 0 ? messages : [translateError('v.validationFailed', locale)],
     error: 'Bad Request',
   });
 }

@@ -18,7 +18,7 @@ export class CreateBrandDto {
   @ApiPropertyOptional({ type: [String], example: ['БМВ', 'bmw'] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(20, { message: 'Не більше 20 синонімів' })
+  @ArrayMaxSize(20, { message: 'err.dto.brand.synonyms.max' })
   @IsString({ each: true })
   @MaxLength(100, { each: true })
   synonyms?: string[];
@@ -34,7 +34,7 @@ export class UpdateBrandDto {
   @ApiPropertyOptional({ type: [String], example: ['БМВ', 'bmw'] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(20, { message: 'Не більше 20 синонімів' })
+  @ArrayMaxSize(20, { message: 'err.dto.brand.synonyms.max' })
   @IsString({ each: true })
   @MaxLength(100, { each: true })
   synonyms?: string[];

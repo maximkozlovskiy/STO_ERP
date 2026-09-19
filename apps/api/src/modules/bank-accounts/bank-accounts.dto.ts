@@ -15,7 +15,7 @@ export class CreateBankAccountDto {
     description: '2 літери + 27 цифр (29 символів)',
   })
   @Matches(IBAN_UA_REGEX, {
-    message: 'Невірний формат IBAN. Має починатись з UA та містити 29 символів',
+    message: 'err.dto.bankAccount.iban.format',
   })
   ibanUA!: string;
 
@@ -61,7 +61,7 @@ export class UpdateBankAccountDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Matches(IBAN_UA_REGEX, {
-    message: 'Невірний формат IBAN. Має починатись з UA та містити 29 символів',
+    message: 'err.dto.bankAccount.iban.format',
   })
   ibanUA?: string;
 

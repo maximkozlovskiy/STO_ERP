@@ -33,7 +33,7 @@ export class CreateInspectionDto {
   @IsArray()
   // Cap array size — typical inspection has 8 default points; 50 is a generous upper bound.
   // Without this, POST { points: Array(1e6).fill(...) } passes validation and OOMs Node before Prisma sees it.
-  @ArrayMaxSize(50, { message: 'Не більше 50 точок огляду' })
+  @ArrayMaxSize(50, { message: 'err.dto.inspection.points.max' })
   @ValidateNested({ each: true })
   @Type(() => InspectionPointDto)
   points!: InspectionPointDto[];

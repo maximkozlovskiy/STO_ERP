@@ -17,17 +17,17 @@ export class SetupInitDto {
 
   // Owner account
   @ApiProperty({ example: 'owner@sto.local' })
-  @IsEmail({}, { message: 'Невірний формат email' })
+  @IsEmail({}, { message: 'err.dto.setup.email.invalid' })
   @MaxLength(254)
   ownerEmail!: string;
 
   @ApiProperty({ example: 'secret12', minLength: 8 })
   @IsString()
-  @IsNotEmpty({ message: 'Пароль не може бути порожнім' })
+  @IsNotEmpty({ message: 'err.dto.setup.password.notEmpty' })
   // B2 password policy: мінімум 8 символів для нового власника (початкове налаштування org —
   // legacy-акаунтів немає, тому підняття порогу нікого не блокує; узгоджено з change-password).
-  @MinLength(8, { message: 'Пароль має бути не менше 8 символів' })
-  @MaxLength(128, { message: 'Пароль занадто довгий (максимум 128 символів)' })
+  @MinLength(8, { message: 'err.dto.setup.password.min' })
+  @MaxLength(128, { message: 'err.dto.setup.password.max' })
   ownerPassword!: string;
 
   @ApiProperty({ example: 'Іван' })

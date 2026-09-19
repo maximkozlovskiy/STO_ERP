@@ -5,7 +5,7 @@ export class SearchQueryDto {
   @ApiProperty({ description: 'Пошуковий запит', minLength: 2, maxLength: 100 })
   @IsString()
   // trigram similarity is meaningless and CPU-heavy below 2 chars.
-  @MinLength(2, { message: 'Запит має містити мінімум 2 символи' })
+  @MinLength(2, { message: 'err.dto.search.query.min' })
   @MaxLength(100)
   q!: string;
 

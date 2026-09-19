@@ -81,7 +81,7 @@ export class CreatePurchaseOrderDto {
   @IsOptional()
   @IsArray()
   // Anti-DoS cap: 500 lines is an extreme upper bound for a purchase order.
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у покупковому ордері' })
+  @ArrayMaxSize(500, { message: 'err.dto.purchaseOrder.lines.max' })
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderLineDto)
   lines?: PurchaseOrderLineDto[];
@@ -147,7 +147,7 @@ export class UpdatePurchaseOrderDto {
   @ApiPropertyOptional({ type: [PurchaseOrderLineDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у покупковому ордері' })
+  @ArrayMaxSize(500, { message: 'err.dto.purchaseOrder.lines.max' })
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderLineDto)
   lines?: PurchaseOrderLineDto[];
@@ -168,7 +168,7 @@ export class ReceiveLineDto {
 export class ReceivePurchaseOrderDto {
   @ApiProperty({ type: [ReceiveLineDto] })
   @IsArray()
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у частковому прийнятті' })
+  @ArrayMaxSize(500, { message: 'err.dto.purchaseOrder.receiveLines.max' })
   @ValidateNested({ each: true })
   @Type(() => ReceiveLineDto)
   lines!: ReceiveLineDto[];

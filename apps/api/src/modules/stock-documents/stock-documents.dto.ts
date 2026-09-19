@@ -63,7 +63,7 @@ export class CreateStockDocumentDto {
   @IsOptional()
   @IsArray()
   // Anti-DoS cap: prevents memory exhaustion on bulk-insert path.
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у документі обліку' })
+  @ArrayMaxSize(500, { message: 'err.dto.stockDocument.lines.max' })
   @ValidateNested({ each: true })
   @Type(() => StockDocumentLineDto)
   lines?: StockDocumentLineDto[];
@@ -81,7 +81,7 @@ export class UpdateStockDocumentDto {
   @ApiPropertyOptional({ type: [StockDocumentLineDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(500, { message: 'Не більше 500 рядків у документі обліку' })
+  @ArrayMaxSize(500, { message: 'err.dto.stockDocument.lines.max' })
   @ValidateNested({ each: true })
   @Type(() => StockDocumentLineDto)
   lines?: StockDocumentLineDto[];

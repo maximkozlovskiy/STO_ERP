@@ -56,7 +56,7 @@ export class WorkQueryDto {
   // Anti-DoS cap: без ліміту атакувальник з JWT може POST-ити Array(1_000_000).fill(UUID)
   // → ValidationPipe виконає N×regex per element → OOM Node worker. 100 = реалістичний
   // максимум для filter по subtree категорій робіт.
-  @ArrayMaxSize(100, { message: 'Не більше 100 категорій у фільтрі' })
+  @ArrayMaxSize(100, { message: 'err.dto.work.categories.max' })
   @Matches(UUID_REGEX, { each: true })
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : undefined))
   categoryIds?: string[];

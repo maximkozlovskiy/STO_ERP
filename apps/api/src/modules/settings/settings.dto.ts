@@ -61,7 +61,7 @@ export class UpdateOrganisationSettingsDto {
   @Transform(toUpperCurrencyCode)
   @IsString()
   @MaxLength(10, {
-    message: 'РљРѕРґ РІР°Р»СЋС‚Рё РЅРµ РјРѕР¶Рµ РїРµСЂРµРІРёС‰СѓРІР°С‚Рё 10 СЃРёРјРІРѕР»С–РІ',
+    message: 'err.dto.settings.currencyCode.max',
   })
   currency?: string;
 
@@ -264,13 +264,13 @@ export class UpdateBranchSettingsDto {
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
   @IsString()
-  @Matches(HH_MM_RE, { message: 'Формат “ГГ:ХХ” (00:00–23:59)' })
+  @Matches(HH_MM_RE, { message: 'err.dto.settings.time.format' })
   workStartTime?: string;
 
   @ApiPropertyOptional({ example: '18:00' })
   @IsOptional()
   @IsString()
-  @Matches(HH_MM_RE, { message: 'Формат “ГГ:ХХ” (00:00–23:59)' })
+  @Matches(HH_MM_RE, { message: 'err.dto.settings.time.format' })
   workEndTime?: string;
 
   @ApiPropertyOptional({ minimum: 15, maximum: 240 })
@@ -347,7 +347,7 @@ export class UpdateBranchSettingsDto {
   @IsOptional()
   @IsArray()
   // Робочих днів максимум 7 (0-6); anti-DoS cap проти мільйон-дублікатних payload.
-  @ArrayMaxSize(7, { message: 'Не більше 7 робочих днів' })
+  @ArrayMaxSize(7, { message: 'err.dto.settings.workingDays.max' })
   @IsInt({ each: true })
   @Min(0, { each: true })
   @Max(6, { each: true })

@@ -4,12 +4,12 @@ import { ApiProperty } from '@nestjs/swagger';
 export class UpsertUserPreferenceDto {
   @ApiProperty({ description: 'Ключ налаштування', maxLength: 200 })
   @IsString()
-  @IsNotEmpty({ message: 'Ключ не може бути порожнім' })
+  @IsNotEmpty({ message: 'err.dto.userPreference.key.notEmpty' })
   @MaxLength(200)
   key!: string;
 
   @ApiProperty({ description: "Значення (JSON-об'єкт)" })
-  @IsObject({ message: "Значення має бути об'єктом" })
+  @IsObject({ message: 'err.dto.userPreference.value.object' })
   value!: Record<string, unknown>;
 }
 

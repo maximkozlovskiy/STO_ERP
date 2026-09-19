@@ -10,7 +10,7 @@ export class CreateGoodStatusDto {
 
   @ApiPropertyOptional({ example: '#f59e0b', description: 'HEX-колір бейджа' })
   @IsOptional()
-  @IsHexColor({ message: 'Колір має бути у форматі HEX (#rrggbb)' })
+  @IsHexColor({ message: 'err.dto.goodStatus.color.hex' })
   color?: string;
 }
 
@@ -23,7 +23,7 @@ export class UpdateGoodStatusDto {
 
   @ApiPropertyOptional({ example: '#f59e0b', description: 'HEX-колір бейджа' })
   @IsOptional()
-  @IsHexColor({ message: 'Колір має бути у форматі HEX (#rrggbb)' })
+  @IsHexColor({ message: 'err.dto.goodStatus.color.hex' })
   color?: string;
 }
 

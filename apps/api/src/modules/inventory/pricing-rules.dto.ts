@@ -103,7 +103,7 @@ export class CreatePricingRuleDto {
   @IsOptional()
   @IsArray()
   // Anti-DoS: 50 COST_TIER levels is already absurd for real pricing.
-  @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
+  @ArrayMaxSize(50, { message: 'err.dto.pricingRule.tiers.max' })
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleTierDto)
   tiers?: CreatePricingRuleTierDto[];
@@ -193,7 +193,7 @@ export class UpdatePricingRuleDto {
   @IsOptional()
   @IsArray()
   // Anti-DoS: 50 COST_TIER levels is already absurd for real pricing.
-  @ArrayMaxSize(50, { message: 'Не більше 50 рівнів у правилі ціноутворення' })
+  @ArrayMaxSize(50, { message: 'err.dto.pricingRule.tiers.max' })
   @ValidateNested({ each: true })
   @Type(() => CreatePricingRuleTierDto)
   tiers?: CreatePricingRuleTierDto[];
