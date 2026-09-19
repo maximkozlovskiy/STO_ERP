@@ -48,13 +48,15 @@ export class CashRegistersService {
       payload = { items: items.map(i => this.toDto(i)), total };
       await this.cache.set(key, payload, TTL);
     }
-    // Balance завжди свіжий (поза кешем).
-    const withBalance = await Promise.all(
-      payload.items.map(async i => ({
-        ...i,
-        balance: await this.cash.getBalance(orgId, i.id),
-      })),
-    );
+    // Balance завжди свіжий (поза кешем), але ПАКЕТНО: раніше map(async → getBalance) давав
+    // 3×N запитів (N реєстрів × [findFirst + 2 aggregate]) і обходив кеш на КОЖНОМУ запиті.
+    // Тепер один groupBy рахує всі баланси (initialBalance уже є у кешованому DTO).
+    const initials = new Map(payload.items.map(i => [i.id, i.initialBalance] as const));
+    const balances = await this.cash.getBalances(orgId, initials);
+    const withBalance = payload.items.map(i => ({
+      ...i,
+      balance: balances.get(i.id) ?? i.initialBalance,
+    }));
     return { items: withBalance, total: payload.total };
   }
 

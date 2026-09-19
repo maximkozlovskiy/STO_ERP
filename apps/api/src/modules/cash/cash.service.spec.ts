@@ -19,7 +19,7 @@ function makeMocks() {
         findFirstOrThrow: vi.fn(),
       },
       cashShift: { findFirst: vi.fn() },
-      cashOperation: { create: vi.fn(), findMany: vi.fn(), aggregate: vi.fn() },
+      cashOperation: { create: vi.fn(), findMany: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
       expenseCategory: { findFirst: vi.fn() },
       garageBranch: { findFirst: vi.fn() },
       currency: { findFirst: vi.fn() },
@@ -570,5 +570,51 @@ describe('CashService.getBalance — initial + Σ(sign)', () => {
     for (const call of m.prisma.cashOperation.aggregate.mock.calls) {
       expect(call[0].where).toMatchObject({ orgId: ORG, cashRegisterId: REG });
     }
+  });
+});
+
+describe('CashService.getBalances — пакетний баланс (perf: 1 groupBy замість 3×N)', () => {
+  const REG2 = '33333333-3333-4333-8333-333333333333';
+
+  it('семантика ІДЕНТИЧНА getBalance: initial + Σ(IN) − Σ(OUT) на реєстр, один groupBy', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    m.prisma.cashOperation.groupBy.mockResolvedValueOnce([
+      { cashRegisterId: REG, direction: 'IN', _sum: { amount: 3000 } },
+      { cashRegisterId: REG, direction: 'OUT', _sum: { amount: 1200 } },
+      { cashRegisterId: REG2, direction: 'IN', _sum: { amount: 500 } },
+    ]);
+    const balances = await service.getBalances(
+      ORG,
+      new Map([
+        [REG, 1000],
+        [REG2, 250],
+      ]),
+    );
+    expect(balances.get(REG)).toBe(2800); // 1000 + 3000 − 1200 (= getBalance-тест вище)
+    expect(balances.get(REG2)).toBe(750); // 250 + 500 − 0
+    // Один запит на всі реєстри (не 2×N агрегацій).
+    expect(m.prisma.cashOperation.groupBy).toHaveBeenCalledTimes(1);
+    expect(m.prisma.cashOperation.aggregate).not.toHaveBeenCalled();
+    expect(m.prisma.cashOperation.groupBy.mock.calls[0][0].where).toMatchObject({
+      orgId: ORG,
+      cashRegisterId: { in: [REG, REG2] },
+    });
+  });
+
+  it('каса без операцій → чистий initialBalance', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    m.prisma.cashOperation.groupBy.mockResolvedValueOnce([]);
+    const balances = await service.getBalances(ORG, new Map([[REG, 1500]]));
+    expect(balances.get(REG)).toBe(1500);
+  });
+
+  it('пустий вхід → 0 запитів, пуста мапа', async () => {
+    const m = makeMocks();
+    const service = makeService(m);
+    const balances = await service.getBalances(ORG, new Map());
+    expect(balances.size).toBe(0);
+    expect(m.prisma.cashOperation.groupBy).not.toHaveBeenCalled();
   });
 });

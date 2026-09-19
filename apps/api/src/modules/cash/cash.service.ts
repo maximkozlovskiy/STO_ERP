@@ -222,6 +222,35 @@ export class CashService {
     return this.computeBalance(orgId, cashRegisterId, Number(register.initialBalance), db);
   }
 
+  /**
+   * Пакетний розрахунок балансів кількох кас ОДНИМ запитом (замість N×getBalance = 3×N запитів).
+   * `initials` — мапа cashRegisterId → initialBalance (виклик уже має її з кешованого DTO, тож
+   * реєстри не перечитуються). Один `groupBy` по (cashRegisterId, direction) з `cashRegisterId IN
+   * [ids]` замінює 2×N агрегацій. Семантика ІДЕНТИЧНА getBalance: initial + Σ(IN) − Σ(OUT), roundMoney.
+   * Пустий вхід → пуста мапа (0 запитів). Каси без операцій отримують чистий initialBalance.
+   */
+  async getBalances(orgId: string, initials: Map<string, number>): Promise<Map<string, number>> {
+    const ids = [...initials.keys()];
+    const result = new Map<string, number>();
+    if (ids.length === 0) return result;
+    const grouped = await this.prisma.cashOperation.groupBy({
+      by: ['cashRegisterId', 'direction'],
+      where: { orgId, cashRegisterId: { in: ids } },
+      _sum: { amount: true },
+    });
+    // sign*amount акумулятор на реєстр (IN +, OUT −).
+    const deltas = new Map<string, number>();
+    for (const g of grouped) {
+      const sum = Number(g._sum.amount ?? 0);
+      const signed = g.direction === 'IN' ? sum : -sum;
+      deltas.set(g.cashRegisterId, (deltas.get(g.cashRegisterId) ?? 0) + signed);
+    }
+    for (const [id, initial] of initials) {
+      result.set(id, roundMoney(initial + (deltas.get(id) ?? 0)));
+    }
+    return result;
+  }
+
   private async computeBalance(
     orgId: string,
     cashRegisterId: string,
