@@ -158,7 +158,10 @@ export default function DeadLetterTab() {
                         <Button
                           variant="secondary"
                           onClick={() => void handleResolve(job.id)}
-                          loading={resolveMutation.isPending}
+                          loading={
+                            resolveMutation.isPending && resolveMutation.variables === job.id
+                          }
+                          disabled={resolveMutation.isPending}
                         >
                           {t('deadLetter.resolve')}
                         </Button>
