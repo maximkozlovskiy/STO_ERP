@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-09-19 — Tech-debt: mojibake + seed authAccount (після 3-циклового QA)
+
+### fix(i18n) f5021387 — декодовано pre-existing mojibake (DTO-описи + 10 catalog-значень)
+
+Double-encoded укр. (UTF-8→CP1251→UTF-8) декодовано назад у 16 файлах: @ApiProperty
+descriptions/examples/summary + коментарі (work-orders 52, settings 30, counterparties 19,
+goods 16, employees 15, + 11 менших) + 10 err.dto.* значень у messages.uk.ts. Mojibake був
+лише у descriptions/comments (НЕ у validation-message — ті чисті i18n-ключі), 10 catalog-значень
+ніде не асертились → byte-safe. cp1251→utf-8 round-trip, CRLF збережено, repo sweep 0, suite 2573.
+
+### fix(seed) 1591c345 — admin authAccount upsert відновлює креденшел на re-seed
+
+seed.ts admin-upsert мав `update:{}` → re-seed не оновлював passwordHash якщо акаунт існував
+→ admin@sto.local лишався недоступним (глушило E2E globalSetup). Fix: `update:{email,passwordHash,
+failedAttempts:0,lockedUntil:null}`. Решта 25 demo-upsert-ів лишаються idempotent-by-design.
+Доведено: зламано пароль+lockout → re-seed → login 200.
+
+## 2026-09-19 — QA: 3 повних цикли (sync/review/tester/optimize/e2e/simplify/code-review/security)
+
+Прогнано 3 послідовні QA-цикли на всій гілці (399 комітів). Знайдено+виправлено 5 реальних багів:
+
+- **Bug #764** (MEDIUM) DLQ findAll NaN page/limit → Prisma 500 (ac75526f).
+- **Bug #765** (CRITICAL) оприбуткування PO повністю зламане через UI — RHF field.id key-mismatch;
+  знайдено щойно розблокованим auth-gated E2E (be48551d).
+- **Bug #766** (HIGH) Invoice/PO модалки dirty-on-open (currency auto-default) (be48551d).
+- 6 Accept-Language raw-fetch gaps — EN-юзери бачили укр. помилки (911fe19d).
+- N+1 cash-registers balance 3×N→1 (38da9dd9).
+  Плюс: DeadLetter admin UI, +30 тестів, 4 skill-оновлення, 3 stale E2E оновлено, seed dev-БД
+  розблокував auth E2E. Фінал: api 2573 · web 834 · E2E 339/339 · security 0 vulns усі 3 цикли.
+
 ## 2026-09-19 — Багатомовність: backend-фундамент + shared-zod uk/en
 
 ### feat(i18n) cfbd30f0 (+134d191a, 28c149bf) — локаль per-request + shared-zod повідомлення
