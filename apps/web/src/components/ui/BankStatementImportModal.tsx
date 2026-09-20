@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -138,7 +138,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
     }
   }, [previewRows, bankAccountId, apply, onApplied, t]);
 
-  const setCol = (key: keyof ColumnMapping) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const setCol = (key: keyof ColumnMapping) => (e: ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.trim();
     const n = raw === '' ? undefined : Number(raw);
     setMapping(m => ({
