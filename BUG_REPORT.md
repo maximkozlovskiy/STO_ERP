@@ -5979,3 +5979,39 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
   (валідний UA IBAN: `UA` + 27 цифр).
 
 Верифікація: api tsc 0 / web tsc 0 / api 2613 (+17) / web 837 / E2E 343 passed +2 flaky (pass on retry, pre-existing work-orders).
+
+---
+
+## Session 2026-09-20 — bank-statements Фаза 4 Privat24 auto-pull (post-sync/post-review bug hunt)
+
+Коміти під тестом: 4eead7eb (feat auto-pull) + d409945f (sync type-fix). Пройдено sync + review (APPROVE, 0 critical). Полювання на РЕАЛЬНІ поведінкові баги, не покриті 34 unit-тестами.
+
+### Bug #768 — HIGH — per-account isolation НЕ покриває applyImport/cursor → один битий рахунок голодує решту вікна pull
+
+**Файл:** `apps/api/src/modules/bank-statements/bank-statement-pull.processor.ts` (process loop)
+
+**Симптом (поведінковий):** docblock процесора декларує per-account isolation («Помилка мережі/API одного рахунку не має валити pull інших рахунків орг»), і лише `fetchStatements` був у try/catch. Однак `applyImport` (DB-запис), `resolveBatch`-обгортка вже мала catch, а `applyImport` та фінальний `updateCursor` — НІ. Транзієнтний збій БД / lock-timeout / помилка `resolveBaseConversion` у `applyImport` для ОДНОГО рахунку відкидав увесь `process()`-promise → цикл `for (acc of accounts)` переривався → **усі наступні рахунки орг пропускались цього прогону** (і робота йшла в retry/DLQ, але решта рахунків мовчки не оброблялась до наступного тіку). Порушення задекларованого інваріанта.
+
+**Виявлено тестом:** новий кейс `per-account isolation: рахунок що кидає applyImport → інші рахунки продовжують курсор` — `acc-a.applyImport` кидає, очікування що `acc-b` все одно оброблено. FAIL: `promise rejected "db down"` — весь job впав.
+
+**Причина виникнення:** розробник обгорнув лише зовнішній виклик (fetch — найімовірніше джерело помилки), припустивши що локальні DB-операції «не падають». Але у offline-first / concurrency=2 БД-збій — реальність; isolation мусить охоплювати ВЕСЬ хвіст обробки одиниці, не лише мережевий крок.
+
+**Фікс:** обгорнув per-account import у try/catch (log-and-`continue`) — **курсор НЕ рухається при падінні applyImport** (жодної втрати транзакцій: наступний pull повторить вікно ідемпотентно через `skipDuplicates`). Фінальний `updateCursor` та early-return `updateCursor` (порожнє вікно) теж у best-effort try/catch. Гроші-безпека збережена: staging-запис або пройшов повністю, або рахунок повністю пропущено без просування курсора.
+
+**Severity:** HIGH (доступність auto-pull + мовчазне недоотримання виписки по частині рахунків; без втрати грошей, але з ризиком «зниклих» надходжень до ручного втручання).
+
+[x] виправлено
+
+### Покриття (нові тести, не баги — locking money-safety + resilience інваріантів)
+
+- **bank-statement-pull.processor.spec.ts** 10→15 (+5): ідемпотентність overlapping-window (той самий externalId двічі → applyImport skipDuplicates created:0 + findFirst UNMATCHED null → **0 дубль-Payment**); auto-match НЕ спрацьовує на ambiguous/notFound (гроші лишаються у staging); edrpou confidence 0.9 (matched але <1) → НЕ авто-матч; confidence===1 але counterpartyId відсутній → guard skip; **per-account isolation applyImport-throw (Bug #768)**.
+- **privat24.client.spec.ts** 6→10 (+4): MAX_PAGES cap (нескінченний exist_next_page+новий next_page_id → рівно 200 fetch, без infinite loop); exist_next_page=true без next_page_id → стоп (без undefined-followId петлі); exist_next_page рядок "true" → наступна сторінка; порожня відповідь text="" → {} → 0 транзакцій без throw.
+- **privat24.provider.spec.ts** 9→13 (+4): порожня відповідь → []; змішаний батч (валідні+без REF+debit+amount<=0+від'ємна) → лише валідні; amount=0/від'ємний → skip; parseDate DD-MM-YYYY (дефіси).
+- **bank-statement-providers.controller.spec.ts** 5→7 (+2): @Roles metadata — read+pull-now (list/verify/branchConfigs/pullNow) ⊇ ACCOUNTANT; write (upsert/activate) = лише OWNER/ADMIN (БЕЗ ACCOUNTANT).
+
+### Перевірено як БЕЗПЕЧНЕ (не баг)
+
+- **verifyCredentials синтетичний-IBAN**: валідні креди + non-auth 4xx на фейковому IBAN → могло б звітувати invalid. MANUAL-VERIFY (залежить від живих Privat-відповідей) — свідомо не чіпав.
+- **enqueueImmediate jobId dedup** (`bank-pull-now-<org>`): анти-спам кнопки, окремий jobId від cron `bank-pull-<org>` — коректно.
+- **reschedule `.find(key.includes('bank-pull-<uuid>'))`**: UUID-ключі не колізують; immediate-jobs не входять у getRepeatableJobs — без крос-видалення.
+- **overlapping-window auto-match**: другий pull → findFirst UNMATCHED null → skip → 0 повторний Payment. Money-safe (locked тестом).
