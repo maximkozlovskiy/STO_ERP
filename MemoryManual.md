@@ -302,7 +302,15 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Tester bank-statements bug hunt — 2026-09-20, HEAD 2b3e0c64:
+Sync bank-statements (Фаза 4 Privat24 auto-pull) — 2026-09-20, HEAD d409945f:
+  d409945f fix(sync): BankAccount web interface (apps/web/.../ndi/types.ts) не мала autoPullEnabled/
+        lastPulledAt — type-drift проти BankAccountResponseDto (commit 4eead7eb). Поля додані як
+        optional (UI-toggle ще нема, лише type-parity). Перевірено ЧИСТО: bank-statement-providers.
+        controller (GET list, POST :code/verify, GET/PATCH branch/:branchId, POST branch/:branchId/
+        activate, POST pull-now) ↔ BankStatementsTab.tsx+ProviderRegistryPanel — endpoints/payload
+        shapes збігаються (ProviderConfigView ідентичний provider-config.service.ts). OrganisationSettings.
+        bankStatementPollIntervalMinutes — узгоджено web/DTO/response обидва боки. tsc: web 0 · api 0.
+  Tester bank-statements bug hunt — 2026-09-20, HEAD 2b3e0c64:
   2b3e0c64 fix(tester): Bug #767 [MEDIUM] parseDate rollover guard + bank-statements покриття.
         Bug #767: bank-statement-parser.parseDate тихо «перекочував» неіснуючі дати (31.02→03.03,
         31.04→05.01) — JS Date overflow без round-trip guard → зіпсована operationDate реальної
