@@ -787,6 +787,19 @@ export-обмеженням (той самий рубіж, що й Server Compon
   МУСИТЬ охоплювати ВЕСЬ хвіст ітерації (не лише перший external-крок) — інакше збій одного елемента відкидає
   весь process()→решта пропущена. Курсор (lastPulledAt) НЕ рухати на збої write → 0 втрати (наступний pull
   повторить ідемпотентно). Тог самий патерн: nbu-fetch, delivery-poll, forEachActiveOrg-loops.
+- **Multi-provider (кілька банків/провайдерів одночасно):** ексклюзивна `activate` (1 enabled per kind) НЕ
+  масштабується на «орг має рахунки в N банках». Рішення — **per-entity provider-код + `resolveByCode`**
+  (не `resolveActive`): додати `<Entity>.provider String?` (як `BankAccount.provider` / `CashRegister.fiscalProvider`),
+  processor резолвить `provider ? resolveByCode(kind, entity.provider) : resolveActive(kind)` (legacy-fallback).
+  ⚠ `resolveByCode` (provider-config.service.ts:109) шукає за `(orgId,branchId,kind,provider)+hasCreds` — **НЕ
+  фільтрує по `enabled`** → кілька провайдерів із кредами співіснують, activate-ексклюзивність не чіпаємо
+  (нульовий ризик). Джерело правди — per-entity provider, не enabled-прапор. Мапінг provider-код→source/enum
+  через helper (не хардкод). Додати провайдера = один клас у registry-масив (Open/Closed).
+- **Мінор-одиниці зовнішнього API:** деякі банк-API віддають суму у копійках (monobank amount) — `amount=minor/100`
+  з `Number.isFinite` guard ПЕРЕД діленням (money-critical, легко забути; lock тестом 15000→150.00).
+- **Windowing зовнішнього API з лімітом періоду:** розбити [from,to] на ≤N-денні шматки (MAX cap проти нескінченного
+  циклу; from>=to→одне вироджене вікно; суміжні межі from[i+1]===to[i] без gap/overlap); rate-limit sleep МІЖ
+  шматками ЛИШЕ у BullMQ-воркері (не request-шлях).
 
 ---
 

@@ -12,8 +12,13 @@
   (counterpartyId там nullable), НЕ як Payment без контрагента.
 - **Ідемпотентність (2 рубежі):** `@@unique([orgId, bankAccountId, externalId])` (повторний імпорт/pull
   не дублює) + `BankTransaction.paymentId @unique` (1 Payment на транзакцію).
-- **Джерело:** (1) файловий імпорт CSV/XLSX (offline, `source=FILE_IMPORT`); (2) Privat24 Merchant API
-  auto-pull (`source=PRIVAT24_API`, ProviderKind.BANK — Фаза 4, ГОТОВО; enable потребує мерчант-доступу).
+- **Джерело:** (1) файловий імпорт **CSV/XLSX/DBF** (offline, `source=FILE_IMPORT`; DBF для Ощад/Райф/ПУМБ,
+  win1251); (2) API auto-pull — **Privat24** (`PRIVAT24_API`) + **monobank** (`MONOBANK_API`). Enable потребує
+  мерчант-доступу/токена.
+- **Multi-bank:** орг може мати рахунки в кількох банках одночасно. `BankAccount.provider` (код банку:
+  privat24|monobank) визначає, ЧЕРЕЗ ЯКИЙ API тягнути виписку цього рахунку. Processor резолвить провайдер
+  per-рахунок через `resolveByCode(acc.provider)` (НЕ фільтрує по enabled → кілька банків співіснують;
+  дзеркалить CashRegister.fiscalProvider). null=не auto-pull/legacy (fallback resolveActive).
 
 ## FSM статусу BankTransaction
 
@@ -72,33 +77,36 @@ Orphan-Payment (create ok, link fail) benign: retry натрапляє на CAS-
 (контрагент+тип+опц.invoice) + `BankStatementImportModal` (3-крок wizard: рахунок+файл → колонки → preview
 → apply). Nav — «Банківські платежі» (Landmark, section settlements). Хук `useBankStatements`.
 
-## Privat24 auto-pull (Фаза 4, ГОТОВО — enable потребує мерчант-доступу)
+## API auto-pull (Privat24 + monobank, ГОТОВО — enable потребує токена)
 
-Автоматичне підтягування виписки з Privat24 Merchant API через чергу (offline-first).
+Автоматичне підтягування виписки з банк-API через чергу (offline-first). Реєстр провайдерів
+(`BANK_STATEMENT_PROVIDERS`) — додати банк = один provider-клас (Open/Closed).
 
-- **Прапор pull:** `BankAccount.autoPullEnabled` — тягнути ЛИШЕ відмічені рахунки (Autoclient-креди
-  per-IBAN); `BankAccount.lastPulledAt` — курсор вікна дат. Інтервал — `OrganisationSettings.
-bankStatementPollIntervalMinutes` (clamp [15,1440]).
-- **Provider-шар** (`providers/`, за DELIVERY-зразком): `bank-provider.interface` (BankStatementProvider +
-  BANK_STATEMENT_PROVIDERS Symbol), `privat24.client` (POST /statements/transactions, id+token заголовки,
-  DD-MM-YYYY, followId-пагінація MAX_PAGES=200; SSRF validatePublicUrl + timeout 10s + redirect:manual +
-  reject-3xx + redactSecrets), `privat24.provider` (**захисна mapTx**: fallback-ключі REF/OSND/SUM/TRANTYPE,
-  credit-only фільтр, skip невалідних, rawData для діагностики), `bank-provider-registry`.
-- **Scheduler-ЛЕАФ** (`bank-statement-pull.module` — лише queue+scheduler; розриває цикл: SettingsModule
-  імпортує леаф, не важкий BankStatementsModule що тягне PaymentsModule): repeat.every interval*60с,
-  jobId `bank-pull-${orgId}`, reschedule, enqueueImmediate.
-- **Processor** (@Processor 'bank-statement-polling' concurrency:2, extends DeadLetterWorkerHost):
-  runWithTenant → findMany autoPullEnabled → resolveActive('BANK') → integrationLog.wrap(fetchStatements)
-  → applyImport(PRIVAT24_API) → авто-матч ЛИШЕ confidence===1 → lastPulledAt-курсор. **Per-account
-  isolation** (весь хвіст applyImport+match+cursor у log-and-continue try/catch — Bug #768: збій одного
-  рахунку не пропускає інших; курсор НЕ рухається на збої applyImport → 0 втрати, наступний pull повторить
-  ідемпотентно). @OnWorkerEvent('failed')→DLQ.
+- **Прапор pull:** `BankAccount.autoPullEnabled` (тягнути ЛИШЕ відмічені) + `BankAccount.provider` (код банку
+  per-рахунок) + `BankAccount.lastPulledAt` (курсор). Інтервал — `OrganisationSettings.bankStatementPollIntervalMinutes`
+  (clamp [15,1440]).
+- **Provider-шар** (`providers/`, за DELIVERY-зразком): interface `BankStatementProvider {fetchStatements, verifyCredentials}`
+  - registry. Спільний HTTP-каркас: SSRF `validatePublicUrl` + timeout 10s + redirect:manual + reject-3xx +
+    `redactSecrets`. Кожен provider має **захисну mapTx** (fallback-ключі, credit-only фільтр, skip невалідних, rawData):
+  * **privat24** — POST /statements/transactions, id+token, DD-MM-YYYY, followId-пагінація (MAX_PAGES=200). Поля REF/OSND/SUM/TRANTYPE.
+  * **monobank** — GET /personal/statement/{account}/{unixFrom}/{unixTo}, **X-Token**; **WINDOWING** (≤31д/запит,
+    MAX_WINDOWS=12; rate-limit sleep 60с МІЖ шматками лише backfill, у воркері). **amount=minor/100** (МІНОР-ОДИНИЦІ —
+    money-critical!); поля id/time(Unix)/counterName/counterIban/counterEdrpou/comment. account=mono id (не IBAN, дефолт '0').
+- **Scheduler-ЛЕАФ** (`bank-statement-pull.module` — лише queue+scheduler; розриває цикл: SettingsModule імпортує
+  леаф, не важкий BankStatementsModule): repeat.every, jobId `bank-pull-${orgId}`, reschedule, enqueueImmediate.
+- **Processor** (@Processor 'bank-statement-polling' concurrency:2, DeadLetterWorkerHost): runWithTenant → findMany
+  autoPullEnabled → **`resolveByCode(acc.provider)` з fallback resolveActive** (multi-bank per-account) →
+  integrationLog.wrap(fetchStatements) → applyImport(`providerToSource(provider)`) → авто-матч ЛИШЕ confidence===1
+  → lastPulledAt. **Per-account isolation** (весь хвіст у try/catch — Bug #768: збій 1 рахунку не пропускає інших;
+  курсор НЕ рухається на збої applyImport → 0 втрати). @OnWorkerEvent('failed')→DLQ.
 - **Config:** `bank-statement-providers.controller` (kind BANK, generic ProviderConfigService — credentials
-  шифрується авто; verify/branch-CRUD/activate/**pull-now**). Web: BankStatementsTab (ProviderRegistryPanel
-  - інтервал + «Підтягнути зараз»). autoPullEnabled toggle per-рахунок — API готовий, UI-toggle окремий таск.
-- **MANUAL-VERIFY** (потребує мерчант-доступу): GET-vs-POST, точні поля response (REF/OSND/TRANTYPE-код/SUM/
-  payer*), signature. Захисна нормалізація + rawData + integration-log → діагностика на живих даних без падінь.
-- **Offline:** pull ТІЛЬКИ через чергу; нема інтернету→job падає→retry/backoff→DLQ; файловий імпорт працює завжди.
+  шифрується авто; verify/branch-CRUD/activate/pull-now). Web: BankStatementsTab (провайдери+інтервал+«Підтягнути
+  зараз»); BankAccountsTab (dropdown «Банк для auto-pull» + autoPullEnabled toggle per-рахунок).
+- **MANUAL-VERIFY** (потребує токена/живих даних): privat24 GET-vs-POST + поля + signature; monobank account-id
+  резолв (дефолт '0'/client-info) + точний rate-limit; DBF-поля/encoding (win1251/cp866) на живих файлах. Захисна
+  нормалізація + rawData + integration-log → діагностика без падінь.
+- **Offline:** pull ТІЛЬКИ через чергу (windowing sleep у воркері); нема інтернету→job→retry/backoff→DLQ;
+  файловий імпорт (CSV/XLSX/DBF) працює завжди. DBF-парсер — dbffile (pure-JS) через temp-файл (cleanup у finally).
 
 ## Sync / Tenant
 
@@ -110,7 +118,8 @@ bankStatementPollIntervalMinutes` (clamp [15,1440]).
 
 - **Мультивалютний UI:** сума показується з хардкод `₴` (MVP UAH-focus); currency-aware форматування
   потребує lookup валюти транзакції.
-- **autoPullEnabled toggle per-рахунок** у сторінці bank-accounts — API готовий (DTO+service), UI-toggle
-  окремий дрібний фронт-таск.
-- **Privat24 mapping MANUAL-VERIFY** — точні назви полів response звірити на живому мерчант-акаунті
-  (захисна нормалізація зараз толерантна до різних назв).
+- **Укргазбанк API** — ВІДКЛАДЕНО (нема публічної документації; звірити на живому доступі або чекати
+  Open Banking НБУ). Архітектура готова додати (один provider-клас).
+- **API mapping MANUAL-VERIFY** — точні поля response звірити на живих даних: privat24 (REF/OSND/TRANTYPE),
+  monobank (account-id резолв, rate-limit), DBF-поля/encoding Ощад/Райф/ПУМБ (win1251/cp866). Захисна
+  нормалізація толерантна до різних назв.

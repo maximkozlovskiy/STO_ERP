@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-09-21 — Фіча: monobank + DBF + multi-bank (bank-statements розширення)
+
+### feat(bank-statements) f98fadb6 — monobank statement API + DBF-парсер + multi-bank
+
+Розширення джерел виписки після Privat24: (1) monobank auto-pull; (2) DBF-файли (Ощад/Райф/ПУМБ);
+(3) multi-bank — орг може мати рахунки в кількох банках одночасно (провайдер per-рахунок). Укргазбанк
+ВІДКЛАДЕНО (нема публічного API). Див. docs/objects/bank-statements.md.
+
+- **Multi-bank (нульовий ризик):** BankAccount.provider (код банку) + processor `resolveByCode(acc.provider)`
+  з legacy-fallback. resolveByCode НЕ фільтрує по enabled → Privat24+monobank креди співіснують, кожен рахунок
+  тягне свій банк (дзеркалить CashRegister.fiscalProvider). BankTransactionSource += MONOBANK_API; providerToSource
+  helper замість хардкоду. provider-config НЕ чіпано. Міграція 20260921120000.
+- **monobank provider** (X-Token personal statement): GET /personal/statement/{account}/{unixFrom}/{unixTo};
+  WINDOWING (≤31д/запит, MAX_WINDOWS=12; rate-limit sleep 60с між шматками у воркері); **amount=minor/100**
+  (МІНОР-ОДИНИЦІ — money-critical, тест 15000→150.00); credit-only; counter*→payer*; SSRF/timeout/redact +
+  encodeURIComponent(account).
+- **DBF-парсер:** +dbffile (pure-JS+iconv-lite, offline) через temp-файл (cleanup у finally); encoding win1251
+  (cp866 не має укр. і/ї/є/ґ). Column-mapping/RawTx конвеєр — без змін.
+- **UI:** BankAccountsTab dropdown «Банк для auto-pull» + autoPullEnabled toggle (закрило тех-борг); monobank
+  креди у BankStatementsTab; import accept=.dbf.
+- **QA:** sync 77ad954d (.dbf у file-picker accept); review APPROVE (money/offline/SSRF/multi-tenant clean);
+  tester 9b9802ea **Bug #769** (LOW — CreateBankAccountDto.provider без @Transform(emptyToUndefined) → ''
+  замість null; +9 тестів edge-cases). api 2694 · web 837 · E2E 348 · tsc 0.
+
 ## 2026-09-21 — Фіча: Privat24 auto-pull виписки (bank-statements Фаза 4)
 
 ### feat(bank-statements) 4eead7eb — Privat24 Merchant API auto-pull
