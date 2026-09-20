@@ -51,6 +51,7 @@ import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-pay
 import { StockDocumentsModule } from './modules/stock-documents/stock-documents.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { BankStatementsModule } from './modules/bank-statements/bank-statements.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ReportBuilderModule } from './modules/report-builder/report-builder.module';
@@ -210,6 +211,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     StockDocumentsModule,
     InvoicesModule,
     PaymentsModule,
+    BankStatementsModule,
     NotificationsModule,
     ReportsModule,
     ReportBuilderModule,

@@ -56,6 +56,9 @@ const PULL_TABLES = [
 //  - branch_provider_configs: credentials (секрети ПРРО/еквайринг-провайдерів) — mobile не має бачити.
 //  - integration_logs / idempotency_keys / dead_letter_jobs: server-local infra (без syncVersion) —
 //    не sync-иться (dead_letter_jobs містить payload вичерпаних job-ів; лишається на сервері).
+//  - bank_transactions: staging вхідних банк-виписок (payerName/payerIban/purpose — PII платника);
+//    серверна реконсиляція, mobile не потрібна. Має syncVersion для консистентності, але свідомо
+//    поза PULL_TABLES/PUSH_SAFE_TABLES.
 
 // Tables safe for push — excludes append-only logs and FSM-controlled models
 const PUSH_SAFE_TABLES = new Set([

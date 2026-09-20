@@ -1,8 +1,13 @@
 import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentSourceType } from '@prisma/client';
+import { PaymentSourceType, SettlementTransactionType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+
+// Тип проводки балансу для вхідного платежу. Дефолт PAYMENT (звичайна оплата — знак −1).
+// Bank-statement рознесення передає PREPAYMENT (аванс) або REFUND (повернення). Клієнтські типи лише.
+export const PAYMENT_SETTLEMENT_TYPES = ['PAYMENT', 'PREPAYMENT', 'REFUND'] as const;
+export type PaymentSettlementType = (typeof PAYMENT_SETTLEMENT_TYPES)[number];
 
 export class CreatePaymentDto {
   @ApiProperty()
@@ -43,6 +48,12 @@ export class CreatePaymentDto {
   @Transform(emptyToUndefined)
   @IsUUID()
   onlinePaymentIntentId?: string;
+  // Внутрішнє: тип проводки балансу (дефолт PAYMENT). Bank-statement рознесення передає PREPAYMENT/
+  // REFUND. Не для публічного вводу — касир завжди PAYMENT. append-only-safe (default зберігає поведінку).
+  @ApiPropertyOptional({ enum: PAYMENT_SETTLEMENT_TYPES })
+  @IsOptional()
+  @IsIn(PAYMENT_SETTLEMENT_TYPES)
+  settlementType?: PaymentSettlementType;
 }
 
 export class PaymentResponseDto {

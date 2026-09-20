@@ -1,0 +1,282 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { ConflictException } from '@nestjs/common';
+import { BankReconciliationService, type RawTx } from './bank-reconciliation.service';
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import type { PaymentsService } from '../payments/payments.service';
+
+const ORG = 'org-1';
+
+// ── Мок-фабрики ─────────────────────────────────────────────────────────────────
+function makePrisma() {
+  return {
+    counterparty: { findMany: vi.fn(), findFirst: vi.fn() },
+    invoice: { findMany: vi.fn(), findFirst: vi.fn() },
+    workOrder: { findMany: vi.fn() },
+    bankTransaction: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      updateMany: vi.fn(),
+      createMany: vi.fn(),
+    },
+    bankAccount: { findFirst: vi.fn() },
+    $transaction: vi.fn(),
+  };
+}
+
+function makeExchange() {
+  return {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+  };
+}
+
+function makePayments() {
+  return { create: vi.fn() };
+}
+
+function build(
+  prisma: ReturnType<typeof makePrisma>,
+  exchange: ReturnType<typeof makeExchange>,
+  payments: ReturnType<typeof makePayments>,
+) {
+  return new BankReconciliationService(
+    prisma as unknown as PrismaService,
+    exchange as unknown as ExchangeRatesService,
+    payments as unknown as PaymentsService,
+  );
+}
+
+const CP = (id: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  companyName: `Company ${id}`,
+  firstName: null,
+  lastName: null,
+  iban: null,
+  edrpou: null,
+  ...extra,
+});
+
+describe('BankReconciliationService.resolveBatch', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let service: BankReconciliationService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    prisma.counterparty.findMany.mockResolvedValue([]);
+    prisma.invoice.findMany.mockResolvedValue([]);
+    prisma.workOrder.findMany.mockResolvedValue([]);
+    service = build(prisma, makeExchange(), makePayments());
+  });
+
+  it('IBAN exact-1 → matched confidence 1.0 reason iban', async () => {
+    prisma.counterparty.findMany.mockResolvedValueOnce([CP('cp-1', { iban: 'UA123456789' })]);
+    const txs: RawTx[] = [
+      { externalId: 'e1', operationDate: new Date(), amount: 100, payerIban: 'ua12 3456 789' },
+    ];
+    const res = await service.resolveBatch(ORG, txs);
+    const m = res.get('e1')!;
+    expect(m.status).toBe('matched');
+    expect(m.counterpartyId).toBe('cp-1');
+    expect(m.confidence).toBe(1);
+    expect(m.reason).toBe('iban');
+  });
+
+  it('IBAN >1 → ambiguous з кандидатами', async () => {
+    prisma.counterparty.findMany.mockResolvedValueOnce([
+      CP('cp-1', { iban: 'UA999' }),
+      CP('cp-2', { iban: 'UA999' }),
+    ]);
+    const txs: RawTx[] = [
+      { externalId: 'e1', operationDate: new Date(), amount: 100, payerIban: 'UA999' },
+    ];
+    const res = await service.resolveBatch(ORG, txs);
+    const m = res.get('e1')!;
+    expect(m.status).toBe('ambiguous');
+    expect(m.candidates).toHaveLength(2);
+  });
+
+  it('EDRPOU exact-1 → matched confidence 0.9 reason edrpou', async () => {
+    // Транзакція без IBAN → iban-findMany взагалі не викликається (service гейтить по uniqueIbans).
+    // Єдиний counterparty.findMany — edrpou lookup.
+    prisma.counterparty.findMany.mockResolvedValueOnce([CP('cp-9', { edrpou: '12345678' })]); // edrpou lookup
+    const txs: RawTx[] = [
+      { externalId: 'e1', operationDate: new Date(), amount: 100, payerEdrpou: '12345678' },
+    ];
+    const res = await service.resolveBatch(ORG, txs);
+    const m = res.get('e1')!;
+    expect(m.status).toBe('matched');
+    expect(m.counterpartyId).toBe('cp-9');
+    expect(m.confidence).toBe(0.9);
+    expect(m.reason).toBe('edrpou');
+  });
+
+  it('purpose → INVOICE match confidence 0.7 reason purpose', async () => {
+    prisma.invoice.findMany.mockResolvedValueOnce([
+      {
+        id: 'inv-1',
+        number: '777',
+        counterpartyId: 'cp-inv',
+        counterparty: { companyName: 'Acme', firstName: null, lastName: null },
+      },
+    ]);
+    const txs: RawTx[] = [
+      { externalId: 'e1', operationDate: new Date(), amount: 100, purpose: 'Оплата рахунок №777' },
+    ];
+    const res = await service.resolveBatch(ORG, txs);
+    const m = res.get('e1')!;
+    expect(m.status).toBe('matched');
+    expect(m.matchType).toBe('INVOICE');
+    expect(m.invoiceId).toBe('inv-1');
+    expect(m.counterpartyId).toBe('cp-inv');
+    expect(m.confidence).toBe(0.7);
+    expect(m.reason).toBe('purpose');
+  });
+
+  it('нічого не збіглось → notFound', async () => {
+    const txs: RawTx[] = [
+      { externalId: 'e1', operationDate: new Date(), amount: 100, purpose: 'просто переказ' },
+    ];
+    const res = await service.resolveBatch(ORG, txs);
+    expect(res.get('e1')!.status).toBe('notFound');
+  });
+
+  it('N+1 guard: findMany викликано ≤ 4 разів на батч будь-якого розміру', async () => {
+    // Батч зі 100 транзакцій з різними iban/edrpou/purpose — усе одно кілька bulk-запитів.
+    const txs: RawTx[] = Array.from({ length: 100 }, (_, i) => ({
+      externalId: `e${i}`,
+      operationDate: new Date(),
+      amount: 100 + i,
+      payerIban: `UA${i}`,
+      payerEdrpou: `ED${i}`,
+      purpose: `рахунок №${i}`,
+    }));
+    await service.resolveBatch(ORG, txs);
+    const findManyCalls =
+      prisma.counterparty.findMany.mock.calls.length +
+      prisma.invoice.findMany.mock.calls.length +
+      prisma.workOrder.findMany.mock.calls.length;
+    // iban(1) + edrpou(1) + invoice(1) + workOrder(1) = 4 максимум.
+    expect(findManyCalls).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('BankReconciliationService.applyImport — дедуп', () => {
+  it('createMany зі skipDuplicates; skipped = rows - created', async () => {
+    const prisma = makePrisma();
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'cur-1' });
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        bankTransaction: { createMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      }),
+    );
+    const service = build(prisma, makeExchange(), makePayments());
+    const res = await service.applyImport(ORG, {
+      bankAccountId: 'ba-1',
+      rows: [
+        { externalId: 'e1', operationDate: '2026-09-01', amount: 100 },
+        { externalId: 'e2', operationDate: '2026-09-01', amount: 200 },
+        { externalId: 'e1', operationDate: '2026-09-01', amount: 100 }, // дубль → skip
+      ],
+    });
+    expect(res.created).toBe(2);
+    expect(res.skipped).toBe(1);
+  });
+});
+
+describe('BankReconciliationService.matchTransaction', () => {
+  const CP_ID = '22222222-2222-4222-8222-222222222222';
+  const TX_ID = '11111111-1111-4111-8111-111111111111';
+
+  function setupMatch() {
+    const prisma = makePrisma();
+    prisma.counterparty.findFirst.mockResolvedValue({ id: CP_ID });
+    // CAS-mark успішний.
+    prisma.bankTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prisma.bankTransaction.findFirst.mockResolvedValue({
+      id: TX_ID,
+      amount: 500,
+      bankAccountId: 'ba-1',
+    });
+    prisma.bankTransaction.findFirstOrThrow.mockResolvedValue({
+      id: TX_ID,
+      orgId: ORG,
+      bankAccountId: 'ba-1',
+      direction: 'IN',
+      amount: 500,
+      currencyId: 'cur-1',
+      amountBase: 500,
+      rateUsed: 1,
+      operationDate: new Date('2026-09-01'),
+      payerName: null,
+      payerIban: null,
+      payerEdrpou: null,
+      purpose: null,
+      externalId: 'e1',
+      source: 'FILE_IMPORT',
+      status: 'MATCHED',
+      matchedType: 'SERVICE',
+      counterpartyId: CP_ID,
+      paymentId: 'pay-1',
+      matchConfidence: null,
+      ignoreReason: null,
+      createdAt: new Date('2026-09-01'),
+    });
+    const payments = makePayments();
+    payments.create.mockResolvedValue({ id: 'pay-1' });
+    const service = build(prisma, makeExchange(), payments);
+    return { prisma, payments, service };
+  }
+
+  it('SERVICE → settlementType PAYMENT у payments.create', async () => {
+    const { payments, service } = setupMatch();
+    await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' });
+    expect(payments.create).toHaveBeenCalledTimes(1);
+    const [, dto] = payments.create.mock.calls[0]!;
+    expect(dto.settlementType).toBe('PAYMENT');
+    expect(dto.method).toBe('bank');
+    expect(dto.sourceType).toBe('BANK_ACCOUNT');
+  });
+
+  it('PREPAYMENT → settlementType PREPAYMENT', async () => {
+    const { payments, service } = setupMatch();
+    await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'PREPAYMENT' });
+    const [, dto] = payments.create.mock.calls[0]!;
+    expect(dto.settlementType).toBe('PREPAYMENT');
+  });
+
+  it('REFUND → settlementType REFUND', async () => {
+    const { payments, service } = setupMatch();
+    await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'REFUND' });
+    const [, dto] = payments.create.mock.calls[0]!;
+    expect(dto.settlementType).toBe('REFUND');
+  });
+
+  it('подвійний match → CAS count 0 → Conflict', async () => {
+    const { prisma, payments, service } = setupMatch();
+    prisma.bankTransaction.updateMany.mockResolvedValueOnce({ count: 0 }); // CAS не захопив
+    prisma.bankTransaction.findFirst.mockResolvedValueOnce({ id: TX_ID }); // існує, але вже MATCHED
+    await expect(
+      service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(payments.create).not.toHaveBeenCalled();
+  });
+
+  it('payments.create кинув → відкат status=UNMATCHED, помилка проброшена', async () => {
+    const { prisma, payments, service } = setupMatch();
+    payments.create.mockRejectedValueOnce(new Error('currency mismatch'));
+    await expect(
+      service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
+    ).rejects.toThrow('currency mismatch');
+    // Відкат: другий updateMany з data status=UNMATCHED.
+    const rollbackCall = prisma.bankTransaction.updateMany.mock.calls.find(
+      c => (c[0] as { data?: { status?: string } }).data?.status === 'UNMATCHED',
+    );
+    expect(rollbackCall).toBeDefined();
+  });
+});

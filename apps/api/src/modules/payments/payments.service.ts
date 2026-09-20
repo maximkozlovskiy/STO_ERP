@@ -420,7 +420,9 @@ export class PaymentsService {
           orgId,
           {
             counterpartyId: dto.counterpartyId,
-            type: 'PAYMENT',
+            // Тип проводки: дефолт PAYMENT (звичайна оплата). Bank-statement рознесення передає
+            // PREPAYMENT (аванс) / REFUND (повернення) — BALANCE_SIGN різний знак. append-only-safe.
+            type: dto.settlementType ?? 'PAYMENT',
             amount: dto.amount,
             // Мультивалюта (Фаза 2): передаємо валюту → борг лягає у base (amountBase). createTransaction
             // сам конвертує (спільне джерело курсу). Без currencyId → base (BC для UAH-орг).

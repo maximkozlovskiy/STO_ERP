@@ -189,6 +189,37 @@ enum ProviderKind {
   FISCAL // ПРРО: Checkbox, Вчасно.Каса
   PAYMENT // еквайринг/онлайн-оплата: monobank, LiqPay
   DELIVERY // служба доставки/трекінг: Нова Пошта
+  BANK // банківські виписки (вхідні платежі): Privat24 Merchant API
+}
+
+// Staging вхідних банк-транзакцій (BankTransaction). UNMATCHED — сира, не прив'язана до контрагента;
+// MATCHED — прив'язана, Payment створено (paymentId != null); IGNORED — оператор позначив нерелевантною
+// (комісія банку, внутрішній переказ) — Payment НЕ створюється.
+enum BankTransactionStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+// Тип рознесення вхідної банк-транзакції → визначає SettlementTransaction.type у Payment.
+enum BankTransactionMatchType {
+  PREPAYMENT // аванс/передоплата → SettlementTransaction PREPAYMENT
+  SERVICE // оплата за послуги без наряду (прямий дохід) → PAYMENT
+  INVOICE // прив'язка до наявного Invoice (purpose містив номер) → PAYMENT + invoiceId
+  REFUND // повернення/помилковий → REFUND
+  OTHER // інше (класифікація вручну)
+}
+
+// Джерело завантаження банк-транзакції.
+enum BankTransactionSource {
+  FILE_IMPORT // CSV/XLSX виписка (offline)
+  PRIVAT24_API // auto-pull Privat24 Merchant API
+}
+
+// Напрям банк-транзакції. Фокус MVP — IN (вхідні надходження).
+enum BankTransactionDirection {
+  IN
+  OUT
 }
 
 enum SettlementTransactionType {

@@ -13,7 +13,10 @@ model Counterparty {
   legalForm     LegalForm?
   legalAddress  String?
   actualAddress String?
-  bankAccount   String?
+  bankAccount   String? // вільний текст банк-реквізиту (для друку/відображення)
+  // Нормалізований IBAN (UPPERCASE, без пробілів) — структурований ключ для авто-матчу вхідних
+  // банк-виписок (payerIban → counterpartyId). Заповнюється backfill-ом з bankAccount + вручну.
+  iban          String?
   bankName      String?
   contactPerson String?
   taxNumber     String?
@@ -40,10 +43,14 @@ model Counterparty {
   warranties         Warranty[]
   calendarSlots      CalendarSlot[]
   statusLinks        CounterpartyStatusLink[]
+  bankTransactions   BankTransaction[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, type, deletedAt])
   @@index([orgId, syncVersion])
+  // Bulk-матч вхідних банк-виписок: payerIban → counterpartyId, payerEdrpou → counterpartyId.
+  @@index([orgId, iban])
+  @@index([orgId, edrpou])
   @@map("counterparties")
 }
 
