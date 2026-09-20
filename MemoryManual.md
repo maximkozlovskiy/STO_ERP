@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-21 (sync bank-statements monobank+DBF+multi-bank — 1 fix, DBF accept-attr)
+Дата:       2026-09-21 (review bank-statements UI-реорг вкладки+перенос рахунків — 1 fix async-guard)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
@@ -32,7 +32,19 @@ i18n:       Багатомовність uk/en ЗАВЕРШЕНА повніст
             (29eaad2f). CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts — backend
             PDF свідомо лишається укр.). Pre-existing mojibake у employees/services/settings.dto — скопійовано
             verbatim заради byte-identity (окремий дефект, поза scope).
-Review(bank-statements): 2026-09-20 (auto, HEAD 7221773a) — 1 дефект (§1) виправлено. Скоуп
+Review(bank-statements UI-реорг): 2026-09-21 (auto, 6245e629, скоуп 937fc0ee) — 1 fix (§3.1 async-guard).
+            Вкладковий bank-statements (tab-shell за cash-зразком) + перенос BankAccountsTab з ndi/ + колонка
+            «Рахунок» (backend include join). ЧИСТО: page.tsx Suspense+dynamic ssr:false+?tab= через
+            useSearchParams/router.replace, invalid-tab guard (TABS.some), useRequireAuth у shell — коректно,
+            SSG-safe (усе 'use client', output:export не ламається); backend include bankAccount{name,ibanUA}
+            = single join (N+1 немає), mapper nullable-safe (?? null); DTO↔web interface parity; colSpan 7 у
+            ВСІХ станах (loading/empty/rows); i18n 100% parity uk/en (page.tabs/columns.account + ndi
+            autoPullBadge/providerAny); ndi 7→6 вкладок без мертвих посилань; import ../ndi/types валідний;
+            BankAccountsTab move 91% similarity (ref-cache+apiFetch логіка інтактна, Bug #766-клас НЕ регрес).
+            Fix: додано cancelled-flag guard на 4 setState-гілки useEffect (Promise.all+providers) — патерн
+            перенесено з ndi без guard (React-Query не викор.). a11y вкладок = plain <button> як cash-shell
+            (консистентно з codebase-нормою, не регрес). api tsc 0 / web tsc 0; bank-statements suite 15 pass.
+Review(bank-statements prev): 2026-09-20 (auto, HEAD 7221773a) — 1 дефект (§1) виправлено. Скоуп
             fe23cbb4+3e57a9e5+98685622 (backend+UI+sync-fix): schema BankTransaction/enums/Counterparty.iban,
             bank-reconciliation.service, payments settlementType(PREPAYMENT/REFUND), controller, 4 web-файли.
             Fix: React.ChangeEvent → named import у BankStatementImportModal. ПЕРЕВІРЕНО ЧИСТО:
