@@ -31,6 +31,19 @@ i18n:       Багатомовність uk/en ЗАВЕРШЕНА повніст
             (29eaad2f). CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts — backend
             PDF свідомо лишається укр.). Pre-existing mojibake у employees/services/settings.dto — скопійовано
             verbatim заради byte-identity (окремий дефект, поза scope).
+Review(bank-statements): 2026-09-20 (auto, HEAD 7221773a) — 1 дефект (§1) виправлено. Скоуп
+            fe23cbb4+3e57a9e5+98685622 (backend+UI+sync-fix): schema BankTransaction/enums/Counterparty.iban,
+            bank-reconciliation.service, payments settlementType(PREPAYMENT/REFUND), controller, 4 web-файли.
+            Fix: React.ChangeEvent → named import у BankStatementImportModal. ПЕРЕВІРЕНО ЧИСТО:
+            matchTransaction CAS(status=UNMATCHED,paymentId=null)→create→link idempotent (orphan-Payment
+            вікно benign — retry=Conflict, no double-charge); PREPAYMENT/REFUND BALANCE_SIGN=−1 коректний,
+            default ??'PAYMENT' зберігає всіх наявних callers; applyImport createMany skipDuplicates
+            (externalId-idem)+amountBase по валюті рахунку+$transaction timeout; resolveBatch ≤4 findMany
+            (in-bounded lookup — take НЕ додавати, зламає Map); tenant orgId у КОЖНОМУ where (guard fail-closed
+            покриває, BankTransaction НЕ exempt); міграція ручна ADD VALUE+DDL разом=6 прецедентів PG16-ok;
+            iban backfill regex безпечний; i18n 89/89 uk=en, усі t()-ключі резолвляться. Suggestion (НЕ
+            фіксовано, не trivial): ₴ хардкод у 4 місцях UI — tx.currencyId може бути USD/EUR (MVP UAH-focus).
+            api tsc 0 / web tsc 0 (baseline не регресовано).
 Sync(bank-statements): 2026-09-20 (auto, 98685622) — 1 виправлено. PaginatedBankTransactionsDto
             +list() бракували page/limit (усі інші Paginated*Dto в проекті мають {items,total,page,limit} —
             матчить web PaginatedResponse<T> у usePaginatedList). URL/методи/DTO-поля/enum-и (matchType,
