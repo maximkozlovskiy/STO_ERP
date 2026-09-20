@@ -185,6 +185,86 @@ describe('BankStatementPullProcessor', () => {
     expect(prisma.bankAccount.updateMany).toHaveBeenCalled();
   });
 
+  it('ідемпотентність overlapping-window: повторний pull того ж externalId → 0 дубль-Payment', async () => {
+    // Перший pull: транзакція UNMATCHED, авто-матч confidence===1 → matchTransaction.
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('dup-1')]);
+    reconciliation.resolveBatch.mockResolvedValue(
+      new Map([
+        [
+          'dup-1',
+          { status: 'matched', confidence: 1, counterpartyId: 'cp-1', matchType: 'SERVICE' },
+        ],
+      ]),
+    );
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(reconciliation.matchTransaction).toHaveBeenCalledTimes(1);
+
+    // Другий pull (overlapping window): той самий externalId. applyImport skipDuplicates → created:0;
+    // транзакція вже MATCHED → findFirst({status:UNMATCHED}) === null → matchTransaction НЕ повторюється.
+    reconciliation.matchTransaction.mockClear();
+    reconciliation.applyImport.mockResolvedValue({ created: 0, skipped: 1 });
+    prisma.bankTransaction.findFirst.mockResolvedValue(null); // вже не UNMATCHED
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+    // Гроші-безпека: жодного повторного Payment на повторному вікні.
+  });
+
+  it('авто-матч НЕ спрацьовує на ambiguous/notFound (confidence undefined) — гроші лишаються у staging', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('amb'), rawTx('nf')]);
+    reconciliation.resolveBatch.mockResolvedValue(
+      new Map([
+        [
+          'amb',
+          { status: 'ambiguous', candidates: [{ counterpartyId: 'a' }, { counterpartyId: 'b' }] },
+        ],
+        ['nf', { status: 'notFound', candidates: [] }],
+      ]),
+    );
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+  });
+
+  it('авто-матч edrpou confidence 0.9 (matched, але <1) → НЕ авто-матчиться', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('edr')]);
+    reconciliation.resolveBatch.mockResolvedValue(
+      new Map([
+        [
+          'edr',
+          { status: 'matched', confidence: 0.9, counterpartyId: 'cp-9', matchType: 'SERVICE' },
+        ],
+      ]),
+    );
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+  });
+
+  it('confidence===1 але counterpartyId відсутній → НЕ матчиться (guard проти битого MatchResult)', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('nocp')]);
+    reconciliation.resolveBatch.mockResolvedValue(
+      new Map([['nocp', { status: 'matched', confidence: 1, matchType: 'SERVICE' }]]),
+    );
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+  });
+
+  it('per-account isolation: рахунок що кидає applyImport → інші рахунки продовжують курсор', async () => {
+    prisma.bankAccount.findMany.mockResolvedValue([
+      acctRow({ id: 'acc-a' }),
+      acctRow({ id: 'acc-b', ibanUA: 'UA2' }),
+    ]);
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('r')]);
+    // acc-a applyImport кидає, acc-b успішний.
+    reconciliation.applyImport
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValueOnce({ created: 1, skipped: 0 });
+    // Не має впасти весь job — обробка триває.
+    await expect(processor.process(makeJob({ orgId: ORG }))).resolves.toBeUndefined();
+    // acc-b курсор оновлено (per-account isolation тримає).
+    const updatedAccIds = prisma.bankAccount.updateMany.mock.calls.map(c => c[0].where.id);
+    expect(updatedAccIds).toContain('acc-b');
+    expect(updatedAccIds).not.toContain('acc-a'); // acc-a курсор НЕ рухається (втрати даних немає)
+  });
+
   it('помилка fetchStatements одного рахунку → інші обробляються', async () => {
     prisma.bankAccount.findMany.mockResolvedValue([
       acctRow({ id: 'acc-fail' }),

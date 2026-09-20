@@ -103,29 +103,48 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
 
         if (rows.length === 0) {
           // Немає нових транзакцій — все одно рухаємо курсор (порожнє вікно оброблено).
-          await this.updateCursor(orgId, acc.id, to);
+          // Best-effort: збій курсора одного рахунку не валить решту (Bug #768 isolation).
+          try {
+            await this.updateCursor(orgId, acc.id, to);
+          } catch (e) {
+            this.logger.error(
+              `Рахунок ${acc.id}: оновлення курсора (порожнє вікно) впало: ${e instanceof Error ? e.message : e}`,
+            );
+          }
           continue;
         }
 
-        // Ідемпотентний імпорт у staging (skipDuplicates по unique externalId). RawTx.operationDate
-        // (Date) → ISO-рядок для ApplyRowDto (applyImport робить new Date(...) назад).
-        await this.reconciliation.applyImport(
-          orgId,
-          {
-            bankAccountId: acc.id,
-            rows: rows.map(r => ({
-              externalId: r.externalId,
-              operationDate: r.operationDate.toISOString(),
-              amount: r.amount,
-              payerName: r.payerName ?? undefined,
-              payerIban: r.payerIban ?? undefined,
-              payerEdrpou: r.payerEdrpou ?? undefined,
-              purpose: r.purpose ?? undefined,
-              rawData: r.rawData,
-            })),
-          },
-          'PRIVAT24_API',
-        );
+        // Bug #768: per-account isolation мусить охоплювати ВЕСЬ хвіст обробки рахунку, не лише
+        // fetch. Помилка applyImport (транзієнтний збій БД / lock-timeout / resolveBaseConversion)
+        // одного рахунку НЕ має валити pull інших рахунків орг (інакше один битий рахунок голодує
+        // решту вікна). На помилку imp/match — log-and-continue; курсор НЕ рухаємо (даних не втрачаємо,
+        // наступний pull повторить вікно ідемпотентно через skipDuplicates).
+        try {
+          // Ідемпотентний імпорт у staging (skipDuplicates по unique externalId). RawTx.operationDate
+          // (Date) → ISO-рядок для ApplyRowDto (applyImport робить new Date(...) назад).
+          await this.reconciliation.applyImport(
+            orgId,
+            {
+              bankAccountId: acc.id,
+              rows: rows.map(r => ({
+                externalId: r.externalId,
+                operationDate: r.operationDate.toISOString(),
+                amount: r.amount,
+                payerName: r.payerName ?? undefined,
+                payerIban: r.payerIban ?? undefined,
+                payerEdrpou: r.payerEdrpou ?? undefined,
+                purpose: r.purpose ?? undefined,
+                rawData: r.rawData,
+              })),
+            },
+            'PRIVAT24_API',
+          );
+        } catch (e) {
+          this.logger.error(
+            `Рахунок ${acc.id}: applyImport впав — курсор не рухаю, наступний pull повторить: ${e instanceof Error ? e.message : e}`,
+          );
+          continue; // НЕ оновлюємо курсор → жодної втрати транзакцій вікна
+        }
 
         // АВТО-МАТЧ (лише confidence===1 — упевнений збіг за IBAN). Гроші вже у staging; помилка
         // матчу окремого рядка не має зривати pull — log-and-continue.
@@ -163,7 +182,15 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
           );
         }
 
-        await this.updateCursor(orgId, acc.id, to);
+        // Курсор рухаємо лише коли imp пройшов. Помилка cursor-update одного рахунку теж не має
+        // валити решту (best-effort — наступний pull повторить вікно ідемпотентно).
+        try {
+          await this.updateCursor(orgId, acc.id, to);
+        } catch (e) {
+          this.logger.error(
+            `Рахунок ${acc.id}: оновлення курсора lastPulledAt впало: ${e instanceof Error ? e.message : e}`,
+          );
+        }
       }
     });
   }

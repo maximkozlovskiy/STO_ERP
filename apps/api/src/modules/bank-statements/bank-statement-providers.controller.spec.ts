@@ -83,4 +83,29 @@ describe('BankStatementProvidersController', () => {
     expect(res).toEqual({ queued: true });
     expect(scheduler.enqueueImmediate).toHaveBeenCalledWith(ORG);
   });
+
+  // Ролі (RolesGuard читає 'roles' metadata). Write-операції — лише OWNER/ADMIN; read + pull-now
+  // додатково ACCOUNTANT (бухгалтер тягне/дивиться виписку, але не змінює конфіг банку).
+  describe('@Roles metadata', () => {
+    const rolesOf = (method: string): string[] =>
+      Reflect.getMetadata(
+        'roles',
+        BankStatementProvidersController.prototype[
+          method as keyof typeof BankStatementProvidersController.prototype
+        ],
+      );
+
+    it('read + pull-now доступні ACCOUNTANT (list/verify/branchConfigs/pullNow)', () => {
+      for (const m of ['list', 'verify', 'branchConfigs', 'pullNow']) {
+        expect(rolesOf(m)).toEqual(expect.arrayContaining(['OWNER', 'ADMIN', 'ACCOUNTANT']));
+      }
+    });
+
+    it('write (upsert/activate) — лише OWNER/ADMIN, БЕЗ ACCOUNTANT', () => {
+      for (const m of ['upsert', 'activate']) {
+        expect(rolesOf(m)).toEqual(['OWNER', 'ADMIN']);
+        expect(rolesOf(m)).not.toContain('ACCOUNTANT');
+      }
+    });
+  });
 });

@@ -88,6 +88,52 @@ describe('Privat24Client', () => {
     await expect(client.fetchTransactions(baseArgs)).rejects.toThrow(/перенаправлення|302/);
   });
 
+  it('MAX_PAGES cap: нескінченний exist_next_page → зупинка на 200 сторінках (без infinite loop)', async () => {
+    // Провайдер завжди каже «є наступна сторінка» з новим курсором — клієнт мусить впертись у cap.
+    let n = 0;
+    fetchMock.mockImplementation(async () => {
+      n += 1;
+      return okResponse({
+        transactions: [{ REF: `R${n}` }],
+        exist_next_page: true,
+        next_page_id: `CUR${n}`,
+      });
+    });
+    const rows = await client.fetchTransactions(baseArgs);
+    // Рівно MAX_PAGES викликів (200), не більше — доводить hard-cap.
+    expect(fetchMock).toHaveBeenCalledTimes(200);
+    expect(rows).toHaveLength(200);
+  });
+
+  it('exist_next_page=true але next_page_id відсутній → стоп (без undefined-followId петлі)', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse({ transactions: [{ REF: 'A' }], exist_next_page: true }), // немає next_page_id
+    );
+    const rows = await client.fetchTransactions(baseArgs);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('exist_next_page рядок "true" теж триггерить наступну сторінку', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        okResponse({ transactions: [{ REF: 'A' }], exist_next_page: 'true', next_page_id: 'C2' }),
+      )
+      .mockResolvedValueOnce(okResponse({ transactions: [{ REF: 'B' }], exist_next_page: false }));
+    const rows = await client.fetchTransactions(baseArgs);
+    expect(rows.map(r => r.REF)).toEqual(['A', 'B']);
+  });
+
+  it('порожня відповідь (текст "") → {} → 0 транзакцій, без throw', async () => {
+    fetchMock.mockResolvedValue({
+      status: 200,
+      ok: true,
+      text: async () => '',
+    } as unknown as Response);
+    const rows = await client.fetchTransactions(baseArgs);
+    expect(rows).toEqual([]);
+  });
+
   it('redact: секрети id/token не витікають у текст помилки', async () => {
     fetchMock.mockResolvedValue({
       status: 401,

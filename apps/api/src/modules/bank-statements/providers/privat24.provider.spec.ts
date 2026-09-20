@@ -75,6 +75,42 @@ describe('Privat24Provider', () => {
     expect(rows[0].rawData).toEqual(raw);
   });
 
+  it('порожня відповідь (0 рядків) → []', async () => {
+    client.fetchTransactions.mockResolvedValue([]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows).toEqual([]);
+  });
+
+  it('змішаний батч: валідні лишаються, биті (без REF / debit / битий amount) відкидаються', async () => {
+    client.fetchTransactions.mockResolvedValue([
+      { REF: 'ok-1', TRANTYPE: 'C', SUM: '100', DAT_OD: '05.09.2026' }, // ✓
+      { TRANTYPE: 'C', SUM: '50', DAT_OD: '05.09.2026' }, // ✗ без REF
+      { REF: 'debit-1', TRANTYPE: 'D', SUM: '200', DAT_OD: '05.09.2026' }, // ✗ debit
+      { REF: 'ok-2', TRANTYPE: 'C', SUM: '75.25', DAT_OD: '06.09.2026' }, // ✓
+      { REF: 'bad-amt', TRANTYPE: 'C', SUM: '0', DAT_OD: '06.09.2026' }, // ✗ amount<=0
+      { REF: 'neg', TRANTYPE: 'C', SUM: '-10', DAT_OD: '06.09.2026' }, // ✗ від'ємна
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows.map(r => r.externalId)).toEqual(['ok-1', 'ok-2']);
+  });
+
+  it("amount=0 та амаунт від'ємний → skip (лише додатні надходження)", async () => {
+    client.fetchTransactions.mockResolvedValue([
+      { REF: 'z', TRANTYPE: 'C', SUM: '0.00', DAT_OD: '05.09.2026' },
+      { REF: 'n', TRANTYPE: 'C', SUM: '-5', DAT_OD: '05.09.2026' },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows).toEqual([]);
+  });
+
+  it('parseDate: DD-MM-YYYY (дефіси) теж парситься', async () => {
+    client.fetchTransactions.mockResolvedValue([
+      { REF: 'dash', TRANTYPE: 'C', SUM: '1', DAT_OD: '15-03-2026' },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows[0].operationDate.toISOString()).toBe('2026-03-15T00:00:00.000Z');
+  });
+
   it('creds: відсутній token → fetchStatements кидає', async () => {
     await expect(
       provider.fetchStatements({ apiUrl: null, credentials: { merchantId: 'M' } }, params),
