@@ -43,8 +43,9 @@ test.describe('Банківські платежі', () => {
     });
 
     // Назад на «Список платежів» → URL без ?tab= + кнопка імпорту.
+    // trailingSlash:true (next.config) → базовий URL є /bank-statements/ без query.
     await page.getByRole('button', { name: 'Список платежів' }).click();
-    await expect(page).toHaveURL(/\/bank-statements$/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/bank-statements\/$/, { timeout: 5_000 });
     await expect(page.locator('button:has-text("Імпорт виписки")').first()).toBeVisible();
   });
 
@@ -56,6 +57,18 @@ test.describe('Банківські платежі', () => {
     await expect(page.getByRole('button', { name: 'Додати рахунок' }).first()).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test('невалідний ?tab=xxx → fallback на вкладку «Список платежів»', async ({ page }) => {
+    await page.goto('/bank-statements?tab=xxx');
+    await expect(page.locator('h1:has-text("Банківські платежі")')).toBeVisible({
+      timeout: 20_000,
+    });
+    // Fallback-логіка: невідомий tab → transactions. Видно кнопку імпорту (не форму рахунків).
+    await expect(page.locator('button:has-text("Імпорт виписки")').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('button', { name: 'Додати рахунок' })).toHaveCount(0);
   });
 
   test('сторінка /bank-statements рендериться з заголовком і кнопкою імпорту', async ({ page }) => {

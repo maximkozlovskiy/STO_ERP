@@ -6052,3 +6052,35 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **невідомий provider-код** (не privat24/monobank): resolveByCode→null → рахунок пропущено (debug-log), providerToSource→FILE_IMPORT дефолт. Fail-safe, без крешу (покрито тестом).
 - **provider='' у processor**: falsy → гілка resolveActive (legacy-fallback) — коректно навіть без Bug #769-фіксу; асиметрія лише у збереженні/контракті, не в auto-pull-роутингу.
 - **import modal accept=.dbf** (77ad954d): збігається з backend assertSupported (.csv/.xlsx/.dbf) — перевірено, коректно.
+
+## Session 2026-09-21 — bank-statements UI-реорг (вкладки + перенос банк-рахунків + колонка «Рахунок») bug hunt
+
+Скоуп: коміти 937fc0ee (page.tsx tab-shell [Список платежів | Банк. рахунки]; BankAccountsTab перенесено ndi→bank-statements +auto-pull Badge; BankTransactionsTab винесено +колонка «Рахунок»; ndi 7→6 табів; backend join bankAccountName/Iban) + 6245e629 (async-guard). Пройдено sync (0 mismatches) + review (PASS, 1 async-guard fix). Було 15 component + оновлені E2E. Прогнав повний E2E-гейт + live-браузер верифікацію колонки/CRUD/форми + backend join null-safety.
+
+### Bug #770 — E2E toHaveURL(/\/bank-statements$/) ігнорує trailingSlash:true → тест-регресія у власному reorg-коміті — LOW (stale test)
+
+**Файл:** `apps/web/e2e/bank-statements.spec.ts` (assertion повернення на вкладку «Список платежів»)
+
+**Симптом:** тест «дві вкладки … перемикання оновлює URL» падав на кроці повернення: `expect(page).toHaveURL(/\/bank-statements$/)` — очікував URL без завершального слеша, а реальний URL завжди `/bank-statements/` (next.config `trailingSlash: true`). Регекс `$` після `bank-statements` НІКОЛИ не матчить у цьому застосунку. Продуктова поведінка КОРЕКТНА (клік «Список платежів» → `router.replace('/bank-statements')` → Next нормалізує у `/bank-statements/`, `?tab=` скидається). Помилка суто у тест-асерції, написаній у тому ж reorg-коміті 937fc0ee — автор не врахував trailingSlash.
+
+**Виявлено:** запуском E2E — 1 fail із 9 у bank-statements.spec (auth ОК, 5 інших pass). Класифіковано як stale test (не продуктовий баг): жодна поведінка користувача не зламана.
+
+**Причина виникнення:** нова tab-shell асерція скопійована без урахування глобального `trailingSlash: true` — інші асерції у файлі використовують підрядкові регекси (`/tab=accounts/`), тому не спіткнулись; лише «кінець рядка» (`$`) регекс став чутливим до слеша.
+
+**Фікс:** регекс → `/\/bank-statements\/$/` (матчить `/bank-statements/`, відкидає `/bank-statements/?tab=accounts` — тобто перевіряє саме скидання `?tab=`). Додано пояснювальний коментар про trailingSlash.
+
+**Тест (додатковий):** +1 E2E «невалідний ?tab=xxx → fallback на вкладку Список платежів» (SCOPE вимагав перевірку fallback-логіки page.tsx рядок 28 `TABS.some(...) ? requestedTab : 'transactions'`; раніше не було E2E). Перевіряє: видно «Імпорт виписки», відсутня «Додати рахунок».
+
+**Severity:** LOW (тест-регресія у власному коміті; продукт коректний, користувача не зачіпає).
+
+[x] виправлено
+
+### Перевірено як БЕЗПЕЧНЕ / КОРЕКТНЕ (не баг)
+
+- **Backend join null-safety (SCOPE 2):** `BankTransaction.bankAccountId` — NOT NULL (`String @db.Uuid`, relation `bankAccount BankAccount` обов'язкова), тож `include` завжди дає рядок. Mapper `tx.bankAccount?.name ?? null` — null-safe defensive. match/ignore (`findFirstOrThrow` БЕЗ include) → `tx.bankAccount === undefined` → mapper повертає `bankAccountName: null` (не undefined-drift; DTO тип `string | null`). Web рендерить `name ?? shortIban(iban) ?? '—'` — коректно. Live-браузер: колонка «Рахунок» показує «E2E test» для кожного рядка.
+- **Async-guard (SCOPE 3, 6245e629):** cancelled-flag на всіх гілках Promise.all+providers+cleanup — покрито component-тестами; tab-switch під час завантаження не тригерить setState-on-unmounted. Live: форма рахунку (3 селекти вкл. provider «Банк для авто-підтягування» + checkbox autoPull) рендериться після переносу.
+- **Auto-pull Badge (SCOPE 4):** component-тести підтверджують — autoPullEnabled+provider→«Авто-pull: Приват24» (людська назва з метаданих), без autoPull→нема бейджа (queryAllByText length 1). Live: рахунок «E2E test» (autoPull:false) — бейдж відсутній, коректно.
+- **NDI прямий `/ndi?tab=bank-accounts`:** після видалення з union — tab-cast без валідації → рендериться порожній контент, жодна вкладка не активна. НЕ регресія (NDI ніколи не валідував tab; SCOPE підтверджує прямих лінків не було; nav не чіпано). Не флагую.
+- **i18n:** усі ключі присутні uk+en (`bankStatements.tabs.transactions/accounts`, `columns.account`; `ndi.fieldProvider/providerAny/fieldAutoPull/autoPullBadge` з `{{provider}}`-інтерполяцією). Нема dangling/missing.
+- **act() warning у BankAccountsTab.test «валідний кеш»:** тест рендерить синхронно й асертить кешований рядок без await async-flush → post-resolve setState поза act. Тест-гігієна, не продуктовий баг; suite зелений (15/15). Не чіпаю (косметика).
+- **Console 401 /user-preferences/nav_layout:** pre-existing, не пов'язано з reorg.
