@@ -47,6 +47,8 @@ export default function BankAccountsTab() {
   const [loadingBa, setLoadingBa] = useState(false);
 
   useEffect(() => {
+    // Async-guard (MP-F1): tab-switch під час завантаження не має тригерити setState на unmounted.
+    let cancelled = false;
     setLoadingBa(true);
 
     const cachedBa = getCached<{ items: BankAccount[] }>('cache:bank-accounts');
@@ -68,6 +70,7 @@ export default function BankAccountsTab() {
       apiFetch<{ items: BranchInfo[] } | BranchInfo[]>('/branches'),
     ])
       .then(([baRes, currRes, branchRes]) => {
+        if (cancelled) return;
         setBankAccounts(baRes.items);
         setCache('cache:bank-accounts', baRes);
         setCurrencies(currRes.items);
@@ -78,6 +81,7 @@ export default function BankAccountsTab() {
         setLoadingBa(false);
       })
       .catch((e: unknown) => {
+        if (cancelled) return;
         setError(e instanceof Error ? e.message : t('common.loadError'));
         setLoadingBa(false);
       });
@@ -85,8 +89,18 @@ export default function BankAccountsTab() {
     // Метадані банків-провайдерів для селекта auto-pull (best-effort — не блокує форму).
     // Guard Array.isArray (Bug #592-стиль): битий/несподіваний респонс не має крашити .map.
     apiFetch<{ code: string; name: string }[]>('/bank-statement-providers')
-      .then(res => setBankProviders(Array.isArray(res) ? res : []))
-      .catch(() => setBankProviders([]));
+      .then(res => {
+        if (cancelled) return;
+        setBankProviders(Array.isArray(res) ? res : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBankProviders([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [t]);
 
   // Код провайдера → людська назва (privat24→Приват24) з метаданих; fallback — сам код.
