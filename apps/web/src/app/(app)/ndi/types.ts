@@ -41,6 +41,9 @@ export interface BankAccount {
   mfo?: string | null;
   edrpou?: string | null;
   bankAddress?: string | null;
+  /** Авто-підтягування виписки Privat24 (керується через /bank-accounts, UI-toggle поки відсутній). */
+  autoPullEnabled?: boolean;
+  lastPulledAt?: string | null;
 }
 
 // CashRegister тип видалено разом з НДІ→Каса вкладкою (refactor(dedup)):
