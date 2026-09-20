@@ -233,6 +233,8 @@ export class BankTransactionResponseDto {
 export class PaginatedBankTransactionsDto {
   @ApiProperty({ type: [BankTransactionResponseDto] }) items!: BankTransactionResponseDto[];
   @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
 }
 
 /** Форма рядка транзакції для mapper (звужена — лише поля, що читає toBankTransactionResponseDto). */

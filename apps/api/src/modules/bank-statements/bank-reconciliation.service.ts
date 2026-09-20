@@ -409,7 +409,12 @@ export class BankReconciliationService {
       }),
       this.prisma.bankTransaction.count({ where }),
     ]);
-    return { items: items.map(toBankTransactionResponseDto), total };
+    return {
+      items: items.map(toBankTransactionResponseDto),
+      total,
+      page: safePage,
+      limit: safeLimit,
+    };
   }
 
   /**
