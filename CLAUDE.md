@@ -172,6 +172,7 @@ Work/WorkCategory → docs/objects/work.md
 CalendarSlot    → docs/objects/calendar.md
 StockItem/StockMovement → docs/objects/inventory.md
 SettlementAccount/Transaction → docs/objects/settlements.md
+BankTransaction → docs/objects/bank-statements.md
 ```
 
 **НЕ** дублювати деталі між файлами — одне місце правди.

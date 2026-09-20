@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-09-20 — Фіча: вхідні банк-платежі без рахунку (bank-statements MVP)
+
+### feat(bank-statements) fe23cbb4 (backend) + 3e57a9e5 (UI) — облік вхідних надходжень БЕЗ Invoice
+
+Банківські надходження, що приходять без прив'язки до рахунку (аванси, оплати послуг без наряду,
+повернення). Staging-модель `BankTransaction` (UNMATCHED) → рознесення на контрагента → `Payment`.
+`Payment.counterpartyId` лишається NOT NULL. Див. docs/objects/bank-statements.md.
+
+- **Модель** (Фаза 0): BankTransaction + enums (ProviderKind+BANK, BankTransactionStatus/MatchType/
+  Source/Direction); Counterparty.iban (нормалізований) + індекси iban/edrpou + backfill; ідемпотентність
+  `@@unique(orgId,bankAccountId,externalId)` + `paymentId @unique`; sync поза PULL_TABLES (payer PII).
+  Міграція 20260919120000.
+- **Core:** CreatePaymentDto.settlementType? (PAYMENT|PREPAYMENT|REFUND, default PAYMENT) → задіює наявний
+  невикористаний PREPAYMENT тип. append-only-safe.
+- **Матчинг** (Фаза 1): resolveBatch BULK (≤4 findMany/батч) — IBAN 1.0 → ЄДРПОУ 0.9 → purpose-Invoice/WO
+  0.7 → notFound; >1 → ambiguous.
+- **Файловий імпорт** (Фаза 2, offline): parser ExcelJS/csv (UA-кома, DD.MM.YYYY); rawPreview→column-mapping
+  →preview(matched/ambiguous/notFound/duplicate)→apply (createMany skipDuplicates, amountBase по валюті рахунку).
+- **Рознесення** (Фаза 3): matchTransaction CAS-mark→payments.create(settlementType)→link paymentId, відкат
+  UNMATCHED на помилці; ignoreTransaction.
+- **UI** (Фаза 5): сторінка список+фільтр+пагінація, MatchModal (контрагент+тип+opt.invoice), ImportModal
+  (3-крок wizard), nav Landmark, i18n uk/en, ignore-reason власна Modal (не window.prompt).
+- **QA:** sync 98685622 (pagination shape {items,total,page,limit}); review 7221773a APPROVED (React
+  namespace fix); tester 2b3e0c64 **Bug #767** (parseDate rollover: '31.02'→'03.03' тихо → битий operationDate
+  → неправильний FX-курс amountBase; round-trip guard) + покрито раніше-нетестований parser (11) + 6 E2E.
+- Верифікація: api tsc 0 / web tsc 0; api 2613 · web 837 · E2E 343/343. ВІДКЛАДЕНО: Фаза 4 Privat24 API auto-pull.
+
 ## 2026-09-19 — Tech-debt: mojibake + seed authAccount (після 3-циклового QA)
 
 ### fix(i18n) f5021387 — декодовано pre-existing mojibake (DTO-описи + 10 catalog-значень)

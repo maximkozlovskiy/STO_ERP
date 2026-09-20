@@ -760,6 +760,29 @@ export-обмеженням (той самий рубіж, що й Server Compon
 
 ---
 
+## MP-B8 — Staging-реконсиляція вхідних платежів (bank-statements, 2026-09-20)
+
+Патерн «сирі зовнішні надходження → матч → грошовий документ» (bank-statements; переюзовний для будь-якого
+імпорту що створює Payment/рух після ручного/авто-рознесення). Деталі — docs/objects/bank-statements.md.
+
+- **Staging-модель** (BankTransaction) тримає сирі дані з `externalId` (унікальний ключ джерела) +
+  `status` FSM (UNMATCHED→MATCHED|IGNORED). Цільовий документ (Payment) створюється ЛИШЕ при матчі —
+  НЕ ламаємо NOT NULL-інваріанти цілі (Payment.counterpartyId), «непрознесене» живе у staging.
+- **Дворівнева ідемпотентність:** `@@unique(orgId, <scope>, externalId)` (повторний імпорт/pull не дублює
+  staging) + `<target>Id @unique` на staging (1 документ на staging-рядок). Дзеркалить OnlinePaymentIntent→Payment.
+- **CAS-захват при матчі:** `updateMany where status=UNMATCHED, <targetId>=null → MATCHED` (count===0 →
+  Conflict/NotFound). Порядок: CAS-mark → create цільового (він має ВЛАСНУ транзакцію — НЕ обгортати) →
+  link targetId. На помилці create → відкат UNMATCHED (retriable). Orphan (create ok, link fail) benign:
+  retry → CAS-Conflict, без дублю. Зразок: bank-reconciliation.service.matchTransaction.
+- **BULK-матчинг без N+1:** зібрати унікальні ключі ознак → ОДИН findMany({in}) на ознаку → Map-lookup
+  (не findMany-per-row). Каскад пріоритетів (точна ознака → слабша → parse-евристика → notFound); >1 → ambiguous.
+- **Файловий імпорт:** rawPreview (сира сітка) → column-mapping → previewImport (dry-run + дедуп) → applyImport
+  (createMany skipDuplicates). Реюз xlsx-парсера (UA-кома parseNumber, cellText). ⚠ date-парсер МУСИТЬ мати
+  round-trip guard (Bug #767: `new Date(Date.UTC(...))` тихо перекочує 31.02→03.03 → битий operationDate → FX).
+- **Staging поза sync PULL_TABLES** (payer PII, серверна реконсиляція).
+
+---
+
 ## Зведення grep-детекторів (для CI / review)
 
 | Патерн                   | Сигнал порушення                                                                      |
