@@ -95,7 +95,9 @@
     "fieldBankAddress": "Адреса банку",
     "fieldProvider": "Банк для авто-підтягування",
     "providerNone": "Немає (без авто-pull)",
-    "fieldAutoPull": "Авто-підтягувати виписку"
+    "providerAny": "усі банки",
+    "fieldAutoPull": "Авто-підтягувати виписку",
+    "autoPullBadge": "Авто-pull: {{provider}}"
   },
   "taxRates": {
     "empty": "Ставок ПДВ не знайдено",

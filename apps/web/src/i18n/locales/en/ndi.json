@@ -95,7 +95,9 @@
     "fieldBankAddress": "Bank address",
     "fieldProvider": "Bank for auto-pull",
     "providerNone": "None (no auto-pull)",
-    "fieldAutoPull": "Auto-pull statements"
+    "providerAny": "all banks",
+    "fieldAutoPull": "Auto-pull statements",
+    "autoPullBadge": "Auto-pull: {{provider}}"
   },
   "taxRates": {
     "empty": "No VAT rates found",

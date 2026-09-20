@@ -41,6 +41,9 @@ export interface BankTransaction {
   matchConfidence?: number | null;
   ignoreReason?: string | null;
   createdAt: string;
+  // Назва/IBAN нашого рахунку-отримувача (join у list()) — для колонки «Рахунок» у списку платежів.
+  bankAccountName?: string | null;
+  bankAccountIban?: string | null;
 }
 
 /** Кандидат-контрагент для ambiguous-рядка. */

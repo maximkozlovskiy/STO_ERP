@@ -2,18 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Modal } from '@/components/ui/modal';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { getCached, setCache } from '@/lib/ref-cache';
-import type { BankAccount, BranchInfo, Currency } from './types';
+import type { BankAccount, BranchInfo, Currency } from '../ndi/types';
 
 export default function BankAccountsTab() {
   const { t } = useTranslation('ndi');
@@ -87,6 +88,10 @@ export default function BankAccountsTab() {
       .then(res => setBankProviders(Array.isArray(res) ? res : []))
       .catch(() => setBankProviders([]));
   }, [t]);
+
+  // Код провайдера → людська назва (privat24→Приват24) з метаданих; fallback — сам код.
+  const providerLabel = (code: string): string =>
+    bankProviders.find(p => p.code === code)?.name ?? code;
 
   const openBaModal = (ba?: BankAccount) => {
     setEditingBa(ba ?? null);
@@ -215,8 +220,21 @@ export default function BankAccountsTab() {
             className="bg-surface border border-border rounded-lg px-4 py-3 flex items-center justify-between"
           >
             <div>
-              <span className="font-medium text-foreground">{b.name}</span>
-              <span className="ml-2 text-xs text-muted-foreground font-mono">{b.ibanUA}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium text-foreground">{b.name}</span>
+                <span className="text-xs text-muted-foreground font-mono">{b.ibanUA}</span>
+                {/* Auto-pull бейдж — оператор бачить, по яких рахунках увімкнено завантаження виписки. */}
+                {b.autoPullEnabled && (
+                  <Badge variant="info" className="gap-1">
+                    <RefreshCw className="w-3 h-3" />
+                    {t('bankAccounts.autoPullBadge', {
+                      provider: b.provider
+                        ? providerLabel(b.provider)
+                        : t('bankAccounts.providerAny'),
+                    })}
+                  </Badge>
+                )}
+              </div>
               <div className="text-xs text-muted-foreground mt-0.5">
                 {b.currencyCode}
                 {b.bankName ? ` · ${b.bankName}` : ''}

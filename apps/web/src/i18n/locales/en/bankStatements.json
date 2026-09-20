@@ -2,12 +2,17 @@
   "page": {
     "title": "Bank payments",
     "import": "Import statement",
+    "tabs": {
+      "transactions": "Payments",
+      "accounts": "Bank accounts"
+    },
     "columns": {
       "payer": "Payer",
       "purpose": "Purpose",
       "amount": "Amount",
       "date": "Date",
-      "status": "Status"
+      "status": "Status",
+      "account": "Account"
     },
     "pills": {
       "all": "All",

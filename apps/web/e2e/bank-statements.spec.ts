@@ -22,6 +22,42 @@ async function getToken(page: import('@playwright/test').Page): Promise<string> 
 }
 
 test.describe('Банківські платежі', () => {
+  test('дві вкладки: «Список платежів» + «Банк. рахунки», перемикання оновлює URL', async ({
+    page,
+  }) => {
+    await page.goto('/bank-statements');
+    await expect(page.locator('h1:has-text("Банківські платежі")')).toBeVisible({
+      timeout: 20_000,
+    });
+    // Обидві вкладки присутні.
+    await expect(page.getByRole('button', { name: 'Список платежів' })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByRole('button', { name: 'Банк. рахунки' })).toBeVisible();
+
+    // Перемикаємо на «Банк. рахунки» → URL ?tab=accounts + контент вкладки рахунків.
+    await page.getByRole('button', { name: 'Банк. рахунки' }).click();
+    await expect(page).toHaveURL(/tab=accounts/, { timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Додати рахунок' }).first()).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Назад на «Список платежів» → URL без ?tab= + кнопка імпорту.
+    await page.getByRole('button', { name: 'Список платежів' }).click();
+    await expect(page).toHaveURL(/\/bank-statements$/, { timeout: 5_000 });
+    await expect(page.locator('button:has-text("Імпорт виписки")').first()).toBeVisible();
+  });
+
+  test('пряме відкриття ?tab=accounts рендерить вкладку банк-рахунків', async ({ page }) => {
+    await page.goto('/bank-statements?tab=accounts');
+    await expect(page.locator('h1:has-text("Банківські платежі")')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('button', { name: 'Додати рахунок' }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+  });
+
   test('сторінка /bank-statements рендериться з заголовком і кнопкою імпорту', async ({ page }) => {
     await page.goto('/bank-statements');
     await expect(page.locator('h1:has-text("Банківські платежі")')).toBeVisible({

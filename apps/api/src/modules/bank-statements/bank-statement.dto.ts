@@ -228,6 +228,10 @@ export class BankTransactionResponseDto {
   @ApiPropertyOptional() matchConfidence?: number | null;
   @ApiPropertyOptional() ignoreReason?: string | null;
   @ApiProperty() createdAt!: string;
+  // Назва/IBAN нашого рахунку-отримувача (join, коли list() робить include bankAccount) — для колонки
+  // «Рахунок» у списку платежів. null коли include не запитано.
+  @ApiPropertyOptional() bankAccountName?: string | null;
+  @ApiPropertyOptional() bankAccountIban?: string | null;
 }
 
 export class PaginatedBankTransactionsDto {
@@ -261,6 +265,8 @@ interface BankTransactionRow {
   matchConfidence: Prisma.Decimal | null;
   ignoreReason: string | null;
   createdAt: Date;
+  // Опційний join рахунку-отримувача (коли list() робить include bankAccount).
+  bankAccount?: { name: string; ibanUA: string } | null;
 }
 
 /** Mapper Prisma-рядка → response DTO. Decimal→number через Number(), Date→ISO. */
@@ -289,5 +295,7 @@ export function toBankTransactionResponseDto(tx: BankTransactionRow): BankTransa
     matchConfidence: tx.matchConfidence != null ? Number(tx.matchConfidence) : null,
     ignoreReason: tx.ignoreReason ?? null,
     createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : tx.createdAt,
+    bankAccountName: tx.bankAccount?.name ?? null,
+    bankAccountIban: tx.bankAccount?.ibanUA ?? null,
   };
 }

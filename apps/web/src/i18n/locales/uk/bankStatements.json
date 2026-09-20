@@ -2,12 +2,17 @@
   "page": {
     "title": "Банківські платежі",
     "import": "Імпорт виписки",
+    "tabs": {
+      "transactions": "Список платежів",
+      "accounts": "Банк. рахунки"
+    },
     "columns": {
       "payer": "Платник",
       "purpose": "Призначення",
       "amount": "Сума",
       "date": "Дата",
-      "status": "Статус"
+      "status": "Статус",
+      "account": "Рахунок"
     },
     "pills": {
       "all": "Усі",

@@ -4,10 +4,11 @@ test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
 /**
- * /ndi — Нормативно-довідкова інформація (ПРРО, валюти, ставки ПДВ, банк).
- * Перевіряємо: завантаження, наявність усіх 7 табів, перемикання таб → URL ?tab=X,
+ * /ndi — Нормативно-довідкова інформація (ПРРО, валюти, ставки ПДВ).
+ * Перевіряємо: завантаження, наявність усіх 6 табів, перемикання таб → URL ?tab=X,
  * рендер контенту в кожному табі без console error.
  * Каса-таб винесено на /cash (dedup 19b0148a) — тут його більше немає.
+ * Банк. рахунки винесено на /bank-statements?tab=accounts (UI-реорганізація) — тут більше немає.
  */
 const TABS = [
   { id: 'org', label: 'Організація' },
@@ -16,7 +17,6 @@ const TABS = [
   { id: 'taxrates', label: 'Ставки ПДВ' },
   { id: 'currencies', label: 'Валюти' },
   { id: 'exchange-rates', label: 'Курси валют' },
-  { id: 'bank-accounts', label: 'Банк. рахунки' },
 ];
 
 test.describe('НДІ (Нормативно-довідкова інформація)', () => {
@@ -27,7 +27,7 @@ test.describe('НДІ (Нормативно-довідкова інформац�
     });
   });
 
-  test('всі 7 табів присутні', async ({ page }) => {
+  test('всі 6 табів присутні', async ({ page }) => {
     await page.goto('/ndi');
     await expect(page.locator('h1:has-text("Нормативно-довідкова інформація")')).toBeVisible({
       timeout: 20_000,
@@ -45,7 +45,7 @@ test.describe('НДІ (Нормативно-довідкова інформац�
       timeout: 20_000,
     });
 
-    for (const t of ['payments', 'taxrates', 'currencies', 'bank-accounts'] as const) {
+    for (const t of ['payments', 'taxrates', 'currencies', 'exchange-rates'] as const) {
       const label = TABS.find(x => x.id === t)?.label;
       await page.locator(`button:has-text("${label}")`).first().click();
       // Чекати поки URL оновиться
@@ -71,19 +71,6 @@ test.describe('НДІ (Нормативно-довідкова інформац�
     await expect(
       page
         .locator('table')
-        .or(page.getByText(/Немає|Empty|Не знайдено|Додати/i))
-        .first(),
-    ).toBeVisible({ timeout: 15_000 });
-  });
-
-  test('таб "Банк. рахунки" завантажує контент', async ({ page }) => {
-    await page.goto('/ndi?tab=bank-accounts');
-    await expect(page.locator('h1:has-text("Нормативно-довідкова інформація")')).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(
-      page
-        .locator('table, [role="table"]')
         .or(page.getByText(/Немає|Empty|Не знайдено|Додати/i))
         .first(),
     ).toBeVisible({ timeout: 15_000 });
