@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-09-21 — Фіча: Privat24 auto-pull виписки (bank-statements Фаза 4)
+
+### feat(bank-statements) 4eead7eb — Privat24 Merchant API auto-pull
+
+Автоматичне підтягування вхідної виписки з Privat24 через чергу (offline-first): scheduler за інтервалом
+тягне транзакції з відмічених рахунків → staging BankTransaction → авто-матч упевнених (confidence===1) →
+решта оператору. Файловий імпорт (MVP) лишається offline-fallback. Enable потребує мерчант-доступу
+(мапінг полів MANUAL-VERIFY; захисна нормалізація готова). Див. docs/objects/bank-statements.md.
+
+- **DB:** BankAccount += autoPullEnabled + lastPulledAt(курсор); OrganisationSettings +=
+  bankStatementPollIntervalMinutes. Міграція 20260920120000. applyImport += source-param.
+- **Provider-шар** (за DELIVERY-зразком): privat24.client (POST /statements/transactions, id+token,
+  DD-MM-YYYY, followId MAX_PAGES=200; SSRF validatePublicUrl+timeout+redirect:manual+reject-3xx+redactSecrets);
+  privat24.provider (захисна mapTx: fallback-ключі, credit-only, skip невалідних, rawData); registry.
+- **Scheduler-ЛЕАФ** (bank-statement-pull.module — розриває цикл SettingsModule↔важкий BankStatementsModule):
+  repeat.every, reschedule, enqueueImmediate. **Processor** (concurrency:2, DeadLetterWorkerHost): runWithTenant,
+  per-account isolation, resolveActive('BANK'), integrationLog.wrap, applyImport(PRIVAT24_API), авто-матч
+  confidence===1, lastPulledAt-курсор, DLQ. bull-board += bank-statement-polling.
+- **Config:** bank-statement-providers.controller (kind BANK, verify/branch-CRUD/activate/pull-now); web
+  BankStatementsTab (панель+інтервал+«Підтягнути зараз»).
+- **QA:** sync d409945f (BankAccount interface type-parity); review APPROVE (SSRF/offline/money/tenant/cycle
+  clean); tester da4f5927 **Bug #768** (HIGH — per-account isolation НЕ покривала applyImport+cursor → збій
+  1 рахунку пропускав інших; фікс: log-and-continue, курсор не рухається на збої → 0 втрати).
+- Верифікація: api tsc 0 / web tsc 0; api 2662 (+49) · web 837 · E2E 348 (+4). Тех-борг: autoPullEnabled
+  UI-toggle (API готовий), Privat24 mapping MANUAL-VERIFY.
+
 ## 2026-09-20 — Фіча: вхідні банк-платежі без рахунку (bank-statements MVP)
 
 ### feat(bank-statements) fe23cbb4 (backend) + 3e57a9e5 (UI) — облік вхідних надходжень БЕЗ Invoice

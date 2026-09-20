@@ -780,6 +780,13 @@ export-обмеженням (той самий рубіж, що й Server Compon
   (createMany skipDuplicates). Реюз xlsx-парсера (UA-кома parseNumber, cellText). ⚠ date-парсер МУСИТЬ мати
   round-trip guard (Bug #767: `new Date(Date.UTC(...))` тихо перекочує 31.02→03.03 → битий operationDate → FX).
 - **Staging поза sync PULL_TABLES** (payer PII, серверна реконсиляція).
+- **Auto-pull (Фаза 4, Privat24):** зовнішній API-провайдер за DELIVERY-зразком (client SSRF/timeout/redact +
+  provider захисна mapTx з fallback-ключами + registry) + scheduler-ЛЕАФ (окремий модуль лише queue+scheduler
+  — розриває цикл коли важкий feature-модуль тягне інші) + processor (repeat.every, resolveActive(kind),
+  applyImport(source), авто-матч confidence===1). ⚠ **Per-item isolation у for-of loop** (Bug #768): try/catch
+  МУСИТЬ охоплювати ВЕСЬ хвіст ітерації (не лише перший external-крок) — інакше збій одного елемента відкидає
+  весь process()→решта пропущена. Курсор (lastPulledAt) НЕ рухати на збої write → 0 втрати (наступний pull
+  повторить ідемпотентно). Тог самий патерн: nbu-fetch, delivery-poll, forEachActiveOrg-loops.
 
 ---
 
