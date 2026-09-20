@@ -178,6 +178,17 @@ export class UpdateOrganisationSettingsDto {
   @Max(1440)
   deliveryPollIntervalMinutes?: number;
 
+  @ApiPropertyOptional({
+    description: 'Інтервал auto-pull банк-виписки Privat24 (хв). clamp [15,1440].',
+    minimum: 15,
+    maximum: 1440,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(1440)
+  bankStatementPollIntervalMinutes?: number;
+
   @ApiPropertyOptional({ description: 'Скільки днів зберігати логи інтеграцій (1–365)' })
   @IsOptional()
   @IsInt()
@@ -373,6 +384,8 @@ export class OrganisationSettingsResponseDto {
   nbuFetchHour!: number;
   @ApiProperty({ description: 'Інтервал опитування служби доставки (хв)' })
   deliveryPollIntervalMinutes!: number;
+  @ApiProperty({ description: 'Інтервал auto-pull банк-виписки Privat24 (хв)' })
+  bankStatementPollIntervalMinutes!: number;
   @ApiProperty({ description: 'Скільки днів зберігати логи інтеграцій' })
   integrationLogRetentionDays!: number;
   @ApiProperty({ description: 'Частка ФОП механіків у виручці з робіт (звіт рентабельності)' })

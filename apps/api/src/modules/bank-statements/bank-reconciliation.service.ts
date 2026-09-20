@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, BankTransactionMatchType } from '@prisma/client';
+import { Prisma, BankTransactionMatchType, BankTransactionSource } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -332,6 +332,7 @@ export class BankReconciliationService {
   async applyImport(
     orgId: string,
     dto: ApplyImportDto,
+    source: BankTransactionSource = 'FILE_IMPORT',
   ): Promise<{ created: number; skipped: number }> {
     const bankAccount = await this.prisma.bankAccount.findFirst({
       where: { id: dto.bankAccountId, orgId, deletedAt: null },
@@ -370,7 +371,7 @@ export class BankReconciliationService {
           payerEdrpou: row.payerEdrpou?.trim() || null,
           purpose: row.purpose ?? null,
           externalId: row.externalId,
-          source: 'FILE_IMPORT' as const,
+          source,
           status: 'UNMATCHED' as const,
           rawData: row.rawData ?? Prisma.JsonNull,
         };

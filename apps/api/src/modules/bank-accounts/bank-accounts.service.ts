@@ -78,6 +78,7 @@ export class BankAccountsService {
         mfo: dto.mfo,
         edrpou: dto.edrpou,
         bankAddress: dto.bankAddress,
+        ...(dto.autoPullEnabled !== undefined ? { autoPullEnabled: dto.autoPullEnabled } : {}),
       },
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
@@ -158,6 +159,8 @@ export class BankAccountsService {
     mfo: string | null;
     edrpou: string | null;
     bankAddress: string | null;
+    autoPullEnabled: boolean;
+    lastPulledAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
     currency: { code: string };
@@ -176,6 +179,9 @@ export class BankAccountsService {
       mfo: item.mfo,
       edrpou: item.edrpou,
       bankAddress: item.bankAddress,
+      autoPullEnabled: item.autoPullEnabled,
+      lastPulledAt:
+        item.lastPulledAt instanceof Date ? item.lastPulledAt.toISOString() : item.lastPulledAt,
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : item.updatedAt,
     };

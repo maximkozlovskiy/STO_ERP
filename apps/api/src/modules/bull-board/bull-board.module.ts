@@ -21,7 +21,7 @@ import { BullBoardAuthModule } from './bull-board-auth.module';
  * Пакети зафіксовано на 5.23.0 — остання лінійка bull-board, сумісна з Fastify 4 (@fastify/view@^8,
  * @fastify/static@^6). v6+/v9 тягнуть @fastify/static@^8 → вимагає Fastify 5 → FST_ERR на старті.
  *
- * 12 черг: forFeature резолвить Queue за іменем через `moduleRef.get(getQueueToken(name), {strict:false})`.
+ * 14 черг: forFeature резолвить Queue за іменем через `moduleRef.get(getQueueToken(name), {strict:false})`.
  * Queue-провайдери з registerQueue у feature-модулях scoped до тих модулів, тож реєструємо ті самі імена
  * локально тут (registerQueue ідемпотентний — BullMQ дедуплікує з'єднання за іменем; BullMQAdapter лише
  * читає стан, окремого воркера не піднімає).
@@ -40,6 +40,7 @@ const QUEUE_NAMES = [
   'outbound-webhook',
   'checkbox',
   'payment-polling',
+  'bank-statement-polling',
 ] as const;
 
 @Module({})

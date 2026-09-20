@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { IBAN_UA_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
@@ -49,6 +49,11 @@ export class CreateBankAccountDto {
   @IsOptional()
   @IsString()
   bankAddress?: string;
+
+  @ApiPropertyOptional({ description: 'Авто-підтягування виписки Privat24', default: false })
+  @IsOptional()
+  @IsBoolean()
+  autoPullEnabled?: boolean;
 }
 
 export class UpdateBankAccountDto {
@@ -96,6 +101,11 @@ export class UpdateBankAccountDto {
   @IsOptional()
   @IsString()
   bankAddress?: string;
+
+  @ApiPropertyOptional({ description: 'Авто-підтягування виписки Privat24' })
+  @IsOptional()
+  @IsBoolean()
+  autoPullEnabled?: boolean;
 }
 
 export class BankAccountResponseDto {
@@ -111,6 +121,8 @@ export class BankAccountResponseDto {
   @ApiPropertyOptional() mfo?: string | null;
   @ApiPropertyOptional() edrpou?: string | null;
   @ApiPropertyOptional() bankAddress?: string | null;
+  @ApiProperty() autoPullEnabled!: boolean;
+  @ApiPropertyOptional() lastPulledAt?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
 }

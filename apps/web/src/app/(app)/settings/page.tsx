@@ -17,6 +17,7 @@ const IntegrationsTab = dynamic(() => import('./IntegrationsTab'), { ssr: false 
 const DocumentsTab = dynamic(() => import('./DocumentsTab'), { ssr: false, loading: () => null });
 const FiscalTab = dynamic(() => import('./FiscalTab'), { ssr: false });
 const DeliveryTab = dynamic(() => import('./DeliveryTab'), { ssr: false });
+const BankStatementsTab = dynamic(() => import('./BankStatementsTab'), { ssr: false });
 const IntegrationLogsTab = dynamic(() => import('./IntegrationLogsTab'), { ssr: false });
 const LoyaltyTab = dynamic(() => import('./LoyaltyTab'), { ssr: false });
 const DeadLetterTab = dynamic(() => import('./DeadLetterTab'), { ssr: false });
@@ -33,6 +34,7 @@ type Tab =
   | 'documents'
   | 'fiscal'
   | 'delivery'
+  | 'bank-statements'
   | 'integration-logs'
   | 'dead-letter';
 
@@ -47,6 +49,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'loyalty', label: 'Лояльність' },
   { key: 'fiscal', label: 'Фіскалізація' },
   { key: 'delivery', label: 'Доставка' },
+  { key: 'bank-statements', label: 'Банк-виписки' },
   { key: 'integrations', label: 'Інтеграції' },
   { key: 'integration-logs', label: 'Логи інтеграцій' },
   { key: 'dead-letter', label: 'Невдалі задачі' },
@@ -94,6 +97,7 @@ function SettingsPageClient() {
       {tab === 'documents' && <DocumentsTab />}
       {tab === 'fiscal' && <FiscalTab />}
       {tab === 'delivery' && <DeliveryTab />}
+      {tab === 'bank-statements' && <BankStatementsTab />}
       {tab === 'integration-logs' && <IntegrationLogsTab />}
       {tab === 'dead-letter' && <DeadLetterTab />}
     </div>

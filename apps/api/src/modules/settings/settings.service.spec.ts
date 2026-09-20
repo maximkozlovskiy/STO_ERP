@@ -5,6 +5,7 @@ import { SettingsService } from './settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
+import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
 
 /**
@@ -47,6 +48,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
           useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() },
         },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
       ],
     }).compile();
     service = module.get(SettingsService);
@@ -228,25 +230,21 @@ describe('SettingsService — C1b audit TaxRate', () => {
     auditRecord = vi.fn().mockResolvedValue(undefined);
     prisma = {
       taxRate: {
-        create: vi
-          .fn()
-          .mockResolvedValue({
-            id: 'tax-new',
-            name: 'ПДВ 20%',
-            rate: 20,
-            isDefault: false,
-            isActive: true,
-          }),
+        create: vi.fn().mockResolvedValue({
+          id: 'tax-new',
+          name: 'ПДВ 20%',
+          rate: 20,
+          isDefault: false,
+          isActive: true,
+        }),
         findFirst: vi.fn(),
-        findFirstOrThrow: vi
-          .fn()
-          .mockResolvedValue({
-            id: 'tax-1',
-            name: 'ПДВ 20%',
-            rate: 20,
-            isDefault: false,
-            isActive: true,
-          }),
+        findFirstOrThrow: vi.fn().mockResolvedValue({
+          id: 'tax-1',
+          name: 'ПДВ 20%',
+          rate: 20,
+          isDefault: false,
+          isActive: true,
+        }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       $transaction: vi.fn(),
@@ -258,6 +256,7 @@ describe('SettingsService — C1b audit TaxRate', () => {
         { provide: AuditService, useValue: { record: auditRecord } },
         { provide: REDIS_CLIENT, useValue: { get: vi.fn(), set: vi.fn(), del: vi.fn() } },
         { provide: NbuFetchScheduler, useValue: { rescheduleForOrg: vi.fn() } },
+        { provide: BankStatementPullScheduler, useValue: { rescheduleForOrg: vi.fn() } },
       ],
     }).compile();
     service = module.get(SettingsService);

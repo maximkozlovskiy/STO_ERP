@@ -13,7 +13,8 @@
     "delivery": "Delivery",
     "integrations": "Integrations",
     "integration-logs": "Integration logs",
-    "dead-letter": "Failed jobs"
+    "dead-letter": "Failed jobs",
+    "bank-statements": "Bank statements"
   },
   "language": "Interface language",
   "languageOptions": {
@@ -389,5 +390,18 @@
     "allSynced": "All synchronized",
     "syncNow": "↻ Sync now",
     "autoSyncHint": "Automatic synchronization happens when an internet connection is available"
+  },
+  "bankStatements": {
+    "serviceTitle": "Bank statement provider",
+    "merchantId": "Merchant ID (Autoclient)",
+    "token": "Token",
+    "intervalError": "Interval must be between 15 and 1440 minutes",
+    "intervalSaved": "Interval saved",
+    "pollTitle": "Statement auto-pull",
+    "pollDescription": "Privat24 statements are pulled automatically at the set interval for accounts with auto-pull enabled. Incoming payments go to reconciliation.",
+    "intervalLabel": "Interval (min)",
+    "pullNow": "Pull now",
+    "pullQueued": "Job queued",
+    "pullError": "Failed to queue the job"
   }
 }

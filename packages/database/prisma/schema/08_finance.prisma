@@ -452,6 +452,10 @@ model BankAccount {
   mfo         String?
   edrpou      String?
   bankAddress String?
+  // Auto-pull виписки Privat24: тягнути лише відмічені рахунки (креди per-IBAN — не кожен рахунок орг
+  // є Privat24). lastPulledAt — курсор вікна дат (from) наступного pull; оновлюється після успіху.
+  autoPullEnabled Boolean @default(false)
+  lastPulledAt    DateTime?
   syncVersion BigInt    @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

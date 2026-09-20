@@ -4,6 +4,7 @@ import { VatMode, BatchCostMethod, DocumentType, ResetPeriod } from '@prisma/cli
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
+import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
 import { validatePublicUrl } from '../../common/utils/url-guard';
 import { translateError } from '@sto/shared';
@@ -33,6 +34,7 @@ export class SettingsService {
     private readonly prisma: PrismaService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly nbuFetchScheduler: NbuFetchScheduler,
+    private readonly bankPullScheduler: BankStatementPullScheduler,
     private readonly audit: AuditService,
   ) {}
 
@@ -131,6 +133,11 @@ export class SettingsService {
     // Reschedule NBU fetch cron if hour changed
     if (dto.nbuFetchHour !== undefined) {
       await this.nbuFetchScheduler.rescheduleForOrg(orgId, dto.nbuFetchHour);
+    }
+
+    // Reschedule bank-statement pull cron if interval changed (Privat24 auto-pull).
+    if (dto.bankStatementPollIntervalMinutes !== undefined) {
+      await this.bankPullScheduler.rescheduleForOrg(orgId, dto.bankStatementPollIntervalMinutes);
     }
 
     // C1b: аудит зміни org-налаштувань (хто змінив ПДВ/валюту/config). new = поля dto.
@@ -349,6 +356,7 @@ export class SettingsService {
     maintenanceForecastDays: number;
     nbuFetchHour: number;
     deliveryPollIntervalMinutes: number;
+    bankStatementPollIntervalMinutes: number;
     integrationLogRetentionDays: number;
     laborCostRatio: { toNumber(): number } | number;
     uiFeatures: unknown;
@@ -381,6 +389,7 @@ export class SettingsService {
       maintenanceForecastDays: s.maintenanceForecastDays,
       nbuFetchHour: s.nbuFetchHour,
       deliveryPollIntervalMinutes: s.deliveryPollIntervalMinutes,
+      bankStatementPollIntervalMinutes: s.bankStatementPollIntervalMinutes,
       integrationLogRetentionDays: s.integrationLogRetentionDays,
       laborCostRatio: toNum(s.laborCostRatio),
       uiFeatures: this.parseUiFeatures(s.uiFeatures),
