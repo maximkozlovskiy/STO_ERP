@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-20 (tester bank-statements bug hunt — Bug #767 fixed, E2E 343/343)
+Дата:       2026-09-21 (sync bank-statements monobank+DBF+multi-bank — 1 fix, DBF accept-attr)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
@@ -302,7 +302,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Sync bank-statements (Фаза 4 Privat24 auto-pull) — 2026-09-20, HEAD d409945f:
+Sync bank-statements (monobank+DBF+multi-bank) — 2026-09-21, HEAD 77ad954d:
+  77ad954d fix(sync): BankStatementImportModal file input accept=".csv,.xlsx,.xls" — backend
+        bank-statement-parser.service.assertSupported() приймає .csv/.xlsx/.dbf (не .xls). UI не
+        давав вибрати .dbf попри те що backend вже парсить DBF (providers/mono-статистика +
+        multi-bank коміт f98fadb6). Виправлено accept → ".csv,.xlsx,.dbf". Перевірено ЧИСТО:
+        BankAccount.provider (DTO Create/Update/Response) ↔ web types.ts інтерфейс ↔ BankAccountsTab
+        форма (Select провайдера + autoPullEnabled toggle) — усі 3 боки узгоджені; GET
+        /bank-statement-providers [privat24,monobank] ↔ BankAccountsTab dropdown + settings/
+        BankStatementsTab обидва Array.isArray-guard є; monobank creds (token+accountId) у
+        BankStatementsTab.bankProviders ↔ MonobankStatementProvider.creds() читає ті ж ключі.
+        MANUAL-VERIFY mono/DBF-мапінг НЕ чіпався (навмисно). tsc: web 0/837 · api 0/2694.
+  Sync bank-statements (Фаза 4 Privat24 auto-pull) — 2026-09-20, HEAD d409945f:
   d409945f fix(sync): BankAccount web interface (apps/web/.../ndi/types.ts) не мала autoPullEnabled/
         lastPulledAt — type-drift проти BankAccountResponseDto (commit 4eead7eb). Поля додані як
         optional (UI-toggle ще нема, лише type-parity). Перевірено ЧИСТО: bank-statement-providers.
