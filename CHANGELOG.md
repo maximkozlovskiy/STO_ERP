@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-09-21 — UI: реорганізація банк-рахунків (bank-statements вкладки)
+
+### feat(bank-statements) 937fc0ee — вкладки + перенос банк-рахунків з НДІ + колонка рахунку
+
+«Банк. рахунки» логічно належать до банківських платежів, не до довідників (НДІ).
+
+- **Вкладковий bank-statements** (tab-shell за cash-зразком, ?tab=): [Список платежів | Банк. рахунки].
+  BankTransactionsTab (винесений список) + BankAccountsTab (перенесено з ndi, самодостатній ref-cache).
+- **Прибрано вкладку «Банк. рахунки» з НДІ** (7→6 вкладок).
+- **Колонка «Рахунок»** у списку платежів: backend join (list() += include bankAccount{name,ibanUA};
+  DTO += bankAccountName/bankAccountIban; mapper nullable-safe) → таблиця показує назву ?? скорочений IBAN.
+- **Статус auto-pull** у списку рахунків: Badge «Авто-pull: <банк>» для autoPullEnabled-рахунків.
+- Нагадування: multi-account-per-bank УЖЕ працює backend (кожен BankAccount незалежний provider+autoPull).
+- **QA:** sync 0; review 6245e629 (async-guard cancelled-flag у перенесеному BankAccountsTab useEffect);
+  tester 446e7ac5 **Bug #770** (LOW stale-test — E2E toHaveURL end-anchor ігнорував trailingSlash:true) +
+  E2E fallback-tab тест. api 2694 · web 848 · E2E 351 · tsc 0. Продуктовий код не регресовано.
+
 ## 2026-09-21 — Фіча: monobank + DBF + multi-bank (bank-statements розширення)
 
 ### feat(bank-statements) f98fadb6 — monobank statement API + DBF-парсер + multi-bank

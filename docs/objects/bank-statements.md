@@ -73,9 +73,18 @@ Orphan-Payment (create ok, link fail) benign: retry натрапляє на CAS-
 
 ## UI (Web)
 
-Сторінка `bank-statements/page.tsx` (список UNMATCHED + фільтр + пагінація) + `MatchBankTransactionModal`
-(контрагент+тип+опц.invoice) + `BankStatementImportModal` (3-крок wizard: рахунок+файл → колонки → preview
-→ apply). Nav — «Банківські платежі» (Landmark, section settlements). Хук `useBankStatements`.
+Сторінка `bank-statements/page.tsx` — **вкладкова** (tab-shell за cash-зразком: Suspense+dynamic ssr:false,
+`?tab=` через useSearchParams+router.replace):
+
+- **[Список платежів]** `BankTransactionsTab` — список транзакцій (колонки: дата/платник/призначення/сума/
+  **Рахунок**(bankAccountName ?? скорочений IBAN, join у list())/статус) + фільтр + пагінація + `MatchBankTransactionModal`
+  (контрагент+тип+опц.invoice) + `BankStatementImportModal` (3-крок wizard: рахунок+файл → колонки → preview → apply).
+- **[Банк. рахунки]** `BankAccountsTab` (перенесено з НДІ) — CRUD банк-рахунків; форма += provider-dropdown
+  «Банк для auto-pull» + autoPullEnabled toggle; у списку **Badge «Авто-pull: <банк>»** для відмічених рахунків.
+  Ref-cache+apiFetch (НЕ React-Query). Тип з `../ndi/types`, namespace `ndi`.
+
+Nav — «Банківські платежі» (Landmark, section settlements). Хуки `useBankStatements`, `/bank-accounts`.
+НДІ більше НЕ має вкладки «Банк. рахунки» (перенесено сюди).
 
 ## API auto-pull (Privat24 + monobank, ГОТОВО — enable потребує токена)
 
