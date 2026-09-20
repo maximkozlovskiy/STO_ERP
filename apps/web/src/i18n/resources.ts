@@ -28,6 +28,7 @@ import ukDashboard from './locales/uk/dashboard.json';
 import ukProfile from './locales/uk/profile.json';
 import ukBookings from './locales/uk/bookings.json';
 import ukErrorPages from './locales/uk/errorPages.json';
+import ukBankStatements from './locales/uk/bankStatements.json';
 
 import enCommon from './locales/en/common.json';
 import enNav from './locales/en/nav.json';
@@ -57,6 +58,7 @@ import enDashboard from './locales/en/dashboard.json';
 import enProfile from './locales/en/profile.json';
 import enBookings from './locales/en/bookings.json';
 import enErrorPages from './locales/en/errorPages.json';
+import enBankStatements from './locales/en/bankStatements.json';
 
 export const resources = {
   uk: {
@@ -88,6 +90,7 @@ export const resources = {
     profile: ukProfile,
     bookings: ukBookings,
     errorPages: ukErrorPages,
+    bankStatements: ukBankStatements,
   },
   en: {
     common: enCommon,
@@ -118,5 +121,6 @@ export const resources = {
     profile: enProfile,
     bookings: enBookings,
     errorPages: enErrorPages,
+    bankStatements: enBankStatements,
   },
 } as const;

@@ -30,6 +30,7 @@ import {
   BookMarked,
   ClipboardList,
   Banknote,
+  Landmark,
 } from 'lucide-react';
 
 export type NavSection = 'top' | 'documents' | 'settlements' | 'reports' | 'refs' | 'settings';
@@ -133,6 +134,14 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     labelKey: 'supplierPayments',
     label: 'Оплати постачальникам',
     icon: Wallet,
+    section: 'settlements',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+  },
+  {
+    href: '/bank-statements',
+    labelKey: 'bankStatements',
+    label: 'Банківські платежі',
+    icon: Landmark,
     section: 'settlements',
     roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
   },

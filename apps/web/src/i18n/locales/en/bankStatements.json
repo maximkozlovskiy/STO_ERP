@@ -1,0 +1,127 @@
+{
+  "page": {
+    "title": "Bank payments",
+    "import": "Import statement",
+    "columns": {
+      "payer": "Payer",
+      "purpose": "Purpose",
+      "amount": "Amount",
+      "date": "Date",
+      "status": "Status"
+    },
+    "pills": {
+      "all": "All",
+      "unmatched": "Unmatched",
+      "matched": "Matched",
+      "ignored": "Ignored"
+    },
+    "row": {
+      "match": "Reconcile",
+      "ignore": "Ignore"
+    },
+    "empty": {
+      "title": "No transactions",
+      "description": "Import a bank statement to see payments."
+    },
+    "error": {
+      "load": "Failed to load transactions"
+    }
+  },
+  "enum": {
+    "matchType": {
+      "PREPAYMENT": "Prepayment",
+      "SERVICE": "Service payment",
+      "INVOICE": "Invoice payment",
+      "REFUND": "Refund",
+      "OTHER": "Other"
+    },
+    "status": {
+      "UNMATCHED": "Unmatched",
+      "MATCHED": "Matched",
+      "IGNORED": "Ignored"
+    },
+    "previewStatus": {
+      "matched": "Matched",
+      "ambiguous": "Multiple matches",
+      "notFound": "Not found",
+      "duplicate": "Duplicate"
+    }
+  },
+  "match": {
+    "title": "Reconcile payment",
+    "counterparty": "Counterparty",
+    "counterpartyPlaceholder": "Search counterparty…",
+    "pickCounterparty": "Select counterparty",
+    "type": "Operation type",
+    "invoice": "Invoice",
+    "invoicePlaceholder": "Select invoice…",
+    "pickInvoice": "Select invoice",
+    "submit": "Reconcile",
+    "cancel": "Cancel",
+    "success": "Payment reconciled",
+    "error": "Failed to reconcile payment",
+    "invoiceRequired": "Select an invoice for the \"Invoice payment\" type"
+  },
+  "ignore": {
+    "title": "Ignore payment",
+    "reason": "Reason",
+    "reasonPlaceholder": "Why is this payment irrelevant…",
+    "submit": "Ignore",
+    "cancel": "Cancel",
+    "success": "Payment ignored",
+    "error": "Failed to ignore payment",
+    "reasonRequired": "Provide a reason"
+  },
+  "import": {
+    "title": "Import bank statement",
+    "step": "Step {{current}} of {{total}}",
+    "step1": {
+      "title": "File and account",
+      "bankAccount": "Bank account",
+      "bankAccountPlaceholder": "— Select —",
+      "file": "Statement file (.csv, .xlsx)",
+      "next": "Next"
+    },
+    "step2": {
+      "title": "Column mapping",
+      "hint": "Specify column numbers (1-based) and the first transaction row.",
+      "startRow": "First transaction row",
+      "dateCol": "Date column",
+      "amountCol": "Amount column",
+      "externalIdCol": "Identifier column",
+      "payerNameCol": "Payer column",
+      "payerIbanCol": "IBAN column",
+      "payerEdrpouCol": "EDRPOU column",
+      "purposeCol": "Purpose column",
+      "optional": "(opt.)",
+      "back": "Back",
+      "preview": "Preview",
+      "rawTitle": "First file rows",
+      "col": "C{{n}}"
+    },
+    "step3": {
+      "title": "Preview",
+      "row": "Row",
+      "date": "Date",
+      "amount": "Amount",
+      "payer": "Payer",
+      "purpose": "Purpose",
+      "match": "Match",
+      "suggested": "Counterparty",
+      "back": "Back",
+      "apply": "Import ({{count}})",
+      "empty": "No rows to import"
+    },
+    "result": {
+      "title": "Done",
+      "created": "Created: {{count}}",
+      "skipped": "Skipped (duplicates): {{count}}",
+      "close": "Close"
+    },
+    "error": {
+      "noFile": "Select a statement file",
+      "noAccount": "Select a bank account",
+      "generic": "Statement processing error"
+    }
+  }
+}

@@ -74,4 +74,43 @@ export const contractTypeLabel = (c?: string | null) =>
   tEnum('CONTRACT_TYPE', CONTRACT_TYPE_LABELS, c);
 export const goodTypeLabel = (c?: string | null) => tEnum('GOOD_TYPE', GOOD_TYPE_LABELS, c);
 
+// Банк-виписка (bank-statements) — enum-и живуть лише у web-namespace `bankStatements`
+// (не в @sto/shared statuses), тож читаємо напряму через i18next з code-fallback.
+const BANK_TX_MATCH_TYPE_FALLBACK: LabelMap = {
+  PREPAYMENT: 'Аванс',
+  SERVICE: 'Оплата послуг',
+  INVOICE: 'Оплата рахунку',
+  REFUND: 'Повернення',
+  OTHER: 'Інше',
+};
+const BANK_TX_STATUS_FALLBACK: LabelMap = {
+  UNMATCHED: 'Не рознесено',
+  MATCHED: 'Рознесено',
+  IGNORED: 'Проігноровано',
+};
+const PREVIEW_MATCH_STATUS_FALLBACK: LabelMap = {
+  matched: 'Знайдено',
+  ambiguous: 'Декілька збігів',
+  notFound: 'Не знайдено',
+  duplicate: 'Дублікат',
+};
+
+function tBankEnum(
+  section: string,
+  fallbackMap: LabelMap,
+  code: string | null | undefined,
+): string {
+  if (!code) return '—';
+  const translated = i18n.t(`bankStatements:enum.${section}.${code}`, { defaultValue: '' });
+  if (translated) return translated;
+  return fallbackMap[code] ?? code;
+}
+
+export const bankTxMatchTypeLabel = (c?: string | null) =>
+  tBankEnum('matchType', BANK_TX_MATCH_TYPE_FALLBACK, c);
+export const bankTxStatusLabel = (c?: string | null) =>
+  tBankEnum('status', BANK_TX_STATUS_FALLBACK, c);
+export const previewMatchStatusLabel = (c?: string | null) =>
+  tBankEnum('previewStatus', PREVIEW_MATCH_STATUS_FALLBACK, c);
+
 export { tEnum };
