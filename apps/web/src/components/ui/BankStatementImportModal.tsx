@@ -189,7 +189,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
               </label>
               <input
                 type="file"
-                accept=".csv,.xlsx,.xls"
+                accept=".csv,.xlsx,.dbf"
                 onChange={e => setFile(e.target.files?.[0] ?? null)}
                 className="text-[13px] file:mr-3 file:rounded file:border file:border-border file:bg-secondary file:px-3 file:py-1.5 file:text-[13px]"
               />
