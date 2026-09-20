@@ -109,6 +109,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks
 ```
 
 - [ ] Route group rename detected у `git diff HEAD~N HEAD --name-status` → `rm -rf apps/web/.next` ПЕРЕД будь-якими TS/unit/E2E запусками. Інакше E2E падатиме з помилковим повідомленням (`expected /\/(login|setup)/, got /work-orders/`) яке маскує справжню проблему (webpack chunk 500). Перевірка часта і дешева.
+- [ ] **E2E `toHaveURL(/…$/)` end-anchor без слеша у застосунку з `trailingSlash: true` (Bug #770):** новий tab-shell/wizard-тест на «повернення до default-tab / скидання `?tab=`» падає бо реальний canonical URL завжди `/<route>/` (слеш), а регекс `…<name>$` ніколи не матчить. Це STALE TEST (продукт коректний), НЕ баг продукту. Grep: `grep -rnE "toHaveURL\(/[^/]*\\$/" apps/web/e2e` при `grep -n "trailingSlash: true" apps/web/next.config.*` = хіт. Fix ТЕСТУ: `/\/route$/` → `/\/route\/$/` (не послаблювати до `\/?` — воно перестане перевіряти скидання query). Бонус: якщо fallback невалідного `?tab=xxx` без E2E — дописати. Підрядкові патерни (`/tab=X/`) безпечні; ризик лише end-anchor. Severity LOW. Деталі: «sto-tester-approaches.md» 2026-09-21 (Bug #770).
 
 **AUTO: матриця що перевіряти за типом зміни**
 
