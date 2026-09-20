@@ -31,6 +31,10 @@ i18n:       Багатомовність uk/en ЗАВЕРШЕНА повніст
             (29eaad2f). CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts — backend
             PDF свідомо лишається укр.). Pre-existing mojibake у employees/services/settings.dto — скопійовано
             verbatim заради byte-identity (окремий дефект, поза scope).
+Sync(bank-statements): 2026-09-20 (auto, 98685622) — 1 виправлено. PaginatedBankTransactionsDto
+            +list() бракували page/limit (усі інші Paginated*Dto в проекті мають {items,total,page,limit} —
+            матчить web PaginatedResponse<T> у usePaginatedList). URL/методи/DTO-поля/enum-и (matchType,
+            status, previewMatchStatus)/column-mapping — усе інше вже було 1:1. api 2596/2596 · web 837/837 · tsc 0/0.
 Sync(backend-i18n): 2026-09-19 (auto, cfbd30f0) — 0 mismatches. 400-контракт незмінний; header round-trip
             (getCurrentLocale→'uk'/'en', Fastify lowercase); key-consistency (84 schema keys ⊆ 87 catalog).
 Sync(full-branch cycle 2/3): 2026-09-19 (auto, 0 fixes, коміт не потрібен) — re-verify cycle 1 fixes
