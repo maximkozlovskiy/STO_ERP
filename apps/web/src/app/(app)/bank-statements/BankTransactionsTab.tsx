@@ -45,6 +45,14 @@ function shortIban(iban: string): string {
   return iban.length > 8 ? `…${iban.slice(-4)}` : iban;
 }
 
+/**
+ * Суфікс валюти суми транзакції. amount — у валюті рахунку (multi-bank: рахунок може бути USD/EUR),
+ * тому не хардкодимо ₴: для UAH/невідомого коду показуємо ₴, для інших — код валюти рахунку.
+ */
+function currencySuffix(code: string | null | undefined): string {
+  return !code || code === 'UAH' ? '₴' : code;
+}
+
 export default function BankTransactionsTab() {
   const { t } = useTranslation('bankStatements');
 
@@ -184,7 +192,7 @@ export default function BankTransactionsTab() {
                       {tx.purpose ?? '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums font-semibold text-[13px] whitespace-nowrap">
-                      {fmtMoney(tx.amount)} ₴
+                      {fmtMoney(tx.amount)} {currencySuffix(tx.bankAccountCurrencyCode)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_BADGE[tx.status] ?? 'secondary'}>

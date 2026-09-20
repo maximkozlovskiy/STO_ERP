@@ -407,8 +407,13 @@ export class BankReconciliationService {
         skip,
         take: safeLimit,
         orderBy: { operationDate: 'desc' },
-        // Назва/IBAN нашого рахунку-отримувача — для колонки «Рахунок» у списку платежів.
-        include: { bankAccount: { select: { name: true, ibanUA: true } } },
+        // Назва/IBAN + код валюти нашого рахунку-отримувача — для колонки «Рахунок» і коректного
+        // символу валюти суми (multi-bank: рахунок може бути USD/EUR — не хардкодимо ₴).
+        include: {
+          bankAccount: {
+            select: { name: true, ibanUA: true, currency: { select: { code: true } } },
+          },
+        },
       }),
       this.prisma.bankTransaction.count({ where }),
     ]);

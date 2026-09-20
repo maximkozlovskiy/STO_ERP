@@ -44,6 +44,8 @@ export interface BankTransaction {
   // Назва/IBAN нашого рахунку-отримувача (join у list()) — для колонки «Рахунок» у списку платежів.
   bankAccountName?: string | null;
   bankAccountIban?: string | null;
+  // Код валюти рахунку — для символу валюти суми (multi-bank: рахунок може бути USD/EUR).
+  bankAccountCurrencyCode?: string | null;
 }
 
 /** Кандидат-контрагент для ambiguous-рядка. */

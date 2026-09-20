@@ -139,7 +139,13 @@ export function MatchBankTransactionModal({
                   {fmtDate(transaction.operationDate)}
                   {transaction.payerName ? ` · ${transaction.payerName}` : ''}
                 </span>
-                <span className="font-semibold tabular-nums">{fmtMoney(transaction.amount)} ₴</span>
+                <span className="font-semibold tabular-nums">
+                  {fmtMoney(transaction.amount)}{' '}
+                  {!transaction.bankAccountCurrencyCode ||
+                  transaction.bankAccountCurrencyCode === 'UAH'
+                    ? '₴'
+                    : transaction.bankAccountCurrencyCode}
+                </span>
               </div>
               {transaction.purpose && (
                 <div className="mt-1 text-muted-foreground truncate">{transaction.purpose}</div>

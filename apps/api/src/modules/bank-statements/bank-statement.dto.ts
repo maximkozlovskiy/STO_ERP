@@ -232,6 +232,8 @@ export class BankTransactionResponseDto {
   // «Рахунок» у списку платежів. null коли include не запитано.
   @ApiPropertyOptional() bankAccountName?: string | null;
   @ApiPropertyOptional() bankAccountIban?: string | null;
+  // Код валюти рахунку-отримувача (join) — для символу валюти суми у UI (multi-bank: USD/EUR).
+  @ApiPropertyOptional() bankAccountCurrencyCode?: string | null;
 }
 
 export class PaginatedBankTransactionsDto {
@@ -266,7 +268,7 @@ interface BankTransactionRow {
   ignoreReason: string | null;
   createdAt: Date;
   // Опційний join рахунку-отримувача (коли list() робить include bankAccount).
-  bankAccount?: { name: string; ibanUA: string } | null;
+  bankAccount?: { name: string; ibanUA: string; currency?: { code: string } | null } | null;
 }
 
 /** Mapper Prisma-рядка → response DTO. Decimal→number через Number(), Date→ISO. */
@@ -297,5 +299,6 @@ export function toBankTransactionResponseDto(tx: BankTransactionRow): BankTransa
     createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : tx.createdAt,
     bankAccountName: tx.bankAccount?.name ?? null,
     bankAccountIban: tx.bankAccount?.ibanUA ?? null,
+    bankAccountCurrencyCode: tx.bankAccount?.currency?.code ?? null,
   };
 }
