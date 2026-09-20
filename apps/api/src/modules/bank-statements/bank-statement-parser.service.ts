@@ -246,6 +246,12 @@ export class BankStatementParserService {
       const yyyy = Number(m[3]);
       if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
         const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+        // Відхиляємо неіснуючі дати (31.02, 31.04): JS Date «перекочує» їх у наступний місяць
+        // (31.02 → 03.03), що тихо зіпсувало б operationDate реальної банк-транзакції (а вона
+        // визначає курс для amountBase). Звіряємо компоненти з побудованою датою → нема rollover.
+        if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) {
+          return null;
+        }
         return Number.isNaN(d.getTime()) ? null : d;
       }
       return null;

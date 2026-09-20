@@ -5935,3 +5935,47 @@ setValue('currencyId', id, {shouldDirty:false})}` (auto-default → НЕ dirty).
 **E2E 339/339** (0 fail, 0 skip, 0 flaky, 2.8m; свіжий web-сервер з `NEXT_PUBLIC_E2E=1`). Реліз-гейт:
 **GREEN — гілка готова до релізу.** 3 цикли QA (Bug #764/#765/#766 усі фікшено й тримаються), нуль
 нових багів у cycle 3, нуль backend/schema дрейфу, усі 4 suite зелені.
+
+## Session 2026-09-20 — bank-statements bug hunt (money/staging/E2E)
+
+Scope: коміти fe23cbb4 (backend) + 3e57a9e5 (UI) + 98685622/7221773a (sync/review fix).
+Money-інваріанти (settlementType→SettlementTransaction), staging (CAS match/ignore),
+tenant (orgId скрізь), parser (файл→гроші), повний E2E-гейт.
+
+### Bug #767 — parseDate тихо «перекочує» неіснуючі дати (31.02 → 03.03) [MEDIUM]
+
+**Файл:** `apps/api/src/modules/bank-statements/bank-statement-parser.service.ts` — `parseDate()`
+**Симптом:** `parseDate('31.02.2026')` повертав `2026-03-03` замість `null`; `31.04.2026` → `2026-05-01`.
+JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переповнює у наступний місяць.
+**Наслідок:** битий рядок колонки дати у виписці тихо присвоював РЕАЛЬНІЙ банк-транзакції
+неправильний `operationDate`. А `operationDate` визначає курс для `amountBase` (resolveBaseConversion
+по даті) → зіпсована фінансова дата + потенційно неправильна конвертація у base. Жодної помилки
+не показувалось — оператор би не помітив.
+**Фікс:** після побудови `Date` звіряємо `getUTCFullYear/Month/Date` з вхідними компонентами;
+розбіжність (= rollover) → `return null` (рядок пропускається як без валідної дати).
+**Тест:** `bank-statement-parser.service.spec.ts` — «РЕГРЕС: неіснуюча дата 31.02.2026 НЕ rollover».
+[x] виправлено
+
+### Покриття (нові тести, не баги)
+
+- **bank-statement-parser.service.spec.ts** (НОВИЙ, 11 тестів) — раніше 261-рядковий парсер
+  (файл→гроші) не мав жодного unit-тесту. Покрито: UA-число «1 250,00», дата DD.MM.YYYY + ISO,
+  rollover-guard (#767), startRow, пропуск порожніх/підсумкових рядків, IBAN-нормалізація,
+  noDataRows, непідтримуваний формат, xlsx-парсинг, rawPreview.
+- **bank-reconciliation.service.spec.ts** — доповнено 12→18: INVOICE→settlementType PAYMENT
+  +invoiceId+amount з tx; INVOICE без invoiceId → BadRequest (CAS не чіпається); невалідний
+  контрагент → NotFound (CAS не чіпається); previewImport дедуп по externalId; applyImport
+  невідомий рахунок → NotFound; amountBase через resolveBaseConversion (USD→base rate 40).
+- **e2e/bank-statements.spec.ts** (НОВИЙ, 6 тестів) — рендер, фільтр-пігулки, wizard-модалка
+  імпорту (крок 1 + валідація «Далі» без файлу), повний ignore-flow (seed банк-рахунку → apply
+  import → UNMATCHED → модалка «Ігнорувати» → submit → перевірка IGNORED через API).
+
+### Env-нотатки (не баги коду)
+
+- Running API був СТАЛИЙ (стартував до fe23cbb4) → `/bank-statements/*` віддавав 404. Перезапуск
+  API підхопив модуль → 200. Урок: після backend-фічі перезапускати dev-API перед E2E.
+- Web МУСИТЬ мати `NEXT_PUBLIC_E2E=1` (build-time gate) — перезапущено з прапором перед suite.
+- Dev-БД не має банк-рахунків (seed не створює) → ignore-flow тест сам сідить банк-рахунок
+  (валідний UA IBAN: `UA` + 27 цифр).
+
+Верифікація: api tsc 0 / web tsc 0 / api 2613 (+17) / web 837 / E2E 343 passed +2 flaky (pass on retry, pre-existing work-orders).

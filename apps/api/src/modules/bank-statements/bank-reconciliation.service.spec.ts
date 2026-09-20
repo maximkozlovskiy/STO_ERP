@@ -279,4 +279,106 @@ describe('BankReconciliationService.matchTransaction', () => {
     );
     expect(rollbackCall).toBeDefined();
   });
+
+  it('INVOICE → settlementType PAYMENT + invoiceId переданий у payments.create; сума=amount tx', async () => {
+    const INV_ID = '33333333-3333-4333-8333-333333333333';
+    const { prisma, payments, service } = setupMatch();
+    prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID }); // валідація рахунку у межах org
+    await service.matchTransaction(ORG, TX_ID, {
+      counterpartyId: CP_ID,
+      type: 'INVOICE',
+      invoiceId: INV_ID,
+    });
+    const [, dto] = payments.create.mock.calls[0]!;
+    // INVOICE — це звичайна оплата рахунку → settlement PAYMENT (не PREPAYMENT/REFUND).
+    expect(dto.settlementType).toBe('PAYMENT');
+    expect(dto.invoiceId).toBe(INV_ID);
+    // Сума платежу = сума захопленої транзакції (500 з setupMatch), НЕ довільна з DTO.
+    expect(dto.amount).toBe(500);
+  });
+
+  it('INVOICE без invoiceId → BadRequest, payments.create НЕ викликаний, CAS не чіпається', async () => {
+    const { prisma, payments, service } = setupMatch();
+    await expect(
+      service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'INVOICE' }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(payments.create).not.toHaveBeenCalled();
+    expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('невалідний контрагент (не в org) → NotFound, CAS не чіпається', async () => {
+    const { prisma, payments, service } = setupMatch();
+    prisma.counterparty.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(payments.create).not.toHaveBeenCalled();
+    expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('BankReconciliationService.previewImport — дедуп по externalId', () => {
+  it('уже імпортований externalId → matchStatus=duplicate (перекриває авто-матч)', async () => {
+    const prisma = makePrisma();
+    prisma.counterparty.findMany.mockResolvedValue([]);
+    prisma.invoice.findMany.mockResolvedValue([]);
+    prisma.workOrder.findMany.mockResolvedValue([]);
+    // e1 вже існує у цьому рахунку → duplicate; e2 — новий → notFound.
+    prisma.bankTransaction.findMany.mockResolvedValue([{ externalId: 'e1' }]);
+    const service = build(prisma, makeExchange(), makePayments());
+    const rows: RawTx[] = [
+      { externalId: 'e1', operationDate: new Date(), amount: 100 },
+      { externalId: 'e2', operationDate: new Date(), amount: 200 },
+    ];
+    const res = await service.previewImport(ORG, 'ba-1', rows);
+    expect(res.find(r => r.externalId === 'e1')!.matchStatus).toBe('duplicate');
+    expect(res.find(r => r.externalId === 'e2')!.matchStatus).toBe('notFound');
+  });
+});
+
+describe('BankReconciliationService.applyImport — amountBase + невалідний рахунок', () => {
+  it('невідомий bankAccountId → NotFound (до транзакції)', async () => {
+    const prisma = makePrisma();
+    prisma.bankAccount.findFirst.mockResolvedValue(null);
+    const service = build(prisma, makeExchange(), makePayments());
+    await expect(
+      service.applyImport(ORG, {
+        bankAccountId: 'ba-x',
+        rows: [{ externalId: 'e1', operationDate: '2026-09-01', amount: 100 }],
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('amountBase рахується через resolveBaseConversion по валюті рахунку', async () => {
+    const prisma = makePrisma();
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'usd' });
+    const exchange = makeExchange();
+    // USD-рахунок: конвертація 100 USD → 4000 base (rate 40).
+    exchange.resolveBaseConversion.mockResolvedValue({ rateUsed: 40, amountBase: 4000 });
+    let capturedData: Array<Record<string, unknown>> = [];
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        bankTransaction: {
+          createMany: vi
+            .fn()
+            .mockImplementation((args: { data: Array<Record<string, unknown>> }) => {
+              capturedData = args.data;
+              return { count: args.data.length };
+            }),
+        },
+      }),
+    );
+    const service = build(prisma, exchange, makePayments());
+    await service.applyImport(ORG, {
+      bankAccountId: 'ba-1',
+      rows: [{ externalId: 'e1', operationDate: '2026-09-01', amount: 100 }],
+    });
+    expect(capturedData[0]!.amountBase).toBe(4000);
+    expect(capturedData[0]!.rateUsed).toBe(40);
+    expect(capturedData[0]!.currencyId).toBe('usd');
+    expect(capturedData[0]!.direction).toBe('IN');
+    expect(capturedData[0]!.status).toBe('UNMATCHED');
+    expect(capturedData[0]!.source).toBe('FILE_IMPORT');
+  });
 });
