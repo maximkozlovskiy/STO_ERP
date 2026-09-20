@@ -174,5 +174,44 @@ describe('BankAccounts — HTTP Contract', () => {
       const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
       expect(dtoArg.branchId).toBeUndefined();
     });
+
+    // Bug #769 regression: CreateBankAccountDto.provider мусить мати @Transform(emptyToUndefined)
+    // ДЗЕРКАЛЬНО до UpdateBankAccountDto. Без нього create з provider="" зберігав би порожній рядок
+    // (response.provider="" замість null → розбіжність контракту з update-шляхом; UI selected-value
+    // порівняння з реєстром провайдерів плутається). Multi-bank блок (f98fadb6).
+    it('provider="" (скинутий селект) → @Transform(emptyToUndefined) → undefined у DTO', async () => {
+      serviceMock.create.mockResolvedValueOnce({
+        id: 'ba-1',
+        orgId: 'org-1',
+        name: 'Поточний',
+        ibanUA: VALID_IBAN,
+        currencyId: CURRENCY_ID,
+        currencyCode: 'UAH',
+        bankName: null,
+        branchId: null,
+        branchName: null,
+        mfo: null,
+        edrpou: null,
+        bankAddress: null,
+        provider: null,
+        autoPullEnabled: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/bank-accounts',
+        payload: {
+          name: 'Поточний',
+          ibanUA: VALID_IBAN,
+          currencyId: CURRENCY_ID,
+          provider: '',
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      const dtoArg = serviceMock.create.mock.calls[0]![1] as Record<string, unknown>;
+      // Порожній рядок нормалізовано → у service не потрапляє '' (інакше зберігся б '' замість null).
+      expect(dtoArg.provider).toBeUndefined();
+    });
   });
 });

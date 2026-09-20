@@ -103,6 +103,54 @@ describe('MonoStatementClient', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('WINDOWING: рівно 31 день → 1 шматок (без зайвого другого вікна)', async () => {
+    // Точна межа WINDOW_MS=31д. cursor+31д === end → один шматок, cursor доходить до end, цикл стоп.
+    // Без fake-timers: 1 вікно = 0 пауз (якби було 2 → зависло б на sleep(60с)).
+    fetchMock.mockResolvedValue(okResponse([]));
+    await client.fetchStatements({
+      ...baseArgs,
+      from: new Date(Date.UTC(2026, 0, 1)),
+      to: new Date(Date.UTC(2026, 0, 1) + 31 * 24 * 60 * 60 * 1000),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('WINDOWING: from == to → 1 вироджене вікно, 1 запит (без падіння/циклу)', async () => {
+    // Інвертований/нульовий діапазон (from>=to) → splitWindows повертає [{from,to}] → 1 запит.
+    fetchMock.mockResolvedValue(okResponse([]));
+    const day = new Date(Date.UTC(2026, 5, 15));
+    const rows = await client.fetchStatements({ ...baseArgs, from: day, to: day });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(rows).toEqual([]);
+    const [url] = fetchMock.mock.calls[0];
+    // fromSec === toSec (порожнє вікно), без NaN у path.
+    const m = /\/statement\/0\/(\d+)\/(\d+)/.exec(url as string)!;
+    expect(m[1]).toBe(m[2]);
+  });
+
+  it('WINDOWING: 90-денне вікно → 3 суміжні шматки без розривів/накладок', async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(okResponse([]));
+    const promise = client.fetchStatements({
+      ...baseArgs,
+      from: new Date(Date.UTC(2026, 0, 1)),
+      to: new Date(Date.UTC(2026, 0, 1) + 90 * 24 * 60 * 60 * 1000),
+    });
+    await vi.runAllTimersAsync();
+    await promise;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Ланцюг суміжності: from[i+1] === to[i] для всіх шматків (без gap/overlap на межах).
+    const bounds = fetchMock.mock.calls.map(c => {
+      const m = /\/statement\/0\/(\d+)\/(\d+)/.exec(c[0] as string)!;
+      return { from: m[1], to: m[2] };
+    });
+    expect(bounds[1].from).toBe(bounds[0].to);
+    expect(bounds[2].from).toBe(bounds[1].to);
+    // Останній шматок закінчується рівно на to (без втрати хвоста).
+    const toSec = Math.floor((Date.UTC(2026, 0, 1) + 90 * 24 * 60 * 60 * 1000) / 1000);
+    expect(Number(bounds[2].to)).toBe(toSec);
+  });
+
   it('SSRF: приватний apiUrl → кидає, fetch не викликається', async () => {
     await expect(
       client.fetchStatements({ ...baseArgs, apiUrl: 'http://169.254.169.254' }),

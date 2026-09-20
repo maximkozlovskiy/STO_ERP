@@ -214,6 +214,50 @@ describe('BankStatementParserService.parseRows — DBF', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('temp-директорія sto-dbf-* прибирається після parse (успіх І помилка — нема leak у tmpdir)', async () => {
+    const { readdir } = await import('node:fs/promises');
+    const before = (await readdir(tmpdir())).filter(n => n.startsWith('sto-dbf-')).length;
+
+    const buf = await dbfBuf([{ DATE: new Date(Date.UTC(2026, 2, 1)), AMOUNT: 10, EXTID: 'x' }]);
+    await service.parseRows(buf, 'stmt.dbf', {
+      startRow: 2,
+      dateCol: 1,
+      amountCol: 2,
+      externalIdCol: 3,
+    });
+    // Помилковий шлях теж мусить прибрати temp (finally-cleanup, не лише happy-path).
+    await service
+      .parseRows(Buffer.from('junk'), 'bad.dbf', {
+        startRow: 1,
+        dateCol: 1,
+        amountCol: 2,
+        externalIdCol: 3,
+      })
+      .catch(() => undefined);
+
+    const after = (await readdir(tmpdir())).filter(n => n.startsWith('sto-dbf-')).length;
+    // Не має накопичувати temp-директорій парсера (dbfBuf-фікстура має власний префікс sto-dbf-fixture-,
+    // але вона теж прибирає за собою у finally — тож дельта sto-dbf-* парсера === 0).
+    expect(after).toBeLessThanOrEqual(before);
+  });
+
+  it('порожній .dbf (0 записів) → лише header-рядок, parseRows кидає noDataRows', async () => {
+    const buf = await dbfBuf([]); // 0 записів
+    // rawPreview: лише header (назви полів), 1 рядок сітки.
+    const preview = await service.rawPreview(buf, 'empty.dbf', 50);
+    expect(preview.totalRows).toBe(1);
+    expect(preview.rows[0]).toEqual(['DATE', 'AMOUNT', 'EXTID', 'NAME']);
+    // parseRows: жодного data-рядка → BadRequestException (noDataRows).
+    await expect(
+      service.parseRows(buf, 'empty.dbf', {
+        startRow: 2,
+        dateCol: 1,
+        amountCol: 2,
+        externalIdCol: 3,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
 
 describe('BankStatementParserService.rawPreview', () => {

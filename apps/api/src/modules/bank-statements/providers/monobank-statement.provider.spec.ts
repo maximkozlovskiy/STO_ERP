@@ -31,6 +31,34 @@ describe('MonobankStatementProvider', () => {
     expect(rows[0].purpose).toBe('оплата');
   });
 
+  it('MONEY-CRITICAL: credit-межа minor=1 → 0.01 проходить (не губимо копійку)', async () => {
+    // Найменша можлива вхідна проводка: 1 копійка. Фільтр minor>0 → проходить; ÷100 → 0.01.
+    client.fetchStatements.mockResolvedValue([{ id: 'penny', time: 1757060000, amount: 1 }]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe(0.01);
+  });
+
+  it('MONEY-CRITICAL: amount як рядок "15000" (JSON-coerce) → 150.00, не ламає мапінг', async () => {
+    // Захисна нормалізація: Number("15000")=15000. Якби mono колись віддав amount рядком —
+    // не має тихо давати NaN/skip чи неправильну суму.
+    client.fetchStatements.mockResolvedValue([
+      { id: 'str', time: 1757060000, amount: '15000' as unknown as number },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe(150.0);
+  });
+
+  it('defensive: amount нечисловий рядок "abc" → NaN → skip (не 0-грн проводка)', async () => {
+    client.fetchStatements.mockResolvedValue([
+      { id: 'bad', time: 1757060000, amount: 'abc' as unknown as number },
+      { id: 'ok', time: 1757060000, amount: 500 },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows.map(r => r.externalId)).toEqual(['ok']);
+  });
+
   it('credit-фільтр: amount≤0 (debit від’ємний / нуль) → skip', async () => {
     client.fetchStatements.mockResolvedValue([
       { id: 'in', time: 1757060000, amount: 5000 }, // ✓ вхідний

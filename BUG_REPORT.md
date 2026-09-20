@@ -6015,3 +6015,40 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **enqueueImmediate jobId dedup** (`bank-pull-now-<org>`): анти-спам кнопки, окремий jobId від cron `bank-pull-<org>` — коректно.
 - **reschedule `.find(key.includes('bank-pull-<uuid>'))`**: UUID-ключі не колізують; immediate-jobs не входять у getRepeatableJobs — без крос-видалення.
 - **overlapping-window auto-match**: другий pull → findFirst UNMATCHED null → skip → 0 повторний Payment. Money-safe (locked тестом).
+
+## Session 2026-09-21 — bank-statements розширення (monobank API + DBF + multi-bank) bug hunt
+
+Скоуп: коміти f98fadb6 (mono-statement.client + monobank-statement.provider + parseDbfGrid + multi-bank processor resolveByCode/providerToSource + BankAccount.provider + UI provider-dropdown) та 77ad954d (import accept=.dbf). Пройдено sync + review (APPROVE). Уже було 32 нові unit-тести. Прогнав money/windowing/multi-bank/DBF edge-cases + повний E2E-гейт.
+
+### Bug #769 — CreateBankAccountDto.provider без @Transform(emptyToUndefined) (асиметрія з Update) — LOW
+
+**Файл:** `apps/api/src/modules/bank-accounts/bank-accounts.dto.ts`
+
+**Симптом (контракт):** у комміті f98fadb6 поле `provider?: string` додано у ДВА DTO. `UpdateBankAccountDto.provider` отримав `@Transform(emptyToUndefined)` (порожній рядок скинутого селекта → undefined → у БД NULL), а `CreateBankAccountDto.provider` — НІ. Наслідок: POST /bank-accounts з `provider: ''` (будь-який API-клієнт, майбутня форма, імпорт) проходить `@IsString` (порожній рядок валідний) → service гілка `dto.provider !== undefined ? { provider: dto.provider }` зберігає `provider: ''` у БД → `BankAccountResponseDto.provider = ''` замість `null`. Розбіжність контракту з update-шляхом; у UI `selected`-порівняння value селекта з реєстром провайдерів плутається на `''` vs відсутність. (Поточний UI шле `baForm.provider || undefined`, тож не тригериться саме цим шляхом — тому LOW, а не MEDIUM; але контракт негерметичний.)
+
+**Виявлено:** статичним аналізом — пряме порівняння двох DTO у diff показало наявність `@Transform` лише в Update. Дзеркальний Bug #244 (branchId) вже мав цей захист і regression-guard.
+
+**Причина виникнення:** розробник скопіював поле у два DTO, але трансформ додав лише туди, де його «помітив» (Update має інші @Transform-поля поруч). Класична copy-paste-асиметрія optional-string полів.
+
+**Фікс:** додав `@Transform(emptyToUndefined)` до `CreateBankAccountDto.provider` — дзеркально до Update. Тепер `''` → undefined → NULL у БД на обох шляхах.
+
+**Тест (regression-guard):** `bank-accounts.contract.spec.ts` +1 — `provider="" → @Transform(emptyToUndefined) → undefined у DTO` (дзеркальний до Bug #244 branchId-guard). Якщо трансформ відкатять — tsc зелений, runtime зберігає '' → тест ловить.
+
+**Severity:** LOW (контрактна асиметрія; поточний UI не тригерить, але інший клієнт зберіг би '' замість null).
+
+[x] виправлено
+
+### Покриття (нові тести — locking money/windowing/DBF інваріантів розширення; не баги)
+
+- **mono-statement.client.spec.ts** 10→13 (+3): WINDOWING рівно 31 день → 1 шматок (межа WINDOW_MS, без зайвого 2-го вікна); from==to → 1 вироджене вікно 1 запит fromSec===toSec (без NaN/циклу); 90-денне → 3 суміжні шматки, from[i+1]===to[i] (без gap/overlap), останній to===кінець вікна (без втрати хвоста).
+- **monobank-statement.provider.spec.ts** 14→17 (+3): MONEY-CRITICAL credit-межа minor=1 → 0.01 (не губимо копійку); amount рядком "15000" (JSON-coerce) → 150.00; amount нечисловий "abc" → NaN → skip (не 0-грн проводка).
+- **bank-statement-parser.service.spec.ts** 14→16 (+2): temp-директорія sto-dbf-* прибирається після parse на успіх І помилку (finally-cleanup, без leak у tmpdir); порожній .dbf (0 записів) → лише header-рядок, parseRows → noDataRows.
+
+### Перевірено як БЕЗПЕЧНЕ (не баг — MANUAL-VERIFY / fail-safe за дизайном)
+
+- **mono currencyCode не-UAH**: provider НЕ фільтрує/позначає валюту — amount USD-рахунку трактувався б як UAH. MANUAL-VERIFY (потребує живого мерчант-токена + staging бере валюту рахунку) — свідомо не чіпав.
+- **mono verifyCredentials offline**: мережева помилка («fetch failed») не матчить регекс auth-помилки → звітує `{valid:false, error:"fetch failed"}` (не «Невірний токен»). UX-нюанс, не money-баг; коректно розрізняє auth від мережі.
+- **splitWindows MAX_WINDOWS=12 cap**: діапазон >~1 року мовчки обрізав би хвіст. Processor MAX_WINDOW_DAYS=90 → максимум 3 вікна на практиці; cap — defense-in-depth проти битого from/to. Не досяжно у реальному потоці.
+- **невідомий provider-код** (не privat24/monobank): resolveByCode→null → рахунок пропущено (debug-log), providerToSource→FILE_IMPORT дефолт. Fail-safe, без крешу (покрито тестом).
+- **provider='' у processor**: falsy → гілка resolveActive (legacy-fallback) — коректно навіть без Bug #769-фіксу; асиметрія лише у збереженні/контракті, не в auto-pull-роутингу.
+- **import modal accept=.dbf** (77ad954d): збігається з backend assertSupported (.csv/.xlsx/.dbf) — перевірено, коректно.

@@ -60,6 +60,10 @@ export class CreateBankAccountDto {
       'Код банку-провайдера для auto-pull (privat24 | monobank); null → активний per-branch',
   })
   @IsOptional()
+  // Порожній рядок «» (скинутий селект UI) → undefined → у БД NULL. Дзеркалить UpdateBankAccountDto,
+  // інакше create зберігав би provider='' (falsy → legacy-fallback, але response.provider='' замість
+  // null — розбіжність контракту з update-шляхом і плутанина у selected-value UI).
+  @Transform(emptyToUndefined)
   @IsString()
   provider?: string;
 }
