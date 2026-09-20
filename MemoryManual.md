@@ -9,14 +9,15 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-19 (tester full-branch cycle 3/3 FINAL — release-ready, E2E 339/339)
+Дата:       2026-09-20 (tester bank-statements bug hunt — Bug #767 fixed, E2E 343/343)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2573/2573 · web 834 component (+3 CurrencySelect регрес) · E2E 339/339 (повний auth-gated, seeded DB).
+Тести:      api 2613/2613 (+17 bank-statements: parser 11 нових + reconciliation 12→18) · web 837 component · E2E 343/343
+            (+6 bank-statements smoke, повний auth-gated seeded DB; 2 flaky work-orders pass-on-retry, pre-existing).
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
 HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
 i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
@@ -301,7 +302,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Tester full-branch cycle 3/3 FINAL — release-ready — 2026-09-19, HEAD 46392fcd:
+Tester bank-statements bug hunt — 2026-09-20, HEAD 2b3e0c64:
+  2b3e0c64 fix(tester): Bug #767 [MEDIUM] parseDate rollover guard + bank-statements покриття.
+        Bug #767: bank-statement-parser.parseDate тихо «перекочував» неіснуючі дати (31.02→03.03,
+        31.04→05.01) — JS Date overflow без round-trip guard → зіпсована operationDate реальної
+        банк-транзакції (визначає курс amountBase). Фікс: звірка getUTC*-компонентів з входом → null.
+        +bank-statement-parser.service.spec.ts (NEW 11 тестів — раніше 0 на 261-рядковий парсер файл→гроші).
+        +bank-reconciliation 12→18 (INVOICE→PAYMENT+invoiceId+amount; guards CAS-untouched; previewImport
+        дедуп; applyImport 404+amountBase). +e2e/bank-statements.spec.ts (NEW 6: рендер/фільтр/import-wizard/
+        повний ignore-flow seed→apply→IGNORED). SKILL +Bug #767 date-rollover патерн.
+        ENV-урок: running API/web стартували ДО фічі → 404 на нових роутах; перезапуск підхопив модуль.
+  Suite: api tsc 0/2613 · web tsc 0/837 component · shared 0 · E2E 343/343 (+6 bank, 2 flaky retry-pass).
+  Попередні — full-branch cycle 3/3 FINAL — 2026-09-19, HEAD 46392fcd:
   46392fcd docs(tester): cycle 3/3 (FINAL) — валідаційний прохід, НУЛЬ нових багів. Реліз-гейт GREEN.
         Функціональний diff be48551d..HEAD = 3 frontend файли: f53e7c1d CreateWorkOrderModal мігровано на
         onAutoDefault prop (той самий dirty-guard патерн що Invoice/PO, Bug #766-class consistency);
