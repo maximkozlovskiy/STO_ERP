@@ -556,7 +556,7 @@ export const en: Record<string, string> = {
   'err.bankStatement.counterpartyNotFound': 'Counterparty not found',
   'err.bankStatement.invoiceNotFound': 'Invoice not found',
   'err.bankStatement.invoiceRequiredForType': 'An invoice is required for the "Invoice" match type',
-  'err.bankStatement.invalidFile': 'Unsupported file format — .xlsx or .csv is expected',
+  'err.bankStatement.invalidFile': 'Unsupported file format — .xlsx, .csv or .dbf is expected',
   'err.bankStatement.fileReadFailed': 'Failed to read the statement file',
   'err.bankStatement.noDataRows': 'The statement file contains no data rows',
   'err.bankStatement.matchFailed': 'Failed to post a payment for the transaction',

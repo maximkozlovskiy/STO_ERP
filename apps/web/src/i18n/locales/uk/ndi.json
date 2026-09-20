@@ -92,7 +92,10 @@
     "fieldBankName": "Назва банку",
     "fieldMfo": "МФО",
     "fieldEdrpou": "ЄДРПОУ банку",
-    "fieldBankAddress": "Адреса банку"
+    "fieldBankAddress": "Адреса банку",
+    "fieldProvider": "Банк для авто-підтягування",
+    "providerNone": "Немає (без авто-pull)",
+    "fieldAutoPull": "Авто-підтягувати виписку"
   },
   "taxRates": {
     "empty": "Ставок ПДВ не знайдено",

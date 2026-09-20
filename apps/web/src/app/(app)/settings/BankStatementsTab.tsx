@@ -25,7 +25,7 @@ export default function BankStatementsTab() {
   const [pulling, setPulling] = useState(false);
   const [error, setError] = useState('');
 
-  // Схема полів кредів Privat24 (бекенд list() дає лише code/name).
+  // Схема полів кредів банків-провайдерів (бекенд list() дає лише code/name).
   const bankProviders: PanelProviderMeta[] = useMemo(
     () => [
       {
@@ -34,6 +34,14 @@ export default function BankStatementsTab() {
         fields: [
           { key: 'merchantId', label: t('bankStatements.merchantId') },
           { key: 'token', label: t('bankStatements.token'), secret: true },
+        ],
+      },
+      {
+        code: 'monobank',
+        name: 'monobank',
+        fields: [
+          { key: 'token', label: t('bankStatements.monoToken'), secret: true },
+          { key: 'accountId', label: t('bankStatements.monoAccountId') },
         ],
       },
     ],

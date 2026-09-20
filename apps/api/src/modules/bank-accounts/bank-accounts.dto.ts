@@ -54,6 +54,14 @@ export class CreateBankAccountDto {
   @IsOptional()
   @IsBoolean()
   autoPullEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Код банку-провайдера для auto-pull (privat24 | monobank); null → активний per-branch',
+  })
+  @IsOptional()
+  @IsString()
+  provider?: string;
 }
 
 export class UpdateBankAccountDto {
@@ -106,6 +114,15 @@ export class UpdateBankAccountDto {
   @IsOptional()
   @IsBoolean()
   autoPullEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Код банку-провайдера для auto-pull (privat24 | monobank); порожнє → активний per-branch',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  provider?: string;
 }
 
 export class BankAccountResponseDto {
@@ -122,6 +139,7 @@ export class BankAccountResponseDto {
   @ApiPropertyOptional() edrpou?: string | null;
   @ApiPropertyOptional() bankAddress?: string | null;
   @ApiProperty() autoPullEnabled!: boolean;
+  @ApiPropertyOptional() provider?: string | null;
   @ApiPropertyOptional() lastPulledAt?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;

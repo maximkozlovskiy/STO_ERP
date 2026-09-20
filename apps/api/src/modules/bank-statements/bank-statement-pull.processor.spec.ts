@@ -18,7 +18,10 @@ describe('BankStatementPullProcessor', () => {
     bankAccount: { findMany: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     bankTransaction: { findFirst: ReturnType<typeof vi.fn> };
   };
-  let providerConfig: { resolveActive: ReturnType<typeof vi.fn> };
+  let providerConfig: {
+    resolveActive: ReturnType<typeof vi.fn>;
+    resolveByCode: ReturnType<typeof vi.fn>;
+  };
   let providerImpl: { fetchStatements: ReturnType<typeof vi.fn> };
   let registry: { get: ReturnType<typeof vi.fn> };
   let reconciliation: {
@@ -62,6 +65,11 @@ describe('BankStatementPullProcessor', () => {
         provider: 'privat24',
         apiUrl: null,
         credentials: { merchantId: 'M', token: 'T' },
+      }),
+      resolveByCode: vi.fn().mockResolvedValue({
+        provider: 'monobank',
+        apiUrl: null,
+        credentials: { token: 'T', accountId: '0' },
       }),
     };
     providerImpl = { fetchStatements: vi.fn().mockResolvedValue([]) };
@@ -277,5 +285,71 @@ describe('BankStatementPullProcessor', () => {
     // Другий рахунок все одно імпортовано.
     expect(reconciliation.applyImport).toHaveBeenCalledTimes(1);
     expect(reconciliation.applyImport.mock.calls[0][1].bankAccountId).toBe('acc-ok');
+  });
+
+  // ─── Multi-bank: provider-routing + source ────────────────────────────────────
+
+  it('provider=monobank → resolveByCode (НЕ resolveActive) + source MONOBANK_API', async () => {
+    prisma.bankAccount.findMany.mockResolvedValue([acctRow({ provider: 'monobank' })]);
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('m1')]);
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(providerConfig.resolveByCode).toHaveBeenCalledWith(ORG, 'br-1', 'BANK', 'monobank');
+    expect(providerConfig.resolveActive).not.toHaveBeenCalled();
+    expect(reconciliation.applyImport).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ bankAccountId: ACC }),
+      'MONOBANK_API',
+    );
+  });
+
+  it('provider=privat24 → resolveByCode + source PRIVAT24_API', async () => {
+    prisma.bankAccount.findMany.mockResolvedValue([acctRow({ provider: 'privat24' })]);
+    providerConfig.resolveByCode.mockResolvedValue({
+      provider: 'privat24',
+      apiUrl: null,
+      credentials: { merchantId: 'M', token: 'T' },
+    });
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('p1')]);
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(providerConfig.resolveByCode).toHaveBeenCalledWith(ORG, 'br-1', 'BANK', 'privat24');
+    expect(reconciliation.applyImport.mock.calls[0][2]).toBe('PRIVAT24_API');
+  });
+
+  it('provider=null → legacy-fallback resolveActive (source з активного провайдера)', async () => {
+    // acctRow дефолт не має provider → resolveActive-гілка (зворотна сумісність).
+    prisma.bankAccount.findMany.mockResolvedValue([acctRow()]);
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('l1')]);
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(providerConfig.resolveActive).toHaveBeenCalled();
+    expect(providerConfig.resolveByCode).not.toHaveBeenCalled();
+    expect(reconciliation.applyImport.mock.calls[0][2]).toBe('PRIVAT24_API');
+  });
+
+  it('невідомий provider-код (не privat24/monobank) → source FILE_IMPORT дефолт', async () => {
+    prisma.bankAccount.findMany.mockResolvedValue([acctRow({ provider: 'oschad' })]);
+    providerConfig.resolveByCode.mockResolvedValue({
+      provider: 'oschad',
+      apiUrl: null,
+      credentials: { token: 'T' },
+    });
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('o1')]);
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(reconciliation.applyImport.mock.calls[0][2]).toBe('FILE_IMPORT');
+  });
+
+  it('IntegrationLog ctx.provider = active.provider (НЕ хардкод privat24)', async () => {
+    const wrapSpy = vi.fn((_c: unknown, fn: () => unknown) => fn());
+    processor = new BankStatementPullProcessor(
+      prisma as never,
+      providerConfig as never,
+      registry as never,
+      reconciliation as never,
+      { wrap: wrapSpy } as never,
+      { capture: vi.fn() } as never,
+    );
+    prisma.bankAccount.findMany.mockResolvedValue([acctRow({ provider: 'monobank' })]);
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('m1')]);
+    await processor.process(makeJob({ orgId: ORG }));
+    expect(wrapSpy.mock.calls[0][0]).toMatchObject({ provider: 'monobank' });
   });
 });

@@ -79,6 +79,7 @@ export class BankAccountsService {
         edrpou: dto.edrpou,
         bankAddress: dto.bankAddress,
         ...(dto.autoPullEnabled !== undefined ? { autoPullEnabled: dto.autoPullEnabled } : {}),
+        ...(dto.provider !== undefined ? { provider: dto.provider } : {}),
       },
       include: { currency: { select: { code: true } }, branch: { select: { name: true } } },
     });
@@ -160,6 +161,7 @@ export class BankAccountsService {
     edrpou: string | null;
     bankAddress: string | null;
     autoPullEnabled: boolean;
+    provider: string | null;
     lastPulledAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
@@ -180,6 +182,7 @@ export class BankAccountsService {
       edrpou: item.edrpou,
       bankAddress: item.bankAddress,
       autoPullEnabled: item.autoPullEnabled,
+      provider: item.provider,
       lastPulledAt:
         item.lastPulledAt instanceof Date ? item.lastPulledAt.toISOString() : item.lastPulledAt,
       createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,

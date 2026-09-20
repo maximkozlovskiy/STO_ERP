@@ -544,7 +544,7 @@ export const uk: Record<string, string> = {
   'err.bankStatement.counterpartyNotFound': 'Контрагента не знайдено',
   'err.bankStatement.invoiceNotFound': 'Рахунок не знайдено',
   'err.bankStatement.invoiceRequiredForType': 'Для типу «Рахунок» потрібно вказати рахунок',
-  'err.bankStatement.invalidFile': 'Непідтримуваний формат файлу — очікується .xlsx або .csv',
+  'err.bankStatement.invalidFile': 'Непідтримуваний формат файлу — очікується .xlsx, .csv або .dbf',
   'err.bankStatement.fileReadFailed': 'Не вдалося прочитати файл виписки',
   'err.bankStatement.noDataRows': 'Файл виписки не містить жодного рядка даних',
   'err.bankStatement.matchFailed': 'Не вдалося провести платіж за транзакцією',

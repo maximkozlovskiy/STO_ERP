@@ -456,6 +456,11 @@ model BankAccount {
   // є Privat24). lastPulledAt — курсор вікна дат (from) наступного pull; оновлюється після успіху.
   autoPullEnabled Boolean @default(false)
   lastPulledAt    DateTime?
+  // Код банку-провайдера для auto-pull (privat24 | monobank). Визначає, ЧЕРЕЗ ЯКИЙ API тягнути
+  // виписку цього рахунку (multi-bank: рахунки в різних банках → різні провайдери). null = не
+  // auto-pull / legacy. Резолвиться через ProviderConfigService.resolveByCode (дзеркалить
+  // CashRegister.fiscalProvider). НЕ FK — вільний код провайдера, як fiscalProvider.
+  provider        String?
   syncVersion BigInt    @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

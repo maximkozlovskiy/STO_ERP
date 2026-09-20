@@ -41,8 +41,10 @@ export interface BankAccount {
   mfo?: string | null;
   edrpou?: string | null;
   bankAddress?: string | null;
-  /** Авто-підтягування виписки Privat24 (керується через /bank-accounts, UI-toggle поки відсутній). */
+  /** Авто-підтягування виписки для рахунку (керується через /bank-accounts). */
   autoPullEnabled?: boolean;
+  /** Код банку-провайдера для auto-pull (privat24 | monobank); null → активний per-branch. */
+  provider?: string | null;
   lastPulledAt?: string | null;
 }
 

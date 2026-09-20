@@ -109,6 +109,9 @@ importers:
       csv-parse:
         specifier: ^6.2.1
         version: 6.2.1
+      dbffile:
+        specifier: ^1.13.0
+        version: 1.13.0
       docxtemplater:
         specifier: ^3.68.7
         version: 3.69.3
@@ -4071,6 +4074,9 @@ packages:
 
   dayjs@1.11.23:
     resolution: {integrity: sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ==}
+
+  dbffile@1.13.0:
+    resolution: {integrity: sha512-Stw3nWI46qR/mbzZfUQbWrKCns10rMTH5/NTDH9J+5akzWyndkA+ipzvu+Cojqxfd/zb7GNKO+DHi7uc7IoepQ==}
 
   debug@2.6.9:
     resolution: {integrity: sha512-bC7ElrdJaJnPbAP+1EotYvqZsb3ecl5wi6Bfi6BJTUcNowp6cvspg0jXznRTKDjm/E7AdgFBVeAPVMNcKGsHMA==}
@@ -11959,6 +11965,10 @@ snapshots:
   dateformat@4.6.3: {}
 
   dayjs@1.11.23: {}
+
+  dbffile@1.13.0:
+    dependencies:
+      iconv-lite: 0.4.24
 
   debug@2.6.9:
     dependencies:

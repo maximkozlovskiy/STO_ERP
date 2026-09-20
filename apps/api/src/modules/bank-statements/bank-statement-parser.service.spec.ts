@@ -1,6 +1,11 @@
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
+import { DBFFile } from 'dbffile';
 import { BankStatementParserService, type ColumnMapping } from './bank-statement-parser.service';
 
 // Парсер — чистий сервіс без DI. Тестуємо РЕАЛЬНУ поведінку на байтах файлу:
@@ -133,6 +138,81 @@ describe('BankStatementParserService.parseRows — XLSX', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amount).toBe(1250.5);
     expect(rows[0]!.externalId).toBe('ext-x1');
+  });
+});
+
+/**
+ * Створює мінімальний .dbf buffer через dbffile (win1251 — той самий encoding, що читає парсер)
+ * з заданими записами і повертає його байти. Поля: DATE (D), AMOUNT (N), EXTID (C), NAME (C).
+ */
+async function dbfBuf(
+  records: Array<{ DATE: Date; AMOUNT: number; EXTID: string; NAME?: string }>,
+): Promise<Buffer> {
+  const dir = await mkdtemp(join(tmpdir(), 'sto-dbf-fixture-'));
+  const path = join(dir, `${randomUUID()}.dbf`);
+  try {
+    const dbf = await DBFFile.create(
+      path,
+      [
+        { name: 'DATE', type: 'D', size: 8 },
+        { name: 'AMOUNT', type: 'N', size: 12, decimalPlaces: 2 },
+        { name: 'EXTID', type: 'C', size: 20 },
+        { name: 'NAME', type: 'C', size: 40 },
+      ],
+      { encoding: 'win1251' },
+    );
+    await dbf.appendRecords(records.map(r => ({ NAME: '', ...r })));
+    return await readFile(path);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+describe('BankStatementParserService.parseRows — DBF', () => {
+  let service: BankStatementParserService;
+  beforeEach(() => {
+    service = new BankStatementParserService();
+  });
+
+  it('.dbf підтримується (assertSupported): парсить D-дату + N-число у RawTx', async () => {
+    const buf = await dbfBuf([
+      { DATE: new Date(Date.UTC(2026, 2, 1)), AMOUNT: 1250.5, EXTID: 'dbf-1', NAME: 'ТОВ Клієнт' },
+    ]);
+    // Рядок[0] у сітці = назви полів (header). startRow=2 → перший запис.
+    const m: ColumnMapping = {
+      startRow: 2,
+      dateCol: 1, // DATE
+      amountCol: 2, // AMOUNT
+      externalIdCol: 3, // EXTID
+      payerNameCol: 4, // NAME
+    };
+    const rows = await service.parseRows(buf, 'stmt.dbf', m);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.externalId).toBe('dbf-1');
+    expect(rows[0]!.amount).toBe(1250.5);
+    expect(rows[0]!.operationDate.toISOString()).toBe('2026-03-01T00:00:00.000Z');
+    expect(rows[0]!.payerName).toBe('ТОВ Клієнт');
+  });
+
+  it('rawPreview .dbf → перший рядок сітки = назви полів (header для column-mapping)', async () => {
+    const buf = await dbfBuf([{ DATE: new Date(Date.UTC(2026, 2, 5)), AMOUNT: 10, EXTID: 'x' }]);
+    const res = await service.rawPreview(buf, 'stmt.dbf', 50);
+    expect(res.rows[0]).toEqual(['DATE', 'AMOUNT', 'EXTID', 'NAME']);
+    // 1 header-рядок + 1 запис.
+    expect(res.totalRows).toBe(2);
+    expect(res.columnCount).toBe(4);
+  });
+
+  it('битий .dbf buffer → BadRequestException (fileReadFailed)', async () => {
+    const junk = Buffer.from('not a dbf file at all', 'utf-8');
+    await expect(
+      service.parseRows(junk, 'broken.dbf', {
+        startRow: 1,
+        dateCol: 1,
+        amountCol: 2,
+        externalIdCol: 3,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 

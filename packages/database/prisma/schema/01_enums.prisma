@@ -212,8 +212,9 @@ enum BankTransactionMatchType {
 
 // Джерело завантаження банк-транзакції.
 enum BankTransactionSource {
-  FILE_IMPORT // CSV/XLSX виписка (offline)
+  FILE_IMPORT // CSV/XLSX/DBF виписка (offline)
   PRIVAT24_API // auto-pull Privat24 Merchant API
+  MONOBANK_API // auto-pull monobank statement API
 }
 
 // Напрям банк-транзакції. Фокус MVP — IN (вхідні надходження).

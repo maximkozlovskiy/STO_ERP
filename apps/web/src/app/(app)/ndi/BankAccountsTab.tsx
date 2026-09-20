@@ -24,6 +24,7 @@ export default function BankAccountsTab() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [branches, setBranches] = useState<BranchInfo[]>([]);
+  const [bankProviders, setBankProviders] = useState<{ code: string; name: string }[]>([]);
   const [baModal, setBaModal] = useState(false);
   const [editingBa, setEditingBa] = useState<BankAccount | null>(null);
   const [baForm, setBaForm] = useState({
@@ -35,6 +36,8 @@ export default function BankAccountsTab() {
     mfo: '',
     edrpou: '',
     bankAddress: '',
+    provider: '',
+    autoPullEnabled: false,
   });
   const [baErrors, setBaErrors] = useState<{ name?: string; ibanUA?: string; currencyId?: string }>(
     {},
@@ -77,6 +80,12 @@ export default function BankAccountsTab() {
         setError(e instanceof Error ? e.message : t('common.loadError'));
         setLoadingBa(false);
       });
+
+    // Метадані банків-провайдерів для селекта auto-pull (best-effort — не блокує форму).
+    // Guard Array.isArray (Bug #592-стиль): битий/несподіваний респонс не має крашити .map.
+    apiFetch<{ code: string; name: string }[]>('/bank-statement-providers')
+      .then(res => setBankProviders(Array.isArray(res) ? res : []))
+      .catch(() => setBankProviders([]));
   }, [t]);
 
   const openBaModal = (ba?: BankAccount) => {
@@ -92,6 +101,8 @@ export default function BankAccountsTab() {
         mfo: ba.mfo ?? '',
         edrpou: ba.edrpou ?? '',
         bankAddress: ba.bankAddress ?? '',
+        provider: ba.provider ?? '',
+        autoPullEnabled: ba.autoPullEnabled ?? false,
       });
     } else {
       setBaForm({
@@ -103,6 +114,8 @@ export default function BankAccountsTab() {
         mfo: '',
         edrpou: '',
         bankAddress: '',
+        provider: '',
+        autoPullEnabled: false,
       });
     }
     setBaModal(true);
@@ -130,6 +143,8 @@ export default function BankAccountsTab() {
         mfo: baForm.mfo || undefined,
         edrpou: baForm.edrpou || undefined,
         bankAddress: baForm.bankAddress || undefined,
+        provider: baForm.provider || undefined,
+        autoPullEnabled: baForm.autoPullEnabled,
       };
       if (editingBa) {
         const updated = await apiFetch<BankAccount>(`/bank-accounts/${editingBa.id}`, {
@@ -322,6 +337,28 @@ export default function BankAccountsTab() {
             onChange={e => setBaForm({ ...baForm, bankAddress: e.target.value })}
             className="h-8 text-[13px]"
           />
+          <Select
+            label={t('bankAccounts.fieldProvider')}
+            value={baForm.provider}
+            onChange={e => setBaForm({ ...baForm, provider: e.target.value })}
+            placeholder={t('bankAccounts.providerNone')}
+            className="h-8 text-[13px] py-0.5 px-2 pr-7"
+          >
+            {bankProviders.map(p => (
+              <option key={p.code} value={p.code}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+          <label className="flex items-center gap-2 text-[13px] text-foreground">
+            <input
+              type="checkbox"
+              checked={baForm.autoPullEnabled}
+              onChange={e => setBaForm({ ...baForm, autoPullEnabled: e.target.checked })}
+              className="h-4 w-4 rounded border-border"
+            />
+            {t('bankAccounts.fieldAutoPull')}
+          </label>
         </div>
       </Modal>
 

@@ -92,7 +92,10 @@
     "fieldBankName": "Bank name",
     "fieldMfo": "MFO",
     "fieldEdrpou": "Bank EDRPOU",
-    "fieldBankAddress": "Bank address"
+    "fieldBankAddress": "Bank address",
+    "fieldProvider": "Bank for auto-pull",
+    "providerNone": "None (no auto-pull)",
+    "fieldAutoPull": "Auto-pull statements"
   },
   "taxRates": {
     "empty": "No VAT rates found",

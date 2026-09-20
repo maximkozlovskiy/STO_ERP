@@ -395,6 +395,8 @@
     "serviceTitle": "Банк-провайдер виписки",
     "merchantId": "ID мерчанта (Autoclient)",
     "token": "Токен",
+    "monoToken": "Персональний токен (X-Token)",
+    "monoAccountId": "ID рахунку (опційно, дефолт 0)",
     "intervalError": "Інтервал має бути від 15 до 1440 хвилин",
     "intervalSaved": "Інтервал збережено",
     "pollTitle": "Авто-підтягування виписки",

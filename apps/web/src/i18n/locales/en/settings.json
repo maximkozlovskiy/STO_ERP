@@ -395,6 +395,8 @@
     "serviceTitle": "Bank statement provider",
     "merchantId": "Merchant ID (Autoclient)",
     "token": "Token",
+    "monoToken": "Personal token (X-Token)",
+    "monoAccountId": "Account ID (optional, default 0)",
     "intervalError": "Interval must be between 15 and 1440 minutes",
     "intervalSaved": "Interval saved",
     "pollTitle": "Statement auto-pull",

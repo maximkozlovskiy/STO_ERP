@@ -1,5 +1,6 @@
 import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
+import { BankTransactionSource } from '@prisma/client';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-context';
@@ -13,6 +14,18 @@ import type { RawTx } from './bank-reconciliation.service';
 
 export interface BankStatementPullJob {
   orgId: string;
+}
+
+/**
+ * Код банк-провайдера → BankTransactionSource для applyImport/IntegrationLog. Невідомий код
+ * (legacy / не-API) → FILE_IMPORT (безпечний дефолт). Розширюється при додаванні провайдерів.
+ */
+function providerToSource(code: string): BankTransactionSource {
+  const map: Record<string, BankTransactionSource> = {
+    privat24: BankTransactionSource.PRIVAT24_API,
+    monobank: BankTransactionSource.MONOBANK_API,
+  };
+  return map[code] ?? BankTransactionSource.FILE_IMPORT;
 }
 
 // MANUAL-VERIFY (константи вікна дат):
@@ -55,7 +68,14 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
 
       const accounts = await this.prisma.bankAccount.findMany({
         where: { orgId, deletedAt: null, autoPullEnabled: true },
-        select: { id: true, ibanUA: true, branchId: true, lastPulledAt: true, currencyId: true },
+        select: {
+          id: true,
+          ibanUA: true,
+          branchId: true,
+          lastPulledAt: true,
+          currencyId: true,
+          provider: true,
+        },
       });
       if (accounts.length === 0) return;
 
@@ -63,7 +83,11 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
       const minFrom = new Date(to.getTime() - MAX_WINDOW_DAYS * DAY_MS);
 
       for (const acc of accounts) {
-        const active = await this.providerConfig.resolveActive(orgId, acc.branchId, 'BANK');
+        // Multi-bank: якщо рахунок привʼязаний до провайдера (BankAccount.provider) → резолвимо саме
+        // його (resolveByCode); інакше legacy-fallback на активний per-branch BANK-провайдер.
+        const active = acc.provider
+          ? await this.providerConfig.resolveByCode(orgId, acc.branchId, 'BANK', acc.provider)
+          : await this.providerConfig.resolveActive(orgId, acc.branchId, 'BANK');
         if (!active) {
           this.logger.debug(`Рахунок ${acc.id}: BANK-провайдер не налаштовано — пропуск`);
           continue;
@@ -82,7 +106,7 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
             {
               orgId,
               branchId: acc.branchId,
-              provider: 'privat24',
+              provider: active.provider,
               operation: 'fetchStatements',
               documentType: 'BankAccount',
               documentId: acc.id,
@@ -137,7 +161,7 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
                 rawData: r.rawData,
               })),
             },
-            'PRIVAT24_API',
+            providerToSource(active.provider),
           );
         } catch (e) {
           this.logger.error(

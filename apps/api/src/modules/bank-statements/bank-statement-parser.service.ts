@@ -1,6 +1,11 @@
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
+import { DBFFile } from 'dbffile';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import type { RawTx } from './bank-reconciliation.service';
@@ -32,9 +37,13 @@ export class BankStatementParserService {
     return filename.toLowerCase().endsWith('.csv');
   }
 
+  private isDbf(filename: string): boolean {
+    return filename.toLowerCase().endsWith('.dbf');
+  }
+
   private assertSupported(filename: string): void {
     const lower = filename.toLowerCase();
-    if (!lower.endsWith('.csv') && !lower.endsWith('.xlsx')) {
+    if (!lower.endsWith('.csv') && !lower.endsWith('.xlsx') && !lower.endsWith('.dbf')) {
       throw new BadRequestException(translateError('err.bankStatement.invalidFile', getLocale()));
     }
   }
@@ -53,6 +62,13 @@ export class BankStatementParserService {
 
     if (this.isCsv(filename)) {
       const grid = this.parseCsvGrid(buffer);
+      const rows = grid.slice(0, cap);
+      const columnCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
+      return { totalRows: grid.length, columnCount, rows };
+    }
+
+    if (this.isDbf(filename)) {
+      const grid = await this.parseDbfGrid(buffer);
       const rows = grid.slice(0, cap);
       const columnCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
       return { totalRows: grid.length, columnCount, rows };
@@ -98,7 +114,9 @@ export class BankStatementParserService {
     this.assertSupported(filename);
     const grid = this.isCsv(filename)
       ? this.parseCsvGrid(buffer)
-      : await this.parseXlsxGrid(buffer);
+      : this.isDbf(filename)
+        ? await this.parseDbfGrid(buffer)
+        : await this.parseXlsxGrid(buffer);
 
     const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 1;
     const rows: RawTx[] = [];
@@ -187,6 +205,42 @@ export class BankStatementParserService {
       grid[rowNumber - 1] = cells;
     });
     return grid;
+  }
+
+  /**
+   * DBF (dBASE) → 0-based сітка string[][]: рядок[0] = назви полів (header для UI column-mapping),
+   * решта рядків = значення записів. dbffile (pure-JS, offline, без нативних біндингів) читає лише
+   * з шляху файлу → пишемо buffer у temp-файл, читаємо, прибираємо. Дати (D-поля) → DD.MM.YYYY
+   * (через cellText — parseDate розбере назад), числа → String.
+   *
+   * MANUAL-VERIFY (на живих файлах Ощад/Райф/ПУМБ): encoding — win1251 дефолт (повний укр. набір
+   * і/ї/є/ґ, який cp866 НЕ має; тому win1251 безпечніший для укр. банків). Якщо кирилиця у назвах
+   * полів/значеннях б'ється — деякі старі FoxPro-експорти йдуть у cp866 (OEM): тоді cp866 fallback.
+   */
+  private async parseDbfGrid(buffer: Buffer | Uint8Array): Promise<string[][]> {
+    // dbffile.open читає з ФС → тимчасовий файл (offline, локальний ПК/сервер СТО).
+    let dir: string | null = null;
+    try {
+      dir = await mkdtemp(join(tmpdir(), 'sto-dbf-'));
+      const filePath = join(dir, `${randomUUID()}.dbf`);
+      await writeFile(filePath, Buffer.from(buffer));
+      // readMode:'loose' — не падати на невідомих версіях/типах полів (memo тощо); encoding win1251.
+      const dbf = await DBFFile.open(filePath, { readMode: 'loose', encoding: 'win1251' });
+      const fieldNames = dbf.fields.map(f => f.name);
+      const grid: string[][] = [fieldNames];
+      const records = await dbf.readRecords();
+      for (const rec of records) {
+        grid.push(fieldNames.map(name => this.cellText((rec as Record<string, unknown>)[name])));
+      }
+      return grid;
+    } catch {
+      throw new BadRequestException(
+        translateError('err.bankStatement.fileReadFailed', getLocale()),
+      );
+    } finally {
+      // Прибираємо temp-директорію (best-effort — не валимо парсинг на помилці cleanup).
+      if (dir) await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   /** Текстове представлення комірки ExcelJS (rich-text/формула/дата/гіперлінк). Див. xlsx.service. */

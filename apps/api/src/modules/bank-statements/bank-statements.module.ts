@@ -11,6 +11,8 @@ import { BankStatementProvidersController } from './bank-statement-providers.con
 import { BankStatementPullProcessor } from './bank-statement-pull.processor';
 import { Privat24Client } from './providers/privat24.client';
 import { Privat24Provider } from './providers/privat24.provider';
+import { MonoStatementClient } from './providers/mono-statement.client';
+import { MonobankStatementProvider } from './providers/monobank-statement.provider';
 import { BankProviderRegistry } from './providers/bank-provider-registry';
 import { BANK_STATEMENT_PROVIDERS } from './providers/bank-provider.interface';
 
@@ -24,16 +26,18 @@ import { BANK_STATEMENT_PROVIDERS } from './providers/bank-provider.interface';
   providers: [
     BankReconciliationService,
     BankStatementParserService,
-    // Privat24 auto-pull: registry + provider + config + processor.
+    // Bank auto-pull: registry + providers (Privat24, monobank) + config + processor.
     ProviderConfigService,
     Privat24Client,
     Privat24Provider,
+    MonoStatementClient,
+    MonobankStatementProvider,
     // Multi-provider реєстрація: реєстр інжектить BANK_STATEMENT_PROVIDERS як BankStatementProvider[].
     // ОДИН factory повертає масив singleton-ів (NestJS 10 без Angular-style multi:true).
     {
       provide: BANK_STATEMENT_PROVIDERS,
-      useFactory: (privat24: Privat24Provider) => [privat24],
-      inject: [Privat24Provider],
+      useFactory: (privat24: Privat24Provider, mono: MonobankStatementProvider) => [privat24, mono],
+      inject: [Privat24Provider, MonobankStatementProvider],
     },
     BankProviderRegistry,
     BankStatementPullProcessor,
