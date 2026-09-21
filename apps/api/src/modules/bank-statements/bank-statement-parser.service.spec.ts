@@ -97,6 +97,20 @@ describe('BankStatementParserService.parseRows — CSV', () => {
     expect(rows[0]!.operationDate.toISOString()).toBe('2026-03-15T00:00:00.000Z');
   });
 
+  it('РЕГРЕС: неіснуюча ISO-дата 2026-02-31 НЕ rollover — рядок відкидається', async () => {
+    // ISO-гілка раніше НЕ мала rollover-guard (на відміну від DD.MM.YYYY): new Date('2026-02-31')
+    // перекочувало б у 03-03 → зіпсована operationDate (визначає курс для amountBase). Тепер null.
+    const csv =
+      'Дата,Сума,ID\n' +
+      '2026-02-31,100,ext-iso-bad\n' + // неіснуюча (лютий) — має відкинутись
+      '2023-02-29,150,ext-iso-nonleap\n' + // невисокосний рік — 29 лютого не існує
+      '2026-03-15,200,ext-iso-ok\n';
+    const m: ColumnMapping = { startRow: 2, dateCol: 1, amountCol: 2, externalIdCol: 3 };
+    const rows = await service.parseRows(csvBuf(csv), 'stmt.csv', m);
+    expect(rows.map(r => r.externalId)).toEqual(['ext-iso-ok']);
+    expect(rows[0]!.operationDate.toISOString()).toBe('2026-03-15T00:00:00.000Z');
+  });
+
   it('жодного валідного рядка → BadRequestException (noDataRows)', async () => {
     const csv = 'Дата,Сума,ID\nсміття,абв,\n';
     const m: ColumnMapping = { startRow: 2, dateCol: 1, amountCol: 2, externalIdCol: 3 };

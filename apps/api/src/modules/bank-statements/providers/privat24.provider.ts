@@ -120,9 +120,16 @@ export class Privat24Provider implements BankStatementProvider {
     const m = /^(\d{2})[.\-](\d{2})[.\-](\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
     if (m) {
       const [, dd, mm, yyyy, hh = '0', mi = '0', ss = '0'] = m;
-      const d = new Date(
-        Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss)),
-      );
+      const y = Number(yyyy);
+      const mo = Number(mm) - 1;
+      const day = Number(dd);
+      const d = new Date(Date.UTC(y, mo, day, Number(hh), Number(mi), Number(ss)));
+      // Rollover-guard (як у BankStatementParserService.parseDate): неіснуючу дату (31.02 →
+      // 03-02, невисокосний 29.02 → 03-01) JS «перекочує» замість NaN, що тихо зіпсувало б
+      // operationDate (визначає курс для amountBase). Звіряємо компоненти → відкидаємо rollover.
+      if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mo || d.getUTCDate() !== day) {
+        return null;
+      }
       return Number.isNaN(d.getTime()) ? null : d;
     }
 

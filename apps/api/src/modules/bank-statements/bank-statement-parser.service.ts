@@ -313,7 +313,16 @@ export class BankStatementParserService {
     // ISO fallback (YYYY-MM-DD або повний ISO) — нормалізуємо до UTC-півночі за date-частиною.
     const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
     if (iso) {
-      const d = new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00.000Z`);
+      const yyyy = Number(iso[1]);
+      const mm = Number(iso[2]);
+      const dd = Number(iso[3]);
+      const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+      // Той самий rollover-guard, що й для DD.MM.YYYY: JS «перекочує» неіснуючі ISO-дати
+      // (2024-02-31 → 03-02, невисокосний 2023-02-29 → 03-01), що тихо зіпсувало б operationDate
+      // (а вона визначає курс для amountBase). Звіряємо компоненти → нема rollover.
+      if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) {
+        return null;
+      }
       return Number.isNaN(d.getTime()) ? null : d;
     }
     return null;

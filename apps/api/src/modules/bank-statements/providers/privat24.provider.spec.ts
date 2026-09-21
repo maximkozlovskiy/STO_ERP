@@ -68,6 +68,19 @@ describe('Privat24Provider', () => {
     expect(rows[0].operationDate.toISOString()).toBe('2026-03-15T14:30:00.000Z');
   });
 
+  it('РЕГРЕС: неіснуюча дата 31.02.2026 НЕ rollover — рядок відкидається', async () => {
+    // parseDate DD.MM.YYYY-гілка раніше не мала rollover-guard: Date.UTC(2026,1,31) перекочувало б
+    // у 03-02 → зіпсована operationDate (визначає курс для amountBase). Тепер → null → skip.
+    client.fetchTransactions.mockResolvedValue([
+      { REF: 'bad-day', TRANTYPE: 'C', SUM: '10', DAT_OD: '31.02.2026 12:00:00' },
+      { REF: 'nonleap', TRANTYPE: 'C', SUM: '10', DAT_OD: '29.02.2023' }, // невисокосний
+      { REF: 'ok', TRANTYPE: 'C', SUM: '10', DAT_OD: '15.03.2026' },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows.map(r => r.externalId)).toEqual(['ok']);
+    expect(rows[0].operationDate.toISOString()).toBe('2026-03-15T00:00:00.000Z');
+  });
+
   it('rawData зберігає повний сирий рядок', async () => {
     const raw = { REF: 'r', TRANTYPE: 'C', SUM: '1', DAT_OD: '05.09.2026', extra: 'x' };
     client.fetchTransactions.mockResolvedValue([raw]);
