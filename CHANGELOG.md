@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-09-21 — QA: 3 повних цикли на bank-statements дузі (sync/review/tester/optimize/e2e/simplify/code-review/security)
+
+Прогнано 3 послідовні консолідовані QA-цикли на всій bank-statements дузі (Privat24/monobank/DBF/multi-bank/
+UI-reorg, 4eead7eb..8c0076f0), додаючи passes, яких не було per-feature (optimize/e2e/simplify/code-review/
+security) + консолідовану re-sweep. Знайдено+виправлено **6 реальних дефектів**, усі крос-фічові або в
+неохоплених гілках (per-feature reviews їх не бачили):
+
+- **Currency-suffix хардкод ₴** (review C1, e4fc5e7c) — multi-bank зробив рахунки мультивалютними → USD/EUR
+  показувались як «₴». Fix: bankAccountCurrencyCode через join + fmtBankCurrencySuffix (simplify 14a5f096 виніс
+  у @/lib/format).
+- **Date-rollover клас — 3 незакриті сайти** (money-critical: «31.02»→тихо 03.02→неправильний FX-курс amountBase):
+  code-review C1 (03167c94) parser ISO-гілка + privat24 DD.MM.YYYY; tester C2 (**Bug #772**, 7684792a) privat24
+  ISO-fallback; review C3 (**Bug #773 CRITICAL**, 99def590) applyImport **write-side** (public POST приймав сирий
+  client-JSON → guard мусив бути на write, не лише в парсері) → 400 замість тихого спотворення. **Клас закрито
+  (4/4 money-path сайти guarded).**
+- **Covering index** (optimize C1, 69d07f10) — дефолтний «Усі»-вид транзакцій (WHERE orgId,deletedAt ORDER BY
+  operationDate) не мав покриваючого індексу (status як gap-колонка). +@@index([orgId,deletedAt,operationDate]),
+  міграція 20260921130000.
+
+Security 0 vulnerabilities усі 3 цикли (SSRF/creds/tenant на зовнішніх банк-API). Sync 0 mismatches усі цикли.
+Skill-оновлення: incomplete-branch-hardening (audit N sibling-гілок після K-of-N фіксу), default-view index-miss,
+write-side date-guard для public POST. Фінал: api 2715 · web 852 · E2E 351 · tsc 0.
+
 ## 2026-09-21 — UI: реорганізація банк-рахунків (bank-statements вкладки)
 
 ### feat(bank-statements) 937fc0ee — вкладки + перенос банк-рахунків з НДІ + колонка рахунку
