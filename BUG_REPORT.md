@@ -6131,3 +6131,36 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 
 - **API unit:** 2709 passed / 0 fail (baseline task-заявлено 2706, фактичний HEAD = 2708 після 2 Cycle-1 date-тестів; +1 мій #772 → 2709; task-baseline був stale на 2). **web unit:** 852 passed / 0 fail (без змін — фікс лише API). tsc: api 0 / web 0 / shared н/з (shared не чіпав).
 - **E2E Playwright (NEXT_PUBLIC_E2E=1):** повний suite **351 passed / 0 fail / 0 flaky (4.3 хв)**. Bank-statements 13/13 (вкладки, `?tab=accounts`, невалідний `?tab=xxx`→fallback, import wizard .csv, ignore-modal валідація). Pre-existing counterparty-detail flaky (нотовано Cycle 1) цього прогону НЕ відтворився — пройшов чисто. Реальний bank pull — mock (SKIP, як задано).
+
+## Session 2026-09-21 — CYCLE 3 (ФІНАЛ) валідація Bug #773 + release gate bank-statements арки
+
+**Контекст:** Cycle 3 review закрив останнє незакрите місце date-rollover класу — write-сторону public `POST /bank-statements/import/apply` (`bank-reconciliation.applyImport`). Задача tester Cycle 3: (a) валідувати фікс #773 на write-стороні, (b) фінально підтвердити що date-rollover клас ПОВНІСТЮ закрито (усі 4 сайти), (c) повний E2E як release gate всієї арки.
+
+### Bug #773 — applyImport operationDate rollover-guard (write-side public POST) — CRITICAL [x] виправлено (валідовано)
+
+- **Файл:** `apps/api/src/modules/bank-statements/bank-reconciliation.service.ts` — `applyImport` робив голий `new Date(row.operationDate)` (тепер `parseApplyRowDate`, рядки 333–357).
+- **Сигнал:** `ApplyRowDto.operationDate` — лише `@IsString()` `@IsNotEmpty()` у public `POST import/apply` (не тільки з провайдерів). Клієнт міг надіслати `"2026-02-31"` → нативний `new Date` тихо перекочував у `2026-03-02` → неправильний курс у `resolveBaseConversion` → спотворений `amountBase` для USD/EUR-рахунку (money-critical); або `"garbage"` → `Invalid Date` → падіння на `@db.Date`. Cycle 1-2 закрили провайдери (privat24 3 гілки / parser 2 гілки), але НЕ write-сторону public-apply.
+- **Фікс (99def590):** `parseApplyRowDate` — той самий rollover-guard: `YYYY-MM-DD` покомпонентно через `Date.UTC` + звірка `getUTC*`; повний ISO з часом/зоною через нативний парсер + `Number.isNaN` guard. Невалідне → `400 err.bankStatement.invalidOperationDate` (uk/en), кинуто ДО `$transaction` (гроші не пишуться на битій даті). i18n-ключ доданий.
+- **Валідація фіксу (tester Cycle 3):** 7 regression-тестів РЕАЛЬНО асертять контракт:
+  - `it.each(['2026-02-31','2025-02-29','garbage','31.02.2026',''])` → `.rejects.toMatchObject({ status: 400 })` І `expect(prisma.$transaction).not.toHaveBeenCalled()` — тобто rollover (`2026-02-31` НЕ silent→`03-02`), невисокосний (`2025-02-29`), garbage, DD.MM-форма, empty → 400 ДО транзакції, без тихого спотворення `amountBase`.
+  - валідний повний ISO `2026-09-01T00:00:00.000Z` → парситься (`captured[0].operationDate.toISOString()` === input) І `amountBase` рахується через `resolveBaseConversion` (mock 4000). Money-інваріант підтверджено: валідна дата → коректний курс → коректний `amountBase`.
+- **Severity:** CRITICAL — public write-endpoint, money-critical, silent-corruption АБО crash. Найвищий у class.
+
+### Date-rollover клас — ПОВНІСТЮ ЗАКРИТО (усі 4 сайти guarded)
+
+Перевірено grep `new Date(` по всій арці + прочитано кожен money-path сайт:
+
+1. **privat24.provider.ts** (Bug #772 + Cycle-1) — 3 гілки: (а) `DD.MM.YYYY` component-guard; (б) ISO date-only component-guard; (в) повний ISO нативний + `NaN`. Невалідне → `null` (skip). ✅
+2. **bank-statement-parser.service.ts** (Cycle-1) — 2 гілки: DD.MM component-guard + ISO component-guard. Невалідне → `null`. ✅
+3. **monobank-statement.provider.ts:88** — `new Date(timeSec*1000)` — Unix-СЕКУНДИ (numeric, не string-parse) → rollover неможливий. Guard на невалідний `time` окремо (spec: `id=bad-time` → skip). ✅
+4. **bank-reconciliation.applyImport** (Bug #773, write-side) — `parseApplyRowDate` guard, невалідне → 400 ДО tx. ✅
+
+- Решта `new Date(` у арці — `new Date()` (now/window-math у pull.processor/mono.client, невалідний ввід відсутній) АБО тестові фікстури. Жодного unguarded `new Date(str)` на money-path не лишилось.
+- **Інші public write-endpoints арки:** `matchTransaction` (`MatchTransactionDto`: counterpartyId/type/invoiceId — UUID+enum, БЕЗ date/amount) і `ignoreTransaction` (`IgnoreTransactionDto`: reason string) — дати/сум НЕ приймають → поза класом. Сума в `ApplyRowDto` — `@Type(()=>Number) @IsNumber() @Min(0.01)` (guarded class-validator). ✅
+
+### Регресія та E2E — CLEAN (release gate PASS)
+
+- **API unit:** 2715 passed / 0 fail (baseline 2709 + 6 нових #773: 5×`it.each` bad-date + 1 valid-ISO). tsc api **0**. bank-statements suite ізольовано **141/141** (bank-reconciliation.service.spec 27).
+- **web unit:** 852 passed / 0 fail (без змін — фікс лише API). tsc web/shared н/з (не чіпав).
+- **E2E Playwright (NEXT_PUBLIC_E2E=1):** повний suite **351 passed / 0 fail / 0 flaky (2.9 хв)**. Bank-statements арка 13/13 (вкладки список/рахунки, `?tab=accounts`, невалідний `?tab=xxx`→fallback, статус-пігулки, import wizard, «Далі» без файлу→валідація, ignore-modal валідація причини; settings: провайдер-панель + інтервал + save PATCH + невалідний інтервал<15 + pull-now job). Pre-existing counterparty-detail flaky цього прогону НЕ відтворився. Реальний bank pull — mock (SKIP, як задано).
+- **RELEASE VERDICT:** ✅ GO. Date-rollover клас закрито (4/4 сайти). Bug #773 валідовано (rollover/garbage→400, valid→коректний amountBase). Уся арка bank-statements зелена на unit+E2E.
