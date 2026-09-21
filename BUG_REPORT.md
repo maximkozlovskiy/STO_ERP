@@ -6107,3 +6107,27 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **monobank money-critical (amount/100):** `MonobankStatementProvider.mapTx` — `minor/100`, credit-only (`minor>0`), покрито spec 15000→150.00. USD currencyCode monobank ігнорується для суми (сума лишається у мінор→major рахунку; валюта = валюта bankAccount у БД, не з проводки) — коректно для MVP (mono account прив'язаний до одновалютного BankAccount).
 - **Per-account isolation (Bug #768, збережено):** processor try/catch навколо applyImport+match+cursor — битий USD-рахунок не голодує UAH-рахунки тієї ж орг. Курсор рухається лише після успішного imp (ідемпотентний повтор через skipDuplicates).
 - **Provider @Transform (Bug #769, збережено):** `CreateBankAccountDto.provider` @Transform(emptyToUndefined) — порожній рядок з форми → undefined (не '' у БД).
+
+## Session 2026-09-21 — CYCLE 2 валідація Cycle-1 фіксів (03167c94) + regression-hunt
+
+**Контекст:** Cycle 1 закрив 4 дефекти (currency-suffix + 2 date-rollover-guard + covering index). Cycle 2 task: (a) підтвердити що Cycle-1 фікси тримаються під реальними умовами, (b) знайти що churn Cycle-1 міг внести, (c) повний E2E re-run. Sync/security/review Cycle 2 → CLEAN (0 нових).
+
+### Bug #772 — Privat24 parseDate ISO-fallback (гілка «в») БЕЗ rollover-guard → тиха корупція operationDate — MEDIUM [x] виправлено
+
+- **Файл:** `apps/api/src/modules/bank-statements/providers/privat24.provider.ts:136` (нативний `const iso = new Date(s)`).
+- **Сигнал:** Cycle-1 (03167c94) додав rollover-guard у гілку (а) `DD.MM.YYYY` цього ж `parseDate` І в `BankStatementParserService.parseDate` (обидві ISO+DD.MM гілки) — але **третю гілку (в)** того самого методу (нативний fallback-парс, що спрацьовує коли DD.MM/DD-MM regex не матчить) лишив unguarded. Емпірично підтверджено: `new Date('2026-02-31')` → `2026-03-02` (НЕ NaN, тихий rollover); `'2024/02/31'` та `'2024-02-31T00:00:00'` — ще й у локальну tz. ISO date-only рядок не матчить DD.MM regex → доходить до гілки (в) → тихо перекочена дата.
+- **Наслідок:** зіпсована `operationDate` → неправильний курс у `resolveBaseConversion` → неправильний `amountBase` (гроші). Той самий money-critical клас, що Cycle-1 і закривав, але у неохопленій гілці. Тест-покриття гілки (в) було 0 (grep spec → жодного ISO-fallback-кейсу).
+- **Реальність:** гілка (в) — defensive fallback; реальна Privat24-дата йде гілкою (а) `DD.MM.YYYY HH:mm:ss`. Тому MEDIUM (латентний), не HIGH. Формат MANUAL-VERIFY, але сама parseDate-логіка — тестований код; guard не змінює формат-припущення.
+- **Фікс:** ISO date-only (`^\d{4}-\d{2}-\d{2}$`) парситься покомпонентно через `Date.UTC` + component-звірка (той самий патерн що гілки (а)/парсер); повний ISO з зоною (Z/±hh) — однозначний → лишається нативному парсеру. Regex-anchored `$` щоб не перехопити datetime-форми.
+- **Тест:** `privat24.provider.spec.ts` +1 РЕГРЕС — `2026-02-31`→skip, `2026-03-15`→парситься `2026-03-15T00:00:00.000Z`.
+
+### Валідація Cycle-1 фіксів — усі ТРИМАЮТЬСЯ
+
+- **Date-guard (03167c94):** обидва regression-тести (`bank-statement-parser.service.spec.ts` ISO `2026-02-31`+невисокосний `2023-02-29`; `privat24.provider.spec.ts` `31.02.2026`+`29.02.2023`) РЕАЛЬНО асертять skip невалідної + парс валідної сусідньої. `parseDate` парсера повністю guarded на обох гілках (native fallback = `return null`, без rollover). Monobank — Unix-секунди (safe). `bank-reconciliation.service.ts:351` `new Date(row.operationDate)` — re-parse вже-валідованого upstream ISO (не rollover-ризик).
+- **Currency-suffix (e4fc5e7c/75045ce3):** повна нитка `list()` select `bankAccount.currency.code` → mapper `bankAccountCurrencyCode ?? null` (safe optional chain, без crash) → `fmtBankCurrencySuffix` фолбек ₴ на null. 7 тестів (API 3 + web 4) зелені; +MatchBankTransactionModal симетрія. Web component-тести 8+3 зелені.
+- **Covering index (69d07f10):** застосований до dev-БД (task-заявлено), tsc/міграція green.
+
+### Регресія та E2E — CLEAN
+
+- **API unit:** 2709 passed / 0 fail (baseline task-заявлено 2706, фактичний HEAD = 2708 після 2 Cycle-1 date-тестів; +1 мій #772 → 2709; task-baseline був stale на 2). **web unit:** 852 passed / 0 fail (без змін — фікс лише API). tsc: api 0 / web 0 / shared н/з (shared не чіпав).
+- **E2E Playwright (NEXT_PUBLIC_E2E=1):** повний suite **351 passed / 0 fail / 0 flaky (4.3 хв)**. Bank-statements 13/13 (вкладки, `?tab=accounts`, невалідний `?tab=xxx`→fallback, import wizard .csv, ignore-modal валідація). Pre-existing counterparty-detail flaky (нотовано Cycle 1) цього прогону НЕ відтворився — пройшов чисто. Реальний bank pull — mock (SKIP, як задано).
