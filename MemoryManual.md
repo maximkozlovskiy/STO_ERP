@@ -9,15 +9,15 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-21 (optimize bank-statements арка — 1 DB-fix: covering index дефолтного «Усі»-виду)
+Дата:       2026-09-21 (tester Cycle 2 bank-statements — Bug #772 Privat24 ISO-fallback rollover-guard + повна валідація Cycle-1 фіксів)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2613/2613 (+17 bank-statements: parser 11 нових + reconciliation 12→18) · web 837 component · E2E 343/343
-            (+6 bank-statements smoke, повний auth-gated seeded DB; 2 flaky work-orders pass-on-retry, pre-existing).
+Тести:      api 2709/2709 · web 852/852 component · E2E 351/351 (0 fail / 0 flaky, 4.3хв, NEXT_PUBLIC_E2E=1).
+            Cycle 2: +1 privat24 ISO-fallback regression (Bug #772). Cycle-1 date-guards+currency-suffix валідовано — тримаються.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
 HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
 i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
@@ -329,6 +329,16 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Tester Cycle 2 bank-statements — 2026-09-21, HEAD 7a818f77:
+  7684792a fix(tester): Bug #772 — Privat24 parseDate ISO-fallback (гілка в, native new Date)
+        БЕЗ rollover-guard. Cycle-1 захардив гілки (а)DD.MM+ISO парсера, але лишив 3-тю native-
+        fallback гілку. new Date('2026-02-31')→03-02 (не NaN) → зіпсована operationDate → неправильний
+        курс для amountBase. Fix: ISO date-only покомпонентно+guard; +1 regression. Meta-урок:
+        фікс що чіпає K з N sibling-гілок → аудит решти N−K (SKILL/approaches #772).
+  7a818f77 docs(tester): BUG_REPORT Cycle 2 + incomplete-branch-hardening підхід.
+  Валідація Cycle-1: date-guards тримаються (2 regression-тести асертять skip+valid), currency-suffix
+  нитка ціла (list→mapper ??null→fmtBankCurrencySuffix), index застосований. api 2709/web 852/E2E 351 — усе зелене.
+
 Sync bank-statements (monobank+DBF+multi-bank) — 2026-09-21, HEAD 77ad954d:
   77ad954d fix(sync): BankStatementImportModal file input accept=".csv,.xlsx,.xls" — backend
         bank-statement-parser.service.assertSupported() приймає .csv/.xlsx/.dbf (не .xls). UI не
