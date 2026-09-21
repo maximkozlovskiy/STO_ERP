@@ -187,6 +187,15 @@ model BankTransaction {
   // Ідемпотентність: один рядок на банк-транзакцію в межах нашого рахунку.
   @@unique([orgId, bankAccountId, externalId])
   @@index([orgId, status, deletedAt, operationDate]) // список UNMATCHED, сортований по даті
+  // sto-optimize (2026-09-21): дефолтний вид табу «Банк-транзакції» — «Усі» (status-pill порожній →
+  // where БЕЗ status): WHERE (orgId, deletedAt IS NULL) ORDER BY operationDate DESC. Наявний
+  // (orgId, status, deletedAt, operationDate) має status 2-ю колонкою → без status-рівності
+  // leftmost-prefix обривається на orgId, operationDate-сорт не покрито (scan усіх status-бакетів +
+  // external sort). (orgId, operationDate) без deletedAt → heap-filter м'яких видалень. BankTransaction —
+  // append-only high-volume staging (1 рядок на банк-надходження). Covering (orgId, deletedAt,
+  // operationDate): deletedAt-рівність (IS NULL) leftmost після orgId, operationDate у tail → index-range
+  // scan з готовим DESC-порядком без sort-node. Домінантний вид (відкривається за замовчуванням).
+  @@index([orgId, deletedAt, operationDate])
   @@index([orgId, operationDate])
   @@index([orgId, syncVersion])
   @@map("bank_transactions")
