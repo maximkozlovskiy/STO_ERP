@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Landmark, Plus, Ban } from 'lucide-react';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -43,14 +43,6 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
 /** Скорочений IBAN для колонки «Рахунок» коли немає назви рахунку (останні 4 символи). */
 function shortIban(iban: string): string {
   return iban.length > 8 ? `…${iban.slice(-4)}` : iban;
-}
-
-/**
- * Суфікс валюти суми транзакції. amount — у валюті рахунку (multi-bank: рахунок може бути USD/EUR),
- * тому не хардкодимо ₴: для UAH/невідомого коду показуємо ₴, для інших — код валюти рахунку.
- */
-function currencySuffix(code: string | null | undefined): string {
-  return !code || code === 'UAH' ? '₴' : code;
 }
 
 export default function BankTransactionsTab() {
@@ -192,7 +184,7 @@ export default function BankTransactionsTab() {
                       {tx.purpose ?? '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums font-semibold text-[13px] whitespace-nowrap">
-                      {fmtMoney(tx.amount)} {currencySuffix(tx.bankAccountCurrencyCode)}
+                      {fmtMoney(tx.amount)} {fmtBankCurrencySuffix(tx.bankAccountCurrencyCode)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_BADGE[tx.status] ?? 'secondary'}>

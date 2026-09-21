@@ -79,6 +79,16 @@ export function fmtMoney(n: number | null | undefined): string {
 }
 
 /**
+ * Суфікс валюти суми з рахунку банку (multi-bank: рахунок може бути USD/EUR). Не хардкодимо ₴:
+ * для UAH/невідомого коду показуємо ₴, для інших — код валюти рахунку.
+ *
+ * @example fmtBankCurrencySuffix('UAH') → '₴'; fmtBankCurrencySuffix('USD') → 'USD'
+ */
+export function fmtBankCurrencySuffix(code: string | null | undefined): string {
+  return !code || code === 'UAH' ? '₴' : code;
+}
+
+/**
  * Форматувати число цілим uk-UA-стилем (пробіл як роздільник тисяч).
  *
  * @example fmtInt(123456) → '123 456'

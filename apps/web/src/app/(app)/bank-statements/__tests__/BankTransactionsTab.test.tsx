@@ -7,6 +7,7 @@ import { vi, it, expect, describe, beforeEach } from 'vitest';
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
   fmtDate: (v: string) => v,
+  fmtBankCurrencySuffix: (c: string | null | undefined) => (!c || c === 'UAH' ? '₴' : c),
 }));
 
 vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));

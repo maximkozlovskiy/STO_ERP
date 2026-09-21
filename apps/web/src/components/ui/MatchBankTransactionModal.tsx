@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { displayCounterpartyName } from '@/lib/utils';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
@@ -141,10 +141,7 @@ export function MatchBankTransactionModal({
                 </span>
                 <span className="font-semibold tabular-nums">
                   {fmtMoney(transaction.amount)}{' '}
-                  {!transaction.bankAccountCurrencyCode ||
-                  transaction.bankAccountCurrencyCode === 'UAH'
-                    ? '₴'
-                    : transaction.bankAccountCurrencyCode}
+                  {fmtBankCurrencySuffix(transaction.bankAccountCurrencyCode)}
                 </span>
               </div>
               {transaction.purpose && (
