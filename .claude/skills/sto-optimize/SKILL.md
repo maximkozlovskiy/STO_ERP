@@ -501,6 +501,19 @@ grep -n "model \|@@index\|@@map" packages/database/prisma/schema.prisma
 **ДОМІНАНТНИЙ фільтр:** відкрити UI-таб — колонка з `<select>`/дропдауном (provider/operation/status/type) = найчастіший equality-фільтр.
 **Фікс:** covering `@@index([orgId, <descriptor>, createdAt])` — descriptor leftmost після orgId, createdAt tail → index-range scan + готовий порядок. Additive `CREATE INDEX IF NOT EXISTS`. Zero-risk. Родич 3.4, але тут list-endpoint (не aggregate) і колонка — descriptor (не owningFk).
 
+### 3.6 Default-view index-miss: єдиний sort-індекс веде discriminator/deletedAt як GAP перед sort-ключем, а ДЕФОЛТНИЙ таб-вид — БЕЗ цього фільтра
+
+> Пастка: «є `(orgId, status, deletedAt, sortKey)` — і статус, і дата, і soft-delete прикрито». Ні: у дефолтному «Усі»-виді (status-pill порожній) `where` БЕЗ status → status стає gap-колонкою, leftmost-prefix обривається на `orgId`, sortKey (3-тя/4-та колонка) для ORDER BY недосяжний → scan усіх status-бакетів + external sort. Другий `(orgId, sortKey)` часто Є, але без `deletedAt` → heap-filter.
+
+```bash
+# Знайти таби з дефолтом-«Усі» (порожній фільтр на mount) → їх list-запит іде БЕЗ discriminator-а
+grep -rn "useState('')" apps/web/src/app/ --include="*Tab.tsx" --include="*page.tsx" | grep -iE "status|type|filter"
+# Для таблиці такого табу: чи єдиний sort-індекс має discriminator/deletedAt ПЕРЕД sortKey?
+grep -n "@@index" packages/database/prisma/schema/*.prisma
+```
+
+**Фікс:** covering `@@index([orgId, deletedAt, <sortKey>])` — deletedAt-рівність (IS NULL) leftmost, sortKey tail → index-range scan з готовим DESC. Additive `CREATE INDEX IF NOT EXISTS`. Filtered-вид лишає свій `(orgId, status, deletedAt, sortKey)` — це ОКРЕМИЙ індекс під дефолтний unfiltered-вид. Тільки схема+міграція (індекс типи не зачіпає → tsc не регресує без prisma generate). Родич 3.4/3.5, але тригер: descriptor ПРИСУТНІЙ як gap, і дефолтний вид його не подає.
+
 ---
 
 ## Крок 4 — Виправлення
@@ -551,6 +564,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат кожного запису: **Сигнал** (+grep) · **Причина** · **Виявлення** · **Фікс** · **Impact** · **Де шукати ще**. Записи від найновіших до найстаріших.
+
+### 2026-09-21 (Цикл 1) — Default-view index-miss: єдиний date-sort індекс списку веде discriminator/deletedAt як GAP-колонку перед sort-ключем, а ДЕФОЛТНИЙ вид табу — БЕЗ цього фільтра → gap обриває leftmost-prefix, sort не покрито
+
+**Сигнал:** staging/list-таблиця з композитним індексом `(orgId, <status|discriminator>, deletedAt, <sortKey>)` — спроектованим під ВІДФІЛЬТРОВАНИЙ вид (напр. «UNMATCHED, сортовано по даті»). Але UI-таб відкривається на pill/дропдауні «Усі» (порожній фільтр → `where` БЕЗ discriminator-а): `WHERE (orgId, deletedAt IS NULL) ORDER BY <sortKey> DESC`. discriminator стоїть 2-ю колонкою → коли його немає у WHERE, leftmost-prefix обривається одразу після `orgId`, а `<sortKey>` (3-тя/4-та колонка) для ORDER BY недосяжний → scan усіх discriminator-бакетів + external sort. Другий «date» індекс (`(orgId, <sortKey>)`) часто Є, але БЕЗ `deletedAt` → heap-filter м'яких видалень. Тонка відмінність від 3.4/3.5: там descriptor ВІДСУТНІЙ в індексах; тут descriptor ПРИСУТНІЙ, але як gap ПЕРЕД sort-ключем, і болить саме коли UI його НЕ подає (дефолтний = найчастіший вид).
+**Grep:** для кожної list/staging-таблиці — відкрити UI-таб, знайти ДЕФОЛТНЕ значення status-pill/дропдауна (`useState('')` / «Усі» активний на mount = порожній фільтр). Якщо дефолт = БЕЗ discriminator-а → звірити чи Є `@@index([orgId, deletedAt, <sortKey>])` (АБО `(orgId, <sortKey>)` з deletedAt). Пастка: `(orgId, status, deletedAt, sortKey)` виглядає повним покриттям («і статус, і дата, і soft-delete!»), але у дефолтному виді status — gap, індекс не вибереться під сорт. `grep -n "useState('')" ...Tab.tsx` + `where.<x> = ` тільки за наявності фільтра.
+**Причина:** індекс пишуть під «показати непрознесені/активні, сортовано» — очевидний робочий сценарій. Дефолтний «Усі»-вид (найчастіший на відкритті) не має discriminator-а у WHERE, тож той самий індекс НЕ покриває його сорт. На порожній dev-БД EXPLAIN не болить; регресія проявляється лише під об'єм.
+**Виявлення:** будь-який таб зі status/type-pill де ДЕФОЛТ = «Усі» (не конкретний бакет), а єдиний sort-індекс має discriminator ПЕРЕД sortKey. Особливо append-only staging (bank_transactions, import-staging, inbox) — дефолт «усі записи по даті».
+**Фікс:** covering `@@index([orgId, deletedAt, <sortKey>])` — `deletedAt`-рівність (IS NULL) leftmost після orgId, sortKey у tail → index-range scan з готовим DESC-порядком. Additive `CREATE INDEX IF NOT EXISTS`. Zero-risk. Filtered-вид лишає свій `(orgId, status, deletedAt, sortKey)`; це — окремий індекс під дефолтний unfiltered-вид. Тільки схема — client-типи не змінюються (індекс типи не зачіпає), tsc не регресує без prisma generate.
+**Impact:** дефолтний список: org-wide scan усіх status-бакетів + external sort → index-range scan без sort. Найпомітніше на high-volume append-only під великий орг; sustained на КОЖНЕ відкриття табу (домінантний вид).
+**Де шукати ще:** bank_transactions (fixed — дефолт «Усі»); будь-який staging/inbox-таб; списки де pill-дефолт = «Усі», а не конкретний статус. Родич 3.4/3.5 (equality не leftmost), але тригер інший: не «descriptor відсутній», а «descriptor присутній як gap, і дефолтний вид його не подає».
 
 ### 2026-09-19 (Цикл 1/3) — Cache-bypass N+1: cached list-endpoint додає «свіже/поза кешем» derived-поле per-row через service-виклик, а той сам = ≥2 запити → N+1 І обхід ref-кешу одночасно
 
