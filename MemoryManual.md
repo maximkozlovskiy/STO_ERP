@@ -9,15 +9,18 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-21 (tester Cycle 2 bank-statements — Bug #772 Privat24 ISO-fallback rollover-guard + повна валідація Cycle-1 фіксів)
+Дата:       2026-09-21 (review Cycle 3 FINAL bank-statements — Bug #773 applyImport operationDate rollover-guard; date-rollover КЛАС ЗАКРИТО across arc)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2709/2709 · web 852/852 component · E2E 351/351 (0 fail / 0 flaky, 4.3хв, NEXT_PUBLIC_E2E=1).
-            Cycle 2: +1 privat24 ISO-fallback regression (Bug #772). Cycle-1 date-guards+currency-suffix валідовано — тримаються.
+Тести:      api 2709/2709 (+8 нові у Cycle-3: applyImport date-guard) · web 852/852 component · E2E 351/351 (0 fail / 0 flaky).
+            Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
+            @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
+            Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
+            КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
 HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
 i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
@@ -329,7 +332,18 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Tester Cycle 2 bank-statements — 2026-09-21, HEAD 7a818f77:
+Review Cycle 3 FINAL bank-statements — 2026-09-21, HEAD 99def590:
+  99def590 fix(review): Bug #773 — applyImport operationDate rollover-guard (date-rollover клас ЗАКРИТО).
+        bank-reconciliation.applyImport робив голий new Date(row.operationDate); ApplyRowDto.operationDate
+        — лише @IsString у public POST import/apply → клієнт міг слати "2026-02-31" (тихо→03-02→неправильний
+        getRateAsOf→спотворений amountBase USD/EUR, money-critical) або "garbage" (Invalid→@db.Date crash).
+        Cycle 1-2 закрили провайдери (privat24/parser), НЕ write-сторону. Fix parseApplyRowDate: той самий
+        guard + 400 ДО $transaction; +7 regression; +i18n err.bankStatement.invalidOperationDate (uk/en);
+        +SKILL §5 money-critical date-parse checklist. Verdict: date-rollover КЛАС ПОВНІСТЮ ЗАКРИТО;
+        всі Cycle 1-2 фікси коректні. Meta: re-parse DTO-поля у public POST треба guard-ити навіть коли
+        upstream-парсер guarded (endpoint приймає й сирий client-JSON).
+  Cycle 1-2 (для контексту):
+Tester Cycle 2 bank-statements — 2026-09-21, попередній HEAD 7a818f77:
   7684792a fix(tester): Bug #772 — Privat24 parseDate ISO-fallback (гілка в, native new Date)
         БЕЗ rollover-guard. Cycle-1 захардив гілки (а)DD.MM+ISO парсера, але лишив 3-тю native-
         fallback гілку. new Date('2026-02-31')→03-02 (не NaN) → зіпсована operationDate → неправильний
