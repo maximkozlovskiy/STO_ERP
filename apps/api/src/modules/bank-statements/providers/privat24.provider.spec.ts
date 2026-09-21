@@ -116,6 +116,19 @@ describe('Privat24Provider', () => {
     expect(rows).toEqual([]);
   });
 
+  it('РЕГРЕС: ISO-fallback (гілка в) — неіснуюча 2026-02-31 НЕ rollover, валідна ISO парситься', async () => {
+    // parseDate гілка (в) (нативний new Date) раніше не мала guard: new Date('2026-02-31')
+    // тихо перекочувало у 03-02 → зіпсована operationDate (визначає курс для amountBase).
+    // Тепер ISO date-only парситься покомпонентно з rollover-guard.
+    client.fetchTransactions.mockResolvedValue([
+      { REF: 'iso-bad', TRANTYPE: 'C', SUM: '10', DAT_OD: '2026-02-31' }, // неіснуюча → skip
+      { REF: 'iso-ok', TRANTYPE: 'C', SUM: '10', DAT_OD: '2026-03-15' }, // валідна ISO
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows.map(r => r.externalId)).toEqual(['iso-ok']);
+    expect(rows[0].operationDate.toISOString()).toBe('2026-03-15T00:00:00.000Z');
+  });
+
   it('parseDate: DD-MM-YYYY (дефіси) теж парситься', async () => {
     client.fetchTransactions.mockResolvedValue([
       { REF: 'dash', TRANTYPE: 'C', SUM: '1', DAT_OD: '15-03-2026' },

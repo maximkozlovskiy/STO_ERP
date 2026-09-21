@@ -133,6 +133,22 @@ export class Privat24Provider implements BankStatementProvider {
       return Number.isNaN(d.getTime()) ? null : d;
     }
 
+    // (в) ISO fallback. Той самий rollover-guard, що й у гілці (а) / BankStatementParserService:
+    // нативний new Date('2024-02-31') НЕ дає NaN, а тихо перекочує у 03-02 (а '2024/02/31',
+    // '2024-02-31T00:00:00' — ще й у локальну tz) → зіпсована operationDate (визначає курс для
+    // amountBase). Для ISO date-only парсимо компоненти явно й звіряємо; повний ISO з зоною (Z/±hh)
+    // однозначний → віддаємо нативному парсеру.
+    const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (isoDate) {
+      const y = Number(isoDate[1]);
+      const mo = Number(isoDate[2]) - 1;
+      const day = Number(isoDate[3]);
+      const d = new Date(Date.UTC(y, mo, day));
+      if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mo || d.getUTCDate() !== day) {
+        return null;
+      }
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
     const iso = new Date(s);
     return Number.isNaN(iso.getTime()) ? null : iso;
   }
