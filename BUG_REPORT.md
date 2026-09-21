@@ -6084,3 +6084,26 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **i18n:** усі ключі присутні uk+en (`bankStatements.tabs.transactions/accounts`, `columns.account`; `ndi.fieldProvider/providerAny/fieldAutoPull/autoPullBadge` з `{{provider}}`-інтерполяцією). Нема dangling/missing.
 - **act() warning у BankAccountsTab.test «валідний кеш»:** тест рендерить синхронно й асертить кешований рядок без await async-flush → post-resolve setState поза act. Тест-гігієна, не продуктовий баг; suite зелений (15/15). Не чіпаю (косметика).
 - **Console 401 /user-preferences/nav_layout:** pre-existing, не пов'язано з reorg.
+
+## Session 2026-09-21 — bank-statements арка (4eead7eb..8c0076f0) КОНСОЛІДОВАНИЙ sweep + валідація currency-fix (e4fc5e7c)
+
+Скоуп: фінальний зведений bug-hunt усієї дуги bank-statements (Privat24 auto-pull → monobank API + DBF + multi-bank → UI-реорг вкладок → currency-fix). Per-feature паси знайшли+пофіксили Bugs #767/#768/#769/#770 під час розробки. Ця сесія — консолідована перевірка (крос-фічові money edge-cases, не покриті per-feature тестами) + свіжий повний E2E-гейт + валідація щойно-пофікшеного review-коміту e4fc5e7c (валютний суфікс суми банк-транзакції). **Нових продуктових багів НЕ знайдено.** Закрито 1 тест-геп (currency-fix без regression-guard).
+
+### Валідація currency-fix (e4fc5e7c) — КОРЕКТНИЙ, але без тестів → закрито геп
+
+**Перевірено (код коректний):**
+
+- **DTO-нитка:** `list()` include `bankAccount.currency.code` → `toBankTransactionResponseDto` пробрасує `bankAccountCurrencyCode` (`?? null`) → hook `BankTransaction.bankAccountCurrencyCode` → UI `currencySuffix(code)` = `!code || code==='UAH' ? '₴' : code`. Симетрично у `MatchBankTransactionModal`.
+- **Money-invariant НЕ зачеплено:** `amount` лишається у валюті рахунку (`Decimal(12,2)`, `currencyId` = валюта bankAccount), `amountBase` — окреме поле у base (UAH). Currency-fix чіпає лише _відображення суфікса_, не суму/конвертацію. `applyImport` рахує `amountBase` через `resolveBaseConversion` по `bankAccount.currencyId` (не хардкод UAH) — вже покрито тестом «amountBase рахується … по валюті рахунку» (USD→base rate 40).
+- **Крос-фічово (SCOPE 3):** monobank USD-рахунок (`mapTx` amount=minor/100) і privat24 UAH-рахунок у ТІЙ САМІЙ орг — обидва створюють Payment у валюті СВОГО рахунку: `matchTransaction` передає `bankAccountId` у `payments.create`, який резолвить `paymentCurrencyId = resolvedSource.currencyId` (валюта рахунку) + `amountBase` по курсу. Провайдер на валюту НЕ впливає — вона з `bankAccountId`. Auto-match `confidence===1` — по IBAN транзакції (`resolveBatch`), провайдер-незалежно (processor рядок 179).
+
+**Тест-геп (закрито):** жоден тест не покривав валютний суфікс (grep `bankAccountCurrencyCode`/`currencySuffix` → 0 hits у spec-файлах). Це LOW-геп (не баг — код коректний), але regression-guard відсутній: майбутня зміна mapper/UI могла б мовчки повернути хардкод «₴» для USD/EUR-рахунку. Додано:
+
+- **API** (`bank-reconciliation.service.spec.ts`): 3 тести на `toBankTransactionResponseDto` — USD-рахунок→`bankAccountCurrencyCode:'USD'` (+ money-invariant assert: amount 150 у валюті рахунку, amountBase 6000 окремо), UAH→`'UAH'`, include без currency/без bankAccount→`null`.
+- **Web** (`BankTransactionsTab.test.tsx`): 4 тести на суфікс — UAH→«₴», null→фолбек «₴», USD→«USD» (+ negative: не «150 ₴»), EUR→«EUR».
+
+### Перевірено як БЕЗПЕЧНЕ / КОРЕКТНЕ (не баг)
+
+- **monobank money-critical (amount/100):** `MonobankStatementProvider.mapTx` — `minor/100`, credit-only (`minor>0`), покрито spec 15000→150.00. USD currencyCode monobank ігнорується для суми (сума лишається у мінор→major рахунку; валюта = валюта bankAccount у БД, не з проводки) — коректно для MVP (mono account прив'язаний до одновалютного BankAccount).
+- **Per-account isolation (Bug #768, збережено):** processor try/catch навколо applyImport+match+cursor — битий USD-рахунок не голодує UAH-рахунки тієї ж орг. Курсор рухається лише після успішного imp (ідемпотентний повтор через skipDuplicates).
+- **Provider @Transform (Bug #769, збережено):** `CreateBankAccountDto.provider` @Transform(emptyToUndefined) — порожній рядок з форми → undefined (не '' у БД).

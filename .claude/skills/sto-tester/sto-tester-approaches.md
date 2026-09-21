@@ -10,6 +10,20 @@
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-21 — Хардкод символу валюти «₴» у ДИСПЛЕЙ-суфіксі суми, яка стала мультивалютною (e4fc5e7c) — Area: frontend + DTO join
+
+**Сигнал (статичний):** JSX рендерить `{fmtMoney(row.amount)} ₴` (літерал «₴» одразу після суми) для рядка, чия сума зберігається у ВАЛЮТІ РАХУНКУ/джерела, а не гарантовано у base. Ознака ризику: у тій самій арці/фічі додано `BankAccount.currencyId` (multi-bank), `amountBase`+`currencyId` у row-моделі, monobank/інший провайдер з USD/EUR-рахунком. Grep: `grep -rnE "fmtMoney\([^)]+\)\s*₴|\}\s*₴" apps/web/src/**/*.tsx` → для кожного хіта перевірити: чи сума (`amount`) може бути НЕ-UAH (join-поле `*CurrencyCode`, `currencyId`, source-рахунок довільної валюти)? Якщо так і суфікс — літерал «₴» → баг. Відрізняти від Bug #743 (той про CSV/export що ДРОПАЄ валюту; цей — про on-screen СИМВОЛ, який #743 хибно вважає «зазвичай коректним»).
+
+**Причина виникнення:** таблиця/модалка написана у до-мультивалютну епоху, коли ВСІ суми були UAH → хардкод «₴» був коректним. Пізніша фіча ретрофітить мультивалюту на рівні рахунку (multi-bank USD/EUR), оновлює backend-облік (amount у валюті рахунку + окремий amountBase у base), але UI-суфікс лишається літералом — silent: UAH-орг нічого не помічає, ламається лише на USD/EUR-рахунку (150 USD малюється «150 ₴»). Review ловить backend/money-invariant і пропускає дисплей-літерал.
+
+**Підхід до виявлення:** трасувати нитку валюти від сховища до піксела. (1) row-модель: чи `amount` — у валюті рахунку/джерела (не base)? (2) чи є join-поле коду валюти у DTO (`*CurrencyCode`)? Якщо НЕМАЄ — сам DTO неповний (треба include `<account>.currency.code` у list() + проброс у mapper). (3) UI: суфікс — функція від коду (`currencySuffix(code)`), а не літерал? Money-invariant окремо: `amount` МУСИТЬ лишитись у валюті рахунку, `amountBase` — окремо у base; currency-fix чіпає ЛИШЕ відображення, ніколи не конвертує amount.
+
+**Підхід до фіксу:** DTO — include `bankAccount.currency.{code}` у list()-запиті → mapper `<field>CurrencyCode: row.<acc>.currency?.code ?? null`; hook-тип + UI: гелпер `currencySuffix(code) = !code || code==='UAH' ? '₴' : code` (₴ лише де base гарантовано UAH або код невідомий/історичний). Дзеркалити у ВСІХ місцях показу тієї суми (список + match/detail-модалка). Тести: API-mapper (USD→'USD' + assert money-invariant: amount у валюті рахунку, amountBase окремо; UAH→'UAH'; null-join→null); web-component (₴ для UAH/null, код для USD/EUR + negative «не N ₴»).
+
+**Severity:** MEDIUM (user-visible фінансова дезінформація на не-UAH рахунку; stored money-invariant НЕ corrupt — amount/amountBase коректні, страждає лише символ). LOW для орг без мультивалюти (не тригериться). Regression-guard обов'язковий: без тесту майбутній рефактор мовчки поверне літерал.
+
+**Де шукати ще:** будь-який список/модалка/PDF-рядок що показує суму з source-рахунку довільної валюти: payments (Payment.currencyId), settlements/transactions (amount у валюті операції + amountBase), cash-operations (CashOperation.amountBase+rateUsed), invoice/PO-рядки з `currencyId`. Крос-чек із Bug #629 (сире money) і #743 (export дропає валюту) — цей додає третій вимір: **on-screen СИМВОЛ хардкоджений** попри мультивалютний backend. Кожна фіча що додає `currencyId`/`amountBase` у row → аудит УСІХ display-суфіксів тієї суми, не лише експорту.
+
 > Формат нижче: **Сигнал** (як знайти, з grep) / **Фікс** / **Severity** / **Де ще**. Старіші розлогі записи стиснуто до цього ж вигляду; усі bug-номери, grep-детектори та ❌/✅ приклади збережено.
 
 ### 2026-09-16 — Multi-request submit: header-idempotency-ref рятує шапку, дочірні рядки ре-постяться на ретраї → задвоєна сума (Bug #755) — frontend / partial-failure-retry / гроші / HIGH
