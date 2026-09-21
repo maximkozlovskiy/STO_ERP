@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import { BankReconciliationService, type RawTx } from './bank-reconciliation.service';
+import { toBankTransactionResponseDto } from './bank-statement.dto';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import type { PaymentsService } from '../payments/payments.service';
@@ -380,5 +381,65 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
     expect(capturedData[0]!.direction).toBe('IN');
     expect(capturedData[0]!.status).toBe('UNMATCHED');
     expect(capturedData[0]!.source).toBe('FILE_IMPORT');
+  });
+});
+
+// Регресія-guard валютного фіксу (e4fc5e7c): list() робить include bankAccount.currency.code,
+// mapper повинен пробросити bankAccountCurrencyCode → UI показує валюту рахунку (multi-bank
+// USD/EUR), а не хардкод «₴». amount/currencyId (money-invariant) лишаються у валюті рахунку.
+describe('toBankTransactionResponseDto — bankAccountCurrencyCode (multi-bank)', () => {
+  const baseRow = () =>
+    ({
+      id: 't1',
+      orgId: ORG,
+      bankAccountId: 'ba-1',
+      direction: 'IN',
+      amount: 150 as unknown as import('@prisma/client').Prisma.Decimal,
+      currencyId: 'cur-usd',
+      amountBase: 6000 as unknown as import('@prisma/client').Prisma.Decimal,
+      rateUsed: 40 as unknown as import('@prisma/client').Prisma.Decimal,
+      operationDate: new Date('2026-09-01T00:00:00.000Z'),
+      payerName: null,
+      payerIban: null,
+      payerEdrpou: null,
+      purpose: null,
+      externalId: 'e1',
+      source: 'FILE_IMPORT',
+      status: 'UNMATCHED',
+      matchedType: null,
+      counterpartyId: null,
+      paymentId: null,
+      matchConfidence: null,
+      ignoreReason: null,
+      createdAt: new Date('2026-09-01T00:00:00.000Z'),
+    }) as Parameters<typeof toBankTransactionResponseDto>[0];
+
+  it('USD-рахунок → bankAccountCurrencyCode="USD", amount у валюті рахунку (не конвертується)', () => {
+    const dto = toBankTransactionResponseDto({
+      ...baseRow(),
+      bankAccount: { name: 'Mono USD', ibanUA: 'UA00', currency: { code: 'USD' } },
+    });
+    expect(dto.bankAccountCurrencyCode).toBe('USD');
+    // Money-invariant: amount лишається у валюті рахунку, amountBase — окремо у base.
+    expect(dto.amount).toBe(150);
+    expect(dto.amountBase).toBe(6000);
+  });
+
+  it('UAH-рахунок → bankAccountCurrencyCode="UAH"', () => {
+    const dto = toBankTransactionResponseDto({
+      ...baseRow(),
+      bankAccount: { name: 'Privat UAH', ibanUA: 'UA11', currency: { code: 'UAH' } },
+    });
+    expect(dto.bankAccountCurrencyCode).toBe('UAH');
+  });
+
+  it('include без currency (або без bankAccount) → bankAccountCurrencyCode=null', () => {
+    expect(
+      toBankTransactionResponseDto({
+        ...baseRow(),
+        bankAccount: { name: 'X', ibanUA: 'UA22', currency: null },
+      }).bankAccountCurrencyCode,
+    ).toBeNull();
+    expect(toBankTransactionResponseDto(baseRow()).bankAccountCurrencyCode).toBeNull();
   });
 });

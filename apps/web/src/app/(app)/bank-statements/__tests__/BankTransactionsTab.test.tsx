@@ -89,3 +89,41 @@ describe('BankTransactionsTab — колонка «Рахунок»', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// Регресія-guard валютного фіксу (e4fc5e7c): сума показується у валюті рахунку-отримувача
+// (multi-bank: USD/EUR-рахунок), а не хардкод «₴». UAH/невідомий код → «₴», інші → код.
+// fmtMoney замокано на String(v), тож сума + суфікс рендеряться як один текстовий вузол.
+describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
+  beforeEach(() => useBankTransactionsMock.mockReset());
+
+  const oneTx = (over: Record<string, unknown>) =>
+    useBankTransactionsMock.mockReturnValue({
+      data: { items: [tx(over)], total: 1 },
+      isLoading: false,
+    });
+
+  it('UAH-рахунок → суфікс «₴»', () => {
+    oneTx({ amount: 1000, bankAccountCurrencyCode: 'UAH' });
+    render(<BankTransactionsTab />);
+    expect(screen.getByText('1000 ₴')).toBeInTheDocument();
+  });
+
+  it('код валюти відсутній (null) → фолбек «₴»', () => {
+    oneTx({ amount: 1000, bankAccountCurrencyCode: null });
+    render(<BankTransactionsTab />);
+    expect(screen.getByText('1000 ₴')).toBeInTheDocument();
+  });
+
+  it('USD-рахунок → суфікс «USD» (не хардкод ₴)', () => {
+    oneTx({ amount: 150, bankAccountCurrencyCode: 'USD' });
+    render(<BankTransactionsTab />);
+    expect(screen.getByText('150 USD')).toBeInTheDocument();
+    expect(screen.queryByText('150 ₴')).not.toBeInTheDocument();
+  });
+
+  it('EUR-рахунок → суфікс «EUR»', () => {
+    oneTx({ amount: 200, bankAccountCurrencyCode: 'EUR' });
+    render(<BankTransactionsTab />);
+    expect(screen.getByText('200 EUR')).toBeInTheDocument();
+  });
+});
