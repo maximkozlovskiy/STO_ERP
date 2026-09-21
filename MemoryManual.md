@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-21 (review bank-statements UI-реорг вкладки+перенос рахунків — 1 fix async-guard)
+Дата:       2026-09-21 (optimize bank-statements арка — 1 DB-fix: covering index дефолтного «Усі»-виду)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
@@ -32,6 +32,21 @@ i18n:       Багатомовність uk/en ЗАВЕРШЕНА повніст
             (29eaad2f). CRM BOTH="Клієнт - Постачальник" уніфіковано. enumLabel-обгортки (statuses.ts — backend
             PDF свідомо лишається укр.). Pre-existing mojibake у employees/services/settings.dto — скопійовано
             verbatim заради byte-identity (окремий дефект, поза scope).
+Optimize(bank-statements арка): 2026-09-21 (auto, c87f2f12+69d07f10, скоуп 4eead7eb~1..8c0076f0) — 1 DB-fix.
+            Perf-аудит (N+1/індекси/seq→parallel/bundle/re-render/cache). ЧИСТО: list() currency-join =
+            single nested-select join (не N+1); resolveBatch ≤4 findMany bulk + applyImport createMany;
+            monobank windowing sleep(60s) ЛИШЕ if(i>0) (backfill >1 вікно, не single-window incremental);
+            DBF parser temp-file write+readRecords 1×/import (не per-row); UI page-shell code-split
+            (dynamic ssr:false) + BankTransactionsTab на TanStack Query (usePaginatedList кеш) +
+            BankAccountsTab ref-cache коректний; dbffile server-only (api parser, не в web-бандлі).
+            FIX(db 69d07f10): covering @@index([orgId,deletedAt,operationDate]) для дефолтного «Усі»-виду
+            табу — status-pill порожній → WHERE(orgId,deletedAt IS NULL) ORDER BY operationDate DESC;
+            наявний (orgId,status,deletedAt,operationDate) має status як gap 2-ю колонкою → leftmost-
+            prefix обрив, sort не покрито (scan усіх бакетів+external sort). Additive migration
+            20260921130000, zero-risk. Skip(conservative): processor auto-match per-row findFirst (vetted
+            money/queue, matchTransaction inherently sequential); BankAccountsTab inline-onClose (pre-
+            existing move, config-panel не hot-path). Skill self-improve: Крок 3.6 default-view index-miss
+            (c87f2f12). api tsc 0 / web tsc 0 (baseline 2706/852 не регресовано, DB-only зміна).
 Review(bank-statements UI-реорг): 2026-09-21 (auto, 6245e629, скоуп 937fc0ee) — 1 fix (§3.1 async-guard).
             Вкладковий bank-statements (tab-shell за cash-зразком) + перенос BankAccountsTab з ndi/ + колонка
             «Рахунок» (backend include join). ЧИСТО: page.tsx Suspense+dynamic ssr:false+?tab= через
