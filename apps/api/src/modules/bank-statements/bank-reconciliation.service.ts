@@ -325,6 +325,38 @@ export class BankReconciliationService {
   }
 
   /**
+   * Guarded-парс operationDate з ApplyRowDto (money-critical: визначає курс для amountBase).
+   * Мірорить rollover-guard провайдерів/парсера: '2026-02-31' тихо перекочує у 03-02, 'garbage' →
+   * Invalid Date. Приймаємо YYYY-MM-DD (компонентна звірка) та повний ISO з зоною/часом (нативний
+   * парсер: V8 відкидає неможливі компоненти у NaN). Невалідне → 400 BadRequest.
+   */
+  private parseApplyRowDate(value: string): Date {
+    const s = (value ?? '').trim();
+    const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (isoDate) {
+      const y = Number(isoDate[1]);
+      const mo = Number(isoDate[2]) - 1;
+      const day = Number(isoDate[3]);
+      const d = new Date(Date.UTC(y, mo, day));
+      if (
+        !Number.isNaN(d.getTime()) &&
+        d.getUTCFullYear() === y &&
+        d.getUTCMonth() === mo &&
+        d.getUTCDate() === day
+      ) {
+        return d;
+      }
+    } else if (/^\d{4}-\d{2}-\d{2}[T ]/.test(s)) {
+      // Повний ISO з часом/зоною: неможливі компоненти → V8 дає NaN (не rollover).
+      const d = new Date(s);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    throw new BadRequestException(
+      translateError('err.bankStatement.invalidOperationDate', getLocale(), { value: s }),
+    );
+  }
+
+  /**
    * Застосувати імпорт виписки: валідація рахунку + createMany UNMATCHED-транзакцій зі
    * skipDuplicates (unique externalId — ідемпотентність повторного імпорту). amountBase рахуємо
    * по валюті рахунку на дату операції. Повертає {created, skipped}.
@@ -348,7 +380,12 @@ export class BankReconciliationService {
     // читає курси (не мутує), тож поза $transaction (коротша транзакція, менше lock-hold).
     const prepared = await Promise.all(
       dto.rows.map(async row => {
-        const operationDate = new Date(row.operationDate);
+        // MONEY-CRITICAL: operationDate визначає курс для amountBase (resolveBaseConversion).
+        // ApplyRowDto.operationDate — лише @IsString (public POST import/apply), тож НЕ можна довіряти
+        // нативному `new Date(...)`: '2026-02-31' тихо перекочує у 03-02 → неправильний курс, а
+        // 'garbage' → Invalid Date → падіння на @db.Date. Той самий rollover-guard, що й у провайдерах
+        // (privat24/parser). Невалідна дата → 400 (не тихе спотворення).
+        const operationDate = this.parseApplyRowDate(row.operationDate);
         const conv = await this.exchangeRates.resolveBaseConversion(
           orgId,
           bankAccount.currencyId,

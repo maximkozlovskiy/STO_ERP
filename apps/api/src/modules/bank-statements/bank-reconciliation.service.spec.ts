@@ -382,6 +382,52 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
     expect(capturedData[0]!.status).toBe('UNMATCHED');
     expect(capturedData[0]!.source).toBe('FILE_IMPORT');
   });
+
+  // РЕГРЕС (date-rollover клас, Cycle-3): operationDate у public POST import/apply — лише @IsString.
+  // Без guard `new Date('2026-02-31')` тихо перекочувало у 03-02 → неправильний курс для amountBase
+  // (money-critical), а 'garbage' → Invalid Date → падіння на @db.Date. Тепер → 400, БЕЗ $transaction.
+  it.each(['2026-02-31', '2025-02-29', 'garbage', '31.02.2026', ''])(
+    'невалідна operationDate «%s» → 400 (до транзакції, без тихого спотворення amountBase)',
+    async bad => {
+      const prisma = makePrisma();
+      prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'usd' });
+      const service = build(prisma, makeExchange(), makePayments());
+      await expect(
+        service.applyImport(ORG, {
+          bankAccountId: 'ba-1',
+          rows: [{ externalId: 'e1', operationDate: bad, amount: 100 }],
+        }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it('валідний повний ISO (toISOString upstream) — парситься, amountBase рахується', async () => {
+    const prisma = makePrisma();
+    prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'usd' });
+    const exchange = makeExchange();
+    exchange.resolveBaseConversion.mockResolvedValue({ rateUsed: 40, amountBase: 4000 });
+    let captured: Array<Record<string, unknown>> = [];
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) =>
+      fn({
+        bankTransaction: {
+          createMany: vi
+            .fn()
+            .mockImplementation((args: { data: Array<Record<string, unknown>> }) => {
+              captured = args.data;
+              return { count: args.data.length };
+            }),
+        },
+      }),
+    );
+    const service = build(prisma, exchange, makePayments());
+    await service.applyImport(ORG, {
+      bankAccountId: 'ba-1',
+      rows: [{ externalId: 'e1', operationDate: '2026-09-01T00:00:00.000Z', amount: 100 }],
+    });
+    expect((captured[0]!.operationDate as Date).toISOString()).toBe('2026-09-01T00:00:00.000Z');
+    expect(captured[0]!.amountBase).toBe(4000);
+  });
 });
 
 // Регресія-guard валютного фіксу (e4fc5e7c): list() робить include bankAccount.currency.code,

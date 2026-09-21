@@ -586,6 +586,7 @@ export const VALIDATION_KEYS = [
   'err.bankStatement.fileReadFailed',
   'err.bankStatement.noDataRows',
   'err.bankStatement.matchFailed',
+  'err.bankStatement.invalidOperationDate',
   // DTO-валідація bank-statements
   'err.dto.bankStatement.bankAccountId.uuid',
   'err.dto.bankStatement.startRow.int',

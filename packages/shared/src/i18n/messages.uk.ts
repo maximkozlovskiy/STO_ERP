@@ -548,6 +548,8 @@ export const uk: Record<string, string> = {
   'err.bankStatement.fileReadFailed': 'Не вдалося прочитати файл виписки',
   'err.bankStatement.noDataRows': 'Файл виписки не містить жодного рядка даних',
   'err.bankStatement.matchFailed': 'Не вдалося провести платіж за транзакцією',
+  'err.bankStatement.invalidOperationDate':
+    'Некоректна дата операції «{{value}}» (очікується YYYY-MM-DD або ISO)',
   // ── DTO-валідація bank-statements ──
   'err.dto.bankStatement.bankAccountId.uuid': 'Невірний ідентифікатор банківського рахунку',
   'err.dto.bankStatement.startRow.int': 'Рядок початку має бути цілим числом',

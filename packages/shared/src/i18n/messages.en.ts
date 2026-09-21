@@ -560,6 +560,8 @@ export const en: Record<string, string> = {
   'err.bankStatement.fileReadFailed': 'Failed to read the statement file',
   'err.bankStatement.noDataRows': 'The statement file contains no data rows',
   'err.bankStatement.matchFailed': 'Failed to post a payment for the transaction',
+  'err.bankStatement.invalidOperationDate':
+    'Invalid transaction date "{{value}}" (expected YYYY-MM-DD or ISO)',
   // ── DTO validation: bank-statements ──
   'err.dto.bankStatement.bankAccountId.uuid': 'Invalid bank account identifier',
   'err.dto.bankStatement.startRow.int': 'Start row must be an integer',
