@@ -345,6 +345,13 @@ Payroll breakdown по нарядах — 2026-09-30, HEAD b1beca00:
         батьками (FK RESTRICT). findOne() include workOrders; findAll() НІ (важко) → UI тягне
         GET /periods/:id при розкритті. Старі періоди → breakdown.empty (зворотна сумісність).
         tsc api/web 0; payroll 28/28 (+3). Перевірено у браузері: 25 н-год/2500 → 1000 (40%).
+  Review b1beca00 (auto, 2026-09-30) — ✅ ЧИСТО, 0 дефектів, коміт не потрібен. Перевірено:
+        raw SQL aggregateWorkOrders (orgId+deletedAt на ОБОХ табл., Prisma.sql-параметр branchId — 0 injection),
+        snapshot-консистентність (amount Decimal(12,2) → roundMoney per-наряд = no-op → Σ дітей == baseAmount
+        завжди), N+1 create-loop (bounded штатом, ПОЗА tx → не роздуває timeout), delete-order діти→батьки
+        (FK RESTRICT), міграція чиста+2 індекси+FK, orgId/syncVersion є / deletedAt свідомо нема (recompute-
+        snapshot), UI colgroup/tfoot/text-right/tabular-nums/t()/fmtMoney, i18n parity 60/60. Payroll поза
+        sync-config (як sibling PayrollLine/Period — обґрунтовано). tsc api/web 0, 17/17 payroll spec green.
   Попередній контекст (bank-statements QA):
 Review Cycle 3 FINAL bank-statements — 2026-09-21, HEAD 99def590:
   99def590 fix(review): Bug #773 — applyImport operationDate rollover-guard (date-rollover клас ЗАКРИТО).
