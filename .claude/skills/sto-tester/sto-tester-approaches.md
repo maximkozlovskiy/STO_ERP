@@ -10,6 +10,30 @@
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-09-30 — Snapshot/drill-down фіча: чек-ліст edge-cases + інваріант «Σ дітей = батько» (feature b1beca00, 0 багів) — Area: backend + frontend / snapshot / гроші
+
+**Контекст:** bug hunt фічі «розшифровка нарахувань ЗП у розрізі нарядів» (PayrollLine → PayrollLineWorkOrder snapshot, drill-down UI + tfoot «Разом база»). Функціональних багів НЕ знайдено — фіча коректна. Запис фіксує **систематичний підхід до тестування snapshot/breakdown-фіч**, який зробив сесію швидкою; він багаторазовий для будь-якої фічі, що ФІКСУЄ денормалізовану розбивку на момент FSM-переходу.
+
+**Сигнал (де застосовувати):** нова модель-«дитина» без FK-cascade, що зберігає ТЕКСТОВІ snapshot-поля (`workOrderNumber`, `vehicleName`) + Decimal-частку суми, створювана в тій самій $transaction, що й батьківський рядок при FSM-переході (DRAFT→COMPUTED/PROCESSED). Grep-ознаки: `deleteMany(children) … deleteMany(parent)` порядок (FK RESTRICT), `createMany` дітей у циклі по `parent.create({select:{id}})`, `include: { <children>: {...} }` лише в `findOne` (не `findAll`).
+
+**Підхід до виявлення (чек-ліст edge-cases для snapshot-фічі — перевіряти РЕАЛЬНО через live API+БД, не читанням):**
+
+1. **Recompute lifecycle:** повторний FSM-перехід на не-DRAFT → 400; шлях перерахунку = soft-delete→recreate→compute; при перерахунку діти видаляються ПЕРЕД батьком (порядок deleteMany, FK RESTRICT) — spec-тест на `invocationCallOrder`.
+2. **Наступний FSM (pay/finalize) не чіпає snapshot:** порахувати к-сть дочірніх рядків ДО і ПІСЛЯ переходу — має збігатись; PAID/фінальний статус показує розбивку.
+3. **Батько без дітей:** якщо `aggregate()` (батьки) і `aggregateChildren()` мають ІДЕНТИЧНИЙ WHERE → батько без дітей неможливий; АЛЕ старий рядок (створений до фічі) → `children=[]` → UI має показати empty-заглушку, не спінер/краш.
+4. **Головна обіцянка — immutability:** snapshot читається з дочірньої таблиці, НЕ з живих джерел → зміна/видалення джерела після переходу не змінює розбивку. Перевірити реально: перехід → спроба змінити/видалити джерело → BEFORE===AFTER.
+5. **Null-текст snapshot:** порожнє джерело (vehicle null / make+model+plate порожні) → formatter має вернути JS `null` (не рядок «null», не « »); UI `{x ?? '—'}`.
+6. **Multi-parent no-leak:** ≥2 батьки з різними наборами дітей → кожна дитина на ПРАВИЛЬНОМУ `parentId` (з `parent.create({select:{id}})`, не спільний id).
+7. **Tenant isolation:** діти вкладені під org-scoped-батька у `findOne({where:{orgId}})` → крос-org leak неможливий (але `child.orgId` теж проставляти).
+
+**Інваріант «Σ дітей = батько» (tfoot-реконсиляція) — ключовий money-тест:** Σ `child.baseAmount` МУСИТЬ === `parent.baseAmount` (обіцянка «tfoot завжди сходиться»). Rounding-drift можливий ТІЛЬКИ якщо джерело має суб-копійкову точність: `roundMoney(SUM)` ≠ `Σ roundMoney(per-child)`. Перевірити тип колонки-джерела: якщо `Decimal(12,2)` (завжди 2dp) → drift НЕМОЖЛИВИЙ (roundMoney ідемпотентна на 2dp) → інваріант тримається автоматично. Якщо `Float`/довільна точність → drift РЕАЛЬНИЙ → тест обов'язковий. Регресія: unit-тест `Σ dto.children.baseAmount === dto.parent.baseAmount`.
+
+**Підхід до фіксу (профілактика тестового gap):** snapshot-фіча ЧАСТО приходить із повним backend-spec, але БЕЗ component-тесту нової UI-логіки drill-down і БЕЗ E2E на розкриття. Це gap №1 — закривати завжди: (а) service.spec — null-formatter (3 варіанти), multi-parent no-leak (per `created.id`), findOne toDto (null зберігається + Σ=parent інваріант + Decimal→Number), старий рядок `children=[]`; (б) component-тест — drill-down + tfoot=parent, null→«—», old→empty, isLoading→спінер-не-empty, multi-row no-leak; (в) E2E — розкриття рядка → заголовок розбивки + tfoot + клікабельний лінк на джерело.
+
+**Severity:** сама фіча тут 0 багів; підхід — profilактичний. Найвищий ризик у цьому класі — порушення інваріанта «Σ=parent» (money-critical, HIGH) і non-immutable snapshot (втрата головної обіцянки, HIGH). Null→«null»-рядок = LOW (косметика). Тестовий gap (нема component/E2E на drill-down) = MEDIUM (мовчазна регресія).
+
+**Де шукати ще:** будь-яка «розшифровка/breakdown/деталізація» snapshot на момент документа — invoice lines snapshot, reconciliation act `snapshotJson`, stock-document рядки, будь-яке `*LineDetail`/`*Breakdown`/`*Snapshot`-суб-модель. Grep: `grep -rlnE "model \w+(Snapshot|Breakdown|LineWorkOrder|Detail)\b" packages/database/prisma/schema` + для кожної перевірити чи є component/E2E на її drill-down.
+
 ### 2026-09-21 — Фікс захардив N-1 з N sibling-гілок одного парсера, лишив native-fallback гілку unguarded (Bug #772, Cycle 2) — Area: backend / date-parse / гроші
 
 **Сигнал (статичний):** Cycle-1-фікс додав rollover-guard у ДЕЯКІ гілки методу `parseDate`, але не в усі. Метод має кілька гілок за форматом: (а) regex `DD.MM.YYYY` → `Date.UTC`+guard ✓, (б) regex `ISO date-only` → `Date.UTC`+guard ✓, **(в) catch-all `const d = new Date(s)` (native parse) → БЕЗ guard ✗**. Guard-фікс зупинився на явно-regex-нутих гілках і пропустив «останній» native-fallback. Grep для будь-якого multi-branch date-парсера: `grep -rnE "new Date\((?!Date\.UTC|[a-z]+ \* 1000)" apps/api/src --include=*.ts | grep -v spec` → для кожного native `new Date(строка)` (не `Date.UTC`, не Unix `*1000`, не `new Date()`) у методі що ПОРУЧ має guarded-гілки → підозра на пропущену гілку. Емпірична перевірка native rollover: `node -e "console.log(new Date('2026-02-31'))"` → `2026-03-02` (НЕ NaN!); `'2024/02/31'`, `'2024-02-31T00:00:00'` (без Z) → ще й локальна tz.
