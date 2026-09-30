@@ -9,14 +9,14 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-21 (review Cycle 3 FINAL bank-statements — Bug #773 applyImport operationDate rollover-guard; date-rollover КЛАС ЗАКРИТО across arc)
+Дата:       2026-09-30 (feat payroll breakdown — розшифровка нарахувань ЗП у розрізі нарядів, snapshot PayrollLineWorkOrder)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2709/2709 (+8 нові у Cycle-3: applyImport date-guard) · web 852/852 component · E2E 351/351 (0 fail / 0 flaky).
+Тести:      api 2717/2717 (180 файлів; +3 нові: payroll breakdown snapshot/FK-порядок) · web 852/852 component · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
             @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
@@ -332,6 +332,20 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Payroll breakdown по нарядах — 2026-09-30, HEAD b1beca00:
+  b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів. PayrollLine показував лише
+        агрегати — не видно з яких нарядів сума. Нова таблиця PayrollLineWorkOrder (міграція
+        20260922120000) фіксується у compute() РАЗОМ із PayrollLine → snapshot, розшифровка ЗАВЖДИ
+        сходиться з нарахуванням навіть якщо наряди змінили (number/vehicleName текстом, без FK на
+        work_orders). Показуємо БАЗУ (Σ сума робіт наряду), НЕ розкидане accrued: схема оплати б'є по
+        СУМІ бази → tfoot «Разом база» == PayrollLine.baseAmount (без штучного розподілу fixed_plus_bonus
+        і копійчаних розбіжностей; amount вже Decimal(12,2) → roundMoney per-наряд = no-op).
+        aggregateWorkOrders() GROUP BY employeeId,workOrderId + LEFT JOIN vehicles. compute() створює
+        рядки по ОДНОМУ (create, не createMany — потрібен lineId для дітей), видаляє дітей ПЕРЕД
+        батьками (FK RESTRICT). findOne() include workOrders; findAll() НІ (важко) → UI тягне
+        GET /periods/:id при розкритті. Старі періоди → breakdown.empty (зворотна сумісність).
+        tsc api/web 0; payroll 28/28 (+3). Перевірено у браузері: 25 н-год/2500 → 1000 (40%).
+  Попередній контекст (bank-statements QA):
 Review Cycle 3 FINAL bank-statements — 2026-09-21, HEAD 99def590:
   99def590 fix(review): Bug #773 — applyImport operationDate rollover-guard (date-rollover клас ЗАКРИТО).
         bank-reconciliation.applyImport робив голий new Date(row.operationDate); ApplyRowDto.operationDate

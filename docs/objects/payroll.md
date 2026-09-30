@@ -29,7 +29,20 @@ model PayrollLine {              // нарахування співробітн�
   accruedAmount Decimal(12,2)    // нараховано
   paidAmount Decimal(12,2) @default(0)  // виплачено (←accrued на PAID)
   syncVersion, createdAt, updatedAt
+  workOrders PayrollLineWorkOrder[]
   // @@unique([periodId, employeeId]); @@index([orgId,employeeId])
+}
+
+model PayrollLineWorkOrder {     // розшифровка нарахування по нарядах (snapshot на COMPUTED)
+  id, orgId, payrollLineId
+  workOrderId String             // без FK-cascade: snapshot переживає видалення наряду
+  workOrderNumber String         // snapshot номера (НРД-2026-0001)
+  vehicleName String?            // snapshot авто («Toyota Camry · AA1234BB»)
+  worksCount Int                 // к-сть врахованих робіт цього наряду
+  normoHours Float               // Σ normoHours робіт наряду
+  baseAmount Decimal(12,2)       // Σ amount робіт наряду (частка бази)
+  syncVersion, createdAt, updatedAt
+  // @@index([orgId,payrollLineId]) [orgId,syncVersion]; FK → payroll_lines RESTRICT
 }
 ```
 
@@ -67,15 +80,15 @@ DRAFT → COMPUTED → PAID
 
 ## API Endpoints (`/api/payroll`)
 
-| Метод  | URL                                      | Дія                                    | Ролі                   |
-| ------ | ---------------------------------------- | -------------------------------------- | ---------------------- |
-| GET    | `/api/payroll/preview?from&to&branchId?` | Попередній розрахунок (без збереження) | OWNER/ADMIN/ACCOUNTANT |
-| GET    | `/api/payroll/periods`                   | Список періодів (з lines)              | OWNER/ADMIN/ACCOUNTANT |
-| GET    | `/api/payroll/periods/:id`               | Період з рядками                       | OWNER/ADMIN/ACCOUNTANT |
-| POST   | `/api/payroll/periods`                   | Створити (DRAFT)                       | OWNER/ADMIN/ACCOUNTANT |
-| POST   | `/api/payroll/periods/:id/compute`       | Розрахувати (DRAFT→COMPUTED)           | OWNER/ADMIN/ACCOUNTANT |
-| POST   | `/api/payroll/periods/:id/pay`           | Виплатити (COMPUTED→PAID)              | OWNER/ADMIN            |
-| DELETE | `/api/payroll/periods/:id`               | Видалити (окрім PAID)                  | OWNER/ADMIN            |
+| Метод  | URL                                      | Дія                                     | Ролі                   |
+| ------ | ---------------------------------------- | --------------------------------------- | ---------------------- |
+| GET    | `/api/payroll/preview?from&to&branchId?` | Попередній розрахунок (без збереження)  | OWNER/ADMIN/ACCOUNTANT |
+| GET    | `/api/payroll/periods`                   | Список періодів (lines БЕЗ розшифровки) | OWNER/ADMIN/ACCOUNTANT |
+| GET    | `/api/payroll/periods/:id`               | Період + рядки + розшифровка по нарядах | OWNER/ADMIN/ACCOUNTANT |
+| POST   | `/api/payroll/periods`                   | Створити (DRAFT)                        | OWNER/ADMIN/ACCOUNTANT |
+| POST   | `/api/payroll/periods/:id/compute`       | Розрахувати (DRAFT→COMPUTED)            | OWNER/ADMIN/ACCOUNTANT |
+| POST   | `/api/payroll/periods/:id/pay`           | Виплатити (COMPUTED→PAID)               | OWNER/ADMIN            |
+| DELETE | `/api/payroll/periods/:id`               | Видалити (окрім PAID)                   | OWNER/ADMIN            |
 
 ---
 
@@ -88,15 +101,40 @@ tenant-isolation: orgId у WHERE на wol/wo.
 
 ---
 
+## Розшифровка по нарядах (breakdown)
+
+`payroll.service.aggregateWorkOrders()` — той самий фільтр/період, але `GROUP BY employeeId, workOrderId`
+(+ LEFT JOIN `vehicles` для snapshot назви авто). Викликається у `compute()` і пише
+`PayrollLineWorkOrder[]` разом із рядками — **розшифровка фіксується як snapshot**, тому ЗАВЖДИ
+сходиться з `PayrollLine.baseAmount`, навіть якщо наряди згодом змінили/видалили.
+
+- **Показуємо БАЗУ, не розкидане нарахування.** Схема оплати застосовується до СУМИ бази, а не до
+  кожного наряду окремо → по-нарядно `accruedAmount` не розкидається (уникаємо штучного розподілу
+  фіксованої частини `fixed_plus_bonus` і копійчаних розбіжностей). Підсумок `tfoot` = `baseAmount`.
+- Σ дочірніх `baseAmount` == `PayrollLine.baseAmount` гарантовано: `WorkOrderLine.amount` — вже
+  `Decimal(12,2)`, тож `roundMoney` на кожному наряді — no-op (розбіжність округлення неможлива).
+- `compute()` створює рядки **по одному** (`create`, не `createMany`) — потрібен `lineId` для дітей.
+  Перерахунок: спершу `deleteMany` дітей, потім батьків (FK RESTRICT).
+- `findOne()` вантажить `lines.workOrders`; **`findAll()` НЕ вантажить** (важко) → UI при розкритті
+  періоду робить окремий `GET /periods/:id`.
+- Періоди, розраховані ДО впровадження, розшифровки не мають → UI показує `breakdown.empty`.
+
+---
+
 ## UI (Web)
 
-| Компонент                        | Файл                                                                    |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| Сторінка «Зарплата»              | `app/(app)/payroll/page.tsx` (розрахунок за період + періоди + виплата) |
-| Hook                             | `hooks/api/usePayroll.ts`                                               |
-| rateScheme у формі співробітника | `components/ui/EmployeeEditModal.tsx` (3 режими)                        |
+| Компонент                        | Файл                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------- |
+| Сторінка «Зарплата»              | `app/(app)/payroll/page.tsx` (розрахунок + періоди + виплата + breakdown) |
+| Hook                             | `hooks/api/usePayroll.ts`                                                 |
+| rateScheme у формі співробітника | `components/ui/EmployeeEditModal.tsx` (3 режими)                          |
 
 Пункт меню «Зарплата» → `/payroll` (розділ «Звіти», OWNER/ADMIN/ACCOUNTANT).
+
+**Drill-down розшифровки:** розкриття періоду → `usePayrollPeriod(id)` (детальний запит); розкриття
+рядка співробітника (стан `expandedEmployee = \`${periodId}:${employeeId}\``) → вкладена таблиця
+нарядів: № (Link на картку) · авто · робіт · нормо-год · сума робіт, `tfoot`«Разом база».
+i18n-ключі`breakdown.*` (uk/en parity).
 
 **E2E:** `apps/web/e2e/payroll.spec.ts` (6 тестів) — сторінка/панелі/nav, preview-розрахунок, повний
 FSM через UI (create→compute→pay з ConfirmDialog), FSM-guard. Рядок періоду має `data-testid`
@@ -108,7 +146,14 @@ FSM через UI (create→compute→pay з ConfirmDialog), FSM-guard. Рядо
 
 - **Асистенти** (`WorkOrderLineEmployee`, M:M) НЕ враховуються — нарахування лише primary виконавцю
   (`WorkOrderLine.employeeId`). Розподіл між асистентами — окремий крок (потребує поля частки у junction).
-- **Виплата не через касу/розрахунки** — фіксується у `PayrollLine.paidAmount` + AuditEvent. Видаток
-  готівки з каси (cash-out) — окрема майбутня робота (у CashShift зараз немає механізму видатку).
+- **Виплата — готівка або лише фіксація.** З `cashRegisterId` → `CashOperation(OUT, reason=PAYROLL,
+employeeId, documentType='PayrollPeriod')` на кожного співробітника у транзакції `pay()`. Без нього —
+  лише `paidAmount ← accruedAmount` + AuditEvent (без руху грошей). Безготівкової/банківської виплати
+  ЗП немає; `SettlementTransaction`/`Payment` при виплаті НЕ створюються.
+- **Податків немає** — ні ЄСВ, ні ПДФО; `accruedAmount` без утримань, `paidAmount == accruedAmount`
+  (часткових виплат немає). Брутто/нетто не розділені.
+- **`laborCostRatio`** (OrganisationSettings, 0.4) — це ОЦІНКА ФОП для `reports.profitability`, а НЕ
+  реальне нарахування. Payroll її не читає: реальна ЗП = rateScheme × фактичний виробіток.
+- **CANCELLED** є в enum, але переходу в сервісі немає.
 
 → [docs/objects/employee.md](employee.md) · [docs/objects/work-order.md](work-order.md)

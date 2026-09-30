@@ -5,6 +5,26 @@
 
 ---
 
+### b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів
+
+Рядок `PayrollLine` показував лише агреговані суми — не було видно, з яких нарядів склалося нарахування.
+Додано drill-down: розкриття співробітника → перелік нарядів (№ · авто · робіт · нормо-год · сума робіт).
+
+- **Snapshot, не on-demand:** нова таблиця `PayrollLineWorkOrder` фіксується у `compute()` разом із
+  `PayrollLine` (номер наряду й авто — текстом) → розшифровка ЗАВЖДИ сходиться з нарахуванням, навіть
+  якщо наряди згодом змінили/видалили. Міграція `20260922120000_payroll_line_work_orders`.
+- **Показуємо БАЗУ, не розкидане нарахування:** схема оплати застосовується до СУМИ бази, а не до кожного
+  наряду → `tfoot` «Разом база» == `PayrollLine.baseAmount` (без штучного розподілу `fixed_plus_bonus`).
+- `aggregateWorkOrders()` (GROUP BY employeeId, workOrderId + LEFT JOIN vehicles); `compute()` створює
+  рядки по одному (потрібен lineId), видаляє дітей ПЕРЕД батьками (FK RESTRICT); `findOne()` include
+  workOrders, `findAll()` — ні (важко) → UI тягне деталі при розкритті.
+- UI: вкладене розкриття, colgroup/tfoot/tabular-nums, клікабельний № наряду; старі періоди —
+  `breakdown.empty` замість порожнечі. i18n uk/en parity.
+
+tsc api/web 0. payroll 28/28 (+3 нових). Перевірено у браузері: 25 н-год/2500 база → 1000 (40%), сходиться.
+
+---
+
 ## 2026-09-21 — QA: 3 повних цикли на bank-statements дузі (sync/review/tester/optimize/e2e/simplify/code-review/security)
 
 Прогнано 3 послідовні консолідовані QA-цикли на всій bank-statements дузі (Privat24/monobank/DBF/multi-bank/
