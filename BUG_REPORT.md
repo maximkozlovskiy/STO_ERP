@@ -6164,3 +6164,38 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **web unit:** 852 passed / 0 fail (без змін — фікс лише API). tsc web/shared н/з (не чіпав).
 - **E2E Playwright (NEXT_PUBLIC_E2E=1):** повний suite **351 passed / 0 fail / 0 flaky (2.9 хв)**. Bank-statements арка 13/13 (вкладки список/рахунки, `?tab=accounts`, невалідний `?tab=xxx`→fallback, статус-пігулки, import wizard, «Далі» без файлу→валідація, ignore-modal валідація причини; settings: провайдер-панель + інтервал + save PATCH + невалідний інтервал<15 + pull-now job). Pre-existing counterparty-detail flaky цього прогону НЕ відтворився. Реальний bank pull — mock (SKIP, як задано).
 - **RELEASE VERDICT:** ✅ GO. Date-rollover клас закрито (4/4 сайти). Bug #773 валідовано (rollover/garbage→400, valid→коректний amountBase). Уся арка bank-statements зелена на unit+E2E.
+
+---
+
+## Session 2026-09-30 — Bug hunt: розшифровка нарахувань ЗП у розрізі нарядів (feature b1beca00)
+
+**Контекст:** цільовий bug hunt edge-cases фічі drill-down розшифровки PayrollLine по нарядах (snapshot PayrollLineWorkOrder). Review 40489f84 пройшов ЧИСТО. Happy-path уже покритий. Перевірено 9 напрямків edge-cases РЕАЛЬНО через live API (admin@sto.local) + пряму БД + Playwright E2E.
+
+### Результат: функціональних багів НЕ знайдено. Фіча тримає головну обіцянку (snapshot immutable, tfoot завжди сходиться). Додано регресійне покриття (gap у тестах — point 8/9).
+
+Верифіковано (кожне — реальним прогоном, не лише читанням коду):
+
+1. **Перерахунок COMPUTED-періоду** — `compute()` guard: не-DRAFT → `400 «Розрахувати можна лише період у статусі Чернетка»`. Щоб перерахувати: soft-delete (COMPUTED видаляється) → створити заново → compute. Реально: create→compute(201,COMPUTED,2 lines)→compute(400)→delete(204)→період зникає зі списку. Стара розшифровка при перерахунку видаляється ПЕРЕД рядками (FK RESTRICT, порядок deleteMany коректний — spec-тест підтверджує invocationCallOrder).
+2. **Виплата (pay) не ламає snapshot** — після pay (record-only, без каси): 86 WO-рядків до = 86 після; PAID-період показує розшифровку; paidAmount=accruedAmount по рядку; PAID не видаляється (`400 «Не можна видалити виплачений період»`). ✓
+3. **Співробітник із 0 нарядів** — неможливо у compute-напрямі: `aggregate()` й `aggregateWorkOrders()` мають ІДЕНТИЧНИЙ WHERE, тож будь-який рядок aggregate має ≥1 наряд. Старий період (розраховано до фічі) → `workOrders=[]` → UI показує breakdown.empty («Розшифровка недоступна…»), не спінер/краш. ✓ (spec + component + observed)
+4. **Наряд видалено/змінено ПІСЛЯ compute** — snapshot immutable: `findOne()` читає з `PayrollLineWorkOrder` (текст number/vehicleName + Decimal baseAmount), НЕ з живих нарядів. Реально: COMPLETED-наряд взагалі не видаляється (FSM guard), а snapshot читається окремо → після спроби видалення snapshot BEFORE===AFTER, line.baseAmount незмінна. ✓
+5. **Авто без назви** (vehicleId null / make+model+plate порожні) → `formatVehicleName` → `null` (JS null → JSON null) → UI `{w.vehicleName ?? '—'}` → «—», НЕ рядок «null». Порожні рядки (« », «») теж → null (trim+filter). Лише plate → показуємо plate. ✓ (spec-тест 3 варіанти + component)
+6. **Кілька співробітників** — розшифровка не протікає: `compute()` бере `woByEmployee.get(l.employeeId)` для КОЖНОГО `created.id` окремо; UI-рядок читає власний `l.workOrders`. Реально: 2 співробітники, кожен зі своїм набором нарядів, коректний payrollLineId. ✓ (spec + component)
+7. **Tenant isolation** — `findOne` фільтрує period по `{id, orgId, deletedAt:null}`; `workOrders` вкладені під lines під period (вже org-scoped) → крос-org leak неможливий. PayrollLineWorkOrder.orgId також проставляється. ✓
+8. **E2E payroll.spec.ts (6 тестів)** — НЕ зламано (6/6 pass до змін). Додано 7-й тест: drill-down (розкриття співробітника → «Розшифровка по нарядах» + tfoot «Разом база» + клікабельний № наряду). Тепер 7/7 pass.
+9. **Component-тести web** — їх НЕ БУЛО (gap). Додано `PayrollBreakdown.test.tsx` (5 тестів): drill-down + tfoot=baseAmount, null→«—», старий період→breakdown.empty, isLoading→спінер-не-empty, дві особи→не протікає. 5/5 pass.
+
+**Інваріант tfoot «Разом база»:** Σ workOrder.baseAmount === PayrollLine.baseAmount. Rounding-drift НЕМОЖЛИВИЙ: `WorkOrderLine.amount` = `Decimal(12,2)` (завжди 2dp), тож `roundMoney(SUM)` === `Σ roundMoney(per-WO)` (roundMoney ідемпотентна на 2dp). Реально перевірено на seed: Петя Пупкін 85 WO Σ9050,00 = line 9050,00 MATCH; Тест-E2E 1 WO Σ600 = 600 MATCH; normoHours consistency (Σ worksCount = linesCount) OK.
+
+### Дрібні спостереження (НЕ баги, не фіксувались):
+
+- **A. `aggregateWorkOrders()` не JOIN-ить employees** (немає `e.deletedAt IS NULL`), на відміну від `aggregate()`. Ефекту НЕМАЄ: soft-deleted employee відсутній у `lines` (aggregate JOIN-ить+фільтрує e.deletedAt), тож зайвий запис у `woByEmployee` просто ніколи не споживається (`.get(l.employeeId)` не викликається для нього). Consistency-nuance, не візуальний баг.
+- **B. normoHours = `Float`** рендериться сирим (`{l.normoHours}`, `{w.normoHours}`). Теоретичний float-артефакт (0.1+0.2) можливий, але pre-existing патерн (preview normoHours показувався сирим і до фічі), на seed артефактів немає. LOW/латентний, поза скоупом цієї фічі.
+- **C. `PayrollLineWorkOrder.workOrderId` без FK** (свідомо, snapshot переживає видалення). UI-лінк `/work-orders/{id}` може вести на видалений наряд → 404-сторінка. Прийнятно для snapshot-семантики.
+
+### Тести/регресія — CLEAN
+
+- **API unit:** payroll 33/33 (calculator 11 + service 22; +5 нових: null-vehicle 3-варіанти, multi-employee no-leak, findOne toDto null-vehicleName + Σ=base інваріант, старий період workOrders=[]). tsc api **0**.
+- **Web component:** PayrollBreakdown 5/5 (новий файл — раніше payroll не мав component-тестів). tsc web **0**.
+- **E2E Playwright:** payroll 7/7 (6 наявних + 1 drill-down).
+- **VERDICT:** фіча стабільна на edge-cases. Багів нема — покриття посилено (point 8/9 gaps закрито).

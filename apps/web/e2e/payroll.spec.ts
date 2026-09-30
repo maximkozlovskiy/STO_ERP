@@ -149,6 +149,62 @@ test.describe('Зарплата — життєвий цикл періоду (FS
     expect(verify.totalPaid).toBe(verify.totalAccrued);
   });
 
+  test('drill-down: розкриття співробітника показує розшифровку по нарядах + tfoot «Разом база»', async ({
+    page,
+  }) => {
+    await page.goto('/payroll');
+    await expect(page.locator('h1:has-text("Зарплата")')).toBeVisible({ timeout: 20_000 });
+    const t = await token(page);
+
+    // Створюємо+рахуємо період через API (широкий діапазон гарантує наряди з розшифровкою).
+    const note = `[e2e] drill ${Date.now()}`;
+    const period = await page.evaluate(
+      async ({ API, t, FROM, TO, note }) => {
+        const c = await fetch(`${API}/api/v1/payroll/periods`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+          body: JSON.stringify({ periodStart: FROM, periodEnd: TO, note }),
+        });
+        const p = (await c.json()) as { id: string };
+        await fetch(`${API}/api/v1/payroll/periods/${p.id}/compute`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${t}` },
+        });
+        // Читаємо деталь — чи є хоч один рядок із розшифровкою (workOrders).
+        const d = (await (
+          await fetch(`${API}/api/v1/payroll/periods/${p.id}`, {
+            headers: { Authorization: `Bearer ${t}` },
+          })
+        ).json()) as { lines?: { workOrders?: unknown[] }[] };
+        const hasWo = (d.lines ?? []).some(l => (l.workOrders ?? []).length > 0);
+        return { id: p.id, hasWo };
+      },
+      { API, t, FROM, TO, note },
+    );
+    expect(period.id).toBeTruthy();
+    // Seed завжди має завершені наряди у широкому діапазоні — розшифровка має бути.
+    expect(period.hasWo, 'у періоді має бути хоча б один рядок із розшифровкою').toBe(true);
+
+    await page.reload();
+    const periodRow = page.getByTestId(`payroll-period-${period.id}`);
+    await expect(periodRow).toBeVisible({ timeout: 20_000 });
+    await expect(periodRow.getByText('Розраховано')).toBeVisible({ timeout: 20_000 });
+
+    // Розгортаємо період.
+    await periodRow.getByRole('button', { name: 'Розгорнути' }).click();
+    // Перший рядок співробітника → кнопка «Показати наряди».
+    const showWo = periodRow.getByRole('button', { name: 'Показати наряди' }).first();
+    await expect(showWo).toBeVisible({ timeout: 15_000 });
+    await showWo.click();
+
+    // Розшифровка розкрита: заголовок таблиці + tfoot «Разом база».
+    await expect(periodRow.getByText('Розшифровка по нарядах')).toBeVisible({ timeout: 15_000 });
+    await expect(periodRow.getByText('Разом база')).toBeVisible();
+    // Хоча б один клікабельний № наряду веде на картку наряду.
+    const woLink = periodRow.locator('a[href^="/work-orders/"]').first();
+    await expect(woLink).toBeVisible();
+  });
+
   test('FSM-guard: повторний compute вже-розрахованого періоду → 400 (API)', async ({ page }) => {
     await page.goto('/payroll');
     await expect(page.locator('h1:has-text("Зарплата")')).toBeVisible({ timeout: 20_000 });

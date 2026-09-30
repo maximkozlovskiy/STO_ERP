@@ -246,6 +246,184 @@ describe('PayrollService.compute — FSM', () => {
     });
   });
 
+  it('null-авто (vehicleId відсутній / make+model+plate порожні) → vehicleName=null (UI показує «—», не «null»)', async () => {
+    m.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({
+        id: PID,
+        status: 'DRAFT',
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        branchId: null,
+      })
+      .mockResolvedValueOnce({
+        id: PID,
+        orgId: ORG,
+        branchId: null,
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        status: 'COMPUTED',
+        note: null,
+        computedAt: new Date(),
+        paidAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lines: [],
+      });
+    m.prisma.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          employeeId: 'e1',
+          firstName: 'A',
+          lastName: 'B',
+          rateScheme: { type: 'percent_normo', params: { percent: 50 } },
+          totalNormoHours: 2,
+          totalAmount: 1000,
+          linesCount: 3n,
+        },
+      ])
+      .mockResolvedValueOnce([
+        // wo-null: LEFT JOIN vehicles → make/model/plate усі NULL (наряд без авто)
+        {
+          employeeId: 'e1',
+          workOrderId: 'wo-null',
+          workOrderNumber: 'НРД-2026-0100',
+          make: null,
+          model: null,
+          licensePlate: null,
+          worksCount: 1n,
+          normoHours: 1,
+          baseAmount: 400,
+        },
+        // wo-empty: рядки-порожні make/model/plate (не null, але trim→'') → теж null
+        {
+          employeeId: 'e1',
+          workOrderId: 'wo-empty',
+          workOrderNumber: 'НРД-2026-0101',
+          make: '  ',
+          model: '',
+          licensePlate: '   ',
+          worksCount: 1n,
+          normoHours: 0.5,
+          baseAmount: 300,
+        },
+        // wo-plate: лише номерний знак → показуємо його
+        {
+          employeeId: 'e1',
+          workOrderId: 'wo-plate',
+          workOrderNumber: 'НРД-2026-0102',
+          make: null,
+          model: null,
+          licensePlate: 'BC5678HK',
+          worksCount: 1n,
+          normoHours: 0.5,
+          baseAmount: 300,
+        },
+      ]);
+
+    await service.compute(ORG, PID, 'user-1');
+
+    const data = m.tx.payrollLineWorkOrder.createMany.mock.calls[0]![0].data as {
+      workOrderId: string;
+      vehicleName: string | null;
+    }[];
+    const byId = Object.fromEntries(data.map(d => [d.workOrderId, d.vehicleName]));
+    expect(byId['wo-null']).toBeNull(); // null, НЕ рядок 'null'
+    expect(byId['wo-empty']).toBeNull(); // порожні рядки → null (не «   »)
+    expect(byId['wo-plate']).toBe('BC5678HK'); // лише plate
+  });
+
+  it('кілька співробітників — розшифровка не «протікає» між рядками (правильний payrollLineId)', async () => {
+    m.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({
+        id: PID,
+        status: 'DRAFT',
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        branchId: null,
+      })
+      .mockResolvedValueOnce({
+        id: PID,
+        orgId: ORG,
+        branchId: null,
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        status: 'COMPUTED',
+        note: null,
+        computedAt: new Date(),
+        paidAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lines: [],
+      });
+    // create() повертає різні lineId по черзі (e1 → line-e1, e2 → line-e2)
+    m.tx.payrollLine.create
+      .mockResolvedValueOnce({ id: 'line-e1' })
+      .mockResolvedValueOnce({ id: 'line-e2' });
+    m.prisma.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          employeeId: 'e1',
+          firstName: 'A',
+          lastName: 'One',
+          rateScheme: { type: 'percent_normo', params: { percent: 50 } },
+          totalNormoHours: 2,
+          totalAmount: 1000,
+          linesCount: 1n,
+        },
+        {
+          employeeId: 'e2',
+          firstName: 'B',
+          lastName: 'Two',
+          rateScheme: { type: 'percent_normo', params: { percent: 50 } },
+          totalNormoHours: 4,
+          totalAmount: 2000,
+          linesCount: 1n,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          employeeId: 'e1',
+          workOrderId: 'wo-1',
+          workOrderNumber: 'НРД-1',
+          make: 'Kia',
+          model: null,
+          licensePlate: null,
+          worksCount: 1n,
+          normoHours: 2,
+          baseAmount: 1000,
+        },
+        {
+          employeeId: 'e2',
+          workOrderId: 'wo-2',
+          workOrderNumber: 'НРД-2',
+          make: 'Audi',
+          model: null,
+          licensePlate: null,
+          worksCount: 1n,
+          normoHours: 4,
+          baseAmount: 2000,
+        },
+      ]);
+
+    await service.compute(ORG, PID, 'user-1');
+
+    // e1 (line-e1) отримує лише wo-1; e2 (line-e2) — лише wo-2. Жодного перехресного лінка.
+    const calls = m.tx.payrollLineWorkOrder.createMany.mock.calls.map(
+      c => c[0].data as { payrollLineId: string; workOrderId: string }[],
+    );
+    const e1 = calls.find(d => d[0]?.payrollLineId === 'line-e1');
+    const e2 = calls.find(d => d[0]?.payrollLineId === 'line-e2');
+    expect(e1).toEqual([
+      expect.objectContaining({ payrollLineId: 'line-e1', workOrderId: 'wo-1' }),
+    ]);
+    expect(e2).toEqual([
+      expect.objectContaining({ payrollLineId: 'line-e2', workOrderId: 'wo-2' }),
+    ]);
+    // жоден рядок e1 не містить wo-2 і навпаки
+    expect(e1!.some(d => d.workOrderId === 'wo-2')).toBe(false);
+    expect(e2!.some(d => d.workOrderId === 'wo-1')).toBe(false);
+  });
+
   it('перерахунок: видаляє стару розшифровку ПЕРЕД рядками (FK RESTRICT)', async () => {
     m.prisma.payrollPeriod.findFirst
       .mockResolvedValueOnce({
@@ -422,5 +600,110 @@ describe('PayrollService.remove — guard', () => {
       where: { id: PID, orgId: ORG, deletedAt: null },
       data: { deletedAt: expect.any(Date) },
     });
+  });
+});
+
+describe('PayrollService.findOne — розшифровка (toDto)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  let service: PayrollService;
+  beforeEach(() => {
+    m = makeMocks();
+    service = makeService(m);
+  });
+
+  it('не знайдено → 404', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce(null);
+    await expect(service.findOne(ORG, PID)).rejects.toThrow(NotFoundException);
+  });
+
+  it('workOrders із null vehicleName серіалізуються як null (не рядок «null»); baseAmount — Number', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({
+      id: PID,
+      orgId: ORG,
+      branchId: null,
+      periodStart: new Date('2026-09-01'),
+      periodEnd: new Date('2026-09-30'),
+      status: 'COMPUTED',
+      note: null,
+      computedAt: new Date(),
+      paidAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lines: [
+        {
+          employeeId: 'e1',
+          rateSchemeType: 'percent_normo',
+          baseAmount: { toString: () => '700' } as never, // Prisma.Decimal-подібний
+          normoHours: 1.5,
+          linesCount: 2,
+          accruedAmount: { toString: () => '350' } as never,
+          paidAmount: { toString: () => '0' } as never,
+          employee: { firstName: 'Іван', lastName: 'Коваль' },
+          workOrders: [
+            {
+              workOrderId: 'wo-null',
+              workOrderNumber: 'НРД-2026-0100',
+              vehicleName: null, // наряд без авто
+              worksCount: 1,
+              normoHours: 1,
+              baseAmount: { toString: () => '400' } as never,
+            },
+            {
+              workOrderId: 'wo-2',
+              workOrderNumber: 'НРД-2026-0101',
+              vehicleName: 'Toyota Camry · AA1234BB',
+              worksCount: 1,
+              normoHours: 0.5,
+              baseAmount: { toString: () => '300' } as never,
+            },
+          ],
+        },
+      ],
+    });
+
+    const dto = await service.findOne(ORG, PID);
+    const wos = dto.lines![0].workOrders!;
+    expect(wos).toHaveLength(2);
+    expect(wos[0].vehicleName).toBeNull(); // null зберігається (JSON null → UI «—»)
+    expect(wos[1].vehicleName).toBe('Toyota Camry · AA1234BB');
+    expect(wos[0].baseAmount).toBe(400); // Number, не Decimal-обʼєкт
+    // Інваріант розшифровки: Σ workOrders.baseAmount === line.baseAmount (tfoot «Разом база» сходиться)
+    const sumWo = wos.reduce((s, w) => s + w.baseAmount, 0);
+    expect(sumWo).toBe(dto.lines![0].baseAmount);
+  });
+
+  it('старий період (розраховано до фічі): workOrders=[] → пуста розшифровка, а не падіння', async () => {
+    m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({
+      id: PID,
+      orgId: ORG,
+      branchId: null,
+      periodStart: new Date('2026-09-01'),
+      periodEnd: new Date('2026-09-30'),
+      status: 'COMPUTED',
+      note: null,
+      computedAt: new Date(),
+      paidAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lines: [
+        {
+          employeeId: 'e1',
+          rateSchemeType: 'fixed_plus_bonus',
+          baseAmount: { toString: () => '0' } as never,
+          normoHours: 0,
+          linesCount: 0,
+          accruedAmount: { toString: () => '5000' } as never,
+          paidAmount: { toString: () => '0' } as never,
+          employee: { firstName: 'Іван', lastName: 'Коваль' },
+          workOrders: [], // немає snapshot-рядків
+        },
+      ],
+    });
+
+    const dto = await service.findOne(ORG, PID);
+    // workOrders присутнє й порожнє → UI показує breakdown.empty (не спінер, не краш)
+    expect(dto.lines![0].workOrders).toEqual([]);
+    // accrued лишається (fixed-схема нарахувала попри 0 нарядів)
+    expect(dto.lines![0].accruedAmount).toBe(5000);
   });
 });
