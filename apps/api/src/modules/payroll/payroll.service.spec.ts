@@ -10,7 +10,13 @@ const PID = '22222222-2222-4222-8222-222222222222';
 function makeMocks() {
   const tx = {
     payrollPeriod: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
-    payrollLine: { deleteMany: vi.fn(), createMany: vi.fn() },
+    payrollLine: {
+      deleteMany: vi.fn(),
+      createMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ id: 'line-1' }),
+    },
+    payrollLineWorkOrder: { deleteMany: vi.fn(), createMany: vi.fn() },
     $executeRaw: vi.fn(),
   };
   return {
@@ -147,27 +153,133 @@ describe('PayrollService.compute — FSM', () => {
         updatedAt: new Date(),
         lines: [],
       });
-    m.prisma.$queryRaw.mockResolvedValueOnce([
-      {
-        employeeId: 'e1',
-        firstName: 'A',
-        lastName: 'B',
-        rateScheme: { type: 'per_normo_hour', params: { ratePerHour: 100 } },
-        totalNormoHours: 5,
-        totalAmount: 0,
-        linesCount: 1n,
-      },
-    ]);
+    m.prisma.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          employeeId: 'e1',
+          firstName: 'A',
+          lastName: 'B',
+          rateScheme: { type: 'per_normo_hour', params: { ratePerHour: 100 } },
+          totalNormoHours: 5,
+          totalAmount: 0,
+          linesCount: 1n,
+        },
+      ])
+      .mockResolvedValueOnce([]); // aggregateWorkOrders — розшифровка порожня
 
     await service.compute(ORG, PID, 'user-1');
 
     expect(m.tx.payrollPeriod.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: PID, orgId: ORG, status: 'DRAFT' } }),
     );
-    expect(m.tx.payrollLine.createMany).toHaveBeenCalledWith(
+    expect(m.tx.payrollLine.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: [expect.objectContaining({ employeeId: 'e1', accruedAmount: 500 })], // 100×5
+        data: expect.objectContaining({ employeeId: 'e1', accruedAmount: 500 }), // 100×5
       }),
+    );
+  });
+
+  it('DRAFT → фіксує розшифровку по нарядах (snapshot номера/авто)', async () => {
+    m.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({
+        id: PID,
+        status: 'DRAFT',
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        branchId: null,
+      })
+      .mockResolvedValueOnce({
+        id: PID,
+        orgId: ORG,
+        branchId: null,
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        status: 'COMPUTED',
+        note: null,
+        computedAt: new Date(),
+        paidAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lines: [],
+      });
+    m.prisma.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          employeeId: 'e1',
+          firstName: 'A',
+          lastName: 'B',
+          rateScheme: { type: 'percent_normo', params: { percent: 50 } },
+          totalNormoHours: 8,
+          totalAmount: 4000,
+          linesCount: 2n,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          employeeId: 'e1',
+          workOrderId: 'wo-1',
+          workOrderNumber: 'WO-2026-0001',
+          make: 'Toyota',
+          model: 'Camry',
+          licensePlate: 'AA1234BB',
+          worksCount: 2n,
+          normoHours: 8,
+          baseAmount: 4000,
+        },
+      ]);
+
+    await service.compute(ORG, PID, 'user-1');
+
+    expect(m.tx.payrollLineWorkOrder.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          orgId: ORG,
+          payrollLineId: 'line-1',
+          workOrderId: 'wo-1',
+          workOrderNumber: 'WO-2026-0001',
+          vehicleName: 'Toyota Camry · AA1234BB',
+          worksCount: 2,
+          normoHours: 8,
+          baseAmount: 4000,
+        },
+      ],
+    });
+  });
+
+  it('перерахунок: видаляє стару розшифровку ПЕРЕД рядками (FK RESTRICT)', async () => {
+    m.prisma.payrollPeriod.findFirst
+      .mockResolvedValueOnce({
+        id: PID,
+        status: 'DRAFT',
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        branchId: null,
+      })
+      .mockResolvedValueOnce({
+        id: PID,
+        orgId: ORG,
+        branchId: null,
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        status: 'COMPUTED',
+        note: null,
+        computedAt: new Date(),
+        paidAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lines: [],
+      });
+    m.tx.payrollLine.findMany.mockResolvedValueOnce([{ id: 'old-line-1' }]);
+    m.prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    await service.compute(ORG, PID, 'user-1');
+
+    expect(m.tx.payrollLineWorkOrder.deleteMany).toHaveBeenCalledWith({
+      where: { orgId: ORG, payrollLineId: { in: ['old-line-1'] } },
+    });
+    // порядок: спершу діти, потім батьківські рядки
+    expect(m.tx.payrollLineWorkOrder.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      m.tx.payrollLine.deleteMany.mock.invocationCallOrder[0],
     );
   });
 

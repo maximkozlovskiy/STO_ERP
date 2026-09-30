@@ -32,6 +32,17 @@
     "notComputed": "Not calculated yet — click «Calculate».",
     "noAccruals": "No accruals."
   },
+  "breakdown": {
+    "expand": "Show work orders",
+    "collapse": "Hide work orders",
+    "heading": "Work order breakdown",
+    "workOrder": "Work order",
+    "vehicle": "Vehicle",
+    "works": "Works",
+    "empty": "Breakdown unavailable (period was calculated before this feature).",
+    "total": "Base total",
+    "note": "Accrual is calculated from the base total per the pay scheme, so it is not split across work orders."
+  },
   "payModal": {
     "title": "Process payment",
     "payButton": "Pay",

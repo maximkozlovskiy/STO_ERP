@@ -1,6 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 
+/**
+ * Розшифровка нарахування по одному наряду — дзеркалить PayrollLineWorkOrderDto.
+ * baseAmount = Σ сума робіт наряду (частка бази); нарахування рахується від СУМИ бази за схемою,
+ * тому по-нарядно не розкидається.
+ */
+export interface PayrollLineWorkOrder {
+  workOrderId: string;
+  workOrderNumber: string;
+  vehicleName?: string | null;
+  worksCount: number;
+  normoHours: number;
+  baseAmount: number;
+}
+
 export interface PayrollLine {
   employeeId: string;
   employeeName: string;
@@ -10,6 +24,8 @@ export interface PayrollLine {
   linesCount: number;
   accruedAmount: number;
   paidAmount?: number;
+  /** Розшифровка по нарядах — приходить лише з GET /payroll/periods/:id (не зі списку). */
+  workOrders?: PayrollLineWorkOrder[];
 }
 
 export interface PayrollPreview {

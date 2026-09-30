@@ -323,13 +323,39 @@ model PayrollLine {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  period   PayrollPeriod @relation(fields: [periodId], references: [id])
-  employee Employee      @relation(fields: [employeeId], references: [id])
+  period    PayrollPeriod           @relation(fields: [periodId], references: [id])
+  employee  Employee                @relation(fields: [employeeId], references: [id])
+  workOrders PayrollLineWorkOrder[]
 
   @@unique([periodId, employeeId])
   @@index([orgId, employeeId])
   @@index([orgId, syncVersion])
   @@map("payroll_lines")
+}
+
+// Розшифровка нарахування PayrollLine по нарядах (зафіксована на момент COMPUTED).
+// Snapshot: number/vehicleName зберігаються текстом — розшифровка переживає зміну/видалення наряду
+// й ЗАВЖДИ сходиться з baseAmount рядка. Σ baseAmount усіх рядків = PayrollLine.baseAmount.
+// Нарахування (accruedAmount) рахується від СУМИ бази за схемою, тому тут не розкидається — лише база.
+model PayrollLineWorkOrder {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId           String   @db.Uuid
+  payrollLineId   String   @db.Uuid
+  workOrderId     String   @db.Uuid // без FK-cascade: snapshot переживає видалення наряду
+  workOrderNumber String // snapshot номера наряду (напр. WO-2026-0001)
+  vehicleName     String? // snapshot авто (напр. «Toyota Camry · AA1234BB»)
+  worksCount      Int // к-сть врахованих ліній робіт цього наряду
+  normoHours      Float // Σ normoHours робіт наряду
+  baseAmount      Decimal  @db.Decimal(12, 2) // Σ amount робіт наряду (частка бази)
+  syncVersion     BigInt   @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  payrollLine PayrollLine @relation(fields: [payrollLineId], references: [id])
+
+  @@index([orgId, payrollLineId])
+  @@index([orgId, syncVersion])
+  @@map("payroll_line_work_orders")
 }
 
 model ReconciliationAct {

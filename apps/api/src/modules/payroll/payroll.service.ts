@@ -10,6 +10,7 @@ import { computeAccrued, parseRateScheme } from './payroll.calculator';
 import {
   CreatePayrollPeriodDto,
   PayrollLineDto,
+  PayrollLineWorkOrderDto,
   PayrollPeriodResponseDto,
   PayrollPreviewDto,
 } from './payroll.dto';
@@ -43,6 +44,31 @@ interface WorkAggRow {
   totalNormoHours: number;
   totalAmount: number;
   linesCount: bigint;
+}
+
+// Розшифровка виробітку співробітника по нарядах (для snapshot розбивки нарахування).
+interface WorkOrderAggRow {
+  employeeId: string;
+  workOrderId: string;
+  workOrderNumber: string;
+  make: string | null;
+  model: string | null;
+  licensePlate: string | null;
+  worksCount: bigint;
+  normoHours: number;
+  baseAmount: number;
+}
+
+// «Toyota Camry · AA1234BB» / «Toyota Camry» / «AA1234BB» / null — snapshot назви авто.
+function formatVehicleName(
+  make: string | null,
+  model: string | null,
+  plate: string | null,
+): string | null {
+  const name = [make, model].filter(Boolean).join(' ').trim();
+  const p = plate?.trim();
+  if (name && p) return `${name} · ${p}`;
+  return name || p || null;
 }
 
 @Injectable()
@@ -113,6 +139,51 @@ export class PayrollService {
     });
   }
 
+  /**
+   * Розшифровка виробітку по нарядах (для кожного співробітника) за той самий період/фільтр, що й
+   * aggregate(). Групування GROUP BY employeeId, workOrderId — по одному рядку на наряд.
+   * Повертає Map<employeeId, WorkOrderAggRow[]> (для snapshot розбивки при compute()).
+   */
+  private async aggregateWorkOrders(
+    orgId: string,
+    fromDate: Date,
+    toDate: Date,
+    branchId?: string,
+  ): Promise<Map<string, WorkOrderAggRow[]>> {
+    const rows = await this.prisma.$queryRaw<WorkOrderAggRow[]>`
+      SELECT
+        wol."employeeId",
+        wo.id                                      AS "workOrderId",
+        wo."number"                                AS "workOrderNumber",
+        v."make",
+        v."model",
+        v."licensePlate",
+        COUNT(*)                                   AS "worksCount",
+        COALESCE(SUM(wol."normoHours"), 0)::float  AS "normoHours",
+        COALESCE(SUM(wol."amount"), 0)::float      AS "baseAmount"
+      FROM work_order_lines wol
+      JOIN work_orders wo  ON wo.id = wol."workOrderId"
+      LEFT JOIN vehicles v ON v.id  = wo."vehicleId"
+      WHERE wol."orgId"     = ${orgId}::uuid
+        AND wol."deletedAt" IS NULL
+        AND wo."orgId"      = ${orgId}::uuid
+        AND wo."deletedAt"  IS NULL
+        AND wo."status"     = ANY(ARRAY['COMPLETED','INVOICED','PAID','ARCHIVED']::"WorkOrderStatus"[])
+        AND wo."completedAt" >= ${fromDate}
+        AND wo."completedAt" <= ${toDate}
+        ${branchId ? Prisma.sql`AND wo."branchId" = ${branchId}::uuid` : Prisma.empty}
+      GROUP BY wol."employeeId", wo.id, wo."number", v."make", v."model", v."licensePlate"
+      ORDER BY "baseAmount" DESC
+    `;
+    const byEmployee = new Map<string, WorkOrderAggRow[]>();
+    for (const r of rows) {
+      const list = byEmployee.get(r.employeeId) ?? [];
+      list.push(r);
+      byEmployee.set(r.employeeId, list);
+    }
+    return byEmployee;
+  }
+
   /** Попередній розрахунок (без збереження). */
   async preview(
     orgId: string,
@@ -138,11 +209,17 @@ export class PayrollService {
     return periods.map(p => this.toDto(p));
   }
 
+  /** Один період з ПОВНОЮ розшифровкою нарахувань по нарядах (findAll її не вантажить — важко). */
   async findOne(orgId: string, id: string): Promise<PayrollPeriodResponseDto> {
     const period = await this.prisma.payrollPeriod.findFirst({
       where: { id, orgId, deletedAt: null },
       include: {
-        lines: { include: { employee: { select: { firstName: true, lastName: true } } } },
+        lines: {
+          include: {
+            employee: { select: { firstName: true, lastName: true } },
+            workOrders: { orderBy: { baseAmount: 'desc' } },
+          },
+        },
       },
     });
     if (!period)
@@ -201,6 +278,13 @@ export class PayrollService {
     const toStr = period.periodEnd.toISOString().slice(0, 10);
     const { fromDate, toDate } = normalizeDateRange(fromStr, toStr);
     const lines = await this.aggregate(orgId, fromDate, toDate, period.branchId ?? undefined);
+    // Розбивка виробітку по нарядах (snapshot розшифровки нарахувань).
+    const woByEmployee = await this.aggregateWorkOrders(
+      orgId,
+      fromDate,
+      toDate,
+      period.branchId ?? undefined,
+    );
 
     await this.prisma.$transaction(
       async tx => {
@@ -214,20 +298,49 @@ export class PayrollService {
             translateError('err.payroll.calculateConcurrentChange', getLocale()),
           );
         // Фіксуємо рядки (перестворюємо на випадок повторного DRAFT після скидання — тут DRAFT гарантований).
+        // Спершу видаляємо дочірню розшифровку (FK RESTRICT), потім самі рядки.
+        const oldLines = await tx.payrollLine.findMany({
+          where: { orgId, periodId: id },
+          select: { id: true },
+        });
+        if (oldLines.length > 0) {
+          await tx.payrollLineWorkOrder.deleteMany({
+            where: { orgId, payrollLineId: { in: oldLines.map(l => l.id) } },
+          });
+        }
         await tx.payrollLine.deleteMany({ where: { orgId, periodId: id } });
         if (lines.length > 0) {
-          await tx.payrollLine.createMany({
-            data: lines.map(l => ({
-              orgId,
-              periodId: id,
-              employeeId: l.employeeId,
-              rateSchemeType: l.rateSchemeType,
-              baseAmount: l.baseAmount,
-              normoHours: l.normoHours,
-              linesCount: l.linesCount,
-              accruedAmount: l.accruedAmount,
-            })),
-          });
+          // createMany не повертає id — створюємо рядки по одному, щоб отримати lineId для розшифровки.
+          for (const l of lines) {
+            const created = await tx.payrollLine.create({
+              data: {
+                orgId,
+                periodId: id,
+                employeeId: l.employeeId,
+                rateSchemeType: l.rateSchemeType,
+                baseAmount: l.baseAmount,
+                normoHours: l.normoHours,
+                linesCount: l.linesCount,
+                accruedAmount: l.accruedAmount,
+              },
+              select: { id: true },
+            });
+            const wos = woByEmployee.get(l.employeeId) ?? [];
+            if (wos.length > 0) {
+              await tx.payrollLineWorkOrder.createMany({
+                data: wos.map(w => ({
+                  orgId,
+                  payrollLineId: created.id,
+                  workOrderId: w.workOrderId,
+                  workOrderNumber: w.workOrderNumber,
+                  vehicleName: formatVehicleName(w.make, w.model, w.licensePlate),
+                  worksCount: Number(w.worksCount),
+                  normoHours: Number(w.normoHours),
+                  baseAmount: roundMoney(Number(w.baseAmount)),
+                })),
+              });
+            }
+          }
         }
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
@@ -366,18 +479,37 @@ export class PayrollService {
       accruedAmount: Prisma.Decimal;
       paidAmount: Prisma.Decimal;
       employee?: { firstName: string; lastName: string };
+      workOrders?: {
+        workOrderId: string;
+        workOrderNumber: string;
+        vehicleName: string | null;
+        worksCount: number;
+        normoHours: number;
+        baseAmount: Prisma.Decimal;
+      }[];
     }[];
   }): PayrollPeriodResponseDto {
-    const lines: PayrollLineDto[] | undefined = period.lines?.map(l => ({
-      employeeId: l.employeeId,
-      employeeName: l.employee ? formatPersonName(l.employee.lastName, l.employee.firstName) : '',
-      rateSchemeType: l.rateSchemeType,
-      baseAmount: Number(l.baseAmount),
-      normoHours: l.normoHours,
-      linesCount: l.linesCount,
-      accruedAmount: Number(l.accruedAmount),
-      paidAmount: Number(l.paidAmount),
-    }));
+    const lines: PayrollLineDto[] | undefined = period.lines?.map(l => {
+      const workOrders: PayrollLineWorkOrderDto[] | undefined = l.workOrders?.map(w => ({
+        workOrderId: w.workOrderId,
+        workOrderNumber: w.workOrderNumber,
+        vehicleName: w.vehicleName,
+        worksCount: w.worksCount,
+        normoHours: w.normoHours,
+        baseAmount: Number(w.baseAmount),
+      }));
+      return {
+        employeeId: l.employeeId,
+        employeeName: l.employee ? formatPersonName(l.employee.lastName, l.employee.firstName) : '',
+        rateSchemeType: l.rateSchemeType,
+        baseAmount: Number(l.baseAmount),
+        normoHours: l.normoHours,
+        linesCount: l.linesCount,
+        accruedAmount: Number(l.accruedAmount),
+        paidAmount: Number(l.paidAmount),
+        ...(workOrders ? { workOrders } : {}),
+      };
+    });
     const totalAccrued = roundMoney(
       (period.lines ?? []).reduce((s, l) => s + Number(l.accruedAmount), 0),
     );

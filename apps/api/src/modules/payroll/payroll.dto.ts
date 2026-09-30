@@ -45,6 +45,21 @@ export class CreatePayrollPeriodDto {
   note?: string;
 }
 
+/**
+ * Розшифровка нарахування по одному наряду (snapshot на момент COMPUTED).
+ * baseAmount — Σ сума робіт цього наряду (частка бази). Нарахування рахується від СУМИ бази за
+ * схемою оплати, тому по-нарядно не розкидається — показуємо лише базу й нормо-години.
+ */
+export class PayrollLineWorkOrderDto {
+  @ApiProperty() workOrderId!: string;
+  @ApiProperty({ example: 'WO-2026-0001' }) workOrderNumber!: string;
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'Toyota Camry · AA1234BB' })
+  vehicleName?: string | null;
+  @ApiProperty({ description: 'К-сть врахованих робіт наряду' }) worksCount!: number;
+  @ApiProperty({ description: 'Σ нормо-годин по наряду' }) normoHours!: number;
+  @ApiProperty({ description: 'Σ сума робіт наряду (частка бази)' }) baseAmount!: number;
+}
+
 /** Рядок нарахування у preview/period (співробітник + база + нараховано). */
 export class PayrollLineDto {
   @ApiProperty() employeeId!: string;
@@ -57,6 +72,11 @@ export class PayrollLineDto {
   @ApiProperty({ description: 'Нараховано до виплати' }) accruedAmount!: number;
   @ApiPropertyOptional({ description: 'Фактично виплачено (лише у збереженому періоді)' })
   paidAmount?: number;
+  @ApiPropertyOptional({
+    type: [PayrollLineWorkOrderDto],
+    description: 'Розшифровка по нарядах (лише у GET /payroll/periods/:id)',
+  })
+  workOrders?: PayrollLineWorkOrderDto[];
 }
 
 export class PayrollPreviewDto {

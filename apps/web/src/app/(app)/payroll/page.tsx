@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { Calculator, Wallet, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
 import { useRequireAuth, useAuth } from '@/lib/auth';
@@ -26,6 +27,7 @@ import { fmtMoney, kyivToday } from '@/lib/format';
 import {
   usePayrollPreview,
   usePayrollPeriods,
+  usePayrollPeriod,
   useCreatePayrollPeriod,
   useComputePayrollPeriod,
   usePayPayrollPeriod,
@@ -71,6 +73,8 @@ export default function PayrollPage() {
   const [to, setTo] = useState(() => kyivToday());
   const [previewEnabled, setPreviewEnabled] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Вкладене розкриття рядка співробітника → розшифровка по нарядах (`${periodId}:${employeeId}`).
+  const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   // Модалка виплати: обрати касу (готівкою) або без каси (лише фіксація).
   const [payPeriod, setPayPeriod] = useState<PayrollPeriod | null>(null);
   const [payCashRegisterId, setPayCashRegisterId] = useState('');
@@ -78,6 +82,8 @@ export default function PayrollPage() {
 
   const preview = usePayrollPreview(from, to, '', previewEnabled);
   const periodsQuery = usePayrollPeriods();
+  // Розкритий період вантажиться детально (список не несе розшифровки по нарядах — важко).
+  const expandedDetail = usePayrollPeriod(expanded);
   const createMut = useCreatePayrollPeriod();
   const computeMut = useComputePayrollPeriod();
   const payMut = usePayPayrollPeriod();
@@ -328,42 +334,171 @@ export default function PayrollPage() {
 
               {isOpen && (
                 <div className="border-t border-border px-4 py-2">
-                  {!p.lines || p.lines.length === 0 ? (
-                    <p className="text-[12px] text-muted-foreground py-2">
-                      {p.status === 'DRAFT' ? t('periods.notComputed') : t('periods.noAccruals')}
-                    </p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>{t('columns.employee')}</TableHead>
-                          <TableHead>{t('columns.scheme')}</TableHead>
-                          <TableHead className="text-right">{t('columns.normoHours')}</TableHead>
-                          <TableHead className="text-right">{t('columns.accrued')}</TableHead>
-                          <TableHead className="text-right">{t('columns.paid')}</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {p.lines.map(l => (
-                          <TableRow key={l.employeeId}>
-                            <TableCell className="font-medium">{l.employeeName}</TableCell>
-                            <TableCell className="text-[13px] text-muted-foreground">
-                              {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {l.normoHours}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums font-semibold">
-                              {fmtMoney(l.accruedAmount)}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {fmtMoney(l.paidAmount ?? 0)}
-                            </TableCell>
+                  {(() => {
+                    // Детальний запит несе workOrders; поки вантажиться — показуємо дані зі списку.
+                    const lines =
+                      expandedDetail.data?.id === p.id ? expandedDetail.data.lines : p.lines;
+                    if (!lines || lines.length === 0)
+                      return (
+                        <p className="text-[12px] text-muted-foreground py-2">
+                          {p.status === 'DRAFT'
+                            ? t('periods.notComputed')
+                            : t('periods.noAccruals')}
+                        </p>
+                      );
+                    return (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-8" />
+                            <TableHead>{t('columns.employee')}</TableHead>
+                            <TableHead>{t('columns.scheme')}</TableHead>
+                            <TableHead className="text-right">{t('columns.normoHours')}</TableHead>
+                            <TableHead className="text-right">{t('columns.accrued')}</TableHead>
+                            <TableHead className="text-right">{t('columns.paid')}</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
+                        </TableHeader>
+                        <TableBody>
+                          {lines.map(l => {
+                            const empKey = `${p.id}:${l.employeeId}`;
+                            const empOpen = expandedEmployee === empKey;
+                            const wos = l.workOrders;
+                            return (
+                              <Fragment key={l.employeeId}>
+                                <TableRow>
+                                  <TableCell className="w-8 p-0 pl-2">
+                                    <button
+                                      onClick={() => setExpandedEmployee(empOpen ? null : empKey)}
+                                      className="text-muted-foreground hover:text-foreground"
+                                      aria-label={
+                                        empOpen ? t('breakdown.collapse') : t('breakdown.expand')
+                                      }
+                                      title={
+                                        empOpen ? t('breakdown.collapse') : t('breakdown.expand')
+                                      }
+                                    >
+                                      {empOpen ? (
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <ChevronRight className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  </TableCell>
+                                  <TableCell className="font-medium">{l.employeeName}</TableCell>
+                                  <TableCell className="text-[13px] text-muted-foreground">
+                                    {RATE_LABELS[l.rateSchemeType] ?? l.rateSchemeType}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {l.normoHours}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums font-semibold">
+                                    {fmtMoney(l.accruedAmount)}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {fmtMoney(l.paidAmount ?? 0)}
+                                  </TableCell>
+                                </TableRow>
+                                {empOpen && (
+                                  <TableRow>
+                                    <TableCell colSpan={6} className="bg-secondary/20 p-0">
+                                      {expandedDetail.isLoading ? (
+                                        <div className="flex justify-center py-4">
+                                          <Spinner size="sm" />
+                                        </div>
+                                      ) : !wos || wos.length === 0 ? (
+                                        <p className="text-[12px] text-muted-foreground px-4 py-3">
+                                          {t('breakdown.empty')}
+                                        </p>
+                                      ) : (
+                                        <div className="px-4 py-2">
+                                          <p className="text-[12px] font-medium text-muted-foreground mb-1.5">
+                                            {t('breakdown.heading')}
+                                          </p>
+                                          <table className="w-full text-[13px]">
+                                            <colgroup>
+                                              <col className="w-32" />
+                                              <col />
+                                              <col className="w-20" />
+                                              <col className="w-24" />
+                                              <col className="w-28" />
+                                            </colgroup>
+                                            <thead>
+                                              <tr className="text-[12px] text-muted-foreground">
+                                                <th className="text-left font-medium py-1">
+                                                  {t('breakdown.workOrder')}
+                                                </th>
+                                                <th className="text-left font-medium py-1">
+                                                  {t('breakdown.vehicle')}
+                                                </th>
+                                                <th className="text-right font-medium py-1">
+                                                  {t('breakdown.works')}
+                                                </th>
+                                                <th className="text-right font-medium py-1">
+                                                  {t('columns.normoHours')}
+                                                </th>
+                                                <th className="text-right font-medium py-1">
+                                                  {t('columns.baseAmount')}
+                                                </th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {wos.map(w => (
+                                                <tr
+                                                  key={w.workOrderId}
+                                                  className="border-t border-border/50"
+                                                >
+                                                  <td className="py-1.5">
+                                                    <Link
+                                                      href={`/work-orders/${w.workOrderId}`}
+                                                      className="text-primary hover:underline"
+                                                    >
+                                                      {w.workOrderNumber}
+                                                    </Link>
+                                                  </td>
+                                                  <td className="py-1.5 text-muted-foreground">
+                                                    {w.vehicleName ?? '—'}
+                                                  </td>
+                                                  <td className="py-1.5 text-right tabular-nums">
+                                                    {w.worksCount}
+                                                  </td>
+                                                  <td className="py-1.5 text-right tabular-nums">
+                                                    {w.normoHours}
+                                                  </td>
+                                                  <td className="py-1.5 text-right tabular-nums">
+                                                    {fmtMoney(w.baseAmount)}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                            <tfoot>
+                                              <tr className="border-t border-border font-semibold">
+                                                <td colSpan={3} className="py-1.5">
+                                                  {t('breakdown.total')}
+                                                </td>
+                                                <td className="py-1.5 text-right tabular-nums">
+                                                  {l.normoHours}
+                                                </td>
+                                                <td className="py-1.5 text-right tabular-nums">
+                                                  {fmtMoney(l.baseAmount)}
+                                                </td>
+                                              </tr>
+                                            </tfoot>
+                                          </table>
+                                          <p className="text-[11px] text-muted-foreground mt-1.5">
+                                            {t('breakdown.note')}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    );
+                  })()}
                 </div>
               )}
             </div>
