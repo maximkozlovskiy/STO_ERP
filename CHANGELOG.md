@@ -5,6 +5,28 @@
 
 ---
 
+### c6f6254e feat(payroll): List Page pattern для /payroll — пагінація, фільтр статусу, колонки
+
+Періоди рендерились плоским списком (backend `take:500`, без фільтрів) — у юзера вже ~50 на одному
+екрані. Приведено до еталону `work-orders`.
+
+- **Backend:** `PayrollPeriodListQueryDto` (page/limit/status) → `PaginatedPayrollPeriodsDto`
+  (контракт `usePaginatedList`); `count` по ТОМУ Ж `where`; `page`/`limit` у відповіді нормалізовані
+  (похідні від skip/take) — page=0/-5 не малює хибний Pagination. `lines` і далі БЕЗ workOrders.
+- **Сортування → `createdAt desc, periodStart desc`:** під пагінацією період із давнім `periodStart`
+  (перерахунок старого місяця) «тонув» на останню сторінку — тепер щойно створений завжди на 1-й.
+- **Кеш:** список під окремим префіксом `['payroll-periods','list',…]` → `payrollKeys.all` його НЕ
+  покриває; `invalidateAllPayroll()` збиває обидва дерева після compute/pay (статус у списку
+  лишався старим до reload).
+- **UI:** `useListPage` + `ColumnsDropdown` (6 колонок) + `Pagination` + `useSavedFilters` + фільтр
+  статусу. Bulk-select свідомо НЕ додано — compute/pay строго по одному (FSM). Drill-down збережено.
+- **`data-testid` на `<tbody>`, не `<tr>`:** один вузол тримає рядок-шапку + розкриту розшифровку →
+  E2E скоупить статус/FSM-кнопки/drill-down на один `getByTestId` (декілька tbody — валідний HTML).
+
+tsc api/web 0. payroll api 44/44 (+11), web 13/13 (+8, новий `PayrollListPage.test.tsx`).
+
+---
+
 ### b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів
 
 Рядок `PayrollLine` показував лише агреговані суми — не було видно, з яких нарядів склалося нарахування.

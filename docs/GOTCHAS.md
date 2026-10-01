@@ -4,6 +4,36 @@
 
 ---
 
+## [2026-10-01] usePaginatedList змінює КЛЮЧ кеша → старі invalidateQueries мовчки перестають діяти
+
+Міграція списку на `usePaginatedList(endpoint, filters, { queryKey: 'X' })` робить queryKey
+`['X','list',filters]` — це ІНШЕ дерево, ніж старий `[...keys.all, 'periods']` (`['payroll','periods']`).
+Мутації, що інвалідували `keys.all` (`['payroll']`), після міграції НЕ торкаються списку: compute/pay
+проходив, деталь оновлювалась, а статус у таблиці лишався старим до F5 — без жодної помилки в консолі.
+Пастка тиха, бо `invalidateQueries` на неіснуючий префікс не кидає. ПРАВИЛО: міграція на
+`usePaginatedList` → пройти ВСІ `invalidateQueries` цього модуля й додати новий префікс (у payroll —
+`invalidateAllPayroll()` збиває `payrollKeys.all` + `payrollKeys.periodsLists()`). Детектор:
+`grep -n "invalidateQueries" hooks/api/useX.ts` і звірити кожен key з фактичним queryKey хука.
+
+## [2026-10-01] Пагінація + `orderBy` по бізнес-даті → щойно створений запис «тоне» на останню сторінку
+
+`payroll.findAll` сортував `periodStart desc`. Без пагінації (take:500) усе було видно. З `limit:20`
+період, створений за ДАВНІЙ місяць (перерахунок минулого, або E2E з діапазоном 2020–2030), опиняється
+в кінці сортування → після POST користувач не бачить свого запису на 1-й сторінці й вважає, що
+створення не відбулось. Два E2E-тести (FSM + drill-down) падали саме так. ПРАВИЛО: у списках із
+пагінацією первинний ключ сортування — `createdAt desc` (конвенція `buildSortOrderBy` fallback),
+бізнес-дата — вторинний. Детектор: `grep -n "orderBy: \[{ \(documentDate\|periodStart\|plannedAt\)" apps/api/src/modules/*/*.service.ts`.
+
+## [2026-10-01] Expandable-рядок + `data-testid` на `<tr>` ломається при переході на `<Table>`
+
+Картковий список із розкриттям мав `data-testid` на зовнішньому `<div>`, який обіймав і шапку, і
+розкриту розшифровку — E2E скоупив усе на один `getByTestId`. У `<table>` `<tr>` НЕ може містити
+інших `<tr>`, тому розкриття стає СУСІДНІМ рядком і вилітає з testid-вузла → `periodRow.getByText(…)`
+перестає бачити drill-down. Рішення: один `<tbody data-testid="…">` на запис (шапка + розкриття
+всередині) — декілька `<tbody>` в одній `<table>` валідні, `TableBody` спредить props. Також: нова
+колонка з `'—'` placeholder робить глобальний `getByText('—')` multiple-match — скоупити assert на
+конкретний рядок (`within(row)`).
+
 ## [2026-09-19] i18n backend: @sto/shared rebuild ОБОВ'ЯЗКОВИЙ перед api tsc/тестом
 
 Api споживає @sto/shared як КОМПІЛЬОВАНИЙ `dist/cjs` (`main: ./dist/cjs/index.js`), web — source через

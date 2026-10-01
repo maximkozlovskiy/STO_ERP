@@ -9,14 +9,15 @@
 ## Поточний стан
 
 ```
-Дата:       2026-09-30 (feat payroll breakdown — розшифровка нарахувань ЗП у розрізі нарядів, snapshot PayrollLineWorkOrder)
+Дата:       2026-10-01 (feat payroll List Page pattern — пагінація + фільтр статусу + ColumnsDropdown на /payroll)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2717/2717 (180 файлів; +3 нові: payroll breakdown snapshot/FK-порядок) · web 852/852 component · E2E 351/351.
+Тести:      api 2728/2728 (180 файлів; +11 нові: payroll findAll пагінація/фільтр/нормалізація page) ·
+            web 860/860 component (+8: PayrollListPage) · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
             @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
@@ -332,8 +333,22 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Payroll breakdown по нарядах — 2026-09-30, HEAD b1beca00:
-  b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів. PayrollLine показував лише
+Payroll List Page pattern — 2026-10-01, HEAD c6f6254e:
+  c6f6254e feat(payroll): List Page pattern для /payroll. Періоди рендерились плоским списком
+        (backend take:500, без фільтрів) — ~50 на екрані. Backend: PayrollPeriodListQueryDto
+        (page/limit/status) → PaginatedPayrollPeriodsDto (контракт usePaginatedList); count по ТОМУ Ж
+        where; page/limit у відповіді НОРМАЛІЗОВАНІ (похідні від skip/take) — page=0/-5 не малює хибний
+        Pagination. lines і далі БЕЗ workOrders (drill-down тягне findOne). Сортування → createdAt desc,
+        periodStart desc: під пагінацією період із давнім periodStart (перерахунок старого місяця) «тонув»
+        на останню сторінку. КЕШ-ПАСТКА: список живе під окремим префіксом ['payroll-periods','list',…]
+        (usePaginatedList queryKey), тому payrollKeys.all його НЕ покриває → invalidateAllPayroll() збиває
+        ОБА дерева після compute/pay, інакше статус у списку старий до reload. UI: useListPage +
+        ColumnsDropdown (6 колонок, labelKey idiom) + Pagination + useSavedFilters + фільтр статусу;
+        bulk-select свідомо НЕ додано (compute/pay строго по одному — FSM); зміна фільтра/сторінки
+        скидає expanded. data-testid переїхав з <tr> на <tbody>: один вузол тримає рядок-шапку +
+        розкриту розшифровку → E2E скоупить статус/FSM-кнопки/drill-down на один getByTestId.
+        tsc api/web 0; payroll api 44/44 (+11), web 13/13 (+8, новий PayrollListPage.test.tsx).
+  Попередній: b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів. PayrollLine показував лише
         агрегати — не видно з яких нарядів сума. Нова таблиця PayrollLineWorkOrder (міграція
         20260922120000) фіксується у compute() РАЗОМ із PayrollLine → snapshot, розшифровка ЗАВЖДИ
         сходиться з нарахуванням навіть якщо наряди змінили (number/vehicleName текстом, без FK на
