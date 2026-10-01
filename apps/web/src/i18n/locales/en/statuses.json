@@ -46,6 +46,14 @@
     "RECEIVED": "Received",
     "CANCELLED": "Cancelled"
   },
+  "DELIVERY_STATUS": {
+    "PENDING": "Pending",
+    "IN_TRANSIT": "In transit",
+    "ARRIVED": "At branch",
+    "DELIVERED": "Delivered",
+    "RETURNED": "Returned",
+    "NOT_FOUND": "Not found"
+  },
   "SUPPLIER_RETURN_STATUS": {
     "DRAFT": "Draft",
     "CONFIRMED": "Confirmed",

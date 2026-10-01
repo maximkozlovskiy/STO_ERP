@@ -235,7 +235,15 @@
     "until": "until {{date}}",
     "claim": "Claim",
     "claimedToast": "Warranty claimed",
-    "claimError": "Warranty claim error"
+    "claimError": "Warranty claim error",
+    "createTitle": "New warranty",
+    "expiresLabel": "Valid until",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "E.g. warranty on labour / part",
+    "cancel": "Cancel",
+    "create": "Create",
+    "createdToast": "Warranty created",
+    "createError": "Failed to create warranty"
   },
   "lines": {
     "title": "Labor",

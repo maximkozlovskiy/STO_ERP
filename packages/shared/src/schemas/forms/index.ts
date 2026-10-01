@@ -8,4 +8,5 @@ export * from './supplier-payment.schema';
 export * from './stock-document.schema';
 export * from './supplier-return.schema';
 export * from './purchase-order.schema';
+export * from './warranty.schema';
 export * from './work-order.schema';

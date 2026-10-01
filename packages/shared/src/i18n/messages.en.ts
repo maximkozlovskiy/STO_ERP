@@ -25,6 +25,8 @@ export const en: Record<string, string> = {
   // ── good.schema.ts ──
   'v.good.name.required': 'Enter the product name',
   'v.good.name.max': 'Name is too long',
+  'v.warranty.expiresAt.required': 'Enter the warranty expiry date',
+  'v.warranty.expiresAt.format': 'Invalid date format',
 
   // ── employee.schema.ts ──
   'v.employee.firstName.required': 'Enter the first name',

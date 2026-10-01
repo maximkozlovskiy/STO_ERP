@@ -28,6 +28,8 @@ export const uk: Record<string, string> = {
   // ── good.schema.ts ──
   'v.good.name.required': 'Вкажіть назву товару',
   'v.good.name.max': 'Назва занадто довга',
+  'v.warranty.expiresAt.required': 'Вкажіть дату закінчення гарантії',
+  'v.warranty.expiresAt.format': 'Невірний формат дати',
 
   // ── employee.schema.ts ──
   'v.employee.firstName.required': "Вкажіть ім'я",

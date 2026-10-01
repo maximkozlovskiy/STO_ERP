@@ -235,7 +235,15 @@
     "until": "до {{date}}",
     "claim": "Пред’явити",
     "claimedToast": "Гарантію пред’явлено",
-    "claimError": "Помилка пред’явлення гарантії"
+    "claimError": "Помилка пред’явлення гарантії",
+    "createTitle": "Нова гарантія",
+    "expiresLabel": "Діє до",
+    "descriptionLabel": "Опис",
+    "descriptionPlaceholder": "Напр. гарантія на роботу / запчастину",
+    "cancel": "Скасувати",
+    "create": "Створити",
+    "createdToast": "Гарантію створено",
+    "createError": "Помилка створення гарантії"
   },
   "lines": {
     "title": "Роботи",

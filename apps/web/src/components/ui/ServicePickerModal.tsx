@@ -53,17 +53,17 @@ export function ServicePickerModal({ open, onClose, onSelect }: Props) {
       setLoading(false);
       return;
     }
-    fetch('');
+    loadServices('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    fetch(query);
+    loadServices(query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  function fetch(q: string) {
+  function loadServices(q: string) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     const reqId = ++reqRef.current;
     setLoading(true);

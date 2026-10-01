@@ -63,7 +63,7 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
 import { cn, UUID_RE } from '@/lib/utils';
-import { fmtDate, fmtDateTime, kyivToday } from '@/lib/format';
+import { fmtDate, fmtDateTime, fmtMoney, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -867,7 +867,7 @@ function StockDocumentsPageClient() {
                           {l.quantity} {l.unitShortName ?? l.unit}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          {l.price != null ? l.price.toFixed(2) + ' ₴' : '—'}
+                          {l.price != null ? `${fmtMoney(l.price)} ₴` : '—'}
                         </td>
                       </tr>
                     ))

@@ -29,6 +29,13 @@ export const V = {
     name: { required: 'v.good.name.required', max: 'v.good.name.max' },
   },
 
+  warranty: {
+    expiresAt: {
+      required: 'v.warranty.expiresAt.required',
+      format: 'v.warranty.expiresAt.format',
+    },
+  },
+
   employee: {
     firstName: { required: 'v.employee.firstName.required', max: 'v.employee.firstName.max' },
     lastName: { required: 'v.employee.lastName.required', max: 'v.employee.lastName.max' },
@@ -150,6 +157,8 @@ export const VALIDATION_KEYS = [
   'v.counterparty.email.invalid',
   'v.counterparty.name.supplier',
   'v.counterparty.name.any',
+  'v.warranty.expiresAt.required',
+  'v.warranty.expiresAt.format',
   'v.good.name.required',
   'v.good.name.max',
   'v.employee.firstName.required',

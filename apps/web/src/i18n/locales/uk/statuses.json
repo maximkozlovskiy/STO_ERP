@@ -46,6 +46,14 @@
     "RECEIVED": "Отримано",
     "CANCELLED": "Скасовано"
   },
+  "DELIVERY_STATUS": {
+    "PENDING": "Очікує",
+    "IN_TRANSIT": "У дорозі",
+    "ARRIVED": "На відділенні",
+    "DELIVERED": "Отримано",
+    "RETURNED": "Повернення",
+    "NOT_FOUND": "Не знайдено"
+  },
   "SUPPLIER_RETURN_STATUS": {
     "DRAFT": "Чернетка",
     "CONFIRMED": "Підтверджено",

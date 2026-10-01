@@ -31,7 +31,7 @@ import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
-import { kyivToday } from '@/lib/format';
+import { fmtMoney, kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import {
   STOCK_DOC_STATUS_LABELS,
@@ -1146,7 +1146,7 @@ export function StockDocumentCreateModal({
                     Разом:
                   </td>
                   <td className="px-3 py-2 text-right text-[13px] font-semibold tabular-nums">
-                    {total > 0 ? `${total.toFixed(2)} ₴` : '—'}
+                    {total > 0 ? `${fmtMoney(total)} ₴` : '—'}
                   </td>
                   <td />
                 </tr>

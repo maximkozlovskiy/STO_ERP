@@ -42,7 +42,7 @@ import {
   PO_STATUS_DESCRIPTIONS,
   SUPPLIER_RETURN_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
-import { poStatusLabel, supplierReturnStatusLabel } from '@/i18n/enumLabel';
+import { poStatusLabel, supplierReturnStatusLabel, deliveryStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
@@ -70,7 +70,6 @@ import {
   PURCHASE_ORDER_PANEL_SCHEMA,
   buildPanelFields,
   schemaToPanelConfigFields,
-  DELIVERY_STATUS_LABELS,
   DELIVERY_STATUS_BADGE,
 } from '@/lib/panel-schema';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -410,7 +409,7 @@ function PurchaseOrdersPageClient() {
                       }
                       tooltip={record.deliveryStatusRaw ?? undefined}
                     >
-                      {DELIVERY_STATUS_LABELS[String(v)] ?? String(v)}
+                      {deliveryStatusLabel(String(v))}
                     </Badge>
                   ) : (
                     '—'

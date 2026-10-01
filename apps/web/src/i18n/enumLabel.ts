@@ -23,6 +23,9 @@ import {
   CONTRACT_TYPE_LABELS,
   GOOD_TYPE_LABELS,
 } from '@sto/shared';
+// DELIVERY_STATUS_LABELS живе у web (panel-schema), а не в @sto/shared — Нова Пошта
+// web-only. panel-schema НЕ імпортує enumLabel → циклу немає.
+import { DELIVERY_STATUS_LABELS } from '@/lib/panel-schema';
 
 type LabelMap = Record<string, string>;
 
@@ -48,6 +51,8 @@ export const invoiceStatusLabel = (c?: string | null) =>
 export const invoiceTypeLabel = (c?: string | null) =>
   tEnum('INVOICE_TYPE', INVOICE_TYPE_LABELS, c);
 export const poStatusLabel = (c?: string | null) => tEnum('PO_STATUS', PO_STATUS_LABELS, c);
+export const deliveryStatusLabel = (c?: string | null) =>
+  tEnum('DELIVERY_STATUS', DELIVERY_STATUS_LABELS, c);
 export const supplierReturnStatusLabel = (c?: string | null) =>
   tEnum('SUPPLIER_RETURN_STATUS', SUPPLIER_RETURN_STATUS_LABELS, c);
 export const supplierPaymentStatusLabel = (c?: string | null) =>

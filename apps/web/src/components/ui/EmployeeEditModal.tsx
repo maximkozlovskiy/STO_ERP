@@ -528,7 +528,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           )}
           {rateType === 'per_normo_hour' && (
             <Input
-              label="Ставка, грн/нормо-год"
+              label="Ставка, ₴/нормо-год"
               type="number"
               min="0"
               {...register('ratePerHour')}
@@ -538,7 +538,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           {rateType === 'fixed_plus_bonus' && (
             <div className="grid grid-cols-2 gap-3">
               <Input
-                label="Ставка, грн/міс"
+                label="Ставка, ₴/міс"
                 type="number"
                 min="0"
                 {...register('fixedMonthly')}
