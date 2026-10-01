@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import type { ExtractOpts, TextFragment, TextLayerProvider } from './text-layer.provider';
+import { OCR_PROVIDER } from './ocr-text-layer.provider';
 
 /** PDF без текстового шару (скан/фото). Викликач показує користувачу пораду, а не падає 500. */
 export class PdfScannedError extends Error {}
@@ -229,19 +230,34 @@ export class PdfjsTextLayerProvider implements TextLayerProvider {
 }
 
 /** Ланцюжок провайдерів тексту. OCR додасться сюди другим елементом, без інших змін. */
-export const TEXT_LAYER_PROVIDERS: readonly TextLayerProvider[] = [new PdfjsTextLayerProvider()];
+/**
+ * Ланцюжок постачальників тексту. Порядок важливий: спершу ДЕШЕВИЙ і ТОЧНИЙ текстовий шар
+ * (мілісекунди), і лише якщо його немає — дороге й приблизне OCR (секунди).
+ */
+export const TEXT_LAYER_PROVIDERS: readonly TextLayerProvider[] = [
+  new PdfjsTextLayerProvider(),
+  OCR_PROVIDER,
+];
+
+/** Сітка + звідки взявся текст: UI попереджає про приблизність лише для OCR. */
+export interface GridFromProvider {
+  rows: string[][];
+  provider: TextLayerProvider['name'];
+}
 
 /**
  * PDF → сітка. Перебирає провайдерів; перший, що дав текст, виграє. Якщо жоден не дав —
- * PdfScannedError (коли з'явиться OCR-провайдер, цей самий код піде в нього замість помилки).
+ * PdfScannedError (тобто ні текстового шару, ні слів на зображенні).
+ *
+ * Помилки провайдера НЕ ковтаємо: битий PDF має дати «файл пошкоджений», а не «скан без тексту».
  */
 export async function pdfToGrid(
   buffer: Buffer | Uint8Array,
   opts?: ExtractOpts,
-): Promise<string[][]> {
+): Promise<GridFromProvider> {
   for (const provider of TEXT_LAYER_PROVIDERS) {
     const frags = await provider.extract(buffer, opts);
-    if (frags?.length) return fragmentsToGrid(frags);
+    if (frags?.length) return { rows: fragmentsToGrid(frags), provider: provider.name };
   }
   throw new PdfScannedError('no text layer');
 }

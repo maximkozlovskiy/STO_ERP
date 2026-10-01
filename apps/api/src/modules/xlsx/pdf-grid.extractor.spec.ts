@@ -318,12 +318,16 @@ describe('PdfjsTextLayerProvider + pdfToGrid (справжній PDF)', () => {
       }
     });
 
-    const grid = await pdfToGrid(pdf);
+    const { rows: grid, provider } = await pdfToGrid(pdf);
+    expect(provider).toBe('pdfjs'); // текстовий шар є → OCR не запускається
     expect(grid[0]).toEqual(['Артикул', 'Найменування', 'К-сть', 'Ціна']);
     expect(grid[1]).toEqual(['04E-129-620', 'Фільтр повітряний', '2', '345,00']);
     expect(grid[2]?.[3]).toBe('85,50');
   }, 30_000);
 
+  // УВАГА: після додавання OCR цей тест проходить з ІНШОЇ причини. Раніше — бо OCR-провайдера
+  // не було взагалі; тепер — бо на сірому прямокутнику OCR теж не знаходить слів і повертає null.
+  // Тому тест став повільнішим (~2 с): він реально ганяє розпізнавання.
   it('image-only PDF (скан) → PdfScannedError', async () => {
     const pdf = await build(d => {
       d.rect(50, 50, 500, 700).fill('#cccccc');

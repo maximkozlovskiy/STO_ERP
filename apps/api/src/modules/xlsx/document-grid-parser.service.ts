@@ -7,11 +7,22 @@ import {
   PdfNoTableError,
   PdfScannedError,
   PdfUnreadableError,
+  fragmentsToGrid,
   pdfToGrid,
 } from './pdf-grid.extractor';
+import {
+  OCR_PROVIDER,
+  OcrModelsMissingError,
+  OcrNoTextError,
+  OcrTimeoutError,
+  RasterizeUnavailableError,
+} from './ocr-text-layer.provider';
 
 /** Канал надходження накладної. Дзеркалить розширення файлу. */
-export type GridSourceKind = 'xlsx' | 'csv' | 'pdf';
+export type GridSourceKind = 'xlsx' | 'csv' | 'pdf' | 'image';
+
+/** Фото/скан. HEIC свідомо НЕ підтримуємо: його не читають ні tesseract, ні canvas. */
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'] as const;
 
 /** Сітка + метадані джерела. rows — 0-based; номери колонок у мапінгу — 1-based. */
 export interface ParsedGrid {
@@ -19,6 +30,8 @@ export interface ParsedGrid {
   totalRows: number;
   columnCount: number;
   kind: GridSourceKind;
+  /** Текст отримано розпізнаванням (а не з текстового шару/комірок) → UI попереджає про звірку. */
+  ocr?: boolean;
 }
 
 /**
@@ -37,6 +50,7 @@ export class DocumentGridParserService {
     if (lower.endsWith('.xlsx')) return 'xlsx';
     if (lower.endsWith('.csv')) return 'csv';
     if (lower.endsWith('.pdf')) return 'pdf';
+    if (IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return 'image';
     return null;
   }
 
@@ -51,15 +65,31 @@ export class DocumentGridParserService {
   /** Файл → сітка. Не-підтримуваний/нечитомий файл → дружній 400 українською. */
   async parseGrid(buffer: Buffer | Uint8Array, filename: string): Promise<ParsedGrid> {
     const kind = this.assertSupported(filename);
-    const rows =
-      kind === 'csv'
-        ? this.parseCsvGrid(buffer)
-        : kind === 'pdf'
-          ? await this.parsePdfGrid(buffer)
-          : await this.parseXlsxGrid(buffer);
+    // switch, а не тернарний ланцюжок: exhaustive-union дає помилку компіляції, якщо колись
+    // додадуть канал і забудуть гілку.
+    let rows: string[][];
+    let ocr = false;
+    switch (kind) {
+      case 'csv':
+        rows = this.parseCsvGrid(buffer);
+        break;
+      case 'pdf': {
+        const res = await this.parsePdfGrid(buffer);
+        rows = res.rows;
+        ocr = res.ocr;
+        break;
+      }
+      case 'image':
+        rows = await this.parseImageGrid(buffer);
+        ocr = true;
+        break;
+      case 'xlsx':
+        rows = await this.parseXlsxGrid(buffer);
+        break;
+    }
 
     const columnCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
-    return { rows, totalRows: rows.length, columnCount, kind };
+    return { rows, totalRows: rows.length, columnCount, kind, ocr };
   }
 
   // ─── Грід-білдери ───────────────────────────────────────────────────────────
@@ -104,23 +134,62 @@ export class DocumentGridParserService {
     return grid;
   }
 
-  /** PDF → сітка через текстовий шар. Скан/битий файл → дружній 400 із порадою. */
-  private async parsePdfGrid(buffer: Buffer | Uint8Array): Promise<string[][]> {
+  /**
+   * PDF → сітка: спершу текстовий шар (точно, мілісекунди), і лише якщо його немає — OCR
+   * растеризованої сторінки (приблизно, секунди). Повертає ще й ознаку, чи спрацював OCR.
+   */
+  private async parsePdfGrid(
+    buffer: Buffer | Uint8Array,
+  ): Promise<{ rows: string[][]; ocr: boolean }> {
     try {
-      return await pdfToGrid(buffer);
+      const res = await pdfToGrid(buffer);
+      return { rows: res.rows, ocr: res.provider === 'ocr' };
     } catch (e) {
-      if (e instanceof PdfScannedError) {
-        // Коли з'явиться OCR-провайдер — pdfToGrid піде в нього і сюди вже не потрапить.
-        throw new BadRequestException(translateError('err.xlsx.pdfNoTextLayer', getLocale()));
-      }
-      if (e instanceof PdfNoTableError) {
-        throw new BadRequestException(translateError('err.xlsx.pdfNoTableStructure', getLocale()));
-      }
-      if (e instanceof PdfUnreadableError) {
-        throw new BadRequestException(translateError('err.xlsx.pdfUnreadable', getLocale()));
-      }
-      throw new BadRequestException(translateError('err.xlsx.fileReadFailed', getLocale()));
+      throw this.toHttpError(e, 'pdf');
     }
+  }
+
+  /** Фото/скан → сітка через OCR. Растеризація не потрібна — байти вже растр. */
+  private async parseImageGrid(buffer: Buffer | Uint8Array): Promise<string[][]> {
+    try {
+      const frags = await OCR_PROVIDER.extract(buffer);
+      if (!frags?.length) {
+        throw new BadRequestException(translateError('err.xlsx.ocrNoText', getLocale()));
+      }
+      return fragmentsToGrid(frags);
+    } catch (e) {
+      throw this.toHttpError(e, 'image');
+    }
+  }
+
+  /** Технічні помилки парсерів → дружні 400 українською (а не сирі 500 зі стеком). */
+  private toHttpError(e: unknown, channel: 'pdf' | 'image'): BadRequestException {
+    if (e instanceof BadRequestException) return e;
+    if (e instanceof OcrTimeoutError) {
+      return new BadRequestException(translateError('err.xlsx.ocrTimeout', getLocale()));
+    }
+    if (e instanceof OcrModelsMissingError) {
+      return new BadRequestException(translateError('err.xlsx.ocrModelsMissing', getLocale()));
+    }
+    if (e instanceof RasterizeUnavailableError) {
+      return new BadRequestException(translateError('err.xlsx.pdfScanOcrUnavailable', getLocale()));
+    }
+    if (e instanceof PdfScannedError || e instanceof OcrNoTextError) {
+      // І текстового шару немає, і OCR слів не знайшов.
+      return new BadRequestException(translateError('err.xlsx.pdfNoTextLayer', getLocale()));
+    }
+    if (e instanceof PdfNoTableError) {
+      return new BadRequestException(
+        translateError(
+          channel === 'image' ? 'err.xlsx.imageNoTableStructure' : 'err.xlsx.pdfNoTableStructure',
+          getLocale(),
+        ),
+      );
+    }
+    if (e instanceof PdfUnreadableError) {
+      return new BadRequestException(translateError('err.xlsx.pdfUnreadable', getLocale()));
+    }
+    return new BadRequestException(translateError('err.xlsx.fileReadFailed', getLocale()));
   }
 
   // ─── Хелпери ────────────────────────────────────────────────────────────────
