@@ -1,5 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsDateString,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+
+/** Статуси зарплатного періоду — єдине місце правди для валідації фільтра. */
+export const PAYROLL_PERIOD_STATUSES = ['DRAFT', 'COMPUTED', 'PAID', 'CANCELLED'] as const;
+export type PayrollPeriodStatus = (typeof PAYROLL_PERIOD_STATUSES)[number];
 
 export class PayrollQueryDto {
   @ApiProperty({ example: '2026-09-01', description: 'Початок періоду (YYYY-MM-DD)' })
@@ -14,6 +30,30 @@ export class PayrollQueryDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+}
+
+/** Список періодів: пагінація + фільтр статусу (список росте щомісяця — плоский список не тримає). */
+export class PayrollPeriodListQueryDto {
+  @ApiPropertyOptional({ enum: PAYROLL_PERIOD_STATUSES, description: 'Фільтр по статусу' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsIn(PAYROLL_PERIOD_STATUSES)
+  status?: PayrollPeriodStatus;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(200)
+  limit: number = 20;
 }
 
 /** Проведення виплати. cashRegisterId — якщо задано, ЗП видається готівкою з каси (cash-out). */
@@ -101,4 +141,12 @@ export class PayrollPeriodResponseDto {
   @ApiPropertyOptional({ type: String, nullable: true }) paidAt?: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
+}
+
+/** Сторінка зарплатних періодів — контракт usePaginatedList (items/total/page/limit). */
+export class PaginatedPayrollPeriodsDto {
+  @ApiProperty({ type: [PayrollPeriodResponseDto] }) items!: PayrollPeriodResponseDto[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
 }

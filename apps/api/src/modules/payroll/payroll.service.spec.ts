@@ -25,6 +25,7 @@ function makeMocks() {
       payrollPeriod: {
         findFirst: vi.fn(),
         findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
         create: vi.fn(),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
@@ -705,5 +706,129 @@ describe('PayrollService.findOne — розшифровка (toDto)', () => {
     expect(dto.lines![0].workOrders).toEqual([]);
     // accrued лишається (fixed-схема нарахувала попри 0 нарядів)
     expect(dto.lines![0].accruedAmount).toBe(5000);
+  });
+});
+
+describe('PayrollService.findAll — пагінація + фільтр статусу', () => {
+  let m: ReturnType<typeof makeMocks>;
+  let service: PayrollService;
+  beforeEach(() => {
+    m = makeMocks();
+    service = makeService(m);
+  });
+
+  function periodRow(over: Record<string, unknown> = {}) {
+    return {
+      id: PID,
+      orgId: ORG,
+      branchId: null,
+      periodStart: new Date('2026-09-01'),
+      periodEnd: new Date('2026-09-30'),
+      status: 'COMPUTED',
+      note: null,
+      computedAt: new Date(),
+      paidAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lines: [],
+      ...over,
+    };
+  }
+
+  it('повертає контракт usePaginatedList { items, total, page, limit }', async () => {
+    m.prisma.payrollPeriod.findMany.mockResolvedValueOnce([periodRow()]);
+    m.prisma.payrollPeriod.count.mockResolvedValueOnce(57);
+
+    const res = await service.findAll(ORG, 2, 20);
+    expect(res.items).toHaveLength(1);
+    expect(res.total).toBe(57);
+    expect(res.page).toBe(2);
+    expect(res.limit).toBe(20);
+  });
+
+  it('page/limit → skip/take у Prisma (друга сторінка по 20 → skip 20)', async () => {
+    await service.findAll(ORG, 2, 20);
+    const args = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    expect(args.skip).toBe(20);
+    expect(args.take).toBe(20);
+    // Порядок стабільний: щойно створені першими (createdAt — первинний ключ), щоб новий
+    // період не «тонув» на останній сторінці через periodStart у минулому.
+    expect(args.orderBy).toEqual([{ createdAt: 'desc' }, { periodStart: 'desc' }]);
+  });
+
+  it('дефолти без аргументів → page 1, limit 20, skip 0', async () => {
+    const res = await service.findAll(ORG);
+    const args = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    expect(args.skip).toBe(0);
+    expect(args.take).toBe(20);
+    expect(res.page).toBe(1);
+    expect(res.limit).toBe(20);
+  });
+
+  it('фільтр статусу попадає у where ОБОХ запитів (findMany + count)', async () => {
+    await service.findAll(ORG, 1, 20, 'PAID');
+    const findArgs = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    const countArgs = m.prisma.payrollPeriod.count.mock.calls[0][0];
+    expect(findArgs.where).toEqual({ orgId: ORG, deletedAt: null, status: 'PAID' });
+    // total має рахуватись по ТОМУ Ж where — інакше пагінація бреше.
+    expect(countArgs.where).toEqual(findArgs.where);
+  });
+
+  it('без статусу → where лише tenant + soft-delete (без status)', async () => {
+    await service.findAll(ORG);
+    const findArgs = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    expect(findArgs.where).toEqual({ orgId: ORG, deletedAt: null });
+    expect(findArgs.where).not.toHaveProperty('status');
+  });
+
+  it('tenant isolation + soft delete: кожен запит фільтрується по orgId і deletedAt=null', async () => {
+    await service.findAll(ORG, 3, 50, 'DRAFT');
+    for (const call of [
+      m.prisma.payrollPeriod.findMany.mock.calls[0][0],
+      m.prisma.payrollPeriod.count.mock.calls[0][0],
+    ]) {
+      expect(call.where.orgId).toBe(ORG);
+      expect(call.where.deletedAt).toBeNull();
+    }
+  });
+
+  it('список НЕ вантажить workOrders (важко) — лише lines+employee; розшифровку дає findOne', async () => {
+    await service.findAll(ORG);
+    const args = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    expect(args.include.lines.include).toEqual({
+      employee: { select: { firstName: true, lastName: true } },
+    });
+    expect(JSON.stringify(args.include)).not.toContain('workOrders');
+  });
+
+  it('сміттєвий page/limit (NaN) не просочується у skip/take', async () => {
+    await service.findAll(ORG, Number.NaN, Number.NaN);
+    const args = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    expect(Number.isNaN(args.skip)).toBe(false);
+    expect(Number.isNaN(args.take)).toBe(false);
+    expect(args.skip).toBe(0);
+    expect(args.take).toBe(20);
+  });
+
+  it('page нормалізується: page=0/-5 → 1 у відповіді (Pagination не малює хибний стан)', async () => {
+    const zero = await service.findAll(ORG, 0, 20);
+    expect(zero.page).toBe(1);
+    const neg = await service.findAll(ORG, -5, 20);
+    expect(neg.page).toBe(1);
+  });
+
+  it('limit понад MAX_PAGE_SIZE обрізається (DoS-guard) і повертається у відповіді', async () => {
+    const res = await service.findAll(ORG, 1, 10_000);
+    expect(res.limit).toBe(200);
+    const args = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
+    expect(args.take).toBe(200);
+  });
+
+  it('порожня сторінка → items=[], total=0 (а не падіння)', async () => {
+    m.prisma.payrollPeriod.findMany.mockResolvedValueOnce([]);
+    m.prisma.payrollPeriod.count.mockResolvedValueOnce(0);
+    const res = await service.findAll(ORG, 1, 20, 'CANCELLED');
+    expect(res.items).toEqual([]);
+    expect(res.total).toBe(0);
   });
 });

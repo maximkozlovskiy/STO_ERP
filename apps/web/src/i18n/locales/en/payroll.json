@@ -20,7 +20,13 @@
     "previewTitle": "No accruals",
     "previewDescription": "No completed works with assignees for this period",
     "periodsTitle": "No periods",
-    "periodsDescription": "Calculate a period above and click «Create period»"
+    "periodsDescription": "Calculate a period above and click «Create period»",
+    "noMatchDescription": "No periods match the selected filter"
+  },
+  "filters": {
+    "allStatuses": "All statuses",
+    "statusLabel": "Period status",
+    "filterSaved": "Filter «{{name}}» saved"
   },
   "periods": {
     "heading": "Payroll periods",
@@ -30,7 +36,15 @@
     "pay": "Pay",
     "delete": "Delete",
     "notComputed": "Not calculated yet — click «Calculate».",
-    "noAccruals": "No accruals."
+    "noAccruals": "No accruals.",
+    "columns": {
+      "period": "Period",
+      "note": "Note",
+      "status": "Status",
+      "totalAccrued": "Accrued",
+      "totalPaid": "Paid",
+      "computedAt": "Calculated"
+    }
   },
   "breakdown": {
     "expand": "Show work orders",

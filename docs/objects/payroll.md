@@ -80,15 +80,24 @@ DRAFT → COMPUTED → PAID
 
 ## API Endpoints (`/api/payroll`)
 
-| Метод  | URL                                      | Дія                                     | Ролі                   |
-| ------ | ---------------------------------------- | --------------------------------------- | ---------------------- |
-| GET    | `/api/payroll/preview?from&to&branchId?` | Попередній розрахунок (без збереження)  | OWNER/ADMIN/ACCOUNTANT |
-| GET    | `/api/payroll/periods`                   | Список періодів (lines БЕЗ розшифровки) | OWNER/ADMIN/ACCOUNTANT |
-| GET    | `/api/payroll/periods/:id`               | Період + рядки + розшифровка по нарядах | OWNER/ADMIN/ACCOUNTANT |
-| POST   | `/api/payroll/periods`                   | Створити (DRAFT)                        | OWNER/ADMIN/ACCOUNTANT |
-| POST   | `/api/payroll/periods/:id/compute`       | Розрахувати (DRAFT→COMPUTED)            | OWNER/ADMIN/ACCOUNTANT |
-| POST   | `/api/payroll/periods/:id/pay`           | Виплатити (COMPUTED→PAID)               | OWNER/ADMIN            |
-| DELETE | `/api/payroll/periods/:id`               | Видалити (окрім PAID)                   | OWNER/ADMIN            |
+| Метод  | URL                                       | Дія                                       | Ролі                   |
+| ------ | ----------------------------------------- | ----------------------------------------- | ---------------------- |
+| GET    | `/api/payroll/preview?from&to&branchId?`  | Попередній розрахунок (без збереження)    | OWNER/ADMIN/ACCOUNTANT |
+| GET    | `/api/payroll/periods?page&limit&status?` | Сторінка періодів (lines БЕЗ розшифровки) | OWNER/ADMIN/ACCOUNTANT |
+| GET    | `/api/payroll/periods/:id`                | Період + рядки + розшифровка по нарядах   | OWNER/ADMIN/ACCOUNTANT |
+| POST   | `/api/payroll/periods`                    | Створити (DRAFT)                          | OWNER/ADMIN/ACCOUNTANT |
+| POST   | `/api/payroll/periods/:id/compute`        | Розрахувати (DRAFT→COMPUTED)              | OWNER/ADMIN/ACCOUNTANT |
+| POST   | `/api/payroll/periods/:id/pay`            | Виплатити (COMPUTED→PAID)                 | OWNER/ADMIN            |
+| DELETE | `/api/payroll/periods/:id`                | Видалити (окрім PAID)                     | OWNER/ADMIN            |
+
+---
+
+**Пагінація списку** (`PayrollPeriodListQueryDto`): `page` (≥1, деф. 1), `limit` (1–200, деф. 20),
+`status` (DRAFT|COMPUTED|PAID|CANCELLED, `PAYROLL_PERIOD_STATUSES` — єдине місце правди).
+Відповідь — `PaginatedPayrollPeriodsDto { items, total, page, limit }` (контракт `usePaginatedList`);
+`page`/`limit` віддаються НОРМАЛІЗОВАНІ (похідні від skip/take), не сирі query-значення.
+Сортування: `createdAt desc, periodStart desc` — щойно створений період завжди на 1-й сторінці,
+навіть якщо перераховують давній місяць. `count` використовує ТОЙ ЖЕ `where`, що й `findMany`.
 
 ---
 
@@ -136,9 +145,23 @@ tenant-isolation: orgId у WHERE на wol/wo.
 нарядів: № (Link на картку) · авто · робіт · нормо-год · сума робіт, `tfoot`«Разом база».
 i18n-ключі`breakdown.*` (uk/en parity).
 
-**E2E:** `apps/web/e2e/payroll.spec.ts` (6 тестів) — сторінка/панелі/nav, preview-розрахунок, повний
-FSM через UI (create→compute→pay з ConfirmDialog), FSM-guard. Рядок періоду має `data-testid`
-`payroll-period-<id>` для стабільного скоупингу статус-badge.
+**List Page pattern** (еталон work-orders): `useListPage<PayrollFilters>('payroll-periods', …)` →
+пагінація (`Pagination`, limit 20), фільтр статусу (`filters.*` i18n), `ColumnsDropdown` над
+6 колонками (`period`/`note`/`status`/`totalAccrued`/`totalPaid`/`computedAt`, module-level
+`PERIOD_COLUMN_DEFS` + labelKey idiom), `useSavedFilters` (пресет = {status}).
+**Bulk-select свідомо НЕ підключено** — compute/pay строго по одному періоду (FSM), масові
+операції тут шкідливі. Зміна фільтра/сторінки скидає `expanded`/`expandedEmployee` (рядок може
+зникнути з поточної сторінки).
+
+**`data-testid` на `<tbody>`, не на `<tr>`:** один `<tbody data-testid="payroll-period-<id>">` тримає
+рядок-шапку + розкриту розшифровку під спільним вузлом — E2E скоупить статус-badge, FSM-кнопки й
+drill-down на один `getByTestId`. Декілька `<tbody>` в одній `<table>` — валідний HTML.
+
+**E2E:** `apps/web/e2e/payroll.spec.ts` (7 тестів) — сторінка/панелі/nav, preview-розрахунок, повний
+FSM через UI (create→compute→pay через модалку виплати), drill-down, FSM-guard. Cleanup-хелпер
+читає `?page=1&limit=200` (список paginated).
+**Component-тести:** `__tests__/PayrollBreakdown.test.tsx` (5 — drill-down) +
+`__tests__/PayrollListPage.test.tsx` (8 — пагінація/фільтр/колонки/testid).
 
 ---
 

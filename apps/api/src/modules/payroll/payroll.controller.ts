@@ -20,7 +20,9 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PayrollService } from './payroll.service';
 import {
   CreatePayrollPeriodDto,
+  PaginatedPayrollPeriodsDto,
   PayPayrollDto,
+  PayrollPeriodListQueryDto,
   PayrollPeriodResponseDto,
   PayrollPreviewDto,
   PayrollQueryDto,
@@ -43,10 +45,10 @@ export class PayrollController {
 
   @Get('periods')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Список зарплатних періодів' })
-  @ApiResponse({ status: 200, type: [PayrollPeriodResponseDto] })
-  findAll(@OrgContext() orgId: string) {
-    return this.service.findAll(orgId);
+  @ApiOperation({ summary: 'Список зарплатних періодів (пагінація + фільтр статусу)' })
+  @ApiResponse({ status: 200, type: PaginatedPayrollPeriodsDto })
+  findAll(@OrgContext() orgId: string, @Query() query: PayrollPeriodListQueryDto) {
+    return this.service.findAll(orgId, query.page, query.limit, query.status);
   }
 
   @Get('periods/:id')

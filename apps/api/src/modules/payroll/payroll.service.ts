@@ -6,9 +6,12 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
 import { roundMoney } from '../../common/utils/math';
+import { calculatePagination } from '../../common/utils/pagination';
 import { computeAccrued, parseRateScheme } from './payroll.calculator';
 import {
   CreatePayrollPeriodDto,
+  PaginatedPayrollPeriodsDto,
+  type PayrollPeriodStatus,
   PayrollLineDto,
   PayrollLineWorkOrderDto,
   PayrollPeriodResponseDto,
@@ -197,16 +200,37 @@ export class PayrollService {
     return { lines, totalAccrued, from, to };
   }
 
-  async findAll(orgId: string): Promise<PayrollPeriodResponseDto[]> {
-    const periods = await this.prisma.payrollPeriod.findMany({
-      where: { orgId, deletedAt: null },
-      include: {
-        lines: { include: { employee: { select: { firstName: true, lastName: true } } } },
-      },
-      orderBy: [{ periodStart: 'desc' }, { createdAt: 'desc' }],
-      take: 500,
-    });
-    return periods.map(p => this.toDto(p));
+  /**
+   * Сторінка періодів. `lines` НЕ несуть workOrders (важко) — drill-down тягне їх через findOne.
+   * Фільтр статусу + пагінація: список росте щомісяця, плоский take:500 не тримає UI.
+   */
+  async findAll(
+    orgId: string,
+    page = 1,
+    limit = 20,
+    status?: PayrollPeriodStatus,
+  ): Promise<PaginatedPayrollPeriodsDto> {
+    const where: Prisma.PayrollPeriodWhereInput = { orgId, deletedAt: null };
+    if (status) where.status = status;
+    const { skip, take } = calculatePagination({ page, limit });
+    const [periods, total] = await Promise.all([
+      this.prisma.payrollPeriod.findMany({
+        where,
+        include: {
+          lines: { include: { employee: { select: { firstName: true, lastName: true } } } },
+        },
+        // createdAt — первинний ключ сортування (конвенція документних списків проєкту,
+        // пор. buildSortOrderBy fallback='createdAt'): щойно створений період ЗАВЖДИ на 1-й
+        // сторінці, навіть якщо його periodStart у минулому (перерахунок старого місяця).
+        orderBy: [{ createdAt: 'desc' }, { periodStart: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.payrollPeriod.count({ where }),
+    ]);
+    // page віддаємо НОРМАЛІЗОВАНИЙ (похідний від skip/take), а не сире query-значення:
+    // інакше при page=0/-5 клієнт отримує skip=0 але page=-5 → Pagination малює хибний стан.
+    return { items: periods.map(p => this.toDto(p)), total, page: skip / take + 1, limit: take };
   }
 
   /** Один період з ПОВНОЮ розшифровкою нарахувань по нарядах (findAll її не вантажить — важко). */

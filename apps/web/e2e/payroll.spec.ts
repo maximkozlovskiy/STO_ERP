@@ -20,10 +20,13 @@ async function cleanupTestPeriods(page: Page): Promise<void> {
   const t = await token(page);
   await page.evaluate(
     async ({ API, t }) => {
-      const list = (await (
-        await fetch(`${API}/api/v1/payroll/periods`, { headers: { Authorization: `Bearer ${t}` } })
-      ).json()) as { id: string; status: string; note?: string | null }[];
-      for (const p of list) {
+      // GET /payroll/periods тепер paginated — беремо великий limit, щоб покрити всі [e2e]-періоди.
+      const res = (await (
+        await fetch(`${API}/api/v1/payroll/periods?page=1&limit=200`, {
+          headers: { Authorization: `Bearer ${t}` },
+        })
+      ).json()) as { items: { id: string; status: string; note?: string | null }[] };
+      for (const p of res.items ?? []) {
         if (p.status !== 'PAID' && p.note?.startsWith('[e2e]')) {
           await fetch(`${API}/api/v1/payroll/periods/${p.id}`, {
             method: 'DELETE',

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
+import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 /**
  * Розшифровка нарахування по одному наряду — дзеркалить PayrollLineWorkOrderDto.
@@ -52,13 +53,36 @@ export interface PayrollPeriod {
   updatedAt: string;
 }
 
+/** Фільтри списку періодів — дзеркалить PayrollPeriodListQueryDto (page/limit/status). */
+export interface PayrollPeriodsFilter extends Record<string, unknown> {
+  page?: number;
+  limit?: number;
+  status?: string;
+}
+
+export type PaginatedPayrollPeriods = PaginatedResponse<PayrollPeriod>;
+
 export const payrollKeys = {
   all: ['payroll'] as const,
   preview: (from: string, to: string, branchId?: string) =>
     [...payrollKeys.all, 'preview', from, to, branchId ?? ''] as const,
-  periods: () => [...payrollKeys.all, 'periods'] as const,
+  // Матчить usePaginatedList queryKey = [queryKey, 'list', filters] (див. usePaginatedList).
+  periodsLists: () => ['payroll-periods', 'list'] as const,
+  periods: (filters: PayrollPeriodsFilter = {}) =>
+    [...payrollKeys.periodsLists(), filters] as const,
   period: (id: string) => [...payrollKeys.all, 'period', id] as const,
 };
+
+/**
+ * Інвалідація ВСЬОГО payroll-кешу. Список періодів живе під окремим префіксом
+ * `['payroll-periods','list',…]` (контракт usePaginatedList), тому `payrollKeys.all` сам його
+ * НЕ покриває — після compute/pay треба збивати обидва дерева, інакше статус у списку лишається
+ * старим до перезавантаження сторінки.
+ */
+function invalidateAllPayroll(qc: ReturnType<typeof useQueryClient>): void {
+  void qc.invalidateQueries({ queryKey: payrollKeys.all });
+  void qc.invalidateQueries({ queryKey: payrollKeys.periodsLists() });
+}
 
 /** Preview розрахунку — enabled лише коли є дати (кнопка «Розрахувати»). */
 export function usePayrollPreview(from: string, to: string, branchId: string, enabled: boolean) {
@@ -73,10 +97,13 @@ export function usePayrollPreview(from: string, to: string, branchId: string, en
   });
 }
 
-export function usePayrollPeriods() {
-  return useQuery({
-    queryKey: payrollKeys.periods(),
-    queryFn: () => apiFetch<PayrollPeriod[]>('/payroll/periods'),
+/**
+ * Сторінка зарплатних періодів. Список НЕ несе розшифровки по нарядах — її тягне
+ * usePayrollPeriod(id) при розкритті (drill-down).
+ */
+export function usePayrollPeriods(filters: PayrollPeriodsFilter = {}) {
+  return usePaginatedList<PayrollPeriod>('/payroll/periods', filters, {
+    queryKey: 'payroll-periods',
   });
 }
 
@@ -98,7 +125,7 @@ export function useCreatePayrollPeriod() {
       note?: string;
     }) =>
       apiFetch<PayrollPeriod>('/payroll/periods', { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.periods() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.periodsLists() }),
   });
 }
 
@@ -107,7 +134,7 @@ export function useComputePayrollPeriod() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<PayrollPeriod>(`/payroll/periods/${id}/compute`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.all }),
+    onSuccess: () => invalidateAllPayroll(qc),
   });
 }
 
@@ -119,7 +146,7 @@ export function usePayPayrollPeriod() {
         method: 'POST',
         body: JSON.stringify(cashRegisterId ? { cashRegisterId } : {}),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.all }),
+    onSuccess: () => invalidateAllPayroll(qc),
   });
 }
 
@@ -127,7 +154,7 @@ export function useDeletePayrollPeriod() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiFetch<void>(`/payroll/periods/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.periods() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: payrollKeys.periodsLists() }),
   });
 }
 

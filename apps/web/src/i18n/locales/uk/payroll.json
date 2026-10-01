@@ -20,7 +20,13 @@
     "previewTitle": "Немає нарахувань",
     "previewDescription": "За цей період немає завершених робіт із виконавцями",
     "periodsTitle": "Періодів немає",
-    "periodsDescription": "Розрахуйте період вище і натисніть «Створити період»"
+    "periodsDescription": "Розрахуйте період вище і натисніть «Створити період»",
+    "noMatchDescription": "За вибраним фільтром періодів немає"
+  },
+  "filters": {
+    "allStatuses": "Всі статуси",
+    "statusLabel": "Статус періоду",
+    "filterSaved": "Фільтр «{{name}}» збережено"
   },
   "periods": {
     "heading": "Зарплатні періоди",
@@ -30,7 +36,15 @@
     "pay": "Виплатити",
     "delete": "Видалити",
     "notComputed": "Ще не розраховано — натисніть «Розрахувати».",
-    "noAccruals": "Немає нарахувань."
+    "noAccruals": "Немає нарахувань.",
+    "columns": {
+      "period": "Період",
+      "note": "Примітка",
+      "status": "Статус",
+      "totalAccrued": "Нараховано",
+      "totalPaid": "Виплачено",
+      "computedAt": "Розраховано"
+    }
   },
   "breakdown": {
     "expand": "Показати наряди",

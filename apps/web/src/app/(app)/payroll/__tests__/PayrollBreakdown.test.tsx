@@ -27,7 +27,11 @@ vi.mock('@/hooks/api/usePayroll', async orig => {
   return {
     ...actual,
     usePayrollPreview: () => ({ data: undefined, isLoading: false }),
-    usePayrollPeriods: () => ({ data: listData, isLoading: false }),
+    // Список періодів тепер paginated (usePaginatedList → {items,total,page,limit}).
+    usePayrollPeriods: () => ({
+      data: { items: listData, total: listData.length, page: 1, limit: 20 },
+      isLoading: false,
+    }),
     usePayrollPeriod: (id: string | null) => ({
       data: id && detailData?.id === id ? detailData : undefined,
       isLoading: detailLoading,
@@ -156,7 +160,10 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
     fireEvent.click(screen.getByLabelText('Розгорнути'));
     fireEvent.click(screen.getByLabelText('Показати наряди'));
 
-    expect(screen.getByText('—')).toBeInTheDocument();
+    // Скоуп на таблицю розшифровки: колонка «Примітка» списку періодів теж рендерить «—»
+    // для порожнього note, тому глобальний getByText('—') дав би multiple-match.
+    const woRow = screen.getByRole('link', { name: 'НРД-2026-0001' }).closest('tr')!;
+    expect(within(woRow).getByText('—')).toBeInTheDocument();
     expect(screen.queryByText('null')).not.toBeInTheDocument();
   });
 
