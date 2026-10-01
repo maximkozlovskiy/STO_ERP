@@ -347,7 +347,12 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
   PDF-колонки за ординальною позицією (правовирівняні числа ламають кластеризацію за x —
   виміряно 408 vs 425); ESM-only пакет у CJS.
   api 2815/2815 (184) · web 874/874 (95) · tsc 0.
-  Попередній контекст:
+  REVIEW 357e3d04 (2026-10-02): §3.2 take: MAX_QUERY_LIMIT на 3 findMany рядків у
+  document-line-import.adapter (append merge + totals), дзеркалить canonical PO/SD.
+  Решта фічі — чисто (безпека pdfjs ОК: isEvalSupported:false + без network-layer у Node →
+  нема SSRF/XXE; task.destroy() у finally на всіх шляхах; fragmentsToGrid bands завжди скінченні
+  бо body=рядки з рівно modal-фрагментів; normalizeHeader do/while термінується; ReDoS відсутній).
+  xlsx 95/95 зелені після фіксу. Попередній контекст:
 ```
 
 Payroll List Page pattern — 2026-10-01, HEAD c6f6254e:
