@@ -13,12 +13,6 @@ overrides:
   # @fastify/* peer-ranges, дедуп у одну копію).
   fastify: '4.28.1'
   next: '>=15.3.6'
-# pdfjs-dist тягне optional @napi-rs/canvas (нативні бінарники під УСІ платформи у lock:
-# android/darwin/linux×6/win). Ми використовуємо лише getTextContent() — рендер у canvas не
-# потрібен, тож виключаємо: офлайн-інсталятор (ADR-003) не має тягнути чужі платформні .node.
-neverBuiltDependencies:
-  - '@napi-rs/canvas'
-
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
@@ -31,6 +25,12 @@ allowBuilds:
   msgpackr-extract: true
   prisma: true
   sharp: true
+  # tesseract.js postinstall — лише opencollective-postinstall (донат-банер), для роботи
+  # OCR не потрібен. @napi-rs/canvas postinstall НЕ має взагалі (платформний бінарник
+  # резолвиться чистим JS), тому у neverBuiltDependencies він не потрібен — і сам рендер
+  # тепер ПОТРІБЕН: растеризація PDF-сканів для OCR. Прод = linux-x64-musl у Docker-образі,
+  # тож платформної мультиплікації у бандлі немає (образ будується під одну платформу).
+  tesseract.js: false
 minimumReleaseAgeExclude:
   # bull-board 5.23.0 — остання лінійка сумісна з Fastify 4 (@fastify/view@^8, @fastify/static@^6).
   # v6+/v9 тягнуть @fastify/static@^8 → вимагає Fastify 5 → FST_ERR_PLUGIN_VERSION_MISMATCH.
