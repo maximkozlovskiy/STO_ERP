@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { translateError, MAX_QUERY_LIMIT } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { roundMoney } from '../../common/utils/math';
 import { calcLineVat } from '../../common/utils/vat';
@@ -156,6 +156,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     const existing = await tx.purchaseOrderLine.findMany({
       where: { purchaseOrderId: docId, orgId, deletedAt: null },
       select: { id: true, goodId: true, quantity: true, price: true },
+      take: MAX_QUERY_LIMIT, // §3.2: OOM-guard, дзеркалить canonical purchase-orders.service
     });
     const byGoodId = new Map(existing.map(l => [l.goodId, l]));
 
@@ -197,6 +198,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
     const all = await tx.purchaseOrderLine.findMany({
       where: { purchaseOrderId: docId, orgId, deletedAt: null },
       select: { quantity: true, price: true, vatAmount: true },
+      take: MAX_QUERY_LIMIT, // §3.2: OOM-guard на перерахунку тоталів
     });
     const totalAmount = roundMoney(
       all.reduce((s, l) => s + Number(l.quantity) * Number(l.price), 0),
@@ -289,6 +291,7 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
     const existing = await tx.stockDocumentLine.findMany({
       where: { stockDocumentId: docId, orgId, deletedAt: null },
       select: { id: true, goodId: true, quantity: true },
+      take: MAX_QUERY_LIMIT, // §3.2: OOM-guard, дзеркалить canonical stock-documents.service
     });
     const byGoodId = new Map(existing.map(l => [l.goodId, l]));
 
