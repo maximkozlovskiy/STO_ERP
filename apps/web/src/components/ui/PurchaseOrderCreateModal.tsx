@@ -2039,6 +2039,7 @@ export function PurchaseOrderCreateModal({
           docNumber={poNumber || undefined}
           counterpartyId={supplierIdValue || undefined}
           counterpartyName={supplierDisplay}
+          existingLineCount={fields.length}
           onImportComplete={() => void loadPo(activePOId, true)}
         />
       )}

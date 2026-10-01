@@ -71,10 +71,14 @@ export interface ApplyRow {
   price: number;
 }
 
+/** Режим запису: замінити ВСІ позиції документа чи додати до наявних. Дзеркалить ApplyImportDto.mode. */
+export type ImportApplyMode = 'replace' | 'append';
+
 export interface ApplyImportVars {
   docType: ExcelImportDocType;
   docId: string;
   rows: ApplyRow[];
+  mode: ImportApplyMode;
 }
 
 // ─── useRawPreview (сирий передперегляд файлу до налаштування колонок) ──────
@@ -82,12 +86,14 @@ export interface ApplyImportVars {
 export interface RawPreviewResponse {
   totalRows: number;
   columnCount: number;
-  rows: string[][]; // перші N рядків аркуша як текстова сітка (1-based колонки зліва направо)
+  rows: string[][]; // перші N рядків як текстова сітка (1-based колонки зліва направо)
+  /** Канал, з якого прочитано файл — бекенд визначає за розширенням. */
+  kind?: 'xlsx' | 'csv' | 'pdf';
 }
 
 /**
- * Сирий передперегляд Excel: показує перші рядки файлу як є, ще до вибору колонок.
- * Приймає лише файл (без docId) — бекенд читає байти, у БД не пише.
+ * Сирий передперегляд файлу (.xlsx/.csv/.pdf): показує перші рядки як є, ще до вибору колонок.
+ * Приймає лише файл (без docId) — бекенд читає байти за розширенням, у БД не пише.
  */
 export function useRawPreview() {
   return useMutation<RawPreviewResponse, Error, File>({
@@ -136,10 +142,10 @@ export function usePreviewImport() {
 export function useApplyImport() {
   const qc = useQueryClient();
   return useMutation<unknown, Error, ApplyImportVars>({
-    mutationFn: ({ docType, docId, rows }) =>
+    mutationFn: ({ docType, docId, rows, mode }) =>
       apiFetch('/xlsx/import/apply', {
         method: 'POST',
-        body: JSON.stringify({ docType, docId, rows }),
+        body: JSON.stringify({ docType, docId, rows, mode }),
       }),
     onSuccess: (_data, vars) => {
       if (vars.docType === 'PURCHASE_ORDER') {

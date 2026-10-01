@@ -22,7 +22,9 @@ import {
   type PreviewRow,
   type ApplyRow,
   type RawPreviewResponse,
+  type ImportApplyMode,
 } from '@/hooks/api/useExcelImport';
+import { detectMappingFromGrid } from '@sto/shared';
 
 export interface ExcelImportWizardProps {
   open: boolean;
@@ -33,7 +35,24 @@ export interface ExcelImportWizardProps {
   docNumber?: string;
   counterpartyId?: string;
   counterpartyName?: string;
+  /** Скільки позицій уже є в документі — щоб попередити про заміну і показати режим. */
+  existingLineCount?: number;
   onImportComplete: () => void;
+}
+
+/**
+ * Джерело поточного мапінгу колонок. Пріоритет: manual > saved > detected > default.
+ * Без цієї машини станів ефект savedMapping затирав би автодетект — і то ПОРОЖНІМ мапінгом,
+ * бо сервіс при відсутності запису повертає дефолтну «пустушку», а не null.
+ */
+type MappingSource = 'default' | 'detected' | 'saved' | 'manual';
+
+/** Чи збережений мапінг несе хоч якусь інформацію (а не дефолтну пустушку з усіма null). */
+function isMeaningfulMapping(m: ImportMapping | undefined): m is ImportMapping {
+  if (!m) return false;
+  return (
+    (m.codeCol ?? m.articleCol ?? m.brandCol ?? m.nameCol ?? m.quantityCol ?? m.priceCol) != null
+  );
 }
 
 // Локальний стан рядка на кроці 2.
@@ -109,6 +128,7 @@ export function ExcelImportWizard({
   docNumber,
   counterpartyId,
   counterpartyName,
+  existingLineCount = 0,
   onImportComplete,
 }: ExcelImportWizardProps) {
   const [step, setStep] = useState<1 | 2>(1);
@@ -118,6 +138,17 @@ export function ExcelImportWizard({
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [resolutions, setResolutions] = useState<Record<number, RowResolution>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Помилка читання файлу (PDF-скан, битий файл) — показується у модалці й НЕ зникає, на
+  // відміну від toast: користувач мусить встигнути прочитати пораду.
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [applyMode, setApplyMode] = useState<ImportApplyMode>('replace');
+  const [mappingSource, setMappingSource] = useState<MappingSource>('default');
+  // Дзеркало стану для читання всередині колбеків (уникаємо stale-closure).
+  const mappingSourceRef = useRef<MappingSource>('default');
+  const setMappingSourceBoth = useCallback((v: MappingSource) => {
+    mappingSourceRef.current = v;
+    setMappingSource(v);
+  }, []);
   // Збережений мапінг застосовуємо ЛИШЕ один раз за відкриття — інакше refetch react-query
   // (focus / staleTime) віддає новий референс і мовчки затирає введені користувачем колонки.
   const mappingAppliedRef = useRef(false);
@@ -137,14 +168,21 @@ export function ExcelImportWizard({
     setRows([]);
     setResolutions({});
     setMapping(DEFAULT_MAPPING);
+    setPreviewError(null);
+    setApplyMode('replace');
+    mappingSourceRef.current = 'default';
+    setMappingSource('default');
     mappingAppliedRef.current = false;
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [open]);
 
   // savedMapping приходить асинхронно — застосовуємо ОДИН раз за відкриття (коли з'явився).
   useEffect(() => {
-    if (open && savedMapping && step === 1 && !mappingAppliedRef.current) {
+    // isMeaningfulMapping: сервіс при відсутності запису віддає дефолт з усіма null — такий
+    // «мапінг» не має ні застосовуватись, ні витрачати one-shot ref, ні перебивати автодетект.
+    if (open && isMeaningfulMapping(savedMapping) && step === 1 && !mappingAppliedRef.current) {
       mappingAppliedRef.current = true;
+      setMappingSourceBoth('saved');
       setMapping({
         startRow: savedMapping.startRow || 2,
         codeCol: savedMapping.codeCol,
@@ -157,21 +195,49 @@ export function ExcelImportWizard({
     }
   }, [open, savedMapping, step]);
 
-  const setCol = useCallback((key: keyof ImportMapping, value: string) => {
-    setMapping(m => ({ ...m, [key]: strToNum(value) }));
-  }, []);
+  const setCol = useCallback(
+    (key: keyof ImportMapping, value: string) => {
+      // Ручна правка перемагає все: ні пізній refetch savedMapping, ні повторний автодетект
+      // не мають її затирати.
+      setMappingSourceBoth('manual');
+      setMapping(m => ({ ...m, [key]: strToNum(value) }));
+    },
+    [setMappingSourceBoth],
+  );
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
     setFile(f);
     setRawPreview(null);
+    setPreviewError(null);
     if (!f) return;
     // Сирий передперегляд одразу після вибору файлу — щоб користувач бачив вміст і колонки.
     rawPreviewMut.mutate(f, {
-      onSuccess: data => setRawPreview(data),
-      onError: () => {
-        // Тиха деградація: без передперегляду майстер усе одно робочий (colnums вводяться вручну).
+      onSuccess: data => {
+        setRawPreview(data);
+        // Автовизначення колонок за рядком-заголовком. Збережений мапінг контрагента і ручна
+        // правка мають пріоритет — їх не чіпаємо.
+        const src = mappingSourceRef.current;
+        if (src === 'saved' || src === 'manual') return;
+        const det = detectMappingFromGrid(data.rows);
+        if (det.matchedCount < 2) return; // один випадковий збіг — не шапка
+        setMappingSourceBoth('detected');
+        setMapping(m => ({
+          ...m,
+          startRow: det.startRow,
+          codeCol: det.cols.codeCol ?? null,
+          articleCol: det.cols.articleCol ?? null,
+          brandCol: det.cols.brandCol ?? null,
+          nameCol: det.cols.nameCol ?? null,
+          quantityCol: det.cols.quantityCol ?? null,
+          priceCol: det.cols.priceCol ?? null,
+        }));
+      },
+      onError: (err: Error) => {
+        // БІЛЬШЕ НЕ тиха деградація: PDF-скан або битий файл інакше дають порожню модалку,
+        // і користувач не розуміє, чому нічого не сталося.
         setRawPreview(null);
+        setPreviewError(err.message || 'Не вдалося прочитати файл');
       },
     });
   };
@@ -182,7 +248,7 @@ export function ExcelImportWizard({
     // оновлюється асинхронно, два кліки в одному тіку інакше обидва пройдуть.
     if (previewMut.isPending) return;
     if (!file) {
-      toast.error('Оберіть файл Excel');
+      toast.error('Оберіть файл');
       return;
     }
     if (!mapping.startRow || mapping.startRow < 1) {
@@ -290,7 +356,7 @@ export function ExcelImportWizard({
     }
 
     try {
-      await applyMut.mutateAsync({ docType, docId, rows: resolved });
+      await applyMut.mutateAsync({ docType, docId, rows: resolved, mode: applyMode });
       toast.success(`Додано позицій: ${resolved.length}`);
       onImportComplete();
       onClose();
@@ -325,7 +391,7 @@ export function ExcelImportWizard({
     <Modal
       open={open}
       onClose={onClose}
-      title={`${step === 2 ? 'Ідентифікація товарів' : 'Завантаження товарів з Excel'}${
+      title={`${step === 2 ? 'Ідентифікація товарів' : 'Завантаження товарів з файлу'}${
         docNumber ? ` · ${docNumber}` : ''
       }`}
       size={step === 2 || rawPreview ? 'xl' : 'md'}
@@ -345,15 +411,18 @@ export function ExcelImportWizard({
           {/* Файл */}
           <div>
             <label className="text-[13px] font-medium text-foreground leading-none">
-              Файл Excel <span className="text-destructive">*</span>
+              Файл (Excel, CSV або PDF) <span className="text-destructive">*</span>
             </label>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".xlsx,.csv,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/pdf"
               onChange={handleFileChange}
               className="mt-1 block w-full text-[13px] text-foreground file:mr-3 file:rounded file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-secondary"
             />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              PDF-скани та фото без текстового шару поки не розпізнаються
+            </p>
           </div>
 
           {/* Мапінг колонок */}
@@ -412,6 +481,10 @@ export function ExcelImportWizard({
           {/* Передперегляд файлу — сирі рядки з підсвіткою обраних колонок */}
           {rawPreviewMut.isPending ? (
             <div className="text-[12px] text-muted-foreground py-2">Читаємо файл…</div>
+          ) : previewError ? (
+            <div className="rounded-lg border border-warning-border bg-warning-subtle px-3 py-2 text-[12px] text-warning-text">
+              {previewError}
+            </div>
           ) : rawPreview && rawPreview.rows.length > 0 ? (
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
@@ -482,6 +555,16 @@ export function ExcelImportWizard({
             </div>
           ) : null}
 
+          {rawPreview && rawPreview.rows.length > 0 && (
+            <p className="text-[12px] text-muted-foreground">
+              {mappingSource === 'detected'
+                ? 'Колонки визначено автоматично — перевірте й за потреби змініть.'
+                : mappingSource === 'saved'
+                  ? 'Застосовано збережені колонки цього постачальника.'
+                  : 'Не вдалося автоматично визначити колонки — вкажіть номери вручну (A=1, B=2, …).'}
+            </p>
+          )}
+
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={onClose} disabled={previewMut.isPending}>
               Скасувати
@@ -490,7 +573,7 @@ export function ExcelImportWizard({
               leftIcon={<Upload className="h-4 w-4" />}
               onClick={() => void handlePreview()}
               loading={previewMut.isPending}
-              disabled={previewMut.isPending || !file}
+              disabled={previewMut.isPending || !file || !!previewError}
             >
               Ідентифікувати товари
             </Button>
@@ -551,6 +634,39 @@ export function ExcelImportWizard({
               {readyCount !== includedCount ? ` · до імпорту: ${readyCount}` : ''}
             </span>
           </div>
+
+          {/* Режим запису — лише якщо у документі ВЖЕ є позиції (інакше нічого замінювати). */}
+          {existingLineCount > 0 && (
+            <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border px-3 py-2">
+              <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
+                <input
+                  type="radio"
+                  name="applyMode"
+                  value="replace"
+                  checked={applyMode === 'replace'}
+                  onChange={() => setApplyMode('replace')}
+                  className="h-4 w-4"
+                />
+                Замінити наявні позиції ({existingLineCount})
+              </label>
+              <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
+                <input
+                  type="radio"
+                  name="applyMode"
+                  value="append"
+                  checked={applyMode === 'append'}
+                  onChange={() => setApplyMode('append')}
+                  className="h-4 w-4"
+                />
+                Додати до наявних ({existingLineCount})
+              </label>
+              {applyMode === 'replace' && (
+                <span className="text-[12px] text-warning-text">
+                  Наявні позиції ({existingLineCount}) буде видалено
+                </span>
+              )}
+            </div>
+          )}
 
           <div
             className="rounded-lg border border-border overflow-auto"

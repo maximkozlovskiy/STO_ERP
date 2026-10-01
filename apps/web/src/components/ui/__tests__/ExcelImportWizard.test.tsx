@@ -51,11 +51,23 @@ const rawPreviewData: { current: RawPreviewResponse } = {
   },
 };
 
+// Керована помилка raw-preview (PDF-скан, битий файл) — null означає успіх.
+const rawPreviewError: { current: Error | null } = { current: null };
+// Керований збережений мапінг контрагента. ВАЖЛИВО: сервіс при відсутності запису віддає
+// дефолтну «пустушку» з усіма null, а не undefined — саме це й перевіряємо окремим тестом.
+const savedMappingData: { current: Record<string, number | null> | undefined } = {
+  current: undefined,
+};
+
 vi.mock('@/hooks/api/useExcelImport', () => ({
   useRawPreview: () => ({
     isPending: false,
-    mutate: (_file: File, opts?: { onSuccess?: (d: RawPreviewResponse) => void }) => {
-      opts?.onSuccess?.(rawPreviewData.current);
+    mutate: (
+      _file: File,
+      opts?: { onSuccess?: (d: RawPreviewResponse) => void; onError?: (e: Error) => void },
+    ) => {
+      if (rawPreviewError.current) opts?.onError?.(rawPreviewError.current);
+      else opts?.onSuccess?.(rawPreviewData.current);
     },
   }),
   usePreviewImport: () => ({
@@ -69,7 +81,7 @@ vi.mock('@/hooks/api/useExcelImport', () => ({
       return Promise.resolve({});
     },
   }),
-  useCounterpartyImportMapping: () => ({ data: undefined }),
+  useCounterpartyImportMapping: () => ({ data: savedMappingData.current }),
   useUpsertImportMapping: () => ({ mutate: vi.fn() }),
 }));
 
@@ -77,16 +89,19 @@ vi.mock('@/lib/toast', () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
 
-function selectFile() {
+function selectFile(
+  name = 'goods.xlsx',
+  type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+) {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-  const file = new File(['x'], 'goods.xlsx', {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+  const file = new File(['x'], name, { type });
   fireEvent.change(input, { target: { files: [file] } });
 }
 
 describe('ExcelImportWizard — сирий передперегляд', () => {
   beforeEach(() => {
+    rawPreviewError.current = null;
+    savedMappingData.current = undefined;
     rawPreviewData.current = {
       totalRows: 250,
       columnCount: 4,
@@ -143,7 +158,7 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
         onImportComplete={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Завантаження товарів з Excel · ЗАМ-2026-000780/)).toBeInTheDocument();
+    expect(screen.getByText(/Завантаження товарів з файлу · ЗАМ-2026-000780/)).toBeInTheDocument();
   });
 
   it('шапка передперегляду має літери колонок Excel (A, B, C, D)', () => {
@@ -160,9 +175,10 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
     // Колонки не змаплені → голі літери у шапці
     const headers = document.querySelectorAll('thead th');
     const texts = Array.from(headers).map(h => h.textContent);
-    expect(texts).toContain('A');
-    expect(texts).toContain('B');
-    expect(texts).toContain('D');
+    // Автодетект підписує розпізнані колонки роллю («A · Код»), тому перевіряємо префікс.
+    expect(texts.some(t => t?.startsWith('A'))).toBe(true);
+    expect(texts.some(t => t?.startsWith('B'))).toBe(true);
+    expect(texts.some(t => t?.startsWith('D'))).toBe(true);
   });
 });
 
@@ -384,5 +400,149 @@ describe('ExcelImportWizard — крок 2: edge-cases apply', () => {
     const vars = applySpy.mock.calls[0][0] as { rows: { action: string; rowIndex: number }[] };
     expect(vars.rows).toHaveLength(1);
     expect(vars.rows[0]).toMatchObject({ action: 'use', rowIndex: 2 });
+  });
+});
+
+describe('ExcelImportWizard — автодетект колонок, PDF-скан, режим запису', () => {
+  beforeEach(() => {
+    rawPreviewError.current = null;
+    savedMappingData.current = undefined;
+    applySpy.mockClear();
+    previewOverride.current = null;
+    rawPreviewData.current = {
+      totalRows: 3,
+      columnCount: 4,
+      rows: [
+        ['Код', 'Артикул', 'Бренд', 'К-сть'],
+        ['1001', 'ABC-12', 'BOSCH', '4'],
+        ['1002', 'XY-9', 'SKF', '2'],
+      ],
+    };
+  });
+
+  const renderWizard = (props: Record<string, unknown> = {}) =>
+    render(
+      <ExcelImportWizard
+        open
+        onClose={vi.fn()}
+        docType="PURCHASE_ORDER"
+        docId="11111111-1111-1111-1111-111111111111"
+        counterpartyName="АвтоДеталь ТОВ"
+        onImportComplete={vi.fn()}
+        {...props}
+      />,
+    );
+
+  const colInput = (label: string) => screen.getByLabelText(new RegExp(label)) as HTMLInputElement;
+
+  it('колонки визначаються автоматично після вибору файлу', () => {
+    renderWizard();
+    selectFile();
+    expect(colInput('Колонка коду').value).toBe('1');
+    expect(colInput('Колонка артикулу').value).toBe('2');
+    expect(colInput('Колонка бренду').value).toBe('3');
+    expect(colInput('Колонка кількості').value).toBe('4');
+    expect(screen.getByText(/Колонки визначено автоматично/)).toBeInTheDocument();
+  });
+
+  it('поля лишаються редагованими після автодетекту', () => {
+    renderWizard();
+    selectFile();
+    fireEvent.change(colInput('Колонка коду'), { target: { value: '5' } });
+    expect(colInput('Колонка коду').value).toBe('5');
+  });
+
+  it('збережений мапінг контрагента ПЕРЕМАГАЄ автодетект', () => {
+    savedMappingData.current = {
+      startRow: 3,
+      codeCol: null,
+      articleCol: 7,
+      brandCol: null,
+      nameCol: null,
+      quantityCol: null,
+      priceCol: null,
+    };
+    renderWizard({ counterpartyId: '22222222-2222-2222-2222-222222222222' });
+    selectFile();
+    expect(colInput('Колонка артикулу').value).toBe('7'); // saved, не автодетект (2)
+    expect(screen.getByText(/Застосовано збережені колонки/)).toBeInTheDocument();
+  });
+
+  it('дефолтна пустушка савед-мапінгу НЕ затирає автодетект', () => {
+    // Сервіс при відсутності запису віддає всі колонки null — такий «мапінг» не має
+    // перебивати автовизначення (інакше колонки мовчки обнулялись би).
+    savedMappingData.current = {
+      startRow: 2,
+      codeCol: null,
+      articleCol: null,
+      brandCol: null,
+      nameCol: null,
+      quantityCol: null,
+      priceCol: null,
+    };
+    renderWizard({ counterpartyId: '22222222-2222-2222-2222-222222222222' });
+    selectFile();
+    expect(colInput('Колонка артикулу').value).toBe('2'); // автодетект спрацював
+  });
+
+  it('невпізнані заголовки → підказка ввести вручну, мапінг не змінено', () => {
+    rawPreviewData.current = {
+      totalRows: 2,
+      columnCount: 3,
+      rows: [
+        ['Склад', 'Примітка', 'Дата'],
+        ['А', 'Б', 'В'],
+      ],
+    };
+    renderWizard();
+    selectFile();
+    expect(screen.getByText(/Не вдалося автоматично визначити колонки/)).toBeInTheDocument();
+    expect(colInput('Колонка артикулу').value).toBe('');
+  });
+
+  it('PDF-скан → зрозуміле повідомлення, кнопка переходу заблокована', () => {
+    rawPreviewError.current = new Error(
+      'Цей PDF — скан або фото без текстового шару, тому розпізнати позиції автоматично не вдалося.',
+    );
+    renderWizard();
+    selectFile('scan.pdf', 'application/pdf');
+    expect(screen.getByText(/скан або фото без текстового шару/)).toBeInTheDocument();
+    expect(screen.queryByText('Передперегляд файлу')).toBeNull();
+    expect(screen.getByRole('button', { name: /Ідентифікувати товари/ })).toBeDisabled();
+  });
+
+  it('input приймає .csv і .pdf, не лише .xlsx', () => {
+    renderWizard();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.accept).toContain('.csv');
+    expect(input.accept).toContain('.pdf');
+    expect(input.accept).toContain('.xlsx');
+  });
+
+  it('документ без позицій → блоку режиму немає, apply йде з mode=replace', async () => {
+    renderWizard({ existingLineCount: 0 });
+    selectFile();
+    fireEvent.click(screen.getByRole('button', { name: /Ідентифікувати товари/ }));
+    await screen.findByText(/Обрано:/);
+    expect(screen.queryByText(/Замінити наявні позиції/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Заповнити товарами/ }));
+    await vi.waitFor(() => expect(applySpy).toHaveBeenCalledTimes(1));
+    expect((applySpy.mock.calls[0][0] as { mode: string }).mode).toBe('replace');
+  });
+
+  it('документ з позиціями → вибір режиму; «Додати» надсилає mode=append', async () => {
+    renderWizard({ existingLineCount: 3 });
+    selectFile();
+    fireEvent.click(screen.getByRole('button', { name: /Ідентифікувати товари/ }));
+    await screen.findByText(/Обрано:/);
+
+    expect(screen.getByText(/Замінити наявні позиції \(3\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Наявні позиції \(3\) буде видалено/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/Додати до наявних/));
+    fireEvent.click(screen.getByRole('button', { name: /Заповнити товарами/ }));
+    await vi.waitFor(() => expect(applySpy).toHaveBeenCalledTimes(1));
+    expect((applySpy.mock.calls[0][0] as { mode: string }).mode).toBe('append');
   });
 });

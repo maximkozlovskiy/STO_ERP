@@ -1241,6 +1241,7 @@ export function StockDocumentCreateModal({
           docId={stockDocumentId}
           docNumber={docNumber || undefined}
           counterpartyId={undefined}
+          existingLineCount={fields.length}
           onImportComplete={() => void loadDoc(stockDocumentId, true)}
         />
       )}
