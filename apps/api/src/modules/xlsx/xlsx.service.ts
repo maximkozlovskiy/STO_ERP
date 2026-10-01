@@ -10,6 +10,7 @@ import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT, translateError } from '@sto/sh
 import { Prisma } from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DocumentGridParserService, type GridSourceKind } from './document-grid-parser.service';
 import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
@@ -76,6 +77,7 @@ export class XlsxService {
     private readonly goodsService: GoodsService,
     private readonly brandsService: BrandsService,
     private readonly importAdapters: DocumentLineImportAdapterRegistry,
+    private readonly gridParser: DocumentGridParserService,
   ) {}
 
   /**
@@ -1040,6 +1042,7 @@ export class XlsxService {
     docType: ImportDocType,
     docId: string,
     buffer: Buffer | Uint8Array,
+    filename: string,
     mapping: ImportMapping,
   ): Promise<PreviewRowDto[]> {
     const adapter = this.importAdapters.get(docType);
@@ -1047,7 +1050,7 @@ export class XlsxService {
     if (!doc) throw new NotFoundException(translateError('err.xlsx.documentNotFound', getLocale()));
     adapter.assertDraft(doc.status);
 
-    const parsed = await this.parseMappedRows(buffer, mapping);
+    const parsed = await this.parseMappedRows(buffer, filename, mapping);
 
     // Bulk-резолв брендів (за rawBrand) — зберемо унікальні непорожні бренди й резолвимо кожен раз.
     const brandCache = new Map<string, string | null>(); // normBrand → brandId|null
@@ -1254,40 +1257,21 @@ export class XlsxService {
    */
   async rawPreview(
     buffer: Buffer | Uint8Array,
+    filename: string,
     limit = 20,
-  ): Promise<{ totalRows: number; columnCount: number; rows: string[][] }> {
-    const workbook = new ExcelJS.Workbook();
-    try {
-      await workbook.xlsx.load(this.toArrayBuffer(buffer));
-    } catch {
-      // Bug #751: не-xlsx/пошкоджений буфер → jszip кидає сирий Error ("Can't find end of
-      // central directory…") → 500 з англомовним стеком. Передперегляд запускається одразу
-      // після вибору БУДЬ-ЯКОГО файлу — віддаємо дружній український 400 замість 500.
-      throw new BadRequestException(translateError('err.xlsx.fileReadFailed', getLocale()));
-    }
-    const sheet = workbook.worksheets[0];
-    if (!sheet)
-      throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
+  ): Promise<{ totalRows: number; columnCount: number; rows: string[][]; kind: GridSourceKind }> {
+    // Диспатч за розширенням (.xlsx/.csv/.pdf) — усередині дружні 400 замість сирих 500
+    // (клас Bug #751: передперегляд запускається одразу після вибору БУДЬ-ЯКОГО файлу).
+    const grid = await this.gridParser.parseGrid(buffer, filename);
 
     const cap = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
-    const rows: string[][] = [];
-    let columnCount = 0;
-    // Bug #750: eachRow ітерує за АБСОЛЮТНИМ номером рядка аркуша (idx), який пропускає порожні
-    // рядки. Обмеження треба накладати на кількість ЗІБРАНИХ рядків (rows.length), а не на idx —
-    // інакше файл із порожніми провідними рядками (дані з рядка 30) або з розривом посередині дав
-    // би порожній/обрізаний передперегляд («показано 0 з N»), хоча даних вистачає. totalRows
-    // лишаємо з actualRowCount (усі рядки з даними).
-    sheet.eachRow(row => {
-      if (rows.length >= cap) return;
-      const values = row.values as unknown[]; // 1-based: [0] завжди порожній
-      const maxCol = Math.max(0, values.length - 1);
-      if (maxCol > columnCount) columnCount = maxCol;
-      const cells: string[] = [];
-      for (let c = 1; c <= maxCol; c++) cells.push(this.cellText(values[c]));
-      rows.push(cells);
-    });
+    // Bug #750: обмеження накладаємо на кількість ЗІБРАНИХ рядків, а не на абсолютний номер —
+    // файл із порожніми провідними рядками (дані з рядка 30) інакше дав би порожній
+    // передперегляд. parseGrid уже віддає щільну сітку, тож достатньо зрізу.
+    const rows = grid.rows.slice(0, cap);
+    const columnCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
 
-    return { totalRows: sheet.actualRowCount, columnCount, rows };
+    return { totalRows: grid.totalRows, columnCount, rows, kind: grid.kind };
   }
 
   /**
@@ -1325,36 +1309,34 @@ export class XlsxService {
    */
   private async parseMappedRows(
     buffer: Buffer | Uint8Array,
+    filename: string,
     mapping: ImportMapping,
   ): Promise<MappedRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
-    const sheet = workbook.worksheets[0];
-    if (!sheet)
-      throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
+    const grid = await this.gridParser.parseGrid(buffer, filename);
 
     const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 2;
-    const cell = (values: unknown[], col?: number): string | null =>
-      col && col >= 1 ? String(values[col] ?? '').trim() || null : null;
+    // Мапінг 1-based (як у передперегляді з літерами A/B/C), сітка 0-based → зсув col-1.
+    const cell = (cells: string[], col?: number): string | null =>
+      col && col >= 1 ? (cells[col - 1] ?? '').trim() || null : null;
 
     const rows: MappedRow[] = [];
-    sheet.eachRow((row, idx) => {
-      if (idx < startRow) return;
-      const values = row.values as unknown[];
-      const rawCode = cell(values, mapping.codeCol);
-      const rawArticle = cell(values, mapping.articleCol);
-      const rawBrand = cell(values, mapping.brandCol);
-      const rawName = cell(values, mapping.nameCol);
-      if (!rawCode && !rawArticle && !rawName) return; // порожній рядок
+    grid.rows.forEach((cells, i) => {
+      const rowNo = i + 1; // 1-based номер рядка, як його бачить користувач у передперегляді
+      if (rowNo < startRow) return;
+      const rawCode = cell(cells, mapping.codeCol);
+      const rawArticle = cell(cells, mapping.articleCol);
+      const rawBrand = cell(cells, mapping.brandCol);
+      const rawName = cell(cells, mapping.nameCol);
+      if (!rawCode && !rawArticle && !rawName) return; // порожній рядок / підсумки
       rows.push({
-        rowIndex: idx,
+        rowIndex: rowNo,
         rawCode,
         rawArticle,
         rawBrand,
         rawName,
         quantity:
-          this.parseNumber(mapping.quantityCol ? values[mapping.quantityCol] : undefined) ?? 0,
-        price: this.parseNumber(mapping.priceCol ? values[mapping.priceCol] : undefined) ?? 0,
+          this.parseNumber(mapping.quantityCol ? cells[mapping.quantityCol - 1] : undefined) ?? 0,
+        price: this.parseNumber(mapping.priceCol ? cells[mapping.priceCol - 1] : undefined) ?? 0,
       });
     });
 

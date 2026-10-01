@@ -8,6 +8,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
+import { DocumentGridParserService } from './document-grid-parser.service';
 
 // Bug #188: regression-захист для applyPricingFromList + generatePricingListTemplate
 describe('XlsxService', () => {
@@ -64,6 +65,7 @@ describe('XlsxService', () => {
         { provide: GoodsService, useValue: { create: vi.fn() } },
         { provide: BrandsService, useValue: { resolveByNameOrSynonym: vi.fn(), create: vi.fn() } },
         { provide: DocumentLineImportAdapterRegistry, useValue: { get: vi.fn() } },
+        DocumentGridParserService,
       ],
     }).compile();
     service = module.get(XlsxService);
@@ -101,7 +103,7 @@ describe('XlsxService', () => {
         ['1001', 'ABC-12', 'BOSCH', 4],
         ['1002', 'XY-9', 'SKF', 2],
       ]);
-      const res = await service.rawPreview(buf, 20);
+      const res = await service.rawPreview(buf, 'f.xlsx', 20);
       expect(res.totalRows).toBe(3);
       expect(res.columnCount).toBe(4);
       expect(res.rows).toHaveLength(3);
@@ -112,7 +114,7 @@ describe('XlsxService', () => {
     it('обрізає до limit, але totalRows рахує всі рядки', async () => {
       const rows: unknown[][] = [['h1', 'h2']];
       for (let i = 1; i <= 30; i++) rows.push([`code${i}`, `art${i}`]);
-      const res = await service.rawPreview(await buildWorkbook(rows), 20);
+      const res = await service.rawPreview(await buildWorkbook(rows), 'f.xlsx', 20);
       expect(res.totalRows).toBe(31);
       expect(res.rows).toHaveLength(20);
     });
@@ -127,7 +129,7 @@ describe('XlsxService', () => {
       // Формула з result-помилкою: не має протікати «[object Object]».
       row.getCell(4).value = { formula: '1/0', result: { error: '#DIV/0!' } };
       const buffer = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
-      const res = await service.rawPreview(buffer, 20);
+      const res = await service.rawPreview(buffer, 'f.xlsx', 20);
       expect(res.rows[0]?.[0]).toBe('RichText');
       expect(res.rows[0]?.[1]).toBe('42');
       expect(res.rows[0]?.[2]).not.toContain('[object');
@@ -137,7 +139,9 @@ describe('XlsxService', () => {
     it('кидає BadRequest якщо у книзі немає аркушів', async () => {
       const wb = new ExcelJS.Workbook();
       const empty = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
-      await expect(service.rawPreview(empty, 20)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.rawPreview(empty, 'f.xlsx', 20)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
     // Bug #750: обмеження накладалось на АБСОЛЮТНИЙ idx рядка аркуша (eachRow пропускає порожні),
@@ -148,7 +152,7 @@ describe('XlsxService', () => {
       const sheet = wb.addWorksheet('S');
       for (let i = 0; i < 25; i++) sheet.getRow(30 + i).getCell(1).value = `data${i}`;
       const buf = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
-      const res = await service.rawPreview(buf, 20);
+      const res = await service.rawPreview(buf, 'f.xlsx', 20);
       expect(res.totalRows).toBe(25);
       expect(res.rows).toHaveLength(20); // перші 20 рядків даних, не 0
       expect(res.rows[0]).toEqual(['data0']);
@@ -161,7 +165,7 @@ describe('XlsxService', () => {
       sheet.getRow(1).getCell(1).value = 'header';
       for (let i = 0; i < 25; i++) sheet.getRow(15 + i).getCell(1).value = `d${i}`;
       const buf = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
-      const res = await service.rawPreview(buf, 20);
+      const res = await service.rawPreview(buf, 'f.xlsx', 20);
       expect(res.totalRows).toBe(26);
       expect(res.rows).toHaveLength(20);
       expect(res.rows[0]).toEqual(['header']);
@@ -171,11 +175,13 @@ describe('XlsxService', () => {
     // Bug #751: не-xlsx буфер → дружній BadRequest (українською), а не 500 з англомовним jszip-стеком.
     it('Bug #751: не-xlsx буфер (звичайний текст) → BadRequestException, не 500', async () => {
       const notXlsx = Buffer.from('this is not an excel file', 'utf-8');
-      await expect(service.rawPreview(notXlsx, 20)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.rawPreview(notXlsx, 'f.xlsx', 20)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
     it('Bug #751: порожній буфер → BadRequestException', async () => {
-      await expect(service.rawPreview(Buffer.alloc(0), 20)).rejects.toBeInstanceOf(
+      await expect(service.rawPreview(Buffer.alloc(0), 'f.xlsx', 20)).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });

@@ -8,6 +8,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
+import { DocumentGridParserService } from './document-grid-parser.service';
 
 const ORG = 'org-1';
 const MAPPING: ImportMapping = {
@@ -81,6 +82,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
         { provide: GoodsService, useValue: goodsService },
         { provide: BrandsService, useValue: brandsService },
         { provide: DocumentLineImportAdapterRegistry, useValue: registry },
+        DocumentGridParserService,
       ],
     }).compile();
     service = module.get(XlsxService);
@@ -93,7 +95,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
       adapter.loadDoc.mockResolvedValueOnce(null);
       const buf = await buildXlsx([['C1', '04E-129-620', '', 'Товар', 2, 100]]);
       await expect(
-        service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING),
+        service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, 'f.xlsx', MAPPING),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -105,7 +107,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
       });
       const buf = await buildXlsx([['C1', '04E-129-620', '', 'Товар', 2, 100]]);
       await expect(
-        service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING),
+        service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, 'f.xlsx', MAPPING),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -116,7 +118,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
       ]);
       const buf = await buildXlsx([['C1', '04E-129-620', '', 'Насос', 2, 100]]);
 
-      const rows = await service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING);
+      const rows = await service.previewImport(
+        ORG,
+        'PURCHASE_ORDER',
+        'doc-1',
+        buf,
+        'f.xlsx',
+        MAPPING,
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         rowIndex: 2,
@@ -135,7 +144,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
       brandsService.resolveByNameOrSynonym.mockResolvedValueOnce({ id: 'brand-a' });
       const buf = await buildXlsx([['', 'ART1', 'Bosch', 'A', 1, 50]]);
 
-      const rows = await service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING);
+      const rows = await service.previewImport(
+        ORG,
+        'PURCHASE_ORDER',
+        'doc-1',
+        buf,
+        'f.xlsx',
+        MAPPING,
+      );
       expect(rows[0]!.status).toBe('matched');
       expect(rows[0]!.matchedGoodId).toBe('g-a');
     });
@@ -147,7 +163,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
       ]);
       const buf = await buildXlsx([['', 'ART1', '', 'A', 1, 50]]);
 
-      const rows = await service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING);
+      const rows = await service.previewImport(
+        ORG,
+        'PURCHASE_ORDER',
+        'doc-1',
+        buf,
+        'f.xlsx',
+        MAPPING,
+      );
       expect(rows[0]!.status).toBe('ambiguous');
       expect(rows[0]!.candidates).toHaveLength(2);
       expect(rows[0]!.candidates[0]).toMatchObject({ id: 'g-a', sku: 'ART1', brandName: 'Bosch' });
@@ -161,7 +184,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
         ]); // substring
       const buf = await buildXlsx([['', 'NOEXACT', '', 'Масло', 1, 10]]);
 
-      const rows = await service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING);
+      const rows = await service.previewImport(
+        ORG,
+        'PURCHASE_ORDER',
+        'doc-1',
+        buf,
+        'f.xlsx',
+        MAPPING,
+      );
       expect(rows[0]!.status).toBe('ambiguous');
       expect(rows[0]!.candidates[0]!.id).toBe('g-sub');
     });
@@ -170,7 +200,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
       prisma.good.findMany.mockResolvedValue([]); // exact + substring обидва порожні
       const buf = await buildXlsx([['', 'UNKNOWN', '', 'Невідомо', 1, 10]]);
 
-      const rows = await service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING);
+      const rows = await service.previewImport(
+        ORG,
+        'PURCHASE_ORDER',
+        'doc-1',
+        buf,
+        'f.xlsx',
+        MAPPING,
+      );
       expect(rows[0]!.status).toBe('notFound');
       expect(rows[0]!.matchedGoodId).toBeNull();
       expect(rows[0]!.candidates).toEqual([]);
@@ -186,7 +223,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
         ['', 'A2', '', 'B', 2, 20],
       ]);
 
-      const rows = await service.previewImport(ORG, 'PURCHASE_ORDER', 'doc-1', buf, MAPPING);
+      const rows = await service.previewImport(
+        ORG,
+        'PURCHASE_ORDER',
+        'doc-1',
+        buf,
+        'f.xlsx',
+        MAPPING,
+      );
       expect(rows).toHaveLength(2);
       // Рівно 1 findMany (exact bulk), бо обидва рядки matched → substring не викликається.
       expect(prisma.good.findMany).toHaveBeenCalledTimes(1);

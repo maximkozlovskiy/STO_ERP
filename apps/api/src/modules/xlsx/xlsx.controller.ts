@@ -336,7 +336,14 @@ export class XlsxController {
       priceCol: num('priceCol'),
     };
 
-    const rows = await this.xlsxService.previewImport(orgId, docType, docId, buffer, mapping);
+    const rows = await this.xlsxService.previewImport(
+      orgId,
+      docType,
+      docId,
+      buffer,
+      file.filename ?? '',
+      mapping,
+    );
     return { rows };
   }
 
@@ -347,7 +354,7 @@ export class XlsxController {
   async rawPreviewImport(@Request() req: FastifyRequest) {
     const file = await this.getUploadedFile(req);
     const buffer = await file.toBuffer();
-    return this.xlsxService.rawPreview(buffer, 20);
+    return this.xlsxService.rawPreview(buffer, file.filename ?? '', 20);
   }
 
   @Post('import/apply')
