@@ -29,6 +29,7 @@ describe('PurchaseOrderImportAdapter.appendLines', () => {
       findFirstOrThrow: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
+    $queryRaw: ReturnType<typeof vi.fn>;
   };
   let adapter: PurchaseOrderImportAdapter;
 
@@ -45,6 +46,9 @@ describe('PurchaseOrderImportAdapter.appendLines', () => {
           .mockResolvedValue({ currencyId: 'cur-1', documentDate: new Date('2026-01-15') }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
+      // Тотали рахуються АГРЕГАЦІЄЮ в БД (а не findMany+reduce): take-ліміт тут тихо занизив би
+      // суму документа, бо один імпорт сам допускає до 1000 рядків.
+      $queryRaw: vi.fn().mockResolvedValue([{ total: 0, vat: 0 }]),
     };
     adapter = new PurchaseOrderImportAdapter(
       {} as PrismaService,
@@ -112,20 +116,32 @@ describe('PurchaseOrderImportAdapter.appendLines', () => {
   });
 
   it('тотали рахуються по ВСІХ активних рядках ПІСЛЯ вставки, не лише по нових', async () => {
-    tx.purchaseOrderLine.findMany
-      .mockResolvedValueOnce([]) // крок 1: наявні (для merge-мапи)
-      .mockResolvedValueOnce([
-        // крок 2: усі активні ПІСЛЯ вставки — тут і наявна позиція, і нова
-        { quantity: 2, price: 100, vatAmount: 0 },
-        { quantity: 1, price: 50, vatAmount: 0 },
-      ]);
+    tx.purchaseOrderLine.findMany.mockResolvedValueOnce([]); // наявні (для merge-мапи)
+    // Агрегація по БД повертає суму по ВСЬОМУ документу: наявна позиція 2×100 + нова 1×50.
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 250, vat: 0 }]);
 
     await adapter.appendLines(tx as never, ORG, DOC, lines(['g-2', 1, 50]));
 
     const upd = tx.purchaseOrder.updateMany.mock.calls[0]?.[0] as {
       data: { totalAmount: number };
     };
-    expect(upd.data.totalAmount).toBe(250); // 2×100 + 1×50 — наявна позиція НЕ загубилась
+    expect(upd.data.totalAmount).toBe(250); // наявна позиція НЕ загубилась
+  });
+
+  it('тотали беруться з агрегації БД (без take-ліміту), а не з findMany рядків', async () => {
+    // Регресія: take: MAX_QUERY_LIMIT на запиті-перерахунку тихо занизив би суму документа,
+    // якщо позицій більше за ліміт (один імпорт сам допускає до 1000 рядків).
+    tx.purchaseOrderLine.findMany.mockResolvedValueOnce([]);
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 999999.5, vat: 12.34 }]);
+
+    await adapter.appendLines(tx as never, ORG, DOC, lines(['g-9', 1, 1]));
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const upd = tx.purchaseOrder.updateMany.mock.calls[0]?.[0] as {
+      data: { totalAmount: number; totalVat: number };
+    };
+    expect(upd.data.totalAmount).toBe(999999.5);
+    expect(upd.data.totalVat).toBe(12.34);
   });
 
   it('порожній список рядків не ламає перерахунок', async () => {

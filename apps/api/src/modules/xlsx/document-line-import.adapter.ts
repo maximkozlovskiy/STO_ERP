@@ -195,15 +195,24 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
 
     // Тотали — по ВСІХ активних рядках ПІСЛЯ вставки (не лише по нових), інакше наявні позиції
     // зникли б із суми документа.
-    const all = await tx.purchaseOrderLine.findMany({
-      where: { purchaseOrderId: docId, orgId, deletedAt: null },
-      select: { quantity: true, price: true, vatAmount: true },
-      take: MAX_QUERY_LIMIT, // §3.2: OOM-guard на перерахунку тоталів
-    });
-    const totalAmount = roundMoney(
-      all.reduce((s, l) => s + Number(l.quantity) * Number(l.price), 0),
-    );
-    const totalVat = roundMoney(all.reduce((s, l) => s + Number(l.vatAmount ?? 0), 0));
+    //
+    // Рахуємо АГРЕГАЦІЄЮ в БД, а не findMany+reduce: сюди не можна ставити take-ліміт (на відміну
+    // від запитів для відображення), бо зріз на MAX_QUERY_LIMIT=1000 тихо ЗАНИЗИВ би суму
+    // документа — а один імпорт сам по собі допускає до 1000 рядків (ApplyImportDto.ArrayMaxSize),
+    // тож «наявні + нові» легко перетинають межу. Агрегація не вивантажує рядки в пам'ять, тож
+    // OOM-ризику теж немає. Canonical purchase-orders.service рахує тотали з масиву В ПАМ'ЯТІ
+    // (рядки прийшли у запиті) — там take фізично не може зрізати суму, тут міг би.
+    const agg = await tx.$queryRaw<{ total: number | null; vat: number | null }[]>`
+      SELECT
+        COALESCE(SUM("quantity" * "price"), 0)::float AS "total",
+        COALESCE(SUM("vatAmount"), 0)::float          AS "vat"
+      FROM purchase_order_lines
+      WHERE "purchaseOrderId" = ${docId}::uuid
+        AND "orgId"           = ${orgId}::uuid
+        AND "deletedAt" IS NULL
+    `;
+    const totalAmount = roundMoney(Number(agg[0]?.total ?? 0));
+    const totalVat = roundMoney(Number(agg[0]?.vat ?? 0));
 
     const po = await tx.purchaseOrder.findFirstOrThrow({
       where: { id: docId, orgId, deletedAt: null },
