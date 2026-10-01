@@ -536,7 +536,16 @@ export const uk: Record<string, string> = {
   'err.xlsx.rowError': 'Помилка в рядку {{row}}: {{detail}}',
   'err.xlsx.rowErrorUnknown': 'невідома помилка',
   'err.xlsx.rowGoodNameRequired': 'Рядок {{row}}: назва товару обовʼязкова для створення',
-  'err.xlsx.fileReadFailed': 'Не вдалося прочитати файл — очікується коректний Excel (.xlsx)',
+  'err.xlsx.fileReadFailed':
+    'Не вдалося прочитати файл — очікується Excel (.xlsx), CSV (.csv) або PDF (.pdf)',
+  'err.xlsx.unsupportedFormat':
+    'Непідтримуваний формат файлу — очікується Excel (.xlsx), CSV (.csv) або PDF (.pdf)',
+  'err.xlsx.pdfNoTextLayer':
+    'Цей PDF — скан або фото без текстового шару, тому розпізнати позиції автоматично не вдалося. Попросіть у постачальника файл Excel, CSV або PDF з текстом, або введіть позиції вручну.',
+  'err.xlsx.pdfUnreadable':
+    'Не вдалося прочитати PDF — файл пошкоджений, запаролений або сторінка повернута',
+  'err.xlsx.pdfNoTableStructure':
+    'У PDF не вдалося розпізнати таблицю позицій — перевірте, що файл містить табличну частину накладної',
 
   // ── Exception-повідомлення: bank-statements-модуль (вхідні банк-платежі) ──
   'err.bankStatement.txNotFound': 'Банківську транзакцію не знайдено',

@@ -548,7 +548,16 @@ export const en: Record<string, string> = {
   'err.xlsx.rowError': 'Error in row {{row}}: {{detail}}',
   'err.xlsx.rowErrorUnknown': 'unknown error',
   'err.xlsx.rowGoodNameRequired': 'Row {{row}}: good name is required for creation',
-  'err.xlsx.fileReadFailed': 'Failed to read the file — a valid Excel (.xlsx) is expected',
+  'err.xlsx.unsupportedFormat':
+    'Unsupported file format — expected Excel (.xlsx), CSV (.csv) or PDF (.pdf)',
+  'err.xlsx.pdfNoTextLayer':
+    'This PDF is a scan or photo without a text layer, so line items could not be recognised automatically. Ask the supplier for an Excel, CSV or text-based PDF file, or enter the items manually.',
+  'err.xlsx.pdfUnreadable':
+    'Could not read the PDF — the file is corrupted, password-protected or the page is rotated',
+  'err.xlsx.pdfNoTableStructure':
+    'Could not detect a line-items table in the PDF — check that the file contains the tabular part of the invoice',
+  'err.xlsx.fileReadFailed':
+    'Failed to read the file — expected Excel (.xlsx), CSV (.csv) or PDF (.pdf)',
 
   // ── Exception messages: bank-statements module (incoming bank payments) ──
   'err.bankStatement.txNotFound': 'Bank transaction not found',
