@@ -27,28 +27,36 @@ interface PdfTextItem {
   height?: number;
   transform?: number[];
 }
-interface PdfPage {
+/** Viewport сторінки у піксельних координатах рендеру (scale = DPI/72). */
+export interface PdfViewport {
+  width: number;
+  height: number;
+}
+export interface PdfPage {
   rotate?: number;
   getTextContent(): Promise<{ items: PdfTextItem[] }>;
+  /** Потрібно растеризатору (pdf-rasterizer.ts): rotation тут ВИПРАВЛЯЄ повернуті сторінки. */
+  getViewport(params: { scale: number; rotation?: number }): PdfViewport;
+  render(params: { canvasContext: unknown; viewport: PdfViewport }): { promise: Promise<void> };
 }
-interface PdfDocument {
+export interface PdfDocument {
   numPages: number;
   getPage(n: number): Promise<PdfPage>;
 }
-interface PdfLoadingTask {
+export interface PdfLoadingTask {
   promise: Promise<PdfDocument>;
   destroy(): Promise<void>;
 }
-interface PdfjsModule {
+export interface PdfjsModule {
   getDocument(src: Record<string, unknown>): PdfLoadingTask;
 }
 
 let cachedPdfjs: PdfjsModule | null = null;
-function loadPdfjs(): PdfjsModule {
+export function loadPdfjs(): PdfjsModule {
   if (!cachedPdfjs) cachedPdfjs = nodeRequire('pdfjs-dist/legacy/build/pdf.mjs') as PdfjsModule;
   return cachedPdfjs;
 }
-function pdfjsRoot(): string {
+export function pdfjsRoot(): string {
   return dirname(nodeRequire.resolve('pdfjs-dist/package.json'));
 }
 
@@ -56,7 +64,7 @@ function pdfjsRoot(): string {
  * Зсув y на сторінку: координати різних сторінок перетинаються (кожна починає відлік від свого
  * низу), тож без зсуву рядки різних сторінок злились би в один при Y-групуванні.
  */
-const PAGE_Y_OFFSET = 100_000;
+export const PAGE_Y_OFFSET = 100_000;
 const DEFAULT_MAX_PAGES = 20;
 
 /** Медіана (для непарного — середній, для парного — нижній середній; точність тут не критична). */
