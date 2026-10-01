@@ -47,6 +47,7 @@ import { employeesKeys } from '@/hooks/api/useEmployees';
 import { bookingKeys } from '@/hooks/api/useBookingRequests';
 import { pricingRulesKeys } from '@/hooks/api/usePricingRules';
 import { stockDocsKeys } from '@/hooks/api/useStockDocuments';
+import { payrollKeys } from '@/hooks/api/usePayroll';
 import { infraKeys } from '@/hooks/api/useInfrastructure';
 import { dashboardKeys } from '@/hooks/api/useDashboardData';
 import { syncKeys } from '@/hooks/api/useSyncStatus';
@@ -361,6 +362,14 @@ const PREFETCH_MAP: Record<string, PrefetchFn> = {
       staleTime: 30_000,
     });
   },
+  // shape МАЄ збігатися з payroll/page.tsx first-mount usePayrollPeriods({page, limit, status}):
+  // useListPage(defaultLimit:20) → page=1/limit=20, statusFilter=useState('') → status=''.
+  '/payroll': qc =>
+    void qc.prefetchQuery({
+      queryKey: payrollKeys.periods({ page: 1, limit: 20, status: '' }),
+      queryFn: ({ signal }) => apiFetch('/payroll/periods?page=1&limit=20', { signal }),
+      staleTime: 30_000,
+    }),
 };
 
 const ROLE_LABELS: Record<string, string> = {
