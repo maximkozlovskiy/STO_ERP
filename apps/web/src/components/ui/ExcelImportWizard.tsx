@@ -73,6 +73,9 @@ function isRowApplyable(row: PreviewRow, res: RowResolution | undefined): boolea
   return !!(row.rawName || row.rawArticle || '').trim();
 }
 
+/** Дзеркалить ліміт fastifyMultipart у apps/api/src/main.ts. */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 const DEFAULT_MAPPING: ImportMapping = {
   startRow: 2,
   codeCol: null,
@@ -141,6 +144,9 @@ export function ExcelImportWizard({
   // Помилка читання файлу (PDF-скан, битий файл) — показується у модалці й НЕ зникає, на
   // відміну від toast: користувач мусить встигнути прочитати пораду.
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Через 1.5 с показуємо «Розпізнаємо…»: текстовий файл устигає раніше, тож користувач ніколи
+  // не побачить хибного тексту про розпізнавання; скан/фото не встигають — і напис доречний.
+  const [longRunning, setLongRunning] = useState(false);
   const [applyMode, setApplyMode] = useState<ImportApplyMode>('replace');
   const [mappingSource, setMappingSource] = useState<MappingSource>('default');
   // Дзеркало стану для читання всередині колбеків (уникаємо stale-closure).
@@ -160,6 +166,16 @@ export function ExcelImportWizard({
   const { data: savedMapping } = useCounterpartyImportMapping(open ? counterpartyId : undefined);
 
   // При відкритті — скидаємо на крок 1 і підтягуємо збережений мапінг контрагента (якщо є).
+  // Таймер «довгої операції»: 1.5 с — поріг, після якого має сенс сказати про розпізнавання.
+  useEffect(() => {
+    if (!rawPreviewMut.isPending) {
+      setLongRunning(false);
+      return;
+    }
+    const t = setTimeout(() => setLongRunning(true), 1500);
+    return () => clearTimeout(t);
+  }, [rawPreviewMut.isPending]);
+
   useEffect(() => {
     if (!open) return;
     setStep(1);
@@ -211,6 +227,16 @@ export function ExcelImportWizard({
     setRawPreview(null);
     setPreviewError(null);
     if (!f) return;
+    // Відмовляємо ДО відправки: 30 МБ вантажилися б 20 с по мережі, після чого сервер обриває
+    // потік і користувач бачить невиразну мережеву помилку замість зрозумілої причини.
+    if (f.size > MAX_UPLOAD_BYTES) {
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setPreviewError(
+        `Файл завеликий (${(f.size / 1024 / 1024).toFixed(1)} МБ, максимум 25 МБ). Зменшіть роздільність фото або зніміть накладну частинами.`,
+      );
+      return;
+    }
     // Сирий передперегляд одразу після вибору файлу — щоб користувач бачив вміст і колонки.
     rawPreviewMut.mutate(f, {
       onSuccess: data => {
@@ -411,17 +437,17 @@ export function ExcelImportWizard({
           {/* Файл */}
           <div>
             <label className="text-[13px] font-medium text-foreground leading-none">
-              Файл (Excel, CSV або PDF) <span className="text-destructive">*</span>
+              Файл (Excel, CSV, PDF або фото) <span className="text-destructive">*</span>
             </label>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.csv,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/pdf"
+              accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/pdf,image/jpeg,image/png"
               onChange={handleFileChange}
               className="mt-1 block w-full text-[13px] text-foreground file:mr-3 file:rounded file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-foreground hover:file:bg-secondary"
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
-              PDF-скани та фото без текстового шару поки не розпізнаються
+              Excel, CSV, PDF або фото/скан (.jpg, .png). Фото з iPhone — у форматі JPG, не HEIC.
             </p>
           </div>
 
@@ -480,7 +506,18 @@ export function ExcelImportWizard({
 
           {/* Передперегляд файлу — сирі рядки з підсвіткою обраних колонок */}
           {rawPreviewMut.isPending ? (
-            <div className="text-[12px] text-muted-foreground py-2">Читаємо файл…</div>
+            <div className="flex flex-col gap-1.5 py-2">
+              <div className="text-[12px] text-muted-foreground">
+                {longRunning
+                  ? 'Розпізнаємо текст на зображенні… це може зайняти до хвилини'
+                  : 'Читаємо файл…'}
+              </div>
+              {longRunning && (
+                <div className="h-1 w-full overflow-hidden rounded bg-secondary">
+                  <div className="h-full w-1/3 animate-pulse rounded bg-primary" />
+                </div>
+              )}
+            </div>
           ) : previewError ? (
             <div className="rounded-lg border border-warning-border bg-warning-subtle px-3 py-2 text-[12px] text-warning-text">
               {previewError}
@@ -634,6 +671,13 @@ export function ExcelImportWizard({
               {readyCount !== includedCount ? ` · до імпорту: ${readyCount}` : ''}
             </span>
           </div>
+
+          {rawPreview?.ocr && (
+            <div className="rounded-lg border border-warning-border bg-warning-subtle px-3 py-2 text-[12px] text-warning-text">
+              Текст розпізнано автоматично з зображення. Артикули й кількості можуть містити помилки
+              — звірте позиції з паперовою накладною, перш ніж заповнювати документ.
+            </div>
+          )}
 
           {/* Режим запису — лише якщо у документі ВЖЕ є позиції (інакше нічого замінювати). */}
           {existingLineCount > 0 && (

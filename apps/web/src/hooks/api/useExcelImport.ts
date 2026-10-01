@@ -88,7 +88,9 @@ export interface RawPreviewResponse {
   columnCount: number;
   rows: string[][]; // перші N рядків як текстова сітка (1-based колонки зліва направо)
   /** Канал, з якого прочитано файл — бекенд визначає за розширенням. */
-  kind?: 'xlsx' | 'csv' | 'pdf';
+  kind?: 'xlsx' | 'csv' | 'pdf' | 'image';
+  /** Текст отримано розпізнаванням → UI попереджає, що дані приблизні й їх треба звірити. */
+  ocr?: boolean;
 }
 
 /**

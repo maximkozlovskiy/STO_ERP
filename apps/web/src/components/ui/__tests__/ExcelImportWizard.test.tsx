@@ -546,3 +546,76 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
     expect((applySpy.mock.calls[0][0] as { mode: string }).mode).toBe('append');
   });
 });
+
+describe('ExcelImportWizard — OCR (фото та скани)', () => {
+  beforeEach(() => {
+    rawPreviewError.current = null;
+    savedMappingData.current = undefined;
+    applySpy.mockClear();
+    previewOverride.current = null;
+    rawPreviewData.current = {
+      totalRows: 3,
+      columnCount: 4,
+      rows: [
+        ['Артикул', 'Найменування', 'К-сть', 'Ціна'],
+        ['A1', 'Фільтр', 'BOSCH', '4'],
+      ],
+    };
+  });
+
+  const renderWizard = (props: Record<string, unknown> = {}) =>
+    render(
+      <ExcelImportWizard
+        open
+        onClose={vi.fn()}
+        docType="PURCHASE_ORDER"
+        docId="11111111-1111-1111-1111-111111111111"
+        counterpartyName="АвтоДеталь ТОВ"
+        onImportComplete={vi.fn()}
+        {...props}
+      />,
+    );
+
+  it('input приймає .jpg і .png на додачу до .xlsx/.csv/.pdf', () => {
+    renderWizard();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    for (const ext of ['.xlsx', '.csv', '.pdf', '.jpg', '.png']) {
+      expect(input.accept).toContain(ext);
+    }
+  });
+
+  it('підказка попереджає про HEIC ДО вибору файлу', () => {
+    renderWizard();
+    expect(screen.getByText(/не HEIC/)).toBeInTheDocument();
+  });
+
+  it('OCR-результат → попередження звірити з паперовою накладною', async () => {
+    rawPreviewData.current = { ...rawPreviewData.current, kind: 'image', ocr: true };
+    renderWizard();
+    selectFile('nakladna.jpg', 'image/jpeg');
+    fireEvent.click(screen.getByRole('button', { name: /Ідентифікувати товари/ }));
+    await screen.findByText(/Обрано:/);
+    expect(screen.getByText(/Текст розпізнано автоматично/)).toBeInTheDocument();
+  });
+
+  it('звичайний файл (без ocr) → попередження НЕ показується', async () => {
+    rawPreviewData.current = { ...rawPreviewData.current, kind: 'xlsx', ocr: false };
+    renderWizard();
+    selectFile();
+    fireEvent.click(screen.getByRole('button', { name: /Ідентифікувати товари/ }));
+    await screen.findByText(/Обрано:/);
+    expect(screen.queryByText(/Текст розпізнано автоматично/)).toBeNull();
+  });
+
+  it('файл понад 25 МБ відхиляється ДО відправки на сервер', () => {
+    renderWizard();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const big = new File(['x'], 'huge.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(big, 'size', { value: 30 * 1024 * 1024 });
+    fireEvent.change(input, { target: { files: [big] } });
+
+    expect(screen.getByText(/Файл завеликий/)).toBeInTheDocument();
+    expect(screen.queryByText('Передперегляд файлу')).toBeNull();
+    expect(screen.getByRole('button', { name: /Ідентифікувати товари/ })).toBeDisabled();
+  });
+});

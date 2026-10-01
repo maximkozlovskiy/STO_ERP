@@ -18,6 +18,11 @@ import { registerBullBoardGuard } from './modules/bull-board/bull-board.guard';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
+    // requestTimeout свідомо НЕ задано: POST /xlsx/import/raw-preview із фото накладної робить
+    // СИНХРОННИЙ OCR (внутрішній бюджет 120 с у ocr-text-layer.provider). Node-дефолт 300 с
+    // покриває це із запасом, і наш таймаут спрацює першим — із зрозумілою українською помилкою.
+    // Якщо колись знадобиться жорсткий requestTimeout, він МУСИТЬ бути > OCR-бюджету, інакше
+    // імпорт сканів почне обриватися без пояснення.
     new FastifyAdapter({ logger: process.env.NODE_ENV === 'development' }),
   );
 
@@ -44,7 +49,9 @@ async function bootstrap() {
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   });
   await app.register(fastifyCookie);
-  await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+  // 25 МБ: фото накладної з сучасного телефона — 5-12 МБ, інколи більше. Глобальний ліміт НЕ
+  // послаблює вкладення до нарядів: files.controller і work-order-media мають власні 10 МБ.
+  await app.register(fastifyMultipart, { limits: { fileSize: 25 * 1024 * 1024 } });
 
   app.setGlobalPrefix('api');
 
