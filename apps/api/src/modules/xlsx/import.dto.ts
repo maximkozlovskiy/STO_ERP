@@ -149,6 +149,10 @@ export class ApplyImportRowDto {
   price!: number;
 }
 
+/** Режим запису рядків: замінити всі наявні позиції документа чи додати до них. */
+export const IMPORT_APPLY_MODES = ['replace', 'append'] as const;
+export type ImportApplyMode = (typeof IMPORT_APPLY_MODES)[number];
+
 export class ApplyImportDto {
   @ApiProperty({ enum: IMPORT_DOC_TYPES })
   @IsEnum(IMPORT_DOC_TYPES as unknown as object)
@@ -164,4 +168,14 @@ export class ApplyImportDto {
   @ValidateNested({ each: true })
   @Type(() => ApplyImportRowDto)
   rows!: ApplyImportRowDto[];
+
+  @ApiPropertyOptional({
+    enum: IMPORT_APPLY_MODES,
+    default: 'replace',
+    description:
+      'replace — замінити ВСІ позиції документа; append — додати до наявних (дублікат goodId доливає кількість)',
+  })
+  @IsOptional()
+  @IsIn(IMPORT_APPLY_MODES)
+  mode: ImportApplyMode = 'replace';
 }

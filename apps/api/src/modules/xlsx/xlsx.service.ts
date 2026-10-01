@@ -24,6 +24,7 @@ import {
 } from './document-line-import.adapter';
 import type {
   ApplyImportRowDto,
+  ImportApplyMode,
   PreviewCandidate,
   PreviewRowDto,
   PreviewRowStatus,
@@ -1168,6 +1169,8 @@ export class XlsxService {
     docId: string,
     resolvedRows: ApplyImportRowDto[],
     createdBy?: string,
+    // Останнім параметром із дефолтом: backward-compat для наявних викликів і тестів.
+    mode: ImportApplyMode = 'replace',
   ): Promise<void> {
     const adapter = this.importAdapters.get(docType);
     const doc = await adapter.loadDoc(orgId, docId);
@@ -1234,7 +1237,8 @@ export class XlsxService {
 
     await this.prisma.$transaction(
       async tx => {
-        await adapter.replaceLines(tx, orgId, docId, lines, createdBy);
+        if (mode === 'append') await adapter.appendLines(tx, orgId, docId, lines, createdBy);
+        else await adapter.replaceLines(tx, orgId, docId, lines, createdBy);
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     );

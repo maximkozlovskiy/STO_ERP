@@ -42,6 +42,22 @@ export interface DocumentLineImportAdapter {
     lines: ImportLineInput[],
     createdBy?: string,
   ): Promise<void>;
+  /**
+   * ДОДАЄ рядки до наявних, не видаляючи їх. Тотали перераховуються по ОБ'ЄДНАНОМУ набору —
+   * рахунок лише по нових рядках загубив би наявні позиції (фінансовий баг).
+   * Колізія goodId з НАЯВНИМ рядком → кількість додається до нього (ціна береться нова, остання
+   * накладна актуальніша), а не створюється другий рядок: PO/SD-line не мають @@unique(docId,goodId),
+   * тож дубль тихо задвоїв би позицію (дух Bug #748, який покриває лише один імпорт).
+   */
+  appendLines(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
+    lines: ImportLineInput[],
+    createdBy?: string,
+  ): Promise<void>;
+  /** Кількість активних рядків документа — UI показує «замінити N позицій». */
+  countLines(orgId: string, docId: string): Promise<number>;
 }
 
 // ─── Purchase Order ────────────────────────────────────────────────────────────
@@ -127,6 +143,93 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       },
     });
   }
+
+  async appendLines(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
+    lines: ImportLineInput[],
+  ): Promise<void> {
+    const { vatMode, vatRate } = await this.settings.getDefaultVatRate(orgId);
+
+    // Наявні рядки: у них або доливаємо кількість (колізія goodId), або лишаємо як є.
+    const existing = await tx.purchaseOrderLine.findMany({
+      where: { purchaseOrderId: docId, orgId, deletedAt: null },
+      select: { id: true, goodId: true, quantity: true, price: true },
+    });
+    const byGoodId = new Map(existing.map(l => [l.goodId, l]));
+
+    const toCreate: (ImportLineInput & { vatRate: number; vatAmount: number })[] = [];
+    for (const l of lines) {
+      const hit = byGoodId.get(l.goodId);
+      if (hit) {
+        // Доливаємо кількість до наявного рядка; ціна — нова (остання накладна актуальніша).
+        const quantity = Number(hit.quantity) + l.quantity;
+        const { vatAmount } = calcLineVat(l.price, quantity, vatRate, vatMode);
+        await tx.purchaseOrderLine.updateMany({
+          where: { id: hit.id, orgId },
+          data: { quantity, price: l.price, vatRate, vatAmount },
+        });
+        // Наступний рядок файлу з тим самим товаром має долитись уже до оновленої кількості.
+        byGoodId.set(l.goodId, { ...hit, quantity: quantity as never, price: l.price as never });
+      } else {
+        const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
+        toCreate.push({ ...l, vatRate, vatAmount });
+      }
+    }
+
+    if (toCreate.length) {
+      await tx.purchaseOrderLine.createMany({
+        data: toCreate.map(l => ({
+          orgId,
+          purchaseOrderId: docId,
+          goodId: l.goodId,
+          quantity: l.quantity,
+          price: l.price,
+          vatRate: l.vatRate,
+          vatAmount: l.vatAmount,
+        })),
+      });
+    }
+
+    // Тотали — по ВСІХ активних рядках ПІСЛЯ вставки (не лише по нових), інакше наявні позиції
+    // зникли б із суми документа.
+    const all = await tx.purchaseOrderLine.findMany({
+      where: { purchaseOrderId: docId, orgId, deletedAt: null },
+      select: { quantity: true, price: true, vatAmount: true },
+    });
+    const totalAmount = roundMoney(
+      all.reduce((s, l) => s + Number(l.quantity) * Number(l.price), 0),
+    );
+    const totalVat = roundMoney(all.reduce((s, l) => s + Number(l.vatAmount ?? 0), 0));
+
+    const po = await tx.purchaseOrder.findFirstOrThrow({
+      where: { id: docId, orgId, deletedAt: null },
+      select: { currencyId: true, documentDate: true },
+    });
+    const conv = await this.exchangeRates.resolveBaseConversion(
+      orgId,
+      po.currencyId,
+      po.documentDate ?? new Date(),
+      totalAmount,
+      true,
+    );
+    await tx.purchaseOrder.updateMany({
+      where: { id: docId, orgId, deletedAt: null },
+      data: {
+        totalAmount,
+        totalVat,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
+      },
+    });
+  }
+
+  async countLines(orgId: string, docId: string): Promise<number> {
+    return this.prisma.purchaseOrderLine.count({
+      where: { purchaseOrderId: docId, orgId, deletedAt: null },
+    });
+  }
 }
 
 // ─── Stock Document (RECEIPT та ін.) ─────────────────────────────────────────────
@@ -173,6 +276,54 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
         })),
       });
     }
+  }
+
+  async appendLines(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
+    lines: ImportLineInput[],
+  ): Promise<void> {
+    // StockDocument тоталів не має — лише рядки. Колізія goodId з наявним рядком → доливаємо
+    // кількість (ціна нова), інакше дубль тихо задвоїв би позицію на складі.
+    const existing = await tx.stockDocumentLine.findMany({
+      where: { stockDocumentId: docId, orgId, deletedAt: null },
+      select: { id: true, goodId: true, quantity: true },
+    });
+    const byGoodId = new Map(existing.map(l => [l.goodId, l]));
+
+    const toCreate: ImportLineInput[] = [];
+    for (const l of lines) {
+      const hit = byGoodId.get(l.goodId);
+      if (hit) {
+        const quantity = Number(hit.quantity) + l.quantity;
+        await tx.stockDocumentLine.updateMany({
+          where: { id: hit.id, orgId },
+          data: { quantity, price: l.price },
+        });
+        byGoodId.set(l.goodId, { ...hit, quantity: quantity as never });
+      } else {
+        toCreate.push(l);
+      }
+    }
+
+    if (toCreate.length) {
+      await tx.stockDocumentLine.createMany({
+        data: toCreate.map(l => ({
+          orgId,
+          stockDocumentId: docId,
+          goodId: l.goodId,
+          quantity: l.quantity,
+          price: l.price,
+        })),
+      });
+    }
+  }
+
+  async countLines(orgId: string, docId: string): Promise<number> {
+    return this.prisma.stockDocumentLine.count({
+      where: { stockDocumentId: docId, orgId, deletedAt: null },
+    });
   }
 }
 

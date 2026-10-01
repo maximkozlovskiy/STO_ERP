@@ -365,7 +365,7 @@ export class XlsxController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ApplyImportDto,
   ) {
-    await this.xlsxService.applyImport(orgId, dto.docType, dto.docId, dto.rows, user.id);
+    await this.xlsxService.applyImport(orgId, dto.docType, dto.docId, dto.rows, user.id, dto.mode);
     return { ok: true };
   }
 

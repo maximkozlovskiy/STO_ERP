@@ -45,6 +45,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
     loadDoc: ReturnType<typeof vi.fn>;
     assertDraft: ReturnType<typeof vi.fn>;
     replaceLines: ReturnType<typeof vi.fn>;
+    appendLines: ReturnType<typeof vi.fn>;
   };
   let registry: { get: ReturnType<typeof vi.fn> };
 
@@ -68,6 +69,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
         if (s !== 'DRAFT') throw new ForbiddenException('not draft');
       }),
       replaceLines: vi.fn().mockResolvedValue(undefined),
+      appendLines: vi.fn().mockResolvedValue(undefined),
     };
     registry = { get: vi.fn().mockReturnValue(adapter) };
 
@@ -387,6 +389,51 @@ describe('XlsxService — generic import (preview/apply)', () => {
       ]);
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(adapter.replaceLines).toHaveBeenCalledTimes(1);
+    });
+
+    // ── Режим replace/append ──
+    it('mode не передано → replace (backward-compat для наявних викликів)', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce({ id: 'g-1' });
+      await service.applyImport(ORG, 'STOCK_DOCUMENT', 'doc-1', [
+        { rowIndex: 2, action: 'use', goodId: 'g-1', quantity: 1, price: 10 },
+      ]);
+      expect(adapter.replaceLines).toHaveBeenCalledTimes(1);
+      expect(adapter.appendLines).not.toHaveBeenCalled();
+    });
+
+    it("mode='replace' → replaceLines, appendLines не чіпаємо", async () => {
+      prisma.good.findFirst.mockResolvedValueOnce({ id: 'g-1' });
+      await service.applyImport(
+        ORG,
+        'STOCK_DOCUMENT',
+        'doc-1',
+        [{ rowIndex: 2, action: 'use', goodId: 'g-1', quantity: 1, price: 10 }],
+        'user-1',
+        'replace',
+      );
+      expect(adapter.replaceLines).toHaveBeenCalledTimes(1);
+      expect(adapter.appendLines).not.toHaveBeenCalled();
+    });
+
+    it("mode='append' → appendLines, наявні рядки НЕ видаляються", async () => {
+      prisma.good.findFirst.mockResolvedValueOnce({ id: 'g-1' });
+      await service.applyImport(
+        ORG,
+        'STOCK_DOCUMENT',
+        'doc-1',
+        [{ rowIndex: 2, action: 'use', goodId: 'g-1', quantity: 3, price: 25 }],
+        'user-1',
+        'append',
+      );
+      expect(adapter.appendLines).toHaveBeenCalledTimes(1);
+      expect(adapter.replaceLines).not.toHaveBeenCalled();
+      expect(adapter.appendLines).toHaveBeenCalledWith(
+        expect.anything(),
+        ORG,
+        'doc-1',
+        [{ goodId: 'g-1', quantity: 3, price: 25 }],
+        'user-1',
+      );
     });
   });
 });
