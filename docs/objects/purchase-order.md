@@ -106,6 +106,40 @@ Bug #598), **Днів до оплати** (`ExpiryBadge` «N дн.»/«Прос�
 
 ---
 
+## Імпорт позицій з файлу накладної
+
+Майстер `ExcelImportWizard` (web) + модуль `apps/api/src/modules/xlsx/`. Працює і для
+`PurchaseOrder`, і для `StockDocument` (адаптери у `document-line-import.adapter.ts`).
+
+**Формати:** `.xlsx` / `.csv` / `.pdf` (текстовий). Усі зводяться до спільної сітки `string[][]`
+у `DocumentGridParserService.parseGrid(buffer, filename)` — диспатч за розширенням, архітектура
+дзеркалить `BankStatementParserService`.
+
+**PDF:** `pdf-grid.extractor.ts` читає текстовий шар через `pdfjs-dist` і відновлює колонки з
+координат (смуги — за ОРДИНАЛЬНОЮ позицією у тілі таблиці; кластеризація за лівим краєм x
+ламається на правовирівняних числах). PDF-скан без текстового шару → 400
+`err.xlsx.pdfNoTextLayer` із порадою, а не порожній екран. **OCR не реалізовано**, але місце
+готове: `TextLayerProvider` — OCR додається новим файлом + елементом у масив провайдерів,
+бо `fragmentsToGrid` не знає про джерело.
+
+**Колонки:** визначаються автоматично за рядком-заголовком (`detectMappingFromGrid` із
+`@sto/shared`, рахується на клієнті). Пріоритет: ручна правка > збережений мапінг контрагента
+(`CounterpartyImportMapping`) > автодетект > дефолт. ⚠️ `isMeaningfulMapping` обовʼязковий:
+сервіс мапінгу віддає дефолтну пустушку, а не `null`.
+
+**Режим запису** (`ApplyImportDto.mode`):
+
+- `replace` (дефолт) — `adapter.replaceLines`: soft-delete усіх наявних + createMany нових;
+- `append` — `adapter.appendLines`: наявні лишаються, тотали перераховуються по **обʼєднаному**
+  набору (інакше наявні позиції зникли б із `totalAmount`/`totalVat`/`totalAmountBase`), колізія
+  `goodId` з наявним рядком **доливає кількість** (ціна нова) — `@@unique(docId, goodId)` немає,
+  тож другий рядок задвоїв би позицію.
+
+UI показує режим лише коли в документі вже є позиції (`existingLineCount` з `fields.length`).
+Імпорт дозволений лише у статусі `DRAFT` (`adapter.assertDraft`).
+
+---
+
 ## Бізнес-правила: receive() інваріанти
 
 1. `activeLines` = лише рядки де `line.quantity - line.receivedQty > 0`

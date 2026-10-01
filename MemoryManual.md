@@ -9,15 +9,15 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-01 (feat payroll List Page pattern — пагінація + фільтр статусу + ColumnsDropdown на /payroll)
+Дата:       2026-10-02 (feat import — накладні з PDF/CSV, автодетект колонок, режим replace/append)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2728/2728 (180 файлів; +11 нові: payroll findAll пагінація/фільтр/нормалізація page) ·
-            web 860/860 component (+8: PayrollListPage) · E2E 351/351.
+Тести:      api 2815/2815 (184 файли; +87: PDF-екстрактор, grid-parser, header-detect, append-режим) ·
+            web 874/874 component (+14: майстер імпорту) · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
             @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
@@ -333,223 +333,239 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Імпорт накладних PDF/CSV — 2026-10-02, HEAD dece8e6a (7 комітів 44085da0..dece8e6a):
+  Майстер імпорту позицій приймав ЛИШЕ .xlsx і вимагав вводити номери колонок руками.
+  Тепер .xlsx/.csv/.pdf + автодетект колонок за заголовками + режим «замінити/додати».
+  ГОЛОВНЕ РІШЕННЯ: розпізнавання потрібне не для ВСІХ каналів — PDF і CSV витягуються ТОЧНО
+  без OCR/AI, а конвеєр (мапінг→резолвінг→позиції) уже існував → розширили наявний шлях.
+  Хмарне OCR відкинуто (ADR-001: дані не покидають приміщення). Локальний OCR — наступний крок,
+  місце готове: fragmentsToGrid приймає TextFragment[] і не знає джерела; OCR віддає той самий
+  контракт (текст+bbox) → новий файл + елемент у масив провайдерів, без змін у решті.
+  pdfjs-dist 6.3.289 (pin) + createRequire для ESM-у-CJS; перевірено ПРОТИ dist/, не лише vitest.
+  @napi-rs/canvas (optional нативний, усі платформи у lock) виключено — для тексту не потрібен.
+  3 нові пастки у GOTCHAS: GET-сервіс віддає дефолт-пустушку замість null (затирала автодетект);
+  PDF-колонки за ординальною позицією (правовирівняні числа ламають кластеризацію за x —
+  виміряно 408 vs 425); ESM-only пакет у CJS.
+  api 2815/2815 (184) · web 874/874 (95) · tsc 0.
+  Попередній контекст:
+```
+
 Payroll List Page pattern — 2026-10-01, HEAD c6f6254e:
-  c6f6254e feat(payroll): List Page pattern для /payroll. Періоди рендерились плоским списком
-        (backend take:500, без фільтрів) — ~50 на екрані. Backend: PayrollPeriodListQueryDto
-        (page/limit/status) → PaginatedPayrollPeriodsDto (контракт usePaginatedList); count по ТОМУ Ж
-        where; page/limit у відповіді НОРМАЛІЗОВАНІ (похідні від skip/take) — page=0/-5 не малює хибний
-        Pagination. lines і далі БЕЗ workOrders (drill-down тягне findOne). Сортування → createdAt desc,
-        periodStart desc: під пагінацією період із давнім periodStart (перерахунок старого місяця) «тонув»
-        на останню сторінку. КЕШ-ПАСТКА: список живе під окремим префіксом ['payroll-periods','list',…]
-        (usePaginatedList queryKey), тому payrollKeys.all його НЕ покриває → invalidateAllPayroll() збиває
-        ОБА дерева після compute/pay, інакше статус у списку старий до reload. UI: useListPage +
-        ColumnsDropdown (6 колонок, labelKey idiom) + Pagination + useSavedFilters + фільтр статусу;
-        bulk-select свідомо НЕ додано (compute/pay строго по одному — FSM); зміна фільтра/сторінки
-        скидає expanded. data-testid переїхав з <tr> на <tbody>: один вузол тримає рядок-шапку +
-        розкриту розшифровку → E2E скоупить статус/FSM-кнопки/drill-down на один getByTestId.
-        tsc api/web 0; payroll api 44/44 (+11), web 13/13 (+8, новий PayrollListPage.test.tsx).
-  Попередній: b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів. PayrollLine показував лише
-        агрегати — не видно з яких нарядів сума. Нова таблиця PayrollLineWorkOrder (міграція
-        20260922120000) фіксується у compute() РАЗОМ із PayrollLine → snapshot, розшифровка ЗАВЖДИ
-        сходиться з нарахуванням навіть якщо наряди змінили (number/vehicleName текстом, без FK на
-        work_orders). Показуємо БАЗУ (Σ сума робіт наряду), НЕ розкидане accrued: схема оплати б'є по
-        СУМІ бази → tfoot «Разом база» == PayrollLine.baseAmount (без штучного розподілу fixed_plus_bonus
-        і копійчаних розбіжностей; amount вже Decimal(12,2) → roundMoney per-наряд = no-op).
-        aggregateWorkOrders() GROUP BY employeeId,workOrderId + LEFT JOIN vehicles. compute() створює
-        рядки по ОДНОМУ (create, не createMany — потрібен lineId для дітей), видаляє дітей ПЕРЕД
-        батьками (FK RESTRICT). findOne() include workOrders; findAll() НІ (важко) → UI тягне
-        GET /periods/:id при розкритті. Старі періоди → breakdown.empty (зворотна сумісність).
-        tsc api/web 0; payroll 28/28 (+3). Перевірено у браузері: 25 н-год/2500 → 1000 (40%).
-  Review b1beca00 (auto, 2026-09-30) — ✅ ЧИСТО, 0 дефектів, коміт не потрібен. Перевірено:
-        raw SQL aggregateWorkOrders (orgId+deletedAt на ОБОХ табл., Prisma.sql-параметр branchId — 0 injection),
-        snapshot-консистентність (amount Decimal(12,2) → roundMoney per-наряд = no-op → Σ дітей == baseAmount
-        завжди), N+1 create-loop (bounded штатом, ПОЗА tx → не роздуває timeout), delete-order діти→батьки
-        (FK RESTRICT), міграція чиста+2 індекси+FK, orgId/syncVersion є / deletedAt свідомо нема (recompute-
-        snapshot), UI colgroup/tfoot/text-right/tabular-nums/t()/fmtMoney, i18n parity 60/60. Payroll поза
-        sync-config (як sibling PayrollLine/Period — обґрунтовано). tsc api/web 0, 17/17 payroll spec green.
-  Попередній контекст (bank-statements QA):
+c6f6254e feat(payroll): List Page pattern для /payroll. Періоди рендерились плоским списком
+(backend take:500, без фільтрів) — ~50 на екрані. Backend: PayrollPeriodListQueryDto
+(page/limit/status) → PaginatedPayrollPeriodsDto (контракт usePaginatedList); count по ТОМУ Ж
+where; page/limit у відповіді НОРМАЛІЗОВАНІ (похідні від skip/take) — page=0/-5 не малює хибний
+Pagination. lines і далі БЕЗ workOrders (drill-down тягне findOne). Сортування → createdAt desc,
+periodStart desc: під пагінацією період із давнім periodStart (перерахунок старого місяця) «тонув»
+на останню сторінку. КЕШ-ПАСТКА: список живе під окремим префіксом ['payroll-periods','list',…]
+(usePaginatedList queryKey), тому payrollKeys.all його НЕ покриває → invalidateAllPayroll() збиває
+ОБА дерева після compute/pay, інакше статус у списку старий до reload. UI: useListPage +
+ColumnsDropdown (6 колонок, labelKey idiom) + Pagination + useSavedFilters + фільтр статусу;
+bulk-select свідомо НЕ додано (compute/pay строго по одному — FSM); зміна фільтра/сторінки
+скидає expanded. data-testid переїхав з <tr> на <tbody>: один вузол тримає рядок-шапку +
+розкриту розшифровку → E2E скоупить статус/FSM-кнопки/drill-down на один getByTestId.
+tsc api/web 0; payroll api 44/44 (+11), web 13/13 (+8, новий PayrollListPage.test.tsx).
+Попередній: b1beca00 feat(payroll): розшифровка нарахувань у розрізі нарядів. PayrollLine показував лише
+агрегати — не видно з яких нарядів сума. Нова таблиця PayrollLineWorkOrder (міграція 20260922120000) фіксується у compute() РАЗОМ із PayrollLine → snapshot, розшифровка ЗАВЖДИ
+сходиться з нарахуванням навіть якщо наряди змінили (number/vehicleName текстом, без FK на
+work_orders). Показуємо БАЗУ (Σ сума робіт наряду), НЕ розкидане accrued: схема оплати б'є по
+СУМІ бази → tfoot «Разом база» == PayrollLine.baseAmount (без штучного розподілу fixed_plus_bonus
+і копійчаних розбіжностей; amount вже Decimal(12,2) → roundMoney per-наряд = no-op).
+aggregateWorkOrders() GROUP BY employeeId,workOrderId + LEFT JOIN vehicles. compute() створює
+рядки по ОДНОМУ (create, не createMany — потрібен lineId для дітей), видаляє дітей ПЕРЕД
+батьками (FK RESTRICT). findOne() include workOrders; findAll() НІ (важко) → UI тягне
+GET /periods/:id при розкритті. Старі періоди → breakdown.empty (зворотна сумісність).
+tsc api/web 0; payroll 28/28 (+3). Перевірено у браузері: 25 н-год/2500 → 1000 (40%).
+Review b1beca00 (auto, 2026-09-30) — ✅ ЧИСТО, 0 дефектів, коміт не потрібен. Перевірено:
+raw SQL aggregateWorkOrders (orgId+deletedAt на ОБОХ табл., Prisma.sql-параметр branchId — 0 injection),
+snapshot-консистентність (amount Decimal(12,2) → roundMoney per-наряд = no-op → Σ дітей == baseAmount
+завжди), N+1 create-loop (bounded штатом, ПОЗА tx → не роздуває timeout), delete-order діти→батьки
+(FK RESTRICT), міграція чиста+2 індекси+FK, orgId/syncVersion є / deletedAt свідомо нема (recompute-
+snapshot), UI colgroup/tfoot/text-right/tabular-nums/t()/fmtMoney, i18n parity 60/60. Payroll поза
+sync-config (як sibling PayrollLine/Period — обґрунтовано). tsc api/web 0, 17/17 payroll spec green.
+Попередній контекст (bank-statements QA):
 Review Cycle 3 FINAL bank-statements — 2026-09-21, HEAD 99def590:
-  99def590 fix(review): Bug #773 — applyImport operationDate rollover-guard (date-rollover клас ЗАКРИТО).
-        bank-reconciliation.applyImport робив голий new Date(row.operationDate); ApplyRowDto.operationDate
-        — лише @IsString у public POST import/apply → клієнт міг слати "2026-02-31" (тихо→03-02→неправильний
-        getRateAsOf→спотворений amountBase USD/EUR, money-critical) або "garbage" (Invalid→@db.Date crash).
-        Cycle 1-2 закрили провайдери (privat24/parser), НЕ write-сторону. Fix parseApplyRowDate: той самий
-        guard + 400 ДО $transaction; +7 regression; +i18n err.bankStatement.invalidOperationDate (uk/en);
-        +SKILL §5 money-critical date-parse checklist. Verdict: date-rollover КЛАС ПОВНІСТЮ ЗАКРИТО;
-        всі Cycle 1-2 фікси коректні. Meta: re-parse DTO-поля у public POST треба guard-ити навіть коли
-        upstream-парсер guarded (endpoint приймає й сирий client-JSON).
-  Cycle 1-2 (для контексту):
+99def590 fix(review): Bug #773 — applyImport operationDate rollover-guard (date-rollover клас ЗАКРИТО).
+bank-reconciliation.applyImport робив голий new Date(row.operationDate); ApplyRowDto.operationDate
+— лише @IsString у public POST import/apply → клієнт міг слати "2026-02-31" (тихо→03-02→неправильний
+getRateAsOf→спотворений amountBase USD/EUR, money-critical) або "garbage" (Invalid→@db.Date crash).
+Cycle 1-2 закрили провайдери (privat24/parser), НЕ write-сторону. Fix parseApplyRowDate: той самий
+guard + 400 ДО $transaction; +7 regression; +i18n err.bankStatement.invalidOperationDate (uk/en);
++SKILL §5 money-critical date-parse checklist. Verdict: date-rollover КЛАС ПОВНІСТЮ ЗАКРИТО;
+всі Cycle 1-2 фікси коректні. Meta: re-parse DTO-поля у public POST треба guard-ити навіть коли
+upstream-парсер guarded (endpoint приймає й сирий client-JSON).
+Cycle 1-2 (для контексту):
 Tester Cycle 2 bank-statements — 2026-09-21, попередній HEAD 7a818f77:
-  7684792a fix(tester): Bug #772 — Privat24 parseDate ISO-fallback (гілка в, native new Date)
-        БЕЗ rollover-guard. Cycle-1 захардив гілки (а)DD.MM+ISO парсера, але лишив 3-тю native-
-        fallback гілку. new Date('2026-02-31')→03-02 (не NaN) → зіпсована operationDate → неправильний
-        курс для amountBase. Fix: ISO date-only покомпонентно+guard; +1 regression. Meta-урок:
-        фікс що чіпає K з N sibling-гілок → аудит решти N−K (SKILL/approaches #772).
-  7a818f77 docs(tester): BUG_REPORT Cycle 2 + incomplete-branch-hardening підхід.
-  Валідація Cycle-1: date-guards тримаються (2 regression-тести асертять skip+valid), currency-suffix
-  нитка ціла (list→mapper ??null→fmtBankCurrencySuffix), index застосований. api 2709/web 852/E2E 351 — усе зелене.
+7684792a fix(tester): Bug #772 — Privat24 parseDate ISO-fallback (гілка в, native new Date)
+БЕЗ rollover-guard. Cycle-1 захардив гілки (а)DD.MM+ISO парсера, але лишив 3-тю native-
+fallback гілку. new Date('2026-02-31')→03-02 (не NaN) → зіпсована operationDate → неправильний
+курс для amountBase. Fix: ISO date-only покомпонентно+guard; +1 regression. Meta-урок:
+фікс що чіпає K з N sibling-гілок → аудит решти N−K (SKILL/approaches #772).
+7a818f77 docs(tester): BUG_REPORT Cycle 2 + incomplete-branch-hardening підхід.
+Валідація Cycle-1: date-guards тримаються (2 regression-тести асертять skip+valid), currency-suffix
+нитка ціла (list→mapper ??null→fmtBankCurrencySuffix), index застосований. api 2709/web 852/E2E 351 — усе зелене.
 
 Sync bank-statements (monobank+DBF+multi-bank) — 2026-09-21, HEAD 77ad954d:
-  77ad954d fix(sync): BankStatementImportModal file input accept=".csv,.xlsx,.xls" — backend
-        bank-statement-parser.service.assertSupported() приймає .csv/.xlsx/.dbf (не .xls). UI не
-        давав вибрати .dbf попри те що backend вже парсить DBF (providers/mono-статистика +
-        multi-bank коміт f98fadb6). Виправлено accept → ".csv,.xlsx,.dbf". Перевірено ЧИСТО:
-        BankAccount.provider (DTO Create/Update/Response) ↔ web types.ts інтерфейс ↔ BankAccountsTab
-        форма (Select провайдера + autoPullEnabled toggle) — усі 3 боки узгоджені; GET
-        /bank-statement-providers [privat24,monobank] ↔ BankAccountsTab dropdown + settings/
-        BankStatementsTab обидва Array.isArray-guard є; monobank creds (token+accountId) у
-        BankStatementsTab.bankProviders ↔ MonobankStatementProvider.creds() читає ті ж ключі.
-        MANUAL-VERIFY mono/DBF-мапінг НЕ чіпався (навмисно). tsc: web 0/837 · api 0/2694.
-  Sync bank-statements (Фаза 4 Privat24 auto-pull) — 2026-09-20, HEAD d409945f:
-  d409945f fix(sync): BankAccount web interface (apps/web/.../ndi/types.ts) не мала autoPullEnabled/
-        lastPulledAt — type-drift проти BankAccountResponseDto (commit 4eead7eb). Поля додані як
-        optional (UI-toggle ще нема, лише type-parity). Перевірено ЧИСТО: bank-statement-providers.
-        controller (GET list, POST :code/verify, GET/PATCH branch/:branchId, POST branch/:branchId/
-        activate, POST pull-now) ↔ BankStatementsTab.tsx+ProviderRegistryPanel — endpoints/payload
-        shapes збігаються (ProviderConfigView ідентичний provider-config.service.ts). OrganisationSettings.
-        bankStatementPollIntervalMinutes — узгоджено web/DTO/response обидва боки. tsc: web 0 · api 0.
-  Tester bank-statements bug hunt — 2026-09-20, HEAD 2b3e0c64:
-  2b3e0c64 fix(tester): Bug #767 [MEDIUM] parseDate rollover guard + bank-statements покриття.
-        Bug #767: bank-statement-parser.parseDate тихо «перекочував» неіснуючі дати (31.02→03.03,
-        31.04→05.01) — JS Date overflow без round-trip guard → зіпсована operationDate реальної
-        банк-транзакції (визначає курс amountBase). Фікс: звірка getUTC*-компонентів з входом → null.
-        +bank-statement-parser.service.spec.ts (NEW 11 тестів — раніше 0 на 261-рядковий парсер файл→гроші).
-        +bank-reconciliation 12→18 (INVOICE→PAYMENT+invoiceId+amount; guards CAS-untouched; previewImport
-        дедуп; applyImport 404+amountBase). +e2e/bank-statements.spec.ts (NEW 6: рендер/фільтр/import-wizard/
-        повний ignore-flow seed→apply→IGNORED). SKILL +Bug #767 date-rollover патерн.
-        ENV-урок: running API/web стартували ДО фічі → 404 на нових роутах; перезапуск підхопив модуль.
-  Suite: api tsc 0/2613 · web tsc 0/837 component · shared 0 · E2E 343/343 (+6 bank, 2 flaky retry-pass).
-  Попередні — full-branch cycle 3/3 FINAL — 2026-09-19, HEAD 46392fcd:
-  46392fcd docs(tester): cycle 3/3 (FINAL) — валідаційний прохід, НУЛЬ нових багів. Реліз-гейт GREEN.
-        Функціональний diff be48551d..HEAD = 3 frontend файли: f53e7c1d CreateWorkOrderModal мігровано на
-        onAutoDefault prop (той самий dirty-guard патерн що Invoice/PO, Bug #766-class consistency);
-        8835afaa PO receiveQtys key уніфіковано на field.id (усі 3 сайти); db3f5254 CurrencySelect регрес-тест.
-        Валідовано: WO-модалка non-dirty on open + currency auto-default + user-change dirties (доведено
-        CurrencySelect.test.tsx 3 інваріанти). Backend/schema дрейф за ВСІ 3 цикли = 0 (git diff порожній).
-        Bug #764/#765/#766 фікси тримаються. E2E ПЕРЕзапущено на свіжому NEXT_PUBLIC_E2E=1 сервері.
-  Попередні: be48551d Bug #765 PO receive key-mismatch (CRITICAL) + #766 currency dirty-guard (HIGH/UX);
-        ac535ff4 skills +RHF field.id key-mismatch +currency dirty-guard +E2E-flag prereq.
-  Suite: api tsc 0/2573 · web tsc 0/834 component · shared 0 · E2E 339/339 (0 fail, 0 skip, 0 flaky, 2.8m).
+77ad954d fix(sync): BankStatementImportModal file input accept=".csv,.xlsx,.xls" — backend
+bank-statement-parser.service.assertSupported() приймає .csv/.xlsx/.dbf (не .xls). UI не
+давав вибрати .dbf попри те що backend вже парсить DBF (providers/mono-статистика +
+multi-bank коміт f98fadb6). Виправлено accept → ".csv,.xlsx,.dbf". Перевірено ЧИСТО:
+BankAccount.provider (DTO Create/Update/Response) ↔ web types.ts інтерфейс ↔ BankAccountsTab
+форма (Select провайдера + autoPullEnabled toggle) — усі 3 боки узгоджені; GET
+/bank-statement-providers [privat24,monobank] ↔ BankAccountsTab dropdown + settings/
+BankStatementsTab обидва Array.isArray-guard є; monobank creds (token+accountId) у
+BankStatementsTab.bankProviders ↔ MonobankStatementProvider.creds() читає ті ж ключі.
+MANUAL-VERIFY mono/DBF-мапінг НЕ чіпався (навмисно). tsc: web 0/837 · api 0/2694.
+Sync bank-statements (Фаза 4 Privat24 auto-pull) — 2026-09-20, HEAD d409945f:
+d409945f fix(sync): BankAccount web interface (apps/web/.../ndi/types.ts) не мала autoPullEnabled/
+lastPulledAt — type-drift проти BankAccountResponseDto (commit 4eead7eb). Поля додані як
+optional (UI-toggle ще нема, лише type-parity). Перевірено ЧИСТО: bank-statement-providers.
+controller (GET list, POST :code/verify, GET/PATCH branch/:branchId, POST branch/:branchId/
+activate, POST pull-now) ↔ BankStatementsTab.tsx+ProviderRegistryPanel — endpoints/payload
+shapes збігаються (ProviderConfigView ідентичний provider-config.service.ts). OrganisationSettings.
+bankStatementPollIntervalMinutes — узгоджено web/DTO/response обидва боки. tsc: web 0 · api 0.
+Tester bank-statements bug hunt — 2026-09-20, HEAD 2b3e0c64:
+2b3e0c64 fix(tester): Bug #767 [MEDIUM] parseDate rollover guard + bank-statements покриття.
+Bug #767: bank-statement-parser.parseDate тихо «перекочував» неіснуючі дати (31.02→03.03,
+31.04→05.01) — JS Date overflow без round-trip guard → зіпсована operationDate реальної
+банк-транзакції (визначає курс amountBase). Фікс: звірка getUTC*-компонентів з входом → null.
++bank-statement-parser.service.spec.ts (NEW 11 тестів — раніше 0 на 261-рядковий парсер файл→гроші).
++bank-reconciliation 12→18 (INVOICE→PAYMENT+invoiceId+amount; guards CAS-untouched; previewImport
+дедуп; applyImport 404+amountBase). +e2e/bank-statements.spec.ts (NEW 6: рендер/фільтр/import-wizard/
+повний ignore-flow seed→apply→IGNORED). SKILL +Bug #767 date-rollover патерн.
+ENV-урок: running API/web стартували ДО фічі → 404 на нових роутах; перезапуск підхопив модуль.
+Suite: api tsc 0/2613 · web tsc 0/837 component · shared 0 · E2E 343/343 (+6 bank, 2 flaky retry-pass).
+Попередні — full-branch cycle 3/3 FINAL — 2026-09-19, HEAD 46392fcd:
+46392fcd docs(tester): cycle 3/3 (FINAL) — валідаційний прохід, НУЛЬ нових багів. Реліз-гейт GREEN.
+Функціональний diff be48551d..HEAD = 3 frontend файли: f53e7c1d CreateWorkOrderModal мігровано на
+onAutoDefault prop (той самий dirty-guard патерн що Invoice/PO, Bug #766-class consistency);
+8835afaa PO receiveQtys key уніфіковано на field.id (усі 3 сайти); db3f5254 CurrencySelect регрес-тест.
+Валідовано: WO-модалка non-dirty on open + currency auto-default + user-change dirties (доведено
+CurrencySelect.test.tsx 3 інваріанти). Backend/schema дрейф за ВСІ 3 цикли = 0 (git diff порожній).
+Bug #764/#765/#766 фікси тримаються. E2E ПЕРЕзапущено на свіжому NEXT_PUBLIC_E2E=1 сервері.
+Попередні: be48551d Bug #765 PO receive key-mismatch (CRITICAL) + #766 currency dirty-guard (HIGH/UX);
+ac535ff4 skills +RHF field.id key-mismatch +currency dirty-guard +E2E-flag prereq.
+Suite: api tsc 0/2573 · web tsc 0/834 component · shared 0 · E2E 339/339 (0 fail, 0 skip, 0 flaky, 2.8m).
 
 Optimize full-branch cycle 1/3 — 2026-09-19, HEAD 38da9dd9:
-  38da9dd9 perf(cash-registers): findAll рахував balance ЧЕРЕЗ cash.getBalance() у map(async) — N+1
-        (3 запити/касу: findFirst + 2 aggregate → до 3×N=600 при take:200), введено на цій гілці
-        (origin/main віддавав кешовані items без balance) + обходив ref-кеш на КОЖНОМУ запиті.
-        Fix: CashService.getBalances(orgId, initials) — ОДИН groupBy по (cashRegisterId, direction)
-        з cashRegisterId IN [ids]; семантика byte-identical (initial+ΣIN−ΣOUT, roundMoney);
-        initialBalance уже у кеш-DTO (реєстри не перечитуються); index-covered
-        (orgId,cashRegisterId,createdAt) prefix. +3 тести. tsc api/web 0, cash 43/43.
-  Решта гілки (~340 файлів) — механічне i18n string-wrapping (translateError/getLocale) — НЕ perf.
-  Нова DLQ (dead-letter.service.findAll) — вже оптимальна (Promise.all findMany+count, take:200,
-        0 N+1, 0 include). buildHeaders getCurrentLocale() — module-var read, не localStorage.
+38da9dd9 perf(cash-registers): findAll рахував balance ЧЕРЕЗ cash.getBalance() у map(async) — N+1
+(3 запити/касу: findFirst + 2 aggregate → до 3×N=600 при take:200), введено на цій гілці
+(origin/main віддавав кешовані items без balance) + обходив ref-кеш на КОЖНОМУ запиті.
+Fix: CashService.getBalances(orgId, initials) — ОДИН groupBy по (cashRegisterId, direction)
+з cashRegisterId IN [ids]; семантика byte-identical (initial+ΣIN−ΣOUT, roundMoney);
+initialBalance уже у кеш-DTO (реєстри не перечитуються); index-covered
+(orgId,cashRegisterId,createdAt) prefix. +3 тести. tsc api/web 0, cash 43/43.
+Решта гілки (~340 файлів) — механічне i18n string-wrapping (translateError/getLocale) — НЕ perf.
+Нова DLQ (dead-letter.service.findAll) — вже оптимальна (Promise.all findMany+count, take:200,
+0 N+1, 0 include). buildHeaders getCurrentLocale() — module-var read, не localStorage.
 
 Review аудит Дані/Інфра — append-only ledger тригери — 2026-09-17, HEAD 31c5ec2:
-  31c5ec2 fix(review): forbid_mutation_stock_movements — перелік IS NOT DISTINCT (id/orgId/goodId/
-        warehouseId/type/quantity/documentType/documentId/createdAt) НЕ покривав price/notes/createdBy/
-        unitOfMeasureId → UPDATE «batchId + price» проскакував (мутація ledger-money). Замінено на
-        (to_jsonb(NEW)-'batchId')=(to_jsonb(OLD)-'batchId') (core PG, авто-покриває майбутні колонки).
-        Функцію переприкладено на dev-БД (правка застосованої міграції Prisma не переприкладає).
-        +behavioral-регрес (batchId+price → reject). Патерн → sto-database + sto-review (to_jsonb whole-row).
-  7ac27c41 (pre-review) feat(db): 2 plpgsql BEFORE ROW тригери — settlement_transactions повна заборона
-        UPDATE+DELETE; stock_movements DELETE-заборона + одноразовий batchId NULL→value. schema-integrity
-        existence-check (pg_trigger NOT tgisinternal) + append-only behavioral-spec. Idempotent (DROP IF EXISTS).
-  api tsc 0. append-only 5 + schema-integrity 8 = 13/13 · inventory.service 58/58.
+31c5ec2 fix(review): forbid_mutation_stock_movements — перелік IS NOT DISTINCT (id/orgId/goodId/
+warehouseId/type/quantity/documentType/documentId/createdAt) НЕ покривав price/notes/createdBy/
+unitOfMeasureId → UPDATE «batchId + price» проскакував (мутація ledger-money). Замінено на
+(to_jsonb(NEW)-'batchId')=(to_jsonb(OLD)-'batchId') (core PG, авто-покриває майбутні колонки).
+Функцію переприкладено на dev-БД (правка застосованої міграції Prisma не переприкладає).
++behavioral-регрес (batchId+price → reject). Патерн → sto-database + sto-review (to_jsonb whole-row).
+7ac27c41 (pre-review) feat(db): 2 plpgsql BEFORE ROW тригери — settlement_transactions повна заборона
+UPDATE+DELETE; stock_movements DELETE-заборона + одноразовий batchId NULL→value. schema-integrity
+existence-check (pg_trigger NOT tgisinternal) + append-only behavioral-spec. Idempotent (DROP IF EXISTS).
+api tsc 0. append-only 5 + schema-integrity 8 = 13/13 · inventory.service 58/58.
 
 Аудит стеку BACKEND #3 — URI-версіонування /api/v1 — 2026-09-17, HEAD f1f9ed85:
-  8c2d5aa8 feat: enableVersioning({type:URI, defaultVersion:'1'}) → бізнес-роути /api/v1/*. health +
-        public/work-orders VERSION_NEUTRAL (fixed-URL консюмери: docker healthcheck, SMS/email share).
-        Клієнти → /api/v1: web api-client/booking, mobile BASE_URL, 29 e2e. Caddy /api/* — без змін.
-  ecb688e2 sync CRITICAL: AuthController (не neutral) → /auth переїхав /api/v1/auth, але web AuthProvider
-        (4× raw fetch) + refresh-cookie path лишились /api/auth → auth мовчки зламаний. Fix: context.tsx +
-        cookie path (set+2×clear) → /api/v1/auth; mobile upload.ts BASE_URL → /v1; e2e route-globs.
-  d0e3e42c tester HIGH #761: /estimate/[token] через спільний publicFetch форсив /api/v1 → public-роут
-        (VERSION_NEUTRAL, /api/public/...) 404 → share-лінки «недійсні». Fix: publicNeutralFetch → /api.
-  Паттерн MP-B12 (docs/PATTERNS): version-neutral винятки + 3 клас-баги (raw-fetch bypass, cookie-path
-        coupling, спільний client-префікс маскує neutral/versioned). GOTCHAS: cookie-path/версія coupling.
-  api+web tsc 0. api-suite 2521/2521, web lib 153 (+3 URL-regres). Live-verified routing/auth/health.
+8c2d5aa8 feat: enableVersioning({type:URI, defaultVersion:'1'}) → бізнес-роути /api/v1/_. health +
+public/work-orders VERSION_NEUTRAL (fixed-URL консюмери: docker healthcheck, SMS/email share).
+Клієнти → /api/v1: web api-client/booking, mobile BASE_URL, 29 e2e. Caddy /api/_ — без змін.
+ecb688e2 sync CRITICAL: AuthController (не neutral) → /auth переїхав /api/v1/auth, але web AuthProvider
+(4× raw fetch) + refresh-cookie path лишились /api/auth → auth мовчки зламаний. Fix: context.tsx +
+cookie path (set+2×clear) → /api/v1/auth; mobile upload.ts BASE_URL → /v1; e2e route-globs.
+d0e3e42c tester HIGH #761: /estimate/[token] через спільний publicFetch форсив /api/v1 → public-роут
+(VERSION_NEUTRAL, /api/public/...) 404 → share-лінки «недійсні». Fix: publicNeutralFetch → /api.
+Паттерн MP-B12 (docs/PATTERNS): version-neutral винятки + 3 клас-баги (raw-fetch bypass, cookie-path
+coupling, спільний client-префікс маскує neutral/versioned). GOTCHAS: cookie-path/версія coupling.
+api+web tsc 0. api-suite 2521/2521, web lib 153 (+3 URL-regres). Live-verified routing/auth/health.
 
 Аудит стеку BACKEND #2 — централізований DLQ для BullMQ — 2026-09-17, HEAD a120de94:
-  ee57f38c feat: DeadLetterJob (TENANT_EXEMPT, orgId nullable, міграція additive) + DeadLetterWorkerHost
-        (base, deadLetterOnFailed терминальний гейт) вбудовано у 12 черг + checkbox delegate. Capture у
-        процесі (@OnWorkerEvent('failed')), НЕ QueueEvents (несе лише jobId/reason + removeOnFail евіктить).
-        Controller GET/PATCH /dead-letter. @Global DeadLetterModule.
-  9a0114c1 review: HIGH secrets-at-rest (webhooks secret:ep.secret у payload plaintext) → sanitizePayload();
-        IMPORTANT resolve() race → updateMany({id,orgId})+404.
-  0eea48ca tester: #759 HIGH over-redaction (плоский regex auth|sign|pass|key редагував authorId/assignee/
-        passenger) → токен-орієнтований isSensitiveKey(); #760 MEDIUM BigInt→JSONB throw→тиха втрата DLQ →
-        JSON-safe нормалізація.
-  Паттерн MP-B11 (docs/PATTERNS): durable DLQ, 3 клас-баги (secrets/non-JSON/tenant-exempt-write).
-  Follow-up v1.1: dead-letter-purge (лише resolved past-cutoff). tsc api 0, api-suite 2521/2521.
+ee57f38c feat: DeadLetterJob (TENANT_EXEMPT, orgId nullable, міграція additive) + DeadLetterWorkerHost
+(base, deadLetterOnFailed терминальний гейт) вбудовано у 12 черг + checkbox delegate. Capture у
+процесі (@OnWorkerEvent('failed')), НЕ QueueEvents (несе лише jobId/reason + removeOnFail евіктить).
+Controller GET/PATCH /dead-letter. @Global DeadLetterModule.
+9a0114c1 review: HIGH secrets-at-rest (webhooks secret:ep.secret у payload plaintext) → sanitizePayload();
+IMPORTANT resolve() race → updateMany({id,orgId})+404.
+0eea48ca tester: #759 HIGH over-redaction (плоский regex auth|sign|pass|key редагував authorId/assignee/
+passenger) → токен-орієнтований isSensitiveKey(); #760 MEDIUM BigInt→JSONB throw→тиха втрата DLQ →
+JSON-safe нормалізація.
+Паттерн MP-B11 (docs/PATTERNS): durable DLQ, 3 клас-баги (secrets/non-JSON/tenant-exempt-write).
+Follow-up v1.1: dead-letter-purge (лише resolved past-cutoff). tsc api 0, api-suite 2521/2521.
 
 Аудит стеку BACKEND #1 — fail-fast env-валідація (zod) — 2026-09-17, HEAD 4795a13a:
-  123deff2 env.schema.ts: zod-схема всіх env API + validateEnv() → ConfigModule.forRoot({validate}).
-        Контейнер із кривим/неповним .env падає НА СТАРТІ з агрегованим переліком, не на першому
-        запиті. prod-strict/dev-lenient: формат валідуємо завжди, prod-критичні секрети (DATABASE_URL,
-        JWT ≥32, MinIO endpoint/port/keys/bucket, ENC_KEY) required лише у NODE_ENV=production.
-        .passthrough() зберігає POSTGRES_*/NEXT_PUBLIC_*. Централізує розсіяний getOrThrow-fail-fast.
-  7bdf2ae7 review: MINIO_PORT — hard-dep (files.service getOrThrow у конструкторі) → додано prod-strict.
-  1feb3e15 tester: #757 min(32) always-on строгіший за EncryptionService (SHA-256 будь-яка довжина) →
-        min32 лише prod-gated. #758 prod-strict у object-superRefine короткозамикався при format-issue →
-        винесено checkProdStrict() незалежно, issues злиті вручну (installer-діагностика ціла).
+123deff2 env.schema.ts: zod-схема всіх env API + validateEnv() → ConfigModule.forRoot({validate}).
+Контейнер із кривим/неповним .env падає НА СТАРТІ з агрегованим переліком, не на першому
+запиті. prod-strict/dev-lenient: формат валідуємо завжди, prod-критичні секрети (DATABASE_URL,
+JWT ≥32, MinIO endpoint/port/keys/bucket, ENC_KEY) required лише у NODE_ENV=production.
+.passthrough() зберігає POSTGRES__/NEXT_PUBLIC__. Централізує розсіяний getOrThrow-fail-fast.
+7bdf2ae7 review: MINIO_PORT — hard-dep (files.service getOrThrow у конструкторі) → додано prod-strict.
+1feb3e15 tester: #757 min(32) always-on строгіший за EncryptionService (SHA-256 будь-яка довжина) →
+min32 лише prod-gated. #758 prod-strict у object-superRefine короткозамикався при format-issue →
+винесено checkProdStrict() незалежно, issues злиті вручну (installer-діагностика ціла).
 tsc api 0. env.schema.spec 20/20, api-suite 2499/2499. Далі backend-розділ: DLQ / API-версіонування.
 
 Аудит #1 Фаза 5 — WorkOrder на zod+RHF (найскладніша, ЗАВЕРШУЄ аудит #1) — 2026-09-17, HEAD 9968a39f:
-  <бек> work-order.schema (header/line/part + form) + 6 endpoint-ів (create/update, lines POST/PATCH,
-        parts POST/PATCH) → ZodValidationPipe. Nullable-семантика update. FIX (spec): nullable() з
-        z.coerce.number() коерсив null→0 → plannedHours:null тихо ставив 0; fix z.union([z.null(),inner]).
-  a61f990a <фронт> CreateWorkOrderModal RHF+useFieldArray через SHIM (form/lines/parts = watch()-відбиток;
-        setter-и diff getValues()+setValue/replace) → money-логіка (~700р) byte-for-byte. Bug #755 retry-dedup
-        (postedLineKeysRef/postedPartKeysRef). Архітектура як Invoice (header тіло, lines/parts окремі endpoint).
-  252af5fc <sync> save() слав undefined замість null для liftId/plannedAt/dueDate → clear мовчки не зберігався.
-  d8a569aa <review> FORM-схема відхиляла UA-кому '1,5' (numericString→NaN) → safeParse-гейт блокував submit;
-        fix optionalMoneyNumber()/moneyString у form-схемах (endpoint не чіпано). ⚠️ Той самий кома-клас
-        латентний у Invoice/PO/StockDoc/SupplierReturn FORM-схемах (PO parseFloat('1,5')=1 тихе усічення) —
-        поза scope Ф5, кандидат на наступний фікс.
-  8a55bf62 <tester> 0 багів; +2 runtime-guard тести (retry-dedup + double-submit через RHF shim).
+<бек> work-order.schema (header/line/part + form) + 6 endpoint-ів (create/update, lines POST/PATCH,
+parts POST/PATCH) → ZodValidationPipe. Nullable-семантика update. FIX (spec): nullable() з
+z.coerce.number() коерсив null→0 → plannedHours:null тихо ставив 0; fix z.union([z.null(),inner]).
+a61f990a <фронт> CreateWorkOrderModal RHF+useFieldArray через SHIM (form/lines/parts = watch()-відбиток;
+setter-и diff getValues()+setValue/replace) → money-логіка (~700р) byte-for-byte. Bug #755 retry-dedup
+(postedLineKeysRef/postedPartKeysRef). Архітектура як Invoice (header тіло, lines/parts окремі endpoint).
+252af5fc <sync> save() слав undefined замість null для liftId/plannedAt/dueDate → clear мовчки не зберігався.
+d8a569aa <review> FORM-схема відхиляла UA-кому '1,5' (numericString→NaN) → safeParse-гейт блокував submit;
+fix optionalMoneyNumber()/moneyString у form-схемах (endpoint не чіпано). ⚠️ Той самий кома-клас
+латентний у Invoice/PO/StockDoc/SupplierReturn FORM-схемах (PO parseFloat('1,5')=1 тихе усічення) —
+поза scope Ф5, кандидат на наступний фікс.
+8a55bf62 <tester> 0 багів; +2 runtime-guard тести (retry-dedup + double-submit через RHF shim).
 tsc shared+api+web 0. api 2479/2479, web 343/343, work-order-schema 17/17, WO module 131/131.
 
 Аудит #1 Фаза 4 — 4 документ-модалки на zod+RHF зі спільними схемами — 2026-09-17, HEAD 50567fd8:
-  eb063aaa SupplierPayment: supplier-payment.schema (sourceType↔account superRefine, moneyString()
-           UA-кома), controller ZodValidationPipe, RHF-модалка +dirty-guard (нового не було).
-  6f863a95 StockDocument: stock-document.schema (TRANSFER superRefine Bug #462), RHF+useFieldArray
-           (lines у тілі $transaction, без окремого /lines-endpoint).
-  89d9ff98 SupplierReturn: supplier-return.schema (price required, purchaseOrderId create-only),
-           RHF+useFieldArray з INLINE-редагуванням рядків (register(lines.N.quantity)), unitOfMeasureId.
-  40c6cec8 PurchaseOrder (найскладніша, 1981р): purchase-order.schema (contractId/trackingNumber
-           nullable update), RHF+useFieldArray; receive/Excel/pricing/multicurrency/create-then-edit
-           збережено. FIX (review): inline-edit editingKey=field.id (не line._key) — edit-row інакше
-           не активувалась (жоден тест не ганяв inline-edit → спіймано у review перед комітом).
-  cf7de79c review-фікс: firstSchemaError() у PO (змістовна line-item помилка замість хардкоду) +
-           allowedTransitions у StockDoc у useMemo. 50567fd8 tester Bug #756 (flaky test → timeout:2000).
-  Патерн MP-F6/MP-F6.1: спільна zod-схема = ЄДИНЕ джерело валідації web↔api (ZodValidationPipe на беку +
-  zodResolver на фронті). Усі рядки-документи (StockDoc/SR/PO) шлють lines У ТІЛІ (атомарно), на відміну
-  від Invoice (окремий /lines-endpoint + retry). QA: sync чисто → review 3 фікси → tester 0 продакшн-багів.
+eb063aaa SupplierPayment: supplier-payment.schema (sourceType↔account superRefine, moneyString()
+UA-кома), controller ZodValidationPipe, RHF-модалка +dirty-guard (нового не було).
+6f863a95 StockDocument: stock-document.schema (TRANSFER superRefine Bug #462), RHF+useFieldArray
+(lines у тілі $transaction, без окремого /lines-endpoint).
+89d9ff98 SupplierReturn: supplier-return.schema (price required, purchaseOrderId create-only),
+RHF+useFieldArray з INLINE-редагуванням рядків (register(lines.N.quantity)), unitOfMeasureId.
+40c6cec8 PurchaseOrder (найскладніша, 1981р): purchase-order.schema (contractId/trackingNumber
+nullable update), RHF+useFieldArray; receive/Excel/pricing/multicurrency/create-then-edit
+збережено. FIX (review): inline-edit editingKey=field.id (не line._key) — edit-row інакше
+не активувалась (жоден тест не ганяв inline-edit → спіймано у review перед комітом).
+cf7de79c review-фікс: firstSchemaError() у PO (змістовна line-item помилка замість хардкоду) +
+allowedTransitions у StockDoc у useMemo. 50567fd8 tester Bug #756 (flaky test → timeout:2000).
+Патерн MP-F6/MP-F6.1: спільна zod-схема = ЄДИНЕ джерело валідації web↔api (ZodValidationPipe на беку +
+zodResolver на фронті). Усі рядки-документи (StockDoc/SR/PO) шлють lines У ТІЛІ (атомарно), на відміну
+від Invoice (окремий /lines-endpoint + retry). QA: sync чисто → review 3 фікси → tester 0 продакшн-багів.
 tsc shared+api+web 0. api 2462/2462, web 793/793, 4 schema-специ 38/38.
 
 Аудит #1 Фаза 1 — Employee на zod + react-hook-form — 2026-09-16, HEAD 2f974834:
-  eb3582cb feat(forms): Employee на zod + RHF — employeeFormSchema (superRefine крос-польові),
-           rateSchemeSchema перенесено у @sto/shared (реекспорт з api dto), numericString()
-           валідатор, controller create/update через ZodValidationPipe, EmployeeEditModal на
-           RHF+zodResolver (Controller для PhoneInput/DatePickerInput, міст rhfDirty→markDirty).
-  2f974834 review-фікс: flatRateNumber() — приховані неактивні числові поля (за rateType) не
-           блокують сабміт не-локалізованим NaN-меседжем; фінітність активного поля у superRefine.
+eb3582cb feat(forms): Employee на zod + RHF — employeeFormSchema (superRefine крос-польові),
+rateSchemeSchema перенесено у @sto/shared (реекспорт з api dto), numericString()
+валідатор, controller create/update через ZodValidationPipe, EmployeeEditModal на
+RHF+zodResolver (Controller для PhoneInput/DatePickerInput, міст rhfDirty→markDirty).
+2f974834 review-фікс: flatRateNumber() — приховані неактивні числові поля (за rateType) не
+блокують сабміт не-локалізованим NaN-меседжем; фінітність активного поля у superRefine.
 tsc shared+api+web 0. employee-schema 15/15, employees 27/27, EmployeeEditModal 4/4.
 
 Generic Excel-імпорт товарів (FRONTEND) — 2026-09-15, HEAD d91fe897 (3 коміти):
-  b913ab48 useExcelImport хуки (preview multipart / apply JSON / counterparty mapping GET+PUT)
-           + ExcelImportWizard.tsx (generic ui/, 2-крокова модалка matched/ambiguous/notFound)
-  03a098c9 підключення майстра до PurchaseOrderCreateModal + StockDocumentCreateModal
-           («Завантажити з Excel» поряд з XlsxImportButton, стабільний onClose)
-  d91fe897 review-фікс: синх double-submit guard (handlePreview/handleApply) + once-per-open
-           застосування savedMapping (mappingAppliedRef проти react-query refetch-clobber)
+b913ab48 useExcelImport хуки (preview multipart / apply JSON / counterparty mapping GET+PUT) + ExcelImportWizard.tsx (generic ui/, 2-крокова модалка matched/ambiguous/notFound)
+03a098c9 підключення майстра до PurchaseOrderCreateModal + StockDocumentCreateModal
+(«Завантажити з Excel» поряд з XlsxImportButton, стабільний onClose)
+d91fe897 review-фікс: синх double-submit guard (handlePreview/handleApply) + once-per-open
+застосування savedMapping (mappingAppliedRef проти react-query refetch-clobber)
 web tsc 0 (--incremental false — фантомна PricingRulesClient обходиться), 15/15 модалок зелені.
 
 Generic Excel-імпорт товарів (BACKEND) — 2026-09-15, HEAD 5f3ae56c (3 feature-коміти):
-  a4e93da8 normalizeArticle util + skuNormalized/normalizedSynonym SOT + resolveByNameOrSynonym
-  228ebadb xlsx adapter registry (PO/SD) + previewImport/applyImport + DTO + controller (DI-drift #724)
-  5f3ae56c CounterpartyImportMapping module (GET/PUT /counterparties/:id/import-mapping)
+a4e93da8 normalizeArticle util + skuNormalized/normalizedSynonym SOT + resolveByNameOrSynonym
+228ebadb xlsx adapter registry (PO/SD) + previewImport/applyImport + DTO + controller (DI-drift #724)
+5f3ae56c CounterpartyImportMapping module (GET/PUT /counterparties/:id/import-mapping)
 DB-крок був окремим комітом 44e17aba (schema). tsc 0, 297+288 тестів зелені.
 Деталі → CHANGELOG.md.
+
 ```
 
 ---
@@ -625,3 +641,4 @@ DB-крок був окремим комітом 44e17aba (schema). tsc 0, 297+2
 **НЕ** додавати сюди деталі рішень, full bug descriptions, список виправлень (файл має лишатись
 ~150 рядків). Деталі → `CHANGELOG.md` (append, 3–5 рядків max per commit).
 Патерн/правило → відповідний довідник (одне місце правди).
+```
