@@ -13,6 +13,12 @@ overrides:
   # @fastify/* peer-ranges, дедуп у одну копію).
   fastify: '4.28.1'
   next: '>=15.3.6'
+# pdfjs-dist тягне optional @napi-rs/canvas (нативні бінарники під УСІ платформи у lock:
+# android/darwin/linux×6/win). Ми використовуємо лише getTextContent() — рендер у canvas не
+# потрібен, тож виключаємо: офлайн-інсталятор (ADR-003) не має тягнути чужі платформні .node.
+neverBuiltDependencies:
+  - '@napi-rs/canvas'
+
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
