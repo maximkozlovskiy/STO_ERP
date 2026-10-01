@@ -6199,3 +6199,58 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **Web component:** PayrollBreakdown 5/5 (новий файл — раніше payroll не мав component-тестів). tsc web **0**.
 - **E2E Playwright:** payroll 7/7 (6 наявних + 1 drill-down).
 - **VERDICT:** фіча стабільна на edge-cases. Багів нема — покриття посилено (point 8/9 gaps закрито).
+
+---
+
+## Session 2026-10-02 — Bug hunt фічі імпорту накладних (PDF/CSV, автодетект, replace/append)
+
+**Скоуп:** коміти 44085da0..dece8e6a + c22307dc (docs) + 357e3d04 (review-фікс) + **a78dc80d**
+(тотали append → SQL-агрегація замість findMany+take). Модуль `apps/api/src/modules/xlsx/`,
+`ExcelImportWizard.tsx`, `packages/shared/src/import/header-detect.ts`.
+
+**Фокус (за завданням):** E2E та інтеграція — unit-рівень уже добре покритий (102 xlsx + 35 header-detect + 22 wizard).
+
+### БАГІВ НЕ ЗНАЙДЕНО. Покриття посилено 2 новими тест-файлами.
+
+Статичний аналіз + реальні прогони підтвердили коректність усіх ризикових місць:
+
+1. **Фінансова логіка append/replace/merge (R-max) — ПЕРЕВІРЕНО НА ЖИВІЙ БД.**
+   Новий `document-line-import.adapter.integration.spec.ts` (6 тестів, жива Postgres):
+   - append 2+2 → 4 рядки, `totalAmount` = Σ(quantity×price) ВСІХ, `totalVat`/`totalAmountBase` узгоджені ✓ (пункт 3)
+   - append з дублікатом goodId → ЗЛИТТЯ (кількість додалась, ціна нова), не другий рядок ✓ (пункт 4)
+   - replace → старі soft-deleted, нові на місці, тотали лише по нових ✓ (пункт 5)
+   - assertDraft: не-DRAFT → ForbiddenException ✓ (пункт 6)
+   - **scale 1201 рядків (> MAX_QUERY_LIMIT=1000):** SQL-агрегація a78dc80d рахує суму по ВСІХ
+     рядках без зрізу (Σ=1300, не занижено). Це ЄДИНЕ реальне покриття нового raw-SQL
+     (unit-spec мокає `$queryRaw`). Ідентифікатори колонок, COALESCE, orgId+deletedAt фільтри —
+     всі коректні, розбіжностей у копійках і tenant-витоку немає ✓ (пункт 7, вимога координатора)
+
+2. **R2 — пріоритет мапінгу (saved > detected > default):** state-machine у ExcelImportWizard
+   коректна. `CounterpartyImportMappingsService.get` при відсутності запису віддає дефолт-пустушку
+   (всі cols null), а `isMeaningfulMapping` її відкидає → автодетект не затирається порожнім
+   savedMapping. one-shot `mappingAppliedRef` захищає від refetch-перезапису. ✓
+
+3. **Канали у ЖИВОМУ браузері** — новий `apps/web/e2e/import-wizard.spec.ts` (2 тести):
+   - CSV (UTF-8 BOM + роздільник кома + значення в лапках через десяткову кому) → автодетект
+     колонок за укр. шапкою, ролі підсвічені, передперегляд, значення прочитані коректно ✓ (пункт 1)
+   - PDF без текстового шару (image-only сурогат) → зрозуміле повідомлення в модалці (НЕ toast),
+     кнопка «Ідентифікувати» disabled, модалка НЕ порожня ✓ (пункт 1 pdf-скан)
+
+4. **Регресія E2E — чисто:** crud-purchase-order 7/7, payroll 7/7, crud-stock-document 5/5. ✓ (пункт 8)
+
+### Спостереження (НЕ баг, поза скоупом)
+
+- **appendLines merge-детекція обмежена першими MAX_QUERY_LIMIT=1000 наявними рядками**
+  (`existing` findMany має `take`). Якщо PO має >1000 активних рядків і новий рядок дублює
+  товар із «хвоста» (>1000), він створиться окремим рядком, а не доллється. Тотали при цьому
+  ЛИШАЮТЬСЯ коректними (SQL-SUM по ВСІХ рядках). best-effort merge; документ із >1000 рядків —
+  екзотика. LOW/латентний, фінансово безпечно.
+
+### Тести/регресія — CLEAN
+
+- **API:** 2822/2822 (було 2816 + 6 нових integration). tsc api **0**.
+- **Shared:** header-detect 35/35. tsc shared **0**.
+- **Web component:** ExcelImportWizard 22/22. tsc web **0**.
+- **E2E Playwright:** import-wizard 2/2 (новий), + регресія PO/payroll/stock 19/19.
+- **VERDICT:** фіча стабільна. Багів немає — покриття закрито на двох раніше-непокритих рівнях
+  (жива-БД фінансова логіка append + реальний браузерний прохід CSV/PDF-скан каналів).
