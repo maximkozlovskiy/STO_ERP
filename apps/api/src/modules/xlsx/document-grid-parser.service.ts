@@ -13,7 +13,6 @@ import {
 import {
   OCR_PROVIDER,
   OcrModelsMissingError,
-  OcrNoTextError,
   OcrTimeoutError,
   RasterizeUnavailableError,
 } from './ocr-text-layer.provider';
@@ -174,8 +173,9 @@ export class DocumentGridParserService {
     if (e instanceof RasterizeUnavailableError) {
       return new BadRequestException(translateError('err.xlsx.pdfScanOcrUnavailable', getLocale()));
     }
-    if (e instanceof PdfScannedError || e instanceof OcrNoTextError) {
-      // І текстового шару немає, і OCR слів не знайшов.
+    if (e instanceof PdfScannedError) {
+      // І текстового шару немає, і OCR слів не знайшов (провайдер повернув null → pdfToGrid
+      // кидає PdfScannedError як єдиний сигнал «жоден канал тексту не дав результату»).
       return new BadRequestException(translateError('err.xlsx.pdfNoTextLayer', getLocale()));
     }
     if (e instanceof PdfNoTableError) {

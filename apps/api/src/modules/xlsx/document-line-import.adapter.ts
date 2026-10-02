@@ -56,8 +56,6 @@ export interface DocumentLineImportAdapter {
     lines: ImportLineInput[],
     createdBy?: string,
   ): Promise<void>;
-  /** Кількість активних рядків документа — UI показує «замінити N позицій». */
-  countLines(orgId: string, docId: string): Promise<number>;
 }
 
 // ─── Purchase Order ────────────────────────────────────────────────────────────
@@ -235,12 +233,6 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       },
     });
   }
-
-  async countLines(orgId: string, docId: string): Promise<number> {
-    return this.prisma.purchaseOrderLine.count({
-      where: { purchaseOrderId: docId, orgId, deletedAt: null },
-    });
-  }
 }
 
 // ─── Stock Document (RECEIPT та ін.) ─────────────────────────────────────────────
@@ -330,12 +322,6 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
         })),
       });
     }
-  }
-
-  async countLines(orgId: string, docId: string): Promise<number> {
-    return this.prisma.stockDocumentLine.count({
-      where: { stockDocumentId: docId, orgId, deletedAt: null },
-    });
   }
 }
 

@@ -6,8 +6,6 @@ import { PAGE_Y_OFFSET } from './pdf-grid.extractor';
 import { rasterizePdfPages } from './pdf-rasterizer';
 import type { ExtractOpts, TextFragment, TextLayerProvider } from './text-layer.provider';
 
-/** OCR відпрацював, але слів не знайшов (порожнє/надто шумне зображення). */
-export class OcrNoTextError extends Error {}
 /** OCR не вклався у бюджет часу. */
 export class OcrTimeoutError extends Error {}
 /** Моделі розпізнавання не знайдені на диску (битий образ / забутий COPY у Dockerfile). */
