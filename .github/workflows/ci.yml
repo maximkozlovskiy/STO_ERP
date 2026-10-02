@@ -142,6 +142,101 @@ jobs:
       - name: Integration tests
         run: pnpm --filter @sto/api exec vitest run src/prisma src/modules/dead-letter src/modules/work-orders/work-order-stock-effects.integration.spec.ts src/modules/xlsx/document-line-import.adapter.integration.spec.ts
 
+  # E2E (smoke-підмножина). 321 тест ганявся ЛИШЕ локально — у CI Playwright не було
+  # взагалі. Тут беремо smoke + auth-flow (14 тестів): вони відповідають на головне
+  # питання «чи піднявся стек і чи працює вхід», не перетворюючи кожен PR на 5 хвилин.
+  #
+  # NEXT_PUBLIC_E2E=1 ОБОВ'ЯЗКОВИЙ при запуску web: прапорець гейтиться на етапі збірки,
+  # і без нього auth-hatch tree-shake-иться геть → storageState не допомагає і ВСІ тести
+  # редіректять на /login. Ця пастка вже траплялась; у playwright.config webServer у CI
+  # вимкнений саме тому, що сервер піднімає цей workflow.
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sto
+          POSTGRES_PASSWORD: sto_dev_secret
+          POSTGRES_DB: sto_erp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sto -d sto_erp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sto:sto_dev_secret@localhost:5432/sto_erp
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma migrate + generate + seed
+        run: |
+          pnpm --filter @sto/database exec prisma migrate deploy
+          pnpm --filter @sto/database exec prisma generate
+          pnpm --filter @sto/database run seed
+
+      - name: Build shared
+        run: pnpm --filter @sto/shared build
+
+      - name: Start API
+        run: |
+          pnpm --filter @sto/api dev > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/health > /dev/null && exit 0
+            sleep 3
+          done
+          echo "API не піднявся за 180с:"; tail -40 /tmp/api.log; exit 1
+
+      - name: Start web
+        env:
+          # Без цього прапорця auth-hatch не компілюється і ВСІ тести йдуть у /login.
+          NEXT_PUBLIC_E2E: '1'
+        run: |
+          pnpm --filter @sto/web dev > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001 > /dev/null && exit 0
+            sleep 3
+          done
+          echo "web не піднявся за 180с:"; tail -40 /tmp/web.log; exit 1
+
+      - name: Install Playwright browser
+        run: pnpm --filter @sto/web exec playwright install --with-deps chromium
+
+      - name: Run smoke E2E
+        run: pnpm --filter @sto/web exec playwright test e2e/smoke.spec.ts e2e/auth-flow.spec.ts --reporter=list
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            apps/web/test-results/
+            /tmp/api.log
+            /tmp/web.log
+          retention-days: 7
+
   installer-scripts:
     runs-on: windows-latest
     steps:
