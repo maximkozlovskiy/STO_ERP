@@ -284,7 +284,7 @@ export default function OrgTab() {
                       variant: 'destructive',
                     });
                     if (!ok) return;
-                    setOrgSettings({ ...orgSettings, costMethod: value as CostMethod });
+                    setOrgSettings({ ...orgSettings, costMethod: value });
                   }}
                   className={cn(
                     'flex-1 min-w-40 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors text-left',

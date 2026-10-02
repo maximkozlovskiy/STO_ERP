@@ -90,7 +90,7 @@ export function useReferenceData() {
     // Always re-fetch to avoid stale deleted lifts appearing in the select
     apiFetch<Lift[] | { items: Lift[] }>('/lifts')
       .then(r => {
-        const list = Array.isArray(r) ? r : ((r as { items: Lift[] }).items ?? []);
+        const list = Array.isArray(r) ? r : (r.items ?? []);
         setLifts(list);
         setCache('cache:lifts', list);
       })
@@ -100,7 +100,7 @@ export function useReferenceData() {
     if (cachedWarehouses) setWarehouses(cachedWarehouses);
     apiFetch<Warehouse[] | { items: Warehouse[] }>('/warehouses')
       .then(r => {
-        const all = Array.isArray(r) ? r : ((r as { items: Warehouse[] }).items ?? []);
+        const all = Array.isArray(r) ? r : (r.items ?? []);
         const list = all.filter(w => !w.deletedAt && w.type !== 'TIRE_HOTEL');
         setWarehouses(list);
         setCache('cache:warehouses', list);

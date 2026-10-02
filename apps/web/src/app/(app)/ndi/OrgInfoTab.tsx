@@ -167,12 +167,11 @@ export default function OrgInfoTab() {
                 loading="lazy"
                 decoding="async"
                 onError={e => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  e.currentTarget.style.display = 'none';
                   const parent = e.currentTarget.parentElement;
                   if (parent) {
-                    const fallback = parent.querySelector(
-                      '[data-logo-fallback]',
-                    ) as HTMLElement | null;
+                    // generic: querySelector віддає Element, .style є в HTMLElement.
+                    const fallback = parent.querySelector<HTMLElement>('[data-logo-fallback]');
                     if (fallback) fallback.style.display = 'flex';
                   }
                 }}

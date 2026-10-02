@@ -29,7 +29,7 @@ if (!i18n.isInitialized) {
     resources,
     lng: resolveInitialLocale(),
     fallbackLng: DEFAULT_LOCALE,
-    supportedLngs: SUPPORTED_LOCALES as unknown as string[],
+    supportedLngs: SUPPORTED_LOCALES,
     defaultNS: 'common',
     ns: [
       'common',

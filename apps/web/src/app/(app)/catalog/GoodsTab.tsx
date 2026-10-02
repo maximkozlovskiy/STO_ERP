@@ -490,7 +490,7 @@ export default function GoodsTab() {
       load();
       // Якщо створювали — одразу відкриваємо для редагування (додати штрихкоди, UoM)
       if (wasCreating) {
-        setEditGood(saved as Good);
+        setEditGood(saved);
       } else {
         setEditGood(null);
       }
@@ -1077,7 +1077,7 @@ export default function GoodsTab() {
 
       <GoodEditModal
         open={goodModalOpen || !!editGood}
-        good={editGood as GoodForModal | null}
+        good={editGood}
         brands={brands}
         units={units}
         suppliers={suppliers}

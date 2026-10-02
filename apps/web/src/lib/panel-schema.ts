@@ -102,7 +102,7 @@ export function buildPanelFields<T extends object>(
 
   return ordered.map(def => {
     const raw = record[def.key as keyof T];
-    const override = renderOverrides?.[def.key as Extract<keyof T, string>];
+    const override = renderOverrides?.[def.key];
     const value: ReactNode = override
       ? override(raw, record)
       : def.render

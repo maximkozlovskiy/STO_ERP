@@ -381,9 +381,9 @@ export function CreateWorkOrderModal({
   // логіка (`form.plannedStartAt`, header-JSX, useEffect-и, save/create) читає його без змін.
   const form: WorkOrderFormState = useMemo(
     () => ({
-      branchId: (watchedAll.branchId as string) ?? '',
-      vehicleId: (watchedAll.vehicleId as string) ?? '',
-      counterpartyId: (watchedAll.counterpartyId as string) ?? '',
+      branchId: watchedAll.branchId ?? '',
+      vehicleId: watchedAll.vehicleId ?? '',
+      counterpartyId: watchedAll.counterpartyId ?? '',
       contractId: (watchedAll.contractId as string) ?? '',
       currencyId: (watchedAll.currencyId as string) ?? '',
       liftId: (watchedAll.liftId as string) ?? '',
@@ -407,9 +407,9 @@ export function CreateWorkOrderModal({
     (updater: WorkOrderFormState | ((prev: WorkOrderFormState) => WorkOrderFormState)) => {
       const v = getValues();
       const prev: WorkOrderFormState = {
-        branchId: (v.branchId as string) ?? '',
-        vehicleId: (v.vehicleId as string) ?? '',
-        counterpartyId: (v.counterpartyId as string) ?? '',
+        branchId: v.branchId ?? '',
+        vehicleId: v.vehicleId ?? '',
+        counterpartyId: v.counterpartyId ?? '',
         contractId: (v.contractId as string) ?? '',
         currencyId: (v.currencyId as string) ?? '',
         liftId: (v.liftId as string) ?? '',
@@ -451,7 +451,7 @@ export function CreateWorkOrderModal({
     (updater: LocalLine[] | ((prev: LocalLine[]) => LocalLine[])) => {
       const prev = (getValues('lines') as unknown as LocalLine[]) ?? [];
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      replaceLines(next as unknown as FormLineArg[]);
+      replaceLines(next);
     },
     [getValues, replaceLines],
   );
@@ -459,7 +459,7 @@ export function CreateWorkOrderModal({
     (updater: LocalPart[] | ((prev: LocalPart[]) => LocalPart[])) => {
       const prev = (getValues('parts') as unknown as LocalPart[]) ?? [];
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      replaceParts(next as unknown as FormPartArg[]);
+      replaceParts(next);
     },
     [getValues, replaceParts],
   );
@@ -743,8 +743,8 @@ export function CreateWorkOrderModal({
           currencyId: wo.currencyId ?? '',
           liftId: wo.liftId ?? '',
           description: wo.description ?? '',
-          priority: (wo.priority ?? 'NORMAL') as WorkOrderFormInput['priority'],
-          repairCategory: (wo.repairCategory ?? '') as WorkOrderFormInput['repairCategory'],
+          priority: wo.priority ?? 'NORMAL',
+          repairCategory: wo.repairCategory ?? '',
           documentDate: wo.documentDate ? wo.documentDate.slice(0, 10) : kyivToday(),
           plannedStartAt: isoToKyivLocalDateTime(wo.plannedAt),
           plannedEndAt: isoToKyivLocalDateTime(wo.dueDate),

@@ -1757,9 +1757,7 @@ export function PurchaseOrderCreateModal({
                             className="px-3 py-2 text-[12px] tabular-nums cursor-text hover:bg-primary/5 transition-colors"
                             title="Клікніть щоб редагувати"
                             onClick={e => {
-                              const input = (e.currentTarget as HTMLTableCellElement).querySelector(
-                                'input',
-                              );
+                              const input = e.currentTarget.querySelector('input');
                               input?.focus();
                             }}
                           >
@@ -1776,7 +1774,7 @@ export function PurchaseOrderCreateModal({
                                 update(index, {
                                   ...line,
                                   pricedSalePrice: val,
-                                } as unknown as FormLineItem);
+                                });
                               }}
                               onKeyDown={e => {
                                 if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
@@ -2019,11 +2017,11 @@ export function PurchaseOrderCreateModal({
             ...l,
             goodId: item.id,
             goodName: item.primary,
-            goodSku: (item as GoodItem).sku ?? null,
-            goodInternalCode: (item as GoodItem).internalCode ?? null,
-            goodBrandName: (item as GoodItem).brandName ?? null,
-            unit: (item as GoodItem).unit ?? 'шт',
-            price: String((item as GoodItem).purchasePrice ?? ''),
+            goodSku: item.sku ?? null,
+            goodInternalCode: item.internalCode ?? null,
+            goodBrandName: item.brandName ?? null,
+            unit: item.unit ?? 'шт',
+            price: String(item.purchasePrice ?? ''),
           }));
           setGoodSearchOpen(false);
         }}

@@ -782,9 +782,7 @@ export default function EmployeesPage() {
 
       <EmployeeEditModal
         open={modalEmp !== null}
-        employee={
-          modalEmp === 'create' || modalEmp === null ? null : (modalEmp as EmployeeForModal)
-        }
+        employee={modalEmp === 'create' || modalEmp === null ? null : modalEmp}
         onClose={() => setModalEmp(null)}
         onSaved={handleEmployeeSaved}
       />

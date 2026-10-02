@@ -1200,7 +1200,7 @@ export function StockDocumentCreateModal({
             ...l,
             goodId: item.id,
             goodName: item.primary,
-            unit: (item as GoodItem).unit ?? 'шт',
+            unit: item.unit ?? 'шт',
           }));
           setGoodSearchOpen(false);
         }}

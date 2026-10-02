@@ -207,7 +207,7 @@ export default function DashboardPage() {
       (invoicesData as { items?: InvoiceSummary[] }).items ?? [];
     const kyivStr = KYIV_YEAR_MONTH_DAY_FMT.format(new Date());
     const [kyivYear, kyivMonth] = kyivStr.split('-').map(Number);
-    const monthStart = `${kyivYear}-${String(kyivMonth!).padStart(2, '0')}-01`;
+    const monthStart = `${kyivYear}-${String(kyivMonth).padStart(2, '0')}-01`;
     const revRows = (revenueData as { rows?: RevenueDay[] } | undefined)?.rows ?? [];
     const monthRevenue = revRows
       .filter(r => r.date >= monthStart)

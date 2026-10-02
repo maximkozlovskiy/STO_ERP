@@ -213,7 +213,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
                 <table className="text-[12px] tabular-nums">
                   <thead>
                     <tr className="bg-secondary">
-                      {rawRows[0]!.map((_, ci) => (
+                      {rawRows[0].map((_, ci) => (
                         <th key={ci} className="px-2 py-1 text-left font-medium whitespace-nowrap">
                           {t('import.step2.col', { n: ci + 1 })}
                         </th>

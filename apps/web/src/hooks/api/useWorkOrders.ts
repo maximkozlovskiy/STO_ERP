@@ -104,7 +104,7 @@ export function useWorkOrderTransition() {
       await qc.cancelQueries({ queryKey: workOrdersKeys.lists() });
       return patchListItem<WorkOrder>(qc, workOrdersKeys.lists(), id, o => ({ ...o, status }));
     },
-    onError: (_e, _v, restore) => (restore as (() => void) | undefined)?.(),
+    onError: (_e, _v, restore) => restore?.(),
     onSettled: () => invalidateWorkOrderSideEffects(qc),
   });
 }
@@ -134,7 +134,7 @@ export function useDeleteWorkOrder() {
         for (const [key, data] of snapshots) qc.setQueryData(key, data);
       };
     },
-    onError: (_e, _v, restore) => (restore as (() => void) | undefined)?.(),
+    onError: (_e, _v, restore) => restore?.(),
     onSettled: () => invalidateWorkOrderSideEffects(qc),
   });
 }

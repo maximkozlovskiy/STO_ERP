@@ -66,7 +66,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
         const arr = Array.isArray(r)
           ? r
           : Array.isArray((r as { items?: CategoryNode[] }).items)
-            ? (r as { items: CategoryNode[] }).items
+            ? r.items
             : [];
         setCategories(arr);
       })

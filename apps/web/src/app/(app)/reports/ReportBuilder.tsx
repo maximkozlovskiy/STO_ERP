@@ -1099,7 +1099,7 @@ function ResultView({
               {aggAliases.map(a => {
                 const active = sort?.alias === a;
                 const ariaSort: 'ascending' | 'descending' | 'none' = active
-                  ? sort!.dir === 'asc'
+                  ? sort.dir === 'asc'
                     ? 'ascending'
                     : 'descending'
                   : 'none';
@@ -1119,7 +1119,7 @@ function ResultView({
                       )}
                     >
                       {aggAliasLabel(a, result, t)}
-                      {active && (sort!.dir === 'desc' ? '↓' : '↑')}
+                      {active && (sort.dir === 'desc' ? '↓' : '↑')}
                     </button>
                   </th>
                 );
@@ -1387,9 +1387,7 @@ function exportReport(result: ReportRunResult, format: 'csv' | 'xlsx', t: TFunct
     // Плоский режим — СКЛЕЄНІ детальні рядки (ті самі, що на екрані), а не лише «Усього».
     const cols = result.columns;
     const detail = result.result.detailRows;
-    const showCount = detail.some(
-      r => typeof r.__mergedCount === 'number' && (r.__mergedCount as number) > 1,
-    );
+    const showCount = detail.some(r => typeof r.__mergedCount === 'number' && r.__mergedCount > 1);
     const header = [
       t('export.number'),
       ...cols.map(c => c.label),

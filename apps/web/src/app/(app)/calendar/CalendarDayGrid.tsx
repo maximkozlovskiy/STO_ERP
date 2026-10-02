@@ -316,8 +316,8 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
   const { setNodeRef, isOver } = useDroppable({ id: `lift-${liftId}`, data: { liftId } });
 
   const showGhost = ghost?.liftId === liftId && ghost.endH > ghost.startH;
-  const ghostLeft = showGhost ? ((ghost!.startH - windowStart) / totalHours) * 100 : 0;
-  const ghostWidth = showGhost ? ((ghost!.endH - ghost!.startH) / totalHours) * 100 : 0;
+  const ghostLeft = showGhost ? ((ghost.startH - windowStart) / totalHours) * 100 : 0;
+  const ghostWidth = showGhost ? ((ghost.endH - ghost.startH) / totalHours) * 100 : 0;
   const showPending = pending?.liftId === liftId;
 
   return (
@@ -356,14 +356,14 @@ const DroppableLiftRow = memo(function DroppableLiftRow({
           style={{ left: `${ghostLeft}%`, width: `${ghostWidth}%` }}
         >
           <span className="text-xs text-primary px-1.5 font-medium">
-            {decimalHoursToHHMM(ghost!.startH)}–{decimalHoursToHHMM(ghost!.endH)}
+            {decimalHoursToHHMM(ghost.startH)}–{decimalHoursToHHMM(ghost.endH)}
           </span>
         </div>
       )}
 
       {showPending && (
         <PendingSlotBlock
-          pending={pending!}
+          pending={pending}
           windowStart={windowStart}
           totalHours={totalHours}
           onOpen={onPendingOpen}

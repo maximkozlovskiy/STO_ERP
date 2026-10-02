@@ -346,7 +346,7 @@ export function InvoiceCreateModal({
           lines: loadedLines,
         });
         setCounterpartyDisplay(inv.counterpartyName ?? '');
-        initialLineIdsRef.current = new Set(loadedLines.map(l => l.id!).filter(Boolean));
+        initialLineIdsRef.current = new Set(loadedLines.map(l => l.id).filter(Boolean));
       })
       .catch(e => {
         if (cancelled) return;
@@ -512,7 +512,7 @@ export function InvoiceCreateModal({
       // ре-постив попередні при повторному кліку «Створити».
       const remaining = [...linesToPost];
       while (remaining.length) {
-        const line = remaining[0]!;
+        const line = remaining[0];
         if (!line._key || !postedLineKeysRef.current.has(line._key)) {
           await apiFetch(`/invoices/${inv.id}/lines`, {
             method: 'POST',

@@ -113,7 +113,7 @@ type LinkedCountsField = keyof LinkedCountsEntry;
 type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 
 // Stable empty fallback — module-level frozen reference avoids fresh {} per render.
-const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({});
 
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;

@@ -208,7 +208,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
               setActiveIndex(i => Math.max(i - 1, 0));
             } else if (e.key === 'Enter' && activeIndex >= 0) {
               e.preventDefault();
-              handleSelect(items[activeIndex]!);
+              handleSelect(items[activeIndex]);
             } else if (e.key === 'Escape') {
               setOpen(false);
             }

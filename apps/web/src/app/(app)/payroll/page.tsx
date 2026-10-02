@@ -51,12 +51,9 @@ const STATUS_BADGE: Record<PayrollPeriod['status'], BadgeVariant> = {
 
 // Module-level frozen дефолти (еталон work-orders): стабільна референція, нуль allocate
 // у render; статуси дзеркалять PAYROLL_PERIOD_STATUSES у payroll.dto.ts.
-const PERIOD_STATUSES = Object.freeze([
-  'DRAFT',
-  'COMPUTED',
-  'PAID',
-  'CANCELLED',
-]) as readonly PayrollPeriod['status'][];
+// `as const` обов'язковий: без нього Object.freeze дає string[], і STATUS_LABELS[s]
+// не індексується (TS7053).
+const PERIOD_STATUSES = Object.freeze(['DRAFT', 'COMPUTED', 'PAID', 'CANCELLED'] as const);
 
 // labelKey idiom — мітки резолвляться через t() у компоненті, persistence по `key`.
 const PERIOD_COLUMN_DEFS: Array<{ key: string; labelKey: string }> = [

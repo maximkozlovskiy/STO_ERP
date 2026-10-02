@@ -142,7 +142,7 @@ type LinkedCountsField = keyof LinkedCountsEntry;
 type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 
 // Stable empty fallback — module-level frozen reference avoids fresh {} per render.
-const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({});
 
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;
@@ -170,7 +170,7 @@ type SrLinkedCountsEntry = { purchaseOrder: number; counterparty: number; wareho
 type SrLinkedCountsField = keyof SrLinkedCountsEntry;
 type SrLinkedCountsMap = Record<string, SrLinkedCountsEntry>;
 
-const EMPTY_SR_LINKED_COUNTS: SrLinkedCountsMap = Object.freeze({}) as SrLinkedCountsMap;
+const EMPTY_SR_LINKED_COUNTS: SrLinkedCountsMap = Object.freeze({});
 
 const DOC_COUNTERS_SR: Array<{
   field: SrLinkedCountsField;
@@ -1009,7 +1009,7 @@ function PurchaseOrdersPageClient() {
                             return (
                               <TableCell key="status">
                                 <Badge
-                                  variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status] as BadgeVariant}
+                                  variant={SUPPLIER_RETURN_STATUS_BADGE[sr.status]}
                                   tooltip={SUPPLIER_RETURN_STATUS_DESCRIPTIONS[sr.status]}
                                 >
                                   {supplierReturnStatusLabel(sr.status)}

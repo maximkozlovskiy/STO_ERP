@@ -116,7 +116,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   const [supplierName, setSupplierName] = useState('');
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
 
-  const sourceType = watch('sourceType') as PaymentSourceType;
+  const sourceType = watch('sourceType');
   const supplierId = watch('supplierId');
 
   const [saving, setSaving] = useState(false);
@@ -158,7 +158,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   const createMut = useCreateSupplierPayment();
 
   // Режим редагування — тягнемо наявну оплату для заповнення форми.
-  const { data: existing } = useSupplierPayment(isEdit && open ? paymentId! : null);
+  const { data: existing } = useSupplierPayment(isEdit && open ? paymentId : null);
   const editNonDraft = isEdit && existing != null && existing.status !== 'DRAFT';
 
   // Заповнення форми з наявної оплати (edit) — раз на завантаження запису.
@@ -303,7 +303,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       };
       try {
         if (isEdit) {
-          await updateMut.mutateAsync({ id: paymentId!, data: payload });
+          await updateMut.mutateAsync({ id: paymentId, data: payload });
           if (features.toastEnabled) toast.success('Оплату оновлено');
         } else if (createdIdRef.current) {
           // Оплату вже створено на попередній спробі (retry після обриву на
@@ -414,7 +414,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
                   required
                   value={field.value}
                   onChange={e => {
-                    field.onChange(e.target.value as PaymentSourceType);
+                    field.onChange(e.target.value);
                     // зміна джерела скидає обидва рахунки — щоб не лишити orphan FK
                     // невідповідного типу (backend guard відхилить, superRefine також).
                     setValue('bankAccountId', '', { shouldDirty: true });

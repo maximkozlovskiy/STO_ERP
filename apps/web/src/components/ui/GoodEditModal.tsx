@@ -260,7 +260,7 @@ export function GoodEditModal({
         barcode: isEdit ? undefined : values.barcode,
       };
       const saved = isEdit
-        ? await apiFetch<GoodForModal>(`/goods/${good!.id}`, {
+        ? await apiFetch<GoodForModal>(`/goods/${good.id}`, {
             method: 'PATCH',
             body: JSON.stringify(payload),
           })

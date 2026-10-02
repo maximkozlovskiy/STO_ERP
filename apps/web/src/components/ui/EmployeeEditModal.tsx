@@ -173,7 +173,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     defaultValues: EMPTY_FORM,
     mode: 'onBlur',
   });
-  const rateType = watch('rateType') as RateType;
+  const rateType = watch('rateType');
   const grantAccess = watch('grantAccess');
 
   const [saving, setSaving] = useState(false);
@@ -354,7 +354,7 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
           }),
       };
       const saved = isEdit
-        ? await apiFetch<EmployeeForModal>(`/employees/${employee!.id}`, {
+        ? await apiFetch<EmployeeForModal>(`/employees/${employee.id}`, {
             method: 'PATCH',
             body: JSON.stringify(payload),
           })

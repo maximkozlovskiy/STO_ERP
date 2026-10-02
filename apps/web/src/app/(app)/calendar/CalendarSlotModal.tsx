@@ -486,7 +486,7 @@ export function CalendarSlotModal({
           setForm(f => ({ ...f, vehicleId: '' }));
         }
         if (all.length === 1 && !stillValid) {
-          setForm(f => ({ ...f, vehicleId: all[0]!.id }));
+          setForm(f => ({ ...f, vehicleId: all[0].id }));
         }
       } catch {
         if (!ac.signal.aborted && mountedRef.current) setCpVehicles([]);
@@ -683,8 +683,8 @@ export function CalendarSlotModal({
           body: JSON.stringify(body),
         });
         if (res.slots.length === 2) {
-          const s1 = res.slots[0]!;
-          const s2 = res.slots[1]!;
+          const s1 = res.slots[0];
+          const s2 = res.slots[1];
           toast.success(
             t('slot.toastSplit', {
               s1Start: fmtTime(s1.startAt),

@@ -647,7 +647,8 @@ export function useCalendarState() {
         setError('');
         return;
       }
-      const liftRow = target.closest('[data-lift-id]') as HTMLElement | null;
+      // generic-параметр, а не каст: closest() віддає Element, а .dataset є лише в HTMLElement.
+      const liftRow = target.closest<HTMLElement>('[data-lift-id]');
       const liftId = liftRow?.dataset.liftId;
       if (!liftId) return;
       setPendingSlot(null);

@@ -44,7 +44,7 @@ export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
 
   if (tabs.length === 0) return null;
 
-  const activeTab = tabs.find(t => t.key === active) ?? tabs[0]!;
+  const activeTab = tabs.find(t => t.key === active) ?? tabs[0];
 
   return (
     <div className={cn('mt-5 border-t border-border', className)}>

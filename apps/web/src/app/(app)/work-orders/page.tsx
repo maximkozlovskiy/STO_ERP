@@ -141,7 +141,7 @@ type LinkedCountsMap = Record<string, LinkedCountsEntry>;
 // Stable empty fallback — module-level frozen reference avoids fresh {} per render
 // (Bug #328 cascade pattern: even if not feeding useEffect today, a future hook
 // that depends on linkedCounts identity would re-fire each render with a literal).
-const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({}) as LinkedCountsMap;
+const EMPTY_LINKED_COUNTS: LinkedCountsMap = Object.freeze({});
 
 const DOC_COUNTERS: Array<{
   field: LinkedCountsField;

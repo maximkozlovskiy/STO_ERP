@@ -16,7 +16,7 @@ function readOrder(pageKey: string, defaultKeys: string[]): string[] {
     if (!raw) return defaultKeys;
     const stored: unknown = JSON.parse(raw);
     if (Array.isArray(stored) && stored.every(x => typeof x === 'string')) {
-      const storedArr = stored as string[];
+      const storedArr = stored;
       const set = new Set(defaultKeys);
       const ordered = storedArr.filter(k => set.has(k));
       defaultKeys.filter(k => !ordered.includes(k)).forEach(k => ordered.push(k));
@@ -63,7 +63,7 @@ export function useTableColumns(pageKey: string, columns: ColumnDef[]) {
       if (raw) {
         const parsed: unknown = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string'))
-          setVisibleKeys(new Set(parsed as string[]));
+          setVisibleKeys(new Set(parsed));
       }
     } catch {
       /* ignore */
