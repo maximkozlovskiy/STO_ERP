@@ -1,12 +1,20 @@
 import { createRequire } from 'node:module';
 import { loadPdfjs, pdfjsRoot, type PdfDocument, type PdfLoadingTask } from './pdf-grid.extractor';
-import { RasterizeUnavailableError } from './ocr-text-layer.provider';
 
 /**
  * Растеризація PDF-сторінок у PNG — потрібна ЛИШЕ для OCR сканів (PDF без текстового шару).
  * Окремо від pdf-grid.extractor, бо там відповідальність інша — читання готового тексту, і той
  * файл явно задокументований як такий, що працює БЕЗ рендеру.
  */
+
+/**
+ * Растеризація PDF недоступна (немає @napi-rs/canvas). Лише PDF-гілка; фото працюють.
+ *
+ * Клас живе ТУТ, біля єдиного місця, що його кидає. Раніше він був оголошений в
+ * ocr-text-layer.provider, через що виникав цикл імпортів ocr ↔ rasterizer (знайдено
+ * madge при вмиканні детектора циклів).
+ */
+export class RasterizeUnavailableError extends Error {}
 
 const nodeRequire = createRequire(__filename);
 

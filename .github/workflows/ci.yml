@@ -47,6 +47,18 @@ jobs:
       - name: Coverage thresholds (api)
         run: pnpm --filter @sto/api exec vitest run --coverage
 
+      # Циклічні залежності — БЛОКУЮЧИЙ крок: на момент вмикання їх було 0 (три цикли в
+      # xlsx-модулі розірвано винесенням grid-geometry і text-layer-registry), тож поріг
+      # «жодного» утримати реально, і кожен новий цикл видно одразу.
+      - name: Circular dependencies
+        run: pnpm run cycles
+
+      # Мертвий код — ЗВІТНИЙ крок (--no-exit-code): knip корисний, але частина знахідок
+      # лишається оцінковою (динамічні імпорти, ESLint-плагіни). Блокувати на цьому PR не
+      # варто — звіт читається очима.
+      - name: Dead code report
+        run: pnpm run deadcode
+
   # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
   # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
   # відсутній у .NET Framework) прослизнув повз усі аудити. Цей job на windows-latest (Windows

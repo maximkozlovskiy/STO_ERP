@@ -8,14 +8,10 @@ import {
   PdfScannedError,
   PdfUnreadableError,
   fragmentsToGrid,
-  pdfToGrid,
 } from './pdf-grid.extractor';
-import {
-  OCR_PROVIDER,
-  OcrModelsMissingError,
-  OcrTimeoutError,
-  RasterizeUnavailableError,
-} from './ocr-text-layer.provider';
+import { pdfToGrid } from './text-layer-registry';
+import { OCR_PROVIDER, OcrModelsMissingError, OcrTimeoutError } from './ocr-text-layer.provider';
+import { RasterizeUnavailableError } from './pdf-rasterizer';
 
 /** Канал надходження накладної. Дзеркалить розширення файлу. */
 export type GridSourceKind = 'xlsx' | 'csv' | 'pdf' | 'image';

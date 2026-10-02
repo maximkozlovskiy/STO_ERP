@@ -5,8 +5,8 @@ import {
   PdfScannedError,
   PdfUnreadableError,
   PdfjsTextLayerProvider,
-  pdfToGrid,
 } from './pdf-grid.extractor';
+import { pdfToGrid } from './text-layer-registry';
 import type { TextFragment } from './text-layer.provider';
 
 /** Хелпер: фрагмент із дефолтною висотою/шириною (ширина ≈ 6px на символ, як у 9pt-шрифті). */

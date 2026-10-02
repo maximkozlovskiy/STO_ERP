@@ -2,7 +2,9 @@ import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { PAGE_Y_OFFSET, groupFragmentsIntoLines, medianFragmentHeight } from './pdf-grid.extractor';
+// Прямо з grid-geometry, а НЕ через pdf-grid.extractor: той тримає реєстр провайдерів
+// (і знає про цей файл), тож імпорт звідти створював би цикл.
+import { PAGE_Y_OFFSET, groupFragmentsIntoLines, medianFragmentHeight } from './grid-geometry';
 import { rasterizePdfPages } from './pdf-rasterizer';
 import type { ExtractOpts, TextFragment, TextLayerProvider } from './text-layer.provider';
 
@@ -10,8 +12,6 @@ import type { ExtractOpts, TextFragment, TextLayerProvider } from './text-layer.
 export class OcrTimeoutError extends Error {}
 /** Моделі розпізнавання не знайдені на диску (битий образ / забутий COPY у Dockerfile). */
 export class OcrModelsMissingError extends Error {}
-/** Растеризація PDF недоступна (немає @napi-rs/canvas). Лише PDF-гілка; фото працюють. */
-export class RasterizeUnavailableError extends Error {}
 
 /** Слово від tesseract: текст + рамка у РАСТРОВИХ координатах (y росте ВНИЗ). */
 export interface OcrWord {

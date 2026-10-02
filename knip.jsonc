@@ -1,0 +1,45 @@
+{
+  // Налаштування під специфіку проєкту. Без нього звіт тоне у хибнопозитивах
+  // (11 .prisma-схем, конфіги ESLint, динамічні імпорти) і його перестають читати.
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    "apps/api": {
+      "entry": ["src/main.ts", "src/**/*.spec.ts"],
+      "project": ["src/**/*.ts"],
+      // Усі п'ять резолвляться ДИНАМІЧНО і статично не видно:
+      // pdfjs-dist — ESM-only, береться через createRequire;
+      // tesseract.js / @napi-rs/canvas — нативні, вантажаться у рантаймі;
+      // docxtemplater, @sto/database — теж динамічно.
+      "ignoreDependencies": [
+        "pdfjs-dist",
+        "tesseract.js",
+        "@napi-rs/canvas",
+        "docxtemplater",
+        "@sto/database"
+      ]
+    },
+    "apps/web": {
+      "entry": ["src/app/**/{page,layout,loading,error,not-found,template}.tsx", "e2e/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/shared": {
+      "entry": ["src/index.ts", "src/**/*.spec.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ui": { "entry": ["src/index.ts"], "project": ["src/**/*.{ts,tsx}"] },
+    "packages/database": { "entry": ["prisma/seed.ts", "prisma/seed-catalog.ts"] }
+  },
+  "ignore": [
+    // knip не парсить Prisma-схеми → вважав усі 11 файлів схеми мертвими.
+    "**/*.prisma",
+    "**/.eslintrc.js",
+    "apps/api/webpack.config.js",
+    "apps/web/public/**",
+    // Expo має власний граф entry-поінтів, який knip читає неправильно.
+    "apps/mobile/**"
+  ],
+  // Enum-члени CashReasonDto дзеркалять Prisma-enum і мусять бути повними,
+  // навіть якщо код звертається не до кожного.
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": ["docker", "wsl"]
+}

@@ -1,7 +1,15 @@
 import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import type { ExtractOpts, TextFragment, TextLayerProvider } from './text-layer.provider';
-import { OCR_PROVIDER } from './ocr-text-layer.provider';
+import { PAGE_Y_OFFSET, groupFragmentsIntoLines, medianFragmentHeight } from './grid-geometry';
+// Реекспорт: зовнішні споживачі історично беруть ці імена звідси.
+export {
+  PAGE_Y_OFFSET,
+  median,
+  medianFragmentHeight,
+  groupFragmentsIntoLines,
+} from './grid-geometry';
+export type { GridLine } from './grid-geometry';
 
 /** PDF без текстового шару (скан/фото). Викликач показує користувачу пораду, а не падає 500. */
 export class PdfScannedError extends Error {}
@@ -61,54 +69,7 @@ export function pdfjsRoot(): string {
   return dirname(nodeRequire.resolve('pdfjs-dist/package.json'));
 }
 
-/**
- * Зсув y на сторінку: координати різних сторінок перетинаються (кожна починає відлік від свого
- * низу), тож без зсуву рядки різних сторінок злились би в один при Y-групуванні.
- */
-export const PAGE_Y_OFFSET = 100_000;
 const DEFAULT_MAX_PAGES = 20;
-
-/** Медіана (для непарного — середній, для парного — нижній середній; точність тут не критична). */
-export function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)] ?? 0;
-}
-
-export interface GridLine {
-  y: number;
-  items: TextFragment[];
-}
-
-/**
- * Медіанна висота фрагментів — базова одиниця всіх допусків сітки. Повертає 10 як запасний
- * розмір, якщо жоден фрагмент не має висоти (деякі PDF віддають h=0 для whitespace).
- */
-export function medianFragmentHeight(frags: readonly TextFragment[]): number {
-  return median(frags.map(f => f.h).filter(h => h > 0)) || 10;
-}
-
-/**
- * Групування фрагментів у рядки за y — крок 3 алгоритму сітки, ВИНЕСЕНИЙ сюди як єдине джерело
- * правди. `mergeWordsIntoCells` (OCR) мусить групувати рядки ТОЧНО так само, як `fragmentsToGrid`:
- * інакше слова зіллються по межах одного набору рядків, а в колонки розкладуться по межах іншого —
- * і сітка поїде ТИХО, без жодної помилки. Тримати допуск `medH * 0.5` у двох файлах означало
- * покладатись на те, що правку в одному не забудуть продублювати в другому.
- *
- * Сортування: y спадає (PDF-координати зростають вгору, а рядки документа йдуть зверху вниз),
- * всередині рядка — x зростає.
- */
-export function groupFragmentsIntoLines(frags: readonly TextFragment[], medH: number): GridLine[] {
-  const yTol = medH * 0.5;
-  const lines: GridLine[] = [];
-  for (const f of [...frags].sort((a, b) => b.y - a.y || a.x - b.x)) {
-    const line = lines.find(l => Math.abs(l.y - f.y) <= yTol);
-    if (line) line.items.push(f);
-    else lines.push({ y: f.y, items: [f] });
-  }
-  for (const l of lines) l.items.sort((a, b) => a.x - b.x);
-  return lines;
-}
 
 /**
  * Фрагменти → сітка `string[][]`. ЧИСТА функція: не знає ні про pdfjs, ні про OCR, тестується
@@ -247,36 +208,4 @@ export class PdfjsTextLayerProvider implements TextLayerProvider {
 
     return out.length ? out : null; // null → скан, викликач спробує наступного провайдера
   }
-}
-
-/**
- * Ланцюжок постачальників тексту. Порядок важливий: спершу ДЕШЕВИЙ і ТОЧНИЙ текстовий шар
- * (мілісекунди), і лише якщо його немає — дороге й приблизне OCR (секунди).
- */
-export const TEXT_LAYER_PROVIDERS: readonly TextLayerProvider[] = [
-  new PdfjsTextLayerProvider(),
-  OCR_PROVIDER,
-];
-
-/** Сітка + звідки взявся текст: UI попереджає про приблизність лише для OCR. */
-export interface GridFromProvider {
-  rows: string[][];
-  provider: TextLayerProvider['name'];
-}
-
-/**
- * PDF → сітка. Перебирає провайдерів; перший, що дав текст, виграє. Якщо жоден не дав —
- * PdfScannedError (тобто ні текстового шару, ні слів на зображенні).
- *
- * Помилки провайдера НЕ ковтаємо: битий PDF має дати «файл пошкоджений», а не «скан без тексту».
- */
-export async function pdfToGrid(
-  buffer: Buffer | Uint8Array,
-  opts?: ExtractOpts,
-): Promise<GridFromProvider> {
-  for (const provider of TEXT_LAYER_PROVIDERS) {
-    const frags = await provider.extract(buffer, opts);
-    if (frags?.length) return { rows: fragmentsToGrid(frags), provider: provider.name };
-  }
-  throw new PdfScannedError('no text layer');
 }
