@@ -24,7 +24,16 @@ const quote = files => files.map(f => JSON.stringify(f)).join(' ');
 const removeIgnored = async files => {
   const eslint = new ESLint();
   const kept = await Promise.all(
-    files.map(async f => ((await eslint.isPathIgnored(f)) ? null : f)),
+    files.map(async f => {
+      try {
+        return (await eslint.isPathIgnored(f)) ? null : f;
+      } catch {
+        // Файл поза будь-яким ESLint-конфігом (`packages/*` лінту не мають — аудит
+        // 2026-10 це зафіксував) → isPathIgnored кидає «no-config-found». Для хука це
+        // не помилка: такий файл просто не лінтується. Без catch падав увесь коміт.
+        return null;
+      }
+    }),
   );
   return kept.filter(Boolean);
 };

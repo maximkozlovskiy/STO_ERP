@@ -20,7 +20,7 @@ import {
 
 type DocStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED';
 
-const DOC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
+export const DOC_TRANSITIONS: Record<DocStatus, DocStatus[]> = {
   DRAFT: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: [],
   CANCELLED: [],

@@ -31,7 +31,7 @@ import {
 
 type InvStatus = InvoiceStatus;
 
-const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
+export const INV_TRANSITIONS: Record<InvStatus, InvStatus[]> = {
   DRAFT: [InvoiceStatus.SENT, InvoiceStatus.CANCELLED],
   SENT: [InvoiceStatus.PAID, InvoiceStatus.CANCELLED],
   // PARTIALLY_PAID виставляється автоматично частковим платежем; вручну можна дозакрити

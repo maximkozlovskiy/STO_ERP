@@ -52,7 +52,7 @@ const PO_LINE_GOOD_INCLUDE = {
 // по 3.33 = 9.99…). 1e-6 достатньо, щоб не пропустити реальний надлишок ≥0.001 (мін. крок кількості).
 const RECEIVE_QTY_EPSILON = 1e-6;
 
-const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
+export const PO_TRANSITIONS: Record<POStatus, POStatus[]> = {
   DRAFT: [PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.CANCELLED],
   ORDERED: [
     PurchaseOrderStatus.PARTIAL,

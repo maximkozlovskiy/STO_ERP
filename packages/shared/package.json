@@ -14,13 +14,16 @@
   "scripts": {
     "type-check": "tsc --noEmit",
     "build": "tsc -p tsconfig.cjs.json",
-    "build:cjs": "tsc -p tsconfig.cjs.json"
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@sto/config": "workspace:*",
+    "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
+    "vitest": "^2.1.9"
   }
 }
