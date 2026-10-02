@@ -1263,7 +1263,14 @@ export class XlsxService {
     buffer: Buffer | Uint8Array,
     filename: string,
     limit = 20,
-  ): Promise<{ totalRows: number; columnCount: number; rows: string[][]; kind: GridSourceKind }> {
+  ): Promise<{
+    totalRows: number;
+    columnCount: number;
+    rows: string[][];
+    kind: GridSourceKind;
+    /** Текст отримано розпізнаванням (а не з текстового шару/комірок) → UI попереджає про звірку. */
+    ocr?: boolean;
+  }> {
     // Диспатч за розширенням (.xlsx/.csv/.pdf) — усередині дружні 400 замість сирих 500
     // (клас Bug #751: передперегляд запускається одразу після вибору БУДЬ-ЯКОГО файлу).
     const grid = await this.gridParser.parseGrid(buffer, filename);
@@ -1275,7 +1282,7 @@ export class XlsxService {
     const rows = grid.rows.slice(0, cap);
     const columnCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
 
-    return { totalRows: grid.totalRows, columnCount, rows, kind: grid.kind };
+    return { totalRows: grid.totalRows, columnCount, rows, kind: grid.kind, ocr: grid.ocr };
   }
 
   /**

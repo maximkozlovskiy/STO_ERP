@@ -185,6 +185,29 @@ describe('XlsxService', () => {
         BadRequestException,
       );
     });
+
+    // Regression (sync-check 2026-10-02): rawPreview губив grid.ocr при складанні відповіді —
+    // web RawPreviewResponse.ocr завжди приходив undefined, попередження про OCR у ExcelImportWizard
+    // НІКОЛИ не показувалось, навіть коли бек реально розпізнавав фото/скан через tesseract.
+    it('пробрасує ocr:true від gridParser у відповідь (фото/скан-канал)', async () => {
+      const gridParser = service['gridParser'] as DocumentGridParserService;
+      vi.spyOn(gridParser, 'parseGrid').mockResolvedValue({
+        rows: [['a', 'b']],
+        totalRows: 1,
+        columnCount: 2,
+        kind: 'image',
+        ocr: true,
+      });
+      const res = await service.rawPreview(Buffer.from('fake'), 'photo.jpg', 20);
+      expect(res.ocr).toBe(true);
+      expect(res.kind).toBe('image');
+    });
+
+    it('ocr відсутній (false/undefined) для звичайного xlsx', async () => {
+      const buf = await buildWorkbook([['h'], ['v']]);
+      const res = await service.rawPreview(buf, 'f.xlsx', 20);
+      expect(res.ocr).toBeFalsy();
+    });
   });
 
   // ─── applyPricingFromList ───────────────────────────────────────────────────
