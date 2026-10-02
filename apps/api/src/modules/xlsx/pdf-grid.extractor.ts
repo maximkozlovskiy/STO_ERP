@@ -69,15 +69,45 @@ export const PAGE_Y_OFFSET = 100_000;
 const DEFAULT_MAX_PAGES = 20;
 
 /** Медіана (для непарного — середній, для парного — нижній середній; точність тут не критична). */
-function median(values: number[]): number {
+export function median(values: number[]): number {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
-interface GridLine {
+export interface GridLine {
   y: number;
   items: TextFragment[];
+}
+
+/**
+ * Медіанна висота фрагментів — базова одиниця всіх допусків сітки. Повертає 10 як запасний
+ * розмір, якщо жоден фрагмент не має висоти (деякі PDF віддають h=0 для whitespace).
+ */
+export function medianFragmentHeight(frags: readonly TextFragment[]): number {
+  return median(frags.map(f => f.h).filter(h => h > 0)) || 10;
+}
+
+/**
+ * Групування фрагментів у рядки за y — крок 3 алгоритму сітки, ВИНЕСЕНИЙ сюди як єдине джерело
+ * правди. `mergeWordsIntoCells` (OCR) мусить групувати рядки ТОЧНО так само, як `fragmentsToGrid`:
+ * інакше слова зіллються по межах одного набору рядків, а в колонки розкладуться по межах іншого —
+ * і сітка поїде ТИХО, без жодної помилки. Тримати допуск `medH * 0.5` у двох файлах означало
+ * покладатись на те, що правку в одному не забудуть продублювати в другому.
+ *
+ * Сортування: y спадає (PDF-координати зростають вгору, а рядки документа йдуть зверху вниз),
+ * всередині рядка — x зростає.
+ */
+export function groupFragmentsIntoLines(frags: readonly TextFragment[], medH: number): GridLine[] {
+  const yTol = medH * 0.5;
+  const lines: GridLine[] = [];
+  for (const f of [...frags].sort((a, b) => b.y - a.y || a.x - b.x)) {
+    const line = lines.find(l => Math.abs(l.y - f.y) <= yTol);
+    if (line) line.items.push(f);
+    else lines.push({ y: f.y, items: [f] });
+  }
+  for (const l of lines) l.items.sort((a, b) => a.x - b.x);
+  return lines;
 }
 
 /**
@@ -103,18 +133,8 @@ export function fragmentsToGrid(frags: readonly TextFragment[]): string[][] {
   const items = frags.filter(f => f.str && f.str.trim());
   if (!items.length) return [];
 
-  const medH = median(items.map(f => f.h).filter(h => h > 0)) || 10;
-  const yTol = medH * 0.5;
-
-  // ── Крок 3: групування в рядки ──
-  const sorted = [...items].sort((a, b) => b.y - a.y || a.x - b.x);
-  const lines: GridLine[] = [];
-  for (const f of sorted) {
-    const line = lines.find(l => Math.abs(l.y - f.y) <= yTol);
-    if (line) line.items.push(f);
-    else lines.push({ y: f.y, items: [f] });
-  }
-  for (const l of lines) l.items.sort((a, b) => a.x - b.x);
+  // ── Крок 3: групування в рядки (спільне з mergeWordsIntoCells — див. groupFragmentsIntoLines) ──
+  const lines = groupFragmentsIntoLines(items, medianFragmentHeight(items));
 
   // ── Крок 4: модальна кількість колонок ──
   const freq = new Map<number, number>();
@@ -229,7 +249,6 @@ export class PdfjsTextLayerProvider implements TextLayerProvider {
   }
 }
 
-/** Ланцюжок провайдерів тексту. OCR додасться сюди другим елементом, без інших змін. */
 /**
  * Ланцюжок постачальників тексту. Порядок важливий: спершу ДЕШЕВИЙ і ТОЧНИЙ текстовий шар
  * (мілісекунди), і лише якщо його немає — дороге й приблизне OCR (секунди).

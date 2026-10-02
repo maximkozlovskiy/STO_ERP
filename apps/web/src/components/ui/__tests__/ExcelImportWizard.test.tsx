@@ -452,6 +452,18 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
     expect(colInput('Колонка коду').value).toBe('5');
   });
 
+  it('ручна правка «Перший рядок даних» ПЕРЕМАГАЄ повторний автодетект', () => {
+    renderWizard();
+    selectFile(); // автодетект #1 → startRow з шапки
+    fireEvent.change(colInput('Перший рядок даних'), { target: { value: '7' } });
+    expect(colInput('Перший рядок даних').value).toBe('7');
+    // Другий файл запускає автодетект ЗНОВУ. Ручне число мусить вистояти — як і для решти
+    // колонок. Регресія: startRow писався напряму у setMapping, оминаючи позначку 'manual',
+    // тож цей автодетект тихо повертав визначений рядок і користувач губив введене.
+    selectFile();
+    expect(colInput('Перший рядок даних').value).toBe('7');
+  });
+
   it('збережений мапінг контрагента ПЕРЕМАГАЄ автодетект', () => {
     savedMappingData.current = {
       startRow: 3,

@@ -1327,35 +1327,6 @@ export class XlsxService {
 
     return { totalRows: grid.totalRows, columnCount, rows, kind: grid.kind, ocr: grid.ocr };
   }
-
-  /**
-   * Надійне текстове представлення значення комірки ExcelJS. `row.values` може містити не лише
-   * примітиви, а й обʼєкти: rich-text ({ richText: [...] }), формули ({ result }), гіперлінки
-   * ({ text/hyperlink }), помилки ({ error }), дати (Date). Прямий String(obj) → «[object Object]».
-   */
-  private cellText(v: unknown): string {
-    if (v === undefined || v === null) return '';
-    if (typeof v === 'string') return v.trim();
-    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-    if (v instanceof Date) return v.toLocaleDateString('uk-UA');
-    if (typeof v === 'object') {
-      const o = v as Record<string, unknown>;
-      if (Array.isArray(o.richText)) {
-        return o.richText
-          .map(rt => String((rt as { text?: unknown }).text ?? ''))
-          .join('')
-          .trim();
-      }
-      if ('text' in o && o.text != null) return String(o.text).trim();
-      if ('error' in o && o.error != null) return String(o.error);
-      // Формула: result може бути примітивом АБО обʼєктом ({ error: '#REF!' }, rich-text) →
-      // рекурсуємо через cellText, інакше String({error}) знову дав би «[object Object]».
-      if ('result' in o && o.result != null) return this.cellText(o.result);
-      if ('hyperlink' in o && o.hyperlink != null) return String(o.hyperlink).trim();
-    }
-    return String(v).trim();
-  }
-
   /**
    * Парсить рядки файлу за мапінгом колонок (1-based). startRow — рядок першого товару.
    * Кількість/ціна коерсяться через parseNumber (0 якщо порожньо). Порожні рядки (без коду,

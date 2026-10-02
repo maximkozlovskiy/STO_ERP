@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { PAGE_Y_OFFSET } from './pdf-grid.extractor';
+import { PAGE_Y_OFFSET, groupFragmentsIntoLines, medianFragmentHeight } from './pdf-grid.extractor';
 import { rasterizePdfPages } from './pdf-rasterizer';
 import type { ExtractOpts, TextFragment, TextLayerProvider } from './text-layer.provider';
 
@@ -84,24 +84,15 @@ export function mergeWordsIntoCells(
 ): TextFragment[] {
   if (frags.length <= 1) return [...frags];
 
-  const heights = frags.map(f => f.h).filter(h => h > 0);
-  const medH = heights.length
-    ? [...heights].sort((a, b) => a - b)[Math.floor(heights.length / 2)]!
-    : 10;
-  const yTol = medH * 0.5;
+  const medH = medianFragmentHeight(frags);
   const maxGap = medH * gapRatio;
 
-  // Групування в рядки — дзеркалить крок 3 fragmentsToGrid (той самий допуск).
-  const lines: { y: number; items: TextFragment[] }[] = [];
-  for (const f of [...frags].sort((a, b) => b.y - a.y || a.x - b.x)) {
-    const line = lines.find(l => Math.abs(l.y - f.y) <= yTol);
-    if (line) line.items.push(f);
-    else lines.push({ y: f.y, items: [f] });
-  }
+  // Рядки групуємо ТІЄЮ САМОЮ функцією, що й fragmentsToGrid — спільний допуск за побудовою,
+  // а не за домовленістю (розсинхрон давав би тихо зсунуту сітку). Вона ж сортує items за x.
+  const lines = groupFragmentsIntoLines(frags, medH);
 
   const out: TextFragment[] = [];
   for (const line of lines) {
-    line.items.sort((a, b) => a.x - b.x);
     let cur: TextFragment | null = null;
     for (const f of line.items) {
       if (cur && f.x - (cur.x + cur.w) <= maxGap) {

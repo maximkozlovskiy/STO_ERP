@@ -88,9 +88,7 @@ function renderInvoicePng(opts: {
 /** Вкладає PNG-растр у PDF (image-only скан, без текстового шару), з необов'язковим поворотом сторінки. */
 function pngToScanPdf(png: Buffer, rotate = 0): Promise<Buffer> {
   return new Promise(resolve => {
-    const landscape = rotate === 90 || rotate === 270;
     const doc = new PDFDocument({ size: 'A4', margin: 0, rotate });
-    void landscape;
     const chunks: Buffer[] = [];
     doc.on('data', ch => ch && chunks.push(ch));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -126,7 +124,6 @@ describe('BUG HUNT: OCR якість на реалістичних сканах'
     const frags = await OCR_PROVIDER.extract(png);
     const grid = gridFromFrags(frags);
     const v = gridLooksValid(grid);
-    console.log('[12pt clean]', JSON.stringify(v), 'grid=', JSON.stringify(grid.slice(0, 2)));
     expect(v.cols).toBeGreaterThanOrEqual(2);
   }, 60_000);
 
@@ -134,18 +131,20 @@ describe('BUG HUNT: OCR якість на реалістичних сканах'
     const png = renderInvoicePng({ fontPx: 16 });
     const frags = await OCR_PROVIDER.extract(png);
     const grid = gridFromFrags(frags);
-    const v = gridLooksValid(grid);
-    console.log('[8pt]', JSON.stringify(v), 'grid=', JSON.stringify(grid.slice(0, 2)));
-    expect(true).toBe(true); // характеристика, не баг
+    // Твердження — НЕ точність (на 8pt вона свідомо нижча, це задокументований компроміс
+    // рішення #3: нерозпізнане йде в ручний вибір). Твердження в тому, що дрібний кегль не
+    // ламає КОНТРАКТ: провайдер не кидає, повертає фрагменти, сітка будується.
+    expect(frags).not.toBeNull();
+    expect(grid.length).toBeGreaterThan(0);
   }, 60_000);
 
   it('шум сканера 2% → фіксуємо межу', async () => {
     const png = renderInvoicePng({ fontPx: 32, noise: 0.02 });
     const frags = await OCR_PROVIDER.extract(png);
     const grid = gridFromFrags(frags);
-    const v = gridLooksValid(grid);
-    console.log('[noise 2%]', JSON.stringify(v));
-    expect(true).toBe(true);
+    // Як і для 8pt: шум сканера не має валити канал — лише знижувати точність.
+    expect(frags).not.toBeNull();
+    expect(grid.length).toBeGreaterThan(0);
   }, 60_000);
 });
 
@@ -172,8 +171,6 @@ describe('BUG HUNT: паралельні OCR-імпорти', () => {
     const [a, b] = await Promise.all([OCR_PROVIDER.extract(pngA), OCR_PROVIDER.extract(pngB)]);
     const ja = (a ?? []).map(f => f.str).join(' ');
     const jb = (b ?? []).map(f => f.str).join(' ');
-    console.log('[parallel A]', ja.slice(0, 120));
-    console.log('[parallel B]', jb.slice(0, 120));
     // B-маркери НЕ повинні протекти в A і навпаки.
     expect(/999|777|XYZ/i.test(ja.replace(/\s/g, ''))).toBe(false);
     expect(/345|189|Фільтр/i.test(jb)).toBe(false);
@@ -187,10 +184,11 @@ describe('BUG HUNT: повернута сторінка PDF-скану', () => {
       const pdf = await pngToScanPdf(png, rot);
       const frags = await OCR_PROVIDER.extract(pdf);
       const grid = gridFromFrags(frags);
-      const v = gridLooksValid(grid);
-      console.log(`[rot ${rot}]`, JSON.stringify(v));
-      // Не падає; растеризатор застосовує page.rotate. Якість — характеристика.
-      expect(Array.isArray(grid)).toBe(true);
+      // Array.isArray тут не доводить нічого (істинне завжди). Справжнє твердження: растеризатор
+      // ЗАСТОСУВАВ page.rotate, тож текст опинився в читабельній орієнтації і сітка НЕ порожня.
+      // Точність символів лишається характеристикою, а не критерієм.
+      expect(frags).not.toBeNull();
+      expect(gridLooksValid(grid).cols).toBeGreaterThanOrEqual(2);
     }, 90_000);
   }
 });
@@ -215,11 +213,9 @@ describe('BUG HUNT: таймаут багатосторінкового скан
     try {
       const frags = await OCR_PROVIDER.extract(pdf);
       const elapsed = Date.now() - started;
-      console.log(`[5-page] ok, ${elapsed}ms, frags=${frags?.length ?? 0}`);
       // maxPages=5 → не більше 5 сторінок обробляється; не вішається нескінченно.
       expect(elapsed).toBeLessThan(140_000);
     } catch (e) {
-      console.log('[5-page] threw', (e as Error).constructor.name);
       expect(e).toBeInstanceOf(OcrTimeoutError);
     }
   }, 160_000);
@@ -241,7 +237,6 @@ describe('BUG HUNT: відсутні моделі', () => {
       }
     ).toHttpError.bind(svc);
     const err = toHttp(new OcrModelsMissingError('tessdata не знайдено'), 'image');
-    console.log('[models-missing map]', err.getStatus(), err.message);
     expect(err.getStatus()).toBe(400);
     expect(OcrModelsMissingError.prototype).toBeInstanceOf(Error);
   });
@@ -257,7 +252,6 @@ describe('BUG HUNT: порожнє/шумне зображення → чист�
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 600, 400);
     const frags = await OCR_PROVIDER.extract(c.toBuffer('image/png'));
-    console.log('[blank page] frags=', frags);
     expect(frags).toBeNull();
   }, 60_000);
 });

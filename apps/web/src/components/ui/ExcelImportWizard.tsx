@@ -293,7 +293,9 @@ export function ExcelImportWizard({
       // Ручна правка перемагає все: ні пізній refetch savedMapping, ні повторний автодетект
       // не мають її затирати.
       setMappingSourceBoth('manual');
-      setMapping(m => ({ ...m, [key]: strToNum(value) }));
+      // startRow — обовʼязкове число (решта полів nullable: null = «колонка не задана»).
+      const parsed = strToNum(value);
+      setMapping(m => ({ ...m, [key]: key === 'startRow' ? (parsed ?? 1) : parsed }));
     },
     [setMappingSourceBoth],
   );
@@ -552,7 +554,9 @@ export function ExcelImportWizard({
               type="number"
               min={1}
               value={numToStr(mapping.startRow)}
-              onChange={e => setMapping(m => ({ ...m, startRow: strToNum(e.target.value) ?? 1 }))}
+              // Через setCol, а НЕ setMapping напряму: інакше правка startRow не позначає мапінг
+              // як 'manual', і наступний автодетект (новий файл) тихо затирає введене число.
+              onChange={e => setCol('startRow', e.target.value)}
             />
             <Input
               label="Колонка коду"
