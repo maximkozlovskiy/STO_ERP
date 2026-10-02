@@ -45,7 +45,7 @@ function Harness({
     formState: { errors },
   } = useForm<VehicleFormInput, unknown, VehicleFormValues>({
     resolver: zodResolver(vehicleFormSchema),
-    defaultValues: { ...EMPTY, customerGarageId: '11111111-1111-1111-1111-111111111111' },
+    defaultValues: { ...EMPTY, customerGarageId: '11111111-1111-4111-8111-111111111111' },
   });
   return (
     <form onSubmit={handleSubmit(onValid)}>

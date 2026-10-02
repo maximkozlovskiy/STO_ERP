@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Resolver, FieldValues } from 'react-hook-form';
-import type { ZodType, ZodTypeDef } from 'zod';
+import type { ZodType } from 'zod';
 import { translateValidation, type ValidationLocale } from '@sto/shared';
 import { getCurrentLocale } from '@/i18n/locale';
 
@@ -29,8 +29,14 @@ function translateErrorTree(node: unknown, locale: ValidationLocale): void {
   }
 }
 
+/**
+ * Zod 4 ПРИБРАВ `ZodTypeDef`: тип став `ZodType<Output, Input>` (у v3 було
+ * `ZodType<Output, Def, Input>`). Поки в сигнатурі стояв `ZodTypeDef`, TS резолвив його в
+ * `any`, і виведений `Resolver` не збігався з очікуваним — 16 помилок TS2322 на всіх
+ * формах, що беруть цю обгортку.
+ */
 export function i18nZodResolver<Input extends FieldValues, Context, Output>(
-  schema: ZodType<Output, ZodTypeDef, Input>,
+  schema: ZodType<Output, Input>,
 ): Resolver<Input, Context, Output> {
   const base = zodResolver<Input, Context, Output>(schema);
   return async (values, context, options) => {

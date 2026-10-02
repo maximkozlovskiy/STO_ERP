@@ -41,7 +41,7 @@ export type StockDocumentLineValues = z.infer<typeof stockDocumentLineSchema>;
 
 const stockDocumentShape = {
   type: z.enum(STOCK_DOCUMENT_TYPE_VALUES, {
-    errorMap: () => ({ message: 'v.stockDocument.type.required' }),
+    error: 'v.stockDocument.type.required',
   }),
   branchId: z.string().uuid('v.stockDocument.branch.required'),
   warehouseId: z.string().uuid('v.stockDocument.warehouse.required'),

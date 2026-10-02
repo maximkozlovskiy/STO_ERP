@@ -127,7 +127,7 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         counterpartyName="АвтоДеталь ТОВ"
         onImportComplete={vi.fn()}
       />,
@@ -146,7 +146,7 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         onImportComplete={vi.fn()}
       />,
     );
@@ -161,7 +161,7 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         docNumber="ЗАМ-2026-000780"
         onImportComplete={vi.fn()}
       />,
@@ -175,7 +175,7 @@ describe('ExcelImportWizard — сирий передперегляд', () => {
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         onImportComplete={vi.fn()}
       />,
     );
@@ -203,7 +203,7 @@ describe('ExcelImportWizard — крок 2: масовий вибір рядкі
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         onImportComplete={vi.fn()}
       />,
     );
@@ -265,7 +265,7 @@ describe('ExcelImportWizard — крок 2: edge-cases apply', () => {
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         onImportComplete={vi.fn()}
       />,
     );
@@ -434,7 +434,7 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         counterpartyName="АвтоДеталь ТОВ"
         onImportComplete={vi.fn()}
         {...props}
@@ -482,7 +482,7 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
       quantityCol: null,
       priceCol: null,
     };
-    renderWizard({ counterpartyId: '22222222-2222-2222-2222-222222222222' });
+    renderWizard({ counterpartyId: '22222222-2222-4222-8222-222222222222' });
     selectFile();
     expect(colInput('Колонка артикулу').value).toBe('7'); // saved, не автодетект (2)
     expect(screen.getByText(/Застосовано збережені колонки/)).toBeInTheDocument();
@@ -500,7 +500,7 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
       quantityCol: null,
       priceCol: null,
     };
-    renderWizard({ counterpartyId: '22222222-2222-2222-2222-222222222222' });
+    renderWizard({ counterpartyId: '22222222-2222-4222-8222-222222222222' });
     selectFile();
     expect(colInput('Колонка артикулу').value).toBe('2'); // автодетект спрацював
   });
@@ -611,7 +611,7 @@ describe('ExcelImportWizard — OCR (фото та скани)', () => {
         open
         onClose={vi.fn()}
         docType="PURCHASE_ORDER"
-        docId="11111111-1111-1111-1111-111111111111"
+        docId="11111111-1111-4111-8111-111111111111"
         counterpartyName="АвтоДеталь ТОВ"
         onImportComplete={vi.fn()}
         {...props}

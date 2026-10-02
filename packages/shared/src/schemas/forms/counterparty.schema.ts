@@ -28,7 +28,7 @@ export function hasCounterpartyName(f: {
 // Базові поля контрагента (15 + type). Рядкові опційні: '' → undefined.
 const counterpartyBaseShape = {
   type: z.enum(COUNTERPARTY_TYPE_VALUES, {
-    errorMap: () => ({ message: 'v.counterparty.type.required' }),
+    error: 'v.counterparty.type.required',
   }),
   firstName: optionalString(),
   lastName: optionalString(),

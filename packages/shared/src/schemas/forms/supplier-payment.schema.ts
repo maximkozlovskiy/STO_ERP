@@ -15,7 +15,7 @@ export type PaymentSourceTypeValue = (typeof PAYMENT_SOURCE_TYPE_VALUES)[number]
 const supplierPaymentShape = {
   supplierId: z.string().uuid('v.supplierPayment.supplier.required'),
   sourceType: z.enum(PAYMENT_SOURCE_TYPE_VALUES, {
-    errorMap: () => ({ message: 'v.supplierPayment.sourceType.required' }),
+    error: 'v.supplierPayment.sourceType.required',
   }),
   bankAccountId: optionalUuid(),
   cashRegisterId: optionalUuid(),

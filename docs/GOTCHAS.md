@@ -43,6 +43,29 @@ const buf = Buffer.from(await wb.xlsx.writeBuffer());
 
 ---
 
+## [2026-10-02] Застарілий `dist/` у @sto/shared → хибний діагноз при оновленні залежностей
+
+**Симптом:** після оновлення Zod 3 → 4 у `apps/api` з'явились 4 помилки навколо
+`rateScheme` — виглядало як зміна виводу типів у `z.discriminatedUnion`.
+
+**Насправді:** `@sto/shared` віддає типи через `"types": "./dist/cjs/index.d.ts"`, тобто
+`apps/api` читає **скомпільовану** збірку, а не `src/`. Збірка була зроблена ДО оновлення
+Zod, тож містила типи, виведені під Zod 3. Схема у `src/` була коректна весь час.
+
+```bash
+pnpm --filter @sto/shared build   # → 0 помилок в api
+```
+
+**Як розпізнати:** помилки стосуються типів, що приходять із `@sto/shared`, а сам
+`pnpm --filter @sto/shared exec tsc --noEmit` показує 0. Порівняйте час зміни
+`packages/shared/dist/cjs/**/*.d.ts` із часом останнього `pnpm install`.
+
+**Правило:** після будь-якої зміни залежностей, що впливають на типи `@sto/shared`
+(zod, prisma, ts), спершу `pnpm --filter @sto/shared build`, і лише потім діагностувати
+помилки в apps/*. Інакше витратите час на неіснуючу ламку зміну бібліотеки.
+
+---
+
 ## [2026-10-02] «Порт 5432 зайнятий svchost» = dockerd мертвий, а не конфлікт портів
 
 **Симптом:** API не стартує з `P1001 Can't reach database server`. На Windows

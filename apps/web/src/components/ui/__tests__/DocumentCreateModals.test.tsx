@@ -203,7 +203,7 @@ describe('InvoiceCreateModal — WEB-H3 double-submit', () => {
         return Promise.resolve({
           items: [
             {
-              id: '11111111-1111-1111-1111-111111111111',
+              id: '11111111-1111-4111-8111-111111111111',
               firstName: 'Клієнт',
               lastName: null,
               companyName: 'ТОВ',
@@ -274,7 +274,7 @@ describe('InvoiceCreateModal — regression', () => {
       id: 'inv-1',
       number: 'INV-001',
       status: 'DRAFT',
-      counterpartyId: '11111111-1111-1111-1111-111111111111',
+      counterpartyId: '11111111-1111-4111-8111-111111111111',
       counterpartyName: 'Тест Клієнт',
       amount: 200,
       dueDate: '2026-07-01',
@@ -367,7 +367,7 @@ describe('InvoiceCreateModal — regression', () => {
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
       if (path.startsWith('/counterparties'))
         return Promise.resolve({
-          items: [{ id: '11111111-1111-1111-1111-111111111111', companyName: 'ТОВ' }],
+          items: [{ id: '11111111-1111-4111-8111-111111111111', companyName: 'ТОВ' }],
         });
       if (path === '/invoices' && init?.method === 'POST')
         return Promise.resolve({ id: 'inv-1', number: 'INV-001' });
@@ -481,7 +481,7 @@ describe('InvoiceCreateModal — regression', () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path.startsWith('/counterparties'))
         return Promise.resolve({
-          items: [{ id: '11111111-1111-1111-1111-111111111111', companyName: 'ТОВ' }],
+          items: [{ id: '11111111-1111-4111-8111-111111111111', companyName: 'ТОВ' }],
         });
       return Promise.resolve({ items: [] });
     });
