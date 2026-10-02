@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { NotificationChannel } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { NotificationsService } from './notifications.service';
@@ -90,11 +90,11 @@ describe('NotificationsService — Phase 3 providers/channels', () => {
     });
 
     it('apiKey не потрапляє у логи (verify не логує креди)', async () => {
-      const logSpy = vi.spyOn((service as unknown as { logger: { log: unknown } }).logger, 'log');
-      const warnSpy = vi.spyOn(
-        (service as unknown as { logger: { warn: unknown } }).logger,
-        'warn',
-      );
+      // logger приватний → дістаємось через каст. Тип методів мусить бути ФУНКЦІЄЮ
+      // (а не unknown), інакше vi.spyOn не бачить ключа і звужує його до never.
+      const logger = (service as unknown as { logger: Logger }).logger;
+      const logSpy = vi.spyOn(logger, 'log');
+      const warnSpy = vi.spyOn(logger, 'warn');
       registryGet.mockReturnValue(turbosms);
       turbosms.verifyCredentials.mockResolvedValue({ valid: true });
       await service.verifyProvider('turbosms', 'super-secret-token');

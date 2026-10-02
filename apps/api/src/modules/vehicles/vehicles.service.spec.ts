@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { VehiclesService } from './vehicles.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**
  * Bug #601/#602/#605 — regression-guards для нових endpoints:
@@ -15,23 +16,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 describe('VehiclesService', () => {
   let service: VehiclesService;
   let prisma: {
-    vehicle: {
-      findMany: ReturnType<typeof vi.fn>;
-      findFirst: ReturnType<typeof vi.fn>;
-      findFirstOrThrow: ReturnType<typeof vi.fn>;
-      create: ReturnType<typeof vi.fn>;
-      update: ReturnType<typeof vi.fn>;
-      updateMany: ReturnType<typeof vi.fn>;
-    };
-    customerGarage: {
-      findFirst: ReturnType<typeof vi.fn>;
-    };
-    vehicleNode: {
-      findFirst: ReturnType<typeof vi.fn>;
-      findMany: ReturnType<typeof vi.fn>;
-      create: ReturnType<typeof vi.fn>;
-      update: ReturnType<typeof vi.fn>;
-    };
+    vehicle: PrismaModelMock;
+    customerGarage: PrismaModelMock;
+    vehicleNode: PrismaModelMock;
+    workOrder: PrismaModelMock;
   };
 
   const rawVehicle = (overrides: Record<string, unknown> = {}) => ({

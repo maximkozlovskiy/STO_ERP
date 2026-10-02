@@ -181,7 +181,9 @@ describe('BankStatementPullProcessor', () => {
   it('оновлює lastPulledAt курсор після успіху', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('r1')]);
     await processor.process(makeJob({ orgId: ORG }));
-    const call = prisma.bankAccount.updateMany.mock.calls.at(-1)[0];
+    const lastCall = prisma.bankAccount.updateMany.mock.calls.at(-1);
+    expect(lastCall).toBeDefined();
+    const call = lastCall![0];
     expect(call.where).toMatchObject({ id: ACC, orgId: ORG, deletedAt: null });
     expect(call.data.lastPulledAt).toBeInstanceOf(Date);
   });

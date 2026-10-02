@@ -5,7 +5,9 @@ import { NotificationChannel } from '@prisma/client';
 const sendMail = vi.fn();
 const verify = vi.fn();
 const close = vi.fn();
-const createTransport = vi.fn(() => ({ sendMail, verify, close }));
+// Фабрика мусить ОГОЛОШУВАТИ rest-параметр: інакше тип vi.fn(() => ...) не має параметрів,
+// і прокидання `...a` у неї — spread у функцію без rest (TS2556).
+const createTransport = vi.fn((..._opts: unknown[]) => ({ sendMail, verify, close }));
 vi.mock('nodemailer', () => ({ createTransport: (...a: unknown[]) => createTransport(...a) }));
 
 import { EmailProvider } from './email.provider';

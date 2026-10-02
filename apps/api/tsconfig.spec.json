@@ -1,0 +1,28 @@
+{
+  // Type-check для ТЕСТІВ. Основний tsconfig.json виключає `*.spec.ts` (щоб вони не
+  // потрапляли у збірку `dist/`), через що 188 специв роками не перевірялись ні tsc, ні
+  // лінтом — і неточність у моках маскувала реальні баги (Bug #775).
+  //
+  // `types` перелічує глобальні декларації ЯВНО: сюди треба і vitest/globals (describe/it/
+  // expect), і ті @types, від яких залежить прод-код (напр. pdfkit → namespace PDFKit у
+  // work-orders-export.service.ts). Якщо вказати лише vitest — прод-файли почнуть падати
+  // тут, хоча у звичайній збірці вони коректні. Новий @types-пакет, потрібний рантайму,
+  // додавати і сюди.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [
+      "node",
+      "vitest/globals",
+      "pdfkit",
+      "pdfmake",
+      "bcrypt",
+      "ioredis",
+      "nodemailer",
+      "passport-jwt",
+      "supertest"
+    ]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

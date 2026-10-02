@@ -10,12 +10,14 @@ import { getLocale } from '../tenant/tenant-context';
  *   assertFsmTransition(INV_TRANSITIONS, inv.status, newStatus);
  */
 export function assertFsmTransition<S extends string>(
-  transitions: Record<S, S[]>,
+  // `readonly` навмисно: transition-мапи оголошені через `as const` (їх НЕ можна мутувати),
+  // і мутабельний `S[]` змушував кожен виклик та кожен тест робити зайвий каст.
+  transitions: Readonly<Record<S, readonly S[]>>,
   from: S,
   to: S,
 ): void {
-  const allowed = transitions[from] ?? ([] as S[]);
-  if (!(allowed as string[]).includes(to)) {
+  const allowed: readonly S[] = transitions[from] ?? [];
+  if (!(allowed as readonly string[]).includes(to)) {
     throw new BadRequestException(
       translateError('err.fsm.transitionNotAllowed', getLocale(), { from, to }),
     );

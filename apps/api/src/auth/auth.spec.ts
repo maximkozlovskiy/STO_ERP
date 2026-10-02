@@ -28,14 +28,18 @@ describe('AuthService', () => {
   };
   let jwtService: { sign: ReturnType<typeof vi.fn>; verify: ReturnType<typeof vi.fn> };
 
-  const mockRes = {
+  // Мок тримаємо у ВЛАСНОМУ типі (щоб були доступні .mockReset/.toHaveBeenCalledWith),
+  // а у сервіс передаємо окрему FastifyReply-в'ю на той самий об'єкт. Каст одразу у
+  // FastifyReply звужував би cookie/clearCookie до справжніх методів Fastify — без mock-API.
+  const resMock = {
     cookie: vi.fn(),
     clearCookie: vi.fn(),
-  } as unknown as import('fastify').FastifyReply;
+  };
+  const mockRes = resMock as unknown as import('fastify').FastifyReply;
 
   beforeEach(async () => {
-    mockRes.cookie.mockReset();
-    mockRes.clearCookie.mockReset();
+    resMock.cookie.mockReset();
+    resMock.clearCookie.mockReset();
 
     const module = await Test.createTestingModule({
       providers: [
@@ -198,7 +202,7 @@ describe('AuthService', () => {
         expect.objectContaining({ tokenVersion: 3 }),
         expect.anything(),
       );
-      expect(mockRes.cookie).toHaveBeenCalledWith(
+      expect(resMock.cookie).toHaveBeenCalledWith(
         'sto_refresh',
         'mock.jwt.token',
         expect.objectContaining({ httpOnly: true }),
@@ -262,7 +266,7 @@ describe('AuthService', () => {
       const result = await service.refresh('valid.token', mockRes);
 
       expect(result.accessToken).toBe('mock.jwt.token');
-      expect(mockRes.cookie).toHaveBeenCalled();
+      expect(resMock.cookie).toHaveBeenCalled();
     });
 
     it('B1: refresh відхиляється якщо tokenVersion розійшовся (logout-all/зміна пароля)', async () => {
@@ -285,7 +289,7 @@ describe('AuthService', () => {
   describe('logout', () => {
     it('очищає refresh cookie', () => {
       service.logout(mockRes);
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('sto_refresh', {
+      expect(resMock.clearCookie).toHaveBeenCalledWith('sto_refresh', {
         path: '/api/v1/auth',
       });
     });
@@ -298,7 +302,7 @@ describe('AuthService', () => {
         where: { employeeId: 'emp-1', orgId: 'org-1', deletedAt: null },
         data: { tokenVersion: { increment: 1 } },
       });
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('sto_refresh', { path: '/api/v1/auth' });
+      expect(resMock.clearCookie).toHaveBeenCalledWith('sto_refresh', { path: '/api/v1/auth' });
     });
   });
 });

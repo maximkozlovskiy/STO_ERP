@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { PricingService } from './pricing.service';
+import { PricingService, type RuleEntry } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type RuleTier = {
@@ -26,6 +26,13 @@ type Rule = {
   name: string;
   tiers: RuleTier[];
 };
+
+/**
+ * Тестовий `Rule` свідомо вужчий за прод-тип `RuleEntry` (там грошові поля — `unknown`,
+ * бо приходять як Prisma `Decimal`). Приводимо в точці виклику: `unknown` посередині —
+ * бо типи перетинаються лише частково, і прямий каст TS відхиляє (TS2352).
+ */
+const asRuleEntries = (rules: Rule[]): RuleEntry[] => rules as unknown as RuleEntry[];
 
 describe('PricingService.calculateSalePrice', () => {
   let service: PricingService;
@@ -433,25 +440,53 @@ describe('PricingService.computePriceFromRules', () => {
 
   it('PERCENT правило: cost * (1 + p/100)', () => {
     const rules = [makeRule({ type: 'PERCENT', percentValue: 40 })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 100);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      100,
+    );
     expect(price).toBeCloseTo(140);
   });
 
   it('COMPETITOR_PLUS працює як PERCENT', () => {
     const rules = [makeRule({ type: 'COMPETITOR_PLUS', percentValue: 15 })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 200);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      200,
+    );
     expect(price).toBeCloseTo(230);
   });
 
   it('FIXED_AMOUNT правило: cost + delta', () => {
     const rules = [makeRule({ type: 'FIXED_AMOUNT', fixedAmount: 75 })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 100);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      100,
+    );
     expect(price).toBe(175);
   });
 
   it('FIXED_PRICE правило: ігнорує cost, повертає fixedPrice', () => {
     const rules = [makeRule({ type: 'FIXED_PRICE', fixedPrice: 999 })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 100);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      100,
+    );
     expect(price).toBe(999);
   });
 
@@ -461,27 +496,55 @@ describe('PricingService.computePriceFromRules', () => {
       { costMin: 100, costMax: null, percentValue: 20, sortOrder: 1 },
     ];
     const rules = [makeRule({ type: 'COST_TIER', tiers })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 50);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      50,
+    );
     expect(price).toBeCloseTo(65); // 50 * 1.30
   });
 
   it('COST_TIER: cost не покритий жодним тіром → повертає costPrice', () => {
     const tiers = [{ costMin: 500, costMax: 1000, percentValue: 20, sortOrder: 0 }];
     const rules = [makeRule({ type: 'COST_TIER', tiers })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 50);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      50,
+    );
     expect(price).toBe(50);
   });
 
   it('roundTo: округлення до найближчого кратного', () => {
     const rules = [makeRule({ type: 'PERCENT', percentValue: 33, roundTo: 10 })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, 100);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      100,
+    );
     // 100 * 1.33 = 133 → round(133/10)*10 = 130
     expect(price).toBe(130);
   });
 
   it("захист від від'ємної ціни — Math.max(0, result)", () => {
     const rules = [makeRule({ type: 'FIXED_AMOUNT', fixedAmount: 0 })];
-    const price = service.computePriceFromRules(rules, 'g1', undefined, undefined, undefined, -50);
+    const price = service.computePriceFromRules(
+      asRuleEntries(rules),
+      'g1',
+      undefined,
+      undefined,
+      undefined,
+      -50,
+    );
     expect(price).toBe(0);
   });
 
@@ -515,7 +578,7 @@ describe('PricingService.computePriceFromRules', () => {
     ];
     // goodId rule wins
     expect(
-      service.computePriceFromRules(rules, 'g1', 'BRAKES', 'SPARE_PART', 'b1', 100),
+      service.computePriceFromRules(asRuleEntries(rules), 'g1', 'BRAKES', 'SPARE_PART', 'b1', 100),
     ).toBeCloseTo(150);
   });
 
@@ -532,7 +595,7 @@ describe('PricingService.computePriceFromRules', () => {
       makeRule({ id: 'r-brand', goodId: null, brandId: 'b1', percentValue: 25 }),
     ];
     const price = service.computePriceFromRules(
-      rules,
+      asRuleEntries(rules),
       'g1',
       null as unknown as undefined,
       'SPARE_PART',

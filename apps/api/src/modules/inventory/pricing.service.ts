@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { GoodType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-type RuleEntry = {
+export type RuleEntry = {
   name: string;
   goodId: string | null;
   goodCategory: string | null;

@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { OutboundWebhookProcessor } from './webhooks.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeadLetterService } from '../dead-letter/dead-letter.service';
+import type { MockInstance } from 'vitest';
 
 /**
  * Bug #125 — regression guard for the webhook delivery processor.
@@ -52,7 +53,7 @@ const makePrismaMock = () => ({
 describe('OutboundWebhookProcessor.processDeliver', () => {
   let processor: OutboundWebhookProcessor;
   let prisma: ReturnType<typeof makePrismaMock>;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
 
   beforeEach(async () => {
     prisma = makePrismaMock();

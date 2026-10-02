@@ -7,6 +7,11 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "strict": true,
+    // Строгість вмикається ПОЕТАПНО (аудит 2026-10): ці два прапорці дають 0 помилок і
+    // зафіксовані зараз. Два «дорогі» лишаються наступними кроками — на момент заміру:
+    // noUncheckedIndexedAccess (api 121 / web 129), exactOptionalPropertyTypes (api 184 / web 223).
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,

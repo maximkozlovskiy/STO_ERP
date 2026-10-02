@@ -223,12 +223,16 @@ describe('CheckboxClient (ПРРО Крок 2 — HTTP-клієнт)', () => {
       fetchMock.mockResolvedValueOnce(
         OK('{"message":"invalid pin_code=1234 for X-License-Key: LIC-KEY-LONG"}', 400),
       );
-      const thrown = await client.signInPinCode(URL, 'LIC-KEY-LONG', '1234').catch(e => e as Error);
-      expect(thrown.message).toMatch(/Checkbox 400:/);
+      // .catch повертає CashierToken | unknown → звужуємо до Error замість касту:
+      // якщо виклик НЕ кинув (регресія), assert нижче впаде явно, а не мовчки пройде.
+      const thrown: unknown = await client.signInPinCode(URL, 'LIC-KEY-LONG', '1234').catch(e => e);
+      expect(thrown).toBeInstanceOf(Error);
+      const err = thrown as Error;
+      expect(err.message).toMatch(/Checkbox 400:/);
       // Ні PIN, ні license key не повинні лишитись у тексті помилки.
-      expect(thrown.message).not.toContain('1234');
-      expect(thrown.message).not.toContain('LIC-KEY-LONG');
-      expect(thrown.message).toContain('***');
+      expect(err.message).not.toContain('1234');
+      expect(err.message).not.toContain('LIC-KEY-LONG');
+      expect(err.message).toContain('***');
     });
 
     it('порожнє тіло на 200 → {} (не JSON.parse crash)', async () => {

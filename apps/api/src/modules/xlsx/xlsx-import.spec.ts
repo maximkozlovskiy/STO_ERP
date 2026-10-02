@@ -27,7 +27,9 @@ async function buildXlsx(rows: (string | number)[][]): Promise<Buffer> {
   const sheet = wb.addWorksheet('list');
   sheet.addRow(['code', 'article', 'brand', 'name', 'qty', 'price']); // header (row 1)
   rows.forEach(r => sheet.addRow(r));
-  return (await wb.xlsx.writeBuffer()) as Buffer;
+  // ExcelJS декларує власний глобальний `Buffer extends ArrayBuffer` — це НЕ node Buffer.
+  // Buffer.from() дає справжній node Buffer, як у рантаймі (fastify-multipart).
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 describe('XlsxService — generic import (preview/apply)', () => {

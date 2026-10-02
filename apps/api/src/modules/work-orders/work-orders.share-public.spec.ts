@@ -121,7 +121,7 @@ describe('WorkOrderShareService.findByShareToken — public DTO leak guards', ()
       // ніж `.costPrice === undefined`.
       expect(Object.prototype.hasOwnProperty.call(part, 'costPrice')).toBe(false);
       // Bonus — навіть індекс-доступ не повинен щось повернути:
-      expect((part as Record<string, unknown>).costPrice).toBeUndefined();
+      expect((part as unknown as Record<string, unknown>).costPrice).toBeUndefined();
     }
   });
 
@@ -131,7 +131,7 @@ describe('WorkOrderShareService.findByShareToken — public DTO leak guards', ()
 
     const dto = await service.findByShareToken(TOKEN);
 
-    const part = dto.parts[0] as Record<string, unknown>;
+    const part = dto.parts[0] as unknown as Record<string, unknown>;
     // Жодне з фінансово/structurally чутливих полів не повинно бути у public DTO:
     expect(Object.prototype.hasOwnProperty.call(part, 'batchCostPrice')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(part, 'warehouseId')).toBe(false);
@@ -144,7 +144,7 @@ describe('WorkOrderShareService.findByShareToken — public DTO leak guards', ()
     const { prisma } = makePrismaForPublicShare({ hasUoMIds: false });
     const service = makeService(prisma);
 
-    const dto = (await service.findByShareToken(TOKEN)) as Record<string, unknown>;
+    const dto = (await service.findByShareToken(TOKEN)) as unknown as Record<string, unknown>;
 
     expect(Object.prototype.hasOwnProperty.call(dto, 'orgId')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(dto, 'paidAmount')).toBe(false);
@@ -164,7 +164,7 @@ describe('WorkOrderShareService.findByShareToken — public DTO leak guards', ()
     const part = dto.parts[0];
     // Точний whitelist полів — якщо хтось додасть поле без оновлення DTO/
     // EstimatePublicPartDto, спрацює тут.
-    expect(Object.keys(part as Record<string, unknown>).sort()).toEqual(
+    expect(Object.keys(part as unknown as Record<string, unknown>).sort()).toEqual(
       ['amount', 'goodName', 'id', 'price', 'quantity', 'unitShortName'].sort(),
     );
   });

@@ -23,7 +23,7 @@ describe('BookingController — @Throttle contract', () => {
   it.each(cases)(
     '$method має @Throttle({ limit: $expectedLimit, ttl: $expectedTtl })',
     ({ method, expectedLimit, expectedTtl }) => {
-      const handler = (BookingController.prototype as Record<string, unknown>)[method];
+      const handler = (BookingController.prototype as unknown as Record<string, unknown>)[method];
       expect(handler).toBeDefined();
 
       const limit = reflector.get<number>(`${THROTTLER_LIMIT}default`, handler as never);
@@ -39,7 +39,7 @@ describe('BookingController — @Throttle contract', () => {
     const publicMethods = ['listPublicBranches', 'getAvailability', 'createPublic'];
 
     for (const method of publicMethods) {
-      const handler = (BookingController.prototype as Record<string, unknown>)[method];
+      const handler = (BookingController.prototype as unknown as Record<string, unknown>)[method];
       expect(handler).toBeDefined();
       const limit = reflector.get<number>(`${THROTTLER_LIMIT}default`, handler as never);
       expect(limit).toBeGreaterThan(0);

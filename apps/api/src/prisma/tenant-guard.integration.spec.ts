@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { withTenantGuard } from './tenant-guard.extension';
 import { TenantIsolationError } from './tenant-isolation.error';
 import { runWithTenant, runUnscoped } from '../common/tenant/tenant-context';
@@ -17,6 +17,15 @@ import { runWithTenant, runUnscoped } from '../common/tenant/tenant-context';
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://sto:sto_dev_secret@localhost:5432/sto_erp';
+
+/**
+ * ПРОПУСК orgId — СУТЬ цих тестів: перевіряємо, що guard або стемпить orgId з ALS, або кидає
+ * TenantIsolationError. Prisma-типи вимагають orgId у CounterpartyCreateInput і про guard не
+ * знають, тому дані проходять через цей хелпер (каст через unknown). ДОДАВАТИ orgId у дані НЕ
+ * МОЖНА — це знищить сенс тесту.
+ */
+const noOrgId = (data: { type: 'CLIENT'; firstName: string; phone: string }) =>
+  data as unknown as Prisma.CounterpartyCreateInput;
 
 let dbAvailable = false;
 let raw: PrismaClient;
@@ -166,7 +175,7 @@ describe('tenant-guard extension (integration, live DB)', () => {
     await expect(
       guarded.counterparty.upsert({
         where: { id: '00000000-0000-0000-0000-000000000000' },
-        create: { type: 'CLIENT', firstName: 'upsert-fail', phone: '+380000000003' },
+        create: noOrgId({ type: 'CLIENT', firstName: 'upsert-fail', phone: '+380000000003' }),
         update: {},
       }),
     ).rejects.toBeInstanceOf(TenantIsolationError);
@@ -183,7 +192,7 @@ describe('tenant-guard extension (integration, live DB)', () => {
     if (!dbAvailable) return;
     const created = await runWithTenant({ orgId }, async () =>
       guarded.counterparty.create({
-        data: { type: 'CLIENT', firstName: 'A1-тест', phone: '+380000000001' },
+        data: noOrgId({ type: 'CLIENT', firstName: 'A1-тест', phone: '+380000000001' }),
       }),
     );
     createdCounterpartyIds.push(created.id);
@@ -194,7 +203,7 @@ describe('tenant-guard extension (integration, live DB)', () => {
     if (!dbAvailable) return;
     await expect(
       guarded.counterparty.create({
-        data: { type: 'CLIENT', firstName: 'A1-fail', phone: '+380000000002' },
+        data: noOrgId({ type: 'CLIENT', firstName: 'A1-fail', phone: '+380000000002' }),
       }),
     ).rejects.toBeInstanceOf(TenantIsolationError);
   });

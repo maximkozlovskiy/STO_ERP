@@ -214,11 +214,14 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
       /не вдалося створити рахунок/,
     );
 
+    // mock.calls — масив списків аргументів НЕВІДОМОЇ арності для TS, тому анотуємо
+    // елемент масивом (не кортежем фіксованої довжини — TS2769 «requires 1 element»).
+    type UpdateCall = { data?: { status?: string; error?: string } }[];
     const updArg = prisma.onlinePaymentIntent.update.mock.calls.find(
-      (c: [{ data?: { status?: string } }]) => c[0]?.data?.status === 'FAILED',
-    );
+      (c: UpdateCall) => c[0]?.data?.status === 'FAILED',
+    ) as UpdateCall | undefined;
     expect(updArg).toBeTruthy();
-    expect(updArg![0].data.error).toContain('gateway 500');
+    expect(updArg![0].data!.error).toContain('gateway 500');
     // MONEY-critical ordering: poll-job НІКОЛИ не ставиться коли gateway впав.
     expect(pollQueue.add).not.toHaveBeenCalled();
   });

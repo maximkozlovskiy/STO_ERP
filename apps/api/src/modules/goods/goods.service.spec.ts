@@ -6,6 +6,7 @@ import { GoodsService } from './goods.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { GoodStatusesService } from '../good-statuses/good-statuses.service';
+import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**
  * Bug #162: unit-покриття goods.service.
@@ -24,20 +25,12 @@ describe('GoodsService', () => {
       update: any;
       updateMany: any;
     };
-    brand: { findFirst: any };
-    unitOfMeasure: { findFirst: any };
-    counterparty: { findFirst: any };
-    goodUoM: {
-      findFirst: any;
-      findMany: any;
-      count: any;
-      create: any;
-      update: any;
-      updateMany: any;
-      delete: any;
-    };
-    stockItem: { groupBy: any; findMany: any };
-    goodStatusLink: { findFirst: any };
+    brand: PrismaModelMock;
+    unitOfMeasure: PrismaModelMock;
+    counterparty: PrismaModelMock;
+    goodUoM: PrismaModelMock;
+    stockItem: PrismaModelMock;
+    goodStatusLink: PrismaModelMock;
     $transaction: ReturnType<typeof vi.fn>;
   };
   // Bug #534: docNumbers.next mock — без нього DI Nest падає на compile усіх 30 тестів.

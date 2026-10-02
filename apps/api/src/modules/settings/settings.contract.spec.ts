@@ -13,6 +13,7 @@ import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { UI_FEATURES_DEFAULTS } from './settings.dto';
+import type { MockInstance } from 'vitest';
 
 // Mutable Postgres row state across calls — lets us simulate the upsert + read pattern.
 let orgRow: {
@@ -80,7 +81,7 @@ const prismaMock = {
     }),
   },
   garageBranch: { findFirst: vi.fn() },
-  branchSettings: { findUnique: vi.fn(), upsert: vi.fn() },
+  branchSettings: { findUnique: vi.fn(), upsert: vi.fn(), findFirst: vi.fn() },
   // Bug #359/#361: SettingsService.updateOrganisationSettings перевіряє існування
   // currency code у Currency таблиці перед збереженням. Mock повертає row для
   // valid codes (UAH/USD/EUR) і null для unknown.
@@ -623,7 +624,7 @@ describe('Settings — HTTP Contract', () => {
   // fetch мокнутий — зовнішній виклик не робиться.
   describe('Bug #666: POST /settings/branch/:id/fiscal/verify contract', () => {
     const branchId = '11111111-1111-4111-8111-111111111111';
-    let fetchSpy: ReturnType<typeof vi.spyOn>;
+    let fetchSpy: MockInstance<typeof fetch>;
 
     beforeEach(() => {
       prismaMock.garageBranch.findFirst.mockResolvedValue({ id: branchId });

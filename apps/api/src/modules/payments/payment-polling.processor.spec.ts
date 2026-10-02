@@ -242,10 +242,13 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG }));
 
     // error записано (PAID лишається — НЕ відкат).
+    // mock.calls — масив списків аргументів НЕВІДОМОЇ арності для TS, тому анотуємо
+    // елемент масивом (не кортежем фіксованої довжини — TS2769 «requires 1 element»).
+    type UpdateCall = { data?: { error?: string } }[];
     const errUpd = prisma.onlinePaymentIntent.update.mock.calls.find(
-      (c: [{ data?: { error?: string } }]) => typeof c[0]?.data?.error === 'string',
-    );
-    expect(errUpd![0].data.error).toContain('Payment не створено');
+      (c: UpdateCall) => typeof c[0]?.data?.error === 'string',
+    ) as UpdateCall | undefined;
+    expect(errUpd![0].data!.error).toContain('Payment не створено');
     // re-enqueue з finalizeAttempts=1.
     expect(pollQueue.add).toHaveBeenCalledTimes(1);
     expect(pollQueue.add.mock.calls[0][1]).toEqual({

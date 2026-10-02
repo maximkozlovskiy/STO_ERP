@@ -61,7 +61,7 @@ describe('InvoicesService — business logic guards', () => {
   let docNumbers: { next: ReturnType<typeof vi.fn> };
   let pdf: { generateInvoicePdf: ReturnType<typeof vi.fn> };
   let settlementsMock: { createTransaction: ReturnType<typeof vi.fn> };
-  let settingsMock: { getDefaultVatRate: ReturnType<typeof vi.fn> };
+  let settingsMock: Record<string, ReturnType<typeof vi.fn>>;
   let exchangeRatesMockRef: {
     resolveBaseConversion: ReturnType<typeof vi.fn>;
     getBaseCurrency: ReturnType<typeof vi.fn>;

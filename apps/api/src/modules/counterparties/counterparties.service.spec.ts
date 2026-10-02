@@ -15,6 +15,7 @@ const statusesMock = {
   useValue: { invalidateCache: vi.fn() },
 };
 import { CounterpartyQueryDto } from './counterparties.dto';
+import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**
  * Bug #163: regression-покриття для пошуку counterparties за `?q=`.
@@ -28,11 +29,11 @@ import { CounterpartyQueryDto } from './counterparties.dto';
 describe('CounterpartiesService', () => {
   let service: CounterpartiesService;
   let prisma: {
-    counterparty: { findMany: any; count: any; findFirst: any; updateMany: any };
-    counterpartyStatusLink: { findFirst: any };
-    workOrder: { count: any };
-    purchaseOrder: { count: any };
-    invoice: { count: any };
+    counterparty: PrismaModelMock;
+    counterpartyStatusLink: PrismaModelMock;
+    workOrder: PrismaModelMock;
+    purchaseOrder: PrismaModelMock;
+    invoice: PrismaModelMock;
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -226,7 +227,7 @@ describe('CounterpartiesService — contract flows', () => {
   let service: CounterpartiesService;
   let prisma: {
     counterparty: { create: any; findFirstOrThrow: any; findFirst: any };
-    counterpartyContract: { create: any; count: any; findFirst: any; updateMany: any; update: any };
+    counterpartyContract: PrismaModelMock;
     settlementAccount: { create: any };
     customerGarage: { create: any };
     organisationSettings: { findUnique: any };

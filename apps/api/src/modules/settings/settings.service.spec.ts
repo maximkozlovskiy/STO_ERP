@@ -7,6 +7,7 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { NbuFetchScheduler } from '../exchange-rates/nbu-fetch.scheduler';
 import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pull.scheduler';
 import { AuditService } from '../audit/audit.service';
+import type { MockInstance } from 'vitest';
 
 /**
  * Bug #665 — regression guard для SettingsService.verifyFiscal
@@ -28,7 +29,7 @@ describe('SettingsService.verifyFiscal — Bug #665', () => {
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     branchSettings: { findFirst: ReturnType<typeof vi.fn> };
   };
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
 
   const ORG = 'org-1';
   const BRANCH = 'br-1';

@@ -218,7 +218,7 @@ describe('XlsxService', () => {
   describe('OCR-grid кеш за хешем вмісту (усунення подвійного OCR)', () => {
     it('OCR-канал (image): rawPreview кешує сітку → наступний previewImport читає з кешу, без OCR', async () => {
       const gridParser = service['gridParser'] as DocumentGridParserService;
-      const cache = service['cache'] as {
+      const cache = service['cache'] as unknown as {
         get: ReturnType<typeof vi.fn>;
         set: ReturnType<typeof vi.fn>;
       };
@@ -260,7 +260,7 @@ describe('XlsxService', () => {
     });
 
     it('xlsx-канал кеш НЕ чіпає (дешевий re-parse): get/set не викликаються', async () => {
-      const cache = service['cache'] as {
+      const cache = service['cache'] as unknown as {
         get: ReturnType<typeof vi.fn>;
         set: ReturnType<typeof vi.fn>;
       };
@@ -278,7 +278,7 @@ describe('XlsxService', () => {
 
     it('Redis недоступний (get→null, set→no-op): OCR спрацьовує щоразу — поведінка = поточна, без падіння', async () => {
       const gridParser = service['gridParser'] as DocumentGridParserService;
-      const cache = service['cache'] as {
+      const cache = service['cache'] as unknown as {
         get: ReturnType<typeof vi.fn>;
         set: ReturnType<typeof vi.fn>;
       };
@@ -603,7 +603,8 @@ describe('XlsxService', () => {
       const sheet = wb.addWorksheet('list');
       sheet.addRow(['sku', 'barcode', 'name']);
       sheet.addRow(['OIL-5W40', '', 'Масло']);
-      const buf = await wb.xlsx.writeBuffer();
+      // ExcelJS writeBuffer() віддає свій `Buffer extends ArrayBuffer`, не node Buffer.
+      const buf = Buffer.from(await wb.xlsx.writeBuffer());
 
       prisma.good.findMany.mockResolvedValueOnce([
         {
@@ -620,7 +621,7 @@ describe('XlsxService', () => {
       ]);
       pricingService.computePriceFromRules.mockReturnValueOnce(150);
 
-      const result = await service.applyPricingFromList(ORG, buf as Buffer, 'xlsx');
+      const result = await service.applyPricingFromList(ORG, buf, 'xlsx');
       expect(result.found).toBe(1);
       expect(result.updated).toBe(1);
       expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
@@ -630,9 +631,10 @@ describe('XlsxService', () => {
       const wb = new ExcelJS.Workbook();
       const sheet = wb.addWorksheet('list');
       sheet.addRow(['sku', 'barcode', 'name']);
-      const buf = await wb.xlsx.writeBuffer();
+      // ExcelJS writeBuffer() віддає свій `Buffer extends ArrayBuffer`, не node Buffer.
+      const buf = Buffer.from(await wb.xlsx.writeBuffer());
 
-      await expect(service.applyPricingFromList(ORG, buf as Buffer, 'xlsx')).rejects.toThrow(
+      await expect(service.applyPricingFromList(ORG, buf, 'xlsx')).rejects.toThrow(
         BadRequestException,
       );
     });

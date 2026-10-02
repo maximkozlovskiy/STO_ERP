@@ -21,13 +21,13 @@ interface State {
  * (componentDidCatch/getDerivedStateFromError). Корневий app/error.tsx лишається як остання лінія.
  */
 export class SectionErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false };
+  override state: State = { hasError: false };
 
   static getDerivedStateFromError(): State {
     return { hasError: true };
   }
 
-  componentDidCatch(error: unknown): void {
+  override componentDidCatch(error: unknown): void {
     // Логуємо у консоль (Sentry не wired). Не кидаємо далі — секція ізольована.
     // eslint-disable-next-line no-console
     console.error(`[SectionErrorBoundary${this.props.label ? ` ${this.props.label}` : ''}]`, error);
@@ -35,7 +35,7 @@ export class SectionErrorBoundary extends Component<Props, State> {
 
   private reset = () => this.setState({ hasError: false });
 
-  render(): ReactNode {
+  override render(): ReactNode {
     if (!this.state.hasError) return this.props.children;
     if (this.props.fallback) return this.props.fallback;
     return (
