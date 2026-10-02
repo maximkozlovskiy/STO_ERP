@@ -27,6 +27,54 @@
 
 ---
 
+### Аудит технологій — Кроки 1-3 (0e47090a..f677d3b1)
+
+Повний аудит стеку (`docs/AUDIT-2026-10.md`) і виконання трьох кроків плану.
+
+**Крок 1 — закриття розривів «налаштовано, але не діє»:**
+
+- Тести API потрапили під `tsc` і ESLint (були виключені) — 77 помилок типів → 0.
+  Знайдено **хибнозелений тест**: `.resolves.not.toThrow` БЕЗ дужок у tenant-guard —
+  асерт не виконувався роками. Плюс 5 проґавлених `await` у специ контролерів.
+- `@vitest/coverage-v8` НЕ БУВ ВСТАНОВЛЕНИЙ — coverage ніколи не запускався. Пороги
+  зафіксовано від фактичного рівня + крок у CI.
+- ESLint і commitlint у pre-commit; перші тести у `packages/shared`; 12 тестів
+  FSM-парності бек↔shared (раніше синхронізувались коментарем).
+
+**Крок 2 — діри CI:**
+
+- `docker build` обох образів на кожен PR (раніше лише по тегу — саме так пройшли повз
+  три вади Dockerfile).
+- Postgres для 7 integration-специв + `REQUIRE_DB=1`, бо інакше вони тихо скіпаються
+  і job лишається зеленим.
+- E2E smoke, Renovate із захистом від pre-release, knip, dependency-cruiser.
+- Розірвано 3 цикли імпортів в OCR-дузі (два створив рефакторинг simplify).
+
+**Крок 3 — версії й безпека:**
+
+| Пакет      | Було → Стало                    |
+| ---------- | ------------------------------- |
+| NestJS     | 10.4 → 12.1.2 (+ Fastify 4 → 5) |
+| Prisma     | 5.22 → 7.10.0                   |
+| Zod        | 3.24 → 4.6.5                    |
+| Vitest     | 2.1 → 5.0.3                     |
+| TypeScript | 5.7 → 6.0.3                     |
+| next       | 16.3.4 → 16.3.8                 |
+| bcrypt     | 5.1 → 6.0                       |
+
+**Вразливості на runtime-шляху: 16 модулів (4 critical) → нуль high/critical.**
+Закрито: `@fastify/middie` CRITICAL (auth bypass), `fastify` 4×HIGH, `vitest` CRITICAL,
+`next` CRITICAL (RCE), `tar` CRITICAL (через bcrypt 6, що прибрав node-pre-gyp),
+`nodemailer` 2×HIGH, `brace-expansion` HIGH.
+
+Попутно виправлено: refresh-cookie `Max-Age` був у мілісекундах (~82 роки замість 30 днів);
+зламаний CI-крок `Seed database`; `test.poolOptions` ігнорувався у Vitest 4; флак
+OCR-тесту на `Math.random`.
+
+TS 7 відкладено — `typescript-eslint` його не підтримує; потребує міграції api на ESM.
+
+---
+
 ### 27c687ee..6bc17d05 QA-цикл дуги імпорту накладних з локальним OCR
 
 Повний 8-етапний цикл (sync → review → optimize → simplify → tester → lint → security → E2E)

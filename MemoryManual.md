@@ -9,10 +9,17 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-02 (QA-цикл дуги імпорту ЗАКРИТО: 8 етапів, Bug #775 HIGH виправлено)
-Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
-            +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
-            блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
+Дата:       2026-10-02 (АУДИТ ТЕХНОЛОГІЙ: Кроки 1-3 ЗАКРИТО — docs/AUDIT-2026-10.md)
+Фаза:       Аудит технологій, Кроки 1-3 ЗАКРИТО:
+            · Крок 1 — якість: тести API під tsc+eslint (77 помилок → 0), coverage-пороги у CI,
+              eslint+commitlint у pre-commit, перші тести в packages/shared, FSM-парність бек↔shared.
+            · Крок 2 — CI: docker build на кожен PR, Postgres для 7 integration-специв (+REQUIRE_DB,
+              щоб вони НЕ скіпались тихо), E2E smoke, Renovate, knip + dependency-cruiser.
+            · Крок 3 — версії: NestJS 10→12 (+Fastify 4→5), Prisma 5→7, Zod 3→4, Vitest 2→5,
+              TypeScript 5.7→6, next→16.3.8, bcrypt 5→6.
+              БЕЗПЕКА: на runtime-шляху було 16 вразливих модулів (4 critical) → НУЛЬ high/critical.
+            Відкладено: TS 7 (typescript-eslint не підтримує, чекає 7.1) → потребує міграції api на ESM
+            (NestJS 12 уже "type":"module"). Prisma 8 у RC — не чіпати.
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З ТЕСТАМИ: новий
