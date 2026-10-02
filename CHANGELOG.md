@@ -5,6 +5,35 @@
 
 ---
 
+### 27c687ee..6bc17d05 QA-цикл дуги імпорту накладних з локальним OCR
+
+Повний 8-етапний цикл (sync → review → optimize → simplify → tester → lint → security → E2E)
+над дугою імпорту позицій документа: Excel/CSV → PDF-текст → PDF-скан/фото через локальний OCR.
+
+- **27c687ee** `fix(review)` — мертвий код: `countLines()` з інтерфейсу й обох адаптерів
+  (0 викликів, UI рахує через `fields.length`); `OcrNoTextError` (клас був, жоден шлях не кидав).
+- **b5325e7f** `perf(optimize)` — **подвійний OCR усунуто**: майстер читав один файл двічі
+  (`/raw-preview` + `/preview`), тобто окремий OCR-прогін 1-5с/стор ВДРУГЕ. Кеш сітки за
+  sha256(вміст) у Redis, TTL 300с, лише pdf/image. Без Redis — тиха деградація до поточної
+  поведінки. + 3 re-render фікси у `ExcelImportWizard` (roleByCol/лічильники/memo рядка).
+- **f7aa435b** `refactor(simplify)` — `groupFragmentsIntoLines` винесено як єдине джерело
+  правди: `fragmentsToGrid` і `mergeWordsIntoCells` тримали власні копії допуску `medH * 0.5`,
+  і розсинхрон дав би **тихо зсунуту сітку** без помилки. Виправлено баг майстра: «Перший рядок
+  даних» писався повз `setCol` → наступний автодетект затирав введене користувачем число.
+  У тестах прибрано 10 `console.log` і 2 `expect(true).toBe(true)`; тест повороту сторінки
+  стверджував `Array.isArray` (істинне завжди) → тепер вимагає `cols >= 2`.
+- **5fa13dae** `fix(lint)` — 8 pre-existing `no-unnecessary-type-assertion`. Окремо:
+  `@IsEnum` приймав МАСИВ — валідація працювала, але повідомлення виходило порожнім
+  («must be one of the following values: »), бо class-validator бере `Object.values()`.
+- **77da5294** `fix(tester)` — **Bug #775 [HIGH]**: `applyMode` поза deps `useCallback`
+  → майстер слав `replace` замість `append` → soft-delete УСІХ наявних позицій документа.
+  Замасковано тим, що мок мутації в тесті був референтно нестабільним.
+- **6bc17d05** `test(e2e)` — застарілий локатор мітки файлу (перелік форматів виріс з OCR).
+
+E2E: **353 passed / 0 failed / 1 flaky** на прогрітому сервері. Безпека — чисто.
+
+---
+
 ### c6f6254e feat(payroll): List Page pattern для /payroll — пагінація, фільтр статусу, колонки
 
 Періоди рендерились плоским списком (backend `take:500`, без фільтрів) — у юзера вже ~50 на одному

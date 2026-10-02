@@ -9,14 +9,14 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-02 (optimize дуги імпорту — усунено подвійний OCR + re-render майстра)
+Дата:       2026-10-02 (QA-цикл дуги імпорту ЗАКРИТО: 8 етапів, Bug #775 HIGH виправлено)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api +13 OCR/filter (12 ocr-integration реальний стек + 1 Bug#774 filter-regress); xlsx+filters
+Тести:      xlsx 140/140; ExcelImportWizard 29/29; E2E 353 passed / 0 failed / 1 flaky; xlsx+filters
             156/156 green. Раніше: api 2817/2817 (184 файли; +87 PDF/grid/header/append; +2 rawPreview.ocr) ·
             web 874/874 component (+14: майстер імпорту) · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
@@ -395,24 +395,28 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Review дуги імпорту накладних — 2026-10-02, HEAD 27c687ee (fix(review)):
-  Повний цикл code review дуги PDF/CSV-імпорту + OCR. Фокус — мертвий код і межі
-  OCR-алгоритму, що могли пройти повз попередні проходи. Знайдено й прибрано:
-  (1) DocumentLineImportAdapter.countLines() — на інтерфейсі й обох адаптерах, 0 викликів
-      (UI рахує через fields.length / existingLineCount prop);
-  (2) OcrNoTextError — клас визначено, жоден шлях не кидає (провайдер → null, pdfToGrid →
-      PdfScannedError); дохла гілка у toHttpError прибрана.
-  isRasterizeAvailable() лишено (реальний тест-гард наявності @napi-rs/canvas).
-  ПЕРЕВІРЕНО КОРЕКТНИМИ (не баги): finally у rasterizePdfPages виконується при throw між
-  yield (for-await → generator.throw() → finally); dispose-after-timeout на стор.3/5 не
-  зависає (throw розкручує for-await, скидає pages[]); mergeWordsIntoCells (gapRatio=1.0,
-  єдиний виклик) і fragmentsToGrid (modal<2 → 400, bands guarded) на межах стійкі;
-  ocrWordsToFragments при page.height=0 без слів не падає; кожен технічний throw має шлях
-  до дружнього 400 (toHttpError повний); controller — guards+roles+ParseUUIDPipe скрізь;
-  ApplyImportDto — IsEnum/IsUUID/IsNumber/ArrayMaxSize; Document table standard у wizard
-  (text-right tabular-nums на qty/price, colgroup); OCR-grid cache за content-hash — не
-  tenant-leak (парсована сітка = чиста функція байтів файлу).
-  Перевірено: tsc 0 (api/web/shared); 51 unit-тест xlsx зелені.
+QA-цикл дуги імпорту накладних — 2026-10-02, HEAD 6bc17d05 (27c687ee..6bc17d05):
+  8 етапів: sync → review → optimize → simplify → tester → lint → security → E2E.
+  ГОЛОВНЕ ЗНАЙДЕНЕ:
+  (1) Bug #775 [HIGH, tester] — applyMode поза deps useCallback → майстер слав replace
+      замість append → soft-delete УСІХ наявних позицій документа. Маскувався тим, що
+      мок мутації в тесті був референтно НЕстабільним (колбек «випадково» перестворювався).
+  (2) Подвійний OCR [optimize] — один файл читався двічі (/raw-preview + /preview), тобто
+      окремий прогін 1-5с/стор ВДРУГЕ. Кеш сітки за sha256(вміст), TTL 300с, лише pdf/image.
+  (3) groupFragmentsIntoLines [simplify] — fragmentsToGrid і mergeWordsIntoCells тримали
+      ВЛАСНІ копії допуску medH*0.5; розсинхрон дав би ТИХО зсунуту сітку без помилки.
+      Винесено як єдине джерело правди.
+  (4) startRow у майстрі писався повз setCol → не позначався 'manual' → наступний автодетект
+      тихо затирав введене користувачем число.
+  (5) @IsEnum приймав МАСИВ — валідація працювала, але повідомлення виходило порожнім
+      («must be one of the following values: »), бо class-validator бере Object.values().
+  Мертвий код: countLines() (0 викликів), OcrNoTextError (не кидався), XlsxService.cellText
+  (єдине звернення — власна рекурсія; живий близнюк cellToText у document-grid-parser).
+  У тестах: 10 console.log, 2 expect(true).toBe(true), тест повороту стверджував
+  Array.isArray (істинне завжди) → тепер cols >= 2.
+  Безпека — чисто (guards+roles, isEvalSupported:false, cacheMethod:'none', 0 записів на диск).
+  Перевірено: tsc 0 (api/web/shared); eslint xlsx 0 errors (було 8); xlsx 140/140;
+  ExcelImportWizard 29/29; E2E 353 passed / 0 failed / 1 flaky.
 
 Локальний OCR — 2026-10-02, HEAD 69d65b22 (6 комітів f39b97fd..69d65b22):
   Закрито останні 2 канали з 4: фото з телефона і скан. OCR = ДРУГИЙ провайдер у ланцюжку
