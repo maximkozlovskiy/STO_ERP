@@ -20,6 +20,8 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.5",
@@ -27,13 +29,5 @@
     "turbo": "^2.5.0",
     "typescript": "^5.7.0"
   },
-  "packageManager": "pnpm@11.2.2",
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "prettier --write"
-    ],
-    "*.{js,json,md,yml,yaml}": [
-      "prettier --write"
-    ]
-  }
+  "packageManager": "pnpm@11.2.2"
 }

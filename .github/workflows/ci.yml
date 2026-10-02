@@ -40,6 +40,13 @@ jobs:
       - name: Unit tests
         run: pnpm run test
 
+      # Пороги покриття живуть у apps/api/vitest.config.ts і зафіксовані від фактичного
+      # рівня (аудит 2026-10). Крок падає, якщо покриття просіло нижче порога — раніше
+      # coverage був налаштований у конфізі, але НІКОЛИ не запускався (навіть пакет
+      # @vitest/coverage-v8 не був встановлений), тож регрес покриття не ловився взагалі.
+      - name: Coverage thresholds (api)
+        run: pnpm --filter @sto/api exec vitest run --coverage
+
   # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
   # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
   # відсутній у .NET Framework) прослизнув повз усі аудити. Цей job на windows-latest (Windows
