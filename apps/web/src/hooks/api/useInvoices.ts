@@ -1,35 +1,33 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { invalidatePaymentSideEffects } from '@/lib/cache-invalidation';
 
-export interface Invoice {
-  id: string;
-  orgId?: string;
-  number: string;
-  status: string;
-  amount: number;
-  totalWithoutVat?: number | null;
-  totalVat?: number | null;
-  totalWithVat?: number | null;
-  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
-  currencyId?: string | null;
-  currencyCode?: string | null;
-  totalAmountBase?: number | null;
-  rateUsed?: number | null;
-  invoiceType?: string | null;
-  counterpartyId: string;
-  counterpartyName?: string;
-  workOrderId?: string | null;
-  workOrderNumber?: string | null;
-  paidAmount?: number | null;
-  dueDate?: string | null;
-  documentDate?: string | null;
-  notes?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/**
+ * Рахунок — ЗГЕНЕРОВАНИЙ тип із OpenAPI (Крок 4 аудиту, `pnpm run gen:api-types`).
+ *
+ * Раніше тут був рукописний `interface Invoice` — одна з п'яти копій
+ * `InvoiceResponseDto` (ще: `InvoiceWithOptionals`/`InvoiceLine` у invoices/page.tsx,
+ * `InvoiceDetail`/`InvoiceLine` у InvoiceCreateModal). Копія була СЛАБША за оригінал
+ * і місцями просто неправильна:
+ *   · `status: string` замість union 'DRAFT' | 'SENT' | ... | 'CANCELLED'
+ *     → `inv.status === 'PAYED'` (опечатка) компілювався б без помилки;
+ *   · `totalWithoutVat/totalVat/totalWithVat?: number | null` — у беку це
+ *     ОБОВ'ЯЗКОВІ `number` (@ApiProperty + Number() у toDto), тож web марно
+ *     ганяв `?? 0`-фолбеки по всьому UI;
+ *   · `orgId?` опційний, хотя бек віддає його завжди;
+ *   · бракувало `unitOfMeasureId` і `lines` — рядки описувались окремим типом.
+ *
+ * Патерн міграції решти хуків — docs/PATTERNS.md, «Типи API: беремо згенероване».
+ */
+export type Invoice = ApiSchema<'InvoiceResponseDto'>;
+
+/** Рядок рахунку (`lines` у InvoiceResponseDto) — теж зі згенерованого. */
+export type InvoiceLine = ApiSchema<'InvoiceLineResponseDto'>;
+
+/** Статус рахунку як union — для exhaustive switch/map у UI. */
+export type InvoiceStatusValue = Invoice['status'];
 
 export interface InvoicesFilter extends Record<string, unknown> {
   page?: number;

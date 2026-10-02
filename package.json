@@ -16,6 +16,7 @@
     "db:migrate": "pnpm --filter @sto/database prisma migrate dev",
     "db:studio": "pnpm --filter @sto/database prisma studio",
     "db:seed": "pnpm --filter @sto/database prisma db seed",
+    "gen:api-types": "pnpm --filter @sto/api emit-openapi && openapi-typescript packages/shared/openapi.json -o packages/shared/src/api-types.ts",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\" --ignore-path .gitignore",
     "prepare": "husky",
     "deadcode": "knip --no-exit-code",
@@ -30,6 +31,7 @@
     "husky": "^9.1.7",
     "knip": "^6.39.0",
     "lint-staged": "^17.0.5",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.3.3",
     "turbo": "^2.5.0",
     "typescript": "^6.0.3"

@@ -4,6 +4,63 @@
 
 ---
 
+## [2026-10-03] Кодогенерація типів: без `@ApiOkResponse` схеми НЕМА; без swagger-плагіна вона порожня
+
+Крок 4 аудиту (`openapi-typescript`). Дві пастки, через які «генерація є, а типів немає».
+
+**Пастка 1 — анотація відповіді не опційна.** `@ApiOperation({ summary })` описує
+операцію, але НЕ її тіло. Без `@ApiOkResponse({ type: X })` у документі лишається
+`"200": { "description": "" }`, і `openapi-typescript` згенерує для роута… нічого.
+Замір на момент аудиту: лише **23 із 67** контролерів оголошували тип відповіді.
+Тому міграція модуля на згенерований тип ЗАВЖДИ починається з анотації його контролера.
+
+```ts
+// ❌ тип відповіді у документі відсутній
+@Get() @ApiOperation({ summary: 'Список рахунків' }) findAll() {}
+// ✅
+@Get() @ApiOperation({ summary: 'Список рахунків' }) @ApiOkResponse({ type: PaginatedInvoicesDto }) findAll() {}
+```
+
+**Пастка 2 — без swagger CLI-плагіна схема виходить порожньою.** У проєкті 71
+рукописний `*ResponseDto`, де поля декоровані БЕЗ явного типу:
+`@ApiPropertyOptional() notes?: string | null`. Swagger сам по собі типу не знає
+(`emitDecoratorMetadata` для `string | null` дає `Object`), тож у схему потрапляє `{}`,
+а `openapi-typescript` чесно перетворює це на **`Record<string, never>`** — тип, у
+якого немає жодного корисного поля. Згенеровані типи виглядають «готовими», але
+непридатні: `inv.notes` має тип об'єкта, а не рядка.
+
+Лікування — увімкнути `@nestjs/swagger/plugin` (він читає TS-тип з AST) на час емісії.
+`nest build` робить це через `nest-cli.json`, а окремий емітер — ні, тож плагін
+підключається вручну як TS-трансформер (`apps/api/scripts/compile-for-openapi.js`).
+Різниця на цьому проєкті: **173 → 236 схем**, `Record<string, never>` → `string | null`.
+
+**Контроль:** після `pnpm run gen:api-types` перевіряти на конкретному полі, а не
+загальним grep-ом — `Record<string, never>` ЗАКОННО лишається для JSON-блобів
+(`credentials`, `rawData`, `payload`: у DTO вони `Record<string, unknown>`) і для
+boilerplate `webhooks`/`$defs`. Зараз таких 57, і це нормально.
+
+```bash
+# має давати `string | null`, а не Record<string, never>
+grep -A 25 "InvoiceResponseDto: {" packages/shared/src/api-types.ts | grep "notes"
+# кількість схем у документі (плагін увімкнено -> 236; вимкнено -> 173)
+node -e "console.log(Object.keys(require('./packages/shared/openapi.json').components.schemas).length)"
+```
+
+**Бонус — Nest піднімається без БД і Redis.** `NestFactory.create(AppModule,
+new FastifyAdapter(), { preview: true })` будує ПОВНИЙ граф модулів, але не інстанціює
+провайдери → `PrismaService.onModuleInit` ($connect) і BullMQ-конекшени не виконуються,
+`listen()` не викликається. Саме це робить генерацію сумісною з ADR-001 (офлайн).
+`FastifyAdapter` передавати ОБОВ'ЯЗКОВО: без HTTP-драйвера Nest шукає
+`@nestjs/platform-express`, якого в проєкті немає, і падає ще до побудови графа.
+
+**Супутня знахідка — один і той самий `documentDate` у двох форматах.**
+`InvoiceResponseDto.documentDate` = `YYYY-MM-DD` (`.toISOString().slice(0, 10)`), а
+`findByWorkOrder()` для того ж поля віддає повний ISO-datetime (`.toISOString()`).
+Видимого бага немає лише тому, що `fmtDate` ковтає обидва. Якщо колись знадобиться
+порівняння рядків дат або `.slice(0, 10)` на фронті — зламається.
+
+---
+
 ## [2026-10-02] ExcelJS `writeBuffer()` віддає НЕ node Buffer; `*.spec.ts` роками не типізувались
 
 **Пастка 1 — ExcelJS Buffer.** `exceljs/index.d.ts` оголошує ГЛОБАЛЬНИЙ

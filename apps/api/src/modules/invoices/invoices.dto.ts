@@ -164,7 +164,9 @@ export class InvoiceResponseDto {
   @ApiPropertyOptional() currencyCode?: string | null;
   @ApiPropertyOptional() totalAmountBase?: number | null;
   @ApiPropertyOptional() rateUsed?: number | null;
-  @ApiPropertyOptional() invoiceType?: string;
+  // Крок 4 (кодогенерація): було `invoiceType?: string`, але toDto повертає `inv.invoiceType`
+  // — колонка nullable у Prisma. Згенерований тип тепер відповідає реальній відповіді.
+  @ApiPropertyOptional() invoiceType?: string | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiPropertyOptional() dueDate?: string | null;
   @ApiPropertyOptional({ description: 'Дата документа' }) documentDate?: string | null;
@@ -174,6 +176,27 @@ export class InvoiceResponseDto {
   @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional({ description: 'Set when the invoice is soft-deleted' })
   deletedAt?: string | null;
+}
+
+/**
+ * Відповідь GET /invoices/from-work-order/:workOrderId/find — ВУЖЧИЙ зріз рахунку
+ * для invoice-slot картки наряду (не повний InvoiceResponseDto).
+ * Крок 4 аудиту: форма була лише inline-типом у сервісі, тож у Swagger (і в згенерованих
+ * типах) її не було зовсім. Тепер це явний DTO — єдине джерело правди для фронта.
+ */
+export class InvoiceByWorkOrderResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: InvoiceStatus }) status!: InvoiceStatus;
+  @ApiProperty() amount!: number;
+  @ApiPropertyOptional({ nullable: true }) currencyCode!: string | null;
+  @ApiPropertyOptional({ nullable: true }) totalAmountBase!: number | null;
+  @ApiPropertyOptional({ nullable: true }) rateUsed!: number | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'ISO-datetime (НЕ YYYY-MM-DD, на відміну від InvoiceResponseDto.documentDate)',
+  })
+  documentDate!: string | null;
 }
 
 export class PaginatedInvoicesDto {

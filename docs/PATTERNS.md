@@ -202,6 +202,100 @@ await apiMultipartFetch('/xlsx/import', formData);
 
 ---
 
+## Патерн: Типи API — беремо згенероване, не пишемо своє (Крок 4 аудиту)
+
+**Правило:** форму відповіді API у web **НЕ описують руками**. Тип приходить із
+`@sto/shared`, згенерований із Swagger-документа беку.
+
+```bash
+pnpm run gen:api-types   # офлайн: БЕЗ запущеного API і БЕЗ інтернету
+```
+
+Що робить команда (два кроки, обидва локальні):
+
+1. `apps/api/scripts/compile-for-openapi.js` + `apps/api/scripts/emit-openapi.ts` —
+   піднімають Nest у `NestFactory.create(AppModule, { preview: true })` (граф модулів
+   будується, провайдери **не** інстанціюються → `PrismaService.$connect` і BullMQ не
+   стартують) і пишуть `packages/shared/openapi.json`.
+2. `openapi-typescript openapi.json -o packages/shared/src/api-types.ts`.
+
+`api-types.ts` і `openapi.json` **комітяться**: `pnpm install && pnpm build` на чистій
+машині не має потребувати ні генерації, ні БД (ADR-001). Генерацію перезапускають, коли
+змінився DTO або контролер.
+
+### Як брати тип
+
+```typescript
+// ✅ хук/компонент:
+import type { ApiSchema } from '@sto/shared';
+
+export type Invoice = ApiSchema<'InvoiceResponseDto'>;
+export type InvoiceLine = ApiSchema<'InvoiceLineResponseDto'>;
+export type InvoiceStatusValue = Invoice['status']; // union, не string
+
+// ❌ НЕ так — копія розійдеться з беком і буде слабшою:
+export interface Invoice {
+  status: string; // замість 'DRAFT' | 'SENT' | ... → опечатка компілюється
+  totalWithVat?: number | null; // у беку це обов'язковий number
+}
+```
+
+Еталон міграції — `apps/web/src/hooks/api/useInvoices.ts` (знято 5 копій
+`InvoiceResponseDto`: хук, `invoices/page.tsx`, `InvoiceCreateModal.tsx`,
+`InvoiceSection.tsx`).
+
+### Передумова: контролер мусить оголосити тип відповіді
+
+Без `@ApiOkResponse({ type: ... })` у документі лишається `200: { description: '' }`,
+і згенерованого типу просто **немає**. Тому разом із міграцією хука анотують контролер:
+
+```typescript
+// ✅
+@Get()
+@ApiOperation({ summary: 'Список рахунків' })
+@ApiOkResponse({ type: PaginatedInvoicesDto })
+findAll(...) {}
+
+@Post()
+@ApiCreatedResponse({ type: InvoiceResponseDto })  // 201, не 200
+create(...) {}
+
+@Delete(':id')
+@ApiNoContentResponse()                            // 204 без тіла
+remove(...) {}
+```
+
+Якщо метод повертає inline-форму (`Promise<{ id: string; number: string }>`), її
+виносять в окремий `*ResponseDto` — інакше у Swagger її немає зовсім
+(приклад: `InvoiceByWorkOrderResponseDto`).
+
+### Коли згенерований тип незручний
+
+| Ситуація                                       | Рішення                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Треба вужчий зріз (кілька полів)               | `Pick<Invoice, 'id' \| 'number' \| 'amount'>`                                                        |
+| Поле опційне у DTO, але в цьому роуті завжди є | `Invoice & { documentDate: string }`                                                                 |
+| Локальне поле лише для UI (`_key`, `_dirty`)   | окремий `LocalLine`-тип, **не** правити згенерований                                                 |
+| Тип виглядає неправильним                      | баг у DTO беку → правити DTO й перегенерувати, **не** обходити у web                                 |
+| Потрібен тип тіла запиту                       | `ApiSchema<'CreateInvoiceDto'>`; для форм джерело правди лишається zod-схема з `@sto/shared` (MP-F6) |
+
+`packages/shared/src/api-types.ts` **не правлять руками** — файл перезаписується
+генератором. Усі зручності живуть у `api-types.helpers.ts`.
+
+### Grep-детектор (для review)
+
+```bash
+# рукописні копії *ResponseDto у web: status як рядок замість union
+grep -rn "status: string" --include=*.ts --include=*.tsx apps/web/src/hooks/api/
+
+# контролери без оголошеного типу відповіді (кандидати на анотацію)
+for f in apps/api/src/modules/*/*.controller.ts; do
+  grep -q "ApiOkResponse\|ApiResponse(\|ApiCreatedResponse" "$f" || echo "$f"
+done
+```
+
+---
+
 ## Патерн: Ref-cache для довідників
 
 ```typescript

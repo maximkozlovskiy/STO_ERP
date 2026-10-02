@@ -17,7 +17,7 @@ import {
   INVOICE_STATUS_DESCRIPTIONS,
   WO_INVOICEABLE_STATUSES,
   WO_INVOICE_VISIBLE_STATUSES,
-  type InvoiceStatus,
+  type ApiSchema,
 } from '@sto/shared';
 import { invoiceStatusLabel } from '@/i18n/enumLabel';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
@@ -28,16 +28,17 @@ import { useBaseCurrency } from '@/hooks/api/useCash';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { toast } from '@/lib/toast';
 
-export interface InvoiceRef {
-  id: string;
-  number: string;
-  status: InvoiceStatus;
-  amount: number;
-  currencyCode?: string | null;
-  totalAmountBase?: number | null;
-  rateUsed?: number | null;
-  documentDate: string | null;
-}
+/**
+ * Відповідь GET /invoices/from-work-order/:id/find — ЗГЕНЕРОВАНИЙ тип
+ * (`InvoiceByWorkOrderResponseDto`, див. `pnpm run gen:api-types`). Раніше був
+ * рукописний mirror-shape, який доводилось тримати в синхроні з беком вручну.
+ *
+ * УВАГА (знайдено Кроком 4): два ендпоінти віддають documentDate у РІЗНИХ
+ * форматах — findByWorkOrder робить `.toISOString()` (повний ISO-datetime), а
+ * InvoiceResponseDto — `.toISOString().slice(0, 10)` (YYYY-MM-DD). fmtDate ковтає
+ * оба, тож видимого бага немає, але розбіжність зафіксована у docs/GOTCHAS.md.
+ */
+export type InvoiceRef = ApiSchema<'InvoiceByWorkOrderResponseDto'>;
 
 // Backend `createFromWorkOrder` / `refreshFromWorkOrder` повертають повний
 // InvoiceResponseDto; `documentDate` там може бути `undefined` (не в select) →
