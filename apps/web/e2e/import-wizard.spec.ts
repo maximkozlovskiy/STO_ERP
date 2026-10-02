@@ -134,7 +134,10 @@ test.describe('Майстер імпорту позицій — живий бр�
     await expect(wizard.getByRole('button', { name: /Ідентифікувати товари/ })).toBeDisabled();
 
     // Модалка НЕ порожня: шапка й поля мапінгу на місці.
-    await expect(wizard.getByText(/Файл \(Excel, CSV або PDF\)/)).toBeVisible();
+    // Локатор свідомо НЕ перелічує формати: мітка росте з кожним новим каналом імпорту
+    // (був «Excel, CSV або PDF», став «Excel, CSV, PDF або фото» після OCR), і точний перелік
+    // ламав би тест на кожному розширенні, хоча перевіряємо ми тут лише наявність поля файлу.
+    await expect(wizard.getByText(/^Файл \(/)).toBeVisible();
 
     await page.keyboard.press('Escape');
   });
