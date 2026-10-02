@@ -52,10 +52,37 @@ const DEFAULT_DPI = 200;
 const MIN_DPI = 100;
 const MAX_DPI = 400;
 
+/**
+ * Жорсткий стеля площі полотна в пікселях — захист від decompression-bomb / OOM.
+ *
+ * Ліміт розміру завантаження (25 МБ) НЕ рятує: PDF може оголосити крихітний потік вмісту й
+ * гігантський MediaBox (спек дозволяє сторінку до 14400×14400 pt). При DPI 200 scale≈2.78 →
+ * полотно ~40000×40000 px = 6.4 млрд пікселів × 4 байти ≈ 25 ГБ RGBA, виділяється СИНХРОННО у
+ * createCanvas ДО будь-якого таймауту → миттєвий OOM у контейнері з mem_limit: 1g.
+ *
+ * 40 млн px ≈ 160 МБ RGBA — з запасом вкладається у 1 ГБ навіть із буфером PNG та воркером OCR, і
+ * покриває легітимну A0 при 200 DPI (~55 млн px для A0 — рідкість для накладної, свідомо ріжемо).
+ * A4@200 = 1654×2339 ≈ 3.9 млн px — на два порядки нижче, тож нормальні документи не зачеплені.
+ */
+const MAX_CANVAS_PIXELS = 40_000_000;
+
 function resolveDpi(explicit?: number): number {
   const fromEnv = Number(process.env.OCR_DPI);
   const raw = explicit ?? (Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_DPI);
   return Math.min(MAX_DPI, Math.max(MIN_DPI, Math.trunc(raw)));
+}
+
+/**
+ * Урізає scale так, щоб площа полотна не перевищила `MAX_CANVAS_PIXELS`. Повертає виправлений scale
+ * (≤ вхідного). Рахунок на БАЗОВОМУ viewport (scale=1), тож похідне полотно гарантовано в межах.
+ */
+function clampScaleToArea(baseWidth: number, baseHeight: number, scale: number): number {
+  const w = baseWidth * scale;
+  const h = baseHeight * scale;
+  const area = w * h;
+  if (area <= MAX_CANVAS_PIXELS || !(baseWidth > 0) || !(baseHeight > 0)) return scale;
+  // площа ∝ scale² → масштабуємо scale на √(ліміт / площа).
+  return scale * Math.sqrt(MAX_CANVAS_PIXELS / area);
 }
 
 export interface RasterPage {
@@ -112,9 +139,14 @@ export async function* rasterizePdfPages(
     const pages = Math.min(doc.numPages, Math.max(1, opts?.maxPages ?? doc.numPages));
     for (let p = 1; p <= pages; p++) {
       const page = await doc.getPage(p);
+      const rotation = page.rotate ?? 0;
+      // Спершу базовий viewport (scale=1), щоб обчислити реальні точкові розміри сторінки й зрізати
+      // scale під стелю площі — інакше гігантський MediaBox дав би OOM на createCanvas (bomb-guard).
+      const base = page.getViewport({ scale: 1, rotation });
+      const safeScale = clampScaleToArea(base.width, base.height, scale);
       // rotation ВИПРАВЛЯЄ повернуту сторінку просто в рендері — на відміну від текстової гілки,
       // де ми змушені відмовляти (там координати лишились би у нерозвернутому просторі).
-      const viewport = page.getViewport({ scale, rotation: page.rotate ?? 0 });
+      const viewport = page.getViewport({ scale: safeScale, rotation });
       const canvas = canvasMod.createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
       const ctx = canvas.getContext('2d');
       // Білий фон: PDF-сторінка прозора, а OCR по прозорому дає чорне полотно.

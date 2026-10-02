@@ -87,4 +87,15 @@ describe('pdf-rasterizer', () => {
   it('не-PDF буфер → помилка, не тихий порожній результат', async () => {
     await expect(rasterizePdfToPngs(Buffer.from('not a pdf'))).rejects.toThrow();
   }, 30_000);
+
+  it('гігантська сторінка (decompression-bomb) → площа полотна зрізана під стелю', async () => {
+    // 10000×10000 pt — при 400 DPI це було б ~55556² ≈ 3 млрд px (≈12 ГБ RGBA) без захисту.
+    const pdf = await buildPdf(d => d.text('X', 50, 50), { size: [10_000, 10_000] });
+    const [page] = await rasterizePdfToPngs(pdf, { dpi: 400 });
+    expect(page).toBeDefined();
+    // Полотно НЕ перевищує стелю 40 млн px (із невеликим допуском на ceil округлення сторони).
+    expect(page!.widthPx * page!.heightPx).toBeLessThanOrEqual(40_000_000 + 20_000);
+    // Але й не вироджене — щось растеризувалось.
+    expect(page!.widthPx).toBeGreaterThan(1000);
+  }, 60_000);
 });
