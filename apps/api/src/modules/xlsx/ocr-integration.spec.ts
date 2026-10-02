@@ -72,12 +72,23 @@ function renderInvoicePng(opts: {
   for (const r of DATA) draw(r);
 
   if (opts.noise && opts.noise > 0) {
-    // «Сіль» — випадкові чорні крапки, імітація шуму сканера.
+    // «Сіль» — крапки, імітація шуму сканера. Генератор ДЕТЕРМІНОВАНИЙ (mulberry32 з
+    // фіксованим сідом), а не Math.random: з випадковим шумом тест флакував — зрідка
+    // «сіль» накривала текст так, що OCR повертав нуль фрагментів, і падіння виглядало
+    // як регресія, хоча код не змінювався. Шум лишається реалістичним, але однаковим
+    // щопрогону, тож межа якості фіксується відтворювано.
+    let seed = 0x5eed;
+    const rnd = (): number => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
     const n = Math.floor(W * H * opts.noise);
     for (let i = 0; i < n; i++) {
-      const x = Math.floor(Math.random() * W);
-      const yy = Math.floor(Math.random() * H);
-      ctx.fillStyle = Math.random() > 0.5 ? '#000000' : '#888888';
+      const x = Math.floor(rnd() * W);
+      const yy = Math.floor(rnd() * H);
+      ctx.fillStyle = rnd() > 0.5 ? '#000000' : '#888888';
       ctx.fillRect(x, yy, 1, 1);
     }
   }
