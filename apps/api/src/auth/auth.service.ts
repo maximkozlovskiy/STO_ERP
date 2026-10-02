@@ -5,7 +5,7 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import type { FastifyReply } from 'fastify';
@@ -15,7 +15,16 @@ import { runUnscoped, getLocale } from '../common/tenant/tenant-context';
 import type { AuthResponseDto, JwtPayload, LoginDto } from './auth.dto';
 
 const REFRESH_COOKIE = 'sto_refresh';
-const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Час життя refresh-cookie У СЕКУНДАХ.
+ *
+ * `@fastify/cookie` (як і специфікація Set-Cookie) очікує Max-Age у СЕКУНДАХ, а константа
+ * була в мілісекундах — браузер отримував `Max-Age=2592000000`, тобто ~82 роки замість
+ * 30 днів. Refresh-cookie фактично не протухав: вкрадений токен лишався дійсним без
+ * обмеження за часом (ротація tokenVersion рятує лише при зміні пароля).
+ * Помічено на живому відгуку сервера під час міграції на Fastify 5; у коді було й раніше.
+ */
+const REFRESH_COOKIE_MAX_AGE_SEC = 30 * 24 * 60 * 60;
 // B2 lockout: N невдалих спроб поспіль → блок на вікно. Прикриває стійкий підбір на відомий email
 // (IP-throttle 10/min ловить burst, але не повільний перебір з одного IP чи розподілений).
 const MAX_FAILED_ATTEMPTS = 5;
@@ -215,6 +224,31 @@ export class AuthService {
     });
   }
 
+  /**
+   * Тривалість життя токена з env у типі, який приймає @nestjs/jwt 11.
+   *
+   * У v11 `expiresIn` звузився з довільного `string` до `number | StringValue`, де
+   * StringValue — шаблонний літерал («15m», «30d», «2h»). Значення з ConfigService
+   * приходить як `string`, тож потрібна перевірка, а не каст наосліп: помилка у
+   * JWT_ACCESS_EXPIRES_IN інакше дала б рантаймний збій підписання вже у проді.
+   *
+   * Формат — число з одиницею (s/m/h/d/w/y) або просто число секунд; обидва підтримує
+   * jsonwebtoken. Нерозпізнане значення — явна помилка на старті, а не тихе ігнорування.
+   */
+  private expiresIn(
+    key: string,
+    fallback: `${number}${'s' | 'm' | 'h' | 'd'}`,
+  ): JwtSignOptions['expiresIn'] {
+    const raw = this.config.get<string>(key);
+    if (!raw) return fallback;
+    if (/^\d+$/.test(raw)) return Number(raw);
+    if (/^\d+(\.\d+)?\s*(s|m|h|d|w|y)$/i.test(raw))
+      return raw as `${number}${'s' | 'm' | 'h' | 'd'}`;
+    throw new Error(
+      `${key}="${raw}" має неприпустимий формат. Очікується число секунд або число з одиницею: 15m, 2h, 30d.`,
+    );
+  }
+
   generateAccessToken(payload: JwtPayload): string {
     return this.signAccess(payload);
   }
@@ -222,14 +256,14 @@ export class AuthService {
   private signAccess(payload: JwtPayload): string {
     return this.jwt.sign(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
+      expiresIn: this.expiresIn('JWT_ACCESS_EXPIRES_IN', '15m'),
     });
   }
 
   private signRefresh(payload: JwtPayload): string {
     return this.jwt.sign(payload, {
       secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
-      expiresIn: this.config.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '30d',
+      expiresIn: this.expiresIn('JWT_REFRESH_EXPIRES_IN', '30d'),
     });
   }
 
@@ -239,7 +273,7 @@ export class AuthService {
       secure: this.config.get<string>('NODE_ENV') === 'production',
       sameSite: 'strict',
       path: '/api/v1/auth',
-      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+      maxAge: REFRESH_COOKIE_MAX_AGE_SEC,
     });
   }
 }
