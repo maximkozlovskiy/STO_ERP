@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    // TS 7 прибирає node10; тут лишаємо `node` + явний opt-out, бо цей конфіг емітить
+    // CommonJS для apps/api (package.json main -> dist/cjs). `bundler` вимагав би
+    // module=preserve, а той зберігає ESM-синтаксис — api під CJS не прочитав би.
     "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "rootDir": "./src",
     "outDir": "./dist/cjs",
     "declaration": true,

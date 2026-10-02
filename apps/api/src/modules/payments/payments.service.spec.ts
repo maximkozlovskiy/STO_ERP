@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import { getQueueToken } from '@nestjs/bullmq';
 import { PaymentsService } from './payments.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1232,7 +1232,10 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
   let cash: { createOperation: ReturnType<typeof vi.fn> };
   let exchangeRates: {
     resolveBaseConversion: ReturnType<typeof vi.fn>;
-    getBaseCurrency: ReturnType<typeof vi.fn>;
+    // Конкретна сигнатура: безпараметричний ReturnType<typeof vi.fn> у TS 6 + Vitest 5
+    // виводиться як `Mock<Procedure | Constructable>` і вже не викликається без `new`
+    // (TS2348) — а цей мок викликають усередині sameCurrency.
+    getBaseCurrency: Mock<(orgId: string) => Promise<{ id: string | null; code: string }>>;
     sameCurrency: ReturnType<typeof vi.fn>;
   };
   let checkboxQueue: { add: ReturnType<typeof vi.fn> };

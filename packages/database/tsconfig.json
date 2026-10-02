@@ -2,14 +2,20 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    "moduleResolution": "node10",
+    // `bundler` замість deprecated `node10`: TS 7 прибирає node10 остаточно (TS5107 у TS 6).
+    // Пара `module: node16` тут НЕ підходить — вона робить із seed-скриптів ESM, і ts-node
+    // падає з TS2591 (`require`/`process` не визначені). Перевірено.
+    "moduleResolution": "bundler",
+    // `types` явно: без нього ts-node не підхоплював @types/node і seed падав із
+    // «Cannot find name 'fs'» (TS2591). Існувало ДО міграції — отже CI-крок
+    // «Seed database» був зламаний, просто ніхто не запускав seed локально.
+    "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "outDir": "dist",
-    "rootDir": ".",
-    "ignoreDeprecations": "5.0"
+    "rootDir": "."
   },
   "include": ["prisma/**/*.ts", "src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
