@@ -1147,13 +1147,13 @@ export class XlsxService {
         const byBrand = brandId ? exact.filter(g => g.brandId === brandId) : [];
         if (byBrand.length === 1) {
           status = 'matched';
-          matchedGoodId = byBrand[0]!.id;
+          matchedGoodId = byBrand[0].id;
         } else if (byBrand.length > 1) {
           status = 'ambiguous';
           candidates = byBrand.map(g => this.toCandidate(g));
         } else if (exact.length === 1) {
           status = 'matched';
-          matchedGoodId = exact[0]!.id;
+          matchedGoodId = exact[0].id;
         } else {
           status = 'ambiguous';
           candidates = exact.map(g => this.toCandidate(g));

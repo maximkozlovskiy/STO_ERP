@@ -170,7 +170,7 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
           data: { quantity, price: l.price, vatRate, vatAmount },
         });
         // Наступний рядок файлу з тим самим товаром має долитись уже до оновленої кількості.
-        byGoodId.set(l.goodId, { ...hit, quantity: quantity as never, price: l.price as never });
+        byGoodId.set(l.goodId, { ...hit, quantity, price: l.price as never });
       } else {
         const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
         toCreate.push({ ...l, vatRate, vatAmount });
@@ -305,7 +305,7 @@ export class StockDocumentImportAdapter implements DocumentLineImportAdapter {
           where: { id: hit.id, orgId },
           data: { quantity, price: l.price },
         });
-        byGoodId.set(l.goodId, { ...hit, quantity: quantity as never });
+        byGoodId.set(l.goodId, { ...hit, quantity });
       } else {
         toCreate.push(l);
       }

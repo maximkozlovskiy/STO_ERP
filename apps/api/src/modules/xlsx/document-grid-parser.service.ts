@@ -103,7 +103,7 @@ export class DocumentGridParserService {
         skip_empty_lines: true,
         relax_column_count: true,
         trim: true,
-      }) as string[][];
+      });
     } catch {
       throw new BadRequestException(translateError('err.xlsx.fileReadFailed', getLocale()));
     }

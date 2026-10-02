@@ -18,12 +18,25 @@ import type { ImportDocType } from './document-line-import.adapter';
 const IMPORT_DOC_TYPES: ImportDocType[] = ['PURCHASE_ORDER', 'STOCK_DOCUMENT'];
 
 /**
+ * Той самий перелік, але ОБʼЄКТОМ — саме його споживає @IsEnum. З масивом валідація теж
+ * спрацьовує (сміття відхиляється), проте повідомлення виходить обрізаним: class-validator
+ * будує список дозволених через Object.values() з відсіюванням числових ключів зворотного
+ * enum-мапінгу, а в масиву всі ключі числові → лишається порожньо, і користувач бачить
+ * «must be one of the following values: » без жодного значення. Перевірено емпірично.
+ * Для @ApiProperty масив лишається — Swagger очікує саме його.
+ */
+const IMPORT_DOC_TYPE_ENUM = {
+  PURCHASE_ORDER: 'PURCHASE_ORDER',
+  STOCK_DOCUMENT: 'STOCK_DOCUMENT',
+} as const;
+
+/**
  * Multipart form-fields майстра прев'ю. Числові поля приходять рядками з form-data —
  * @Type(() => Number) коерсить. Колонки 1-based; startRow — рядок першого товару.
  */
 export class PreviewImportDto {
   @ApiProperty({ enum: IMPORT_DOC_TYPES })
-  @IsEnum(IMPORT_DOC_TYPES as unknown as object)
+  @IsEnum(IMPORT_DOC_TYPE_ENUM)
   docType!: ImportDocType;
 
   @ApiProperty()
@@ -155,7 +168,7 @@ export type ImportApplyMode = (typeof IMPORT_APPLY_MODES)[number];
 
 export class ApplyImportDto {
   @ApiProperty({ enum: IMPORT_DOC_TYPES })
-  @IsEnum(IMPORT_DOC_TYPES as unknown as object)
+  @IsEnum(IMPORT_DOC_TYPE_ENUM)
   docType!: ImportDocType;
 
   @ApiProperty()
