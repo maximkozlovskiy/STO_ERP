@@ -16,15 +16,27 @@
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2817/2817 (184 файли; +87: PDF-екстрактор, grid-parser, header-detect, append-режим;
-            +2 sync-regression rawPreview.ocr) ·
+Тести:      api +13 OCR/filter (12 ocr-integration реальний стек + 1 Bug#774 filter-regress); xlsx+filters
+            156/156 green. Раніше: api 2817/2817 (184 файли; +87 PDF/grid/header/append; +2 rawPreview.ocr) ·
             web 874/874 component (+14: майстер імпорту) · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
             @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       review(ocr) ce52e337 — fix(review): OCR-растеризатор, стеля площі полотна проти decompression-bomb
+HEAD:       tester(ocr) fd67e93c — Bug #774 + skill approaches; попередній b0a6df95 fix(tester): >25МБ→413
+Tester(OCR локальний, bug hunt f39b97fd..58fce607): 2026-10-02 — 1 HIGH fix (Bug #774). multipart
+            file-too-large: @fastify/multipart кидає FST_REQ_FILE_TOO_LARGE(413) з file.toBuffer() (поза
+            try/catch getUploadedFile); HttpExceptionFilter матчив лише FST_ERR_CTP_* → 500+Sentry замість
+            413. Веб блокує розмір до відправки, але mobile/sync/прямий API — ні. Fix: гілка
+            isFastifyFileTooLarge→413 + i18n err.requestFileTooLarge (uk/en, без хардкоду розміру), warn-лог.
+            Регрес-тест у filter-spec. Зачіпає ВСІ multipart-ендпоінти (xlsx/bank/files/wo-media), фікс один.
+            Сам OCR-канал ЧИСТО: паралельні extract не змішуються, поворот 90/180/270 валідний, 6-стор→обріз
+            до 5 за ~2.4с, dispose→recovery ок, порожнє→null→400 ocrNoText, models-missing→400, HEIC→400 з
+            інструкцією «Найбільш сумісний». Межі якості (характеристики, не баги): 8pt ламає автодетект
+            колонок, шум 2%→3 колонки, ukr+eng плутає H↔Н в артикулах. +ocr-integration.spec (12 тестів,
+            реальний стек). НЕ прогнано в цьому середовищі: живі Playwright E2E + браузерні канали (docker/redis
+            недоступні) — рекомендовано прогнати сценарії 1,7 з ТЗ на машині з dev-серверами.
 Review(OCR локальний Tesseract): 2026-10-02 (auto, ce52e337, скоуп f39b97fd..875c3825) — 1 CRITICAL fix.
             Аудит фічі OCR фото/сканів (tesseract.js офлайн): lifecycle воркера, безпека недовіреного файлу,
             пам'ять async-генератора, чисті функції, error-map, Dockerfile. ЧИСТО: OcrWorkerLifecycle
