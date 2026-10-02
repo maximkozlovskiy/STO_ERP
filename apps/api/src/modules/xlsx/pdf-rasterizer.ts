@@ -81,8 +81,10 @@ function clampScaleToArea(baseWidth: number, baseHeight: number, scale: number):
   const h = baseHeight * scale;
   const area = w * h;
   if (area <= MAX_CANVAS_PIXELS || !(baseWidth > 0) || !(baseHeight > 0)) return scale;
-  // площа ∝ scale² → масштабуємо scale на √(ліміт / площа).
-  return scale * Math.sqrt(MAX_CANVAS_PIXELS / area);
+  // Площа ∝ scale² → масштабуємо scale на √(ліміт / площа). 0.999 — запас під Math.ceil на
+  // розмірах полотна: без нього 6325.4×6325.4 округлюється до 6325×6325 = 40.0 млн, тобто
+  // НА 5 тис. px ВИЩЕ стелі. Дрібниця за обсягом, але стеля має бути стелею.
+  return scale * Math.sqrt(MAX_CANVAS_PIXELS / area) * 0.999;
 }
 
 export interface RasterPage {
