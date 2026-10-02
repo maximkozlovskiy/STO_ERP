@@ -2,17 +2,23 @@ packages:
   - 'apps/*'
   - 'packages/*'
 overrides:
-  # Bug #573 (CRITICAL): @fastify/middie 9.x вимагає fastify 5.x. Apps/api на fastify 4.28 →
-  # API не стартує: "FST_ERR_PLUGIN_VERSION_MISMATCH: @fastify/middie - expected '5.x' fastify
-  # version, '4.28.1' is installed". Pin до 8.x — остання fastify-4-сумісна лінія,
-  # містить security fixes що були причиною overriding original transitive.
-  '@fastify/middie': '^8.0.0'
-  # D3 (bull-board): свіжий resolve підтягнув другу копію fastify@4.29.1 поряд із 4.28.1 (через
-  # @fastify/static@7 у platform-fastify/swagger vs @6 у bull-board). Дві копії → різні instance-типи
-  # → TS2345 на helmet/cookie/multipart у main.ts. Пінимо на єдину 4.28.1 (baseline; задовольняє всі
-  # @fastify/* peer-ranges, дедуп у одну копію).
-  fastify: '4.28.1'
+  # ІСТОРІЯ (знято 2026-10-02 разом із міграцією на NestJS 11 / Fastify 5):
+  # тут жили піни `@fastify/middie: ^8` і `fastify: 4.28.1`. Обидва були обхідними
+  # рішеннями для Fastify 4: middie 9.x вимагає fastify 5.x (Bug #573 — API не стартував
+  # із FST_ERR_PLUGIN_VERSION_MISMATCH), а пін самого fastify прибирав другу копію 4.29.1,
+  # що давала TS2345 на helmet/cookie/multipart.
+  # Після переходу на Fastify 5 піни стали шкідливими: саме вони тримали @fastify/middie
+  # на вразливій 8.x (CRITICAL — middleware authentication bypass у child plugin scopes).
+  # @nestjs/platform-fastify@11 тягне middie 9.3.4 (фікс у 9.3.2) і fastify 5.x напряму.
   next: '>=15.3.6'
+  # Єдина копія fastify. @nestjs/platform-fastify@11 пінить fastify на 5.11.3, тоді як
+  # apps/api резолвив 5.12.5 — ДВІ копії типів в одному дереві, і `app.register` не
+  # приймав плагіни (TS2345 на helmet/cookie/multipart). Причина не у версії, а в дублюванні.
+  #
+  # Зводимо на 5.12.5, а НЕ на 5.11.3 (яку просить platform-fastify): 5.11.3 вразлива —
+  # 4 × HIGH, серед них обхід автентифікації через хибні URL у encapsulated not-found
+  # (фікс у 5.12.2). Пін на версію нижче за патч безпеки був би гіршим, ніж дублювання.
+  fastify: '5.12.5'
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
@@ -32,9 +38,7 @@ allowBuilds:
   # тож платформної мультиплікації у бандлі немає (образ будується під одну платформу).
   tesseract.js: false
 minimumReleaseAgeExclude:
-  # bull-board 5.23.0 — остання лінійка сумісна з Fastify 4 (@fastify/view@^8, @fastify/static@^6).
-  # v6+/v9 тягнуть @fastify/static@^8 → вимагає Fastify 5 → FST_ERR_PLUGIN_VERSION_MISMATCH.
-  - '@bull-board/api@5.23.0'
-  - '@bull-board/fastify@5.23.0'
-  - '@bull-board/nestjs@5.23.0'
-  - '@bull-board/ui@5.23.0'
+  # bull-board піднято до 9.x разом із Fastify 5 (стара 5.23.0 була останньою лінійкою під
+  # Fastify 4 і тягнула @nestjs/bull-shared@10, несумісний із NestJS 11). Виключення більше
+  # не потрібні — лишаємо секцію порожньою для майбутніх випадків.
+  []

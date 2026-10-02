@@ -10,6 +10,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
+// УВАГА: усі UUID у фікстурах цього файлу мусять бути валідним v4
+// (13-й символ «4», 17-й з {8,9,a,b}) — ParseUUIDPipe у NestJS 12 перевіряє
+// версію і відхиляє інші значення з 400.
+
 const serviceMock = {
   findAll: vi.fn(),
   findOne: vi.fn(),
@@ -149,7 +153,7 @@ describe('Counterparties — HTTP Contract', () => {
   });
 
   describe('PATCH /counterparties/:id — type editable', () => {
-    const id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    const id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
     it('приймає type у PATCH-тілі → прокидає у service (тип став редагованим)', async () => {
       serviceMock.update.mockResolvedValueOnce({ id, type: 'SUPPLIER' });
@@ -185,7 +189,7 @@ describe('Counterparties — HTTP Contract', () => {
       jwtAllow = true;
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts',
       });
       expect(res.statusCode).toBe(200);
       expect(Array.isArray(res.json())).toBe(true);
@@ -202,7 +206,7 @@ describe('Counterparties — HTTP Contract', () => {
       });
       serviceMock.findOne.mockClear();
       jwtAllow = true;
-      const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+      const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
         url: `/counterparties/${id}/linked-documents`,
@@ -228,7 +232,7 @@ describe('Counterparties — HTTP Contract', () => {
       jwtAllow = true;
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts',
         headers: { 'content-type': 'application/json' },
         payload: JSON.stringify({ startDate: '2026-01-01' }),
       });
@@ -239,7 +243,7 @@ describe('Counterparties — HTTP Contract', () => {
       jwtAllow = true;
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts',
         headers: { 'content-type': 'application/json' },
         payload: JSON.stringify({ contractType: 'PURCHASE' }),
       });
@@ -265,7 +269,7 @@ describe('Counterparties — HTTP Contract', () => {
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts',
         headers: { 'content-type': 'application/json' },
         payload: JSON.stringify({ contractType: 'PURCHASE', startDate: '2026-01-01' }),
       });
@@ -293,7 +297,7 @@ describe('Counterparties — HTTP Contract', () => {
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
         headers: { 'content-type': 'application/json' },
         payload: JSON.stringify({ isPrimary: true }),
       });
@@ -307,7 +311,7 @@ describe('Counterparties — HTTP Contract', () => {
       serviceMock.removeContract.mockResolvedValueOnce(undefined);
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       });
       expect(res.statusCode).toBe(204);
     });
@@ -335,14 +339,14 @@ describe('Counterparties — HTTP Contract', () => {
       });
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
-        url: '/counterparties/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/restore',
+        url: '/counterparties/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/contracts/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/restore',
       });
       expect(res.statusCode).toBe(201);
       // orgId (з JWT `orgId: 'org-1'`) + path params (cpId, contractId) — саме у цьому порядку
       expect(serviceMock.restoreContract).toHaveBeenCalledWith(
         'org-1',
-        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       );
       // isPrimary=false у відповіді — задокументована пост-restore інваріанта.
       expect(res.json().isPrimary).toBe(false);

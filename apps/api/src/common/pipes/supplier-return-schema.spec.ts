@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { supplierReturnFormSchema, supplierReturnUpdateSchema } from '@sto/shared';
 
-const SUP = '11111111-1111-1111-1111-111111111111';
-const WH = '22222222-2222-2222-2222-222222222222';
-const GOOD = '44444444-4444-4444-4444-444444444444';
+const SUP = '11111111-1111-4111-8111-111111111111';
+const WH = '22222222-2222-4222-8222-222222222222';
+const GOOD = '44444444-4444-4444-8444-444444444444';
 
 const line = { goodId: GOOD, quantity: '2', price: '10' };
 
@@ -66,7 +66,7 @@ describe('supplierReturnFormSchema (спільна, web ↔ api)', () => {
   });
 
   it('unitOfMeasureId опційний UUID зберігається', () => {
-    const UOM = '55555555-5555-5555-5555-555555555555';
+    const UOM = '55555555-5555-4555-8555-555555555555';
     const r = supplierReturnFormSchema.safeParse({
       supplierId: SUP,
       warehouseId: WH,
@@ -77,7 +77,7 @@ describe('supplierReturnFormSchema (спільна, web ↔ api)', () => {
   });
 
   it('purchaseOrderId (create-only) приймається у формі', () => {
-    const PO = '66666666-6666-6666-6666-666666666666';
+    const PO = '66666666-6666-4666-8666-666666666666';
     const r = supplierReturnFormSchema.safeParse({
       supplierId: SUP,
       warehouseId: WH,

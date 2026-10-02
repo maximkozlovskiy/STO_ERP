@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { supplierPaymentFormSchema, supplierPaymentUpdateSchema } from '@sto/shared';
 
-const SUP = '11111111-1111-1111-1111-111111111111';
-const ACC = '22222222-2222-2222-2222-222222222222';
+const SUP = '11111111-1111-4111-8111-111111111111';
+const ACC = '22222222-2222-4222-8222-222222222222';
 
 const base = { supplierId: SUP, method: 'cash', amount: '100' };
 

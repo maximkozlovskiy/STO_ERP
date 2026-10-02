@@ -57,7 +57,7 @@ describe('goodFormSchema (спільна zod-схема, web ↔ api)', () => {
       name: 'Фільтр',
       purchasePrice: 120,
       salePrice: 200,
-      brandId: '11111111-1111-1111-1111-111111111111',
+      brandId: '11111111-1111-4111-8111-111111111111',
     });
     expect(r.success).toBe(true);
   });

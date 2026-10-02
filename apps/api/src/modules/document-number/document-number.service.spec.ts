@@ -4,7 +4,7 @@ import { DocumentType } from '@prisma/client';
 import { DocumentNumberService } from './document-number.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
 
 /**
  * Regression: atomic numbering + YEARLY/MONTHLY reset correctness.
@@ -68,7 +68,7 @@ function makePrisma(configRow: ConfigRow | null) {
 }
 
 const baseConfig = (over: Partial<ConfigRow>): ConfigRow => ({
-  id: '22222222-2222-2222-2222-222222222222',
+  id: '22222222-2222-4222-8222-222222222222',
   prefix: 'НРД',
   includeDate: false,
   separator: '-',
