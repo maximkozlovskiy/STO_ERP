@@ -181,7 +181,7 @@ describe('tenant-guard extension (integration, live DB)', () => {
     if (!dbAvailable) return;
     await expect(
       guarded.counterparty.upsert({
-        where: { id: '00000000-0000-0000-0000-000000000000' },
+        where: { id: '00000000-0000-4000-8000-000000000000' },
         create: noOrgId({ type: 'CLIENT', firstName: 'upsert-fail', phone: '+380000000003' }),
         update: {},
       }),

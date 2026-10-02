@@ -11,6 +11,10 @@ import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
+// УВАГА: усі UUID у фікстурах цього файлу мусять бути валідним v4
+// (13-й символ «4», 17-й з {8,9,a,b}) — ParseUUIDPipe у NestJS 12 перевіряє
+// версію і відхиляє інші значення з 400.
+
 const prismaMock = {
   pricingRule: {
     findMany: vi.fn(),
@@ -379,7 +383,7 @@ describe('PricingRules — HTTP Contract', () => {
       pricingServiceMock.applyRuleToGoods.mockResolvedValueOnce(42);
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000001/apply-all',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000001/apply-all',
       });
       expect(res.statusCode).toBe(201);
       const body = res.json();
@@ -393,7 +397,7 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.pricingRule.findFirst.mockResolvedValueOnce(null);
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000002/apply-all',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000002/apply-all',
       });
       expect(res.statusCode).toBe(404);
     });
@@ -404,7 +408,7 @@ describe('PricingRules — HTTP Contract', () => {
     it("повертає 400 при від'ємному percentValue (PATCH тепер має @Min(0))", async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000001',
         payload: { percentValue: -50 },
       });
       expect(res.statusCode).toBe(400);
@@ -413,7 +417,7 @@ describe('PricingRules — HTTP Contract', () => {
     it("повертає 400 при від'ємному fixedPrice", async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000001',
         payload: { fixedPrice: -100 },
       });
       expect(res.statusCode).toBe(400);
@@ -422,7 +426,7 @@ describe('PricingRules — HTTP Contract', () => {
     it('повертає 400 при percentValue > 10000', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000001',
         payload: { percentValue: 99999 },
       });
       expect(res.statusCode).toBe(400);
@@ -445,7 +449,7 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.brand.findFirst.mockResolvedValueOnce(null);
       const res = await (app as NestFastifyApplication).inject({
         method: 'PATCH',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000001',
         payload: { brandId: '11111111-1111-4111-8111-111111111199' },
       });
       expect(res.statusCode).toBe(404);
@@ -462,12 +466,12 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 1 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000001',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000001',
       });
       expect(res.statusCode).toBe(204);
       // Перевіряємо що org-scoped where використано
       expect(prismaMock.pricingRule.updateMany).toHaveBeenCalledWith({
-        where: { id: '00000000-0000-0000-0000-000000000001', orgId: 'org-1', deletedAt: null },
+        where: { id: '00000000-0000-4000-8000-000000000001', orgId: 'org-1', deletedAt: null },
         data: { deletedAt: expect.any(Date) },
       });
     });
@@ -476,7 +480,7 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 0 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000002',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000002',
       });
       expect(res.statusCode).toBe(404);
     });
@@ -531,14 +535,14 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 1 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
-        url: '/pricing-rules/00000000-0000-0000-0000-000000000009',
+        url: '/pricing-rules/00000000-0000-4000-8000-000000000009',
       });
       expect(res.statusCode).toBe(204);
       await Promise.resolve();
       expect(auditMock.record).toHaveBeenCalledTimes(1);
       const args = auditMock.record.mock.calls[0];
       expect(args[1]).toBe('PricingRule');
-      expect(args[2]).toBe('00000000-0000-0000-0000-000000000009');
+      expect(args[2]).toBe('00000000-0000-4000-8000-000000000009');
       expect(args[3]).toBe('DELETE');
       expect(args[4]).toBe('emp-1');
     });
@@ -547,7 +551,7 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.pricingRule.updateMany.mockResolvedValueOnce({ count: 0 });
       const res = await (app as NestFastifyApplication).inject({
         method: 'DELETE',
-        url: '/pricing-rules/00000000-0000-0000-0000-00000000000a',
+        url: '/pricing-rules/00000000-0000-4000-8000-00000000000a',
       });
       expect(res.statusCode).toBe(404);
       await Promise.resolve();

@@ -12,6 +12,10 @@ import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.in
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
+// УВАГА: усі UUID у фікстурах цього файлу мусять бути валідним v4
+// (13-й символ «4», 17-й з {8,9,a,b}) — ParseUUIDPipe у NestJS 12 перевіряє
+// версію і відхиляє інші значення з 400.
+
 // ─── Mocks ────────────────────────────────────────────────
 
 const prismaMock = {
@@ -449,7 +453,7 @@ describe('WorkOrders — HTTP Contract', () => {
       jwtAllow = true;
       // Bug #142: ParseUUIDPipe тепер валідує `:id` — використовуємо реальний UUID,
       // не довільний рядок типу 'wo-1', інакше отримаємо 400 до сервісу.
-      const WO_ID = '00000000-0000-0000-0000-000000000001';
+      const WO_ID = '00000000-0000-4000-8000-000000000001';
       serviceMock.findOne.mockResolvedValueOnce({
         id: WO_ID,
         orgId: 'org-1',

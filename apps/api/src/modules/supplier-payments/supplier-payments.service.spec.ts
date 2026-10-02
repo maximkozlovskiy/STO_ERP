@@ -72,7 +72,7 @@ describe('SupplierPaymentsService — regression guards', () => {
   let docNumbers: { next: ReturnType<typeof vi.fn> };
   let cash: { createOperation: ReturnType<typeof vi.fn> };
 
-  const ORG = '00000000-0000-0000-0000-000000000001';
+  const ORG = '00000000-0000-4000-8000-000000000001';
   const SP_ID = '11111111-1111-4111-8111-111111111111';
   const SUPPLIER_ID = '22222222-2222-4222-8222-222222222222';
   const BANK_ID = '33333333-3333-4333-8333-333333333333';
@@ -1286,8 +1286,8 @@ describe('SupplierPaymentsService — linked-documents edge cases', () => {
     cashRegister: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
   };
 
-  const ORG = '00000000-0000-0000-0000-000000000001';
-  const OTHER = '00000000-0000-0000-0000-000000000002';
+  const ORG = '00000000-0000-4000-8000-000000000001';
+  const OTHER = '00000000-0000-4000-8000-000000000002';
   const SP = '11111111-1111-4111-8111-111111111111';
   const SUP = '22222222-2222-4222-8222-222222222222';
   const BANK = '33333333-3333-4333-8333-333333333333';

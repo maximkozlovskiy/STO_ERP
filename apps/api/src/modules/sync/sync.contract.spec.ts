@@ -9,7 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
 
 /**
  * Prisma mock that mirrors the real client: ALL model accessors are SINGULAR camelCase

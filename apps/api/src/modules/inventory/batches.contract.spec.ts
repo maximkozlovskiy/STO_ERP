@@ -10,6 +10,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 
+// УВАГА: усі UUID у фікстурах цього файлу мусять бути валідним v4
+// (13-й символ «4», 17-й з {8,9,a,b}) — ParseUUIDPipe у NestJS 12 перевіряє
+// версію і відхиляє інші значення з 400.
+
 const prismaMock = {
   good: {
     findFirst: vi.fn(),
@@ -98,7 +102,7 @@ describe('Batches — HTTP Contract', () => {
 
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
-        url: '/batches/lookup?goodId=00000000-0000-0000-0000-000000000001',
+        url: '/batches/lookup?goodId=00000000-0000-4000-8000-000000000001',
       });
       expect(res.statusCode).toBe(200);
       const body = res.json();
@@ -118,7 +122,7 @@ describe('Batches — HTTP Contract', () => {
 
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
-        url: '/batches/lookup?goodId=00000000-0000-0000-0000-000000000099',
+        url: '/batches/lookup?goodId=00000000-0000-4000-8000-000000000099',
       });
       expect(res.statusCode).toBe(404);
     });
@@ -137,7 +141,7 @@ describe('Batches — HTTP Contract', () => {
 
       await (app as NestFastifyApplication).inject({
         method: 'GET',
-        url: '/batches/lookup?goodId=00000000-0000-0000-0000-000000000001',
+        url: '/batches/lookup?goodId=00000000-0000-4000-8000-000000000001',
       });
       // Не передаємо порожній рядок — undefined → агрегація по всіх складах.
       expect(batchServiceMock.getAvgCost).toHaveBeenCalledWith(
@@ -151,7 +155,7 @@ describe('Batches — HTTP Contract', () => {
       jwtAllow = false;
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',
-        url: '/batches/lookup?goodId=00000000-0000-0000-0000-000000000001',
+        url: '/batches/lookup?goodId=00000000-0000-4000-8000-000000000001',
       });
       expect(res.statusCode).toBe(403);
     });

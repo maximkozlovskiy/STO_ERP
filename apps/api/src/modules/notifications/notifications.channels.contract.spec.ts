@@ -14,8 +14,10 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
  * прокидання orgId з JWT у сервіс, мапінг доменних винятків (BadRequest→400, NotFound→404),
  * happy-path {activeProvider}.
  */
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
-const BRANCH_ID = '22222222-2222-2222-2222-222222222222';
+// UUID у фікстурах мусять бути валідним v4 (13-й символ «4», 17-й з {8,9,a,b}) —
+// ParseUUIDPipe у NestJS 12 перевіряє версію і відхиляє інші значення з 400.
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
+const BRANCH_ID = '22222222-2222-4222-8222-222222222222';
 
 const serviceMock = {
   activateProvider: vi.fn(),
