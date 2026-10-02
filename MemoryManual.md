@@ -16,7 +16,8 @@
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
-Тести:      api 2815/2815 (184 файли; +87: PDF-екстрактор, grid-parser, header-detect, append-режим) ·
+Тести:      api 2817/2817 (184 файли; +87: PDF-екстрактор, grid-parser, header-detect, append-режим;
+            +2 sync-regression rawPreview.ocr) ·
             web 874/874 component (+14: майстер імпорту) · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
             @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
@@ -76,6 +77,19 @@ Review(bank-statements prev): 2026-09-20 (auto, HEAD 7221773a) — 1 дефек�
             iban backfill regex безпечний; i18n 89/89 uk=en, усі t()-ключі резолвляться. Suggestion (НЕ
             фіксовано, не trivial): ₴ хардкод у 4 місцях UI — tx.currencyId може бути USD/EUR (MVP UAH-focus).
             api tsc 0 / web tsc 0 (baseline не регресовано).
+Sync(ocr): 2026-10-02 (auto, 875c3825) — скоуп f39b97fd..69d65b22 (6 комітів, локальний OCR
+            tesseract.js для фото/сканів накладних). Знайдено+виправлено 1 реальний mismatch:
+            XlsxService.rawPreview() губив grid.ocr при складанні відповіді (ні в тип, ні в return) —
+            web RawPreviewResponse.ocr завжди undefined, попередження "текст розпізнано автоматично"
+            у ExcelImportWizard НІКОЛИ не показувалось, навіть коли бек реально ganяв tesseract.
+            Fix: rawPreview() повертає {..., ocr: grid.ocr} + тип відповіді += ocr?:boolean.
+            +2 regression-тести (ocr:true для image-каналу, falsy для звичайного xlsx).
+            Решта ЧИСТО: MAX_UPLOAD_BYTES 25МБ web ≡ fastifyMultipart fileSize 25МБ api; i18n
+            5 нових err.xlsx.* ключів (ocrNoText/ocrTimeout/ocrModelsMissing/pdfScanOcrUnavailable/
+            imageNoTableStructure) — присутні в keys.ts+uk+en, validation-i18n-parity.spec green;
+            pdfToGrid {rows,provider} — жодного місця зі старим string[][]-контрактом; accept
+            .jpg/.jpeg/.png на фронті ≡ IMAGE_EXTENSIONS на беку (HEIC свідомо виключено обома).
+            api tsc 0 / web tsc 0; xlsx suite 28/28, ExcelImportWizard 27/27.
 Sync(bank-statements): 2026-09-20 (auto, 98685622) — 1 виправлено. PaginatedBankTransactionsDto
             +list() бракували page/limit (усі інші Paginated*Dto в проекті мають {items,total,page,limit} —
             матчить web PaginatedResponse<T> у usePaginatedList). URL/методи/DTO-поля/enum-и (matchType,
@@ -349,6 +363,10 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
   TS2307; pnpm prune без TTY; husky після devDeps). Полагоджено, деталі у GOTCHAS.
   Відоме: образ 3.18 ГБ (внесок OCR ~108 МБ; решта — chown-шар 804 МБ + turbo/swc у прод-дереві).
   api 2842/2842 (187) · web 879/879 · tsc 0.
+SYNC 875c3825 (2026-10-02): rawPreview() губив grid.ocr у відповіді (не в типі, не в return) —
+  web ocr-попередження НІКОЛИ не показувалось. Fix + 2 regression-тести. Решта контракту (ліміт
+  25МБ, i18n 5 нових err.xlsx.* ключів, pdfToGrid {rows,provider}, accept-розширення) — чисто.
+  api 2817/2817 · web тести xlsx-wizard 27/27 · tsc 0.
   Попередній контекст:
 ```
 
