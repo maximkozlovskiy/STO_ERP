@@ -43,6 +43,57 @@ const buf = Buffer.from(await wb.xlsx.writeBuffer());
 
 ---
 
+## [2026-10-02] Prisma 6+ резолвить міграції/sql ВІДНОСНО теки схеми — `migrate deploy` тихо не робить нічого
+
+**Найнебезпечніша з трьох пасток міграції:** `migrate status` каже
+«**No migration found in prisma/migrations**», хоча там 145 тек. У CI `migrate deploy`
+при цьому завершується **успішно, з нульовим кодом** — і не застосовує нічого.
+
+**Причина:** при multi-file схемі (`schema: prisma/schema`) Prisma 6+ шукає `migrations/`
+і `sql/` **відносно теки схеми**, тобто `prisma/schema/migrations`. Наші лежать у
+`prisma/migrations`.
+
+**Рішення** — `prisma.config.ts` (блок `package.json#prisma` deprecated і зникає у Prisma 7):
+
+```ts
+export default defineConfig({
+  schema: path.join('prisma', 'schema'),
+  typedSql: { path: path.join('prisma', 'sql') },
+  migrations: { path: path.join('prisma', 'migrations'), seed: '…' },
+});
+```
+
+**Супутня пастка:** з конфіг-файлом Prisma **не читає `.env`** («Prisma config detected,
+skipping environment variable loading») — `DATABASE_URL` треба підвантажити явно. І
+обов'язково в `try/catch`: у CI файлу немає, а `process.loadEnvFile` кидає `ENOENT` і
+валить завантаження **всього конфігу**, тобто `prisma generate` у quality-job.
+
+**Як розпізнати:** число у «N migrations found» не збігається з `ls prisma/migrations | wc -l`.
+Перевіряйте це після кожного оновлення Prisma — помилки не буде, буде тиша.
+
+---
+
+## [2026-10-02] Prisma 7: `url` у схемі заборонено — підключення лише через driver-adapter
+
+`url = env("DATABASE_URL")` у `datasource` дає **P1012**. Рантайм тепер отримує
+підключення тільки через adapter, тож `datasourceUrl` у конструкторі `PrismaClient`
+більше не існує (TS2353).
+
+**Що це означає практично:** переводити треба **кожне** місце створення клієнта — у нас
+це були `PrismaService`, 7 integration-специв і 2 seed-скрипти. Параметри пулу з
+query-рядка (`connection_limit`, `pool_timeout`) переїжджають в опції adapter
+(`max`, `connectionTimeoutMillis`) — не забути, інакше тиха регресія під навантаженням.
+
+**Супутнє:** `@prisma/client/runtime/library` більше не резолвиться (TS2307), а корінь
+пакета не експортує `Decimal` у **типах** (TS2305, хоч у рантаймі він є). Канонічно —
+`import { Prisma } from '@prisma/client'` → `Prisma.Decimal`.
+
+**Приховано зламався прямий запуск seed:** раніше `new PrismaClient()` читав `.env` через
+`env()` у схемі; тепер `DATABASE_URL` потрібен у `process.env` **до** створення adapter.
+`prisma db seed` працює (CLI сам виконує конфіг), а `npx ts-node prisma/seed.ts` — ні.
+
+---
+
 ## [2026-10-02] Integration-тести конфліктують із ЗАПУЩЕНИМ dev-API
 
 **Симптом:** `document-line-import.adapter.integration.spec.ts` (або інший спек із живою
