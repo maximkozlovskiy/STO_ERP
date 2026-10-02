@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPgAdapter } from '../../prisma/pg-adapter';
 import { withTenantGuard } from '../../prisma/tenant-guard.extension';
 import { DeadLetterService } from './dead-letter.service';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -37,7 +38,7 @@ function fakeJob(over: Record<string, unknown> = {}) {
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  raw = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  raw = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await raw.$connect();
     await raw.$queryRaw`SELECT 1`;

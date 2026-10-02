@@ -11,10 +11,11 @@
  */
 
 import { PrismaClient, Prisma } from '@prisma/client';
+import { createPgAdapter } from './pg-adapter';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: createPgAdapter() });
 
 const ORG_ID = 'a1000000-0000-4000-8000-000000000001';
 

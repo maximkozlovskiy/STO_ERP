@@ -7,10 +7,12 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.spec.ts'],
     setupFiles: ['reflect-metadata'],
-    // Обмеження потоків у КОНФІЗІ, а не прапорцем: Vitest 4 прибрав CLI-опцію
-    // `--poolOptions` (CACError: Unknown option). На машинах з обмеженою пам'яттю повний
-    // прогін 189 файлів без цього ліміту давав OOM у esbuild/Go-рантаймі.
-    poolOptions: { threads: { maxThreads: 4 } },
+    // Ліміт потоків: Vitest 4 прибрав і CLI-опцію `--poolOptions`, і вкладений
+    // `test.poolOptions` — тепер це ТОП-РІВНЕВІ опції (DEPRECATED-попередження вказало
+    // прямо). Поки стояло вкладене, обмеження просто ІГНОРУВАЛОСЬ.
+    // Потрібне на машинах з обмеженою пам'яттю: повний прогін 189 файлів без ліміту
+    // давав OOM у esbuild/Go-рантаймі.
+    maxWorkers: 4,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

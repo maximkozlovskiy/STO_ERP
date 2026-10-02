@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { withTenantGuard } from './tenant-guard.extension';
+import { createPgAdapter } from './pg-adapter';
 
 // Секретні поля що шифруються at-rest (Phase 4, H-2). Ключ — модель Prisma, значення —
 // список полів-секретів. Prisma-розширення шифрує їх на write і дешифрує на read.
@@ -203,23 +204,14 @@ function withFieldEncryption(client: PrismaClient, enc: EncryptionService): Pris
  * (запит чекає до 20s на вільне з'єднання перед throw — захист від тривалого hang).
  * Operator може перевизначити через .env (?connection_limit=...&pool_timeout=...).
  */
-function withConnectionPool(url: string | undefined): string | undefined {
-  if (!url) return url;
-  const params = new URL(url);
-  if (!params.searchParams.has('connection_limit')) {
-    params.searchParams.set('connection_limit', '25');
-  }
-  if (!params.searchParams.has('pool_timeout')) {
-    params.searchParams.set('pool_timeout', '20');
-  }
-  return params.toString();
-}
-
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly encryption: EncryptionService) {
+    // Prisma 7: підключення ЛИШЕ через driver-adapter — `datasourceUrl` і `url` у схемі
+    // прибрані (P1012). Параметри пулу (connection_limit=25 / pool_timeout=20), які раніше
+    // додавав withConnectionPool у query-рядок, тепер живуть у createPgAdapter.
     super({
-      datasourceUrl: withConnectionPool(process.env.DATABASE_URL),
+      adapter: createPgAdapter(),
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
     });
   }

@@ -11,9 +11,10 @@ import {
   UserRole,
   CounterpartyType,
 } from '@prisma/client';
+import { createPgAdapter } from './pg-adapter';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: createPgAdapter() });
 
 // All UUIDs are v4-compatible (version nibble = 4, variant = 8/9/a/b)
 // Nil-like UUIDs (00000000-...) fail @IsUUID() in class-validator — cannot be used in API calls

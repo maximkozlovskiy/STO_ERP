@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPgAdapter } from './pg-adapter';
 import { handleDbUnavailable } from '../common/testing/require-db';
 
 /**
@@ -25,7 +26,7 @@ const createdMovementIds: string[] = [];
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  raw = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  raw = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await raw.$connect();
     const org = await raw.$queryRawUnsafe<{ id: string }[]>(`SELECT id FROM organisations LIMIT 1`);
