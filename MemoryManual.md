@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-02 (feat ocr — локальний Tesseract для фото і сканів накладних, офлайн)
+Дата:       2026-10-02 (review дуги імпорту — прибрано мертвий код countLines/OcrNoTextError)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
@@ -377,6 +377,25 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Review дуги імпорту накладних — 2026-10-02, HEAD 27c687ee (fix(review)):
+  Повний цикл code review дуги PDF/CSV-імпорту + OCR. Фокус — мертвий код і межі
+  OCR-алгоритму, що могли пройти повз попередні проходи. Знайдено й прибрано:
+  (1) DocumentLineImportAdapter.countLines() — на інтерфейсі й обох адаптерах, 0 викликів
+      (UI рахує через fields.length / existingLineCount prop);
+  (2) OcrNoTextError — клас визначено, жоден шлях не кидає (провайдер → null, pdfToGrid →
+      PdfScannedError); дохла гілка у toHttpError прибрана.
+  isRasterizeAvailable() лишено (реальний тест-гард наявності @napi-rs/canvas).
+  ПЕРЕВІРЕНО КОРЕКТНИМИ (не баги): finally у rasterizePdfPages виконується при throw між
+  yield (for-await → generator.throw() → finally); dispose-after-timeout на стор.3/5 не
+  зависає (throw розкручує for-await, скидає pages[]); mergeWordsIntoCells (gapRatio=1.0,
+  єдиний виклик) і fragmentsToGrid (modal<2 → 400, bands guarded) на межах стійкі;
+  ocrWordsToFragments при page.height=0 без слів не падає; кожен технічний throw має шлях
+  до дружнього 400 (toHttpError повний); controller — guards+roles+ParseUUIDPipe скрізь;
+  ApplyImportDto — IsEnum/IsUUID/IsNumber/ArrayMaxSize; Document table standard у wizard
+  (text-right tabular-nums на qty/price, colgroup); OCR-grid cache за content-hash — не
+  tenant-leak (парсована сітка = чиста функція байтів файлу).
+  Перевірено: tsc 0 (api/web/shared); 51 unit-тест xlsx зелені.
+
 Локальний OCR — 2026-10-02, HEAD 69d65b22 (6 комітів f39b97fd..69d65b22):
   Закрито останні 2 канали з 4: фото з телефона і скан. OCR = ДРУГИЙ провайдер у ланцюжку
   [pdfjs, ocr] — архітектура з попереднього етапу не змінювалась, fragmentsToGrid не чіпали.
