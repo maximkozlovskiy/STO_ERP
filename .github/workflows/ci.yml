@@ -50,6 +50,8 @@ jobs:
       # Циклічні залежності — БЛОКУЮЧИЙ крок: на момент вмикання їх було 0 (три цикли в
       # xlsx-модулі розірвано винесенням grid-geometry і text-layer-registry), тож поріг
       # «жодного» утримати реально, і кожен новий цикл видно одразу.
+      # Інструмент — dependency-cruiser, а не madge: madge@8 (остання) прибита до
+      # typescript ^5.4.4 і на TS 7 падає з «Cannot read properties of undefined».
       - name: Circular dependencies
         run: pnpm run cycles
 
