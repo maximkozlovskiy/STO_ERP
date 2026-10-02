@@ -122,6 +122,8 @@ export const uk: Record<string, string> = {
   'err.internal': 'Внутрішня помилка сервера',
   'err.badRequest': 'Некоректні дані запиту',
   'err.fastifyBadRequest': 'Некоректний запит: перевірте тіло та Content-Type',
+  'err.requestFileTooLarge':
+    'Файл завеликий — перевищено максимальний розмір завантаження. Зменшіть роздільність або розбийте файл на частини.',
   'err.prisma.unique': 'Запис з таким значенням вже існує ({{fields}})',
   'err.prisma.foreignKey': "Порушення зовнішнього ключа: пов'язаний запис не знайдено",
   'err.prisma.notFound': 'Запис не знайдено',

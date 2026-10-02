@@ -236,6 +236,7 @@ export const VALIDATION_KEYS = [
   'err.internal',
   'err.badRequest',
   'err.fastifyBadRequest',
+  'err.requestFileTooLarge',
   'err.prisma.unique',
   'err.prisma.foreignKey',
   'err.prisma.notFound',

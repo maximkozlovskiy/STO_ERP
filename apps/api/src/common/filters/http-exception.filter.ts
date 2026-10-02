@@ -69,6 +69,18 @@ function isFastifyClientError(
   );
 }
 
+/**
+ * @fastify/multipart кидає `RequestFileTooLargeError` (code `FST_REQ_FILE_TOO_LARGE`, 413) ПРИ
+ * перевищенні `limits.fileSize` — помилка спливає з `file.toBuffer()` у контролері, тобто ПОЗА
+ * try/catch хелпера `getUploadedFile` (той ловить лише `req.file()`). Без цієї гілки вона падала у
+ * фінальний `else` → generic 500 + шум у Sentry. Веб блокує розмір ДО відправки, але mobile/sync/
+ * прямий API такого guard не мають — сервер має бути стійким незалежно від клієнта (клас Bug #627).
+ */
+function isFastifyFileTooLarge(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null) return false;
+  return (e as { code?: unknown }).code === 'FST_REQ_FILE_TOO_LARGE';
+}
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
@@ -131,6 +143,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         `PrismaClientValidationError on ${request.method} ${request.url}: ${firstLine ?? '(no message)'}`,
       );
+    } else if (isFastifyFileTooLarge(exception)) {
+      // Перевищено ліміт розміру завантаження → чистий 413 українською, БЕЗ Sentry alert.
+      status = HttpStatus.PAYLOAD_TOO_LARGE;
+      message = translateError('err.requestFileTooLarge', locale);
+      this.logger.warn(`File too large on ${request.method} ${request.url}`);
     } else if (isFastifyClientError(exception)) {
       // Bug #627: Fastify content-type-parser / request помилки (FST_ERR_CTP_*) —
       // напр. `Body cannot be empty when content-type is set to 'application/json'`

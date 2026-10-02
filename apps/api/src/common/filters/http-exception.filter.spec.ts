@@ -217,6 +217,32 @@ describe('HttpExceptionFilter', () => {
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
+    it('Bug #774: FST_REQ_FILE_TOO_LARGE (413) → 413 "Файл завеликий" без Sentry (не 500)', () => {
+      const { host, reply } = makeHost('POST', '/api/xlsx/import/raw-preview');
+      const warnSpy = vi
+        .spyOn((filter as unknown as { logger: { warn: (msg: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      const errorSpy = vi
+        .spyOn((filter as unknown as { logger: { error: (msg: string) => void } }).logger, 'error')
+        .mockImplementation(() => undefined);
+      // @fastify/multipart RequestFileTooLargeError: code FST_REQ_FILE_TOO_LARGE, statusCode 413.
+      const tooLarge = Object.assign(new Error('request file too large'), {
+        code: 'FST_REQ_FILE_TOO_LARGE',
+        statusCode: 413,
+      });
+      filter.catch(tooLarge, host);
+
+      expect(reply.status).toHaveBeenCalledWith(413);
+      expect(reply.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 413,
+          message: expect.stringContaining('Файл завеликий'),
+        }),
+      );
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
     it('FST_ERR_CTP_INVALID_MEDIA_TYPE (415) → зберігає свій statusCode', () => {
       const { host, reply } = makeHost('POST', '/api/goods');
       const fastifyErr = Object.assign(new Error('Unsupported Media Type'), {
