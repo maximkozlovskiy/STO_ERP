@@ -5,6 +5,28 @@
 
 ---
 
+### 8fe316f0 fix(types): дочищено type-помилки у тестах API
+
+Завершено вмикання type-check для `*.spec.ts` (новий `apps/api/tsconfig.spec.json`): роками
+188 специв не перевірялись ні tsc, ні лінтом, через що неточність у моках маскувала реальні
+баги (Bug #775). 77 накопичених помилок → **0**, без `@ts-ignore`/`any`.
+
+- **Неточності типів у тестах** (виправлено тип, не симптом): каст моку одразу у `FastifyReply`
+  ховав mock-API (auth); конструктор `IdempotencyPurgeProcessor` приймає 2 аргументи
+  (+`DeadLetterService`); logger-каст як `unknown` ламав `vi.spyOn` (→ `never`); мок-фабрика
+  `createTransport` без rest-параметра; `MockInstance<typeof fetch>` замість непрацюючого
+  `ReturnType<typeof vi.spyOn<...>>` (3 файли); `mock.calls` — масив аргументів НЕВІДОМОЇ
+  арності, а не кортеж; `.at(-1)` без перевірки на undefined.
+- **ExcelJS Buffer** — бібліотека декларує власний глобальний `Buffer extends ArrayBuffer`, це
+  НЕ node Buffer. `as Buffer` замінено на `Buffer.from()` (як у рантаймі з fastify-multipart).
+- **Каст через `unknown`** — лише `tenant-guard.integration.spec`: пропуск `orgId` є СУТТЮ тесту
+  (guard стемпить з ALS або кидає `TenantIsolationError`), хелпер `noOrgId()` з поясненням.
+- Поетапна строгість (api+web): `noImplicitOverride`, `noFallthroughCasesInSwitch`; coverage-пороги
+  зафіксовано від фактичного рівня; `type-check` тепер ганяє і основний, і spec-конфіг.
+- Перевірка: обидва tsc 0 помилок, vitest 188 файлів / 2861 тест green (3 прогони поспіль).
+
+---
+
 ### 27c687ee..6bc17d05 QA-цикл дуги імпорту накладних з локальним OCR
 
 Повний 8-етапний цикл (sync → review → optimize → simplify → tester → lint → security → E2E)

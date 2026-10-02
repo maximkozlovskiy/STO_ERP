@@ -15,7 +15,10 @@
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
-TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
+TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З ТЕСТАМИ: новий
+            apps/api/tsconfig.spec.json ганяє tsc по *.spec.ts (раніше виключені зі збірки → 0 перевірок).
+            77 накопичених помилок дочищено до 0 (8fe316f0). `pnpm type-check` в api = обидва конфіги.
+            +поетапна строгість api/web: noImplicitOverride, noFallthroughCasesInSwitch.
 Тести:      xlsx 140/140; ExcelImportWizard 29/29; E2E 353 passed / 0 failed / 1 flaky; xlsx+filters
             156/156 green. Раніше: api 2817/2817 (184 файли; +87 PDF/grid/header/append; +2 rawPreview.ocr) ·
             web 874/874 component (+14: майстер імпорту) · E2E 351/351.
@@ -24,7 +27,8 @@ TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       optimize(ocr) b5325e7f — усунено подвійний OCR (кеш за хешем) + re-render майстра імпорту;
+HEAD:       8fe316f0 fix(types) — дочищено type-помилки у тестах API (22 останні з 77); vitest
+            188 файлів / 2861 тест green (3 прогони поспіль). Попередній: optimize(ocr) b5325e7f — усунено подвійний OCR (кеш за хешем) + re-render майстра імпорту;
             попередній 58fce607 fix(ocr): стеля площі полотна
 Optimize(дуга імпорту+OCR, 44085da0..58fce607): 2026-10-02 (auto, b5325e7f). ГОЛОВНЕ — подвійний OCR:
             майстер читав один файл двічі (rawPreview→previewImport), для скана/фото = ОКРЕМИЙ OCR-прогін

@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-10-02] ExcelJS `writeBuffer()` віддає НЕ node Buffer; `*.spec.ts` роками не типізувались
+
+**Пастка 1 — ExcelJS Buffer.** `exceljs/index.d.ts` оголошує ГЛОБАЛЬНИЙ
+`declare interface Buffer extends ArrayBuffer {}`. Тобто у будь-якому файлі, що імпортує
+ExcelJS, ім'я `Buffer` вже НЕ node-ний Buffer, і `await wb.xlsx.writeBuffer()` не має
+ні `.toString('utf-8')`, ні іншого node-API. Каст `as Buffer` / `as unknown as Buffer`
+у тестах це приховував — поки spec-и не типізувались, ніхто не бачив.
+
+```ts
+// ❌ бреше: ExcelJS Buffer ≠ node Buffer, у сервісі впаде buffer.toString('utf-8')
+const buf = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+// ✅ як у рантаймі (fastify-multipart file.toBuffer())
+const buf = Buffer.from(await wb.xlsx.writeBuffer());
+```
+
+**Пастка 2 — spec-и поза tsc.** Основний `apps/api/tsconfig.json` виключає `*.spec.ts`
+(щоб не потрапляли у `dist/`), через що 188 специв не перевірялись НІ tsc, НІ лінтом
+(ESLint теж їх ігнорує). Наслідок: неточні моки маскували реальні баги (Bug #775).
+Виправлено окремим `apps/api/tsconfig.spec.json`; `pnpm type-check` ганяє обидва конфіги.
+У `types` того конфігу треба перелічувати і @types прод-коду (pdfkit, pdfmake, …) —
+інакше падатимуть прод-файли, коректні у звичайній збірці.
+
+**Типові симптоми у специ-помилках і правильна реакція:**
+
+| Помилка                                      | Причина                                                           | Фікс                                                                        |
+| -------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `Property 'mockReset' does not exist`        | мок одразу кастнуто у реальний тип (`as unknown as FastifyReply`) | тримати мок у ВЛАСНОМУ типі, у сервіс передавати окрему кастнуту в'ю        |
+| `'"log"' is not assignable to 'never'`       | `vi.spyOn` по об'єкту, де метод оголошений як `unknown`           | у касті вказати справжній тип (`{ logger: Logger }`)                        |
+| `ReturnType<typeof vi.spyOn<...>>` не працює | —                                                                 | `import type { MockInstance } from 'vitest'` → `MockInstance<typeof fetch>` |
+| TS2769 на `mock.calls.find((c: [X]) => …)`   | `mock.calls` для TS — аргументи НЕВІДОМОЇ арності                 | анотувати масивом `X[]`, не кортежем `[X]`                                  |
+| TS2556 spread у мок-фабрику                  | `vi.fn(() => …)` не має параметрів                                | `vi.fn((..._a: unknown[]) => …)`                                            |
+
+**Правило:** якщо spec не типізується — спершу спитати «тип у тесті неточний, тест
+НАВМИСНЕ подає неправильне, чи це реальний баг прода?». Каст через `unknown` лише для
+навмисного — і ЗАВЖДИ з коментарем ЧОМУ (напр. `tenant-guard.integration.spec`: пропуск
+`orgId` — суть тесту, додати його = знищити тест). `@ts-ignore`/`any` — заборонені.
+
+---
+
 ## [2026-10-02] «Порт 5432 зайнятий svchost» = dockerd мертвий, а не конфлікт портів
 
 **Симптом:** API не стартує з `P1001 Can't reach database server`. На Windows
