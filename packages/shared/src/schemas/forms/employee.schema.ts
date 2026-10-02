@@ -74,7 +74,7 @@ export const employeeFormSchema = z
       .trim()
       .min(1, 'v.employee.lastName.required')
       .max(100, 'v.employee.lastName.max'),
-    role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'v.employee.role.required' }) }),
+    role: z.enum(USER_ROLE_VALUES, { error: 'v.employee.role.required' }),
     phone: optionalString(),
     email: optionalString(),
     status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),
@@ -190,7 +190,7 @@ export function buildRateScheme(v: {
 const employeeBaseFields = {
   firstName: z.string().trim().min(1, 'v.employee.firstName.required').max(100),
   lastName: z.string().trim().min(1, 'v.employee.lastName.required').max(100),
-  role: z.enum(USER_ROLE_VALUES, { errorMap: () => ({ message: 'v.employee.role.required' }) }),
+  role: z.enum(USER_ROLE_VALUES, { error: 'v.employee.role.required' }),
   phone: optionalString(),
   email: optionalString(),
   status: z.preprocess(emptyToUndefined, z.enum(EMPLOYEE_STATUS_VALUES).optional()),

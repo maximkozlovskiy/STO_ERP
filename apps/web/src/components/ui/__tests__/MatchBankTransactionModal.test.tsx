@@ -18,7 +18,7 @@ vi.mock('@/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-const CP_UUID = '22222222-2222-2222-2222-222222222222';
+const CP_UUID = '22222222-2222-4222-8222-222222222222';
 
 const TX: BankTransaction = {
   id: 'tx-1',

@@ -18,7 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "zod": "^3.24.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@sto/config": "workspace:*",

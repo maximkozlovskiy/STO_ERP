@@ -21,8 +21,8 @@ import { renderWithQueryClient } from '../../../__tests__/query-utils';
 
 // Схема тепер валідує supplierId/cashRegisterId через zod .uuid() (спільна web↔api) —
 // фікстури мусять бути валідні UUID, інакше handleSubmit блокує submit і POST не летить.
-const SUP_UUID = '11111111-1111-1111-1111-111111111111';
-const CASH_UUID = '33333333-3333-3333-3333-333333333333';
+const SUP_UUID = '11111111-1111-4111-8111-111111111111';
+const CASH_UUID = '33333333-3333-4333-8333-333333333333';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
