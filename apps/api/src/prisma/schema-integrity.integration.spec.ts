@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { handleDbUnavailable } from '../common/testing/require-db';
 
 /**
  * TD2 — ГВАРД проти втрати manual-SQL конструктів при schema-rebuild.
@@ -42,6 +43,7 @@ beforeAll(async () => {
     dbAvailable = true;
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 

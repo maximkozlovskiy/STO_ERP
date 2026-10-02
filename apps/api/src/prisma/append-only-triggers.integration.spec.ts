@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { handleDbUnavailable } from '../common/testing/require-db';
 
 /**
  * ІНТЕГРАЦІЙНИЙ тест append-only immutability тригерів (аудит Дані/Інфра) проти ЖИВОЇ dev-БД.
@@ -30,6 +31,7 @@ beforeAll(async () => {
     const org = await raw.$queryRawUnsafe<{ id: string }[]>(`SELECT id FROM organisations LIMIT 1`);
     if (!org.length) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     orgId = org[0].id;
@@ -47,6 +49,7 @@ beforeAll(async () => {
     );
     if (!good.length || !wh.length) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     goodId = good[0].id;
@@ -55,6 +58,7 @@ beforeAll(async () => {
     dbAvailable = true;
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 

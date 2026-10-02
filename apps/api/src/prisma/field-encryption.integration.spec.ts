@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import type { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { handleDbUnavailable } from '../common/testing/require-db';
 
 /**
  * ІНТЕГРАЦІЙНИЙ тест Prisma field-encryption розширення (Phase 4, H-2) проти ЖИВОЇ dev-БД.
@@ -152,6 +153,7 @@ beforeAll(async () => {
     const branch = await rawClient.garageBranch.findFirst({ select: { id: true, orgId: true } });
     if (!branch) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     orgId = branch.orgId;
@@ -161,6 +163,7 @@ beforeAll(async () => {
     await cleanup(rawClient); // прибрати рештки попереднього перерваного прогону
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 

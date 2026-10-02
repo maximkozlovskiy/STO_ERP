@@ -5,6 +5,7 @@ import { PurchaseOrderImportAdapter, type ImportLineInput } from './document-lin
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SettingsService } from '../settings/settings.service';
 import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { handleDbUnavailable } from '../../common/testing/require-db';
 
 /**
  * ІНТЕГРАЦІЙНИЙ тест appendLines/replaceLines PurchaseOrderImportAdapter проти ЖИВОЇ dev-БД.
@@ -119,6 +120,7 @@ beforeAll(async () => {
     const branch = await raw.garageBranch.findFirst({ select: { orgId: true } });
     if (!branch) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     orgId = branch.orgId;
@@ -135,6 +137,7 @@ beforeAll(async () => {
     });
     if (!cur || !supplier || !wh || goods.length < 5) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     currencyId = cur.id;
@@ -150,6 +153,7 @@ beforeAll(async () => {
     dbAvailable = true;
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 

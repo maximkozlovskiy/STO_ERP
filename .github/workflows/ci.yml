@@ -52,6 +52,96 @@ jobs:
   # відсутній у .NET Framework) прослизнув повз усі аудити. Цей job на windows-latest (Windows
   # PowerShell 5.1 Desktop — цільова платформа інсталятора) AST-парсить усі .ps1 + smoke-тестить
   # генератор секретів на РЕАЛЬНОМУ 5.1-рантаймі, щоб такі регреси ловились на CI.
+  # Прод постачається як Docker-образи у .tar.gz всередині інсталятора (ADR-003), але
+  # збирались вони ЛИШЕ в release.yml по тегу — тобто вада збірки виявлялась аж на релізі.
+  # Саме так пройшли повз три незалежні вади Dockerfile (@sto/shared не резолвився 119×
+  # TS2307; `pnpm prune` без TTY; husky після видалення devDeps) — аудит 2026-10.
+  # Тут образи збираються на КОЖЕН PR. Без push/registry: нас цікавить лише те, що збірка
+  # взагалі проходить.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: sto-api:ci
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          tags: sto-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  # 7 integration-специв (tenant-guard, append-only тригери, field-encryption,
+  # schema-integrity, dead-letter, stock-effects, line-import) ходять у РЕАЛЬНУ Postgres.
+  # Досі CI їх не піднімав → вони завжди йшли у skip, і «ЄДИНЕ реальне покриття guard-а»
+  # (цитата з коментаря в tenant-guard.integration.spec.ts) не виконувалось жодного разу.
+  #
+  # REQUIRE_DB=1 КРИТИЧНИЙ: без нього специ при збої підключення або незасіяній базі знову
+  # тихо пропустяться, і job лишиться зеленим — тобто ми б додали Postgres і не помітили,
+  # що він не використовується. З прапорцем недоступна БД валить набір (common/testing/require-db.ts).
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sto
+          POSTGRES_PASSWORD: sto_dev_secret
+          POSTGRES_DB: sto_erp
+        ports:
+          - 5432:5432
+        # Без health-check job стартує раніше, ніж Postgres прийме з'єднання.
+        options: >-
+          --health-cmd "pg_isready -U sto -d sto_erp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sto:sto_dev_secret@localhost:5432/sto_erp
+      REQUIRE_DB: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm --filter @sto/database exec prisma migrate deploy
+
+      - name: Generate Prisma client
+        run: pnpm --filter @sto/database exec prisma generate
+
+      # Специ вимагають не лише живої БД, а й засіяних даних: beforeAll шукає garageBranch
+      # і без нього йде у skip (тепер — валить, бо REQUIRE_DB=1).
+      - name: Seed database
+        run: pnpm --filter @sto/database run seed
+
+      - name: Integration tests
+        run: pnpm --filter @sto/api exec vitest run src/prisma src/modules/dead-letter src/modules/work-orders/work-order-stock-effects.integration.spec.ts src/modules/xlsx/document-line-import.adapter.integration.spec.ts
+
   installer-scripts:
     runs-on: windows-latest
     steps:

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { withTenantGuard } from '../../prisma/tenant-guard.extension';
 import { DeadLetterService } from './dead-letter.service';
 import type { PrismaService } from '../../prisma/prisma.service';
+import { handleDbUnavailable } from '../../common/testing/require-db';
 
 /**
  * ІНТЕГРАЦІЙНИЙ тест DLQ-writer проти ЖИВОЇ dev-БД: перевіряє, що `capture` пише DeadLetterJob
@@ -46,6 +47,7 @@ beforeAll(async () => {
     service = new DeadLetterService(guarded as unknown as PrismaService);
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 

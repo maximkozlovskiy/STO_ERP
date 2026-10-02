@@ -6,6 +6,7 @@ import { WorkOrderStockEffectsService } from './work-order-stock-effects.service
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { InventoryService } from '../inventory/inventory.service';
 import type { SettlementsService } from '../settlements/settlements.service';
+import { handleDbUnavailable } from '../../common/testing/require-db';
 
 /**
  * ІНТЕГРАЦІЙНИЙ тест A3-фіксу проти ЖИВОЇ dev-БД: fetchPartCoefficients робить goodUoM.findMany
@@ -59,6 +60,7 @@ beforeAll(async () => {
     const branch = await raw.garageBranch.findFirst({ select: { orgId: true } });
     if (!branch) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     orgId = branch.orgId;
@@ -70,6 +72,7 @@ beforeAll(async () => {
     const uom = await raw.unitOfMeasure.findFirst({ where: { orgId }, select: { id: true } });
     if (!wh || !good || !uom) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     warehouseId = wh.id;
@@ -79,6 +82,7 @@ beforeAll(async () => {
     guarded = withTenantGuard(raw);
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 

@@ -3,6 +3,7 @@ import { PrismaClient, type Prisma } from '@prisma/client';
 import { withTenantGuard } from './tenant-guard.extension';
 import { TenantIsolationError } from './tenant-isolation.error';
 import { runWithTenant, runUnscoped } from '../common/tenant/tenant-context';
+import { handleDbUnavailable } from '../common/testing/require-db';
 
 /**
  * ІНТЕГРАЦІЙНИЙ тест tenant-guard $extends проти ЖИВОЇ dev-БД (A1).
@@ -52,6 +53,7 @@ beforeAll(async () => {
     const branch = await raw.garageBranch.findFirst({ select: { id: true, orgId: true } });
     if (!branch) {
       dbAvailable = false;
+      handleDbUnavailable('підключення або seed недоступні');
       return;
     }
     orgId = branch.orgId;
@@ -61,6 +63,7 @@ beforeAll(async () => {
     guarded = withTenantGuard(raw);
   } catch {
     dbAvailable = false;
+    handleDbUnavailable('підключення або seed недоступні');
   }
 }, 30_000);
 
