@@ -1,4 +1,8 @@
-import '@testing-library/jest-dom';
+// Саме `/vitest`, а НЕ кореневий '@testing-library/jest-dom': кореневий entry доповнює
+// типи під Jest, а Vitest-варіант розширює `Assertion` із 'vitest'. Vitest 5 змінив тип
+// Assertion, і з кореневим імпортом усі матчери (toBeInTheDocument тощо) перестали
+// резолвитись — 476 помилок TS2339 у тестах, попри зелений прогін.
+import '@testing-library/jest-dom/vitest';
 
 // i18n: ініціалізуємо i18next (lng='uk' за замовчуванням, бо localStorage порожній у jsdom) →
 // t() резолвить українські каталоги → існуючі тести, що асертять укр. текст, лишаються green.

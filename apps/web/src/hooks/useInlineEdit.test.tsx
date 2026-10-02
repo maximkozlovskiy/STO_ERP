@@ -1,9 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { vi, it, expect, describe, beforeEach, type Mock } from 'vitest';
 import { useInlineEdit } from './useInlineEdit';
 
 describe('useInlineEdit', () => {
-  let onSave: ReturnType<typeof vi.fn>;
+  // Явна сигнатура: у Vitest 5 беспараметричний `ReturnType<typeof vi.fn>` виводиться як
+  // `Mock<Procedure | Constructable>` і вже не підходить під конкретний тип пропса (TS2322).
+  let onSave: Mock<(rowId: string, field: string, value: string) => Promise<void>>;
 
   beforeEach(() => {
     onSave = vi.fn().mockResolvedValue(undefined);

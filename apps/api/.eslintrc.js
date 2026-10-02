@@ -62,8 +62,16 @@ module.exports = {
         '@typescript-eslint/require-await': 'off',
         '@typescript-eslint/no-unnecessary-type-assertion': 'off',
         '@typescript-eslint/unbound-method': 'off',
+        // Vitest 5 звузив тип mockImplementation до void-повертаючого, тож легітимна
+        // емуляція `$transaction(async tx => …)` у моках стала «misused promise» (19 місць).
+        // У ПРОД-коді правило лишається error — там воно ловить реальні баги
+        // (на web саме воно показало 264 випадки необробленої відмови).
+        '@typescript-eslint/no-misused-promises': 'off',
       },
     },
   ],
-  ignorePatterns: ['dist/', 'node_modules/', '*.js', 'test/'],
+  // *.config.ts — не частина src і не входить у жоден tsconfig, тож type-aware парсер на
+  // ньому падає з «ESLint was configured to lint … with type information from
+  // parserOptions.project». Лінтувати конфіг збірки сенсу немає.
+  ignorePatterns: ['dist/', 'node_modules/', '*.js', '*.config.ts', 'test/'],
 };
