@@ -24,5 +24,10 @@ export function safeCoeff(value: number | null | undefined): number {
 export function roundMoney(value: number): number {
   if (!Number.isFinite(value)) return 0;
   const sign = value < 0 ? -1 : 1;
-  return (sign * Math.round(Math.abs(value) * 100 + 1e-9)) / 100;
+  const result = (sign * Math.round(Math.abs(value) * 100 + 1e-9)) / 100;
+  // `+ 0` нормалізує -0 у 0: будь-яке від'ємне значення менше за півкопійки (напр. -0.001,
+  // здача або копійчана різниця курсу) давало -0. JSON і String серіалізують -0 як "0",
+  // тож для користувача збитку не було, але -0 ламає порівняння Object.is у тестах і
+  // збиває з пантелику при відладці. Знайдено property-тестом (контрприклад -5e-324).
+  return result + 0;
 }

@@ -2,12 +2,12 @@
 // `as 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'` casts. Prisma enum at runtime is a
 // string literal union that matches this local type.
 import type { VatMode } from '@prisma/client';
-import { roundMoney } from './math';
+import { money, type Money } from './money';
 
 interface LineVatResult {
-  vatAmount: number;
-  priceWithoutVat: number;
-  priceWithVat: number;
+  vatAmount: Money;
+  priceWithoutVat: Money;
+  priceWithVat: Money;
 }
 
 // FIN-H1/WO-H2: усі грошові результати квантуються до копійки (roundMoney) на кожному кроці —
@@ -19,21 +19,21 @@ export function calcLineVat(
   vatMode: VatMode,
 ): LineVatResult {
   if (vatMode === 'NONE' || vatRate === 0) {
-    return { vatAmount: 0, priceWithoutVat: roundMoney(price), priceWithVat: roundMoney(price) };
+    return { vatAmount: money(0), priceWithoutVat: money(price), priceWithVat: money(price) };
   }
   const sum = price * qty;
   if (vatMode === 'EXCLUSIVE') {
     return {
-      vatAmount: roundMoney((sum * vatRate) / 100),
-      priceWithoutVat: roundMoney(price),
-      priceWithVat: roundMoney(price * (1 + vatRate / 100)),
+      vatAmount: money((sum * vatRate) / 100),
+      priceWithoutVat: money(price),
+      priceWithVat: money(price * (1 + vatRate / 100)),
     };
   }
   // INCLUSIVE: ПДВ вже включено в ціну
   return {
-    vatAmount: roundMoney(sum - sum / (1 + vatRate / 100)),
-    priceWithoutVat: roundMoney(price / (1 + vatRate / 100)),
-    priceWithVat: roundMoney(price),
+    vatAmount: money(sum - sum / (1 + vatRate / 100)),
+    priceWithoutVat: money(price / (1 + vatRate / 100)),
+    priceWithVat: money(price),
   };
 }
 
@@ -42,11 +42,11 @@ export function calcLineVat(
  * саму формулу WorkOrdersService.recalcTotals інлайнив окремо → VAT-математика не мала одного власника.
  * INCLUSIVE → ПДВ уже в базі (виділяємо); EXCLUSIVE → ПДВ зверху; NONE/0 → 0. Результат квантовано.
  */
-export function calcVatOnBase(base: number, vatRate: number, vatMode: VatMode): number {
-  if (vatMode === 'NONE' || vatRate === 0) return 0;
-  if (vatMode === 'INCLUSIVE') return roundMoney(base - base / (1 + vatRate / 100));
+export function calcVatOnBase(base: number, vatRate: number, vatMode: VatMode): Money {
+  if (vatMode === 'NONE' || vatRate === 0) return money(0);
+  if (vatMode === 'INCLUSIVE') return money(base - base / (1 + vatRate / 100));
   // EXCLUSIVE
-  return roundMoney((base * vatRate) / 100);
+  return money((base * vatRate) / 100);
 }
 
 /**
@@ -57,7 +57,7 @@ export function calcVatOnBase(base: number, vatRate: number, vatMode: VatMode): 
  */
 export function sumLineTotals(
   lines: { priceWithoutVat: unknown; vatAmount: unknown; priceWithVat: unknown }[],
-): { totalWithoutVat: number; totalVat: number; totalWithVat: number } {
+): { totalWithoutVat: Money; totalVat: Money; totalWithVat: Money } {
   let totalWithoutVat = 0;
   let totalVat = 0;
   let totalWithVat = 0;
@@ -68,15 +68,15 @@ export function sumLineTotals(
   }
   // Квантуємо підсумки — Σ float-значень теж дрейфує (напр. 0.1+0.2).
   return {
-    totalWithoutVat: roundMoney(totalWithoutVat),
-    totalVat: roundMoney(totalVat),
-    totalWithVat: roundMoney(totalWithVat),
+    totalWithoutVat: money(totalWithoutVat),
+    totalVat: money(totalVat),
+    totalWithVat: money(totalWithVat),
   };
 }
 
 export function calcDocVat(
   lines: { qty: number; price: number; vatRate: number; vatMode: VatMode }[],
-): { totalVat: number; totalWithoutVat: number; totalWithVat: number } {
+): { totalVat: Money; totalWithoutVat: Money; totalWithVat: Money } {
   let totalVat = 0;
   let totalWithoutVat = 0;
   let totalWithVat = 0;
@@ -92,8 +92,8 @@ export function calcDocVat(
     totalWithVat += priceWithVat * l.qty;
   }
   return {
-    totalVat: roundMoney(totalVat),
-    totalWithoutVat: roundMoney(totalWithoutVat),
-    totalWithVat: roundMoney(totalWithVat),
+    totalVat: money(totalVat),
+    totalWithoutVat: money(totalWithoutVat),
+    totalWithVat: money(totalWithVat),
   };
 }
