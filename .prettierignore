@@ -10,3 +10,8 @@ apps/web/.next
 apps/web/out
 apps/api/dist
 apps/mobile/.expo
+
+# Згенеровані з OpenAPI (`pnpm run gen:api-types`) — комітяться як є,
+# прогін prettier по 15k рядків автогену лише шумить у diff.
+packages/shared/src/api-types.ts
+packages/shared/openapi.json

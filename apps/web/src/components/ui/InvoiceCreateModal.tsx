@@ -47,6 +47,7 @@ import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal, type SearchPickerItem } from '@/components/ui/search-picker-modal';
 import { CurrencySelect } from '@/components/ui/CurrencySelect';
 import { useBaseCurrency } from '@/hooks/api/useCash';
+import type { Invoice } from '@/hooks/api/useInvoices';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,36 +59,13 @@ interface Counterparty {
   phone?: string | null;
 }
 
-interface InvoiceDetail {
-  id: string;
-  number: string;
-  status: string;
-  invoiceType?: string | null;
-  counterpartyId: string;
-  counterpartyName?: string | null;
-  currencyId?: string | null;
-  currencyCode?: string | null;
-  workOrderId?: string | null;
-  workOrderNumber?: string | null;
-  amount: number;
-  totalWithoutVat?: number;
-  totalVat?: number;
-  totalWithVat?: number;
-  paidAmount?: number;
-  dueDate?: string | null;
-  documentDate?: string | null;
-  notes?: string | null;
-  lines?: InvoiceLine[];
-}
-
-interface InvoiceLine {
-  id: string;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  vatRate: number;
-  priceWithVat: number;
-}
+// Крок 4 (кодогенерація): `InvoiceDetail` + `InvoiceLine` були четвертою і п'ятою
+// копіями InvoiceResponseDto. Копія розходилась із беком у двох місцях:
+//   · `counterpartyName?: string | null` — бек віддає `string | undefined`
+//     (toDto будує рядок через join, ніколи не null) → `?? '—'` тут був мертвим кодом;
+//   · `totalWithoutVat/totalVat/totalWithVat?: number` — у беку ОБОВ'ЯЗКОВІ `number`.
+// Тепер тип приходить із @sto/shared через хук useInvoices.
+type InvoiceDetail = Invoice;
 
 interface LocalLine {
   _key: string;

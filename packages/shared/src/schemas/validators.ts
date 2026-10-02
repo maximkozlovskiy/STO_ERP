@@ -58,7 +58,13 @@ export const optionalNonNegNumber = () =>
  * Порожнє/нечислове → NaN → падає на .number() (діапазони уточнює superRefine у доменній схемі).
  */
 export const numericString = () =>
-  z.preprocess(v => (v === '' || v === null || v === undefined ? NaN : Number(v)), z.number());
+  z.preprocess(
+    v => (v === '' || v === null || v === undefined ? NaN : Number(v)),
+    // Повідомлення ОБОВ'ЯЗКОВЕ: без нього Zod віддає англійський дефолт
+    // («Invalid input: expected number, received NaN») просто у відповідь API,
+    // упереміш з українськими — видно на живому 400 (Крок 4 аудиту).
+    z.number('v.invalidNumber'),
+  );
 
 /**
  * Грошова сума з рядка форми з підтримкою UA-локалі (кома як десятковий роздільник).
@@ -70,7 +76,7 @@ export const moneyString = () =>
     if (v === '' || v === null || v === undefined) return NaN;
     if (typeof v === 'string') return Number(v.replace(',', '.'));
     return Number(v);
-  }, z.number());
+  }, z.number('v.invalidNumber'));
 
 /**
  * Опційне невід'ємне число з UA-комою: '' / null → undefined, '1,5' → 1.5.

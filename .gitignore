@@ -64,3 +64,7 @@ apps/web/CLAUDE.md
 
 # Vitest coverage reports
 coverage/
+
+# Проміжний JS для emit-openapi (`pnpm --filter @sto/api emit-openapi`).
+# dist/ уже ігнорується, але цей каталог має інше імʼя.
+apps/api/dist-openapi/

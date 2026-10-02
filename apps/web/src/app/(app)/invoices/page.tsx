@@ -25,7 +25,12 @@ import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { useInvoices, invoicesKeys, Invoice } from '@/hooks/api/useInvoices';
+import {
+  useInvoices,
+  invoicesKeys,
+  type Invoice,
+  type InvoiceStatusValue,
+} from '@/hooks/api/useInvoices';
 import { useBaseCurrency } from '@/hooks/api/useCash';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
@@ -86,22 +91,9 @@ import { StatusPill } from '@/components/ui/status-pill';
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 // new Date().toISOString() returns UTC, which diverges from Kyiv date between midnight and UTC+2/+3.
 
-interface InvoiceLine {
-  id: string;
-  invoiceId: string;
-  goodId?: string | null;
-  workId?: string | null;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  vatRate: number;
-  priceWithoutVat: number;
-  vatAmount: number;
-  priceWithVat: number;
-  sortOrder: number;
-  unitShortName?: string;
-  coefficient?: number;
-}
+// Крок 4 (кодогенерація): рукописна копія InvoiceLineResponseDto прибрана — тип
+// приходить зі згенерованого OpenAPI через хук useInvoices. Копія забула `createdAt`
+// і `unitOfMeasureId`, які бек віддає завжди.
 
 interface InvoiceFilters extends Record<string, unknown> {
   search: string;
@@ -110,10 +102,10 @@ interface InvoiceFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-// Extend Invoice from hook with optional fields used in this page
-interface InvoiceWithOptionals extends Invoice {
-  lines?: InvoiceLine[];
-}
+// `lines?: InvoiceLineResponseDto[]` ВЖЕ є у згенерованому Invoice
+// (@ApiPropertyOptional у InvoiceResponseDto), тож надбудова більше не потрібна.
+// Аліас лишаємо, щоб не переписувати ~15 вживань у цьому файлі.
+type InvoiceWithOptionals = Invoice;
 
 // Status labels via i18n wrappers; badge/transition constants imported from @sto/shared
 const STATUS_BADGE = INVOICE_STATUS_BADGE;
@@ -413,7 +405,11 @@ function InvoicesPageInner() {
     );
   }, [payMethods, showPayment]);
 
-  const handleTransition = async (inv: InvoiceWithOptionals, newStatus: string) => {
+  // newStatus звужено до union статусів рахунку (було `string`): згенерований тип
+  // зробив `{ ...prev, status: newStatus }` помилкою компіляції. Це НЕ формальність —
+  // із `string` опечатка у статусі доїжджала до setSelectedInv, і панель показувала
+  // статус, якого не існує, доки не прийде наступний рефетч.
+  const handleTransition = async (inv: InvoiceWithOptionals, newStatus: InvoiceStatusValue) => {
     if (
       !(await confirm({
         title: t('confirm.transition', {
@@ -622,7 +618,7 @@ function InvoicesPageInner() {
             ))}
             <PanelSection title={t('panel.sectionActions')}>
               <div className="flex flex-col gap-2">
-                {STATUS_TRANSITIONS[inv.status]?.map(s => (
+                {(STATUS_TRANSITIONS[inv.status] as InvoiceStatusValue[] | undefined)?.map(s => (
                   <Button
                     key={s}
                     variant={
@@ -960,7 +956,7 @@ function InvoicesPageInner() {
                               key="workOrder"
                               className="text-[13px] text-muted-foreground"
                             >
-                              {(inv as InvoiceWithOptionals).workOrderNumber ?? '—'}
+                              {inv.workOrderNumber ?? '—'}
                             </TableCell>
                           );
                         if (col.key === 'status')

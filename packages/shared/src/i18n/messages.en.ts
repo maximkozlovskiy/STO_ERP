@@ -6,6 +6,7 @@ export const en: Record<string, string> = {
   'v.fieldSuffix': '(field "{{path}}")',
   'v.validationFailed': 'Validation failed',
   'v.invalid': 'Invalid value',
+  'v.invalidNumber': 'Enter a number',
 
   // ── validators.ts (shared helpers) ──
   'v.phone': 'Invalid phone format (+380XXXXXXXXX)',

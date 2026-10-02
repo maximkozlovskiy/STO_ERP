@@ -26,6 +26,7 @@ import {
   UpdateInvoiceLineDto,
   InvoiceLineResponseDto,
   InvoiceResponseDto,
+  InvoiceByWorkOrderResponseDto,
   PaginatedInvoicesDto,
 } from './invoices.dto';
 
@@ -897,18 +898,10 @@ export class InvoicesService {
   async findByWorkOrder(
     orgId: string,
     workOrderId: string,
-  ): Promise<{
-    id: string;
-    number: string;
-    status: InvoiceStatus;
-    amount: number;
     // Мультивалюта (Фаза 3): валюта рахунку + base-сума + курс для invoice slot картки наряду —
     // InvoiceSection рендерить foreign+base пару. Без них UI мовчки падав би на base-символ ₴.
-    currencyCode: string | null;
-    totalAmountBase: number | null;
-    rateUsed: number | null;
-    documentDate: string | null;
-  } | null> {
+    // Крок 4: форма винесена в InvoiceByWorkOrderResponseDto, щоб потрапити у Swagger/кодоген.
+  ): Promise<InvoiceByWorkOrderResponseDto | null> {
     const inv = await this.prisma.invoice.findFirst({
       where: { workOrderId, orgId, deletedAt: null, status: { not: InvoiceStatus.CANCELLED } },
       select: {

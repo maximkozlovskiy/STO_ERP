@@ -16,7 +16,14 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -34,7 +41,15 @@ import {
   type InvoiceLineUpdateValues,
 } from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { TransitionInvoiceDto, InvoiceQueryDto, LinkedCountsDto } from './invoices.dto';
+import {
+  TransitionInvoiceDto,
+  InvoiceQueryDto,
+  LinkedCountsDto,
+  InvoiceResponseDto,
+  InvoiceLineResponseDto,
+  PaginatedInvoicesDto,
+  InvoiceByWorkOrderResponseDto,
+} from './invoices.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
@@ -46,6 +61,7 @@ export class InvoicesController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Список рахунків' })
+  @ApiOkResponse({ type: PaginatedInvoicesDto })
   findAll(@OrgContext() orgId: string, @Query() query: InvoiceQueryDto) {
     return this.service.findAll(
       orgId,
@@ -82,6 +98,7 @@ export class InvoicesController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Рахунок по ID' })
+  @ApiOkResponse({ type: InvoiceResponseDto })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -90,6 +107,7 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити рахунок вручну' })
+  @ApiCreatedResponse({ type: InvoiceResponseDto })
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(invoiceHeaderSchema)) dto: InvoiceHeaderValues,
@@ -103,6 +121,7 @@ export class InvoicesController {
   @Post('from-work-order/:workOrderId/refresh')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Перезаписати існуючий рахунок рядками з наряду' })
+  @ApiOkResponse({ type: InvoiceResponseDto })
   refreshFromWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
@@ -113,6 +132,7 @@ export class InvoicesController {
   @Get('from-work-order/:workOrderId/find')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Знайти рахунок за нарядом (id, number, status, amount, documentDate)' })
+  @ApiOkResponse({ type: InvoiceByWorkOrderResponseDto })
   findByWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
@@ -123,6 +143,7 @@ export class InvoicesController {
   @Post('from-work-order/:workOrderId')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Виставити рахунок з наряду' })
+  @ApiCreatedResponse({ type: InvoiceResponseDto })
   createFromWorkOrder(
     @OrgContext() orgId: string,
     @Param('workOrderId', ParseUUIDPipe) workOrderId: string,
@@ -133,6 +154,7 @@ export class InvoicesController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Оновити рахунок (тільки DRAFT)' })
+  @ApiOkResponse({ type: InvoiceResponseDto })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -144,6 +166,7 @@ export class InvoicesController {
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Змінити статус рахунку (FSM)' })
+  @ApiOkResponse({ type: InvoiceResponseDto })
   transition(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -156,6 +179,7 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Дублювати рахунок' })
+  @ApiCreatedResponse({ type: InvoiceResponseDto })
   clone(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.clone(orgId, id);
   }
@@ -179,6 +203,7 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити рахунок (тільки DRAFT)' })
+  @ApiNoContentResponse()
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
@@ -186,6 +211,7 @@ export class InvoicesController {
   @Post(':id/lines')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Додати рядок до рахунку' })
+  @ApiCreatedResponse({ type: InvoiceLineResponseDto })
   addLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -197,6 +223,7 @@ export class InvoicesController {
   @Patch(':id/lines/:lineId')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Оновити рядок рахунку' })
+  @ApiOkResponse({ type: InvoiceLineResponseDto })
   updateLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -210,6 +237,7 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити рядок рахунку' })
+  @ApiNoContentResponse()
   removeLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

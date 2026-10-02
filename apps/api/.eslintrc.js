@@ -73,5 +73,18 @@ module.exports = {
   // *.config.ts — не частина src і не входить у жоден tsconfig, тож type-aware парсер на
   // ньому падає з «ESLint was configured to lint … with type information from
   // parserOptions.project». Лінтувати конфіг збірки сенсу немає.
-  ignorePatterns: ['dist/', 'node_modules/', '*.js', '*.config.ts', 'test/'],
+  // scripts/ — build-time тулінг (emit-openapi), покритий власним scripts/tsconfig.emit.json,
+  // а не головним tsconfig. Додавати той конфіг у parserOptions.project не можна: він тягне
+  // ВЕСЬ src вдруге (rootDir '..'), і кожен файл лінтувався б двічі. Та сама логіка, що для
+  // '*.config.ts' і 'test/' вище. Типи скрипта перевіряє сама генерація — compile-for-openapi.js
+  // валить збірку на будь-якій помилці tsc.
+  ignorePatterns: [
+    'dist/',
+    'dist-openapi/',
+    'node_modules/',
+    '*.js',
+    '*.config.ts',
+    'test/',
+    'scripts/',
+  ],
 };

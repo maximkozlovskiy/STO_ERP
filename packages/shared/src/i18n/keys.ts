@@ -143,6 +143,7 @@ export const V = {
 
 /** Плаский список усіх validation-ключів (для key-parity / повноти каталогів у тестах). */
 export const VALIDATION_KEYS = [
+  'v.invalidNumber',
   'v.fieldSuffix',
   'v.validationFailed',
   'v.invalid',

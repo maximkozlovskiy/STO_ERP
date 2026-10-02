@@ -17,6 +17,8 @@ import { CommonModule } from './common/common.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { TenantContextInterceptor } from './common/tenant/tenant-context.interceptor';
 import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { HttpMetricsInterceptor } from './metrics/http-metrics.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { RedisModule } from './redis/redis.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -178,6 +180,7 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     CommonModule,
     RedisModule,
     HealthModule,
+    MetricsModule,
     AuthModule,
     SettingsModule,
     PaymentMethodsModule,
@@ -252,6 +255,8 @@ import { BullBoardModule } from './modules/bull-board/bull-board.module';
     // Global interceptor фаєрить ПІСЛЯ global guards, тож user вже populate-нутий. Guard-extension
     // ([tenant-guard.extension.ts]) читає цей scope для create-стемпу й bypass.
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+    // Метрики тривалості — глобально, щоб покрити ВСІ маршрути без правок контролерів.
+    { provide: APP_INTERCEPTOR, useClass: HttpMetricsInterceptor },
   ],
 })
 export class AppModule implements NestModule {
