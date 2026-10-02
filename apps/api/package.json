@@ -43,7 +43,7 @@
     "ioredis": "^5.10.1",
     "minio": "^8.0.7",
     "nestjs-pino": "^5.2.1",
-    "nodemailer": "^10.0.0",
+    "nodemailer": "^10.0.13",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pdfjs-dist": "6.3.289",

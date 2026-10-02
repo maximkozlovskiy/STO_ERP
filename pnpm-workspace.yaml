@@ -25,6 +25,11 @@ overrides:
   # 4 × HIGH, серед них обхід автентифікації через хибні URL у encapsulated not-found
   # (фікс у 5.12.2). Пін на версію нижче за патч безпеки був би гіршим, ніж дублювання.
   fastify: '5.12.5'
+  # brace-expansion: HIGH — DoS через необмежену рекурсію на вкладених brace-групах.
+  # Вразлива в дереві саме 5.0.9 (через @fastify/static>glob>minimatch на ПРОД-шляху
+  # api, плюс dev-ланцюжок madge). Фікс у 5.0.11; беремо 5.0.12.
+  # Прямого оновлення немає — minimatch пінить свій діапазон, тож override.
+  brace-expansion: '^5.0.12'
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
