@@ -1,0 +1,50 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/Kyiv",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "rangeStrategy": "bump",
+  "postUpdateOptions": ["pnpmDedupe"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "vulnerabilityAlerts": { "labels": ["security"], "schedule": ["at any time"] },
+  "packageRules": [
+    {
+      "description": "Мінорні й патчі збираються в один PR на тиждень — інакше 44 prod-залежності API дають безперервний потік дрібних PR, які перестають читати.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor + patch",
+      "automerge": false
+    },
+    {
+      "description": "Мажори — КОЖЕН окремим PR. Відставання накопичилось саме через ручні оновлення (аудит 2026-10: NestJS 10→12, Prisma 5→7, Zod 3→4, Vitest 2→5, TypeScript 5→7). Групувати їх не можна: кожен потребує власного прогону E2E.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "НЕ оновлювати на pre-release. Критично: prisma@latest у реєстрі зараз вказує на 8.0.0-rc — наївне оновлення затягло б release candidate у прод (ADR-003: образи йдуть у коробку клієнту, відкотити важко).",
+      "matchPackageNames": ["*"],
+      "ignoreUnstable": true,
+      "respectLatest": false
+    },
+    {
+      "description": "Зв'язані пакети оновлюються разом, інакше несумісні версії в одному дереві.",
+      "matchPackageNames": ["/^@nestjs//", "/^@prisma//", "prisma", "/^@typescript-eslint//"],
+      "groupName": "{{{updateType}}} @ related packages"
+    },
+    {
+      "description": "NestJS тягне Fastify і плагіни — тільки разом.",
+      "matchPackageNames": ["/^@nestjs/platform-fastify$/", "fastify", "/^@fastify//"],
+      "groupName": "nestjs + fastify stack"
+    },
+    {
+      "description": "Моделі tesseract і нативні бінарі не чіпати автоматично: @napi-rs/canvas і tesseract.js впливають на офлайн-OCR, оновлення вимагає ручної перевірки на реальному скані.",
+      "matchPackageNames": ["tesseract.js", "/^@napi-rs//"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}
