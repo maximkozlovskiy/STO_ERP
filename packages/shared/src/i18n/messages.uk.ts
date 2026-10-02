@@ -9,6 +9,7 @@ export const uk: Record<string, string> = {
   'v.fieldSuffix': '(поле "{{path}}")',
   'v.validationFailed': 'Помилка валідації',
   'v.invalid': 'Невірне значення',
+  'v.invalidNumber': 'Вкажіть число',
 
   // ── validators.ts (спільні хелпери) ──
   'v.phone': 'Невірний формат телефону (+380XXXXXXXXX)',

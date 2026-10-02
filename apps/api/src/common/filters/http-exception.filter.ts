@@ -95,6 +95,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Власні строки фільтра — через i18n-KEY (translateError у кінці). HttpException-гілка з сервісу
     // передає вже-рендерений `message` (сервісні throw-и локалізуються окремими батчами).
     let message = translateError('err.internal', locale);
+    /**
+     * Машинно-читабельний код помилки у тілі відповіді.
+     *
+     * Навіщо: раніше клієнт отримував ЛИШЕ локалізований `message` і міг розрізняти
+     * причини тільки за HTTP-статусом — тобто «рахунок уже оплачено» і «немає залишку»
+     * обидва виглядали як 400 з різним текстом, і будь-яка обробка на фронті мусила б
+     * порівнювати рядки українською (аудит 2026-10).
+     *
+     * Де беремо: i18n-ключ, якщо він у цій гілці відомий (Prisma-мапінг, внутрішні
+     * помилки). Для 338 сервісних `BadRequestException(translateError(...))` ключ уже
+     * втрачено — там лишається стабільний код за типом помилки. Це свідомо часткове
+     * покриття: обіцяти «code для всіх» без наскрізного рефакторингу throw-ів було б
+     * неправдою. Нові throw-и варто робити з доменними класами помилок, і тоді code
+     * прийде автоматично.
+     */
+    let code = 'err.internal';
 
     if (exception instanceof TenantIsolationError) {
       // A1: забутий tenant-фільтр на tenant-моделі — це СЕРВЕРНИЙ баг (не client-error). Логуємо
@@ -105,6 +121,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       message = translateError('err.internal', locale);
+      code = 'err.internal';
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       const response = exception.getResponse();
@@ -114,12 +131,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
       } else {
         message = exception.message;
       }
+      // Якщо throw-сайт САМ передав `code` у тіло (напр. `new BadRequestException({ code:
+      // 'err.invoice.alreadyPaid', message })`) — беремо його. Так нові доменні помилки
+      // отримують машинний код без правок цього фільтра.
+      // Інакше — стабільний код за HTTP-статусом: 338 наявних
+      // `BadRequestException(translateError(...))` уже втратили ключ, і вигадувати для них
+      // код тут немає з чого. `err.http.400` усе одно корисніший за `err.internal`:
+      // клієнт бачить КЛАС помилки, а не «внутрішня».
+      const httpCode = (response as { code?: unknown } | null)?.code;
+      code = typeof httpCode === 'string' ? httpCode : `err.http.${status}`;
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       // Prisma помилки конвертуємо у 4xx БЕЗ Sentry alert (P2002 = conflict, P2025 = not found)
       const mapped = mapPrismaErrorToHttp(exception);
       if (mapped) {
         status = mapped.status;
         message = translateError(mapped.key, locale, mapped.params);
+        code = mapped.key;
       } else {
         // Невідомий Prisma код — лишаємо як 500, але логуємо для діагностики.
         this.logger.error(
@@ -135,6 +162,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // із першим рядком повідомлення Prisma (без stack — не критично, не 500).
       status = HttpStatus.BAD_REQUEST;
       message = translateError('err.badRequest', locale);
+      code = 'err.badRequest';
       const firstLine = String(exception.message ?? '')
         .split('\n')
         .map(s => s.trim())
@@ -147,6 +175,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // Перевищено ліміт розміру завантаження → чистий 413 українською, БЕЗ Sentry alert.
       status = HttpStatus.PAYLOAD_TOO_LARGE;
       message = translateError('err.requestFileTooLarge', locale);
+      code = 'err.requestFileTooLarge';
       this.logger.warn(`File too large on ${request.method} ${request.url}`);
     } else if (isFastifyClientError(exception)) {
       // Bug #627: Fastify content-type-parser / request помилки (FST_ERR_CTP_*) —
@@ -159,6 +188,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // стійким незалежно від клієнта (mobile/sync/зовнішні інтеграції).
       status = exception.statusCode;
       message = translateError('err.fastifyBadRequest', locale);
+      code = 'err.fastifyBadRequest';
       this.logger.warn(
         `Fastify request error ${exception.code} on ${request.method} ${request.url}`,
       );
@@ -168,10 +198,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
         `Unhandled exception on ${request.method} ${request.url}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
+      code = 'err.internal';
     }
 
     reply.status(status).send({
       statusCode: status,
+      code,
       message,
       path: request.url,
       timestamp: new Date().toISOString(),

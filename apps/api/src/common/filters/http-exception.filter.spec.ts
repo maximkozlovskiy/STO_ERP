@@ -291,4 +291,58 @@ describe('HttpExceptionFilter', () => {
       expect(reply.status).toHaveBeenCalledWith(500);
     });
   });
+
+  // Машинно-читабельний `code` у тілі відповіді (Крок 4 аудиту). Раніше клієнт мав ЛИШЕ
+  // локалізований текст і міг розрізняти причини тільки за HTTP-статусом — тобто будь-яка
+  // обробка на фронті мусила б порівнювати рядки українською.
+  describe('code — машинний код помилки', () => {
+    it('HttpException без власного code → стабільний err.http.<status>', () => {
+      const { host, reply } = makeHost();
+      filter.catch(new BadRequestException('Щось не так'), host);
+
+      expect(reply.send).toHaveBeenCalledWith(expect.objectContaining({ code: 'err.http.400' }));
+    });
+
+    it('404 і 400 дають РІЗНІ коди (клієнт розрізняє клас помилки)', () => {
+      const a = makeHost();
+      filter.catch(new NotFoundException('нема'), a.host);
+      const b = makeHost();
+      filter.catch(new BadRequestException('погано'), b.host);
+
+      expect(a.reply.send).toHaveBeenCalledWith(expect.objectContaining({ code: 'err.http.404' }));
+      expect(b.reply.send).toHaveBeenCalledWith(expect.objectContaining({ code: 'err.http.400' }));
+    });
+
+    it('throw-сайт МОЖЕ передати власний code — він перемагає дефолт', () => {
+      // Шлях для нових доменних помилок: код приходить без правок фільтра.
+      const { host, reply } = makeHost();
+      filter.catch(
+        new BadRequestException({ code: 'err.invoice.alreadyPaid', message: 'Уже оплачено' }),
+        host,
+      );
+
+      expect(reply.send).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'err.invoice.alreadyPaid', message: 'Уже оплачено' }),
+      );
+    });
+
+    it('невідома помилка → err.internal (не протікає деталь)', () => {
+      const { host, reply } = makeHost();
+      filter.catch(new Error('внутрішнє щось'), host);
+
+      expect(reply.send).toHaveBeenCalledWith(
+        expect.objectContaining({ statusCode: 500, code: 'err.internal' }),
+      );
+    });
+
+    it('code присутній у КОЖНІЙ відповіді (контракт)', () => {
+      for (const ex of [new BadRequestException('x'), new NotFoundException('y'), new Error('z')]) {
+        const { host, reply } = makeHost();
+        filter.catch(ex, host);
+        const body = reply.send.mock.calls[0]?.[0] as { code?: unknown };
+        expect(typeof body.code).toBe('string');
+        expect(body.code).not.toBe('');
+      }
+    });
+  });
 });
