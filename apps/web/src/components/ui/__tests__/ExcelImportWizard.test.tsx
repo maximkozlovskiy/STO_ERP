@@ -34,6 +34,16 @@ const previewResponse: PreviewResponse = {
 // Захоплюємо аргументи apply, щоб перевірити який набір рядків імпортується.
 const applySpy = vi.fn();
 
+// Референтно стабільний мок мутації apply (ідентичність НЕ змінюється між рендерами),
+// щоб тести ловили stale-closure у залежностях useCallback замість того, щоб їх маскувати.
+const stableApplyMutation = {
+  isPending: false,
+  mutateAsync: (vars: unknown) => {
+    applySpy(vars);
+    return Promise.resolve({});
+  },
+};
+
 // Override preview-відповіді для edge-case тестів (null → базовий previewResponse).
 const previewOverride: { current: PreviewResponse | null } = { current: null };
 
@@ -74,13 +84,11 @@ vi.mock('@/hooks/api/useExcelImport', () => ({
     isPending: false,
     mutateAsync: () => Promise.resolve(previewOverride.current ?? previewResponse),
   }),
-  useApplyImport: () => ({
-    isPending: false,
-    mutateAsync: (vars: unknown) => {
-      applySpy(vars);
-      return Promise.resolve({});
-    },
-  }),
+  // Стабільний об'єкт між рендерами — як справжній useMutation TanStack (mutateAsync
+  // референтно стабільна). НЕ створюємо новий об'єкт на кожен виклик: інакше `applyMut`
+  // змінює ідентичність щорендеру й «випадково» рефрешить useCallback-замикання, що
+  // маскувало б stale-closure по залежностях handleApply (Bug #775).
+  useApplyImport: () => stableApplyMutation,
   useCounterpartyImportMapping: () => ({ data: savedMappingData.current }),
   useUpsertImportMapping: () => ({ mutate: vi.fn() }),
 }));
@@ -553,6 +561,28 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
     expect(screen.getByText(/Наявні позиції \(3\) буде видалено/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText(/Додати до наявних/));
+    fireEvent.click(screen.getByRole('button', { name: /Заповнити товарами/ }));
+    await vi.waitFor(() => expect(applySpy).toHaveBeenCalledTimes(1));
+    expect((applySpy.mock.calls[0][0] as { mode: string }).mode).toBe('append');
+  });
+
+  // Bug #775: handleApply useCallback не мав applyMode у залежностях. Перемикання режиму НЕ
+  // змінює жодної іншої залежності колбека, тож при референтно стабільній мутації (як у проді)
+  // apply відправляв СТАРИЙ режим. Сценарій: обрати «Додати», потім «Замінити», тоді apply —
+  // без фіксу піде найперший захоплений 'replace' замість актуального 'replace'... тому перевіряємо
+  // зворотний напрямок (append→replace→append) ТА прямий, щоб замикання мусило бачити останнє.
+  it('Bug #775: перемикання режиму ПІСЛЯ входу в крок 2 відображається у apply (append після replace)', async () => {
+    renderWizard({ existingLineCount: 3 });
+    selectFile();
+    fireEvent.click(screen.getByRole('button', { name: /Ідентифікувати товари/ }));
+    await screen.findByText(/Обрано:/);
+
+    // Тупцюємо режимом: replace (дефолт) → append → replace → append. Жоден клік по радіо не
+    // змінює rows/resolutions/docId тощо, тож лише applyMode у deps гарантує свіже замикання.
+    fireEvent.click(screen.getByLabelText(/Додати до наявних/));
+    fireEvent.click(screen.getByLabelText(/Замінити наявні позиції/));
+    fireEvent.click(screen.getByLabelText(/Додати до наявних/));
+
     fireEvent.click(screen.getByRole('button', { name: /Заповнити товарами/ }));
     await vi.waitFor(() => expect(applySpy).toHaveBeenCalledTimes(1));
     expect((applySpy.mock.calls[0][0] as { mode: string }).mode).toBe('append');

@@ -10,6 +10,22 @@
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-10-02 — useCallback з реактивним станом у залежностях, якого немає у масиві deps → stale-closure надсилає СТАРЕ значення (режим/прапорець) — Area: frontend / react-hooks
+
+**Сигнал:** колбек форми/майстра (`handleApply`, `handleSubmit`, `onConfirm`) читає реактивний стан (`applyMode`, `selectedTab`, toggle-прапорець), але цей стан ВІДСУТНІЙ у масиві залежностей useCallback. Перемикання цього стану через UI (радіо/чекбокс/таб) часто НЕ змінює жодної іншої залежності колбека → колбек не перестворюється → використовує значення, захоплене на момент останнього перестворення (зазвичай дефолт). Grep: `grep -nE "useCallback" apps/web/src/**/*.tsx` → для кожного знайти стан, що читається у тілі (`mode: X`, `if (flagState)`, `value: stateVar`), і звірити з масивом deps наприкінці. Швидкий детектор: лінт `react-hooks/exhaustive-deps` МАЄ це ловити, але часто стоїть на рівні `warning` (не `error`) → `grep -rn "exhaustive-deps" apps/web/.eslintrc* eslint.config.*` + `npx eslint <file> | grep "missing dependency"`.
+
+**Причина виникнення:** розробник додає у deps лише «очевидні» дані (`rows`, `docId`, об'єкт мутації), а режим-перемикач здається «пасивним прапорцем, який і так свіжий». Хибне припущення: він свіжий ЛИШЕ якщо колбек перестворюється, а перемикач сам по собі цього не гарантує.
+
+**Чому маскується в тестах:** мок хука-мутації (`useApplyImport`, `useMutation`) часто повертає НОВИЙ об'єкт-літерал на кожному виклику → цей об'єкт у deps змінює ідентичність ЩОРЕНДЕРУ → колбек «випадково» перестворюється й бачить свіжий стан. Справжній `useMutation` TanStack тримає `mutateAsync` референтно стабільною → у проді колбек НЕ перестворюється й баг спливає. **Правило для тесту:** мок мутації має бути РЕФЕРЕНТНО СТАБІЛЬНИМ (один модульний об'єкт, не новий щовиклик), інакше тест зелений, а прод падає.
+
+**Підхід до виявлення:** (1) зробити мок мутації стабільним; (2) у тесті ПЕРЕМКНУТИ стан-прапорець ПІСЛЯ входу на крок з колбеком, не торкаючись інших станів, тоді викликати колбек і асертити, що надіслано АКТУАЛЬНЕ значення. Без фіксу тест червоний (`expected 'replace' to be 'append'`), з фіксом зелений — перевірити обидва напрямки явно.
+
+**Підхід до фіксу:** додати відсутній реактивний стан у масив залежностей useCallback. (Не замінювати на ref без потреби — deps-фікс простіший і декларативний.)
+
+**Severity:** HIGH, якщо старе значення = деструктивна дія (Bug #775: `mode='replace'` замість `'append'` → soft-delete усіх позицій документа = мовчазна втрата даних). MEDIUM/LOW для косметичних прапорців.
+
+**Де шукати ще:** будь-який wizard/modal із режимом запису (replace/append/merge), таб-залежним submit, feature-toggle у колбеку; `ExcelImportWizard`, `BankStatementImport`, будь-який `*Wizard.tsx`/`*Modal.tsx` із `useState` прапорцем, що читається у useCallback. Системно: увімкнути `react-hooks/exhaustive-deps` як `error` у web-eslint — ловить увесь клас статично.
+
 ### 2026-10-02 — multipart file-too-large → 500 замість 413 (глобальний exception filter) — Area: backend / fastify / exception-filter
 
 **Сигнал:** `@fastify/multipart` зареєстровано з `limits: { fileSize: N }` (`main.ts`), а контролер робить `await file.toBuffer()` ПОЗА try/catch (хелпер `getUploadedFile` ловить лише `req.file()`, не `toBuffer()`). Multipart кидає `RequestFileTooLargeError` (code `FST_REQ_FILE_TOO_LARGE`, statusCode **413**). Перевірити: `grep -n "FST_ERR_CTP_\|FST_REQ_FILE_TOO_LARGE\|startsWith('FST" apps/api/src/common/filters/http-exception.filter.ts` — якщо guard матчить ЛИШЕ `FST_ERR_CTP_*` і НЕ має гілки для `FST_REQ_FILE_TOO_LARGE`, то oversized-upload провалюється у фінальний `else` → generic 500 + `logger.error` + Sentry-шум. Grep multipart-контролерів: `grep -rn "\.toBuffer()" apps/api/src --include=*.controller.ts`.

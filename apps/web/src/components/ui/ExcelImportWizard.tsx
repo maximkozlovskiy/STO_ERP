@@ -468,7 +468,11 @@ export function ExcelImportWizard({
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка додавання товарів');
     }
-  }, [rows, resolutions, docType, docId, applyMut, onImportComplete, onClose]);
+    // applyMode у залежностях ОБОВ'ЯЗКОВИЙ: без нього перемикання «Замінити»→«Додати» не
+    // перестворює цей колбек (жодна інша залежність не змінюється), тож apply тихо надсилає
+    // СТАРИЙ режим. У проді це = «замість append виконується replace» → наявні позиції документа
+    // soft-delete без відома користувача (мовчазна втрата даних). Bug #775.
+  }, [rows, resolutions, docType, docId, applyMode, applyMut, onImportComplete, onClose]);
 
   // 1-based номер колонки → підпис ролі (для підсвітки шапки передперегляду). useMemo: інакше
   // Map будувалась би на КОЖЕН рендер (а передперегляд читає roleByCol у кожній з 100 комірок),
