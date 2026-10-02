@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPgAdapter } from '../../prisma/pg-adapter';
 import { withTenantGuard } from '../../prisma/tenant-guard.extension';
 import { TenantIsolationError } from '../../prisma/tenant-isolation.error';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
@@ -53,7 +54,7 @@ async function cleanup() {
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  raw = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  raw = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await raw.$connect();
     // Потрібні: org + warehouse + good + unitOfMeasure тієї ж org, щоб зібрати UoM-частину.

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPgAdapter } from './pg-adapter';
 import { handleDbUnavailable } from '../common/testing/require-db';
 
 /**
@@ -35,7 +36,7 @@ let raw: PrismaClient;
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  raw = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  raw = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await raw.$connect();
     // Sanity: чи є хоч одна таблиця схеми (мігрована БД) — інакше вважаємо БД недоступною.

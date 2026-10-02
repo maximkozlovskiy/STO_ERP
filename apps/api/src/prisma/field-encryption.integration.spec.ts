@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPgAdapter } from './pg-adapter';
 import type { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { handleDbUnavailable } from '../common/testing/require-db';
@@ -147,7 +148,7 @@ async function cleanup(client: PrismaClient) {
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  rawClient = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  rawClient = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await rawClient.$connect();
     const branch = await rawClient.garageBranch.findFirst({ select: { id: true, orgId: true } });

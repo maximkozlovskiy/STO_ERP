@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient, type Prisma } from '@prisma/client';
+import { createPgAdapter } from './pg-adapter';
 import { withTenantGuard } from './tenant-guard.extension';
 import { TenantIsolationError } from './tenant-isolation.error';
 import { runWithTenant, runUnscoped } from '../common/tenant/tenant-context';
@@ -47,7 +48,7 @@ async function cleanup() {
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  raw = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  raw = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await raw.$connect();
     const branch = await raw.garageBranch.findFirst({ select: { id: true, orgId: true } });

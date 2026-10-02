@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { createPgAdapter } from '../../prisma/pg-adapter';
 import { randomUUID } from 'node:crypto';
 import { PurchaseOrderImportAdapter, type ImportLineInput } from './document-line-import.adapter';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -114,7 +115,7 @@ async function dbTotals(poId: string): Promise<{
 
 beforeAll(async () => {
   process.env.DATABASE_URL = DATABASE_URL;
-  raw = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  raw = new PrismaClient({ adapter: createPgAdapter(DATABASE_URL) });
   try {
     await raw.$connect();
     const branch = await raw.garageBranch.findFirst({ select: { orgId: true } });

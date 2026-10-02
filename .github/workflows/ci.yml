@@ -13,6 +13,11 @@ jobs:
   # не потрібні; лише prisma generate для типів @prisma/client.
   quality:
     runs-on: ubuntu-latest
+    env:
+      # Prisma 7 читає prisma.config.ts, а той вимагає DATABASE_URL для валідації
+      # datasource — навіть для `generate` без доступу до БД. Реального підключення тут
+      # немає (БД не піднімається), тож значення фіктивне: потрібен лише валідний URL.
+      DATABASE_URL: postgresql://sto:sto@localhost:5432/sto_erp
     steps:
       - uses: actions/checkout@v4
 

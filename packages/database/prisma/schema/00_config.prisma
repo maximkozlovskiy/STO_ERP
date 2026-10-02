@@ -6,6 +6,8 @@ generator client {
 }
 
 datasource db {
+  // `url` ПРИБРАНО: Prisma 7 більше не підтримує його у схемі (P1012). Рядок підключення
+  // для Migrate/CLI тепер у prisma.config.ts, а рантайм отримує його через adapter,
+  // переданий у конструктор PrismaClient.
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }

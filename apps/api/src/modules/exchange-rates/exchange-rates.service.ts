@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Decimal } from '@prisma/client/runtime/library';
+// Prisma 7: шлях '@prisma/client/runtime/library' більше не резолвиться (TS2307),
+// а корінь пакета не експортує Decimal у ТИПАХ (TS2305) — лише у рантаймі.
+// Канонічний шлях — namespace Prisma згенерованого клієнта.
+import { Prisma } from '@prisma/client';
+
+type Decimal = Prisma.Decimal;
+const Decimal = Prisma.Decimal;
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { convertToBase } from '../../common/utils/currency';

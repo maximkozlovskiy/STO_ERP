@@ -11,21 +11,17 @@
     "seed": "ts-node prisma/seed-catalog.ts && ts-node prisma/seed.ts",
     "type-check": "tsc --noEmit"
   },
-  "exports": {
-    ".": {
-      "require": "./node_modules/.prisma/client/index.js",
-      "import": "./node_modules/.prisma/client/index.js",
-      "types": "./node_modules/.prisma/client/index.d.ts"
-    }
-  },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "bcrypt": "^6.0.0",
-    "prisma": "^6.19.3"
+    "pg": "^8.23.1",
+    "prisma": "^7.10.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   }
