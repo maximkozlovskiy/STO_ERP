@@ -2,7 +2,14 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    // node10 лишається СВІДОМО + ignoreDeprecations: цей конфіг емітить CommonJS для
+    // apps/api (package.json main -> dist/cjs). Перевірено на реальній збірці:
+    //  · `bundler` вимагає module=preserve, а той зберігає ESM — require() збірки
+    //    падає з ERR_MODULE_NOT_FOUND, тобто api зламався б у рантаймі;
+    //  · TS 7 node10 ВИДАЛИВ остаточно (TS5108), тому пакет лишається на TS 6
+    //    у парі з apps/api — обидва підуть на TS 7 разом із міграцією на ESM.
     "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "rootDir": "./src",
     "outDir": "./dist/cjs",
     "declaration": true,

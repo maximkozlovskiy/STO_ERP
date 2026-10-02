@@ -1,9 +1,19 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "5.0",
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
+    // TS 7 прибирає node10 остаточно; `ignoreDeprecations: "6.0"` — офіційний спосіб
+    // дотягнути до міграції. Альтернативи перевірені й відкинуті:
+    //  · `bundler` вимагає module=preserve/esnext, а preserve ЗБЕРІГАЄ ESM-синтаксис —
+    //    dist/main.js вийшов із 12 import/export і нулем require (NestJS під CJS зламався б);
+    //  · `node16` емітить CommonJS правильно, але вимагає розширень у відносних імпортах —
+    //    492 помилки на 565 файлах.
+    // Тож до переходу на ESM лишаємо node + явний opt-out.
+    "ignoreDeprecations": "6.0",
+    // `types` явно: у TS 6 автопідхоплення глобальних @types при moduleResolution=node
+    // перестало спрацьовувати — namespace PDFKit із @types/pdfkit не резолвився (TS2503).
+    "types": ["node", "pdfkit", "pdfmake", "bcrypt", "ioredis", "nodemailer", "passport-jwt"],
     "rootDir": "src",
     "outDir": "./dist",
     "lib": ["ES2022"],
