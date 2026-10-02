@@ -10,7 +10,13 @@ overrides:
   # Після переходу на Fastify 5 піни стали шкідливими: саме вони тримали @fastify/middie
   # на вразливій 8.x (CRITICAL — middleware authentication bypass у child plugin scopes).
   # @nestjs/platform-fastify@11 тягне middie 9.3.4 (фікс у 9.3.2) і fastify 5.x напряму.
-  next: '>=15.3.6'
+  # Security-мінімум для next (як і початково: `>=` означає «не нижче за патч безпеки»).
+  # Поріч піднято 2026-10-02 з >=15.3.6 до >=16.3.6: у вікні 16.2.0–16.3.5 живе CRITICAL
+  # RCE у next/og ImageResponse. У дереві стояла саме 16.3.4.
+  # Для НАС вразливість не експлуатовна (next/og у коді не використовується, прод —
+  # output:'export', тобто статика без Node-сервера Next), але тримати вразливу версію
+  # без потреби немає сенсу.
+  next: '>=16.3.6'
   # Єдина копія fastify. @nestjs/platform-fastify@11 пінить fastify на 5.11.3, тоді як
   # apps/api резолвив 5.12.5 — ДВІ копії типів в одному дереві, і `app.register` не
   # приймав плагіни (TS2345 на helmet/cookie/multipart). Причина не у версії, а в дублюванні.
