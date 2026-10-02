@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { SupplierReturnStatus, StockMovementType } from '@prisma/client';
+import type { StockMovementType } from '@prisma/client';
+import { SupplierReturnStatus } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { SupplierReturnsService } from './supplier-returns.service';
 import { PrismaService } from '../../prisma/prisma.service';

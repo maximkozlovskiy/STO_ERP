@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { IntegrationLogService, IntegrationLogContext } from './integration-log.service';
+import type { IntegrationLogContext } from './integration-log.service';
+import { IntegrationLogService } from './integration-log.service';
 
 /**
  * wrap() — єдиний seam логування зовнішніх обмінів. Критично:

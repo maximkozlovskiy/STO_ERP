@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
 import fastifyCookie from '@fastify/cookie';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';

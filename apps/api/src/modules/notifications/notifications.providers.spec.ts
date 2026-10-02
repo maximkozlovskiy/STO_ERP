@@ -1,10 +1,11 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import type { Logger } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { NotificationChannel } from '@prisma/client';
-import { Queue } from 'bullmq';
+import type { Queue } from 'bullmq';
 import { NotificationsService } from './notifications.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationProviderRegistry } from './providers/provider-registry';
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { NotificationProviderRegistry } from './providers/provider-registry';
 
 /**
  * Phase 3 — контракт verify/config-endpoints (listProviders / verifyProvider /

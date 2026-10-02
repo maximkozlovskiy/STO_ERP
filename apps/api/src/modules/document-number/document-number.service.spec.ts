@@ -2,7 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { DocumentType } from '@prisma/client';
 import { DocumentNumberService } from './document-number.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import type { PrismaService } from '../../prisma/prisma.service';
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
 

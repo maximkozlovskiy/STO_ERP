@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
-import { DeadLetterPurgeProcessor, PurgeJob } from './dead-letter-purge.processor';
+import type { PurgeJob } from './dead-letter-purge.processor';
+import { DeadLetterPurgeProcessor } from './dead-letter-purge.processor';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 // runUnscoped мокаємо pass-through: тест перевіряє where-контракт, не ALS-обгортку.

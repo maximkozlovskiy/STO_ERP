@@ -1,7 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { Job } from 'bullmq';
-import { FollowUpProcessor, FollowUpJob } from './followup.processor';
+import type { Job } from 'bullmq';
+import type { FollowUpJob } from './followup.processor';
+import { FollowUpProcessor } from './followup.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
 import { DeadLetterService } from '../dead-letter/dead-letter.service';

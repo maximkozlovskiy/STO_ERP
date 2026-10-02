@@ -65,7 +65,7 @@ export class MonoStatementClient {
     for (let i = 0; i < windows.length; i++) {
       // Rate-limit: пауза ПЕРЕД кожним запитом після першого (лише backfill із >1 вікном).
       if (i > 0) await sleep(RATE_LIMIT_MS);
-      const w = windows[i]!;
+      const w = windows[i];
       const fromSec = Math.floor(w.from.getTime() / 1000);
       const toSec = Math.floor(w.to.getTime() / 1000);
       const batch = await this.call(args.apiUrl, args.account, fromSec, toSec, args.token);

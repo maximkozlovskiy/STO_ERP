@@ -273,12 +273,15 @@ describe('fragmentsToGrid — чиста функція (без PDF)', () => {
 
 // ── Інтеграційні: справжній PDF, згенерований pdfkit (уже в deps) ──
 describe('PdfjsTextLayerProvider + pdfToGrid (справжній PDF)', () => {
+  type PdfTextFn = (t: string, x?: number, y?: number, o?: Record<string, unknown>) => unknown;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const PDFDocument = require('pdfkit') as new (o: Record<string, unknown>) => {
     on(e: string, cb: (c?: Buffer) => void): void;
     registerFont(n: string, p: string): void;
-    font(n: string): { fontSize(s: number): { text: Function } };
-    fontSize(s: number): { text: Function };
+    // Конкретна сигнатура замість `Function`: той приймає будь-що функціоподібне і не
+    // перевіряє ні аргументів, ні результату — сенсу в такій анотації нема.
+    font(n: string): { fontSize(s: number): { text: PdfTextFn } };
+    fontSize(s: number): { text: PdfTextFn };
     text(t: string, x: number, y: number, o?: Record<string, unknown>): unknown;
     rect(x: number, y: number, w: number, h: number): { fill(c: string): void };
     end(): void;

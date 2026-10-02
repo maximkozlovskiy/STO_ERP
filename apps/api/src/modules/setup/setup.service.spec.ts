@@ -1,9 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { SetupService } from './setup.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AuthService } from '../../auth/auth.service';
-import { SetupInitDto } from './setup.dto';
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { AuthService } from '../../auth/auth.service';
+import type { SetupInitDto } from './setup.dto';
 
 /**
  * Regression (audit settings/setup/reports): TOCTOU race у first-run wizard.

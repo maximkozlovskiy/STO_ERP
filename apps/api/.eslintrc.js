@@ -14,7 +14,10 @@ module.exports = {
   root: true,
   extends: [nestjsPreset],
   parserOptions: {
-    project: ['./tsconfig.json'],
+    // ОБИДВА проєкти: tsconfig.json виключає *.spec.ts (щоб не лізли у dist/), тож без
+    // tsconfig.spec.json type-aware правила не бачать тестів і ESLint падає з
+    // «The file was not found in any of the provided project(s)» на кожному спеці.
+    project: ['./tsconfig.json', './tsconfig.spec.json'],
     tsconfigRootDir: __dirname,
   },
   rules: {
@@ -41,14 +44,26 @@ module.exports = {
     // Реальні bug-catchers лишаються error (за замовч. з пресету): no-explicit-any, no-unused-vars,
     // no-floating-promises, only-throw-error, no-unnecessary-type-assertion.
   },
-  ignorePatterns: [
-    'dist/',
-    'node_modules/',
-    '*.js',
-    '**/*.spec.ts',
-    '**/*.contract.spec.ts',
-    '**/*.invariants.spec.ts',
-    '**/*.e2e-spec.ts',
-    'test/',
+  overrides: [
+    {
+      // Тести лінтуються (раніше були повністю виключені — друга половина тієї ж діри, що й
+      // виключення з tsc; саме там нестабільний мок маскував Bug #775). Але набір правил
+      // інший, бо в тестах інші норми:
+      //  - `any` у моках — нормальна практика: мок навмисно описує лише потрібні методи;
+      //  - `require-await` — async-тест без await усередині трапляється і це не дефект;
+      //  - `no-unnecessary-type-assertion` — касти в моках часто «зайві» з погляду типів,
+      //    але документують намір.
+      // Натомість bug-catchers лишаються error — насамперед `no-floating-promises`:
+      // проґавлений await у тесті дає ХИБНОЗЕЛЕНИЙ результат (асерт перевіряє стан до
+      // завершення роботи). Таких знайшлось 5 при вмиканні.
+      files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/require-await': 'off',
+        '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+        '@typescript-eslint/unbound-method': 'off',
+      },
+    },
   ],
+  ignorePatterns: ['dist/', 'node_modules/', '*.js', 'test/'],
 };

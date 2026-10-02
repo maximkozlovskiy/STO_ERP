@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
-import { WorkOrderStatus } from '@prisma/client';
+import type { WorkOrderStatus } from '@prisma/client';
 import { WO_EDITABLE_STATUSES, WO_INVOICEABLE_STATUSES, WO_SHAREABLE_STATUSES } from '@sto/shared';
 import {
   WORK_ORDER_TRANSITIONS,

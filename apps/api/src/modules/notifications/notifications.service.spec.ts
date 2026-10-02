@@ -1,10 +1,10 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { NotificationChannel } from '@prisma/client';
-import { Queue } from 'bullmq';
+import type { Queue } from 'bullmq';
 import { NotificationsService } from './notifications.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { NotificationProviderRegistry } from './providers/provider-registry';
+import type { PrismaService } from '../../prisma/prisma.service';
+import type { NotificationProviderRegistry } from './providers/provider-registry';
 
 /**
  * resolveConfig — fallback-ланцюг з NotificationChannelConfig (priority ASC) + per-канал

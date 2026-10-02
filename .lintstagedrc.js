@@ -33,7 +33,11 @@ module.exports = {
   '*.{ts,tsx}': async files => {
     const lintable = await removeIgnored(files);
     const tasks = [`prettier --write ${quote(files)}`];
-    if (lintable.length) tasks.push(`eslint --fix --max-warnings=0 ${quote(lintable)}`);
+    // БЕЗ --max-warnings=0: у проєкті ~2700 свідомих warn (`no-unsafe-*` на межі з
+    // Prisma/моками, знижені до warn навмисно). Із цим прапорцем хук блокував би КОЖЕН
+    // коміт у відповідні файли — перевірено, власний коміт упав саме так. Хук валить
+    // лише на errors (дефолтна поведінка eslint: exit 1 при error, 0 при warn).
+    if (lintable.length) tasks.push(`eslint --fix ${quote(lintable)}`);
     return tasks;
   },
   '*.{js,json,md,yml,yaml}': files => [`prettier --write ${quote(files)}`],

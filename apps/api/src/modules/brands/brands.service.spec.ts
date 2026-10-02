@@ -24,7 +24,6 @@ import type { CacheService } from '../../redis/cache.service';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const BRAND_A = '22222222-2222-4222-8222-222222222222';
-const BRAND_B = '33333333-3333-4333-8333-333333333333';
 
 function makeMocks() {
   return {
@@ -164,7 +163,7 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
   });
 
   it('resurrect: brandId перезаписується (синонім переходить між брендами)', async () => {
-    // Сценарій: "OEM" був на BRAND_B, потім soft-deleted, тепер додається до BRAND_A.
+    // Сценарій: "OEM" був на ІНШОМУ бренді, потім soft-deleted, тепер додається до BRAND_A.
     mocks.prisma.brandSynonym.findMany
       .mockResolvedValueOnce([]) // no active for BRAND_A
       .mockResolvedValueOnce([{ id: 'syn-oem', synonym: 'OEM' }]); // soft-deleted (raніше на BRAND_B)

@@ -123,7 +123,7 @@ export class BankReconciliationService {
         if (!norm) continue;
         const matches = byIban.get(norm) ?? [];
         if (matches.length === 1) {
-          const cp = matches[0]!;
+          const cp = matches[0];
           markResolved(t.externalId, {
             status: 'matched',
             counterpartyId: cp.id,
@@ -171,7 +171,7 @@ export class BankReconciliationService {
         if (!unresolved.has(externalId)) continue;
         const matches = byEdrpou.get(edrpou) ?? [];
         if (matches.length === 1) {
-          const cp = matches[0]!;
+          const cp = matches[0];
           markResolved(externalId, {
             status: 'matched',
             counterpartyId: cp.id,

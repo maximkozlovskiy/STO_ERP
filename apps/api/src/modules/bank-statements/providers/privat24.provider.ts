@@ -117,7 +117,7 @@ export class Privat24Provider implements BankStatementProvider {
     if (!s) return null;
 
     // DD.MM.YYYY[ HH:mm:ss] або DD-MM-YYYY[ HH:mm:ss]
-    const m = /^(\d{2})[.\-](\d{2})[.\-](\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
+    const m = /^(\d{2})[.-](\d{2})[.-](\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
     if (m) {
       const [, dd, mm, yyyy, hh = '0', mi = '0', ss = '0'] = m;
       const y = Number(yyyy);

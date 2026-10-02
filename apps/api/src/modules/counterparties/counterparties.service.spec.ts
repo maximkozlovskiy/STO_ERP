@@ -14,7 +14,7 @@ const statusesMock = {
   provide: CounterpartyStatusesService,
   useValue: { invalidateCache: vi.fn() },
 };
-import { CounterpartyQueryDto } from './counterparties.dto';
+import type { CounterpartyQueryDto } from './counterparties.dto';
 import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 
 /**

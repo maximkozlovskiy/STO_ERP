@@ -1,6 +1,6 @@
 import { WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
-import { DeadLetterService } from './dead-letter.service';
+import type { DeadLetterService } from './dead-letter.service';
 
 /**
  * База для BullMQ-процесорів із централізованим dead-letter (аудит стеку, backend #2).

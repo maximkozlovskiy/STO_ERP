@@ -1,5 +1,7 @@
-import { BadRequestException, INestApplication, ValidationPipe } from '@nestjs/common';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { INestApplication } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { plainToInstance } from 'class-transformer';
@@ -72,8 +74,8 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
     });
   });
 
-  it('date задано → делегує з target {kind:date}', () => {
-    controller.getScheduleDocuments(ORG, q({ date: '2026-09-08', supplierId: 'sup-1' }));
+  it('date задано → делегує з target {kind:date}', async () => {
+    await controller.getScheduleDocuments(ORG, q({ date: '2026-09-08', supplierId: 'sup-1' }));
     expect(service.getScheduleDocuments).toHaveBeenCalledWith(
       ORG,
       '2026-09-02',
@@ -83,8 +85,8 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
     );
   });
 
-  it('target=overdue → делегує з {kind:overdue}', () => {
-    controller.getScheduleDocuments(ORG, q({ target: 'overdue' }));
+  it('target=overdue → делегує з {kind:overdue}', async () => {
+    await controller.getScheduleDocuments(ORG, q({ target: 'overdue' }));
     expect(service.getScheduleDocuments).toHaveBeenCalledWith(
       ORG,
       '2026-09-02',

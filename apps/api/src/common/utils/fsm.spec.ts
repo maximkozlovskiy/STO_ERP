@@ -62,6 +62,6 @@ describe('assertFsmTransition', () => {
 
   it('дозволяє self-loop якщо є у transitions', () => {
     const withLoop = { A: ['A', 'B'] } as Record<string, string[]>;
-    expect(() => assertFsmTransition(withLoop, 'A' as 'A', 'A' as 'A')).not.toThrow();
+    expect(() => assertFsmTransition(withLoop, 'A' as const, 'A' as const)).not.toThrow();
   });
 });

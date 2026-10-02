@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
-import { ReconciliationProcessor, ReconcileJob } from './reconciliation.processor';
+import type { ReconcileJob } from './reconciliation.processor';
+import { ReconciliationProcessor } from './reconciliation.processor';
 
 /**
  * A3 — drift-detection. Доводимо: (1) консистентні дані → 0 drift; (2) розбіжність stock/balance/

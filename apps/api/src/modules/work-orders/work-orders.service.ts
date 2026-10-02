@@ -9,7 +9,7 @@ import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagina
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
-import { InvoiceStatus, RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
+import { InvoiceStatus, RepairCategory, WorkOrderStatus } from '@prisma/client';
 import {
   formatPersonName,
   formatVehicleLabel,

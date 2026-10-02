@@ -128,8 +128,8 @@ export function sanitizePayload(value: unknown, depth = 0, seen?: WeakSet<object
   if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return '[Buffer]';
   // Циклічний ref → мітка (depth-cap теж є, але seen дає точнішу діагностику).
   const tracked = seen ?? new WeakSet<object>();
-  if (tracked.has(value as object)) return '[CIRCULAR]';
-  tracked.add(value as object);
+  if (tracked.has(value)) return '[CIRCULAR]';
+  tracked.add(value);
   if (Array.isArray(value)) return value.map(v => sanitizePayload(v, depth + 1, tracked));
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {

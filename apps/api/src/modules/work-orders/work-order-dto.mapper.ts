@@ -1,7 +1,7 @@
-import { Prisma, WorkOrderStatus, WorkOrderPriority, RepairCategory } from '@prisma/client';
+import type { Prisma, WorkOrderStatus, WorkOrderPriority, RepairCategory } from '@prisma/client';
 import { formatPersonName } from '@sto/shared';
 import { safeCoeff } from '../../common/utils/math';
-import {
+import type {
   WorkOrderResponseDto,
   WorkOrderLineResponseDto,
   WorkOrderPartResponseDto,

@@ -65,16 +65,16 @@ describe('BankStatementProvidersController', () => {
     );
   });
 
-  it('branchConfigs / upsert / activate передають kind=BANK', () => {
-    controller.branchConfigs(ORG, BRANCH);
+  it('branchConfigs / upsert / activate передають kind=BANK', async () => {
+    await controller.branchConfigs(ORG, BRANCH);
     expect(providerConfig.getBranchConfigs).toHaveBeenCalledWith(ORG, BRANCH, 'BANK');
 
-    controller.upsert(ORG, BRANCH, { provider: 'privat24' });
+    await controller.upsert(ORG, BRANCH, { provider: 'privat24' });
     expect(providerConfig.upsertConfig).toHaveBeenCalledWith(ORG, BRANCH, 'BANK', {
       provider: 'privat24',
     });
 
-    controller.activate(ORG, BRANCH, { provider: 'privat24' });
+    await controller.activate(ORG, BRANCH, { provider: 'privat24' });
     expect(providerConfig.activate).toHaveBeenCalledWith(ORG, BRANCH, 'BANK', 'privat24');
   });
 

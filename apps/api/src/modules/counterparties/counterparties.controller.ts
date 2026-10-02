@@ -23,12 +23,10 @@ import {
   CounterpartyQueryDto,
   CounterpartyResponseDto,
   CreateContractDto,
-  CreateCounterpartyDto,
   CreateGarageDto,
   GarageResponseDto,
   PaginatedCounterpartiesDto,
   UpdateContractDto,
-  UpdateCounterpartyDto,
 } from './counterparties.dto';
 import { CounterpartiesService } from './counterparties.service';
 import { AssignCounterpartyStatusDto } from '../counterparty-statuses/counterparty-statuses.dto';

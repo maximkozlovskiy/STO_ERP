@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { Job } from 'bullmq';
+import type { Job } from 'bullmq';
 import { CheckboxProcessor } from './checkbox.processor';
 import { FiscalUnauthorizedError } from './fiscal/fiscal-provider.interface';
 import { ProviderConfigService } from './provider-config.service';

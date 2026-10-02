@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Job } from 'bullmq';
-import { IntegrationLogPurgeProcessor, PurgeJob } from './integration-log-purge.processor';
+import type { PurgeJob } from './integration-log-purge.processor';
+import { IntegrationLogPurgeProcessor } from './integration-log-purge.processor';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 
 /**

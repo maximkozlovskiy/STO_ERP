@@ -70,7 +70,7 @@ export class ExpenseCategoriesService {
     // «сиротами» у дереві), тож для showDeleted віддаємо плоско (children=[]).
     const result = showDeleted
       ? { items: items.map(i => ({ ...this.toDto(i), children: [] })), total }
-      : { items: this.buildTree(items as Row[], null), total };
+      : { items: this.buildTree(items, null), total };
     if (!showDeleted) await this.cache.set(cacheKey(orgId), result, TTL);
     return result;
   }

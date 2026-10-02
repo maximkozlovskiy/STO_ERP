@@ -124,7 +124,7 @@ export class BankStatementParserService {
     for (let i = 0; i < grid.length; i++) {
       const rowNo = i + 1;
       if (rowNo < startRow) continue;
-      const cells = grid[i]!;
+      const cells = grid[i];
       const cell = (col?: number): string => (col && col >= 1 ? (cells[col - 1] ?? '').trim() : '');
 
       const externalId = cell(mapping.externalIdCol);
@@ -168,7 +168,7 @@ export class BankStatementParserService {
         skip_empty_lines: true,
         relax_column_count: true,
         trim: true,
-      }) as string[][];
+      });
       return records;
     } catch {
       throw new BadRequestException(
@@ -293,7 +293,7 @@ export class BankStatementParserService {
     if (!value) return null;
     const v = value.trim();
     // DD.MM.YYYY (опційно з часом після пробілу — беремо лише дату).
-    const m = /^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/.exec(v);
+    const m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/.exec(v);
     if (m) {
       const dd = Number(m[1]);
       const mm = Number(m[2]);

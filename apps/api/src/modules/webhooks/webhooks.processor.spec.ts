@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Job } from 'bullmq';
+import type { Job } from 'bullmq';
 import { OutboundWebhookProcessor } from './webhooks.processor';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeadLetterService } from '../dead-letter/dead-letter.service';

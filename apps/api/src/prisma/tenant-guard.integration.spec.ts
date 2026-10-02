@@ -103,11 +103,15 @@ describe('tenant-guard extension (integration, live DB)', () => {
 
   it('READ з composite-key branchId (branchId_channel) → проходить', async () => {
     if (!dbAvailable) return;
+    // Було `.resolves.not.toThrow` БЕЗ дужок — звернення до властивості, а не виклик:
+    // асерт не виконувався, тест був завжди зелений (знайдено вмиканням лінту для специв).
+    // Правильна перевірка тут — що запит із composite-key не відхилено guard-ом; результат
+    // може бути null (рядка немає), тому стверджуємо саме відсутність кидка.
     await expect(
       guarded.notificationChannelConfig.findUnique({
         where: { branchId_channel: { branchId, channel: 'SMS' } },
       }),
-    ).resolves.not.toThrow;
+    ).resolves.not.toThrow();
   });
 
   it('UPDATE по {id} БЕЗ orgId → кидає', async () => {

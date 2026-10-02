@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { roundMoney } from '../../common/utils/math';
-import { CashOperationResponseDto, CreateCashOperationDto } from './cash.dto';
+import { CashOperationResponseDto, CashReasonDto, CreateCashOperationDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
 // SQL-агрегатами (Σ IN − Σ OUT) у computeBalance для ефективності — ця мапа документує конвенцію.
@@ -186,7 +186,9 @@ export class CashService {
     dto: CreateCashOperationDto,
     userId?: string,
   ): Promise<CashOperationResponseDto> {
-    if (dto.reason === 'EXPENSE' && !dto.expenseCategoryId)
+    // CashReasonDto — власний TS-enum DTO-шару; рівність із рядковим літералом вірна
+    // за значенням, але для типів це різні enum-и. Звіряємося з членом enum.
+    if (dto.reason === CashReasonDto.EXPENSE && !dto.expenseCategoryId)
       throw new BadRequestException(
         translateError('err.cash.expenseRequiresCategory', getLocale()),
       );

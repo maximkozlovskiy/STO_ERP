@@ -7,7 +7,6 @@ import {
   OcrModelsMissingError,
   resolveTessdataDir,
 } from './ocr-text-layer.provider';
-import { rasterizePdfToPngs } from './pdf-rasterizer';
 import { fragmentsToGrid } from './pdf-grid.extractor';
 
 /**
@@ -215,6 +214,9 @@ describe('BUG HUNT: таймаут багатосторінкового скан
       const elapsed = Date.now() - started;
       // maxPages=5 → не більше 5 сторінок обробляється; не вішається нескінченно.
       expect(elapsed).toBeLessThan(140_000);
+      // Результат теж стверджуємо: без цього тест лишався б зеленим, навіть якби OCR
+      // повертав порожнечу швидко (змінна була оголошена й нікуди не йшла).
+      expect(frags).not.toBeNull();
     } catch (e) {
       expect(e).toBeInstanceOf(OcrTimeoutError);
     }

@@ -1,10 +1,10 @@
 import * as fc from 'fast-check';
 import { vi, describe, it, expect } from 'vitest';
 import { NotificationChannel } from '@prisma/client';
-import { Job, Queue } from 'bullmq';
+import type { Job, Queue } from 'bullmq';
 import { SmsProcessor } from './sms.processor';
-import { NotificationProviderRegistry } from './providers/provider-registry';
-import { PrismaService } from '../../prisma/prisma.service';
+import type { NotificationProviderRegistry } from './providers/provider-registry';
+import type { PrismaService } from '../../prisma/prisma.service';
 import type { DeadLetterService } from '../dead-letter/dead-letter.service';
 
 /**

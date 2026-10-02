@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
-import { StockMovementType } from '@prisma/client';
+import type { StockMovementType } from '@prisma/client';
 
 /**
  * Інваріант: після будь-якої послідовності ВАЛІДНИХ рухів

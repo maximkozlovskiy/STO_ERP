@@ -1,7 +1,7 @@
 import { IsUUID, IsOptional, IsNumber, Min, IsString, IsNotEmpty, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaymentSourceType, SettlementTransactionType } from '@prisma/client';
+import { PaymentSourceType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // Тип проводки балансу для вхідного платежу. Дефолт PAYMENT (звичайна оплата — знак −1).
