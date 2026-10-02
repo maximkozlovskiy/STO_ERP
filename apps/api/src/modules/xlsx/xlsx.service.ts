@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   Injectable,
   BadRequestException,
@@ -10,7 +11,12 @@ import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT, translateError } from '@sto/sh
 import { Prisma } from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
-import { DocumentGridParserService, type GridSourceKind } from './document-grid-parser.service';
+import { CacheService } from '../../redis/cache.service';
+import {
+  DocumentGridParserService,
+  type GridSourceKind,
+  type ParsedGrid,
+} from './document-grid-parser.service';
 import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
@@ -79,7 +85,43 @@ export class XlsxService {
     private readonly brandsService: BrandsService,
     private readonly importAdapters: DocumentLineImportAdapterRegistry,
     private readonly gridParser: DocumentGridParserService,
+    private readonly cache: CacheService,
   ) {}
+
+  /**
+   * Парсинг файлу в сітку з кешем за ХЕШЕМ ВМІСТУ — лише для OCR-каналів (pdf/image).
+   *
+   * НАВІЩО: майстер імпорту читає ОДИН і той самий файл двічі — rawPreview (показати вміст)
+   * і потім previewImport→parseMappedRows (резолв товарів за мапінгом). Для xlsx/csv повторний
+   * розбір коштує мілісекунди, а для скана/фото — ОКРЕМИЙ OCR-прогін 1-5 с × сторінку. Ключ —
+   * sha256 вмісту (≈1-13 мс навіть на 25 МБ), тож другий прогін читає готову сітку з Redis.
+   *
+   * Безпека: сітка — ЧИСТА функція байтів файлу (parseGrid не бачить orgId і нічого в БД не пише),
+   * тож ключ лише за хешем вмісту не змішує дані орендарів. Мапінг колонок застосовується ПІСЛЯ
+   * (parseMappedRows), на вже довіреній серверній сітці — клієнт сітку не постачає.
+   *
+   * Офлайн-стійкість: CacheService мовчки деградує при недоступному Redis (get→null, set→no-op),
+   * тож без Redis поведінка = поточна (OCR двічі) — нульовий ризик регресії. xlsx/csv не кешуємо:
+   * повторний розбір і так дешевий, а зайвий серіалайз сітки у Redis не виправданий.
+   */
+  private async parseGridCached(
+    buffer: Buffer | Uint8Array,
+    filename: string,
+  ): Promise<ParsedGrid> {
+    const kind = this.gridParser.detectKind(filename);
+    // Не-OCR канали (xlsx/csv) або невідомий формат — прямий розбір (parseGrid сам кине 400).
+    if (kind !== 'pdf' && kind !== 'image') {
+      return this.gridParser.parseGrid(buffer, filename);
+    }
+    const hash = createHash('sha256').update(buffer).digest('hex');
+    const key = `xlsx:ocr-grid:${kind}:${hash}`;
+    const cached = await this.cache.get<ParsedGrid>(key);
+    if (cached) return cached;
+    const grid = await this.gridParser.parseGrid(buffer, filename);
+    // TTL 300 с — із запасом покриває крок ручного мапінгу колонок між двома запитами.
+    await this.cache.set(key, grid, 300);
+    return grid;
+  }
 
   /**
    * Перетворити Buffer/Uint8Array у незалежний ArrayBuffer для ExcelJS.
@@ -1273,7 +1315,8 @@ export class XlsxService {
   }> {
     // Диспатч за розширенням (.xlsx/.csv/.pdf) — усередині дружні 400 замість сирих 500
     // (клас Bug #751: передперегляд запускається одразу після вибору БУДЬ-ЯКОГО файлу).
-    const grid = await this.gridParser.parseGrid(buffer, filename);
+    // Кеш за хешем вмісту: OCR-канали не розпізнаються вдруге у наступному previewImport.
+    const grid = await this.parseGridCached(buffer, filename);
 
     const cap = Math.min(Math.max(Math.trunc(limit) || 20, 1), 100);
     // Bug #750: обмеження накладаємо на кількість ЗІБРАНИХ рядків, а не на абсолютний номер —
@@ -1323,7 +1366,8 @@ export class XlsxService {
     filename: string,
     mapping: ImportMapping,
   ): Promise<MappedRow[]> {
-    const grid = await this.gridParser.parseGrid(buffer, filename);
+    // Кеш за хешем вмісту: той самий файл уже пройшов OCR у rawPreview → читаємо готову сітку.
+    const grid = await this.parseGridCached(buffer, filename);
 
     const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 2;
     // Мапінг 1-based (як у передперегляді з літерами A/B/C), сітка 0-based → зсув col-1.

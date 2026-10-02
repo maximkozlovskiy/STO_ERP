@@ -9,6 +9,7 @@ import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
+import { CacheService } from '../../redis/cache.service';
 
 // Bug #188: regression-захист для applyPricingFromList + generatePricingListTemplate
 describe('XlsxService', () => {
@@ -66,6 +67,9 @@ describe('XlsxService', () => {
         { provide: BrandsService, useValue: { resolveByNameOrSynonym: vi.fn(), create: vi.fn() } },
         { provide: DocumentLineImportAdapterRegistry, useValue: { get: vi.fn() } },
         DocumentGridParserService,
+        // sto-optimize: XlsxService кешує OCR-сітку за хешем вмісту (parseGridCached) через
+        // CacheService. xlsx/csv-канали кеш не чіпають, але DI все одно потребує провайдера.
+        { provide: CacheService, useValue: { get: vi.fn().mockResolvedValue(null), set: vi.fn() } },
       ],
     }).compile();
     service = module.get(XlsxService);
@@ -207,6 +211,98 @@ describe('XlsxService', () => {
       const buf = await buildWorkbook([['h'], ['v']]);
       const res = await service.rawPreview(buf, 'f.xlsx', 20);
       expect(res.ocr).toBeFalsy();
+    });
+  });
+
+  // ─── parseGridCached: уникнення подвійного OCR одного й того самого файлу ──────
+  describe('OCR-grid кеш за хешем вмісту (усунення подвійного OCR)', () => {
+    it('OCR-канал (image): rawPreview кешує сітку → наступний previewImport читає з кешу, без OCR', async () => {
+      const gridParser = service['gridParser'] as DocumentGridParserService;
+      const cache = service['cache'] as {
+        get: ReturnType<typeof vi.fn>;
+        set: ReturnType<typeof vi.fn>;
+      };
+      const grid = {
+        rows: [['art', 'назва', '2', '100']],
+        totalRows: 1,
+        columnCount: 4,
+        kind: 'image' as const,
+        ocr: true,
+      };
+      const parseSpy = vi.spyOn(gridParser, 'parseGrid').mockResolvedValue(grid);
+      // Емуляція Redis: перший get → miss, після set — повертаємо збережене.
+      let stored: unknown = null;
+      cache.get.mockImplementation(() => Promise.resolve(stored));
+      cache.set.mockImplementation((_k: string, v: unknown) => {
+        stored = v;
+        return Promise.resolve();
+      });
+
+      const buf = Buffer.from('fake-photo-bytes');
+      await service.rawPreview(buf, 'photo.jpg', 20);
+      expect(parseSpy).toHaveBeenCalledTimes(1); // OCR #1
+      expect(cache.set).toHaveBeenCalledTimes(1);
+
+      // Другий прохід — parseMappedRows через той самий файл: parseGrid НЕ викликається вдруге.
+      const mapped = service['parseMappedRows'] as (
+        b: Buffer,
+        f: string,
+        m: unknown,
+      ) => Promise<unknown>;
+      await mapped.call(service, buf, 'photo.jpg', {
+        startRow: 1,
+        articleCol: 1,
+        nameCol: 2,
+        quantityCol: 3,
+        priceCol: 4,
+      });
+      expect(parseSpy).toHaveBeenCalledTimes(1); // досі 1 — друге розпізнавання не відбулось
+    });
+
+    it('xlsx-канал кеш НЕ чіпає (дешевий re-parse): get/set не викликаються', async () => {
+      const cache = service['cache'] as {
+        get: ReturnType<typeof vi.fn>;
+        set: ReturnType<typeof vi.fn>;
+      };
+      cache.get.mockClear();
+      cache.set.mockClear();
+      const wb = new ExcelJS.Workbook();
+      const sheet = wb.addWorksheet('S');
+      sheet.addRow(['h1', 'h2']);
+      sheet.addRow(['v1', 'v2']);
+      const buf = (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+      await service.rawPreview(buf, 'f.xlsx', 20);
+      expect(cache.get).not.toHaveBeenCalled();
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('Redis недоступний (get→null, set→no-op): OCR спрацьовує щоразу — поведінка = поточна, без падіння', async () => {
+      const gridParser = service['gridParser'] as DocumentGridParserService;
+      const cache = service['cache'] as {
+        get: ReturnType<typeof vi.fn>;
+        set: ReturnType<typeof vi.fn>;
+      };
+      const grid = {
+        rows: [['a', 'b']],
+        totalRows: 1,
+        columnCount: 2,
+        kind: 'image' as const,
+        ocr: true,
+      };
+      const parseSpy = vi.spyOn(gridParser, 'parseGrid').mockResolvedValue(grid);
+      cache.get.mockResolvedValue(null); // Redis down → завжди miss
+      cache.set.mockResolvedValue(undefined);
+
+      const buf = Buffer.from('bytes');
+      await service.rawPreview(buf, 'photo.jpg', 20);
+      const mapped = service['parseMappedRows'] as (
+        b: Buffer,
+        f: string,
+        m: unknown,
+      ) => Promise<unknown>;
+      await mapped.call(service, buf, 'photo.jpg', { startRow: 1, articleCol: 1, nameCol: 2 });
+      // Без кешу OCR двічі — як було до оптимізації; головне — немає винятку.
+      expect(parseSpy).toHaveBeenCalledTimes(2);
     });
   });
 

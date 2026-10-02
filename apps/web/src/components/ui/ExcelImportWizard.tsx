@@ -3,7 +3,7 @@
 // Generic майстер Excel-імпорту товарів у документ (замовлення постачальнику / складський
 // документ). Двокроковий: (1) налаштування колонок + файл, (2) резолвінг знайдених рядків.
 // Стиль модалки — як RulePricerModal (суб-діалог поверх основної модалки документа).
-import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo, type ChangeEvent } from 'react';
 import { Upload, Check, CheckSquare, Square, Repeat } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -122,6 +122,83 @@ const COL_ROLE_LABELS: [keyof ImportMapping, string][] = [
   ['quantityCol', 'К-сть'],
   ['priceCol', 'Ціна'],
 ];
+
+// Module-level: клас фону рядка за статусом (чиста функція) — поза компонентом, щоб не
+// перестворюватись і бути придатною для memo-рядка.
+function statusRowClass(status: PreviewRow['status']): string {
+  if (status === 'matched') return 'bg-success-subtle';
+  if (status === 'ambiguous') return 'bg-warning-subtle';
+  return 'bg-destructive-subtle';
+}
+
+interface ImportRowProps {
+  row: PreviewRow;
+  res: RowResolution | undefined;
+  onToggle: (rowIndex: number, included: boolean) => void;
+  onSelectGood: (rowIndex: number, goodId: string) => void;
+}
+
+/**
+ * Рядок кроку 2, обгорнутий у memo. На великому скані (до 500 позицій) один клік чекбокса міняє
+ * лише один елемент resolutions — без memo React ре-рендерив би ВСІ 500 рядків на кожен клік.
+ * Пропси стабільні: row (незмінний preview-результат), res (змінюється лише для цього рядка),
+ * onToggle/onSelectGood (useCallback-стабільні у батька) → memo відсікає зайві рядки.
+ */
+const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: ImportRowProps) {
+  return (
+    <tr
+      className={cn(
+        'border-b border-border/60',
+        statusRowClass(row.status),
+        !res?.included && 'opacity-45',
+      )}
+    >
+      <td className="px-2 py-2 align-top text-center">
+        <input
+          type="checkbox"
+          checked={res?.included ?? false}
+          onChange={e => onToggle(row.rowIndex, e.target.checked)}
+          aria-label={`Включити рядок ${row.rowIndex} в імпорт`}
+          className="h-3.5 w-3.5 rounded border-border align-middle"
+        />
+      </td>
+      <td className="px-3 py-2 align-top text-foreground">
+        {row.rawArticle || row.rawCode || '—'}
+      </td>
+      <td className="px-3 py-2 align-top text-foreground">{row.rawBrand || '—'}</td>
+      <td className="px-3 py-2 align-top text-foreground">{row.rawName || '—'}</td>
+      <td className="px-3 py-2 align-top text-right tabular-nums">{numFmt.format(row.quantity)}</td>
+      <td className="px-3 py-2 align-top text-right tabular-nums">{numFmt.format(row.price)}</td>
+      <td className="px-3 py-2 align-top">
+        {row.status === 'matched' ? (
+          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-success-text">
+            <Check className="h-3.5 w-3.5" />
+            {row.candidates.find(c => c.id === row.matchedGoodId)?.name ?? 'Знайдено'}
+          </span>
+        ) : row.status === 'ambiguous' ? (
+          <Select
+            value={res?.selectedGoodId ?? ''}
+            onChange={e => onSelectGood(row.rowIndex, e.target.value)}
+            className="h-8 text-[12px]"
+          >
+            <option value="">— оберіть товар —</option>
+            {row.candidates.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.sku ? ` (${c.sku})` : ''}
+                {c.brandName ? ` · ${c.brandName}` : ''}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <span className="text-[12px] text-muted-foreground">
+            {res?.included ? 'Буде створено нову позицію' : 'Не знайдено — оберіть, щоб створити'}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+});
 
 export function ExcelImportWizard({
   open,
@@ -391,26 +468,43 @@ export function ExcelImportWizard({
     }
   }, [rows, resolutions, docType, docId, applyMut, onImportComplete, onClose]);
 
-  const statusRowClass = (status: PreviewRow['status']): string => {
-    if (status === 'matched') return 'bg-success-subtle';
-    if (status === 'ambiguous') return 'bg-warning-subtle';
-    return 'bg-destructive-subtle';
-  };
+  // 1-based номер колонки → підпис ролі (для підсвітки шапки передперегляду). useMemo: інакше
+  // Map будувалась би на КОЖЕН рендер (а передперегляд читає roleByCol у кожній з 100 комірок),
+  // зокрема на кожен символ у полях мапінгу — а змінюється вона лише коли змінився mapping.
+  const roleByCol = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const [key, label] of COL_ROLE_LABELS) {
+      const col = mapping[key];
+      if (typeof col === 'number' && col > 0) m.set(col, label);
+    }
+    return m;
+  }, [mapping]);
 
-  // 1-based номер колонки → підпис ролі (для підсвітки шапки передперегляду).
-  const roleByCol = new Map<number, string>();
-  for (const [key, label] of COL_ROLE_LABELS) {
-    const col = mapping[key];
-    if (typeof col === 'number' && col > 0) roleByCol.set(col, label);
-  }
-
-  const matchedCount = rows.filter(r => r.status === 'matched').length;
-  const ambiguousCount = rows.filter(r => r.status === 'ambiguous').length;
-  const notFoundCount = rows.filter(r => r.status === 'notFound').length;
-  const includedCount = rows.filter(r => resolutions[r.rowIndex]?.included).length;
-  // Скільки з позначених рядків реально піде в імпорт (ambiguous без товару / notFound без назви
-  // позначені, але не імпортуються) — щоб «Обрано» не вводило в оману.
-  const readyCount = rows.filter(r => isRowApplyable(r, resolutions[r.rowIndex])).length;
+  // Лічильники статусів і вибору — один прохід по rows замість шести незалежних .filter() на
+  // КОЖЕН рендер (до 500 рядків × 6 сканів на кожен клік чекбокса / символ вводу). Залежить лише
+  // від rows (preview-результат) і resolutions (вибір користувача).
+  const { matchedCount, ambiguousCount, notFoundCount, includedCount, readyCount } = useMemo(() => {
+    let matched = 0;
+    let ambiguous = 0;
+    let notFound = 0;
+    let included = 0;
+    let ready = 0;
+    for (const r of rows) {
+      if (r.status === 'matched') matched++;
+      else if (r.status === 'ambiguous') ambiguous++;
+      else notFound++;
+      const res = resolutions[r.rowIndex];
+      if (res?.included) included++;
+      if (isRowApplyable(r, res)) ready++;
+    }
+    return {
+      matchedCount: matched,
+      ambiguousCount: ambiguous,
+      notFoundCount: notFound,
+      includedCount: included,
+      readyCount: ready,
+    };
+  }, [rows, resolutions]);
   const allIncluded = rows.length > 0 && includedCount === rows.length;
 
   return (
@@ -766,74 +860,15 @@ export function ExcelImportWizard({
                     </td>
                   </tr>
                 ) : (
-                  rows.map(row => {
-                    const res = resolutions[row.rowIndex];
-                    return (
-                      <tr
-                        key={row.rowIndex}
-                        className={cn(
-                          'border-b border-border/60',
-                          statusRowClass(row.status),
-                          !res?.included && 'opacity-45',
-                        )}
-                      >
-                        <td className="px-2 py-2 align-top text-center">
-                          <input
-                            type="checkbox"
-                            checked={res?.included ?? false}
-                            onChange={e => setRowIncluded(row.rowIndex, e.target.checked)}
-                            aria-label={`Включити рядок ${row.rowIndex} в імпорт`}
-                            className="h-3.5 w-3.5 rounded border-border align-middle"
-                          />
-                        </td>
-                        <td className="px-3 py-2 align-top text-foreground">
-                          {row.rawArticle || row.rawCode || '—'}
-                        </td>
-                        <td className="px-3 py-2 align-top text-foreground">
-                          {row.rawBrand || '—'}
-                        </td>
-                        <td className="px-3 py-2 align-top text-foreground">
-                          {row.rawName || '—'}
-                        </td>
-                        <td className="px-3 py-2 align-top text-right tabular-nums">
-                          {numFmt.format(row.quantity)}
-                        </td>
-                        <td className="px-3 py-2 align-top text-right tabular-nums">
-                          {numFmt.format(row.price)}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          {row.status === 'matched' ? (
-                            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-success-text">
-                              <Check className="h-3.5 w-3.5" />
-                              {row.candidates.find(c => c.id === row.matchedGoodId)?.name ??
-                                'Знайдено'}
-                            </span>
-                          ) : row.status === 'ambiguous' ? (
-                            <Select
-                              value={res?.selectedGoodId ?? ''}
-                              onChange={e => setRowGood(row.rowIndex, e.target.value)}
-                              className="h-8 text-[12px]"
-                            >
-                              <option value="">— оберіть товар —</option>
-                              {row.candidates.map(c => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                  {c.sku ? ` (${c.sku})` : ''}
-                                  {c.brandName ? ` · ${c.brandName}` : ''}
-                                </option>
-                              ))}
-                            </Select>
-                          ) : (
-                            <span className="text-[12px] text-muted-foreground">
-                              {res?.included
-                                ? 'Буде створено нову позицію'
-                                : 'Не знайдено — оберіть, щоб створити'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
+                  rows.map(row => (
+                    <ImportRow
+                      key={row.rowIndex}
+                      row={row}
+                      res={resolutions[row.rowIndex]}
+                      onToggle={setRowIncluded}
+                      onSelectGood={setRowGood}
+                    />
+                  ))
                 )}
               </tbody>
             </table>

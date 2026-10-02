@@ -9,6 +9,7 @@ import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
+import { CacheService } from '../../redis/cache.service';
 
 const ORG = 'org-1';
 const MAPPING: ImportMapping = {
@@ -85,6 +86,9 @@ describe('XlsxService — generic import (preview/apply)', () => {
         { provide: BrandsService, useValue: brandsService },
         { provide: DocumentLineImportAdapterRegistry, useValue: registry },
         DocumentGridParserService,
+        // sto-optimize: OCR-grid кеш за хешем вмісту. xlsx-канал цих специв кеш не чіпає
+        // (parseGridCached повертається рано для не-OCR форматів), але DI потребує провайдера.
+        { provide: CacheService, useValue: { get: vi.fn().mockResolvedValue(null), set: vi.fn() } },
       ],
     }).compile();
     service = module.get(XlsxService);
