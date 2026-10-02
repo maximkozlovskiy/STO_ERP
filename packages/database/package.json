@@ -19,17 +19,14 @@
     }
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^6.19.3",
     "bcrypt": "^6.0.0",
-    "prisma": "^5.22.0"
+    "prisma": "^6.19.3"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seed-catalog.ts && ts-node prisma/seed.ts"
   }
 }

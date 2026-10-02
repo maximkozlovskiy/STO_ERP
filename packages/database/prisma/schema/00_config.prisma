@@ -1,6 +1,8 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["typedSql", "prismaSchemaFolder"]
+  // prismaSchemaFolder прибрано: стабілізувався у Prisma 6, прапорець більше не потрібен
+  // (шлях до теки схеми тепер у prisma.config.ts). typedSql лишається preview.
+  previewFeatures = ["typedSql"]
 }
 
 datasource db {
