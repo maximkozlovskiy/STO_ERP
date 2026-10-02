@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-02 (review дуги імпорту — прибрано мертвий код countLines/OcrNoTextError)
+Дата:       2026-10-02 (optimize дуги імпорту — усунено подвійний OCR + re-render майстра)
 Фаза:       Аудит стеку ЗАКРИТО (FRONT+BACKEND+ДАНІ/ІНФРА+RLS ADR-010). Опційні техпункти: prismaSchemaFolder
             +typedSql-інфра (гібрид) ГОТОВО; Node 20→22 LTS ГОТОВО. Лишилось опційне: NestJS 11 (окремий
             блок — тягне Fastify 5 + 5 плагінів + bull-board, потребує E2E; свідомо відкладено).
@@ -24,7 +24,25 @@ TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       tester(ocr) fd67e93c — Bug #774 + skill approaches; попередній b0a6df95 fix(tester): >25МБ→413
+HEAD:       optimize(ocr) b5325e7f — усунено подвійний OCR (кеш за хешем) + re-render майстра імпорту;
+            попередній 58fce607 fix(ocr): стеля площі полотна
+Optimize(дуга імпорту+OCR, 44085da0..58fce607): 2026-10-02 (auto, b5325e7f). ГОЛОВНЕ — подвійний OCR:
+            майстер читав один файл двічі (rawPreview→previewImport), для скана/фото = ОКРЕМИЙ OCR-прогін
+            1-5с/стор ВДРУГЕ. Fix: parseGridCached — кеш розпізнаної сітки за sha256 вмісту (Redis, TTL
+            300с), ЛИШЕ pdf/image (xlsx/csv re-parse і так дешевий). sha256 25МБ ≈13мс vs OCR 1-5с =
+            0.3-1% накладних на економію цілого проходу. Offline-safe (Redis down→поведінка=поточна,
+            нульовий ризик). Безпека: ключ лише за хешем вмісту (сітка — чиста функція байтів, без orgId),
+            мапінг застосовується після. Frontend ExcelImportWizard: roleByCol→useMemo([mapping]) (була
+            Map на кожен символ вводу); 6 .filter()-лічильників→1 useMemo-прохід; ImportRow→memo (клік
+            чекбокса на 500-рядк. скані більше не ре-рендерить усі 500). Бенчмарки: mergeWordsIntoCells
+            3000 фраг=5.8мс, fragmentsToGrid=11мс (user-measured) — обидва 3-4 порядки нижче OCR, НЕ чіпав.
+            Backend-запити previewImport/applyImport/appendLines/lookupGoodsBulk ЧИСТО: bulk-резолв+Map,
+            Promise.all updates + createMany, індекси (orgId,skuNormalized)/(orgId,sku)/(orgId,barcode) усі
+            присутні. Pipelining rasterize‖recognize ВІДХИЛЕНО (економить ~10% одного проходу ціною памʼяті
+            під mem_limit:1g; кеш прибирає цілий 2-й прохід — виграє на порядок). +3 cache-специ. tsc api 0/
+            web 0; xlsx api 143/143, ExcelImportWizard 27/27. Skill §1.10 + accumulated-pattern (content-hash
+            cache для multi-request upload-wizard). Прим.: 2 pre-existing lint-errors (no-unnecessary-type-
+            assertion у previewImport) НЕ мої — лишив поза скоупом perf-коміту.
 Tester(OCR локальний, bug hunt f39b97fd..58fce607): 2026-10-02 — 1 HIGH fix (Bug #774). multipart
             file-too-large: @fastify/multipart кидає FST_REQ_FILE_TOO_LARGE(413) з file.toBuffer() (поза
             try/catch getUploadedFile); HttpExceptionFilter матчив лише FST_ERR_CTP_* → 500+Sentry замість
