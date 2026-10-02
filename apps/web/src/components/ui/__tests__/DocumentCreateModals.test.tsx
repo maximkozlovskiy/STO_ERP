@@ -465,16 +465,20 @@ describe('InvoiceCreateModal — regression', () => {
       expect(lineBodies).toHaveLength(2);
       const desc = lineBodies.map(b => b.description).sort();
       expect(desc).toEqual(['Рядок 1', 'Рядок 2']);
-      // POST шапки рахунку — рівно 1 (не задвоєно на ретраї).
-      const invPosts = posts; // placeholder to keep lint calm
-      void invPosts;
+      // POST шапки рахунку перевіряється нижче, поза waitFor — тут лише line-POST.
+      expect(posts.length).toBeGreaterThanOrEqual(2);
     });
 
     const invoicePosts = apiFetchMock.mock.calls.filter(
       ([p, init]) => p === '/invoices' && (init as RequestInit | undefined)?.method === 'POST',
     );
     expect(invoicePosts).toHaveLength(1);
-  });
+    // 15 с замість дефолтних 5: тест робить ДВА повні цикли submit через userEvent
+    // (19 await-кроків) — це закладено у сценарій retry, а не повільність реалізації.
+    // Під `turbo run test` web ганяється паралельно з api (2895 тестів), машина
+    // голодує, і 5 с не вистачало — падало стабільно, 3 прогони з 3. Відтворено й на
+    // гілці БЕЗ змін цієї сесії, тобто дефект преіснуючий.
+  }, 15_000);
 
   // Фаза 3: RHF+useFieldArray + zod-валідація шапки.
   it('Invoice line через useFieldArray рендериться у таблиці після «Додати позицію»', async () => {
