@@ -24,7 +24,25 @@ TypeScript: ✅ 0 errors (shared + api + web, tsc --noEmit --incremental false)
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
+HEAD:       review(ocr) ce52e337 — fix(review): OCR-растеризатор, стеля площі полотна проти decompression-bomb
+Review(OCR локальний Tesseract): 2026-10-02 (auto, ce52e337, скоуп f39b97fd..875c3825) — 1 CRITICAL fix.
+            Аудит фічі OCR фото/сканів (tesseract.js офлайн): lifecycle воркера, безпека недовіреного файлу,
+            пам'ять async-генератора, чисті функції, error-map, Dockerfile. ЧИСТО: OcrWorkerLifecycle
+            зареєстрований у xlsx.module (SIGTERM завершить контейнер); enqueue-серіалізація коректна
+            (busyChain=run.catch, dispose всередині chain-link → no concurrent terminate+recognize, черга не
+            залипає, нові запити створюють свіжий worker); async-генератор тримає пік=1 растр (OcrPage.words[]
+            акумулюються, але це дешево, не 15МБ RGBA); mergeWordsIntoCells створює НОВІ об'єкти (вхід не
+            мутується), O(n×lines) як fragmentsToGrid; toHttpError покриває ВСІ OCR/PDF класи, R3 битий PDF
+            → PdfUnreadableError «пошкоджений» (не «скан без тексту»); ocr-прапорець DTO↔web parity (після
+            875c3825-sync); 0 any/console.log; Dockerfile 3 фікси коректні (shared build, рекурсивний --prod
+            install зберігає @napi-rs/canvas+tesseract симлінки, --ignore-scripts ОК бо canvas=prebuilt binary).
+            FIX CRITICAL (§7.1/§2): pdf-rasterizer БЕЗ стелі площі полотна — PDF із гігантським MediaBox (до
+            14400² pt) при DPI 200 → ~40000² px ≈ 25ГБ RGBA синхронно у createCanvas ДО таймауту → OOM
+            (mem_limit:1g); ліміт 25МБ не рятує (малий файл+величезний MediaBox). clampScaleToArea під
+            MAX_CANVAS_PIXELS=40млн px, +регрес-тест (10000² pt @400DPI). api tsc 0 / web tsc 0; xlsx suite
+            125/125 pass. Skill self-improve: §7.1 decompression-bomb checklist + grep + accumulated-pattern.
+----
+backend-i18n ПОВНІСТЮ ЗАВЕРШЕНО — 0 захардкодженого укр у throws/zod/class-validator/filter (29eaad2f)
 i18n:       Багатомовність uk/en ЗАВЕРШЕНА повністю (front+back): (1) УВЕСЬ (app) UI — 28 web-namespaces,
             2612 ключів×2 (react-i18next, output:export/offline, MP-F7). (2) Backend ПОВНІСТЮ: Accept-Language
             (web getCurrentLocale)→tenant-ALS getLocale()→translate у КОЖНОМУ seam. @sto/shared/i18n каталог

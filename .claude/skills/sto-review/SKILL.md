@@ -469,6 +469,7 @@ done
 - [ ] Важкі операції (PDF, масовий import) → BullMQ, не request handler
 - [ ] Немає `fs.readFileSync` у request handlers
 - [ ] **Bulk-apply:** `for (const line of lines)` → calc prefetched перед loop; updates batched у `$transaction(async tx, { timeout: N })` — НЕ per-iteration `$transaction([...])` (array-form default 5s timeout)
+- [ ] **Растеризація/декодування НЕДОВІРЕНОГО вхідного файлу (PDF→canvas, image decode) → ЖОРСТКА стеля площі в пікселях ПЕРЕД alloc (decompression-bomb).** Ліміт розміру завантаження (25 МБ) НЕ рятує: PDF може оголосити крихітний потік вмісту й гігантський MediaBox (спек до 14400×14400 pt) → при DPI 200 scale≈2.78 полотно ~40000² ≈ 25 ГБ RGBA, виділяється СИНХРОННО у `createCanvas` ДО будь-якого таймауту → миттєвий OOM (mem_limit: 1g). Таймаути безсилі — alloc синхронний. Fix: базовий viewport (scale=1) → `clampScaleToArea(w,h,scale)` = `scale*√(MAX_PX/area)` під стелю (~40 млн px ≈ 160 МБ RGBA; A4@200=3.9 млн — норма не зачеплена). Grep: `grep -rn "createCanvas\|getViewport\|new Image\|sharp(" apps/api/src --include="*.ts" | grep -v spec` → кожна растеризація з user-controlled розміром без clamp = CRITICAL. Sample: pdf-rasterizer.rasterizePdfPages (ce52e337)
 
 #### §7.2 Frontend
 
@@ -1414,6 +1415,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rn "safeParse(getValues())" apps/web/src` → для кожної модалки; `grep -nE "numericString\(\)|z\.coerce\.number" packages/shared/src/schemas/forms/*.schema.ts` → кожне у `*Form*`-схемі = підозра (endpoint-схема ОК: payload numeric JSON).
 **Фікс:** у FORM-схемі числові поля → кома-aware: `moneyString()` (обов'язкове), `optionalMoneyNumber()` (опційне, новий helper у validators.ts), або inline `typeof v==='string'?Number(v.replace(',','.')):v`. Endpoint-схеми лишити `numericString`/`coerce`.
 **Severity:** IMPORTANT — fail-closed, блокує легітимний submit для UA-локалі. Sample: work-order.schema FORM quantity/normoHours/price/hours (d8a569aa).
+
+### 2026-10-02 — растеризація недовіреного PDF без стелі площі полотна → decompression-bomb/OOM — §7.1/§2
+
+**Сигнал:** `createCanvas(viewport.width, viewport.height)` де viewport = `page.getViewport({scale})`, а scale = DPI/72 — розмір похідний від MediaBox PDF (user-controlled). PDF може оголосити крихітний потік вмісту + гігантський MediaBox (до 14400×14400 pt) → полотно ~40000² px ≈ 25 ГБ RGBA, alloc СИНХРОННИЙ у createCanvas ДО таймауту → OOM (mem_limit: 1g). Ліміт завантаження (25 МБ) безсилий — малий файл, величезний MediaBox. Таймаути теж — alloc синхронний, не дає event loop шансу.
+**Grep:** `grep -rn "createCanvas\|getViewport\|new Image\|sharp(" apps/api/src --include="*.ts" | grep -v spec` → кожна растеризація/decode user-файлу без clamp площі.
+**Фікс:** базовий viewport (scale=1) → `clampScaleToArea(baseW, baseH, scale) = area<=MAX ? scale : scale*√(MAX/area)` (площа ∝ scale²) під `MAX_CANVAS_PIXELS` (~40 млн px ≈ 160 МБ RGBA; A4@200=3.9 млн — норма не зачеплена). Регрес-тест: 10000×10000 pt @ 400 DPI → площа ≤ стелі.
+**Severity:** CRITICAL — OOM/DoS від одного завантаженого файлу. Sample: pdf-rasterizer.rasterizePdfPages (ce52e337).
 
 ## Карта секцій (quick reference)
 
