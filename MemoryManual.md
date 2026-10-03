@@ -9,7 +9,15 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-02 (АУДИТ ТЕХНОЛОГІЙ: Кроки 1-3 ЗАКРИТО — docs/AUDIT-2026-10.md)
+Дата:       2026-10-03 (АУДИТ: Кроки 1-4 ЗАКРИТО + залишок Кроку 4 розкатано — docs/AUDIT-2026-10.md)
+Останнє:    Кодогенерація типів API розкатана на 7 модулів (гілка chore/api-types-rollout):
+            58 роутів анотовано @ApiOkResponse, 7 хуків на ApiSchema<>, знято 18 рукописних типів.
+            Схем у документі 236 → 247. Знайдено: 3 реальні баги (status: string у
+            useWorkOrderTransition і stock-documents handleTransition — довільний рядок у стан;
+            2 фікстури з неіснуючим source:'IMPORT'), 4 баги в DTO беку (StockDocument/
+            BankTransaction enum-колонки як string; PreviewCandidateDto як interface → невидимий
+            Swagger; BookingRequest.status без переліку), 1 мертвий assertion.
+            Нова пастка → docs/GOTCHAS.md «пастка 3: interface у Swagger НЕВИДИМИЙ».
 Фаза:       Аудит технологій, Кроки 1-3 ЗАКРИТО:
             · Крок 1 — якість: тести API під tsc+eslint (77 помилок → 0), coverage-пороги у CI,
               eslint+commitlint у pre-commit, перші тести в packages/shared, FSM-парність бек↔shared.

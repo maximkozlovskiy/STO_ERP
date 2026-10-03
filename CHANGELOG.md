@@ -5,6 +5,36 @@
 
 ---
 
+### d37f1234 + 855ee029 + bc809b3c — кодогенерація типів API розкатана на 7 модулів
+
+Залишок аудиту (`docs/AUDIT-2026-10.md`): анотовано контролери, мігровано хуки,
+розібрано fallout. Схем у документі 236 → 247.
+
+- **58 роутів** отримали `@ApiOkResponse/@ApiCreatedResponse/@ApiNoContentResponse`:
+  work-orders(16), supplier-payments(9), purchase-orders(8), supplier-returns(7),
+  stock-documents(6), bank-statements(6), booking(6). Без цього у документі лишалось
+  `200: { description: '' }` і згенерованого типу не було взагалі.
+- **6 нових DTO** замість inline-форм: `WorkOrderShareTokenResponseDto`,
+  `ApplyPricingResponseDto`/`ApplyPricingDetailDto`, `RawPreviewResponseDto`,
+  `PublicBookingBranchDto`, `BookingRequestListDto`.
+- **7 хуків** на `ApiSchema<>`; знято 18 рукописних типів, включно з другим локальним
+  дублем `StockDoc`/`DocLine` у `stock-documents/page.tsx`.
+- **Баги в DTO беку** (не web): `StockDocumentResponseDto.type/.status` і
+  `BankTransactionResponseDto.direction/.source/.status/.matchedType` оголошувались як
+  `string` попри наявні Prisma-еними; `PreviewCandidateDto` був `interface` → Swagger
+  його не бачив, і `candidates` описувалось як `items: { type: 'object' }`.
+- **Реальні баги, які показало звуження:** `useWorkOrderTransition` писав довільний
+  рядок у кеш списку (той самий клас, що `handleTransition` в Invoice);
+  `handleTransition` у stock-documents мав `newStatus: string`; дві тест-фікстури
+  вказували `source: 'IMPORT'` — значення, якого немає в `BankTransactionSource`.
+- **Мертвий код:** `l.id!` у purchase-orders/page.tsx (assertion був потрібен лише
+  рукописному `POLine` з опційним `id`).
+
+`ColumnMapping` свідомо лишився рукописним: `/import/preview` — multipart, контролер
+розбирає поля вручну, тож `PreviewImportColumnMapping` у документі не з'являється.
+
+---
+
 ### 8fe316f0 fix(types): дочищено type-помилки у тестах API
 
 Завершено вмикання type-check для `*.spec.ts` (новий `apps/api/tsconfig.spec.json`): роками

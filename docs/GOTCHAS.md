@@ -4,6 +4,48 @@
 
 ---
 
+## [2026-10-03] Кодогенерація типів, пастка 3: `interface` у Swagger НЕВИДИМИЙ
+
+Продовження розкатки `openapi-typescript` на 7 модулів. Третій спосіб отримати
+«генерація є, а типу немає» — описати вкладену форму як `interface`, а не `class`.
+
+Swagger будує схему з декораторів, а декоратори живуть лише на класах. `interface`
+стирається при компіляції — рефлексії нема, схеми нема:
+
+```ts
+// ❌ PreviewCandidateDto у документі ВІДСУТНІЙ
+export interface PreviewCandidateDto {
+  counterpartyId: string;
+  counterpartyName: string;
+}
+// і тому масив доводиться описувати вручну, втрачаючи форму елемента:
+@ApiProperty({ type: 'array', items: { type: 'object' } })
+candidates!: PreviewCandidateDto[];   // → unknown[] у згенерованих типах
+
+// ✅ клас із @ApiProperty — схема є, $ref проставляється сам
+export class PreviewCandidateDto {
+  @ApiProperty() counterpartyId!: string;
+  @ApiProperty() counterpartyName!: string;
+}
+@ApiProperty({ type: [PreviewCandidateDto] }) candidates!: PreviewCandidateDto[];
+```
+
+**Детектор:** `items: { type: 'object' }` у будь-якому `@ApiProperty` — завжди ознака
+втраченої форми. Grep по беку:
+
+```bash
+grep -rn "items: { type: 'object' }" apps/api/src --include=*.dto.ts
+```
+
+**Межа застосовності патерну (знайдено там само).** Якщо роут приймає `multipart` і
+контролер розбирає поля вручну, його DTO у документі не з'являється, хоч би як був
+декорований — через нього не проходить жодна валідація Nest. Приклад:
+`PreviewImportColumnMapping` у bank-statements (`buildMapping` читає поля з
+`file.fields`). Для таких форм рукописний тип у web — правильне рішення, а не борг;
+його треба супроводити коментарем, інакше наступний прохід «мігрує» його навмання.
+
+---
+
 ## [2026-10-03] Кодогенерація типів: без `@ApiOkResponse` схеми НЕМА; без swagger-плагіна вона порожня
 
 Крок 4 аудиту (`openapi-typescript`). Дві пастки, через які «генерація є, а типів немає».
