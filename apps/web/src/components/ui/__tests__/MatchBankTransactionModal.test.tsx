@@ -31,7 +31,7 @@ const TX: BankTransaction = {
   payerName: 'ТОВ Клієнт',
   purpose: 'Оплата за послуги',
   externalId: 'ext-1',
-  source: 'IMPORT',
+  source: 'FILE_IMPORT',
   status: 'UNMATCHED',
   createdAt: '2026-09-01T00:00:00.000Z',
 };

@@ -39,7 +39,7 @@ const tx = (over: Record<string, unknown> = {}) => ({
   payerName: 'Петренко',
   purpose: 'Оплата',
   externalId: 'ext1',
-  source: 'IMPORT',
+  source: 'FILE_IMPORT',
   status: 'MATCHED',
   createdAt: '2026-09-01T00:00:00.000Z',
   bankAccountName: null,
