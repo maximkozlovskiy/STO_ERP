@@ -1607,8 +1607,8 @@ export function CreateWorkOrderModal({
     <>
       <Modal
         open={open}
-        onClose={handleModalClose}
-        onSubmit={isEditMode ? save : create}
+        onClose={() => void handleModalClose()}
+        onSubmit={() => void (isEditMode ? save() : create())}
         title={isEditMode ? 'Наряд на роботу' : 'Новий наряд'}
         size="content"
         hideClose
@@ -1716,7 +1716,7 @@ export function CreateWorkOrderModal({
               </button>
             )}
             <button
-              onClick={handleModalClose}
+              onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
               title="Закрити"
               aria-label="Закрити"
@@ -1733,7 +1733,7 @@ export function CreateWorkOrderModal({
                 {allowedTransitions.includes('CANCELLED') && (
                   <Button
                     variant="destructive"
-                    onClick={() => doTransition('CANCELLED')}
+                    onClick={() => void doTransition('CANCELLED')}
                     loading={transitioning}
                     disabled={transitioning || saving}
                     size="sm"
@@ -1748,7 +1748,7 @@ export function CreateWorkOrderModal({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handlePrint}
+                      onClick={() => void handlePrint()}
                       loading={shareLoading}
                       disabled={shareLoading || smsLoading || saving || transitioning}
                       title="Відкрити для друку"
@@ -1798,7 +1798,7 @@ export function CreateWorkOrderModal({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleShare}
+                      onClick={() => void handleShare()}
                       loading={shareLoading}
                       disabled={shareLoading || smsLoading || saving || transitioning}
                       title="Скопіювати посилання"
@@ -1809,7 +1809,7 @@ export function CreateWorkOrderModal({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleSendSms}
+                      onClick={() => void handleSendSms()}
                       loading={smsLoading}
                       disabled={shareLoading || smsLoading || saving || transitioning}
                       title="Відправити SMS клієнту"
@@ -1823,7 +1823,7 @@ export function CreateWorkOrderModal({
                   <Button
                     variant="default"
                     size="sm"
-                    onClick={handleInvoice}
+                    onClick={() => void handleInvoice()}
                     loading={invoiceLoading}
                     disabled={
                       invoiceLoading || saving || transitioning || shareLoading || smsLoading
@@ -1836,7 +1836,7 @@ export function CreateWorkOrderModal({
                 )}
                 {(canEdit || canEditActual) && (
                   <Button
-                    onClick={save}
+                    onClick={() => void save()}
                     loading={saving}
                     disabled={
                       saving || transitioning || shareLoading || smsLoading || invoiceLoading
@@ -1852,7 +1852,7 @@ export function CreateWorkOrderModal({
             </div>
           ) : (
             <Button
-              onClick={create}
+              onClick={() => void create()}
               loading={saving}
               disabled={!form.branchId || !form.counterpartyId || !form.vehicleId}
               className="w-full sm:w-auto"
@@ -2357,8 +2357,8 @@ export function CreateWorkOrderModal({
         open={invoiceConflict}
         loading={invoiceLoading}
         onClose={() => setInvoiceConflict(false)}
-        onRefresh={handleInvoiceRefresh}
-        onOpenExisting={handleInvoiceOpen}
+        onRefresh={() => void handleInvoiceRefresh()}
+        onOpenExisting={() => void handleInvoiceOpen()}
       />
       <ConfirmDialog {...confirmDialogProps} />
       <DirtyConfirmDialog {...dirty.dialogProps} />
