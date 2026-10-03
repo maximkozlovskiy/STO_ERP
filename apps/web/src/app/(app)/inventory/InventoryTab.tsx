@@ -415,7 +415,7 @@ export function InventoryTab() {
                       {item.goodSku ?? '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-[13px]">
-                      {(item as StockItem & { goodBrand?: string | null }).goodBrand ?? '—'}
+                      {item.goodBrand ?? '—'}
                     </TableCell>
                     <TableCell className="text-foreground-muted">{item.warehouseName}</TableCell>
                     <TableCell className="text-right font-medium tabular-nums">

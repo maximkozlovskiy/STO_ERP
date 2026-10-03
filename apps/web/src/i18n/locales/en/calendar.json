@@ -158,7 +158,12 @@
     "errSaveFallback": "Save error",
     "errDeleteFallback": "Delete error",
     "errGeneric": "Error",
-    "errCpDetailLoad": "Failed to load the client card"
+    "errCpDetailLoad": "Failed to load the client card",
+    "pastSlotLocked": "Cannot edit slots on a past day",
+    "pastStartLocked": "Cannot move start into the past",
+    "pastDayLocked": "Cannot move booking to a past day",
+    "pastTimeLocked": "Cannot move booking into the past",
+    "slotDeleted": "Slot deleted"
   },
   "wizard": {
     "titleClient": "New client",

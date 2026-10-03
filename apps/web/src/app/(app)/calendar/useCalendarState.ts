@@ -15,6 +15,7 @@ import { apiFetch } from '@/lib/api-client';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { toast } from '@/lib/toast';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useTranslation } from 'react-i18next';
 
 import type {
   BookingSlot,
@@ -67,6 +68,9 @@ export const EMPTY_FORM: SlotForm = {
 export type CalendarState = ReturnType<typeof useCalendarState>;
 
 export function useCalendarState() {
+  // i18n тут потрібен, бо хук сам показує toast-и (переміщення слотів, видалення) —
+  // раніше вони були жорстко українськими рядками, попри двомовний UI.
+  const { t } = useTranslation('calendar');
   const router = useRouter();
   const searchParams = useSearchParams();
   const { confirm, dialogProps } = useConfirm();
@@ -772,11 +776,11 @@ export function useCalendarState() {
         if (Math.abs(startH - origStartH) < 0.01 && Math.abs(endH - origEndH) < 0.01) return;
         const todayKyiv = toDateString(new Date());
         if (dateRef.current < todayKyiv) {
-          toast.warning('Не можна змінювати слоти у минулому дні');
+          toast.warning(t('slot.pastSlotLocked'));
           return;
         }
         if (dateRef.current === todayKyiv && startH < minHourRef.current) {
-          toast.warning('Не можна перемістити початок у минулий час');
+          toast.warning(t('slot.pastStartLocked'));
           return;
         }
         try {
@@ -825,7 +829,7 @@ export function useCalendarState() {
       window.removeEventListener('pointerup', onUpListener);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [pxToDecimalHours, load]);
+  }, [pxToDecimalHours, load, t]);
 
   // ── Drag-and-drop ─────────────────────────────────────────────────────────
 
@@ -876,11 +880,11 @@ export function useCalendarState() {
       const newStartDate = toDateString(newStart);
       const newStartH = kyivHours(newStart.toISOString());
       if (newStartDate < todayKyiv) {
-        toast.warning('Не можна перемістити запис у минулий день');
+        toast.warning(t('slot.pastDayLocked'));
         return;
       }
       if (newStartDate === todayKyiv && newStartH < minHour) {
-        toast.warning('Не можна перемістити запис у минулий час');
+        toast.warning(t('slot.pastTimeLocked'));
         return;
       }
 
@@ -898,7 +902,7 @@ export function useCalendarState() {
         toast.error(e instanceof Error ? e.message : 'Помилка переміщення слоту');
       }
     },
-    [slots, load, nowMs, minHour],
+    [slots, load, nowMs, minHour, t],
   );
 
   // ── Remove slot ───────────────────────────────────────────────────────────
@@ -908,13 +912,13 @@ export function useCalendarState() {
       if (!(await confirm({ title: 'Видалити слот?', variant: 'destructive' }))) return;
       try {
         await apiFetch<void>(`/calendar/slots/${id}`, { method: 'DELETE' });
-        toast.success('Слот видалено');
+        toast.success(t('slot.slotDeleted'));
         load();
       } catch (e: unknown) {
         if (mountedRef.current) toast.error(e instanceof Error ? e.message : 'Помилка видалення');
       }
     },
-    [load, confirm],
+    [load, confirm, t],
   );
 
   // ── Memoized slot data ────────────────────────────────────────────────────

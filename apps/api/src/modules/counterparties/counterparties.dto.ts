@@ -17,7 +17,15 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { ContractType, CounterpartyType, LegalForm } from '@prisma/client';
+import {
+  ContractType,
+  CounterpartyType,
+  InvoiceStatus,
+  LegalForm,
+  PurchaseOrderStatus,
+  SupplierPaymentStatus,
+  SupplierReturnStatus,
+} from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { toUpperCurrencyCode } from '../../common/transforms/to-upper-currency-code';
 
@@ -323,4 +331,60 @@ export class ContractResponseDto {
   @ApiProperty() createdAt!: string;
   @ApiProperty() updatedAt!: string;
   @ApiPropertyOptional() deletedAt!: string | null;
+}
+
+// ─── Linked documents (detail) ─────────────────────────────
+// Інлайн-форма → `200: {}` у Swagger; web тримав рукописні дублі у
+// `lib/linked-configs.tsx`. DTO-класи (НЕ interface — Swagger їх не бачить,
+// docs/GOTCHAS.md) закривають розрив.
+//
+// documentDate тут НЕ nullable: у схемі всіх чотирьох моделей це
+// `DateTime @default(now()) @db.Date`. Рукописний web-тип мав `string | null`
+// і тягнув за собою недосяжні null-гарди.
+// Decimal-поля вже нормалізовані сервісом через `Number()` → `number`, не `string`.
+
+export class CounterpartyLinkedInvoiceRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: InvoiceStatus }) status!: InvoiceStatus;
+  @ApiProperty() amount!: number;
+  @ApiProperty({ type: String, format: 'date' }) documentDate!: string;
+}
+
+export class CounterpartyLinkedPurchaseOrderRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: PurchaseOrderStatus }) status!: PurchaseOrderStatus;
+  @ApiProperty() totalAmount!: number;
+  @ApiProperty({ type: String, format: 'date' }) documentDate!: string;
+}
+
+export class CounterpartyLinkedSupplierPaymentRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: SupplierPaymentStatus }) status!: SupplierPaymentStatus;
+  @ApiProperty() amount!: number;
+  // method — рядок, НЕ enum: способи оплати конфігуруються у БД (CLAUDE.md §10).
+  @ApiProperty({ description: 'Код способу оплати (PaymentMethodConfig.code)' })
+  method!: string;
+  @ApiProperty({ type: String, format: 'date' }) documentDate!: string;
+}
+
+export class CounterpartyLinkedSupplierReturnRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: SupplierReturnStatus }) status!: SupplierReturnStatus;
+  @ApiProperty() totalAmount!: number;
+  @ApiProperty({ type: String, format: 'date' }) documentDate!: string;
+}
+
+export class CounterpartyLinkedDocumentsDto {
+  @ApiProperty({ type: [CounterpartyLinkedInvoiceRowDto] })
+  invoices!: CounterpartyLinkedInvoiceRowDto[];
+  @ApiProperty({ type: [CounterpartyLinkedPurchaseOrderRowDto] })
+  purchaseOrders!: CounterpartyLinkedPurchaseOrderRowDto[];
+  @ApiProperty({ type: [CounterpartyLinkedSupplierPaymentRowDto] })
+  supplierPayments!: CounterpartyLinkedSupplierPaymentRowDto[];
+  @ApiProperty({ type: [CounterpartyLinkedSupplierReturnRowDto] })
+  supplierReturns!: CounterpartyLinkedSupplierReturnRowDto[];
 }

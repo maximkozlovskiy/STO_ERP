@@ -9,13 +9,13 @@ import {
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { InspectionService } from './inspection.service';
-import { CreateInspectionDto } from './inspection.dto';
+import { CreateInspectionDto, InspectionPointDto } from './inspection.dto';
 
 @ApiTags('inspection')
 @ApiBearerAuth()
@@ -37,7 +37,10 @@ export class InspectionController {
   @Get('default-points')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Дефолтні точки огляду' })
-  getDefaultPoints() {
+  // Форма збігається з InspectionPointDto, який уже використовується на вході
+  // CreateInspectionDto — дефолтні точки клієнт надсилає назад без змін.
+  @ApiOkResponse({ type: [InspectionPointDto] })
+  getDefaultPoints(): InspectionPointDto[] {
     return this.service.getDefaultPoints();
   }
 

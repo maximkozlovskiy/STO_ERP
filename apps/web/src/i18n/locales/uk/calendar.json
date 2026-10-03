@@ -158,7 +158,12 @@
     "errSaveFallback": "Помилка збереження",
     "errDeleteFallback": "Помилка видалення",
     "errGeneric": "Помилка",
-    "errCpDetailLoad": "Не вдалося завантажити картку клієнта"
+    "errCpDetailLoad": "Не вдалося завантажити картку клієнта",
+    "pastSlotLocked": "Не можна змінювати слоти у минулому дні",
+    "pastStartLocked": "Не можна перемістити початок у минулий час",
+    "pastDayLocked": "Не можна перемістити запис у минулий день",
+    "pastTimeLocked": "Не можна перемістити запис у минулий час",
+    "slotDeleted": "Слот видалено"
   },
   "wizard": {
     "titleClient": "Новий клієнт",

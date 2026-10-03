@@ -23,6 +23,9 @@ import {
   ApiOkResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiExtraModels,
+  ApiProduces,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -49,12 +52,15 @@ import {
   InvoiceLineResponseDto,
   PaginatedInvoicesDto,
   InvoiceByWorkOrderResponseDto,
+  InvoiceLinkedDocumentsDto,
+  InvoiceLinkedCountsEntryDto,
 } from './invoices.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
+@ApiExtraModels(InvoiceLinkedCountsEntryDto)
 export class InvoicesController {
   constructor(private readonly service: InvoicesService) {}
 
@@ -83,6 +89,7 @@ export class InvoicesController {
   @Get(':id/linked-documents')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: "Пов'язані документи рахунку (наряд, оплати, контрагент)" })
+  @ApiOkResponse({ type: InvoiceLinkedDocumentsDto })
   getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedDocuments(orgId, id);
   }
@@ -91,6 +98,13 @@ export class InvoicesController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Кількість пов'язаних документів для списку рахунків (batch)" })
+  // Мапа ID → лічильники: клас з index-signature Swagger не читає, схема явна.
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      additionalProperties: { $ref: getSchemaPath(InvoiceLinkedCountsEntryDto) },
+    },
+  })
   getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
     return this.service.getLinkedCounts(orgId, dto.ids);
   }
@@ -187,6 +201,8 @@ export class InvoicesController {
   @Get(':id/pdf')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Завантажити рахунок у PDF' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ description: 'PDF-файл рахунку', schema: { type: 'string', format: 'binary' } })
   async downloadPdf(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

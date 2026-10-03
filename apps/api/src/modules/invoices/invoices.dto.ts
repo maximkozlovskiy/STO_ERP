@@ -15,7 +15,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, WorkOrderStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class CreateInvoiceDto {
@@ -273,4 +273,51 @@ export class LinkedCountsDto {
   @ArrayMaxSize(500)
   @IsUUID('all', { each: true })
   ids!: string[];
+}
+
+// ─── Linked documents (detail) ─────────────────────────────
+// Раніше inline-форма → `200: {}` у Swagger. DTO-класи (НЕ interface — Swagger
+// їх не бачить, docs/GOTCHAS.md) дають web згенерований тип замість рукописного
+// дубля у `lib/linked-configs.tsx`.
+// Секції повертаються масивами навіть для 0..1 елемента — так панель
+// `LinkedDocumentsPanel` рендерить усі секції однаково.
+
+export class InvoiceLinkedWorkOrderRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: WorkOrderStatus }) status!: WorkOrderStatus;
+}
+
+export class InvoiceLinkedPaymentRowDto {
+  @ApiProperty() id!: string;
+  // Decimal → number нормалізується у сервісі (`Number(p.amount)`).
+  @ApiProperty() amount!: number;
+  // Payment.method — рядок, НЕ enum: методи конфігуруються у БД (CLAUDE.md §10).
+  @ApiProperty({ description: 'Код способу оплати (PaymentMethodConfig.code)' })
+  method!: string;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+}
+
+export class InvoiceLinkedCounterpartyRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, nullable: true }) firstName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) lastName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) companyName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) phone!: string | null;
+}
+
+export class InvoiceLinkedDocumentsDto {
+  @ApiProperty({ type: [InvoiceLinkedWorkOrderRowDto] })
+  workOrder!: InvoiceLinkedWorkOrderRowDto[];
+  @ApiProperty({ type: [InvoiceLinkedPaymentRowDto] })
+  payments!: InvoiceLinkedPaymentRowDto[];
+  @ApiProperty({ type: [InvoiceLinkedCounterpartyRowDto] })
+  counterparty!: InvoiceLinkedCounterpartyRowDto[];
+}
+
+export class InvoiceLinkedCountsEntryDto {
+  @ApiProperty() workOrder!: number;
+  @ApiProperty() payments!: number;
+  @ApiProperty() counterparty!: number;
 }

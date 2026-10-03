@@ -25,6 +25,7 @@ import {
   CreateContractDto,
   CreateGarageDto,
   GarageResponseDto,
+  CounterpartyLinkedDocumentsDto,
   PaginatedCounterpartiesDto,
   UpdateContractDto,
 } from './counterparties.dto';
@@ -59,6 +60,7 @@ export class CounterpartiesController {
   @ApiOperation({
     summary: "Пов'язані документи контрагента (рахунки, замовлення, оплати, повернення)",
   })
+  @ApiResponse({ status: 200, type: CounterpartyLinkedDocumentsDto })
   getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedDocuments(orgId, id);
   }
@@ -84,6 +86,8 @@ export class CounterpartiesController {
 
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Оновити контрагента' })
+  @ApiResponse({ status: 200, type: CounterpartyResponseDto })
   update(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },

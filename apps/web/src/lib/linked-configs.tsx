@@ -24,6 +24,7 @@ import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
 import type { LinkedEntityConfig } from '@/components/ui/LinkedDocumentsPanel';
 import type { LinkedNav } from '@/lib/linked-nav';
+import type { ApiSchema } from '@sto/shared';
 
 // Реєстр конфігів пов'язаних документів. Кожен конфіг — фабрика (nav) => config,
 // бо навігація приходить з хука useLinkedNav() у компоненті, а самі секції статичні.
@@ -45,7 +46,10 @@ export const INVOICE_STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-secondary text-muted-foreground',
 };
 
-const SLOT_STATUS_LABELS: Record<string, string> = {
+// Record<union, string> (не Record<string, string>): мапа вичерпна щодо
+// CalendarSlotStatus, і новий статус у Prisma-схемі зламає build тут, а не
+// просто провалиться у `?? row.status` з англійським кодом на екрані.
+const SLOT_STATUS_LABELS: Record<LinkedSlotRow['status'], string> = {
   AVAILABLE: 'Вільний',
   BOOKED: 'Заброньовано',
   BLOCKED: 'Заблоковано',
@@ -66,51 +70,19 @@ function invoiceStatusBadge(status: string) {
 }
 
 // ─── Row shapes returned by backend linked-documents endpoints ──
+// Рядки, які бек описує DTO-класами, беремо зі згенерованих типів — рукописні
+// дублі розходились із контрактом (`status: string` замість union,
+// `amount: string | number` там, де сервіс уже робить `Number()`).
 
-interface LinkedInvoiceRow {
-  id: string;
-  number: string;
-  status: string;
-  amount: string | number;
-  documentDate: string | null;
-}
-interface LinkedPaymentRow {
-  id: string;
-  amount: string | number;
-  method: string;
-  createdAt: string;
-  notes: string | null;
-}
-interface LinkedSlotRow {
-  id: string;
-  startAt: string;
-  endAt: string;
-  status: string;
-  employeeId: string | null;
-  notes: string | null;
-  lift: { name: string } | null;
-}
-interface LinkedWarrantyRow {
-  id: string;
-  expiresAt: string;
-  description: string;
-  claimedAt: string | null;
-  createdAt: string;
-}
+type LinkedInvoiceRow = ApiSchema<'LinkedInvoiceRowDto'>;
+type LinkedPaymentRow = ApiSchema<'LinkedPaymentRowDto'>;
+type LinkedSlotRow = ApiSchema<'LinkedCalendarSlotRowDto'>;
+type LinkedWarrantyRow = ApiSchema<'LinkedWarrantyRowDto'>;
+// Контрагент і наряд у linked-панелі — рахункові DTO (та сама форма у work-order).
+type LinkedCounterpartyRow = ApiSchema<'InvoiceLinkedCounterpartyRowDto'>;
+type LinkedWorkOrderRow = ApiSchema<'InvoiceLinkedWorkOrderRowDto'>;
 
-// Backend повертає raw контрагента; форматуємо через displayCounterpartyName.
-interface LinkedCounterpartyRow {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  companyName: string | null;
-  phone: string | null;
-}
-interface LinkedWorkOrderRow {
-  id: string;
-  number: string;
-  status: string;
-}
+// Решта — поки рукописні: відповідні endpoints ще не анотовані DTO.
 interface LinkedSupplierPaymentRow {
   id: string;
   number: string;
@@ -242,7 +214,7 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           primary: fmtDateTime(row.startAt),
           secondary: row.lift ? row.lift.name : undefined,
           badge: {
-            label: SLOT_STATUS_LABELS[row.status] ?? row.status,
+            label: SLOT_STATUS_LABELS[row.status],
             className:
               row.status === 'BOOKED'
                 ? 'bg-info-subtle text-info-text'
@@ -255,7 +227,7 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
             rows: [
               { label: 'Початок', value: fmtDateTime(row.startAt) },
               { label: 'Кінець', value: fmtDateTime(row.endAt) },
-              { label: 'Статус', value: SLOT_STATUS_LABELS[row.status] ?? row.status },
+              { label: 'Статус', value: SLOT_STATUS_LABELS[row.status] },
               ...(row.lift ? [{ label: 'Підйомник', value: row.lift.name }] : []),
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],

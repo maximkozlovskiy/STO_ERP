@@ -14,7 +14,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
 import {
   UUID_REGEX,
   goodFormSchema,
@@ -38,6 +38,9 @@ import {
   CreateGoodUoMDto,
   UpdateGoodUoMDto,
   GoodUoMResponseDto,
+  GoodStockTotalDto,
+  PaginatedGoodBatchesDto,
+  PaginatedGoodPriceHistoryDto,
 } from './goods.dto';
 import { CreateGoodBarcodeDto, GoodBarcodeResponseDto } from './barcodes.dto';
 import { AssignGoodStatusDto } from '../good-statuses/good-statuses.dto';
@@ -71,6 +74,7 @@ export class GoodsController {
   @Get('stock-totals')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
   @ApiOperation({ summary: 'Загальна кількість товарів на всіх складах (за goodId)' })
+  @ApiOkResponse({ type: [GoodStockTotalDto] })
   stockTotals(@OrgContext() orgId: string, @Query('ids') ids?: string) {
     const goodIds = ids
       ? ids
@@ -272,6 +276,7 @@ export class GoodsController {
   @Get(':id/batches')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Партії товару' })
+  @ApiOkResponse({ type: PaginatedGoodBatchesDto })
   async getBatches(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -294,6 +299,7 @@ export class GoodsController {
   @Get(':id/price-history')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Цінова історія товару' })
+  @ApiOkResponse({ type: PaginatedGoodPriceHistoryDto })
   async getPriceHistory(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     const good = await this.prisma.good.findFirst({
       where: { id, orgId, deletedAt: null },
