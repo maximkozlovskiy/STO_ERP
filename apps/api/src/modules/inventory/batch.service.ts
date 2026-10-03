@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { ApiProperty } from '@nestjs/swagger';
 import { Prisma, BatchCostMethod, StockBatch } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -36,22 +37,26 @@ export interface BatchConsumeResult {
   costPrice: number;
 }
 
-export interface StockBatchDto {
-  id: string;
-  goodId: string;
-  warehouseId: string;
-  purchaseOrderLineId: string | null;
-  batchNumber: string | null;
-  expiryDate: Date | null;
-  receivedQty: number;
-  remainingQty: number;
-  costPrice: number;
-  salePrice: number;
-  isActive: boolean;
-  createdAt: Date;
-  purchaseOrderNumber?: string | null;
-  unitOfMeasureId: string | null;
-  unitShortName: string | null;
+// Клас, НЕ interface: Swagger читає лише класи з @ApiProperty — interface
+// у components.schemas не потрапляє і роут лишається без типу (docs/GOTCHAS.md,
+// той самий клас бага, що й PreviewCandidateDto).
+export class StockBatchDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() goodId!: string;
+  @ApiProperty() warehouseId!: string;
+  @ApiProperty({ type: String, nullable: true }) purchaseOrderLineId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) batchNumber!: string | null;
+  @ApiProperty({ type: Date, nullable: true }) expiryDate!: Date | null;
+  @ApiProperty() receivedQty!: number;
+  @ApiProperty() remainingQty!: number;
+  @ApiProperty() costPrice!: number;
+  @ApiProperty() salePrice!: number;
+  @ApiProperty() isActive!: boolean;
+  @ApiProperty({ type: Date }) createdAt!: Date;
+  // Не optional: `getBatchesForGood` завжди підставляє `?? null`.
+  @ApiProperty({ type: String, nullable: true }) purchaseOrderNumber!: string | null;
+  @ApiProperty({ type: String, nullable: true }) unitOfMeasureId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) unitShortName!: string | null;
 }
 
 @Injectable()

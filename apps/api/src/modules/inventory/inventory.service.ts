@@ -434,7 +434,20 @@ export class InventoryService {
     const items = await this.prisma.stockItem.findMany({
       where,
       include: {
-        good: { select: { id: true, name: true, sku: true, unit: true, salePrice: true } },
+        // brand — колонка «Бренд» у таблиці залишків (InventoryTab). Без неї
+        // колонка рендерилась завжди як «—»: web маскував відсутнє поле
+        // кастом `item as StockItem & { goodBrand?: ... }`. Сусідні
+        // byDocument/byBatch бренд уже віддають — тут була асиметрія.
+        good: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            unit: true,
+            salePrice: true,
+            brand: { select: { name: true } },
+          },
+        },
         warehouse: { select: { id: true, name: true } },
       },
       orderBy: [{ warehouse: { name: 'asc' } }, { good: { name: 'asc' } }],
@@ -446,6 +459,7 @@ export class InventoryService {
       goodId: i.goodId,
       goodName: i.good.name,
       goodSku: i.good.sku,
+      goodBrand: i.good.brand?.name ?? null,
       unit: i.good.unit,
       salePrice: Number(i.good.salePrice),
       warehouseId: i.warehouseId,

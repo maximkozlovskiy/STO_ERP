@@ -12,7 +12,14 @@ import {
   HttpCode,
   Logger,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -23,7 +30,13 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PricingService } from './pricing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { CreatePricingRuleDto, UpdatePricingRuleDto } from './pricing-rules.dto';
+import {
+  ApplyPricingRuleResultDto,
+  CreatePricingRuleDto,
+  PaginatedPricingRulesDto,
+  PricingRuleResponseDto,
+  UpdatePricingRuleDto,
+} from './pricing-rules.dto';
 import { NotFoundException } from '@nestjs/common';
 import { UserRole, PricingRule, PricingRuleTier, Prisma } from '@prisma/client';
 
@@ -84,6 +97,7 @@ export class PricingRulesController {
   @Get()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.STOREKEEPER)
   @ApiOperation({ summary: 'Список правил ціноутворення' })
+  @ApiOkResponse({ type: PaginatedPricingRulesDto })
   async findAll(
     @OrgContext() orgId: string,
     @Query('supplierId', new ParseUUIDPipe({ optional: true })) supplierId?: string,
@@ -118,6 +132,7 @@ export class PricingRulesController {
   @Post()
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Створити правило ціноутворення' })
+  @ApiCreatedResponse({ type: PricingRuleResponseDto })
   async create(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
@@ -185,6 +200,7 @@ export class PricingRulesController {
   @Patch(':id')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Оновити правило ціноутворення' })
+  @ApiOkResponse({ type: PricingRuleResponseDto })
   async update(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
@@ -329,6 +345,7 @@ export class PricingRulesController {
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @HttpCode(204)
   @ApiOperation({ summary: 'Видалити правило ціноутворення' })
+  @ApiNoContentResponse()
   async remove(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
@@ -347,6 +364,7 @@ export class PricingRulesController {
   @Post(':id/apply-all')
   @Roles(UserRole.OWNER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Застосувати правило до всіх відповідних товарів' })
+  @ApiOkResponse({ type: ApplyPricingRuleResultDto })
   async applyAll(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     const existing = await this.prisma.pricingRule.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -416,7 +434,7 @@ export class PricingRulesController {
     return out;
   }
 
-  private toDto(rule: PricingRuleWithRelations) {
+  private toDto(rule: PricingRuleWithRelations): PricingRuleResponseDto {
     const s = rule.supplier;
     const supplierName = s
       ? (s.companyName ?? [s.firstName, s.lastName].filter(Boolean).join(' ') ?? null)

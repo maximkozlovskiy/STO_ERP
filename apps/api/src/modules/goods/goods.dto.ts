@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { StockBatchDto } from '../inventory/batch.service';
 import { GoodType } from '@prisma/client';
 import { UUID_REGEX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
@@ -254,4 +255,43 @@ export class GoodUoMResponseDto {
   @ApiPropertyOptional() depth?: number | null;
   @ApiPropertyOptional() volume?: number | null;
   @ApiPropertyOptional() weight?: number | null;
+}
+
+// ─── Stock totals ──────────────────────────────────────────
+
+export class GoodStockByWarehouseDto {
+  @ApiProperty() warehouseId!: string;
+  @ApiProperty() quantity!: number;
+}
+
+export class GoodStockTotalDto {
+  @ApiProperty() goodId!: string;
+  @ApiProperty({ description: 'Сума залишків по всіх складах' }) totalQuantity!: number;
+  @ApiProperty({ type: [GoodStockByWarehouseDto] })
+  byWarehouse!: GoodStockByWarehouseDto[];
+}
+
+// ─── Партії товару ─────────────────────────────────────────
+// `total` — реальний COUNT з БД, а не items.length (items cap-иться take: 200).
+
+export class PaginatedGoodBatchesDto {
+  @ApiProperty({ type: [StockBatchDto] }) items!: StockBatchDto[];
+  @ApiProperty() total!: number;
+}
+
+// ─── Цінова історія ────────────────────────────────────────
+
+export class GoodPriceHistoryRowDto {
+  @ApiProperty() id!: string;
+  // oldPrice null → перша ціна товару (попередньої не було).
+  @ApiProperty({ type: Number, nullable: true }) oldPrice!: number | null;
+  @ApiProperty() newPrice!: number;
+  @ApiProperty({ type: Number, nullable: true }) costPrice!: number | null;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: Date }) createdAt!: Date;
+}
+
+export class PaginatedGoodPriceHistoryDto {
+  @ApiProperty({ type: [GoodPriceHistoryRowDto] }) items!: GoodPriceHistoryRowDto[];
+  @ApiProperty() total!: number;
 }

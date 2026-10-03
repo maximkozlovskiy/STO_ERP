@@ -10,7 +10,14 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { StockMovementType } from '@prisma/client';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProperty } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiProperty,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import { IsNumber, IsOptional, Min } from 'class-validator';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -19,6 +26,14 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { InventoryService } from './inventory.service';
+import {
+  LowStockItemDto,
+  PaginatedStockMovementsDto,
+  StockByBatchResponseDto,
+  StockByDocumentResponseDto,
+  StockItemRowDto,
+  UpdateMinStockResponseDto,
+} from './stock-items.dto';
 
 class UpdateMinStockDto {
   @ApiProperty({ nullable: true, required: false })
@@ -41,6 +56,7 @@ export class StockItemsController {
   @ApiQuery({ name: 'warehouseId', required: false })
   @ApiQuery({ name: 'goodId', required: false })
   @ApiQuery({ name: 'q', required: false })
+  @ApiOkResponse({ type: [StockItemRowDto] })
   findAll(
     @OrgContext() orgId: string,
     @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
@@ -53,6 +69,7 @@ export class StockItemsController {
   @Get('low')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Товари нижче мінімального залишку' })
+  @ApiOkResponse({ type: [LowStockItemDto] })
   findLow(@OrgContext() orgId: string) {
     return this.inventory.findLowStockItems(orgId);
   }
@@ -65,6 +82,7 @@ export class StockItemsController {
   @ApiQuery({ name: 'goodId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
+  @ApiOkResponse({ type: StockByDocumentResponseDto })
   byDocument(
     @OrgContext() orgId: string,
     @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
@@ -85,6 +103,7 @@ export class StockItemsController {
   @ApiQuery({ name: 'goodId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
+  @ApiOkResponse({ type: StockByBatchResponseDto })
   byBatch(
     @OrgContext() orgId: string,
     @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
@@ -105,6 +124,7 @@ export class StockItemsController {
   @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiOkResponse({ type: PaginatedStockMovementsDto })
   movements(
     @OrgContext() orgId: string,
     @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
@@ -138,6 +158,7 @@ export class StockItemsController {
   @Patch(':id/min-stock')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Встановити мінімальний залишок' })
+  @ApiOkResponse({ type: UpdateMinStockResponseDto })
   updateMinStock(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

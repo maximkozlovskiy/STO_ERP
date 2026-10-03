@@ -878,6 +878,7 @@ export interface paths {
         delete: operations["CounterpartiesController_remove_v1"];
         options?: never;
         head?: never;
+        /** Оновити контрагента */
         patch: operations["CounterpartiesController_update_v1"];
         trace?: never;
     };
@@ -5624,6 +5625,50 @@ export interface components {
             page: number;
             limit: number;
         };
+        CounterpartyLinkedInvoiceRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
+            amount: number;
+            /** Format: date */
+            documentDate: string;
+        };
+        CounterpartyLinkedPurchaseOrderRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED";
+            totalAmount: number;
+            /** Format: date */
+            documentDate: string;
+        };
+        CounterpartyLinkedSupplierPaymentRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+            amount: number;
+            /** @description Код способу оплати (PaymentMethodConfig.code) */
+            method: string;
+            /** Format: date */
+            documentDate: string;
+        };
+        CounterpartyLinkedSupplierReturnRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+            totalAmount: number;
+            /** Format: date */
+            documentDate: string;
+        };
+        CounterpartyLinkedDocumentsDto: {
+            invoices: components["schemas"]["CounterpartyLinkedInvoiceRowDto"][];
+            purchaseOrders: components["schemas"]["CounterpartyLinkedPurchaseOrderRowDto"][];
+            supplierPayments: components["schemas"]["CounterpartyLinkedSupplierPaymentRowDto"][];
+            supplierReturns: components["schemas"]["CounterpartyLinkedSupplierReturnRowDto"][];
+        };
         GarageResponseDto: {
             id: string;
             counterpartyId: string;
@@ -5840,6 +5885,16 @@ export interface components {
             page: number;
             limit: number;
         };
+        GoodStockByWarehouseDto: {
+            warehouseId: string;
+            quantity: number;
+        };
+        GoodStockTotalDto: {
+            goodId: string;
+            /** @description Сума залишків по всіх складах */
+            totalQuantity: number;
+            byWarehouse: components["schemas"]["GoodStockByWarehouseDto"][];
+        };
         AssignGoodStatusDto: {
             /**
              * Format: uuid
@@ -5916,8 +5971,203 @@ export interface components {
             /** @example false */
             isPrimary?: boolean;
         };
+        StockBatchDto: {
+            id: string;
+            goodId: string;
+            warehouseId: string;
+            purchaseOrderLineId: string | null;
+            batchNumber: string | null;
+            /** Format: date-time */
+            expiryDate: string | null;
+            receivedQty: number;
+            remainingQty: number;
+            costPrice: number;
+            salePrice: number;
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            purchaseOrderNumber: string | null;
+            unitOfMeasureId: string | null;
+            unitShortName: string | null;
+        };
+        PaginatedGoodBatchesDto: {
+            items: components["schemas"]["StockBatchDto"][];
+            total: number;
+        };
+        GoodPriceHistoryRowDto: {
+            id: string;
+            oldPrice: number | null;
+            newPrice: number;
+            costPrice: number | null;
+            reason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PaginatedGoodPriceHistoryDto: {
+            items: components["schemas"]["GoodPriceHistoryRowDto"][];
+            total: number;
+        };
+        StockItemRowDto: {
+            id: string;
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            goodBrand: string | null;
+            /** @description Одиниця виміру товару */
+            unit: string;
+            salePrice: number;
+            warehouseId: string;
+            warehouseName: string;
+            quantity: number;
+            /** @description Зарезервовано під наряди */
+            reserved: number;
+            /** @description quantity − reserved */
+            available: number;
+            minStock: number | null;
+            /** @description minStock задано і quantity <= minStock */
+            isLow: boolean;
+        };
+        LowStockItemDto: {
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            unit: string;
+            warehouseName: string;
+            quantity: number;
+            minStock: number;
+            /** @description minStock − quantity */
+            deficit: number;
+        };
+        StockDocumentMovementDto: {
+            /** @enum {string} */
+            type: "RECEIPT" | "WRITEOFF" | "TRANSFER" | "RESERVATION" | "RESERVATION_RELEASE" | "OPENING_BALANCE" | "RETURN";
+            quantity: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StockByDocumentGroupDto: {
+            documentType: string | null;
+            documentId: string | null;
+            /** @description Людиночитна мітка документа */
+            docLabel: string;
+            movements: components["schemas"]["StockDocumentMovementDto"][];
+        };
+        StockByDocumentGoodDto: {
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            goodBrand: string | null;
+            goodUnit: string;
+            totalQuantity: number;
+            documents: components["schemas"]["StockByDocumentGroupDto"][];
+        };
+        StockByDocumentResponseDto: {
+            goods: components["schemas"]["StockByDocumentGoodDto"][];
+        };
+        BatchConsumptionRowDto: {
+            documentType: string;
+            documentId: string;
+            docLabel: string;
+            quantity: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StockByBatchGoodDto: {
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            goodBrand: string | null;
+            batchId: string;
+            batchNumber: string | null;
+            receivedQty: number;
+            remainingQty: number;
+            costPrice: number;
+            salePrice: number;
+            consumptions: components["schemas"]["BatchConsumptionRowDto"][];
+        };
+        StockByBatchGroupDto: {
+            /** @description `<номер ПЗ|manual>::<warehouseId>` */
+            batchGroupKey: string;
+            poNumber: string | null;
+            /** Format: date-time */
+            poDate: string | null;
+            warehouseName: string;
+            goods: components["schemas"]["StockByBatchGoodDto"][];
+        };
+        StockByBatchResponseDto: {
+            batches: components["schemas"]["StockByBatchGroupDto"][];
+        };
+        StockMovementRowDto: {
+            id: string;
+            /** @enum {string} */
+            type: "RECEIPT" | "WRITEOFF" | "TRANSFER" | "RESERVATION" | "RESERVATION_RELEASE" | "OPENING_BALANCE" | "RETURN";
+            quantity: number;
+            price: number | null;
+            goodId: string;
+            goodName: string;
+            goodSku: string | null;
+            warehouseId: string;
+            warehouseName: string;
+            documentType: string | null;
+            documentId: string | null;
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PaginatedStockMovementsDto: {
+            items: components["schemas"]["StockMovementRowDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
         UpdateMinStockDto: {
             minStock?: Record<string, never> | null;
+        };
+        UpdateMinStockResponseDto: {
+            id: string;
+            minStock: number | null;
+        };
+        PricingRuleGoodRefDto: {
+            id: string;
+            name: string;
+            sku: string | null;
+        };
+        PricingRuleTierResponseDto: {
+            id: string;
+            costMin: number;
+            costMax: number | null;
+            percentValue: number;
+            sortOrder: number;
+        };
+        PricingRuleResponseDto: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            type: "PERCENT" | "FIXED_AMOUNT" | "FIXED_PRICE" | "COMPETITOR_PLUS" | "COST_TIER";
+            priority: number;
+            goodId: string | null;
+            good: components["schemas"]["PricingRuleGoodRefDto"] | null;
+            goodCategory: string | null;
+            /** @description Очікувані значення — GoodType, але колонка у БД String? */
+            goodType: string | null;
+            brandId: string | null;
+            brandName: string | null;
+            supplierId: string | null;
+            supplierName: string | null;
+            percentValue: number | null;
+            fixedAmount: number | null;
+            fixedPrice: number | null;
+            roundTo: number | null;
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            tiers: components["schemas"]["PricingRuleTierResponseDto"][];
+        };
+        PaginatedPricingRulesDto: {
+            items: components["schemas"]["PricingRuleResponseDto"][];
+            total: number;
+            page: number;
+            limit: number;
         };
         CreatePricingRuleTierDto: {
             costMin: number;
@@ -5967,6 +6217,12 @@ export interface components {
             fixedPrice?: number;
             roundTo?: number;
             isActive?: boolean;
+        };
+        ApplyPricingRuleResultDto: {
+            /** @description Кількість перерахованих товарів */
+            updated: number;
+            /** @description Повідомлення для користувача (українською) */
+            message: string;
         };
         GoodStatusResponseDto: {
             id: string;
@@ -6305,11 +6561,76 @@ export interface components {
             bankAccountId: string;
             rows: components["schemas"]["ApplyRowDto"][];
         };
+        SettlementBalanceDto: {
+            /** @description Баланс у базовій валюті організації */
+            balance: number;
+            counterpartyId: string;
+        };
+        SettlementTransactionDto: {
+            id: string;
+            /** @enum {string} */
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS";
+            /** @description Сума у валюті транзакції */
+            amount: number;
+            currencyId: string | null;
+            currencyCode: string | null;
+            amountBase: number | null;
+            rateUsed: number | null;
+            documentType: string | null;
+            documentId: string | null;
+            notes: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PaginatedSettlementTransactionsDto: {
+            items: components["schemas"]["SettlementTransactionDto"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
         CreateReconciliationActDto: {
             /** @example 2026-01-01 */
             periodFrom: string;
             /** @example 2026-12-31 */
             periodTo: string;
+        };
+        ReconciliationActSnapshotRowDto: {
+            /** Format: date-time */
+            date: string;
+            /** @enum {string} */
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS";
+            /** @description Сума у валюті транзакції */
+            amount: number;
+            /** @description Сума у базовій валюті (фолбек — amount) */
+            amountBase: number;
+            currencyId: string | null;
+            documentType: string | null;
+            documentId: string | null;
+        };
+        ReconciliationActDetailDto: {
+            id: string;
+            counterpartyId: string;
+            /** Format: date-time */
+            periodFrom: string;
+            /** Format: date-time */
+            periodTo: string;
+            openingBalance: number;
+            closingBalance: number;
+            /** Format: date-time */
+            createdAt: string;
+            transactions: components["schemas"]["ReconciliationActSnapshotRowDto"][];
+        };
+        ReconciliationActDto: {
+            id: string;
+            counterpartyId: string;
+            /** Format: date-time */
+            periodFrom: string;
+            /** Format: date-time */
+            periodTo: string;
+            openingBalance: number;
+            closingBalance: number;
+            /** Format: date-time */
+            createdAt: string;
         };
         WorkOrderLinkedCountsEntryDto: {
             invoices: number;
@@ -9653,7 +9974,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CounterpartyLinkedDocumentsDto"];
+                };
             };
         };
     };
@@ -10466,7 +10789,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["GoodStockTotalDto"][];
+                };
             };
         };
     };
@@ -10796,7 +11121,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaginatedGoodBatchesDto"];
+                };
             };
         };
     };
@@ -10815,7 +11142,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaginatedGoodPriceHistoryDto"];
+                };
             };
         };
     };
@@ -10836,7 +11165,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StockItemRowDto"][];
+                };
             };
         };
     };
@@ -10853,7 +11184,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LowStockItemDto"][];
+                };
             };
         };
     };
@@ -10875,7 +11208,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StockByDocumentResponseDto"];
+                };
             };
         };
     };
@@ -10897,7 +11232,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StockByBatchResponseDto"];
+                };
             };
         };
     };
@@ -10922,7 +11259,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaginatedStockMovementsDto"];
+                };
             };
         };
     };
@@ -10945,7 +11284,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["UpdateMinStockResponseDto"];
+                };
             };
         };
     };
@@ -10984,7 +11325,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaginatedPricingRulesDto"];
+                };
             };
         };
     };
@@ -11005,7 +11348,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PricingRuleResponseDto"];
+                };
             };
         };
     };
@@ -11047,7 +11392,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PricingRuleResponseDto"];
+                };
             };
         };
     };
@@ -11062,11 +11409,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApplyPricingRuleResultDto"];
+                };
             };
         };
     };
@@ -12302,7 +12651,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SettlementBalanceDto"];
+                };
             };
         };
     };
@@ -12324,7 +12675,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaginatedSettlementTransactionsDto"];
+                };
             };
         };
     };
@@ -12343,7 +12696,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReconciliationActDto"][];
+                };
             };
         };
     };
@@ -12366,7 +12721,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReconciliationActDetailDto"];
+                };
             };
         };
     };
@@ -12382,11 +12739,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description PDF акта звірки */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/pdf": string;
+                };
             };
         };
     };
@@ -16315,7 +16675,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InspectionPointDto"][];
+                };
             };
         };
     };

@@ -10,14 +10,28 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiProduces,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { SettlementsAccountService } from './settlements-account.service';
-import { CreateReconciliationActDto } from './settlements.dto';
+import {
+  CreateReconciliationActDto,
+  PaginatedSettlementTransactionsDto,
+  ReconciliationActDetailDto,
+  ReconciliationActDto,
+  SettlementBalanceDto,
+} from './settlements.dto';
 
 @ApiTags('Settlements')
 @Controller('counterparties/:counterpartyId')
@@ -29,6 +43,7 @@ export class SettlementsController {
   @Get('balance')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Баланс контрагента' })
+  @ApiOkResponse({ type: SettlementBalanceDto })
   getBalance(
     @OrgContext() orgId: string,
     @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
@@ -41,6 +56,7 @@ export class SettlementsController {
   @ApiOperation({ summary: 'Транзакції контрагента' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: PaginatedSettlementTransactionsDto })
   getTransactions(
     @OrgContext() orgId: string,
     @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
@@ -53,6 +69,8 @@ export class SettlementsController {
   @Post('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Створити акт звірки' })
+  // Детальна форма (зі snapshot-рядками) — на відміну від списку актів.
+  @ApiCreatedResponse({ type: ReconciliationActDetailDto })
   createAct(
     @OrgContext() orgId: string,
     @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
@@ -65,6 +83,8 @@ export class SettlementsController {
   @Get('reconciliation-acts')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Акти звірки контрагента' })
+  // Список БЕЗ snapshot-рядків — лише шапки актів.
+  @ApiOkResponse({ type: [ReconciliationActDto] })
   getActs(
     @OrgContext() orgId: string,
     @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,
@@ -75,6 +95,8 @@ export class SettlementsController {
   @Get('reconciliation-acts/:actId/pdf')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Завантажити акт звірки у PDF' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ description: 'PDF акта звірки', schema: { type: 'string', format: 'binary' } })
   async downloadActPdf(
     @OrgContext() orgId: string,
     @Param('counterpartyId', ParseUUIDPipe) counterpartyId: string,

@@ -1,6 +1,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
+import type { ApiSchema } from '@sto/shared';
 
 export interface StockByDocumentFilter {
   warehouseId?: string;
@@ -9,85 +10,24 @@ export interface StockByDocumentFilter {
   to?: string;
 }
 
-export interface GoodMovementDoc {
-  documentType: string | null;
-  documentId: string | null;
-  docLabel: string;
-  movements: { type: string; quantity: number; createdAt: string }[];
-}
+// Форми відповідей — зі згенерованих DTO бекенду (контролер анотований).
+// Рукописні дублі розходились із контрактом; тепер єдине джерело правди — openapi.
+// `Date` у DTO бекенду openapi-typescript уже віддає як `string` (format: date-time),
+// тож перетворення на боці web не потрібне.
 
-export interface GoodWithDocuments {
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  goodBrand: string | null;
-  goodUnit: string;
-  totalQuantity: number;
-  documents: GoodMovementDoc[];
-}
+export type GoodMovementDoc = ApiSchema<'StockByDocumentGroupDto'>;
+export type GoodWithDocuments = ApiSchema<'StockByDocumentGoodDto'>;
 
-// BatchConsumption schema (packages/database/prisma/schema/07_inventory.prisma)
-// has `documentType String` + `documentId String` — both NON-null. Backend
-// `byBatch()` maps them verbatim without `?? null`. Previously typed as
-// `string | null` here — over-permissive, would TS-allow dead null checks.
-export interface BatchConsumptionRow {
-  documentType: string;
-  documentId: string;
-  docLabel: string;
-  quantity: number;
-  createdAt: string;
-}
+export type BatchConsumptionRow = ApiSchema<'BatchConsumptionRowDto'>;
+export type GoodInBatch = ApiSchema<'StockByBatchGoodDto'>;
+export type BatchGroup = ApiSchema<'StockByBatchGroupDto'>;
 
-export interface GoodInBatch {
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  goodBrand: string | null;
-  batchId: string;
-  batchNumber: string | null;
-  receivedQty: number;
-  remainingQty: number;
-  costPrice: number;
-  salePrice: number;
-  consumptions: BatchConsumptionRow[];
-}
+export type StockItem = ApiSchema<'StockItemRowDto'>;
 
-export interface BatchGroup {
-  batchGroupKey: string;
-  poNumber: string | null;
-  poDate: string | null;
-  warehouseName: string;
-  goods: GoodInBatch[];
-}
-
-export interface StockItem {
-  id: string;
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  unit: string;
-  salePrice: number;
-  warehouseId: string;
-  warehouseName: string;
-  quantity: number;
-  reserved: number;
-  available: number;
-  minStock: number | null;
-  isLow: boolean;
-}
-
-// /stock-items/low returns a flat projection (raw SQL) — no id/reserved/available.
-// Shape differs from StockItem; do not conflate.
-export interface LowStockItem {
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  unit: string;
-  warehouseName: string;
-  quantity: number;
-  minStock: number;
-  deficit: number;
-}
+// /stock-items/low — плоска проєкція з raw SQL: немає id/reserved/available,
+// а minStock НЕ nullable (запит фільтрує `minStock IS NOT NULL`).
+// Форма відрізняється від StockItem — не змішувати.
+export type LowStockItem = ApiSchema<'LowStockItemDto'>;
 
 export interface InventoryFilter {
   warehouseId?: string;
@@ -105,21 +45,7 @@ export interface StockMovementFilter {
   limit?: number;
 }
 
-export interface StockMovement {
-  id: string;
-  type: string;
-  quantity: number;
-  price: number | null;
-  goodId: string;
-  goodName: string;
-  goodSku: string | null;
-  warehouseId: string;
-  warehouseName: string;
-  documentType: string | null;
-  documentId: string | null;
-  notes: string | null;
-  createdAt: string;
-}
+export type StockMovement = ApiSchema<'StockMovementRowDto'>;
 
 export const inventoryKeys = {
   all: ['inventory'] as const,

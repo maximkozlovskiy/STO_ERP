@@ -2822,7 +2822,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CounterpartyLinkedDocumentsDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2899,6 +2906,7 @@
             "bearer": []
           }
         ],
+        "summary": "Оновити контрагента",
         "tags": [
           "Контрагенти"
         ]
@@ -4315,7 +4323,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GoodStockTotalDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4911,7 +4929,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedGoodBatchesDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4940,7 +4965,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedGoodPriceHistoryDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4985,7 +5017,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockItemRowDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5005,7 +5047,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LowStockItemDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5058,7 +5110,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockByDocumentResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5111,7 +5170,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockByBatchResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5197,7 +5263,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedStockMovementsDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5236,7 +5309,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateMinStockResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5302,7 +5382,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedPricingRulesDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5330,7 +5417,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5369,7 +5463,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5424,8 +5525,15 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyPricingRuleResultDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7491,7 +7599,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettlementBalanceDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7532,7 +7647,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedSettlementTransactionsDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7571,7 +7693,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationActDetailDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7598,7 +7727,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReconciliationActDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7635,7 +7774,15 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "PDF акта звірки",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14768,7 +14915,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InspectionPointDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -17908,6 +18065,183 @@
           "limit"
         ]
       },
+      "CounterpartyLinkedInvoiceRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "SENT",
+              "PARTIALLY_PAID",
+              "PAID",
+              "OVERDUE",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "amount",
+          "documentDate"
+        ]
+      },
+      "CounterpartyLinkedPurchaseOrderRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ORDERED",
+              "RECEIVED",
+              "PARTIAL",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "number"
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "totalAmount",
+          "documentDate"
+        ]
+      },
+      "CounterpartyLinkedSupplierPaymentRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "CONFIRMED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "method": {
+            "type": "string",
+            "description": "Код способу оплати (PaymentMethodConfig.code)"
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "amount",
+          "method",
+          "documentDate"
+        ]
+      },
+      "CounterpartyLinkedSupplierReturnRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "CONFIRMED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "number"
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "totalAmount",
+          "documentDate"
+        ]
+      },
+      "CounterpartyLinkedDocumentsDto": {
+        "type": "object",
+        "properties": {
+          "invoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CounterpartyLinkedInvoiceRowDto"
+            }
+          },
+          "purchaseOrders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CounterpartyLinkedPurchaseOrderRowDto"
+            }
+          },
+          "supplierPayments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CounterpartyLinkedSupplierPaymentRowDto"
+            }
+          },
+          "supplierReturns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CounterpartyLinkedSupplierReturnRowDto"
+            }
+          }
+        },
+        "required": [
+          "invoices",
+          "purchaseOrders",
+          "supplierPayments",
+          "supplierReturns"
+        ]
+      },
       "GarageResponseDto": {
         "type": "object",
         "properties": {
@@ -18648,6 +18982,44 @@
           "limit"
         ]
       },
+      "GoodStockByWarehouseDto": {
+        "type": "object",
+        "properties": {
+          "warehouseId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "warehouseId",
+          "quantity"
+        ]
+      },
+      "GoodStockTotalDto": {
+        "type": "object",
+        "properties": {
+          "goodId": {
+            "type": "string"
+          },
+          "totalQuantity": {
+            "type": "number",
+            "description": "Сума залишків по всіх складах"
+          },
+          "byWarehouse": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoodStockByWarehouseDto"
+            }
+          }
+        },
+        "required": [
+          "goodId",
+          "totalQuantity",
+          "byWarehouse"
+        ]
+      },
       "AssignGoodStatusDto": {
         "type": "object",
         "properties": {
@@ -18847,6 +19219,608 @@
           "barcode"
         ]
       },
+      "StockBatchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "purchaseOrderLineId": {
+            "type": "string",
+            "nullable": true
+          },
+          "batchNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiryDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "receivedQty": {
+            "type": "number"
+          },
+          "remainingQty": {
+            "type": "number"
+          },
+          "costPrice": {
+            "type": "number"
+          },
+          "salePrice": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "purchaseOrderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitOfMeasureId": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitShortName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "goodId",
+          "warehouseId",
+          "purchaseOrderLineId",
+          "batchNumber",
+          "expiryDate",
+          "receivedQty",
+          "remainingQty",
+          "costPrice",
+          "salePrice",
+          "isActive",
+          "createdAt",
+          "purchaseOrderNumber",
+          "unitOfMeasureId",
+          "unitShortName"
+        ]
+      },
+      "PaginatedGoodBatchesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockBatchDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "GoodPriceHistoryRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "oldPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "newPrice": {
+            "type": "number"
+          },
+          "costPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "oldPrice",
+          "newPrice",
+          "costPrice",
+          "reason",
+          "createdAt"
+        ]
+      },
+      "PaginatedGoodPriceHistoryDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoodPriceHistoryRowDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ]
+      },
+      "StockItemRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodBrand": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "description": "Одиниця виміру товару"
+          },
+          "salePrice": {
+            "type": "number"
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "reserved": {
+            "type": "number",
+            "description": "Зарезервовано під наряди"
+          },
+          "available": {
+            "type": "number",
+            "description": "quantity − reserved"
+          },
+          "minStock": {
+            "type": "number",
+            "nullable": true
+          },
+          "isLow": {
+            "type": "boolean",
+            "description": "minStock задано і quantity <= minStock"
+          }
+        },
+        "required": [
+          "id",
+          "goodId",
+          "goodName",
+          "goodSku",
+          "goodBrand",
+          "unit",
+          "salePrice",
+          "warehouseId",
+          "warehouseName",
+          "quantity",
+          "reserved",
+          "available",
+          "minStock",
+          "isLow"
+        ]
+      },
+      "LowStockItemDto": {
+        "type": "object",
+        "properties": {
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string"
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "minStock": {
+            "type": "number"
+          },
+          "deficit": {
+            "type": "number",
+            "description": "minStock − quantity"
+          }
+        },
+        "required": [
+          "goodId",
+          "goodName",
+          "goodSku",
+          "unit",
+          "warehouseName",
+          "quantity",
+          "minStock",
+          "deficit"
+        ]
+      },
+      "StockDocumentMovementDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "RECEIPT",
+              "WRITEOFF",
+              "TRANSFER",
+              "RESERVATION",
+              "RESERVATION_RELEASE",
+              "OPENING_BALANCE",
+              "RETURN"
+            ]
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "quantity",
+          "createdAt"
+        ]
+      },
+      "StockByDocumentGroupDto": {
+        "type": "object",
+        "properties": {
+          "documentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "docLabel": {
+            "type": "string",
+            "description": "Людиночитна мітка документа"
+          },
+          "movements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockDocumentMovementDto"
+            }
+          }
+        },
+        "required": [
+          "documentType",
+          "documentId",
+          "docLabel",
+          "movements"
+        ]
+      },
+      "StockByDocumentGoodDto": {
+        "type": "object",
+        "properties": {
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodBrand": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodUnit": {
+            "type": "string"
+          },
+          "totalQuantity": {
+            "type": "number"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockByDocumentGroupDto"
+            }
+          }
+        },
+        "required": [
+          "goodId",
+          "goodName",
+          "goodSku",
+          "goodBrand",
+          "goodUnit",
+          "totalQuantity",
+          "documents"
+        ]
+      },
+      "StockByDocumentResponseDto": {
+        "type": "object",
+        "properties": {
+          "goods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockByDocumentGoodDto"
+            }
+          }
+        },
+        "required": [
+          "goods"
+        ]
+      },
+      "BatchConsumptionRowDto": {
+        "type": "object",
+        "properties": {
+          "documentType": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "docLabel": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "documentType",
+          "documentId",
+          "docLabel",
+          "quantity",
+          "createdAt"
+        ]
+      },
+      "StockByBatchGoodDto": {
+        "type": "object",
+        "properties": {
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodBrand": {
+            "type": "string",
+            "nullable": true
+          },
+          "batchId": {
+            "type": "string"
+          },
+          "batchNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "receivedQty": {
+            "type": "number"
+          },
+          "remainingQty": {
+            "type": "number"
+          },
+          "costPrice": {
+            "type": "number"
+          },
+          "salePrice": {
+            "type": "number"
+          },
+          "consumptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchConsumptionRowDto"
+            }
+          }
+        },
+        "required": [
+          "goodId",
+          "goodName",
+          "goodSku",
+          "goodBrand",
+          "batchId",
+          "batchNumber",
+          "receivedQty",
+          "remainingQty",
+          "costPrice",
+          "salePrice",
+          "consumptions"
+        ]
+      },
+      "StockByBatchGroupDto": {
+        "type": "object",
+        "properties": {
+          "batchGroupKey": {
+            "type": "string",
+            "description": "`<номер ПЗ|manual>::<warehouseId>`"
+          },
+          "poNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "poDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "goods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockByBatchGoodDto"
+            }
+          }
+        },
+        "required": [
+          "batchGroupKey",
+          "poNumber",
+          "poDate",
+          "warehouseName",
+          "goods"
+        ]
+      },
+      "StockByBatchResponseDto": {
+        "type": "object",
+        "properties": {
+          "batches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockByBatchGroupDto"
+            }
+          }
+        },
+        "required": [
+          "batches"
+        ]
+      },
+      "StockMovementRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "RECEIPT",
+              "WRITEOFF",
+              "TRANSFER",
+              "RESERVATION",
+              "RESERVATION_RELEASE",
+              "OPENING_BALANCE",
+              "RETURN"
+            ],
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "price": {
+            "type": "number",
+            "nullable": true
+          },
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true
+          },
+          "warehouseId": {
+            "type": "string"
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "documentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "quantity",
+          "price",
+          "goodId",
+          "goodName",
+          "goodSku",
+          "warehouseId",
+          "warehouseName",
+          "documentType",
+          "documentId",
+          "notes",
+          "createdAt"
+        ]
+      },
+      "PaginatedStockMovementsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockMovementRowDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
       "UpdateMinStockDto": {
         "type": "object",
         "properties": {
@@ -18855,6 +19829,208 @@
             "nullable": true
           }
         }
+      },
+      "UpdateMinStockResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "minStock": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "minStock"
+        ]
+      },
+      "PricingRuleGoodRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sku"
+        ]
+      },
+      "PricingRuleTierResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "costMin": {
+            "type": "number"
+          },
+          "costMax": {
+            "type": "number",
+            "nullable": true
+          },
+          "percentValue": {
+            "type": "number"
+          },
+          "sortOrder": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "costMin",
+          "costMax",
+          "percentValue",
+          "sortOrder"
+        ]
+      },
+      "PricingRuleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "PERCENT",
+              "FIXED_AMOUNT",
+              "FIXED_PRICE",
+              "COMPETITOR_PLUS",
+              "COST_TIER"
+            ],
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "goodId": {
+            "type": "string",
+            "nullable": true
+          },
+          "good": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PricingRuleGoodRefDto"
+              }
+            ]
+          },
+          "goodCategory": {
+            "type": "string",
+            "nullable": true
+          },
+          "goodType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Очікувані значення — GoodType, але колонка у БД String?"
+          },
+          "brandId": {
+            "type": "string",
+            "nullable": true
+          },
+          "brandName": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierId": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierName": {
+            "type": "string",
+            "nullable": true
+          },
+          "percentValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "fixedAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "fixedPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "roundTo": {
+            "type": "number",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRuleTierResponseDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "priority",
+          "goodId",
+          "good",
+          "goodCategory",
+          "goodType",
+          "brandId",
+          "brandName",
+          "supplierId",
+          "supplierName",
+          "percentValue",
+          "fixedAmount",
+          "fixedPrice",
+          "roundTo",
+          "isActive",
+          "createdAt",
+          "tiers"
+        ]
+      },
+      "PaginatedPricingRulesDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRuleResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
       },
       "CreatePricingRuleTierDto": {
         "type": "object",
@@ -19029,6 +20205,23 @@
             "type": "boolean"
           }
         }
+      },
+      "ApplyPricingRuleResultDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "Кількість перерахованих товарів"
+          },
+          "message": {
+            "type": "string",
+            "description": "Повідомлення для користувача (українською)"
+          }
+        },
+        "required": [
+          "updated",
+          "message"
+        ]
       },
       "GoodStatusResponseDto": {
         "type": "object",
@@ -20057,6 +21250,120 @@
           "rows"
         ]
       },
+      "SettlementBalanceDto": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "number",
+            "description": "Баланс у базовій валюті організації"
+          },
+          "counterpartyId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "balance",
+          "counterpartyId"
+        ]
+      },
+      "SettlementTransactionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "CHARGE",
+              "PAYMENT",
+              "REFUND",
+              "PREPAYMENT",
+              "CREDIT_NOTE",
+              "SUPPLIER_CHARGE",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_REFUND",
+              "FX_GAIN",
+              "FX_LOSS"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Сума у валюті транзакції"
+          },
+          "currencyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "currencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "amountBase": {
+            "type": "number",
+            "nullable": true
+          },
+          "rateUsed": {
+            "type": "number",
+            "nullable": true
+          },
+          "documentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "amount",
+          "currencyId",
+          "currencyCode",
+          "amountBase",
+          "rateUsed",
+          "documentType",
+          "documentId",
+          "notes",
+          "createdAt"
+        ]
+      },
+      "PaginatedSettlementTransactionsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettlementTransactionDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
       "CreateReconciliationActDto": {
         "type": "object",
         "properties": {
@@ -20072,6 +21379,142 @@
         "required": [
           "periodFrom",
           "periodTo"
+        ]
+      },
+      "ReconciliationActSnapshotRowDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "enum": [
+              "CHARGE",
+              "PAYMENT",
+              "REFUND",
+              "PREPAYMENT",
+              "CREDIT_NOTE",
+              "SUPPLIER_CHARGE",
+              "SUPPLIER_PAYMENT",
+              "SUPPLIER_REFUND",
+              "FX_GAIN",
+              "FX_LOSS"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Сума у валюті транзакції"
+          },
+          "amountBase": {
+            "type": "number",
+            "description": "Сума у базовій валюті (фолбек — amount)"
+          },
+          "currencyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "date",
+          "type",
+          "amount",
+          "amountBase",
+          "currencyId",
+          "documentType",
+          "documentId"
+        ]
+      },
+      "ReconciliationActDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "counterpartyId": {
+            "type": "string"
+          },
+          "periodFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "periodTo": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "openingBalance": {
+            "type": "number"
+          },
+          "closingBalance": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationActSnapshotRowDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "counterpartyId",
+          "periodFrom",
+          "periodTo",
+          "openingBalance",
+          "closingBalance",
+          "createdAt",
+          "transactions"
+        ]
+      },
+      "ReconciliationActDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "counterpartyId": {
+            "type": "string"
+          },
+          "periodFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "periodTo": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "openingBalance": {
+            "type": "number"
+          },
+          "closingBalance": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "counterpartyId",
+          "periodFrom",
+          "periodTo",
+          "openingBalance",
+          "closingBalance",
+          "createdAt"
         ]
       },
       "WorkOrderLinkedCountsEntryDto": {
