@@ -12,7 +12,7 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -463,9 +463,9 @@ export class PaymentsService {
             }),
           ]);
           if (fxExisting === 0) {
-            const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
-            const paidBase = Number(paidAgg._sum.amountBase ?? 0);
-            const fx = roundMoney(chargeBase - paidBase);
+            const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
+            const paidBase = moneyFromDecimal(paidAgg._sum.amountBase);
+            const fx = money(chargeBase - paidBase);
             // EPS 0.005: нижче — копійчаний дрейф округлення / той самий курс → FX не потрібна
             // (і createTransaction відхилив би amount≤0).
             if (Math.abs(fx) >= 0.005) {

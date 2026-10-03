@@ -5,7 +5,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { roundMoney } from '../../common/utils/math';
+import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
 import { CashOperationResponseDto, CashReasonDto, CreateCashOperationDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
@@ -49,7 +49,7 @@ export class CashService {
     input: CreateCashOperationInput,
     tx?: Prisma.TransactionClient,
   ): Promise<CashOperationResponseDto> {
-    const amount = roundMoney(input.amount);
+    const amount = money(input.amount);
     if (!(amount > 0))
       throw new BadRequestException(translateError('err.cash.amountMustBePositive', getLocale()));
 
@@ -112,14 +112,16 @@ export class CashService {
     const run = async (client: Prisma.TransactionClient) => {
       // Overdraft-guard: OUT не може вигнати касу в мінус. Баланс читаємо ТИМ САМИМ client, що й
       // insert нижче — тож multi-OUT в одній tx (payroll: OUT на співробітника) враховує вже-списане
-      // цієї транзакції. Толеранс −0.001 щоб копійкова похибка roundMoney не давала хибний блок.
+      // цієї транзакції. Толеранс −0.001 лишається: з Money обидва операнди кратні копійці й
+      // похибки вже немає, але поріг також поглинає легітимну копійчану різницю — знімати його
+      // означало б змінити поведінку guard-а, а не прибрати мертвий код.
       if (input.direction === 'OUT') {
         const balance = await this.getBalance(orgId, register.id, client);
         if (balance - amount < -0.001) {
           throw new BadRequestException(
             // Суми — у валюті каси (каса моно-валютна), тож без хардкоду ₴ (каса може бути USD/EUR).
             translateError('err.cash.insufficientCash', getLocale(), {
-              available: roundMoney(balance),
+              available: balance,
               required: amount,
             }),
           );
@@ -214,41 +216,49 @@ export class CashService {
     orgId: string,
     cashRegisterId: string,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
-  ): Promise<number> {
+  ): Promise<Money> {
     const register = await db.cashRegister.findFirst({
       where: { id: cashRegisterId, orgId, deletedAt: null },
       select: { initialBalance: true },
     });
     if (!register)
       throw new NotFoundException(translateError('err.cashRegister.notFound', getLocale()));
-    return this.computeBalance(orgId, cashRegisterId, Number(register.initialBalance), db);
+    return this.computeBalance(
+      orgId,
+      cashRegisterId,
+      moneyFromDecimal(register.initialBalance),
+      db,
+    );
   }
 
   /**
    * Пакетний розрахунок балансів кількох кас ОДНИМ запитом (замість N×getBalance = 3×N запитів).
    * `initials` — мапа cashRegisterId → initialBalance (виклик уже має її з кешованого DTO, тож
    * реєстри не перечитуються). Один `groupBy` по (cashRegisterId, direction) з `cashRegisterId IN
-   * [ids]` замінює 2×N агрегацій. Семантика ІДЕНТИЧНА getBalance: initial + Σ(IN) − Σ(OUT), roundMoney.
+   * [ids]` замінює 2×N агрегацій. Семантика ІДЕНТИЧНА getBalance: initial + Σ(IN) − Σ(OUT), money().
    * Пустий вхід → пуста мапа (0 запитів). Каси без операцій отримують чистий initialBalance.
    */
-  async getBalances(orgId: string, initials: Map<string, number>): Promise<Map<string, number>> {
+  async getBalances(orgId: string, initials: Map<string, number>): Promise<Map<string, Money>> {
     const ids = [...initials.keys()];
-    const result = new Map<string, number>();
+    const result = new Map<string, Money>();
     if (ids.length === 0) return result;
     const grouped = await this.prisma.cashOperation.groupBy({
       by: ['cashRegisterId', 'direction'],
       where: { orgId, cashRegisterId: { in: ids } },
       _sum: { amount: true },
     });
-    // sign*amount акумулятор на реєстр (IN +, OUT −).
+    // sign*amount акумулятор на реєстр (IN +, OUT −). Акумулятор — сирий number:
+    // округлення раз у кінці (money() нижче), а не покроково.
     const deltas = new Map<string, number>();
     for (const g of grouped) {
-      const sum = Number(g._sum.amount ?? 0);
-      const signed = g.direction === 'IN' ? sum : -sum;
+      const sum = moneyFromDecimal(g._sum.amount);
+      // `sum * -1`, а не `-sum`: унарний мінус до Money заборонений лінтом
+      // (no-unsafe-unary-minus) — заперечення не зберігає інваріант бренду.
+      const signed = g.direction === 'IN' ? sum : sum * -1;
       deltas.set(g.cashRegisterId, (deltas.get(g.cashRegisterId) ?? 0) + signed);
     }
     for (const [id, initial] of initials) {
-      result.set(id, roundMoney(initial + (deltas.get(id) ?? 0)));
+      result.set(id, money(initial + (deltas.get(id) ?? 0)));
     }
     return result;
   }
@@ -258,7 +268,7 @@ export class CashService {
     cashRegisterId: string,
     initial: number,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
-  ): Promise<number> {
+  ): Promise<Money> {
     const [inAgg, outAgg] = await Promise.all([
       db.cashOperation.aggregate({
         where: { orgId, cashRegisterId, direction: 'IN' },
@@ -269,9 +279,9 @@ export class CashService {
         _sum: { amount: true },
       }),
     ]);
-    const inSum = Number(inAgg._sum.amount ?? 0);
-    const outSum = Number(outAgg._sum.amount ?? 0);
-    return roundMoney(initial + inSum - outSum);
+    const inSum = moneyFromDecimal(inAgg._sum.amount);
+    const outSum = moneyFromDecimal(outAgg._sum.amount);
+    return money(initial + inSum - outSum);
   }
 
   async listOperations(
