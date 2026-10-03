@@ -9,16 +9,16 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-03 (АУДИТ: Кроки 1-4 ЗАКРИТО + залишок Кроку 4 розкатано — docs/AUDIT-2026-10.md)
-Останнє:    Кодогенерація типів API розкатана на 7 модулів (гілка chore/api-types-rollout):
-            58 роутів анотовано @ApiOkResponse, 7 хуків на ApiSchema<>, знято 18 рукописних типів.
-            Схем у документі 236 → 247. Знайдено: 3 реальні баги (status: string у
-            useWorkOrderTransition і stock-documents handleTransition — довільний рядок у стан;
-            2 фікстури з неіснуючим source:'IMPORT'), 4 баги в DTO беку (StockDocument/
-            BankTransaction enum-колонки як string; PreviewCandidateDto як interface → невидимий
-            Swagger; BookingRequest.status без переліку), 1 мертвий assertion.
-            Нова пастка → docs/GOTCHAS.md «пастка 3: interface у Swagger НЕВИДИМИЙ».
-Фаза:       Аудит технологій, Кроки 1-3 ЗАКРИТО:
+Дата:       2026-10-03 (АУДИТ Кроки 1-4 ЗАКРИТО + прохід по техборгу — docs/AUDIT-2026-10.md,
+            docs/TECH-DEBT.md)
+Останнє:    Money-бренд на invoices.service (743783e8) — і головне, ВСТАНОВЛЕНО МЕЖУ його
+            застосування: брендувати точки ОБЧИСЛЕННЯ, не точки серіалізації. З ~37 Number()
+            у файлі перетворено 7 — ті, чий результат пишеться назад у БД. Решта (мапінг
+            Decimal→JSON у toResponseDto) лишилась Number(): там значення вже округлене
+            Postgres, і бренд лише розмив би сигнал. Правило → MP-B11 у docs/PATTERNS.md.
+            Поріг FX (>= 0.005) перевірено окремо: 500 000 випадків, 0 розбіжностей — Money
+            зробив наявну коректність типом, а не виправив баг.
+Фаза:       Аудит технологій, Кроки 1-4 ЗАКРИТО + прохід по боргу:
             · Крок 1 — якість: тести API під tsc+eslint (77 помилок → 0), coverage-пороги у CI,
               eslint+commitlint у pre-commit, перші тести в packages/shared, FSM-парність бек↔shared.
             · Крок 2 — CI: docker build на кожен PR, Postgres для 7 integration-специв (+REQUIRE_DB,
@@ -26,8 +26,14 @@
             · Крок 3 — версії: NestJS 10→12 (+Fastify 4→5), Prisma 5→7, Zod 3→4, Vitest 2→5,
               TypeScript 5.7→6, next→16.3.8, bcrypt 5→6.
               БЕЗПЕКА: на runtime-шляху було 16 вразливих модулів (4 critical) → НУЛЬ high/critical.
-            Відкладено: TS 7 (typescript-eslint не підтримує, чекає 7.1) → потребує міграції api на ESM
-            (NestJS 12 уже "type":"module"). Prisma 8 у RC — не чіпати.
+            · Крок 4 — кодогенерація типів із OpenAPI: 301 роут із 422 типізовано, 7 хуків на
+              ApiSchema<>, знято 18 рукописних типів. Саме вона знайшла колонку «Бренд», що
+              ЗАВЖДИ показувала «—» (InventoryService не включав brand у select).
+            · Борг: обробка помилок на фронті 264 → 0, правила підняті з warn до error.
+            Відкладено ПИСЬМОВО, з виміряною ціною (docs/TECH-DEBT.md): TS 7 (typescript-eslint
+            каже прямо «does not support TS 7.0», чекає 7.1); api→ESM (виміряно: 1917 помилок →
+            499 → 493 × TS1479; NestJS 12 ESM проти CJS-Prisma/BullMQ/ioredis — перехід
+            ПЕРЕВЕРТАЄ розрив, а не усуває); Prisma 8 у RC — не чіпати.
             PHASES.md хвости: EAS Build (mobile), фінальний smoke-test на чистій VM (МУСИТЬ `docker compose
             build` ОБИДВА образи на node:22-alpine — ловить native-ABI recompile sharp/bcrypt/argon).
 TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З ТЕСТАМИ: новий
@@ -42,9 +48,12 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       8fe316f0 fix(types) — дочищено type-помилки у тестах API (22 останні з 77); vitest
-            188 файлів / 2861 тест green (3 прогони поспіль). Попередній: optimize(ocr) b5325e7f — усунено подвійний OCR (кеш за хешем) + re-render майстра імпорту;
-            попередній 58fce607 fix(ocr): стеля площі полотна
+HEAD:       743783e8 refactor(invoices) — Money на invoices.service злито в main.
+            api 2895/2895 (191 файл) · web 881 · shared 4 · tsc 0 · eslint 0 errors ·
+            циклічних залежностей 0 (1323 модулі). Покриття api 62% — ЧЕСНА цифра після
+            Vitest 5 (Vitest 2 рахував лише імпортовані тестами файли, 78% ховало непокрите).
+            Борг, що лишився: 60 роутів без типів (reports потребує DTO з нуля — reports.dto.ts
+            не існує), 29 toast→i18n у 14 файлах (жоден не має useTranslation).
 Optimize(дуга імпорту+OCR, 44085da0..58fce607): 2026-10-02 (auto, b5325e7f). ГОЛОВНЕ — подвійний OCR:
             майстер читав один файл двічі (rawPreview→previewImport), для скана/фото = ОКРЕМИЙ OCR-прогін
             1-5с/стор ВДРУГЕ. Fix: parseGridCached — кеш розпізнаної сітки за sha256 вмісту (Redis, TTL
@@ -414,6 +423,36 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Аудит сучасних патернів + закриття техборгу — 2026-10-03, HEAD 743783e8 (d37f1234..743783e8):
+  ЧОТИРИ КРОКИ АУДИТУ (docs/AUDIT-2026-10.md) + прохід по боргу (docs/TECH-DEBT.md).
+  МАЖОРИ: NestJS 10→12 + Fastify 4→5, Prisma 5→7 (driver adapters), Zod 3→4, Vitest 2→5,
+  TypeScript 5.9→6. TS 7 ВІДКОЧЕНО — typescript-eslint каже прямо «does not support TS 7.0».
+  Безпека на runtime-шляху: 16 модулів (4 critical) → 1 HIGH (http-cache-semantics, devDep,
+  фіксу ще не опубліковано).
+  ГОЛОВНЕ ЗНАЙДЕНЕ (не теорія — реальні дефекти):
+  (1) 7 integration-специв (включно з tenant-guard — «ЄДИНЕ реальне покриття guard-а»)
+      РОКАМИ не виконувались у CI: «немає БД → тихо skip» виглядає як успіх. Гард REQUIRE_DB=1.
+  (2) Хибно-зелений тест: .resolves.not.toThrow БЕЗ дужок — не перевіряв нічого.
+  (3) refresh-cookie Max-Age у мс замість секунд (~82 роки).
+  (4) Колонка «Бренд» у залишках ЗАВЖДИ «—» — InventoryService не включав brand у select;
+      web маскував кастом. Знайдено саме кодогенерацією типів із OpenAPI.
+  (5) Крок «Seed database» у CI був зламаний.
+  ЦИФРИ, ЯКІ ДОВЕЛОСЬ ВИПРАВЛЯТИ ТРИЧІ (урок: grep-оцінка ≠ вимір):
+  «59 контролерів без анотацій» → 37 (grep не бачив форму @ApiResponse);
+  «144 нетипізовані роути» → типу потребують 60 (52 DELETE/204, 9 файлових);
+  «31 hardcoded toast» → 34 у 15 файлах.
+  ESM ВИМІРЯНО, НЕ ВГАДАНО: node16+type:module = 1917 помилок → 499 з
+  rewriteRelativeImportExtensions → 493 × TS1479. Корінь: NestJS 12 ESM, а Prisma/BullMQ/
+  ioredis/ExcelJS — CJS; перехід не усуває розрив, а ПЕРЕВЕРТАЄ його. Відкладено письмово.
+  Turbo-флейк (0/3 зелених) — не баг коду: 16 ядер, api capped 4, web без межі.
+  maxWorkers:6 → 9/9.
+  Money-бренд розкотано: vat.ts → payroll.calculator → settlements-account → invoices.service.
+  На invoices встановлено МЕЖУ: брендувати обчислення, не серіалізацію (7 із ~37 Number()).
+  Записано як MP-B11 у PATTERNS.md.
+  Стан: tsc 0 · eslint 0 errors · api 2895/2895 (191) · web 881 · shared 4 · циклів 0 (1323 модулі).
+  Борг, що лишився: 60 роутів без типів (reports потребує DTO з нуля), 29 toast→i18n,
+  TS 7 / ESM / Prisma 8 — свідомо відкладені з причинами у docs/TECH-DEBT.md.
+
 QA-цикл дуги імпорту накладних — 2026-10-02, HEAD 6bc17d05 (27c687ee..6bc17d05):
   8 етапів: sync → review → optimize → simplify → tester → lint → security → E2E.
   ГОЛОВНЕ ЗНАЙДЕНЕ:

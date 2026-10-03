@@ -911,6 +911,47 @@ export-обмеженням (той самий рубіж, що й Server Compon
 
 ---
 
+## MP-B11 — бренд `Money`: брендувати обчислення, не серіалізацію
+
+`Money` (`common/utils/money.ts`) — `number` із фантомним полем. Він не змінює рантайм;
+його сенс у тому, що **пропущене округлення стає помилкою типу**. Саме тому його не можна
+ставити скрізь: якщо `moneyFromDecimal` стоїть на кожному читанні з БД, він перестає
+означати «тут рахують гроші» і сигнал зникає.
+
+**Брендувати — там, де значення годує арифметику, результат якої пишеться назад:**
+
+```ts
+// ✅ множиться, результат іде в БД
+const unitPrice = moneyFromDecimal(existing.unitPrice);
+const priceWithoutVat = money(quantity * unitPrice);
+
+// ✅ різниця порівнюється з порогом і створює транзакцію
+const paymentRemaining = money(moneyFromDecimal(inv.amount) - moneyFromDecimal(inv.paidAmount));
+```
+
+**Не брендувати — мапінг `Decimal`→JSON у `toResponseDto`:**
+
+```ts
+// ✅ лишається Number(): значення вже округлене Postgres, нової арифметики немає
+return { amount: Number(inv.amount), totalVat: Number(inv.totalVat) };
+
+// ❌ шум: бренд нічого не стереже, лише ховає справжні точки обчислення
+return { amount: moneyFromDecimal(inv.amount) };
+```
+
+**Ставки — не гроші.** `vatRate`, `rateUsed`, коефіцієнти лишаються `Number()`: округлення
+до копійок на них неправильне за змістом.
+
+**Суматори округлюють РАЗ у кінці** (`sumMoney`, `sumLineTotals`) — не покроково.
+Виміряно на 200 000 наборів: на сирих значеннях покрокове округлення **накопичує** помилку
+(~51% розходжень), на вже-округлених рядках із БД різниці немає. Обидва суматори мусять
+лишатись узгодженими — інваріант `Σ(рядки) === total` стереже
+`money.invariants.spec.ts`.
+
+Застосовано: `vat.ts`, `payroll.calculator`, `settlements-account`, `invoices.service`.
+
+---
+
 ## Зведення grep-детекторів (для CI / review)
 
 | Патерн                   | Сигнал порушення                                                                      |
@@ -925,3 +966,4 @@ export-обмеженням (той самий рубіж, що й Server Compon
 | MP-B9 Hot-path           | inline `include:`/`select:` у findAll; `take: 1000`                                   |
 | MP-B10 Sentinel UUID FK  | in-band `''`-sentinel у `@db.Uuid` — тип має бути `string \| null`, не порожній рядок |
 | MP-F5 SSR today          | `new Date()`/`Date.now()` у render-body                                               |
+| MP-B11 Money бренд       | `money(`/`moneyFromDecimal(` у `toResponseDto`; `roundMoney(` у новому коді           |
