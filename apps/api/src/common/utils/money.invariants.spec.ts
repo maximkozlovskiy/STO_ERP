@@ -106,6 +106,40 @@ describe('money — інваріанти', () => {
     expect(moneyFromDecimal({ toNumber: () => 99.994 })).toBe(99.99);
   });
 
+  it('moneyFromDecimal НЕ вужча за Number(), яку вона заміняє', () => {
+    // Регресія: функція вимагала toNumber і падала TypeError на Decimal-подібному
+    // значенні лише з toString — хоча Number() його обробляв. Кожен виклик
+    // moneyFromDecimal стоїть там, де був Number(x), тож контракт мусить бути не вужчим.
+    expect(moneyFromDecimal({ toString: () => '350' })).toBe(350);
+    expect(moneyFromDecimal('42.555')).toBe(42.56);
+    expect(moneyFromDecimal({ valueOf: () => 7.891 })).toBe(7.89);
+    // toNumber має пріоритет, якщо є обидва (справжній Prisma Decimal)
+    expect(moneyFromDecimal({ toNumber: () => 1.5, toString: () => '999' })).toBe(1.5);
+  });
+
+  it('moneyFromDecimal не протікає NaN на несумісному вході', () => {
+    // Number('abc') = NaN; roundMoney ловить !isFinite → 0. Гроші НІКОЛИ не NaN,
+    // інакше NaN потрапив би у Decimal-колонку і зламав агрегації.
+    expect(moneyFromDecimal('не число')).toBe(0);
+    expect(moneyFromDecimal({ toString: () => 'abc' })).toBe(0);
+    expect(moneyFromDecimal({ toNumber: () => Number.NaN })).toBe(0);
+  });
+
+  it('moneyFromDecimal на рядковому представленні === на числовому', () => {
+    // Prisma віддає Decimal то як обгортку, то як рядок (raw SQL, ::text) — обидва
+    // шляхи мусять давати ІДЕНТИЧНУ суму, інакше та сама сума порахується по-різному.
+    fc.assert(
+      fc.property(amount, v => {
+        const viaNumber = moneyFromDecimal(v);
+        const viaString = moneyFromDecimal(String(v));
+        const viaWrapper = moneyFromDecimal({ toNumber: () => v });
+        expect(viaString).toBe(viaNumber);
+        expect(viaWrapper).toBe(viaNumber);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
   it('ZERO_MONEY — справжній нуль і придатний як початок редюсера', () => {
     expect(ZERO_MONEY).toBe(0);
     expect(sumMoney([ZERO_MONEY, money(10), money(0.01)])).toBe(10.01);

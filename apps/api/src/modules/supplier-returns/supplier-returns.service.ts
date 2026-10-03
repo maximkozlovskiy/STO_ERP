@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma, SupplierReturnStatus } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
@@ -175,7 +175,7 @@ export class SupplierReturnsService {
     await this.validateLineRefs(orgId, dedupedLines);
 
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_RETURN');
-    const totalAmount = roundMoney(dedupedLines.reduce((sum, l) => sum + l.quantity * l.price, 0));
+    const totalAmount = money(dedupedLines.reduce((sum, l) => sum + l.quantity * l.price, 0));
 
     const sr = await this.prisma.supplierReturn.create({
       data: {
@@ -295,8 +295,8 @@ export class SupplierReturnsService {
           select: { quantity: true, price: true },
           take: MAX_QUERY_LIMIT,
         });
-        const totalAmount = roundMoney(
-          lines.reduce((sum, l) => sum + l.quantity * Number(l.price), 0),
+        const totalAmount = money(
+          lines.reduce((sum, l) => sum + l.quantity * moneyFromDecimal(l.price), 0),
         );
 
         await tx.supplierReturn.update({
@@ -672,7 +672,7 @@ export class SupplierReturnsService {
         unitShortName: l.good?.unitOfMeasure?.shortName ?? l.good?.unit,
         quantity: l.quantity,
         price: Number(l.price),
-        amount: roundMoney(l.quantity * Number(l.price)),
+        amount: money(l.quantity * moneyFromDecimal(l.price)),
         unitOfMeasureId: l.unitOfMeasureId ?? null,
       })),
       createdAt: sr.createdAt instanceof Date ? sr.createdAt.toISOString() : sr.createdAt,

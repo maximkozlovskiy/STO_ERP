@@ -62,13 +62,27 @@ export function sumMoney(values: readonly number[]): Money {
 }
 
 /**
- * Перетворення Prisma `Decimal` (або будь-чого з `toNumber`) у `Money`.
+ * Перетворення Prisma `Decimal` (або будь-чого числоподібного) у `Money`.
  *
  * Замінює розсипані `Number(row.amount)`: там конверсія була безумовною і без округлення,
  * хоча `Decimal(12,2)` із БД уже округлений — проблема виникала далі, коли результат
  * обчислення писали назад без `roundMoney`.
+ *
+ * ЧОМУ ПРИЙМАЄ І `toString`, А НЕ ЛИШЕ `toNumber` (знайдено падінням payroll-специв):
+ * ця функція стоїть РІВНО там, де раніше був `Number(x)`, а `Number()` конвертує через
+ * `toString`. Якщо вимагати тільки `toNumber`, кожен такий виклик стає латентним
+ * `TypeError` на значенні, яке `Number()` обробляв: Prisma `Decimal` має обидва методи,
+ * але не кожне числоподібне значення в коді є справжнім `Decimal` (raw-SQL рядки,
+ * `::text`-касти, Decimal-подібні обгортки). Контракт мусить бути НЕ вужчим за той,
+ * який ця функція заміняє.
  */
-export function moneyFromDecimal(value: { toNumber(): number } | number | null | undefined): Money {
+export function moneyFromDecimal(
+  value: { toNumber(): number } | { toString(): string } | number | string | null | undefined,
+): Money {
   if (value == null) return ZERO_MONEY;
-  return money(typeof value === 'number' ? value : value.toNumber());
+  if (typeof value === 'number') return money(value);
+  if (typeof value === 'string') return money(Number(value));
+  if ('toNumber' in value && typeof value.toNumber === 'function') return money(value.toNumber());
+  // `Number(obj)` використає valueOf/toString — той самий шлях, що й до міграції.
+  return money(Number(value));
 }

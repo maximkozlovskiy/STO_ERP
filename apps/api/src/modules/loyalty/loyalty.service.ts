@@ -4,7 +4,8 @@ import { Queue } from 'bullmq';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { roundMoney } from '../../common/utils/math';
+import { roundPoints } from '../../common/utils/math';
+import { money } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 
 @Injectable()
@@ -147,7 +148,7 @@ export class LoyaltyService {
 
     // Квантуємо до 2dp (Decimal(12,2)) — earnPoints може бути дробовим, тож множення дало б
     // float-dust; balance-increment і LoyaltyTransaction.points мусять збігатись з тим, що збереже БД.
-    const points = roundMoney(Math.floor(paymentAmount / earnPer) * earnPoints);
+    const points = roundPoints(Math.floor(paymentAmount / earnPer) * earnPoints);
     if (points <= 0) return;
 
     // tenant вже перевірений у Promise.all вище — лишається лише upsert.
@@ -215,7 +216,7 @@ export class LoyaltyService {
     // Квантуємо до 2 знаків (LoyaltyAccount.balance/LoyaltyTransaction.points — Decimal(12,2)):
     // атомарний gte/decrement і рядок леджера мусять використати ІДЕНТИЧНЕ значення, інакше
     // balance (decrement сирим pointsInput) розходиться з Σ(ledger, збережений 2dp) — audit fail.
-    const points = roundMoney(pointsInput);
+    const points = roundPoints(pointsInput);
     if (points <= 0)
       throw new BadRequestException(translateError('err.loyalty.pointsPositive', getLocale()));
 
@@ -236,8 +237,9 @@ export class LoyaltyService {
     if (!cp)
       throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
-    // roundMoney: знижка у грн (points × дробовий redeemRate) — грошовий результат до копійки.
-    const discountAmount = roundMoney(points * redeemRate);
+    // money(): знижка у ГРН (points × дробовий redeemRate) — на відміну від самих балів,
+    // це вже грошова величина, тож брендується (MP-B11).
+    const discountAmount = money(points * redeemRate);
 
     // Atomic check-and-decrement guards against double-spend when two redeem
     // requests race. We use `updateMany` with `balance >= points` so the SQL

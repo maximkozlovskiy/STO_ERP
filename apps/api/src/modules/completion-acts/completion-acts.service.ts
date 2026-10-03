@@ -7,7 +7,7 @@ import {
   translateError,
 } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { roundMoney } from '../../common/utils/math';
+import { money, sumMoney } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -332,7 +332,7 @@ export class CompletionActsService {
     const vehicleLabel = formatVehicleLabel(act.workOrder?.vehicle);
 
     const builtLines = this.buildLines(act.workOrder);
-    const total = roundMoney(builtLines.reduce((s, l) => s + l.amount, 0));
+    const total = sumMoney(builtLines.map(l => l.amount));
 
     return this.pdf.generateCompletionActPdf({
       org: { name: org?.name ?? 'СТО', edrpou: null, address: null },
@@ -388,9 +388,9 @@ export class CompletionActsService {
         description: l.work?.name ?? 'Робота',
         quantity,
         unitPrice,
-        // roundMoney: юридичний PDF-документ — рядок і сумарний total НЕ мають нести
+        // money(): юридичний PDF-документ — рядок і сумарний total НЕ мають нести
         // float-дрейф (quantity×price = 60.0599…). Дзеркалить invoices/WO recalc-стандарт.
-        amount: roundMoney(quantity * unitPrice),
+        amount: money(quantity * unitPrice),
         workId: l.workId,
       });
     }

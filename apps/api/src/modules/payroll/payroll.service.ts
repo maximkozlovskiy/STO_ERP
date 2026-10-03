@@ -5,7 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { computeAccrued, parseRateScheme } from './payroll.calculator';
 import {
@@ -128,7 +128,7 @@ export class PayrollService {
 
     return rows.map(r => {
       const scheme = parseRateScheme(r.rateScheme);
-      const baseAmount = roundMoney(Number(r.totalAmount));
+      const baseAmount = money(r.totalAmount); // ::float у SQL → вже number
       const normoHours = Number(r.totalNormoHours);
       return {
         employeeId: r.employeeId,
@@ -196,7 +196,7 @@ export class PayrollService {
   ): Promise<PayrollPreviewDto> {
     const { fromDate, toDate } = normalizeDateRange(from, to);
     const lines = await this.aggregate(orgId, fromDate, toDate, branchId);
-    const totalAccrued = roundMoney(lines.reduce((s, l) => s + l.accruedAmount, 0));
+    const totalAccrued = sumMoney(lines.map(l => l.accruedAmount));
     return { lines, totalAccrued, from, to };
   }
 
@@ -360,7 +360,7 @@ export class PayrollService {
                   vehicleName: formatVehicleName(w.make, w.model, w.licensePlate),
                   worksCount: Number(w.worksCount),
                   normoHours: Number(w.normoHours),
-                  baseAmount: roundMoney(Number(w.baseAmount)),
+                  baseAmount: money(w.baseAmount), // ::float у SQL → вже number
                 })),
               });
             }
@@ -534,12 +534,8 @@ export class PayrollService {
         ...(workOrders ? { workOrders } : {}),
       };
     });
-    const totalAccrued = roundMoney(
-      (period.lines ?? []).reduce((s, l) => s + Number(l.accruedAmount), 0),
-    );
-    const totalPaid = roundMoney(
-      (period.lines ?? []).reduce((s, l) => s + Number(l.paidAmount), 0),
-    );
+    const totalAccrued = sumMoney((period.lines ?? []).map(l => moneyFromDecimal(l.accruedAmount)));
+    const totalPaid = sumMoney((period.lines ?? []).map(l => moneyFromDecimal(l.paidAmount)));
     const iso = (d: Date | null) => (d instanceof Date ? d.toISOString() : (d ?? null));
     return {
       id: period.id,

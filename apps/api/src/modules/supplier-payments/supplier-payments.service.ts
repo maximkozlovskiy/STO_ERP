@@ -7,7 +7,7 @@ import {
 } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -914,7 +914,7 @@ export class SupplierPaymentsService {
         if (pre.purchaseOrderId && po) {
           const poId = pre.purchaseOrderId;
           // paidAmount CAS (валюта оплати == валюта PO за guard вище) — дзеркалить invoice.paidAmount CAS.
-          const newPaid = roundMoney(Number(po.paidAmount) + Number(pre.amount));
+          const newPaid = money(moneyFromDecimal(po.paidAmount) + moneyFromDecimal(pre.amount));
           const totalAmount = Number(po.totalAmount);
           const becameFullyPaid =
             totalAmount > 0 && newPaid >= totalAmount - 0.005 && po.paidAt == null;
@@ -975,7 +975,7 @@ export class SupplierPaymentsService {
               });
               const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
               const paidBase = Number(paidAgg._sum.amountBase ?? 0);
-              const fx = roundMoney(chargeBase - paidBase);
+              const fx = money(chargeBase - paidBase);
               if (Math.abs(fx) >= 0.005) {
                 await this.settlements.createTransaction(
                   orgId,
