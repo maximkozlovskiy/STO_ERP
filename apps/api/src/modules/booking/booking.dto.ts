@@ -77,9 +77,18 @@ export class AvailabilitySlotDto {
   @ApiProperty() available!: boolean;
 }
 
+/**
+ * Статуси заявки. У схемі це `String @default("PENDING")` (не Prisma enum),
+ * але сервіс пише рівно три значення: PENDING при create, CONFIRMED у confirm,
+ * CANCELLED у cancel. Перелік у Swagger звужує тип у web до union — інакше
+ * `req.status === 'REJECTED'` (неіснуючий статус) компілювався б мовчки.
+ */
+export const BOOKING_REQUEST_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED'] as const;
+export type BookingRequestStatusValue = (typeof BOOKING_REQUEST_STATUSES)[number];
+
 export class BookingRequestResponseDto {
   @ApiProperty() id!: string;
-  @ApiProperty() status!: string;
+  @ApiProperty({ enum: BOOKING_REQUEST_STATUSES }) status!: BookingRequestStatusValue;
   @ApiProperty() clientName!: string;
   @ApiProperty() clientPhone!: string;
   @ApiProperty() requestedDate!: string;
@@ -87,4 +96,21 @@ export class BookingRequestResponseDto {
   @ApiPropertyOptional() branchName?: string | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiProperty() createdAt!: string;
+}
+
+// ─── Публічні філії для віджета запису ────────────────────────────────
+// Контролер навмисно віддає звужену форму (без orgId) — DTO описує саме її,
+// а не `GarageBranch`.
+
+export class PublicBookingBranchDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ nullable: true }) address!: string | null;
+}
+
+// Список заявок віддається як { items, total } без page/limit — пагінації у цього
+// роуту немає, тож окремий DTO замість PaginatedXDto.
+export class BookingRequestListDto {
+  @ApiProperty({ type: [BookingRequestResponseDto] }) items!: BookingRequestResponseDto[];
+  @ApiProperty() total!: number;
 }

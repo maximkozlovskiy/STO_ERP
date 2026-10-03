@@ -6475,6 +6475,10 @@ export interface components {
             status: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED";
             notes?: string;
         };
+        WorkOrderShareTokenResponseDto: {
+            /** @description Токен публічного кошторису */
+            token: string;
+        };
         SendEstimateSmsDto: Record<string, never>;
         EstimatePublicLineDto: {
             id: string;
@@ -6781,6 +6785,18 @@ export interface components {
         ReceivePurchaseOrderDto: {
             lines: components["schemas"]["ReceiveLineDto"][];
         };
+        ApplyPricingDetailDto: {
+            goodId: string;
+            goodName: string;
+            costPrice: number;
+            oldSalePrice: number;
+            newSalePrice: number;
+        };
+        ApplyPricingResponseDto: {
+            /** @description Скільки товарів розцінено */
+            updated: number;
+            details: components["schemas"]["ApplyPricingDetailDto"][];
+        };
         VerifyDeliveryDto: {
             apiUrl?: string;
             credentials: Record<string, never>;
@@ -6914,6 +6930,20 @@ export interface components {
                 total: number;
             };
         };
+        SupplierPaymentScheduleDocumentDto: {
+            poId: string;
+            number: string;
+            supplierId: string;
+            supplierName: string;
+            /** @description Дата оплати YYYY-MM-DD або null */
+            paymentDate: string | null;
+            /** @description Повна сума замовлення */
+            totalAmount: number;
+            /** @description Несплачений залишок (totalAmount − CONFIRMED платежі) */
+            outstanding: number;
+            /** @description Сума боргу, «налита» на цей PO (після кредит-ліміту) */
+            allocated: number;
+        };
         StockDocumentLineResponseDto: {
             id: string;
             goodId: string;
@@ -6930,8 +6960,10 @@ export interface components {
             id: string;
             orgId: string;
             number: string;
-            type: string;
-            status: string;
+            /** @enum {string} */
+            type: "WRITEOFF" | "TRANSFER" | "OPENING_BALANCE" | "RECEIPT";
+            /** @enum {string} */
+            status: "DRAFT" | "CONFIRMED" | "CANCELLED";
             branchId: string;
             branchName?: string;
             warehouseId: string;
@@ -7119,6 +7151,38 @@ export interface components {
              */
             points: number;
         };
+        RawPreviewResponseDto: {
+            /** @description Скільки рядків у файлі всього */
+            totalRows: number;
+            /** @description Максимальна кількість колонок серед показаних рядків */
+            columnCount: number;
+            /** @description Перші рядки файлу як текстова сітка */
+            rows: string[][];
+        };
+        PreviewRowDto: {
+            rowIndex: number;
+            operationDate: string;
+            amount: number;
+            payerName?: string | null;
+            payerIban?: string | null;
+            payerEdrpou?: string | null;
+            purpose?: string | null;
+            externalId: string;
+            /** @enum {string} */
+            matchStatus: "matched" | "ambiguous" | "notFound" | "duplicate";
+            suggestedCounterpartyId?: string | null;
+            suggestedCounterpartyName?: string | null;
+            /** @enum {string|null} */
+            suggestedMatchType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | null;
+            suggestedInvoiceId?: string | null;
+            /** @enum {string|null} */
+            matchReason?: "iban" | "edrpou" | "purpose" | null;
+            matchConfidence?: number | null;
+            candidates: Record<string, never>[];
+        };
+        PreviewImportResponseDto: {
+            rows: components["schemas"]["PreviewRowDto"][];
+        };
         ApplyRowDto: {
             externalId: string;
             /** @description Дата операції (ISO або YYYY-MM-DD) */
@@ -7130,11 +7194,16 @@ export interface components {
             purpose?: string;
             rawData?: Record<string, never>;
         };
+        ApplyImportResultDto: {
+            created: number;
+            skipped: number;
+        };
         BankTransactionResponseDto: {
             id: string;
             orgId: string;
             bankAccountId: string;
-            direction: string;
+            /** @enum {string} */
+            direction: "IN" | "OUT";
             amount: number;
             currencyId: string;
             amountBase?: number | null;
@@ -7145,9 +7214,12 @@ export interface components {
             payerEdrpou?: string | null;
             purpose?: string | null;
             externalId: string;
-            source: string;
-            status: string;
-            matchedType?: string | null;
+            /** @enum {string} */
+            source: "FILE_IMPORT" | "PRIVAT24_API" | "MONOBANK_API";
+            /** @enum {string} */
+            status: "UNMATCHED" | "MATCHED" | "IGNORED";
+            /** @enum {string|null} */
+            matchedType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | null;
             counterpartyId?: string | null;
             paymentId?: string | null;
             matchConfidence?: number | null;
@@ -7403,6 +7475,11 @@ export interface components {
             events?: ("WO_STATUS_CHANGED" | "PAYMENT_RECEIVED" | "LOW_STOCK_ALERT")[];
             isActive?: boolean;
         };
+        PublicBookingBranchDto: {
+            id: string;
+            name: string;
+            address: string | null;
+        };
         AvailabilitySlotDto: {
             startAt: string;
             endAt: string;
@@ -7423,7 +7500,8 @@ export interface components {
         };
         BookingRequestResponseDto: {
             id: string;
-            status: string;
+            /** @enum {string} */
+            status: "PENDING" | "CONFIRMED" | "CANCELLED";
             clientName: string;
             clientPhone: string;
             requestedDate: string;
@@ -7431,6 +7509,10 @@ export interface components {
             branchName?: string | null;
             notes?: string | null;
             createdAt: string;
+        };
+        BookingRequestListDto: {
+            items: components["schemas"]["BookingRequestResponseDto"][];
+            total: number;
         };
         ConfirmBookingDto: {
             /** Format: uuid */
@@ -12392,11 +12474,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description PDF-файл наряду */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/pdf": string;
+                };
             };
         };
     };
@@ -12415,7 +12500,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12457,11 +12542,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderShareTokenResponseDto"];
+                };
             };
         };
     };
@@ -12480,7 +12567,8 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            /** @description SMS поставлено у чергу (тіло порожнє) */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13390,7 +13478,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13415,7 +13503,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13436,11 +13524,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApplyPricingResponseDto"];
+                };
             };
         };
     };
@@ -13876,7 +13966,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SupplierPaymentScheduleDocumentDto"][];
+                };
             };
         };
     };
@@ -14197,7 +14289,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15046,11 +15138,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RawPreviewResponseDto"];
+                };
             };
         };
     };
@@ -15063,11 +15157,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PreviewImportResponseDto"];
+                };
             };
         };
     };
@@ -15084,11 +15180,13 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApplyImportResultDto"];
+                };
             };
         };
     };
@@ -15130,7 +15228,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15155,7 +15253,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16235,7 +16333,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PublicBookingBranchDto"][];
+                };
             };
         };
     };
@@ -16301,7 +16401,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BookingRequestListDto"];
+                };
             };
         };
     };

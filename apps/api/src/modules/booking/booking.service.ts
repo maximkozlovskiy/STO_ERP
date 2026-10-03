@@ -9,7 +9,16 @@ import {
   CreateBookingRequestDto,
   BookingRequestResponseDto,
   AvailabilitySlotDto,
+  BOOKING_REQUEST_STATUSES,
+  type BookingRequestStatusValue,
 } from './booking.dto';
+
+/** Межа «сирий String з БД → union у DTO». Невідоме значення → PENDING (див. toDto). */
+function narrowBookingStatus(raw: string): BookingRequestStatusValue {
+  return (BOOKING_REQUEST_STATUSES as readonly string[]).includes(raw)
+    ? (raw as BookingRequestStatusValue)
+    : 'PENDING';
+}
 
 // Module-level Intl singleton — `.toLocaleDateString('uk-UA')` allocates a new formatter
 // per call. Booking create runs on every public widget submit → hoist.
@@ -597,7 +606,11 @@ export class BookingService {
   }): BookingRequestResponseDto {
     return {
       id: r.id,
-      status: r.status,
+      // BookingRequest.status у схемі — сирий `String`, не Prisma enum. DTO звузив
+      // його до union, тож тут єдина межа, де нетиповане значення з БД перевіряється.
+      // Невідомий статус (міграція/ручний UPDATE) НЕ кидає 500 на читанні списку —
+      // деградує до PENDING, бо саме так його трактує UI (заявка чекає обробки).
+      status: narrowBookingStatus(r.status),
       clientName: r.clientName,
       clientPhone: r.clientPhone,
       requestedDate: r.requestedDate.toISOString(),

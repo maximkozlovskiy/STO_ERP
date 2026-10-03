@@ -313,3 +313,20 @@ export class LinkedCountsDto {
   @IsUUID('all', { each: true })
   ids!: string[];
 }
+
+// ─── Apply pricing (розцінення) ────────────────────────────────────────
+// Метод повертав inline-форму → у Swagger її не було зовсім. Виносимо в DTO,
+// щоб web брав тип зі згенерованого (патерн InvoiceByWorkOrderResponseDto).
+
+export class ApplyPricingDetailDto {
+  @ApiProperty() goodId!: string;
+  @ApiProperty() goodName!: string;
+  @ApiProperty() costPrice!: number;
+  @ApiProperty() oldSalePrice!: number;
+  @ApiProperty() newSalePrice!: number;
+}
+
+export class ApplyPricingResponseDto {
+  @ApiProperty({ description: 'Скільки товарів розцінено' }) updated!: number;
+  @ApiProperty({ type: [ApplyPricingDetailDto] }) details!: ApplyPricingDetailDto[];
+}

@@ -1,5 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { DocumentType, Prisma, StockDocumentType, StockMovementType } from '@prisma/client';
+import {
+  DocumentType,
+  Prisma,
+  StockDocumentStatus,
+  StockDocumentType,
+  StockMovementType,
+} from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -594,8 +600,10 @@ export class StockDocumentsService {
     id: string;
     orgId: string;
     number: string;
-    type: string;
-    status: string;
+    // Prisma віддає enum-значення; руками звужений `string` тут лише ховав тип
+    // від DTO. Усі 4 виклики toDto передають рядок Prisma → звуження безпечне.
+    type: StockDocumentType;
+    status: StockDocumentStatus;
     branchId: string;
     warehouseId: string;
     targetWarehouseId: string | null;

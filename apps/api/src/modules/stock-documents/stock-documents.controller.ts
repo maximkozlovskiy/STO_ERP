@@ -13,7 +13,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -32,6 +39,8 @@ import {
   TransitionStockDocumentDto,
   StockDocumentQueryDto,
   LinkedCountsDto,
+  StockDocumentResponseDto,
+  PaginatedStockDocumentsDto,
 } from './stock-documents.dto';
 
 @ApiTags('Stock Documents')
@@ -44,6 +53,7 @@ export class StockDocumentsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Список складських документів' })
+  @ApiOkResponse({ type: PaginatedStockDocumentsDto })
   findAll(@OrgContext() orgId: string, @Query() query: StockDocumentQueryDto) {
     return this.service.findAll(
       orgId,
@@ -78,6 +88,7 @@ export class StockDocumentsController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Складський документ по ID' })
+  @ApiOkResponse({ type: StockDocumentResponseDto })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -86,6 +97,7 @@ export class StockDocumentsController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити складський документ' })
+  @ApiCreatedResponse({ type: StockDocumentResponseDto })
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(stockDocumentCreateSchema)) dto: StockDocumentCreateValues,
@@ -96,6 +108,7 @@ export class StockDocumentsController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Оновити чернетку документа' })
+  @ApiOkResponse({ type: StockDocumentResponseDto })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -108,6 +121,7 @@ export class StockDocumentsController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку документа' })
+  @ApiNoContentResponse()
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
@@ -115,6 +129,7 @@ export class StockDocumentsController {
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Змінити статус документа (FSM)' })
+  @ApiOkResponse({ type: StockDocumentResponseDto })
   transition(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

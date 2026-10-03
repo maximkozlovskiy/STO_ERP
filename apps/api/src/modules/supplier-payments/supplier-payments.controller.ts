@@ -12,7 +12,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -33,6 +40,10 @@ import {
   SupplierPaymentScheduleQueryDto,
   SupplierPaymentScheduleDocumentsQueryDto,
   LinkedCountsDto,
+  SupplierPaymentResponseDto,
+  PaginatedSupplierPaymentsDto,
+  SupplierPaymentScheduleDto,
+  SupplierPaymentScheduleDocumentDto,
 } from './supplier-payments.dto';
 import { BadRequestException } from '@nestjs/common';
 
@@ -46,6 +57,7 @@ export class SupplierPaymentsController {
   @Post()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Створити оплату постачальнику (чернетка)' })
+  @ApiCreatedResponse({ type: SupplierPaymentResponseDto })
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(supplierPaymentCreateSchema)) dto: SupplierPaymentCreateValues,
@@ -57,6 +69,7 @@ export class SupplierPaymentsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список оплат постачальникам' })
+  @ApiOkResponse({ type: PaginatedSupplierPaymentsDto })
   findAll(@OrgContext() orgId: string, @Query() query: SupplierPaymentQueryDto) {
     return this.service.findAll(
       orgId,
@@ -78,6 +91,7 @@ export class SupplierPaymentsController {
   @Get('schedule')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Графік оплат постачальникам (шахматка по датах)' })
+  @ApiOkResponse({ type: SupplierPaymentScheduleDto })
   getSchedule(@OrgContext() orgId: string, @Query() query: SupplierPaymentScheduleQueryDto) {
     return this.service.getSchedule(orgId, query.from, query.to);
   }
@@ -87,6 +101,7 @@ export class SupplierPaymentsController {
   @Get('schedule/documents')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Документи (PO) для клітинки графіка оплат' })
+  @ApiOkResponse({ type: [SupplierPaymentScheduleDocumentDto] })
   getScheduleDocuments(
     @OrgContext() orgId: string,
     @Query() query: SupplierPaymentScheduleDocumentsQueryDto,
@@ -107,6 +122,7 @@ export class SupplierPaymentsController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Провести оплату (settlement PAYMENT)' })
+  @ApiOkResponse({ type: SupplierPaymentResponseDto })
   confirm(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -119,6 +135,7 @@ export class SupplierPaymentsController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Скасувати оплату' })
+  @ApiOkResponse({ type: SupplierPaymentResponseDto })
   cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.cancel(orgId, id);
   }
@@ -144,6 +161,7 @@ export class SupplierPaymentsController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі оплати постачальнику' })
+  @ApiOkResponse({ type: SupplierPaymentResponseDto })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -151,6 +169,7 @@ export class SupplierPaymentsController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Оновити оплату (тільки DRAFT)' })
+  @ApiOkResponse({ type: SupplierPaymentResponseDto })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -163,6 +182,7 @@ export class SupplierPaymentsController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити оплату (soft delete, крім проведеної)' })
+  @ApiNoContentResponse()
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }

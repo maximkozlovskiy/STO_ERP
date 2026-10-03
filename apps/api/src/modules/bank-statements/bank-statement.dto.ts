@@ -13,7 +13,13 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { BankTransactionMatchType, BankTransactionStatus, Prisma } from '@prisma/client';
+import {
+  BankTransactionDirection,
+  BankTransactionMatchType,
+  BankTransactionSource,
+  BankTransactionStatus,
+  Prisma,
+} from '@prisma/client';
 
 // Допустимі значення enum-ів для валідації query/DTO без хардкоду рядків.
 export const BANK_TX_MATCH_TYPES = Object.values(
@@ -209,7 +215,8 @@ export class BankTransactionResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
   @ApiProperty() bankAccountId!: string;
-  @ApiProperty() direction!: string;
+  // Prisma enum-колонка — у DTO був `string` (у Swagger без переліку).
+  @ApiProperty({ enum: BankTransactionDirection }) direction!: BankTransactionDirection;
   @ApiProperty() amount!: number;
   @ApiProperty() currencyId!: string;
   @ApiPropertyOptional() amountBase?: number | null;
@@ -220,9 +227,10 @@ export class BankTransactionResponseDto {
   @ApiPropertyOptional() payerEdrpou?: string | null;
   @ApiPropertyOptional() purpose?: string | null;
   @ApiProperty() externalId!: string;
-  @ApiProperty() source!: string;
-  @ApiProperty() status!: string;
-  @ApiPropertyOptional() matchedType?: string | null;
+  @ApiProperty({ enum: BankTransactionSource }) source!: BankTransactionSource;
+  @ApiProperty({ enum: BankTransactionStatus }) status!: BankTransactionStatus;
+  @ApiPropertyOptional({ enum: BankTransactionMatchType })
+  matchedType?: BankTransactionMatchType | null;
   @ApiPropertyOptional() counterpartyId?: string | null;
   @ApiPropertyOptional() paymentId?: string | null;
   @ApiPropertyOptional() matchConfidence?: number | null;
@@ -248,7 +256,7 @@ interface BankTransactionRow {
   id: string;
   orgId: string;
   bankAccountId: string;
-  direction: string;
+  direction: BankTransactionDirection;
   amount: Prisma.Decimal;
   currencyId: string;
   amountBase: Prisma.Decimal | null;
@@ -259,9 +267,10 @@ interface BankTransactionRow {
   payerEdrpou: string | null;
   purpose: string | null;
   externalId: string;
-  source: string;
-  status: string;
-  matchedType: string | null;
+  // Prisma-колонки enum-типу; руками розширений `string` ховав перелік від DTO.
+  source: BankTransactionSource;
+  status: BankTransactionStatus;
+  matchedType: BankTransactionMatchType | null;
   counterpartyId: string | null;
   paymentId: string | null;
   matchConfidence: Prisma.Decimal | null;
@@ -301,4 +310,19 @@ export function toBankTransactionResponseDto(tx: BankTransactionRow): BankTransa
     bankAccountIban: tx.bankAccount?.ibanUA ?? null,
     bankAccountCurrencyCode: tx.bankAccount?.currency?.code ?? null,
   };
+}
+
+// ─── Raw preview (сира сітка для column-mapping) ──────────────────────────────
+// Повертався inline `{ totalRows, columnCount, rows }` → у Swagger відсутній.
+
+export class RawPreviewResponseDto {
+  @ApiProperty({ description: 'Скільки рядків у файлі всього' }) totalRows!: number;
+  @ApiProperty({ description: 'Максимальна кількість колонок серед показаних рядків' })
+  columnCount!: number;
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'array', items: { type: 'string' } },
+    description: 'Перші рядки файлу як текстова сітка',
+  })
+  rows!: string[][];
 }
