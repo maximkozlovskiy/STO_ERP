@@ -3,7 +3,8 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
-import { safeCoeff, roundMoney } from '../../common/utils/math';
+import { safeCoeff } from '../../common/utils/math';
+import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
@@ -306,8 +307,8 @@ export class PurchaseOrdersService {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
-    const totalAmount = roundMoney(computedLines.reduce((s, l) => s + l.quantity * l.price, 0));
-    const totalVat = roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0));
+    const totalAmount = money(computedLines.reduce((s, l) => s + l.quantity * l.price, 0));
+    const totalVat = sumMoney(computedLines.map(l => l.vatAmount));
 
     // Мультивалюта (Фаза 3): валюта замовлення — з DTO або базова org; base-сума тоталу по курсу
     // на дату документа (fallbackToLatest — документний потік).
@@ -493,11 +494,9 @@ export class PurchaseOrdersService {
       return { ...l, vatRate, vatAmount };
     });
     const totalAmount = computedLines
-      ? roundMoney(computedLines.reduce((s, l) => s + l.quantity * l.price, 0))
-      : Number(po.totalAmount);
-    const totalVat = computedLines
-      ? roundMoney(computedLines.reduce((s, l) => s + l.vatAmount, 0))
-      : undefined;
+      ? money(computedLines.reduce((s, l) => s + l.quantity * l.price, 0))
+      : moneyFromDecimal(po.totalAmount);
+    const totalVat = computedLines ? sumMoney(computedLines.map(l => l.vatAmount)) : undefined;
 
     // Мультивалюта (Фаза 3): перераховуємо base якщо змінився тотал (нові lines) АБО
     // валюта документа (dto.currencyId !== наявної po.currencyId) — інакше totalAmountBase
@@ -696,7 +695,10 @@ export class PurchaseOrdersService {
     // QTY_EPSILON — толеранс дробових одиниць (літри/кг) від IEEE-754-дрейфу.
     for (const { recv, line } of activeLines) {
       if (line.receivedQty + recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) {
-        const remaining = roundMoney(Math.max(0, line.quantity - line.receivedQty));
+        // remaining — КІЛЬКІСТЬ (літри/кг), не гроші: money() тут був би семантично
+        // неправильним (MP-B11). Значення йде лише у текст помилки, тож округлюємо
+        // до 2 знаків суто для читабельності.
+        const remaining = Math.round(Math.max(0, line.quantity - line.receivedQty) * 100) / 100;
         throw new BadRequestException(
           translateError('err.purchaseOrder.receiveExceedsLineRemaining', getLocale(), {
             quantity: line.quantity,
@@ -707,10 +709,13 @@ export class PurchaseOrdersService {
       }
     }
 
-    // roundMoney: receivedAmount живить SUPPLIER_CHARGE (борг постачальнику) — грошовий
+    // money(): receivedAmount живить SUPPLIER_CHARGE (борг постачальнику) — грошовий
     // результат перед createTransaction має бути квантований до копійки (не float-дрейф).
-    const receivedAmount = roundMoney(
-      activeLines.reduce((sum, { recv, line }) => sum + recv.receivedQty * Number(line.price), 0),
+    const receivedAmount = money(
+      activeLines.reduce(
+        (sum, { recv, line }) => sum + recv.receivedQty * moneyFromDecimal(line.price),
+        0,
+      ),
     );
 
     await this.prisma.$transaction(
@@ -1127,7 +1132,8 @@ export class PurchaseOrdersService {
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: Number(l.price),
-        amount: roundMoney(l.quantity * Number(l.price)),
+        // обчислення (qty × price), а не читання збереженої колонки → бренд за MP-B11
+        amount: money(l.quantity * moneyFromDecimal(l.price)),
         vatRate: Number(l.vatRate ?? 0),
         vatAmount: Number(l.vatAmount ?? 0),
         receivedQty: l.receivedQty,

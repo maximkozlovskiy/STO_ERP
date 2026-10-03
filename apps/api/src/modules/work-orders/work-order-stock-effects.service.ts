@@ -1,7 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
-import { safeCoeff, roundMoney } from '../../common/utils/math';
+import { safeCoeff } from '../../common/utils/math';
+import { moneyFromDecimal } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -162,7 +163,7 @@ export class WorkOrderStockEffectsService {
       // Мультивалюта (Фаза 3): валюта + дата документа для base-конвертації CHARGE.
       select: { totalAmount: true, currencyId: true, documentDate: true },
     });
-    const chargeAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
+    const chargeAmount = moneyFromDecimal(freshWo?.totalAmount ?? wo.totalAmount);
     if (chargeAmount <= 0)
       throw new BadRequestException(
         translateError('err.workOrder.totalZeroCannotComplete', getLocale()),
@@ -236,7 +237,7 @@ export class WorkOrderStockEffectsService {
       // Мультивалюта (Фаза 3): валюта + дата документа для симетрії CREDIT_NOTE з CHARGE.
       select: { totalAmount: true, currencyId: true, documentDate: true },
     });
-    const creditAmount = roundMoney(Number(freshWo?.totalAmount ?? wo.totalAmount ?? 0));
+    const creditAmount = moneyFromDecimal(freshWo?.totalAmount ?? wo.totalAmount);
     if (creditAmount > 0) {
       await this.settlements.createTransaction(
         orgId,

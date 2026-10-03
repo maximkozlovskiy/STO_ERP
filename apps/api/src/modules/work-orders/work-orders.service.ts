@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calcVatOnBase } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -627,9 +627,9 @@ export class WorkOrdersService {
     // 3. Pre-compute totals from the original's lines/parts so the cloned WO
     // ships consistent totalLabor/totalParts/totalAmount. Without this,
     // Prisma defaults leave them at 0 while lines[].amount has real values.
-    const totalLabor = original.lines.reduce((s, l) => s + Number(l.amount), 0);
-    const totalParts = original.parts.reduce((s, p) => s + Number(p.amount), 0);
-    const clonedTotal = roundMoney(totalLabor + totalParts);
+    const totalLabor = sumMoney(original.lines.map(l => moneyFromDecimal(l.amount)));
+    const totalParts = sumMoney(original.parts.map(p => moneyFromDecimal(p.amount)));
+    const clonedTotal = money(totalLabor + totalParts);
     // Мультивалюта (Фаза 3): клон — новий DRAFT на сьогодні → base-сума по СВІЖОМУ курсу (не курс
     // оригіналу). Успадковує currencyId оригіналу; без валюти → base (rate=1).
     const clonedConv = original.currencyId
@@ -894,8 +894,8 @@ export class WorkOrdersService {
       throw new NotFoundException(translateError('err.workOrder.employeeNotFound', getLocale()));
 
     const normoHours = dto.normoHours ?? work.normoHours;
-    const price = dto.price !== undefined ? dto.price : Number(work.price);
-    const amount = roundMoney(normoHours * price);
+    const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(work.price);
+    const amount = money(normoHours * price);
 
     const line = await this.prisma.$transaction(
       async tx => {
@@ -967,8 +967,8 @@ export class WorkOrdersService {
       throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
 
     const normoHours = dto.normoHours ?? line.normoHours;
-    const price = dto.price !== undefined ? dto.price : Number(line.price);
-    const amount = roundMoney(normoHours * price);
+    const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(line.price);
+    const amount = money(normoHours * price);
 
     const updated = await this.prisma.$transaction(
       async tx => {
@@ -1082,8 +1082,8 @@ export class WorkOrdersService {
       );
     }
 
-    const price = dto.price !== undefined ? dto.price : Number(good.salePrice);
-    const amount = roundMoney(dto.quantity * price);
+    const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(good.salePrice);
+    const amount = money(dto.quantity * price);
 
     const part = await this.prisma.$transaction(
       async tx => {
@@ -1141,8 +1141,8 @@ export class WorkOrdersService {
       throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
 
     const quantity = dto.quantity ?? part.quantity;
-    const price = dto.price !== undefined ? dto.price : Number(part.price);
-    const amount = roundMoney(quantity * price);
+    const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(part.price);
+    const amount = money(quantity * price);
 
     // Validate new unitOfMeasureId if provided
     let uomJunction: UomJunction | null = null;
@@ -1257,13 +1257,16 @@ export class WorkOrdersService {
     // sto-simplify: `Number(actualHours ?? normoHours ?? 0)` рівносильно verbose тернаркі
     // бо Prisma Decimal `?? null`-fallback працює на null/undefined (а 0-години у normoHours
     // зустрічається лише при ручному вводі і не змінює sum — 0 × price = 0).
+    // Акумулятори сирі (НЕ Money) свідомо: округлення РАЗ у кінці точніше за покрокове —
+    // виміряно у money.ts (на сирих значеннях покрокове накопичує помилку ~51%). Бренд
+    // ставиться на РЕЗУЛЬТАТ, не на проміжну суму.
     let totalLabor = 0;
     let totalActualLabor = 0;
     for (const l of lines) {
-      totalLabor += Number(l.amount ?? 0);
-      totalActualLabor += Number(l.actualHours ?? l.normoHours ?? 0) * Number(l.price ?? 0);
+      totalLabor += moneyFromDecimal(l.amount);
+      totalActualLabor += Number(l.actualHours ?? l.normoHours ?? 0) * moneyFromDecimal(l.price);
     }
-    const totalParts = Number(partsAgg._sum.amount ?? 0);
+    const totalParts = moneyFromDecimal(partsAgg._sum.amount);
     const totalBase = totalActualLabor + totalParts;
 
     // A5-money: ПДВ через єдине джерело формули (common/utils/vat) — та сама математика, що в invoices.
@@ -1272,7 +1275,7 @@ export class WorkOrdersService {
 
     // WO-H2: квантуємо всі грошові суми до копійки перед записом у Decimal(12,2) —
     // інакше float-дрейф дає Σ(рядки)≠total і невірну базу для CHARGE при COMPLETED.
-    const totalAmount = roundMoney(totalBase);
+    const totalAmount = money(totalBase);
     // Мультивалюта (Фаза 3): base-сума тоталу по курсу на дату документа (fallbackToLatest — документний
     // потік). Без currencyId → base (rate=1, base=total). Курс — на documentDate (наряд ведеться у валюті).
     const conv = wo?.currencyId
@@ -1287,11 +1290,11 @@ export class WorkOrdersService {
     await tx.workOrder.update({
       where: { id: workOrderId, orgId },
       data: {
-        totalLabor: roundMoney(totalLabor),
-        totalActualLabor: roundMoney(totalActualLabor),
-        totalParts: roundMoney(totalParts),
+        totalLabor: money(totalLabor),
+        totalActualLabor: money(totalActualLabor),
+        totalParts: money(totalParts),
         totalAmount,
-        totalVat: roundMoney(totalVat),
+        totalVat, // calcVatOnBase уже віддає Money — повторний money() був би шумом
         totalAmountBase: conv.amountBase,
         rateUsed: conv.rateUsed,
       },
