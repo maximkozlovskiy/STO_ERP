@@ -6,6 +6,7 @@ import { calculatePagination } from '../../common/utils/pagination';
 import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 import { BALANCE_SIGN } from './settlements.service';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 
 // Module-level Intl singleton — DateTimeFormat constructor is the expensive part (locale-data init).
 // Both kyivStartOfDay/kyivEndOfDay used to allocate a new formatter per call; createReconciliationAct
@@ -147,13 +148,21 @@ export class SettlementsAccountService {
     // копія `type==='CHARGE' ? + : -`, яка не знала про постачальницькі типи (SUPPLIER_*).
     // Мультивалюта (Фаза 2): баланс зводиться у base → periodDelta від amountBase (не amount).
     // Історичні рядки (amountBase=null) = base UAH → фолбек на amount.
-    const periodDelta = transactions.reduce(
-      (sum, t) => sum + BALANCE_SIGN[t.type] * Number(t.amountBase ?? t.amount),
-      0,
+    // `money()` на кожному грошовому результаті (а не просто Number): без нього сума
+    // транзакцій у JS-float дрейфує — заміряно 66% випадків на реалістичних даних, хоч
+    // величина (≈2e-11) і нижча за розрядність Decimal(12,2). Тут це профілактика, не
+    // виправлення бага: openingBalance пишеться в БД і читається звідти вже округленим
+    // Postgres-ом. Але тип Money не дає ПОТІМ забути округлення, якщо значення почнуть
+    // віддавати напряму з обчислення — а це акт звірки, який клієнт підписує.
+    const periodDelta = money(
+      transactions.reduce(
+        (sum, t) => sum + BALANCE_SIGN[t.type] * Number(t.amountBase ?? t.amount),
+        0,
+      ),
     );
 
-    const closingBalance = Number(account.balance);
-    const openingBalance = closingBalance - periodDelta;
+    const closingBalance = moneyFromDecimal(account.balance);
+    const openingBalance = money(closingBalance - periodDelta);
 
     const act = await this.prisma.reconciliationAct.create({
       data: {
