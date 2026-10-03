@@ -272,19 +272,24 @@ export default function OrgTab() {
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  onClick={async () => {
-                    if (selected) return;
-                    const fromLabel =
-                      costMethodOptions.find(o => o.value === orgSettings.costMethod)?.label ??
-                      orgSettings.costMethod;
-                    const ok = await confirm({
-                      title: t('org.costMethodChangeTitle'),
-                      message: t('org.costMethodChangeMessage', { from: fromLabel, to: label }),
-                      confirmLabel: t('org.costMethodChangeConfirm', { to: label }),
-                      variant: 'destructive',
-                    });
-                    if (!ok) return;
-                    setOrgSettings({ ...orgSettings, costMethod: value });
+                  // `void`: єдиний await тут — confirm(), який завжди резолвиться (ніколи не
+                  // реджектиться), а зміна costMethod лише править локальний стан форми —
+                  // фактичний запис іде через saveOrgSettings() нижче, з власним catch.
+                  onClick={() => {
+                    void (async () => {
+                      if (selected) return;
+                      const fromLabel =
+                        costMethodOptions.find(o => o.value === orgSettings.costMethod)?.label ??
+                        orgSettings.costMethod;
+                      const ok = await confirm({
+                        title: t('org.costMethodChangeTitle'),
+                        message: t('org.costMethodChangeMessage', { from: fromLabel, to: label }),
+                        confirmLabel: t('org.costMethodChangeConfirm', { to: label }),
+                        variant: 'destructive',
+                      });
+                      if (!ok) return;
+                      setOrgSettings({ ...orgSettings, costMethod: value });
+                    })();
                   }}
                   className={cn(
                     'flex-1 min-w-40 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors text-left',

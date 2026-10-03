@@ -196,7 +196,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button size="sm" loading={busy} onClick={goRawPreview}>
+              <Button size="sm" loading={busy} onClick={() => void goRawPreview()}>
                 {t('import.step1.next')}
               </Button>
             </div>
@@ -309,7 +309,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
               <Button variant="outline" size="sm" onClick={() => setStep(1)} disabled={busy}>
                 {t('import.step2.back')}
               </Button>
-              <Button size="sm" loading={busy} onClick={goPreview}>
+              <Button size="sm" loading={busy} onClick={() => void goPreview()}>
                 {t('import.step2.preview')}
               </Button>
             </div>
@@ -385,7 +385,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
                 size="sm"
                 loading={apply.isPending}
                 disabled={busy || importableCount === 0}
-                onClick={goApply}
+                onClick={() => void goApply()}
               >
                 {t('import.step3.apply', { count: importableCount })}
               </Button>

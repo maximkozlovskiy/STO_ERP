@@ -292,6 +292,29 @@ export default function EmployeesPage() {
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(employees);
 
+  // Звіт про результат bulk-операції. Promise.allSettled не кидає — без цього
+  // виклику відмови лишались би невидимими для користувача.
+  const reportBulkResult = useCallback(
+    (op: 'delete' | 'fire', succeeded: number, failed: number, total: number) => {
+      if (features.toastEnabled) {
+        if (failed === 0) {
+          toast.success(t(`toast.bulk.${op}Ok`, { count: succeeded }));
+        } else if (succeeded > 0) {
+          toast.warning(t(`toast.bulk.${op}Partial`, { succeeded, total, failed }));
+        } else {
+          toast.error(t(`toast.bulk.${op}None`, { count: total }));
+        }
+      } else if (failed > 0) {
+        setError(
+          succeeded > 0
+            ? t(`toast.bulk.${op}Partial`, { succeeded, total, failed })
+            : t(`toast.bulk.${op}None`, { count: total }),
+        );
+      }
+    },
+    [features.toastEnabled, t],
+  );
+
   // `load` is intentionally omitted from deps — it's recreated each render
   // but its effective input (filters from page state) is captured at click time
   // via closure. Including it would invalidate `bulkActions` on every keystroke
@@ -303,51 +326,68 @@ export default function EmployeesPage() {
         label: t('actions.bulkDelete'),
         variant: 'destructive',
         icon: <Trash2 className="h-3.5 w-3.5" />,
-        onClick: async ids => {
-          if (
-            !(await confirm({
-              title: t('confirm.bulkDelete', { count: ids.length }),
-              variant: 'destructive',
-            }))
-          )
-            return;
-          await Promise.allSettled(
-            ids.map(id => apiFetch<void>(`/employees/${id}`, { method: 'DELETE' })),
-          );
-          bulkSelect.clear();
-          load();
+        // (Б) Раніше результат Promise.allSettled не перевірявся: жодна відмова
+        // (офлайн, 403, FK-конфлікт) не доходила до користувача — список просто
+        // оновлювався з тими самими рядками. Тепер рахуємо успіхи/відмови і
+        // звітуємо, як на сторінці контрагентів.
+        onClick: ids => {
+          void (async () => {
+            if (
+              !(await confirm({
+                title: t('confirm.bulkDelete', { count: ids.length }),
+                variant: 'destructive',
+              }))
+            )
+              return;
+            const results = await Promise.allSettled(
+              ids.map(id => apiFetch<void>(`/employees/${id}`, { method: 'DELETE' })),
+            );
+            const succeeded = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.length - succeeded;
+            bulkSelect.clear();
+            load();
+            reportBulkResult('delete', succeeded, failed, results.length);
+          })();
         },
       },
       {
         id: 'fire',
         label: t('actions.bulkFire'),
         variant: 'outline',
-        onClick: async ids => {
-          if (
-            !(await confirm({
-              title: t('confirm.bulkFire', { count: ids.length }),
-              variant: 'destructive',
-            }))
-          )
-            return;
-          await Promise.allSettled(
-            ids.map(id =>
-              apiFetch<void>(`/employees/${id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ status: 'FIRED' }),
-              }),
-            ),
-          );
-          bulkSelect.clear();
-          load();
+        onClick: ids => {
+          void (async () => {
+            if (
+              !(await confirm({
+                title: t('confirm.bulkFire', { count: ids.length }),
+                variant: 'destructive',
+              }))
+            )
+              return;
+            const results = await Promise.allSettled(
+              ids.map(id =>
+                apiFetch<void>(`/employees/${id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: 'FIRED' }),
+                }),
+              ),
+            );
+            const succeeded = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.length - succeeded;
+            bulkSelect.clear();
+            load();
+            reportBulkResult('fire', succeeded, failed, results.length);
+          })();
         },
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [confirm, bulkSelect, t],
+    [confirm, bulkSelect, reportBulkResult, t],
   );
 
-  const load = () => qc.invalidateQueries({ queryKey: employeesKeys.all });
+  // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає їхній
+  // error-стан. Чекати тут нічого, тому `: void` — щоб усі виклики `load()` разом
+  // перестали світитись no-floating-promises.
+  const load = (): void => void qc.invalidateQueries({ queryKey: employeesKeys.all });
 
   const markForDeletion = async (id: string) => {
     if (!(await confirm({ title: t('confirm.markForDeletion'), variant: 'destructive' }))) return;
@@ -753,7 +793,7 @@ export default function EmployeesPage() {
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                             title={t('actions.markForDeletion')}
                             disabled={isMarking || !!markingId || isDeleted}
-                            onClick={() => markForDeletion(emp.id)}
+                            onClick={() => void markForDeletion(emp.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>

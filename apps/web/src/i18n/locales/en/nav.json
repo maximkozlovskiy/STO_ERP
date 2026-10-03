@@ -24,5 +24,6 @@
   "employees": "Employees",
   "infrastructure": "Infrastructure",
   "settings": "System",
-  "settingsSync": "Cloud Sync"
+  "settingsSync": "Cloud Sync",
+  "errLogoutAll": "Could not end sessions on other devices — no connection to the server. Please try again later."
 }

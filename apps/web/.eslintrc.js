@@ -21,9 +21,12 @@ module.exports = {
   extends: ['plugin:@typescript-eslint/recommended-type-checked'],
   plugins: ['react-hooks', '@typescript-eslint'],
   rules: {
-    // Борг обробки помилок на фронті — 264 випадки на момент вмикання. Окремий крок.
-    '@typescript-eslint/no-misused-promises': 'warn',
-    '@typescript-eslint/no-floating-promises': 'warn',
+    // ERROR, а не warn: борг обробки помилок закрито (264 → 0, пункт 1 техборгу).
+    // Тримаємо як error, щоб не накопичувався знову — саме через `warn` він і виріс.
+    // Легітимний fire-and-forget позначається явним `void` + коментарем ЧОМУ
+    // (взірець — lib/cache-invalidation.ts: TanStack сам тримає error-стан queries).
+    '@typescript-eslint/no-misused-promises': 'error',
+    '@typescript-eslint/no-floating-promises': 'error',
     // Type-flow шум на межі з API-відповідями (той самий набір, що знижено на api).
     '@typescript-eslint/no-unsafe-member-access': 'warn',
     '@typescript-eslint/no-unsafe-assignment': 'warn',

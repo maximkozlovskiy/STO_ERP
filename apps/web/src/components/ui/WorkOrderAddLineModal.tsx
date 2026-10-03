@@ -11,6 +11,16 @@ import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 
+/**
+ * Додавання роботи в наряд.
+ *
+ * `void` перед `handleAdd()` / `handleClose()` у JSX: `handleAdd` має власний try/catch, що
+ * пише текст відмови у `error` (рендериться над формою) і в `toast.error`, плюс
+ * `finally { setSavingBoth(false) }`; єдиний `await` у `handleClose` — `dirty.confirmClose()`,
+ * який ніколи не реджектиться (резолвиться з діалогу). Користувач уже бачить результат,
+ * тож проміс обробника нікому не потрібен.
+ */
+
 interface Work {
   id: string;
   name: string;
@@ -123,7 +133,7 @@ export function WorkOrderAddLineModal({
 
   return (
     <>
-      <Modal open={open} onClose={handleClose} title="Додати роботу">
+      <Modal open={open} onClose={() => void handleClose()} title="Додати роботу">
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
           <div>
@@ -213,7 +223,7 @@ export function WorkOrderAddLineModal({
             />
           </div>
           <Button
-            onClick={handleAdd}
+            onClick={() => void handleAdd()}
             loading={saving}
             disabled={!form.workId || !form.employeeId}
             className="w-full"

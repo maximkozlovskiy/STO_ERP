@@ -54,5 +54,15 @@
   },
   "errors": {
     "delete": "Помилка видалення"
+  },
+  "toast": {
+    "bulk": {
+      "deleteOk": "Видалено співробітників: {{count}}",
+      "deletePartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалося",
+      "deleteNone": "Не вдалося видалити жодного співробітника",
+      "fireOk": "Звільнено співробітників: {{count}}",
+      "firePartial": "Звільнено {{succeeded}} з {{total}}. {{failed}} не вдалося",
+      "fireNone": "Не вдалося звільнити жодного співробітника"
+    }
   }
 }

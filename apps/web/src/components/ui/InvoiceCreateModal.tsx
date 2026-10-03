@@ -596,10 +596,13 @@ export function InvoiceCreateModal({
 
   return (
     <>
+      {/* (А) handleSave/handleCreate — це handleSubmit() з try/catch + setError,
+          doTransition так само, а handleModalClose лише очікує confirmClose()
+          (ніколи не реджектиться). Проміси нікому не потрібні → `void`. */}
       <Modal
         open={open}
-        onClose={handleModalClose}
-        onSubmit={handleSave}
+        onClose={() => void handleModalClose()}
+        onSubmit={() => void handleSave()}
         title={isEditMode ? 'Рахунок-фактура' : 'Новий рахунок'}
         size="content"
         hideClose
@@ -712,7 +715,7 @@ export function InvoiceCreateModal({
               </button>
             )}
             <button
-              onClick={handleModalClose}
+              onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
               title="Закрити"
               disabled={saving || transitioning}
@@ -728,7 +731,7 @@ export function InvoiceCreateModal({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => doTransition('CANCELLED')}
+                  onClick={() => void doTransition('CANCELLED')}
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
@@ -805,7 +808,7 @@ export function InvoiceCreateModal({
               {isEditMode ? (
                 canEdit && (
                   <Button
-                    onClick={handleSave}
+                    onClick={() => void handleSave()}
                     loading={saving}
                     disabled={saving || transitioning}
                     size="sm"
@@ -815,7 +818,7 @@ export function InvoiceCreateModal({
                 )
               ) : (
                 <Button
-                  onClick={handleCreate}
+                  onClick={() => void handleCreate()}
                   loading={saving}
                   disabled={saving || !watchedCounterpartyId}
                   size="sm"

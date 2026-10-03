@@ -24,5 +24,6 @@
   "employees": "Співробітники",
   "infrastructure": "Інфраструктура",
   "settings": "Система",
-  "settingsSync": "Cloud Sync"
+  "settingsSync": "Cloud Sync",
+  "errLogoutAll": "Не вдалося завершити сесії на інших пристроях — немає зв'язку з сервером. Повторіть спробу пізніше."
 }

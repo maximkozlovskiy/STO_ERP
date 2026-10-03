@@ -334,7 +334,10 @@ function StockDocumentsPageClient() {
         label: t('actions.bulkDelete'),
         variant: 'destructive',
         icon: <Trash2 className="h-3.5 w-3.5 mr-1.5" />,
-        onClick: handleBulkDelete,
+        // BulkAction.onClick типізований void-returning; handleBulkDelete не має шляху,
+        // що реджектиться — `confirm()` ніколи не реджектиться, `Promise.allSettled`
+        // поглинає відмови кожного DELETE і звітує через toast/`setError`.
+        onClick: ids => void handleBulkDelete(ids),
       },
     ],
     [handleBulkDelete, t],
@@ -345,6 +348,10 @@ function StockDocumentsPageClient() {
   // sto-optimize: stable refs — handlers used у inline row onClick wrappers; useCallback
   // дозволяє в майбутньому пройти React.memo на TableRow без identity-thrashing.
   // `load` ref recreates on each invalidation, але семантика та сама — deps eslint-disable.
+  // `void` перед `handleTransition()` / `handleBulkDelete()` у JSX: обидва мають власний
+  // try/catch (або Promise.allSettled), що показує текст відмови користувачу — у `error`
+  // (баннер над таблицею) та/або `toast`, плюс `finally { setSaving(false) }`. Відмова вже
+  // на екрані, тож чекати проміс обробника нікому не потрібно.
   const handleTransition = useCallback(
     // newStatus був `string` — у кеш/тіло запиту міг піти будь-який рядок.
     async (doc: StockDoc, newStatus: StockDocStatusValue) => {
@@ -768,7 +775,7 @@ function StockDocumentsPageClient() {
           showDetail?.status === 'DRAFT' ? (
             <div className="flex gap-2 w-full">
               <Button
-                onClick={() => handleTransition(showDetail, 'CONFIRMED')}
+                onClick={() => void handleTransition(showDetail, 'CONFIRMED')}
                 loading={saving}
                 className="flex-1"
               >
@@ -776,7 +783,7 @@ function StockDocumentsPageClient() {
               </Button>
               <Button
                 variant="destructive"
-                onClick={() => handleTransition(showDetail, 'CANCELLED')}
+                onClick={() => void handleTransition(showDetail, 'CANCELLED')}
                 loading={saving}
               >
                 {t('detail.cancelButton')}

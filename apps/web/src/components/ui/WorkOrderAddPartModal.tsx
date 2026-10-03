@@ -17,6 +17,16 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { GoodEditModal, type GoodForModal } from '@/components/ui/GoodEditModal';
 import type { CategoryNode } from '@/components/ui/category-tree';
 
+/**
+ * Додавання запчастини в наряд.
+ *
+ * `void` перед `handleAdd()` / `handleClose()` / `openGoodDetail()` у JSX: кожен має власний
+ * try/catch — `handleAdd` пише текст відмови у `error` (рендериться над формою) і в
+ * `toast.error`, `openGoodDetail` показує `toast.error` при збої завантаження картки товару,
+ * а єдиний `await` у `handleClose` — `dirty.confirmClose()`, який ніколи не реджектиться.
+ * Користувач уже бачить результат, тож проміс обробника нікому не потрібен.
+ */
+
 interface Good {
   id: string;
   name: string;
@@ -243,7 +253,7 @@ export function WorkOrderAddPartModal({
   // When chosen — show EntityPickerField (with detail/clear buttons).
   return (
     <>
-      <Modal open={open} onClose={handleClose} title="Додати запчастину">
+      <Modal open={open} onClose={() => void handleClose()} title="Додати запчастину">
         <div className="space-y-3">
           {error && <p className="text-[13px] text-destructive-text">{error}</p>}
 
@@ -271,7 +281,7 @@ export function WorkOrderAddPartModal({
               <EntityPickerField
                 display={goodDisplay}
                 placeholder="Обрати товар…"
-                onOpenDetail={openGoodDetail}
+                onOpenDetail={() => void openGoodDetail()}
                 onPick={clearGood}
                 onClear={clearGood}
               />
@@ -382,7 +392,7 @@ export function WorkOrderAddPartModal({
           </div>
 
           <Button
-            onClick={handleAdd}
+            onClick={() => void handleAdd()}
             loading={saving}
             disabled={
               !form.goodId ||

@@ -169,6 +169,15 @@ function CategoryNode({
   );
 }
 
+/**
+ * Статті витрат / надходжень — дерево категорій.
+ *
+ * `void` перед `save()`, `remove()`, `toggle()`, `restore()` у JSX: кожен має власний
+ * try/catch, що показує відмову користувачу — `save` пише у `error` (баннер у модалці),
+ * решта викликають `toast.error(...)`; `restore` ще й знімає in-flight guard у `finally`.
+ * `confirm()` у `remove()` ніколи не реджектиться. Відмова вже на екрані, тож чекати
+ * проміс обробника нікому не потрібно.
+ */
 export default function ExpenseCategoriesTab({ canManage = false }: { canManage?: boolean }) {
   const { t } = useTranslation('cash');
   const { confirm, dialogProps } = useConfirm();
@@ -316,9 +325,9 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
               restoringId={restoringId}
               onAddChild={openAddChild}
               onEdit={openEdit}
-              onDelete={remove}
-              onToggle={toggle}
-              onRestore={restore}
+              onDelete={n => void remove(n)}
+              onToggle={n => void toggle(n)}
+              onRestore={n => void restore(n)}
             />
           ))
         )}
@@ -372,7 +381,7 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
         }
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             loading={createMut.isPending || updateMut.isPending}
             disabled={!name.trim()}
             className="w-full"

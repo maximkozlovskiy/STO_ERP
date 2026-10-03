@@ -584,7 +584,7 @@ export function CalendarDayGrid({ state }: CalendarDayGridProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => removeSlot(s.id)}
+                  onClick={() => void removeSlot(s.id)}
                   title={t('day.deleteSlotTitle')}
                   aria-label={t('day.deleteSlotAria', {
                     time: `${fmtTime(s.startAt)}–${fmtTime(s.endAt)}`,

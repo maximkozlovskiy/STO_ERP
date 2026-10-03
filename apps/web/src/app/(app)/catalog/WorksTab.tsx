@@ -203,37 +203,41 @@ export default function WorksTab() {
         variant: 'destructive',
         // стилізований діалог useConfirm замість нативного блокуючого window.confirm —
         // парність з work-orders/counterparties/employees.
-        onClick: async ids => {
-          if (
-            !(await confirm({
-              title: t('works.confirmDeleteTitle', {
-                count: ids.length,
-                noun: ids.length === 1 ? t('works.nounOne') : t('works.nounMany'),
-              }),
-              variant: 'destructive',
-            }))
-          )
-            return;
-          const results = await Promise.allSettled(
-            ids.map(id => apiFetch(`/works/${id}`, { method: 'DELETE' })),
-          );
-          const succeeded = results.filter(r => r.status === 'fulfilled').length;
-          const failed = results.length - succeeded;
-          bulkSelect.clear();
-          worksLoadRef.current?.();
-          if (features.toastEnabled) {
-            if (failed === 0)
-              toast.success(
-                t('works.deletedAll', {
-                  count: succeeded,
-                  noun: succeeded === 1 ? t('works.nounOne') : t('works.nounMany'),
+        // void: confirm() ніколи не реджектиться, allSettled теж — а результат
+        // кожного DELETE уже порахований і показаний у toast.success/warning.
+        onClick: ids => {
+          void (async () => {
+            if (
+              !(await confirm({
+                title: t('works.confirmDeleteTitle', {
+                  count: ids.length,
+                  noun: ids.length === 1 ? t('works.nounOne') : t('works.nounMany'),
                 }),
-              );
-            else
-              toast.warning(
-                t('works.deletedPartial', { succeeded, total: results.length, failed }),
-              );
-          }
+                variant: 'destructive',
+              }))
+            )
+              return;
+            const results = await Promise.allSettled(
+              ids.map(id => apiFetch(`/works/${id}`, { method: 'DELETE' })),
+            );
+            const succeeded = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.length - succeeded;
+            bulkSelect.clear();
+            worksLoadRef.current?.();
+            if (features.toastEnabled) {
+              if (failed === 0)
+                toast.success(
+                  t('works.deletedAll', {
+                    count: succeeded,
+                    noun: succeeded === 1 ? t('works.nounOne') : t('works.nounMany'),
+                  }),
+                );
+              else
+                toast.warning(
+                  t('works.deletedPartial', { succeeded, total: results.length, failed }),
+                );
+            }
+          })();
         },
       },
     ],
@@ -295,8 +299,11 @@ export default function WorksTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories, modal]);
 
-  const load = useCallback(() => {
-    qc.invalidateQueries({ queryKey: worksKeys.all });
+  // Фонова інвалідація кешу: TanStack сам перезапитує активні queries і сам тримає
+  // їхній error-стан (його показує таблиця). Проміс нікому не потрібен → void,
+  // а тип повернення void знімає правило й з усіх викликів load() у JSX.
+  const load = useCallback((): void => {
+    void qc.invalidateQueries({ queryKey: worksKeys.all });
   }, [qc]);
 
   // Keep ref in sync so worksActions can call load() without depending on it
@@ -307,6 +314,9 @@ export default function WorksTab() {
   const flatCategories = (cats: Category[], depth = 0): Array<Category & { depth: number }> =>
     cats.flatMap(c => [{ ...c, depth }, ...flatCategories(c.children, depth + 1)]);
 
+  // Мутації (create/saveEditWork/remove/restore) самі ловлять помилку і показують її
+  // через setError у банері; confirmClose() з useDirtyForm лише resolve-иться і впасти
+  // не може. Тому в JSX вони викликаються через `void` — чекати проміс нема сенсу.
   const create = async () => {
     const normo = Number(form.normoHours);
     const price = Number(form.price);
@@ -795,15 +805,17 @@ export default function WorksTab() {
 
       <Modal
         open={modal}
-        onClose={async () => {
-          if (!(await worksFormDirty.confirmClose())) return;
-          setModal(false);
+        onClose={() => {
+          void (async () => {
+            if (!(await worksFormDirty.confirmClose())) return;
+            setModal(false);
+          })();
         }}
         title={t('works.createModalTitle')}
         size="lg"
         footer={
           <Button
-            onClick={create}
+            onClick={() => void create()}
             loading={saving}
             disabled={!form.name || !form.categoryId || !form.normoHours || !form.price}
             className="w-full"
@@ -900,15 +912,17 @@ export default function WorksTab() {
 
       <Modal
         open={!!editWork}
-        onClose={async () => {
-          if (!(await editWorkDirty.confirmClose())) return;
-          setEditWork(null);
+        onClose={() => {
+          void (async () => {
+            if (!(await editWorkDirty.confirmClose())) return;
+            setEditWork(null);
+          })();
         }}
         title={t('works.editModalTitle')}
         footer={
           <>
             <Button
-              onClick={saveEditWork}
+              onClick={() => void saveEditWork()}
               loading={editSaving}
               disabled={
                 !editForm.name || !editForm.categoryId || !editForm.normoHours || !editForm.price
@@ -918,9 +932,11 @@ export default function WorksTab() {
             </Button>
             <Button
               variant="outline"
-              onClick={async () => {
-                if (!(await editWorkDirty.confirmClose())) return;
-                setEditWork(null);
+              onClick={() => {
+                void (async () => {
+                  if (!(await editWorkDirty.confirmClose())) return;
+                  setEditWork(null);
+                })();
               }}
             >
               {t('works.cancel')}

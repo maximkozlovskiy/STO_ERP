@@ -112,7 +112,7 @@ export function MatchBankTransactionModal({
       <Modal
         open={open}
         onClose={onClose}
-        onSubmit={handleSubmit}
+        onSubmit={() => void handleSubmit()}
         title={t('match.title')}
         size="md"
         footer={
@@ -121,7 +121,7 @@ export function MatchBankTransactionModal({
               {t('match.cancel')}
             </Button>
             <Button
-              onClick={handleSubmit}
+              onClick={() => void handleSubmit()}
               loading={matchMut.isPending}
               disabled={matchMut.isPending || !counterpartyId}
               size="sm"

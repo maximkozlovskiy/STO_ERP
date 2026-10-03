@@ -188,9 +188,23 @@ export function InventoryTab() {
     }
   }, [t]);
 
+  // `loadWarehouses()` сам ловить відмову і пише її у `error` (баннер над таблицею),
+  // лишаючи закешований список — ефекту чекати проміс нічого, тому `void`.
   useEffect(() => {
-    loadWarehouses();
+    void loadWarehouses();
   }, [loadWarehouses]);
+
+  // Кнопка «нижче мінімуму»: перед відкриттям модалки перезапитуємо список. refetch()
+  // не реджектиться — повертає результат із `isError`, тож раніше збій оновлення тонув
+  // безслідно і модалка показувала стару (або порожню) вибірку як актуальну. Тепер
+  // відмова йде у `error`-баннер, а модалка все одно відкривається з наявним кешем.
+  const openLowStockModal = async () => {
+    const res = await refetchLowItems();
+    if (res.isError) {
+      setError(res.error instanceof Error ? res.error.message : t('errors.loadLowStock'));
+    }
+    setShowLowModal(true);
+  };
 
   const saveMinStock = async () => {
     if (!selectedItem) return;
@@ -208,7 +222,9 @@ export function InventoryTab() {
       setSelectedItem(prev =>
         prev ? { ...prev, minStock: val, isLow: val !== null && prev.quantity <= val } : prev,
       );
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.items() });
+      // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає їх
+      // error-стан (його показує `queryError` у баннері) — чекати нічого, тому `void`.
+      void queryClient.invalidateQueries({ queryKey: inventoryKeys.items() });
       setEditingMinStock(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('errors.save'));
@@ -309,10 +325,7 @@ export function InventoryTab() {
           <Button
             variant="outline"
             size="sm"
-            onClick={async () => {
-              await refetchLowItems();
-              setShowLowModal(true);
-            }}
+            onClick={() => void openLowStockModal()}
             className="text-warning-text border-warning-border bg-warning-subtle hover:bg-warning-subtle/80"
           >
             <AlertTriangle className="h-4 w-4" />
@@ -470,7 +483,7 @@ export function InventoryTab() {
             onStartEditMinStock={handleStartEditMinStock}
             onCancelEditMinStock={handleCancelEditMinStock}
             onChangeMinStockVal={setMinStockVal}
-            onSaveMinStock={saveMinStock}
+            onSaveMinStock={() => void saveMinStock()}
           />
         )}
       </div>

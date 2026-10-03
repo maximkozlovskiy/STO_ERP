@@ -79,7 +79,7 @@ export function XlsxImportButton({
     <div className={cn('flex flex-col gap-2', className)}>
       <div className="flex gap-2">
         <button
-          onClick={handleDownload}
+          onClick={() => void handleDownload()}
           disabled={downloading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
         >
@@ -98,7 +98,7 @@ export function XlsxImportButton({
           ref={fileRef}
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={handleFileChange}
+          onChange={e => void handleFileChange(e)}
           className="hidden"
         />
       </div>

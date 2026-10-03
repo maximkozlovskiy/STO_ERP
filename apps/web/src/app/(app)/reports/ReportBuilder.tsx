@@ -380,7 +380,7 @@ export function ReportBuilder() {
                 className="w-32"
               />
             </div>
-            <Button onClick={() => run()} disabled={runMut.isPending}>
+            <Button onClick={() => void run()} disabled={runMut.isPending}>
               <Play className="size-4" /> {t('builder.run')}
             </Button>
             <Button variant="outline" onClick={() => setSaveOpen(true)}>
@@ -647,7 +647,7 @@ export function ReportBuilder() {
         title={t('builder.saveTitle')}
         value={saveName}
         onChange={setSaveName}
-        onSubmit={doSave}
+        onSubmit={() => void doSave()}
         pending={saveMut.isPending}
       />
 
@@ -657,7 +657,7 @@ export function ReportBuilder() {
         title={t('builder.renameTitle')}
         value={renameName}
         onChange={setRenameName}
-        onSubmit={doRename}
+        onSubmit={() => void doRename()}
         pending={updateSavedMut.isPending}
         submitLabel={t('builder.rename')}
       />

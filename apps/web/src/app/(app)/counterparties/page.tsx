@@ -253,41 +253,48 @@ function CrmPageInner() {
 
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(counterparties);
 
+  // `void queryClient.invalidateQueries(...)` по всьому файлу — фонова інвалідація кешу:
+  // TanStack сам перезапитує активні queries і сам тримає їхній error-стан (його показує
+  // відповідна таблиця / panel). Результат нікому не потрібен, чекати на нього нема де.
   const bulkActions = useMemo<BulkAction[]>(
     () => [
       {
         id: 'delete',
         label: t('actions.bulkDelete'),
         variant: 'destructive',
-        onClick: async (ids: string[]) => {
-          const results = await Promise.allSettled(
-            ids.map(id => apiFetch(`/counterparties/${id}`, { method: 'DELETE' })),
-          );
-          const succeeded = results.filter(r => r.status === 'fulfilled').length;
-          const failed = results.length - succeeded;
-          bulkSelect.clear();
-          queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
-          if (features.toastEnabled) {
-            if (succeeded > 0 && failed === 0) {
-              toast.success(
-                succeeded === 1
-                  ? t('toast.deletedOne', { count: succeeded })
-                  : t('toast.deletedMany', { count: succeeded }),
-              );
-            } else if (succeeded > 0) {
-              toast.warning(
-                t('toast.deletedPartial', { succeeded, total: results.length, failed }),
-              );
-            } else {
-              toast.error(t('toast.bulkDeleteNone'));
-            }
-          } else if (failed > 0) {
-            setActionError(
-              succeeded > 0
-                ? t('errors.deletedPartial', { succeeded, total: results.length, failed })
-                : t('errors.bulkDeleteNone'),
+        // (А) Тіло саме звітує про результат (toast / setActionError), а BulkAction.onClick
+        // типізований як (ids) => void — тому async-логіка живе у void-IIFE.
+        onClick: (ids: string[]) => {
+          void (async () => {
+            const results = await Promise.allSettled(
+              ids.map(id => apiFetch(`/counterparties/${id}`, { method: 'DELETE' })),
             );
-          }
+            const succeeded = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.length - succeeded;
+            bulkSelect.clear();
+            void queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+            if (features.toastEnabled) {
+              if (succeeded > 0 && failed === 0) {
+                toast.success(
+                  succeeded === 1
+                    ? t('toast.deletedOne', { count: succeeded })
+                    : t('toast.deletedMany', { count: succeeded }),
+                );
+              } else if (succeeded > 0) {
+                toast.warning(
+                  t('toast.deletedPartial', { succeeded, total: results.length, failed }),
+                );
+              } else {
+                toast.error(t('toast.bulkDeleteNone'));
+              }
+            } else if (failed > 0) {
+              setActionError(
+                succeeded > 0
+                  ? t('errors.deletedPartial', { succeeded, total: results.length, failed })
+                  : t('errors.bulkDeleteNone'),
+              );
+            }
+          })();
         },
       },
     ],
@@ -337,7 +344,7 @@ function CrmPageInner() {
       await apiFetch(`/counterparties/${id}`, { method: 'DELETE' });
       if (features.toastEnabled) toast.success(t('toast.markedForDeletion'));
       if (selectedCp?.id === id) setSelectedCp(null);
-      queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+      void queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('errors.deleteFailed');
       if (features.toastEnabled) toast.error(msg);
@@ -736,7 +743,7 @@ function CrmPageInner() {
                               size="icon-sm"
                               className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                               title={t('actions.markForDeletion')}
-                              onClick={() => markDeleted(cp.id)}
+                              onClick={() => void markDeleted(cp.id)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -771,7 +778,7 @@ function CrmPageInner() {
           setEditingCp(null);
         }}
         onSaved={(cp, isNew) => {
-          queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+          void queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
           if (isNew) {
             // Після створення — лишаємо модалку відкритою в edit-режимі (передаємо
             // створеного як editingCp → з'являються вкладки Авто/Договори). Новий

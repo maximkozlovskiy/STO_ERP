@@ -178,8 +178,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           cancelled = true;
         };
       }
-      // Token in sessionStorage — still need to get employee info via refresh
-      refreshToken().then(ok => {
+      // Token in sessionStorage — still need to get employee info via refresh.
+      // `void`: refreshToken() сам ловить усі помилки мережі й повертає false (немає rejection),
+      // а обробник нижче синхронний. Показувати помилку нема де й не потрібно — це фоновий
+      // restore сесії на mount, і єдиний можливий результат невдачі (LOGOUT → редірект на /login)
+      // вже оброблений тут.
+      void refreshToken().then(ok => {
         if (cancelled) return;
         if (!ok) {
           sessionStorage.removeItem(TOKEN_KEY);
@@ -189,8 +193,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       });
     } else {
-      // Try silent refresh (cookie might still be valid)
-      refreshToken().then(ok => {
+      // Try silent refresh (cookie might still be valid) — `void` з тієї ж причини.
+      void refreshToken().then(ok => {
         if (cancelled) return;
         if (!ok) dispatch({ type: 'LOGOUT' });
       });
@@ -227,6 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('sto:login'));
   }, []);
 
+  // Локальний вихід завжди має завершитись успішно: у офлайн-ERP мережа до API може бути
+  // недоступна, але сесію на ЦЬОМУ пристрої ми гасимо локально у `finally` незалежно від
+  // відповіді сервера. Тому network-помилку свідомо глушимо — інакше logout() реджектився б,
+  // хоча користувач фактично вже вийшов, і виклик лишався б необробленим rejection.
   const logout = useCallback(async (): Promise<void> => {
     try {
       await fetch(`${API_URL}/api/v1/auth/logout`, {
@@ -236,7 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           Authorization: `Bearer ${state.accessToken ?? ''}`,
           'Accept-Language': getCurrentLocale(),
         },
-      });
+      }).catch(() => undefined);
     } finally {
       sessionStorage.removeItem(TOKEN_KEY);
       writeCachedEmployee(null);
@@ -247,6 +255,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [state.accessToken]);
 
+  // На відміну від logout(), тут помилку НЕ глушимо: якщо запит не дійшов, сесії на інших
+  // пристроях лишились живими — це безпековий факт, і користувач мусить його побачити.
+  // Виклик зобов'язаний мати catch (див. TopShell.handleLogoutAll).
   const logoutAll = useCallback(async (): Promise<void> => {
     try {
       // B1: bump tokenVersion на бекенді → усі раніше видані токени (усіх пристроїв) мертві.

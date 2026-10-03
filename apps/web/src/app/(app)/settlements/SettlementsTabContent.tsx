@@ -120,6 +120,11 @@ export function SettlementsTabContent() {
   // перезаписати стан B. Фіксуємо requestId перед await, застосовуємо setState
   // лише якщо він досі актуальний (reqRef не зрушив).
   const loadCpReqRef = useRef(0);
+  // `void` перед `loadCounterparty()`, `handleCreateAct()`, `downloadActPdf()`: усі три
+  // мають власний try/catch, що пише текст відмови у `error` (баннер над вкладкою), плюс
+  // `finally`, який знімає loading/saving/downloading-стан; `loadCounterparty` ще й
+  // відкидає відповідь застарілого запиту за reqId. Відмова вже на екрані, тож чекати
+  // проміс обробника викличній стороні нічого.
   const loadCounterparty = useCallback(
     async (cp: Counterparty) => {
       const reqId = ++loadCpReqRef.current;
@@ -217,7 +222,7 @@ export function SettlementsTabContent() {
             onSearch={searchCounterparties}
             onSearchSelect={item => {
               setSelectedDisplay(item.primary);
-              loadCounterparty(item);
+              void loadCounterparty(item);
             }}
             onClear={() => {
               setSelected(null);
@@ -440,7 +445,7 @@ export function SettlementsTabContent() {
                         variant="outline"
                         size="sm"
                         loading={downloadingActId === act.id}
-                        onClick={() => downloadActPdf(act.id)}
+                        onClick={() => void downloadActPdf(act.id)}
                       >
                         {t('acts.pdf')}
                       </Button>
@@ -467,7 +472,7 @@ export function SettlementsTabContent() {
         }
         onSelect={cp => {
           setSelectedDisplay(cp.primary);
-          loadCounterparty(cp);
+          void loadCounterparty(cp);
         }}
       />
 
@@ -512,7 +517,7 @@ export function SettlementsTabContent() {
               onChange={v => setActForm(f => ({ ...f, periodTo: v }))}
             />
             <Button
-              onClick={handleCreateAct}
+              onClick={() => void handleCreateAct()}
               loading={saving}
               disabled={!actForm.periodFrom || !actForm.periodTo}
               className="w-full"

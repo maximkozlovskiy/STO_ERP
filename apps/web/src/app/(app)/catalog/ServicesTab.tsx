@@ -208,37 +208,43 @@ export default function ServicesTab() {
         id: 'delete',
         label: t('common.bulkDelete'),
         variant: 'destructive',
-        onClick: async ids => {
-          if (
-            !(await confirm({
-              title: t('services.confirmDeleteTitle', {
-                count: ids.length,
-                noun: ids.length === 1 ? t('services.nounOne') : t('services.nounMany'),
-              }),
-              variant: 'destructive',
-            }))
-          )
-            return;
-          const results = await Promise.allSettled(
-            ids.map(id => apiFetch(`/services/${id}`, { method: 'DELETE' })),
-          );
-          const succeeded = results.filter(r => r.status === 'fulfilled').length;
-          const failed = results.length - succeeded;
-          bulkSelect.clear();
-          servicesLoadRef.current?.();
-          if (features.toastEnabled) {
-            if (failed === 0)
-              toast.success(
-                t('services.deletedAll', {
-                  count: succeeded,
-                  noun: succeeded === 1 ? t('services.nounOne') : t('services.nounMany'),
+        // BulkAction.onClick типізований як void-returning. Тіло не має шляху, що
+        // реджектиться: `confirm()` ніколи не реджектиться, а `Promise.allSettled`
+        // поглинає відмови кожного DELETE і звітує про них через
+        // toast.success/toast.warning нижче. Тому — void-IIFE, без втрати помилок.
+        onClick: ids => {
+          void (async () => {
+            if (
+              !(await confirm({
+                title: t('services.confirmDeleteTitle', {
+                  count: ids.length,
+                  noun: ids.length === 1 ? t('services.nounOne') : t('services.nounMany'),
                 }),
-              );
-            else
-              toast.warning(
-                t('services.deletedPartial', { succeeded, total: results.length, failed }),
-              );
-          }
+                variant: 'destructive',
+              }))
+            )
+              return;
+            const results = await Promise.allSettled(
+              ids.map(id => apiFetch(`/services/${id}`, { method: 'DELETE' })),
+            );
+            const succeeded = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.length - succeeded;
+            bulkSelect.clear();
+            servicesLoadRef.current?.();
+            if (features.toastEnabled) {
+              if (failed === 0)
+                toast.success(
+                  t('services.deletedAll', {
+                    count: succeeded,
+                    noun: succeeded === 1 ? t('services.nounOne') : t('services.nounMany'),
+                  }),
+                );
+              else
+                toast.warning(
+                  t('services.deletedPartial', { succeeded, total: results.length, failed }),
+                );
+            }
+          })();
         },
       },
     ],
@@ -757,14 +763,23 @@ export default function ServicesTab() {
 
       <Modal
         open={modal}
-        onClose={async () => {
-          if (!(await servicesFormDirty.confirmClose())) return;
-          setModal(false);
+        onClose={() => {
+          // єдиний await — confirmClose(), який ніколи не реджектиться (резолвиться з
+          // DirtyConfirmDialog), тож чекати цей проміс нікому не потрібно.
+          void (async () => {
+            if (!(await servicesFormDirty.confirmClose())) return;
+            setModal(false);
+          })();
         }}
         title={editingService ? t('services.editModalTitle') : t('services.createModalTitle')}
         size="lg"
         footer={
-          <Button onClick={save} loading={saving} disabled={!form.name} className="w-full">
+          <Button
+            onClick={() => void save()}
+            loading={saving}
+            disabled={!form.name}
+            className="w-full"
+          >
             {editingService ? t('services.save') : t('services.create')}
           </Button>
         }

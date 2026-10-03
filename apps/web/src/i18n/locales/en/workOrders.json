@@ -271,6 +271,7 @@
     "add": "Add photo",
     "dropHint": "Drag photos here or click \"Add photo\"",
     "deleteAria": "Delete file",
+    "deleteError": "Failed to delete file",
     "uploadError": "Failed to upload {{count}} file(s)",
     "lightboxAria": "Photo preview",
     "photoAlt": "Photo"

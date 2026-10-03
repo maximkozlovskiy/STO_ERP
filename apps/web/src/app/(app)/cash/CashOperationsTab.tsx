@@ -91,6 +91,8 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     setOpModal(dir);
   };
 
+  // `void` в onClick: обробник сам ловить помилку у catch і показує її користувачу
+  // (банер setError / toast.error) — проміс більше нікому не потрібен.
   const submitOp = async () => {
     if (!opModal || !selected) return;
     const amount = Number(opForm.amount);
@@ -341,7 +343,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         title={opModal === 'IN' ? t('operations.modalTitleIn') : t('operations.modalTitleOut')}
         footer={
           <Button
-            onClick={submitOp}
+            onClick={() => void submitOp()}
             loading={createOp.isPending}
             disabled={!(Number(opForm.amount) > 0)}
             className="w-full"

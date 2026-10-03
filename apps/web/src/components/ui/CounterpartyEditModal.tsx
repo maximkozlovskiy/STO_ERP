@@ -745,15 +745,19 @@ export function CounterpartyEditModal({
 
   return (
     <>
+      {/* (А) Усі обробники нижче вже показують відмову самі: create/update/saveVehicle/
+          deleteVehicle/restoreVehicle — через toast.error, saveContract/deleteContract/
+          restoreContract — через setContractsError; handleClose лише очікує
+          confirmClose() (ніколи не реджектиться). Проміси нікому не потрібні → `void`. */}
       <Modal
         open={open}
-        onClose={handleClose}
+        onClose={() => void handleClose()}
         title={isEdit ? 'Редагування контрагента' : 'Новий контрагент'}
         size={isEdit ? 'lg' : 'md'}
         bodyMinHeight={isEdit ? 340 : undefined}
         footer={
           editTab === 'main' ? (
-            <Button onClick={isEdit ? update : create} loading={saving}>
+            <Button onClick={() => void (isEdit ? update() : create())} loading={saving}>
               {isEdit ? 'Оновити' : 'Зберегти'}
             </Button>
           ) : null
@@ -876,7 +880,7 @@ export function CounterpartyEditModal({
                       <Button size="sm" variant="outline" onClick={resetVehicleForm}>
                         Скасувати
                       </Button>
-                      <Button size="sm" onClick={saveVehicle} loading={addingVehicle}>
+                      <Button size="sm" onClick={() => void saveVehicle()} loading={addingVehicle}>
                         {editingVehicleId ? 'Оновити' : 'Зберегти'}
                       </Button>
                     </div>
@@ -930,7 +934,7 @@ export function CounterpartyEditModal({
                                   <button
                                     type="button"
                                     title="Відновити"
-                                    onClick={() => restoreVehicle(v)}
+                                    onClick={() => void restoreVehicle(v)}
                                     disabled={deletingVehicleId === v.id}
                                     className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition disabled:opacity-50"
                                   >
@@ -949,7 +953,7 @@ export function CounterpartyEditModal({
                                     <button
                                       type="button"
                                       title="Видалити"
-                                      onClick={() => deleteVehicle(v.id)}
+                                      onClick={() => void deleteVehicle(v.id)}
                                       disabled={deletingVehicleId === v.id}
                                       className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
                                     >
@@ -1178,7 +1182,7 @@ export function CounterpartyEditModal({
                           !addContractForm.startDate ||
                           (counterparty.type === 'BOTH' && !addContractForm.contractType)
                         }
-                        onClick={saveContract}
+                        onClick={() => void saveContract()}
                       >
                         {editingContractId ? 'Оновити' : 'Зберегти'}
                       </Button>
@@ -1247,7 +1251,7 @@ export function CounterpartyEditModal({
                                     type="button"
                                     title="Відновити"
                                     disabled={deletingContractId === c.id}
-                                    onClick={() => restoreContract(c)}
+                                    onClick={() => void restoreContract(c)}
                                     className="p-1.5 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition disabled:opacity-50"
                                   >
                                     <RotateCcw className="h-3.5 w-3.5" />
@@ -1266,7 +1270,7 @@ export function CounterpartyEditModal({
                                       type="button"
                                       title="Видалити"
                                       disabled={deletingContractId === c.id}
-                                      onClick={() => deleteContract(c)}
+                                      onClick={() => void deleteContract(c)}
                                       className="p-1.5 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive-subtle hover:text-destructive transition disabled:opacity-50"
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />

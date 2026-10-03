@@ -127,7 +127,7 @@ function InlineEditRow({ unit, onSave, onCancel, saving }: InlineEditRowProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onSave(unit.id, form)}
+            onClick={() => void onSave(unit.id, form)}
             disabled={!valid || saving}
             className="text-success/80 hover:text-success hover:bg-success/10"
             title={t('units.saveHint')}
@@ -171,8 +171,11 @@ export default function UnitsTab() {
   // блокування повторних кліків Restore: дублюючі POST → 2nd+ повертає 404
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
+  // load() — fire-and-forget: усі помилки вже обробляє внутрішній .catch (setError),
+  // тому ланцюжок ніколи не реджектиться і його результат нікому не потрібен.
+  // Тип повернення void, щоб жоден з численних викликів load() не тягнув проміс.
   const load = useCallback(
-    (opts?: { fromCache?: boolean; withDeleted?: boolean; signal?: AbortSignal }) => {
+    (opts?: { fromCache?: boolean; withDeleted?: boolean; signal?: AbortSignal }): void => {
       const fromCache = opts?.fromCache ?? false;
       const withDeleted = opts?.withDeleted ?? showDeleted;
       const cached = fromCache && !withDeleted ? getCached<Unit[]>('cache:units') : null;
@@ -182,7 +185,7 @@ export default function UnitsTab() {
       } else setLoading(true);
 
       const url = withDeleted ? '/units?showDeleted=true' : '/units';
-      return apiFetch<Unit[]>(url, opts?.signal ? { signal: opts.signal } : undefined)
+      void apiFetch<Unit[]>(url, opts?.signal ? { signal: opts.signal } : undefined)
         .then(d => {
           if (opts?.signal?.aborted) return;
           setUnits(d);
@@ -212,6 +215,9 @@ export default function UnitsTab() {
   }, [load, showDeleted]);
 
   // ── Create ────────────────────────────────────────────────────────────────
+  // Усі мутації нижче (create/saveEdit/remove/restore) самі ловлять помилку в catch
+  // і показують її через setError/setEditError у банері зверху. Тому в JSX вони
+  // викликаються через `void` — проміс ніхто не чекає і реджекту бути не може.
 
   const create = async () => {
     if (!form.name.trim() || !form.shortName.trim()) {
@@ -547,7 +553,7 @@ export default function UnitsTab() {
         title={t('units.createModalTitle')}
         footer={
           <Button
-            onClick={create}
+            onClick={() => void create()}
             loading={saving}
             disabled={!form.name || !form.shortName}
             className="w-full"

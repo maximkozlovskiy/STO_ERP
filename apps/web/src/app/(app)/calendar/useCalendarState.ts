@@ -333,7 +333,9 @@ export function useCalendarState() {
   const yearMonth = date ? date.slice(0, 7) : '';
 
   useEffect(() => {
-    if (calView === 'month' && yearMonth) loadMonth(yearMonth);
+    // `void`: loadMonth сам тримає `monthError`/`monthLoading` (їх рендерить
+    // CalendarMonthView) — effect не має куди повертати проміс.
+    if (calView === 'month' && yearMonth) void loadMonth(yearMonth);
   }, [calView, yearMonth, loadMonth]);
 
   const statsRange = useMemo((): { from: string; to: string } | null => {
@@ -805,14 +807,22 @@ export function useCalendarState() {
       }
     };
 
+    // onUp — async (PATCH слоту при resize). addEventListener чекає void-листенер, тож
+    // обгортаємо у ОДНУ стабільну константу: і add, і remove бачать ту саму функцію
+    // (інлайн-стрілка у двох місцях дала б різні ідентичності → листенер не знявся б).
+    // `void` тут безпечний: onUp має власний try/catch із `toast.error` + повторний `load()`.
+    const onUpListener = (e: PointerEvent): void => {
+      void onUp(e);
+    };
+
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointerup', onUpListener);
     window.addEventListener('pointercancel', onCancel);
     return () => {
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointerup', onUpListener);
       window.removeEventListener('pointercancel', onCancel);
     };
   }, [pxToDecimalHours, load]);

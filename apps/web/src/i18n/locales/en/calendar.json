@@ -157,7 +157,8 @@
     "errInvalidDateTime": "Enter a valid date and time",
     "errSaveFallback": "Save error",
     "errDeleteFallback": "Delete error",
-    "errGeneric": "Error"
+    "errGeneric": "Error",
+    "errCpDetailLoad": "Failed to load the client card"
   },
   "wizard": {
     "titleClient": "New client",

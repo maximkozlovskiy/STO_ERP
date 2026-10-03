@@ -58,6 +58,10 @@ export function SearchCombobox<T extends { id: string }>({
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<(T & ComboboxItem)[]>([]);
   const [loading, setLoading] = useState(false);
+  // Невдалий fetch треба відрізняти від «справді нічого не знайдено»: раніше catch робив
+  // лише setItems([]) → dropdown показував «Нічого не знайдено», і користувач був упевнений,
+  // що запису не існує, хоча насправді запит до API впав (офлайн / 500) і його варто повторити.
+  const [searchFailed, setSearchFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -101,23 +105,33 @@ export function SearchCombobox<T extends { id: string }>({
       if (!q.trim()) {
         setItems([]);
         setOpen(false);
+        setSearchFailed(false);
         return;
       }
-      debounceRef.current = setTimeout(async () => {
-        debounceRef.current = null;
-        setLoading(true);
-        try {
-          const results = await fetchItems(q.trim());
-          if (mountedRef.current) {
-            setItems(results);
-            setOpen(true);
-            setActiveIndex(-1);
+      // `void` для async-колбека setTimeout: усе тіло в try/catch/finally, тож проміс не
+      // реджектиться, а його результат нікому не потрібен — стан осідає в setItems/setSearchFailed.
+      debounceRef.current = setTimeout(() => {
+        void (async () => {
+          debounceRef.current = null;
+          setLoading(true);
+          try {
+            const results = await fetchItems(q.trim());
+            if (mountedRef.current) {
+              setItems(results);
+              setSearchFailed(false);
+              setOpen(true);
+              setActiveIndex(-1);
+            }
+          } catch {
+            if (mountedRef.current) {
+              setItems([]);
+              setSearchFailed(true);
+              setOpen(true);
+            }
+          } finally {
+            if (mountedRef.current) setLoading(false);
           }
-        } catch {
-          if (mountedRef.current) setItems([]);
-        } finally {
-          if (mountedRef.current) setLoading(false);
-        }
+        })();
       }, 300);
     },
     [fetchItems],
@@ -133,6 +147,7 @@ export function SearchCombobox<T extends { id: string }>({
     onSelect(item);
     setQuery('');
     setItems([]);
+    setSearchFailed(false);
     setOpen(false);
     setActiveIndex(-1);
   };
@@ -140,6 +155,7 @@ export function SearchCombobox<T extends { id: string }>({
   const handleClear = () => {
     setQuery('');
     setItems([]);
+    setSearchFailed(false);
     setOpen(false);
     onClear?.();
     inputRef.current?.focus();
@@ -156,10 +172,12 @@ export function SearchCombobox<T extends { id: string }>({
       const q = query.trim();
       if (!q) return;
       setLoading(true);
-      fetchItems(q)
+      // `void`: обидві гілки promise вже оброблені — .catch показує стан помилки у dropdown.
+      void fetchItems(q)
         .then(results => {
           if (!mountedRef.current) return;
           setItems(results);
+          setSearchFailed(false);
           setOpen(true);
           setActiveIndex(-1);
           setLoading(false);
@@ -169,6 +187,10 @@ export function SearchCombobox<T extends { id: string }>({
         .catch(() => {
           if (mountedRef.current) {
             setItems([]);
+            // Сканування ШК: без цього механік бачив «Нічого не знайдено» і думав, що товару
+            // немає в каталозі, хоча запит просто не дійшов — і міг завести дубль позиції.
+            setSearchFailed(true);
+            setOpen(true);
             setLoading(false);
           }
         });
@@ -324,8 +346,18 @@ export function SearchCombobox<T extends { id: string }>({
         )}
 
         {open && !loading && items.length === 0 && query.trim() && (
-          <div className="absolute z-50 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg px-3 py-2">
-            <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute z-50 mt-1 w-full bg-surface border border-border rounded-lg shadow-lg px-3 py-2"
+          >
+            {searchFailed ? (
+              <span className="text-[13px] text-destructive">
+                Не вдалося виконати пошук. Перевірте зв&apos;язок і спробуйте ще раз.
+              </span>
+            ) : (
+              <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
+            )}
           </div>
         )}
       </div>

@@ -116,6 +116,8 @@ export default function BrandsTab() {
     setForm(f => ({ ...f, synonyms: f.synonyms.filter(x => x !== s) }));
   };
 
+  // `void` в onClick: обробник сам ловить помилку у catch і показує її користувачу
+  // (банер setError / toast.error) — проміс більше нікому не потрібен.
   const save = async () => {
     if (!form.name.trim()) {
       setError(t('brands.nameRequired'));
@@ -349,7 +351,12 @@ export default function BrandsTab() {
         onClose={() => setModal(false)}
         title={editBrand ? t('brands.editTitle') : t('brands.createTitle')}
         footer={
-          <Button onClick={save} loading={saving} disabled={!form.name.trim()} className="w-full">
+          <Button
+            onClick={() => void save()}
+            loading={saving}
+            disabled={!form.name.trim()}
+            className="w-full"
+          >
             {t('brands.save')}
           </Button>
         }

@@ -358,7 +358,7 @@ function SupplierPaymentsPageInner() {
       const succeeded = results.filter(r => r.status === 'fulfilled').length;
       const failed = results.length - succeeded;
       bulkSelect.clear();
-      queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      void queryClient.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
       if (features.toastEnabled) {
         if (succeeded > 0 && failed === 0)
           toast.success(t('toast.bulkDeleted', { count: succeeded }));
@@ -376,7 +376,7 @@ function SupplierPaymentsPageInner() {
         id: 'delete',
         label: t('page.bulk.deleteSelected'),
         variant: 'destructive',
-        onClick: bulkDeleteSelected,
+        onClick: ids => void bulkDeleteSelected(ids),
       },
     ],
     [bulkDeleteSelected, t],

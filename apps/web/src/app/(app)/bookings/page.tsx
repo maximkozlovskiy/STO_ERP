@@ -23,7 +23,10 @@ export default function BookingsPage() {
 
   const qc = useQueryClient();
   const { data: requests = [], isLoading: loading, error: queryError } = useBookingRequests();
-  const invalidate = () => qc.invalidateQueries({ queryKey: bookingKeys.all });
+  // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає
+  // error-стан — його показує `queryError` нижче. Чекати тут нічого, тому `: void`
+  // (щоб і виклики, і onClick={invalidate} не світились no-floating/misused-promises).
+  const invalidate = (): void => void qc.invalidateQueries({ queryKey: bookingKeys.all });
 
   const [error, setError] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -110,11 +113,13 @@ export default function BookingsPage() {
                     </p>
                   </div>
                   {r.status === 'PENDING' && (
+                    // (А) confirm/cancel мають власний try/catch із setError —
+                    // відмова вже видна користувачу в блоці displayError вище.
                     <div className="flex gap-2 shrink-0">
                       <Button
                         size="sm"
                         variant="default"
-                        onClick={() => confirm(r.id)}
+                        onClick={() => void confirm(r.id)}
                         loading={confirmingId === r.id}
                         disabled={confirmingId === r.id || cancellingId === r.id}
                       >
@@ -123,7 +128,7 @@ export default function BookingsPage() {
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => cancel(r.id)}
+                        onClick={() => void cancel(r.id)}
                         loading={cancellingId === r.id}
                         disabled={confirmingId === r.id || cancellingId === r.id}
                       >

@@ -54,5 +54,15 @@
   },
   "errors": {
     "delete": "Deletion error"
+  },
+  "toast": {
+    "bulk": {
+      "deleteOk": "Deleted {{count}} employee(s)",
+      "deletePartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
+      "deleteNone": "Failed to delete any employee",
+      "fireOk": "Dismissed {{count}} employee(s)",
+      "firePartial": "Dismissed {{succeeded}} of {{total}}. {{failed}} failed",
+      "fireNone": "Failed to dismiss any employee"
+    }
   }
 }

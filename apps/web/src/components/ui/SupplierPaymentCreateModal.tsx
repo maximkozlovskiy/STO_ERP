@@ -30,6 +30,16 @@ import {
   type PaymentSourceType,
 } from '@/hooks/api/useSupplierPayments';
 
+/**
+ * Оплата постачальнику (створення + редагування чернетки).
+ *
+ * `void` перед `handleSave()` / `handleModalClose()` у JSX: `handleSave` (RHF handleSubmit
+ * над `onValid`) має try/catch, що пише текст відмови у `error` (баннер у модалці) і в
+ * `toast.error`, плюс `finally`, який знімає savingRef/saving; у `handleModalClose` єдиний
+ * `await` — `dirty.confirmClose()`, який ніколи не реджектиться. Відмова вже на екрані —
+ * проміс обробника нікому не потрібен.
+ */
+
 interface Supplier {
   id: string;
   firstName: string | null;
@@ -343,17 +353,22 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
     <>
       <Modal
         open={open}
-        onClose={handleModalClose}
-        onSubmit={handleSave}
+        onClose={() => void handleModalClose()}
+        onSubmit={() => void handleSave()}
         title={isEdit ? 'Редагувати оплату' : 'Нова оплата постачальнику'}
         size="lg"
         footer={
           <div className="flex gap-2 items-center justify-end w-full">
-            <Button variant="outline" size="sm" onClick={handleModalClose} disabled={saving}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleModalClose()}
+              disabled={saving}
+            >
               Закрити
             </Button>
             <Button
-              onClick={handleSave}
+              onClick={() => void handleSave()}
               loading={saving}
               disabled={saving || !supplierId || editNonDraft}
               size="sm"

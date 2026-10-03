@@ -492,6 +492,10 @@ export function StockDocumentCreateModal({
 
   // Спільний submit-handler: валідація зі схеми, потім гілка create/update.
   // Рядки йдуть У ТІЛІ (атомарний $transaction на беку) — без окремого /lines-endpoint.
+  //
+  // У JSX onValid/doTransition/handleModalClose/loadDoc викликаються через `void`: кожен
+  // має власний catch, який пише текст відмови у setError (банер над формою), а RHF
+  // handleSubmit і confirmClose() не реджектяться. Чекати їх проміс нема кому.
   const onValid = handleSubmit(async (values: StockDocumentFormValues) => {
     // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit.
     if (savingRef.current || transitioningRef.current) return;
@@ -578,8 +582,8 @@ export function StockDocumentCreateModal({
     <>
       <Modal
         open={open}
-        onClose={handleModalClose}
-        onSubmit={onValid}
+        onClose={() => void handleModalClose()}
+        onSubmit={() => void onValid()}
         title={isEditMode ? 'Складський документ' : 'Новий складський документ'}
         size="content"
         hideClose
@@ -690,7 +694,7 @@ export function StockDocumentCreateModal({
               </button>
             )}
             <button
-              onClick={handleModalClose}
+              onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
               title="Закрити"
               disabled={saving || transitioning}
@@ -706,7 +710,7 @@ export function StockDocumentCreateModal({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => doTransition('CANCELLED')}
+                  onClick={() => void doTransition('CANCELLED')}
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
@@ -783,7 +787,7 @@ export function StockDocumentCreateModal({
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => doTransition('CONFIRMED')}
+                      onClick={() => void doTransition('CONFIRMED')}
                       loading={transitioning}
                       disabled={transitioning || saving}
                     >
@@ -795,7 +799,7 @@ export function StockDocumentCreateModal({
               {isEditMode ? (
                 canEdit && (
                   <Button
-                    onClick={onValid}
+                    onClick={() => void onValid()}
                     loading={saving}
                     disabled={saving || transitioning}
                     size="sm"
@@ -805,7 +809,7 @@ export function StockDocumentCreateModal({
                 )
               ) : (
                 <Button
-                  onClick={onValid}
+                  onClick={() => void onValid()}
                   loading={saving}
                   // TRANSFER потребує targetWarehouseId — інакше схема блокує submit.
                   disabled={
@@ -822,7 +826,7 @@ export function StockDocumentCreateModal({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleModalClose}
+                onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
                 Закрити
@@ -1168,7 +1172,7 @@ export function StockDocumentCreateModal({
                     <XlsxImportButton
                       templateType="sd-lines"
                       importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
-                      onImportComplete={() => loadDoc(stockDocumentId, true)}
+                      onImportComplete={() => void loadDoc(stockDocumentId, true)}
                     />
                     <button
                       type="button"

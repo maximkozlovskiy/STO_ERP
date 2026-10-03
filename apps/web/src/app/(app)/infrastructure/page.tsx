@@ -32,6 +32,15 @@ import { cn, daysUntil } from '@/lib/utils';
 import { fmtDate } from '@/lib/format';
 import { LIFT_STATUS_DESCRIPTIONS } from '@sto/shared';
 
+/**
+ * Інфраструктура: філії / зони / підйомники / склади.
+ *
+ * `void` перед `save()`, `remove()`, `makeMainWarehouse()` у JSX — усі три мають власний
+ * try/catch, що пише текст помилки в `error` (рендериться у модалці/над таблицею), і
+ * `finally { setSaving(false) }`. Відмова вже показана користувачу, тож проміс обробника
+ * нікому не потрібен — `void` фіксує це явно, а не глушить правило.
+ */
+
 // ─── Types ────────────────────────────────────────────────
 
 interface Branch {
@@ -124,7 +133,11 @@ function InfrastructurePageClient() {
 
   const { confirm, dialogProps } = useConfirm();
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: infraKeys.all });
+  // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає їх error-стан
+  // (його показує сам список). Викличній стороні чекати нічого — тому `: void` + `void`.
+  const invalidate = (): void => {
+    void qc.invalidateQueries({ queryKey: infraKeys.all });
+  };
   const opts = { staleTime: 5 * 60_000, placeholderData: keepPreviousData } as const;
 
   const [showDeleted, setShowDeleted] = useState(false);
@@ -333,6 +346,23 @@ function InfrastructurePageClient() {
     }
   };
 
+  const makeMainWarehouse = async (w: Warehouse) => {
+    if (w.isMain) return;
+    setSaving(true);
+    setError('');
+    try {
+      await apiFetch(`/warehouses/${w.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isMain: true }),
+      });
+      loadAll();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t('common.error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const ADD_ACTIONS: Record<Tab, () => void> = {
     branches: () => openModal('branch', { name: '', address: '' }),
     zones: () =>
@@ -460,7 +490,7 @@ function InfrastructurePageClient() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => remove('/branches', b.id)}
+                            onClick={() => void remove('/branches', b.id)}
                             className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -526,7 +556,7 @@ function InfrastructurePageClient() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => remove('/zones', z.id)}
+                            onClick={() => void remove('/zones', z.id)}
                             className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -582,7 +612,7 @@ function InfrastructurePageClient() {
                           : '',
                       })
                     }
-                    onRemove={() => remove('/lifts', l.id)}
+                    onRemove={() => void remove('/lifts', l.id)}
                     nowMs={nowMs}
                   />
                 ))}
@@ -628,22 +658,7 @@ function InfrastructurePageClient() {
                         <button
                           type="button"
                           title={w.isMain ? t('warehouses.isMainTitle') : t('warehouses.makeMain')}
-                          onClick={async () => {
-                            if (w.isMain) return;
-                            setSaving(true);
-                            setError('');
-                            try {
-                              await apiFetch(`/warehouses/${w.id}`, {
-                                method: 'PATCH',
-                                body: JSON.stringify({ isMain: true }),
-                              });
-                              loadAll();
-                            } catch (e: unknown) {
-                              setError(e instanceof Error ? e.message : t('common.error'));
-                            } finally {
-                              setSaving(false);
-                            }
-                          }}
+                          onClick={() => void makeMainWarehouse(w)}
                           className={cn(
                             'w-4 h-4 rounded border-2 flex items-center justify-center',
                             w.isMain
@@ -676,7 +691,7 @@ function InfrastructurePageClient() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => remove('/warehouses', w.id)}
+                            onClick={() => void remove('/warehouses', w.id)}
                             className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -699,7 +714,7 @@ function InfrastructurePageClient() {
         title={editingId ? t('branches.modalTitleEdit') : t('branches.modalTitleNew')}
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             loading={saving}
             disabled={!form.name || !form.address}
             className="w-full"
@@ -740,7 +755,7 @@ function InfrastructurePageClient() {
         title={editingId ? t('zones.modalTitleEdit') : t('zones.modalTitleNew')}
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             loading={saving}
             disabled={!form.name || !form.branchId}
             className="w-full"
@@ -799,7 +814,7 @@ function InfrastructurePageClient() {
         title={editingId ? t('lifts.modalTitleEdit') : t('lifts.modalTitleNew')}
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             loading={saving}
             disabled={!form.name || !form.zoneId}
             className="w-full"
@@ -915,7 +930,7 @@ function InfrastructurePageClient() {
         title={editingId ? t('warehouses.modalTitleEdit') : t('warehouses.modalTitleNew')}
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             loading={saving}
             disabled={!form.name || !form.branchId}
             className="w-full"

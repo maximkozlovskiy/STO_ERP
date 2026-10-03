@@ -68,12 +68,16 @@ export function invalidateUiFeaturesCache() {
   pending = null;
 }
 
+// `void` на всіх трьох викликах loadFeatures(): цей хук тільки ЧИТАЄ прапорці (GET), і
+// loadFeatures() сам ловить будь-яку помилку у .catch, повертаючи DEFAULTS — проміс не
+// реджектиться. Показувати помилку нема де й не потрібно: це фоновий підтяг налаштувань UI,
+// а офлайн-fallback на дозвільні DEFAULTS свідомий (система не має зупинятись без мережі).
 export function useUiFeatures(): UiFeatures {
   const [features, setFeatures] = useState<UiFeatures>(cache ?? DEFAULTS);
 
   useEffect(() => {
     let cancelled = false;
-    loadFeatures().then(f => {
+    void loadFeatures().then(f => {
       if (!cancelled) setFeatures(f);
     });
     return () => {
@@ -86,7 +90,7 @@ export function useUiFeatures(): UiFeatures {
     let cancelled = false;
     const refresh = () => {
       invalidateUiFeaturesCache();
-      loadFeatures().then(f => {
+      void loadFeatures().then(f => {
         if (!cancelled) setFeatures(f);
       });
     };
@@ -96,7 +100,7 @@ export function useUiFeatures(): UiFeatures {
     };
     const onLogin = () => {
       invalidateUiFeaturesCache();
-      loadFeatures().then(f => {
+      void loadFeatures().then(f => {
         if (!cancelled) setFeatures(f);
       });
     };

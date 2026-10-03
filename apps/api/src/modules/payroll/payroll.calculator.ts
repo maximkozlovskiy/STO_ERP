@@ -1,4 +1,4 @@
-import { roundMoney } from '../../common/utils/math';
+import { money, ZERO_MONEY, type Money } from '../../common/utils/money';
 
 /**
  * Розрахунок нарахування ЗП одному співробітнику за rateScheme та виробітком за період.
@@ -52,16 +52,16 @@ export function parseRateScheme(raw: unknown): ParsedRateScheme | null {
 }
 
 /** Обчислює суму нарахування (грн) за схемою і виробітком. Невалідна схема → 0. */
-export function computeAccrued(scheme: ParsedRateScheme | null, work: PayrollWork): number {
-  if (!scheme) return 0;
+export function computeAccrued(scheme: ParsedRateScheme | null, work: PayrollWork): Money {
+  if (!scheme) return ZERO_MONEY;
   const base = Math.max(0, work.baseAmount || 0);
   const hours = Math.max(0, work.normoHours || 0);
   switch (scheme.type) {
     case 'percent_normo':
-      return roundMoney((base * scheme.params.percent) / 100);
+      return money((base * scheme.params.percent) / 100);
     case 'per_normo_hour':
-      return roundMoney(hours * scheme.params.ratePerHour);
+      return money(hours * scheme.params.ratePerHour);
     case 'fixed_plus_bonus':
-      return roundMoney(scheme.params.fixedMonthly + (base * scheme.params.bonusPercent) / 100);
+      return money(scheme.params.fixedMonthly + (base * scheme.params.bonusPercent) / 100);
   }
 }
