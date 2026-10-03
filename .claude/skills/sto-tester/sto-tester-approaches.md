@@ -10,6 +10,22 @@
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-10-03 — Bug #777/#778 — per-line округлення (покрокове) ≠ total (round-once) → Σ(рядки)≠total — Area: backend / money / document-totals
+
+**Сигнал:** документ-сервіс рахує `totalAmount = money(Σ quantity×price)` (round-once від СИРИХ значень), а `toDto`/mapper/PDF того ж сервісу показує per-line `amount = money(l.quantity × l.price)` (округлення НА КОЖЕН рядок). Коли `quantity` — `Float` (літри/кг/дробові), стратегії розходяться: Σ(округлених рядків) ≠ round-once(Σ сирих). Grep: `grep -rnE "money\(.*reduce\(.*quantity.*\*.*price|money\(.*reduce\(\(s" apps/api/src/modules/**/*.service.ts` (round-once total) → для кожного хіта відкрити mapper/toDto того ж файлу й знайти `amount: money(l.quantity * .*price)`. Якщо per-line amount НЕ зберігається у БД (колонки `amount` у line-моделі нема) і quantity дробова — дивергенція реальна.
+
+**Причина виникнення:** докблок `money.ts` правильно каже «round-once точніший за покрокове для СИРИХ значень» — розробник застосовує round-once до total. Але per-line display-amount рахується ОКРЕМО у mapper теж через `money()`, і ніхто не звіряє, що total = Σ(цих per-line). Хибне припущення: «round-once total і per-line display дадуть однакову суму» — вірно лише для цілих кількостей або коли per-line amount persisted і сумується саме він.
+
+**Чому WO/invoice імунні (контраст, НЕ фіксувати):** вони ЗБЕРІГАЮТЬ per-line `amount`/`priceWithVat` у БД (Decimal(12,2), вже округлені) і сумують САМЕ збережені значення (`sumLineTotals`/SQL-aggregate). Round-once від уже-округлених = Σ(округлених) — ідентично (виміряно у money.ts: 100% збіг на вже-округлених входах). Дивергенція неможлива. Тригер бага = per-line amount обчислюється НА ЛЬОТУ у mapper, а не читається з БД.
+
+**Підхід до виявлення:** драйвити РЕАЛЬНИЙ сервісний `create`/`update` (не утиліту), фікстура з дробовою quantity що дає sub-cent добуток (канон: 3 рядки × `0.5 × 3.33` → per-line 1.67, Σ 5.01, round-once 5.00), assert `Σ(res.lines[].amount) === res.totalAmount`. Падає без фіксу (`expected 5.01 to be 5`). ⚠️ пастка фікстури: якщо сервіс дедуплікує рядки (SR → `deduplicateBy(l=>l.goodId)`), однакові goodId збираються в ОДИН рядок і дивергенція зникає — використати РІЗНІ goodId per рядок.
+
+**Підхід до фіксу:** total = `sumMoney(lines.map(l => money(l.quantity * price)))` — Σ вже-округлених per-line сум, точно та сама величина, що показана у рядках. Не навпаки (не прибирати округлення з рядків) — бухгалтер очікує округлені per-line суми.
+
+**Severity:** MEDIUM — user-visible у фіндокументі/PDF/CSV, stored total зміщений на копійки, борг/CHARGE рахується з нього; не corrupts балансів бо сам total консистентний після фіксу.
+
+**Де шукати ще:** stock-document, будь-який майбутній документ-сервіс із Float-кількістю де total=round-once(Σ raw q×p) і per-line amount рендериться окремо без persist. Перевірка дешева: grep round-once total + звірка mapper.
+
 ### 2026-10-02 — useCallback з реактивним станом у залежностях, якого немає у масиві deps → stale-closure надсилає СТАРЕ значення (режим/прапорець) — Area: frontend / react-hooks
 
 **Сигнал:** колбек форми/майстра (`handleApply`, `handleSubmit`, `onConfirm`) читає реактивний стан (`applyMode`, `selectedTab`, toggle-прапорець), але цей стан ВІДСУТНІЙ у масиві залежностей useCallback. Перемикання цього стану через UI (радіо/чекбокс/таб) часто НЕ змінює жодної іншої залежності колбека → колбек не перестворюється → використовує значення, захоплене на момент останнього перестворення (зазвичай дефолт). Grep: `grep -nE "useCallback" apps/web/src/**/*.tsx` → для кожного знайти стан, що читається у тілі (`mode: X`, `if (flagState)`, `value: stateVar`), і звірити з масивом deps наприкінці. Швидкий детектор: лінт `react-hooks/exhaustive-deps` МАЄ це ловити, але часто стоїть на рівні `warning` (не `error`) → `grep -rn "exhaustive-deps" apps/web/.eslintrc* eslint.config.*` + `npx eslint <file> | grep "missing dependency"`.
