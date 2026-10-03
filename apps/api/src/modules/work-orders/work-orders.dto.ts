@@ -19,7 +19,13 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
-import { RepairCategory, WorkOrderPriority, WorkOrderStatus } from '@prisma/client';
+import {
+  CalendarSlotStatus,
+  InvoiceStatus,
+  RepairCategory,
+  WorkOrderPriority,
+  WorkOrderStatus,
+} from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 // в”Ђв”Ђв”Ђ Work Order в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -537,3 +543,73 @@ export class LinkedCountsDto {
 export class WorkOrderShareTokenResponseDto {
   @ApiProperty({ description: 'Токен публічного кошторису' }) token!: string;
 }
+
+// ─── Linked documents (detail) ─────────────────────────────
+// Раніше `getLinkedDocuments` повертав inline-форму → у Swagger `200: {}`, а web
+// тримав рукописні дублі рядків у `lib/linked-configs.tsx` зі слабшими типами
+// (`status: string`, `amount: string | number`). DTO-класи (НЕ interface — Swagger
+// їх не бачить, див. docs/GOTCHAS.md) закривають обидва розриви.
+
+export class LinkedInvoiceRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ enum: InvoiceStatus }) status!: InvoiceStatus;
+  // Decimal → number нормалізується у сервісі (`Number(i.amount)`), тож тип точний.
+  @ApiProperty() amount!: number;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  documentDate!: string | null;
+}
+
+export class LinkedPaymentRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() amount!: number;
+  // Payment.method — рядок, НЕ enum: методи оплати конфігуруються у БД
+  // (PaymentMethodConfig), див. CLAUDE.md §10.
+  @ApiProperty({ description: 'Код способу оплати (PaymentMethodConfig.code)' })
+  method!: string;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+}
+
+export class LinkedSlotLiftDto {
+  @ApiProperty() name!: string;
+}
+
+export class LinkedCalendarSlotRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, format: 'date-time' }) startAt!: string;
+  @ApiProperty({ type: String, format: 'date-time' }) endAt!: string;
+  @ApiProperty({ enum: CalendarSlotStatus }) status!: CalendarSlotStatus;
+  @ApiProperty({ type: String, nullable: true }) employeeId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+  @ApiProperty({ type: LinkedSlotLiftDto, nullable: true }) lift!: LinkedSlotLiftDto | null;
+}
+
+export class LinkedWarrantyRowDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, format: 'date-time' }) expiresAt!: string;
+  @ApiProperty() description!: string;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) claimedAt!: string | null;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: string;
+}
+
+export class WorkOrderLinkedDocumentsDto {
+  @ApiProperty({ type: [LinkedInvoiceRowDto] }) invoices!: LinkedInvoiceRowDto[];
+  @ApiProperty({ type: [LinkedPaymentRowDto] }) payments!: LinkedPaymentRowDto[];
+  @ApiProperty({ type: [LinkedCalendarSlotRowDto] })
+  calendarSlots!: LinkedCalendarSlotRowDto[];
+  @ApiProperty({ type: [LinkedWarrantyRowDto] }) warranties!: LinkedWarrantyRowDto[];
+}
+
+export class WorkOrderLinkedCountsEntryDto {
+  @ApiProperty() invoices!: number;
+  @ApiProperty() payments!: number;
+  @ApiProperty() calendarSlots!: number;
+  @ApiProperty() warranties!: number;
+}
+
+// Мапа workOrderId → лічильники описується НЕ класом: клас з index-signature
+// Swagger не читає (властивостей для рефлексії немає). Схема задається на
+// контролері через `additionalProperties` + `getSchemaPath` — див.
+// WorkOrdersController.getLinkedCounts. Сам entry лишається класом, щоб
+// потрапити у components.schemas (@ApiExtraModels).

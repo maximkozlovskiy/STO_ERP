@@ -24,6 +24,8 @@ import {
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiProduces,
+  ApiExtraModels,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -58,12 +60,15 @@ import {
   WorkOrderPartResponseDto,
   PaginatedWorkOrdersDto,
   WorkOrderShareTokenResponseDto,
+  WorkOrderLinkedDocumentsDto,
+  WorkOrderLinkedCountsEntryDto,
 } from './work-orders.dto';
 
 @ApiTags('Work Orders')
 @Controller('work-orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
+@ApiExtraModels(WorkOrderLinkedCountsEntryDto)
 export class WorkOrdersController {
   constructor(
     private readonly service: WorkOrdersService,
@@ -84,6 +89,7 @@ export class WorkOrdersController {
   @Get(':id/linked-documents')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: "Пов'язані документи наряду (рахунки, оплати, слоти, гарантії)" })
+  @ApiOkResponse({ type: WorkOrderLinkedDocumentsDto })
   getLinkedDocuments(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLinkedDocuments(orgId, id);
   }
@@ -92,6 +98,14 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Кількість пов'язаних документів для списку нарядів (batch)" })
+  // Відповідь — мапа ID → лічильники. Клас із index-signature Swagger не читає
+  // (нема властивостей для рефлексії), тож схема задається явно.
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      additionalProperties: { $ref: getSchemaPath(WorkOrderLinkedCountsEntryDto) },
+    },
+  })
   getLinkedCounts(@OrgContext() orgId: string, @Body() dto: LinkedCountsDto) {
     return this.service.getLinkedCounts(orgId, dto.workOrderIds);
   }

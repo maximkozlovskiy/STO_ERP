@@ -6311,6 +6311,12 @@ export interface components {
             /** @example 2026-12-31 */
             periodTo: string;
         };
+        WorkOrderLinkedCountsEntryDto: {
+            invoices: number;
+            payments: number;
+            calendarSlots: number;
+            warranties: number;
+        };
         WorkOrderResponseDto: {
             id: string;
             orgId: string;
@@ -6373,6 +6379,55 @@ export interface components {
             total: number;
             page: number;
             limit: number;
+        };
+        LinkedInvoiceRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
+            amount: number;
+            /** Format: date-time */
+            documentDate: string | null;
+        };
+        LinkedPaymentRowDto: {
+            id: string;
+            amount: number;
+            /** @description Код способу оплати (PaymentMethodConfig.code) */
+            method: string;
+            /** Format: date-time */
+            createdAt: string;
+            notes: string | null;
+        };
+        LinkedSlotLiftDto: {
+            name: string;
+        };
+        LinkedCalendarSlotRowDto: {
+            id: string;
+            /** Format: date-time */
+            startAt: string;
+            /** Format: date-time */
+            endAt: string;
+            /** @enum {string} */
+            status: "AVAILABLE" | "BOOKED" | "BLOCKED";
+            employeeId: string | null;
+            notes: string | null;
+            lift: components["schemas"]["LinkedSlotLiftDto"] | null;
+        };
+        LinkedWarrantyRowDto: {
+            id: string;
+            /** Format: date-time */
+            expiresAt: string;
+            description: string;
+            /** Format: date-time */
+            claimedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        WorkOrderLinkedDocumentsDto: {
+            invoices: components["schemas"]["LinkedInvoiceRowDto"][];
+            payments: components["schemas"]["LinkedPaymentRowDto"][];
+            calendarSlots: components["schemas"]["LinkedCalendarSlotRowDto"][];
+            warranties: components["schemas"]["LinkedWarrantyRowDto"][];
         };
         LinkedCountsDto: {
             /** @description UUID документів (макс. 500) */
@@ -6996,6 +7051,11 @@ export interface components {
             /** @enum {string} */
             status: "CONFIRMED" | "CANCELLED";
         };
+        InvoiceLinkedCountsEntryDto: {
+            workOrder: number;
+            payments: number;
+            counterparty: number;
+        };
         InvoiceLineResponseDto: {
             id: string;
             invoiceId: string;
@@ -7049,6 +7109,33 @@ export interface components {
             total: number;
             page: number;
             limit: number;
+        };
+        InvoiceLinkedWorkOrderRowDto: {
+            id: string;
+            number: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ESTIMATE" | "APPROVED" | "IN_PROGRESS" | "ON_HOLD" | "COMPLETED" | "INVOICED" | "PAID" | "ARCHIVED" | "CANCELLED";
+        };
+        InvoiceLinkedPaymentRowDto: {
+            id: string;
+            amount: number;
+            /** @description Код способу оплати (PaymentMethodConfig.code) */
+            method: string;
+            /** Format: date-time */
+            createdAt: string;
+            notes: string | null;
+        };
+        InvoiceLinkedCounterpartyRowDto: {
+            id: string;
+            firstName: string | null;
+            lastName: string | null;
+            companyName: string | null;
+            phone: string | null;
+        };
+        InvoiceLinkedDocumentsDto: {
+            workOrder: components["schemas"]["InvoiceLinkedWorkOrderRowDto"][];
+            payments: components["schemas"]["InvoiceLinkedPaymentRowDto"][];
+            counterparty: components["schemas"]["InvoiceLinkedCounterpartyRowDto"][];
         };
         InvoiceByWorkOrderResponseDto: {
             id: string;
@@ -12379,7 +12466,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderLinkedDocumentsDto"];
+                };
             };
         };
     };
@@ -12401,7 +12490,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: components["schemas"]["WorkOrderLinkedCountsEntryDto"];
+                    };
                 };
             };
         };
@@ -14371,7 +14462,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InvoiceLinkedDocumentsDto"];
+                };
             };
         };
     };
@@ -14393,7 +14486,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: components["schemas"]["InvoiceLinkedCountsEntryDto"];
+                    };
                 };
             };
         };
@@ -14579,11 +14674,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description PDF-файл рахунку */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/pdf": string;
+                };
             };
         };
     };

@@ -7891,7 +7891,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderLinkedDocumentsDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7925,7 +7932,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/WorkOrderLinkedCountsEntryDto"
+                  }
                 }
               }
             }
@@ -11592,7 +11602,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceLinkedDocumentsDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11626,7 +11643,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/InvoiceLinkedCountsEntryDto"
+                  }
                 }
               }
             }
@@ -11945,7 +11965,15 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "PDF-файл рахунку",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -20046,6 +20074,29 @@
           "periodTo"
         ]
       },
+      "WorkOrderLinkedCountsEntryDto": {
+        "type": "object",
+        "properties": {
+          "invoices": {
+            "type": "number"
+          },
+          "payments": {
+            "type": "number"
+          },
+          "calendarSlots": {
+            "type": "number"
+          },
+          "warranties": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "invoices",
+          "payments",
+          "calendarSlots",
+          "warranties"
+        ]
+      },
       "WorkOrderResponseDto": {
         "type": "object",
         "properties": {
@@ -20281,6 +20332,200 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "LinkedInvoiceRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "SENT",
+              "PARTIALLY_PAID",
+              "PAID",
+              "OVERDUE",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "documentDate": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "amount",
+          "documentDate"
+        ]
+      },
+      "LinkedPaymentRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "method": {
+            "type": "string",
+            "description": "Код способу оплати (PaymentMethodConfig.code)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "amount",
+          "method",
+          "createdAt",
+          "notes"
+        ]
+      },
+      "LinkedSlotLiftDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "LinkedCalendarSlotRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "enum": [
+              "AVAILABLE",
+              "BOOKED",
+              "BLOCKED"
+            ],
+            "type": "string"
+          },
+          "employeeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "lift": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LinkedSlotLiftDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "startAt",
+          "endAt",
+          "status",
+          "employeeId",
+          "notes",
+          "lift"
+        ]
+      },
+      "LinkedWarrantyRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string"
+          },
+          "claimedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "expiresAt",
+          "description",
+          "claimedAt",
+          "createdAt"
+        ]
+      },
+      "WorkOrderLinkedDocumentsDto": {
+        "type": "object",
+        "properties": {
+          "invoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedInvoiceRowDto"
+            }
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedPaymentRowDto"
+            }
+          },
+          "calendarSlots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedCalendarSlotRowDto"
+            }
+          },
+          "warranties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinkedWarrantyRowDto"
+            }
+          }
+        },
+        "required": [
+          "invoices",
+          "payments",
+          "calendarSlots",
+          "warranties"
         ]
       },
       "LinkedCountsDto": {
@@ -22553,6 +22798,25 @@
           "status"
         ]
       },
+      "InvoiceLinkedCountsEntryDto": {
+        "type": "object",
+        "properties": {
+          "workOrder": {
+            "type": "number"
+          },
+          "payments": {
+            "type": "number"
+          },
+          "counterparty": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "workOrder",
+          "payments",
+          "counterparty"
+        ]
+      },
       "InvoiceLineResponseDto": {
         "type": "object",
         "properties": {
@@ -22763,6 +23027,126 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "InvoiceLinkedWorkOrderRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "ESTIMATE",
+              "APPROVED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "COMPLETED",
+              "INVOICED",
+              "PAID",
+              "ARCHIVED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status"
+        ]
+      },
+      "InvoiceLinkedPaymentRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "method": {
+            "type": "string",
+            "description": "Код способу оплати (PaymentMethodConfig.code)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "amount",
+          "method",
+          "createdAt",
+          "notes"
+        ]
+      },
+      "InvoiceLinkedCounterpartyRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "companyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "companyName",
+          "phone"
+        ]
+      },
+      "InvoiceLinkedDocumentsDto": {
+        "type": "object",
+        "properties": {
+          "workOrder": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLinkedWorkOrderRowDto"
+            }
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLinkedPaymentRowDto"
+            }
+          },
+          "counterparty": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLinkedCounterpartyRowDto"
+            }
+          }
+        },
+        "required": [
+          "workOrder",
+          "payments",
+          "counterparty"
         ]
       },
       "InvoiceByWorkOrderResponseDto": {
