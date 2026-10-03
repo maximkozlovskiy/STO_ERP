@@ -1,41 +1,25 @@
 import { useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
-export interface StockDocLine {
-  id?: string;
-  goodId: string;
-  goodName?: string;
-  goodSku?: string | null;
-  unit?: string;
-  unitShortName?: string;
-  coefficient?: number;
-  quantity: number;
-  price: number | null;
-}
+/**
+ * Складський документ — ЗГЕНЕРОВАНИЙ тип із OpenAPI (`pnpm run gen:api-types`).
+ * Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване, не пишемо своє».
+ *
+ * Рукописна копія була слабшою і неповною:
+ *   · `type: string` / `status: string` замість union-енумів StockDocumentType /
+ *     StockDocumentStatus (у DTO беку теж був `string` — виправлено разом);
+ *   · бракувало `orgId`, `purchaseOrderId`, `purchaseOrderNumber`.
+ *
+ * Список віддає `linesCount` без `lines`, деталь — навпаки: обидва поля опційні
+ * у DTO, тож лічильник у таблиці рахуємо як `linesCount ?? lines?.length ?? 0`.
+ */
+export type StockDoc = ApiSchema<'StockDocumentResponseDto'>;
+export type StockDocLine = ApiSchema<'StockDocumentLineResponseDto'>;
 
-export interface StockDoc {
-  id: string;
-  number: string;
-  type: string;
-  status: string;
-  branchId: string;
-  branchName?: string;
-  warehouseId: string;
-  warehouseName?: string;
-  targetWarehouseId?: string | null;
-  targetWarehouseName?: string | null;
-  notes: string | null;
-  confirmedAt: string | null;
-  documentDate?: string | null;
-  // List endpoint omits `lines` and supplies `linesCount` instead (perf: 20 docs ×
-  // 1000 line rows → 0). DetailPanel triggers GET /stock-documents/:id which returns
-  // full lines[]. Use `linesCount ?? lines?.length ?? 0` for the counter in table cells.
-  lines?: StockDocLine[];
-  linesCount?: number;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/** Статус/тип документа як union — для exhaustive switch/map у UI. */
+export type StockDocStatusValue = StockDoc['status'];
+export type StockDocTypeValue = StockDoc['type'];
 
 export interface StockDocsFilter extends Record<string, unknown> {
   page?: number;

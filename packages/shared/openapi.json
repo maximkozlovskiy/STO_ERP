@@ -23144,6 +23144,21 @@
           "rows"
         ]
       },
+      "PreviewCandidateDto": {
+        "type": "object",
+        "properties": {
+          "counterpartyId": {
+            "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartyId",
+          "counterpartyName"
+        ]
+      },
       "PreviewRowDto": {
         "type": "object",
         "properties": {
@@ -23223,7 +23238,7 @@
           "candidates": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/PreviewCandidateDto"
             }
           }
         },

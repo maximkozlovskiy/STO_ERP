@@ -1,54 +1,27 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { invalidateWorkOrderSideEffects, patchListItem } from '@/lib/cache-invalidation';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
-export interface WorkOrder {
-  id: string;
-  orgId?: string;
-  number: string;
-  status: string;
-  priority: string;
-  repairCategory?: string | null;
-  totalLabor: number;
-  totalActualLabor: number;
-  totalParts: number;
-  totalAmount: number;
-  totalVat: number;
-  paidAmount: number;
-  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
-  currencyId?: string | null;
-  currencyCode?: string | null;
-  totalAmountBase?: number | null;
-  rateUsed?: number | null;
-  counterpartyId: string;
-  counterpartyName?: string;
-  contractId?: string | null;
-  contractNumber?: string | null;
-  vehicleId?: string | null;
-  vehicleSummary?: string | null;
-  branchId: string;
-  branchName?: string;
-  plannedAt?: string | null;
-  dueDate?: string | null;
-  completedAt?: string | null;
-  description?: string | null;
-  inMileage?: number | null;
-  outMileage?: number | null;
-  clientApproval?: boolean;
-  hasActiveWarranty?: boolean;
-  slotStartAt?: string | null;
-  slotEndAt?: string | null;
-  liftId?: string | null;
-  liftName?: string | null;
-  slotLiftName?: string | null;
-  documentDate?: string | null;
-  plannedHours?: number | null;
-  actualHours?: number | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/**
+ * Наряд — ЗГЕНЕРОВАНИЙ тип із OpenAPI (`pnpm run gen:api-types`).
+ * Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване, не пишемо своє».
+ *
+ * Рукописна копія була слабшою за оригінал:
+ *   · `status: string` / `priority: string` замість union-енумів;
+ *   · `vehicleId?: string | null` — у беку це ОБОВ'ЯЗКОВИЙ `string`
+ *     (наряд без авто не існує), тож UI марно ганяв null-перевірки.
+ */
+export type WorkOrder = ApiSchema<'WorkOrderResponseDto'>;
+
+/** Деталь наряду = список + lines/parts. */
+export type WorkOrderDetail = ApiSchema<'WorkOrderDetailDto'>;
+export type WorkOrderLine = ApiSchema<'WorkOrderLineResponseDto'>;
+export type WorkOrderPart = ApiSchema<'WorkOrderPartResponseDto'>;
+
+/** Статус наряду як union — для exhaustive switch/map у UI. */
+export type WorkOrderStatusValue = WorkOrder['status'];
 
 export interface WorkOrdersFilter extends Record<string, unknown> {
   page?: number;
@@ -95,7 +68,10 @@ export function useWorkOrders(filters: WorkOrdersFilter = {}) {
 export function useWorkOrderTransition() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
+    // `status: string` тут був такою самою дірою, як знайдена в Invoice:
+    // onMutate писав довільний рядок у кеш списку, і badge міг показати
+    // неіснуючий статус до першого refetch. Union зі згенерованого DTO.
+    mutationFn: ({ id, status }: { id: string; status: WorkOrderStatusValue }) =>
       apiFetch(`/work-orders/${id}/transition`, {
         method: 'POST',
         body: JSON.stringify({ status }),

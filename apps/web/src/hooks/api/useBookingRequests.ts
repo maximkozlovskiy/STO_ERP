@@ -1,18 +1,15 @@
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 
-export interface BookingRequest {
-  id: string;
-  status: string;
-  clientName: string;
-  clientPhone: string;
-  requestedDate: string;
-  branchId: string;
-  branchName?: string | null;
-  notes?: string | null;
-  createdAt: string;
-}
+/**
+ * Заявка на онлайн-запис — ЗГЕНЕРОВАНИЙ тип із OpenAPI.
+ * Копія мала `status: string`; колонка в БД справді `String`, але сервіс пише
+ * рівно PENDING/CONFIRMED/CANCELLED — DTO це тепер оголошує явно.
+ */
+export type BookingRequest = ApiSchema<'BookingRequestResponseDto'>;
+export type BookingRequestStatusValue = BookingRequest['status'];
 
 export const bookingKeys = {
   all: ['booking'] as const,

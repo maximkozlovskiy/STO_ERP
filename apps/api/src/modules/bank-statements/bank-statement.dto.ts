@@ -32,10 +32,15 @@ export type PreviewMatchStatus = 'matched' | 'ambiguous' | 'notFound' | 'duplica
 /** Ознака, за якою знайдено збіг (для пояснення оператору). */
 export type PreviewMatchReason = 'iban' | 'edrpou' | 'purpose';
 
-/** Кандидат-контрагент для ambiguous-рядка (кілька збігів). */
-export interface PreviewCandidateDto {
-  counterpartyId: string;
-  counterpartyName: string;
+/**
+ * Кандидат-контрагент для ambiguous-рядка (кілька збігів).
+ * Клас, а не interface: Swagger не бачить interface, тож `candidates` у
+ * PreviewRowDto доводилось описувати як `items: { type: 'object' }` — і форма
+ * кандидата зникала зі згенерованих типів web.
+ */
+export class PreviewCandidateDto {
+  @ApiProperty() counterpartyId!: string;
+  @ApiProperty() counterpartyName!: string;
 }
 
 /**
@@ -119,7 +124,7 @@ export class PreviewRowDto {
   @ApiPropertyOptional({ enum: ['iban', 'edrpou', 'purpose'] })
   matchReason?: PreviewMatchReason | null;
   @ApiPropertyOptional() matchConfidence?: number | null;
-  @ApiProperty({ type: 'array', items: { type: 'object' } })
+  @ApiProperty({ type: [PreviewCandidateDto] })
   candidates!: PreviewCandidateDto[];
 }
 

@@ -5,7 +5,12 @@ import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useStockDocuments, stockDocsKeys } from '@/hooks/api/useStockDocuments';
+import {
+  useStockDocuments,
+  stockDocsKeys,
+  type StockDoc,
+  type StockDocStatusValue,
+} from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import {
   Plus,
@@ -68,39 +73,10 @@ import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
 
-interface DocLine {
-  id?: string;
-  goodId: string;
-  goodName?: string;
-  goodSku?: string | null;
-  unit?: string;
-  unitShortName?: string;
-  coefficient?: number;
-  quantity: number;
-  price: number | null;
-}
-interface StockDoc {
-  id: string;
-  number: string;
-  type: string;
-  status: string;
-  branchId: string;
-  branchName?: string | null;
-  warehouseId: string;
-  warehouseName?: string;
-  targetWarehouseId?: string | null;
-  targetWarehouseName?: string | null;
-  notes: string | null;
-  confirmedAt?: string | null;
-  documentDate?: string | null;
-  // List endpoint omits `lines` and supplies `linesCount` (perf: -20K row marshalling).
-  // findOne (/stock-documents/:id) returns full lines[] for DetailPanel — fetched lazily.
-  lines?: DocLine[];
-  linesCount?: number;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+// StockDoc/DocLine більше НЕ оголошуються тут: були локальною копією
+// StockDocumentResponseDto (слабшою — `type`/`status` як `string`, без orgId
+// і purchaseOrder*). Тип береться з хука, який бере його зі згенерованого
+// api-types — docs/PATTERNS.md, «Типи API: беремо згенероване».
 
 interface StockDocFilters extends Record<string, unknown> {
   typeFilter: string;
@@ -370,7 +346,8 @@ function StockDocumentsPageClient() {
   // дозволяє в майбутньому пройти React.memo на TableRow без identity-thrashing.
   // `load` ref recreates on each invalidation, але семантика та сама — deps eslint-disable.
   const handleTransition = useCallback(
-    async (doc: StockDoc, newStatus: string) => {
+    // newStatus був `string` — у кеш/тіло запиту міг піти будь-який рядок.
+    async (doc: StockDoc, newStatus: StockDocStatusValue) => {
       const action =
         newStatus === 'CONFIRMED' ? t('confirm.transitionConfirm') : t('confirm.transitionCancel');
       if (!(await confirm({ title: t('confirm.transition', { action, number: doc.number }) })))

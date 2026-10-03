@@ -7159,6 +7159,10 @@ export interface components {
             /** @description Перші рядки файлу як текстова сітка */
             rows: string[][];
         };
+        PreviewCandidateDto: {
+            counterpartyId: string;
+            counterpartyName: string;
+        };
         PreviewRowDto: {
             rowIndex: number;
             operationDate: string;
@@ -7178,7 +7182,7 @@ export interface components {
             /** @enum {string|null} */
             matchReason?: "iban" | "edrpou" | "purpose" | null;
             matchConfidence?: number | null;
-            candidates: Record<string, never>[];
+            candidates: components["schemas"]["PreviewCandidateDto"][];
         };
         PreviewImportResponseDto: {
             rows: components["schemas"]["PreviewRowDto"][];
