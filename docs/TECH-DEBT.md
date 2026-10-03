@@ -139,6 +139,29 @@ spec-файлів). Цифра **не порівнювана** з «222 у 55» 
 
 ---
 
+## 4a. Пастка, знайдена при міграції toast-ів на i18n
+
+`useTranslation()` у callback-у з `deps: []` дає **захоплене** `t`. Для більшості
+повідомлень це нешкідливо, але в `useLanguage` toast спрацьовує **після** перемикання
+мови — і показав би попередження саме тією мовою, яку користувач щойно покинув.
+
+```ts
+// ❌ у callback із deps [], що виконується після зміни мови
+const { t } = useTranslation('common');
+… .catch(() => toast.warning(t('language.savedLocallyOnly'))); // попередня мова
+
+// ✅ i18n.t читає активну мову в момент виклику
+import i18n from '@/i18n/config';
+… .catch(() => toast.warning(i18n.t('common:language.savedLocallyOnly')));
+```
+
+Правило: `useTranslation` — для рендеру; `i18n.t` — для відкладених колбеків, які
+можуть пережити зміну мови.
+
+**Супутнє, не toast:** `useWorkOrderActions:183` звіряє `msg.includes('вже існує')` —
+український **підрядок помилки бекенда**. i18n на фронті цього не лікує; потрібен код
+помилки замість тексту на боці API.
+
 ## 5. Дрібніше
 
 | Пункт                            | Деталі                                                                                                                                                                      |
@@ -172,7 +195,10 @@ Vitest 5 бере весь `include`. 78% приховувало непокри�
    `useWorkOrderTransition`. Наступний пункт у черзі.
 3. ~~**`Money` на `invoices`**~~ — ✅ зроблено; встановлено межу «обчислення, не
    серіалізація». Далі — `work-orders` / `purchase-orders`.
-4. **29 toast-ів у 14 файлах** → i18n (`useCalendarState` зроблено).
+4. **~27 toast-ів у 13 файлах** → i18n. Хуки закрито (`useCalendarState`,
+   `useWorkOrderActions`, `useLanguage`); лишились самі компоненти — найбільші
+   `CounterpartyEditModal` (6), `category-manager-modal` / `GoodUoMTab` /
+   `ExcelImportWizard` (по 4). Пастку зі stale `t` див. у пункті 5.
 5. Решта — за потребою.
 
 ESM і TS 7 **не чіпати**, доки не вийде `typescript-eslint` 7.1: інакше робота буде зроблена
