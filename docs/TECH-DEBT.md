@@ -78,7 +78,13 @@ _чому_ (взірець — `lib/cache-invalidation.ts`: TanStack сам тр
   беруть результат, успадковують тип;
 - **`settlements-account`** — `periodDelta` і `openingBalance` акта звірки;
 - **`invoices.service`** — 10 `roundMoney` → `money`, плюс 7 читань із БД через
-  `moneyFromDecimal` (див. нижче про межу застосування).
+  `moneyFromDecimal` (див. нижче про межу застосування);
+- **`work-orders.service` + `work-order-stock-effects`** — блок WO-H2 (totalLabor /
+  totalActualLabor / totalParts / totalAmount) і база для `SUPPLIER_CHARGE`;
+- **`purchase-orders.service`** — тотали create/update, `receivedAmount`;
+- **`cash.service`** — баланси каси; `getBalance`/`getBalances`/`computeBalance`
+  тепер **повертають `Money`**, тож тип успадковують усі виклики;
+- **`payments.service`** — FX-різниця.
 
 Для settlements це **профілактика, не фікс бага**: заміряно 66 352 випадки дрейфу зі
 100 000, але величина ≈2e-11 — нижче за розрядність `Decimal(12,2)`, і `openingBalance`
@@ -100,7 +106,13 @@ _чому_ (взірець — `lib/cache-invalidation.ts`: TanStack сам тр
 
 **Правило для наступних модулів:** брендувати точки обчислення, не точки серіалізації.
 
-**Лишається:** 97 грошових конверсій у 26 файлах (вимір за вузьким патерном —
+**Лишається:** 38 `roundMoney` у 9 файлах — `reports` (16), `payroll.service` (6),
+`document-line-import.adapter` (5), `loyalty` (5), `supplier-returns` (4),
+`completion-acts` (4), `supplier-payments` (3), `xlsx.service` (2),
+`payroll.calculator` (1). Це **точний** вимір залишку по імені функції, на відміну від
+оцінок нижче.
+
+Плюс 97 грошових конверсій у 26 файлах (вимір за вузьким патерном —
 `Number(x.*amount|price|total|sum|cost|balance|paid|vat|debt)` плюс `.toNumber()`, без
 spec-файлів). Цифра **не порівнювана** з «222 у 55» з аудиту: там патерн був ширший і
 включав негрошові конверсії. Наступні кандидати — модулі, де гроші **обчислюються**:

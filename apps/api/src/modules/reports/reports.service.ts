@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { formatPersonName, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 
@@ -103,8 +103,8 @@ export class ReportsService {
     }));
 
     // Bug #629: Σ квантованих рядків у JS-float теж дрейфує (0.1+0.2) — квантуємо підсумок
-    // до копійки (дзеркалить sumLineTotals / invoice recalcTotals). count — ціле, без roundMoney.
-    const totalRevenue = roundMoney(result.reduce((s, r) => s + r.revenue, 0));
+    // до копійки (дзеркалить sumLineTotals / invoice recalcTotals). count — ціле, без money().
+    const totalRevenue = sumMoney(result.map(r => r.revenue));
     const totalOrders = result.reduce((s, r) => s + r.count, 0);
 
     return { rows: result, totalRevenue, totalOrders, from, to };
@@ -167,7 +167,7 @@ export class ReportsService {
       rows: result,
       totalNormoHours: result.reduce((s, r) => s + r.totalNormoHours, 0),
       // Bug #629: Σ квантованих грошових рядків у JS-float дрейфує — квантуємо підсумок.
-      totalAmount: roundMoney(result.reduce((s, r) => s + r.totalAmount, 0)),
+      totalAmount: sumMoney(result.map(r => r.totalAmount)),
       from,
       to,
     };
@@ -234,7 +234,7 @@ export class ReportsService {
         quantity: i.quantity,
         reserved: i.reserved,
         available: i.quantity - i.reserved,
-        value: roundMoney(i.quantity * Number(i.good.salePrice)),
+        value: money(i.quantity * moneyFromDecimal(i.good.salePrice)),
       })),
       movements: movements.map(m => ({
         type: m.type,
@@ -243,8 +243,8 @@ export class ReportsService {
         documentType: m.documentType,
         createdAt: m.createdAt,
       })),
-      totalValue: roundMoney(
-        stockItems.reduce((s, i) => s + i.quantity * Number(i.good.salePrice), 0),
+      totalValue: money(
+        stockItems.reduce((s, i) => s + i.quantity * moneyFromDecimal(i.good.salePrice), 0),
       ),
     };
   }
@@ -298,17 +298,17 @@ export class ReportsService {
       `,
     ]);
 
-    const totalRevenue = roundMoney(Number(woAgg[0]?.totalRevenue ?? 0));
+    const totalRevenue = moneyFromDecimal(woAgg[0]?.totalRevenue);
     const ordersCount = Number(woAgg[0]?.ordersCount ?? 0);
-    const totalCostParts = roundMoney(Number(partAgg[0]?.costParts ?? 0));
+    const totalCostParts = moneyFromDecimal(partAgg[0]?.costParts);
     const unknownCostPartsCount = Number(partAgg[0]?.unknownCount ?? 0);
     // Bug #629: totalLabor × LABOR_COST_RATIO (0.4) — множення на дріб дає float-дрейф
     // (3520.30 × 0.4 = 1408.1200000000001; 999.99 × 0.4 = 399.99600000000004), який раніше
     // просочувався сирим у JSON звіту та CSV-експорт «Рентабельність» (page.tsx рядок 620/623).
     // Квантуємо КОЖНЕ похідне грошове значення до копійки (заявлений інваріант Хвилі 3).
-    const totalCostLabor = roundMoney(Number(woAgg[0]?.totalLabor ?? 0) * laborCostRatio);
-    const totalCost = roundMoney(totalCostParts + totalCostLabor);
-    const grossProfit = roundMoney(totalRevenue - totalCost);
+    const totalCostLabor = money(moneyFromDecimal(woAgg[0]?.totalLabor) * laborCostRatio);
+    const totalCost = money(totalCostParts + totalCostLabor);
+    const grossProfit = money(totalRevenue - totalCost);
     const margin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
     return {
@@ -361,10 +361,8 @@ export class ReportsService {
     return {
       rows,
       // Bug #629: Σ квантованих балансів у JS-float дрейфує — квантуємо підсумки до копійки.
-      totalDebit: roundMoney(rows.filter(r => r.balance > 0).reduce((s, r) => s + r.balance, 0)),
-      totalCredit: roundMoney(
-        rows.filter(r => r.balance < 0).reduce((s, r) => s + Math.abs(r.balance), 0),
-      ),
+      totalDebit: sumMoney(rows.filter(r => r.balance > 0).map(r => r.balance)),
+      totalCredit: sumMoney(rows.filter(r => r.balance < 0).map(r => Math.abs(r.balance))),
     };
   }
 
@@ -461,11 +459,11 @@ export class ReportsService {
 
     // Prisma _sum.totalVat → `Decimal | null` (per generated client). Direct access без
     // `as { totalVat?: unknown }` cast — типи виводяться коректно.
-    const invoiced = roundMoney(Number(invoicedAgg._sum.totalVat ?? 0));
-    const purchases = roundMoney(Number(purchasedAgg._sum.totalVat ?? 0));
+    const invoiced = moneyFromDecimal(invoicedAgg._sum.totalVat);
+    const purchases = moneyFromDecimal(purchasedAgg._sum.totalVat);
 
     // Bug #629: різниця двох грошових сум у JS-float дрейфує (100.10−33.33=66.77000000000001) —
     // квантуємо чисте ПДВ до копійки перед поверненням у звіт/експорт.
-    return { invoiced, purchases, net: roundMoney(invoiced - purchases), from, to };
+    return { invoiced, purchases, net: money(invoiced - purchases), from, to };
   }
 }

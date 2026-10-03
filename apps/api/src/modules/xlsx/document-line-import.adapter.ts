@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { translateError, MAX_QUERY_LIMIT } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { roundMoney } from '../../common/utils/math';
+import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calcLineVat } from '../../common/utils/vat';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -96,8 +96,8 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
-    const totalAmount = roundMoney(computed.reduce((s, l) => s + l.quantity * l.price, 0));
-    const totalVat = roundMoney(computed.reduce((s, l) => s + l.vatAmount, 0));
+    const totalAmount = money(computed.reduce((s, l) => s + l.quantity * l.price, 0));
+    const totalVat = sumMoney(computed.map(l => l.vatAmount));
 
     // База по курсу на дату документа (як у purchase-orders). currencyId NOT NULL (TD1), але
     // читаємо актуальний документ у tenant-scope, щоб не довіряти стороннім значенням.
@@ -209,8 +209,10 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
         AND "orgId"           = ${orgId}::uuid
         AND "deletedAt" IS NULL
     `;
-    const totalAmount = roundMoney(Number(agg[0]?.total ?? 0));
-    const totalVat = roundMoney(Number(agg[0]?.vat ?? 0));
+    // agg[0] може бути undefined (0 рядків) → moneyFromDecimal дає 0; `::float` у SQL
+    // означає, що значення вже number, а не Decimal-обгортка.
+    const totalAmount = moneyFromDecimal(agg[0]?.total);
+    const totalVat = moneyFromDecimal(agg[0]?.vat);
 
     const po = await tx.purchaseOrder.findFirstOrThrow({
       where: { id: docId, orgId, deletedAt: null },

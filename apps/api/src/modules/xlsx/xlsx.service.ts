@@ -21,7 +21,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { deduplicateBy } from '../../common/utils/array';
-import { roundMoney } from '../../common/utils/math';
+import { money } from '../../common/utils/money';
 import { normalizeArticle } from '../../common/utils/normalize-article';
 import {
   DocumentLineImportAdapterRegistry,
@@ -745,7 +745,7 @@ export class XlsxService {
         seenGoodIds.add(good.id);
 
         const existingId = existingByGoodId.get(good.id);
-        const amount = roundMoney(row.quantity * row.price);
+        const amount = money(row.quantity * row.price);
 
         if (existingId) {
           updatesPlan.push({
