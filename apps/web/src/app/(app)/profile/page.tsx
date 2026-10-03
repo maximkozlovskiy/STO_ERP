@@ -149,7 +149,7 @@ export default function ProfilePage() {
           className="h-8 text-[13px]"
         />
         <Button
-          onClick={changePassword}
+          onClick={() => void changePassword()}
           loading={pwSaving}
           disabled={!pwForm.current || !pwForm.next || !pwForm.confirm}
         >

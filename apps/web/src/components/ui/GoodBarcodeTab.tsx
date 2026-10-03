@@ -126,26 +126,30 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                   size="sm"
                   loading={addingBarcode}
                   disabled={!addBarcodeForm.barcode}
-                  onClick={async () => {
-                    setAddingBarcode(true);
-                    try {
-                      const created = await apiFetch<GoodBarcode>(`/goods/${goodId}/barcodes`, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                          barcode: addBarcodeForm.barcode,
-                          type: addBarcodeForm.type,
-                        }),
-                      });
-                      setModalBarcodes(prev => [...prev, created]);
-                      setAddBarcodeForm({ barcode: '', type: 'EAN13' });
-                      setShowAddBarcode(false);
-                      toast.success('Штрихкод додано');
-                    } catch (e: unknown) {
-                      toast.error(e instanceof Error ? e.message : 'Помилка');
-                    } finally {
-                      setAddingBarcode(false);
-                    }
-                  }}
+                  onClick={() =>
+                    // try/catch усередині вже показує помилку; `void` + IIFE —
+                    // щоб React-обробник не повертав проміс (no-misused-promises).
+                    void (async () => {
+                      setAddingBarcode(true);
+                      try {
+                        const created = await apiFetch<GoodBarcode>(`/goods/${goodId}/barcodes`, {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            barcode: addBarcodeForm.barcode,
+                            type: addBarcodeForm.type,
+                          }),
+                        });
+                        setModalBarcodes(prev => [...prev, created]);
+                        setAddBarcodeForm({ barcode: '', type: 'EAN13' });
+                        setShowAddBarcode(false);
+                        toast.success('Штрихкод додано');
+                      } catch (e: unknown) {
+                        toast.error(e instanceof Error ? e.message : 'Помилка');
+                      } finally {
+                        setAddingBarcode(false);
+                      }
+                    })()
+                  }
                 >
                   Зберегти
                 </Button>
@@ -181,20 +185,24 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                         <button
                           type="button"
                           disabled={deletingBarcodeId === bc.id}
-                          onClick={async () => {
-                            setDeletingBarcodeId(bc.id);
-                            try {
-                              await apiFetch(`/goods/${goodId}/barcodes/${bc.id}`, {
-                                method: 'DELETE',
-                              });
-                              setModalBarcodes(prev => prev.filter(b => b.id !== bc.id));
-                              toast.success('Штрихкод видалено');
-                            } catch (e: unknown) {
-                              toast.error(e instanceof Error ? e.message : 'Помилка');
-                            } finally {
-                              setDeletingBarcodeId(null);
-                            }
-                          }}
+                          onClick={() =>
+                            // try/catch усередині вже показує помилку; `void` + IIFE —
+                            // щоб React-обробник не повертав проміс (no-misused-promises).
+                            void (async () => {
+                              setDeletingBarcodeId(bc.id);
+                              try {
+                                await apiFetch(`/goods/${goodId}/barcodes/${bc.id}`, {
+                                  method: 'DELETE',
+                                });
+                                setModalBarcodes(prev => prev.filter(b => b.id !== bc.id));
+                                toast.success('Штрихкод видалено');
+                              } catch (e: unknown) {
+                                toast.error(e instanceof Error ? e.message : 'Помилка');
+                              } finally {
+                                setDeletingBarcodeId(null);
+                              }
+                            })()
+                          }
                           className="text-destructive/70 hover:text-destructive hover:bg-destructive/10 p-1 rounded transition-colors"
                           title="Видалити"
                         >

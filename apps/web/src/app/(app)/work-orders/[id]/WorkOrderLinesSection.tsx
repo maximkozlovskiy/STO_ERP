@@ -144,7 +144,7 @@ export function WorkOrderLinesSection({
                   <button
                     type="button"
                     aria-label={t('lines.deleteAria')}
-                    onClick={() => removeLine(l.id)}
+                    onClick={() => void removeLine(l.id)}
                     disabled={deletingLineId === l.id}
                     className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
                   >

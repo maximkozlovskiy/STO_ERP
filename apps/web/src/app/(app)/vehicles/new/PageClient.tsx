@@ -124,7 +124,7 @@ export default function NewVehiclePageClient() {
 
       {/* Actions */}
       <div className="flex gap-3 pb-6">
-        <Button onClick={onSubmit} loading={saving} className="flex-1">
+        <Button onClick={() => void onSubmit()} loading={saving} className="flex-1">
           {t('new.save')}
         </Button>
         <Button variant="outline" onClick={() => router.back()}>

@@ -69,7 +69,7 @@ export function StatusManager({
     if (controlled) onChange?.();
     else reloadSelf();
     // Список контрагентів показує badge-и статусів — інвалідуємо, щоб оновилися одразу.
-    queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
+    void queryClient.invalidateQueries({ queryKey: counterpartiesKeys.all });
   };
 
   // Довідник вантажимо лениво — лише коли користувач відкриває dropdown.

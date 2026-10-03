@@ -291,7 +291,7 @@ export default function PayrollPage() {
           {previewEnabled && preview.data && preview.data.lines.length > 0 && (
             <Button
               variant="outline"
-              onClick={createPeriod}
+              onClick={() => void createPeriod()}
               loading={createMut.isPending}
               className="ml-auto"
             >
@@ -762,7 +762,7 @@ export default function PayrollPage() {
         onClose={() => setPayPeriod(null)}
         title={t('payModal.title')}
         footer={
-          <Button onClick={confirmPay} loading={payMut.isPending} className="w-full">
+          <Button onClick={() => void confirmPay()} loading={payMut.isPending} className="w-full">
             {t('periods.pay')} {payPeriod ? fmtMoney(payPeriod.totalAccrued) : ''} ₴
           </Button>
         }

@@ -134,10 +134,22 @@ export function WorkOrderMediaSection({
                   <button
                     type="button"
                     aria-label={t('media.deleteAria')}
-                    onClick={async e => {
+                    onClick={e => {
                       e.stopPropagation();
-                      await apiFetch(`/work-orders/${woId}/media/${m.id}`, { method: 'DELETE' });
-                      onChanged();
+                      // Раніше тут був async-обробник БЕЗ try/catch: при збої файл не
+                      // видалявся, а користувач не бачив нічого. Беремо той самий
+                      // механізм `onError`, що вже використовує завантаження вище.
+                      void (async () => {
+                        onError?.('');
+                        try {
+                          await apiFetch(`/work-orders/${woId}/media/${m.id}`, {
+                            method: 'DELETE',
+                          });
+                          onChanged();
+                        } catch (err: unknown) {
+                          onError?.(err instanceof Error ? err.message : t('media.deleteError'));
+                        }
+                      })();
                     }}
                     className="absolute top-1 right-1 hidden group-hover:flex focus-visible:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
                   >

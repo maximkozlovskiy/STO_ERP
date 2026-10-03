@@ -134,7 +134,7 @@ export function WorkOrderPartsSection({
                   <button
                     type="button"
                     aria-label={t('parts.deleteAria')}
-                    onClick={() => removePart(p.id)}
+                    onClick={() => void removePart(p.id)}
                     disabled={deletingPartId === p.id}
                     className="text-xs text-destructive/60 hover:text-destructive px-1 disabled:opacity-50"
                   >

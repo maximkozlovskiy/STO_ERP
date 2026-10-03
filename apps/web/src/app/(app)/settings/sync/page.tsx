@@ -50,7 +50,7 @@ export default function SyncPage() {
           conflicts: pushResult.conflicts,
         }),
       );
-      qc.invalidateQueries({ queryKey: syncKeys.all });
+      void qc.invalidateQueries({ queryKey: syncKeys.all });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('sync.syncError'));
     } finally {
@@ -156,7 +156,7 @@ export default function SyncPage() {
             </div>
           </div>
 
-          <Button onClick={triggerSync} loading={syncing} className="w-full">
+          <Button onClick={() => void triggerSync()} loading={syncing} className="w-full">
             {t('sync.syncNow')}
           </Button>
 

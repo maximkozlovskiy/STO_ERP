@@ -265,7 +265,7 @@ export default function BookingPage() {
                   onChange={e => setForm(f => ({ ...f, clientPhone: e.target.value }))}
                 />
                 <Button
-                  onClick={handleSubmit}
+                  onClick={() => void handleSubmit()}
                   loading={saving}
                   disabled={!form.clientName || !form.clientPhone}
                   className="w-full"
