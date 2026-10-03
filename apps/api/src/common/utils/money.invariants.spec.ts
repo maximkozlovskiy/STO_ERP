@@ -149,4 +149,55 @@ describe('money — інваріанти', () => {
     expect(money(Number.POSITIVE_INFINITY)).toBe(0);
     expect(money(Number.NaN)).toBe(0);
   });
+
+  it('moneyFromDecimal: крайові входи ніколи не дають NaN/Infinity/-0', () => {
+    // Входи, яких спеки ще не покривали (запит QA). Гроші НІКОЛИ не NaN/Infinity,
+    // а -0 нормалізовано в 0 (roundMoney `+ 0`), інакше Object.is-порівняння ламаються.
+    expect(moneyFromDecimal('')).toBe(0); // Number('') === 0
+    expect(moneyFromDecimal('  12.3  ')).toBe(12.3); // Number() тримить пробіли
+    expect(moneyFromDecimal('\t\n 7.005 ')).toBe(7.01); // whitespace + half-up
+    expect(Object.is(moneyFromDecimal(-0), 0)).toBe(true); // -0 → +0
+    expect(Object.is(moneyFromDecimal({ toNumber: () => -0 }), 0)).toBe(true);
+    expect(Object.is(moneyFromDecimal({ toString: () => '-0' }), 0)).toBe(true);
+    expect(moneyFromDecimal(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(moneyFromDecimal(Number.NEGATIVE_INFINITY)).toBe(0);
+    expect(moneyFromDecimal({ toNumber: () => Number.POSITIVE_INFINITY })).toBe(0);
+    expect(moneyFromDecimal('Infinity')).toBe(0); // Number('Infinity') === Infinity → 0
+    expect(moneyFromDecimal({ toString: () => 'NaN' })).toBe(0); // Decimal-подібне 'NaN'
+    expect(moneyFromDecimal({ toNumber: () => Number.NaN, toString: () => 'NaN' })).toBe(0);
+  });
+
+  it('Bug #776: moneyFromDecimal не падає на обгортці з toNumber, що кидає', () => {
+    // `Number(x)`, яку ця функція заміняє, НІКОЛИ не кличе toNumber — лише valueOf/toString.
+    // Тож обгортка з бракованим toNumber але валідним toString/valueOf працювала під
+    // Number() і мусить працювати тут (контракт НЕ вужчий за Number). Інакше гроші падають
+    // TypeError-ом на спільному шляху 44 викликів замість повернути число.
+    const throwing = {
+      toNumber: () => {
+        throw new TypeError('broken decimal');
+      },
+      toString: () => '350.126',
+    };
+    expect(() => moneyFromDecimal(throwing)).not.toThrow();
+    expect(moneyFromDecimal(throwing)).toBe(350.13); // fallback через toString
+
+    // toNumber кидає, валідного числового представлення немає → 0 (не NaN, не throw).
+    const throwingNoString = {
+      toNumber: () => {
+        throw new Error('boom');
+      },
+      toString: () => 'не число',
+    };
+    expect(() => moneyFromDecimal(throwingNoString)).not.toThrow();
+    expect(moneyFromDecimal(throwingNoString)).toBe(0);
+
+    // valueOf-fallback теж працює (Number() пробує valueOf першим).
+    const throwingValueOf = {
+      toNumber: () => {
+        throw new Error('x');
+      },
+      valueOf: () => 12.5,
+    };
+    expect(moneyFromDecimal(throwingValueOf as unknown as { toNumber(): number })).toBe(12.5);
+  });
 });

@@ -82,7 +82,19 @@ export function moneyFromDecimal(
   if (value == null) return ZERO_MONEY;
   if (typeof value === 'number') return money(value);
   if (typeof value === 'string') return money(Number(value));
-  if ('toNumber' in value && typeof value.toNumber === 'function') return money(value.toNumber());
+  if ('toNumber' in value && typeof value.toNumber === 'function') {
+    // Bug #776: `toNumber()` викликаємо захищено. `Number(x)`, яку ця функція заміняє,
+    // НІКОЛИ не звертається до `toNumber` (лише valueOf/toString), тож ніколи не падала
+    // на обгортці з бракованим `toNumber`. Якщо вимагати toNumber і кидати exception
+    // далі — контракт стає ВУЖЧИМ за Number() (порушення докблоку) і гроші падають
+    // TypeError-ом на спільному шляху 44 викликів. Fallback на Number()-шлях (toString)
+    // зберігає стару поведінку; якщо й він не дасть число — roundMoney→0 (гроші не NaN).
+    try {
+      return money(value.toNumber());
+    } catch {
+      return money(Number(value));
+    }
+  }
   // `Number(obj)` використає valueOf/toString — той самий шлях, що й до міграції.
   return money(Number(value));
 }
