@@ -11,13 +11,19 @@
 ```
 Дата:       2026-10-03 (АУДИТ Кроки 1-4 ЗАКРИТО + прохід по техборгу — docs/AUDIT-2026-10.md,
             docs/TECH-DEBT.md)
-Останнє:    Money-бренд на invoices.service (743783e8) — і головне, ВСТАНОВЛЕНО МЕЖУ його
-            застосування: брендувати точки ОБЧИСЛЕННЯ, не точки серіалізації. З ~37 Number()
-            у файлі перетворено 7 — ті, чий результат пишеться назад у БД. Решта (мапінг
-            Decimal→JSON у toResponseDto) лишилась Number(): там значення вже округлене
-            Postgres, і бренд лише розмив би сигнал. Правило → MP-B11 у docs/PATTERNS.md.
-            Поріг FX (>= 0.005) перевірено окремо: 500 000 випадків, 0 розбіжностей — Money
-            зробив наявну коректність типом, а не виправив баг.
+Останнє:    Money РОЗКАТАНО НА ВЕСЬ API (d7018205) — roundMoney у прод-коді = 0, 14 модулів.
+            Межа застосування (MP-B11): брендувати ОБЧИСЛЕННЯ, не серіалізацію; ставки,
+            кількості й відсотки НЕ брендувати (бали лояльності — Decimal(12,2) за
+            розрядністю, але не гроші → окремий roundPoints).
+            СПРАВЖНІЙ БАГ, знайдений міграцією: moneyFromDecimal приймала лише
+            {toNumber}|number, хоча стоїть там, де був Number(x) — а Number() йде через
+            toString/valueOf. 44 виклики були латентним TypeError на raw-SQL рядках і
+            ::text-кастах. Впало на 2 payroll-специв (14 фікстур мокають Decimal як
+            {toString}); без цього покриття впало б у проді. Контракт розширено, +4 тести.
+            УРОК: типізована заміна вбудованої конверсії мусить мати контракт НЕ ВУЖЧИЙ
+            за те, що заміняє → docs/GOTCHAS.md.
+            Найцінніше застосування — публічний тип: CashService.getBalance() повертає
+            Money, тож тип успадковують УСІ виклики балансу каси.
 Фаза:       Аудит технологій, Кроки 1-4 ЗАКРИТО + прохід по боргу:
             · Крок 1 — якість: тести API під tsc+eslint (77 помилок → 0), coverage-пороги у CI,
               eslint+commitlint у pre-commit, перші тести в packages/shared, FSM-парність бек↔shared.
@@ -48,12 +54,13 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       743783e8 refactor(invoices) — Money на invoices.service злито в main.
+HEAD:       d7018205 refactor(money) — reports + xlsx, завершення міграції Money.
             api 2895/2895 (191 файл) · web 881 · shared 4 · tsc 0 · eslint 0 errors ·
             циклічних залежностей 0 (1323 модулі). Покриття api 62% — ЧЕСНА цифра після
             Vitest 5 (Vitest 2 рахував лише імпортовані тестами файли, 78% ховало непокрите).
             Борг, що лишився: 60 роутів без типів (reports потребує DTO з нуля — reports.dto.ts
-            не існує), 29 toast→i18n у 14 файлах (жоден не має useTranslation).
+            не існує), ~27 toast→i18n (ХУКИ закрито: useCalendarState/useWorkOrderActions/
+            useLanguage; лишились компоненти). Money-борг ЗАКРИТО по API.
 Optimize(дуга імпорту+OCR, 44085da0..58fce607): 2026-10-02 (auto, b5325e7f). ГОЛОВНЕ — подвійний OCR:
             майстер читав один файл двічі (rawPreview→previewImport), для скана/фото = ОКРЕМИЙ OCR-прогін
             1-5с/стор ВДРУГЕ. Fix: parseGridCached — кеш розпізнаної сітки за sha256 вмісту (Redis, TTL

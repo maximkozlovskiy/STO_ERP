@@ -939,8 +939,21 @@ return { amount: Number(inv.amount), totalVat: Number(inv.totalVat) };
 return { amount: moneyFromDecimal(inv.amount) };
 ```
 
-**Ставки — не гроші.** `vatRate`, `rateUsed`, коефіцієнти лишаються `Number()`: округлення
-до копійок на них неправильне за змістом.
+**Ставки й кількості — не гроші.** `vatRate`, `rateUsed`, коефіцієнти, `quantity`,
+`normoHours` лишаються `Number()`: округлення до копійок на них неправильне за змістом
+(кількість буває дробовою — літри, кг; `coefficient` у схемі взагалі `Decimal(18,6)`).
+Якщо треба округлити кількість для читабельності у тексті помилки — явний
+`Math.round(x * 100) / 100`, а не `money()`.
+
+**Унарний мінус до `Money` заборонений** (`@typescript-eslint/no-unsafe-unary-minus`):
+заперечення не зберігає інваріант бренду. У знакових акумуляторах — `sum * -1`:
+
+```ts
+// ❌ eslint error
+const signed = dir === 'IN' ? sum : -sum;
+// ✅
+const signed = dir === 'IN' ? sum : sum * -1;
+```
 
 **Суматори округлюють РАЗ у кінці** (`sumMoney`, `sumLineTotals`) — не покроково.
 Виміряно на 200 000 наборів: на сирих значеннях покрокове округлення **накопичує** помилку
@@ -948,7 +961,13 @@ return { amount: moneyFromDecimal(inv.amount) };
 лишатись узгодженими — інваріант `Σ(рядки) === total` стереже
 `money.invariants.spec.ts`.
 
-Застосовано: `vat.ts`, `payroll.calculator`, `settlements-account`, `invoices.service`.
+**Публічний тип — найцінніше застосування.** Коли `Money` стає типом ПОВЕРНЕННЯ сервісного
+методу (`CashService.getBalance(): Promise<Money>`), його успадковують усі виклики, а не
+лише рядки в одному файлі. Саме це дає захист «на виріст».
+
+Застосовано: `vat.ts`, `payroll.calculator`, `settlements-account`, `invoices.service`,
+`work-orders.service`, `work-order-stock-effects`, `purchase-orders.service`,
+`cash.service` (баланси), `payments.service` (FX).
 
 ---
 

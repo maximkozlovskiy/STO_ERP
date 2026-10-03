@@ -12,9 +12,10 @@
 | ---------------------------- | --------------------------------------------- |
 | Вразливості на runtime-шляху | **1 HIGH** (devDependency, фіксу ще не існує) |
 | `TODO`/`FIXME`/`HACK` у коді | **1**                                         |
-| Тести                        | api 2895 · web 881 · shared 4, усі зелені     |
+| Тести                        | api 2898 · web 881 · shared 4, усі зелені     |
 | `tsc` / `eslint errors`      | 0 / 0                                         |
 | Циклічні залежності          | 0 (1323 модулі)                               |
+| `roundMoney` у прод-коді API | **0** — усі гроші через `Money` (MP-B11)      |
 
 ---
 
@@ -69,9 +70,9 @@ _чому_ (взірець — `lib/cache-invalidation.ts`: TanStack сам тр
 **Пріоритет: середній.** Цінність спадає — у `reports`/`settings` немає FSM-станів, тож
 діри рівня `useWorkOrderTransition` там малоймовірні.
 
-## 3. Гроші у `number` — розширено (2026-10-03)
+## 3. Гроші у `number` — ✅ ЗАКРИТО по API (2026-10-03)
 
-`Money` застосовано до:
+**`roundMoney` у прод-коді API = 0.** `Money` застосовано до:
 
 - `common/utils/vat.ts` — спільний суматор для invoices, reports, work-orders;
 - **`payroll.calculator.computeAccrued`** — серце нарахування зарплати; усі точки, що
@@ -84,7 +85,14 @@ _чому_ (взірець — `lib/cache-invalidation.ts`: TanStack сам тр
 - **`purchase-orders.service`** — тотали create/update, `receivedAmount`;
 - **`cash.service`** — баланси каси; `getBalance`/`getBalances`/`computeBalance`
   тепер **повертають `Money`**, тож тип успадковують усі виклики;
-- **`payments.service`** — FX-різниця.
+- **`payments.service`** — FX-різниця;
+- **`payroll.service`** — база нарахування з `::float`-SQL, тотали;
+- **`completion-acts`** — юридичний PDF-акт;
+- **`supplier-returns`**, **`supplier-payments`** — тотали, `newPaid`, FX;
+- **`loyalty`** — лише `discountAmount` (бали × курс = ₴); самі бали — `roundPoints`;
+- **`reports.service`** — місце Bug #629 (дрейф × 0.4 у CSV-експорті); `margin` лишився
+  відсотком;
+- **`xlsx`** — тотали імпорту документа.
 
 Для settlements це **профілактика, не фікс бага**: заміряно 66 352 випадки дрейфу зі
 100 000, але величина ≈2e-11 — нижче за розрядність `Decimal(12,2)`, і `openingBalance`
@@ -106,13 +114,20 @@ _чому_ (взірець — `lib/cache-invalidation.ts`: TanStack сам тр
 
 **Правило для наступних модулів:** брендувати точки обчислення, не точки серіалізації.
 
-**Лишається:** 38 `roundMoney` у 9 файлах — `reports` (16), `payroll.service` (6),
-`document-line-import.adapter` (5), `loyalty` (5), `supplier-returns` (4),
-`completion-acts` (4), `supplier-payments` (3), `xlsx.service` (2),
-`payroll.calculator` (1). Це **точний** вимір залишку по імені функції, на відміну від
-оцінок нижче.
+### Баг, який знайшла сама міграція
 
-Плюс 97 грошових конверсій у 26 файлах (вимір за вузьким патерном —
+`moneyFromDecimal` приймала лише `{toNumber}|number`. Виглядало правильно — Prisma
+`Decimal` має `toNumber`. Але функція стоїть РІВНО там, де був `Number(x)`, а `Number()`
+конвертує через `toString`/`valueOf`: кожен із 44 викликів був латентним `TypeError` на
+raw-SQL рядках, `::text`-кастах і Decimal-подібних обгортках.
+
+Впало на 2 payroll-специв (у наборі 14 фікстур мокають Decimal як `{toString}`).
+**Без цього покриття воно впало б у проді.** Контракт розширено, +4 тести. Урок
+записано в `docs/GOTCHAS.md`.
+
+**Лишається** (не Money-борг, а загальний): 97 грошових конверсій `Number()`/`toNumber()`
+у 26 файлах — це переважно мапінг `Decimal`→JSON у `toResponseDto`, який за MP-B11
+брендувати НЕ треба. Вимір за вузьким патерном (
 `Number(x.*amount|price|total|sum|cost|balance|paid|vat|debt)` плюс `.toNumber()`, без
 spec-файлів). Цифра **не порівнювана** з «222 у 55» з аудиту: там патерн був ширший і
 включав негрошові конверсії. Наступні кандидати — модулі, де гроші **обчислюються**:
@@ -205,8 +220,8 @@ Vitest 5 бере весь `include`. 78% приховувало непокри�
 1. ~~Обробка помилок на фронті~~ — ✅ закрито, правила на `error`.
 2. **Анотація контролерів** із перехідними станами — там ще можуть ховатись діри рівня
    `useWorkOrderTransition`. Наступний пункт у черзі.
-3. ~~**`Money` на `invoices`**~~ — ✅ зроблено; встановлено межу «обчислення, не
-   серіалізація». Далі — `work-orders` / `purchase-orders`.
+3. ~~**`Money`**~~ — ✅ ЗАКРИТО по API (14 модулів, `roundMoney` = 0). Міграція сама
+   знайшла латентний `TypeError` на спільному шляху 44 викликів.
 4. **~27 toast-ів у 13 файлах** → i18n. Хуки закрито (`useCalendarState`,
    `useWorkOrderActions`, `useLanguage`); лишились самі компоненти — найбільші
    `CounterpartyEditModal` (6), `category-manager-modal` / `GoodUoMTab` /
