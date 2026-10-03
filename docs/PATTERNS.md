@@ -911,7 +911,7 @@ export-обмеженням (той самий рубіж, що й Server Compon
 
 ---
 
-## MP-B11 — бренд `Money`: брендувати обчислення, не серіалізацію
+## MP-B13 — бренд `Money`: брендувати обчислення, не серіалізацію
 
 `Money` (`common/utils/money.ts`) — `number` із фантомним полем. Він не змінює рантайм;
 його сенс у тому, що **пропущене округлення стає помилкою типу**. Саме тому його не можна
@@ -961,6 +961,22 @@ const signed = dir === 'IN' ? sum : sum * -1;
 лишатись узгодженими — інваріант `Σ(рядки) === total` стереже
 `money.invariants.spec.ts`.
 
+**Σ(рядки) мусить дорівнювати total — навіть якщо round-once точніший** (Bug #777/#778).
+Якщо per-line сума НЕ зберігається в БД, а рахується мапером на льоту
+(`amount = money(q × price)`), то total теж мусить бути **сумою вже-округлених рядків**:
+
+```ts
+// ❌ round-once точніший АРИФМЕТИЧНО, але не збігається з тим, що бачить бухгалтер
+const total = money(lines.reduce((s, l) => s + l.quantity * l.price, 0)); // 5.00
+// ✅ Σ(відображених рядків)
+const total = sumMoney(lines.map(l => money(l.quantity * l.price))); // 5.01
+```
+
+Розходиться лише на **дробових кількостях** (`quantity` — `Float`: літри, кг):
+3 × (0.5 л × 3.33 ₴) → рядки 1.67 × 3 = 5.01, round-once = `money(4.995)` = 5.00.
+Контраст: у `work-orders` та `invoices` дивергенція **структурно неможлива** — там
+per-line `amount` зберігається в БД уже округленим, тож сума читає ті самі числа.
+
 **Публічний тип — найцінніше застосування.** Коли `Money` стає типом ПОВЕРНЕННЯ сервісного
 методу (`CashService.getBalance(): Promise<Money>`), його успадковують усі виклики, а не
 лише рядки в одному файлі. Саме це дає захист «на виріст».
@@ -985,4 +1001,5 @@ const signed = dir === 'IN' ? sum : sum * -1;
 | MP-B9 Hot-path           | inline `include:`/`select:` у findAll; `take: 1000`                                   |
 | MP-B10 Sentinel UUID FK  | in-band `''`-sentinel у `@db.Uuid` — тип має бути `string \| null`, не порожній рядок |
 | MP-F5 SSR today          | `new Date()`/`Date.now()` у render-body                                               |
-| MP-B11 Money бренд       | `money(`/`moneyFromDecimal(` у `toResponseDto`; `roundMoney(` у новому коді           |
+| MP-B13 Money бренд       | `money(`/`moneyFromDecimal(` у `toResponseDto`; `roundMoney(` у новому коді           |
+| MP-B13 Σ(рядки)≠total    | `money(…reduce(` для total, коли mapper рахує per-line `money(q×price)` на льоту      |

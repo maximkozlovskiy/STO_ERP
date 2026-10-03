@@ -15,7 +15,7 @@
 | Тести                        | api 2898 · web 881 · shared 4, усі зелені     |
 | `tsc` / `eslint errors`      | 0 / 0                                         |
 | Циклічні залежності          | 0 (1323 модулі)                               |
-| `roundMoney` у прод-коді API | **0** — усі гроші через `Money` (MP-B11)      |
+| `roundMoney` у прод-коді API | **0** — усі гроші через `Money` (MP-B13)      |
 
 ---
 
@@ -126,7 +126,7 @@ raw-SQL рядках, `::text`-кастах і Decimal-подібних обго
 записано в `docs/GOTCHAS.md`.
 
 **Лишається** (не Money-борг, а загальний): 97 грошових конверсій `Number()`/`toNumber()`
-у 26 файлах — це переважно мапінг `Decimal`→JSON у `toResponseDto`, який за MP-B11
+у 26 файлах — це переважно мапінг `Decimal`→JSON у `toResponseDto`, який за MP-B13
 брендувати НЕ треба. Вимір за вузьким патерном (
 `Number(x.*amount|price|total|sum|cost|balance|paid|vat|debt)` плюс `.toNumber()`, без
 spec-файлів). Цифра **не порівнювана** з «222 у 55» з аудиту: там патерн був ширший і

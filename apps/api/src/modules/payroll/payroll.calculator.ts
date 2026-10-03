@@ -3,7 +3,7 @@ import { money, ZERO_MONEY, type Money } from '../../common/utils/money';
 /**
  * Розрахунок нарахування ЗП одному співробітнику за rateScheme та виробітком за період.
  * Чиста функція — юніт-тестується ізольовано. Гроші квантуються money() (копійка,
- * half-away-from-zero) і повертаються брендованим типом Money — див. MP-B11.
+ * half-away-from-zero) і повертаються брендованим типом Money — див. MP-B13.
  *
  * Виробіток (base) береться з ЗАВЕРШЕНИХ робіт періоду (completedAt + статус наряду):
  *  - baseAmount = Σ WorkOrderLine.amount (сума виконаних робіт)

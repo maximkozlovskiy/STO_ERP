@@ -701,7 +701,7 @@ export class PurchaseOrdersService {
     for (const { recv, line } of activeLines) {
       if (line.receivedQty + recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) {
         // remaining — КІЛЬКІСТЬ (літри/кг), не гроші: money() тут був би семантично
-        // неправильним (MP-B11). Значення йде лише у текст помилки, тож округлюємо
+        // неправильним (MP-B13). Значення йде лише у текст помилки, тож округлюємо
         // до 2 знаків суто для читабельності.
         const remaining = Math.round(Math.max(0, line.quantity - line.receivedQty) * 100) / 100;
         throw new BadRequestException(
@@ -1137,7 +1137,7 @@ export class PurchaseOrdersService {
         coefficient: safeCoeff(l.good?.unitOfMeasure?.coefficient),
         quantity: l.quantity,
         price: Number(l.price),
-        // обчислення (qty × price), а не читання збереженої колонки → бренд за MP-B11
+        // обчислення (qty × price), а не читання збереженої колонки → бренд за MP-B13
         amount: money(l.quantity * moneyFromDecimal(l.price)),
         vatRate: Number(l.vatRate ?? 0),
         vatAmount: Number(l.vatAmount ?? 0),

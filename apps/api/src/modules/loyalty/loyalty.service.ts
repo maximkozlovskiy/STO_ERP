@@ -238,7 +238,7 @@ export class LoyaltyService {
       throw new NotFoundException(translateError('err.loyalty.counterpartyNotFound', getLocale()));
     const redeemRate = Number(settings?.loyaltyRedeemRate ?? 1);
     // money(): знижка у ГРН (points × дробовий redeemRate) — на відміну від самих балів,
-    // це вже грошова величина, тож брендується (MP-B11).
+    // це вже грошова величина, тож брендується (MP-B13).
     const discountAmount = money(points * redeemRate);
 
     // Atomic check-and-decrement guards against double-spend when two redeem
