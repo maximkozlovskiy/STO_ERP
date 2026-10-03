@@ -20,6 +20,12 @@ import { paymentsKeys } from '@/hooks/api/usePayments';
  * Раніше кожна сторінка інвалідувала лише власний ключ → сусідні вкладки показували застаріле
  * до staleTime. Ці хелпери — одне джерело правди «які кеші чіпає рух складу / балансу».
  *
+ * `void` перед кожним `invalidateQueries` — НАВМИСНО, не глушення лінту. Інвалідація
+ * фонова: TanStack Query сам перезапитує активні queries і сам тримає error-стан кожної
+ * з них (його показує відповідний компонент). Чекати тут нічого — користувач уже бачить
+ * результат мутації, а дані підтягнуться. Усі ці функції оголошені `: void`, тобто й
+ * виклична сторона не має на що чекати.
+ *
  * Використання у onSuccess мутації або після дії:
  *   invalidateStockAffected(queryClient);   // рух складу
  *   invalidateBalanceAffected(queryClient); // рух балансу контрагента
@@ -27,16 +33,16 @@ import { paymentsKeys } from '@/hooks/api/usePayments';
 
 /** Рух ЗАЛИШКІВ: списання/прихід/переміщення → інвентар + звіти + дашборд (low-stock). */
 export function invalidateStockAffected(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: inventoryKeys.all });
-  qc.invalidateQueries({ queryKey: reportsKeys.all });
-  qc.invalidateQueries({ queryKey: dashboardKeys.all });
+  void qc.invalidateQueries({ queryKey: inventoryKeys.all });
+  void qc.invalidateQueries({ queryKey: reportsKeys.all });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
 }
 
 /** Рух БАЛАНСУ контрагента: CHARGE/PAYMENT → контрагенти + звіти + дашборд. */
 export function invalidateBalanceAffected(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
-  qc.invalidateQueries({ queryKey: reportsKeys.all });
-  qc.invalidateQueries({ queryKey: dashboardKeys.all });
+  void qc.invalidateQueries({ queryKey: counterpartiesKeys.all });
+  void qc.invalidateQueries({ queryKey: reportsKeys.all });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
 }
 
 /**
@@ -47,9 +53,9 @@ export function invalidateBalanceAffected(qc: QueryClient): void {
  * баланс контрагента/WO лишались застарілими до staleTime).
  */
 export function invalidatePaymentSideEffects(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: invoicesKeys.all });
-  qc.invalidateQueries({ queryKey: workOrdersKeys.all });
-  qc.invalidateQueries({ queryKey: paymentsKeys.all });
+  void qc.invalidateQueries({ queryKey: invoicesKeys.all });
+  void qc.invalidateQueries({ queryKey: workOrdersKeys.all });
+  void qc.invalidateQueries({ queryKey: paymentsKeys.all });
   invalidateBalanceAffected(qc);
 }
 
@@ -58,8 +64,8 @@ export function invalidatePaymentSideEffects(qc: QueryClient): void {
  * власний список нарядів та рахунки (auto-invoice). Один виклик замість 5 розкиданих.
  */
 export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: workOrdersKeys.all });
-  qc.invalidateQueries({ queryKey: invoicesKeys.all });
+  void qc.invalidateQueries({ queryKey: workOrdersKeys.all });
+  void qc.invalidateQueries({ queryKey: invoicesKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
 }
@@ -72,20 +78,20 @@ export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
  * КОЖНА точка мутації гарантії чіпала обидва дерева ключів (WEB-Bug #718).
  */
 export function invalidateWarrantyAffected(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: warrantiesKeys.all });
-  qc.invalidateQueries({ queryKey: dashboardKeys.expiringWarranties() });
+  void qc.invalidateQueries({ queryKey: warrantiesKeys.all });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.expiringWarranties() });
 }
 
 /** Складський документ (RECEIPT/WRITEOFF/TRANSFER) → власний список + рух складу. */
 export function invalidateStockDocumentSideEffects(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: stockDocsKeys.all });
+  void qc.invalidateQueries({ queryKey: stockDocsKeys.all });
   invalidateStockAffected(qc);
 }
 
 /** Прийом/оплата замовлення постачальнику → PO + склад + баланс постачальника + оплати. */
 export function invalidatePurchaseSideEffects(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
-  qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+  void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+  void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
 }
