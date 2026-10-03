@@ -318,37 +318,43 @@ function InvoicesPageInner() {
     ],
   );
 
+  // void: Promise.allSettled не реджектиться, а підсумок кожного DELETE/transition уже
+  // показано користувачу через toast.success/warning/error (або setError, якщо toast вимкнено).
   const bulkCancel = useCallback(
-    async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map(id =>
-          apiFetch(`/invoices/${id}/transition`, {
-            method: 'POST',
-            body: JSON.stringify({ status: 'CANCELLED' }),
-          }),
-        ),
-      );
-      const succeeded = results.filter(r => r.status === 'fulfilled').length;
-      const failed = results.length - succeeded;
-      bulkSelect.clear();
-      // WEB-R3-3: bulk-cancel може реверсити CHARGE standalone-рахунків → баланс контрагента.
-      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
-      invalidateBalanceAffected(queryClient);
-      if (features.toastEnabled) {
-        if (succeeded > 0 && failed === 0) {
-          toast.success(
-            succeeded === 1
-              ? t('toast.cancelledOne', { count: succeeded })
-              : t('toast.cancelledMany', { count: succeeded }),
-          );
-        } else if (succeeded > 0 && failed > 0) {
-          toast.warning(t('toast.cancelledPartial', { succeeded, total: results.length, failed }));
-        } else {
-          toast.error(t('toast.cancelledNone'));
+    (ids: string[]): void => {
+      void (async () => {
+        const results = await Promise.allSettled(
+          ids.map(id =>
+            apiFetch(`/invoices/${id}/transition`, {
+              method: 'POST',
+              body: JSON.stringify({ status: 'CANCELLED' }),
+            }),
+          ),
+        );
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        bulkSelect.clear();
+        // WEB-R3-3: bulk-cancel може реверсити CHARGE standalone-рахунків → баланс контрагента.
+        void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+        invalidateBalanceAffected(queryClient);
+        if (features.toastEnabled) {
+          if (succeeded > 0 && failed === 0) {
+            toast.success(
+              succeeded === 1
+                ? t('toast.cancelledOne', { count: succeeded })
+                : t('toast.cancelledMany', { count: succeeded }),
+            );
+          } else if (succeeded > 0 && failed > 0) {
+            toast.warning(
+              t('toast.cancelledPartial', { succeeded, total: results.length, failed }),
+            );
+          } else {
+            toast.error(t('toast.cancelledNone'));
+          }
+        } else if (failed > 0) {
+          setError(t('errors.bulkCancelPartial', { succeeded, total: results.length, failed }));
         }
-      } else if (failed > 0) {
-        setError(t('errors.bulkCancelPartial', { succeeded, total: results.length, failed }));
-      }
+      })();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [bulkSelect, features.toastEnabled, queryClient, t],
@@ -432,7 +438,7 @@ function InvoicesPageInner() {
       // the new selectedInv would get the wrong status applied.
       setSelectedInv(prev => (prev && prev.id === inv.id ? { ...prev, status: newStatus } : prev));
       // WEB-R3-3: перехід SENT (standalone→CHARGE) / CANCELLED (реверс) рухає баланс контрагента.
-      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
       invalidateBalanceAffected(queryClient);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('errors.transition'));
@@ -441,6 +447,12 @@ function InvoicesPageInner() {
     }
   };
 
+  // Усі мутації нижче (handleTransition/handleClone/markDeleted/handlePay) мають власний
+  // catch, який показує помилку через toast.error або setError у банері; selectInvoice()
+  // свідомо глушить збій довантаження деталей і лишає базові дані рядка. Тому в JSX
+  // вони викликаються через `void`. Так само `void` на queryClient.invalidateQueries —
+  // фонова інвалідація, TanStack сам перезапитує активні queries і тримає їхній error-стан
+  // (той самий патерн, що в lib/cache-invalidation.ts).
   const handlePay = async () => {
     if (!showPayment) return;
     // Порожнє поле = оплата залишку (amount − paidAmount), не всієї суми рахунку.
@@ -528,10 +540,12 @@ function InvoicesPageInner() {
         method: 'POST',
       });
       // Reload data to show cloned invoice
-      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
       // Select and show the cloned invoice - fetch it first
       const clonedInvoice = await apiFetch<InvoiceWithOptionals>(`/invoices/${cloned.id}`);
-      selectInvoice(clonedInvoice);
+      // await: панель має бути вже наповнена деталями клону до того, як знімається
+      // прапорець cloning — інакше спінер зникає раніше, ніж з'являються дані.
+      await selectInvoice(clonedInvoice);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('errors.clone'));
     } finally {
@@ -550,7 +564,7 @@ function InvoicesPageInner() {
     try {
       await apiFetch(`/invoices/${inv.id}`, { method: 'DELETE' });
       if (selectedInv?.id === inv.id) setSelectedInv(null);
-      queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+      void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
       if (features.toastEnabled) toast.success(t('toast.markedForDeletion'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('errors.delete');
@@ -626,7 +640,10 @@ function InvoicesPageInner() {
                     }
                     size="sm"
                     className="w-full"
-                    onClick={() => (s === 'PAID' ? setShowPayment(inv) : handleTransition(inv, s))}
+                    onClick={() => {
+                      if (s === 'PAID') setShowPayment(inv);
+                      else void handleTransition(inv, s);
+                    }}
                     loading={savingId === inv.id}
                   >
                     {s === 'SENT'
@@ -1037,7 +1054,7 @@ function InvoicesPageInner() {
                             size="icon-sm"
                             title={t('actions.openDetails')}
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => selectInvoice(inv)}
+                            onClick={() => void selectInvoice(inv)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -1083,7 +1100,7 @@ function InvoicesPageInner() {
         onClose={() => setShowCreate(false)}
         onSaved={() => {
           setShowCreate(false);
-          queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+          void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
         }}
       />
 
@@ -1093,7 +1110,7 @@ function InvoicesPageInner() {
         invoiceId={editingInvoiceId ?? undefined}
         onClose={() => setEditingInvoiceId(null)}
         onSaved={() => {
-          queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+          void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
         }}
       />
 
@@ -1117,7 +1134,7 @@ function InvoicesPageInner() {
               {t('payment.showQr')}
             </Button>
           ) : (
-            <Button onClick={handlePay} loading={saving} className="w-full">
+            <Button onClick={() => void handlePay()} loading={saving} className="w-full">
               {t('payment.confirmPayment')}
             </Button>
           )

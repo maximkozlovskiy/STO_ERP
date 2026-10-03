@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import { applyLocale } from '@/i18n/apply';
 import { STORAGE_KEY, resolveInitialLocale } from '@/i18n/config';
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, isLocale, type Locale } from '@/i18n/locale';
@@ -45,7 +46,9 @@ export function useLanguage() {
       return;
     }
 
-    (async () => {
+    // `void`: кожен await усередині вже має власний try/catch (offline-tolerant резолюція
+    // locale), тож цей IIFE-проміс не реджектиться, а його результат осідає у setLocale.
+    void (async () => {
       let resolved: Locale | null = null;
       // 1) per-user override
       try {
@@ -122,12 +125,18 @@ export function useLanguage() {
     putAbortRef.current?.abort();
     const ac = new AbortController();
     putAbortRef.current = ac;
-    apiFetch(`/user-preferences/${API_KEY}`, {
+    void apiFetch(`/user-preferences/${API_KEY}`, {
       method: 'PUT',
       body: JSON.stringify({ key: API_KEY, value: { locale: next } }),
       signal: ac.signal,
-    }).catch(() => {
-      /* offline / abort — тихо */
+    }).catch((e: unknown) => {
+      // abort — нормальний результат dedup (користувач швидко перемкнув мову двічі), не помилка.
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      if (ac.signal.aborted) return;
+      // Реальний збій PUT: мова застосована локально (i18next + localStorage) і переживе
+      // перезавантаження, але НЕ зберіглась у профілі — на іншому пристрої користувач
+      // побачить стару мову. Раніше це глушилось повністю, і він вважав вибір збереженим.
+      toast.warning('Мову застосовано лише на цьому пристрої — не вдалося зберегти у профілі.');
     });
   }, []);
 

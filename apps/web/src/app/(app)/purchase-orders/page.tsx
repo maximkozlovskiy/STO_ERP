@@ -683,7 +683,10 @@ function PurchaseOrdersPageClient() {
         id: 'delete',
         label: t('actions.bulkDelete'),
         variant: 'destructive',
-        onClick: bulkDeleteSelected,
+        // BulkAction.onClick типізований void-returning. `bulkDeleteSelected` не має
+        // шляху, що реджектиться: `confirm()` ніколи не реджектиться, `Promise.allSettled`
+        // поглинає відмову кожного DELETE, а звіт (усі / частково / жодного) іде через toast.
+        onClick: ids => void bulkDeleteSelected(ids),
       },
     ],
     [bulkDeleteSelected, t],
@@ -1081,22 +1084,24 @@ function PurchaseOrdersPageClient() {
                                   deleteSupplierReturn.isPending &&
                                   deleteSupplierReturn.variables === sr.id
                                 }
-                                onClick={async e => {
+                                onClick={e => {
                                   e.stopPropagation();
-                                  // без try/catch throw з mutateAsync → silent failure
-                                  // (TanStack Query не має глобального MutationCache.onError у проекті).
-                                  try {
-                                    await deleteSupplierReturn.mutateAsync(sr.id);
-                                    if (features.toastEnabled)
-                                      toast.success(t('toast.returnDeleted'));
-                                  } catch (err: unknown) {
-                                    if (features.toastEnabled)
-                                      toast.error(
-                                        err instanceof Error
-                                          ? err.message
-                                          : t('errors.returnDeleteFailed'),
-                                      );
-                                  }
+                                  void (async () => {
+                                    // без try/catch throw з mutateAsync → silent failure
+                                    // (TanStack Query не має глобального MutationCache.onError у проекті).
+                                    try {
+                                      await deleteSupplierReturn.mutateAsync(sr.id);
+                                      if (features.toastEnabled)
+                                        toast.success(t('toast.returnDeleted'));
+                                    } catch (err: unknown) {
+                                      if (features.toastEnabled)
+                                        toast.error(
+                                          err instanceof Error
+                                            ? err.message
+                                            : t('errors.returnDeleteFailed'),
+                                        );
+                                    }
+                                  })();
                                 }}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1534,7 +1539,9 @@ function PurchaseOrdersPageClient() {
         onClose={() => setShowCreate(false)}
         onSaved={() => {
           setShowCreate(false);
-          queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+          // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає їх
+          // error-стан (його показує сам список) — чекати нічого, тому `void`.
+          void queryClient.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
         }}
       />
 
@@ -1549,15 +1556,19 @@ function PurchaseOrdersPageClient() {
       {/* Receive modal */}
       <Modal
         open={!!showReceive}
-        onClose={async () => {
-          if (!(await dirty.confirmClose())) return;
-          setShowReceive(null);
-          dirty.resetDirty();
+        onClose={() => {
+          // єдиний await — confirmClose(), який ніколи не реджектиться (резолвиться з
+          // DirtyConfirmDialog), тож чекати цей проміс нікому не потрібно.
+          void (async () => {
+            if (!(await dirty.confirmClose())) return;
+            setShowReceive(null);
+            dirty.resetDirty();
+          })();
         }}
         title={showReceive ? t('receive.modalTitle', { number: showReceive.number }) : ''}
         size="lg"
         footer={
-          <Button onClick={handleReceive} loading={saving} className="w-full">
+          <Button onClick={() => void handleReceive()} loading={saving} className="w-full">
             {t('receive.confirmButton')}
           </Button>
         }

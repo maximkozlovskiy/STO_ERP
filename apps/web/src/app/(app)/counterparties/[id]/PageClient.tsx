@@ -678,7 +678,10 @@ export default function CounterpartyCardPage() {
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
-                <Button size="sm" loading={savingEdit} onClick={saveEdit}>
+                {/* (А) Усі обробники на цій сторінці вже показують відмову самі —
+                    setLoadError / setContractsError / setLoyaltyError. Проміс
+                    нікому не потрібен, тому `void`. */}
+                <Button size="sm" loading={savingEdit} onClick={() => void saveEdit()}>
                   <Check className="h-3.5 w-3.5 mr-1" />
                   {t('card.info.save')}
                 </Button>
@@ -764,7 +767,7 @@ export default function CounterpartyCardPage() {
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  onClick={addGarage}
+                  onClick={() => void addGarage()}
                   loading={savingGarage}
                   disabled={!garageName.trim()}
                 >
@@ -1106,50 +1109,52 @@ export default function CounterpartyCardPage() {
                   disabled={
                     !contractForm.startDate || (cp.type === 'BOTH' && !contractForm.contractType)
                   }
-                  onClick={async () => {
-                    setSavingContract(true);
-                    setContractsError('');
-                    try {
-                      const resolvedType =
-                        cp.type === 'CLIENT'
-                          ? 'SALE'
-                          : cp.type === 'SUPPLIER'
-                            ? 'PURCHASE'
-                            : contractForm.contractType;
-                      await apiFetch(`/counterparties/${id}/contracts`, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                          contractType: resolvedType,
-                          startDate: contractForm.startDate,
-                          endDate: contractForm.endDate || undefined,
-                          creditLimit: contractForm.creditLimit
-                            ? Number(contractForm.creditLimit)
-                            : undefined,
-                          currencyCode: contractForm.currencyCode || orgCurrency,
-                          paymentDeferDays: contractForm.paymentDeferDays
-                            ? Number(contractForm.paymentDeferDays)
-                            : undefined,
-                          isPrimary: contractForm.isPrimary || undefined,
-                        }),
-                      });
-                      setContractForm({
-                        contractType: '',
-                        startDate: kyivToday(),
-                        endDate: '',
-                        creditLimit: '',
-                        currencyCode: '',
-                        paymentDeferDays: '',
-                        isPrimary: false,
-                      });
-                      setShowAddContract(false);
-                      loadContracts();
-                    } catch (e: unknown) {
-                      setContractsError(
-                        e instanceof Error ? e.message : t('card.contracts.saveFailed'),
-                      );
-                    } finally {
-                      setSavingContract(false);
-                    }
+                  onClick={() => {
+                    void (async () => {
+                      setSavingContract(true);
+                      setContractsError('');
+                      try {
+                        const resolvedType =
+                          cp.type === 'CLIENT'
+                            ? 'SALE'
+                            : cp.type === 'SUPPLIER'
+                              ? 'PURCHASE'
+                              : contractForm.contractType;
+                        await apiFetch(`/counterparties/${id}/contracts`, {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            contractType: resolvedType,
+                            startDate: contractForm.startDate,
+                            endDate: contractForm.endDate || undefined,
+                            creditLimit: contractForm.creditLimit
+                              ? Number(contractForm.creditLimit)
+                              : undefined,
+                            currencyCode: contractForm.currencyCode || orgCurrency,
+                            paymentDeferDays: contractForm.paymentDeferDays
+                              ? Number(contractForm.paymentDeferDays)
+                              : undefined,
+                            isPrimary: contractForm.isPrimary || undefined,
+                          }),
+                        });
+                        setContractForm({
+                          contractType: '',
+                          startDate: kyivToday(),
+                          endDate: '',
+                          creditLimit: '',
+                          currencyCode: '',
+                          paymentDeferDays: '',
+                          isPrimary: false,
+                        });
+                        setShowAddContract(false);
+                        loadContracts();
+                      } catch (e: unknown) {
+                        setContractsError(
+                          e instanceof Error ? e.message : t('card.contracts.saveFailed'),
+                        );
+                      } finally {
+                        setSavingContract(false);
+                      }
+                    })();
                   }}
                 >
                   {t('card.contracts.save')}
@@ -1226,24 +1231,28 @@ export default function CounterpartyCardPage() {
                             variant="ghost"
                             size="sm"
                             className="text-destructive hover:text-destructive h-7 px-2"
-                            onClick={async () => {
-                              if (
-                                !(await confirm({
-                                  title: t('card.contracts.confirmDelete', { number: c.number }),
-                                  variant: 'destructive',
-                                }))
-                              )
-                                return;
-                              try {
-                                await apiFetch(`/counterparties/${id}/contracts/${c.id}`, {
-                                  method: 'DELETE',
-                                });
-                                loadContracts();
-                              } catch (e: unknown) {
-                                setContractsError(
-                                  e instanceof Error ? e.message : t('card.contracts.deleteFailed'),
-                                );
-                              }
+                            onClick={() => {
+                              void (async () => {
+                                if (
+                                  !(await confirm({
+                                    title: t('card.contracts.confirmDelete', { number: c.number }),
+                                    variant: 'destructive',
+                                  }))
+                                )
+                                  return;
+                                try {
+                                  await apiFetch(`/counterparties/${id}/contracts/${c.id}`, {
+                                    method: 'DELETE',
+                                  });
+                                  loadContracts();
+                                } catch (e: unknown) {
+                                  setContractsError(
+                                    e instanceof Error
+                                      ? e.message
+                                      : t('card.contracts.deleteFailed'),
+                                  );
+                                }
+                              })();
                             }}
                           >
                             {t('card.contracts.delete')}
@@ -1504,23 +1513,25 @@ export default function CounterpartyCardPage() {
                       Number(redeemPoints) <= 0 ||
                       Number(redeemPoints) > loyaltyBalance
                     }
-                    onClick={async () => {
-                      setRedeemSaving(true);
-                      setLoyaltyError('');
-                      try {
-                        await apiFetch(`/loyalty/redeem/${id}`, {
-                          method: 'POST',
-                          body: JSON.stringify({ points: Number(redeemPoints) }),
-                        });
-                        setRedeemPoints('');
-                        loadLoyalty();
-                      } catch (e: unknown) {
-                        setLoyaltyError(
-                          e instanceof Error ? e.message : t('card.loyalty.redeemFailed'),
-                        );
-                      } finally {
-                        setRedeemSaving(false);
-                      }
+                    onClick={() => {
+                      void (async () => {
+                        setRedeemSaving(true);
+                        setLoyaltyError('');
+                        try {
+                          await apiFetch(`/loyalty/redeem/${id}`, {
+                            method: 'POST',
+                            body: JSON.stringify({ points: Number(redeemPoints) }),
+                          });
+                          setRedeemPoints('');
+                          loadLoyalty();
+                        } catch (e: unknown) {
+                          setLoyaltyError(
+                            e instanceof Error ? e.message : t('card.loyalty.redeemFailed'),
+                          );
+                        } finally {
+                          setRedeemSaving(false);
+                        }
+                      })();
                     }}
                   >
                     {t('card.loyalty.redeem')}

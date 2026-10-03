@@ -14,6 +14,7 @@ import {
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
 import { apiFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import { displayCounterpartyName } from '@/lib/utils';
 import { fmtDate, kyivToday } from '@/lib/format';
 import type { Good, Brand, PricingRule, PricingRuleTier, RuleForm } from './types';
@@ -50,10 +51,12 @@ export default function RuleFormModal({
       const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.supplierId}`);
       setSupplierDetailData(cp);
       setSupplierDetailOpen(true);
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка постачальника
+      // просто не відкривалась, і користувач не розумів, чи клік зареєструвався.
+      toast.error(e instanceof Error ? e.message : t('formErrors.supplierDetailLoad'));
     }
-  }, [form.supplierId]);
+  }, [form.supplierId, t]);
 
   useEffect(() => {
     if (open) {
@@ -177,7 +180,8 @@ export default function RuleFormModal({
         size="xl"
         footer={
           <>
-            <Button onClick={submit} loading={saving} disabled={!form.name}>
+            {/* (А) submit має власний try/catch із setError — проміс нікому не потрібен. */}
+            <Button onClick={() => void submit()} loading={saving} disabled={!form.name}>
               {t('form.save')}
             </Button>
             <Button variant="outline" onClick={onClose}>
@@ -364,7 +368,7 @@ export default function RuleFormModal({
                 display={form.supplierName}
                 placeholder={t('form.supplierSearchPlaceholder')}
                 onPick={() => setSupplierPickerOpen(true)}
-                onOpenDetail={form.supplierId ? openSupplierDetail : undefined}
+                onOpenDetail={form.supplierId ? () => void openSupplierDetail() : undefined}
                 onSearch={searchSuppliers}
                 onSearchSelect={item => set({ supplierId: item.id, supplierName: item.primary })}
                 onClear={() => set({ supplierId: '', supplierName: '' })}

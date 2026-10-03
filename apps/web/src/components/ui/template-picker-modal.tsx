@@ -20,10 +20,7 @@ export interface SystemTemplate {
 }
 
 export type TemplateEntityType =
-  | 'currency'
-  | 'unit_of_measure'
-  | 'payment_method'
-  | 'work_category';
+  'currency' | 'unit_of_measure' | 'payment_method' | 'work_category';
 
 interface Props {
   open: boolean;
@@ -93,6 +90,8 @@ export function TemplatePickerModal({
 
   const clearAll = () => setSelected(new Set());
 
+  // `void` в onClick: handleImport сам ловить помилку у catch і показує її через setError
+  // в банері нагорі модалки — проміс більше нікому не потрібен.
   const handleImport = async () => {
     const toImport = templates.filter(t => selected.has(t.key));
     if (toImport.length === 0) return;
@@ -126,7 +125,11 @@ export function TemplatePickerModal({
             <Button variant="outline" onClick={onClose} disabled={importing}>
               Скасувати
             </Button>
-            <Button onClick={handleImport} loading={importing} disabled={selectedCount === 0}>
+            <Button
+              onClick={() => void handleImport()}
+              loading={importing}
+              disabled={selectedCount === 0}
+            >
               Додати ({selectedCount})
             </Button>
           </div>

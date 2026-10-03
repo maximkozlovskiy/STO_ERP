@@ -80,6 +80,8 @@ export default function SetupPage() {
     if (idx >= 0 && idx < STEPS.length - 1) setStep(STEPS[idx + 1]);
   };
 
+  // `void` в onClick: submit сам ловить помилку ініціалізації у catch і показує її через
+  // setError у банері візарда — проміс більше нікому не потрібен.
   const submit = async () => {
     setLoading(true);
     setError('');
@@ -290,7 +292,7 @@ export default function SetupPage() {
 
           {step === 'sms' ? (
             <button
-              onClick={submit}
+              onClick={() => void submit()}
               disabled={loading}
               className="px-6 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
             >

@@ -49,6 +49,11 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [dataResults, setDataResults] = useState<SearchResultItem[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
+  // Невдалий /search треба показати: раніше catch робив лише setDataResults([]) — записи
+  // (наряди, контрагенти, авто) просто не з'являлись у палітрі, і користувач вважав, що їх
+  // не існує, хоча запит до API впав. Статичні nav-команди при цьому лишались, тож навіть
+  // «Нічого не знайдено» не виводилось — збій був повністю невидимий.
+  const [dataFailed, setDataFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // Stable IDs from React 18+ — replaces non-deterministic Math.random()
@@ -140,20 +145,27 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
   useEffect(() => {
     if (query.length < 2) {
       setDataResults([]);
+      setDataFailed(false);
       return;
     }
     setDataLoading(true);
-    const timer = window.setTimeout(async () => {
-      try {
-        const res = await apiFetch<{ items: SearchResultItem[] }>(
-          `/search?q=${encodeURIComponent(query)}&limit=6`,
-        );
-        setDataResults(res.items ?? []);
-      } catch {
-        setDataResults([]);
-      } finally {
-        setDataLoading(false);
-      }
+    // `void` для async-колбека setTimeout: усе тіло в try/catch/finally, тож проміс не
+    // реджектиться, а його результат нікому не потрібен — стан осідає у setDataResults/setDataFailed.
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await apiFetch<{ items: SearchResultItem[] }>(
+            `/search?q=${encodeURIComponent(query)}&limit=6`,
+          );
+          setDataResults(res.items ?? []);
+          setDataFailed(false);
+        } catch {
+          setDataResults([]);
+          setDataFailed(true);
+        } finally {
+          setDataLoading(false);
+        }
+      })();
     }, 300);
     return () => window.clearTimeout(timer);
   }, [query]);
@@ -273,6 +285,11 @@ export function CommandPalette({ open, role, onClose }: CommandPaletteProps) {
           {dataLoading && query.length >= 2 && (
             <p className="px-4 py-2 text-[12px] text-muted-foreground animate-pulse">
               Пошук у даних…
+            </p>
+          )}
+          {dataFailed && !dataLoading && query.length >= 2 && (
+            <p role="status" aria-live="polite" className="px-4 py-2 text-[12px] text-destructive">
+              Пошук у даних недоступний. Перевірте зв&apos;язок — показано лише розділи системи.
             </p>
           )}
           {flatList.length === 0 && !dataLoading ? (

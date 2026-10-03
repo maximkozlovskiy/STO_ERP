@@ -75,6 +75,10 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
+  // Невдалий onSearch треба відрізняти від «справді нічого не знайдено»: раніше catch робив
+  // лише setItems([]) → dropdown показував «Нічого не знайдено», і користувач був упевнений,
+  // що контрагента/авто не існує, хоча запит до API просто впав (офлайн / 500).
+  const [searchFailed, setSearchFailed] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -127,24 +131,32 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
         setItems([]);
         setOpen(false);
         setLoading(false);
+        setSearchFailed(false);
         return;
       }
-      debounceRef.current = setTimeout(async () => {
-        const reqId = ++reqIdRef.current;
-        setLoading(true);
-        try {
-          const results = await onSearch(q.trim());
-          // Drop stale results: out-of-order, unmount, or query changed/cleared.
-          if (!mountedRef.current || reqId !== reqIdRef.current) return;
-          setItems(results);
-          setOpen(true);
-          setActiveIndex(-1);
-        } catch {
-          if (!mountedRef.current || reqId !== reqIdRef.current) return;
-          setItems([]);
-        } finally {
-          if (mountedRef.current && reqId === reqIdRef.current) setLoading(false);
-        }
+      // `void` для async-колбека setTimeout: усе тіло в try/catch/finally, тож проміс не
+      // реджектиться, а його результат нікому не потрібен — стан осідає у setItems/setSearchFailed.
+      debounceRef.current = setTimeout(() => {
+        void (async () => {
+          const reqId = ++reqIdRef.current;
+          setLoading(true);
+          try {
+            const results = await onSearch(q.trim());
+            // Drop stale results: out-of-order, unmount, or query changed/cleared.
+            if (!mountedRef.current || reqId !== reqIdRef.current) return;
+            setItems(results);
+            setSearchFailed(false);
+            setOpen(true);
+            setActiveIndex(-1);
+          } catch {
+            if (!mountedRef.current || reqId !== reqIdRef.current) return;
+            setItems([]);
+            setSearchFailed(true);
+            setOpen(true);
+          } finally {
+            if (mountedRef.current && reqId === reqIdRef.current) setLoading(false);
+          }
+        })();
       }, 300);
     },
     [onSearch],
@@ -154,6 +166,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
     onSearchSelect?.(item);
     setQuery('');
     setItems([]);
+    setSearchFailed(false);
     setOpen(false);
     setActiveIndex(-1);
   };
@@ -161,6 +174,7 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
   const handleClear = () => {
     setQuery('');
     setItems([]);
+    setSearchFailed(false);
     setOpen(false);
     onClear();
     // Focus the search input AFTER React commits the state change that re-renders
@@ -320,7 +334,13 @@ export function EntityPickerField<T extends SearchItem = SearchItem>({
           aria-live="polite"
           className="absolute z-50 top-full left-0 right-0 mt-1 bg-surface border border-border rounded-lg shadow-lg px-3 py-2"
         >
-          <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
+          {searchFailed ? (
+            <span className="text-[13px] text-destructive">
+              Не вдалося виконати пошук. Перевірте зв&apos;язок і спробуйте ще раз.
+            </span>
+          ) : (
+            <span className="text-[13px] text-muted-foreground">Нічого не знайдено</span>
+          )}
         </div>
       )}
     </div>

@@ -28,6 +28,16 @@ import { GoodPriceHistoryTab } from '@/components/ui/GoodPriceHistoryTab';
 import { GoodStatusManager } from '@/components/ui/GoodStatusManager';
 import { useAuth } from '@/lib/auth';
 
+/**
+ * Картка товару / запчастини (створення + редагування).
+ *
+ * `void` перед `onValid()` / `handleClose()` / `openSupplierDetail()` у JSX: кожен уже
+ * показує відмову користувачу — `onValid` (RHF handleSubmit) має try/catch зі `setError`
+ * (баннер над табами) + `finally { setSavingBoth(false) }`, `openSupplierDetail` показує
+ * `toast.error` при збої завантаження картки постачальника, а єдиний `await` у `handleClose`
+ * — `dirty.confirmClose()`, який ніколи не реджектиться. Проміс обробника нікому не потрібен.
+ */
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GoodForModal {
@@ -284,11 +294,11 @@ export function GoodEditModal({
     <>
       <Modal
         open={open}
-        onClose={handleClose}
+        onClose={() => void handleClose()}
         title={isEdit ? 'Редагування товару' : 'Новий товар / запчастина'}
         size={isEdit ? 'lg' : 'xl'}
         footer={
-          <Button onClick={onValid} loading={saving}>
+          <Button onClick={() => void onValid()} loading={saving}>
             {isEdit ? 'Зберегти' : 'Зберегти та продовжити'}
           </Button>
         }
@@ -413,7 +423,7 @@ export function GoodEditModal({
               display={supplierDisplay}
               placeholder="Пошук постачальника…"
               ariaLabel="Основний постачальник"
-              onOpenDetail={watchPreferredSupplierId ? openSupplierDetail : undefined}
+              onOpenDetail={watchPreferredSupplierId ? () => void openSupplierDetail() : undefined}
               onPick={() => {}}
               onSearch={searchSuppliers}
               onSearchSelect={item => {

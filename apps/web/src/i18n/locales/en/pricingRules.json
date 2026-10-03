@@ -130,7 +130,8 @@
     "tierRequired": "Add at least one tier",
     "tierMaxGtMin": "Tier {{index}}: the \"To\" value must be greater than \"From\"",
     "tierPercentRange": "Tier {{index}}: percent must be between 0 and 999",
-    "save": "Save error"
+    "save": "Save error",
+    "supplierDetailLoad": "Failed to load the supplier card"
   },
   "supplierPicker": {
     "title": "Select a supplier",

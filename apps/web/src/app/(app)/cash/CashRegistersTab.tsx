@@ -134,6 +134,8 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
     setModal(true);
   };
 
+  // `void` в onClick: обробник сам ловить помилку у catch і показує її користувачу
+  // (банер setError / toast.error) — проміс більше нікому не потрібен.
   const save = async () => {
     if (!form.name.trim()) {
       setError(t('registers.nameRequired'));
@@ -293,7 +295,7 @@ export default function CashRegistersTab({ canManage = false }: { canManage?: bo
         title={editing ? t('registers.modalTitleEdit') : t('registers.modalTitleCreate')}
         footer={
           <Button
-            onClick={save}
+            onClick={() => void save()}
             loading={createMut.isPending || updateMut.isPending}
             disabled={!form.name.trim()}
             className="w-full"

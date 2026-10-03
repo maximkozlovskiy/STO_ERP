@@ -426,13 +426,8 @@ export function PurchaseOrderCreateModal({
 
   useEffect(() => {
     if (!open || !isEditMode || !purchaseOrderId) return;
-    let cancelled = false;
-    loadPo(purchaseOrderId).then(() => {
-      if (cancelled) return;
-    });
-    return () => {
-      cancelled = true;
-    };
+    // void: loadPo сам ловить помилку (setError над формою) і ніколи не реджектиться.
+    void loadPo(purchaseOrderId);
   }, [open, purchaseOrderId, isEditMode, loadPo]);
 
   // Auto-collapse header when adding lines
@@ -463,8 +458,10 @@ export function PurchaseOrderCreateModal({
       const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${supId}`);
       setSupplierDetailData(cp);
       setSupplierDetailOpen(true);
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка постачальника
+      // просто не відкривалась і користувач не бачив ЖОДНОГО сигналу — клік «у нікуди».
+      toast.error(e instanceof Error ? e.message : 'Помилка завантаження постачальника');
     }
   }, [getValues]);
 
@@ -516,8 +513,10 @@ export function PurchaseOrderCreateModal({
         goodCatTree: goodCatsRes,
       });
       setGoodDetailOpen(true);
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      // Раніше порожній `catch { /* ignore */ }`: при збої картка товару не відкривалась
+      // мовчки — користувач клікав і нічого не відбувалось.
+      toast.error(e instanceof Error ? e.message : 'Помилка завантаження товару');
     }
   }, []);
 
@@ -576,6 +575,10 @@ export function PurchaseOrderCreateModal({
     return { statusPrevStep, statusNextStep };
   }, [currentStatus, allowedTransitions]);
 
+  // Усі мутації й завантаження в цьому модалі мають власний catch, який показує помилку:
+  // doTransition/handleCreate/handleSave/handleReceive/loadPo → setError у банері над формою,
+  // openSupplierDetail/openGoodDetail → toast.error. confirmClose() у handleModalClose лише
+  // resolve-иться. Тому в JSX вони викликаються через `void` — чекати проміс нема кому.
   const doTransition = useCallback(
     async (newStatus: string) => {
       if (!purchaseOrderId) return;
@@ -972,8 +975,8 @@ export function PurchaseOrderCreateModal({
     <>
       <Modal
         open={open}
-        onClose={handleModalClose}
-        onSubmit={isEditMode ? handleSave : handleCreate}
+        onClose={() => void handleModalClose()}
+        onSubmit={() => void (isEditMode ? handleSave() : handleCreate())}
         title={isEditMode ? poNumber || 'Замовлення' : 'Нове замовлення постачальнику'}
         size="content"
         hideClose
@@ -1114,7 +1117,7 @@ export function PurchaseOrderCreateModal({
               </button>
             )}
             <button
-              onClick={handleModalClose}
+              onClick={() => void handleModalClose()}
               className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
               title="Закрити"
               disabled={saving || transitioning}
@@ -1130,7 +1133,7 @@ export function PurchaseOrderCreateModal({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => doTransition('CANCELLED')}
+                  onClick={() => void doTransition('CANCELLED')}
                   loading={transitioning}
                   disabled={transitioning || saving}
                 >
@@ -1219,7 +1222,7 @@ export function PurchaseOrderCreateModal({
               {isEditMode ? (
                 canEdit && (
                   <Button
-                    onClick={handleSave}
+                    onClick={() => void handleSave()}
                     loading={saving}
                     disabled={saving || transitioning}
                     size="sm"
@@ -1229,7 +1232,7 @@ export function PurchaseOrderCreateModal({
                 )
               ) : (
                 <Button
-                  onClick={handleCreate}
+                  onClick={() => void handleCreate()}
                   loading={saving}
                   disabled={saving || !supplierIdValue || !warehouseIdValue}
                   size="sm"
@@ -1279,7 +1282,7 @@ export function PurchaseOrderCreateModal({
                       className="h-8 text-[13px]"
                       disabled={!canEdit}
                       onPick={() => setSupplierPickerOpen(true)}
-                      onOpenDetail={supplierIdValue ? openSupplierDetail : undefined}
+                      onOpenDetail={supplierIdValue ? () => void openSupplierDetail() : undefined}
                       onSearch={fetchSupplierItems}
                       onSearchSelect={item => {
                         setSupplierDisplay(item.primary);
@@ -1475,7 +1478,7 @@ export function PurchaseOrderCreateModal({
                   <XlsxImportButton
                     templateType="po-lines"
                     importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
-                    onImportComplete={() => loadPo(activePOId, true)}
+                    onImportComplete={() => void loadPo(activePOId, true)}
                   />
                 )}
                 {/* Майстер Excel-імпорту доступний і на створенні: у create-mode спершу створює
@@ -1578,7 +1581,7 @@ export function PurchaseOrderCreateModal({
                             onSearch={fetchGoodItems}
                             onOpenDetail={
                               editingLine.goodId
-                                ? () => openGoodDetail(editingLine.goodId)
+                                ? () => void openGoodDetail(editingLine.goodId)
                                 : undefined
                             }
                             onSearchSelect={g => {
@@ -1830,7 +1833,7 @@ export function PurchaseOrderCreateModal({
                           onPick={() => setGoodSearchOpen(true)}
                           onSearch={fetchGoodItems}
                           onOpenDetail={
-                            newLine.goodId ? () => openGoodDetail(newLine.goodId) : undefined
+                            newLine.goodId ? () => void openGoodDetail(newLine.goodId) : undefined
                           }
                           onSearchSelect={g => {
                             setNewLine(l => ({

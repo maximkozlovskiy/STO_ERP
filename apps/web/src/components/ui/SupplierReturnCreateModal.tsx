@@ -29,6 +29,17 @@ import { SearchPickerModal } from '@/components/ui/search-picker-modal';
 import { CollapsibleHeader } from '@/components/ui/collapsible-header';
 import type { SupplierReturn, SupplierReturnLine } from '@/hooks/api/useSupplierReturns';
 
+/**
+ * Повернення постачальнику (створення / редагування / FSM-переходи).
+ *
+ * `void` перед `handleSave()`, `handleModalClose()`, `doTransition()` у JSX: `handleSave`
+ * (RHF handleSubmit) і `doTransition` мають власний try/catch, що пише текст відмови у
+ * `error` (баннер у шапці модалки) і в `toast.error`, плюс `finally`, який знімає
+ * saving/transitioning guard; у `handleModalClose` єдиний `await` — `dirty.confirmClose()`,
+ * який ніколи не реджектиться (резолвиться з DirtyConfirmDialog). Проміс обробника
+ * нікому не потрібен — відмова вже на екрані.
+ */
+
 // ─── Status config ─────────────────────────────────────────────────────────────
 // Mirrors backend SR_TRANSITIONS in apps/api/src/modules/supplier-returns/supplier-returns.service.ts
 
@@ -441,8 +452,8 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     <>
       <Modal
         open={open}
-        onClose={handleModalClose}
-        onSubmit={handleSave}
+        onClose={() => void handleModalClose()}
+        onSubmit={() => void handleSave()}
         title={title}
         size="content"
         hideClose
@@ -506,7 +517,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         }
         extraHeaderActions={
           <button
-            onClick={handleModalClose}
+            onClick={() => void handleModalClose()}
             className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
             title="Закрити"
             disabled={saving || transitioning}
@@ -543,7 +554,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               )}
               {canEdit && (
                 <Button
-                  onClick={handleSave}
+                  onClick={() => void handleSave()}
                   loading={saving}
                   disabled={saving || transitioning || !supplierId || !warehouseId}
                   size="sm"
@@ -554,7 +565,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleModalClose}
+                onClick={() => void handleModalClose()}
                 disabled={saving || transitioning}
               >
                 Закрити

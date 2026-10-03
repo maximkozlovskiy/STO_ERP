@@ -193,6 +193,12 @@ export default function VehicleCardPage() {
 
   // PATCH /vehicles/:id — customerGarageId у update-схемі відсутній (перенос гаража неможливий);
   // notes завжди present (null для очищення), решта — parsed values зі схеми.
+  // `void` перед `saveEdit()`, `addNode()`, `removeNode()`, `addSchedule()`,
+  // `removeSchedule()` у JSX: кожен має власний try/catch, що пише текст відмови
+  // користувачу — `saveEdit` у `editError` (баннер у модалці), решта у `loadError`
+  // (баннер над карткою авто) — плюс `finally`, який знімає saving/deleting-стан.
+  // `confirm()` у remove-обробниках ніколи не реджектиться. Відмова вже на екрані,
+  // тож чекати проміс обробника нікому не потрібно.
   const saveEdit = editHandleSubmit(async (values: VehicleFormValues) => {
     setEditSaving(true);
     setEditError('');
@@ -510,7 +516,12 @@ export default function VehicleCardPage() {
               className="h-8 text-[13px]"
             />
             <div className="flex gap-2">
-              <Button size="sm" onClick={addNode} loading={saving} disabled={!nodeForm.name}>
+              <Button
+                size="sm"
+                onClick={() => void addNode()}
+                loading={saving}
+                disabled={!nodeForm.name}
+              >
                 {t('card.nodes.save')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setShowAddNode(false)}>
@@ -544,7 +555,7 @@ export default function VehicleCardPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => removeNode(n.id)}
+                    onClick={() => void removeNode(n.id)}
                     className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -634,7 +645,7 @@ export default function VehicleCardPage() {
             <div className="flex gap-2">
               <Button
                 size="sm"
-                onClick={addSchedule}
+                onClick={() => void addSchedule()}
                 loading={savingSchedule}
                 disabled={!scheduleForm.maintenanceType.trim()}
               >
@@ -705,7 +716,7 @@ export default function VehicleCardPage() {
                     variant="ghost"
                     size="sm"
                     loading={deletingScheduleId === sc.id}
-                    onClick={() => removeSchedule(sc.id)}
+                    onClick={() => void removeSchedule(sc.id)}
                     className="text-destructive/70 hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -725,7 +736,7 @@ export default function VehicleCardPage() {
         size="lg"
         footer={
           <>
-            <Button onClick={saveEdit} loading={editSaving}>
+            <Button onClick={() => void saveEdit()} loading={editSaving}>
               {t('card.editModal.save')}
             </Button>
             <Button variant="outline" onClick={closeEdit}>

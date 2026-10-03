@@ -263,41 +263,51 @@ export default function GoodsTab() {
         id: 'delete',
         label: t('common.bulkDelete'),
         variant: 'destructive',
-        onClick: async ids => {
-          if (
-            !(await confirm({
-              title: t('goods.confirmDeleteTitle', {
-                count: ids.length,
-                noun: ids.length === 1 ? t('goods.nounOne') : t('goods.nounMany'),
-              }),
-              variant: 'destructive',
-            }))
-          )
-            return;
-          const results = await Promise.allSettled(
-            ids.map(id => apiFetch(`/goods/${id}`, { method: 'DELETE' })),
-          );
-          const succeeded = results.filter(r => r.status === 'fulfilled').length;
-          const failed = results.length - succeeded;
-          bulkSelect.clear();
-          goodsLoadRef.current?.();
-          if (features.toastEnabled) {
-            if (failed === 0)
-              toast.success(
-                t('goods.deletedAll', {
-                  count: succeeded,
-                  noun: succeeded === 1 ? t('goods.nounOne') : t('goods.nounMany'),
+        // (А) Тіло саме звітує про результат, а BulkAction.onClick типізований
+        // як (ids) => void — тому async-логіка живе у void-IIFE.
+        onClick: ids => {
+          void (async () => {
+            if (
+              !(await confirm({
+                title: t('goods.confirmDeleteTitle', {
+                  count: ids.length,
+                  noun: ids.length === 1 ? t('goods.nounOne') : t('goods.nounMany'),
                 }),
-              );
-            else
-              toast.warning(
-                t('goods.deletedPartial', {
-                  succeeded,
-                  total: results.length,
-                  failed,
-                }),
-              );
-          }
+                variant: 'destructive',
+              }))
+            )
+              return;
+            const results = await Promise.allSettled(
+              ids.map(id => apiFetch(`/goods/${id}`, { method: 'DELETE' })),
+            );
+            const succeeded = results.filter(r => r.status === 'fulfilled').length;
+            const failed = results.length - succeeded;
+            bulkSelect.clear();
+            goodsLoadRef.current?.();
+            if (features.toastEnabled) {
+              if (failed === 0)
+                toast.success(
+                  t('goods.deletedAll', {
+                    count: succeeded,
+                    noun: succeeded === 1 ? t('goods.nounOne') : t('goods.nounMany'),
+                  }),
+                );
+              else
+                toast.warning(
+                  t('goods.deletedPartial', {
+                    succeeded,
+                    total: results.length,
+                    failed,
+                  }),
+                );
+            } else if (failed > 0) {
+              // (Б) Раніше звіт про відмови був лише в гілці toast'ів: при вимкненому
+              // features.toastEnabled частковий або повний провал bulk-видалення
+              // не доходив до користувача взагалі — список просто перемальовувався
+              // з тими самими рядками. Тепер відмова йде в банер setError.
+              setError(t('goods.deletedPartial', { succeeded, total: results.length, failed }));
+            }
+          })();
         },
       },
     ],
@@ -337,7 +347,9 @@ export default function GoodsTab() {
 
     // AbortController so setState doesn't run after unmount — React DEV warning + memory churn.
     const ac = new AbortController();
-    Promise.all([
+    // `void`: кожен apiFetch уже має власний .catch(...) — Promise.all не може
+    // відхилитись, а effect не має куди чекати. Довідники лишаються порожніми.
+    void Promise.all([
       apiFetch<{ items: Brand[]; total: number }>('/brands?limit=200', { signal: ac.signal }).catch(
         () => ({
           items: [],
@@ -968,7 +980,7 @@ export default function GoodsTab() {
                               </span>
                             )}
                             <button
-                              onClick={() => deleteBarcode(selectedGood.id, bc.id)}
+                              onClick={() => void deleteBarcode(selectedGood.id, bc.id)}
                               className="h-5 w-5 flex items-center justify-center rounded text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors"
                               title={t('goods.delete')}
                             >
@@ -1007,7 +1019,7 @@ export default function GoodsTab() {
                       className="w-full"
                       disabled={!newBarcode.trim() || addingBarcode}
                       loading={addingBarcode}
-                      onClick={() => addBarcode(selectedGood.id)}
+                      onClick={() => void addBarcode(selectedGood.id)}
                     >
                       {t('goods.addBarcodeButton')}
                     </Button>
@@ -1063,7 +1075,7 @@ export default function GoodsTab() {
             <Button
               variant="destructive"
               loading={deleting}
-              onClick={() => confirmDeleteId && markForDeletion(confirmDeleteId)}
+              onClick={() => confirmDeleteId && void markForDeletion(confirmDeleteId)}
               className="flex-1"
               leftIcon={<Trash2 className="h-4 w-4" />}
             >

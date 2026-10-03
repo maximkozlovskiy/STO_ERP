@@ -83,7 +83,10 @@ export default function PricingRulesClient() {
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
-  const invalidateRules = () => qc.invalidateQueries({ queryKey: pricingRulesKeys.all });
+  // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає їхній
+  // error-стан (його показує таблиця правил). Чекати нічого — тому `: void`, щоб усі
+  // виклики `load()` разом перестали світитись no-floating-promises.
+  const invalidateRules = (): void => void qc.invalidateQueries({ queryKey: pricingRulesKeys.all });
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
   const [goods, setGoods] = useState<Good[]>([]);
@@ -320,17 +323,21 @@ export default function PricingRulesClient() {
             <button
               type="button"
               className="text-[12px] text-primary hover:underline"
-              onClick={async () => {
-                try {
-                  const data = await apiFetch<{ file: string; filename: string }>(
-                    '/xlsx/templates/pricing-list',
-                  );
-                  const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
-                  const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
-                  downloadBlob(blob, data.filename);
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : t('errors.template'));
-                }
+              onClick={() => {
+                // (А) Увесь async-блок має власний try/catch із setError —
+                // відмова видна користувачу в банері помилки вище.
+                void (async () => {
+                  try {
+                    const data = await apiFetch<{ file: string; filename: string }>(
+                      '/xlsx/templates/pricing-list',
+                    );
+                    const bytes = Uint8Array.from(atob(data.file), c => c.charCodeAt(0));
+                    const blob = new Blob([bytes], { type: 'text/csv; charset=utf-8' });
+                    downloadBlob(blob, data.filename);
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : t('errors.template'));
+                  }
+                })();
               }}
             >
               {t('import.downloadTemplate')}
@@ -354,25 +361,27 @@ export default function PricingRulesClient() {
               size="sm"
               loading={pricingImporting}
               disabled={!pricingFile}
-              onClick={async () => {
-                if (!pricingFile) return;
-                setPricingImporting(true);
-                try {
-                  const fd = new FormData();
-                  fd.append('file', pricingFile);
-                  // FormData потребує multipart/form-data Content-Type з boundary,
-                  // що `apiFetch` перетирає на application/json → 400 "не multipart". Використовуємо apiMultipartFetch.
-                  const result = await apiMultipartFetch<PricingImportResult>(
-                    '/xlsx/apply-pricing-from-list',
-                    fd,
-                  );
-                  setPricingImportResult(result);
-                  if (result.updated > 0) setError('');
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : t('errors.import'));
-                } finally {
-                  setPricingImporting(false);
-                }
+              onClick={() => {
+                void (async () => {
+                  if (!pricingFile) return;
+                  setPricingImporting(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', pricingFile);
+                    // FormData потребує multipart/form-data Content-Type з boundary,
+                    // що `apiFetch` перетирає на application/json → 400 "не multipart". Використовуємо apiMultipartFetch.
+                    const result = await apiMultipartFetch<PricingImportResult>(
+                      '/xlsx/apply-pricing-from-list',
+                      fd,
+                    );
+                    setPricingImportResult(result);
+                    if (result.updated > 0) setError('');
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : t('errors.import'));
+                  } finally {
+                    setPricingImporting(false);
+                  }
+                })();
               }}
             >
               {t('import.run')}
@@ -591,7 +600,7 @@ export default function PricingRulesClient() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => deleteRule(rule.id)}
+                        onClick={() => void deleteRule(rule.id)}
                         disabled={deletingId === rule.id}
                         title={t('rowActions.delete')}
                         className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-destructive/70 hover:text-destructive hover:bg-destructive/10"

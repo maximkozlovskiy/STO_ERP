@@ -312,7 +312,9 @@ export default function WorkOrderCardPage() {
     // are independent endpoints; previous fire-and-forget pattern coalesced their
     // browser-level scheduling but failed to surface the inspection-load error
     // separately from the WO load error. Promise.all preserves both behaviours.
-    Promise.all([
+    // void: кожна вітка має власний обробник відмови (setError / fallback-значення),
+    // тому Promise.all тут не може реджектитись і чекати його нема кому.
+    void Promise.all([
       apiFetch<WorkOrderDetail>(`/work-orders/${id}`).then(
         data => ({ kind: 'wo' as const, data }),
         (e: unknown) => ({ kind: 'wo-error' as const, error: e }),
@@ -341,7 +343,9 @@ export default function WorkOrderCardPage() {
 
   // Load secondary data (comments, media, audit) in parallel — single effect, single mount
   const loadSecondary = useCallback(() => {
-    Promise.all([
+    // void: кожен запит має .catch з порожнім fallback — вторинні блоки (комментарі,
+    // медіа, аудит) просто лишаються порожніми, Promise.all не реджектиться.
+    void Promise.all([
       apiFetch<{ items: Comment[] }>(`/comments?entityType=WorkOrder&entityId=${id}`).catch(() => ({
         items: [] as Comment[],
       })),
@@ -499,6 +503,10 @@ export default function WorkOrderCardPage() {
       });
   }, [id, t]);
 
+  // Усі дії користувача на цій сторінці (transition, saveEdit, handleClone, downloadPdf,
+  // generateAct, signAct, downloadActPdf, cancelAct) мають власний catch, який кладе текст
+  // помилки у setError — він показується у банері над карткою наряду. Тому в JSX вони
+  // викликаються через `void`: проміс нікому не потрібен і реджекту бути не може.
   const transition = async (newStatus: string) => {
     const label = woStatusLabel(newStatus);
     if (!(await confirm({ title: t('detail.confirmTransition', { label }) }))) return;
@@ -893,14 +901,14 @@ export default function WorkOrderCardPage() {
           <Button
             key={s}
             variant={TRANSITION_VARIANTS[s] ?? 'outline'}
-            onClick={() => transition(s)}
+            onClick={() => void transition(s)}
             disabled={transitioning}
             loading={transitioning}
           >
             {TRANSITION_LABELS[s] ?? s}
           </Button>
         ))}
-        <Button variant="outline" size="sm" onClick={downloadPdf}>
+        <Button variant="outline" size="sm" onClick={() => void downloadPdf()}>
           {t('detail.pdf')}
         </Button>
         <Button variant="outline" size="sm" onClick={() => window.print()}>
@@ -909,7 +917,7 @@ export default function WorkOrderCardPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={handleClone}
+          onClick={() => void handleClone()}
           loading={cloning}
           disabled={cloning}
         >
@@ -972,7 +980,12 @@ export default function WorkOrderCardPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-foreground">{t('detail.act.title')}</h2>
             {WO_INVOICEABLE_STATUSES.includes(wo.status) && !completionAct && (
-              <Button variant="outline" size="sm" onClick={generateAct} loading={generatingAct}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void generateAct()}
+                loading={generatingAct}
+              >
                 {t('detail.act.generate')}
               </Button>
             )}
@@ -1005,7 +1018,7 @@ export default function WorkOrderCardPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => signAct(completionAct.id)}
+                  onClick={() => void signAct(completionAct.id)}
                   loading={signingAct}
                 >
                   {t('detail.act.markSigned')}
@@ -1014,7 +1027,7 @@ export default function WorkOrderCardPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadActPdf(completionAct.id)}
+                onClick={() => void downloadActPdf(completionAct.id)}
                 loading={downloadingActPdf}
               >
                 {t('detail.act.pdf')}
@@ -1023,7 +1036,7 @@ export default function WorkOrderCardPage() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => cancelAct(completionAct.id)}
+                  onClick={() => void cancelAct(completionAct.id)}
                   loading={cancellingAct}
                   disabled={cancellingAct}
                 >
@@ -1262,7 +1275,7 @@ export default function WorkOrderCardPage() {
             <Button variant="outline" onClick={() => setEditModal(false)}>
               {t('detail.editModal.cancel')}
             </Button>
-            <Button onClick={saveEdit} loading={editSaving}>
+            <Button onClick={() => void saveEdit()} loading={editSaving}>
               {t('detail.editModal.save')}
             </Button>
           </div>

@@ -217,7 +217,9 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     if (cCats) setWorkCategories(cCats);
     if (cBranches) setBranches(cBranches);
 
-    Promise.all([
+    // `void`: кожен apiFetch уже має власний .catch(() => []) — Promise.all не може
+    // відхилитись, а effect не має куди чекати. Довідники просто лишаються порожніми.
+    void Promise.all([
       apiFetch<Zone[]>('/zones').catch(() => [] as Zone[]),
       apiFetch<Lift[]>('/lifts').catch(() => [] as Lift[]),
       apiFetch<WorkCategory[]>('/work-categories').catch(() => [] as WorkCategory[]),
@@ -401,17 +403,19 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
     <>
       <Modal
         open={open}
-        onClose={handleClose}
+        onClose={() => void handleClose()}
         title={
           isEdit && employee ? `${employee.lastName} ${employee.firstName}` : 'Новий співробітник'
         }
         size="lg"
         footer={
           <>
-            <Button onClick={save} loading={saving}>
+            {/* (А) save — це handleSubmit() з try/catch + setError, handleClose лише
+                очікує confirmClose() (ніколи не реджектиться): проміси не потрібні. */}
+            <Button onClick={() => void save()} loading={saving}>
               Зберегти
             </Button>
-            <Button variant="outline" onClick={handleClose}>
+            <Button variant="outline" onClick={() => void handleClose()}>
               Скасувати
             </Button>
           </>

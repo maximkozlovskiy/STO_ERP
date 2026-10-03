@@ -54,6 +54,7 @@ import { syncKeys } from '@/hooks/api/useSyncStatus';
 import { worksKeys } from '@/hooks/api/useWorks';
 import { reportsKeys } from '@/hooks/api/useReports';
 import { ToastContainer } from '@/components/ui/toast';
+import { toast } from '@/lib/toast';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
@@ -555,9 +556,15 @@ export function TopShell({ children }: { children: ReactNode }) {
     });
   };
 
+  // Обидва handleLogout* викликаються через `void` у onClick: вони не реджектяться —
+  // confirm() завжди резолвиться, logout() глушить network-помилку всередині (сесію на цьому
+  // пристрої погашено локально), а handleLogoutAll показує toast.error сам.
   const handleLogout = async () => {
     if (await confirm({ title: 'Вийти з системи?' })) {
-      logout();
+      // `await` обов'язковий: logout() гасить сесію (sessionStorage + dispatch LOGOUT) у своєму
+      // `finally`. Без await router.push('/login') виконувався б ДО очищення, і /login встигав
+      // відрендеритись із ще живим employee у контексті.
+      await logout();
       router.push('/login');
     }
   };
@@ -571,7 +578,14 @@ export function TopShell({ children }: { children: ReactNode }) {
         message: 'Усі активні сесії цього користувача (на всіх пристроях) буде завершено.',
       })
     ) {
-      await logoutAll();
+      try {
+        await logoutAll();
+      } catch {
+        // Сесію на цьому пристрої вже погашено у `finally` logoutAll(), але запрос на бекенд не
+        // дійшов → tokenVersion не збільшено, інші пристрої лишились залогіненими. Користувач
+        // мусить це знати, щоб повторити дію при появі зв'язку.
+        toast.error(t('errLogoutAll'));
+      }
       router.push('/login');
     }
   };
@@ -778,7 +792,7 @@ export function TopShell({ children }: { children: ReactNode }) {
               <NotificationCenter enabled={uiFeatures.notificationCenterEnabled} />
             )}
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
               title="Вийти"
             >
@@ -802,14 +816,14 @@ export function TopShell({ children }: { children: ReactNode }) {
               <NotificationCenter enabled={uiFeatures.notificationCenterEnabled} />
             )}
             <button
-              onClick={handleLogoutAll}
+              onClick={() => void handleLogoutAll()}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
               title="Вийти на всіх пристроях"
             >
               <MonitorSmartphone className="h-3.5 w-3.5" />
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               className="flex h-7 w-7 items-center justify-center rounded-md text-sidebar-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
               title="Вийти"
             >

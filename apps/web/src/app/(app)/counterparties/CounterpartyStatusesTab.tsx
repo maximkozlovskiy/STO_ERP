@@ -116,6 +116,8 @@ export default function CounterpartyStatusesTab() {
     setModal(true);
   };
 
+  // `void` в onClick: обробник сам ловить помилку у catch і показує її користувачу
+  // (банер setError / toast.error) — проміс більше нікому не потрібен.
   const save = async () => {
     if (!form.name.trim()) {
       setError(t('statusesTab.nameRequired'));
@@ -330,7 +332,12 @@ export default function CounterpartyStatusesTab() {
         onClose={() => setModal(false)}
         title={editStatus ? t('statusesTab.modalEditTitle') : t('statusesTab.modalCreateTitle')}
         footer={
-          <Button onClick={save} loading={saving} disabled={!form.name.trim()} className="w-full">
+          <Button
+            onClick={() => void save()}
+            loading={saving}
+            disabled={!form.name.trim()}
+            className="w-full"
+          >
             {t('statusesTab.save')}
           </Button>
         }

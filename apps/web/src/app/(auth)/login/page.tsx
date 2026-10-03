@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // `void` в onSubmit: handleSubmit сам ловить помилку входу у catch і показує її через
+  // setError у банері під полями — проміс більше нікому не потрібен.
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
@@ -92,7 +94,7 @@ export default function LoginPage() {
             <p className="text-[14px] text-muted-foreground mt-1">Введіть ваші облікові дані</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={e => void handleSubmit(e)} className="space-y-4">
             <Input
               label="Email"
               id="email"

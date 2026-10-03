@@ -391,7 +391,9 @@ function WorkOrdersPageInner() {
           body: JSON.stringify({ [field]: value === '' ? null : value }),
         });
         if (features.toastEnabled) toast.success(t('list.toast.saved'));
-        queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+        // Фонова інвалідація: TanStack сам перезапитує активні queries і сам тримає їх
+        // error-стан (його показує сам список) — чекати нічого, тому `void`.
+        void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : t('list.toast.saveError');
         if (features.toastEnabled) toast.error(msg);
@@ -472,8 +474,21 @@ function WorkOrdersPageInner() {
 
   const bulkActions = useMemo<BulkAction[]>(
     () => [
-      { id: 'cancel', label: t('list.bulk.cancel'), variant: 'destructive', onClick: bulkCancel },
-      { id: 'archive', label: t('list.bulk.archive'), variant: 'outline', onClick: bulkArchive },
+      // BulkAction.onClick типізований void-returning. `bulkTransition` під ними не має
+      // шляху, що реджектиться: `Promise.allSettled` поглинає відмову кожного переходу, а
+      // звіт (успіх / частково / жодного — з текстом першої помилки) іде через toast.
+      {
+        id: 'cancel',
+        label: t('list.bulk.cancel'),
+        variant: 'destructive',
+        onClick: ids => void bulkCancel(ids),
+      },
+      {
+        id: 'archive',
+        label: t('list.bulk.archive'),
+        variant: 'outline',
+        onClick: ids => void bulkArchive(ids),
+      },
     ],
     [bulkCancel, bulkArchive, t],
   );
@@ -541,7 +556,7 @@ function WorkOrdersPageInner() {
         const cloned = await apiFetch<{ id: string }>(`/work-orders/${wo.id}/clone`, {
           method: 'POST',
         });
-        queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+        void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
         if (features.toastEnabled) toast.success(t('list.toast.cloned'));
         setEditWoId(cloned.id);
       } catch (e: unknown) {
@@ -1179,7 +1194,7 @@ function WorkOrdersPageInner() {
         onClose={() => setModal(false)}
         prefill={modalPrefill}
         onCreated={wo => {
-          queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
+          void queryClient.invalidateQueries({ queryKey: workOrdersKeys.all });
           setEditWoId(wo.id);
         }}
       />
