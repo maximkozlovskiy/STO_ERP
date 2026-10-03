@@ -10,7 +10,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { MultipartFile } from '@fastify/multipart';
 import { translateError } from '@sto/shared';
@@ -28,6 +28,11 @@ import {
   IgnoreTransactionDto,
   ListQueryDto,
   MatchTransactionDto,
+  RawPreviewResponseDto,
+  PreviewImportResponseDto,
+  ApplyImportResultDto,
+  BankTransactionResponseDto,
+  PaginatedBankTransactionsDto,
 } from './bank-statement.dto';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -47,6 +52,7 @@ export class BankStatementsController {
   @Post('import/raw-preview')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Сирий передперегляд виписки (перші рядки як текстова сітка)' })
+  @ApiOkResponse({ type: RawPreviewResponseDto })
   @ApiConsumes('multipart/form-data')
   async rawPreview(@Request() req: FastifyRequest) {
     const file = await this.getUploadedFile(req);
@@ -59,6 +65,7 @@ export class BankStatementsController {
   @Post('import/preview')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Прев’ю імпорту виписки з авто-матчем контрагентів' })
+  @ApiOkResponse({ type: PreviewImportResponseDto })
   @ApiConsumes('multipart/form-data')
   async preview(@OrgContext() orgId: string, @Request() req: FastifyRequest) {
     const file = await this.getUploadedFile(req);
@@ -90,6 +97,7 @@ export class BankStatementsController {
   @Post('import/apply')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Застосувати імпорт виписки (створити банк-транзакції)' })
+  @ApiOkResponse({ type: ApplyImportResultDto })
   async apply(@OrgContext() orgId: string, @Body() dto: ApplyImportDto) {
     return this.reconciliation.applyImport(orgId, dto);
   }
@@ -99,6 +107,7 @@ export class BankStatementsController {
   @Get('transactions')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список банк-транзакцій (виписка)' })
+  @ApiOkResponse({ type: PaginatedBankTransactionsDto })
   async list(@OrgContext() orgId: string, @Query() query: ListQueryDto) {
     return this.reconciliation.list(orgId, query);
   }
@@ -108,6 +117,7 @@ export class BankStatementsController {
   @Post('transactions/:id/match')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Рознести транзакцію на контрагента (створити платіж)' })
+  @ApiOkResponse({ type: BankTransactionResponseDto })
   async match(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -120,6 +130,7 @@ export class BankStatementsController {
   @Post('transactions/:id/ignore')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Позначити транзакцію нерелевантною (ігнорувати)' })
+  @ApiOkResponse({ type: BankTransactionResponseDto })
   async ignore(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

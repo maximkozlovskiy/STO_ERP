@@ -13,6 +13,11 @@ export default defineConfig({
     // лежали ДВА конфіги, і експеримент (навмисна синтаксична помилка в кожному) показав,
     // що vitest бере саме .ts — отже .mts роками нічого не робив. Його видалено.
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],
+    // Ліміт воркерів, як і в api (там 4). Без нього `turbo run test` ганяє api і web
+    // ПАРАЛЕЛЬНО: api займає 4 ядра з 16, web бере решту 12 і жене всі 95 файлів разом —
+    // timing-sensitive тести з userEvent голодують за CPU і падають по таймауту
+    // (~1 прогін із 7, записано в GOTCHAS). 6 + 4 лишає запас для самого turbo.
+    maxWorkers: 6,
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },

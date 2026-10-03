@@ -16,7 +16,15 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiProduces,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -44,6 +52,12 @@ import {
   WorkOrderQueryDto,
   SendEstimateSmsDto,
   LinkedCountsDto,
+  WorkOrderResponseDto,
+  WorkOrderDetailDto,
+  WorkOrderLineResponseDto,
+  WorkOrderPartResponseDto,
+  PaginatedWorkOrdersDto,
+  WorkOrderShareTokenResponseDto,
 } from './work-orders.dto';
 
 @ApiTags('Work Orders')
@@ -59,6 +73,7 @@ export class WorkOrdersController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список нарядів' })
+  @ApiOkResponse({ type: PaginatedWorkOrdersDto })
   findAll(@OrgContext() orgId: string, @Query() query: WorkOrderQueryDto) {
     return this.service.findAll(orgId, query);
   }
@@ -84,6 +99,7 @@ export class WorkOrdersController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі наряду' })
+  @ApiOkResponse({ type: WorkOrderDetailDto })
   findOne(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -97,6 +113,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити наряд' })
+  @ApiCreatedResponse({ type: WorkOrderResponseDto })
   create(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
@@ -108,6 +125,7 @@ export class WorkOrdersController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Оновити наряд' })
+  @ApiOkResponse({ type: WorkOrderResponseDto })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -120,6 +138,8 @@ export class WorkOrdersController {
   @Get(':id/pdf')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Завантажити наряд у PDF' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ description: 'PDF-файл наряду', schema: { type: 'string', format: 'binary' } })
   async downloadPdf(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -136,6 +156,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку наряду' })
+  @ApiNoContentResponse()
   remove(
     @OrgContext() orgId: string,
     @CurrentUser() user: { id: string },
@@ -147,6 +168,7 @@ export class WorkOrdersController {
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Змінити статус наряду (FSM)' })
+  @ApiOkResponse({ type: WorkOrderResponseDto })
   transition(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -160,6 +182,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Дублювати наряд' })
+  @ApiCreatedResponse({ type: WorkOrderResponseDto })
   clone(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -173,6 +196,7 @@ export class WorkOrdersController {
   @Post(':id/share-token')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Отримати або створити share-токен для кошторису' })
+  @ApiOkResponse({ type: WorkOrderShareTokenResponseDto })
   getShareToken(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.shareService.getOrCreateShareToken(orgId, id);
   }
@@ -180,6 +204,7 @@ export class WorkOrdersController {
   @Post(':id/send-estimate-sms')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Надіслати кошторис клієнту через SMS' })
+  @ApiOkResponse({ description: 'SMS поставлено у чергу (тіло порожнє)' })
   sendEstimateSms(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -195,6 +220,7 @@ export class WorkOrdersController {
   @Post(':id/lines')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати роботу до наряду' })
+  @ApiCreatedResponse({ type: WorkOrderLineResponseDto })
   addLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -206,6 +232,7 @@ export class WorkOrdersController {
   @Patch(':id/lines/:lineId')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Оновити рядок роботи' })
+  @ApiOkResponse({ type: WorkOrderLineResponseDto })
   updateLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -219,6 +246,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити рядок роботи' })
+  @ApiNoContentResponse()
   removeLine(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -232,6 +260,7 @@ export class WorkOrdersController {
   @Post(':id/parts')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Додати запчастину до наряду' })
+  @ApiCreatedResponse({ type: WorkOrderPartResponseDto })
   addPart(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -246,6 +275,7 @@ export class WorkOrdersController {
   @Patch(':id/parts/:partId')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Оновити запчастину наряду' })
+  @ApiOkResponse({ type: WorkOrderPartResponseDto })
   updatePart(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -260,6 +290,7 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити запчастину наряду' })
+  @ApiNoContentResponse()
   removePart(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

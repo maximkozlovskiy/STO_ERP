@@ -1,38 +1,21 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { counterpartiesKeys } from './useCounterparties';
 import { purchaseOrdersKeys } from './usePurchaseOrders';
 
-export type PaymentSourceType = 'BANK_ACCOUNT' | 'CASH_REGISTER';
+/**
+ * Оплата постачальнику — ЗГЕНЕРОВАНИЙ тип із OpenAPI (`pnpm run gen:api-types`).
+ * Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване, не пишемо своє».
+ * Копія мала `status: string` замість union 'DRAFT' | 'CONFIRMED' | 'CANCELLED'.
+ */
+export type SupplierPayment = ApiSchema<'SupplierPaymentResponseDto'>;
+export type SupplierPaymentStatusValue = SupplierPayment['status'];
 
-export interface SupplierPayment {
-  id: string;
-  orgId?: string;
-  number: string;
-  status: string;
-  supplierId: string;
-  supplierName?: string;
-  sourceType: PaymentSourceType;
-  bankAccountId: string | null;
-  cashRegisterId: string | null;
-  sourceName: string | null;
-  purchaseOrderId: string | null;
-  purchaseOrderNumber: string | null;
-  amount: number;
-  // Мультивалюта (Фаза 3): валюта оплати + base-сума + курс. null → історичні/base.
-  currencyId?: string | null;
-  currencyCode?: string | null;
-  totalAmountBase?: number | null;
-  rateUsed?: number | null;
-  method: string;
-  notes: string | null;
-  documentDate?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/** Джерело коштів — теж зі згенерованого, щоб не розходилось із DTO. */
+export type PaymentSourceType = SupplierPayment['sourceType'];
 
 export interface SupplierPaymentsFilter extends Record<string, unknown> {
   page?: number;
@@ -81,25 +64,9 @@ export const supplierPaymentsKeys = {
     ] as const,
 };
 
-export interface SupplierPaymentScheduleRow {
-  supplierId: string;
-  supplierName: string;
-  overdue: number;
-  planned: number;
-  byDate: Record<string, number>;
-  total: number;
-}
-
-export interface SupplierPaymentSchedule {
-  dates: string[];
-  suppliers: SupplierPaymentScheduleRow[];
-  totals: {
-    overdue: number;
-    planned: number;
-    byDate: Record<string, number>;
-    total: number;
-  };
-}
+/** Шахматка боргів постачальникам — зі згенерованого (SupplierPaymentScheduleDto). */
+export type SupplierPaymentSchedule = ApiSchema<'SupplierPaymentScheduleDto'>;
+export type SupplierPaymentScheduleRow = ApiSchema<'SupplierPaymentScheduleRowDto'>;
 
 /** Графік оплат — шахматка боргів постачальникам по датах (custom, non-CRUD). */
 export function useSupplierPaymentsSchedule(from: string, to: string) {
@@ -116,17 +83,8 @@ export function useSupplierPaymentsSchedule(from: string, to: string) {
   });
 }
 
-/** Документ (PO) у клітинці графіка оплат — дзеркалить SupplierPaymentScheduleDocumentDto. */
-export interface SupplierPaymentScheduleDocument {
-  poId: string;
-  number: string;
-  supplierId: string;
-  supplierName: string;
-  paymentDate: string | null;
-  totalAmount: number;
-  outstanding: number;
-  allocated: number;
-}
+/** Документ (PO) у клітинці графіка оплат — зі згенерованого. */
+export type SupplierPaymentScheduleDocument = ApiSchema<'SupplierPaymentScheduleDocumentDto'>;
 
 /** Параметри drill-down: date XOR target (взаємовиключні), supplierId опційний. */
 export type SupplierPaymentDocumentsParams =

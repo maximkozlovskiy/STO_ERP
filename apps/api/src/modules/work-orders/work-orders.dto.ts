@@ -528,3 +528,12 @@ export class LinkedCountsDto {
   @IsUUID('all', { each: true })
   workOrderIds!: string[];
 }
+
+// ─── Share token (кошторис за посиланням) ──────────────────────────────
+// Раніше метод повертав inline `Promise<{ token: string }>` — у Swagger такої
+// форми не було зовсім, тож web не мав згенерованого типу (патерн
+// InvoiceByWorkOrderResponseDto).
+
+export class WorkOrderShareTokenResponseDto {
+  @ApiProperty({ description: 'Токен публічного кошторису' }) token!: string;
+}

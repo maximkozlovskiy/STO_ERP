@@ -713,7 +713,7 @@ function PurchaseOrdersPageClient() {
   );
 
   const openReceiveWithLines = useCallback((po: PurchaseOrder) => {
-    setReceiveLines(po.lines.map(l => ({ lineId: l.id!, receivedQty: '' })));
+    setReceiveLines(po.lines.map(l => ({ lineId: l.id, receivedQty: '' })));
     setShowReceive(po);
   }, []);
 

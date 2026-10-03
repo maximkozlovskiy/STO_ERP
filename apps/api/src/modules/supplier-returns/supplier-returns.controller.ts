@@ -12,7 +12,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -26,7 +33,12 @@ import {
   type SupplierReturnUpdateValues,
 } from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
-import { SupplierReturnQueryDto, LinkedCountsDto } from './supplier-returns.dto';
+import {
+  SupplierReturnQueryDto,
+  LinkedCountsDto,
+  SupplierReturnResponseDto,
+  PaginatedSupplierReturnsDto,
+} from './supplier-returns.dto';
 
 @ApiTags('Supplier Returns')
 @ApiBearerAuth()
@@ -38,6 +50,7 @@ export class SupplierReturnsController {
   @Post()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Створити повернення постачальнику' })
+  @ApiCreatedResponse({ type: SupplierReturnResponseDto })
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(supplierReturnCreateSchema)) dto: SupplierReturnCreateValues,
@@ -48,6 +61,7 @@ export class SupplierReturnsController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список повернень постачальнику' })
+  @ApiOkResponse({ type: PaginatedSupplierReturnsDto })
   findAll(@OrgContext() orgId: string, @Query() query: SupplierReturnQueryDto) {
     return this.service.findAll(
       orgId,
@@ -74,6 +88,7 @@ export class SupplierReturnsController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Підтвердити повернення (WRITEOFF + REFUND)' })
+  @ApiOkResponse({ type: SupplierReturnResponseDto })
   confirm(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -86,6 +101,7 @@ export class SupplierReturnsController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Скасувати повернення' })
+  @ApiOkResponse({ type: SupplierReturnResponseDto })
   cancel(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.cancel(orgId, id);
   }
@@ -101,6 +117,7 @@ export class SupplierReturnsController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі повернення' })
+  @ApiOkResponse({ type: SupplierReturnResponseDto })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -108,6 +125,7 @@ export class SupplierReturnsController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Оновити повернення (тільки DRAFT)' })
+  @ApiOkResponse({ type: SupplierReturnResponseDto })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -120,6 +138,7 @@ export class SupplierReturnsController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити повернення (soft delete, тільки DRAFT)' })
+  @ApiNoContentResponse()
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }

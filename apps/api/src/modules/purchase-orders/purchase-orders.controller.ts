@@ -13,7 +13,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -33,6 +40,9 @@ import {
   TransitionPurchaseOrderDto,
   PurchaseOrderQueryDto,
   LinkedCountsDto,
+  PurchaseOrderResponseDto,
+  PaginatedPurchaseOrdersDto,
+  ApplyPricingResponseDto,
 } from './purchase-orders.dto';
 
 @ApiTags('Purchase Orders')
@@ -45,6 +55,7 @@ export class PurchaseOrdersController {
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Список замовлень постачальникам' })
+  @ApiOkResponse({ type: PaginatedPurchaseOrdersDto })
   findAll(@OrgContext() orgId: string, @Query() query: PurchaseOrderQueryDto) {
     return this.service.findAll(
       orgId,
@@ -81,6 +92,7 @@ export class PurchaseOrdersController {
   @Get(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Замовлення постачальнику по ID' })
+  @ApiOkResponse({ type: PurchaseOrderResponseDto })
   findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(orgId, id);
   }
@@ -89,6 +101,7 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @UseInterceptors(IdempotencyInterceptor) // A1: дедуплікація create під offline-retry
   @ApiOperation({ summary: 'Створити замовлення постачальнику' })
+  @ApiCreatedResponse({ type: PurchaseOrderResponseDto })
   create(
     @OrgContext() orgId: string,
     @Body(new ZodValidationPipe(purchaseOrderCreateSchema)) dto: PurchaseOrderCreateValues,
@@ -99,6 +112,7 @@ export class PurchaseOrdersController {
   @Patch(':id')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Оновити чернетку замовлення' })
+  @ApiOkResponse({ type: PurchaseOrderResponseDto })
   update(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -111,6 +125,7 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Видалити чернетку замовлення' })
+  @ApiNoContentResponse()
   remove(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(orgId, id);
   }
@@ -118,6 +133,7 @@ export class PurchaseOrdersController {
   @Post(':id/transition')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Змінити статус замовлення (FSM)' })
+  @ApiOkResponse({ type: PurchaseOrderResponseDto })
   transition(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -129,6 +145,7 @@ export class PurchaseOrdersController {
   @Post(':id/receive')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Прийняти товари по замовленню' })
+  @ApiOkResponse({ type: PurchaseOrderResponseDto })
   receive(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -142,6 +159,7 @@ export class PurchaseOrdersController {
   @Post(':id/apply-pricing')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Розцінити товари замовлення за правилами ціноутворення' })
+  @ApiOkResponse({ type: ApplyPricingResponseDto })
   applyPricing(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,

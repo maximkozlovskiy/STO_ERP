@@ -1,70 +1,21 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { inventoryKeys } from './useInventory';
 
-export interface POLine {
-  id?: string;
-  goodId: string;
-  goodName?: string;
-  goodSku?: string | null;
-  goodInternalCode?: string | null;
-  goodBrandName?: string | null;
-  unit?: string;
-  unitShortName?: string;
-  coefficient?: number;
-  quantity: number;
-  price: number;
-  amount?: number;
-  vatRate?: number;
-  vatAmount?: number;
-  receivedQty?: number;
-  pricedSalePrice?: number | null;
-  pricingRuleName?: string | null;
-  unitOfMeasureId?: string | null;
-}
-
-export interface PurchaseOrder {
-  id: string;
-  orgId?: string;
-  number: string;
-  status: string;
-  supplierId: string;
-  supplierName?: string;
-  warehouseId: string;
-  warehouseName?: string;
-  contractId?: string | null;
-  contractNumber?: string | null;
-  totalAmount: number;
-  totalVat: number;
-  // Мультивалюта (Фаза 3): валюта документа + base-сума + курс. null → історичні/base.
-  currencyId?: string | null;
-  currencyCode?: string | null;
-  totalAmountBase?: number | null;
-  rateUsed?: number | null;
-  // Payables (Фаза 5): сплачено/повністю сплачено (у валюті PO). outstanding вже є нижче.
-  paidAmount?: number;
-  isFullyPaid?: boolean;
-  paidAt?: string | null;
-  notes: string | null;
-  linesCount: number;
-  lines: POLine[];
-  documentDate?: string | null;
-  paymentDate?: string | null;
-  /** Номер накладної доставки (ЕН). */
-  trackingNumber?: string | null;
-  /** Статус доставки (нормалізований): PENDING/IN_TRANSIT/ARRIVED/DELIVERED/RETURNED/NOT_FOUND. */
-  deliveryStatus?: string | null;
-  /** Сирий текст статусу служби доставки (тултип). */
-  deliveryStatusRaw?: string | null;
-  deliveryStatusUpdatedAt?: string | null;
-  /** Залишок боргу по PO (totalAmount − paidAmount) — присутній і у списку, і в деталі (Фаза 5). */
-  outstanding?: number;
-  pricedAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/**
+ * Замовлення постачальнику — ЗГЕНЕРОВАНИЙ тип із OpenAPI.
+ * Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване, не пишемо своє».
+ *
+ * Копія була слабшою:
+ *   · `status: string` замість 'DRAFT' | 'ORDERED' | 'RECEIVED' | 'PARTIAL' | 'CANCELLED';
+ *   · `deliveryStatus?: string | null` замість union DeliveryStatus;
+ *   · `notes: string | null` — у DTO поле ОПЦІЙНЕ (`notes?: string | null`).
+ */
+export type PurchaseOrder = ApiSchema<'PurchaseOrderResponseDto'>;
+export type POLine = ApiSchema<'PurchaseOrderLineResponseDto'>;
+export type PurchaseOrderStatusValue = PurchaseOrder['status'];
 
 export interface PurchaseOrdersFilter extends Record<string, unknown> {
   page?: number;

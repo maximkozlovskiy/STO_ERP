@@ -1,80 +1,42 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
-/** Тип рознесення банк-транзакції — дзеркалить BankTransactionMatchType (@prisma/client). */
-export type BankTxMatchType = 'PREPAYMENT' | 'SERVICE' | 'INVOICE' | 'REFUND' | 'OTHER';
+/**
+ * Банк-транзакція (виписка) — ЗГЕНЕРОВАНИЙ тип із OpenAPI.
+ * Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване, не пишемо своє».
+ *
+ * Раніше інтерфейс писався руками і мав `direction/source/status/matchedType`
+ * як `string` — попри те, що поруч у цьому ж файлі вже лежали правильні union-и
+ * BankTxStatus/BankTxMatchType. У DTO беку теж був `string` (виправлено разом).
+ */
+export type BankTransaction = ApiSchema<'BankTransactionResponseDto'>;
 
-/** Статус staging-транзакції — дзеркалить BankTransactionStatus. */
-export type BankTxStatus = 'UNMATCHED' | 'MATCHED' | 'IGNORED';
+/** Тип рознесення банк-транзакції (BankTransactionMatchType). */
+export type BankTxMatchType = NonNullable<BankTransaction['matchedType']>;
+
+/** Статус staging-транзакції (BankTransactionStatus). */
+export type BankTxStatus = BankTransaction['status'];
+
+/** Один рядок прев'ю імпорту з результатом авто-матчу — зі згенерованого. */
+export type PreviewRow = ApiSchema<'PreviewRowDto'>;
 
 /** Причина авто-матчу рядка прев'ю. */
-export type PreviewMatchStatus = 'matched' | 'ambiguous' | 'notFound' | 'duplicate';
+export type PreviewMatchStatus = PreviewRow['matchStatus'];
 
 /** Ознака, за якою знайдено збіг. */
-export type PreviewMatchReason = 'iban' | 'edrpou' | 'purpose';
+export type PreviewMatchReason = NonNullable<PreviewRow['matchReason']>;
+
+/** Кандидат-контрагент для ambiguous-рядка — зі згенерованого. */
+export type PreviewCandidate = ApiSchema<'PreviewCandidateDto'>;
 
 /**
- * Банк-транзакція (виписка) — дзеркалить BankTransactionResponseDto
- * (bank-statement.dto.ts + toBankTransactionResponseDto). Числа = number (Decimal→Number).
+ * Мапінг колонок файлу виписки (1-based) — рукописний НАВМИСНО.
+ * `/import/preview` приймає multipart, і контролер розбирає ці поля вручну
+ * (`buildMapping`), тож `PreviewImportColumnMapping` у Swagger-документі не
+ * з'являється взагалі — генерувати нема з чого. Єдиний виняток у цьому файлі.
  */
-export interface BankTransaction {
-  id: string;
-  orgId: string;
-  bankAccountId: string;
-  direction: string;
-  amount: number;
-  currencyId: string;
-  amountBase?: number | null;
-  rateUsed?: number | null;
-  operationDate: string;
-  payerName?: string | null;
-  payerIban?: string | null;
-  payerEdrpou?: string | null;
-  purpose?: string | null;
-  externalId: string;
-  source: string;
-  status: string;
-  matchedType?: string | null;
-  counterpartyId?: string | null;
-  paymentId?: string | null;
-  matchConfidence?: number | null;
-  ignoreReason?: string | null;
-  createdAt: string;
-  // Назва/IBAN нашого рахунку-отримувача (join у list()) — для колонки «Рахунок» у списку платежів.
-  bankAccountName?: string | null;
-  bankAccountIban?: string | null;
-  // Код валюти рахунку — для символу валюти суми (multi-bank: рахунок може бути USD/EUR).
-  bankAccountCurrencyCode?: string | null;
-}
-
-/** Кандидат-контрагент для ambiguous-рядка. */
-export interface PreviewCandidate {
-  counterpartyId: string;
-  counterpartyName: string;
-}
-
-/** Один рядок прев'ю імпорту з результатом авто-матчу — дзеркалить PreviewRowDto. */
-export interface PreviewRow {
-  rowIndex: number;
-  operationDate: string;
-  amount: number;
-  payerName?: string | null;
-  payerIban?: string | null;
-  payerEdrpou?: string | null;
-  purpose?: string | null;
-  externalId: string;
-  matchStatus: PreviewMatchStatus;
-  suggestedCounterpartyId?: string | null;
-  suggestedCounterpartyName?: string | null;
-  suggestedMatchType?: BankTxMatchType | null;
-  suggestedInvoiceId?: string | null;
-  matchReason?: PreviewMatchReason | null;
-  matchConfidence?: number | null;
-  candidates: PreviewCandidate[];
-}
-
-/** Мапінг колонок файлу виписки (1-based) — дзеркалить PreviewImportColumnMapping. */
 export interface ColumnMapping {
   startRow?: number;
   dateCol: number;
@@ -86,29 +48,18 @@ export interface ColumnMapping {
   purposeCol?: number;
 }
 
-/** Сира сітка перших рядків для column-mapping — дзеркалить parser.rawPreview(). */
-export interface RawPreviewResult {
-  rows: string[][];
-  totalRows: number;
-}
+/**
+ * Сира сітка перших рядків для column-mapping — зі згенерованого.
+ * Рукописна копія не мала `columnCount`, хоча бек його віддає й UI міг би
+ * використати замість перерахунку максимуму довжин рядків.
+ */
+export type RawPreviewResult = ApiSchema<'RawPreviewResponseDto'>;
 
-/** Рядок для apply — дзеркалить ApplyRowDto. */
-export interface ApplyRow {
-  externalId: string;
-  operationDate: string;
-  amount: number;
-  payerName?: string;
-  payerIban?: string;
-  payerEdrpou?: string;
-  purpose?: string;
-  rawData?: unknown;
-}
+/** Рядок для apply — зі згенерованого (ApplyRowDto). */
+export type ApplyRow = ApiSchema<'ApplyRowDto'>;
 
-/** Результат apply — дзеркалить ApplyImportResultDto. */
-export interface ApplyImportResult {
-  created: number;
-  skipped: number;
-}
+/** Результат apply — зі згенерованого (ApplyImportResultDto). */
+export type ApplyImportResult = ApiSchema<'ApplyImportResultDto'>;
 
 export interface MatchTransactionInput {
   counterpartyId: string;

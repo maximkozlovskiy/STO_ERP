@@ -14,7 +14,14 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { UUID_REGEX, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -23,7 +30,14 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { BookingService } from './booking.service';
-import { CreateBookingRequestDto, ConfirmBookingDto } from './booking.dto';
+import {
+  CreateBookingRequestDto,
+  ConfirmBookingDto,
+  AvailabilitySlotDto,
+  BookingRequestResponseDto,
+  BookingRequestListDto,
+  PublicBookingBranchDto,
+} from './booking.dto';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -43,6 +57,7 @@ export class BookingController {
   // 30 req/min per IP is plenty for legitimate widget usage (typically 1 call per page load).
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiOperation({ summary: 'Список філій для онлайн-запису (публічний)' })
+  @ApiOkResponse({ type: [PublicBookingBranchDto] })
   async listPublicBranches() {
     const branches = await this.service.listBranchesForBooking();
     // Drop orgId from public response — caller doesn't need it (server resolves
@@ -55,6 +70,7 @@ export class BookingController {
   // probing-ити доступність хвилину за хвилиною й мапити графік СТО).
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiOperation({ summary: 'Вільні слоти для запису (публічний)' })
+  @ApiOkResponse({ type: [AvailabilitySlotDto] })
   async getAvailability(
     @Query('date') date: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId: string,
@@ -84,6 +100,7 @@ export class BookingController {
   // (SMS уведомлення власнику СТО триггерять gateway-кошти).
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({ summary: 'Створити заявку на запис (публічний)' })
+  @ApiCreatedResponse({ type: BookingRequestResponseDto })
   async createPublic(@Body() dto: CreateBookingRequestDto) {
     // Soft-deleted branches must be invisible to public booking.
     const branch = await this.service.findBranchForBooking(dto.branchId);
@@ -99,6 +116,7 @@ export class BookingController {
   @ApiBearerAuth()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
   @ApiOperation({ summary: 'Список заявок на запис' })
+  @ApiOkResponse({ type: BookingRequestListDto })
   findAll(
     @CurrentUser() user: { orgId: string },
     @Query('date') date?: string,
@@ -112,6 +130,7 @@ export class BookingController {
   @ApiBearerAuth()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Підтвердити заявку' })
+  @ApiOkResponse({ type: BookingRequestResponseDto })
   confirm(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { orgId: string },
@@ -128,6 +147,7 @@ export class BookingController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Скасувати заявку' })
+  @ApiNoContentResponse()
   cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: { orgId: string }) {
     return this.service.cancel(user.orgId, id);
   }

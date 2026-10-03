@@ -8054,7 +8054,15 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "PDF-файл наряду",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8092,7 +8100,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -8164,8 +8172,15 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderShareTokenResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8203,8 +8218,8 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "SMS поставлено у чергу (тіло порожнє)"
           }
         },
         "security": [
@@ -9785,7 +9800,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -9831,7 +9846,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -9867,8 +9882,15 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyPricingResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10772,7 +10794,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierPaymentScheduleDocumentDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -11370,7 +11402,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -12896,8 +12928,15 @@
         "operationId": "BankStatementsController_rawPreview_v1",
         "parameters": [],
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawPreviewResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -12916,8 +12955,15 @@
         "operationId": "BankStatementsController_preview_v1",
         "parameters": [],
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewImportResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -12946,8 +12992,15 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyImportResultDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13046,7 +13099,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -13092,7 +13145,7 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
@@ -14864,7 +14917,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicBookingBranchDto"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "Список філій для онлайн-запису (публічний)",
@@ -14978,7 +15041,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingRequestListDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -20607,6 +20677,18 @@
           "status"
         ]
       },
+      "WorkOrderShareTokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Токен публічного кошторису"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
       "SendEstimateSmsDto": {
         "type": "object",
         "properties": {}
@@ -21685,6 +21767,52 @@
           "lines"
         ]
       },
+      "ApplyPricingDetailDto": {
+        "type": "object",
+        "properties": {
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "costPrice": {
+            "type": "number"
+          },
+          "oldSalePrice": {
+            "type": "number"
+          },
+          "newSalePrice": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "goodId",
+          "goodName",
+          "costPrice",
+          "oldSalePrice",
+          "newSalePrice"
+        ]
+      },
+      "ApplyPricingResponseDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "description": "Скільки товарів розцінено"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplyPricingDetailDto"
+            }
+          }
+        },
+        "required": [
+          "updated",
+          "details"
+        ]
+      },
       "VerifyDeliveryDto": {
         "type": "object",
         "properties": {
@@ -22190,6 +22318,50 @@
           "totals"
         ]
       },
+      "SupplierPaymentScheduleDocumentDto": {
+        "type": "object",
+        "properties": {
+          "poId": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "supplierId": {
+            "type": "string"
+          },
+          "supplierName": {
+            "type": "string"
+          },
+          "paymentDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "Дата оплати YYYY-MM-DD або null"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Повна сума замовлення"
+          },
+          "outstanding": {
+            "type": "number",
+            "description": "Несплачений залишок (totalAmount − CONFIRMED платежі)"
+          },
+          "allocated": {
+            "type": "number",
+            "description": "Сума боргу, «налита» на цей PO (після кредит-ліміту)"
+          }
+        },
+        "required": [
+          "poId",
+          "number",
+          "supplierId",
+          "supplierName",
+          "paymentDate",
+          "totalAmount",
+          "outstanding",
+          "allocated"
+        ]
+      },
       "StockDocumentLineResponseDto": {
         "type": "object",
         "properties": {
@@ -22246,9 +22418,20 @@
             "type": "string"
           },
           "type": {
+            "enum": [
+              "WRITEOFF",
+              "TRANSFER",
+              "OPENING_BALANCE",
+              "RECEIPT"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "DRAFT",
+              "CONFIRMED",
+              "CANCELLED"
+            ],
             "type": "string"
           },
           "branchId": {
@@ -22933,6 +23116,155 @@
           "points"
         ]
       },
+      "RawPreviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "totalRows": {
+            "type": "number",
+            "description": "Скільки рядків у файлі всього"
+          },
+          "columnCount": {
+            "type": "number",
+            "description": "Максимальна кількість колонок серед показаних рядків"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Перші рядки файлу як текстова сітка"
+          }
+        },
+        "required": [
+          "totalRows",
+          "columnCount",
+          "rows"
+        ]
+      },
+      "PreviewCandidateDto": {
+        "type": "object",
+        "properties": {
+          "counterpartyId": {
+            "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "counterpartyId",
+          "counterpartyName"
+        ]
+      },
+      "PreviewRowDto": {
+        "type": "object",
+        "properties": {
+          "rowIndex": {
+            "type": "number"
+          },
+          "operationDate": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "payerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "payerIban": {
+            "type": "string",
+            "nullable": true
+          },
+          "payerEdrpou": {
+            "type": "string",
+            "nullable": true
+          },
+          "purpose": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "matchStatus": {
+            "enum": [
+              "matched",
+              "ambiguous",
+              "notFound",
+              "duplicate"
+            ],
+            "type": "string"
+          },
+          "suggestedCounterpartyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "suggestedCounterpartyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "suggestedMatchType": {
+            "nullable": true,
+            "enum": [
+              "PREPAYMENT",
+              "SERVICE",
+              "INVOICE",
+              "REFUND",
+              "OTHER"
+            ],
+            "type": "string"
+          },
+          "suggestedInvoiceId": {
+            "type": "string",
+            "nullable": true
+          },
+          "matchReason": {
+            "nullable": true,
+            "enum": [
+              "iban",
+              "edrpou",
+              "purpose"
+            ],
+            "type": "string"
+          },
+          "matchConfidence": {
+            "type": "number",
+            "nullable": true
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewCandidateDto"
+            }
+          }
+        },
+        "required": [
+          "rowIndex",
+          "operationDate",
+          "amount",
+          "externalId",
+          "matchStatus",
+          "candidates"
+        ]
+      },
+      "PreviewImportResponseDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewRowDto"
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
       "ApplyRowDto": {
         "type": "object",
         "properties": {
@@ -22969,6 +23301,21 @@
           "amount"
         ]
       },
+      "ApplyImportResultDto": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "number"
+          },
+          "skipped": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "created",
+          "skipped"
+        ]
+      },
       "BankTransactionResponseDto": {
         "type": "object",
         "properties": {
@@ -22982,6 +23329,10 @@
             "type": "string"
           },
           "direction": {
+            "enum": [
+              "IN",
+              "OUT"
+            ],
             "type": "string"
           },
           "amount": {
@@ -23021,14 +23372,31 @@
             "type": "string"
           },
           "source": {
+            "enum": [
+              "FILE_IMPORT",
+              "PRIVAT24_API",
+              "MONOBANK_API"
+            ],
             "type": "string"
           },
           "status": {
+            "enum": [
+              "UNMATCHED",
+              "MATCHED",
+              "IGNORED"
+            ],
             "type": "string"
           },
           "matchedType": {
-            "type": "string",
-            "nullable": true
+            "nullable": true,
+            "enum": [
+              "PREPAYMENT",
+              "SERVICE",
+              "INVOICE",
+              "REFUND",
+              "OTHER"
+            ],
+            "type": "string"
           },
           "counterpartyId": {
             "type": "string",
@@ -24062,6 +24430,26 @@
           }
         }
       },
+      "PublicBookingBranchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "address"
+        ]
+      },
       "AvailabilitySlotDto": {
         "type": "object",
         "properties": {
@@ -24137,6 +24525,11 @@
             "type": "string"
           },
           "status": {
+            "enum": [
+              "PENDING",
+              "CONFIRMED",
+              "CANCELLED"
+            ],
             "type": "string"
           },
           "clientName": {
@@ -24171,6 +24564,24 @@
           "requestedDate",
           "branchId",
           "createdAt"
+        ]
+      },
+      "BookingRequestListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookingRequestResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
         ]
       },
       "ConfirmBookingDto": {

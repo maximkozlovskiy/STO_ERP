@@ -16,7 +16,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { StockDocumentType } from '@prisma/client';
+import { StockDocumentType, StockDocumentStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
 export class StockDocumentLineDto {
@@ -113,8 +113,11 @@ export class StockDocumentResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orgId!: string;
   @ApiProperty() number!: string;
-  @ApiProperty() type!: string;
-  @ApiProperty() status!: string;
+  // Обидва поля — Prisma enum-колонки, але DTO роками оголошував їх як `string`:
+  // у Swagger не було переліку, тож web отримував `status: string` і, наприклад,
+  // `doc.status === 'POSTED'` (неіснуючий статус) компілювався мовчки.
+  @ApiProperty({ enum: StockDocumentType }) type!: StockDocumentType;
+  @ApiProperty({ enum: StockDocumentStatus }) status!: StockDocumentStatus;
   @ApiProperty() branchId!: string;
   @ApiPropertyOptional() branchName?: string;
   @ApiProperty() warehouseId!: string;

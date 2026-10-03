@@ -1,41 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { invalidateStockAffected, invalidateBalanceAffected } from '@/lib/cache-invalidation';
 
-export interface SupplierReturnLine {
-  id?: string;
-  goodId: string;
-  goodName?: string;
-  goodSku?: string | null;
-  unit?: string;
-  unitShortName?: string;
-  quantity: number;
-  price: number;
-  amount: number;
-  unitOfMeasureId?: string | null;
-}
-
-export interface SupplierReturn {
-  id: string;
-  orgId?: string;
-  number: string;
-  status: string;
-  supplierId: string;
-  supplierName?: string;
-  warehouseId: string;
-  warehouseName?: string;
-  purchaseOrderId?: string | null;
-  purchaseOrderNumber?: string | null;
-  totalAmount: number;
-  notes: string | null;
-  linesCount: number;
-  lines: SupplierReturnLine[];
-  documentDate?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-}
+/**
+ * Повернення постачальнику — ЗГЕНЕРОВАНИЙ тип із OpenAPI.
+ * Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване, не пишемо своє».
+ * Копія мала `status: string` замість union 'DRAFT' | 'CONFIRMED' | 'CANCELLED'.
+ */
+export type SupplierReturn = ApiSchema<'SupplierReturnResponseDto'>;
+export type SupplierReturnLine = ApiSchema<'SupplierReturnLineResponseDto'>;
+export type SupplierReturnStatusValue = SupplierReturn['status'];
 
 export interface SupplierReturnsFilter extends Record<string, unknown> {
   page?: number;
