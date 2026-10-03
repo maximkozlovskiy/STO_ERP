@@ -157,7 +157,8 @@
     "errInvalidDateTime": "Вкажіть коректні дату та час",
     "errSaveFallback": "Помилка збереження",
     "errDeleteFallback": "Помилка видалення",
-    "errGeneric": "Помилка"
+    "errGeneric": "Помилка",
+    "errCpDetailLoad": "Не вдалося завантажити картку клієнта"
   },
   "wizard": {
     "titleClient": "Новий клієнт",

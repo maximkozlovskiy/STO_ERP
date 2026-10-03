@@ -297,10 +297,12 @@ export function CalendarSlotModal({
       const cp = await apiFetch<CounterpartyForModal>(`/counterparties/${form.counterpartyId}`);
       setCpDetailData(cp);
       setCpDetailOpen(true);
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      // Раніше тут був порожній `catch { /* ignore */ }`: при збої картка клієнта просто
+      // не відкривалась, і користувач не розумів, чи клік узагалі зареєструвався.
+      toast.error(e instanceof Error ? e.message : t('slot.errCpDetailLoad'));
     }
-  }, [form.counterpartyId]);
+  }, [form.counterpartyId, t]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -467,7 +469,8 @@ export function CalendarSlotModal({
     setCpVehicles([]);
     const ac = new AbortController();
     const fetchedForId = form.counterpartyId;
-    (async () => {
+    // `void`: IIFE має власний try/catch (скидає cpVehicles), effect не має куди чекати.
+    void (async () => {
       try {
         // sto-optimize: bulk `/vehicles?counterpartyId=X` (join through customerGarage)
         // замінює waterfall garages → per-garage vehicles fetch (N+1 → 1 RTT).
@@ -946,23 +949,37 @@ export function CalendarSlotModal({
                     placeholder={t('slot.clientPlaceholder')}
                     disabled={isEditingPast}
                     hidePick={isEditingPast}
-                    onOpenDetail={form.counterpartyId ? openCpDetail : undefined}
+                    onOpenDetail={form.counterpartyId ? () => void openCpDetail() : undefined}
                     onPick={() => setCpPickerOpen(true)}
                     onSearch={!isEditingPast ? fetchCpItems : undefined}
-                    onSearchSelect={async item => {
-                      if (
-                        form.workOrderId &&
-                        form.counterpartyId &&
-                        item.id !== form.counterpartyId
-                      ) {
-                        const ok = await confirm({
-                          title: t('slot.changeClientConfirmTitle'),
-                          message: t('slot.changeClientConfirmMessage', {
-                            wo: form.workOrderDisplay,
-                          }),
-                          variant: 'destructive',
-                        });
-                        if (!ok) return;
+                    onSearchSelect={item => {
+                      void (async () => {
+                        if (
+                          form.workOrderId &&
+                          form.counterpartyId &&
+                          item.id !== form.counterpartyId
+                        ) {
+                          const ok = await confirm({
+                            title: t('slot.changeClientConfirmTitle'),
+                            message: t('slot.changeClientConfirmMessage', {
+                              wo: form.workOrderDisplay,
+                            }),
+                            variant: 'destructive',
+                          });
+                          if (!ok) return;
+                          setCpDisplay(item.primary);
+                          setCpPhone(item.phone ?? null);
+                          setCpVehicles([]);
+                          setForm(f => ({
+                            ...f,
+                            counterpartyId: item.id,
+                            counterpartyDisplay: item.primary,
+                            vehicleId: '',
+                            workOrderId: '',
+                            workOrderDisplay: '',
+                          }));
+                          return;
+                        }
                         setCpDisplay(item.primary);
                         setCpPhone(item.phone ?? null);
                         setCpVehicles([]);
@@ -971,20 +988,8 @@ export function CalendarSlotModal({
                           counterpartyId: item.id,
                           counterpartyDisplay: item.primary,
                           vehicleId: '',
-                          workOrderId: '',
-                          workOrderDisplay: '',
                         }));
-                        return;
-                      }
-                      setCpDisplay(item.primary);
-                      setCpPhone(item.phone ?? null);
-                      setCpVehicles([]);
-                      setForm(f => ({
-                        ...f,
-                        counterpartyId: item.id,
-                        counterpartyDisplay: item.primary,
-                        vehicleId: '',
-                      }));
+                      })();
                     }}
                     onClear={() => {
                       setCpDisplay('');
@@ -1074,23 +1079,43 @@ export function CalendarSlotModal({
                   }
                   onPick={() => setWoPickerOpen(true)}
                   onSearch={!isEditingPast ? fetchWoItems : undefined}
-                  onSearchSelect={async item => {
-                    const display = item.counterpartyName
-                      ? `${item.primary} · ${item.counterpartyName}`
-                      : item.primary;
+                  onSearchSelect={item => {
+                    void (async () => {
+                      const display = item.counterpartyName
+                        ? `${item.primary} · ${item.counterpartyName}`
+                        : item.primary;
 
-                    if (
-                      item.counterpartyId &&
-                      form.counterpartyId &&
-                      item.counterpartyId !== form.counterpartyId
-                    ) {
-                      const replace = await confirm({
-                        title: t('slot.replaceClientTitle'),
-                        message: t('slot.replaceClientMessage', {
-                          client: item.counterpartyName ?? item.counterpartyId,
-                        }),
-                      });
-                      if (replace) {
+                      if (
+                        item.counterpartyId &&
+                        form.counterpartyId &&
+                        item.counterpartyId !== form.counterpartyId
+                      ) {
+                        const replace = await confirm({
+                          title: t('slot.replaceClientTitle'),
+                          message: t('slot.replaceClientMessage', {
+                            client: item.counterpartyName ?? item.counterpartyId,
+                          }),
+                        });
+                        if (replace) {
+                          const cpDisp = item.counterpartyName ?? '';
+                          setCpDisplay(cpDisp);
+                          setCpPhone(null);
+                          setCpVehicles([]);
+                          setForm(f => ({
+                            ...f,
+                            workOrderId: item.id,
+                            workOrderDisplay: display,
+                            counterpartyId: item.counterpartyId!,
+                            counterpartyDisplay: cpDisp,
+                            vehicleId: '',
+                          }));
+                        } else {
+                          setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                        }
+                        return;
+                      }
+
+                      if (item.counterpartyId && !form.counterpartyId) {
                         const cpDisp = item.counterpartyName ?? '';
                         setCpDisplay(cpDisp);
                         setCpPhone(null);
@@ -1103,29 +1128,11 @@ export function CalendarSlotModal({
                           counterpartyDisplay: cpDisp,
                           vehicleId: '',
                         }));
-                      } else {
-                        setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                        return;
                       }
-                      return;
-                    }
 
-                    if (item.counterpartyId && !form.counterpartyId) {
-                      const cpDisp = item.counterpartyName ?? '';
-                      setCpDisplay(cpDisp);
-                      setCpPhone(null);
-                      setCpVehicles([]);
-                      setForm(f => ({
-                        ...f,
-                        workOrderId: item.id,
-                        workOrderDisplay: display,
-                        counterpartyId: item.counterpartyId!,
-                        counterpartyDisplay: cpDisp,
-                        vehicleId: '',
-                      }));
-                      return;
-                    }
-
-                    setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                      setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                    })();
                   }}
                   onClear={() => setForm(f => ({ ...f, workOrderId: '', workOrderDisplay: '' }))}
                 />
@@ -1216,7 +1223,7 @@ export function CalendarSlotModal({
                 </div>
                 <div className="flex gap-2 pt-2">
                   <Button
-                    onClick={saveWizardStep1}
+                    onClick={() => void saveWizardStep1()}
                     loading={savingCp}
                     disabled={!newCp.firstName && !newCp.lastName && !newCp.companyName}
                   >
@@ -1267,13 +1274,13 @@ export function CalendarSlotModal({
                 />
                 <div className="flex gap-2 pt-2">
                   <Button
-                    onClick={() => saveWizardStep2(false)}
+                    onClick={() => void saveWizardStep2(false)}
                     loading={savingCp}
                     disabled={!newVehicle.make.trim() || !newVehicle.model.trim()}
                   >
                     {t('wizard.save')}
                   </Button>
-                  <Button variant="outline" onClick={() => saveWizardStep2(true)}>
+                  <Button variant="outline" onClick={() => void saveWizardStep2(true)}>
                     {t('wizard.skip')}
                   </Button>
                 </div>
@@ -1303,14 +1310,28 @@ export function CalendarSlotModal({
             fetchItems={fetchCpItems}
             searchPlaceholder={t('slot.cpPickerSearchPlaceholder')}
             emptyText={t('slot.cpPickerEmpty')}
-            onSelect={async item => {
-              if (form.workOrderId && form.counterpartyId && item.id !== form.counterpartyId) {
-                const ok = await confirm({
-                  title: t('slot.changeClientConfirmTitle'),
-                  message: t('slot.changeClientConfirmMessage', { wo: form.workOrderDisplay }),
-                  variant: 'destructive',
-                });
-                if (!ok) return;
+            onSelect={item => {
+              void (async () => {
+                if (form.workOrderId && form.counterpartyId && item.id !== form.counterpartyId) {
+                  const ok = await confirm({
+                    title: t('slot.changeClientConfirmTitle'),
+                    message: t('slot.changeClientConfirmMessage', { wo: form.workOrderDisplay }),
+                    variant: 'destructive',
+                  });
+                  if (!ok) return;
+                  setCpDisplay(item.primary);
+                  setCpPhone(item.phone ?? null);
+                  setCpVehicles([]);
+                  setForm(f => ({
+                    ...f,
+                    counterpartyId: item.id,
+                    counterpartyDisplay: item.primary,
+                    vehicleId: '',
+                    workOrderId: '',
+                    workOrderDisplay: '',
+                  }));
+                  return;
+                }
                 setCpDisplay(item.primary);
                 setCpPhone(item.phone ?? null);
                 setCpVehicles([]);
@@ -1319,20 +1340,8 @@ export function CalendarSlotModal({
                   counterpartyId: item.id,
                   counterpartyDisplay: item.primary,
                   vehicleId: '',
-                  workOrderId: '',
-                  workOrderDisplay: '',
                 }));
-                return;
-              }
-              setCpDisplay(item.primary);
-              setCpPhone(item.phone ?? null);
-              setCpVehicles([]);
-              setForm(f => ({
-                ...f,
-                counterpartyId: item.id,
-                counterpartyDisplay: item.primary,
-                vehicleId: '',
-              }));
+              })();
             }}
           />
           <SearchPickerModal<WoItem>
@@ -1369,28 +1378,49 @@ export function CalendarSlotModal({
                 )}
               </div>
             )}
-            onSelect={async item => {
-              const display = item.counterpartyName
-                ? `${item.primary} · ${item.counterpartyName}`
-                : item.primary;
+            onSelect={item => {
+              void (async () => {
+                const display = item.counterpartyName
+                  ? `${item.primary} · ${item.counterpartyName}`
+                  : item.primary;
 
-              if (
-                item.counterpartyId &&
-                form.counterpartyId &&
-                item.counterpartyId !== form.counterpartyId
-              ) {
-                const replace = await confirm({
-                  title: t('slot.replaceClientTitle'),
-                  message: t('slot.replaceClientMessage', {
-                    client: item.counterpartyName ?? item.counterpartyId,
-                  }),
-                });
-                if (replace) {
+                if (
+                  item.counterpartyId &&
+                  form.counterpartyId &&
+                  item.counterpartyId !== form.counterpartyId
+                ) {
+                  const replace = await confirm({
+                    title: t('slot.replaceClientTitle'),
+                    message: t('slot.replaceClientMessage', {
+                      client: item.counterpartyName ?? item.counterpartyId,
+                    }),
+                  });
+                  if (replace) {
+                    const cpDisp = item.counterpartyName ?? '';
+                    setCpDisplay(cpDisp);
+                    setCpPhone(null);
+                    // при заміні клієнта через WO picker скидаємо vehicleId і cpVehicles:
+                    // без цього form.vehicleId успадковується з минулого клієнта → leak до newWo POST → 400 FK mismatch.
+                    setCpVehicles([]);
+                    setForm(f => ({
+                      ...f,
+                      workOrderId: item.id,
+                      workOrderDisplay: display,
+                      counterpartyId: item.counterpartyId!,
+                      counterpartyDisplay: cpDisp,
+                      vehicleId: '',
+                    }));
+                  } else {
+                    setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                  }
+                  return;
+                }
+
+                if (item.counterpartyId && !form.counterpartyId) {
                   const cpDisp = item.counterpartyName ?? '';
                   setCpDisplay(cpDisp);
                   setCpPhone(null);
-                  // при заміні клієнта через WO picker скидаємо vehicleId і cpVehicles:
-                  // без цього form.vehicleId успадковується з минулого клієнта → leak до newWo POST → 400 FK mismatch.
+                  // defensive: починаємо з чистого vehicleId/cpVehicles
                   setCpVehicles([]);
                   setForm(f => ({
                     ...f,
@@ -1400,30 +1430,11 @@ export function CalendarSlotModal({
                     counterpartyDisplay: cpDisp,
                     vehicleId: '',
                   }));
-                } else {
-                  setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                  return;
                 }
-                return;
-              }
 
-              if (item.counterpartyId && !form.counterpartyId) {
-                const cpDisp = item.counterpartyName ?? '';
-                setCpDisplay(cpDisp);
-                setCpPhone(null);
-                // defensive: починаємо з чистого vehicleId/cpVehicles
-                setCpVehicles([]);
-                setForm(f => ({
-                  ...f,
-                  workOrderId: item.id,
-                  workOrderDisplay: display,
-                  counterpartyId: item.counterpartyId!,
-                  counterpartyDisplay: cpDisp,
-                  vehicleId: '',
-                }));
-                return;
-              }
-
-              setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+                setForm(f => ({ ...f, workOrderId: item.id, workOrderDisplay: display }));
+              })();
             }}
           />
           {calConflict?.anyConflict && (
@@ -1438,7 +1449,7 @@ export function CalendarSlotModal({
           <div className="flex items-center gap-2">
             {!isEditingPast && (
               <Button
-                onClick={addSlot}
+                onClick={() => void addSlot()}
                 loading={saving}
                 disabled={
                   !form.startAt ||
@@ -1457,25 +1468,27 @@ export function CalendarSlotModal({
               <Button
                 variant="destructive"
                 className="ml-auto"
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: t('slot.deleteTitle'),
-                    message: t('slot.deleteMessage'),
-                    variant: 'destructive',
-                  });
-                  if (!ok) return;
-                  setSaving(true);
-                  try {
-                    await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'DELETE' });
-                    toast.success(t('slot.toastDeleted'));
-                    onDeleted();
-                  } catch (e: unknown) {
-                    const msg = e instanceof Error ? e.message : t('slot.errDeleteFallback');
-                    setError(msg);
-                    toast.error(msg);
-                  } finally {
-                    setSaving(false);
-                  }
+                onClick={() => {
+                  void (async () => {
+                    const ok = await confirm({
+                      title: t('slot.deleteTitle'),
+                      message: t('slot.deleteMessage'),
+                      variant: 'destructive',
+                    });
+                    if (!ok) return;
+                    setSaving(true);
+                    try {
+                      await apiFetch(`/calendar/slots/${editingSlotId}`, { method: 'DELETE' });
+                      toast.success(t('slot.toastDeleted'));
+                      onDeleted();
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : t('slot.errDeleteFallback');
+                      setError(msg);
+                      toast.error(msg);
+                    } finally {
+                      setSaving(false);
+                    }
+                  })();
                 }}
               >
                 <Trash2 className="h-4 w-4 mr-1.5" />
