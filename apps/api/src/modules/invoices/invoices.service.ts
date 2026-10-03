@@ -4,7 +4,8 @@ import { formatPersonName, translateError } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
-import { safeCoeff, roundMoney } from '../../common/utils/math';
+import { safeCoeff } from '../../common/utils/math';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
 import type { VatMode } from '@prisma/client';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
@@ -215,7 +216,7 @@ export class InvoicesService {
 
     // Мультивалюта (Фаза 3): рахунок успадковує валюту наряду; base-сума — по курсу на дату рахунку
     // (rate-on-date per event; fallbackToLatest — документний потік). Без валюти → base (rate=1).
-    const invoiceAmount = Number(wo.totalAmount);
+    const invoiceAmount = moneyFromDecimal(wo.totalAmount);
     const conv = wo.currencyId
       ? await this.exchangeRates.resolveBaseConversion(
           orgId,
@@ -455,7 +456,7 @@ export class InvoicesService {
     // WO-рахунок НЕ чіпаємо (його CHARGE через COMPLETED, оплата йде окремо через payments-модуль).
     // Сума PAYMENT = непокритий залишок (amount − вже сплачене paidAmount), щоб не подвоїти
     // часткові оплати, зроблені раніше через payments-модуль.
-    const paymentRemaining = Number(inv.amount) - Number(inv.paidAmount);
+    const paymentRemaining = money(moneyFromDecimal(inv.amount) - moneyFromDecimal(inv.paidAmount));
     const settlesStandaloneOnPaid =
       newStatus === InvoiceStatus.PAID && inv.workOrderId === null && paymentRemaining > 1e-9;
 
@@ -549,10 +550,10 @@ export class InvoicesService {
                   _sum: { amountBase: true },
                 }),
               ]);
-              const chargeBase = Number(chargeAgg._sum.amountBase ?? 0);
-              const docPaymentBase = Number(payAgg._sum.amountBase ?? 0); // дзеркальний PAYMENT (base)
-              const realPaidBase = Number(realPaidAgg._sum.amountBase ?? 0);
-              const fx = roundMoney(chargeBase - docPaymentBase - realPaidBase);
+              const chargeBase = moneyFromDecimal(chargeAgg._sum.amountBase);
+              const docPaymentBase = moneyFromDecimal(payAgg._sum.amountBase); // дзеркальний PAYMENT (base)
+              const realPaidBase = moneyFromDecimal(realPaidAgg._sum.amountBase);
+              const fx = money(chargeBase - docPaymentBase - realPaidBase);
               if (Math.abs(fx) >= 0.005) {
                 await this.settlements.createTransaction(
                   orgId,
@@ -619,7 +620,8 @@ export class InvoicesService {
     // totalWithoutVat/totalVat/totalWithVat; Prisma defaults leave them at 0 while
     // lines[].priceWithVat has real values. sumLineTotals — спільний single-pass суматор.
     const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(original.lines);
-    const clonedAmount = original.lines.length > 0 ? totalWithVat : Number(original.amount);
+    const clonedAmount =
+      original.lines.length > 0 ? totalWithVat : moneyFromDecimal(original.amount);
     // Мультивалюта (Фаза 3): клон успадковує валюту оригіналу; base — по СВІЖОМУ курсу (новий DRAFT).
     const clonedConv = original.currencyId
       ? await this.exchangeRates.resolveBaseConversion(
@@ -726,9 +728,9 @@ export class InvoicesService {
       dto.vatRate != null
         ? dto.vatRate
         : (await this.settingsService.getDefaultVatRate(orgId)).vatRate;
-    const priceWithoutVat = roundMoney(dto.quantity * dto.unitPrice);
-    const vatAmount = roundMoney(priceWithoutVat * (vatRate / 100));
-    const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
+    const priceWithoutVat = money(dto.quantity * dto.unitPrice);
+    const vatAmount = money(priceWithoutVat * (vatRate / 100));
+    const priceWithVat = money(priceWithoutVat + vatAmount);
 
     const line = await this.prisma.invoiceLine.create({
       data: {
@@ -785,11 +787,12 @@ export class InvoicesService {
       throw new NotFoundException(translateError('err.invoice.lineNotFound', getLocale()));
 
     const quantity = dto.quantity ?? existing.quantity;
-    const unitPrice = dto.unitPrice !== undefined ? dto.unitPrice : Number(existing.unitPrice);
+    const unitPrice =
+      dto.unitPrice !== undefined ? money(dto.unitPrice) : moneyFromDecimal(existing.unitPrice);
     const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
-    const priceWithoutVat = roundMoney(quantity * unitPrice);
-    const vatAmount = roundMoney(priceWithoutVat * (vatRate / 100));
-    const priceWithVat = roundMoney(priceWithoutVat + vatAmount);
+    const priceWithoutVat = money(quantity * unitPrice);
+    const vatAmount = money(priceWithoutVat * (vatRate / 100));
+    const priceWithVat = money(priceWithoutVat + vatAmount);
 
     const updated = await this.prisma.invoiceLine.update({
       where: { id: lineId, orgId },
@@ -867,9 +870,9 @@ export class InvoicesService {
         select: { currencyId: true, documentDate: true },
       }),
     ]);
-    const totalWithoutVat = roundMoney(Number(result._sum.priceWithoutVat ?? 0));
-    const totalVat = roundMoney(Number(result._sum.vatAmount ?? 0));
-    const totalWithVat = roundMoney(Number(result._sum.priceWithVat ?? 0));
+    const totalWithoutVat = money(Number(result._sum.priceWithoutVat ?? 0));
+    const totalVat = money(Number(result._sum.vatAmount ?? 0));
+    const totalWithVat = money(Number(result._sum.priceWithVat ?? 0));
 
     // Base-сума рахунку по курсу на дату документа (fallbackToLatest — документний потік).
     const conv = inv?.currencyId
