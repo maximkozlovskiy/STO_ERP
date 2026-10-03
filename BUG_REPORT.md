@@ -6436,3 +6436,77 @@ JS `new Date(Date.UTC(y, m-1, 31))` для лютого/квітня переп�
 - **E2E не запускалось:** БД з Windows недосяжна (порт 5432 тримає svchost) — відоме
   обмеження середовища, не баг коду. (Примітка: API-інтеграційні тести xlsx тут БД все ж
   дістали й пройшли — 6 зелених.)
+
+---
+
+## Session 2026-10-03 — Money-міграція, сервісний шлях (пункти 2–5; продовження після Bug #776)
+
+> Контекст: пункт 1 (крайові входи `moneyFromDecimal`) закрито окремо як Bug #776 (008f9e40)
+> — `money*.ts` НЕ чіпалось. Ця сесія — пункти 2–5: інваріант Σ(рядки)===total на РЕАЛЬНОМУ
+> сервісному шляху документів, баланс каси, бонусні бали, звіт рентабельності.
+> Baseline: api 2900/2900, tsc 0, eslint 0 errors, HEAD 008f9e40.
+
+### Bug #777 — [MEDIUM] purchase-orders.service: Σ(рядки) ≠ totalAmount на дробовій кількості [x] виправлено
+
+**Де:** `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` — `create` (рядок ~314)
+та `update` (рядок ~497).
+
+**Симптом (що бачить бухгалтер):** `toDto` показує per-line `amount = money(quantity × price)`
+(округлення НА КОЖЕН рядок), а `totalAmount` рахувався як `money(Σ quantity×price)` (round-once).
+`quantity` — `Float` (літри/кг), тож при дробовій кількості покрокове округлення рядків
+розходиться з round-once сумою. Приклад: 3 рядки по `0.5 л × 3.33 грн` → per-line `1.67` ×3 = **5.01**,
+а збережений `totalAmount` = `money(4.995)` = **5.00**. Документ не б'ється: рядки дають 5.01, підсумок 5.00.
+
+**Причина:** round-once математично точніший для СИРИХ значень (докблок money.ts), але документ,
+який друкується/експортується, мусить мати Σ(відображених рядків) === total. PO не зберігає per-line
+`amount` у БД — він обчислюється у `toDto`, тож round-once total з ним не узгоджений.
+
+**Фікс:** `totalAmount = sumMoney(computedLines.map(l => money(l.quantity * l.price)))` — Σ вже-округлених
+per-line сум. Тепер total дорівнює сумі рядків, які бачить бухгалтер.
+
+**Регресійний тест:** `purchase-orders.service.spec.ts` → `describe('PurchaseOrdersService.create —
+Bug #777…')`. Драйвить реальний `create`, асертить `Σ(res.lines[].amount) === res.totalAmount`.
+Доведено червоним БЕЗ фіксу: `AssertionError: expected 5.01 to be 5`.
+
+### Bug #778 — [MEDIUM] supplier-returns.service: той самий Σ(рядки) ≠ totalAmount [x] виправлено
+
+**Де:** `apps/api/src/modules/supplier-returns/supplier-returns.service.ts` — `create` (рядок ~180)
+та recompute у status-change/update (рядок ~298).
+
+**Симптом/причина:** ідентичний клас до #777. `toDto` показує per-line `amount = money(q × price)`,
+total рахувався round-once. На дробовій кількості рядки не б'ються з total.
+
+**Фікс:** обидва місця → `sumMoney(lines.map(l => money(l.quantity * price)))`.
+
+**Регресійний тест:** `supplier-returns.service.spec.ts` → `describe('SupplierReturnsService.create —
+Bug #778…')`. Увага: SR дедуплікує рядки за `goodId` (`deduplicateBy`) — тест використовує 3 РІЗНІ
+goodId, інакше рядки збились би в один і дивергенція б не проявилась. Доведено червоним БЕЗ фіксу:
+`expected 5.01 to be 5`.
+
+### Перевірено ЧИСТО (багів немає) — пункти 2 (WO/invoice), 3, 4, 5
+
+- **work-orders.service (recalcTotals, ~1263–1301):** total рахується з ВЖЕ-ЗБЕРЕЖЕНИХ рядкових
+  `amount`/`price` (Decimal(12,2), round-once від вже-округлених = Σ(округлених) — ідентично).
+  `totalParts` — SQL-aggregate збереженого `amount`. Інваріант тримається. НЕ дублюю — дивергенція
+  неможлива бо per-line amount зберігається у БД, не перераховується.
+- **invoices.service:** per-line `priceWithoutVat/vatAmount/priceWithVat` ЗБЕРІГАЮТЬСЯ у БД;
+  тотали = `sumLineTotals(Σ збережених)`. Σ(line.priceWithVat) === totalWithVat за побудовою. Чисто.
+- **cash.service (пункт 3):** баланс = `initial + Σ(IN) − Σ(OUT)`. `getBalances` (batch) і `getBalance`
+  дають однаковий результат — формула ідентична, перевірено на net-negative реєстрі (OUT>IN → обидва −350,
+  знак `sum * -1` НЕ перевернутий). Overdraft-guard: толеранс −0.001, копійкова нестача (100.01 vs 100.00)
+  → 400, float-дрейф (0.30) → проходить — усе вже покрито `cash.service.spec.ts` (рядки 369–573).
+  Коментар-гап: немає тесту що ГАНЯЄ один фікстур через ОБИДВА методи й порівнює — але семантика
+  коректна, це не баг.
+- **loyalty.service (пункт 4):** earn і redeem рахують `points = roundPoints(...)` РАЗ і використовують
+  те саме значення у balance-мутації (increment/decrement/gte) І у рядку леджера → Σ(ledger)===balance.
+  Redeem fractional-identity (10.007 → 10.01 у gte/decrement І ledger) уже покрито (spec рядки 86–98).
+  Earn fractional не має окремого тесту, але код структурно той самий single-value патерн — не баг.
+- **reports.service (пункт 5):** Bug #629 (float-дрейф `totalLabor × 0.4 → 1408.1200000000001`) НЕ
+  повернувся — `totalCostLabor/totalCost/grossProfit` квантовані `money()` (рядки 309–311), покрито
+  spec-ами. `margin` — ВІДСОТОК (`(grossProfit/totalRevenue)*100`), округлений до 2dp через `Math.round`,
+  НЕ `money()` — коректно. Додав guard-асерт у наявний profitability-тест (ловить пропуск ×100
+  і помилковий money() на відсотку).
+
+**Підсумок:** 2 реальні баги (#777, #778, той самий клас round-once-vs-per-line у PO/SR), обидва
+виправлені з регресійними тестами (червоні без фіксу). Пункти 3/4/5 — чисто, інваріанти тримаються,
+наявне покриття адекватне. api 2902/2902, tsc 0, eslint 0 errors.

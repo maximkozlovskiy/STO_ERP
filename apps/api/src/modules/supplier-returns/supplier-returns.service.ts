@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma, SupplierReturnStatus } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { money, moneyFromDecimal } from '../../common/utils/money';
+import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
@@ -175,7 +175,9 @@ export class SupplierReturnsService {
     await this.validateLineRefs(orgId, dedupedLines);
 
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_RETURN');
-    const totalAmount = money(dedupedLines.reduce((sum, l) => sum + l.quantity * l.price, 0));
+    // Bug #777: Σ(per-line money(q×price)) — toDto показує per-line amount = money(q×price),
+    // round-once суми розходиться з ними на дробових кількостях → рядки не б'ються з total.
+    const totalAmount = sumMoney(dedupedLines.map(l => money(l.quantity * l.price)));
 
     const sr = await this.prisma.supplierReturn.create({
       data: {
@@ -295,9 +297,8 @@ export class SupplierReturnsService {
           select: { quantity: true, price: true },
           take: MAX_QUERY_LIMIT,
         });
-        const totalAmount = money(
-          lines.reduce((sum, l) => sum + l.quantity * moneyFromDecimal(l.price), 0),
-        );
+        // Bug #777: Σ(per-line money(q×price)) — рядки мусять битись із total (див. create).
+        const totalAmount = sumMoney(lines.map(l => money(l.quantity * moneyFromDecimal(l.price))));
 
         await tx.supplierReturn.update({
           where: { id, orgId },

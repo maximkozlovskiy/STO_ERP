@@ -66,6 +66,10 @@ describe('ReportsService — Bug #629 квантування грошей у з�
     expect(has2Decimals(r.totalCostParts)).toBe(true);
     // Внутрішня узгодженість: grossProfit == totalRevenue − totalCost (до копійки).
     expect(r.grossProfit).toBe(Math.round((r.totalRevenue - r.totalCost) * 100) / 100);
+    // margin — ВІДСОТОК (grossProfit/totalRevenue × 100), НЕ грошова сума. Guard проти
+    // (а) пропуску ×100 (дало б 0.70 замість 69.96), (б) помилкового money() на відсотку.
+    expect(r.margin).toBe(Math.round((r.grossProfit / r.totalRevenue) * 100 * 100) / 100);
+    expect(r.margin).toBeGreaterThan(1); // відсоток у 0–100, не частка 0–1
   });
 
   it('profitability: 999.99 × 0.4 = 399.99600000000004 → 400.00 (half-away) квантовано', async () => {

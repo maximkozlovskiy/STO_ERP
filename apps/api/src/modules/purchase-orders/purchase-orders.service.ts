@@ -307,7 +307,11 @@ export class PurchaseOrdersService {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
-    const totalAmount = money(computedLines.reduce((s, l) => s + l.quantity * l.price, 0));
+    // Bug #777: total = Σ(per-line money(q×price)), а НЕ money(Σ raw). toDto показує
+    // бухгалтеру per-line amount = money(q×price); при дробовій кількості (quantity — Float)
+    // покрокове округлення рядків розходиться з round-once сумою → документ не б'ється
+    // (рядки 5.01, total 5.00). Σ вже-округлених рядків гарантує Σ(lines.amount) === total.
+    const totalAmount = sumMoney(computedLines.map(l => money(l.quantity * l.price)));
     const totalVat = sumMoney(computedLines.map(l => l.vatAmount));
 
     // Мультивалюта (Фаза 3): валюта замовлення — з DTO або базова org; base-сума тоталу по курсу
@@ -493,8 +497,9 @@ export class PurchaseOrdersService {
       const { vatAmount } = calcLineVat(l.price, l.quantity, vatRate, vatMode);
       return { ...l, vatRate, vatAmount };
     });
+    // Bug #777: Σ(per-line money(q×price)) — див. create. Рядки мусять битись із total.
     const totalAmount = computedLines
-      ? money(computedLines.reduce((s, l) => s + l.quantity * l.price, 0))
+      ? sumMoney(computedLines.map(l => money(l.quantity * l.price)))
       : moneyFromDecimal(po.totalAmount);
     const totalVat = computedLines ? sumMoney(computedLines.map(l => l.vatAmount)) : undefined;
 
