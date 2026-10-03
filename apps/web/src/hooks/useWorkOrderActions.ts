@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WO_SHAREABLE_STATUSES, WO_INVOICEABLE_STATUSES } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -33,6 +34,7 @@ export function useWorkOrderActions({
   setLinkedDocsRefreshKey,
   onUpdated,
 }: UseWorkOrderActionsParams) {
+  const { t } = useTranslation('workOrders');
   const [shareLoading, setShareLoading] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
@@ -119,7 +121,7 @@ export function useWorkOrderActions({
         { method: 'POST' },
       );
       await navigator.clipboard.writeText(`${window.location.origin}/estimate/${token}`);
-      if (features.toastEnabled) toast.success('Посилання скопійовано');
+      if (features.toastEnabled) toast.success(t('actions.linkCopied'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка';
       if (features.toastEnabled) toast.error(msg);
@@ -139,7 +141,7 @@ export function useWorkOrderActions({
         method: 'POST',
         body: JSON.stringify({}),
       });
-      if (features.toastEnabled) toast.success('SMS відправлено клієнту');
+      if (features.toastEnabled) toast.success(t('actions.smsSent'));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка відправки SMS';
       if (features.toastEnabled) toast.error(msg);
@@ -173,8 +175,8 @@ export function useWorkOrderActions({
       // tab не показує щойно створений рахунок без manual tab-switch.
       setLinkedDocsRefreshKey(k => k + 1);
       if (features.toastEnabled) {
-        toast.success(`Рахунок ${invoice.number} створено`, 6000, {
-          label: 'Відкрити',
+        toast.success(t('invoice.createdToast', { number: invoice.number }), 6000, {
+          label: t('invoice.openAction'),
           onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
         });
       }
@@ -197,7 +199,7 @@ export function useWorkOrderActions({
             // warn-only: manual recovery потрібен. Original error все одно показуємо нижче.
           }
         }
-        if (features.toastEnabled) toast.error(msg || 'Помилка виставлення рахунку');
+        if (features.toastEnabled) toast.error(msg || t('invoice.createError'));
         else setError(msg || 'Помилка');
       }
     } finally {
@@ -218,13 +220,13 @@ export function useWorkOrderActions({
       // щоб totals у preview popup були свіжими.
       setLinkedDocsRefreshKey(k => k + 1);
       if (features.toastEnabled) {
-        toast.success(`Рахунок ${invoice.number} оновлено`, 6000, {
-          label: 'Відкрити',
+        toast.success(t('invoice.updatedToast', { number: invoice.number }), 6000, {
+          label: t('invoice.openAction'),
           onClick: () => window.open(`/invoices/${invoice.id}`, '_blank'),
         });
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Помилка оновлення рахунку';
+      const msg = e instanceof Error ? e.message : t('invoice.refreshError');
       if (features.toastEnabled) toast.error(msg);
       else setError(msg);
     } finally {
@@ -245,9 +247,9 @@ export function useWorkOrderActions({
         // /find повертає null коли рахунку немає (за дизайном — не 404).
         // Race: інший admin скасував рахунок між POST і кліком. Користувач має знати.
         if (features.toastEnabled) {
-          toast.warning('Рахунок не знайдено. Можливо, його було скасовано.');
+          toast.warning(t('invoice.notFound'));
         } else {
-          setError('Рахунок не знайдено. Можливо, його було скасовано.');
+          setError(t('invoice.notFound'));
         }
       }
     } catch {

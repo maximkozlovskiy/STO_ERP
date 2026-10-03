@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { applyLocale } from '@/i18n/apply';
-import { STORAGE_KEY, resolveInitialLocale } from '@/i18n/config';
+import i18n, { STORAGE_KEY, resolveInitialLocale } from '@/i18n/config';
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, isLocale, type Locale } from '@/i18n/locale';
 import type { OrgSettings } from '@/app/(app)/settings/shared';
 
@@ -136,7 +136,10 @@ export function useLanguage() {
       // Реальний збій PUT: мова застосована локально (i18next + localStorage) і переживе
       // перезавантаження, але НЕ зберіглась у профілі — на іншому пристрої користувач
       // побачить стару мову. Раніше це глушилось повністю, і він вважав вибір збереженим.
-      toast.warning('Мову застосовано лише на цьому пристрої — не вдалося зберегти у профілі.');
+      // i18n.t, а НЕ useTranslation: цей callback має deps [] і спрацьовує ПІСЛЯ
+      // перемикання мови. Захоплене `t` показало б повідомлення ПОПЕРЕДНЬОЮ мовою —
+      // саме тією, яку користувач щойно покинув. i18n.t читає активну мову у момент виклику.
+      toast.warning(i18n.t('common:language.savedLocallyOnly'));
     });
   }, []);
 

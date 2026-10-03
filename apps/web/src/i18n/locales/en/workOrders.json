@@ -222,7 +222,10 @@
     "createError": "Invoice creation error",
     "refreshedToast": "Invoice lines refreshed from work order",
     "refreshError": "Invoice refresh error",
-    "pdfError": "PDF download error"
+    "pdfError": "PDF download error",
+    "updatedToast": "Invoice No. {{number}} updated",
+    "notFound": "Invoice not found. It may have been cancelled.",
+    "openAction": "Open"
   },
   "warranty": {
     "active": "Active",
@@ -281,5 +284,9 @@
     "created": "created",
     "deleted": "deleted",
     "changed": "changed"
+  },
+  "actions": {
+    "linkCopied": "Link copied",
+    "smsSent": "SMS sent to client"
   }
 }

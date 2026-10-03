@@ -16,5 +16,8 @@
   "actions": "Actions",
   "status": "Status",
   "total": "Total",
-  "noData": "No data"
+  "noData": "No data",
+  "language": {
+    "savedLocallyOnly": "Language applied on this device only — could not save it to your profile."
+  }
 }
