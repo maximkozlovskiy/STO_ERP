@@ -54,7 +54,16 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       a26cb8fc — sto-tester ЦИКЛ 1/3: Bug #780 (CRITICAL). FSM-реверс side-effect
+HEAD:       383a01db — review ЦИКЛ 1/3: DRY takeFromReserve + 6 стейтфул-тестів Bug #780.
+            Review підтвердив коректність Bug #780-фіксу (netReserved: RESERVATION>0,
+            RESERVATION_RELEASE<0 enforced у InventoryService; orgId у where; 1 findMany/наряд
+            без N+1; ключ goodId|warehouseId безколізійний бо UUID; normal-шлях не зламано бо
+            reserve/release ділять той самий coeffMap). Знайдено дубль reserve-математики у 2
+            методах → винесено takeFromReserve() (behavior-identical) + 6 тестів що покривають
+            самé обчислення (було лише tenant-scope). WEB_ORIGIN узгоджено у 3 місцях
+            (env.schema+docker-compose+Setup-Stack.ps1); isolate:false безпечний (0 resetModules,
+            env-специ idempotent/restored). api work-orders 148/148, tsc 0, eslint 0 errors.
+HEAD-prev:  a26cb8fc — sto-tester ЦИКЛ 1/3: Bug #780 (CRITICAL). FSM-реверс side-effect
             припускав стан, якого альтернативний валідний шлях не створив: резерв ставиться
             лише на APPROVED→IN_PROGRESS, але APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED і
             APPROVED→ON_HOLD→CANCELLED резерву не мають → безумовний RESERVATION_RELEASE кидав
@@ -475,6 +484,20 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Code review ЦИКЛ 1/3 — 2026-10-04, HEAD 383a01db:
+  383a01db refactor(review): DRY takeFromReserve + behavioral tests Bug #780.
+    Review 4 комітів циклу (9cc6dba0 perf / 43b1556c WEB_ORIGIN / a26cb8fc Bug #780).
+    Bug #780 ВЕРДИКТ: коректний. netReserved Σ(quantity): RESERVATION зберігається >0,
+    RESERVATION_RELEASE <0 (enforced InventoryService:95 відкидає release>0) → нетто вірний;
+    orgId присутній; 1 findMany/наряд (не N+1); ключ goodId|warehouseId безколізійний (UUID);
+    normal-шлях НЕ зламано — reserve/writeoff ділять coeffMap, held==baseQty → full release;
+    under-release на edited-parts — свідомий safe-вибір (краще за over-release чужого резерву).
+    ЗНАЙДЕНО (у working tree, незакоммічений покращуючий edit): дубль reserve-математики
+    (Math.min+Map.set) у writeOff/release → винесено takeFromReserve()+stockKey(),
+    behavior-identical. Спек: +6 стейтфул-тестів (ON_HOLD/normal/partial) — раніше лише
+    tenant-scope. Закоммічено. WEB_ORIGIN узгоджений у 3 місцях. isolate:false безпечний.
+    api work-orders 148/148, tsc 0, eslint 0 errors.
+
 Perf-аудит ЦИКЛ 1/3 — 2026-10-04, HEAD e71f755a (9cc6dba0 perf + e71f755a docs):
   9cc6dba0 perf(api): vitest isolate:false — api-набір 76.7s → 15-16s (×4.7), 3099/3099 green.
     Vitest сам діагностував: 500 модулів × 2506 оцінок (по разу/файл) = 80% tracked-часу
