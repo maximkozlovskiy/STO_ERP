@@ -527,6 +527,32 @@ grep -n "@@index" packages/database/prisma/schema/*.prisma
 
 ---
 
+## Крок 3b — Test-suite performance (vitest/jest)
+
+> Не рантайм продукту, але реальна ціна в CI і в dev-циклі. Перевіряти коли scope включає тести АБО коли ТЗ згадує час набору.
+
+### 3b.1 Vitest isolate — повторна оцінка спільних модулів на кожен файл
+
+```bash
+# НЕ grep — вимір. Сам Vitest діагностує у хвості звіту:
+pnpm --filter @sto/api exec vitest run --reporter=verbose 2>&1 | tail -5
+# Шукати: "evaluated M times" + "~Zs faster with isolate: false". import-частка Duration 70-80% = прапор.
+```
+
+**Сигнал:** `Duration` з часткою `import` 70-80% (не `tests`); рядок «Import N modules were evaluated M times» де M ≈ кількість spec-файлів; власна порада Vitest «faster with isolate: false».
+
+**Безпека ПЕРЕД зміною** (shared-worker leak інакше валить тести):
+
+```bash
+grep -rln "resetModules\|isolateModules\|vi.doMock" apps/api/src --include="*.spec.ts"   # має бути порожньо
+grep -rn "global\.\|globalThis\.\|process\.env\.[A-Z_]* =" apps/api/src --include="*.spec.ts" | grep -v stubEnv  # глоб. monkeypatch без restore
+for f in $(grep -rln "useFakeTimers" apps/api/src --include="*.spec.ts"); do grep -q "useRealTimers\|afterEach" "$f" || echo "NO-RESTORE: $f"; done  # має бути порожньо
+```
+
+**Фікс:** підтвердити прапорцем `vitest run --no-isolate` (baseline vs no-isolate, обидва green) → лише тоді `isolate: false` у конфізі. Якщо no-isolate валить файли — це leak-и без restore: долагодити ТІ файли, не вертати глобальний isolate. `--no-isolate` — ще й детектор брудної cross-file ізоляції (виявляє тести що тихо залежать від стану іншого файлу). Деталі: «Накопичені підходи» 2026-10-04.
+
+---
+
 ## Крок 4 — Виправлення
 
 Для кожної: прочитай файл → мінімальний точковий фікс → `pnpm --filter <package> exec tsc --noEmit` (0 errors) → якщо schema.prisma змінена: `cd packages/database && npx prisma db push --skip-generate`.
@@ -575,6 +601,16 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ## Накопичені підходи (оновлюється автоматично)
 
 > Формат кожного запису: **Сигнал** (+grep) · **Причина** · **Виявлення** · **Фікс** · **Impact** · **Де шукати ще**. Записи від найновіших до найстаріших.
+
+### 2026-10-04 — Vitest isolate:true: повторна оцінка спільних модулів по разу на кожен spec-файл (найбільша стаття часу набору)
+
+**Сигнал:** час проходу тестів росте лінійно з кількістю spec-файлів, а не з обсягом логіки; у звіті Vitest рядок виду «Import N modules were evaluated M times · Xs total, Y% of tracked time» + його власна порада «~Zs faster with isolate: false». Повний набір витрачає 70-80% tracked-часу на `import`, не на `tests`. Дефолт `isolate: true` дає кожному spec-файлу СВІЙ модульний граф → спільне ядро (Nest/Prisma-client/zod/реєстри) компілюється й оцінюється знову для КОЖНОГО файлу (modules × files разів).
+**Grep/вимір:** НЕ grep по коду — вимір прогону. `pnpm --filter <pkg> exec vitest run --reporter=verbose 2>&1 | tail -5` → шукати «evaluated M times» і «faster with isolate: false». Зафіксувати wall-time baseline (`Duration`), тоді `vitest run --no-isolate` → порівняти. Win реальний ЛИШЕ коли підтверджено вимір обох прогонів + 100% green у no-isolate.
+**Причина:** isolate:true — безпечний дефолт (кожен файл чистий), але для mock-based unit-набору (без e2e-БД, без module-level mutable singletons) ізоляція дає нульову користь і повну ціну повторної оцінки. Набір ростився по файлу на модуль; ніхто не переглянув дефолт після того як кількість файлів перейшла за ~100.
+**Виявлення:** великий unit-набір (100+ spec-файлів) з важким спільним ядром. ПЕРЕД зміною ПІДТВЕРДИТИ безпеку (інакше ламаються тести через shared-worker leak): (1) немає `vi.resetModules`/`isolateModules`/`vi.doMock` (жоден спек не покладається на свіжий модуль на файл); (2) немає глобального monkeypatch без restore (`global.X=`, `process.env.X=` поза stubEnv); (3) усі `useFakeTimers` мають `useRealTimers`/afterEach; (4) `vi.mock` лишається file-scoped і скидається між файлами незалежно від isolate — НЕ ризик. Якщо хоч одна умова не виконана — або лишити isolate:true, або спершу долагодити restore-гігієну.
+**Фікс:** `isolate: false` у `vitest.config.ts` (топ-рівень `test`). Перевірити прапорцем `--no-isolate` ДО редагування конфіга (не комітити наосліп). Якщо no-isolate валить N файлів — це leak-и stubEnv/timers/spy без restore: НЕ вертати глобальний isolate, а долагодити ті файли (або лишити ТІЛЬКИ їх ізольованими через `test.sequence`/окремий project). Докласти `maxWorkers` уже стоїть — isolate:false ортогональний.
+**Impact:** вимір на реальному наборі — 76.7s → 15-16s wall (×4.7), import-частка 79% → 31%, 3099/3099 green без зміни коду/тестів. Пастка-вимір: `--no-isolate` виявляє ПРИХОВАНІ cross-file залежності (стрей-edit env.schema без оновлення spec валив 2 тести і в isolate:true при запуску файлу окремо — isolate маскувало через те, що повний набір ДАВАВ іншому файлу запис process.env). Тобто no-isolate — ще й детектор брудної ізоляції.
+**Де шукати ще:** будь-який пакет з власним vitest/jest-конфігом і великим unit-набором (web-component-набір, packages/shared). Jest-аналог — `--runInBand` vs workers + `testEnvironment`; там ціна інша (процеси, не модульні графи), але принцип «дефолт ізоляції vs розмір набору» той самий. НЕ чіпати e2e/integration-набори що РЕАЛЬНО піднімають БД/додаток на файл — там ізоляція несе сенс.
 
 ### 2026-10-02 — Повторне ДОРОГЕ перетворення того самого завантаженого файлу у multi-request wizard (OCR/парсинг двічі) → кеш за хешем вмісту
 
