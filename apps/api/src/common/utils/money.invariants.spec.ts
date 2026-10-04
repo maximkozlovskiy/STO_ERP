@@ -112,7 +112,9 @@ describe('money — інваріанти', () => {
     // moneyFromDecimal стоїть там, де був Number(x), тож контракт мусить бути не вужчим.
     expect(moneyFromDecimal({ toString: () => '350' })).toBe(350);
     expect(moneyFromDecimal('42.555')).toBe(42.56);
-    expect(moneyFromDecimal({ valueOf: () => 7.891 })).toBe(7.89);
+    // `valueOf` не входить у union-підпис, але Number() його використає — каст
+    // відображає саме цей рантайм-шлях (див. докблок moneyFromDecimal).
+    expect(moneyFromDecimal({ valueOf: () => 7.891 } as unknown as number)).toBe(7.89);
     // toNumber має пріоритет, якщо є обидва (справжній Prisma Decimal)
     expect(moneyFromDecimal({ toNumber: () => 1.5, toString: () => '999' })).toBe(1.5);
   });
