@@ -18,8 +18,10 @@ import { BullBoardAuthModule } from './bull-board-auth.module';
  *     bull-board на Fastify монтується як plugin і обробляє свої роути повз Nest-pipeline (перевірено
  *     live: consumer.apply(middleware) не спрацьовував, роут віддавав 200 без токена).
  *
- * Пакети зафіксовано на 5.23.0 — остання лінійка bull-board, сумісна з Fastify 4 (@fastify/view@^8,
- * @fastify/static@^6). v6+/v9 тягнуть @fastify/static@^8 → вимагає Fastify 5 → FST_ERR на старті.
+ * ВЕРСІЇ: bull-board 9.10.2 + @fastify/static ^10 під Fastify 5 (після оновлення стека, аудит
+ * 2026-10). Раніше тут було зафіксовано 5.23.0 під Fastify 4 — той коментар застарів разом із
+ * оновленням і тепер стверджував протилежне до встановленого. Лінійка bull-board мусить
+ * відповідати мажору Fastify: розбіжність дає FST_ERR на старті, а не зрозумілу помилку.
  *
  * 14 черг: forFeature резолвить Queue за іменем через `moduleRef.get(getQueueToken(name), {strict:false})`.
  * Queue-провайдери з registerQueue у feature-модулях scoped до тих модулів, тож реєструємо ті самі імена
