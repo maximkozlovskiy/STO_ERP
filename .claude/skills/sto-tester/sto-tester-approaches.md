@@ -10,6 +10,20 @@
 
 ## Накопичені підходи (оновлюється автоматично)
 
+### 2026-10-04 — Hard-delete НА МОДЕЛІ БЕЗ `deletedAt` — це НЕ порушення §5, а задум — Area: backend / soft-delete / false-positive
+
+**Сигнал:** сервіс робить `prisma.<x>.deleteMany({ where: { id, orgId } })` (або `.delete()`) замість soft-delete `updateMany({deletedAt})`. Чеклист §1.1/CLAUDE.md §5 «soft delete скрізь» штовхає позначити це багом. ПЕРШ ніж фіксувати — звірити зі СХЕМОЮ: `awk '/^model <X> /,/^}/' packages/database/prisma/schema/*.prisma | grep deletedAt`. Якщо колонки `deletedAt` у моделі НЕМА — hard delete ЄДИНО можливий і правильний; «фікс» на `updateMany({deletedAt})` не скомпілюється / впаде в рантаймі (невідоме поле). Реальний приклад: `Comment` (03_employees.prisma) не має `deletedAt` → `comments.service.remove` правомірно hard-видаляє через `deleteMany`.
+
+**Причина виникнення:** CLAUDE.md §5 сформульовано категорично («ніколи `prisma.X.delete()`»), але воно стосується АГРЕГАТІВ з історією/sync; дрібні похідні записи (коментарі, idempotency-ключі, dead-letter, деякі junction) навмисно без `deletedAt` — їх втрата безпечна, а soft-delete лише роздував би таблицю. Тестер, що застосовує §5 механічно без перегляду схеми, рапортує неіснуючий баг і може «виправити» робочий код у нерабочий.
+
+**Підхід до виявлення:** soft-delete-інваріант перевіряти ДВОФАЗНО: (1) чи модель МАЄ `deletedAt` у схемі; (2) лише якщо має — вимагати `updateMany({deletedAt})` + `orgId` у where + `count===0 → 404`. Якщо не має — зафіксувати тестом САМЕ hard-delete (`deleteMany`, НЕ `updateMany`) з `orgId` у where (tenant-ізоляція й race-window тримаються навіть при hard-delete) і прокоментувати, що відсутність `deletedAt` — за задумом схеми. Той самий принцип, що «semantic map READ not HARDCODED»: інваріант звіряти з ДЖЕРЕЛОМ (схемою), не з припущенням.
+
+**Підхід до фіксу:** якщо модель без `deletedAt` — НЕ чіпати код; натомість закріпити поведінку регресійним тестом (`expect(prisma.<x>.updateMany).toBeUndefined()` + `deleteMany` викликано з `{ where: { id, orgId } }`). Якщо ж модель МАЄ `deletedAt`, а сервіс усе одно hard-видаляє — ось ТОДІ це справжній баг §5.
+
+**Severity:** process / false-positive-guard (запобігає хибному рапорту й зламаному «фіксу»); сам по собі hard-delete на моделі без `deletedAt` — не баг.
+
+**Де шукати ще:** будь-який `deleteMany`/`delete` у сервісі — перед позначенням звірити схему; кандидати на легітимний hard-delete: `Comment`, `IdempotencyKey`, `DeadLetterJob`-похідні, junction-таблиці (`serviceWork`/`serviceGood` — hard за §eталон services.spec), ephemeral/cache-подібні записи. Дзеркало: Bug #297 (soft-delete + @@unique) і #723 (junction без deletedAt у `_count`) — обидва про наслідки ВІДСУТНОСТІ `deletedAt`, тут — про те, що ця відсутність навмисна.
+
 ### 2026-10-03 — Bug #777/#778 — per-line округлення (покрокове) ≠ total (round-once) → Σ(рядки)≠total — Area: backend / money / document-totals
 
 **Сигнал:** документ-сервіс рахує `totalAmount = money(Σ quantity×price)` (round-once від СИРИХ значень), а `toDto`/mapper/PDF того ж сервісу показує per-line `amount = money(l.quantity × l.price)` (округлення НА КОЖЕН рядок). Коли `quantity` — `Float` (літри/кг/дробові), стратегії розходяться: Σ(округлених рядків) ≠ round-once(Σ сирих). Grep: `grep -rnE "money\(.*reduce\(.*quantity.*\*.*price|money\(.*reduce\(\(s" apps/api/src/modules/**/*.service.ts` (round-once total) → для кожного хіта відкрити mapper/toDto того ж файлу й знайти `amount: money(l.quantity * .*price)`. Якщо per-line amount НЕ зберігається у БД (колонки `amount` у line-моделі нема) і quantity дробова — дивергенція реальна.

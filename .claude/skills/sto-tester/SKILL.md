@@ -327,6 +327,7 @@ grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "W
 **PATCH що змінює unique-поле → ConflictException (Bug #151)**
 
 - [ ] `update()` з `dto.field` що є у `@@unique` → re-check: `findFirst({ orgId, field, NOT: { id } })` → `ConflictException` якщо знайшов
+- [ ] **Hard-delete на моделі БЕЗ `deletedAt` = НЕ порушення §5 (false-positive guard):** перед тим як позначити `deleteMany`/`delete` багом, звірити зі схемою — `awk '/^model <X> /,/^}/' packages/database/prisma/schema/*.prisma | grep deletedAt`. Нема колонки → hard-delete правильний і єдино можливий (`Comment`, idempotency/dead-letter, junction `serviceWork`/`serviceGood`); закріпити ТЕСТОМ саме hard-delete з `orgId` у where, а не «виправляти» на `updateMany`. Soft-delete-інваріант перевіряти двофазно: (1) модель МАЄ `deletedAt`? (2) лише тоді вимагати `updateMany({deletedAt})`+orgId+`count===0→404`. Деталі: «sto-tester-approaches.md» 2026-10-04.
 - [ ] **CRITICAL для soft-delete + @@unique без partial filter (Bug #297):** `update()` re-check MUST НЕ фільтрувати `deletedAt: null` (інакше soft-deleted рядок з тим же unique field проходить як «не дубль» → потім `prisma.update` отримає P2002 → 500). Правильно: `findFirst({ orgId, field: dto.field, NOT: { id } })` без `deletedAt: null`; якщо знайшов і `duplicate.deletedAt != null` → `ConflictException('... існує у архіві. Спочатку відновіть її або оберіть інше скорочення.')`; інакше звичайний `ConflictException`.
 
 **restore() prep-checks (Bug #298, #305)**
