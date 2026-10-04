@@ -78,6 +78,49 @@ describe('ReconciliationProcessor', () => {
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('DRIFT paidAmount'));
   });
 
+  it('Bug #781: ручне закриття standalone-рахунку (paidAmount=amount, 0 Payment-рядків, дзеркальний settlement-PAYMENT) → 0 drift', async () => {
+    // Bug #675-дизайн: manual →PAID standalone-рахунку виставляє paidAmount=amount і створює
+    // settlement PAYMENT(documentType='Invoice', documentId=inv) — АЛЕ НЕ створює Payment-рядок.
+    // Інваріант paidAmount == Σ Payment.amount тут хибний ЗА ПОБУДОВОЮ. Коректний інваріант
+    // враховує дзеркальний PAYMENT. Без фіксу → фальшивий DRIFT paidAmount на КОЖЕН прогін.
+    prisma.invoice.findMany.mockResolvedValue([{ id: 'inv1', paidAmount: 100 }]);
+    prisma.payment.groupBy.mockResolvedValue([]); // жодного реального платежу
+    prisma.settlementTransaction.groupBy.mockResolvedValue([
+      // Дзеркальний PAYMENT ручного закриття — у леджері проти цього рахунку.
+      { documentId: 'inv1', type: 'PAYMENT', _sum: { amount: 100 } },
+    ]);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    // MUTATION-VERIFY: прибрати врахування дзеркального PAYMENT → paidAmount=100 ≠ Σpayment=0 → DRIFT.
+    expect(errSpy).not.toHaveBeenCalledWith(expect.stringContaining('DRIFT paidAmount'));
+  });
+
+  it('Bug #781: часткова реальна оплата + ручне дозакриття → 0 drift (Σ Payment + дзеркальний PAYMENT)', async () => {
+    // Реальна часткова оплата 30 (Payment-рядок) + ручне →PAID дозакриває 70 дзеркальним PAYMENT.
+    // paidAmount=100 == 30 (Payment) + 70 (mirror). Жоден компонент окремо не дорівнює paidAmount.
+    prisma.invoice.findMany.mockResolvedValue([{ id: 'inv1', paidAmount: 100 }]);
+    prisma.payment.groupBy.mockResolvedValue([{ invoiceId: 'inv1', _sum: { amount: 30 } }]);
+    prisma.settlementTransaction.groupBy.mockResolvedValue([
+      { documentId: 'inv1', type: 'PAYMENT', _sum: { amount: 70 } },
+    ]);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    expect(errSpy).not.toHaveBeenCalledWith(expect.stringContaining('DRIFT paidAmount'));
+  });
+
+  it('Bug #781: РЕАЛЬНИЙ paidAmount-дрейф усе ще ловиться (paidAmount > Σ Payment + mirror)', async () => {
+    // Регресія-страховка: фікс НЕ має замаскувати справжній дрейф. paidAmount=100, але сума
+    // реальних+дзеркальних = 60 → Δ=40 → DRIFT мусить лишитись.
+    prisma.invoice.findMany.mockResolvedValue([{ id: 'inv1', paidAmount: 100 }]);
+    prisma.payment.groupBy.mockResolvedValue([{ invoiceId: 'inv1', _sum: { amount: 30 } }]);
+    prisma.settlementTransaction.groupBy.mockResolvedValue([
+      { documentId: 'inv1', type: 'PAYMENT', _sum: { amount: 30 } },
+    ]);
+    const errSpy = vi.spyOn(processor['logger'], 'error');
+    await processor.process(job);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('DRIFT paidAmount'));
+  });
+
   it('keyset-пагінація: повний батч (=RECON_BATCH_SIZE) → другий findMany-виклик з cursor (немає silent truncation)', async () => {
     // Перший батч рівно RECON_BATCH_SIZE (1000) рядків → скан МУСИТЬ дозапросити наступну сторінку.
     // Якщо хтось відкотить пагінацію на одиничний findMany — 1001-й рядок з дрейфом лишиться непоміченим.

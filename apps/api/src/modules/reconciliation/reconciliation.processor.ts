@@ -149,18 +149,46 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
     return drift;
   }
 
-  /** Invoice.paidAmount vs Σ Payment.amount по invoiceId. */
+  /**
+   * Invoice.paidAmount vs Σ Payment.amount(invoiceId) + Σ дзеркальний settlement-PAYMENT.
+   *
+   * Bug #781: paidAmount зростає ДВОМА шляхами, не одним:
+   *   (1) реальна оплата (payments-модуль) → Payment-рядок (invoiceId) + інкремент paidAmount;
+   *   (2) ручне →PAID standalone-рахунку (Bug #675) → paidAmount=amount + settlement
+   *       PAYMENT(documentType='Invoice', documentId=inv) БЕЗ Payment-рядка.
+   * Інваріант `paidAmount == Σ Payment.amount` ловив би (2) як фальшивий дрейф на КОЖЕН прогін
+   * (operator чує «вовки!» і перестає довіряти детектору). Коректний інваріант додає дзеркальний
+   * PAYMENT з леджера. Решта settlement-проводок (CHARGE/FX/реальні оплати з documentType='Payment')
+   * сюди не входять — беремо лише PAYMENT проти самого рахунку.
+   */
   private async checkInvoicePaid(orgId: string): Promise<number> {
     // Payment — append-only (без deletedAt): усі рядки враховуються. groupBy — SQL-side
     // агрегат (обмежений к-стю invoiceId з платежами), не raw-scan → без пагінації.
-    const payments = await this.prisma.payment.groupBy({
-      by: ['invoiceId'],
-      where: { orgId, invoiceId: { not: null } },
-      _sum: { amount: true },
-    });
+    const [payments, mirrorPayments] = await Promise.all([
+      this.prisma.payment.groupBy({
+        by: ['invoiceId'],
+        where: { orgId, invoiceId: { not: null } },
+        _sum: { amount: true },
+      }),
+      // Дзеркальні PAYMENT ручного закриття: settlement-проводка проти самого рахунку
+      // (documentType='Invoice'), якій НЕ відповідає Payment-рядок. documentId = invoice.id.
+      this.prisma.settlementTransaction.groupBy({
+        by: ['documentId'],
+        where: { orgId, type: 'PAYMENT', documentType: 'Invoice', documentId: { not: null } },
+        _sum: { amount: true },
+      }),
+    ]);
     const paidByInvoice = new Map<string, number>();
     for (const p of payments) {
       if (p.invoiceId) paidByInvoice.set(p.invoiceId, Number(p._sum.amount ?? 0));
+    }
+    for (const m of mirrorPayments) {
+      if (m.documentId) {
+        paidByInvoice.set(
+          m.documentId,
+          (paidByInvoice.get(m.documentId) ?? 0) + Number(m._sum.amount ?? 0),
+        );
+      }
     }
     let drift = 0;
     // Keyset-пагінований скан Invoice — повне покриття без завантаження всіх рядків у пам'ять.
@@ -181,7 +209,7 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
         if (Math.abs(actual - expected) > MONEY_EPSILON) {
           drift++;
           this.logger.error(
-            `DRIFT paidAmount org=${orgId} invoice=${inv.id}: paidAmount=${actual} ≠ Σpayment=${expected} (Δ=${actual - expected})`,
+            `DRIFT paidAmount org=${orgId} invoice=${inv.id}: paidAmount=${actual} ≠ Σ(Payment+дзеркальний)=${expected} (Δ=${actual - expected})`,
           );
         }
       }

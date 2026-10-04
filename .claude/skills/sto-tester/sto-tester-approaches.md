@@ -3082,3 +3082,63 @@ CANCELLED-з-CHARGE — НЕ баги; скасування фізично от�
 **Де шукати ще (майбутні FSM):** будь-який НОВИЙ агрегат з inc-на-одному-переході. При появі РЕАЛЬНОГО
 реверсу (release/decrement/сторно) у цих п'яти — переаудитувати саме його. Поки реверсу немає — structural
 guard достатній.
+
+---
+
+### 2026-10-04 — ЦИКЛ 3 — Drift-детектор із неповним інваріантом (агрегат ← кілька джерел) — Area: backend / reconciliation / money
+
+**Bug #781 (HIGH).** `ReconciliationProcessor.checkInvoicePaid` звіряв `Invoice.paidAmount` лише з
+`Σ Payment.amount(invoiceId)`. Але `paidAmount` оновлюється ДВОМА незалежними продакшн-шляхами:
+(1) реальна оплата (payments-модуль) → `Payment`-рядок + інкремент `paidAmount`;
+(2) ручне `→PAID` standalone-рахунку (Bug #675, FSM `SENT/PARTIALLY_PAID/OVERDUE→PAID`) →
+`paidAmount=amount` + settlement `PAYMENT(documentType='Invoice', documentId=inv)` **без `Payment`-рядка**.
+Шлях (2) робив `paidAmount > Σ Payment` → фальшивий `DRIFT paidAmount` на КОЖЕН прогін звірки для
+будь-якого рахунку, закритого вручну.
+
+**Сигнал (статичний).** Reconcile/drift-процесор рахує `aggregate == Σ source`, де `aggregate` — поле,
+що фізично мутується у >1 місці кодбази. Детектор: знайти `groupBy`/`_sum` у `*.processor.ts`
+reconcile-джоба → для КОЖНОГО порівнюваного поля зробити
+`grep -rn "<field>: .*increment\|<field>: <lit>\|data:.*<field>" apps/api/src/modules/**/*.service.ts`
+→ якщо write-сайтів більше, ніж доданків у Σ — інваріант неповний. Тут: `paidAmount` пишеться у
+`payments.service` (increment) ТА `invoices.service.transition` (set=amount), а Σ мало лише payments.
+
+**Причина виникнення.** Reconcile пишуть ПІСЛЯ того, як основний потік (payment) уже давно існує; mirror-
+проводку ручного закриття (Bug #675) додали пізніше в ІНШОМУ модулі. Автор reconcile природно звіряв
+«очевидне» джерело (`Payment`-таблицю) і не знав про другий шлях, бо він append-ить у settlement-ledger,
+а не у Payment-таблицю. Інваріант був істинним на момент написання, зламався з додаванням шляху (2).
+
+**Підхід до виявлення.** Для кожного `aggregate vs Σsource` у drift-детекторі — НЕ довіряти назві поля;
+перелічити ВСІ сервіси/транзакції, що мутують `aggregate`, і довести, що Σ покриває КОЖЕН. Особлива
+увага до mirror/compensating-проводок у ledger-і (append-only), які НЕ мають рядка у «очевидній» таблиці-
+джерелі. Такі проводки позначені `documentType`/`documentId` на сам агрегат-документ.
+
+**Підхід до фіксу.** Додати відсутнє джерело у очікувану суму (не прибирати перевірку!). Тут: другий
+`groupBy(by:['documentId'], where:{type:'PAYMENT', documentType:'Invoice'})` + злиття у `paidByInvoice`.
+Дедуплікація: реальні оплати мають settlement `documentType='Payment'` (не 'Invoice'), тож mirror-фільтр
+їх не захоплює — немає подвійного рахунку. Оновити текст DRIFT-мітки (`Σ(Payment+дзеркальний)`), щоб не
+брехати у логах.
+
+**Регресія (mutation-verified).** Три тести у `reconciliation.processor.spec.ts`:
+(1) manual-close: `paidAmount=100`, 0 Payment-рядків, mirror PAYMENT=100 → **0 drift** (падав `Δ=100` без фіксу);
+(2) часткова реальна (30) + ручне дозакриття (mirror 70) → **0 drift** (падав `Δ=70` без фіксу);
+(3) СТРАХОВИЙ: `paidAmount=100`, Σ(Payment+mirror)=60 → **DRIFT усе ще логується** (щоб фікс не замаскував
+реальне пошкодження). Доведено: перші два падали до фіксу, третій відрізняє легітимний стан від справжнього дрейфу.
+
+**Severity:** HIGH. Не ламає дані, але знецінює СТОРОЖА даних: фальшиві DRIFT-логи на штатному потоці →
+оператор/розробник перестає довіряти детектору → реальний дрейф (пошкодження балансу/залишку) губиться у
+шумі. Прямий удар по ADR-001 (цілісність на локальній БД без хмарного бекапу).
+
+**Де шукати ще.** `checkBalances`/`checkStock` того ж процесора — перевірено у ЦИКЛі 3, чисті
+(balance враховує `BALANCE_SIGN` усіх типів транзакцій; stock = Σ StockBatch.remainingQty — єдине джерело
+за побудовою createMovement). `WorkOrder.paidAmount` — росте лише реальними Payment (одне джерело, OK).
+Будь-який МАЙБУТНІЙ reconcile/drift-чек або матеріалізований лічильник, звірюваний проти Σ однієї таблиці,
+коли поле має compensating/mirror-проводки деінде. Родич: #688 (двоступеневий money-write без atomic-лінку),
+але корінь інший — там дублювання запису, тут неповнота звірки.
+
+**Інші напрямки ЦИКЛу 3 — перевірено, ЧИСТО (не баг, фіксується як висновок):**
+крос-модульна Σ грошей (рівно 1 CHARGE на борг: WO→CHARGE на COMPLETED, standalone-invoice→CHARGE на SEND,
+WO-invoice створюється DRAFT без CHARGE — double/no-CHARGE шляху немає); межові значення (порожній наряд →
+COMPLETED заблоковано `chargeAmount<=0`; createMovement guard-ить quantity=0/!isFinite/over-release/over-reserve);
+конкурентність (WO.transition CAS-flip first, invoice-payment CAS `paidAmount=prevPaid`, createMovement row-locked
+post-checks); Σ stock==Σ batch (інваріант за побудовою + DB CHECK + reconcile). Після трьох циклів клас #780
+та суміжні — вичерпані; #781 — окремий клас (неповнота звірки, не асиметрія реверсу).

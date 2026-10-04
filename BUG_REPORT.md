@@ -6648,3 +6648,66 @@ FSM-тестів, що фіксують ПРИЧИНУ чистоти (терм�
 тут нічого б не довів — реального реверсу у цих FSM немає, захист тримається на ФОРМІ мапи.
 
 **Стан:** api 3114/3114 (3107+7), tsc 0 (вкл. tsconfig.spec.json), eslint 0 errors.
+
+---
+
+## Session 2026-10-04 — ЦИКЛ 3/3: крос-модульні інваріанти наскрізь
+
+Напрямок циклу 3 (не повторює цикли 1-2, що дивились УСЕРЕДИНІ модулів): інваріанти,
+що перетинають модулі; межові значення; конкурентність; часткові збої.
+
+### [x] Bug #781 (HIGH) — ReconciliationProcessor.checkInvoicePaid: неповний крос-модульний інваріант → фальшивий DRIFT на КОЖЕН прогін
+
+**Модуль:** `apps/api/src/modules/reconciliation/reconciliation.processor.ts`
+
+**Клас:** агрегат (`Invoice.paidAmount`) оновлюється ДВОМА шляхами, а drift-детектор звіряв
+його лише з ОДНИМ джерелом → легітимний стан читається як пошкодження даних.
+
+**Суть.** `paidAmount` зростає двома незалежними шляхами:
+
+1. Реальна оплата (payments-модуль) → `Payment`-рядок (invoiceId) + інкремент `paidAmount`;
+2. Ручне `→PAID` standalone-рахунку (Bug #675) → `paidAmount=amount` + settlement
+   `PAYMENT(documentType='Invoice', documentId=inv)` АЛЕ **БЕЗ `Payment`-рядка**.
+
+Reconciliation порівнював `Invoice.paidAmount` лише з `Σ Payment.amount(invoiceId)`. Для
+будь-якого рахунку, закритого вручну (досяжно через FSM `SENT/PARTIALLY_PAID/OVERDUE → PAID`),
+`paidAmount > Σ Payment` → `DRIFT paidAmount` логувався на КОЖНОМУ прогоні звірки.
+
+**Наслідок (чому HIGH, не косметика).** A3-reconciliation — це сторож цілісності даних
+(ADR-001/data-integrity). Фальшиві спрацювання на штатному потоці ручного закриття = «вовки!»:
+оператор/розробник тоне у фальшивих DRIFT-логах і перестає довіряти детектору → РЕАЛЬНИЙ
+дрейф (пошкодження балансу/залишку) губиться у шумі. Детектор знецінюється повністю.
+
+**Мутаційний доказ (тест падав ДО фіксу):**
+`reconciliation.processor.spec.ts` → 2 нові тести (manual-close з 0 Payment-рядків; часткова
+реальна + ручне дозакриття) падали з
+`DRIFT paidAmount invoice=inv1: paidAmount=100 ≠ Σpayment=30 (Δ=70)` до фіксу.
+
+**Фікс.** Коректний інваріант:
+`paidAmount == Σ Payment.amount(invoiceId) + Σ settlement-PAYMENT(documentType='Invoice', documentId=inv)`.
+Додано паралельний `settlementTransaction.groupBy(by:['documentId'], where:{type:'PAYMENT',
+documentType:'Invoice'})`; дзеркальні суми додаються у `paidByInvoice`. Решта проводок
+(CHARGE/FX/реальні оплати з documentType='Payment') не входять — беремо лише PAYMENT проти
+самого рахунку. Мітку DRIFT оновлено (`Σ(Payment+дзеркальний)`).
+
+**Регресійний guard:** 3-й новий тест доводить, що СПРАВЖНІЙ дрейф (`paidAmount > Σ+mirror`)
+усе ще ловиться — фікс не замаскував реальне пошкодження.
+
+### Інші напрямки циклу 3 — перевірено, ЧИСТО
+
+- **Σ грошей наскрізь (WO COMPLETED → CHARGE; invoice SEND → CHARGE; PAID → mirror PAYMENT):**
+  рівно ОДИН CHARGE на борг. WO-рахунок не нараховує CHARGE при `createFromWorkOrder`
+  (DRAFT, без проводки) — борг уже є з COMPLETED наряду; standalone-рахунок нараховує CHARGE
+  лише на SEND (`isStandaloneSend = workOrderId===null`). Double-CHARGE/no-CHARGE шляху немає.
+- **Межові значення:** порожній/нульовий наряд → COMPLETED заблоковано (`chargeAmount<=0 →
+totalZeroCannotComplete`). `createMovement`: quantity===0 / !isFinite(quantity|price) /
+  від'ємний RESERVATION_RELEASE / RETURN<0 / over-release / over-reserve — усі з guard-ами.
+- **Конкурентність на реальних шляхах:** WO.transition — CAS-flip перший у `where:{status}`
+  (count===0→throw), один CHARGE/один reverse; invoice payment — CAS `where:{paidAmount=prevPaid}`;
+  createMovement — row-locked post-check проти concurrent WRITEOFF/RESERVATION. Усі тримають.
+- **Σ StockItem.quantity == Σ StockBatch.remainingQty:** інваріант за побудовою у createMovement
+  (consume в тій самій tx після upsert) + DB CHECK nonneg + reconciliation checkStock. Чисто.
+
+**Стан ЦИКЛ 3:** api 3118/3118 (3115+3, 2 повні прогони), tsc 0 (вкл. tsconfig.spec.json),
+eslint 0 errors. Висновок: після трьох циклів клас #780 та крос-модульні інваріанти наскрізь
+вичерпані; #781 — окремий клас (неповнота drift-звірки, не асиметрія реверсу), знайдено+виправлено.
