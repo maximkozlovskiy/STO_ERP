@@ -9,8 +9,8 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-03 (АУДИТ Кроки 1-4 ЗАКРИТО + прохід по техборгу — docs/AUDIT-2026-10.md,
-            docs/TECH-DEBT.md)
+Дата:       2026-10-04 (QA ЦИКЛ 3/3 ЗАКРИТО: sto-review ФІНАЛ — код коректний, 1 дрібний
+            comment-sync фікс; api 3118/3118, web 969/969, E2E 359/0/2)
 Останнє:    Money РОЗКАТАНО НА ВЕСЬ API (d7018205) — roundMoney у прод-коді = 0, 14 модулів.
             Межа застосування (MP-B13): брендувати ОБЧИСЛЕННЯ, не серіалізацію; ставки,
             кількості й відсотки НЕ брендувати (бали лояльності — Decimal(12,2) за
@@ -54,7 +54,24 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       bdf89b7f — sto-optimize ЦИКЛ 3/3 (ОСТАННІЙ perf-цикл). Фронт-напрям:
+HEAD:       3d0a8c8d — sto-review ЦИКЛ 3/3 ФІНАЛ (review + /simplify + /code-review
+            разом на файлах Bug #781 + staleTime). ВЕРДИКТ: код коректний, 1 дрібний фікс.
+            · Bug #781 (reconciliation mirror-groupBy): дедуп НАДІЙНИЙ — реальна оплата завжди
+              documentType='Payment', дзеркальне закриття завжди 'Invoice' (інваріант фільтрує
+              type='PAYMENT'+documentType='Invoice'; FX = FX_GAIN/LOSS, не ловиться). Той самий
+              split уже в проді (invoices.service FX-хук рядки 548-551) → інваріант тепер ДЗЕРКАЛИТЬ
+              реальну логіку побудови paidAmount, а не вгадує. groupBy має orgId; покритий індексом
+              (orgId, documentType, documentId); один запит на орг у Promise.all (не N+1). Страховий
+              тест (paidAmount=100 vs 60 → DRIFT) достатній — прямо доводить, що mirror-add не маскує
+              справжній дрейф. DRIFT-мітка оновлена «Σ(Payment+дзеркальний)» — не вводить в оману.
+            · staleTime 5хв (useCashRegisters/useExpenseCategories): домен-коректно. useCashRegisters
+              повертає ДОВІДНИК кас (назва/валюта/конфіг), НЕ стан зміни — відкриття зміни на іншому
+              пристрої пише CashShift (окремий ключ, staleTime 15s), тож 5хв НЕ затримує видимість.
+            · Єдиний фікс: class-level JSDoc інваріанта #3 ще описував старий «Σ Payment.amount»
+              (comment-that-lies після #781) → синхронізовано з методом. Поведінка без змін.
+            Перевірка: api tsc 0, web tsc 0, eslint 0 errors (3 warn у pre-#781 keyset-тесті —
+            out-of-scope), api 3118/3118 ДВІЧІ (детерміновано), web 969/969.
+HEAD-review-prev: bdf89b7f — sto-optimize ЦИКЛ 3/3 (ОСТАННІЙ perf-цикл). Фронт-напрям:
             два reference-хуки на raw useQuery БЕЗ staleTime (useExpenseCategories —
             дерево статей; useCashRegisters — список кас) → re-fetch на КОЖЕН mount
             (перемик табу cash, відкриття модалки операції, візит payroll). Усі мутації
