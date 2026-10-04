@@ -3,6 +3,52 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
+## Session 2026-10-04 — повний E2E: 1 баг (CORS блокував усі DELETE/PATCH/PUT з браузера)
+
+### Bug #779 — [HIGH, ✅ ВИПРАВЛЕНО 2026-10-04] preflight віддавав `allow-methods: GET,HEAD,POST` → будь-який cross-origin DELETE/PATCH/PUT блокувався браузером
+
+**Спостереження:** перший повний прогін E2E — 15 падінь, усі з `page.evaluate: TypeError:
+Failed to fetch`. Падав не предмет тесту, а здебільшого cleanup (`DELETE` фікстури) або
+FSM-перехід (`PATCH`/`POST`).
+
+**Хибні гіпотези, які довелось відкинути** (кожна виглядала переконливо):
+
+1. _rate-limit_ (200 req/min глобально, 4 воркери) — спек упав і з `--workers=1`;
+2. _CORS не пускає origin_ — preflight віддавав `204` і правильний
+   `access-control-allow-origin`;
+3. _сторінка деталей ламає fetch_ — проба з існуючим наряду на тій самій сторінці: `200 ok`.
+
+**Справжня причина** (знайдена прямим `curl -X OPTIONS`):
+
+```
+access-control-allow-methods: GET, HEAD, POST      ← DELETE/PATCH/PUT ВІДСУТНІ
+```
+
+`app.enableCors({ origin, credentials, maxAge })` без явного `methods`. На **Fastify**
+`enableCors` делегує у `@fastify/cors`, чий дефолт — ЛИШЕ `GET,HEAD,POST`, на відміну від
+Express-дефолту з повним набором. Конфіг виглядав правильним, але поводився інакше під
+адаптером, який проєкт використовує.
+
+**Чому не ловилось раніше:**
+
+- API-тести ходять через `supertest`/прямий виклик — CORS там взагалі не застосовується
+  (`curl -X DELETE` давав 401, тобто доходив до guard-а);
+- у проді web — той самий origin за Caddy, тож preflight не потрібен;
+- E2E-smoke (14 тестів) не створює і не видаляє фікстур.
+  Тобто баг був видимий **лише** у cross-origin браузерному сценарії — рівно те, що дає
+  повний E2E (сторінка :3001 → API :3000).
+
+**Вплив:** будь-який браузерний клієнт на іншому origin не міг нічого видалити чи
+відредагувати. Для поточного прод-розгортання (same-origin) — ні, але це пряма пастка для
+окремого домену API, мобільного web-клієнта чи dev-середовища розробника.
+
+**Виправлення:** явний `methods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']`
+
+- коментар про розбіжність Fastify/Express дефолтів.
+
+**Регресія:** `cors.integration.spec.ts` — перевіряє, що preflight для `DELETE`/`PATCH`/`PUT`
+повертає ці методи у `access-control-allow-methods`. Падає без фіксу.
+
 ## Session 2026-10-03 — QA міграції Money: 1 баг (контракт спільної утиліти)
 
 ### Bug #776 — [MEDIUM, ✅ ВИПРАВЛЕНО 2026-10-03] moneyFromDecimal падала TypeError на обгортці з бракованим `toNumber`

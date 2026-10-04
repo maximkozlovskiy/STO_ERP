@@ -11,6 +11,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
+import { CORS_OPTIONS } from './common/cors.options';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { validationExceptionFactory } from './common/pipes/validation-error.factory';
 import { registerBullBoardGuard } from './modules/bull-board/bull-board.guard';
@@ -86,11 +87,9 @@ async function bootstrap() {
   // For the SPA this roughly halves the request count to the API.
   // Chrome caps maxAge at 7200s (2h) regardless of higher values — that is
   // still a major improvement over no cache at all.
-  app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:3001',
-    credentials: true,
-    maxAge: 86400,
-  });
+  // Bug #779: налаштування винесені у common/cors.options.ts — спек звіряє ТОЙ САМИЙ
+  // обʼєкт, а не його копію (на Fastify дефолт @fastify/cors — лише GET,HEAD,POST).
+  app.enableCors(CORS_OPTIONS);
 
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
