@@ -54,7 +54,16 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       383a01db — review ЦИКЛ 1/3: DRY takeFromReserve + стейтфул-тести Bug #780.
+HEAD:       5c713995 — sto-tester ЦИКЛ 2/3: аудит класу Bug #780 (асиметричний
+            inc↔reverse) у 5 кандидатах (loyalty/stock-documents/purchase-orders/
+            invoices/settlements) методом Bug #780 (для кожного реверс-переходу —
+            усі вхідні шляхи, чи кожен мав forward-ефект). РЕЗУЛЬТАТ: усі ЧИСТІ,
+            Bug #780 поодинокий, не системний. Додано structural-FSM-guard
+            asymmetric-reverse.invariants.spec.ts (7 тестів, мутаційно доведено:
+            відкриття CONFIRMED→CANCELLED → 2 падають). Для NO-REVERSE випадку
+            (захист на формі мапи) поведінковий тест безсилий → структурний guard
+            на експортованих *_TRANSITIONS. api 3114/3114 (3107+7), tsc 0, eslint 0.
+HEAD-prev:  383a01db — review ЦИКЛ 1/3: DRY takeFromReserve + стейтфул-тести Bug #780.
             Review підтвердив коректність Bug #780-фіксу (netReserved: RESERVATION>0,
             RESERVATION_RELEASE<0 enforced у InventoryService; orgId у where; 1 findMany/наряд
             без N+1; ключ goodId|warehouseId безколізійний бо UUID; normal-шлях не зламано бо
