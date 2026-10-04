@@ -46,24 +46,29 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             apps/api/tsconfig.spec.json ганяє tsc по *.spec.ts (раніше виключені зі збірки → 0 перевірок).
             77 накопичених помилок дочищено до 0 (8fe316f0). `pnpm type-check` в api = обидва конфіги.
             +поетапна строгість api/web: noImplicitOverride, noFallthroughCasesInSwitch.
-Тести:      xlsx 140/140; ExcelImportWizard 29/29; E2E 353 passed / 0 failed / 1 flaky; xlsx+filters
-            156/156 green. Раніше: api 2817/2817 (184 файли; +87 PDF/grid/header/append; +2 rawPreview.ocr) ·
+Тести:      api 3118/3118 (205 файлів; +3 Bug #781 reconciliation; 2 повні прогони зелені) ·
+            web 969/969 · E2E 360/0/1. xlsx 140/140; ExcelImportWizard 29/29. Раніше: api 2817/2817 ·
             web 874/874 component (+14: майстер імпорту) · E2E 351/351.
             Cycle 3: Bug #773 — applyImport робив голий new Date(row.operationDate) без guard (public POST,
             @IsString → "2026-02-31" тихо→03-02 → неправильний FX-курс → спотворений amountBase USD/EUR).
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       5c713995 — sto-tester ЦИКЛ 2/3: аудит класу Bug #780 (асиметричний
-            inc↔reverse) у 5 кандидатах (loyalty/stock-documents/purchase-orders/
-            invoices/settlements) методом Bug #780 (для кожного реверс-переходу —
-            усі вхідні шляхи, чи кожен мав forward-ефект). РЕЗУЛЬТАТ: усі ЧИСТІ,
-            Bug #780 поодинокий, не системний. Додано structural-FSM-guard
-            asymmetric-reverse.invariants.spec.ts (7 тестів, мутаційно доведено:
-            відкриття CONFIRMED→CANCELLED → 2 падають). Для NO-REVERSE випадку
-            (захист на формі мапи) поведінковий тест безсилий → структурний guard
-            на експортованих *_TRANSITIONS. api 3114/3114 (3107+7), tsc 0, eslint 0.
-HEAD-prev:  383a01db — review ЦИКЛ 1/3: DRY takeFromReserve + стейтфул-тести Bug #780.
+HEAD:       981799cb — sto-tester ЦИКЛ 3/3: Bug #781 (HIGH) крос-модульний інваріант.
+            ReconciliationProcessor.checkInvoicePaid звіряв Invoice.paidAmount лише з
+            Σ Payment.amount, але paidAmount росте ДВОМА шляхами: реальна оплата
+            (Payment-рядок) + ручне →PAID standalone-рахунку (Bug #675 — settlement
+            PAYMENT documentType='Invoice' БЕЗ Payment-рядка). → фальшивий DRIFT на
+            КОЖЕН прогін для вручну закритих рахунків → знецінення сторожа цілісності
+            (ADR-001). Fix: додано mirror-groupBy у очікувану суму. 3 нові тести
+            (mutation-verified: 2 падали Δ=amount; 1 страховий — справжній дрейф ловиться).
+            Клас #781 = неповнота drift-звірки (не асиметрія реверсу #780). Інші напрямки
+            циклу 3 (Σ грошей наскрізь / межові / конкурентність / Σ stock==Σ batch) —
+            ЧИСТО. api 3118/3118 (×2 прогони), tsc 0 (вкл. spec), eslint 0 errors.
+HEAD-prev:  5c713995 — sto-tester ЦИКЛ 2/3: аудит класу Bug #780 (асиметричний
+            inc↔reverse) у 5 кандидатах — усі ЧИСТІ, #780 поодинокий. Structural-FSM-guard
+            asymmetric-reverse.invariants.spec.ts (7 тестів). api 3114/3114, tsc 0, eslint 0.
+HEAD-prev2: 383a01db — review ЦИКЛ 1/3: DRY takeFromReserve + стейтфул-тести Bug #780.
             Review підтвердив коректність Bug #780-фіксу (netReserved: RESERVATION>0,
             RESERVATION_RELEASE<0 enforced у InventoryService; orgId у where; 1 findMany/наряд
             без N+1; ключ goodId|warehouseId безколізійний бо UUID; normal-шлях не зламано бо
