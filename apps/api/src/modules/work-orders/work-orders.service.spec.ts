@@ -400,6 +400,8 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       // WO-H1: writeOffPartsAndCharge re-reads totalAmount in-tx.
       workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
       goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+      // Bug #780: власні RESERVATION-рухи наряду (порожньо тут — тести не перевіряють RELEASE).
+      stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const inventory = {
       createMovement: inventoryCreateMovement,
@@ -539,6 +541,8 @@ describe('WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId wr
       },
       workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
       goodUoM: { findMany: goodUoMFindMany },
+      // Bug #780: власні RESERVATION-рухи наряду.
+      stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     // A3: writeOffPartsAndCharge живе у WorkOrderStockEffectsService — викликаємо на ньому напряму.
     const svc = new WorkOrderStockEffectsService(

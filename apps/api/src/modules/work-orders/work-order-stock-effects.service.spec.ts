@@ -33,6 +33,9 @@ function makeService(goodUoMFindMany: ReturnType<typeof vi.fn>) {
     },
     workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
     goodUoM: { findMany: goodUoMFindMany },
+    // Bug #780: writeOffPartsAndCharge читає власні RESERVATION-рухи наряду. [] → ON_HOLD-шлях
+    // (резерву не було) — RELEASE пропускається, WRITEOFF усе одно фіксує coeff/COGS.
+    stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   const inventory = {
     createMovement: vi
@@ -124,6 +127,8 @@ function makeGapService(opts: {
     // WO-H1: chargeAmount береться з IN-TX re-read totalAmount → мок findFirst керує сумою боргу.
     workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: opts.totalAmount }) },
     goodUoM: { findMany: vi.fn().mockResolvedValue(opts.goodUoM ?? []) },
+    // Bug #780: власні RESERVATION-рухи наряду (порожньо → без зайвого RELEASE у gap-тестах).
+    stockMovement: { findMany: vi.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
   const createMovement = vi
     .fn()
@@ -208,5 +213,209 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy 
     const writeoff = createMovement.mock.calls.find(c => c[1].type === 'WRITEOFF');
     expect(writeoff?.[1].quantity).toBe(-15);
     expect(Number.isFinite(writeoff?.[1].quantity)).toBe(true);
+  });
+});
+
+/**
+ * Bug #780 — writeOffPartsAndCharge безумовно звільняв резерв (RESERVATION_RELEASE(-baseQty))
+ * ПРИПУСКАЮЧИ що наряд зарезервував baseQty. Але резерв ставиться ЛИШЕ на APPROVED→IN_PROGRESS
+ * (reserveParts). Шлях APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED НЕ резервує, тож на COMPLETED
+ * резерву наряду НЕМА. Безумовний RELEASE тоді кидає "cannotReleaseMoreThanReserved" у РЕАЛЬНОМУ
+ * InventoryService (reserved на StockItem — агрегат, не per-document) → увесь перехід COMPLETED
+ * падав; або звільняв ЧУЖИЙ резерв (псування лічильника).
+ *
+ * Тут inventory-мок ВІДТВОРЮЄ реальний guard (кидає коли |qty| > поточного reserved), щоб
+ * юніт-тест ловив баг без живої БД. Фікс: writeOffPartsAndCharge рахує нетто-резерв НАРЯДУ з
+ * його RESERVATION-рухів (stockMovement.findMany) і звільняє min(baseQty, свій_резерв).
+ */
+describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (release лише свій резерв)', () => {
+  /** Stateful inventory-мок, що дзеркалить InventoryService: reserved не може стати від'ємним. */
+  function makeStatefulInventory(initialReserved: number) {
+    let reserved = initialReserved;
+    const createMovement = vi
+      .fn()
+      .mockImplementation((_org: string, dto: { type: string; quantity: number }) => {
+        if (dto.type === 'RESERVATION_RELEASE') {
+          // Реальний guard: Math.abs(qty) > reserved → throw.
+          if (Math.abs(dto.quantity) > reserved) {
+            return Promise.reject(new Error('cannotReleaseMoreThanReserved'));
+          }
+          reserved += dto.quantity; // quantity < 0 → зменшує reserved
+          return Promise.resolve({ consumed: [], weightedCostPrice: null });
+        }
+        if (dto.type === 'RESERVATION') {
+          reserved += dto.quantity;
+          return Promise.resolve({ consumed: [], weightedCostPrice: null });
+        }
+        // WRITEOFF
+        return Promise.resolve({ consumed: [{ batchId: 'b1' }], weightedCostPrice: 7 });
+      });
+    return { createMovement, getReserved: () => reserved };
+  }
+
+  function makeSvc(opts: {
+    reservationMovements: Array<{ goodId: string; warehouseId: string; quantity: number }>;
+    initialReserved: number;
+  }) {
+    const prisma = {
+      workOrderPart: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'part-1',
+            goodId: GOOD_ID,
+            warehouseId: WH_ID,
+            quantity: 5,
+            unitOfMeasureId: null,
+          },
+        ]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+      stockMovement: { findMany: vi.fn().mockResolvedValue(opts.reservationMovements) },
+    } as unknown as PrismaService;
+    const inv = makeStatefulInventory(opts.initialReserved);
+    const inventory = { createMovement: inv.createMovement } as unknown as InventoryService;
+    const settlements = {
+      createTransaction: vi.fn().mockResolvedValue({}),
+    } as unknown as SettlementsService;
+    return {
+      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements),
+      createMovement: inv.createMovement,
+      getReserved: inv.getReserved,
+    };
+  }
+
+  it('ON_HOLD-шлях (резерву наряду немає) → COMPLETED НЕ падає, RELEASE пропускається', async () => {
+    // Наряд пройшов APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED: RESERVATION-рухів немає, reserved=0.
+    const { svc, createMovement } = makeSvc({ reservationMovements: [], initialReserved: 0 });
+
+    // Без фіксу: writeOff робить RESERVATION_RELEASE(-5) при reserved=0 → мок кидає → весь перехід падає.
+    await expect(
+      svc.writeOffPartsAndCharge(
+        ORG,
+        { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+        'user-1',
+      ),
+    ).resolves.toBeUndefined();
+
+    const releaseCalls = createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE');
+    expect(releaseCalls).toHaveLength(0); // нема що звільняти → жодного RELEASE
+    const writeoffCalls = createMovement.mock.calls.filter(c => c[1].type === 'WRITEOFF');
+    expect(writeoffCalls).toHaveLength(1); // WRITEOFF усе одно відбувся
+    expect(writeoffCalls[0][1].quantity).toBe(-5);
+  });
+
+  it('нормальний шлях (наряд зарезервував 5) → звільняє РІВНО 5, reserved→0', async () => {
+    const { svc, createMovement, getReserved } = makeSvc({
+      reservationMovements: [{ goodId: GOOD_ID, warehouseId: WH_ID, quantity: 5 }],
+      initialReserved: 5,
+    });
+
+    await svc.writeOffPartsAndCharge(
+      ORG,
+      { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+      'user-1',
+    );
+
+    const releaseCalls = createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE');
+    expect(releaseCalls).toHaveLength(1);
+    expect(releaseCalls[0][1].quantity).toBe(-5); // звільнено рівно свій резерв
+    expect(getReserved()).toBe(0); // лічильник коректно обнулився
+  });
+
+  it('частковий резерв (наряд тримає 3, частина знята раніше) → звільняє min(baseQty=5, 3)=3, не underflow', async () => {
+    // RESERVATION(+5) + RESERVATION_RELEASE(-2) раніше → нетто 3. baseQty=5, але свій резерв лише 3.
+    const { svc, createMovement } = makeSvc({
+      reservationMovements: [
+        { goodId: GOOD_ID, warehouseId: WH_ID, quantity: 5 },
+        { goodId: GOOD_ID, warehouseId: WH_ID, quantity: -2 },
+      ],
+      initialReserved: 3,
+    });
+
+    await expect(
+      svc.writeOffPartsAndCharge(
+        ORG,
+        { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+        'user-1',
+      ),
+    ).resolves.toBeUndefined();
+
+    const releaseCalls = createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE');
+    expect(releaseCalls).toHaveLength(1);
+    expect(releaseCalls[0][1].quantity).toBe(-3); // не -5 → жодного underflow чужого резерву
+  });
+});
+
+/**
+ * Bug #780 (симетрія) — releasePartReservations мав ту саму ваду: безумовний RESERVATION_RELEASE
+ * при скасуванні наряду, який резерву не тримав (шлях APPROVED→ON_HOLD→CANCELLED: reserveParts
+ * спрацьовує лише на APPROVED→IN_PROGRESS). Реальний InventoryService кинув би
+ * "cannotReleaseMoreThanReserved" → скасувати наряд неможливо.
+ */
+describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (release лише свій резерв)', () => {
+  function makeStatefulInventory(initialReserved: number) {
+    let reserved = initialReserved;
+    const createMovement = vi
+      .fn()
+      .mockImplementation((_org: string, dto: { type: string; quantity: number }) => {
+        if (dto.type === 'RESERVATION_RELEASE') {
+          if (Math.abs(dto.quantity) > reserved) {
+            return Promise.reject(new Error('cannotReleaseMoreThanReserved'));
+          }
+          reserved += dto.quantity;
+          return Promise.resolve({ consumed: [], weightedCostPrice: null });
+        }
+        return Promise.resolve({ consumed: [], weightedCostPrice: null });
+      });
+    return { createMovement, getReserved: () => reserved };
+  }
+
+  function makeSvc(opts: {
+    reservationMovements: Array<{ goodId: string; warehouseId: string; quantity: number }>;
+    initialReserved: number;
+  }) {
+    const prisma = {
+      workOrderPart: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'part-1',
+            goodId: GOOD_ID,
+            warehouseId: WH_ID,
+            quantity: 7,
+            unitOfMeasureId: null,
+          },
+        ]),
+      },
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+      stockMovement: { findMany: vi.fn().mockResolvedValue(opts.reservationMovements) },
+    } as unknown as PrismaService;
+    const inv = makeStatefulInventory(opts.initialReserved);
+    const inventory = { createMovement: inv.createMovement } as unknown as InventoryService;
+    const settlements = { createTransaction: vi.fn() } as unknown as SettlementsService;
+    return {
+      svc: new WorkOrderStockEffectsService(prisma, inventory, settlements),
+      createMovement: inv.createMovement,
+    };
+  }
+
+  it('ON_HOLD-шлях (резерву немає) → CANCELLED НЕ падає, RELEASE пропускається', async () => {
+    const { svc, createMovement } = makeSvc({ reservationMovements: [], initialReserved: 0 });
+    await expect(svc.releasePartReservations(ORG, 'wo-1', 'user-1')).resolves.toBeUndefined();
+    expect(createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE')).toHaveLength(
+      0,
+    );
+  });
+
+  it('нормальний шлях (зарезервовано 7) → звільняє рівно 7', async () => {
+    const { svc, createMovement } = makeSvc({
+      reservationMovements: [{ goodId: GOOD_ID, warehouseId: WH_ID, quantity: 7 }],
+      initialReserved: 7,
+    });
+    await svc.releasePartReservations(ORG, 'wo-1', 'user-1');
+    const rel = createMovement.mock.calls.filter(c => c[1].type === 'RESERVATION_RELEASE');
+    expect(rel).toHaveLength(1);
+    expect(rel[0][1].quantity).toBe(-7);
   });
 });

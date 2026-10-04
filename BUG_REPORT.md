@@ -3,7 +3,53 @@
 > Активні сесії: 2026-06-19 — сьогодні.
 > Архів (2026-05-25 — 2026-06-17): [docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md](docs/BUG_REPORT_ARCHIVE_2026-05-25_2026-06-17.md)
 
-## Session 2026-10-04 — повний E2E: 1 баг (CORS блокував усі DELETE/PATCH/PUT з браузера)
+## Session 2026-10-04 (b) — полювання на бізнес-логіку (ЦИКЛ 1/3, sto-tester): FSM-резерв запчастин
+
+### Bug #780 — [CRITICAL, ✅ ВИПРАВЛЕНО 2026-10-04] COMPLETED/CANCELLED наряду, що пройшов через ON_HOLD без резервування, падав з "cannotReleaseMoreThanReserved" — наряд неможливо завершити/скасувати
+
+**Де:** `apps/api/src/modules/work-orders/work-order-stock-effects.service.ts`
+— `writeOffPartsAndCharge` (release перед WRITEOFF) і `releasePartReservations`.
+
+**Симптом/причина:** резерв запчастин ставиться ЛИШЕ на переході `APPROVED→IN_PROGRESS`
+(`reserveParts`, guard `wo.status==='APPROVED'`). Але FSM дозволяє шляхи БЕЗ цього переходу:
+
+- `APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED` — на COMPLETED `writeOffPartsAndCharge` безумовно
+  робив `RESERVATION_RELEASE(-baseQty)`;
+- `APPROVED→ON_HOLD→CANCELLED` — `releasePartReservations` теж безумовно звільняв `-baseQty`.
+
+На цих шляхах резерву наряду немає. `reserved` на `StockItem` — АГРЕГАТ (не per-document), тож:
+(а) якщо `reserved===0` → `InventoryService.createMovement` кидає
+`err.inventory.cannotReleaseMoreThanReserved` (400) → весь перехід у транзакції падає → **наряд
+неможливо завершити чи скасувати**; (б) якщо резерв тримає ІНШИЙ наряд того ж товару → ми
+звільняли ЧУЖИЙ резерв → псування лічильника `reserved` (фантомна доступність для третіх нарядів).
+
+**Фікс:** новий `netReservedByWorkOrder()` рахує нетто-резерв САМЕ цього наряду по
+`(goodId|warehouseId)` з його власних `StockMovement` (RESERVATION додатні + RESERVATION_RELEASE
+від'ємні, `documentType='WorkOrder', documentId=wo.id`). Обидва методи тепер звільняють
+`min(baseQty, свій_нетто_резерв)` і пропускають RELEASE коли резерву немає (0). WRITEOFF усе одно
+проходить: `available = quantity − reserved` не включає фантомного резерву цього наряду. Нормальний
+шлях (`APPROVED→IN_PROGRESS→COMPLETED`) незмінний — нетто-резерв = baseQty → звільняється повністю.
+
+**Регресійний тест:** `work-order-stock-effects.service.spec.ts` →
+`describe('…writeOffPartsAndCharge — Bug #780…')` (3 кейси) +
+`describe('…releasePartReservations — Bug #780…')` (2 кейси). Inventory-мок відтворює реальний
+guard (кидає коли `|qty| > reserved`). Доведено ЧЕРВОНИМ без фіксу: ON_HOLD-шлях і частковий резерв
+падали з `cannotReleaseMoreThanReserved` (точно те, що кидає жива `InventoryService`). Нормальний шлях
+лишається зеленим. Юніт-рівень обрано бо live-БД недоступна (docker не піднятий у сесії); мок
+семантично тотожний рядку 185 `inventory.service.ts`.
+
+### Перевірено ЧИСТО (багів немає) — report-builder tenant, FSM-грошова симетрія, інвентар-інваріант
+
+- **report-builder (tenant-ізоляція ad-hoc):** `buildQuery` ЗАВЖДИ інжектить `where.orgId` у корінь
+  - `deletedAt:null`; усі ключі where/orderBy/include — з реєстру (літерали, не з вводу); A1 tenant-guard
+    підстраховує. SavedReport CRUD несе `orgId+deletedAt:null` у кожному where (update/remove — через
+    `getSaved` guard + CAS-where). Крос-tenant leak неможливий.
+- **FSM-симетрія грошей (C2):** `returnPartsAndCredit` (COMPLETED→CANCELLED) бере `creditAmount` з
+  того ж IN-TX re-read `totalAmount`, що й CHARGE → `CREDIT_NOTE === CHARGE` за побудовою (та сама
+  валюта/дата). Double-guard: CAS-flip + термінальний CANCELLED → рівно 1 CREDIT_NOTE.
+- **Інвентар Σ-інваріант:** `createMovement` тримає `reserved ≥ 0` і `reserved ≤ quantity` пост-чеками
+  (row-locked), WRITEOFF консумить партії у тій же tx (`Σ remainingQty == quantity`). Bug #780 був
+  НЕ у цих інваріантах, а у НАД-release з боку виклику — тепер усунено на рівні виклику.
 
 ### Bug #779 — [HIGH, ✅ ВИПРАВЛЕНО 2026-10-04] preflight віддавав `allow-methods: GET,HEAD,POST` → будь-який cross-origin DELETE/PATCH/PUT блокувався браузером
 

@@ -72,15 +72,27 @@ export class WorkOrderStockEffectsService {
     });
     const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
 
+    // Bug #780: цей наряд міг НЕ резервувати (шлях APPROVED→ON_HOLD→CANCELLED: reserveParts
+    // ставить резерв лише на APPROVED→IN_PROGRESS). Тоді безумовний RESERVATION_RELEASE(-q)
+    // кидав би "cannotReleaseMoreThanReserved" → скасувати наряд неможливо; або звільняв би
+    // чужий резерв. Звільняємо РІВНО свій нетто-резерв по (good,warehouse).
+    const reservedByGood = await this.netReservedByWorkOrder(orgId, workOrderId, db);
+
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
+      const baseQty = part.quantity * coeff;
+      const rkey = `${part.goodId}|${part.warehouseId}`;
+      const heldReserve = reservedByGood.get(rkey) ?? 0;
+      const releaseQty = Math.min(baseQty, Math.max(0, heldReserve));
+      if (releaseQty <= 0) continue;
+      reservedByGood.set(rkey, heldReserve - releaseQty);
       await this.inventory.createMovement(
         orgId,
         {
           goodId: part.goodId,
           warehouseId: part.warehouseId,
           type: 'RESERVATION_RELEASE',
-          quantity: -(part.quantity * coeff),
+          quantity: -releaseQty,
           documentType: 'WorkOrder',
           documentId: workOrderId,
           createdBy: userId,
@@ -103,6 +115,16 @@ export class WorkOrderStockEffectsService {
     });
     const coeffMap = await this.fetchPartCoefficients(orgId, parts, db);
 
+    // Bug #780: цей наряд резервує ЛИШЕ на APPROVED→IN_PROGRESS (reserveParts). Шлях
+    // APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED НЕ резервує (guard reserveParts вимагає
+    // попередній статус APPROVED), тож на COMPLETED резерву цього наряду НЕМА. Безумовний
+    // RESERVATION_RELEASE(-baseQty) тоді: (а) якщо reserved===0 → InventoryService кидає
+    // "cannotReleaseMoreThanReserved" → весь перехід COMPLETED падає (наряд неможливо
+    // завершити); (б) якщо резерв тримає ІНШИЙ наряд → ми звільняємо ЧУЖИЙ резерв →
+    // псування лічильника reserved (фантомна доступність). reserved — агрегат на StockItem,
+    // не per-document, тож скільки саме тримає ЦЕЙ наряд рахуємо з його RESERVATION-рухів.
+    const reservedByGood = await this.netReservedByWorkOrder(orgId, wo.id, db);
+
     for (const part of parts) {
       const coeff = coeffMap[part.id] ?? 1;
       const baseQty = part.quantity * coeff;
@@ -112,19 +134,30 @@ export class WorkOrderStockEffectsService {
       // і WRITEOFF падає з "Недостатньо товару на складі" попри те, що фізичні запчастини
       // на складі присутні. Послідовність RELEASE → WRITEOFF: спочатку звільняємо резерв
       // (reserved -= baseQty), потім списуємо (тепер available = quantity > 0).
-      await this.inventory.createMovement(
-        orgId,
-        {
-          goodId: part.goodId,
-          warehouseId: part.warehouseId,
-          type: 'RESERVATION_RELEASE',
-          quantity: -baseQty,
-          documentType: 'WorkOrder',
-          documentId: wo.id,
-          createdBy: userId,
-        },
-        db,
-      );
+      //
+      // Bug #780: звільняємо РІВНО стільки, скільки цей наряд реально тримає у резерві для
+      // (good,warehouse) — min(baseQty, залишок резерву наряду). 0 → RESERVATION_RELEASE
+      // пропускаємо (ON_HOLD-шлях нічого не резервував). Так WRITEOFF усе одно проходить:
+      // available не включає фантомного резерву цього наряду.
+      const rkey = `${part.goodId}|${part.warehouseId}`;
+      const heldReserve = reservedByGood.get(rkey) ?? 0;
+      const releaseQty = Math.min(baseQty, Math.max(0, heldReserve));
+      if (releaseQty > 0) {
+        reservedByGood.set(rkey, heldReserve - releaseQty);
+        await this.inventory.createMovement(
+          orgId,
+          {
+            goodId: part.goodId,
+            warehouseId: part.warehouseId,
+            type: 'RESERVATION_RELEASE',
+            quantity: -releaseQty,
+            documentType: 'WorkOrder',
+            documentId: wo.id,
+            createdBy: userId,
+          },
+          db,
+        );
+      }
       // WRITEOFF списує партії (FIFO/costMethod з налаштувань) і повертає реальну
       // собівартість (COGS). НЕ передаємо price=part.price (то ЦІНА ПРОДАЖУ) — собівартість
       // визначається партіями. Фіксуємо batchCostPrice/batchId у part для звіту рентабельності.
@@ -255,6 +288,36 @@ export class WorkOrderStockEffectsService {
         db,
       );
     }
+  }
+
+  /**
+   * Bug #780: нетто-резерв, який ЦЕЙ наряд реально тримає на складі, по (goodId|warehouseId).
+   * reserved на StockItem — агрегат (не per-document), тож per-наряд рахуємо з його власних
+   * RESERVATION/RESERVATION_RELEASE-рухів: Σ(quantity) (RESERVATION >0, RESERVATION_RELEASE <0).
+   * Використовується у writeOffPartsAndCharge щоб звільняти РІВНО свій резерв (не чужий і не
+   * фантомний на ON_HOLD-шляху, де резерву взагалі не було).
+   */
+  private async netReservedByWorkOrder(
+    orgId: string,
+    workOrderId: string,
+    db: Prisma.TransactionClient | typeof this.prisma,
+  ): Promise<Map<string, number>> {
+    const movements = await (db as typeof this.prisma).stockMovement.findMany({
+      where: {
+        orgId,
+        documentType: 'WorkOrder',
+        documentId: workOrderId,
+        type: { in: ['RESERVATION', 'RESERVATION_RELEASE'] },
+      },
+      select: { goodId: true, warehouseId: true, quantity: true },
+      take: 5000,
+    });
+    const net = new Map<string, number>();
+    for (const m of movements) {
+      const key = `${m.goodId}|${m.warehouseId}`;
+      net.set(key, (net.get(key) ?? 0) + m.quantity);
+    }
+    return net;
   }
 
   private async fetchPartCoefficients(
