@@ -7813,6 +7813,28 @@ export interface components {
             from: string;
             to: string;
         };
+        GroupNodeDto: {
+            /** @description Нормалізований ключ групи ('∅' для null) */
+            key: string;
+            /** @description Технічний ключ groupBy-поля цього рівня */
+            field: string;
+            /** @description Підпис groupBy-поля (label з реєстру) */
+            label: string;
+            /** @description Сире значення groupBy-поля для рендеру (тип залежить від поля) */
+            value: Record<string, never> | null;
+            /** @description Кількість рядків у групі */
+            count: number;
+            /** @description alias агрегації → значення (null якщо нема даних) */
+            aggregates: {
+                [key: string]: number | null;
+            };
+            /** @description Підгрупи наступного рівня groupBy (рекурсивно) */
+            children: components["schemas"]["GroupNodeDto"][];
+            /** @description Детальні рядки на листовому вузлі, коли includeRows */
+            rows?: {
+                [key: string]: unknown;
+            }[];
+        };
         ReportMetadataFieldDto: {
             key: string;
             label: string;
@@ -7905,9 +7927,7 @@ export interface components {
         };
         ReportRunResultBodyDto: {
             /** @description Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[] */
-            tree: {
-                [key: string]: unknown;
-            }[];
+            tree: components["schemas"]["GroupNodeDto"][];
             /** @description Плоскі детальні рядки — набір ключів задає config.columns у рантаймі */
             detailRows: {
                 [key: string]: unknown;

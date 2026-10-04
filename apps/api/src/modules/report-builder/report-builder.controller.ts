@@ -17,6 +17,7 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -25,6 +26,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { ReportBuilderService, FullReportConfig } from './report-builder.service';
 import {
+  GroupNodeDto,
   ReportMetadataDto,
   ReportRunDto,
   ReportRunResponseDto,
@@ -35,6 +37,9 @@ import {
 
 @ApiTags('Report Builder')
 @ApiBearerAuth()
+// GroupNodeDto рекурсивний (`children` → $ref на себе) — Nest не бачить його через inline
+// $ref, тож реєструємо явно, інакше schema не потрапить у components.schemas.
+@ApiExtraModels(GroupNodeDto)
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reports/builder')
 export class ReportBuilderController {

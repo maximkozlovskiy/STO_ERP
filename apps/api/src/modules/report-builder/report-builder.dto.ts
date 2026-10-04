@@ -11,7 +11,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { REGISTRY, ALLOWED_OPS, ALLOWED_AGGS } from './report-registry';
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -135,11 +135,16 @@ export class UpdateSavedReportDto {
 // і кодогенерації типів web, вони нічого не трансформують.
 //
 // МЕЖА ЗАСТОСОВНОСТІ. Конструктор звітів — ad-hoc: набір колонок задає користувач у
-// рантаймі, тож `detailRows` і `aggregates` за своєю природою — відкриті мапи, а
-// `GroupNode` рекурсивний (`children: GroupNode[]`). Їх НЕ можна описати точною
-// схемою, не збрехавши. Тому типізуємо ТОЧНО конверт (entity, columns, groupBy,
-// rowCount, truncated) і ЯВНО позначаємо динамічні частини як вільні обʼєкти —
-// це honest-опис, а не заглушка (та сама межа, що зафіксована для ColumnMapping).
+// рантаймі. ВІДКРИТІ (динамічні) частини — чесно описані вільними обʼєктами:
+//   • `detailRows` — набір ключів = config.columns у рантаймі (`Record<string,unknown>`),
+//   • `aggregates`/`grandTotals` — alias агрегації → число (`Record<string,number|null>`),
+//   • `GroupNode.value` — сире значення groupBy-поля (будь-який тип).
+// Їх НЕ можна описати точною схемою, не збрехавши. АЛЕ КОНВЕРТ дерева — фіксований:
+// `GroupNode` має сталу форму (key/field/label/value/count/aggregates/children/rows),
+// рекурсивну через `children: GroupNode[]`. Рекурсію Swagger описує через `$ref` на
+// себе (`@ApiExtraModels(GroupNodeDto)` + `getSchemaPath`), тож `tree` типізовано ТОЧНО,
+// а не `unknown[]` — кодоген web отримує справжню форму вузла (раніше web тримав
+// рукописний `GroupNode`-дублікат у useReportBuilder.ts, той самий клас «тихого контракту»).
 
 export class ReportMetadataFieldDto {
   @ApiProperty() key!: string;
@@ -191,13 +196,48 @@ export class ReportRunAggregationDto {
   @ApiProperty() label!: string;
 }
 
+/**
+ * Вузол дерева груп. Форма СТАЛА (на відміну від відкритих мап нижче) — рекурсивна
+ * через `children`. `value` і `aggregates` — динамічні (див. блок-коментар вище).
+ * Дзеркалить `GroupNode` з report-aggregator.ts один-в-один.
+ */
+export class GroupNodeDto {
+  @ApiProperty({ description: "Нормалізований ключ групи ('∅' для null)" }) key!: string;
+  @ApiProperty({ description: 'Технічний ключ groupBy-поля цього рівня' }) field!: string;
+  @ApiProperty({ description: 'Підпис groupBy-поля (label з реєстру)' }) label!: string;
+  @ApiProperty({
+    description: 'Сире значення groupBy-поля для рендеру (тип залежить від поля)',
+    nullable: true,
+  })
+  value!: unknown;
+  @ApiProperty({ description: 'Кількість рядків у групі' }) count!: number;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number', nullable: true },
+    description: 'alias агрегації → значення (null якщо нема даних)',
+  })
+  aggregates!: Record<string, number | null>;
+  @ApiProperty({
+    type: 'array',
+    items: { $ref: getSchemaPath(GroupNodeDto) },
+    description: 'Підгрупи наступного рівня groupBy (рекурсивно)',
+  })
+  children!: GroupNodeDto[];
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    description: 'Детальні рядки на листовому вузлі, коли includeRows',
+  })
+  rows?: Record<string, unknown>[];
+}
+
 export class ReportRunResultBodyDto {
   @ApiProperty({
     type: 'array',
-    items: { type: 'object', additionalProperties: true },
+    items: { $ref: getSchemaPath(GroupNodeDto) },
     description: 'Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[]',
   })
-  tree!: unknown[];
+  tree!: GroupNodeDto[];
   @ApiProperty({
     type: 'array',
     items: { type: 'object', additionalProperties: true },

@@ -25895,6 +25895,64 @@
           "to"
         ]
       },
+      "GroupNodeDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Нормалізований ключ групи ('∅' для null)"
+          },
+          "field": {
+            "type": "string",
+            "description": "Технічний ключ groupBy-поля цього рівня"
+          },
+          "label": {
+            "type": "string",
+            "description": "Підпис groupBy-поля (label з реєстру)"
+          },
+          "value": {
+            "type": "object",
+            "description": "Сире значення groupBy-поля для рендеру (тип залежить від поля)",
+            "nullable": true
+          },
+          "count": {
+            "type": "number",
+            "description": "Кількість рядків у групі"
+          },
+          "aggregates": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "nullable": true
+            },
+            "description": "alias агрегації → значення (null якщо нема даних)"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupNodeDto"
+            },
+            "description": "Підгрупи наступного рівня groupBy (рекурсивно)"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Детальні рядки на листовому вузлі, коли includeRows"
+          }
+        },
+        "required": [
+          "key",
+          "field",
+          "label",
+          "value",
+          "count",
+          "aggregates",
+          "children"
+        ]
+      },
       "ReportMetadataFieldDto": {
         "type": "object",
         "properties": {
@@ -26255,8 +26313,7 @@
           "tree": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": true
+              "$ref": "#/components/schemas/GroupNodeDto"
             },
             "description": "Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[]"
           },
