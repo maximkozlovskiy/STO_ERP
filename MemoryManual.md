@@ -54,7 +54,15 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       a135ef76 — повний E2E у CI (354 тести, job e2e-full); перший прогін знайшов
+HEAD:       68727b5d — БОРГ ЗАКРИТО (8 пунктів). Лишилось свідомо відкладене з
+            причинами: TS7/ESM (чекають typescript-eslint 7.1), Prisma 8 (RC), 6 HIGH у
+            mobile (поза прод-постачанням, ADR-003), 39 a11y-порушень (зафіксовані
+            храповиком, не ростуть), autoArchiveDays (фіча, не борг).
+            Інструменти: size + size:pages (бюджет бандла), axe-храповик, job
+            bundle-budget. High/critical поза mobile = 0.
+            УРОК АУДИТУ: ШІСТЬ разів заявлена цифра розійшлася з виміряною (59→37,
+            144→60→3, 29→42, 189→185, 450→354) — щоразу grep-оцінка замість виміру.
+            Попередній: a135ef76 — повний E2E у CI; перший прогін знайшов
             Bug #779: CORS віддавав allow-methods БЕЗ DELETE/PATCH/PUT (на Fastify дефолт
             @fastify/cors вужчий за Express) → браузер блокував усі такі cross-origin
             запити. Не ловилось: API-тести йдуть повз CORS, у проді web same-origin за
