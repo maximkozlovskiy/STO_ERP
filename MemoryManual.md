@@ -54,7 +54,8 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       38809275 refactor(api) — report-builder tree: рекурсивний GroupNodeDto замість
+HEAD:       3bca2851 — 12 модулів без тестів ЗАКРИТО (+185 тестів, api 3091/3091).
+            Попередній: 38809275 refactor(api) — рекурсивний GroupNodeDto замість
             unknown[] (code review звітів c7ad8721/4738287e). «Не можна описати не збрехавши»
             стосувалось лише ДИНАМІЧНИХ мап (aggregates/detailRows/value) — КОНВЕРТ GroupNode
             сталий і рекурсивний, тож описаний точно через $ref на себе (@ApiExtraModels+
@@ -68,6 +69,11 @@ HEAD:       38809275 refactor(api) — report-builder tree: рекурсивни
             api 2895/2895 (191 файл) · web 881 · shared 4 · tsc 0 · eslint 0 errors ·
             циклічних залежностей 0 (1323 модулі). Покриття api 62% — ЧЕСНА цифра після
             Vitest 5 (Vitest 2 рахував лише імпортовані тестами файли, 78% ховало непокрите).
+            ЗАКРИТО І «дрібне»: 12 модулів без тестів → 0 (+185, КОЖЕН доведений мутацією:
+            поломка → падіння цільового тесту → відкат; 19 поломок). Аудит ПЕРЕД тестами
+            показав 0 справжніх багів — це guard-и, не фікси. Найцінніші: bull-board.guard
+            (роль із БД, НЕ з JWT-payload — інакше ескалація до адмінки черг BullMQ),
+            work-order-media (рядок БД видаляється ПЕРШИМ — інакше вічно биті signed-URL).
             УСІ ЧОТИРИ ПУНКТИ БОРГУ ЗАКРИТО: обробка помилок на фронті (264→0),
             типізація відповідей API (без типу лишилось 3 /pdf-роути), Money по API
             (roundMoney=0, 14 модулів), toast→i18n (42 у 13 файлах + 3 хуки, залишок 0).
