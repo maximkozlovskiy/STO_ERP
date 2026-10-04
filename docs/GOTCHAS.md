@@ -4,6 +4,36 @@
 
 ---
 
+## [2026-10-04] Nest-опція може мати ІНШИЙ дефолт під Fastify, ніж під Express
+
+`app.enableCors({ origin, credentials, maxAge })` виглядає повним. Під Express так і є —
+дефолтний `methods` там повний набір. Під **Fastify** `enableCors` делегує у
+`@fastify/cors`, чий дефолт — **лише `GET,HEAD,POST`**:
+
+```
+access-control-allow-methods: GET, HEAD, POST     ← DELETE/PATCH/PUT відсутні
+```
+
+Браузер мовчки блокує кожен cross-origin `DELETE`/`PATCH`/`PUT` як
+`TypeError: Failed to fetch` — без статусу, без тіла, без запису в логах API (запит туди
+не доходить). Bug #779.
+
+**Чому це довго не видно:** `supertest`/`curl` **не роблять preflight узагалі** (`curl -X
+DELETE` доходив до guard-а і давав чесний 401), а у проді web — той самий origin за Caddy,
+тож CORS не застосовується. Проявляється лише cross-origin у браузері.
+
+**Правило:** для кожної Nest-опції, що має платформну реалізацію (`enableCors`,
+`useStaticAssets`, body-limit, multipart), задавати значення **явно** й перевіряти
+**живим запитом через адаптер**, а не покладатись на дефолт. Типи теж розходяться:
+generic `CorsOptions` із `@nestjs/common` ширший за те, чого чекає Fastify-адаптер — тип
+краще виводити з сигнатури (`Parameters<NestFastifyApplication['enableCors']>[0]`).
+
+Регресію писати у два рівні: статична перевірка обʼєкта + **живий preflight** через
+справжній `NestFactory.create(..., new FastifyAdapter())` — саме другий ловить випадок
+«опція задана, але адаптер її проігнорував».
+
+---
+
 ## [2026-10-03] Хелпер-заміна мусить мати контракт НЕ ВУЖЧИЙ за те, що заміняє
 
 `moneyFromDecimal` приймала `{toNumber(): number} | number`. Виглядало правильно —

@@ -54,7 +54,12 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       3bca2851 — 12 модулів без тестів ЗАКРИТО (+185 тестів, api 3091/3091).
+HEAD:       a135ef76 — повний E2E у CI (354 тести, job e2e-full); перший прогін знайшов
+            Bug #779: CORS віддавав allow-methods БЕЗ DELETE/PATCH/PUT (на Fastify дефолт
+            @fastify/cors вужчий за Express) → браузер блокував усі такі cross-origin
+            запити. Не ловилось: API-тести йдуть повз CORS, у проді web same-origin за
+            Caddy, smoke не створює фікстур. E2E: 276/15/63 → 352/0/2 (три прогони).
+            Попередній: 3bca2851 — 12 модулів без тестів ЗАКРИТО (+185 тестів).
             Попередній: 38809275 refactor(api) — рекурсивний GroupNodeDto замість
             unknown[] (code review звітів c7ad8721/4738287e). «Не можна описати не збрехавши»
             стосувалось лише ДИНАМІЧНИХ мап (aggregates/detailRows/value) — КОНВЕРТ GroupNode
