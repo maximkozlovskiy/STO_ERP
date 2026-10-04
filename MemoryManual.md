@@ -54,10 +54,16 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       68727b5d — БОРГ ЗАКРИТО (8 пунктів). Лишилось свідомо відкладене з
-            причинами: TS7/ESM (чекають typescript-eslint 7.1), Prisma 8 (RC), 6 HIGH у
-            mobile (поза прод-постачанням, ADR-003), 39 a11y-порушень (зафіксовані
-            храповиком, не ростуть), autoArchiveDays (фіча, не борг).
+HEAD:       e71f755a — perf-аудит ЦИКЛ 1/3 (на базі 4ade1401). ЄДИНЕ вимірене вузьке
+            місце: vitest isolate:true оцінював 500 модулів 2506× (по разу/файл) — набір
+            api 76.7s → 15-16s (isolate:false, 3099/3099 green, вимір обох прогонів).
+            Решта кандидатів з ТЗ перевірені й визнані НЕ вузькими (нуль змін): reports/
+            report-builder (DB-side агрегація + Promise.all + take-cap — вже оптимізовано);
+            money-міграція (sumMoney по рядках одного документа, не гарячий N); 185 нових
+            тестів (усі mock-based, найлегший патерн); фронт reports (зміна type-only,
+            рантайму не торкається). Попереднє: 68727b5d — БОРГ ЗАКРИТО (8 пунктів). Свідомо
+            відкладене: TS7/ESM (чекають typescript-eslint 7.1), Prisma 8 (RC), 6 HIGH у
+            mobile (поза прод-постачанням, ADR-003), 39 a11y (храповик), autoArchiveDays (фіча).
             Інструменти: size + size:pages (бюджет бандла), axe-храповик, job
             bundle-budget. High/critical поза mobile = 0.
             УРОК АУДИТУ: ШІСТЬ разів заявлена цифра розійшлася з виміряною (59→37,
@@ -463,6 +469,16 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
+Perf-аудит ЦИКЛ 1/3 — 2026-10-04, HEAD e71f755a (9cc6dba0 perf + e71f755a docs):
+  9cc6dba0 perf(api): vitest isolate:false — api-набір 76.7s → 15-16s (×4.7), 3099/3099 green.
+    Vitest сам діагностував: 500 модулів × 2506 оцінок (по разу/файл) = 80% tracked-часу
+    на import. Безпечно: немає resetModules/глоб-monkeypatch/невідновлених таймерів; vi.mock
+    лишається file-scoped. Перевірено прапорцем --no-isolate (обидва прогони green) ДО коміту.
+    Пастка-бонус: --no-isolate виявив СТРЕЙ-edit env.schema.ts (uncommitted WEB_ORIGIN requireInProd
+    без оновлення spec-prodBase) що валив 2 тести — НЕ мій, лишено у working tree як було.
+  e71f755a docs(skills): Крок 3b (test-suite perf) + «Накопичені підходи» 2026-10-04.
+  Нуль змін у прод-коді: reports/money/тести/фронт перевірені, вузьких місць немає (див. HEAD вище).
+
 Аудит сучасних патернів + закриття техборгу — 2026-10-03, HEAD 743783e8 (d37f1234..743783e8):
   ЧОТИРИ КРОКИ АУДИТУ (docs/AUDIT-2026-10.md) + прохід по боргу (docs/TECH-DEBT.md).
   МАЖОРИ: NestJS 10→12 + Fastify 4→5, Prisma 5→7 (driver adapters), Zod 3→4, Vitest 2→5,
