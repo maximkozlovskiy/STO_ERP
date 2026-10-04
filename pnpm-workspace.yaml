@@ -37,6 +37,14 @@ overrides:
   #   deepmerge-ts HIGH: stack exhaustion на рекурсивних графах (фікс 8.0.0)
   mysql2: '^3.24.5'
   deepmerge-ts: '^8.0.2'
+  # http-cache-semantics HIGH: max-stale дозволяє віддати кешовану відповідь ІНШОГО
+  # користувача (cross-user disclosure). Вразливі <=4.2.0; у дереві стояла саме 4.2.0.
+  # Довго лишалось відкритим, бо фікс значився у 4.2.1, якої не існувало в реєстрі —
+  # остання опублікована була 4.2.0. Тепер є 4.3.0, тож пін знімає останній HIGH на
+  # runtime-шляху API.
+  # Шлях dev-only: @nestjs/cli > @swc/cli > @xhmikosr/bin-wrapper > got > cacheable-request.
+  # У прод-образ не потрапляє, але тримати вразливу версію без потреби немає сенсу.
+  http-cache-semantics: '^4.3.0'
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
@@ -57,6 +65,12 @@ allowBuilds:
   tesseract.js: false
 minimumReleaseAgeExclude:
   # bull-board піднято до 9.x разом із Fastify 5 (стара 5.23.0 була останньою лінійкою під
-  # Fastify 4 і тягнула @nestjs/bull-shared@10, несумісний із NestJS 11). Виключення більше
-  # не потрібні — лишаємо секцію порожньою для майбутніх випадків.
-  []
+  # Fastify 4 і тягнула @nestjs/bull-shared@10, несумісний із NestJS 11) — те виключення
+  # більше не потрібне.
+  #
+  # http-cache-semantics@4.3.0 — свідоме виключення з карантину «надто свіжа версія»:
+  # це ЄДИНА опублікована версія, що закриває HIGH (advisory вимагає >=4.2.1, а 4.2.1
+  # у реєстрі не існує — одразу 4.3.0). Вибір між «свіжа версія у dev-залежності» і
+  # «відома вразливість у дереві»; перше менш ризиковане, бо пакет у прод-образ не
+  # потрапляє (ланцюжок @nestjs/cli > @swc/cli).
+  - http-cache-semantics@4.3.0
