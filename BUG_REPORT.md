@@ -6602,3 +6602,49 @@ goodId, інакше рядки збились би в один і диверг�
 **Підсумок:** 2 реальні баги (#777, #778, той самий клас round-once-vs-per-line у PO/SR), обидва
 виправлені з регресійними тестами (червоні без фіксу). Пункти 3/4/5 — чисто, інваріанти тримаються,
 наявне покриття адекватне. api 2902/2902, tsc 0, eslint 0 errors.
+
+---
+
+## Session 2026-10-04 — Аудит класу Bug #780 (асиметричний inc↔reverse) у 5 модулях
+
+**Контекст:** ЦИКЛ 2/3 sto-tester. Bug #780 (ЦИКЛ 1) показав КЛАС помилки — «реверс
+side-effect, що припускає стан, якого альтернативний ВАЛІДНИЙ шлях не створив» / ширше:
+асиметричний inc↔reverse на АГРЕГОВАНОМУ лічильнику. Завдання — застосувати цей клас до
+інших кандидатів методом Bug #780: для КОЖНОГО реверс-переходу перелічити ВСІ вхідні шляхи
+й перевірити, чи кожен створив прямий ефект.
+
+**Метод:** побудова мапи переходів кожного модуля → для кожного реверс/decrement-переходу
+множина вхідних станів → перевірка, чи кожен гарантовано мав forward-ефект.
+
+### Результат: усі 5 кандидатів ЧИСТІ. Bug #780 був поодиноким, НЕ системним.
+
+- **1. loyalty.service (earn/redeem):** РЕВЕРСУ немає. `redeem` — атомарний `updateMany`
+  з guard `balance: { gte: points }` (не можна списати більше наявного; баланс не йде <0).
+  `earn` — ідемпотентний (per-document partial-unique + read-then-write). Немає un-earn/
+  un-redeem, тож асиметрія неможлива. Чисто.
+- **2. stock-documents.transition (CONFIRMED→CANCELLED):** такого ребра НЕМА. `CONFIRMED: []`
+  термінальний; рухи складу створюються ЛИШЕ на DRAFT→CONFIRMED. У CANCELLED веде лише DRAFT
+  (рухів не було) → CANCELLED-гілка статус-only, реверсити нема чого. Чисто.
+- **3. purchase-orders.receive (часткові прийоми):** `receivedQty` інкремент-only, over-receipt
+  guard (`line.receivedQty + recv > line.quantity → 400`, epsilon 1e-6). `transition`→CANCELLED
+  статус-only, НЕ реверсить отримане (фізичний товар не «розотримати») — навмисна forward-
+  асиметрія, НЕ клас #780 (там реверс припускав forward-ефект; тут реверсу взагалі нема). Чисто.
+- **4. invoices.paidAmount:** `paidAmount` монотонно зростає, capped (`dto.amount > remaining
+→ 400`), CAS-guard (`where paidAmount=prevPaid`). Платежі append-only, un-pay/decrement немає.
+  CANCELLED-перехід НЕ авто-реверсить CHARGE (ledger append-only; задокументовано у
+  docs/objects/invoice.md). PAID/CANCELLED термінальні. Чисто.
+- **5. settlements.createTransaction (balance агрегат):** balance завжди `increment` на
+  ЗНАКОВИЙ `balanceDelta = BALANCE_SIGN[type] * amountBase`. Реверси моделюються ЗУСТРІЧНОЮ
+  forward-проводкою (PAYMENT гасить CHARGE), кожна з власним guard `amount > 0`. Симетрія за
+  побудовою — агрегат не можна зменшити нижче внеску документа. Чисто (вже є property-based
+  `settlements.invariants.spec.ts`).
+
+**Регресійний guard (мутаційно доведений):**
+`apps/api/src/modules/stock-documents/asymmetric-reverse.invariants.spec.ts` — 7 структурних
+FSM-тестів, що фіксують ПРИЧИНУ чистоти (термінальність CONFIRMED/RECEIVED/PAID; єдине вхідне
+ребро у CANCELLED для DOC). Читають експортовані `DOC_TRANSITIONS`/`PO_TRANSITIONS`/
+`INV_TRANSITIONS` (єдине джерело правди). Мутація доведена: відкриття `CONFIRMED→CANCELLED`
+у stock-documents → 2 тести падають (`expected [] to equal ['CANCELLED']`). Поведінковий тест
+тут нічого б не довів — реального реверсу у цих FSM немає, захист тримається на ФОРМІ мапи.
+
+**Стан:** api 3114/3114 (3107+7), tsc 0 (вкл. tsconfig.spec.json), eslint 0 errors.

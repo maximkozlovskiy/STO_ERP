@@ -3040,3 +3040,45 @@ per-document, тож «скільки саме тримає цей наряд» 
 на іншому — `settlements` (CHARGE/CREDIT_NOTE симетрія вже per-document, ОК), `loyalty` (earn/redeem),
 `stock-documents.transition` (DRAFT→POSTED→CANCELLED), `purchase-orders.receive` (часткове приймання +
 реверс), `invoices` (paidAmount). Перевіряти: «чи КОЖЕН шлях до реверсу гарантовано мав прямий ефект?».
+
+### 2026-10-04 (ЦИКЛ 2) — Аудит класу Bug #780 у 5 кандидатах: усі чисті + техніка structural-FSM-guard — Area: backend / FSM / money / inventory / audit-method
+
+**Контекст:** прямий follow-up до Bug #780. Entry вище лишив «Де шукати ще»: settlements, loyalty,
+stock-documents, purchase-orders, invoices. ЦИКЛ 2 застосував метод до всіх п'яти. РЕЗУЛЬТАТ: усі
+ЧИСТІ — Bug #780 поодинокий (work-order-stock-effects), НЕ системний. Це валідний і цінний результат.
+
+**Чому кожен чистий (фіксуємо, щоб наступний run НЕ переаудитовував):**
+
+- `loyalty`: редему guard `balance: { gte: points }` (атомарний updateMany) — не можна списати більше
+  наявного; earn ідемпотентний (per-document unique). РЕВЕРСУ (un-earn/un-redeem) НЕМА → асиметрія неможлива.
+- `stock-documents`: `CONFIRMED: []` термінальний; рухи лише на DRAFT→CONFIRMED; у CANCELLED веде ЛИШЕ
+  DRAFT (рухів не було). CANCELLED-гілка статус-only. Реверсу немає і бути не може.
+- `purchase-orders`: `receivedQty` інкремент-only + over-receipt guard; `RECEIVED: []` термінальний;
+  CANCELLED статус-only (не «розотримати» фізичний товар) — НАВМИСНА forward-асиметрія, НЕ клас #780.
+- `invoices`: `paidAmount` монотонний, capped, CAS; платежі append-only; CANCELLED не авто-реверсить
+  CHARGE (ledger append-only, задокументовано). PAID/CANCELLED термінальні.
+- `settlements`: balance = increment на ЗНАКОВИЙ delta; реверс = зустрічна forward-проводка з власним
+  `amount>0` guard. Симетрія за побудовою (вже є property-based invariants-spec).
+
+**НОВА техніка — structural-FSM-guard для NO-REVERSE випадку:** коли аудит показує «реверсу немає, захист
+тримається на ФОРМІ мапи переходів» (термінальність confirmed-стану; єдине вхідне ребро у cancelled),
+ПОВЕДІНКОВИЙ тест нічого не доводить (реверсити нема чого — мок завжди зелений). Правильний
+мутаційно-доказовий guard — СТРУКТУРНИЙ: імпортувати експортовану транзишн-мапу (`DOC_TRANSITIONS`/
+`PO_TRANSITIONS`/`INV_TRANSITIONS`) і асертити САМЕ небезпечні/безпечні РЕБРА:
+`expect(DOC_TRANSITIONS.CONFIRMED).toEqual([])`, `expect(intoCancelled).toEqual(['DRAFT'])`. Мутація:
+відкриття `CONFIRMED→CANCELLED` → тест падає. Так фіксуємо ПРИЧИНУ чистоти: якщо рефактор відкриє ребро,
+що відтворить клас #780 (реверс стане можливим зі стану З ефектом), тест червоніє і нагадує додати
+per-document guard. Файл-зразок: `apps/api/src/modules/stock-documents/asymmetric-reverse.invariants.spec.ts`.
+
+**Правило розрізнення (важливо проти false-positive):** «реверс, що припускає стан» (Bug #780, баг) ≠
+«forward-асиметрія: forward-ефект є, реверсу навмисно немає» (PO-CANCELLED-після-отримання, invoice-
+CANCELLED-з-CHARGE — НЕ баги; скасування фізично отриманого/виставленого робиться зустрічним документом,
+не авто-реверсом). Клас #780 вимагає, щоб РЕВЕРС реально існував і міг спрацювати зі стану без ефекту.
+Якщо реверсу немає взагалі — це не цей клас; не вигадувати баг там, де ledger свідомо append-only.
+
+**Severity:** N/A (аудит-результат). Техніка structural-guard — застосовна до будь-якого FSM, чия безпека
+від класу #780 тримається на формі мапи, а не на runtime-логіці.
+
+**Де шукати ще (майбутні FSM):** будь-який НОВИЙ агрегат з inc-на-одному-переході. При появі РЕАЛЬНОГО
+реверсу (release/decrement/сторно) у цих п'яти — переаудитувати саме його. Поки реверсу немає — structural
+guard достатній.
