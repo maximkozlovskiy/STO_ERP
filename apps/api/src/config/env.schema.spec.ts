@@ -14,6 +14,7 @@ const prodBase = {
   MINIO_SECRET_KEY: 'sk',
   MINIO_BUCKET: 'sto-files',
   NOTIFICATION_ENC_KEY: STRONG,
+  WEB_ORIGIN: 'https://sto.example',
 };
 
 describe('validateEnv — fail-fast env валідація', () => {
@@ -34,6 +35,18 @@ describe('validateEnv — fail-fast env валідація', () => {
   it('production: відсутній DATABASE_URL → кидає з переліком', () => {
     const { DATABASE_URL, ...rest } = prodBase;
     expect(() => validateEnv(rest)).toThrow(/DATABASE_URL обовʼязковий у production/);
+  });
+
+  it('production: відсутній WEB_ORIGIN → кидає (інакше CORS бере dev-fallback)', () => {
+    // Без цієї перевірки прод стартував би з origin `http://localhost:3001` — адресою,
+    // якої у розгортанні не існує. За одним Caddy (same-origin) шкоди немає, але на
+    // окремому домені API це тихо зламало б кожен браузерний запит.
+    const { WEB_ORIGIN, ...rest } = prodBase;
+    expect(() => validateEnv(rest)).toThrow(/WEB_ORIGIN обовʼязковий у production/);
+  });
+
+  it('dev: WEB_ORIGIN не обовʼязковий (fallback на localhost — це і є dev-режим)', () => {
+    expect(() => validateEnv({ NODE_ENV: 'development' })).not.toThrow();
   });
 
   it('production: відсутній NOTIFICATION_ENC_KEY → кидає (шифрування at-rest)', () => {

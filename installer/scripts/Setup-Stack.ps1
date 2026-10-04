@@ -4,7 +4,12 @@ param(
     [string]$ImagesDir = '',
     # Версія релізу = тег bundled-образів (docker save sto-api:$Version у CI). compose тягне саме
     # цей тег (image: sto-api:${VERSION}). Дефолт 'latest' — сумісність зі старими викликами.
-    [string]$Version   = 'latest'
+    [string]$Version   = 'latest',
+    # CORS-origin API: адреса, за якою браузер відкриває систему. За одним Caddy web і API
+    # same-origin, тож CORS не задіяний — але API вимагає цю змінну у production (env.schema),
+    # щоб у розгортанні не лишався тихий dev-fallback http://localhost:3001.
+    # Інсталяція на інший хост/порт: -WebOrigin 'http://sto.local'.
+    [string]$WebOrigin = 'http://localhost'
 )
 
 Set-StrictMode -Version Latest
@@ -85,6 +90,8 @@ JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=30d
 
 NOTIFICATION_ENC_KEY=$encKey
+
+WEB_ORIGIN=$WebOrigin
 
 NODE_ENV=production
 TZ=Europe/Kyiv

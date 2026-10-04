@@ -165,11 +165,14 @@ test.describe('Автомобілі', () => {
     await expect(page.locator('h1:has-text("Новий автомобіль")')).toBeVisible({ timeout: 20_000 });
 
     const uniqueSuffix = Date.now().toString().slice(-6);
-    // Заповнити обовязкові поля: марка + модель
-    const makeInput = page.locator('input').filter({ hasText: '' }).nth(0);
-    await makeInput.fill(`E2E-Make`);
-    const modelInput = page.locator('input').filter({ hasText: '' }).nth(1);
-    await modelInput.fill(`E2E-Model-${uniqueSuffix}`);
+    // Поля адресуємо ЗА LABEL, а не за позицією: `input` + `.nth(0/1)` прив'язувався до
+    // порядку рендеру, тож будь-яке нове поле (або поле, що домалювалось асинхронно)
+    // зсувало індекси й давало flaky. `Input` звʼязує label з контролом через htmlFor/id,
+    // тож getByLabel стабільний.
+    // БЕЗ exact: обовʼязкові поля рендеряться як «Марка*» (Input додає зірочку в label),
+    // тож точний збіг ніколи не спрацював би.
+    await page.getByLabel('Марка').fill('E2E-Make');
+    await page.getByLabel('Модель').fill(`E2E-Model-${uniqueSuffix}`);
 
     // Натиснути submit
     const submit = page

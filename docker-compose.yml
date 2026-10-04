@@ -95,6 +95,11 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       NOTIFICATION_ENC_KEY: ${NOTIFICATION_ENC_KEY}
+      # CORS-origin. Обовʼязковий у production (env.schema: requireInProd) — інакше API
+      # мовчки взяв би dev-fallback http://localhost:3001. У звичайному on-prem web і API
+      # за одним Caddy (same-origin), тож CORS не задіяний; значення важливе, коли web
+      # відкривають за іншим хостом/портом, ніж той, на який ходить браузер.
+      WEB_ORIGIN: ${WEB_ORIGIN}
       NODE_ENV: production
       TZ: Europe/Kyiv
     healthcheck:
