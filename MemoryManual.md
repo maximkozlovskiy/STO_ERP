@@ -54,9 +54,15 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       e71f755a — perf-аудит ЦИКЛ 1/3 (на базі 4ade1401). ЄДИНЕ вимірене вузьке
-            місце: vitest isolate:true оцінював 500 модулів 2506× (по разу/файл) — набір
-            api 76.7s → 15-16s (isolate:false, 3099/3099 green, вимір обох прогонів).
+HEAD:       a26cb8fc — sto-tester ЦИКЛ 1/3: Bug #780 (CRITICAL). FSM-реверс side-effect
+            припускав стан, якого альтернативний валідний шлях не створив: резерв ставиться
+            лише на APPROVED→IN_PROGRESS, але APPROVED→ON_HOLD→IN_PROGRESS→COMPLETED і
+            APPROVED→ON_HOLD→CANCELLED резерву не мають → безумовний RESERVATION_RELEASE кидав
+            cannotReleaseMoreThanReserved (наряд не завершити/скасувати) або звільняв чужий
+            резерв. Fix: netReservedByWorkOrder() → release min(baseQty, свій_резерв).
+            +5 регрес-тестів (мок відтворює реальний inventory-guard, red-без-фіксу). api
+            3106/3106, tsc 0, eslint 0 errors. Решта (report-builder tenant / C2 money-симетрія
+            / інвентар Σ) — перевірено ЧИСТО. (prev perf HEAD e71f755a: vitest isolate 76.7s→16s.)
             Решта кандидатів з ТЗ перевірені й визнані НЕ вузькими (нуль змін): reports/
             report-builder (DB-side агрегація + Promise.all + take-cap — вже оптимізовано);
             money-міграція (sumMoney по рядках одного документа, не гарячий N); 185 нових
