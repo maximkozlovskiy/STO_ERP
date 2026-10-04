@@ -5,7 +5,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.spec.ts'],
+    // `include` задається В ПРОЕКТАХ (нижче), не тут: інакше корінь зібрав би ті самі
+    // файли ЩЕ РАЗ — перший прогін після введення projects дав 409 файлів / 6220 тестів
+    // замість 205/3115 (кожен спек порахований двічі).
     setupFiles: ['reflect-metadata'],
     // isolate:false — спеки НЕ ізолюються у окремий модульний граф на файл: воркер
     // обчислює спільні модулі ОДИН раз, а не 2506× (по разу на кожен з 204 файлів).
@@ -18,6 +20,32 @@ export default defineConfig({
     // від його скидання між файлами — додати restoreMocks/unstubEnvs АБО лишити той файл
     // ізольованим через test.sequence, а не вертати глобальний isolate:true.
     isolate: false,
+    // ВИНЯТОК (знайдено ЦИКЛ 2/3): email.provider.spec МУСИТЬ бути ізольованим.
+    // Він мокає 'nodemailer', а `EmailProvider` імпортують ще два специ
+    // (provider-registry, turbosms), які не мокають. Під спільним графом провайдер
+    // інколи отримував НЕмокнутий модуль → send повертав accepted:false → 5 падінь.
+    // Виміряно: без ізоляції ~1 падіння на 4-5 повних прогонів; з `--isolate` 3/3 зелено.
+    // Спроби полагодити на рівні спека (однаковий vi.mock у всіх трьох, resetModules +
+    // динамічний import) НЕ допомогли — проблема в ідентичності модуля, не в реєстрації
+    // моку. Тому точкова ізоляція саме цього файлу: решта 204 зберігають прискорення 5×.
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'shared',
+          include: ['src/**/*.spec.ts'],
+          exclude: ['src/modules/notifications/providers/email.provider.spec.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'isolated',
+          include: ['src/modules/notifications/providers/email.provider.spec.ts'],
+          isolate: true,
+        },
+      },
+    ],
     // Ліміт потоків: Vitest 4 прибрав і CLI-опцію `--poolOptions`, і вкладений
     // `test.poolOptions` — тепер це ТОП-РІВНЕВІ опції (DEPRECATED-попередження вказало
     // прямо). Поки стояло вкладене, обмеження просто ІГНОРУВАЛОСЬ.
