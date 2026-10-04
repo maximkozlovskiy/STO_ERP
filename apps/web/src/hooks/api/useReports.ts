@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
+import type { ApiSchema } from '@sto/shared';
 
 export type ReportTab =
   | 'revenue'
@@ -17,9 +18,30 @@ export const reportsKeys = {
   report: (tab: ReportTab, from: string, to: string) => ['reports', tab, from, to] as const,
 };
 
-export function useReport(tab: ReportTab, from: string, to: string) {
+/**
+ * Вкладка → форма відповіді, зі ЗГЕНЕРОВАНИХ схем.
+ *
+ * Було `Record<string, unknown>` + `as ReportData` у page.tsx — тобто тип відповіді
+ * тримався на ручному касті. Відколи у звітів є DTO в OpenAPI-документі, тип можна
+ * вивести: зміна форми на беку тепер ламає компіляцію, а не дає тихий `undefined`.
+ *
+ * `settlements-detail` — UI-only вкладка (запиту не робить, `enabled:false`), тож
+ * її відповідь — `never`: спроба прочитати дані для неї не скомпілюється.
+ */
+export type ReportResponseByTab = {
+  revenue: ApiSchema<'RevenueReportDto'>;
+  'work-orders': ApiSchema<'WorkOrdersReportDto'>;
+  stock: ApiSchema<'StockReportDto'>;
+  settlements: ApiSchema<'SettlementsReportDto'>;
+  'settlements-detail': never;
+  load: ApiSchema<'LoadReportDto'>;
+  profitability: ApiSchema<'ProfitabilityReportDto'>;
+  vat: ApiSchema<'VatReportDto'>;
+};
+
+export function useReport<T extends ReportTab>(tab: T, from: string, to: string) {
   const { employee } = useAuth();
-  return useQuery<Record<string, unknown>>({
+  return useQuery<ReportResponseByTab[T]>({
     queryKey: reportsKeys.report(tab, from, to),
     queryFn: ({ signal }) => {
       const params = new URLSearchParams({ from, to });

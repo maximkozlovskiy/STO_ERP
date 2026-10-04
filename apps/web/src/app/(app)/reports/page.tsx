@@ -7,6 +7,7 @@ import type { TFunction } from 'i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRequireAuth } from '@/lib/auth';
 import { useReport, type ReportTab } from '@/hooks/api/useReports';
+import type { ApiSchema } from '@sto/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
@@ -45,51 +46,22 @@ const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart)
 
 type Tab = ReportTab | 'builder';
 
-type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
-type WorkOrderRow = {
-  employeeId: string;
-  employeeName: string;
-  totalNormoHours: number;
-  linesCount: number;
-  totalAmount: number;
-};
-type StockItem = {
-  goodName: string;
-  goodSku: string | null;
-  warehouseName: string;
-  unit: string;
-  quantity: number;
-  available: number;
-  value: number;
-};
-type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
-type LoadRow = {
-  liftId: string;
-  liftName: string;
-  zoneName: string;
-  totalSlots: number;
-  totalHours: number;
-  loadPercent: number;
-};
+// Форми звітів — ЗІ ЗГЕНЕРОВАНИХ схем, не рукописні: тепер вони є в OpenAPI-документі
+// (reports.dto.ts), тож зміна на беку ламає компіляцію ТУТ, а не дає тихий undefined
+// у комірці (клас бага «колонка Бренд завжди —»). Типи рядків не аліасимо окремо —
+// вони беруться з батьківського DTO (`rows`/`stockItems`).
+type ProfitabilityData = ApiSchema<'ProfitabilityReportDto'>;
 
-type ProfitabilityData = {
-  totalRevenue: number;
-  totalCost: number;
-  totalCostParts: number;
-  totalCostLabor: number;
-  grossProfit: number;
-  margin: number;
-  ordersCount: number;
-};
-
+// `_tab` додається на клієнті (useReport повертає тіло без дискримінанта), тож
+// union будується як «DTO + мітка вкладки».
 type ReportData =
-  | { _tab: 'revenue'; totalRevenue: number; totalOrders: number; rows: RevenueRow[] }
-  | { _tab: 'work-orders'; totalNormoHours: number; totalAmount: number; rows: WorkOrderRow[] }
-  | { _tab: 'stock'; totalValue: number; stockItems: StockItem[] }
-  | { _tab: 'settlements'; totalDebit: number; totalCredit: number; rows: SettlementRow[] }
-  | { _tab: 'load'; rows: LoadRow[] }
+  | ({ _tab: 'revenue' } & ApiSchema<'RevenueReportDto'>)
+  | ({ _tab: 'work-orders' } & ApiSchema<'WorkOrdersReportDto'>)
+  | ({ _tab: 'stock' } & ApiSchema<'StockReportDto'>)
+  | ({ _tab: 'settlements' } & ApiSchema<'SettlementsReportDto'>)
+  | ({ _tab: 'load' } & ApiSchema<'LoadReportDto'>)
   | ({ _tab: 'profitability' } & ProfitabilityData)
-  | { _tab: 'vat'; invoiced: number; purchases: number; net: number; from: string; to: string };
+  | ({ _tab: 'vat' } & ApiSchema<'VatReportDto'>);
 
 // Thin proxy to lib/format singleton (Intl.NumberFormat module-level). Replaces
 // per-render `n.toLocaleString('uk-UA', {...})` × every cell у table-heavy reports.
