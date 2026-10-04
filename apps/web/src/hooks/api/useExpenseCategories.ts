@@ -39,6 +39,10 @@ export function useExpenseCategories(showDeleted = false, enabled = true) {
         `/expense-categories${showDeleted ? '?showDeleted=true' : ''}`,
       ).then(r => r.items),
     enabled,
+    // Довідник (дерево статей витрат) — рідко міняється під час сесії. Без staleTime
+    // (дефолт 0) кожен mount CashOperationsTab/модалки операції re-fetch-ив усе дерево.
+    // Усі 5 мутацій invalidate-ять lists() → safe. Конвенція reference-хуків: 5 хв.
+    staleTime: 5 * 60_000,
   });
 }
 

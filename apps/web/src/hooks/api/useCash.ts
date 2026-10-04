@@ -108,6 +108,10 @@ export function useCashRegisters() {
     queryKey: cashKeys.registers(),
     queryFn: () =>
       apiFetch<{ items: CashRegister[]; total: number }>('/cash-registers').then(r => r.items),
+    // Довідник кас — рідко міняється під час сесії. Без staleTime (дефолт 0) кожен
+    // перемик табу (CashOperationsTab/CashRegistersTab) і візит payroll re-fetch-ив
+    // список. Усі мутації (create/update/delete) invalidate-ять registers() → safe.
+    staleTime: 5 * 60_000,
   });
 }
 
