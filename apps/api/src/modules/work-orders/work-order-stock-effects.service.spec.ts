@@ -228,46 +228,53 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy 
  * юніт-тест ловив баг без живої БД. Фікс: writeOffPartsAndCharge рахує нетто-резерв НАРЯДУ з
  * його RESERVATION-рухів (stockMovement.findMany) і звільняє min(baseQty, свій_резерв).
  */
-describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (release лише свій резерв)', () => {
-  /** Stateful inventory-мок, що дзеркалить InventoryService: reserved не може стати від'ємним. */
-  function makeStatefulInventory(initialReserved: number) {
-    let reserved = initialReserved;
-    const createMovement = vi
-      .fn()
-      .mockImplementation((_org: string, dto: { type: string; quantity: number }) => {
-        if (dto.type === 'RESERVATION_RELEASE') {
-          // Реальний guard: Math.abs(qty) > reserved → throw.
-          if (Math.abs(dto.quantity) > reserved) {
-            return Promise.reject(new Error('cannotReleaseMoreThanReserved'));
-          }
-          reserved += dto.quantity; // quantity < 0 → зменшує reserved
-          return Promise.resolve({ consumed: [], weightedCostPrice: null });
-        }
-        if (dto.type === 'RESERVATION') {
-          reserved += dto.quantity;
-          return Promise.resolve({ consumed: [], weightedCostPrice: null });
-        }
-        // WRITEOFF
-        return Promise.resolve({ consumed: [{ batchId: 'b1' }], weightedCostPrice: 7 });
-      });
-    return { createMovement, getReserved: () => reserved };
-  }
 
+/**
+ * Stateful inventory-мок, що дзеркалить InventoryService.createMovement:
+ * RESERVATION_RELEASE кидає "cannotReleaseMoreThanReserved" коли |qty| > поточного reserved
+ * (саме цей guard і ловить Bug #780), інакше зменшує лічильник. Спільний для обох Bug #780
+ * describe-блоків — writeOff і release перевіряють ту саму інваріанту «не звільнити чужого».
+ */
+function makeStatefulInventory(initialReserved: number) {
+  let reserved = initialReserved;
+  const createMovement = vi
+    .fn()
+    .mockImplementation((_org: string, dto: { type: string; quantity: number }) => {
+      if (dto.type === 'RESERVATION_RELEASE') {
+        if (Math.abs(dto.quantity) > reserved) {
+          return Promise.reject(new Error('cannotReleaseMoreThanReserved'));
+        }
+        reserved += dto.quantity; // quantity < 0 → зменшує reserved
+        return Promise.resolve({ consumed: [], weightedCostPrice: null });
+      }
+      if (dto.type === 'RESERVATION') {
+        reserved += dto.quantity;
+        return Promise.resolve({ consumed: [], weightedCostPrice: null });
+      }
+      // WRITEOFF
+      return Promise.resolve({ consumed: [{ batchId: 'b1' }], weightedCostPrice: 7 });
+    });
+  return { createMovement, getReserved: () => reserved };
+}
+describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (release лише свій резерв)', () => {
   function makeSvc(opts: {
     reservationMovements: Array<{ goodId: string; warehouseId: string; quantity: number }>;
     initialReserved: number;
+    /** Рядки наряду; за замовчуванням один на 5 од. Перевизначається для multi-part сценаріїв. */
+    parts?: Array<{ id: string; quantity: number }>;
   }) {
+    const parts = opts.parts ?? [{ id: 'part-1', quantity: 5 }];
     const prisma = {
       workOrderPart: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: 'part-1',
+        findMany: vi.fn().mockResolvedValue(
+          parts.map(p => ({
+            id: p.id,
             goodId: GOOD_ID,
             warehouseId: WH_ID,
-            quantity: 5,
+            quantity: p.quantity,
             unitOfMeasureId: null,
-          },
-        ]),
+          })),
+        ),
         update: vi.fn().mockResolvedValue({}),
       },
       workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
@@ -346,6 +353,40 @@ describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (rele
     expect(releaseCalls).toHaveLength(1);
     expect(releaseCalls[0][1].quantity).toBe(-3); // не -5 → жодного underflow чужого резерву
   });
+
+  it('два рядки на ОДИН (good,warehouse) → резерв ділиться між ними, без подвійного звільнення — MUTATION-VERIFY', async () => {
+    // Резерв — агрегат по (good,warehouse), а не по рядку наряду. Наряд тримає 5, але має два
+    // рядки по 4 на той самий товар+склад. Перший забирає 4, другому лишається 1.
+    // MUTATION: прибрати декремент мапи у takeFromReserve → обидва рядки візьмуть по 4 (разом 8
+    // при резерві 5) → другий RELEASE кине "cannotReleaseMoreThanReserved" і тест впаде.
+    const { svc, createMovement, getReserved } = makeSvc({
+      reservationMovements: [{ goodId: GOOD_ID, warehouseId: WH_ID, quantity: 5 }],
+      initialReserved: 5,
+      parts: [
+        { id: 'part-1', quantity: 4 },
+        { id: 'part-2', quantity: 4 },
+      ],
+    });
+
+    await expect(
+      svc.writeOffPartsAndCharge(
+        ORG,
+        { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+        'user-1',
+      ),
+    ).resolves.toBeUndefined();
+
+    const releaseQtys = createMovement.mock.calls
+      .filter(c => c[1].type === 'RESERVATION_RELEASE')
+      .map(c => c[1].quantity);
+    expect(releaseQtys).toEqual([-4, -1]); // разом рівно 5 — весь резерв наряду, не більше
+    expect(getReserved()).toBe(0);
+    // Обидва рядки все одно списані фізично (WRITEOFF не залежить від наявності резерву).
+    const writeoffQtys = createMovement.mock.calls
+      .filter(c => c[1].type === 'WRITEOFF')
+      .map(c => c[1].quantity);
+    expect(writeoffQtys).toEqual([-4, -4]);
+  });
 });
 
 /**
@@ -355,23 +396,6 @@ describe('WorkOrderStockEffectsService.writeOffPartsAndCharge — Bug #780 (rele
  * "cannotReleaseMoreThanReserved" → скасувати наряд неможливо.
  */
 describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (release лише свій резерв)', () => {
-  function makeStatefulInventory(initialReserved: number) {
-    let reserved = initialReserved;
-    const createMovement = vi
-      .fn()
-      .mockImplementation((_org: string, dto: { type: string; quantity: number }) => {
-        if (dto.type === 'RESERVATION_RELEASE') {
-          if (Math.abs(dto.quantity) > reserved) {
-            return Promise.reject(new Error('cannotReleaseMoreThanReserved'));
-          }
-          reserved += dto.quantity;
-          return Promise.resolve({ consumed: [], weightedCostPrice: null });
-        }
-        return Promise.resolve({ consumed: [], weightedCostPrice: null });
-      });
-    return { createMovement, getReserved: () => reserved };
-  }
-
   function makeSvc(opts: {
     reservationMovements: Array<{ goodId: string; warehouseId: string; quantity: number }>;
     initialReserved: number;
