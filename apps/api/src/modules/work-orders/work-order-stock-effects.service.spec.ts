@@ -78,6 +78,36 @@ describe('WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A
     );
   });
 
+  it('netReservedByWorkOrder несе orgId + documentId у where (tenant-isolation) — MUTATION-VERIFY', async () => {
+    // Знайдено security-review ЦИКЛ 2/3: мутація «прибрати orgId з цього where» ВИЖИВАЛА —
+    // усі 12 тестів лишались зеленими. Тобто tenant-scope НОВОГО запиту (Bug #780) не був
+    // покритий, на відміну від сусіднього goodUoM-lookup. Рантайм захищений A1-guard-ом,
+    // але регресія мовчки проходила б unit-рівень. Дзеркалить патерн тесту вище.
+    const goodUoMFindMany = vi
+      .fn()
+      .mockResolvedValue([{ goodId: GOOD_ID, unitOfMeasureId: UOM_ID, coefficient: 10 }]);
+    const svc = makeService(goodUoMFindMany);
+    const movementFindMany = (
+      svc as unknown as { prisma: { stockMovement: { findMany: ReturnType<typeof vi.fn> } } }
+    ).prisma.stockMovement.findMany;
+
+    await svc.writeOffPartsAndCharge(
+      ORG,
+      { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never },
+      'user-1',
+    );
+
+    expect(movementFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orgId: ORG,
+          documentType: 'WorkOrder',
+          documentId: 'wo-1',
+        }),
+      }),
+    );
+  });
+
   it('coeff застосовується: baseQty = quantity * coefficient (20 * 10 = 200)', async () => {
     const goodUoMFindMany = vi
       .fn()
