@@ -54,7 +54,24 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       981799cb — sto-tester ЦИКЛ 3/3: Bug #781 (HIGH) крос-модульний інваріант.
+HEAD:       bdf89b7f — sto-optimize ЦИКЛ 3/3 (ОСТАННІЙ perf-цикл). Фронт-напрям:
+            два reference-хуки на raw useQuery БЕЗ staleTime (useExpenseCategories —
+            дерево статей; useCashRegisters — список кас) → re-fetch на КОЖЕН mount
+            (перемик табу cash, відкриття модалки операції, візит payroll). Усі мутації
+            invalidate-ять їх ключі → staleTime 5хв безпечний (конвенція reference-хуків).
+            Fix ac16f4b1 (web tsc 0, cash 9/9, bundle 1.28/1.4 MB). Бек-гарячі списки
+            (calendar/counterparties/inventory stock-items) — ЧИСТО: усі select (не
+            include:true), take-cап, Promise.all, _count-groupBy замість N+1, SLOT_INCLUDE
+            hoisted + PII-stripped conflict-select (слід попередніх perf-пасів). CalendarSlot
+            індекси покривають фактичні предикати (startAt-range/employeeId/liftId). ПЕРЕВІРКА
+            ВЛАСНОГО ФІКСУ (projects-спліт isolate:false): НЕ сповільнив — warm-run 13.7s =
+            ціль, import-частка 31% (vs 79% до фіксу). ЗНАХІДКА-ТЕСТ-ІНФРА: перший прогін
+            дав хибний флейк reconciliation.processor.spec (месседж «Σpayment=0» якого НЕМА
+            у коді) — виявилось stale node_modules/.vite transform-cache під isolate:false
+            після Bug #781-коміту, НЕ код/leak/конфіг. Після cache-bust 5/5 прогонів green
+            3118/3118. Новий клас → skill §3b.2 + accumulated-pattern (bdf89b7f). docker
+            недоступний → EXPLAIN не прогнано (індекси структурно покривають, як і ЦИКЛ 2).
+HEAD-opt-prev: 981799cb — sto-tester ЦИКЛ 3/3: Bug #781 (HIGH) крос-модульний інваріант.
             ReconciliationProcessor.checkInvoicePaid звіряв Invoice.paidAmount лише з
             Σ Payment.amount, але paidAmount росте ДВОМА шляхами: реальна оплата
             (Payment-рядок) + ручне →PAID standalone-рахунку (Bug #675 — settlement
