@@ -5,6 +5,14 @@ on:
   push:
     branches:
       - main
+  # Повний E2E (e2e-full) можна запустити вручну на будь-якій гілці — напр. перед релізом
+  # або коли PR зачіпає багато UI. На PR за замовчуванням іде лише smoke.
+  workflow_dispatch:
+    inputs:
+      run_full_e2e:
+        description: 'Запустити повний E2E (49 spec, 354 тести) замість smoke'
+        type: boolean
+        default: true
 
 jobs:
   # Якісні гейти — type-check + lint + unit-тести на кожен PR/push. Раніше CI мав ЛИШЕ
@@ -171,6 +179,8 @@ jobs:
   # вимкнений саме тому, що сервер піднімає цей workflow.
   e2e-smoke:
     runs-on: ubuntu-latest
+    # Без явного ліміту job висів би до GitHub-дефолту 6 год, якби сервер не піднявся.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -252,6 +262,114 @@ jobs:
           name: e2e-artifacts
           path: |
             apps/web/test-results/
+            /tmp/api.log
+            /tmp/web.log
+          retention-days: 7
+
+  # E2E (ПОВНИЙ набір: 49 spec-файлів, 354 тести — вимір `playwright test --list`).
+  # Доповнює e2e-smoke, а не замінює:
+  # smoke дає швидкий відгук на КОЖЕН PR (14 тестів, ~2 хв), повний набір ловить регресії,
+  # яких smoke не бачить — CRUD усіх агрегатів, FSM нарядів, кеш-інвалідація, console-errors.
+  #
+  # ЧОМУ НЕ НА КОЖЕН PR: 354 тести × (45с timeout + 2 retries) — десятки хвилин на кожен PR.
+  # Тому: автоматично на push у main (там регресія вже змержена — треба знати негайно) і
+  # вручну через workflow_dispatch (перед релізом / коли PR зачіпає багато UI).
+  #
+  # ОБОВ'ЯЗКОВІ УМОВИ, кожна вже коштувала окремого падіння:
+  #  · NEXT_PUBLIC_E2E=1 при запуску web — прапорець гейтиться на ЗБІРЦІ; без нього
+  #    auth-hatch tree-shake-иться і ВСІ тести редіректять на /login (storageState не
+  #    рятує, бо нема що підхоплювати);
+  #  · seed БД — специ чекають довідники (статуси, одиниці, способи оплати);
+  #  · playwright.config: webServer у CI вимкнений (сервери піднімає цей workflow),
+  #    workers=2 (dev-throttler: 10 req/min на /auth/login — 4+ воркери дають 429).
+  e2e-full:
+    runs-on: ubuntu-latest
+    # Повний прогін локально ≈ 6-9 хв; 40 — запас на холодну компіляцію Next.js у CI
+    # (перший прохід компілює сторінки on-demand) + 2 retries на flaky.
+    timeout-minutes: 40
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sto
+          POSTGRES_PASSWORD: sto_dev_secret
+          POSTGRES_DB: sto_erp
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sto -d sto_erp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sto:sto_dev_secret@localhost:5432/sto_erp
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma migrate + generate + seed
+        run: |
+          pnpm --filter @sto/database exec prisma migrate deploy
+          pnpm --filter @sto/database exec prisma generate
+          pnpm --filter @sto/database run seed
+
+      - name: Build shared
+        run: pnpm --filter @sto/shared build
+
+      - name: Start API
+        run: |
+          pnpm --filter @sto/api dev > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/health > /dev/null && exit 0
+            sleep 3
+          done
+          echo "API не піднявся за 180с:"; tail -40 /tmp/api.log; exit 1
+
+      - name: Start web
+        env:
+          # Без цього прапорця auth-hatch не компілюється і ВСІ тести йдуть у /login.
+          NEXT_PUBLIC_E2E: '1'
+        run: |
+          pnpm --filter @sto/web dev > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001 > /dev/null && exit 0
+            sleep 3
+          done
+          echo "web не піднявся за 180с:"; tail -40 /tmp/web.log; exit 1
+
+      - name: Install Playwright browser
+        run: pnpm --filter @sto/web exec playwright install --with-deps chromium
+
+      - name: Run full E2E suite
+        run: pnpm --filter @sto/web exec playwright test --reporter=list
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-full-artifacts
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
             /tmp/api.log
             /tmp/web.log
           retention-days: 7
