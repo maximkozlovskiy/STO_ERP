@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       run_full_e2e:
-        description: 'Запустити повний E2E (49 spec, 354 тести) замість smoke'
+        description: 'Запустити повний E2E (50 spec, 361 тест) замість smoke'
         type: boolean
         default: true
 
@@ -120,6 +120,48 @@ jobs:
   # REQUIRE_DB=1 КРИТИЧНИЙ: без нього специ при збої підключення або незасіяній базі знову
   # тихо пропустяться, і job лишиться зеленим — тобто ми б додали Postgres і не помітили,
   # що він не використовується. З прапорцем недоступна БД валить набір (common/testing/require-db.ts).
+  # Бюджет розміру бандла. Web вантажиться у планшети механіків по WiFi у цеху, тож
+  # непомічене зростання — це секунди очікування на кожному відкритті сторінки.
+  #
+  # ДВІ перевірки, бо вони міряють РІЗНЕ:
+  #  · `size` (size-limit) — сумарний JS бандла; ловить «притягнули важку залежність»;
+  #  · `size:pages` — first load КОНКРЕТНОЇ сторінки (чанки, згадані в її HTML).
+  #    size-limit так не вміє: для glob він рахує СУМУ всіх файлів, а не те, що
+  #    завантажує одна сторінка — тому окремий скрипт.
+  # Виміряно 2026-10-04: бандл 1.28 MB gzip, найважча сторінка /invoices 512 KB gzip.
+  bundle-budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @sto/database exec prisma generate
+
+      - name: Build shared
+        run: pnpm --filter @sto/shared build
+
+      - name: Build web (static export)
+        run: pnpm --filter @sto/web build
+
+      - name: Бюджет усього бандла
+        run: pnpm --filter @sto/web size
+
+      - name: Бюджет first-load на сторінку
+        run: pnpm --filter @sto/web size:pages
+
   integration-tests:
     runs-on: ubuntu-latest
     services:
@@ -266,12 +308,13 @@ jobs:
             /tmp/web.log
           retention-days: 7
 
-  # E2E (ПОВНИЙ набір: 49 spec-файлів, 354 тести — вимір `playwright test --list`).
+  # E2E (ПОВНИЙ набір: 50 spec-файлів, 361 тест — вимір `playwright test --list`;
+  # серед них a11y.spec.ts — axe-core у режимі храповика).
   # Доповнює e2e-smoke, а не замінює:
   # smoke дає швидкий відгук на КОЖЕН PR (14 тестів, ~2 хв), повний набір ловить регресії,
   # яких smoke не бачить — CRUD усіх агрегатів, FSM нарядів, кеш-інвалідація, console-errors.
   #
-  # ЧОМУ НЕ НА КОЖЕН PR: 354 тести × (45с timeout + 2 retries) — десятки хвилин на кожен PR.
+  # ЧОМУ НЕ НА КОЖЕН PR: 361 тест × (45с timeout + 2 retries) — десятки хвилин на кожен PR.
   # Тому: автоматично на push у main (там регресія вже змержена — треба знати негайно) і
   # вручну через workflow_dispatch (перед релізом / коли PR зачіпає багато UI).
   #

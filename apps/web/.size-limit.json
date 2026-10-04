@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Увесь JS бандла (gzip)",
+    "path": "out/_next/static/**/*.js",
+    "limit": "1.4 MB",
+    "gzip": true
+  }
+]

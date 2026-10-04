@@ -14,7 +14,9 @@
     "e2e:headed": "playwright test --headed",
     "e2e:debug": "playwright test --debug",
     "e2e:codegen": "playwright codegen http://localhost:3001",
-    "e2e:report": "playwright show-report playwright-report"
+    "e2e:report": "playwright show-report playwright-report",
+    "size": "size-limit",
+    "size:pages": "node scripts/check-page-budget.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -39,7 +41,9 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.60.0",
+    "@size-limit/file": "^14.1.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@tanstack/react-query-devtools": "^5.100.11",
     "@testing-library/jest-dom": "^7.0.1",
@@ -51,6 +55,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
+    "size-limit": "^14.1.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^6.0.3",
     "vite": "^7.3.6",

@@ -23,12 +23,15 @@ function NumberField({
   onChange,
   min,
   max,
+  hint,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   min: number;
   max: number;
+  /** Підпис під полем — напр. попередження, що налаштування ще не діє. */
+  hint?: string;
 }) {
   return (
     <div>
@@ -41,6 +44,7 @@ function NumberField({
         onChange={e => onChange(Number(e.target.value))}
         className="w-32 h-8 text-[13px]"
       />
+      {hint ? <p className="mt-1 text-[12px] text-muted-foreground max-w-xs">{hint}</p> : null}
     </div>
   );
 }
@@ -230,12 +234,15 @@ export default function OrgTab() {
           min={1}
           max={365}
         />
+        {/* Значення зберігається, але споживача ще немає (авто-архівація не реалізована) —
+            підказка чесно про це каже, інакше користувач вважав би налаштування робочим. */}
         <NumberField
           label={t('org.autoArchiveDaysLabel')}
           value={orgSettings.autoArchiveDays}
           onChange={v => setOrgSettings({ ...orgSettings, autoArchiveDays: v })}
           min={1}
           max={365}
+          hint={t('org.autoArchiveDaysNotActive')}
         />
         <NumberField
           label={t('org.defaultWarrantyDaysLabel')}

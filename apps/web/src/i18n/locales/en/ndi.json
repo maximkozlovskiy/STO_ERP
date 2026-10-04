@@ -197,6 +197,7 @@
         "label": "Average",
         "hint": "By weighted average cost"
       }
-    }
+    },
+    "autoArchiveDaysNotActive": "Not active yet: auto-archiving is not implemented. The value is saved and will apply once it ships."
   }
 }

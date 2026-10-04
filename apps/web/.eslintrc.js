@@ -56,5 +56,8 @@ module.exports = {
     '**/*.test.ts',
     '**/*.test.tsx',
     'src/__tests__/**',
+    // Нодові скрипти збірки/перевірок (.mjs) поза TS-проєктом — типізований парсер
+    // на них падає «parserOptions.project has been provided», як і на *.config.*.
+    'scripts/',
   ],
 };
