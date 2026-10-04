@@ -54,7 +54,17 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       4738287e feat(api) — типізовано звіти; роутів без типу лишилось 3 (усі /pdf).
+HEAD:       38809275 refactor(api) — report-builder tree: рекурсивний GroupNodeDto замість
+            unknown[] (code review звітів c7ad8721/4738287e). «Не можна описати не збрехавши»
+            стосувалось лише ДИНАМІЧНИХ мап (aggregates/detailRows/value) — КОНВЕРТ GroupNode
+            сталий і рекурсивний, тож описаний точно через $ref на себе (@ApiExtraModels+
+            getSchemaPath). Генерований web-тип отримав справжню форму вузла; усуває рукописний
+            GroupNode-дублікат у useReportBuilder.ts. Схем 316→317. Решта review — зелено:
+            reports.dto дзеркалить сервіс 1:1 (goodSku=String?✓, margin=%✓, createdAt Date→
+            генерується string ✓, syncVersion bigint/Swagger String — свідомо, web=string),
+            useReport<T> never не ламає call-site (widened ReportTab), page.tsx — суперсет-
+            розширення без втрати полів. tsc api/web/shared 0; report-builder 39/39.
+            Попередній: 4738287e feat(api) — типізовано звіти; роутів без типу лишилось 3 (усі /pdf).
             api 2895/2895 (191 файл) · web 881 · shared 4 · tsc 0 · eslint 0 errors ·
             циклічних залежностей 0 (1323 модулі). Покриття api 62% — ЧЕСНА цифра після
             Vitest 5 (Vitest 2 рахував лише імпортовані тестами файли, 78% ховало непокрите).
