@@ -7852,13 +7852,13 @@ export interface components {
             key: string;
             label: string;
             /** @description Рідковживана гілка — ховається за «показати ще» */
-            advanced?: boolean;
+            advanced: boolean;
         };
         ReportMetadataEntityDto: {
             key: string;
             label: string;
-            /** @description Поле для фільтра за періодом */
-            dateField?: string;
+            /** @description Поле для фільтра за періодом (є в КОЖНОЇ сутності реєстру) */
+            dateField: string;
             fields: components["schemas"]["ReportMetadataFieldDto"][];
             relations: components["schemas"]["ReportMetadataRelationDto"][];
         };

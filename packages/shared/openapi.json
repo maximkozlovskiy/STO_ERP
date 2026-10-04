@@ -26010,7 +26010,8 @@
         },
         "required": [
           "key",
-          "label"
+          "label",
+          "advanced"
         ]
       },
       "ReportMetadataEntityDto": {
@@ -26024,7 +26025,7 @@
           },
           "dateField": {
             "type": "string",
-            "description": "Поле для фільтра за періодом"
+            "description": "Поле для фільтра за періодом (є в КОЖНОЇ сутності реєстру)"
           },
           "fields": {
             "type": "array",
@@ -26042,6 +26043,7 @@
         "required": [
           "key",
           "label",
+          "dateField",
           "fields",
           "relations"
         ]

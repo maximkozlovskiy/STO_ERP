@@ -1,33 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
+import type { ApiSchema } from '@sto/shared';
 
-// ─── Типи дзеркалять backend report-builder ─────────────────────────────────────
+// ─── Типи ────────────────────────────────────────────────────────────────────────
+//
+// ВІДПОВІДІ — зі згенерованих схем (зміна на беку ламає компіляцію тут).
+// ЗАПИТИ (ReportConfig і його частини) лишаються рукописними: вони вужчі за DTO —
+// літеральні union-и (Agg, FilterOp, dir) дають автодоповнення і ловлять одрук у
+// конструкторі, чого `string` зі згенерованої схеми не дає.
 
 export type Agg = 'SUM' | 'COUNT' | 'AVG' | 'MIN' | 'MAX';
 export type FilterOp = 'eq' | 'ne' | 'in' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'isNull';
 export type FieldType = 'scalar' | 'number' | 'decimal' | 'enum' | 'date' | 'boolean';
 
-export interface MetaField {
-  key: string;
-  label: string;
-  type: FieldType;
-  enumName?: string;
-  aggregations: Agg[];
-  filterable: boolean;
-  groupable: boolean;
-}
-export interface MetaEntity {
-  key: string;
-  label: string;
-  dateField: string;
-  fields: MetaField[];
-  relations: { key: string; label: string; advanced: boolean }[];
-}
-export interface ReportMetadata {
-  entities: MetaEntity[];
-  enums: Record<string, string[]>;
-}
+export type MetaField = ApiSchema<'ReportMetadataFieldDto'>;
+export type MetaEntity = ApiSchema<'ReportMetadataEntityDto'>;
+export type ReportMetadata = ApiSchema<'ReportMetadataDto'>;
 
 export interface ReportFilter {
   field: string;
@@ -60,42 +49,20 @@ export interface ReportConfig {
   sortByAggregate?: { alias: string; dir: 'asc' | 'desc' };
 }
 
-export interface GroupNode {
-  key: string;
-  field: string;
-  label: string;
-  value: unknown;
-  count: number;
-  aggregates: Record<string, number | null>;
-  children: GroupNode[];
-  rows?: Record<string, unknown>[];
-}
-export interface ReportRunResult {
-  entity: string;
-  columns: { key: string; label: string; type: string; enumName?: string }[];
-  groupBy: string[];
-  /** Ефективні агрегації (явні + авто-SUM числових колонок) — з них заголовки/дерево.
-   * Збагачені `type`/`label` (Bug #620) — для форматування коли поле НЕ у `columns`. */
+export type GroupNode = ApiSchema<'GroupNodeDto'>;
+/**
+ * Конверт — зі згенерованої схеми; `aggregations` звужено до `ReportAggEnriched`,
+ * бо на беку `agg` — `string`, а тут літеральний `Agg` потрібен для форматування
+ * (Bug #620: MIN/MAX-дати відрізняються від SUM грошей).
+ */
+export type ReportRunResult = Omit<ApiSchema<'ReportRunResponseDto'>, 'aggregations'> & {
   aggregations: ReportAggEnriched[];
-  result: {
-    tree: GroupNode[];
-    /** Плоскі детальні рядки (проєкція columns) коли groupBy порожній. */
-    detailRows: Record<string, unknown>[];
-    grandTotals: Record<string, number | null>;
-    rowCount: number;
-    truncated: boolean;
-  };
-}
+};
 
-export interface SavedReport {
-  id: string;
-  name: string;
-  entity: string;
+/** Серверний рядок + звужений `config`: бек віддає його як вільний JSON. */
+export type SavedReport = Omit<ApiSchema<'SavedReportResponseDto'>, 'config'> & {
   config: ReportConfig;
-  createdBy?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+};
 
 export const reportBuilderKeys = {
   all: ['report-builder'] as const,

@@ -160,14 +160,15 @@ export class ReportMetadataFieldDto {
 export class ReportMetadataRelationDto {
   @ApiProperty({ description: "dot-path гілки: 'counterparty' | 'good.brand'" }) key!: string;
   @ApiProperty() label!: string;
-  @ApiPropertyOptional({ description: 'Рідковживана гілка — ховається за «показати ще»' })
-  advanced?: boolean;
+  @ApiProperty({ description: 'Рідковживана гілка — ховається за «показати ще»' })
+  advanced!: boolean;
 }
 
 export class ReportMetadataEntityDto {
   @ApiProperty() key!: string;
   @ApiProperty() label!: string;
-  @ApiPropertyOptional({ description: 'Поле для фільтра за періодом' }) dateField?: string;
+  @ApiProperty({ description: 'Поле для фільтра за періодом (є в КОЖНОЇ сутності реєстру)' })
+  dateField!: string;
   @ApiProperty({ type: [ReportMetadataFieldDto] }) fields!: ReportMetadataFieldDto[];
   @ApiProperty({ type: [ReportMetadataRelationDto] }) relations!: ReportMetadataRelationDto[];
 }
