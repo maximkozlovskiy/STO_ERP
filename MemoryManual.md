@@ -54,13 +54,15 @@ TypeScript: ✅ 0 errors (shared + api + web) — ТЕПЕР ВКЛЮЧНО З �
             Fix parseApplyRowDate: rollover-guard + 400, +7 regression, +i18n invalidOperationDate. Date-rollover
             КЛАС ЗАКРИТО: privat24(3 гілки)+parser(2)+monobank(Unix NaN-guard)+applyImport(write-side) — всі guarded.
             (backend-i18n повний: усі *-schema.spec + money/FSM byte-identity green; parity uk===en.)
-HEAD:       d7018205 refactor(money) — reports + xlsx, завершення міграції Money.
+HEAD:       9470c8de fix(i18n) — toast-и компонентів; борг жорстких рядків закрито.
             api 2895/2895 (191 файл) · web 881 · shared 4 · tsc 0 · eslint 0 errors ·
             циклічних залежностей 0 (1323 модулі). Покриття api 62% — ЧЕСНА цифра після
             Vitest 5 (Vitest 2 рахував лише імпортовані тестами файли, 78% ховало непокрите).
             Борг, що лишився: 60 роутів без типів (reports потребує DTO з нуля — reports.dto.ts
-            не існує), ~27 toast→i18n (ХУКИ закрито: useCalendarState/useWorkOrderActions/
-            useLanguage; лишились компоненти). Money-борг ЗАКРИТО по API.
+            не існує). ЗАКРИТО: Money по API (roundMoney=0), toast→i18n (42 у 13 файлах +
+            3 хуки; залишок 0), обробка помилок на фронті (264→0).
+            УРОК ЦИФР (вчетверте): grep-оцінка ≠ вимір. «29 toast» → фактично 42, бо
+            регулярка не бачила шаблонних літералів з інтерполяцією.
 Optimize(дуга імпорту+OCR, 44085da0..58fce607): 2026-10-02 (auto, b5325e7f). ГОЛОВНЕ — подвійний OCR:
             майстер читав один файл двічі (rawPreview→previewImport), для скана/фото = ОКРЕМИЙ OCR-прогін
             1-5с/стор ВДРУГЕ. Fix: parseGridCached — кеш розпізнаної сітки за sha256 вмісту (Redis, TTL
