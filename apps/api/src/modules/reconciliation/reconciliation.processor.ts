@@ -30,7 +30,7 @@ const RECON_BATCH_SIZE = 1000;
  * 3 звірки:
  *   1. StockItem.quantity  vs  Σ StockBatch.remainingQty (той самий (good,warehouse)).
  *   2. SettlementAccount.balance  vs  Σ SettlementTransaction.amount × BALANCE_SIGN[type].
- *   3. Invoice.paidAmount  vs  Σ Payment.amount (по invoiceId).
+ *   3. Invoice.paidAmount  vs  Σ Payment.amount(invoiceId) + Σ дзеркальний settlement-PAYMENT.
  */
 @Injectable()
 @Processor('reconciliation', { concurrency: 1 })
