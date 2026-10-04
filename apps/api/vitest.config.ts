@@ -7,6 +7,17 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.spec.ts'],
     setupFiles: ['reflect-metadata'],
+    // isolate:false — спеки НЕ ізолюються у окремий модульний граф на файл: воркер
+    // обчислює спільні модулі ОДИН раз, а не 2506× (по разу на кожен з 204 файлів).
+    // Вимір (повний api-набір, maxWorkers:4): 76.73s → 16.40s wall, 3099/3099 green.
+    // Vitest сам це радив: «~89s faster with isolate:false». import-частка 79% → 31%.
+    // БЕЗПЕЧНО тут бо: немає resetModules/isolateModules (жоден спек не покладається на
+    // свіжий модуль на файл), немає глобального monkeypatch без restore, усі useFakeTimers
+    // мають useRealTimers/afterEach. vi.mock лишається file-scoped і скидається між файлами
+    // незалежно від isolate. Якщо зʼявиться спек що МУТУЄ module-level singleton і залежить
+    // від його скидання між файлами — додати restoreMocks/unstubEnvs АБО лишити той файл
+    // ізольованим через test.sequence, а не вертати глобальний isolate:true.
+    isolate: false,
     // Ліміт потоків: Vitest 4 прибрав і CLI-опцію `--poolOptions`, і вкладений
     // `test.poolOptions` — тепер це ТОП-РІВНЕВІ опції (DEPRECATED-попередження вказало
     // прямо). Поки стояло вкладене, обмеження просто ІГНОРУВАЛОСЬ.
