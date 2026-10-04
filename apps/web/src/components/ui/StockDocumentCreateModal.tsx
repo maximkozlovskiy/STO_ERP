@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -181,6 +182,7 @@ export function StockDocumentCreateModal({
   stockDocumentId,
   onMinimize,
 }: StockDocumentCreateModalProps) {
+  const { t } = useTranslation('stockDocuments');
   const isEditMode = !!stockDocumentId;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -527,7 +529,7 @@ export function StockDocumentCreateModal({
             lines: payloadLines,
           }),
         });
-        if (features.toastEnabled) toast.success('Документ збережено');
+        if (features.toastEnabled) toast.success(t('toast.documentSaved'));
         dirty.resetDirty();
         onSaved?.();
         onClose();
@@ -546,7 +548,8 @@ export function StockDocumentCreateModal({
             lines: payloadLines,
           }),
         });
-        if (features.toastEnabled) toast.success(`Документ ${doc.number} створено`);
+        if (features.toastEnabled)
+          toast.success(t('toast.documentCreatedNo', { number: doc.number }));
         dirty.resetDirty();
         onSaved?.(doc);
         onClose();

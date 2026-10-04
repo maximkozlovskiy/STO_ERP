@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Star, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -25,6 +26,7 @@ interface GoodBarcodeTabProps {
 }
 
 export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
+  const { t } = useTranslation('catalog');
   const [modalBarcodes, setModalBarcodes] = useState<GoodBarcode[]>([]);
   const [modalBarcodesLoading, setModalBarcodesLoading] = useState(false);
   const [barcodeError, setBarcodeError] = useState('');
@@ -142,9 +144,9 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                         setModalBarcodes(prev => [...prev, created]);
                         setAddBarcodeForm({ barcode: '', type: 'EAN13' });
                         setShowAddBarcode(false);
-                        toast.success('Штрихкод додано');
+                        toast.success(t('toast.barcodeAdded'));
                       } catch (e: unknown) {
-                        toast.error(e instanceof Error ? e.message : 'Помилка');
+                        toast.error(e instanceof Error ? e.message : t('common.genericError'));
                       } finally {
                         setAddingBarcode(false);
                       }
@@ -195,9 +197,11 @@ export function GoodBarcodeTab({ goodId, onCountChange }: GoodBarcodeTabProps) {
                                   method: 'DELETE',
                                 });
                                 setModalBarcodes(prev => prev.filter(b => b.id !== bc.id));
-                                toast.success('Штрихкод видалено');
+                                toast.success(t('toast.barcodeDeleted'));
                               } catch (e: unknown) {
-                                toast.error(e instanceof Error ? e.message : 'Помилка');
+                                toast.error(
+                                  e instanceof Error ? e.message : t('common.genericError'),
+                                );
                               } finally {
                                 setDeletingBarcodeId(null);
                               }

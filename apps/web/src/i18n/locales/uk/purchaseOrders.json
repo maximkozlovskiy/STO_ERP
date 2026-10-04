@@ -82,7 +82,12 @@
     "bulkDeletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
     "bulkDeleteNone": "Не вдалося видалити замовлення",
     "markedForDeletion": "Замовлення позначено на видалення",
-    "returnDeleted": "Повернення видалено"
+    "returnDeleted": "Повернення видалено",
+    "returnCreated": "Повернення створено",
+    "returnUpdated": "Повернення оновлено",
+    "orderSaved": "Замовлення збережено",
+    "orderCreatedNo": "Замовлення {{number}} створено",
+    "pricedGoods": "Розцінено {{count}} товарів"
   },
   "aria": {
     "selectAll": "Вибрати всі",

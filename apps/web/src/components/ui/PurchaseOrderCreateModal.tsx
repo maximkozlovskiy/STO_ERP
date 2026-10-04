@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -134,6 +135,7 @@ export function PurchaseOrderCreateModal({
   purchaseOrderId: purchaseOrderIdProp,
   onMinimize,
 }: PurchaseOrderCreateModalProps) {
+  const { t } = useTranslation('purchaseOrders');
   const [activePOId, setActivePOId] = useState<string | undefined>(purchaseOrderIdProp);
   const purchaseOrderId = activePOId;
   const isEditMode = !!activePOId;
@@ -764,7 +766,7 @@ export function PurchaseOrderCreateModal({
         }),
       });
 
-      if (features.toastEnabled) toast.success(`Замовлення ${po.number} створено`);
+      if (features.toastEnabled) toast.success(t('toast.orderCreatedNo', { number: po.number }));
       // Створено успішно — форма чиста; reset тепер відбудеться через loadPo (нова база).
       dirty.resetDirty();
       onSaved?.();
@@ -830,7 +832,7 @@ export function PurchaseOrderCreateModal({
         }),
       });
 
-      if (features.toastEnabled) toast.success('Замовлення збережено');
+      if (features.toastEnabled) toast.success(t('toast.orderSaved'));
       dirty.resetDirty();
       onSaved?.();
       onClose();
@@ -910,7 +912,7 @@ export function PurchaseOrderCreateModal({
           method: 'POST',
         },
       );
-      if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+      if (features.toastEnabled) toast.success(t('toast.pricedGoods', { count: result.updated }));
       // Reload lines to show pricedSalePrice + pricingRuleName
       if (purchaseOrderId) await loadPo(purchaseOrderId, true);
     } catch (e: unknown) {
@@ -960,7 +962,7 @@ export function PurchaseOrderCreateModal({
         `/purchase-orders/${purchaseOrderId}/apply-pricing`,
         { method: 'POST', body: JSON.stringify({ ruleId }) },
       );
-      if (features.toastEnabled) toast.success(`Розцінено ${result.updated} товарів`);
+      if (features.toastEnabled) toast.success(t('toast.pricedGoods', { count: result.updated }));
       if (purchaseOrderId) await loadPo(purchaseOrderId, true);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Помилка розцінки';

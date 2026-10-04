@@ -62,7 +62,9 @@
     "bulkDeletedAll": "Видалено {{count}} документ(ів)",
     "bulkDeletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
     "bulkDeleteNone": "Не вдалося видалити документи",
-    "markedForDeletion": "Документ позначено на видалення"
+    "markedForDeletion": "Документ позначено на видалення",
+    "documentSaved": "Документ збережено",
+    "documentCreatedNo": "Документ {{number}} створено"
   },
   "aria": {
     "selectAll": "Вибрати всі",

@@ -70,7 +70,9 @@
     "cancelledMany": "Скасовано {{count}} рахунків",
     "cancelledPartial": "Скасовано {{succeeded}} з {{total}}. {{failed}} не змінено (статус не дозволяє)",
     "cancelledNone": "Жоден рахунок не скасовано (статус не дозволяє)",
-    "markedForDeletion": "Рахунок позначено на видалення"
+    "markedForDeletion": "Рахунок позначено на видалення",
+    "invoiceSaved": "Рахунок збережено",
+    "invoiceCreatedNo": "Рахунок {{number}} створено"
   },
   "aria": {
     "selectAll": "Вибрати всі",

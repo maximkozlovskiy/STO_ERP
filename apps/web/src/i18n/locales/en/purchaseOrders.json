@@ -82,7 +82,12 @@
     "bulkDeletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
     "bulkDeleteNone": "Failed to delete orders",
     "markedForDeletion": "Order marked for deletion",
-    "returnDeleted": "Return deleted"
+    "returnDeleted": "Return deleted",
+    "returnCreated": "Return created",
+    "returnUpdated": "Return updated",
+    "orderSaved": "Order saved",
+    "orderCreatedNo": "Order {{number}} created",
+    "pricedGoods": "{{count}} goods priced"
   },
   "aria": {
     "selectAll": "Select all",

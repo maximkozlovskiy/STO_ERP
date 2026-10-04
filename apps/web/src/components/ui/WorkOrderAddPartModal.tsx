@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -108,6 +109,7 @@ export function WorkOrderAddPartModal({
   suppliers = [],
   goodCatTree = [],
 }: WorkOrderAddPartModalProps) {
+  const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
@@ -237,7 +239,7 @@ export function WorkOrderAddPartModal({
         }),
       });
       dirty.resetDirty();
-      if (features.toastEnabled) toast.success('Запчастину додано');
+      if (features.toastEnabled) toast.success(t('toast.partAdded'));
       onAdded();
       onClose();
     } catch (e: unknown) {

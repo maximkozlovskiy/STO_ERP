@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Star, X, Check } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -66,6 +67,7 @@ const EMPTY_ADD_UOM_FORM = {
 };
 
 export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMTabProps) {
+  const { t } = useTranslation('catalog');
   const features = useUiFeatures();
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
 
@@ -157,10 +159,10 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       setAddUoMForm(EMPTY_ADD_UOM_FORM);
       setShowAddUoM(false);
       onChanged?.();
-      if (features.toastEnabled) toast.success('Одиницю виміру додано');
+      if (features.toastEnabled) toast.success(t('toast.uomAdded'));
     } catch (e: unknown) {
       if (features.toastEnabled) {
-        toast.error(e instanceof Error ? e.message : 'Помилка додавання одиниці');
+        toast.error(e instanceof Error ? e.message : t('toast.uomAddError'));
       }
     } finally {
       setAddingUoM(false);
@@ -174,11 +176,11 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       if (uomRefDefault.current === reqId) {
         setModalUoMs(prev => prev.map(u => ({ ...u, isDefault: u.id === uomId })));
         onChanged?.();
-        if (features.toastEnabled) toast.success('Основну одиницю змінено');
+        if (features.toastEnabled) toast.success(t('toast.uomBaseChanged'));
       }
     } catch (e: unknown) {
       if (uomRefDefault.current === reqId && features.toastEnabled) {
-        toast.error(e instanceof Error ? e.message : 'Помилка встановлення основної одиниці');
+        toast.error(e instanceof Error ? e.message : t('toast.uomBaseError'));
       }
     }
   };
@@ -190,10 +192,10 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       await apiFetch<void>(`/goods/${goodId}/uoms/${uomId}`, { method: 'DELETE' });
       refreshUoMs();
       onChanged?.();
-      if (features.toastEnabled) toast.success('Одиницю видалено');
+      if (features.toastEnabled) toast.success(t('toast.uomDeleted'));
     } catch (e: unknown) {
       if (features.toastEnabled) {
-        toast.error(e instanceof Error ? e.message : 'Помилка видалення');
+        toast.error(e instanceof Error ? e.message : t('toast.uomDeleteError'));
       }
     } finally {
       setDeletingUoMId(null);
@@ -245,7 +247,7 @@ export function GoodUoMTab({ goodId, units, onCountChange, onChanged }: GoodUoMT
       setEditingUoMId(null);
       refreshUoMs();
       onChanged?.();
-      if (features.toastEnabled) toast.success('Одиницю виміру оновлено');
+      if (features.toastEnabled) toast.success(t('toast.uomUpdated'));
     } catch (e: unknown) {
       setUomError(e instanceof Error ? e.message : 'Помилка збереження');
     } finally {

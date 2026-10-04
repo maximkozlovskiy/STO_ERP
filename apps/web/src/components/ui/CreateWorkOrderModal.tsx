@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
@@ -349,6 +350,7 @@ export function CreateWorkOrderModal({
   onUpdated,
   onMinimize,
 }: Props) {
+  const { t } = useTranslation('workOrders');
   const isEditMode = !!workOrderId;
 
   // ── react-hook-form + спільна zod-схема (шапка + lines[] + parts[]) ──────────
@@ -1387,7 +1389,7 @@ export function CreateWorkOrderModal({
             // повертає { updated: 0 }. Без user-facing feedback клієнт думає що
             // синхронізація відбулась.
             if (result && result.updated === 0 && features.toastEnabled) {
-              toast.info('Слот у календарі для цього наряду не знайдено');
+              toast.info(t('toast.slotNotFound'));
             }
             // Освіжаємо snapshot, щоб повторні save() без змін дат не запитували знову.
             initialPlannedRef.current = {
@@ -1398,7 +1400,7 @@ export function CreateWorkOrderModal({
             // Surface the error to user — silent failure hides 400/403/500 from backend.
             // Не блокуємо закриття: показуємо повідомлення, але форма далі закривається.
             const syncMsg = err instanceof Error ? err.message : 'Помилка синхронізації слоту';
-            if (features.toastEnabled) toast.warning(`Слот календаря не оновлено: ${syncMsg}`);
+            if (features.toastEnabled) toast.warning(t('toast.slotSyncFailed', { error: syncMsg }));
             // eslint-disable-next-line no-console
             console.warn('Calendar sync failed:', err);
           }

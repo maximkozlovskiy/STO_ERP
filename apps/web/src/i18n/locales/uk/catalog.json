@@ -255,5 +255,22 @@
     "customColor": "Власний колір",
     "previewLabel": "Вигляд мітки:",
     "previewFallback": "Назва"
+  },
+  "toast": {
+    "categoryRenamed": "Категорію перейменовано",
+    "categoryAdded": "Категорію додано",
+    "categoryDeleted": "Категорію видалено",
+    "categoryCreated": "Категорію створено",
+    "categoryEnabled": "Категорію увімкнено",
+    "categoryDisabled": "Категорію вимкнено",
+    "uomAdded": "Одиницю виміру додано",
+    "uomUpdated": "Одиницю виміру оновлено",
+    "uomDeleted": "Одиницю видалено",
+    "uomBaseChanged": "Основну одиницю змінено",
+    "uomAddError": "Помилка додавання одиниці",
+    "uomBaseError": "Помилка встановлення основної одиниці",
+    "uomDeleteError": "Помилка видалення",
+    "barcodeAdded": "Штрихкод додано",
+    "barcodeDeleted": "Штрихкод видалено"
   }
 }

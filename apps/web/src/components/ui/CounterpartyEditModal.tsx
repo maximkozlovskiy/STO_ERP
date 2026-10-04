@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -156,6 +157,7 @@ export function CounterpartyEditModal({
   onClose,
   onSaved,
 }: CounterpartyEditModalProps) {
+  const { t } = useTranslation('counterparties');
   const router = useRouter();
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
   const dirty = useDirtyForm();
@@ -439,7 +441,7 @@ export function CounterpartyEditModal({
       // Батько передасть created як counterparty → модалка перемкнеться в edit-режим
       // (з'являться вкладки Авто/Договори/Історія). Модалка НЕ закривається.
       onSaved(created, true);
-      toast.success('Контрагента створено — тепер можна додати авто та договори');
+      toast.success(t('toast.created'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
@@ -459,7 +461,7 @@ export function CounterpartyEditModal({
       });
       dirty.resetDirty();
       onSaved(updated, false);
-      toast.success('Контрагента збережено');
+      toast.success(t('toast.saved'));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Помилка');
     } finally {
@@ -533,10 +535,10 @@ export function CounterpartyEditModal({
         return next;
       });
       resetVehicleForm();
-      toast.success(editId ? 'Авто оновлено' : 'Авто додано');
+      toast.success(t(editId ? 'toast.vehicleUpdated' : 'toast.vehicleAdded'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
-        toast.error(e instanceof Error ? e.message : 'Помилка');
+        toast.error(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setAddingVehicle(false);
     }
@@ -558,10 +560,10 @@ export function CounterpartyEditModal({
       );
       // Якщо редагували саме це авто — закриваємо форму.
       if (editingVehicleId === id) resetVehicleForm();
-      toast.success('Авто видалено');
+      toast.success(t('toast.vehicleDeleted'));
     } catch (e: unknown) {
       // 404 = вже видалено (stale UI) — просто прибираємо з локального списку.
-      const msg = e instanceof Error ? e.message : 'Помилка';
+      const msg = e instanceof Error ? e.message : t('common.error');
       if (currentCpIdRef.current !== cpIdAtStart) return;
       if (/не знайдено|not found/i.test(msg)) {
         setModalVehicles(v => v.filter(x => x.id !== id));
@@ -580,10 +582,10 @@ export function CounterpartyEditModal({
       const restored = await apiFetch<Vehicle>(`/vehicles/${v.id}/restore`, { method: 'POST' });
       if (currentCpIdRef.current !== cpIdAtStart) return;
       setModalVehicles(list => list.map(x => (x.id === restored.id ? restored : x)));
-      toast.success('Авто відновлено');
+      toast.success(t('toast.vehicleRestored'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
-        toast.error(e instanceof Error ? e.message : 'Помилка');
+        toast.error(e instanceof Error ? e.message : t('common.error'));
     } finally {
       setDeletingVehicleId(null);
     }
@@ -664,7 +666,7 @@ export function CounterpartyEditModal({
         return next;
       });
       resetContractForm();
-      toast.success(editId ? 'Договір оновлено' : 'Договір додано');
+      toast.success(t(editId ? 'toast.contractUpdated' : 'toast.contractAdded'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
         setContractsError(e instanceof Error ? e.message : 'Помилка');
@@ -710,7 +712,7 @@ export function CounterpartyEditModal({
       });
       // Якщо редагували саме цей договір — закриваємо форму.
       if (editingContractId === c.id) resetContractForm();
-      toast.success('Договір видалено');
+      toast.success(t('toast.contractDeleted'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
         setContractsError(e instanceof Error ? e.message : 'Помилка');
@@ -732,7 +734,7 @@ export function CounterpartyEditModal({
       );
       if (currentCpIdRef.current !== cpIdAtStart) return;
       setModalContracts(prev => prev.map(x => (x.id === restored.id ? restored : x)));
-      toast.success('Договір відновлено');
+      toast.success(t('toast.contractRestored'));
     } catch (e: unknown) {
       if (currentCpIdRef.current === cpIdAtStart)
         setContractsError(e instanceof Error ? e.message : 'Помилка');

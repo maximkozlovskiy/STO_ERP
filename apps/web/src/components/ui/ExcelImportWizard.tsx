@@ -4,6 +4,7 @@
 // документ). Двокроковий: (1) налаштування колонок + файл, (2) резолвінг знайдених рядків.
 // Стиль модалки — як RulePricerModal (суб-діалог поверх основної модалки документа).
 import { useState, useEffect, useCallback, useMemo, useRef, memo, type ChangeEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Upload, Check, CheckSquare, Square, Repeat } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -211,6 +212,7 @@ export function ExcelImportWizard({
   existingLineCount = 0,
   onImportComplete,
 }: ExcelImportWizardProps) {
+  const { t } = useTranslation('common');
   const [step, setStep] = useState<1 | 2>(1);
   const [file, setFile] = useState<File | null>(null);
   const [rawPreview, setRawPreview] = useState<RawPreviewResponse | null>(null);
@@ -353,11 +355,11 @@ export function ExcelImportWizard({
     // оновлюється асинхронно, два кліки в одному тіку інакше обидва пройдуть.
     if (previewMut.isPending) return;
     if (!file) {
-      toast.error('Оберіть файл');
+      toast.error(t('import.selectFile'));
       return;
     }
     if (!mapping.startRow || mapping.startRow < 1) {
-      toast.error('Вкажіть номер першого рядка (≥ 1)');
+      toast.error(t('import.startRowInvalid'));
       return;
     }
     try {
@@ -383,12 +385,12 @@ export function ExcelImportWizard({
       setResolutions(initial);
       setStep(2);
       if (res.rows.length === 0) {
-        toast.warning('У файлі не знайдено рядків для імпорту');
+        toast.warning(t('import.noRowsInFile'));
       }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Помилка розпізнавання файлу');
     }
-  }, [file, mapping, docType, docId, counterpartyId, previewMut, upsertMapping]);
+  }, [file, mapping, docType, docId, counterpartyId, previewMut, upsertMapping, t]);
 
   const setRowGood = useCallback((rowIndex: number, goodId: string) => {
     setResolutions(r => ({ ...r, [rowIndex]: { ...r[rowIndex], selectedGoodId: goodId } }));
@@ -456,13 +458,13 @@ export function ExcelImportWizard({
     }
 
     if (resolved.length === 0) {
-      toast.error('Немає рядків для імпорту — позначте рядки та оберіть товари');
+      toast.error(t('import.noRowsSelected'));
       return;
     }
 
     try {
       await applyMut.mutateAsync({ docType, docId, rows: resolved, mode: applyMode });
-      toast.success(`Додано позицій: ${resolved.length}`);
+      toast.success(t('import.rowsAdded', { count: resolved.length }));
       onImportComplete();
       onClose();
     } catch (e: unknown) {
@@ -472,7 +474,7 @@ export function ExcelImportWizard({
     // перестворює цей колбек (жодна інша залежність не змінюється), тож apply тихо надсилає
     // СТАРИЙ режим. У проді це = «замість append виконується replace» → наявні позиції документа
     // soft-delete без відома користувача (мовчазна втрата даних). Bug #775.
-  }, [rows, resolutions, docType, docId, applyMode, applyMut, onImportComplete, onClose]);
+  }, [rows, resolutions, docType, docId, applyMode, applyMut, onImportComplete, onClose, t]);
 
   // 1-based номер колонки → підпис ролі (для підсвітки шапки передперегляду). useMemo: інакше
   // Map будувалась би на КОЖЕН рендер (а передперегляд читає roleByCol у кожній з 100 комірок),

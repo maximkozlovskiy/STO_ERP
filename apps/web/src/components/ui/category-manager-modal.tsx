@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, ChevronDown, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ function ManagerNode({
   confirm: ConfirmFn;
   parentActive?: boolean;
 }) {
+  const { t } = useTranslation('catalog');
   const features = useUiFeatures();
   const [expanded, setExpanded] = useState(depth < 1);
   const [editMode, setEditMode] = useState(false);
@@ -81,16 +83,17 @@ function ManagerNode({
         method: 'PATCH',
         body: JSON.stringify({ name: editName.trim() }),
       });
-      if (features.toastEnabled) toast.success('Категорію перейменовано');
+      if (features.toastEnabled) toast.success(t('toast.categoryRenamed'));
       onChanged();
     } catch (e) {
-      if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка');
+      if (features.toastEnabled)
+        toast.error(e instanceof Error ? e.message : t('common.genericError'));
       setEditName(node.name);
     } finally {
       setSaving(null);
       setEditMode(false);
     }
-  }, [editName, node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving]);
+  }, [editName, node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving, t]);
 
   const handleAddChild = useCallback(async () => {
     if (!newName.trim()) {
@@ -103,17 +106,18 @@ function ManagerNode({
         method: 'POST',
         body: JSON.stringify({ name: newName.trim(), parentId: node.id }),
       });
-      if (features.toastEnabled) toast.success('Категорію додано');
+      if (features.toastEnabled) toast.success(t('toast.categoryAdded'));
       setNewName('');
       setAddMode(false);
       setExpanded(true);
       onChanged();
     } catch (e) {
-      if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка');
+      if (features.toastEnabled)
+        toast.error(e instanceof Error ? e.message : t('common.genericError'));
     } finally {
       setSaving(null);
     }
-  }, [newName, node.id, endpoint, features.toastEnabled, onChanged, setSaving]);
+  }, [newName, node.id, endpoint, features.toastEnabled, onChanged, setSaving, t]);
 
   const handleDelete = useCallback(async () => {
     if (
@@ -127,13 +131,14 @@ function ManagerNode({
     setSaving(node.id + '-del');
     try {
       await apiFetch(`${endpoint}/${node.id}`, { method: 'DELETE' });
-      if (features.toastEnabled) toast.success('Категорію видалено');
+      if (features.toastEnabled) toast.success(t('toast.categoryDeleted'));
       onChanged();
     } catch (e) {
-      if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка');
+      if (features.toastEnabled)
+        toast.error(e instanceof Error ? e.message : t('common.genericError'));
       setSaving(null);
     }
-  }, [node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving, confirm]);
+  }, [node.id, node.name, endpoint, features.toastEnabled, onChanged, setSaving, confirm, t]);
 
   const isSavingThis =
     saving === node.id || saving === node.id + '-add' || saving === node.id + '-del';
@@ -310,6 +315,7 @@ export function CategoryManagerModal({
   tree,
   onChanged,
 }: CategoryManagerModalProps) {
+  const { t } = useTranslation('catalog');
   const features = useUiFeatures();
   const { confirm, dialogProps } = useConfirm();
   const [newRootName, setNewRootName] = useState('');
@@ -326,15 +332,16 @@ export function CategoryManagerModal({
           body: JSON.stringify({ isActive }),
         });
         if (features.toastEnabled)
-          toast.success(isActive ? 'Категорію увімкнено' : 'Категорію вимкнено');
+          toast.success(t(isActive ? 'toast.categoryEnabled' : 'toast.categoryDisabled'));
         onChanged();
       } catch (e) {
-        if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка');
+        if (features.toastEnabled)
+          toast.error(e instanceof Error ? e.message : t('common.genericError'));
       } finally {
         setSaving(null);
       }
     },
-    [endpoint, features.toastEnabled, onChanged],
+    [endpoint, features.toastEnabled, onChanged, t],
   );
 
   const handleAddRoot = useCallback(async () => {
@@ -345,15 +352,16 @@ export function CategoryManagerModal({
         method: 'POST',
         body: JSON.stringify({ name: newRootName.trim() }),
       });
-      if (features.toastEnabled) toast.success('Категорію створено');
+      if (features.toastEnabled) toast.success(t('toast.categoryCreated'));
       setNewRootName('');
       onChanged();
     } catch (e) {
-      if (features.toastEnabled) toast.error(e instanceof Error ? e.message : 'Помилка');
+      if (features.toastEnabled)
+        toast.error(e instanceof Error ? e.message : t('common.genericError'));
     } finally {
       setSaving(null);
     }
-  }, [newRootName, endpoint, features.toastEnabled, onChanged]);
+  }, [newRootName, endpoint, features.toastEnabled, onChanged, t]);
 
   return (
     <Modal open={open} onClose={onClose} title={`Управління — ${label}`} size="lg">

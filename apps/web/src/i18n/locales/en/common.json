@@ -19,5 +19,12 @@
   "noData": "No data",
   "language": {
     "savedLocallyOnly": "Language applied on this device only — could not save it to your profile."
+  },
+  "import": {
+    "selectFile": "Select a file",
+    "startRowInvalid": "Enter the first row number (≥ 1)",
+    "noRowsInFile": "No rows to import were found in the file",
+    "noRowsSelected": "No rows to import — mark rows and pick goods",
+    "rowsAdded": "Rows added: {{count}}"
   }
 }

@@ -70,7 +70,9 @@
     "cancelledMany": "Cancelled {{count}} invoices",
     "cancelledPartial": "Cancelled {{succeeded}} of {{total}}. {{failed}} unchanged (status not allowed)",
     "cancelledNone": "No invoices cancelled (status not allowed)",
-    "markedForDeletion": "Invoice marked for deletion"
+    "markedForDeletion": "Invoice marked for deletion",
+    "invoiceSaved": "Invoice saved",
+    "invoiceCreatedNo": "Invoice {{number}} created"
   },
   "aria": {
     "selectAll": "Select all",

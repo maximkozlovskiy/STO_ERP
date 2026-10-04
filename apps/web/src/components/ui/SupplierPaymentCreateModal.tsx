@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -103,6 +104,7 @@ const emptyDefaults = (): SupplierPaymentFormInput => ({
 });
 
 export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, prefill }: Props) {
+  const { t } = useTranslation('supplierPayments');
   const features = useUiFeatures();
   const isEdit = !!paymentId;
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -314,16 +316,16 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
       try {
         if (isEdit) {
           await updateMut.mutateAsync({ id: paymentId, data: payload });
-          if (features.toastEnabled) toast.success('Оплату оновлено');
+          if (features.toastEnabled) toast.success(t('toast.paymentUpdated'));
         } else if (createdIdRef.current) {
           // Оплату вже створено на попередній спробі (retry після обриву на
           // відповіді) — не створюємо дубль, лише завершуємо форму.
-          if (features.toastEnabled) toast.success('Оплату створено');
+          if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
         } else {
           // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
           const created = await createMut.mutateAsync(payload);
           createdIdRef.current = created.id;
-          if (features.toastEnabled) toast.success('Оплату створено');
+          if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
         }
         dirty.resetDirty();
         onSaved();
@@ -337,7 +339,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         setSaving(false);
       }
     },
-    [isEdit, paymentId, updateMut, createMut, features.toastEnabled, onSaved, onClose, dirty],
+    [isEdit, paymentId, updateMut, createMut, features.toastEnabled, onSaved, onClose, dirty, t],
   );
 
   const handleSave = handleSubmit(onValid);

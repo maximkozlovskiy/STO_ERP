@@ -52,7 +52,17 @@
     "deletedMany": "Deleted {{count}} counterparties",
     "deletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
     "bulkDeleteNone": "Failed to delete counterparties",
-    "markedForDeletion": "Counterparty marked for deletion"
+    "markedForDeletion": "Counterparty marked for deletion",
+    "created": "Counterparty created — you can now add vehicles and contracts",
+    "saved": "Counterparty saved",
+    "vehicleAdded": "Vehicle added",
+    "vehicleUpdated": "Vehicle updated",
+    "vehicleDeleted": "Vehicle deleted",
+    "vehicleRestored": "Vehicle restored",
+    "contractAdded": "Contract added",
+    "contractUpdated": "Contract updated",
+    "contractDeleted": "Contract deleted",
+    "contractRestored": "Contract restored"
   },
   "errors": {
     "deletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
@@ -213,5 +223,8 @@
       "redeemFailed": "Redemption error"
     },
     "garagesError": "Garages error"
+  },
+  "common": {
+    "error": "Error"
   }
 }

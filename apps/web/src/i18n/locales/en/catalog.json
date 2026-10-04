@@ -255,5 +255,22 @@
     "customColor": "Custom color",
     "previewLabel": "Label preview:",
     "previewFallback": "Name"
+  },
+  "toast": {
+    "categoryRenamed": "Category renamed",
+    "categoryAdded": "Category added",
+    "categoryDeleted": "Category deleted",
+    "categoryCreated": "Category created",
+    "categoryEnabled": "Category enabled",
+    "categoryDisabled": "Category disabled",
+    "uomAdded": "Unit of measure added",
+    "uomUpdated": "Unit of measure updated",
+    "uomDeleted": "Unit deleted",
+    "uomBaseChanged": "Base unit changed",
+    "uomAddError": "Failed to add unit",
+    "uomBaseError": "Failed to set base unit",
+    "uomDeleteError": "Failed to delete",
+    "barcodeAdded": "Barcode added",
+    "barcodeDeleted": "Barcode deleted"
   }
 }

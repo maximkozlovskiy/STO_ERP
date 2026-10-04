@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -154,6 +155,7 @@ interface Props {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Props) {
+  const { t } = useTranslation('purchaseOrders');
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const isEdit = !!editId;
@@ -412,10 +414,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
-        if (features.toastEnabled) toast.success('Повернення оновлено');
+        if (features.toastEnabled) toast.success(t('toast.returnUpdated'));
       } else {
         await apiFetch('/supplier-returns', { method: 'POST', body: JSON.stringify(payload) });
-        if (features.toastEnabled) toast.success('Повернення створено');
+        if (features.toastEnabled) toast.success(t('toast.returnCreated'));
       }
       dirty.resetDirty();
       onSaved();

@@ -52,7 +52,17 @@
     "deletedMany": "Видалено {{count}} контрагентів",
     "deletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
     "bulkDeleteNone": "Не вдалося видалити контрагентів",
-    "markedForDeletion": "Контрагента позначено на видалення"
+    "markedForDeletion": "Контрагента позначено на видалення",
+    "created": "Контрагента створено — тепер можна додати авто та договори",
+    "saved": "Контрагента збережено",
+    "vehicleAdded": "Авто додано",
+    "vehicleUpdated": "Авто оновлено",
+    "vehicleDeleted": "Авто видалено",
+    "vehicleRestored": "Авто відновлено",
+    "contractAdded": "Договір додано",
+    "contractUpdated": "Договір оновлено",
+    "contractDeleted": "Договір видалено",
+    "contractRestored": "Договір відновлено"
   },
   "errors": {
     "deletedPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
@@ -213,5 +223,8 @@
       "redeemFailed": "Помилка списання"
     },
     "garagesError": "Помилка гаражів"
+  },
+  "common": {
+    "error": "Помилка"
   }
 }

@@ -62,7 +62,9 @@
     "bulkDeletedAll": "Deleted {{count}} document(s)",
     "bulkDeletedPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
     "bulkDeleteNone": "Failed to delete documents",
-    "markedForDeletion": "Document marked for deletion"
+    "markedForDeletion": "Document marked for deletion",
+    "documentSaved": "Document saved",
+    "documentCreatedNo": "Document {{number}} created"
   },
   "aria": {
     "selectAll": "Select all",

@@ -164,6 +164,8 @@
     "confirmedOnlyDeletable": "Posted payments cannot be deleted",
     "bulkDeleted": "Deleted {{count}} payments",
     "bulkPartial": "Deleted {{succeeded}} of {{total}}. {{failed}} failed",
-    "bulkDeleteError": "Failed to delete payments"
+    "bulkDeleteError": "Failed to delete payments",
+    "paymentCreated": "Payment created",
+    "paymentUpdated": "Payment updated"
   }
 }

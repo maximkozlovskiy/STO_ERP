@@ -288,5 +288,11 @@
   "actions": {
     "linkCopied": "Link copied",
     "smsSent": "SMS sent to client"
+  },
+  "toast": {
+    "partAdded": "Part added",
+    "lineAdded": "Work added",
+    "slotNotFound": "No calendar slot found for this work order",
+    "slotSyncFailed": "Calendar slot not updated: {{error}}"
   }
 }

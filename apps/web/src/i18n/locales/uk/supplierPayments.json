@@ -164,6 +164,8 @@
     "confirmedOnlyDeletable": "Проведені оплати не можна видалити",
     "bulkDeleted": "Видалено {{count}} оплат",
     "bulkPartial": "Видалено {{succeeded}} з {{total}}. {{failed}} не вдалось",
-    "bulkDeleteError": "Не вдалося видалити оплати"
+    "bulkDeleteError": "Не вдалося видалити оплати",
+    "paymentCreated": "Оплату створено",
+    "paymentUpdated": "Оплату оновлено"
   }
 }

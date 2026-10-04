@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { Modal } from '@/components/ui/modal';
@@ -60,6 +61,7 @@ export function WorkOrderAddLineModal({
   onClose,
   onAdded,
 }: WorkOrderAddLineModalProps) {
+  const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const [form, setForm] = useState(EMPTY_FORM);
@@ -119,7 +121,7 @@ export function WorkOrderAddLineModal({
         }),
       });
       dirty.resetDirty();
-      if (features.toastEnabled) toast.success('Роботу додано');
+      if (features.toastEnabled) toast.success(t('toast.lineAdded'));
       onAdded();
       onClose();
     } catch (e: unknown) {

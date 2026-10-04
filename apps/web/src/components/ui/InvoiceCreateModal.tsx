@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import {
@@ -139,6 +140,7 @@ export function InvoiceCreateModal({
   invoiceId,
   onMinimize,
 }: InvoiceCreateModalProps) {
+  const { t } = useTranslation('invoices');
   const isEditMode = !!invoiceId;
   const features = useUiFeatures();
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
@@ -506,7 +508,7 @@ export function InvoiceCreateModal({
       }
       createdInvoiceRef.current = null;
       postedLineKeysRef.current = new Set();
-      if (features.toastEnabled) toast.success(`Рахунок ${inv.number} створено`);
+      if (features.toastEnabled) toast.success(t('toast.invoiceCreatedNo', { number: inv.number }));
       dirty.resetDirty();
       onSaved?.();
       onClose();
@@ -560,7 +562,7 @@ export function InvoiceCreateModal({
       }
       postedLineKeysRef.current = new Set();
 
-      if (features.toastEnabled) toast.success('Рахунок збережено');
+      if (features.toastEnabled) toast.success(t('toast.invoiceSaved'));
       dirty.resetDirty();
       onSaved?.();
       onClose();
