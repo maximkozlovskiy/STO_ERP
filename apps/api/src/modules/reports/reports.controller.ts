@@ -1,10 +1,19 @@
 import { Controller, Get, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiOkResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { ReportsService } from './reports.service';
+import {
+  LoadReportDto,
+  ProfitabilityReportDto,
+  RevenueReportDto,
+  SettlementsReportDto,
+  StockReportDto,
+  VatReportDto,
+  WorkOrdersReportDto,
+} from './reports.dto';
 
 @ApiTags('Reports')
 @Controller('reports')
@@ -19,12 +28,13 @@ export class ReportsController {
   @ApiQuery({ name: 'from', required: true, example: '2026-01-01' })
   @ApiQuery({ name: 'to', required: true, example: '2026-12-31' })
   @ApiQuery({ name: 'branchId', required: false })
+  @ApiOkResponse({ type: RevenueReportDto })
   revenue(
     @OrgContext() orgId: string,
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
-  ) {
+  ): Promise<RevenueReportDto> {
     return this.service.revenue(orgId, from, to, branchId);
   }
 
@@ -34,12 +44,13 @@ export class ReportsController {
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
   @ApiQuery({ name: 'employeeId', required: false })
+  @ApiOkResponse({ type: WorkOrdersReportDto })
   workOrders(
     @OrgContext() orgId: string,
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
-  ) {
+  ): Promise<WorkOrdersReportDto> {
     return this.service.workOrders(orgId, from, to, employeeId);
   }
 
@@ -49,12 +60,13 @@ export class ReportsController {
   @ApiQuery({ name: 'warehouseId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
+  @ApiOkResponse({ type: StockReportDto })
   stock(
     @OrgContext() orgId: string,
     @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
-  ) {
+  ): Promise<StockReportDto> {
     return this.service.stock(orgId, warehouseId, from, to);
   }
 
@@ -63,7 +75,12 @@ export class ReportsController {
   @ApiOperation({ summary: 'Рентабельність (виручка vs собівартість)' })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
-  profitability(@OrgContext() orgId: string, @Query('from') from: string, @Query('to') to: string) {
+  @ApiOkResponse({ type: ProfitabilityReportDto })
+  profitability(
+    @OrgContext() orgId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<ProfitabilityReportDto> {
     return this.service.profitability(orgId, from, to);
   }
 
@@ -71,10 +88,11 @@ export class ReportsController {
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Дебіторська / кредиторська заборгованість' })
   @ApiQuery({ name: 'counterpartyId', required: false })
+  @ApiOkResponse({ type: SettlementsReportDto })
   settlements(
     @OrgContext() orgId: string,
     @Query('counterpartyId', new ParseUUIDPipe({ optional: true })) counterpartyId?: string,
-  ) {
+  ): Promise<SettlementsReportDto> {
     return this.service.settlements(orgId, counterpartyId);
   }
 
@@ -84,12 +102,13 @@ export class ReportsController {
   @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
+  @ApiOkResponse({ type: LoadReportDto })
   load(
     @OrgContext() orgId: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId: string | undefined,
     @Query('from') from: string,
     @Query('to') to: string,
-  ) {
+  ): Promise<LoadReportDto> {
     return this.service.load(orgId, from, to, branchId);
   }
 
@@ -98,7 +117,12 @@ export class ReportsController {
   @ApiOperation({ summary: 'Звіт по ПДВ' })
   @ApiQuery({ name: 'from', required: true, example: '2026-01-01' })
   @ApiQuery({ name: 'to', required: true, example: '2026-12-31' })
-  vat(@OrgContext() orgId: string, @Query('from') from: string, @Query('to') to: string) {
+  @ApiOkResponse({ type: VatReportDto })
+  vat(
+    @OrgContext() orgId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<VatReportDto> {
     return this.service.vatReport(orgId, from, to);
   }
 }

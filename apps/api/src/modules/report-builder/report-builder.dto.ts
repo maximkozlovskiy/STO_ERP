@@ -129,3 +129,119 @@ export class UpdateSavedReportDto {
   @Type(() => ReportConfigDto)
   config?: ReportConfigDto;
 }
+
+// ─── Response-DTO ────────────────────────────────────────────────────────────
+// Вище — request-DTO (валідація). Нижче — ОПИСОВІ response-DTO: лише для Swagger
+// і кодогенерації типів web, вони нічого не трансформують.
+//
+// МЕЖА ЗАСТОСОВНОСТІ. Конструктор звітів — ad-hoc: набір колонок задає користувач у
+// рантаймі, тож `detailRows` і `aggregates` за своєю природою — відкриті мапи, а
+// `GroupNode` рекурсивний (`children: GroupNode[]`). Їх НЕ можна описати точною
+// схемою, не збрехавши. Тому типізуємо ТОЧНО конверт (entity, columns, groupBy,
+// rowCount, truncated) і ЯВНО позначаємо динамічні частини як вільні обʼєкти —
+// це honest-опис, а не заглушка (та сама межа, що зафіксована для ColumnMapping).
+
+export class ReportMetadataFieldDto {
+  @ApiProperty() key!: string;
+  @ApiProperty() label!: string;
+  @ApiProperty({ description: 'string | number | money | date | enum | boolean' }) type!: string;
+  @ApiPropertyOptional({ description: 'Ключ у enums (для type=enum)' }) enumName?: string;
+  @ApiProperty({ type: [String], description: 'Дозволені агрегації; порожньо = не агрегабельне' })
+  aggregations!: string[];
+  @ApiProperty() filterable!: boolean;
+  @ApiProperty() groupable!: boolean;
+}
+
+export class ReportMetadataRelationDto {
+  @ApiProperty({ description: "dot-path гілки: 'counterparty' | 'good.brand'" }) key!: string;
+  @ApiProperty() label!: string;
+  @ApiPropertyOptional({ description: 'Рідковживана гілка — ховається за «показати ще»' })
+  advanced?: boolean;
+}
+
+export class ReportMetadataEntityDto {
+  @ApiProperty() key!: string;
+  @ApiProperty() label!: string;
+  @ApiPropertyOptional({ description: 'Поле для фільтра за періодом' }) dateField?: string;
+  @ApiProperty({ type: [ReportMetadataFieldDto] }) fields!: ReportMetadataFieldDto[];
+  @ApiProperty({ type: [ReportMetadataRelationDto] }) relations!: ReportMetadataRelationDto[];
+}
+
+export class ReportMetadataDto {
+  @ApiProperty({ type: [ReportMetadataEntityDto] }) entities!: ReportMetadataEntityDto[];
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'array', items: { type: 'string' } },
+    description: 'enumName → перелік допустимих значень',
+  })
+  enums!: Record<string, readonly string[]>;
+}
+
+export class ReportRunColumnDto {
+  @ApiProperty() key!: string;
+  @ApiProperty() label!: string;
+  @ApiProperty() type!: string;
+  @ApiPropertyOptional() enumName?: string;
+}
+
+export class ReportRunAggregationDto {
+  @ApiProperty() field!: string;
+  @ApiProperty({ description: 'SUM | AVG | MIN | MAX | COUNT' }) agg!: string;
+  @ApiProperty() type!: string;
+  @ApiProperty() label!: string;
+}
+
+export class ReportRunResultBodyDto {
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    description: 'Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[]',
+  })
+  tree!: unknown[];
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+    description: 'Плоскі детальні рядки — набір ключів задає config.columns у рантаймі',
+  })
+  detailRows!: Record<string, unknown>[];
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number', nullable: true },
+    description: 'alias агрегації → значення (null якщо нема даних)',
+  })
+  grandTotals!: Record<string, number | null>;
+  @ApiProperty() rowCount!: number;
+  @ApiProperty({ description: 'true — результат обрізано лімітом' }) truncated!: boolean;
+}
+
+export class ReportRunResponseDto {
+  @ApiProperty({ description: 'Ключ сутності з реєстру' }) entity!: string;
+  @ApiProperty({ type: [ReportRunColumnDto] }) columns!: ReportRunColumnDto[];
+  @ApiProperty({ type: [String] }) groupBy!: string[];
+  @ApiProperty({ type: [ReportRunAggregationDto], description: 'Явні + авто-SUM' })
+  aggregations!: ReportRunAggregationDto[];
+  @ApiProperty({ type: ReportRunResultBodyDto }) result!: ReportRunResultBodyDto;
+}
+
+export class SavedReportResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() orgId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ description: 'Ключ сутності з реєстру' }) entity!: string;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Збережений ReportConfig (валідність перевіряється при run)',
+  })
+  config!: unknown;
+  @ApiPropertyOptional({ type: String, nullable: true }) createdBy?: string | null;
+  @ApiProperty({
+    type: String,
+    description: 'BigInt → РЯДОК на транспорті (патч BigInt.prototype.toJSON у main.ts)',
+  })
+  syncVersion!: bigint;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) updatedAt!: Date;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  deletedAt?: Date | null;
+}

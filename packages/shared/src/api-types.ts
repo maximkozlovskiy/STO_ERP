@@ -7674,6 +7674,179 @@ export interface components {
         ActivateBankProviderDto: {
             provider: string;
         };
+        RevenueRowDto: {
+            /**
+             * @description День (Europe/Kyiv, YYYY-MM-DD)
+             * @example 2026-10-04
+             */
+            date: string;
+            /** @description Виручка за день */
+            revenue: number;
+            /** @description З них роботи */
+            labor: number;
+            /** @description З них запчастини */
+            parts: number;
+            /** @description Кількість нарядів */
+            count: number;
+        };
+        RevenueReportDto: {
+            rows: components["schemas"]["RevenueRowDto"][];
+            /** @description Σ виручки за період */
+            totalRevenue: number;
+            /** @description Σ нарядів за період */
+            totalOrders: number;
+            /** @example 2026-10-01 */
+            from: string;
+            /** @example 2026-10-31 */
+            to: string;
+        };
+        WorkOrdersReportRowDto: {
+            employeeId: string;
+            /** @description Прізвище + ім’я */
+            employeeName: string;
+            /** @description Σ норма-годин */
+            totalNormoHours: number;
+            /** @description Σ сума робіт */
+            totalAmount: number;
+            /** @description Кількість рядків робіт */
+            linesCount: number;
+        };
+        WorkOrdersReportDto: {
+            rows: components["schemas"]["WorkOrdersReportRowDto"][];
+            totalNormoHours: number;
+            totalAmount: number;
+            from: string;
+            to: string;
+        };
+        StockReportItemDto: {
+            goodId: string;
+            goodName: string;
+            /** @description Артикул (може бути відсутній) */
+            goodSku?: string | null;
+            /** @example шт */
+            unit: string;
+            warehouseName: string;
+            /** @description Залишок (може бути дробовим: літри, кг) */
+            quantity: number;
+            /** @description Зарезервовано */
+            reserved: number;
+            /** @description Доступно = quantity − reserved */
+            available: number;
+            /** @description Вартість за ціною продажу */
+            value: number;
+        };
+        StockReportMovementDto: {
+            /** @description RECEIPT | WRITEOFF | TRANSFER | RESERVATION | … */
+            type: string;
+            goodName: string;
+            /** @description Може бути відʼємною (списання) */
+            quantity: number;
+            documentType?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StockReportDto: {
+            stockItems: components["schemas"]["StockReportItemDto"][];
+            /** @description Останні рухи (до 500) */
+            movements: components["schemas"]["StockReportMovementDto"][];
+            /** @description Σ вартості залишків */
+            totalValue: number;
+        };
+        ProfitabilityReportDto: {
+            totalRevenue: number;
+            /** @description Собівартість = запчастини + роботи */
+            totalCost: number;
+            totalCostParts: number;
+            /** @description totalLabor × LABOR_COST_RATIO */
+            totalCostLabor: number;
+            /** @description Виручка − собівартість */
+            grossProfit: number;
+            /** @description ВІДСОТОК (не гроші): grossProfit / totalRevenue × 100 */
+            margin: number;
+            ordersCount: number;
+            /** @description Скільки запчастин без відомої закупівельної ціни */
+            unknownCostPartsCount: number;
+            from: string;
+            to: string;
+        };
+        SettlementsReportRowDto: {
+            counterpartyId: string;
+            counterpartyName: string;
+            /** @description CLIENT | SUPPLIER | BOTH */
+            type: string;
+            /** @description > 0 — дебіторська, < 0 — кредиторська */
+            balance: number;
+        };
+        SettlementsReportDto: {
+            rows: components["schemas"]["SettlementsReportRowDto"][];
+            /** @description Σ позитивних балансів (нам винні) */
+            totalDebit: number;
+            /** @description Σ |негативних| балансів (ми винні) */
+            totalCredit: number;
+        };
+        LoadReportRowDto: {
+            liftId: string;
+            liftName: string;
+            /** @description Порожній рядок, якщо зону не задано */
+            zoneName: string;
+            /** @description Кількість слотів за період */
+            totalSlots: number;
+            /** @description Σ годин зайнятості */
+            totalHours: number;
+            /** @description ВІДСОТОК завантаження (може перевищувати 100) */
+            loadPercent: number;
+        };
+        LoadReportDto: {
+            rows: components["schemas"]["LoadReportRowDto"][];
+            from: string;
+            to: string;
+            /** @description Днів у періоді (мінімум 1) — база для loadPercent */
+            totalDays: number;
+        };
+        VatReportDto: {
+            /** @description ПДВ у виставлених рахунках */
+            invoiced: number;
+            /** @description ПДВ у закупках */
+            purchases: number;
+            /** @description Чисте ПДВ = invoiced − purchases */
+            net: number;
+            from: string;
+            to: string;
+        };
+        ReportMetadataFieldDto: {
+            key: string;
+            label: string;
+            /** @description string | number | money | date | enum | boolean */
+            type: string;
+            /** @description Ключ у enums (для type=enum) */
+            enumName?: string;
+            /** @description Дозволені агрегації; порожньо = не агрегабельне */
+            aggregations: string[];
+            filterable: boolean;
+            groupable: boolean;
+        };
+        ReportMetadataRelationDto: {
+            /** @description dot-path гілки: 'counterparty' | 'good.brand' */
+            key: string;
+            label: string;
+            /** @description Рідковживана гілка — ховається за «показати ще» */
+            advanced?: boolean;
+        };
+        ReportMetadataEntityDto: {
+            key: string;
+            label: string;
+            /** @description Поле для фільтра за періодом */
+            dateField?: string;
+            fields: components["schemas"]["ReportMetadataFieldDto"][];
+            relations: components["schemas"]["ReportMetadataRelationDto"][];
+        };
+        ReportMetadataDto: {
+            entities: components["schemas"]["ReportMetadataEntityDto"][];
+            /** @description enumName → перелік допустимих значень */
+            enums: {
+                [key: string]: string[];
+            };
+        };
         ReportFilterDto: {
             field: string;
             /** @enum {string} */
@@ -7716,6 +7889,65 @@ export interface components {
         };
         ReportRunDto: {
             config: components["schemas"]["ReportConfigDto"];
+        };
+        ReportRunColumnDto: {
+            key: string;
+            label: string;
+            type: string;
+            enumName?: string;
+        };
+        ReportRunAggregationDto: {
+            field: string;
+            /** @description SUM | AVG | MIN | MAX | COUNT */
+            agg: string;
+            type: string;
+            label: string;
+        };
+        ReportRunResultBodyDto: {
+            /** @description Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[] */
+            tree: {
+                [key: string]: unknown;
+            }[];
+            /** @description Плоскі детальні рядки — набір ключів задає config.columns у рантаймі */
+            detailRows: {
+                [key: string]: unknown;
+            }[];
+            /** @description alias агрегації → значення (null якщо нема даних) */
+            grandTotals: {
+                [key: string]: number | null;
+            };
+            rowCount: number;
+            /** @description true — результат обрізано лімітом */
+            truncated: boolean;
+        };
+        ReportRunResponseDto: {
+            /** @description Ключ сутності з реєстру */
+            entity: string;
+            columns: components["schemas"]["ReportRunColumnDto"][];
+            groupBy: string[];
+            /** @description Явні + авто-SUM */
+            aggregations: components["schemas"]["ReportRunAggregationDto"][];
+            result: components["schemas"]["ReportRunResultBodyDto"];
+        };
+        SavedReportResponseDto: {
+            id: string;
+            orgId: string;
+            name: string;
+            /** @description Ключ сутності з реєстру */
+            entity: string;
+            /** @description Збережений ReportConfig (валідність перевіряється при run) */
+            config: {
+                [key: string]: unknown;
+            };
+            createdBy?: string | null;
+            /** @description BigInt → РЯДОК на транспорті (патч BigInt.prototype.toJSON у main.ts) */
+            syncVersion: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            deletedAt?: string | null;
         };
         SaveReportDto: {
             name: string;
@@ -15870,7 +16102,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RevenueReportDto"];
+                };
             };
         };
     };
@@ -15891,7 +16125,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrdersReportDto"];
+                };
             };
         };
     };
@@ -15912,7 +16148,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StockReportDto"];
+                };
             };
         };
     };
@@ -15932,7 +16170,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProfitabilityReportDto"];
+                };
             };
         };
     };
@@ -15951,7 +16191,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SettlementsReportDto"];
+                };
             };
         };
     };
@@ -15972,7 +16214,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LoadReportDto"];
+                };
             };
         };
     };
@@ -15992,7 +16236,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["VatReportDto"];
+                };
             };
         };
     };
@@ -16009,7 +16255,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReportMetadataDto"];
+                };
             };
         };
     };
@@ -16031,7 +16279,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["ReportRunResponseDto"];
                 };
             };
         };
@@ -16049,7 +16297,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SavedReportResponseDto"][];
+                };
             };
         };
     };
@@ -16070,7 +16320,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SavedReportResponseDto"];
+                };
             };
         };
     };
@@ -16090,7 +16342,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["ReportRunResponseDto"];
                 };
             };
         };
@@ -16110,7 +16362,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SavedReportResponseDto"];
+                };
             };
         };
     };
@@ -16152,7 +16406,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SavedReportResponseDto"];
+                };
             };
         };
     };

@@ -13583,7 +13583,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13628,7 +13635,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrdersReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13673,7 +13687,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13710,7 +13731,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfitabilityReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13739,7 +13767,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettlementsReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13782,7 +13817,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13821,7 +13863,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VatReportDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13841,7 +13890,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportMetadataDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13875,7 +13931,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReportRunResponseDto"
                 }
               }
             }
@@ -13898,7 +13954,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedReportResponseDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13926,7 +13992,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReportResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -13959,7 +14032,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ReportRunResponseDto"
                 }
               }
             }
@@ -13991,7 +14064,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReportResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14028,7 +14108,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReportResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -25381,6 +25468,551 @@
           "provider"
         ]
       },
+      "RevenueRowDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-10-04",
+            "description": "День (Europe/Kyiv, YYYY-MM-DD)"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "Виручка за день"
+          },
+          "labor": {
+            "type": "number",
+            "description": "З них роботи"
+          },
+          "parts": {
+            "type": "number",
+            "description": "З них запчастини"
+          },
+          "count": {
+            "type": "number",
+            "description": "Кількість нарядів"
+          }
+        },
+        "required": [
+          "date",
+          "revenue",
+          "labor",
+          "parts",
+          "count"
+        ]
+      },
+      "RevenueReportDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevenueRowDto"
+            }
+          },
+          "totalRevenue": {
+            "type": "number",
+            "description": "Σ виручки за період"
+          },
+          "totalOrders": {
+            "type": "number",
+            "description": "Σ нарядів за період"
+          },
+          "from": {
+            "type": "string",
+            "example": "2026-10-01"
+          },
+          "to": {
+            "type": "string",
+            "example": "2026-10-31"
+          }
+        },
+        "required": [
+          "rows",
+          "totalRevenue",
+          "totalOrders",
+          "from",
+          "to"
+        ]
+      },
+      "WorkOrdersReportRowDto": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string"
+          },
+          "employeeName": {
+            "type": "string",
+            "description": "Прізвище + ім’я"
+          },
+          "totalNormoHours": {
+            "type": "number",
+            "description": "Σ норма-годин"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "Σ сума робіт"
+          },
+          "linesCount": {
+            "type": "number",
+            "description": "Кількість рядків робіт"
+          }
+        },
+        "required": [
+          "employeeId",
+          "employeeName",
+          "totalNormoHours",
+          "totalAmount",
+          "linesCount"
+        ]
+      },
+      "WorkOrdersReportDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrdersReportRowDto"
+            }
+          },
+          "totalNormoHours": {
+            "type": "number"
+          },
+          "totalAmount": {
+            "type": "number"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rows",
+          "totalNormoHours",
+          "totalAmount",
+          "from",
+          "to"
+        ]
+      },
+      "StockReportItemDto": {
+        "type": "object",
+        "properties": {
+          "goodId": {
+            "type": "string"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "goodSku": {
+            "type": "string",
+            "nullable": true,
+            "description": "Артикул (може бути відсутній)"
+          },
+          "unit": {
+            "type": "string",
+            "example": "шт"
+          },
+          "warehouseName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Залишок (може бути дробовим: літри, кг)"
+          },
+          "reserved": {
+            "type": "number",
+            "description": "Зарезервовано"
+          },
+          "available": {
+            "type": "number",
+            "description": "Доступно = quantity − reserved"
+          },
+          "value": {
+            "type": "number",
+            "description": "Вартість за ціною продажу"
+          }
+        },
+        "required": [
+          "goodId",
+          "goodName",
+          "unit",
+          "warehouseName",
+          "quantity",
+          "reserved",
+          "available",
+          "value"
+        ]
+      },
+      "StockReportMovementDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "RECEIPT | WRITEOFF | TRANSFER | RESERVATION | …"
+          },
+          "goodName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Може бути відʼємною (списання)"
+          },
+          "documentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "type",
+          "goodName",
+          "quantity",
+          "createdAt"
+        ]
+      },
+      "StockReportDto": {
+        "type": "object",
+        "properties": {
+          "stockItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockReportItemDto"
+            }
+          },
+          "movements": {
+            "description": "Останні рухи (до 500)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StockReportMovementDto"
+            }
+          },
+          "totalValue": {
+            "type": "number",
+            "description": "Σ вартості залишків"
+          }
+        },
+        "required": [
+          "stockItems",
+          "movements",
+          "totalValue"
+        ]
+      },
+      "ProfitabilityReportDto": {
+        "type": "object",
+        "properties": {
+          "totalRevenue": {
+            "type": "number"
+          },
+          "totalCost": {
+            "type": "number",
+            "description": "Собівартість = запчастини + роботи"
+          },
+          "totalCostParts": {
+            "type": "number"
+          },
+          "totalCostLabor": {
+            "type": "number",
+            "description": "totalLabor × LABOR_COST_RATIO"
+          },
+          "grossProfit": {
+            "type": "number",
+            "description": "Виручка − собівартість"
+          },
+          "margin": {
+            "type": "number",
+            "description": "ВІДСОТОК (не гроші): grossProfit / totalRevenue × 100"
+          },
+          "ordersCount": {
+            "type": "number"
+          },
+          "unknownCostPartsCount": {
+            "type": "number",
+            "description": "Скільки запчастин без відомої закупівельної ціни"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "totalRevenue",
+          "totalCost",
+          "totalCostParts",
+          "totalCostLabor",
+          "grossProfit",
+          "margin",
+          "ordersCount",
+          "unknownCostPartsCount",
+          "from",
+          "to"
+        ]
+      },
+      "SettlementsReportRowDto": {
+        "type": "object",
+        "properties": {
+          "counterpartyId": {
+            "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "CLIENT | SUPPLIER | BOTH"
+          },
+          "balance": {
+            "type": "number",
+            "description": "> 0 — дебіторська, < 0 — кредиторська"
+          }
+        },
+        "required": [
+          "counterpartyId",
+          "counterpartyName",
+          "type",
+          "balance"
+        ]
+      },
+      "SettlementsReportDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettlementsReportRowDto"
+            }
+          },
+          "totalDebit": {
+            "type": "number",
+            "description": "Σ позитивних балансів (нам винні)"
+          },
+          "totalCredit": {
+            "type": "number",
+            "description": "Σ |негативних| балансів (ми винні)"
+          }
+        },
+        "required": [
+          "rows",
+          "totalDebit",
+          "totalCredit"
+        ]
+      },
+      "LoadReportRowDto": {
+        "type": "object",
+        "properties": {
+          "liftId": {
+            "type": "string"
+          },
+          "liftName": {
+            "type": "string"
+          },
+          "zoneName": {
+            "type": "string",
+            "description": "Порожній рядок, якщо зону не задано"
+          },
+          "totalSlots": {
+            "type": "number",
+            "description": "Кількість слотів за період"
+          },
+          "totalHours": {
+            "type": "number",
+            "description": "Σ годин зайнятості"
+          },
+          "loadPercent": {
+            "type": "number",
+            "description": "ВІДСОТОК завантаження (може перевищувати 100)"
+          }
+        },
+        "required": [
+          "liftId",
+          "liftName",
+          "zoneName",
+          "totalSlots",
+          "totalHours",
+          "loadPercent"
+        ]
+      },
+      "LoadReportDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LoadReportRowDto"
+            }
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totalDays": {
+            "type": "number",
+            "description": "Днів у періоді (мінімум 1) — база для loadPercent"
+          }
+        },
+        "required": [
+          "rows",
+          "from",
+          "to",
+          "totalDays"
+        ]
+      },
+      "VatReportDto": {
+        "type": "object",
+        "properties": {
+          "invoiced": {
+            "type": "number",
+            "description": "ПДВ у виставлених рахунках"
+          },
+          "purchases": {
+            "type": "number",
+            "description": "ПДВ у закупках"
+          },
+          "net": {
+            "type": "number",
+            "description": "Чисте ПДВ = invoiced − purchases"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "invoiced",
+          "purchases",
+          "net",
+          "from",
+          "to"
+        ]
+      },
+      "ReportMetadataFieldDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "description": "string | number | money | date | enum | boolean"
+          },
+          "enumName": {
+            "type": "string",
+            "description": "Ключ у enums (для type=enum)"
+          },
+          "aggregations": {
+            "description": "Дозволені агрегації; порожньо = не агрегабельне",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filterable": {
+            "type": "boolean"
+          },
+          "groupable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type",
+          "aggregations",
+          "filterable",
+          "groupable"
+        ]
+      },
+      "ReportMetadataRelationDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "dot-path гілки: 'counterparty' | 'good.brand'"
+          },
+          "label": {
+            "type": "string"
+          },
+          "advanced": {
+            "type": "boolean",
+            "description": "Рідковживана гілка — ховається за «показати ще»"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ]
+      },
+      "ReportMetadataEntityDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "dateField": {
+            "type": "string",
+            "description": "Поле для фільтра за періодом"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportMetadataFieldDto"
+            }
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportMetadataRelationDto"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "fields",
+          "relations"
+        ]
+      },
+      "ReportMetadataDto": {
+        "type": "object",
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportMetadataEntityDto"
+            }
+          },
+          "enums": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "enumName → перелік допустимих значень"
+          }
+        },
+        "required": [
+          "entities",
+          "enums"
+        ]
+      },
       "ReportFilterDto": {
         "type": "object",
         "properties": {
@@ -25569,6 +26201,187 @@
         },
         "required": [
           "config"
+        ]
+      },
+      "ReportRunColumnDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "enumName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type"
+        ]
+      },
+      "ReportRunAggregationDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "agg": {
+            "type": "string",
+            "description": "SUM | AVG | MIN | MAX | COUNT"
+          },
+          "type": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "agg",
+          "type",
+          "label"
+        ]
+      },
+      "ReportRunResultBodyDto": {
+        "type": "object",
+        "properties": {
+          "tree": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Рекурсивне дерево груп (GroupNode[]); порожнє коли groupBy=[]"
+          },
+          "detailRows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Плоскі детальні рядки — набір ключів задає config.columns у рантаймі"
+          },
+          "grandTotals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "nullable": true
+            },
+            "description": "alias агрегації → значення (null якщо нема даних)"
+          },
+          "rowCount": {
+            "type": "number"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "true — результат обрізано лімітом"
+          }
+        },
+        "required": [
+          "tree",
+          "detailRows",
+          "grandTotals",
+          "rowCount",
+          "truncated"
+        ]
+      },
+      "ReportRunResponseDto": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "type": "string",
+            "description": "Ключ сутності з реєстру"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportRunColumnDto"
+            }
+          },
+          "groupBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "aggregations": {
+            "description": "Явні + авто-SUM",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportRunAggregationDto"
+            }
+          },
+          "result": {
+            "$ref": "#/components/schemas/ReportRunResultBodyDto"
+          }
+        },
+        "required": [
+          "entity",
+          "columns",
+          "groupBy",
+          "aggregations",
+          "result"
+        ]
+      },
+      "SavedReportResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string",
+            "description": "Ключ сутності з реєстру"
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Збережений ReportConfig (валідність перевіряється при run)"
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "syncVersion": {
+            "type": "string",
+            "description": "BigInt → РЯДОК на транспорті (патч BigInt.prototype.toJSON у main.ts)"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "orgId",
+          "name",
+          "entity",
+          "config",
+          "syncVersion",
+          "createdAt",
+          "updatedAt"
         ]
       },
       "SaveReportDto": {
