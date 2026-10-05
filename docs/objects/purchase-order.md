@@ -190,6 +190,8 @@ else → newContractId = po.contractId                         // unchanged
 Спек `purchase-orders.service.spec.ts` був 1960 рядків; 2026-10-05 розбито за
 аспектами (182 кейси до і після). Правите один аспект — ганяєте один файл:
 
+**Модуль:** `apps/api/src/modules/purchase-orders/`
+
 ```bash
 cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.spec.ts
 ```

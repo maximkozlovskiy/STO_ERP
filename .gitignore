@@ -72,3 +72,9 @@ apps/api/dist-openapi/
 # Python bytecode (py_compile при перевірці хуків)
 __pycache__/
 *.pyc
+
+# vitest-артефакти прогону: JSON-звіт для гейта A (scripts/check-spec-registry.py)
+# і кеш репортера. Baseline (apps/api/test-baseline.json) — НЕ тут, він у git свідомо:
+# його diff показує, які саме кейси додались або зникли.
+apps/api/.vitest-report.json
+apps/api/.vitest/

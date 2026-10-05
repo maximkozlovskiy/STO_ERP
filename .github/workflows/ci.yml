@@ -50,8 +50,10 @@ jobs:
       - name: Lint (api · web · mobile)
         run: pnpm run lint
 
+      # --reporter=json ДОДАТКОВО до дефолтного: звіт потрібен гейту A нижче, і так
+      # він не коштує окремого прогону тестів.
       - name: Unit tests
-        run: pnpm run test
+        run: pnpm --filter @sto/api exec vitest run --reporter=default --reporter=json --outputFile=.vitest-report.json && pnpm --filter @sto/web run test
 
       # Пороги покриття живуть у apps/api/vitest.config.ts і зафіксовані від фактичного
       # рівня (аудит 2026-10). Крок падає, якщо покриття просіло нижче порога — раніше
@@ -97,6 +99,18 @@ jobs:
       # жило довго. Мутація перевірена: внесене биття дає exit 1 і назву файлу.
       - name: Doc links resolve
         run: python3 scripts/check-doc-links.py
+
+      # Три гейти спец-орієнтованих тестів. Гейт A (втрата кейсів) порівнює МНОЖИНИ
+      # fullName проти apps/api/test-baseline.json, а не суми: «182 -> 182» не виключає
+      # «втратив один кейс і продублював інший». Привід: 2026-10-05 розбиття спеку
+      # знищило наявний purchase-orders.contract.spec.ts (593 рядки) — втрату зловила
+      # не перевірка, а випадкова арифметика (47+101 != 182).
+      # Гейт B (нові моноліти) відкалібрований: на момент вмикання називав РІВНО 8 файлів,
+      # тобто поріг 900 ловить саме цілі й нічого крім них.
+      # Гейт C (цілісність дос'є) закриває дірку check-doc-links.py, який за конструкцією
+      # бачить лише .md-цілі, а не .ts-шляхи з реєстрів.
+      - name: Spec registry gates
+        run: python3 scripts/check-spec-registry.py --from-report apps/api/.vitest-report.json
 
   # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
   # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
