@@ -2880,6 +2880,23 @@
    "SupplierPaymentsService — regression guards часткова оплата PO (не повна) → paidAmount інкремент, БЕЗ FX, paidAt null",
    "SupplierPaymentsService — regression guards часткові оплати: остання (200 з paidAmount=800, total=1000) робить повну оплату → FX, paidAmount CAS від po.paidAmount=800"
   ],
+  "apps/api/src/modules/supplier-returns/supplier-returns.confirm-fsm.spec.ts": [
+   "SupplierReturnsService — regression guards cancel() з CONFIRMED → BadRequestException (FSM правило)",
+   "SupplierReturnsService — regression guards cancel() з DRAFT → status=CANCELLED",
+   "SupplierReturnsService — regression guards confirm() concurrent: CAS updateMany count=0 → BadRequest, БЕЗ WRITEOFF/REFUND",
+   "SupplierReturnsService — regression guards confirm() без рядків (pre-check) → BadRequestException; жодних side-effects",
+   "SupplierReturnsService — regression guards confirm() з totalAmount=0 → НЕ створює settlement transaction (guard рядок 336)",
+   "SupplierReturnsService — regression guards confirm() зі статусу CANCELLED → BadRequestException",
+   "SupplierReturnsService — regression guards confirm() зі статусу CONFIRMED → BadRequestException + не запускає $tx",
+   "SupplierReturnsService — regression guards confirm() не існує → NotFoundException",
+   "SupplierReturnsService — regression guards confirm(): WRITEOFF викликаний з НЕГАТИВНОЮ quantity + documentType=SupplierReturn (PascalCase)",
+   "SupplierReturnsService — regression guards confirm(): settlement transaction створюється з type=REFUND (НЕ PAYMENT, НЕ CHARGE)",
+   "SupplierReturnsService — regression guards create() з дублікатним goodId у lines → дедуплікація через deduplicateBy (1 рядок створено)",
+   "SupplierReturnsService — regression guards create() з неіснуючим supplierId → NotFoundException",
+   "SupplierReturnsService — regression guards create() з неіснуючим warehouseId → NotFoundException",
+   "SupplierReturnsService — regression guards create(): cross-tenant goodId → NotFoundException (Bug #495 guard)",
+   "SupplierReturnsService — regression guards create(): cross-tenant unitOfMeasureId → NotFoundException"
+  ],
   "apps/api/src/modules/supplier-returns/supplier-returns.contract.spec.ts": [
    "SupplierReturns — HTTP Contract GET /supplier-returns повертає 200 з pagination shape",
    "SupplierReturns — HTTP Contract GET /supplier-returns повертає 403 без JWT",
@@ -2895,32 +2912,21 @@
    "SupplierReturns — HTTP Contract POST /supplier-returns/linked-counts повертає 400 для non-UUID елемента",
    "SupplierReturns — HTTP Contract POST /supplier-returns/linked-counts повертає 400 для порожнього масиву (ArrayMinSize)"
   ],
-  "apps/api/src/modules/supplier-returns/supplier-returns.service.spec.ts": [
-   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() без purchaseOrderId → persist null; FK-guard не викликається",
-   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() з валідним purchaseOrderId → персистить purchaseOrderId + повертає у DTO",
-   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() з невалідним purchaseOrderId → BadRequestException; create не викликається",
+  "apps/api/src/modules/supplier-returns/supplier-returns.linked-docs.spec.ts": [
    "SupplierReturnsService — linked documents (Phase D3) getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; counterparty/warehouse=1 коли живі (count == detail)",
    "SupplierReturnsService — linked documents (Phase D3) getLinkedCounts: soft-deleted PO/постачальник/склад → count=0 (count == detail, Bug #A/#641)",
    "SupplierReturnsService — linked documents (Phase D3) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
    "SupplierReturnsService — linked documents (Phase D3) getLinkedDocuments: без purchaseOrderId → purchaseOrder=[]; counterparty+warehouse завжди присутні",
    "SupplierReturnsService — linked documents (Phase D3) getLinkedDocuments: з purchaseOrderId → orgId+deletedAt:null; Decimal→Number",
-   "SupplierReturnsService — linked documents (Phase D3) getLinkedDocuments: неіснуюче/чуже повернення → порожні секції (без throw)",
-   "SupplierReturnsService — regression guards cancel() з CONFIRMED → BadRequestException (FSM правило)",
-   "SupplierReturnsService — regression guards cancel() з DRAFT → status=CANCELLED",
-   "SupplierReturnsService — regression guards confirm() concurrent: CAS updateMany count=0 → BadRequest, БЕЗ WRITEOFF/REFUND",
-   "SupplierReturnsService — regression guards confirm() без рядків (pre-check) → BadRequestException; жодних side-effects",
-   "SupplierReturnsService — regression guards confirm() з totalAmount=0 → НЕ створює settlement transaction (guard рядок 336)",
-   "SupplierReturnsService — regression guards confirm() зі статусу CANCELLED → BadRequestException",
-   "SupplierReturnsService — regression guards confirm() зі статусу CONFIRMED → BadRequestException + не запускає $tx",
-   "SupplierReturnsService — regression guards confirm() не існує → NotFoundException",
-   "SupplierReturnsService — regression guards confirm(): WRITEOFF викликаний з НЕГАТИВНОЮ quantity + documentType=SupplierReturn (PascalCase)",
-   "SupplierReturnsService — regression guards confirm(): settlement transaction створюється з type=REFUND (НЕ PAYMENT, НЕ CHARGE)",
-   "SupplierReturnsService — regression guards create() з дублікатним goodId у lines → дедуплікація через deduplicateBy (1 рядок створено)",
-   "SupplierReturnsService — regression guards create() з неіснуючим supplierId → NotFoundException",
-   "SupplierReturnsService — regression guards create() з неіснуючим warehouseId → NotFoundException",
-   "SupplierReturnsService — regression guards create(): cross-tenant goodId → NotFoundException (Bug #495 guard)",
-   "SupplierReturnsService — regression guards create(): cross-tenant unitOfMeasureId → NotFoundException",
-   "SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2) update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO",
+   "SupplierReturnsService — linked documents (Phase D3) getLinkedDocuments: неіснуюче/чуже повернення → порожні секції (без throw)"
+  ],
+  "apps/api/src/modules/supplier-returns/supplier-returns.purchase-order-link.spec.ts": [
+   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() без purchaseOrderId → persist null; FK-guard не викликається",
+   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() з валідним purchaseOrderId → персистить purchaseOrderId + повертає у DTO",
+   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() з невалідним purchaseOrderId → BadRequestException; create не викликається",
+   "SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2) update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO"
+  ],
+  "apps/api/src/modules/supplier-returns/supplier-returns.totals.spec.ts": [
    "SupplierReturnsService.create — Bug #778: Σ(lines.amount) === totalAmount сума per-line amount дорівнює збереженому totalAmount (дробові кількості)"
   ],
   "apps/api/src/modules/sync/sync.contract.spec.ts": [
