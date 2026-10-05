@@ -97,15 +97,40 @@ OWNER/ADMIN/STOREKEEPER/RECEPTIONIST; вкладка «Документи скл
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-SDOC)
 
-- Номер авто-генерується: `DocumentNumberService.next(orgId, documentType)`
-- **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
+- **BR-SDOC-001**: Номер авто-генерується: `DocumentNumberService.next(orgId, documentType)`
+- **BR-SDOC-002**: **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
   (Good.id глобально унікальний → інакше cross-tenant FK-injection на confirm→createMovement). 404 ДО запису.
-- Деdup рядків перед transition: `Set(lineIds)` — duplicate lineId → `BadRequestException`
-- Рухи у `Promise.all` (disjoint по `(goodId, warehouseId)` для WRITEOFF ↔ RECEIPT — safe)
-- `STOCK_DOC_TYPE_LABELS` у `@sto/shared` — додавати нові типи туди, не хардкодити на фронті
-- **PO-джерело (Phase D2):** `purchaseOrderId` — опціональний FK на замовлення постачальнику; задається лише при CREATE (пікер «Замовлення (джерело)» у модалці, у edit-режимі read-only). Guard: якщо передано — має існувати у org (`purchaseOrder.findFirst` orgId+deletedAt:null), інакше `BadRequestException('Замовлення не знайдено')`. Відповідь містить `purchaseOrderId` + `purchaseOrderNumber` (join). Документ без PO створюється нормально.
-- Tab-bar фільтр підхоплює нові типи автоматично через `Object.keys(STOCK_DOC_TYPE_LABELS)`
+- **BR-SDOC-003**: Деdup рядків перед transition: `Set(lineIds)` — duplicate lineId → `BadRequestException`
+- **BR-SDOC-004**: Рухи у `Promise.all` (disjoint по `(goodId, warehouseId)` для WRITEOFF ↔ RECEIPT — safe)
+- **BR-SDOC-005**: `STOCK_DOC_TYPE_LABELS` у `@sto/shared` — додавати нові типи туди, не хардкодити на фронті
+- **BR-SDOC-006**: **PO-джерело (Phase D2):** `purchaseOrderId` — опціональний FK на замовлення постачальнику; задається лише при CREATE (пікер «Замовлення (джерело)» у модалці, у edit-режимі read-only). Guard: якщо передано — має існувати у org (`purchaseOrder.findFirst` orgId+deletedAt:null), інакше `BadRequestException('Замовлення не знайдено')`. Відповідь містить `purchaseOrderId` + `purchaseOrderNumber` (join). Документ без PO створюється нормально.
+- **BR-SDOC-007**: Tab-bar фільтр підхоплює нові типи автоматично через `Object.keys(STOCK_DOC_TYPE_LABELS)`
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Спек `stock-documents.service.spec.ts` був 1040 рядків із 4 незалежними top-level
+describe; 2026-10-05 розбито за аспектами — 54 кейси модуля до і після, кожне
+`fullName` збереглося (перевірено порівнянням множин проти `test-baseline.json`).
+
+**Модуль:** `apps/api/src/modules/stock-documents/`
+
+| Аспект                                                                       | Тест                                          | Кейсів | Правила     |
+| ---------------------------------------------------------------------------- | --------------------------------------------- | ------ | ----------- |
+| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`        | 12     | BR-SDOC-004 |
+| Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`         | 8      | —           |
+| `purchaseOrderId` на create і update (Phase D2)                              | `stock-documents.purchase-order-link.spec.ts` | 4      | BR-SDOC-006 |
+| HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`            | 23     | BR-SDOC-002 |
+| Асиметричний reverse рухів                                                   | `asymmetric-reverse.invariants.spec.ts`       | 7      | BR-SDOC-004 |
+
+**Чого тут НЕМА.** `BR-SDOC-001` (нумерація), `BR-SDOC-003` (дедуп рядків),
+`BR-SDOC-005` і `BR-SDOC-007` (`STOCK_DOC_TYPE_LABELS` як SOT типів) власних тестів не
+мають. Перші два покриті побічно у contract-спеку; два останні — фронтові й стережуться
+лише тим, що `Object.keys()` читається з `@sto/shared`. Свідома прогалина: окремий
+інваріантний спек для `STOCK_DOC_TYPE_LABELS` ↔ `StockDocumentType` вартий того, бо новий
+тип у Prisma без запису у shared ламає і таб-бар, і фільтр — тихо.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

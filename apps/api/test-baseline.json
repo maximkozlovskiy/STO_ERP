@@ -2764,7 +2764,23 @@
    "StockDocuments — HTTP Contract POST /stock-documents/linked-counts повертає 400 для non-UUID елемента",
    "StockDocuments — HTTP Contract POST /stock-documents/linked-counts повертає 400 для порожнього масиву (ArrayMinSize)"
   ],
-  "apps/api/src/modules/stock-documents/stock-documents.service.spec.ts": [
+  "apps/api/src/modules/stock-documents/stock-documents.linked-docs.spec.ts": [
+   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: TRANSFER із soft-deleted ЛИШЕ target-складом → warehouses=1 (не 2)",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; warehouses=2 для TRANSFER (count == detail)",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: soft-deleted PO/склад → count=0 (count == detail, Bug #A/#641)",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: не-TRANSFER (targetWarehouseId=null) → warehouses=1 (лише живе джерело)",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: TRANSFER з targetWarehouseId → 2 склади; orgId+deletedAt:null; Decimal→Number",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: без purchaseOrderId і targetWarehouseId → лише джерело-склад",
+   "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: неіснуючий/чужий документ → порожні секції (без throw)"
+  ],
+  "apps/api/src/modules/stock-documents/stock-documents.purchase-order-link.spec.ts": [
+   "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() без purchaseOrderId → persist null; FK-guard не викликається",
+   "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() з валідним purchaseOrderId → персистить purchaseOrderId у data + повертає у DTO",
+   "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() з невалідним purchaseOrderId (чужа org / soft-deleted) → BadRequestException",
+   "StockDocumentsService — update() зберігає purchaseOrderId (Phase D2) update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO"
+  ],
+  "apps/api/src/modules/stock-documents/stock-documents.receipt-type.spec.ts": [
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) Bug #490: transition(RECEIPT) персистить unitOfMeasureId через update з compound where { id, orgId }",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) Bug #610: TRANSFER коли src.weightedCostPrice=null → fallback до baseArgs.price",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) Bug #610: TRANSFER передає src.weightedCostPrice у target RECEIPT.price (cost carry)",
@@ -2776,19 +2792,7 @@
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED) без рядків → BadRequestException; createMovement не викликаний",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED) — НЕ викликає createMovement з targetWarehouseId (на відміну від TRANSFER)",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): MOVEMENT_TYPES[RECEIPT] resolved → не кидає \"Непідтримуваний тип документу\"",
-   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): inventory.createMovement викликаний ОДИН раз з type=RECEIPT і ПОЗИТИВНОЮ quantity",
-   "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() без purchaseOrderId → persist null; FK-guard не викликається",
-   "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() з валідним purchaseOrderId → персистить purchaseOrderId у data + повертає у DTO",
-   "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() з невалідним purchaseOrderId (чужа org / soft-deleted) → BadRequestException",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: TRANSFER із soft-deleted ЛИШЕ target-складом → warehouses=1 (не 2)",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; warehouses=2 для TRANSFER (count == detail)",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: soft-deleted PO/склад → count=0 (count == detail, Bug #A/#641)",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: не-TRANSFER (targetWarehouseId=null) → warehouses=1 (лише живе джерело)",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: TRANSFER з targetWarehouseId → 2 склади; orgId+deletedAt:null; Decimal→Number",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: без purchaseOrderId і targetWarehouseId → лише джерело-склад",
-   "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: неіснуючий/чужий документ → порожні секції (без throw)",
-   "StockDocumentsService — update() зберігає purchaseOrderId (Phase D2) update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO"
+   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): inventory.createMovement викликаний ОДИН раз з type=RECEIPT і ПОЗИТИВНОЮ quantity"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.contract.spec.ts": [
    "SupplierPayments — linked-documents HTTP Contract GET /supplier-payments/:id/linked-documents route ordering: linked-documents не ловиться :id (findOne НЕ викликаний)",
