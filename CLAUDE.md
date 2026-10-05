@@ -189,6 +189,8 @@ sto-sync-agent     ← API/Frontend sync: відсутній UI, неправи�
 sto-review-agent   ← code review + авто-фікс (завжди через Agent tool)
 sto-tester-agent   ← bug hunt + авто-фікс (завжди через Agent tool)
 sto-optimize-agent ← performance аудит + авто-фікс: N+1, кеш, індекси, bundle, re-renders
+sto-claims-auditor ← перевіряє ТВЕРДЖЕННЯ головного агента по транскрипту (не по доповіді);
+                     перед підсумковим звітом і обов'язково перед «усе ок / можна релізити»
 ```
 
 **ПРАВИЛО:** `sto-sync`, `sto-review`, `sto-tester`, `sto-optimize` ЗАВЖДИ запускати через `Agent(subagent_type=...)` — НЕ як inline скіли. Захищає основний контекст від переповнення.
@@ -240,7 +242,12 @@ bash scripts/measure.sh e2e        # окремо
 `grep -c "test("` (рахує `test.describe` → «450» замість 354),
 `grep -c "useMutation"` (рахує рядок `import`), сумування цифр зі звітів агентів.
 
-**3. Заміри часу — лише через `127.0.0.1`, НЕ `localhost`.** На Windows `localhost`
+**3. Перед підсумковим звітом користувачу — `Agent(subagent_type="sto-claims-auditor")`.**
+Обов'язково перед «усе ок», «можна релізити», «цикл чистий». Агент читає ТРАНСКРИПТ
+(`scripts/audit-claims.py`), а не мою доповідь — бо доповідь містить лише те, що я САМ
+помітив як сумнівне, а всі чотири помилки аудиту були там, де я не сумнівався.
+
+**4. Заміри часу — лише через `127.0.0.1`, НЕ `localhost`.** На Windows `localhost`
 додає ~213 мс на connect (IPv6 → fallback IPv4). Один раз це дало «217 мс» там, де
 насправді 4 мс — помилка в 60 разів. Деталі: `docs/PERFORMANCE-BASELINE.md`.
 
