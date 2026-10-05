@@ -208,6 +208,42 @@ Agent(subagent_type="sto-optimize-agent", description="perf audit after <block>"
 # sto-optimize-agent можна запускати паралельно з tester якщо незалежні зміни
 ```
 
+## Вердикт і цифри — лише з інструмента (ОБОВ'ЯЗКОВО)
+
+> Правило з'явилось після аудиту 2026-10, де заявлена цифра розійшлася з виміряною
+> **сім разів**, а «E2E чистий» було сказано на прогоні з **15 падіннями** (Playwright
+> надрукував `15 failed` вище за `276 passed`, і exit code був **0**).
+
+**1. Слово «чисто» не вимовляється з голови.** Вердикт дає `scripts/verdict.sh`:
+
+```bash
+npx vitest run 2>&1 | bash scripts/verdict.sh "api unit"
+bash scripts/verdict.sh --cmd "api tsc" -- npx tsc --noEmit -p tsconfig.json
+bash scripts/verdict.sh --file /шлях/до/лога "E2E"        # для фонових прогонів
+```
+
+Контракт: `exit 0` лише якщо є ознака успіху І немає ознаки падіння. **Невідоме ≠ чисто** —
+порожній/нерозпізнаний вивід теж дає `exit 1`. Скрипт називає flaky окремо: «0 failed»
+при 6 flaky — це не «чисто», це «пройшло з retry».
+
+**ЧОМУ exit code недостатньо:** Playwright віддав `0` при 15 падіннях. Тому текст виводу
+має пріоритет над кодом, а не навпаки.
+
+**2. Цифра в тексті/документі/коміті — лише з `scripts/measure.sh`:**
+
+```bash
+bash scripts/measure.sh            # тести + E2E + роути + розмір доків
+bash scripts/measure.sh e2e        # окремо
+```
+
+Заборонено: `grep -c "it("` (рахує коментарі, `it.each` як 1 замість N),
+`grep -c "test("` (рахує `test.describe` → «450» замість 354),
+`grep -c "useMutation"` (рахує рядок `import`), сумування цифр зі звітів агентів.
+
+**3. Заміри часу — лише через `127.0.0.1`, НЕ `localhost`.** На Windows `localhost`
+додає ~213 мс на connect (IPv6 → fallback IPv4). Один раз це дало «217 мс» там, де
+насправді 4 мс — помилка в 60 разів. Деталі: `docs/PERFORMANCE-BASELINE.md`.
+
 ## Автоматичне QA після кожного завдання (ОБОВ'ЯЗКОВО)
 
 Після завершення **будь-якого** завдання і git commit — виконай **послідовно**:
