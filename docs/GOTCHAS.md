@@ -68,7 +68,7 @@ raw = sys.stdin.buffer.read().decode("utf-8", "replace")
 ```
 
 **Де ще стосується:** будь-який скрипт, що читає stdin із кирилицею. Для
-*виводу* окремо потрібен `sys.stdout.reconfigure(encoding="utf-8")` — це вже
+_виводу_ окремо потрібен `sys.stdout.reconfigure(encoding="utf-8")` — це вже
 записано нижче, але то інша половина проблеми: reconfigure на stdout НЕ
 виправляє stdin.
 

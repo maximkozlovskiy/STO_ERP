@@ -809,13 +809,13 @@ DB-крок був окремим комітом 44e17aba (schema). tsc 0, 297+2
 | `apps/api/src/modules/xlsx/document-line-import.adapter.ts`                              | Generic import: PO/StockDocument адаптери + registry (loadDoc/assertDraft/replaceLines)     |
 | `apps/api/src/modules/xlsx/import.dto.ts`                                                | PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000)                          |
 | `apps/api/src/modules/counterparty-import-mappings/`                                     | Персист мапінгу колонок Excel per-контрагент (GET/PUT, upsert по @unique)                   |
-| `scripts/verdict.sh` | SOT вердикту «чисто/не чисто» (текст виводу > exit code; невідоме ≠ чисто) |
-| `scripts/measure.sh` | SOT усіх цифр проєкту (tests/e2e/routes/bundle/docs/commits, фіксована база) |
-| `scripts/audit-claims.py` | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а) |
-| `scripts/count-untyped-routes.py` | Роути без типу з OpenAPI-документа (не grep по контролерах) |
-| `scripts/hooks/check-claims-verified.py` | Stop-hook: блокує завершення, якщо вердикт/цифра без auditor/verdict.sh/measure.sh |
-| `scripts/hooks/test-check-claims.py` | Тест hook'а ПРОЦЕСОМ (18 кейсів) — ловить cp1251-stdin і зіпсовані \b, яких не видно в grep |
-| `.claude/agents/sto-claims-auditor.md` | Агент-аудитор: читає ТРАНСКРИПТ, не мою доповідь; переперевіряє кожну цифру інструментом |
+| `scripts/verdict.sh`                                                                     | SOT вердикту «чисто/не чисто» (текст виводу > exit code; невідоме ≠ чисто)                  |
+| `scripts/measure.sh`                                                                     | SOT усіх цифр проєкту (tests/e2e/routes/bundle/docs/commits, фіксована база)                |
+| `scripts/audit-claims.py`                                                                | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а)                  |
+| `scripts/count-untyped-routes.py`                                                        | Роути без типу з OpenAPI-документа (не grep по контролерах)                                 |
+| `scripts/hooks/check-claims-verified.py`                                                 | Stop-hook: блокує завершення, якщо вердикт/цифра без auditor/verdict.sh/measure.sh          |
+| `scripts/hooks/test-check-claims.py`                                                     | Тест hook'а ПРОЦЕСОМ (18 кейсів) — ловить cp1251-stdin і зіпсовані \b, яких не видно в grep |
+| `.claude/agents/sto-claims-auditor.md`                                                   | Агент-аудитор: читає ТРАНСКРИПТ, не мою доповідь; переперевіряє кожну цифру інструментом    |
 
 ---
 
