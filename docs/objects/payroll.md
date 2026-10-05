@@ -179,4 +179,6 @@ employeeId, documentType='PayrollPeriod')` на кожного співробі�
   реальне нарахування. Payroll її не читає: реальна ЗП = rateScheme × фактичний виробіток.
 - **CANCELLED** є в enum, але переходу в сервісі немає.
 
-→ [docs/objects/employee.md](employee.md) · [docs/objects/work-order.md](work-order.md)
+→ [work-order.md](work-order.md) · [work.md](work.md)
+
+> Окремого дос'є Employee немає: `rateScheme` описаний тут, компетенції (зони/підйомники/категорії) — у [work.md](work.md).

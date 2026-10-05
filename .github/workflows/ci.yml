@@ -90,6 +90,14 @@ jobs:
       - name: Stop-hook contract (claims need evidence)
         run: python3 scripts/hooks/test-check-claims.py
 
+      # Посилання між .md не валідує ні tsc, ні eslint, а в GitHub-рендері битий лінк
+      # виглядає як звичайний текст — помітно лише коли клікнеш. Станом на 2026-10-05
+      # битими були 14 із 66: docs/ARCHITECTURE.md посилався на ../objects/<entity>.md,
+      # хоча сам лежить у docs/ (тобто шлях вів у <корінь>/objects/, якого немає), і це
+      # жило довго. Мутація перевірена: внесене биття дає exit 1 і назву файлу.
+      - name: Doc links resolve
+        run: python3 scripts/check-doc-links.py
+
   # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
   # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
   # відсутній у .NET Framework) прослизнув повз усі аудити. Цей job на windows-latest (Windows

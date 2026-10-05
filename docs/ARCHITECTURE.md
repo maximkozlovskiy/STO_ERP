@@ -213,21 +213,21 @@ syncVersion BigInt    @default(0)
 
 Вертикальний зріз по агрегату: FSM + Prisma модель + endpoints + DTO + UI + бізнес-правила.
 
-| Файл                                                            | Агрегат                                         |
-| --------------------------------------------------------------- | ----------------------------------------------- |
-| [work-order.md](../objects/work-order.md)                       | WorkOrder — FSM, transitions, parts             |
-| [invoice.md](../objects/invoice.md)                             | Invoice — FSM, lines, PDF                       |
-| [purchase-order.md](../objects/purchase-order.md)               | PurchaseOrder — receive(), pricing              |
-| [stock-document.md](../objects/stock-document.md)               | StockDocument — WRITEOFF/TRANSFER/RECEIPT       |
-| [counterparty.md](../objects/counterparty.md)                   | Counterparty — CRM, contracts, garages          |
-| [good.md](../objects/good.md)                                   | Good — каталог, UoM, barcodes, pricing          |
-| [work.md](../objects/work.md)                                   | Work + WorkCategory — норми-годин               |
-| [calendar.md](../objects/calendar.md)                           | CalendarSlot — split-day, conflict              |
-| [inventory.md](../objects/inventory.md)                         | StockItem + StockMovement — залишки             |
-| [settlements.md](../objects/settlements.md)                     | SettlementAccount + Transaction                 |
-| [payments.md](../objects/payments.md)                           | Payment — фіскалізація, QR, cash-shift          |
-| [loyalty.md](../objects/loyalty.md)                             | LoyaltyAccount/Transaction — earn/redeem        |
-| [maintenance-schedules.md](../objects/maintenance-schedules.md) | MaintenanceSchedule — інтервали ТО, нагадування |
+| Файл                                                         | Агрегат                                         |
+| ------------------------------------------------------------ | ----------------------------------------------- |
+| [work-order.md](objects/work-order.md)                       | WorkOrder — FSM, transitions, parts             |
+| [invoice.md](objects/invoice.md)                             | Invoice — FSM, lines, PDF                       |
+| [purchase-order.md](objects/purchase-order.md)               | PurchaseOrder — receive(), pricing              |
+| [stock-document.md](objects/stock-document.md)               | StockDocument — WRITEOFF/TRANSFER/RECEIPT       |
+| [counterparty.md](objects/counterparty.md)                   | Counterparty — CRM, contracts, garages          |
+| [good.md](objects/good.md)                                   | Good — каталог, UoM, barcodes, pricing          |
+| [work.md](objects/work.md)                                   | Work + WorkCategory — норми-годин               |
+| [calendar.md](objects/calendar.md)                           | CalendarSlot — split-day, conflict              |
+| [inventory.md](objects/inventory.md)                         | StockItem + StockMovement — залишки             |
+| [settlements.md](objects/settlements.md)                     | SettlementAccount + Transaction                 |
+| [payments.md](objects/payments.md)                           | Payment — фіскалізація, QR, cash-shift          |
+| [loyalty.md](objects/loyalty.md)                             | LoyaltyAccount/Transaction — earn/redeem        |
+| [maintenance-schedules.md](objects/maintenance-schedules.md) | MaintenanceSchedule — інтервали ТО, нагадування |
 
 ---
 
