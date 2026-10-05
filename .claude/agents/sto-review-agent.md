@@ -6,7 +6,7 @@ description: >
   Агент читає актуальний SKILL.md, виконує всі секції чекліста, виправляє знайдені
   проблеми без питань і комітить результат.
   Використовуй: Agent(subagent_type="sto-review-agent")
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

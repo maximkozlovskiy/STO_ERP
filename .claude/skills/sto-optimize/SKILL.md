@@ -6,7 +6,7 @@ description: >
   fetches that could be parallel, bundle size, React re-renders, missing cache.
   Finds, fixes, and commits all issues automatically.
   Invoke: /sto-optimize
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

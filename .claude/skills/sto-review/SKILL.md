@@ -2,7 +2,7 @@
 name: sto-review
 description: >
   Perform a thorough code review of STO ERP changes. Use when the user says "зроби code review", "перевір код", "review PR", or after implementing a feature. Reviews cover: correctness, security, memory leaks, performance, TypeScript quality, NestJS/Next.js/Expo conventions, business rule compliance, sync-readiness.
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

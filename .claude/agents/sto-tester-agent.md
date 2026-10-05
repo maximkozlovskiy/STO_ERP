@@ -6,7 +6,7 @@ description: >
   Запускає unit, contract, property-based, component і E2E тести.
   Якщо dev-сервер впав — перезапускає автоматично.
   Використовуй: Agent(subagent_type="sto-tester-agent")
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

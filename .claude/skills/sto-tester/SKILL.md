@@ -5,7 +5,7 @@ description: >
   після чого автоматично виправляє кожен баг. Враховує бізнес-логіку: FSM нарядів,
   резервування запчастин, розрахунки балансів, tenant isolation, soft delete.
   Запускай командою /sto-tester після реалізації фічі або перед релізом.
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

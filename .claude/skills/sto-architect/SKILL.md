@@ -2,7 +2,7 @@
 name: sto-architect
 description: >
   Architecture decision records, system design, and technical decisions for STO ERP. Use when the user says "як краще архітектурно", "яке технічне рішення", "ADR", "вибір технології", "як реалізувати sync", "installer", or faces an architectural choice. Produces structured ADR saved to docs/architecture/.
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

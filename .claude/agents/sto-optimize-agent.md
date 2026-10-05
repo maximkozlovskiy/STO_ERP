@@ -6,7 +6,7 @@ description: >
   запити замість паралельних, розмір бандлу, React ре-рендери, відсутній кеш.
   Знаходить, виправляє і комітить усі проблеми автоматично.
   Використовуй: Agent(subagent_type="sto-optimize-agent")
-model: claude-opus-4-8
+model: opus
 bypassPermissions: true
 ---
 

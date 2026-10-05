@@ -5,7 +5,7 @@ description: >
   frontend інтерфейсами: відсутній UI, неправильні endpoint URLs, TypeScript
   interface/toResponseDto розходження. Виправляє все без питань і комітить.
   Використовуй: Agent(subagent_type="sto-sync-agent")
-model: claude-sonnet-5
+model: sonnet
 bypassPermissions: true
 ---
 
