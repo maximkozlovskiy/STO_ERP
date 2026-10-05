@@ -74,6 +74,22 @@ jobs:
       - name: Dead code report
         run: pnpm run deadcode
 
+      # Stop-hook, що блокує вердикт/цифри без доказу (.claude/settings.json), ламався
+      # ТРИЧІ за один день, і щоразу ВИГЛЯДАВ робочим: (1) sys.stdin.read() декодував
+      # консольним cp1251, тож кирилиця в payload'і ставала мояибаке і регулярки не
+      # матчились — hook тихо пропускав рівно те, що мав блокувати; (2) гола пропорція
+      # «7/7» не детектувалась; (3) \b у генераторі правок двічі став літеральним \x08.
+      # Жодне з трьох не видно ні в grep, ні в py_compile, ні очима — лише запуском.
+      # Тест ганяє hook ПРОЦЕСОМ і порівнює exit code, тому ловить усі три класи.
+      # Кодування-незалежний: перевірено під LANG=en_US.UTF-8, PYTHONIOENCODING=cp1251
+      # і PYTHONUTF8=0 — результат однаковий, тож на ubuntu-runner стабільний.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Stop-hook contract (claims need evidence)
+        run: python3 scripts/hooks/test-check-claims.py
+
   # R5 (pre-prod re-review): PowerShell-інсталятор раніше НЕ мав жодного quality-gate — саме тому
   # T15 CRITICAL (New-RandomBase64 крашив на PS 5.1 через статичний RandomNumberGenerator::GetBytes,
   # відсутній у .NET Framework) прослизнув повз усі аудити. Цей job на windows-latest (Windows
