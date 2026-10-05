@@ -1789,6 +1789,17 @@
    "FollowUpProcessor.handleSendReminders пропускає клієнтів без phone",
    "FollowUpProcessor.handleSendReminders фільтрує soft-deleted vehicles/garages/counterparties у maintenance"
   ],
+  "apps/api/src/modules/notifications/notifications.activate-provider.spec.ts": [
+   "NotificationsService.activateProvider legacy: ДВА провайдери enabled одночасно → активація одного лишає enabled ЛИШЕ його",
+   "NotificationsService.activateProvider soft-deleted канали (deletedAt≠null) НЕ реактивуються активацією",
+   "NotificationsService.activateProvider активація B коли активний A → лишається enabled ЛИШЕ B (усі канали B)",
+   "NotificationsService.activateProvider канали ІНШОЇ org (той самий provider/branchId колізія) НЕ чіпаються",
+   "NotificationsService.activateProvider невідомий провайдер → BadRequestException (не чіпає БД)",
+   "NotificationsService.activateProvider обидва updateMany несуть orgId+branchId (both where-clauses tenant-scoped)",
+   "NotificationsService.activateProvider порожнє сховище зовсім → 0/0 рядків, {activeProvider}, без throw",
+   "NotificationsService.activateProvider провайдер БЕЗ каналів → обидва updateMany матчать 0 рядків, повертає {activeProvider}, НЕ кидає",
+   "NotificationsService.activateProvider філія не в межах org → NotFoundException (не чіпає БД)"
+  ],
   "apps/api/src/modules/notifications/notifications.channels.contract.spec.ts": [
    "NotificationChannels — POST /:branchId/activate contract body без provider → 400 (ValidationPipe), сервіс не викликано",
    "NotificationChannels — POST /:branchId/activate contract branchId не UUID → 400 (ParseUUIDPipe), сервіс не викликано",
@@ -1821,16 +1832,7 @@
    "NotificationsService — Phase 3 providers/channels verifyProvider валідний код → викликає verifyCredentials і повертає його shape",
    "NotificationsService — Phase 3 providers/channels verifyProvider невідомий код → NotFoundException"
   ],
-  "apps/api/src/modules/notifications/notifications.service.spec.ts": [
-   "NotificationsService.activateProvider legacy: ДВА провайдери enabled одночасно → активація одного лишає enabled ЛИШЕ його",
-   "NotificationsService.activateProvider soft-deleted канали (deletedAt≠null) НЕ реактивуються активацією",
-   "NotificationsService.activateProvider активація B коли активний A → лишається enabled ЛИШЕ B (усі канали B)",
-   "NotificationsService.activateProvider канали ІНШОЇ org (той самий provider/branchId колізія) НЕ чіпаються",
-   "NotificationsService.activateProvider невідомий провайдер → BadRequestException (не чіпає БД)",
-   "NotificationsService.activateProvider обидва updateMany несуть orgId+branchId (both where-clauses tenant-scoped)",
-   "NotificationsService.activateProvider порожнє сховище зовсім → 0/0 рядків, {activeProvider}, без throw",
-   "NotificationsService.activateProvider провайдер БЕЗ каналів → обидва updateMany матчать 0 рядків, повертає {activeProvider}, НЕ кидає",
-   "NotificationsService.activateProvider філія не в межах org → NotFoundException (не чіпає БД)",
+  "apps/api/src/modules/notifications/notifications.resolve-config.spec.ts": [
    "NotificationsService.resolveConfig (EMAIL subject) EMAIL-канал з локальним шаблоном (body+subject) → templateBody+templateSubject у config",
    "NotificationsService.resolveConfig (EMAIL subject) EMAIL-канал з шаблоном без subject → templateSubject=undefined (не крашить)",
    "NotificationsService.resolveConfig LEGACY: BranchSettings налаштовано, але шаблон SMS відсутній → null",
@@ -1849,7 +1851,9 @@
    "NotificationsService.resolveConfig senderName відсутній у config-рядку → дефолт \"STO ERP\"",
    "NotificationsService.resolveConfig будує ланцюг з config-рядків (priority ASC) із per-канал шаблоном",
    "NotificationsService.resolveConfig жоден канал не має шаблону → null (batch-abort), без throw",
-   "NotificationsService.resolveConfig канал без активного шаблону тихо пропускається (fallback перескочить на наступний)",
+   "NotificationsService.resolveConfig канал без активного шаблону тихо пропускається (fallback перескочить на наступний)"
+  ],
+  "apps/api/src/modules/notifications/notifications.send-with-config.spec.ts": [
    "NotificationsService.sendWithConfig EMAIL-канал без vars.email → канал пропускається (нема адресата)",
    "NotificationsService.sendWithConfig EMAIL-канал з vars.email → recipient = email, subject відрендерено",
    "NotificationsService.sendWithConfig MIXED [SMS,EMAIL] + vars={email} → SMS відкинуто, EMAIL лишається (recipient=email)",
