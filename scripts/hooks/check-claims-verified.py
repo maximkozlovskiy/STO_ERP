@@ -27,6 +27,8 @@ import re
 import sys
 import tempfile
 
+NL = chr(10)  # явно, щоб не залежати від escape-послідовностей у генераторах
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
@@ -46,8 +48,19 @@ PROOF_TOOL = re.compile(r"(sto-claims-auditor|verdict\.sh|measure\.sh|count-unty
 
 
 def read_stdin_json():
+    """Читає payload ЯК БАЙТИ і декодує UTF-8 явно.
+
+    ПАСТКА (зловлена на живому прогоні). `sys.stdin.read()` декодує консольним
+    кодуванням, а на цій машині воно cp1251. Платформа надсилає UTF-8, тому
+    кирилиця перетворювалась на «РЈСЃРµ С‡РёСЃС‚Рѕ» — JSON лишався валідним
+    (мояибаке теж валідний рядок), ключі читались, але українські регулярки по
+    ньому не матчились. Наслідок: hook тихо пропускав РІВНО ті відповіді, які
+    мав блокувати, і виглядав робочим — exit 0 на вердикті без доказу.
+    Тому читаємо sys.stdin.buffer, не sys.stdin.
+    """
     try:
-        raw = sys.stdin.read()
+        buf = getattr(sys.stdin, "buffer", None)
+        raw = buf.read().decode("utf-8", "replace") if buf else sys.stdin.read()
         return json.loads(raw) if raw.strip() else {}
     except Exception:
         return {}
@@ -93,9 +106,21 @@ def main():
     if data.get("stop_hook_active"):
         return 0
 
+    # ДВА ДЖЕРЕЛА, бо контракт stdin задокументований неповно (issue #19947 про
+    # SubagentStop; `stop_hook_active` згадується як «частково документоване»).
+    # Тому не покладаємось на одну форму: якщо платформа дає `last_assistant_message`
+    # і/або `tool_use_ids` — беремо їх; якщо лише `transcript_path` — читаємо файл.
+    # Перевірено: без цієї гілки payload із одним `last_assistant_message` тихо
+    # проходив, тобто запобіжник не спрацьовував саме там, де мав.
+    direct_msg = data.get("last_assistant_message") or ""
+    direct_tools = json.dumps(
+        [data.get("tool_use_ids") or [], data.get("background_tasks") or []], ensure_ascii=False
+    )
+
     path = data.get("transcript_path") or os.environ.get("CLAUDE_TRANSCRIPT_PATH")
-    if not path or not os.path.exists(path):
-        # Не змогли прочитати — НЕ блокуємо. Hook не має ламати роботу через власну
+    have_file = bool(path) and os.path.exists(path)
+    if not have_file and not direct_msg.strip():
+        # Нічого читати — НЕ блокуємо. Hook не має ламати роботу через власну
         # неготовність; «невідоме» тут означає «пропустити», бо хибне блокування
         # дорожче за пропущене нагадування.
         return 0
@@ -104,16 +129,22 @@ def main():
     sid = str(data.get("session_id") or "nosid")
     marker = os.path.join(tempfile.gettempdir(), f"claims-hook-{sid}.last")
     try:
-        size = str(os.path.getsize(path))
+        size = str(os.path.getsize(path)) if have_file else str(len(direct_msg))
         if os.path.exists(marker) and io.open(marker, encoding="utf-8").read().strip() == size:
             return 0
     except Exception:
         size = ""
 
-    try:
-        text, tools = last_turn(path)
-    except Exception:
-        return 0
+    text, tools = "", ""
+    if have_file:
+        try:
+            text, tools = last_turn(path)
+        except Exception:
+            pass
+    # stdin-дані ДОДАЮТЬСЯ до прочитаного з файлу, а не заміщують: якщо платформа дала
+    # лише повідомлення, воно все одно перевіриться.
+    text = NL.join([text, direct_msg]).strip()
+    tools = NL.join([tools, direct_tools])
 
     if not text.strip():
         return 0

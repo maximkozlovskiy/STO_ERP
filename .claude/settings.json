@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-claims-verified.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
