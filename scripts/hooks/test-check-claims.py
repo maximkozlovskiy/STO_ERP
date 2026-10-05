@@ -115,11 +115,16 @@ def main():
             bad.append((want, got, name))
         print("%-7s очік=%d факт=%d  %s" % ("ok" if ok else "ПОМИЛКА", want, got, name))
 
+    # Підсумок у ФОРМІ, яку розпізнає scripts/verdict.sh — інакше він каже
+    # «НЕ РОЗПІЗНАНО» (і має рацію: невідоме ≠ чисто). Власний формат вердикту
+    # означав би, що результат цього тесту не можна перевірити інструментом,
+    # тобто він випав би з того самого правила, яке hook і стереже.
+    total = len(MSG_CASES) + 3
     print()
     if bad:
-        print("РОЗБІЖНОСТЕЙ: %d" % len(bad))
+        print("%d failed | %d passed (%d)" % (len(bad), total - len(bad), total))
         return 1
-    print("ВСІ %d ВІРНО" % (len(MSG_CASES) + 3))
+    print("%d passed (%d)" % (total, total))
     return 0
 
 
