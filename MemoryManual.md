@@ -9,8 +9,9 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-04 (QA ЦИКЛ 3/3 ЗАКРИТО: sto-review ФІНАЛ — код коректний, 1 дрібний
-            comment-sync фікс; api 3118/3118, web 969/969, E2E 359/0/2)
+Дата:       2026-10-05 (Stop-hook підключений: вердикт/цифри без доказу блокуються
+            механічно, не правилом у прозі. Тест hook'а 18/18, rc=0.
+            Попередній стан QA ЦИКЛ 3/3: api 3118/3118, web 969/969, E2E 359/0/2)
 Останнє:    Money РОЗКАТАНО НА ВЕСЬ API (d7018205) — roundMoney у прод-коді = 0, 14 модулів.
             Межа застосування (MP-B13): брендувати ОБЧИСЛЕННЯ, не серіалізацію; ставки,
             кількості й відсотки НЕ брендувати (бали лояльності — Decimal(12,2) за
@@ -532,104 +533,23 @@ saved-report rename. Спільний `lib/download.ts` helper. Відкладе
 ## Останній commit
 
 ```
-Code review ЦИКЛ 1/3 — 2026-10-04, HEAD 383a01db:
-  383a01db refactor(review): DRY takeFromReserve + behavioral tests Bug #780.
-    Review 4 комітів циклу (9cc6dba0 perf / 43b1556c WEB_ORIGIN / a26cb8fc Bug #780).
-    Bug #780 ВЕРДИКТ: коректний. netReserved Σ(quantity): RESERVATION зберігається >0,
-    RESERVATION_RELEASE <0 (enforced InventoryService:95 відкидає release>0) → нетто вірний;
-    orgId присутній; 1 findMany/наряд (не N+1); ключ goodId|warehouseId безколізійний (UUID);
-    normal-шлях НЕ зламано — reserve/writeoff ділять coeffMap, held==baseQty → full release;
-    under-release на edited-parts — свідомий safe-вибір (краще за over-release чужого резерву).
-    ЗНАЙДЕНО (у working tree, незакоммічений покращуючий edit): дубль reserve-математики
-    (Math.min+Map.set) у writeOff/release → винесено takeFromReserve()+stockKey(),
-    behavior-identical. Спек: стейтфул-тести (ON_HOLD/normal/partial) — раніше лише
-    tenant-scope. Закоммічено. WEB_ORIGIN узгоджений у 3 місцях. isolate:false безпечний.
-    api work-orders 149/149, повний 3107/3107, tsc 0, eslint 0 errors.
-
-Perf-аудит ЦИКЛ 1/3 — 2026-10-04, HEAD e71f755a (9cc6dba0 perf + e71f755a docs):
-  9cc6dba0 perf(api): vitest isolate:false — api-набір 76.7s → 15-16s (×4.7), 3099/3099 green.
-    Vitest сам діагностував: 500 модулів × 2506 оцінок (по разу/файл) = 80% tracked-часу
-    на import. Безпечно: немає resetModules/глоб-monkeypatch/невідновлених таймерів; vi.mock
-    лишається file-scoped. Перевірено прапорцем --no-isolate (обидва прогони green) ДО коміту.
-    Пастка-бонус: --no-isolate виявив СТРЕЙ-edit env.schema.ts (uncommitted WEB_ORIGIN requireInProd
-    без оновлення spec-prodBase) що валив 2 тести — НЕ мій, лишено у working tree як було.
-  e71f755a docs(skills): Крок 3b (test-suite perf) + «Накопичені підходи» 2026-10-04.
-  Нуль змін у прод-коді: reports/money/тести/фронт перевірені, вузьких місць немає (див. HEAD вище).
-
-Аудит сучасних патернів + закриття техборгу — 2026-10-03, HEAD 743783e8 (d37f1234..743783e8):
-  ЧОТИРИ КРОКИ АУДИТУ (docs/AUDIT-2026-10.md) + прохід по боргу (docs/TECH-DEBT.md).
-  МАЖОРИ: NestJS 10→12 + Fastify 4→5, Prisma 5→7 (driver adapters), Zod 3→4, Vitest 2→5,
-  TypeScript 5.9→6. TS 7 ВІДКОЧЕНО — typescript-eslint каже прямо «does not support TS 7.0».
-  Безпека на runtime-шляху: 16 модулів (4 critical) → 1 HIGH (http-cache-semantics, devDep,
-  фіксу ще не опубліковано).
-  ГОЛОВНЕ ЗНАЙДЕНЕ (не теорія — реальні дефекти):
-  (1) 7 integration-специв (включно з tenant-guard — «ЄДИНЕ реальне покриття guard-а»)
-      РОКАМИ не виконувались у CI: «немає БД → тихо skip» виглядає як успіх. Гард REQUIRE_DB=1.
-  (2) Хибно-зелений тест: .resolves.not.toThrow БЕЗ дужок — не перевіряв нічого.
-  (3) refresh-cookie Max-Age у мс замість секунд (~82 роки).
-  (4) Колонка «Бренд» у залишках ЗАВЖДИ «—» — InventoryService не включав brand у select;
-      web маскував кастом. Знайдено саме кодогенерацією типів із OpenAPI.
-  (5) Крок «Seed database» у CI був зламаний.
-  ЦИФРИ, ЯКІ ДОВЕЛОСЬ ВИПРАВЛЯТИ ТРИЧІ (урок: grep-оцінка ≠ вимір):
-  «59 контролерів без анотацій» → 37 (grep не бачив форму @ApiResponse);
-  «144 нетипізовані роути» → типу потребують 60 (52 DELETE/204, 9 файлових);
-  «31 hardcoded toast» → 34 у 15 файлах.
-  ESM ВИМІРЯНО, НЕ ВГАДАНО: node16+type:module = 1917 помилок → 499 з
-  rewriteRelativeImportExtensions → 493 × TS1479. Корінь: NestJS 12 ESM, а Prisma/BullMQ/
-  ioredis/ExcelJS — CJS; перехід не усуває розрив, а ПЕРЕВЕРТАЄ його. Відкладено письмово.
-  Turbo-флейк (0/3 зелених) — не баг коду: 16 ядер, api capped 4, web без межі.
-  maxWorkers:6 → 9/9.
-  Money-бренд розкотано: vat.ts → payroll.calculator → settlements-account → invoices.service.
-  На invoices встановлено МЕЖУ: брендувати обчислення, не серіалізацію (7 із ~37 Number()).
-  Записано як MP-B13 у PATTERNS.md.
-  Стан: tsc 0 · eslint 0 errors · api 2895/2895 (191) · web 881 · shared 4 · циклів 0 (1323 модулі).
-  Борг, що лишився: 60 роутів без типів (reports потребує DTO з нуля), 29 toast→i18n,
-  TS 7 / ESM / Prisma 8 — свідомо відкладені з причинами у docs/TECH-DEBT.md.
-
-QA-цикл дуги імпорту накладних — 2026-10-02, HEAD 6bc17d05 (27c687ee..6bc17d05):
-  8 етапів: sync → review → optimize → simplify → tester → lint → security → E2E.
-  ГОЛОВНЕ ЗНАЙДЕНЕ:
-  (1) Bug #775 [HIGH, tester] — applyMode поза deps useCallback → майстер слав replace
-      замість append → soft-delete УСІХ наявних позицій документа. Маскувався тим, що
-      мок мутації в тесті був референтно НЕстабільним (колбек «випадково» перестворювався).
-  (2) Подвійний OCR [optimize] — один файл читався двічі (/raw-preview + /preview), тобто
-      окремий прогін 1-5с/стор ВДРУГЕ. Кеш сітки за sha256(вміст), TTL 300с, лише pdf/image.
-  (3) groupFragmentsIntoLines [simplify] — fragmentsToGrid і mergeWordsIntoCells тримали
-      ВЛАСНІ копії допуску medH*0.5; розсинхрон дав би ТИХО зсунуту сітку без помилки.
-      Винесено як єдине джерело правди.
-  (4) startRow у майстрі писався повз setCol → не позначався 'manual' → наступний автодетект
-      тихо затирав введене користувачем число.
-  (5) @IsEnum приймав МАСИВ — валідація працювала, але повідомлення виходило порожнім
-      («must be one of the following values: »), бо class-validator бере Object.values().
-  Мертвий код: countLines() (0 викликів), OcrNoTextError (не кидався), XlsxService.cellText
-  (єдине звернення — власна рекурсія; живий близнюк cellToText у document-grid-parser).
-  У тестах: 10 console.log, 2 expect(true).toBe(true), тест повороту стверджував
-  Array.isArray (істинне завжди) → тепер cols >= 2.
-  Безпека — чисто (guards+roles, isEvalSupported:false, cacheMethod:'none', 0 записів на диск).
-  Перевірено: tsc 0 (api/web/shared); eslint xlsx 0 errors (було 8); xlsx 140/140;
-  ExcelImportWizard 29/29; E2E 353 passed / 0 failed / 1 flaky.
-
-Локальний OCR — 2026-10-02, HEAD 69d65b22 (6 комітів f39b97fd..69d65b22):
-  Закрито останні 2 канали з 4: фото з телефона і скан. OCR = ДРУГИЙ провайдер у ланцюжку
-  [pdfjs, ocr] — архітектура з попереднього етапу не змінювалась, fragmentsToGrid не чіпали.
-  tesseract.js (WASM, платформо-незалежний) + моделі ukr+eng у apps/api/assets/tessdata (7.7 МБ,
-  В GIT — build-time download зламав би офлайн-реліз). cacheMethod:'none' → жодної мережі;
-  ПЕРЕВІРЕНО контейнером з --network none: PDF-скан → provider=ocr за 1.6с, рядки точні.
-  ГОЛОВНА ПАСТКА (виявлена на растрі ПІД ЧАС ПЛАНУВАННЯ, не після): tesseract віддає ОКРЕМІ СЛОВА,
-  а fragmentsToGrid калібрувалась на pdfjs (фрагмент ≈ комірка) → 4×5 замість 4×4. Рішення —
-  mergeWordsIntoCells за горизонтальним зазором, стабільно при gapRatio 0.6…2.0.
-  Інверсія Y: pageHeight - bbox.y1 (НЕ y0 — y1 це аналог baseline, стабільний між словами різної
-  висоти; з y0 рядок накладної розпадався б на два). Закрито контр-тестом.
-  Точність: назви/кількості/ціни добре; артикули залежно від кегля → ручний вибір (механізм був).
-  ПОБІЧНО: Docker-образ API не збирався і ДО OCR — 3 незалежні вади (shared не резолвився 119×
-  TS2307; pnpm prune без TTY; husky після devDeps). Полагоджено, деталі у GOTCHAS.
-  Відоме: образ 3.18 ГБ (внесок OCR ~108 МБ; решта — chown-шар 804 МБ + turbo/swc у прод-дереві).
-  api 2842/2842 (187) · web 879/879 · tsc 0.
-SYNC 875c3825 (2026-10-02): rawPreview() губив grid.ocr у відповіді (не в типі, не в return) —
-  web ocr-попередження НІКОЛИ не показувалось. Fix + 2 regression-тести. Решта контракту (ліміт
-  25МБ, i18n 5 нових err.xlsx.* ключів, pdfToGrid {rows,provider}, accept-розширення) — чисто.
-  api 2817/2817 · web тести xlsx-wizard 27/27 · tsc 0.
-  Попередній контекст:
+Stop-hook проти неперевірених тверджень — 2026-10-05, HEAD 85515e7d:
+  ae194f11 скрипт hook'а / d7b330b7 stdin-байти + підключення / 85515e7d тест + RATIO.
+    Правило «вердикт лише з інструмента» (CLAUDE.md, правила 1-5) тепер МЕХАНІЧНЕ:
+    hooks.Stop у .claude/settings.json → check-claims-verified.py читає відповідь перед
+    відправкою; вердикт/цифра БЕЗ auditor|verdict.sh|measure.sh у цьому ході → exit 2.
+    ЛАМАВСЯ ТРИЧІ, щоразу виглядаючи робочим — це головне, не hook:
+      (1) sys.stdin.read() декодує cp1251, платформа дає UTF-8 → кирилиця в мояибаке,
+          JSON валідний, exit 0. Запобіжник був мертвий саме на цільових відповідях.
+          Фікс: sys.stdin.buffer.read().decode("utf-8","replace").
+      (2) гола пропорція (7/7, 51/137, 309/5/12) не детектувалась — NUMBER вимагає
+          іменник після цифр. А це рівно форма, на якій аудитор зловив мене двічі.
+          Фікс: окремий RATIO + DATEISH (дати відсікаються окремо, НЕ ускладненням RATIO).
+      (3) "\b" у генераторі правок → літеральний \x08 замість межі слова, ДВІЧІ.
+          Невидимо для py_compile/grep/редактора; видно лише cat -A або repr(pattern).
+    Висновок: hook перевіряється ЗАПУСКОМ процесу, не читанням коду →
+    scripts/hooks/test-check-claims.py, 18 кейсів, rc=0. Мутація підтвердила обидва
+    напрямки (прибрати buffer → пропускає; повернути → блокує).
 ```
 
 Імпорт накладних PDF/CSV — 2026-10-02, HEAD dece8e6a (7 комітів 44085da0..dece8e6a):
@@ -891,6 +811,13 @@ DB-крок був окремим комітом 44e17aba (schema). tsc 0, 297+2
 | `apps/api/src/modules/xlsx/document-line-import.adapter.ts`                              | Generic import: PO/StockDocument адаптери + registry (loadDoc/assertDraft/replaceLines)     |
 | `apps/api/src/modules/xlsx/import.dto.ts`                                                | PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000)                          |
 | `apps/api/src/modules/counterparty-import-mappings/`                                     | Персист мапінгу колонок Excel per-контрагент (GET/PUT, upsert по @unique)                   |
+| `scripts/verdict.sh` | SOT вердикту «чисто/не чисто» (текст виводу > exit code; невідоме ≠ чисто) |
+| `scripts/measure.sh` | SOT усіх цифр проєкту (tests/e2e/routes/bundle/docs/commits, фіксована база) |
+| `scripts/audit-claims.py` | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а) |
+| `scripts/count-untyped-routes.py` | Роути без типу з OpenAPI-документа (не grep по контролерах) |
+| `scripts/hooks/check-claims-verified.py` | Stop-hook: блокує завершення, якщо вердикт/цифра без auditor/verdict.sh/measure.sh |
+| `scripts/hooks/test-check-claims.py` | Тест hook'а ПРОЦЕСОМ (18 кейсів) — ловить cp1251-stdin і зіпсовані \b, яких не видно в grep |
+| `.claude/agents/sto-claims-auditor.md` | Агент-аудитор: читає ТРАНСКРИПТ, не мою доповідь; переперевіряє кожну цифру інструментом |
 
 ---
 
