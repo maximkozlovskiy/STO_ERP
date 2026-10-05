@@ -15,3 +15,9 @@ apps/mobile/.expo
 # прогін prettier по 15k рядків автогену лише шумить у diff.
 packages/shared/src/api-types.ts
 packages/shared/openapi.json
+
+# Згенерований baseline тестів (`scripts/spec-baseline.py`) — комітиться як є.
+# Prettier ставить tabWidth 2, скрипт пише indent=1; якби обидва правили файл, кожна
+# регенерація давала б diff на всі 3800 рядків замість рівно тих кейсів, що змінились,
+# і сенс baseline (бачити ЩО додалось або зникло) зникав би.
+apps/api/test-baseline.json
