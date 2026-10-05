@@ -14,7 +14,7 @@
 # Тому цифри більше не живуть у регулярках по пам'яті — лише тут.
 #
 # ВИКОРИСТАННЯ: bash scripts/measure.sh [секція]
-#   секції: tests | e2e | routes | bundle | docs | all (типово)
+#   секції: tests | e2e | routes | bundle | docs | commits | all (типово)
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -57,6 +57,27 @@ m_bundle() {
   fi
 }
 
+m_commits() {
+  hr; echo "КОМІТИ (від ФІКСОВАНОЇ бази, не від рухомого HEAD)"
+  # Чому не `--since=<дата>`: HEAD рухається під час роботи, і та сама цифра
+  # за 20 хвилин дає 137 → 138 → 139. Аудитор 2026-10-05 зловив на цьому: я
+  # назвав «51 із 137», інструмент дав 48/139, потім 46/137 — усі три «правильні»
+  # для різних моментів. Тому база — спільний предок сесії, заданий явно.
+  local BASE="${MEASURE_BASE:-6bc17d05}"
+  if ! git rev-parse --verify -q "$BASE" >/dev/null; then
+    echo "  база $BASE не знайдена — задайте MEASURE_BASE=<sha>"; return
+  fi
+  local total docs
+  total=$(git log --oneline "$BASE..HEAD" | wc -l)
+  docs=$(git log --format='%H' "$BASE..HEAD" | while read -r h; do
+    git show --name-only --format= "$h" | grep -qvE '\.md$|^docs/' || echo x
+  done | wc -l)
+  printf "  база     : %s
+  усього   : %s
+  docs-only: %s (%s%%)
+"     "$BASE" "$total" "$docs" "$(( docs * 100 / (total>0?total:1) ))"
+}
+
 m_docs() {
   hr; echo "РОЗМІР ДОКУМЕНТІВ (CLAUDE.md задає ліміти — тут факт)"
   printf "  %-26s %5s рядків  (ціль ~150)\n" "MemoryManual.md" "$(wc -l < MemoryManual.md)"
@@ -76,7 +97,8 @@ case "$SECTION" in
   routes) m_routes ;;
   bundle) m_bundle ;;
   docs)   m_docs ;;
-  all)    m_tests; m_e2e; m_routes; m_docs ;;   # bundle потребує build — окремо
+  commits) m_commits ;;
+  all)    m_tests; m_e2e; m_routes; m_docs; m_commits ;;   # bundle потребує build — окремо
   *) echo "невідома секція: $SECTION"; exit 1 ;;
 esac
 hr
