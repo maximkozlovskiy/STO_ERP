@@ -182,3 +182,35 @@ else → newContractId = po.contractId                         // unchanged
 ```
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Спек `purchase-orders.service.spec.ts` був 1960 рядків; 2026-10-05 розбито за
+аспектами (182 кейси до і після). Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.spec.ts
+```
+
+| Аспект                                        | Тест                                                             | Кейсів |
+| --------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| `applyPricing` — правила ціноутворення        | `purchase-orders.pricing.spec.ts`                                | 9      |
+| `receive()` — UoM-override + tenant-валідація | `purchase-orders.receive-uom.spec.ts`                            | 13     |
+| `update()` — резолв контракту контрагента     | `purchase-orders.contract-resolution.spec.ts`                    | 8      |
+| `transition()` — карта `PO_TRANSITIONS`       | `purchase-orders.fsm.spec.ts`                                    | 15     |
+| `findAll` — `sortBy=paymentDate`, nulls-last  | `purchase-orders.sort.spec.ts`                                   | 4      |
+| linked-documents — межові випадки             | `purchase-orders.linked-docs.spec.ts`                            | 5      |
+| `create` — Σ(lines.amount) === totalAmount    | `purchase-orders.totals.spec.ts`                                 | 1      |
+| HTTP-контракт (DTO, статуси, валідація)       | `purchase-orders.contract.spec.ts`                               | —      |
+| Доставка (Нова Пошта)                         | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
+
+Спільні DI-провайдери — `purchase-orders.spec-fixture.ts`. Якщо у конструктор
+`PurchaseOrdersService` додається сервіс, усі спеки впадуть із «Nest can't resolve
+dependencies» — це очікувано (клас Bug #536, #724): падіння видно одразу.
+
+**Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) у PurchaseOrder немає,
+хоча агрегат на шляху грошей і статусів. `fsm.spec.ts` перевіряє карту переходів, але
+не властивості на кшталт «фінальний статус не має виходів» — так, як це робить
+`work-orders.fsm.invariants.spec.ts`. Це усвідомлена прогалина, не недогляд.
