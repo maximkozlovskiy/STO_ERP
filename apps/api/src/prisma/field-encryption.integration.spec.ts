@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createPgAdapter } from './pg-adapter';
 import type { ConfigService } from '@nestjs/config';
@@ -17,7 +17,11 @@ import { handleDbUnavailable } from '../common/testing/require-db';
  *
  * Умови запуску: жива dev-Postgres на DATABASE_URL (.env.dev) + NOTIFICATION_ENC_KEY.
  * Якщо БД недоступна — тест SKIPʼиться (не фейлить CI на машинах без БД), АЛЕ на dev-машині
- * з піднятою БД він виконується реально (не fake-green). Хард-делейт тестових рядків у afterAll.
+ * з піднятою БД він виконується реально (не fake-green).
+ *
+ * ІЗОЛЯЦІЯ ДАНИХ: кожен тест працює в інтерактивній транзакції, яка ЗАВЖДИ відкочується
+ * (див. `inRolledBackTx`). У dev-БД нічого не комітиться і нічого не видаляється — ні тестові
+ * рядки, ні справжні конфіги каналів розробника.
  *
  * Розширення будується ТОЧНО як у PrismaService.onModuleInit:
  *   Object.assign(this, withFieldEncryption(withSyncVersion(this), this.encryption))
@@ -130,20 +134,83 @@ let extended: PrismaClient;
 let orgId: string;
 let branchId: string;
 
-// Канали, ще не зайняті @@unique([branchId, channel]) на тестовій філії (VIBER вже є у seed).
+// Канали беруться зі СПРАВЖНЬОГО enum (SMS/EMAIL), а @@unique([branchId, channel]) означає, що
+// на філії розробника такі рядки можуть уже існувати — це його робочі конфіги TurboSMS/пошти.
+// Тому тест НЕ комітить нічого: усе відбувається в транзакції, що відкочується.
 const TEST_CHANNEL = 'SMS';
 const LEGACY_CHANNEL = 'EMAIL';
 const PLAINTEXT_KEY = 'turbosms-secret-АБВ-9f8e7d6c5b4a';
 const LEGACY_PLAINTEXT_KEY = 'legacy-raw-key-χψω-11223344';
 
-async function cleanup(client: PrismaClient) {
-  if (!branchId) return;
-  await client
-    .$executeRawUnsafe(
-      `DELETE FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel IN ('${TEST_CHANNEL}','${LEGACY_CHANNEL}')`,
+/** Сигнал «відкотити транзакцію» — не помилка тесту. */
+class RollbackSignal extends Error {}
+
+/**
+ * Клієнт транзакції: моделі йдуть ЧЕРЕЗ розширення (шифрування діє), raw-запити — в обхід
+ * нього, але в тій самій транзакції, тож бачать ще не закомічені рядки.
+ */
+type TxClient = Pick<
+  PrismaClient,
+  'notificationChannelConfig' | '$executeRawUnsafe' | '$queryRawUnsafe'
+>;
+
+/**
+ * Виконує тіло тесту в транзакції та БЕЗУМОВНО її відкочує.
+ *
+ * Раніше тут був `cleanup()` із `DELETE ... WHERE "branchId" = <перша філія> AND channel IN
+ * ('SMS','EMAIL')` — без жодного маркера «це тестовий рядок». Якщо розробник налаштував у
+ * себе SMS- чи EMAIL-канал, перший же прогін набору мовчки стирав його конфіг разом із
+ * ключем провайдера (hard delete, без сліду в UI). Після переходу на `beforeEach` це
+ * відбувалось перед кожним тестом.
+ *
+ * Тепер звільнення слотів @@unique і вставка тестових рядків живуть лише всередині
+ * транзакції: ROLLBACK повертає все як було, навіть якщо процес убито посеред тесту
+ * (обірване підключення = відкат на боці Postgres). Порядок тестів, як і раніше, не важить —
+ * кожен отримує власну пару рядків.
+ */
+async function inRolledBackTx(body: (tx: TxClient) => Promise<void>): Promise<void> {
+  try {
+    await extended.$transaction(
+      async tx => {
+        const client = tx as unknown as TxClient;
+        await seedRows(client);
+        await body(client);
+        throw new RollbackSignal();
+      },
+      { timeout: 20_000 },
+    );
+  } catch (e) {
+    if (!(e instanceof RollbackSignal)) throw e;
+  }
+}
+
+/** Зашифрований рядок — через розширення; legacy-plaintext — raw INSERT в обхід нього. */
+async function seedRows(tx: TxClient): Promise<void> {
+  // Звільнити слоти @@unique([branchId, channel]). Діє лише до ROLLBACK.
+  await tx.$executeRawUnsafe(
+    `DELETE FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel IN ('${TEST_CHANNEL}','${LEGACY_CHANNEL}')`,
+    branchId,
+  );
+  await tx.notificationChannelConfig.create({
+    data: {
+      orgId,
       branchId,
-    )
-    .catch(() => undefined);
+      channel: TEST_CHANNEL as any,
+      provider: 'turbosms',
+      enabled: true,
+      priority: 5,
+      apiKey: PLAINTEXT_KEY,
+    },
+  });
+  // Plaintext напряму — імітуємо рядок з до-Phase-4 епохи.
+  await tx.$executeRawUnsafe(
+    `INSERT INTO notification_channel_configs
+       (id, "orgId", "branchId", channel, provider, enabled, priority, "apiKey", "syncVersion", "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $1::uuid, $2::uuid, '${LEGACY_CHANNEL}', 'turbosms', true, 7, $3, 1, now(), now())`,
+    orgId,
+    branchId,
+    LEGACY_PLAINTEXT_KEY,
+  );
 }
 
 beforeAll(async () => {
@@ -161,7 +228,6 @@ beforeAll(async () => {
     branchId = branch.id;
     dbAvailable = true;
     extended = withFieldEncryption(withSyncVersion(rawClient), makeEnc());
-    await cleanup(rawClient); // прибрати рештки попереднього перерваного прогону
   } catch {
     dbAvailable = false;
     handleDbUnavailable('підключення або seed недоступні');
@@ -169,47 +235,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  if (rawClient) {
-    await cleanup(rawClient);
-    await rawClient.$disconnect();
-  }
-});
-
-/**
- * Кожен тест отримує ВЛАСНУ пару рядків (beforeEach): зашифрований — записаний через
- * розширення, і legacy-plaintext — raw INSERT в обхід нього.
- *
- * Раніше (a) писав рядок, а (b) і (d) його читали; (c) писав legacy, а (e) його оновлював.
- * Під `--sequence.shuffle` читачі стартували раніше за письменників і падали на відсутньому
- * рядку. Тепер порядок не має значення.
- */
-async function seedRows(): Promise<void> {
-  await cleanup(rawClient);
-  await extended.notificationChannelConfig.create({
-    data: {
-      orgId,
-      branchId,
-      channel: TEST_CHANNEL as any,
-      provider: 'turbosms',
-      enabled: true,
-      priority: 5,
-      apiKey: PLAINTEXT_KEY,
-    },
-  });
-  // Plaintext напряму — імітуємо рядок з до-Phase-4 епохи.
-  await rawClient.$executeRawUnsafe(
-    `INSERT INTO notification_channel_configs
-       (id, "orgId", "branchId", channel, provider, enabled, priority, "apiKey", "syncVersion", "createdAt", "updatedAt")
-     VALUES (gen_random_uuid(), $1::uuid, $2::uuid, '${LEGACY_CHANNEL}', 'turbosms', true, 7, $3, 1, now(), now())`,
-    orgId,
-    branchId,
-    LEGACY_PLAINTEXT_KEY,
-  );
-}
-
-beforeEach(async () => {
-  if (!dbAvailable) return;
-  await seedRows();
+  if (rawClient) await rawClient.$disconnect();
 });
 
 describe('Prisma field-encryption extension (integration, live DB)', () => {
@@ -222,80 +248,88 @@ describe('Prisma field-encryption extension (integration, live DB)', () => {
 
   it('(a) write через розширення → CIPHERTEXT at-rest у Postgres (не plaintext)', async () => {
     if (!dbAvailable) return;
-    // Рядок записано через розширення у beforeEach.
-    // Сира колонка через raw SQL (в обхід розширення) — має бути ciphertext.
-    const rows = await rawClient.$queryRawUnsafe<{ apiKey: string }[]>(
-      `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${TEST_CHANNEL}'`,
-      branchId,
-    );
-    expect(rows.length).toBe(1);
-    const atRest = rows[0].apiKey;
-    expect(atRest.startsWith('enc:v1:')).toBe(true);
-    expect(atRest).not.toContain(PLAINTEXT_KEY);
+    await inRolledBackTx(async tx => {
+      // Сира колонка через raw SQL (в обхід розширення) — має бути ciphertext.
+      const rows = await tx.$queryRawUnsafe<{ apiKey: string }[]>(
+        `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${TEST_CHANNEL}'`,
+        branchId,
+      );
+      expect(rows.length).toBe(1);
+      const atRest = rows[0].apiKey;
+      expect(atRest.startsWith('enc:v1:')).toBe(true);
+      expect(atRest).not.toContain(PLAINTEXT_KEY);
+    });
   });
 
   it('(b) read через розширення → PLAINTEXT', async () => {
     if (!dbAvailable) return;
-    const row = await extended.notificationChannelConfig.findFirst({
-      where: { branchId, channel: TEST_CHANNEL as any, orgId },
-      select: { apiKey: true },
+    await inRolledBackTx(async tx => {
+      const row = await tx.notificationChannelConfig.findFirst({
+        where: { branchId, channel: TEST_CHANNEL as any, orgId },
+        select: { apiKey: true },
+      });
+      expect(row?.apiKey).toBe(PLAINTEXT_KEY);
     });
-    expect(row?.apiKey).toBe(PLAINTEXT_KEY);
   });
 
   it('(c) legacy-plaintext рядок (raw INSERT в обхід розширення) читається без змін', async () => {
     if (!dbAvailable) return;
-    // Legacy-рядок вставлено raw INSERT-ом у beforeEach.
-    const row = await extended.notificationChannelConfig.findFirst({
-      where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
-      select: { apiKey: true },
+    await inRolledBackTx(async tx => {
+      const row = await tx.notificationChannelConfig.findFirst({
+        where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
+        select: { apiKey: true },
+      });
+      // Толерантний decrypt: без префікса → повертається як є.
+      expect(row?.apiKey).toBe(LEGACY_PLAINTEXT_KEY);
     });
-    // Толерантний decrypt: без префікса → повертається як є.
-    expect(row?.apiKey).toBe(LEGACY_PLAINTEXT_KEY);
   });
 
   it('(d) update БЕЗ apiKey → наявний ключ збережено і лишається дешифровним', async () => {
     if (!dbAvailable) return;
-    await extended.notificationChannelConfig.updateMany({
-      where: { branchId, channel: TEST_CHANNEL as any, orgId },
-      data: { senderName: 'Оновлено' }, // apiKey НЕ передаємо
-    });
+    await inRolledBackTx(async tx => {
+      await tx.notificationChannelConfig.updateMany({
+        where: { branchId, channel: TEST_CHANNEL as any, orgId },
+        data: { senderName: 'Оновлено' }, // apiKey НЕ передаємо
+      });
 
-    // At-rest все ще ciphertext (не перезаписаний і не podвійно зашифрований).
-    const raw = await rawClient.$queryRawUnsafe<{ apiKey: string }[]>(
-      `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${TEST_CHANNEL}'`,
-      branchId,
-    );
-    const atRest = raw[0].apiKey;
-    expect(atRest.startsWith('enc:v1:')).toBe(true);
-    // Не подвійне шифрування — рівно один сегмент enc:v1: (3 частини після префікса).
-    expect(atRest.slice('enc:v1:'.length).split(':').length).toBe(3);
+      // At-rest все ще ciphertext (не перезаписаний і не подвійно зашифрований).
+      const raw = await tx.$queryRawUnsafe<{ apiKey: string }[]>(
+        `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${TEST_CHANNEL}'`,
+        branchId,
+      );
+      const atRest = raw[0].apiKey;
+      expect(atRest.startsWith('enc:v1:')).toBe(true);
+      // Не подвійне шифрування — рівно один сегмент enc:v1: (3 частини після префікса).
+      expect(atRest.slice('enc:v1:'.length).split(':').length).toBe(3);
 
-    const row = await extended.notificationChannelConfig.findFirst({
-      where: { branchId, channel: TEST_CHANNEL as any, orgId },
-      select: { apiKey: true, senderName: true },
+      const row = await tx.notificationChannelConfig.findFirst({
+        where: { branchId, channel: TEST_CHANNEL as any, orgId },
+        select: { apiKey: true, senderName: true },
+      });
+      expect(row?.senderName).toBe('Оновлено');
+      expect(row?.apiKey).toBe(PLAINTEXT_KEY);
     });
-    expect(row?.senderName).toBe('Оновлено');
-    expect(row?.apiKey).toBe(PLAINTEXT_KEY);
   });
 
   it('(e) lazy re-encrypt: update legacy-plaintext рядка з новим apiKey → ciphertext at-rest', async () => {
     if (!dbAvailable) return;
-    const NEW_KEY = 'rotated-key-фыв-55667788';
-    await extended.notificationChannelConfig.updateMany({
-      where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
-      data: { apiKey: NEW_KEY },
+    await inRolledBackTx(async tx => {
+      const NEW_KEY = 'rotated-key-фыв-55667788';
+      await tx.notificationChannelConfig.updateMany({
+        where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
+        data: { apiKey: NEW_KEY },
+      });
+      const raw = await tx.$queryRawUnsafe<{ apiKey: string }[]>(
+        `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${LEGACY_CHANNEL}'`,
+        branchId,
+      );
+      expect(raw[0].apiKey.startsWith('enc:v1:')).toBe(true);
+      expect(raw[0].apiKey).not.toContain(NEW_KEY);
+      const row = await tx.notificationChannelConfig.findFirst({
+        where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
+        select: { apiKey: true },
+      });
+      expect(row?.apiKey).toBe(NEW_KEY);
     });
-    const raw = await rawClient.$queryRawUnsafe<{ apiKey: string }[]>(
-      `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${LEGACY_CHANNEL}'`,
-      branchId,
-    );
-    expect(raw[0].apiKey.startsWith('enc:v1:')).toBe(true);
-    expect(raw[0].apiKey).not.toContain(NEW_KEY);
-    const row = await extended.notificationChannelConfig.findFirst({
-      where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
-      select: { apiKey: true },
-    });
-    expect(row?.apiKey).toBe(NEW_KEY);
   });
 });

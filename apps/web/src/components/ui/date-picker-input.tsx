@@ -86,6 +86,22 @@ export function DatePickerInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Escape закриває ЛИШЕ календар, де б не був фокус: у полі, на кнопці-іконці чи на дні
+  // в попапі. Обробник лише на <input> цього не покривав — календар, відкритий кнопкою
+  // (фокус на ній), на Escape закривав усю модалку-батька разом із незбереженою формою.
+  // Capture + stopImmediatePropagation, як у DateTimePickerInput: <Modal> слухає Escape на
+  // document у bubble-фазі, тож перехопити треба раніше за нього.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [open]);
+
   // parse min/max bounds and enforce them in both manual typing and DayPicker.
   // Memoize: parseApiDate створює новий Date об'єкт на кожен виклик. Без useMemo
   // disabledMatchers нижче перебудовується на кожен ререндер → DayPicker втрачає
@@ -147,13 +163,14 @@ export function DatePickerInput({
           value={inputText}
           onChange={handleInputChange}
           onFocus={() => setOpen(true)}
-          // Клавіатурою календар інакше не закрити (лише клік поза ним): після введення
-          // дати попап лишався поверх таблиці. Escape не спливає далі, щоб не закрити
-          // модалку-батька тим самим натисканням.
+          // Після Enter/Escape фокус лишається в полі, а календар закритий. Без onClick
+          // повторний клік по полю нічого не робив (focus не спрацьовує вдруге) — календар
+          // відкривався лише кнопкою-іконкою.
+          onClick={() => setOpen(true)}
+          // Enter після введення дати закриває календар: інакше попап лишався поверх
+          // таблиці. Escape обробляється на document (див. ефект вище).
           onKeyDown={e => {
-            if (!open) return;
-            if (e.key === 'Escape') e.stopPropagation();
-            if (e.key === 'Escape' || e.key === 'Enter') setOpen(false);
+            if (open && e.key === 'Enter') setOpen(false);
           }}
           placeholder={placeholder}
           disabled={disabled}
@@ -167,6 +184,7 @@ export function DatePickerInput({
         />
         <button
           type="button"
+          aria-label="Відкрити календар"
           onClick={() => !disabled && setOpen(v => !v)}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
         >

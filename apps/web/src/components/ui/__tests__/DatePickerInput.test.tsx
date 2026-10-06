@@ -37,4 +37,39 @@ describe('DatePickerInput — закриття календаря з клаві�
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(parentKeyDown).toHaveBeenCalledTimes(1);
   });
+
+  // Справжня <Modal> слухає Escape нативно на document (bubble), а не через React-батька.
+  // Календар можна відкрити кнопкою-іконкою — тоді фокус на ній, а не в полі.
+  it('Escape при фокусі на кнопці-іконці закриває календар і не доходить до document', async () => {
+    const user = userEvent.setup();
+    const documentKeyDown = vi.fn();
+    document.addEventListener('keydown', documentKeyDown);
+    try {
+      render(<DatePickerInput value="" onChange={vi.fn()} placeholder="ДД.ММ.РРРР" />);
+      const iconButton = screen.getByRole('button', { name: 'Відкрити календар' });
+      await user.click(iconButton);
+      expect(calendar()).not.toBeNull();
+      expect(document.activeElement).toBe(iconButton);
+      fireEvent.keyDown(iconButton, { key: 'Escape' });
+      expect(calendar()).toBeNull();
+      expect(documentKeyDown).not.toHaveBeenCalled();
+      // Календар закритий → наступний Escape вже належить модалці.
+      fireEvent.keyDown(iconButton, { key: 'Escape' });
+      expect(documentKeyDown).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('keydown', documentKeyDown);
+    }
+  });
+
+  it('клік по вже сфокусованому полю після Escape знову відкриває календар', async () => {
+    const user = userEvent.setup();
+    render(<DatePickerInput value="" onChange={vi.fn()} placeholder="ДД.ММ.РРРР" />);
+    const input = screen.getByPlaceholderText('ДД.ММ.РРРР');
+    await user.click(input);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(calendar()).toBeNull();
+    expect(document.activeElement).toBe(input);
+    await user.click(input);
+    expect(calendar()).not.toBeNull();
+  });
 });

@@ -5,6 +5,20 @@
 
 ---
 
+### Tester `206df580..HEAD`: тест більше не стирає конфіги каналів, Escape у DatePickerInput з будь-якого фокуса
+
+- **`field-encryption.integration.spec.ts` (Bug #782):** `cleanup()` hard-delete-ив рядки
+  `notification_channel_configs` першої філії для каналів `SMS`/`EMAIL` — тобто справжні конфіги
+  розробника, якщо вони є. Тепер кожен тест іде в транзакції, що відкочується; у dev-БД нічого
+  не комітиться. Доведено пробним рядком: до фіксу зникав, після — переживає прогін і shuffle.
+- **`date-picker-input.tsx` (Bug #783):** календар, відкритий кнопкою-іконкою (фокус не в полі),
+  на Escape закривав усю модалку. Перехоплення на `document` у capture-фазі, як у
+  `DateTimePickerInput`. Запис review «дефекту немає» стосувався лише фокуса в полі.
+- **`date-picker-input.tsx` (Bug #784):** після Enter/Escape клік по полю не відкривав календар
+  (лише `onFocus`); кнопка-іконка отримала `aria-label`.
+- Підозри review «Enter сабмітить форму» і «Escape у фільтрі списку» — не баги, деталі в
+  `BUG_REPORT.md`.
+
 ### Review `206df580..HEAD`: Escape у DateTimePickerInput, детектор міграцій, verdict.sh під turbo
 
 - **`datetime-picker-input.tsx`:** Escape з відкритим попапом закривав усю модалку-батька
