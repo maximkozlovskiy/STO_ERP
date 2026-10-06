@@ -20,6 +20,15 @@ import type { CounterpartyQueryDto } from './counterparties.dto';
 import type { PrismaModelMock } from '../../common/testing/prisma-mock';
 import { statusesProvider } from './counterparties.spec-fixture';
 
+/**
+ * Bug #163: regression-покриття для пошуку counterparties за `?q=`.
+ *
+ * Фікс 32e9a49 усунув PrismaClientValidationError, що виникав через singular relation-імена
+ * (`customerGarage`/`vehicle`) замість plural (`customerGarages`/`vehicles`) у вкладеному
+ * where.OR (пошук клієнта за номером авто). HTTP-contract spec повністю мокає сервіс і не
+ * виконує реальний where → не зловить регресію назад до singular. Цей service-spec будує
+ * where через справжній findAll і асертить правильну форму nested-relation запиту.
+ */
 describe('CounterpartiesService', () => {
   let service: CounterpartiesService;
   let prisma: {

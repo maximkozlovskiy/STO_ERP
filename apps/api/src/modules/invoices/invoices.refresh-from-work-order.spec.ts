@@ -20,6 +20,10 @@ import {
   type InvoicesHarness,
 } from './invoices.spec-fixture';
 
+/**
+ * Bug #413: Service-level spec для guards що додані review-фіксами #403, #406, #407, #412.
+ * Contract spec мокає сервіс — НЕ перевіряє business logic. Цей файл — regression-guard.
+ */
 describe('InvoicesService — refresh-from-work-order', () => {
   // Деструктуризація у ТІ САМІ імена, що були у вихідному beforeEach — щоб жоден
   // it() не правився (інакше це вже не «перенесено дослівно»).

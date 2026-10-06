@@ -23,6 +23,13 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { exchangeRatesMock } from './payments.spec-fixture';
 
+/**
+ * FIN-C1: ідемпотентність оплати рахунку. Перехід SENT→PAID виконується ПЕРШИМ у tx через
+ * compare-and-swap (updateMany where status:'SENT'). Два concurrent create бачать SENT на
+ * stale-read, але лише ОДИН updateMany змінить count=1 — другий отримає count=0 → throw →
+ * rollback (без другого Payment/PAYMENT-settlement/чека). Ці спеки — regression guard для
+ * CRITICAL грошового фіксу (раніше без тестів).
+ */
 describe('PaymentsService — FIN-C1 ідемпотентність оплати', () => {
   let service: PaymentsService;
   let prisma: {

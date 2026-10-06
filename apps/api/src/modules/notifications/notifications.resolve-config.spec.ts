@@ -16,6 +16,14 @@ import { NotificationsService } from './notifications.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { NotificationProviderRegistry } from './providers/provider-registry';
 
+/**
+ * resolveConfig — fallback-ланцюг з NotificationChannelConfig (priority ASC) + per-канал
+ * шаблон; legacy read-fallback на BranchSettings.sms* коли конфіг-рядків немає.
+ * sendWithConfig — рендер per-канал + постановка одного job (chainIndex=0) з BullMQ-опціями.
+ *
+ * Ці тести фіксують edge-cases fallback-движка (Phase 2): порожній ланцюг, apiKey NULL,
+ * відсутність шаблону, batch-abort (null), backward-compat legacy, PII-безпечність.
+ */
 describe('NotificationsService.resolveConfig', () => {
   const channelConfigFindMany = vi.fn();
   const templateFindMany = vi.fn();
