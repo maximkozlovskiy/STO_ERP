@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createPgAdapter } from './pg-adapter';
 import type { ConfigService } from '@nestjs/config';
@@ -176,17 +176,42 @@ afterAll(async () => {
 });
 
 /**
- * ПОРЯДОК ТЕСТІВ ТУТ ЗНАЧУЩИЙ: (a) пише рядок, (b) і (d) його читають.
+ * Кожен тест отримує ВЛАСНУ пару рядків (beforeEach): зашифрований — записаний через
+ * розширення, і legacy-plaintext — raw INSERT в обхід нього.
  *
- * Vitest усередині файлу виконує тести у порядку оголошення, тож за замовчуванням це
- * коректно. Але під `--sequence.shuffle` (b)/(d) стартують раніше за (a) і падають на
- * відсутньому рядку — перевірено. Залежність ПЕРЕДІСНУЮЧА: відтворюється і з `--isolate`,
- * тобто не наслідок `isolate:false` у vitest.config.
- *
- * Shuffle у проєкті не ввімкнений, тож активного дефекту немає. Якщо колись вмикатимете —
- * спершу розвʼяжіть ці тести (кожен створює власний рядок у `beforeEach`), а не просто
- * додавайте виняток.
+ * Раніше (a) писав рядок, а (b) і (d) його читали; (c) писав legacy, а (e) його оновлював.
+ * Під `--sequence.shuffle` читачі стартували раніше за письменників і падали на відсутньому
+ * рядку. Тепер порядок не має значення.
  */
+async function seedRows(): Promise<void> {
+  await cleanup(rawClient);
+  await extended.notificationChannelConfig.create({
+    data: {
+      orgId,
+      branchId,
+      channel: TEST_CHANNEL as any,
+      provider: 'turbosms',
+      enabled: true,
+      priority: 5,
+      apiKey: PLAINTEXT_KEY,
+    },
+  });
+  // Plaintext напряму — імітуємо рядок з до-Phase-4 епохи.
+  await rawClient.$executeRawUnsafe(
+    `INSERT INTO notification_channel_configs
+       (id, "orgId", "branchId", channel, provider, enabled, priority, "apiKey", "syncVersion", "createdAt", "updatedAt")
+     VALUES (gen_random_uuid(), $1::uuid, $2::uuid, '${LEGACY_CHANNEL}', 'turbosms', true, 7, $3, 1, now(), now())`,
+    orgId,
+    branchId,
+    LEGACY_PLAINTEXT_KEY,
+  );
+}
+
+beforeEach(async () => {
+  if (!dbAvailable) return;
+  await seedRows();
+});
+
 describe('Prisma field-encryption extension (integration, live DB)', () => {
   it('передумова: dev-БД доступна', () => {
     if (!dbAvailable) {
@@ -197,18 +222,7 @@ describe('Prisma field-encryption extension (integration, live DB)', () => {
 
   it('(a) write через розширення → CIPHERTEXT at-rest у Postgres (не plaintext)', async () => {
     if (!dbAvailable) return;
-    await extended.notificationChannelConfig.create({
-      data: {
-        orgId,
-        branchId,
-        channel: TEST_CHANNEL as any,
-        provider: 'turbosms',
-        enabled: true,
-        priority: 5,
-        apiKey: PLAINTEXT_KEY,
-      },
-    });
-
+    // Рядок записано через розширення у beforeEach.
     // Сира колонка через raw SQL (в обхід розширення) — має бути ciphertext.
     const rows = await rawClient.$queryRawUnsafe<{ apiKey: string }[]>(
       `SELECT "apiKey" FROM notification_channel_configs WHERE "branchId" = $1::uuid AND channel = '${TEST_CHANNEL}'`,
@@ -231,16 +245,7 @@ describe('Prisma field-encryption extension (integration, live DB)', () => {
 
   it('(c) legacy-plaintext рядок (raw INSERT в обхід розширення) читається без змін', async () => {
     if (!dbAvailable) return;
-    // Пишемо plaintext напряму — імітуємо рядок з до-Phase-4 епохи.
-    await rawClient.$executeRawUnsafe(
-      `INSERT INTO notification_channel_configs
-         (id, "orgId", "branchId", channel, provider, enabled, priority, "apiKey", "syncVersion", "createdAt", "updatedAt")
-       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, '${LEGACY_CHANNEL}', 'turbosms', true, 7, $3, 1, now(), now())`,
-      orgId,
-      branchId,
-      LEGACY_PLAINTEXT_KEY,
-    );
-
+    // Legacy-рядок вставлено raw INSERT-ом у beforeEach.
     const row = await extended.notificationChannelConfig.findFirst({
       where: { branchId, channel: LEGACY_CHANNEL as any, orgId },
       select: { apiKey: true },
