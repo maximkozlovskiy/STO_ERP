@@ -39,6 +39,7 @@ sto-erp/
 /sto-context    <- ЗАВЖДИ ПЕРШИМ
 /sto-analyst    <- "що" потрібно: user stories, business rules, процеси (до планування)
 /sto-feature    <- "як" реалізувати: DB/API/UI tasks, файли, endpoints (після analyst)
+/sto-spec       <- специфікація агрегату: дос'є, BR-ID, аспектні спеки, реєстр, гейти
 /sto-architect  <- архітектурні рішення (ADR), вибір технологій
 /sto-database   <- зміни Prisma schema, міграції
 /sto-backend    <- NestJS модулі (читай /sto-dev перед написанням)
@@ -91,7 +92,7 @@ sto-erp/
 ExitPlanMode
   ↓ запуск dev-серверів
   ↓ реалізація + перевірка у браузері після кожного кроку
-/sto-context -> /sto-analyst -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-sync -> /sto-review -> /sto-tester -> /sto-optimize
+/sto-context -> /sto-analyst -> /sto-spec -> /sto-feature -> /sto-database -> /sto-dev -> /sto-backend -> /sto-web -> /sto-sync -> /sto-review -> /sto-tester -> /sto-optimize
 ```
 
 > `/sto-dev` читається **перед** `/sto-backend` і `/sto-web` — задає стандарти написання,  
@@ -110,6 +111,7 @@ ExitPlanMode
 | Зміна `schema.prisma`, нова міграція     | `/sto-database` SKILL.md                      |
 | Новий NestJS модуль / сервіс / контролер | `/sto-backend` SKILL.md + `/sto-dev` SKILL.md |
 | Зміна наявного сервісу чи DTO            | `/sto-dev` SKILL.md (патерни)                 |
+| Нове бізнес-правило агрегату             | `/sto-spec` — BR-ID + аспектний спек + реєстр |
 | Новий Next.js компонент / сторінка / хук | `/sto-web` SKILL.md + `/sto-dev` SKILL.md     |
 | Зміна Expo / mobile                      | `/sto-mobile` SKILL.md                        |
 | Новий Inno Setup / PowerShell скрипт     | `/sto-installer` SKILL.md                     |
