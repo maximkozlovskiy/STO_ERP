@@ -178,19 +178,19 @@ create (метод без requiresFiscal) → null
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-PAY)
 
 ### `create()` — реєстрація платежу
 
-- Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO має бути в статусі `INVOICED`.
-- **Рахунок-призначення** (`resolveDestinationAccount`): DTO явно → сувора валідація (4xx на невалідний);
+- **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO має бути в статусі `INVOICED`.
+- **BR-PAY-002**: **Рахунок-призначення** (`resolveDestinationAccount`): DTO явно → сувора валідація (4xx на невалідний);
   дефолт з `PaymentMethodConfig` → best-effort (stale конфіг → тихо `null`, не валимо платіж). Деталі — [invoice.md](invoice.md#рахунок-призначення-платежу-paymentsourcetype) («Рахунок-призначення платежу»).
-- **Часткова оплата Invoice** (у `$transaction`): дозволені статуси `SENT`/`PARTIALLY_PAID`/`OVERDUE`;
+- **BR-PAY-003**: **Часткова оплата Invoice** (у `$transaction`): дозволені статуси `SENT`/`PARTIALLY_PAID`/`OVERDUE`;
   overpay (`amount > remaining`) → 400; CAS по `paidAmount` → `PAID`/`PARTIALLY_PAID`; `count=0`
   (гонка) → rollback. Повна механіка — [invoice.md](invoice.md#часткова-оплата-модель-грошей-фаза-1) («Часткова оплата»).
-- **Settlement:** у тій самій `$transaction` → `SettlementsService.createTransaction(PAYMENT)`
+- **BR-PAY-004**: **Settlement:** у тій самій `$transaction` → `SettlementsService.createTransaction(PAYMENT)`
   (борг клієнта ↓). Ніколи не змінює баланс напряму. Знак/семантика — [settlements.md](settlements.md).
-- Якщо `workOrderId`: `workOrder.paidAmount += amount`; після tx — best-effort FSM `INVOICED → PAID`.
+- **BR-PAY-005**: Якщо `workOrderId`: `workOrder.paidAmount += amount`; після tx — best-effort FSM `INVOICED → PAID`.
 
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 
@@ -204,33 +204,33 @@ create (метод без requiresFiscal) → null
 
 ### Онлайн-оплата (QR-еквайринг)
 
-- `createIntent()`: резолвить активний `PAYMENT`-провайдер (`resolveActive(orgId, branchId, 'PAYMENT')`);
+- **BR-PAY-006**: `createIntent()`: резолвить активний `PAYMENT`-провайдер (`resolveActive(orgId, branchId, 'PAYMENT')`);
   немає → 400. Створює `OnlinePaymentIntent` (`PENDING`, `expiresAt = now+15хв`) **першим** — його `id`
   = стабільний `reference`. Викликає `gateway.createInvoice()` → `gatewayInvoiceId`, `pageUrl` (QR).
-- Enqueue у чергу `payment-polling` (`jobId=payment-poll-<intentId>`, single-flight). `PaymentPollingProcessor`
+- **BR-PAY-007**: Enqueue у чергу `payment-polling` (`jobId=payment-poll-<intentId>`, single-flight). `PaymentPollingProcessor`
   (concurrency 3, self-re-enqueue) опитує gateway: `paid` → **CAS** `PENDING→PAID` → `finalizePayment`.
   Стелі: `MAX_POLL_ATTEMPTS=1440`, finalize `MAX_FINALIZE_ATTEMPTS=360`, `expiresAt` past → `EXPIRED`.
-- **`finalizePayment` idempotency:** спершу шукає Payment по `onlinePaymentIntentId`; якщо є — лише
+- **BR-PAY-008**: **`finalizePayment` idempotency:** спершу шукає Payment по `onlinePaymentIntentId`; якщо є — лише
   релінкує. Інакше `payments.create({ method: '<gateway>_qr', onlinePaymentIntentId })`. `P2002` на
   `@unique onlinePaymentIntentId` → знаходить наявний і лінкує (без подвійного списання, Bug #688).
-- Frontend polls **наш** `/online-payments/:id`, не gateway напряму.
+- **BR-PAY-009**: Frontend polls **наш** `/online-payments/:id`, не gateway напряму.
 
 ### Касова зміна (cash-shift)
 
-- `open()`: резолвить активний FISCAL-провайдер; бере активну касу філії; **one-open-per-register**
+- **BR-PAY-010**: `open()`: резолвить активний FISCAL-провайдер; бере активну касу філії; **one-open-per-register**
   guard (pre-check + partial-unique `cash_shifts_one_open_per_register_uq` як race-backstop → повертає
   переможця). `provider.signIn` (PIN→token) + `provider.openShift` → `checkboxShiftId`. Токен шифрується.
-- `close()`: **CAS-claim** `OPEN→CLOSED` **до** зовнішнього виклику (Bug #711 — проти подвійного Z-звіту);
+- **BR-PAY-011**: `close()`: **CAS-claim** `OPEN→CLOSED` **до** зовнішнього виклику (Bug #711 — проти подвійного Z-звіту);
   `count=0` → «Зміна вже закрита». Потім `provider.closeShift` → `zReportId`; при провалі — revert CLOSED→OPEN.
-- `getCurrent`: рахує `pendingReceipts` = платежі з `fiscalStatus=QUEUED` у межах філії (через `workOrder.branchId`).
+- **BR-PAY-012**: `getCurrent`: рахує `pendingReceipts` = платежі з `fiscalStatus=QUEUED` у межах філії (через `workOrder.branchId`).
 
 ### Провайдери (`BranchProviderConfig`)
 
-- **Ексклюзивна активація** (`activate`): у `$transaction` — усі інші того ж `kind` → `enabled:false`,
+- **BR-PAY-013**: **Ексклюзивна активація** (`activate`): у `$transaction` — усі інші того ж `kind` → `enabled:false`,
   target → `enabled:true`. Рівно 1 enabled per kind per branch. Target мусить мати збережені креденшели.
-- **Legacy fallback**: якщо немає enabled-конфігу — читає `BranchSettings` (checkbox: `checkboxLicenseKey/
+- **BR-PAY-014**: **Legacy fallback**: якщо немає enabled-конфігу — читає `BranchSettings` (checkbox: `checkboxLicenseKey/
 PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(checkbox) і PAYMENT(monobank).
-- `credentials` — JSON-рядок, шифрується at-rest (`prisma.service ENCRYPTED_FIELDS`); write-only у API
+- **BR-PAY-015**: `credentials` — JSON-рядок, шифрується at-rest (`prisma.service ENCRYPTED_FIELDS`); write-only у API
   (GET-и повертають лише `hasCredentials`). `BranchProviderConfig` виключено з PULL_TABLES (містить секрети).
 
 ### Конкретні провайдери

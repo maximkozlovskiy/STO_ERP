@@ -56,16 +56,16 @@ model MaintenanceSchedule {
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-MAINT)
 
-- **Розрахунок `nextMaintenanceDate`:** `calcNextDate(lastDate, intervalDays)` = `addDaysKyiv()`
+- **BR-MAINT-001**: **Розрахунок `nextMaintenanceDate`:** `calcNextDate(lastDate, intervalDays)` = `addDaysKyiv()`
   (Kyiv-DST-aware, не server-local `setDate` — інакше зсув на межі доби/DST). `null` якщо немає
   `lastDate` або `intervalDays`.
-- **Розрахунок `nextMaintenanceMileage`:** `lastMaintenanceMileage + intervalMileage` (`null` якщо неповні дані).
-- **Recalc при PATCH** лише коли змінюється поле, що впливає (`lastMaintenanceDate`,
+- **BR-MAINT-002**: **Розрахунок `nextMaintenanceMileage`:** `lastMaintenanceMileage + intervalMileage` (`null` якщо неповні дані).
+- **BR-MAINT-003**: **Recalc при PATCH** лише коли змінюється поле, що впливає (`lastMaintenanceDate`,
   `lastMaintenanceMileage`, `intervalDays`, `intervalMileage`); інакше `next*` лишаються.
-- `create` перевіряє існування `Vehicle` (org-scoped) → `NotFound('Авто не знайдено')`.
-- Усі reads фільтруються `orgId`, `deletedAt: null`, `vehicle.deletedAt: null`.
+- **BR-MAINT-004**: `create` перевіряє існування `Vehicle` (org-scoped) → `NotFound('Авто не знайдено')`.
+- **BR-MAINT-005**: Усі reads фільтруються `orgId`, `deletedAt: null`, `vehicle.deletedAt: null`.
 
 ---
 

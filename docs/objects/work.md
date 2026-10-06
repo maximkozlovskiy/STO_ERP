@@ -108,14 +108,14 @@ Endpoint: `/api/services` — CRUD. Panel schema: `SERVICE_PANEL_SCHEMA`.
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-WORK)
 
-- `normoHours` — базова одиниця оцінки (використовується для `plannedHours` наряду)
-- `isWarranty: true` — робота виконується безкоштовно в рамках гарантії
-- `WorkCategory.isSystem: true` — системні категорії, не видаляються через UI
-- `WorkGoodCategoryLink` — рекомендовані товари для категорій робіт (підказки у WO)
-- Ієрархія категорій — `parentId → children` (необмежена глибина, але UI показує 2 рівні)
-- Пошук по `name` через GIN trgm індекс
+- **BR-WORK-001**: `normoHours` — базова одиниця оцінки (використовується для `plannedHours` наряду)
+- **BR-WORK-002**: `isWarranty: true` — робота виконується безкоштовно в рамках гарантії
+- **BR-WORK-003**: `WorkCategory.isSystem: true` — системні категорії, не видаляються через UI
+- **BR-WORK-004**: `WorkGoodCategoryLink` — рекомендовані товари для категорій робіт (підказки у WO)
+- **BR-WORK-005**: Ієрархія категорій — `parentId → children` (необмежена глибина, але UI показує 2 рівні)
+- **BR-WORK-006**: Пошук по `name` через GIN trgm індекс
 
 ---
 

@@ -140,13 +140,13 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-WO)
 
-- FSM: тільки через `WORK_ORDER_TRANSITIONS` map — ніколи прямий `update({ status })`
-- RESERVATION → RELEASE → WRITEOFF порядок обов'язковий (guard `available >= qty`)
-- WO parts loops — **sequential** for-loop (shared StockItem composite key — unsafe to parallelize)
-- Номер авто-генерується: `DocumentNumberService.next(orgId, 'WorkOrder')`
-- `plannedHours` / `actualHours` — Decimal(8,2), nullable
+- **BR-WO-001**: FSM: тільки через `WORK_ORDER_TRANSITIONS` map — ніколи прямий `update({ status })`
+- **BR-WO-002**: RESERVATION → RELEASE → WRITEOFF порядок обов'язковий (guard `available >= qty`)
+- **BR-WO-003**: WO parts loops — **sequential** for-loop (shared StockItem composite key — unsafe to parallelize)
+- **BR-WO-004**: Номер авто-генерується: `DocumentNumberService.next(orgId, 'WorkOrder')`
+- **BR-WO-005**: `plannedHours` / `actualHours` — Decimal(8,2), nullable
 
 → Детально у [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 

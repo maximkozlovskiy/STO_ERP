@@ -110,13 +110,13 @@ if (conflicts.length > 0) throw new ConflictException('Підйомник вже
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-CAL)
 
-- `counterpartyId` може бути заданий прямо (без `workOrderId`) для записів без наряду
-- `employeeId` — nullable (підйомник без призначеного механіка — теж валідний слот)
-- `type: MAINTENANCE | BREAK | MEETING` — слот без наряду і без клієнта
-- `status: AVAILABLE` — відкритий слот для запису (BookingRequest)
-- Alternate-mutation endpoint (syncWorkOrderSlots) ОБОВ'ЯЗКОВО повторює conflict probe
+- **BR-CAL-001**: `counterpartyId` може бути заданий прямо (без `workOrderId`) для записів без наряду
+- **BR-CAL-002**: `employeeId` — nullable (підйомник без призначеного механіка — теж валідний слот)
+- **BR-CAL-003**: `type: MAINTENANCE | BREAK | MEETING` — слот без наряду і без клієнта
+- **BR-CAL-004**: `status: AVAILABLE` — відкритий слот для запису (BookingRequest)
+- **BR-CAL-005**: Alternate-mutation endpoint (syncWorkOrderSlots) ОБОВ'ЯЗКОВО повторює conflict probe
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (CalendarSlot split-day invariant)
 

@@ -155,14 +155,14 @@ model GoodStatusLink {   // junction M:N, без syncVersion/deletedAt
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-GOOD)
 
-- `GoodUoM.id ≠ UnitOfMeasure.id` — при роботі з UoM завжди зберігай `goodUoM.unitOfMeasureId`
-- `deduplicateBy(plan, u => u.goodId)` ПЕРЕД `Promise.all` bulk-update цін (Bug #483)
-- Pошук по `name + sku + barcode` через GIN trgm індекс (не LIKE — повільно без індексу)
-- `preferredSupplierId` — підказка для PO, не обов'язковий
-- Партії `StockBatch` — FIFO за замовчуванням (найстаріша `createdAt` першою)
-- **Статуси-мітки (кастомні, M:N):** per-org довідник `GoodStatus` (name+color, configuration-over-hardcode — не enum), M:N через `GoodStatusLink`. Assign/unassign валідують good+status належать org (tenant-isolation); assign ідемпотентний (`@@unique[goodId,statusId]`, P2002→no-op); unassign неіснуючого → 404. Soft-delete статусу лишає links — `toDto` фільтрує `status.deletedAt:null`, restore відновлює призначення. Кеш довідника (`ref:good-statuses`, TTL 300с) скидається на assign/unassign І на soft-delete/restore товару з міткою (Bug #725). Права: assign/unassign — OWNER/ADMIN/STOREKEEPER; CRUD довідника — OWNER/ADMIN.
+- **BR-GOOD-001**: `GoodUoM.id ≠ UnitOfMeasure.id` — при роботі з UoM завжди зберігай `goodUoM.unitOfMeasureId`
+- **BR-GOOD-002**: `deduplicateBy(plan, u => u.goodId)` ПЕРЕД `Promise.all` bulk-update цін (Bug #483)
+- **BR-GOOD-003**: Pошук по `name + sku + barcode` через GIN trgm індекс (не LIKE — повільно без індексу)
+- **BR-GOOD-004**: `preferredSupplierId` — підказка для PO, не обов'язковий
+- **BR-GOOD-005**: Партії `StockBatch` — FIFO за замовчуванням (найстаріша `createdAt` першою)
+- **BR-GOOD-006**: **Статуси-мітки (кастомні, M:N):** per-org довідник `GoodStatus` (name+color, configuration-over-hardcode — не enum), M:N через `GoodStatusLink`. Assign/unassign валідують good+status належать org (tenant-isolation); assign ідемпотентний (`@@unique[goodId,statusId]`, P2002→no-op); unassign неіснуючого → 404. Soft-delete статусу лишає links — `toDto` фільтрує `status.deletedAt:null`, restore відновлює призначення. Кеш довідника (`ref:good-statuses`, TTL 300с) скидається на assign/unassign І на soft-delete/restore товару з міткою (Bug #725). Права: assign/unassign — OWNER/ADMIN/STOREKEEPER; CRUD довідника — OWNER/ADMIN.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (ціноутворення, deduplicateBy)
 → [docs/objects/inventory.md](inventory.md) (StockItem, StockMovement)

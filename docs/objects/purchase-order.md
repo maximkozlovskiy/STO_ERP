@@ -152,14 +152,14 @@ UI показує режим лише коли в документі вже є �
 
 ---
 
-## Бізнес-правила: receive() інваріанти
+## Бізнес-правила: receive() інваріанти (BR-PO)
 
-1. `activeLines` = лише рядки де `line.quantity - line.receivedQty > 0`
-2. `deduplicateBy(receivedLines, l => l.lineId)` ПЕРЕД `$transaction` — запобігає дублям у payload
-3. `receivedQty` не може перевищити `line.quantity` (guard у DTO)
-4. **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
+1. **BR-PO-001**: `activeLines` = лише рядки де `line.quantity - line.receivedQty > 0`
+2. **BR-PO-002**: `deduplicateBy(receivedLines, l => l.lineId)` ПЕРЕД `$transaction` — запобігає дублям у payload
+3. **BR-PO-003**: `receivedQty` не може перевищити `line.quantity` (guard у DTO)
+4. **BR-PO-004**: **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
    (Good.id глобально унікальний → інакше cross-tenant FK-injection). Кидає 404 ДО запису.
-5. receive() у `$transaction` (2 кроки, порядок критичний):
+5. **BR-PO-005**: receive() у `$transaction` (2 кроки, порядок критичний):
    - **КРОК 1 — CAS per-line (НЕ просто stale-read!):** `purchaseOrderLine.updateMany({where:{id,orgId,
 receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `count===0`→throw. Concurrent/дубльований
      receive() уже змінив receivedQty → CAS не матчить → rollback ДО руху/боргу (без подвоєння).

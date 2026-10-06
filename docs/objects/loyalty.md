@@ -87,14 +87,14 @@ model LoyaltyTransaction {
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-LOY)
 
 ### Нарахування (earn) — асинхронне через BullMQ
 
-- `PaymentsService.create()` після успішного платежу викликає `LoyaltyService.queueEarn(orgId,
+- **BR-LOY-001**: `PaymentsService.create()` після успішного платежу викликає `LoyaltyService.queueEarn(orgId,
 counterpartyId, amount, payment.id)` → черга `loyalty`, job `earn` (`attempts: 10`, exponential
   backoff 30 с). Non-blocking: якщо черга недоступна — warn, платіж лишається.
-- `LoyaltyProcessor` (concurrency 3) виконує `LoyaltyService.earn()`. Порядок:
+- **BR-LOY-002**: `LoyaltyProcessor` (concurrency 3) виконує `LoyaltyService.earn()`. Порядок:
   1. Guard `Number.isFinite(paymentAmount) && amount > 0` (інакше `increment: NaN` зберіг би `null`).
   2. Читає `loyaltyEnabled` — якщо `false`, early return (бали не нараховуються).
   3. `points = roundMoney(Math.floor(amount / earnPer) * earnPoints)` — квантування до 2dp,
@@ -103,27 +103,27 @@ counterpartyId, amount, payment.id)` → черга `loyalty`, job `earn` (`atte
 
 ### Idempotency нарахування (міграція `loyalty_earn_idempotency`)
 
-- **Один EARN на документ (Payment).** BullMQ може повторити job (worker помер після commit до ACK,
+- **BR-LOY-003**: **Один EARN на документ (Payment).** BullMQ може повторити job (worker помер після commit до ACK,
   або payment enqueued двічі) → без захисту було б подвійне нарахування.
-- **Два рівні захисту:**
-  - _Послідовні повтори_ — read-then-write: `findFirst({ accountId, type:'EARN', documentId })` → якщо є, skip.
-  - _Паралельні джоби_ — partial-unique `loyalty_earn_one_per_document_uq` → другий insert кидає
+- **BR-LOY-004**: **Два рівні захисту:**
+  - **BR-LOY-005**: _Послідовні повтори_ — read-then-write: `findFirst({ accountId, type:'EARN', documentId })` → якщо є, skip.
+  - **BR-LOY-006**: _Паралельні джоби_ — partial-unique `loyalty_earn_one_per_document_uq` → другий insert кидає
     `P2002`, який `earn()` ковтає (транзакція відкочується цілком, `balance`-increment теж не застосовано).
-- Нарахування без документа (`documentId == null`, ручний шлях) — без anchor, завжди трактується як нове.
+- **BR-LOY-007**: Нарахування без документа (`documentId == null`, ручний шлях) — без anchor, завжди трактується як нове.
 
 ### Списання (redeem) — синхронне, атомарне
 
-- `redeem()`: `points = roundMoney(pointsInput)` (2dp — decrement і рядок леджера мусять збігатись).
-- **Atomic check-and-decrement** проти double-spend: `updateMany({ where: { id, balance: { gte: points } },
+- **BR-LOY-008**: `redeem()`: `points = roundMoney(pointsInput)` (2dp — decrement і рядок леджера мусять збігатись).
+- **BR-LOY-009**: **Atomic check-and-decrement** проти double-spend: `updateMany({ where: { id, balance: { gte: points } },
 data: { balance: { decrement: points } } })` — `UPDATE … WHERE balance >= N` оцінюється атомарно
   Postgres. `count === 0` → `BadRequestException('Недостатньо балів')`.
-- `discountAmount = roundMoney(points * loyaltyRedeemRate)` — сума знижки у грн (повертається клієнту).
-- Записує `LoyaltyTransaction(REDEEM)` у тій самій `$transaction`.
+- **BR-LOY-010**: `discountAmount = roundMoney(points * loyaltyRedeemRate)` — сума знижки у грн (повертається клієнту).
+- **BR-LOY-011**: Записує `LoyaltyTransaction(REDEEM)` у тій самій `$transaction`.
 
 ### Tenant isolation
 
-- Кожен виклик перевіряє `counterparty { id, orgId, deletedAt: null }` → `NotFound` якщо чужий/видалений.
-- `LoyaltyAccount` фільтрується по `orgId` у всіх reads.
+- **BR-LOY-012**: Кожен виклик перевіряє `counterparty { id, orgId, deletedAt: null }` → `NotFound` якщо чужий/видалений.
+- **BR-LOY-013**: `LoyaltyAccount` фільтрується по `orgId` у всіх reads.
 
 ---
 

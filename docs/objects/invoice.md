@@ -113,37 +113,37 @@ OVERDUE → PAID / CANCELLED
 
 ---
 
-## Бізнес-правила
+## Бізнес-правила (BR-INV)
 
-- Номер авто-генерується: `DocumentNumberService.next(orgId, 'INVOICE')`
-- Рахунок з наряду: `POST /from-work-order/:id` автоматично переносить роботи і товари з WO
-- `invoiceType` — UI-enum `STANDARD`/`PREPAYMENT`/`CREDIT_NOTE` (`INVOICE_TYPE_VALUES`/
+- **BR-INV-001**: Номер авто-генерується: `DocumentNumberService.next(orgId, 'INVOICE')`
+- **BR-INV-002**: Рахунок з наряду: `POST /from-work-order/:id` автоматично переносить роботи і товари з WO
+- **BR-INV-003**: `invoiceType` — UI-enum `STANDARD`/`PREPAYMENT`/`CREDIT_NOTE` (`INVOICE_TYPE_VALUES`/
   `INVOICE_TYPE_LABELS` у `@sto/shared`). Prisma-колонка має `@default("INVOICE")` (legacy,
   поза enum-ом) — тому `create()` і `createFromWorkOrder()` в `invoices.service.ts` ЗАВЖДИ
   ставлять `invoiceType` явно (`'STANDARD'`), ніколи не покладаються на DB-дефолт.
   `InvoiceCreateModal` при завантаженні рахунку нормалізує будь-яке значення поза enum-ом
   (старі рядки з БД) на `'STANDARD'` через `normalizeInvoiceType()` — інакше zodResolver
   валить submit формою `invoiceFormSchema` (fix 675d6b4c, Аудит #1 Фаза 3).
-- `dueDate` контролюється `invoiceDueDays` з `SettingsService.get(orgId)` — не хардкодиться
-- `OVERDUE` встановлюється автоматично (scheduler або при відкритті списку)
-- При оплаті → `SettlementsService.createTransaction(PAYMENT)` (не пряма зміна балансу)
-- `InvoiceLine`: кожен рядок має `vatRate`, `priceWithoutVat`, `vatAmount`, `priceWithVat`
-- `calcVatTotals()` з `apps/web/src/lib/utils.ts` — для розрахунку підсумків на фронті
+- **BR-INV-004**: `dueDate` контролюється `invoiceDueDays` з `SettingsService.get(orgId)` — не хардкодиться
+- **BR-INV-005**: `OVERDUE` встановлюється автоматично (scheduler або при відкритті списку)
+- **BR-INV-006**: При оплаті → `SettlementsService.createTransaction(PAYMENT)` (не пряма зміна балансу)
+- **BR-INV-007**: `InvoiceLine`: кожен рядок має `vatRate`, `priceWithoutVat`, `vatAmount`, `priceWithVat`
+- **BR-INV-008**: `calcVatTotals()` з `apps/web/src/lib/utils.ts` — для розрахунку підсумків на фронті
 
 ### Часткова оплата (модель грошей, Фаза 1)
 
-- `paidAmount` — **авторитетна колонка** сплаченого. Оновлюється транзакційно при кожному
+- **BR-INV-009**: `paidAmount` — **авторитетна колонка** сплаченого. Оновлюється транзакційно при кожному
   платежі. `toDto` читає її; фолбек на `sum(payments)` лише коли колонки немає у вибірці.
-- **Оплата** (`PaymentsService.create` з `invoiceId`): дозволена лише для `SENT`/`PARTIALLY_PAID`;
+- **BR-INV-010**: **Оплата** (`PaymentsService.create` з `invoiceId`): дозволена лише для `SENT`/`PARTIALLY_PAID`;
   переплата (`amount > amount − paidAmount`) → 400. Атомарно: **CAS** `updateMany({ where:
 paidAmount = прочитане }, data: paidAmount += amount, status: newPaid>=amount ? PAID :
 PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу) → throw → rollback усього
   (Payment + PAYMENT-settlement) у тій самій `$transaction`. **FIN-C1 інваріант** — під
   ReadCommitted захищає оптимістичний CAS по `paidAmount`, не рівень ізоляції.
-- **Ledger:** кожен частковий платіж створює один `PAYMENT`-settlement своєї суми
+- **BR-INV-011**: **Ledger:** кожен частковий платіж створює один `PAYMENT`-settlement своєї суми
   (`BALANCE_SIGN[PAYMENT] = −1`) → борг зменшується рівно на суму кожного платежу; подвійного
   списання немає.
-- **Ручний PAID** (`transition` → `PAID`): синхронізує `paidAmount = amount` (щоб «залишок» був 0),
+- **BR-INV-012**: **Ручний PAID** (`transition` → `PAID`): синхронізує `paidAmount = amount` (щоб «залишок» був 0),
   але **НЕ створює** `Payment`/`PAYMENT`-settlement. Це статус-узгодження, не рух грошей.
   ⚠️ Наслідок: для **standalone**-рахунку (CHARGE нараховано при `SENT`) ручний PAID лишає
   CHARGE без offset-PAYMENT у settlement-ledger → баланс контрагента покаже борг попри «PAID»
@@ -153,14 +153,14 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
 
 ### Рахунок-призначення платежу (`Payment.sourceType`)
 
-- `Payment` знає, **куди фізично лягли гроші**: `sourceType` (`BANK_ACCOUNT`/`CASH_REGISTER`) +
+- **BR-INV-013**: `Payment` знає, **куди фізично лягли гроші**: `sourceType` (`BANK_ACCOUNT`/`CASH_REGISTER`) +
   `bankAccountId`/`cashRegisterId`. Джерело: DTO явно → інакше дефолт з `PaymentMethodConfig`
   (`defaultSourceType`/`defaultBankAccountId`/`defaultCashRegisterId`) → інакше `null`.
-- Валідація (`resolveDestinationAccount`): рахунок мусить бути в межах org (не крос-tenant) і живий.
+- **BR-INV-014**: Валідація (`resolveDestinationAccount`): рахунок мусить бути в межах org (не крос-tenant) і живий.
   **Явний** з DTO невалідний рахунок → 4xx; **дефолт з config** що з тих пір видалено (stale) →
   тихо `null` (offline-first: не валимо легітимний платіж через застарілий конфіг).
-- Source-link — **опційна метадані**; борг/settlement від нього не залежать (два різні виміри).
-- FK `ON DELETE SET NULL` (рахунки нормально soft-delete-яться; hard-delete лишає Payment з
+- **BR-INV-015**: Source-link — **опційна метадані**; борг/settlement від нього не залежать (два різні виміри).
+- **BR-INV-016**: FK `ON DELETE SET NULL` (рахунки нормально soft-delete-яться; hard-delete лишає Payment з
   `null`-source, зберігаючи суму й settlement).
 
 ---
