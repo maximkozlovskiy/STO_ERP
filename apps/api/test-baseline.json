@@ -1482,24 +1482,16 @@
    "Batches — HTTP Contract GET /batches/lookup повертає 200 + lookup shape { good, avgCostPrice, batches, priceHistory }",
    "Batches — HTTP Contract GET /batches/lookup повертає 403 коли guard не пропустив"
   ],
-  "apps/api/src/modules/inventory/inventory.invariants.spec.ts": [
-   "Inventory — balance invariants (property-based) RECEIPT завжди збільшує quantity (рівно на qty)",
-   "Inventory — balance invariants (property-based) RESERVATION з available < qty — відхиляється",
-   "Inventory — balance invariants (property-based) RESERVATION_RELEASE з reserved < qty — відхиляється",
-   "Inventory — balance invariants (property-based) WRITEOFF з quantity < qty — відхиляється",
-   "Inventory — balance invariants (property-based) WRITEOFF→RETURN тієї ж к-сті повертає quantity до вихідного значення",
-   "Inventory — balance invariants (property-based) кумулятивно RECEIPT N разів = sum(receipts)",
-   "Inventory — balance invariants (property-based) повний цикл RECEIPT → RESERVATION → WRITEOFF → RESERVATION_RELEASE → quantity=0, reserved=0",
-   "Inventory — balance invariants (property-based) після будь-яких валідних рухів: quantity ≥ 0, reserved ≥ 0, available ≥ 0"
-  ],
-  "apps/api/src/modules/inventory/inventory.service.spec.ts": [
+  "apps/api/src/modules/inventory/inventory.by-batch.spec.ts": [
    "InventoryService.byBatch() manual батчі (без purchaseOrderLine) групуються під ключем `manual::warehouseId`",
    "InventoryService.byBatch() групує батчі по PO number + warehouseId",
    "InventoryService.byBatch() застосовує date range до stockBatch.createdAt",
    "InventoryService.byBatch() конвертує Decimal costPrice/salePrice у number",
    "InventoryService.byBatch() передає orgId + soft-delete relation-фільтри у where",
    "InventoryService.byBatch() передає warehouseId/goodId у where коли вказані",
-   "InventoryService.byBatch() повертає `{ batches: [] }` коли немає батчів",
+   "InventoryService.byBatch() повертає `{ batches: [] }` коли немає батчів"
+  ],
+  "apps/api/src/modules/inventory/inventory.by-document.spec.ts": [
    "InventoryService.byDocument() агрегує quantity по мульти-warehouse stockItems одного good",
    "InventoryService.byDocument() включає good.brand.name у вихід",
    "InventoryService.byDocument() встановлює goodBrand=null коли brand relation відсутній",
@@ -1508,7 +1500,9 @@
    "InventoryService.byDocument() передає orgId і soft-delete фільтри у обидва Prisma запити",
    "InventoryService.byDocument() передає warehouseId/goodId у where коли вказані",
    "InventoryService.byDocument() повертає `{ goods: [] }` коли немає stockItems",
-   "InventoryService.byDocument() сортує goods по goodName з українською локаллю",
+   "InventoryService.byDocument() сортує goods по goodName з українською локаллю"
+  ],
+  "apps/api/src/modules/inventory/inventory.create-movement.spec.ts": [
    "InventoryService.createMovement guards AVG_COST агрегат batchId=null НЕ викликає stockMovement.update (uuid guard)",
    "InventoryService.createMovement guards AVG_COST: weightedCostPrice = getAvgCost, партії все одно списуються FIFO (інваріант)",
    "InventoryService.createMovement guards Bug #15: RECEIPT з price=0 (безкоштовний зразок) створює партію з нульовою собівартістю",
@@ -1545,12 +1539,24 @@
    "InventoryService.createMovement guards кидає при RESERVATION_RELEASE з positive quantity",
    "InventoryService.createMovement guards кидає при RESERVATION_RELEASE якщо |quantity| > reserved",
    "InventoryService.createMovement guards кидає при WRITEOFF якщо available < |quantity|",
-   "InventoryService.createMovement guards кидає при quantity = 0",
+   "InventoryService.createMovement guards кидає при quantity = 0"
+  ],
+  "apps/api/src/modules/inventory/inventory.find-movements.spec.ts": [
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) limit капується (MAX 200) — DoS guard",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) tenant + soft-delete + orderBy desc + пагінація у findMany/count",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) мапить рядок у DTO (goodName/warehouseName/price Number|null)",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) порожньо → { items: [], total: 0, page: 1, limit: 50 }",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) фільтри goodId/warehouseId/type/from-to потрапляють у where"
+  ],
+  "apps/api/src/modules/inventory/inventory.invariants.spec.ts": [
+   "Inventory — balance invariants (property-based) RECEIPT завжди збільшує quantity (рівно на qty)",
+   "Inventory — balance invariants (property-based) RESERVATION з available < qty — відхиляється",
+   "Inventory — balance invariants (property-based) RESERVATION_RELEASE з reserved < qty — відхиляється",
+   "Inventory — balance invariants (property-based) WRITEOFF з quantity < qty — відхиляється",
+   "Inventory — balance invariants (property-based) WRITEOFF→RETURN тієї ж к-сті повертає quantity до вихідного значення",
+   "Inventory — balance invariants (property-based) кумулятивно RECEIPT N разів = sum(receipts)",
+   "Inventory — balance invariants (property-based) повний цикл RECEIPT → RESERVATION → WRITEOFF → RESERVATION_RELEASE → quantity=0, reserved=0",
+   "Inventory — balance invariants (property-based) після будь-яких валідних рухів: quantity ≥ 0, reserved ≥ 0, available ≥ 0"
   ],
   "apps/api/src/modules/inventory/pricing-rules.contract.spec.ts": [
    "PricingRules — HTTP Contract C1b audit: record() аргументи CREATE → record(orgId, PricingRule, id, CREATE, userId) ПІСЛЯ inline-write",
