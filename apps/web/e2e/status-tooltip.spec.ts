@@ -8,11 +8,15 @@ test('status badge tooltip appears on hover in work-orders list', async ({ page 
 
   // Default date filter is "today" — recently seeded WOs may not be from today.
   // Clear the "from" date so all WOs are visible regardless of documentDate.
+  // БЕЗ умовного `if (isVisible)`: isVisible() не чекає (timeout ігнорується), тож на
+  // холодному рендері умова давала false, фільтр лишався «сьогодні» і тест падав на
+  // порожньому списку — це гонка в тесті, а не поведінка продукту.
   const dateFromInput = page.locator('input[placeholder*="ДД.ММ"]').first();
-  if (await dateFromInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await dateFromInput.fill('01.01.2020');
-    await dateFromInput.press('Enter');
-  }
+  await dateFromInput.waitFor({ state: 'visible', timeout: 15_000 });
+  await dateFromInput.fill('01.01.2020');
+  await dateFromInput.press('Enter');
+  // Enter закриває календар-попап; без цього він перекривав перші рядки таблиці.
+  await expect(page.locator('.rdp-root')).toHaveCount(0);
 
   // Wait for real data rows (not skeleton): a row with a non-empty status badge text.
   // Skeleton rows render span.inline-flex.rounded-full but with no text content.

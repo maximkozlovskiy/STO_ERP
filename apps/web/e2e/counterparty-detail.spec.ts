@@ -106,10 +106,12 @@ test.describe('/counterparties/[id] — детальна картка', () => {
     expect(seededCpId).not.toBeNull();
     await page.goto(`/counterparties/${seededCpId}`);
     await page.getByRole('button', { name: 'Гаражі та авто', exact: true }).click();
-    // На пустому контрагенті очікуємо empty-state або список гаражів
-    await expect(
-      page.locator('text=Немає гаражів').or(page.locator('h2:has-text("Гаражі та автомобілі")')),
-    ).toBeVisible({ timeout: 10_000 });
+    // Заголовок вкладки є і на пустому контрагенті, і зі списком гаражів. Раніше тут був
+    // `.or()` із empty-state: коли видно ОБИДВА елементи, strict mode падав — тест був
+    // flaky залежно від того, чи встиг домалюватись «Немає гаражів».
+    await expect(page.getByRole('heading', { name: 'Гаражі та автомобілі' })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test('вкладка "Договори" — клік не падає', async ({ page }) => {

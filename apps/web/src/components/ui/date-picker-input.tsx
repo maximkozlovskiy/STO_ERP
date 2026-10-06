@@ -147,6 +147,14 @@ export function DatePickerInput({
           value={inputText}
           onChange={handleInputChange}
           onFocus={() => setOpen(true)}
+          // Клавіатурою календар інакше не закрити (лише клік поза ним): після введення
+          // дати попап лишався поверх таблиці. Escape не спливає далі, щоб не закрити
+          // модалку-батька тим самим натисканням.
+          onKeyDown={e => {
+            if (!open) return;
+            if (e.key === 'Escape') e.stopPropagation();
+            if (e.key === 'Escape' || e.key === 'Enter') setOpen(false);
+          }}
           placeholder={placeholder}
           disabled={disabled}
           maxLength={10}
