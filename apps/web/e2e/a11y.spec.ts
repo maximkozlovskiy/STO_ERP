@@ -37,9 +37,9 @@ const BLOCKING = new Set(['serious', 'critical']);
  *  · scrollable-region-focusable — прокручуваний контейнер без доступу з клавіатури.
  */
 const BASELINE: Record<string, string[]> = {
-  '/work-orders': ['button-name', 'color-contrast', 'select-name'],
+  '/work-orders': ['color-contrast', 'select-name'],
   '/counterparties': ['color-contrast', 'select-name'],
-  '/invoices': ['button-name', 'color-contrast'],
+  '/invoices': ['color-contrast'],
   '/inventory': ['color-contrast', 'scrollable-region-focusable', 'select-name'],
   '/settings': ['color-contrast', 'label'],
   '/login': ['color-contrast'],
