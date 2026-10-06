@@ -46,7 +46,10 @@ SIZE_LIMIT = 900
 # Маркер у файлі, що великий розмір свідомий. Причина живе ПОРУЧ з кодом, а не у
 # списку винятків, який ніхто не перечитує.
 OK_MARKER = re.compile(r"spec-monolith-ok:")
-TOP_DESCRIBE = re.compile(r"^describe\(", re.M)
+# `describe(` і його варіанти. Без `.skip`/`.each`/`.only` гейт МОВЧАВ на файлі у
+# 1007 рядків із двома такими блоками (перевірено пробою 2026-10-07): моноліт із
+# `describe.each` проходив би непоміченим.
+TOP_DESCRIBE = re.compile(r"^describe(?:\.(?:skip|only|each|concurrent|sequential))?[(.]", re.M)
 # Рядок реєстру: | аспект | `файл.spec.ts` | кейсів | ...
 REG_ROW = re.compile(r"^\|[^|]*\|\s*`([^`]+\.spec\.ts)`\s*\|", re.M)
 REG_MODULE = re.compile(r"^\*\*Модуль:\*\*\s*(.+)$", re.M)

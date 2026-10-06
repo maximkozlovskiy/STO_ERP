@@ -205,7 +205,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `findAll` — `sortBy=paymentDate`, nulls-last  | `purchase-orders.sort.spec.ts`                                   | 4      |
 | linked-documents — межові випадки             | `purchase-orders.linked-docs.spec.ts`                            | 5      |
 | `create` — Σ(lines.amount) === totalAmount    | `purchase-orders.totals.spec.ts`                                 | 1      |
-| HTTP-контракт (DTO, статуси, валідація)       | `purchase-orders.contract.spec.ts`                               | —      |
+| HTTP-контракт (DTO, статуси, валідація)       | `purchase-orders.contract.spec.ts`                               | 34     |
 | Доставка (Нова Пошта)                         | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
 
 Спільні DI-провайдери — `purchase-orders.spec-fixture.ts`. Якщо у конструктор
