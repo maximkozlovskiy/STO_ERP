@@ -303,6 +303,10 @@ grep -rnE "\.style\.(height|transition|marginBottom|opacity|transform)\s*=" apps
 grep -rnE "useLayoutEffect\(.*\}, \[anchorRef\]\)" apps/web/src/components/ui --include="*.tsx"
 # Nested overlay Esc handler у bubble-фазі — закриває батьківський Modal
 grep -rnE "document\.addEventListener\(['\"]keydown" apps/web/src/components/ui --include="*.tsx" --include="*.ts"
+# Портальний попап (createPortal) БЕЗ власного Esc — у <Modal> Escape закриє модалку, а не попап
+# (tooltip.tsx у виводі — норма: неінтерактивний)
+grep -rl "createPortal" apps/web/src/components/ui --include="*.tsx" | grep -v __tests__ \
+  | xargs -d '\n' grep -L "keydown\|onKeyDown\|<Modal\|useFocusTrap"
 # Spread SyntheticEvent з заміною target — ламає прототип
 grep -rnE "\{\s*\.\.\.e\s*,\s*target:\s*\{\s*\.\.\.e\.target" apps/web/src/ --include="*.tsx" --include="*.ts"
 # Skip-first-run ref поруч з toggle-useEffect — перевірити скидання у parent-key useEffect (дубль-fetch на switch)
@@ -1445,6 +1449,13 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rn "createCanvas\|getViewport\|new Image\|sharp(" apps/api/src --include="*.ts" | grep -v spec` → кожна растеризація/decode user-файлу без clamp площі.
 **Фікс:** базовий viewport (scale=1) → `clampScaleToArea(baseW, baseH, scale) = area<=MAX ? scale : scale*√(MAX/area)` (площа ∝ scale²) під `MAX_CANVAS_PIXELS` (~40 млн px ≈ 160 МБ RGBA; A4@200=3.9 млн — норма не зачеплена). Регрес-тест: 10000×10000 pt @ 400 DPI → площа ≤ стелі.
 **Severity:** CRITICAL — OOM/DoS від одного завантаженого файлу. Sample: pdf-rasterizer.rasterizePdfPages (ce52e337).
+
+### 2026-10-07 — Портальний попап без власного Esc → Escape закриває модалку-батька — §3.1/§8 (a11y)
+
+**Сигнал:** компонент рендерить попап через `createPortal(..., document.body)` і не має жодного keydown-обробника (`datetime-picker-input.tsx`). Усередині `<Modal>` (слухає Escape на `document`, bubble) перше натискання закривало всю модалку з формою. Дзеркало запису 2026-06-09: там обробник був, але у bubble-фазі; тут його не було взагалі.
+**Grep:** детектор у §3.1 (`createPortal` без `keydown|onKeyDown`).
+**Фікс:** `useEffect` поки `open`: `document.addEventListener('keydown', h, true)` + `e.stopImmediatePropagation()` + закрити попап. `onKeyDown` на інпуті не досить — фокус може бути в елементі порталу. Для НЕпортального попапа всередині порталу модалки (`date-picker-input.tsx`) синтетичний `e.stopPropagation()` працює лише тому, що React вішає слухачі на контейнер порталу (`body`) — перевіряти в браузері, не лише в jsdom.
+**Severity:** IMPORTANT.
 
 ## Карта секцій (quick reference)
 

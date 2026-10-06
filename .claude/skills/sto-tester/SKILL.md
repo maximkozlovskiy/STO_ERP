@@ -309,10 +309,15 @@ if [ -n "$schema_changes" ] && [ -z "$new_migrations" ]; then
 fi
 
 # Для кожної нової `model X` у schema → grep у migrations/ за CREATE TABLE
-grep -E "^model [A-Z]" packages/database/prisma/schema/*.prisma | awk '{print $2}' | while read model; do
-  tbl=$(grep -A20 "^model $model " packages/database/prisma/schema/*.prisma | grep -oE "@@map\(\"[^\"]+\"\)" | head -1 | sed 's/@@map("//;s/")//')
-  [ -z "$tbl" ] && tbl=$(echo "$model" | sed 's/\([A-Z]\)/_\L\1/g' | sed 's/^_//')
-  if ! grep -rq "CREATE TABLE.*\"$tbl\"" packages/database/prisma/migrations/; then
+# Блок моделі береться ЦІЛКОМ (awk до закривної `}`), НЕ `grep -A20`: @@map стоїть у кінці
+# моделі, а моделі довші за 20 рядків (Organisation — 47) → вікно його не бачило, і детектор
+# давав хибні MISSING майже на половину моделей. Без @@map таблиця зветься як модель (не snake_case).
+cat packages/database/prisma/schema/*.prisma | grep -E "^model [A-Z]" | awk '{print $2}' | while read model; do
+  tbl=$(cat packages/database/prisma/schema/*.prisma \
+    | awk -v m="$model" '$1=="model" && $2==m {f=1} f {print} f && /^}/ {exit}' \
+    | grep -oE "@@map\(\"[^\"]+\"\)" | head -1 | sed 's/@@map("//;s/")//')
+  [ -z "$tbl" ] && tbl="$model"
+  if ! grep -rqE "CREATE TABLE( IF NOT EXISTS)? \"$tbl\"" packages/database/prisma/migrations/; then
     echo "MISSING MIGRATION: model $model (table $tbl) — no CREATE TABLE in migrations/"
   fi
 done

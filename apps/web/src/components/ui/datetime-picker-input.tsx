@@ -143,6 +143,21 @@ export function DateTimePickerInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Escape закриває ЛИШЕ попап. Capture + stopImmediatePropagation: попап живе у порталі
+  // на document.body, а батьківський <Modal> слухає Escape на document у bubble-фазі —
+  // без перехоплення те саме натискання закривало всю модалку (разом із формою).
+  // Фокус може бути і в інпуті, і в <select> попапа, тож onKeyDown на інпуті не досить.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [open]);
+
   // Reposition on scroll/resize.
   // sto-optimize: passive listeners — обробник не викликає preventDefault, тому позначення
   // passive дозволяє браузеру не блокувати скрол на awaiting handler. capture:true на scroll

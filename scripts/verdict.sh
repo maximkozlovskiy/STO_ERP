@@ -53,6 +53,14 @@ else
   OUT="$(cat | tr -d '\r')"
 fi
 
+# Turborepo дописує до кожного рядка задачі префікс "@sto/web:e2e: ". Патерни нижче
+# заякорені на початок рядка (`^  15 failed`), тож під turbo вони мовчали, а підсумок
+# "Tasks: N successful, N total" давав «ЧИСТО» поверх `15 failed` (Playwright виходить з 0).
+# Префікс знімаємо лише коли підсумок turbo є — звичайний вивід не чіпаємо.
+if grep -qE "Tasks:[[:space:]]+[0-9]+ successful, [0-9]+ total" <<< "$OUT"; then
+  OUT="$(sed -E 's/^@?[A-Za-z0-9_.\/-]+:[A-Za-z0-9_-]+: ?//' <<< "$OUT")"
+fi
+
 fail=0
 notes=()
 
@@ -84,12 +92,19 @@ grep -qE "^[[:space:]]*[0-9]+ passed \(" <<< "$OUT" && ok=1
 grep -qE "✖ [0-9]+ problems? \(0 errors" <<< "$OUT" && ok=1
 # Turborepo (pnpm run type-check / lint / build): "Tasks:    7 successful, 7 total".
 # Успіх лише коли обидва числа рівні — tsc на успіху мовчить, тож іншої ознаки немає.
-turbo="$(grep -oE "Tasks:[[:space:]]+[0-9]+ successful, [0-9]+ total" <<< "$OUT" | tail -1)"
-if [[ -n "$turbo" ]]; then
-  read -r t_ok t_all <<< "$(grep -oE "[0-9]+" <<< "$turbo" | tr '
-' ' ')"
-  if [[ "$t_ok" == "$t_all" ]]; then ok=1; else fail=1; notes+=("turbo: $t_ok із $t_all задач"); fi
-fi
+# Перевіряється КОЖЕН підсумок, не лише останній: у `pnpm lint; pnpm type-check` перший
+# може бути «6 із 7», а другий — «7 із 7». І «0 із 0» (фільтр не зачепив жодного пакета)
+# — це «нічого не запускалось», а не успіх.
+while read -r t_ok t_all; do
+  [[ -z "$t_ok" ]] && continue
+  if (( t_all == 0 )); then
+    notes+=("turbo: 0 задач")
+  elif [[ "$t_ok" == "$t_all" ]]; then
+    ok=1
+  else
+    fail=1; notes+=("turbo: $t_ok із $t_all задач")
+  fi
+done < <(grep -oE "Tasks:[[:space:]]+[0-9]+ successful, [0-9]+ total" <<< "$OUT" | grep -oE "[0-9]+ successful, [0-9]+" | tr -d ',a-z')
 
 # flaky не валить вердикт, але МУСИТЬ бути названий — інакше «0 failed»
 # звучить як ідеальний результат, хоча частина тестів пройшла лише з retry.
