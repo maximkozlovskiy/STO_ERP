@@ -602,6 +602,33 @@ setTimeout(() => URL.revokeObjectURL(url), 100);
 
 ---
 
+## Спек-файли: один аспект = один файл
+
+Тести не дописуються `it()`-ом у найбільший спек модуля. Структура:
+
+```
+<module>.<аспект>.spec.ts     # pricing, fsm, totals, sort, linked-docs…
+<module>.spec-fixture.ts      # спільний DI/harness, ТІЛЬКИ коли потрібен 3+ файлам
+```
+
+**Фікстура = factory, не `const`.** `vitest.config.ts` має `isolate: false` без
+`clearMocks`, тож module-level `vi.fn()` тече між файлами одного воркера:
+
+```ts
+// ❌ спільний стан між спеками
+export const statusesMock = { provide: X, useValue: { f: vi.fn() } };
+
+// ✅ новий набір на кожен виклик
+export const statusesProvider = () => ({ provide: X, useValue: { f: vi.fn() } });
+```
+
+У `*.spec-fixture.ts` eslint суворіший, ніж у `*.spec.ts`: `async` без `await` —
+**error**. Писати `Promise.resolve(...)`, не `async () => (...)`.
+
+Який файл правити — каже реєстр у `docs/objects/<entity>.md`
+(«Аспекти і тести, що їх стережуть»). Нове правило → новий `BR-XXX-NNN` там же.
+Гейти: `python scripts/check-spec-registry.py --gate-size|--gate-registry`.
+
 ## Prisma 5
 
 ### Обов'язкові поля кожної моделі

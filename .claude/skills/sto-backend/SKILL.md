@@ -8,6 +8,17 @@ bypassPermissions: true
 
 # sto-backend — NestJS Module Skill
 
+> **СПЕЦИФІКАЦІЯ ПЕРШОЮ.** Перед написанням коду прочитай дос'є агрегату
+> `docs/objects/<entity>.md` — секції «Бізнес-правила (BR-XXX)» і «Аспекти і тести,
+> що їх стережуть».
+>
+> - нове бізнес-правило → новий `BR-XXX-NNN` у дос'є **і** тест в аспектному спеку
+>   (`<module>.<аспект>.spec.ts`), не `it()` у найбільший файл;
+> - новий спек-файл → рядок у таблиці реєстру, інакше падає гейт C;
+> - кількість кейсів у реєстрі — з `vitest --reporter=json`, не з `grep -c "it("`.
+>
+> Перевірка: `python scripts/check-spec-registry.py --gate-size --gate-registry`.
+
 ## Before Starting
 
 1. Read `MemoryManual.md` — current project state, gotchas, recent changes
