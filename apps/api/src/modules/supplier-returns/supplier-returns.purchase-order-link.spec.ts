@@ -223,9 +223,3 @@ describe('SupplierReturnsService — update() зберігає purchaseOrderId (
     expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
   });
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Bug #778 — ІНВАРІАНТ Σ(рядки) === total на сервісному шляху create (Money).
-// toDto показує бухгалтеру per-line amount = money(q×price); total мусить їм дорівнювати.
-// На дробовій кількості (quantity — Float: літри/кг) round-once(Σ) розходиться з
-// Σ(per-line rounded). ПАДАЄ на старому коді (money(reduce raw)), зеленіє після sumMoney.

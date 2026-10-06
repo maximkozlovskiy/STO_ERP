@@ -17,6 +17,21 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 
+// Regression-guards для feature "Повернення постачальнику" (commits 28edc08c + 9e656cd4).
+// Перевіряє ключові business invariants на confirm()/cancel() FSM-step:
+//   1. confirm() створює WRITEOFF з НЕГАТИВНОЮ quantity (декремент стоку).
+//   2. confirm() створює REFUND settlement transaction (НЕ PAYMENT, НЕ CHARGE).
+//   3. confirm() без рядків → BadRequestException; жодних side-effects.
+//   4. confirm() з non-DRAFT статусу → BadRequestException.
+//   5. documentType передається як 'SupplierReturn' (PascalCase model-name convention),
+//      НЕ як enum value 'SUPPLIER_RETURN'.
+//   6. Duplicate goodId дедуплікується через deduplicateBy → 1 запис у БД, не 2.
+//   7. cancel() з DRAFT → CANCELLED; cancel() з CONFIRMED → BadRequestException.
+//   8. Cross-tenant FK guard (Bug #495): goodId з чужої org → NotFoundException.
+//
+// Без unit-тесту ці інваріанти покриті тільки E2E (повільно + flaky без Postgres) →
+// тестер ловить силенту регресію (наприклад refactor що змінює знак quantity або
+// type REFUND→PAYMENT) лише на проді.
 describe('SupplierReturnsService — regression guards', () => {
   let service: SupplierReturnsService;
   let prisma: {

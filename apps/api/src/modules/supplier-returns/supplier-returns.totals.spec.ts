@@ -15,6 +15,11 @@ import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug #778 — ІНВАРІАНТ Σ(рядки) === total на сервісному шляху create (Money).
+// toDto показує бухгалтеру per-line amount = money(q×price); total мусить їм дорівнювати.
+// На дробовій кількості (quantity — Float: літри/кг) round-once(Σ) розходиться з
+// Σ(per-line rounded). ПАДАЄ на старому коді (money(reduce raw)), зеленіє після sumMoney.
 describe('SupplierReturnsService.create — Bug #778: Σ(lines.amount) === totalAmount', () => {
   let service: SupplierReturnsService;
   let prisma: {
