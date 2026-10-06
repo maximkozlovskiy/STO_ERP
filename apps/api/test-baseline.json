@@ -953,6 +953,12 @@
    "CompletionActsService — sign() idempotency + auto-invoice sign(): акт не знайдено → NotFoundException",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): вже SIGNED → BadRequestException ПЕРЕД CAS"
   ],
+  "apps/api/src/modules/counterparties/counterparties.audit-snapshot.spec.ts": [
+   "CounterpartiesService — Bug #719: коректність audit-знімка в update() old-snapshot НЕ містить id і НЕ містить полів поза PATCH (нема фейкового «→undefined»)",
+   "CounterpartiesService — Bug #719: коректність audit-знімка в update() old-snapshot містить СПРАВЖНЄ попереднє значення зміненого поля (before, не after)",
+   "CounterpartiesService — Bug #719: коректність audit-знімка в update() record() отримує правильні позиційні аргументи (orgId/Counterparty/id/UPDATE/userId)",
+   "CounterpartiesService — Bug #719: коректність audit-знімка в update() userId відсутній → record() НЕ викликається (best-effort gate)"
+  ],
   "apps/api/src/modules/counterparties/counterparties.contract.spec.ts": [
    "Counterparties — HTTP Contract DELETE :id/contracts/:contractId повертає 204",
    "Counterparties — HTTP Contract GET /counterparties відхиляє ?types=INVALID_TYPE з 400",
@@ -976,31 +982,7 @@
    "Counterparties — HTTP Contract POST :id/contracts повертає 400 без обов'язкового поля startDate",
    "Counterparties — HTTP Contract POST :id/contracts/:contractId/restore повертає 201 при валідному call + викликає service.restoreContract з path-params"
   ],
-  "apps/api/src/modules/counterparties/counterparties.service.spec.ts": [
-   "CounterpartiesService findAll — showDeleted showDeleted=false (за замовчуванням) фільтрує deletedAt:null",
-   "CounterpartiesService findAll — showDeleted showDeleted=true ЗАВЖДИ зберігає tenant-фільтр orgId (не витікають інші org)",
-   "CounterpartiesService findAll — showDeleted showDeleted=true прибирає deletedAt:null з where (повертає й видалених)",
-   "CounterpartiesService findAll — showDeleted showDeleted=true разом з ?q= зберігає orgId і OR-пошук, але без deletedAt-фільтра верхнього рівня",
-   "CounterpartiesService findAll — пошук ?q= Bug #163: ?q= будує where.OR з PLURAL relation-іменами customerGarages → vehicles (а не singular)",
-   "CounterpartiesService findAll — пошук ?q= без ?q= не додає OR-гілку (лише orgId + deletedAt)",
-   "CounterpartiesService findAll — пошук ?q= завжди фільтрує по orgId + deletedAt:null (tenant isolation + soft delete)",
-   "CounterpartiesService findAll — пошук ?q= повертає { items, total, page, limit } shape",
-   "CounterpartiesService findOne кидає NotFoundException якщо контрагента немає в org",
-   "CounterpartiesService remove — MD-H1 guard Bug #631: invoice.count гейтить лише non-final статуси (notIn PAID/CANCELLED)",
-   "CounterpartiesService remove — MD-H1 guard Bug #631: кидає BadRequestException при відкритих рахунках (DRAFT/SENT/OVERDUE)",
-   "CounterpartiesService remove — MD-H1 guard видаляє коли баланс 0 і немає активних документів (наряди/PO/рахунки)",
-   "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при активних нарядах",
-   "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при незакритих замовленнях (PO)",
-   "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при ненульовому балансі",
-   "CounterpartiesService remove — MD-H1 guard кидає NotFound коли контрагента не знайдено",
-   "CounterpartiesService — Bug #719: коректність audit-знімка в update() old-snapshot НЕ містить id і НЕ містить полів поза PATCH (нема фейкового «→undefined»)",
-   "CounterpartiesService — Bug #719: коректність audit-знімка в update() old-snapshot містить СПРАВЖНЄ попереднє значення зміненого поля (before, не after)",
-   "CounterpartiesService — Bug #719: коректність audit-знімка в update() record() отримує правильні позиційні аргументи (orgId/Counterparty/id/UPDATE/userId)",
-   "CounterpartiesService — Bug #719: коректність audit-знімка в update() userId відсутній → record() НЕ викликається (best-effort gate)",
-   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create CLIENT лише з firstName (без companyName) → дозволено (guard пропускає)",
-   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create SUPPLIER лише з firstName (без companyName) → BadRequestException",
-   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update CLIENT(firstName-only)→SUPPLIER без companyName → BadRequestException (ефективний тип)",
-   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update SUPPLIER з companyName → проходить",
+  "apps/api/src/modules/counterparties/counterparties.counterparty-contracts.spec.ts": [
    "CounterpartiesService — contract flows create — Bug #348: auto-PURCHASE contract use DocumentNumberService BOTH → викликає documentNumberService.next і створює PURCHASE контракт",
    "CounterpartiesService — contract flows create — Bug #348: auto-PURCHASE contract use DocumentNumberService Bug #360: CLIENT → НЕ робить fetch org settings (no auto-contract)",
    "CounterpartiesService — contract flows create — Bug #348: auto-PURCHASE contract use DocumentNumberService Bug #360: SUPPLIER → auto-contract успадковує currencyCode з org settings",
@@ -1022,11 +1004,37 @@
    "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards data містить isPrimary:false (уникнення дубля-primary того ж contractType)",
    "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards updateMany where містить counterpartyId + orgId + NOT:{deletedAt:null} (cross-CP + tenant)",
    "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards повертає ContractResponseDto зі всіх ISO дат + deletedAt=null",
-   "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards пре-check CP містить orgId + deletedAt:null (tenant isolation)",
+   "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards пре-check CP містить orgId + deletedAt:null (tenant isolation)"
+  ],
+  "apps/api/src/modules/counterparties/counterparties.crud-search.spec.ts": [
+   "CounterpartiesService findAll — showDeleted showDeleted=false (за замовчуванням) фільтрує deletedAt:null",
+   "CounterpartiesService findAll — showDeleted showDeleted=true ЗАВЖДИ зберігає tenant-фільтр orgId (не витікають інші org)",
+   "CounterpartiesService findAll — showDeleted showDeleted=true прибирає deletedAt:null з where (повертає й видалених)",
+   "CounterpartiesService findAll — showDeleted showDeleted=true разом з ?q= зберігає orgId і OR-пошук, але без deletedAt-фільтра верхнього рівня",
+   "CounterpartiesService findAll — пошук ?q= Bug #163: ?q= будує where.OR з PLURAL relation-іменами customerGarages → vehicles (а не singular)",
+   "CounterpartiesService findAll — пошук ?q= без ?q= не додає OR-гілку (лише orgId + deletedAt)",
+   "CounterpartiesService findAll — пошук ?q= завжди фільтрує по orgId + deletedAt:null (tenant isolation + soft delete)",
+   "CounterpartiesService findAll — пошук ?q= повертає { items, total, page, limit } shape",
+   "CounterpartiesService findOne кидає NotFoundException якщо контрагента немає в org",
+   "CounterpartiesService remove — MD-H1 guard Bug #631: invoice.count гейтить лише non-final статуси (notIn PAID/CANCELLED)",
+   "CounterpartiesService remove — MD-H1 guard Bug #631: кидає BadRequestException при відкритих рахунках (DRAFT/SENT/OVERDUE)",
+   "CounterpartiesService remove — MD-H1 guard видаляє коли баланс 0 і немає активних документів (наряди/PO/рахунки)",
+   "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при активних нарядах",
+   "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при незакритих замовленнях (PO)",
+   "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при ненульовому балансі",
+   "CounterpartiesService remove — MD-H1 guard кидає NotFound коли контрагента не знайдено"
+  ],
+  "apps/api/src/modules/counterparties/counterparties.linked-docs.spec.ts": [
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: groupBy фільтрує deletedAt:null (count == detail, урок Bug #641)",
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
    "CounterpartiesService — linked documents (Phase C) getLinkedDocuments: неіснуючий/чужий контрагент → порожні секції (без throw)",
    "CounterpartiesService — linked documents (Phase C) getLinkedDocuments: усі запити фільтрують orgId + deletedAt:null; Decimal→Number"
+  ],
+  "apps/api/src/modules/counterparties/counterparties.supplier-naming.spec.ts": [
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create CLIENT лише з firstName (без companyName) → дозволено (guard пропускає)",
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create SUPPLIER лише з firstName (без companyName) → BadRequestException",
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update CLIENT(firstName-only)→SUPPLIER без companyName → BadRequestException (ефективний тип)",
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update SUPPLIER з companyName → проходить"
   ],
   "apps/api/src/modules/counterparty-import-mappings/counterparty-import-mappings.service.spec.ts": [
    "CounterpartyImportMappingsService get мапінг існує → повертається як DTO",
