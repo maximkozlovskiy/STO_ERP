@@ -119,3 +119,24 @@ if (conflicts.length > 0) throw new ConflictException('Підйомник вже
 - Alternate-mutation endpoint (syncWorkOrderSlots) ОБОВ'ЯЗКОВО повторює conflict probe
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (CalendarSlot split-day invariant)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/calendar/`
+
+| Аспект                                  | Тест                        | Кейсів |
+| --------------------------------------- | --------------------------- | ------ |
+| HTTP-контракт (DTO, статуси, валідація) | `calendar.contract.spec.ts` | 28     |
+| сервісна логіка                         | `calendar.service.spec.ts`  | 18     |
+
+Разом: **46** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

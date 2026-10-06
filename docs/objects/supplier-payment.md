@@ -115,3 +115,31 @@ DRAFT → CONFIRMED   (пише settlement PAYMENT)
 - **BR-SUPPAY-010** (Drill-down — `getScheduleDocuments`): документи (PO) конкретної клітинки/бакета шахматки. Спільний private `computeScheduleAllocations` — ЄДИНЕ джерело FIFO-наливу + кредит-ліміту зі збереженням per-PO алокацій; `getSchedule` сумує їх у бакети, `getScheduleDocuments` фільтрує по цільовому бакету. **Інваріант консистентності**: `Σ allocated документів у бакеті == значення клітинки getSchedule` (за конструкцією — один helper, немає sibling-drift). Кредит-ліміт зменшує `allocated` з найпізніших PO (planned → byDate спадно → overdue), дзеркалить порядок getSchedule. Синтетичний рядок «борг без документа» (`poId=''`, коли balance > ΣPO) → overdue, некликабельний у UI. Query: `date` XOR `target` (overdue/planned), обидва з `@IsDateString({strict})+@Matches(YMD_RE)` (Bug #616); `supplierId` опційний (без нього — усі постачальники, клік по рядку «Разом»).
 
 → [docs/objects/settlements.md](settlements.md) · [docs/objects/purchase-order.md](purchase-order.md)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/supplier-payments/`
+
+| Аспект                                  | Тест                                      | Кейсів |
+| --------------------------------------- | ----------------------------------------- | ------ |
+| cancel remove                           | `supplier-payments.cancel-remove.spec.ts` | 3      |
+| confirm                                 | `supplier-payments.confirm.spec.ts`       | 5      |
+| HTTP-контракт (DTO, статуси, валідація) | `supplier-payments.contract.spec.ts`      | 18     |
+| create                                  | `supplier-payments.create.spec.ts`        | 4      |
+| пов'язані документи                     | `supplier-payments.linked-docs.spec.ts`   | 8      |
+| payables fx                             | `supplier-payments.payables-fx.spec.ts`   | 10     |
+| schedule                                | `supplier-payments.schedule.spec.ts`      | 22     |
+| сортування (whitelist orderBy)          | `supplier-payments.sort.spec.ts`          | 6      |
+| update guards                           | `supplier-payments.update-guards.spec.ts` | 6      |
+
+Разом: **82** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.

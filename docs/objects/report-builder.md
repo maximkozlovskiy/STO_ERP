@@ -96,3 +96,25 @@ CSV/XLSX клієнтський (SpreadsheetML).
 поля`. Міграція `20260903120000_add_saved_reports`. `@@index([orgId, deletedAt])`.
 
 → [docs/ARCHITECTURE.md](../ARCHITECTURE.md) · [docs/objects/settlements.md](settlements.md)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/reports/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/reports/`
+
+| Аспект          | Тест                      | Кейсів |
+| --------------- | ------------------------- | ------ |
+| сервісна логіка | `reports.service.spec.ts` | 12     |
+
+Разом: **12** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
+Покриття мінімальне — один спек-файл на весь агрегат; розбиття за аспектами стане доречним, коли файл почне рости.

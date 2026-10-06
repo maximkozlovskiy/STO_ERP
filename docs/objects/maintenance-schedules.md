@@ -92,4 +92,26 @@ model MaintenanceSchedule {
 
 - [work-order.md](work-order.md) — тригер оновлення (MAINTENANCE COMPLETED) · Vehicle (власник графіка)
 
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/maintenance-schedules/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/maintenance-schedules/`
+
+| Аспект          | Тест                                    | Кейсів |
+| --------------- | --------------------------------------- | ------ |
+| сервісна логіка | `maintenance-schedules.service.spec.ts` | 21     |
+
+Разом: **21** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
+Покриття мінімальне — один спек-файл на весь агрегат; розбиття за аспектами стане доречним, коли файл почне рости.
+
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

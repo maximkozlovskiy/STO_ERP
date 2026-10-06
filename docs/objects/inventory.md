@@ -62,3 +62,34 @@
 > у createMovement + reconcile-міграція `20260902130000` (FIFO-доспоживає надлишок для прод).
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) · [docs/objects/purchase-order.md](purchase-order.md)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/inventory/`
+
+| Аспект                                  | Тест                                  | Кейсів |
+| --------------------------------------- | ------------------------------------- | ------ |
+| інваріанти (property-based)             | `batch.invariants.spec.ts`            | 29     |
+| сервісна логіка                         | `batch.service.spec.ts`               | 21     |
+| HTTP-контракт (DTO, статуси, валідація) | `batches.contract.spec.ts`            | 4      |
+| by batch                                | `inventory.by-batch.spec.ts`          | 7      |
+| by document                             | `inventory.by-document.spec.ts`       | 9      |
+| create movement                         | `inventory.create-movement.spec.ts`   | 37     |
+| find movements                          | `inventory.find-movements.spec.ts`    | 5      |
+| інваріанти (property-based)             | `inventory.invariants.spec.ts`        | 8      |
+| HTTP-контракт (DTO, статуси, валідація) | `pricing-rules.contract.spec.ts`      | 25     |
+| сервісна логіка                         | `pricing.service.spec.ts`             | 34     |
+| інваріанти (property-based)             | `return-roundtrip.invariants.spec.ts` | 5      |
+| HTTP-контракт (DTO, статуси, валідація) | `stock-items.contract.spec.ts`        | 20     |
+
+Разом: **204** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

@@ -162,3 +162,28 @@ model CounterpartyStatusLink {
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 → [docs/PATTERNS.md](../PATTERNS.md) (EntityPickerField для вибору в формах)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/counterparties/`
+
+| Аспект                                  | Тест                                            | Кейсів |
+| --------------------------------------- | ----------------------------------------------- | ------ |
+| audit snapshot                          | `counterparties.audit-snapshot.spec.ts`         | 4      |
+| HTTP-контракт (DTO, статуси, валідація) | `counterparties.contract.spec.ts`               | 21     |
+| counterparty contracts                  | `counterparties.counterparty-contracts.spec.ts` | 22     |
+| crud search                             | `counterparties.crud-search.spec.ts`            | 16     |
+| пов'язані документи                     | `counterparties.linked-docs.spec.ts`            | 4      |
+| supplier naming                         | `counterparties.supplier-naming.spec.ts`        | 4      |
+
+Разом: **71** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

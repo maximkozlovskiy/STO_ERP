@@ -149,3 +149,35 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 - `plannedHours` / `actualHours` — Decimal(8,2), nullable
 
 → Детально у [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/work-orders/`
+
+| Аспект                                  | Тест                                           | Кейсів |
+| --------------------------------------- | ---------------------------------------------- | ------ |
+| handlers                                | `events/work-order.handlers.spec.ts`           | 10     |
+| fsm parity                              | `fsm-parity.spec.ts`                           | 12     |
+| integration на живій БД                 | `work-order-stock-effects.integration.spec.ts` | 4      |
+| сервісна логіка                         | `work-order-stock-effects.service.spec.ts`     | 13     |
+| сервісна логіка                         | `work-orders-export.service.spec.ts`           | 4      |
+| HTTP-контракт (DTO, статуси, валідація) | `work-orders.contract.spec.ts`                 | 22     |
+| HTTP-контракт (DTO, статуси, валідація) | `work-orders.fsm.contract.spec.ts`             | 2      |
+| інваріанти (property-based)             | `work-orders.fsm.invariants.spec.ts`           | 16     |
+| recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |
+| recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 7      |
+| рольовий доступ                         | `work-orders.role-gate.spec.ts`                | 24     |
+| сервісна логіка                         | `work-orders.service.spec.ts`                  | 22     |
+| share public                            | `work-orders.share-public.spec.ts`             | 9      |
+
+Разом: **150** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

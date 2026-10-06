@@ -166,3 +166,26 @@ model GoodStatusLink {   // junction M:N, без syncVersion/deletedAt
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (ціноутворення, deduplicateBy)
 → [docs/objects/inventory.md](inventory.md) (StockItem, StockMovement)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/goods/`
+
+| Аспект                                  | Тест                                  | Кейсів |
+| --------------------------------------- | ------------------------------------- | ------ |
+| dto                                     | `goods-query.dto.spec.ts`             | 6      |
+| HTTP-контракт (DTO, статуси, валідація) | `goods-stock-totals.contract.spec.ts` | 12     |
+| рольовий доступ                         | `goods.role-gate.spec.ts`             | 14     |
+| сервісна логіка                         | `goods.service.spec.ts`               | 55     |
+
+Разом: **87** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

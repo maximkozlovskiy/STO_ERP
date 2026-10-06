@@ -182,3 +182,26 @@ employeeId, documentType='PayrollPeriod')` на кожного співробі�
 → [work-order.md](work-order.md) · [work.md](work.md)
 
 > Окремого дос'є Employee немає: `rateScheme` описаний тут, компетенції (зони/підйомники/категорії) — у [work.md](work.md).
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/payroll/`
+
+| Аспект          | Тест                         | Кейсів |
+| --------------- | ---------------------------- | ------ |
+| calculator      | `payroll.calculator.spec.ts` | 11     |
+| сервісна логіка | `payroll.service.spec.ts`    | 33     |
+
+Разом: **44** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
+
+HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.

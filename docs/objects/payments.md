@@ -251,4 +251,40 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
 - [invoice.md](invoice.md) — часткова оплата, `paidAmount` · [settlements.md](settlements.md) — ledger, `BALANCE_SIGN`
 - [loyalty.md](loyalty.md) — earn при кожному платежі · [work-order.md](work-order.md) — FSM `INVOICED → PAID`
 
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/payments/`
+
+| Аспект                   | Тест                                        | Кейсів |
+| ------------------------ | ------------------------------------------- | ------ |
+| сервісна логіка          | `cash-shift.service.spec.ts`                | 31     |
+| HTTP-клієнт              | `checkbox.client.spec.ts`                   | 31     |
+| BullMQ-processor         | `checkbox.processor.spec.ts`                | 17     |
+| fiscal provider registry | `fiscal/fiscal-provider-registry.spec.ts`   | 16     |
+| провайдер                | `fiscal/vchasno.provider.spec.ts`           | 29     |
+| payment gateway registry | `gateways/payment-gateway-registry.spec.ts` | 12     |
+| HTTP-клієнт              | `monobank.client.spec.ts`                   | 26     |
+| сервісна логіка          | `online-payment.service.spec.ts`            | 14     |
+| BullMQ-processor         | `payment-polling.processor.spec.ts`         | 19     |
+| fiscal gate              | `payments.fiscal-gate.spec.ts`              | 7      |
+| idempotency              | `payments.idempotency.spec.ts`              | 7      |
+| money model              | `payments.money-model.spec.ts`              | 13     |
+| multicurrency            | `payments.multicurrency.spec.ts`            | 17     |
+| query dto                | `payments.query-dto.spec.ts`                | 28     |
+| сервісна логіка          | `provider-config.service.spec.ts`           | 27     |
+
+Разом: **294** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
+
+HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

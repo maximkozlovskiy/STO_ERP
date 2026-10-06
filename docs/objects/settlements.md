@@ -71,3 +71,24 @@ _Stub — заповнити при роботі з settlements модулем._
 > (`generateReconciliationActPdf`) — grep `SETTLEMENT_TX_TYPE_LABELS\|txTypeLabel` перед комітом.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) · [docs/objects/supplier-payment.md](supplier-payment.md)
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/settlements/`
+
+| Аспект                      | Тест                             | Кейсів |
+| --------------------------- | -------------------------------- | ------ |
+| інваріанти (property-based) | `settlements.invariants.spec.ts` | 18     |
+| сервісна логіка             | `settlements.service.spec.ts`    | 17     |
+
+Разом: **35** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.

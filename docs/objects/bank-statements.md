@@ -132,3 +132,32 @@ Nav — «Банківські платежі» (Landmark, section settlements).
 - **API mapping MANUAL-VERIFY** — точні поля response звірити на живих даних: privat24 (REF/OSND/TRANTYPE),
   monobank (account-id резолв, rate-limit), DBF-поля/encoding Ощад/Райф/ПУМБ (win1251/cp866). Захисна
   нормалізація толерантна до різних назв.
+
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/bank-statements/`
+
+| Аспект           | Тест                                            | Кейсів |
+| ---------------- | ----------------------------------------------- | ------ |
+| сервісна логіка  | `bank-reconciliation.service.spec.ts`           | 27     |
+| сервісна логіка  | `bank-statement-parser.service.spec.ts`         | 17     |
+| контролер        | `bank-statement-providers.controller.spec.ts`   | 7      |
+| BullMQ-processor | `bank-statement-pull.processor.spec.ts`         | 20     |
+| scheduler        | `bank-statement-pull.scheduler.spec.ts`         | 4      |
+| HTTP-клієнт      | `providers/mono-statement.client.spec.ts`       | 13     |
+| провайдер        | `providers/monobank-statement.provider.spec.ts` | 17     |
+| HTTP-клієнт      | `providers/privat24.client.spec.ts`             | 10     |
+| провайдер        | `providers/privat24.provider.spec.ts`           | 15     |
+| purpose parser   | `purpose-parser.spec.ts`                        | 11     |
+
+Разом: **141** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.

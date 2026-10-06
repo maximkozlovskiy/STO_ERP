@@ -163,4 +163,31 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
 - FK `ON DELETE SET NULL` (рахунки нормально soft-delete-яться; hard-delete лишає Payment з
   `null`-source, зберігаючи суму й settlement).
 
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/invoices/`
+
+| Аспект                                  | Тест                                       | Кейсів |
+| --------------------------------------- | ------------------------------------------ | ------ |
+| BullMQ-processor                        | `invoice-overdue.processor.spec.ts`        | 4      |
+| HTTP-контракт (DTO, статуси, валідація) | `invoices.contract.spec.ts`                | 27     |
+| create from work order                  | `invoices.create-from-work-order.spec.ts`  | 5      |
+| dto and linked docs                     | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
+| due date                                | `invoices.due-date.spec.ts`                | 7      |
+| find by work order                      | `invoices.find-by-work-order.spec.ts`      | 5      |
+| refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 10     |
+| transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
+
+Разом: **76** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
+
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

@@ -117,4 +117,26 @@ Endpoint: `/api/services` — CRUD. Panel schema: `SERVICE_PANEL_SCHEMA`.
 - Ієрархія категорій — `parentId → children` (необмежена глибина, але UI показує 2 рівні)
 - Пошук по `name` через GIN trgm індекс
 
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/works/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/works/`
+
+| Аспект          | Тест                    | Кейсів |
+| --------------- | ----------------------- | ------ |
+| сервісна логіка | `works.service.spec.ts` | 19     |
+
+Разом: **19** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
+Покриття мінімальне — один спек-файл на весь агрегат; розбиття за аспектами стане доречним, коли файл почне рости.
+
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

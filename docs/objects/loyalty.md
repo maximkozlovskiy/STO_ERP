@@ -138,4 +138,27 @@ data: { balance: { decrement: points } } })` — `UPDATE … WHERE balance >= N`
 
 - [payments.md](payments.md) — джерело earn-подій · [counterparty.md](counterparty.md) — власник рахунку
 
+---
+
+## Аспекти і тести, що їх стережуть
+
+Правите один аспект — ганяєте один файл:
+
+```bash
+cd apps/api && npx vitest run src/modules/loyalty/<файл>.spec.ts
+```
+
+**Модуль:** `apps/api/src/modules/loyalty/`
+
+| Аспект           | Тест                        | Кейсів |
+| ---------------- | --------------------------- | ------ |
+| BullMQ-processor | `loyalty.processor.spec.ts` | 3      |
+| сервісна логіка  | `loyalty.service.spec.ts`   | 14     |
+
+Разом: **17** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
+
+HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
