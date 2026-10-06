@@ -35,7 +35,30 @@ python scripts/check-doc-links.py                      # посилання мі
 ## Останній commit
 
 ```
-Хеш і тема — `git log --oneline -5`. Деталі кожної зміни — CHANGELOG.md (найновіше зверху).
+Спец-орієнтовані тести — 2026-10-07, HEAD 092321bc:
+  Фаза 1: 6f47be6e baseline+гейти / 8 комітів розбиття / b62ed9dc реєстри / b4920d66 BR-ID.
+  Фаза 2: 48c7450a spec-first у скілах і агентах / def15ec3 новий /sto-spec.
+
+  МОДЕЛЬ: 1 аспект = 1 спек-файл (не 1 правило = 1 файл — зміряно: при правилі-на-файл
+  правка transition торкалася б 8-10 файлів замість 3, а DI-обв'язка переважила б асерти).
+  Правило має BR-ID у дос'є; реєстр у дос'є каже, який файл ганяти; гейти стережуть.
+
+  ГЕЙТИ (scripts/check-spec-registry.py):
+    A втрата кейсів — МНОЖИНИ fullName проти test-baseline.json, не суми
+    B нові моноліти — >900 рядків І >=2 top-level describe
+    C цілісність реєстрів — файли з дос'є існують
+  Baseline оновлюється ЛИШЕ scripts/spec-baseline.py (detермінований, у .prettierignore).
+
+  ПАСТКИ, що коштували часу і тепер у /sto-spec:
+    - колізія імені знищила 593-рядковий спек -> ls перед записом, не пам'ять;
+    - межі блоків зсувати через коментарі (заголовок наступного блоку стоїть ПІСЛЯ
+      закриття попереднього) — інакше коментар осиротіє у чужому файлі;
+    - фікстуру КОПІЮВАТИ з оригіналу: написана з пам'яті втратила sameCurrency (4 падіння);
+    - деструктуризація у ТІ САМІ імена, інакше правиться кожен it();
+    - коментарі перевіряти ОКРЕМО: множини fullName до них сліпі (втрати у 5 із 8 модулів).
+
+  ВІДКРИТЕ: field-encryption.integration.spec залежить від порядку тестів (shuffle дає
+  2 падіння) — передіснуюче, фікс поза обсягом, деталі у docs/GOTCHAS.md.
 ```
 
 Раніше тут лежав журнал на 272 рядки: кожна сесія дописувала свій блок, хоча правило
@@ -47,27 +70,30 @@ python scripts/check-doc-links.py                      # посилання мі
 
 ## Нові файли/утиліти (з останніх сесій)
 
-| Файл                                                                                     | Що                                                                                          |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `apps/web/src/lib/download.ts`                                                           | `downloadBlob`/`downloadUrl` — SOT браузер-завантаження (attached anchor + deferred revoke) |
-| `apps/api/src/common/utils/pagination.ts`                                                | `calculatePagination` (NaN-guard + cap)                                                     |
-| `apps/api/src/common/utils/kyiv-date.ts`                                                 | Kyiv-date утиліти (DST-aware)                                                               |
-| `apps/api/src/prisma/schema-integrity.integration.spec.ts`                               | TD2 guard: manual-SQL конструкти (partial-unique/trgm/EXCLUDE/CHECK) живі у БД              |
-| `apps/api/src/modules/work-orders/work-order-dto.mapper.ts`                              | Винесені WorkOrder DTO-мапери (cost-price role-mask)                                        |
-| `apps/web/src/components/ui/work-order/{InvoiceConflictDialog,PlannedActualMetrics}.tsx` | Виділені суб-компоненти CreateWorkOrderModal                                                |
-| `apps/web/src/components/ui/purchase-order/{types,RulePricerModal}.tsx`                  | Виділені з PurchaseOrderCreateModal                                                         |
-| `.claude/skills/sto-tester/sto-tester-approaches.md`                                     | Журнал патернів багів (винесено зі SKILL.md)                                                |
-| `apps/api/src/common/utils/normalize-article.ts`                                         | `normalizeArticle` — upper + strip non-alnum (SOT skuNormalized/normalizedSynonym)          |
-| `apps/api/src/modules/xlsx/document-line-import.adapter.ts`                              | Generic import: PO/StockDocument адаптери + registry (loadDoc/assertDraft/replaceLines)     |
-| `apps/api/src/modules/xlsx/import.dto.ts`                                                | PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000)                          |
-| `apps/api/src/modules/counterparty-import-mappings/`                                     | Персист мапінгу колонок Excel per-контрагент (GET/PUT, upsert по @unique)                   |
-| `scripts/verdict.sh`                                                                     | SOT вердикту «чисто/не чисто» (текст виводу > exit code; невідоме ≠ чисто)                  |
-| `scripts/measure.sh`                                                                     | SOT усіх цифр проєкту (tests/e2e/routes/bundle/docs/commits, фіксована база)                |
-| `scripts/audit-claims.py`                                                                | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а)                  |
-| `scripts/count-untyped-routes.py`                                                        | Роути без типу з OpenAPI-документа (не grep по контролерах)                                 |
-| `scripts/hooks/check-claims-verified.py`                                                 | Stop-hook: блокує завершення, якщо вердикт/цифра без auditor/verdict.sh/measure.sh          |
-| `scripts/hooks/test-check-claims.py`                                                     | Тест hook'а ПРОЦЕСОМ (18 кейсів) — ловить cp1251-stdin і зіпсовані \b, яких не видно в grep |
-| `.claude/agents/sto-claims-auditor.md`                                                   | Агент-аудитор: читає ТРАНСКРИПТ, не мою доповідь; переперевіряє кожну цифру інструментом    |
+| Файл                                                                                     | Що                                                                                                                    |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/lib/download.ts`                                                           | `downloadBlob`/`downloadUrl` — SOT браузер-завантаження (attached anchor + deferred revoke)                           |
+| `apps/api/src/common/utils/pagination.ts`                                                | `calculatePagination` (NaN-guard + cap)                                                                               |
+| `apps/api/src/common/utils/kyiv-date.ts`                                                 | Kyiv-date утиліти (DST-aware)                                                                                         |
+| `apps/api/src/prisma/schema-integrity.integration.spec.ts`                               | TD2 guard: manual-SQL конструкти (partial-unique/trgm/EXCLUDE/CHECK) живі у БД                                        |
+| `apps/api/src/modules/work-orders/work-order-dto.mapper.ts`                              | Винесені WorkOrder DTO-мапери (cost-price role-mask)                                                                  |
+| `apps/web/src/components/ui/work-order/{InvoiceConflictDialog,PlannedActualMetrics}.tsx` | Виділені суб-компоненти CreateWorkOrderModal                                                                          |
+| `apps/web/src/components/ui/purchase-order/{types,RulePricerModal}.tsx`                  | Виділені з PurchaseOrderCreateModal                                                                                   |
+| `.claude/skills/sto-tester/sto-tester-approaches.md`                                     | Журнал патернів багів (винесено зі SKILL.md)                                                                          |
+| `apps/api/src/common/utils/normalize-article.ts`                                         | `normalizeArticle` — upper + strip non-alnum (SOT skuNormalized/normalizedSynonym)                                    |
+| `apps/api/src/modules/xlsx/document-line-import.adapter.ts`                              | Generic import: PO/StockDocument адаптери + registry (loadDoc/assertDraft/replaceLines)                               |
+| `apps/api/src/modules/xlsx/import.dto.ts`                                                | PreviewImportDto (multipart) + ApplyImportDto (@ArrayMaxSize 1000)                                                    |
+| `apps/api/src/modules/counterparty-import-mappings/`                                     | Персист мапінгу колонок Excel per-контрагент (GET/PUT, upsert по @unique)                                             |
+| `scripts/verdict.sh`                                                                     | SOT вердикту «чисто/не чисто» (текст виводу > exit code; невідоме ≠ чисто)                                            |
+| `scripts/measure.sh`                                                                     | SOT усіх цифр проєкту (tests/e2e/routes/bundle/docs/commits, фіксована база)                                          |
+| `scripts/audit-claims.py`                                                                | Витягує з транскрипту мої твердження, що потребують доказу (для auditor'а)                                            |
+| `scripts/count-untyped-routes.py`                                                        | Роути без типу з OpenAPI-документа (не grep по контролерах)                                                           |
+| `scripts/hooks/check-claims-verified.py`                                                 | Stop-hook: блокує завершення, якщо вердикт/цифра без auditor/verdict.sh/measure.sh                                    |
+| `scripts/hooks/test-check-claims.py`                                                     | Тест hook'а ПРОЦЕСОМ (18 кейсів) — ловить cp1251-stdin і зіпсовані \b, яких не видно в grep                           |
+| `.claude/agents/sto-claims-auditor.md`                                                   | Агент-аудитор: читає ТРАНСКРИПТ, не мою доповідь; переперевіряє кожну цифру інструментом                              |
+| `scripts/check-spec-registry.py`                                                         | Три гейти: втрата кейсів (множини fullName), нові моноліти (>900 і >=2 describe), цілісність реєстрів дос'є           |
+| `scripts/spec-baseline.py`                                                               | Дистилює vitest-звіт у стабільний `apps/api/test-baseline.json` (файл -> fullName); детермінований, у .prettierignore |
+| `.claude/skills/sto-spec/SKILL.md`                                                       | Специфікація агрегату: BR-ID, аспектні спеки, реєстр, гейти; між sto-analyst і sto-feature                            |
 
 ---
 
