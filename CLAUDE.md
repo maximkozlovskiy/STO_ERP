@@ -312,11 +312,27 @@ claude --totally-fake-flag-zzz auth status  # КОНТРОЛЬ: мусить д�
 Після завершення **будь-якого** завдання і git commit — виконай **послідовно**:
 
 ```
+0. [якщо чіпав тести] → python scripts/check-spec-registry.py --gate-size --gate-registry
 1. [якщо змінились frontend і backend] → Agent(sto-sync-agent)
 2. → Agent(sto-review-agent)   — code review, виправити всі знайдені проблеми
 3. → Agent(sto-tester-agent)   — тести, BUG_REPORT.md, виправити всі баги
 4. → Оновити документацію: MemoryManual.md (commit + стан) + CHANGELOG.md (append) + довідник якщо знайдено нову пастку
 ```
+
+**Крок 0 — чому він перший.** Гейти дешеві (секунди) і ловлять те, чого не бачать
+агенти: новий моноліт (>900 рядків і ≥2 top-level `describe`), зниклий кейс проти
+`apps/api/test-baseline.json`, і файл, названий у реєстрі дос'є, але відсутній на диску.
+Якщо додав/змінив тести — спершу вони, потім усе інше.
+
+Додав тест → оновити число кейсів у реєстрі `docs/objects/<entity>.md` і baseline:
+
+```bash
+cd apps/api && npx vitest run --reporter=json --outputFile=.vitest-report.json
+python ../../scripts/spec-baseline.py .vitest-report.json --out test-baseline.json
+```
+
+Baseline правиться **лише цим скриптом** — тоді diff показує рівно ті кейси, що
+змінились. Деталі моделі — `/sto-spec`.
 
 > Виняток: якщо сам запит був review або tester агент — не запускати рекурсивно.
 

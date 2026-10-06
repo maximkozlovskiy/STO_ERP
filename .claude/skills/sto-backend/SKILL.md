@@ -41,9 +41,16 @@ apps/api/src/modules/{domain}/
   {domain}.controller.ts
   {domain}.service.ts
   {domain}.dto.ts
-  {domain}.events.ts       (optional)
-  {domain}.spec.ts
+  {domain}.events.ts            (optional)
+  {domain}.contract.spec.ts     HTTP-контракт: DTO, статуси, валідація
+  {domain}.<аспект>.spec.ts     ОДИН аспект на файл: fsm, totals, pricing, sort…
+  {domain}.spec-fixture.ts      (optional) спільний DI/harness, коли треба 3+ файлам
 ```
+
+**Один аспект = один файл.** `{domain}.spec.ts` «на все» більше не створюємо: саме з
+таких файлів виросли 8 монолітів на 913–1720 рядків, які довелось розбивати. Який
+аспект куди — записується у реєстр `docs/objects/<entity>.md`. Поріг гейта: 900 рядків
+і ≥2 top-level `describe` блокують коміт (`scripts/check-spec-registry.py --gate-size`).
 
 ---
 
@@ -327,7 +334,8 @@ await this.inventoryService.createMovement(orgId, {
 ## Unit Test Pattern
 
 ```typescript
-// {domain}.spec.ts
+// {domain}.<аспект>.spec.ts — приклад для ОДНОГО аспекту.
+// Другий аспект того ж модуля йде у СВІЙ файл, а не додається сюди.
 import { Test } from '@nestjs/testing';
 import { WorkOrdersService } from './work-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
