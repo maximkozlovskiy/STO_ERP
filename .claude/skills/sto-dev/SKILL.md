@@ -119,8 +119,13 @@ apps/api/src/modules/{domain}/
   {domain}.controller.ts  ← HTTP шар: routing, guards, DTOs, @OrgContext()
   {domain}.service.ts     ← бізнес логіка + Prisma
   {domain}.dto.ts         ← class-validator DTOs + ResponseDTOs
-  {domain}.spec.ts        ← unit tests
+  {domain}.contract.spec.ts     ← HTTP-контракт: DTO, статуси, валідація
+  {domain}.<аспект>.spec.ts     ← ОДИН аспект на файл (fsm, totals, pricing…)
+  {domain}.spec-fixture.ts      ← (optional) спільний DI/harness для 3+ файлів
 ```
+
+**`{domain}.spec.ts` «на все» не створюємо** — саме з таких файлів виросли 8 монолітів
+на 913–1720 рядків. Деталі моделі й гейти — `/sto-spec`.
 
 ### Fastify route ordering — специфічні роути ПЕРЕД параметричними
 

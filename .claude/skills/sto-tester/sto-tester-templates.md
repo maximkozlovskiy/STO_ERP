@@ -48,7 +48,7 @@ const prismaMock = {
   $transaction: vi.fn().mockImplementation((arr: Promise<unknown>[]) => Promise.all(arr)),
 };
 
-const mockJwtGuard  = { canActivate: vi.fn().mockReturnValue(true) };
+const mockJwtGuard = { canActivate: vi.fn().mockReturnValue(true) };
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
 describe('WorkOrders — HTTP Contract', () => {
@@ -58,9 +58,12 @@ describe('WorkOrders — HTTP Contract', () => {
     const module = await Test.createTestingModule({
       imports: [WorkOrdersModule],
     })
-      .overrideProvider(PrismaService).useValue(prismaMock)
-      .overrideGuard(JwtAuthGuard).useValue(mockJwtGuard)
-      .overrideGuard(RolesGuard).useValue(mockRolesGuard)
+      .overrideProvider(PrismaService)
+      .useValue(prismaMock)
+      .overrideGuard(JwtAuthGuard)
+      .useValue(mockJwtGuard)
+      .overrideGuard(RolesGuard)
+      .useValue(mockRolesGuard)
       .compile();
 
     app = module.createNestApplication();
@@ -73,7 +76,9 @@ describe('WorkOrders — HTTP Contract', () => {
   describe('GET /work-orders', () => {
     it('повертає 200 з paginatedShape', async () => {
       prismaMock.$transaction.mockResolvedValueOnce([[], 0]);
-      const res = await request(app.getHttpServer()).get('/work-orders').query({ page: 1, limit: 20 });
+      const res = await request(app.getHttpServer())
+        .get('/work-orders')
+        .query({ page: 1, limit: 20 });
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
         items: expect.any(Array),
@@ -91,7 +96,7 @@ describe('WorkOrders — HTTP Contract', () => {
   });
 
   describe('POST /work-orders', () => {
-    it('повертає 400 при відсутніх обов\'язкових полях', async () => {
+    it("повертає 400 при відсутніх обов'язкових полях", async () => {
       const res = await request(app.getHttpServer())
         .post('/work-orders')
         .send({ description: 'без vehicleId і counterpartyId' });
@@ -100,9 +105,15 @@ describe('WorkOrders — HTTP Contract', () => {
 
     it('повертає 201 з коректним DTO', async () => {
       prismaMock.workOrder.create.mockResolvedValueOnce({
-        id: 'wo-uuid', number: 'WO-2026-0001', status: 'DRAFT',
-        totalAmount: 0, totalLabor: 0, totalParts: 0, paidAmount: 0,
-        createdAt: new Date(), updatedAt: new Date(),
+        id: 'wo-uuid',
+        number: 'WO-2026-0001',
+        status: 'DRAFT',
+        totalAmount: 0,
+        totalLabor: 0,
+        totalParts: 0,
+        paidAmount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
         vehicle: { make: 'Toyota', model: 'Camry', licensePlate: 'AA1234BB' },
         counterparty: { firstName: 'Іван', lastName: 'Петренко', companyName: null },
         branch: { name: 'Центр' },
@@ -128,14 +139,14 @@ describe('WorkOrders — HTTP Contract', () => {
 
 ### Що перевіряти в contract-тестах
 
-| Endpoint | Тест-кейси |
-|---|---|
-| `GET /work-orders` | 200 з pagination shape; 401 без токена |
-| `POST /work-orders` | 201 + DTO shape; 400 без обов'яз. полів |
-| `PATCH /work-orders/:id/status` | 400 при невалідному FSM-переході |
-| `GET /inventory` | 200 + items[].available присутній |
-| `POST /auth/login` | 200 + `{ accessToken, refreshToken, employee }`; 401 при невірному паролі |
-| `GET /sync/pull` | 200 + `{ records, maxSyncVersion }` shape |
+| Endpoint                        | Тест-кейси                                                                |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `GET /work-orders`              | 200 з pagination shape; 401 без токена                                    |
+| `POST /work-orders`             | 201 + DTO shape; 400 без обов'яз. полів                                   |
+| `PATCH /work-orders/:id/status` | 400 при невалідному FSM-переході                                          |
+| `GET /inventory`                | 200 + items[].available присутній                                         |
+| `POST /auth/login`              | 200 + `{ accessToken, refreshToken, employee }`; 401 при невірному паролі |
+| `GET /sync/pull`                | 200 + `{ records, maxSyncVersion }` shape                                 |
 
 ### Запуск
 
@@ -195,19 +206,25 @@ import * as fc from 'fast-check';
 import { StockMovementType } from '@prisma/client';
 
 function applyMovements(movements: { type: StockMovementType; qty: number }[]) {
-  let quantity = 0; let reserved = 0;
+  let quantity = 0;
+  let reserved = 0;
   for (const { type, qty } of movements) {
     switch (type) {
-      case 'RECEIPT': quantity += qty; break;
+      case 'RECEIPT':
+        quantity += qty;
+        break;
       case 'RESERVATION':
         if (quantity - reserved < qty) return null;
-        reserved += qty; break;
+        reserved += qty;
+        break;
       case 'RESERVATION_RELEASE':
         if (reserved < qty) return null;
-        reserved -= qty; break;
+        reserved -= qty;
+        break;
       case 'WRITEOFF':
         if (quantity - reserved < qty) return null;
-        quantity -= qty; break;
+        quantity -= qty;
+        break;
     }
   }
   return { quantity, reserved, available: quantity - reserved };
@@ -219,12 +236,17 @@ describe('Inventory — balance invariants', () => {
       fc.property(
         fc.array(
           fc.record({
-            type: fc.constantFrom<StockMovementType>('RECEIPT', 'RESERVATION', 'RESERVATION_RELEASE', 'WRITEOFF'),
+            type: fc.constantFrom<StockMovementType>(
+              'RECEIPT',
+              'RESERVATION',
+              'RESERVATION_RELEASE',
+              'WRITEOFF',
+            ),
             qty: fc.integer({ min: 1, max: 100 }),
           }),
           { minLength: 1, maxLength: 20 },
         ),
-        (movements) => {
+        movements => {
           const result = applyMovements(movements);
           if (result === null) return true;
           return result.quantity >= 0 && result.reserved >= 0 && result.available >= 0;
@@ -245,14 +267,16 @@ import * as fc from 'fast-check';
 type TxType = 'CHARGE' | 'PAYMENT' | 'PREPAYMENT' | 'REFUND' | 'CREDIT_NOTE';
 
 function applyTransactions(txs: { type: TxType; amount: number }[]): number {
-  return txs.reduce((balance, { type, amount }) =>
-    type === 'CHARGE' ? balance + amount : balance - amount, 0);
+  return txs.reduce(
+    (balance, { type, amount }) => (type === 'CHARGE' ? balance + amount : balance - amount),
+    0,
+  );
 }
 
 describe('Settlements — balance invariants', () => {
   it('тільки CHARGE збільшує баланс', () => {
     fc.assert(
-      fc.property(fc.float({ min: 0.01, max: 100_000, noNaN: true }), (amount) => {
+      fc.property(fc.float({ min: 0.01, max: 100_000, noNaN: true }), amount => {
         return applyTransactions([{ type: 'CHARGE', amount }]) > 0;
       }),
     );
@@ -275,7 +299,7 @@ describe('Settlements — balance invariants', () => {
     fc.assert(
       fc.property(
         fc.array(fc.float({ min: 0.01, max: 1000, noNaN: true }), { minLength: 1, maxLength: 10 }),
-        (amounts) => {
+        amounts => {
           const total = amounts.reduce((s, a) => s + a, 0);
           const txs = [
             ...amounts.map(amount => ({ type: 'CHARGE' as TxType, amount })),
@@ -317,7 +341,7 @@ describe('Pricing — algorithm invariants', () => {
         fc.constantFrom(0.5, 1, 5, 10, 50, 100),
         (value, r) => {
           const rounded = applyRounding(value, r);
-          return Math.abs(rounded % r) < 0.001 || Math.abs(rounded % r - r) < 0.001;
+          return Math.abs(rounded % r) < 0.001 || Math.abs((rounded % r) - r) < 0.001;
         },
       ),
     );
@@ -373,9 +397,7 @@ export default defineConfig({
     baseURL: 'http://localhost:3001',
     trace: 'on-first-retry',
   },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-  ],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });
 ```
 
@@ -449,31 +471,50 @@ test.describe('Замовлення-наряди', () => {
   });
 
   test('empty state при порожній відповіді API', async ({ page }) => {
-    await page.route('**/work-orders*', route => route.fulfill({
-      status: 200,
-      body: JSON.stringify({ items: [], total: 0, page: 1, limit: 20 }),
-    }));
+    await page.route('**/work-orders*', route =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({ items: [], total: 0, page: 1, limit: 20 }),
+      }),
+    );
     await page.goto('/work-orders');
     await expect(page.locator('[data-empty-state]')).toBeVisible();
   });
 
   test('API mock: WO зі статусом IN_PROGRESS показує кнопку COMPLETED', async ({ page }) => {
-    await page.route('**/work-orders/wo-test-id', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        id: 'wo-test-id', number: 'WO-2026-0001', status: 'IN_PROGRESS',
-        totalAmount: 1500, totalLabor: 1000, totalParts: 500, paidAmount: 0,
-        vehicle: { make: 'Toyota', model: 'Camry', licensePlate: 'AA1234BB', year: 2020 },
-        counterparty: { id: 'c-1', firstName: 'Іван', lastName: 'Петренко', companyName: null, phone: '+380671234567' },
-        branch: { name: 'Центр' },
-        lines: [], parts: [], payments: [],
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    await page.route('**/work-orders/wo-test-id', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'wo-test-id',
+          number: 'WO-2026-0001',
+          status: 'IN_PROGRESS',
+          totalAmount: 1500,
+          totalLabor: 1000,
+          totalParts: 500,
+          paidAmount: 0,
+          vehicle: { make: 'Toyota', model: 'Camry', licensePlate: 'AA1234BB', year: 2020 },
+          counterparty: {
+            id: 'c-1',
+            firstName: 'Іван',
+            lastName: 'Петренко',
+            companyName: null,
+            phone: '+380671234567',
+          },
+          branch: { name: 'Центр' },
+          lines: [],
+          parts: [],
+          payments: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
       }),
-    }));
+    );
     await page.goto('/work-orders/wo-test-id');
-    await expect(page.locator('button:has-text("Виконано"), [data-testid="complete-btn"]'))
-      .toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.locator('button:has-text("Виконано"), [data-testid="complete-btn"]'),
+    ).toBeVisible({ timeout: 5_000 });
   });
 });
 ```
@@ -493,29 +534,46 @@ test.describe('Інвентар', () => {
   });
 
   test('low-stock badge при API-моку', async ({ page }) => {
-    await page.route('**/stock-items*', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        items: [
-          { id: 'si-1', good: { name: 'Масло 5W40', sku: 'OIL-001', unit: 'л' },
-            warehouse: { name: 'Головний склад' }, quantity: 1, reserved: 0, available: 1, minStock: 5 },
-        ],
-        total: 1, page: 1, limit: 50,
+    await page.route('**/stock-items*', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          items: [
+            {
+              id: 'si-1',
+              good: { name: 'Масло 5W40', sku: 'OIL-001', unit: 'л' },
+              warehouse: { name: 'Головний склад' },
+              quantity: 1,
+              reserved: 0,
+              available: 1,
+              minStock: 5,
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 50,
+        }),
       }),
-    }));
+    );
     await page.goto('/inventory');
-    await expect(page.locator('[data-testid="low-stock"], .text-red, [class*="warning"]'))
-      .toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.locator('[data-testid="low-stock"], .text-red, [class*="warning"]'),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test('empty state при порожньому складі', async ({ page }) => {
-    await page.route('**/stock-items*', route => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({ items: [], total: 0, page: 1, limit: 50 }),
-    }));
+    await page.route('**/stock-items*', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [], total: 0, page: 1, limit: 50 }),
+      }),
+    );
     await page.goto('/inventory');
-    await expect(page.locator('[data-empty-state], [data-testid="empty"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-empty-state], [data-testid="empty"]')).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });
 ```
@@ -532,7 +590,9 @@ const PAGES = ['/work-orders', '/inventory', '/crm', '/calendar', '/invoices'];
 test.describe('API error resilience', () => {
   for (const path of PAGES) {
     test(`${path} — показує error state при 500`, async ({ page }) => {
-      await page.route('**/api/**', route => route.fulfill({ status: 500, body: 'Internal Server Error' }));
+      await page.route('**/api/**', route =>
+        route.fulfill({ status: 500, body: 'Internal Server Error' }),
+      );
       await page.goto(path);
       await expect(
         page.locator('[data-error-state], [data-empty-state], [data-testid="error"]'),
@@ -564,8 +624,16 @@ function isIgnored(msg: string): boolean {
 }
 
 const AUTH_PAGES = [
-  '/work-orders', '/calendar', '/crm', '/inventory',
-  '/catalog', '/employees', '/invoices', '/settlements', '/settings', '/dashboard',
+  '/work-orders',
+  '/calendar',
+  '/crm',
+  '/inventory',
+  '/catalog',
+  '/employees',
+  '/invoices',
+  '/settlements',
+  '/settings',
+  '/dashboard',
 ];
 
 const PUBLIC_PAGES = ['/login', '/setup'];
@@ -577,7 +645,8 @@ test.describe('Console errors — авторизовані сторінки', ()
     test(`${route} — немає console.error`, async ({ page }) => {
       const errors: string[] = [];
       page.on('console', msg => {
-        if (msg.type() === 'error' && !isIgnored(msg.text())) errors.push(`[console.error] ${msg.text()}`);
+        if (msg.type() === 'error' && !isIgnored(msg.text()))
+          errors.push(`[console.error] ${msg.text()}`);
       });
       page.on('pageerror', err => {
         if (!isIgnored(err.message)) errors.push(`[pageerror] ${err.message}`);
@@ -594,7 +663,8 @@ test.describe('Console errors — публічні сторінки', () => {
     test(`${route} — немає console.error`, async ({ page }) => {
       const errors: string[] = [];
       page.on('console', msg => {
-        if (msg.type() === 'error' && !isIgnored(msg.text())) errors.push(`[console.error] ${msg.text()}`);
+        if (msg.type() === 'error' && !isIgnored(msg.text()))
+          errors.push(`[console.error] ${msg.text()}`);
       });
       page.on('pageerror', err => {
         if (!isIgnored(err.message)) errors.push(`[pageerror] ${err.message}`);
@@ -621,14 +691,14 @@ test.describe('Next.js error overlay — відсутній', () => {
 
 #### Інтерпретація console errors
 
-| Помилка у console | Що це означає | Severity |
-|---|---|---|
-| `GET /api/xxx 401` | Запит до API до завершення авторизації | HIGH |
-| `GET /api/xxx 400` | Невалідні params — баг у фронт-валідації | HIGH |
-| `GET /api/xxx 500` | Внутрішня помилка сервера | CRITICAL |
-| `GET /api/xxx 404` | Неіснуючий endpoint — розбіжність контракту | HIGH |
-| `Cannot read properties of undefined` | Null-safety проблема у компоненті | MEDIUM |
-| `Hydration failed` | SSR/CSR mismatch | HIGH |
+| Помилка у console                     | Що це означає                               | Severity |
+| ------------------------------------- | ------------------------------------------- | -------- |
+| `GET /api/xxx 401`                    | Запит до API до завершення авторизації      | HIGH     |
+| `GET /api/xxx 400`                    | Невалідні params — баг у фронт-валідації    | HIGH     |
+| `GET /api/xxx 500`                    | Внутрішня помилка сервера                   | CRITICAL |
+| `GET /api/xxx 404`                    | Неіснуючий endpoint — розбіжність контракту | HIGH     |
+| `Cannot read properties of undefined` | Null-safety проблема у компоненті           | MEDIUM   |
+| `Hydration failed`                    | SSR/CSR mismatch                            | HIGH     |
 
 ### Запуск E2E
 
@@ -839,51 +909,62 @@ pnpm --filter @sto/web exec vitest run --reporter=verbose 2>&1 | tail -30
 
 ### WorkOrders
 
-| Функція | Тест-кейс | Очікуваний результат |
-|---|---|---|
-| Створення WO | `create({ vehicleId, counterpartyId, branchId })` | `status = DRAFT`, `number` сформований |
-| DRAFT → IN_PROGRESS | `transition(id, 'IN_PROGRESS')` | RESERVATION для кожної запчастини |
-| IN_PROGRESS → COMPLETED | `transition(id, 'COMPLETED')` | WRITEOFF + RESERVATION_RELEASE + CHARGE в одній tx |
-| Додавання роботи | `addLine(...)` | `line.amount = normoHours * price`; totalLabor перераховано |
-| Soft delete | `remove(id)` | `deletedAt` встановлено |
+| Функція                 | Тест-кейс                                         | Очікуваний результат                                        |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
+| Створення WO            | `create({ vehicleId, counterpartyId, branchId })` | `status = DRAFT`, `number` сформований                      |
+| DRAFT → IN_PROGRESS     | `transition(id, 'IN_PROGRESS')`                   | RESERVATION для кожної запчастини                           |
+| IN_PROGRESS → COMPLETED | `transition(id, 'COMPLETED')`                     | WRITEOFF + RESERVATION_RELEASE + CHARGE в одній tx          |
+| Додавання роботи        | `addLine(...)`                                    | `line.amount = normoHours * price`; totalLabor перераховано |
+| Soft delete             | `remove(id)`                                      | `deletedAt` встановлено                                     |
 
 ```typescript
 it('IN_PROGRESS резервує всі запчастини', async () => {
   prisma.workOrderPart.findMany.mockResolvedValue([
     { id: 'p1', goodId: 'g1', warehouseId: 'w1', quantity: 3, deletedAt: null },
   ]);
-  prisma.stockItem.findFirst.mockResolvedValue({ id: 'si1', quantity: 10, reserved: 0, available: 10 });
+  prisma.stockItem.findFirst.mockResolvedValue({
+    id: 'si1',
+    quantity: 10,
+    reserved: 0,
+    available: 10,
+  });
   prisma.$transaction.mockImplementation(cb => cb(prisma));
   await service.transition(orgId, 'wo1', 'IN_PROGRESS');
-  expect(inventoryService.createMovement).toHaveBeenCalledWith(expect.objectContaining({
-    type: 'RESERVATION', quantity: 3, goodId: 'g1',
-  }));
+  expect(inventoryService.createMovement).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'RESERVATION',
+      quantity: 3,
+      goodId: 'g1',
+    }),
+  );
 });
 ```
 
 ### Inventory
 
-| Функція | Тест-кейс | Очікуваний результат |
-|---|---|---|
-| RECEIPT | qty=10 | `stockItem.quantity += 10` |
-| RESERVATION | qty=3 | `stockItem.reserved += 3`; `available -= 3` |
-| WRITEOFF | qty=2 | `stockItem.quantity -= 2` |
-| TRANSFER | qty=5, toWarehouseId | WRITEOFF source + RECEIPT target |
+| Функція     | Тест-кейс            | Очікуваний результат                        |
+| ----------- | -------------------- | ------------------------------------------- |
+| RECEIPT     | qty=10               | `stockItem.quantity += 10`                  |
+| RESERVATION | qty=3                | `stockItem.reserved += 3`; `available -= 3` |
+| WRITEOFF    | qty=2                | `stockItem.quantity -= 2`                   |
+| TRANSFER    | qty=5, toWarehouseId | WRITEOFF source + RECEIPT target            |
 
 ### Settlements
 
-| Функція | Тест-кейс | Очікуваний результат |
-|---|---|---|
-| CHARGE | amount=1000 | `account.balance += 1000` |
-| PAYMENT | amount=500 | `account.balance -= 500` |
-| Reconciliation | `openingBalance + charges - payments = closingBalance` | математична тотожність |
+| Функція        | Тест-кейс                                              | Очікуваний результат      |
+| -------------- | ------------------------------------------------------ | ------------------------- |
+| CHARGE         | amount=1000                                            | `account.balance += 1000` |
+| PAYMENT        | amount=500                                             | `account.balance -= 500`  |
+| Reconciliation | `openingBalance + charges - payments = closingBalance` | математична тотожність    |
 
 ```typescript
 it('reconciliation formula', () => {
   const txs = [
-    { type: 'CHARGE', amount: 1000 }, { type: 'CHARGE', amount: 500 }, { type: 'PAYMENT', amount: 300 },
+    { type: 'CHARGE', amount: 1000 },
+    { type: 'CHARGE', amount: 500 },
+    { type: 'PAYMENT', amount: 300 },
   ];
-  const closing = txs.reduce((b, t) => t.type === 'CHARGE' ? b + t.amount : b - t.amount, 200);
+  const closing = txs.reduce((b, t) => (t.type === 'CHARGE' ? b + t.amount : b - t.amount), 200);
   expect(closing).toBe(1400);
 });
 ```
@@ -898,36 +979,39 @@ it('reconciliation formula', () => {
 describe('POST /work-orders — негативні кейси', () => {
   it('400 при відсутньому vehicleId', async () => {
     const res = await request(app.getHttpServer())
-      .post('/work-orders').set('Authorization', `Bearer ${token}`)
+      .post('/work-orders')
+      .set('Authorization', `Bearer ${token}`)
       .send({ counterpartyId: 'c-uuid', branchId: 'b-uuid' });
     expect(res.status).toBe(400);
   });
 
   it('400 при некоректному UUID', async () => {
     const res = await request(app.getHttpServer())
-      .post('/work-orders').set('Authorization', `Bearer ${token}`)
+      .post('/work-orders')
+      .set('Authorization', `Bearer ${token}`)
       .send({ vehicleId: 'not-a-uuid', counterpartyId: 'c-uuid', branchId: 'b-uuid' });
     expect(res.status).toBe(400);
   });
 
-  it('400 при від\'ємній кількості', async () => {
+  it("400 при від'ємній кількості", async () => {
     const res = await request(app.getHttpServer())
-      .post('/work-orders/wo-id/parts').set('Authorization', `Bearer ${token}`)
+      .post('/work-orders/wo-id/parts')
+      .set('Authorization', `Bearer ${token}`)
       .send({ goodId: 'g-uuid', warehouseId: 'w-uuid', quantity: -5, price: 100 });
     expect(res.status).toBe(400);
   });
 });
 ```
 
-| Endpoint | Негативний кейс | Очікуваний код |
-|---|---|---|
-| `POST /work-orders` | без `vehicleId` | 400 |
-| `POST /stock-movements` | `quantity = 0` | 400 |
-| `POST /settlements/transactions` | `amount = 0` | 400 |
-| `PATCH /work-orders/:id/status` | невалідний FSM-перехід | 400 |
-| `GET /work-orders/:id` | чужий orgId | 404 |
-| `POST /auth/login` | неправильний пароль | 401 |
-| `POST /auth/refresh` | протухлий токен | 401 |
+| Endpoint                         | Негативний кейс        | Очікуваний код |
+| -------------------------------- | ---------------------- | -------------- |
+| `POST /work-orders`              | без `vehicleId`        | 400            |
+| `POST /stock-movements`          | `quantity = 0`         | 400            |
+| `POST /settlements/transactions` | `amount = 0`           | 400            |
+| `PATCH /work-orders/:id/status`  | невалідний FSM-перехід | 400            |
+| `GET /work-orders/:id`           | чужий orgId            | 404            |
+| `POST /auth/login`               | неправильний пароль    | 401            |
+| `POST /auth/refresh`             | протухлий токен        | 401            |
 
 ### Бізнес-правила
 
@@ -936,14 +1020,26 @@ describe('Inventory — негативні кейси', () => {
   it('RESERVATION: 400 якщо available < qty', async () => {
     stockItem.mockResolvedValue({ quantity: 5, reserved: 3, available: 2 });
     await expect(
-      inventoryService.createMovement({ type: 'RESERVATION', quantity: 5, goodId: 'g1', warehouseId: 'w1', orgId }),
+      inventoryService.createMovement({
+        type: 'RESERVATION',
+        quantity: 5,
+        goodId: 'g1',
+        warehouseId: 'w1',
+        orgId,
+      }),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('WRITEOFF: 400 якщо quantity < qty', async () => {
     stockItem.mockResolvedValue({ quantity: 3, reserved: 0, available: 3 });
     await expect(
-      inventoryService.createMovement({ type: 'WRITEOFF', quantity: 5, goodId: 'g1', warehouseId: 'w1', orgId }),
+      inventoryService.createMovement({
+        type: 'WRITEOFF',
+        quantity: 5,
+        goodId: 'g1',
+        warehouseId: 'w1',
+        orgId,
+      }),
     ).rejects.toThrow(BadRequestException);
   });
 });
@@ -951,14 +1047,17 @@ describe('Inventory — негативні кейси', () => {
 describe('WorkOrder FSM — негативні кейси', () => {
   it('DRAFT → COMPLETED заборонено', async () => {
     workOrder.mockResolvedValue({ status: 'DRAFT' });
-    await expect(service.transition(orgId, 'wo1', 'COMPLETED')).rejects.toThrow(BadRequestException);
+    await expect(service.transition(orgId, 'wo1', 'COMPLETED')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('ARCHIVED → будь-який статус заборонено', async () => {
     workOrder.mockResolvedValue({ status: 'ARCHIVED' });
     for (const status of ['DRAFT', 'ESTIMATE', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']) {
-      await expect(service.transition(orgId, 'wo1', status as WorkOrderStatus))
-        .rejects.toThrow(BadRequestException);
+      await expect(service.transition(orgId, 'wo1', status as WorkOrderStatus)).rejects.toThrow(
+        BadRequestException,
+      );
     }
   });
 });
@@ -982,7 +1081,8 @@ describe('Auth — негативні кейси', () => {
 
   it('401 при протухлому access token', async () => {
     const res = await request(app.getHttpServer())
-      .get('/work-orders').set('Authorization', 'Bearer expired.jwt.token');
+      .get('/work-orders')
+      .set('Authorization', 'Bearer expired.jwt.token');
     expect(res.status).toBe(401);
   });
 });
@@ -1051,7 +1151,9 @@ it('Prisma P2002 → 409 Conflict', async () => {
   prisma.employee.create.mockRejectedValueOnce(
     Object.assign(new Error(), { code: 'P2002', meta: { target: ['login'] } }),
   );
-  const res = await request(app.getHttpServer()).post('/employees').send({ login: 'existing-login' });
+  const res = await request(app.getHttpServer())
+    .post('/employees')
+    .send({ login: 'existing-login' });
   expect(res.status).toBe(409);
 });
 ```
@@ -1061,8 +1163,9 @@ it('Prisma P2002 → 409 Conflict', async () => {
 ```typescript
 it('processor re-throws для BullMQ retry', async () => {
   smsService.send.mockRejectedValueOnce(new Error('Network error'));
-  await expect(processor.handleSmsSend({ phone: '+380...', message: 'test' }))
-    .rejects.toThrow('Network error');
+  await expect(processor.handleSmsSend({ phone: '+380...', message: 'test' })).rejects.toThrow(
+    'Network error',
+  );
 });
 ```
 
@@ -1088,7 +1191,10 @@ grep -rn "findMany(" apps/api/src/modules/ --include="*.service.ts" | grep -v "t
 ## §S Service unit test шаблон (copy-paste)
 
 ```typescript
-// apps/api/src/modules/{domain}/{domain}.spec.ts
+// apps/api/src/modules/{domain}/{domain}.<аспект>.spec.ts
+// ОДИН аспект на файл (fsm, totals, pricing, sort…), НЕ {domain}.spec.ts «на все»:
+// саме з таких файлів виросли 8 монолітів 913–1720 рядків. Спільний DI для 3+
+// файлів -> {domain}.spec-fixture.ts (factory, не const — isolate:false без clearMocks).
 import { Test } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -1113,9 +1219,9 @@ describe('{Domain}Service', () => {
               update: vi.fn(),
               count: vi.fn(),
             },
-            $transaction: vi.fn().mockImplementation((fn) =>
-              typeof fn === 'function' ? fn(prisma) : Promise.all(fn)
-            ),
+            $transaction: vi
+              .fn()
+              .mockImplementation(fn => (typeof fn === 'function' ? fn(prisma) : Promise.all(fn))),
           },
         },
         { provide: InventoryService, useValue: { createMovement: vi.fn() } },
@@ -1130,10 +1236,14 @@ describe('{Domain}Service', () => {
   describe('transition', () => {
     it('кидає BadRequestException при недозволеному FSM-переході', async () => {
       (prisma.workOrder.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
-        id: 'wo-1', orgId: 'org-1', status: 'COMPLETED', deletedAt: null,
+        id: 'wo-1',
+        orgId: 'org-1',
+        status: 'COMPLETED',
+        deletedAt: null,
       });
-      await expect(service.transition('org-1', 'wo-1', 'DRAFT', 'emp-1'))
-        .rejects.toThrow(BadRequestException);
+      await expect(service.transition('org-1', 'wo-1', 'DRAFT', 'emp-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });
