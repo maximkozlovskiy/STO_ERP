@@ -64,6 +64,8 @@ sto-erp/
 
 ## Типовий workflow нової фічі
 
+> Схема обох маршрутів (нова задача / доопрацювання) — [docs/PROCESS.md](docs/PROCESS.md).
+
 > **ПРАВИЛО: план мод обов'язковий перед реалізацією**
 >
 > 1. **Перед** будь-яким новим функціоналом — увійти в план мод (`/plan` або `EnterPlanMode`)
@@ -108,7 +110,7 @@ ExitPlanMode
 | Тип зміни                                | Читати одразу                                 |
 | ---------------------------------------- | --------------------------------------------- |
 | Будь-яка зміна коду                      | `MemoryManual.md` — **першим завжди**         |
-| Зміна `schema.prisma`, нова міграція     | `/sto-database` SKILL.md                      |
+| Зміна `prisma/schema/*.prisma`, міграція | `/sto-database` SKILL.md                      |
 | Новий NestJS модуль / сервіс / контролер | `/sto-backend` SKILL.md + `/sto-dev` SKILL.md |
 | Зміна наявного сервісу чи DTO            | `/sto-dev` SKILL.md (патерни)                 |
 | Нове бізнес-правило агрегату             | `/sto-spec` — BR-ID + аспектний спек + реєстр |
@@ -452,7 +454,7 @@ docker-compose -f docker-compose.dev.yml up -d
 pnpm dev
 # API:    http://localhost:3000/api/docs
 # Web:    http://localhost:3001
-# Mobile: pnpm --filter @sto/mobile start
+# Mobile: pnpm --filter @sto/mobile dev
 # DB:     cd packages/database && pnpm prisma studio
 ```
 

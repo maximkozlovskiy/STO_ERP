@@ -82,6 +82,14 @@ ok=0
 grep -qE "^[[:space:]]*(Tests|Test Files)[[:space:]]+[0-9]+ passed" <<< "$OUT" && ok=1
 grep -qE "^[[:space:]]*[0-9]+ passed \(" <<< "$OUT" && ok=1
 grep -qE "✖ [0-9]+ problems? \(0 errors" <<< "$OUT" && ok=1
+# Turborepo (pnpm run type-check / lint / build): "Tasks:    7 successful, 7 total".
+# Успіх лише коли обидва числа рівні — tsc на успіху мовчить, тож іншої ознаки немає.
+turbo="$(grep -oE "Tasks:[[:space:]]+[0-9]+ successful, [0-9]+ total" <<< "$OUT" | tail -1)"
+if [[ -n "$turbo" ]]; then
+  read -r t_ok t_all <<< "$(grep -oE "[0-9]+" <<< "$turbo" | tr '
+' ' ')"
+  if [[ "$t_ok" == "$t_all" ]]; then ok=1; else fail=1; notes+=("turbo: $t_ok із $t_all задач"); fi
+fi
 
 # flaky не валить вердикт, але МУСИТЬ бути названий — інакше «0 failed»
 # звучить як ідеальний результат, хоча частина тестів пройшла лише з retry.

@@ -270,7 +270,7 @@ export function BarcodeScanner({ onScanned }: Props) {
 - [ ] Timer state persisted via MMKV (survives app background)
 - [ ] Photo upload queued if offline (retry on reconnect)
 - [ ] Works on Android tablets (primary target)
-- [ ] `pnpm --filter @sto/mobile start` works in Expo Go
+- [ ] `pnpm --filter @sto/mobile dev` works in Expo Go
 
 ---
 
@@ -319,7 +319,7 @@ Alert.alert('Підтвердження', 'Ви впевнені, що хоче�
 
 ```powershell
 # Expo Go on Android tablet — easiest setup on Windows
-pnpm --filter @sto/mobile start
+pnpm --filter @sto/mobile dev
 
 # Scan QR code with Expo Go app on tablet
 # Ensure PC and tablet are on same WiFi network

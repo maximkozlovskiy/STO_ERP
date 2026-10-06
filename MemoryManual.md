@@ -57,8 +57,8 @@ python scripts/check-doc-links.py                      # посилання мі
     - деструктуризація у ТІ САМІ імена, інакше правиться кожен it();
     - коментарі перевіряти ОКРЕМО: множини fullName до них сліпі (втрати у 5 із 8 модулів).
 
-  ВІДКРИТЕ: field-encryption.integration.spec залежить від порядку тестів (shuffle дає
-  2 падіння) — передіснуюче, фікс поза обсягом, деталі у docs/GOTCHAS.md.
+  Схема Prisma — БАГАТОФАЙЛОВА: packages/database/prisma/schema/*.prisma (11 файлів).
+  Шляху .../prisma/schema.prisma не існує; детектори в скілах уже перенаправлено.
 ```
 
 Раніше тут лежав журнал на 272 рядки: кожна сесія дописувала свій блок, хоча правило
@@ -128,6 +128,7 @@ python scripts/check-doc-links.py                      # посилання мі
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | API модулі, Prisma моделі, утиліти, sync                                                    |
 | [docs/PATTERNS.md](docs/PATTERNS.md)                 | UI компоненти, hooks, B1-B7, EntityPickerField + Мета-патерни MP-B1..B10/MP-F1..F5          |
 | [docs/BUSINESS-RULES.md](docs/BUSINESS-RULES.md)     | FSM, інвентар, розрахунки, тенант-ізоляція                                                  |
+| [docs/PROCESS.md](docs/PROCESS.md)                   | Схема процесу: нова задача / доопрацювання, що тримається механічно                         |
 | [docs/GOTCHAS.md](docs/GOTCHAS.md)                   | Відомі пастки — читати перед новою фічею                                                    |
 | [docs/GAPS.md](docs/GAPS.md)                         | Реєстр прогалин/ризиків (G1-G15 бізнес, TD1-TD3 тех-борг)                                   |
 | [CHANGELOG.md](CHANGELOG.md)                         | Журнал комітів по фічах                                                                     |

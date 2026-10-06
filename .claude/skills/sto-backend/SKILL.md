@@ -24,7 +24,7 @@ bypassPermissions: true
 1. Read `MemoryManual.md` — current project state, gotchas, recent changes
 2. **Identify the aggregate** being touched (WorkOrder / Invoice / PurchaseOrder / StockDocument / Counterparty / Good / Work / CalendarSlot / StockItem / SettlementAccount) → read its `docs/objects/<entity>.md` dossier — FSM, endpoints, business rules
 3. Read `docs/BUSINESS-RULES.md` — mandatory before writing any service logic (FSM transitions, inventory/settlement singletons)
-4. Read `packages/database/schema.prisma` — know the models
+4. Read `packages/database/prisma/schema/*.prisma` — know the models
 5. Read `sto-dev` — coding standards (TS, NestJS, Prisma patterns) — prevents sto-review findings
 6. Check existing similar module for patterns
 

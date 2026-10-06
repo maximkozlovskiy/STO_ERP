@@ -1,6 +1,6 @@
 # STO ERP — Entity-Relationship Diagram
 
-> Авторитетна візуальна модель БД. Джерело правди — `packages/database/schema.prisma`  
+> Авторитетна візуальна модель БД. Джерело правди — `packages/database/prisma/schema/*.prisma`  
 > Оновлювати синхронно з кожною зміною схеми.
 
 ---
@@ -55,6 +55,7 @@
 ```
 
 > **Ключові правила схеми:**
+>
 > - Кожна таблиця має: `id UUID`, `orgId UUID`, `createdAt`, `updatedAt`, `deletedAt?`, `syncVersion BigInt`
 > - Soft delete скрізь: `deletedAt IS NULL` у всіх запитах
 > - Append-only таблиці (без deletedAt): `StockMovement`, `SettlementTransaction`, `Payment`, `ReconciliationAct`
@@ -511,3 +512,4 @@ erDiagram
     }
 
     Organisation ||-
+```

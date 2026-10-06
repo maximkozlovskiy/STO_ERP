@@ -40,6 +40,10 @@ cat MemoryManual.md | head -50          # стан проєкту
 
 ---
 
+> **Спец-модель.** Інваріанти агрегату й тести, що їх стережуть, — у `docs/objects/<entity>.md`
+> (секція «Аспекти і тести, що їх стережуть»). Зачепив спек-файл → прогнати гейти:
+> `python scripts/check-spec-registry.py --gate-size --gate-registry`. Деталі — `/sto-spec`.
+
 ## Крок 1 — Backend аудит
 
 ### 1.1 N+1 запити
@@ -453,7 +457,7 @@ for d in apps/web/src/components/ui/*/; do grep -rL "memo" "$d"*.tsx 2>/dev/null
 
 ```bash
 grep -rn "where.*status\|where.*completedAt\|where.*branchId\|where.*warehouseId\|where.*type\b" apps/api/src/modules/ --include="*.service.ts" | grep -v spec | head -20
-grep -n "@@index\|@@unique" packages/database/prisma/schema.prisma | head -40
+grep -n "@@index\|@@unique" packages/database/prisma/schema/*.prisma | head -40
 ```
 
 | Таблиця       | Колонки                                    | Тип      |
@@ -479,7 +483,7 @@ docker exec stoerp-postgres-1 psql -U sto -d sto_erp -c "SELECT indexname FROM p
 ```bash
 grep -rn "groupBy\|findMany" apps/api/src/modules/ --include="*.service.ts" -A3 \
   | grep -E "Id: \{ in:|Id: \{ *in:" | grep -v spec | head -20
-grep -n "@@index\|@relation\|model " packages/database/prisma/schema.prisma
+grep -n "@@index\|@relation\|model " packages/database/prisma/schema/*.prisma
 ```
 
 **Особливо небезпечно:** append-only без `deletedAt` (Payment, AuditLog, рухи) — часто немає навіть `(orgId, fk)`. Batched `IN`-груп-бай → org-wide scan.
@@ -491,7 +495,7 @@ grep -n "@@index\|@relation\|model " packages/database/prisma/schema.prisma
 
 ```bash
 grep -rn "\.aggregate(\|\.count(" apps/api/src/modules/dashboard/ apps/api/src/modules/reports/ --include="*.service.ts" -A6 | grep -v spec
-grep -n "@@index" packages/database/prisma/schema.prisma
+grep -n "@@index" packages/database/prisma/schema/*.prisma
 # Для кожного: WHERE = (orgId, type|status: '<літерал>', createdAt-range) БЕЗ owningFk? Чи Є @@index що ПОЧИНАЄТЬСЯ (orgId, <discriminator>, ...)?
 ```
 
@@ -505,7 +509,7 @@ grep -n "@@index" packages/database/prisma/schema.prisma
 ```bash
 grep -rn "async findAll" apps/api/src/modules/ --include="*.service.ts" -A25 | grep -v spec \
   | grep -E "where\.\w+ = |orderBy: \{ createdAt"
-grep -n "model \|@@index\|@@map" packages/database/prisma/schema.prisma
+grep -n "model \|@@index\|@@map" packages/database/prisma/schema/*.prisma
 # payments/supplier-payments/movements/transactions/receipts — теж кандидати, не тільки logs.
 ```
 
@@ -1000,7 +1004,7 @@ git commit -m "perf(optimize): <коротко що виправлено>"
 ### 2026-06-14 — Новий list/report endpoint з date sort без covering index — `findMany({orderBy: createdAt, take})` seqscan коли existing index не покриває WHERE
 
 **Сигнал:** новий endpoint робить `findMany({where: {orgId, [optionalCol1], [createdAt range]}, orderBy: {createdAt}, take: N})` на append-only (StockMovement, AuditLog, Notification, BatchConsumption). Existing `(orgId, warehouseId, createdAt)`, але новий WHERE more permissive (warehouseId optional). warehouseId IS NULL → index не вибирається → seqscan + external sort.
-**Grep:** `findMany.*orderBy.*createdAt` + `take: \d{3,}` + `grep "@@index" packages/database/prisma/schema.prisma`. Якщо найкращий index має >1 col перед `createdAt` що query не фільтрує — гап.
+**Grep:** `findMany.*orderBy.*createdAt` + `take: \d{3,}` + `grep "@@index" packages/database/prisma/schema/*.prisma`. Якщо найкращий index має >1 col перед `createdAt` що query не фільтрує — гап.
 **Причина:** старі індекси під старі endpoint-и; новий звітний з ширшою area.
 **Фікс:** covering `@@index([orgId, sortKey])` для unfiltered + `@@index([orgId, optionalCol, sortKey])` для типового фільтру. Не плодити надлишкові (PG бере prefix). Commit з explain trace.
 **Impact:** take:3000 на 100k-500k рядків: seqscan ~150-300мс → index scan ~5-15мс.

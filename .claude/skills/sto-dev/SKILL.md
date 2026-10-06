@@ -1074,7 +1074,7 @@ const isSoon = diff !== null && diff <= 30;
 
 ### PickerModal — канонічний компонент для вибору зі списку
 
-> **Шлях:** `apps/web/src/components/ui/picker-modal.tsx`. Використовується коли потрібно вибрати одну сутність зі списку з пошуком по реквізитах. Тригер поле — завжди через `EntityPickerField` (§24).
+> **Шлях:** `apps/web/src/components/ui/search-picker-modal.tsx`. Використовується коли потрібно вибрати одну сутність зі списку з пошуком по реквізитах. Тригер поле — завжди через `EntityPickerField` (§24).
 
 ```tsx
 // ✅ Завжди PickerModal для вибору сутності зі списку
@@ -1429,7 +1429,7 @@ tabs={[
 
 - ❌ `maxHeight: '900px'` — magic number; ❌ `transition: 'max-height ...'` без ResizeObserver
 - ✅ Для анімації 0↔контент з close: `outerRef`+`innerRef` + `ResizeObserver` + rAF закриття
-- Приклад: `apps/web/src/app/calendar/page.tsx` (showAdd → formMounted/formVisible)
+- Приклад: `apps/web/src/app/(app)/calendar/page.tsx` (showAdd → formMounted/formVisible)
 
 ---
 

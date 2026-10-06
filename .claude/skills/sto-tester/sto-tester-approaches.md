@@ -329,7 +329,7 @@ grep -n "hasCreds\|parseCreds\|return.*credentials" apps/api/src/modules/**/prov
 
 ```bash
 grep -rn "paymentId.*null\|reconcile\|finalize" apps/api/src/modules/**/*.processor.ts | grep -v spec
-grep -rn "onlinePaymentIntentId\|@unique" packages/database/prisma/schema.prisma | grep -i "payment\|intent\|order"
+grep -rn "onlinePaymentIntentId\|@unique" packages/database/prisma/schema/*.prisma | grep -i "payment\|intent\|order"
 ```
 
 **Фікс:** `@unique` колонка-лінок на джерело (`Payment.onlinePaymentIntentId String? @unique`, additive nullable). У finalize: (1) pre-create `findFirst({orgId,<link>})` — якщо є, лише до-лінковуй; (2) `P2002` з create (гонка) → дістань winner і залінкуй (успіх, не помилка). Тест «create-succeeds-then-link-fails» → assert no second create; mutation-verify вимкнути pre-guard→падає.
@@ -545,7 +545,7 @@ grep -rnE "startAt: \{ (gte|gt):" apps/api/src/modules --include="*.service.ts"
 **Сигнал:** `remove()` master-data (Warehouse/Zone/Employee/Lift) робить `updateMany({deletedAt})` БЕЗ prep-check на активних FK-дітей → parent зникає, діти (StockItem із залишком, Lift у зоні, WorkOrderLine employeeId) вказують на мертвий id. Live: create parent→активну дитину→DELETE parent→204 (мало 400).
 
 ```bash
-grep -rnE "<entity>Id\b" packages/database/prisma/schema.prisma   # моделі з FK на цю сутність
+grep -rnE "<entity>Id\b" packages/database/prisma/schema/*.prisma   # моделі з FK на цю сутність
 ```
 
 **Фікс:** prep-guard `findFirst({where:{<fk>:id,orgId,deletedAt:null,<active-predicate>}})`→`throw BadRequestException(<укр>)` ПЕРЕД soft-delete (не всередині — 400 до мутації). Баланс: `OR:[{quantity:{not:0}},{reserved:{not:0}}]`. Термінальні (ARCHIVED/CANCELLED WO) не блокують (паритет Bug #631). Spec: дитина-`findFirst.mockResolvedValueOnce({id})`→BadRequest+parent.updateMany.not.toHaveBeenCalled; happy null→updateMany; count=0→NotFound.
@@ -581,7 +581,7 @@ grep -rnE "requestedDate|scheduledAt|appointmentDate|plannedAt" apps/api/src/mod
 **Сигнал:** `remove()` перевіряє 2 з N однотипних document-relations; balance-guard (`Number(balance)!==0`) здається універсальним, але DRAFT-документ ще без транзакції → `balance=0` → провалюється крізь усі guard-и → активний документ на soft-deleted parent. Live: create parent→DRAFT-документ→DELETE parent→204 (мало 400).
 
 ```bash
-sed -n '/^model Counterparty /,/^}/p' schema.prisma | grep -E "\[\]"   # усі back-relations
+cat packages/database/prisma/schema/*.prisma | sed -n '/^model Counterparty /,/^}/p' | grep -E "\[\]"   # усі back-relations
 ```
 
 **Фікс:** кожен document-relation (WorkOrder/Invoice/PurchaseOrder/StockDocument/SupplierReturn) має ВЛАСНИЙ count-guard з `status:{notIn:[<фінальні>]}`, НЕ balance. Append-only (Payment/StockMovement) не блокують. Spec: `<rel>.count.mockResolvedValueOnce(1)→BadRequest+updateMany not called`+happy=0+`where.status=notIn`; додати relation.count у prisma-mock.
@@ -1259,7 +1259,7 @@ grep -rn "'COMPLETED', 'INVOICED'" apps/api/src --include="*.ts" | grep -v spec
 git diff HEAD~N HEAD -- "*/*.dto.ts" | grep "^+.*?: " | grep -E "@ApiPropertyOptional"
 ```
 
-**Фікс:** додати поле у local interface (або експортувати у `packages/shared/types.ts`). Regression: `it('edit existing X зберігає <new field>')`.
+**Фікс:** додати поле у local interface (або експортувати у `packages/shared/src/types.ts`). Regression: `it('edit existing X зберігає <new field>')`.
 **Severity:** MEDIUM; HIGH якщо submit-path пише hardcoded default.
 **Де ще:** `CreateXModal`/`EditXModal`/`[id]/PageClient.tsx` з локальним interface; FK з default-value.
 
@@ -1436,7 +1436,7 @@ grep -rnE "(SHAREABLE|EDITABLE|DELETABLE|RESERVATION_ACTIVE)_STATUSES\s*[:=]" ap
 **Сигнал:** `remove()` для `isPrimary/isDefault` не promote-ить наступного sibling → downstream auto-selection повертає неправильні.
 
 ```bash
-grep -rnE "isPrimary\s+Boolean|isDefault\s+Boolean|isMain\s+Boolean" packages/database/prisma/schema.prisma | awk '{print $1}'
+grep -rnE "isPrimary\s+Boolean|isDefault\s+Boolean|isMain\s+Boolean" packages/database/prisma/schema/*.prisma | awk '{print $1}'
 ```
 
 **Фікс:** `$transaction`: soft-delete X; `if(existing.isPrimary)findFirst({<scope>,deletedAt:null,id:{not:id}},orderBy:{createdAt:'asc'})→update({isPrimary:true})`.
@@ -1469,7 +1469,7 @@ grep -rnE "[a-zA-Z]Ref\.current\?\.(focus|select|scrollIntoView|click)" apps/web
 **Сигнал:** `parent.remove()` soft-delete parent, `@unique(FK)` таблиця не soft-deleted → `create()` нового батька→P2002.
 
 ```bash
-grep -rn "@@unique" packages/database/prisma/schema.prisma | grep -v "orgId,"
+grep -rn "@@unique" packages/database/prisma/schema/*.prisma | grep -v "orgId,"
 ```
 
 **Severity:** HIGH.
@@ -1555,7 +1555,7 @@ grep -nE "findFirst.*select:.*{(\s|$)" apps/api/src/modules/<resource>/<resource
 **Сигнал:** DTO `currencyCode:string` (Prisma plain `String`) без `findFirst({orgId,code:dto.currencyCode})` → `'XYZ'` проходить → DB corrupted (`1 000.00 XYZ`). Guard у БОТКИ create+update (PATCH attack).
 
 ```bash
-grep -rnE "String\s*$|String\s+@db\.VarChar" packages/database/prisma/schema.prisma | grep -iE "code|type|status"
+grep -rnE "String\s*$|String\s+@db\.VarChar" packages/database/prisma/schema/*.prisma | grep -iE "code|type|status"
 ```
 
 **Severity:** HIGH. Regression: `POST {code:'INVALID'}→400`.
@@ -1755,7 +1755,7 @@ grep -rn "orderBy.*deletedAt.*['\"]asc['\"]" apps/api/src/modules --include="*.s
 **Сигнал:** `@@unique([orgId,X])` без `deletedAt` partial → `create()` повторний→P2002. `update()` re-check `findFirst({orgId,field,NOT:{id}})` без `deletedAt:null` (для дублю); `restore()` без prep-check active duplicate.
 
 ```bash
-grep -n "@@unique" packages/database/prisma/schema.prisma
+grep -n "@@unique" packages/database/prisma/schema/*.prisma
 grep -rn "CREATE UNIQUE INDEX" packages/database/prisma/migrations/ | grep -v "WHERE"
 ```
 
@@ -1870,7 +1870,7 @@ grep -rnE "quantity:\s*parseFloat\(l\.quantity\)[^*]" apps/web/src/app --include
 **Сигнал:** `schema.prisma` modified без нового SQL у `migrations/` → runtime P2021. tsc+unit green (client з декларативної schema, mocks не б'ють DB).
 
 ```bash
-schema_changes=$(git diff HEAD~5 HEAD --name-only -- "*/schema.prisma"); new_migrations=$(git diff HEAD~5 HEAD --name-only --diff-filter=A -- "*/migrations/"); [ -n "$schema_changes" ] && [ -z "$new_migrations" ] && echo "BUG #220"
+schema_changes=$(git diff HEAD~5 HEAD --name-only -- "*/prisma/schema/*.prisma"); new_migrations=$(git diff HEAD~5 HEAD --name-only --diff-filter=A -- "*/migrations/"); [ -n "$schema_changes" ] && [ -z "$new_migrations" ] && echo "BUG #220"
 ```
 
 Перевіряти: нова model→CREATE TABLE; field→ALTER TABLE ADD COLUMN; `@@index`→CREATE INDEX; `@@unique`→CREATE UNIQUE INDEX. Не покладатись на `prisma migrate dev` (потребує live DB); писати SQL вручну.
@@ -2211,7 +2211,7 @@ grep -rn "coefficient ?? 1\|denominator ?? 1" apps/api/src --include="*.ts"
 **Сигнал:** сутність з `isSystem Boolean` (seed: WorkCategory/GoodCategory/UnitOfMeasure/NotificationTemplate/PaymentMethodConfig/Currency) — `update()` має `if(existing.isSystem && (dto.name!==undefined||dto.parentId!==undefined||dto.code!==undefined))throw`; `remove()`→`if(existing.isSystem)throw`. Косметичні (sortOrder/icon/isActive) дозволені. UI ховає кнопки — backend авторитет (ADMIN curl PATCH/DELETE системну).
 
 ```bash
-grep -rn "isSystem\s*Boolean" packages/database/prisma/schema.prisma
+grep -rn "isSystem\s*Boolean" packages/database/prisma/schema/*.prisma
 grep -rn "isSystem: true" packages/database/prisma/seed.ts   # звірити з grep -rln "existing.isSystem" apps/api/src/modules → різниця=незахищені
 ```
 

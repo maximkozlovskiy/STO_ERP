@@ -329,15 +329,15 @@ syncVersion BigInt    @default(0)
 | Торкаєшся агрегату                          | `docs/objects/<entity>.md` — FSM, endpoints, бізнес-правила, UI файли |
 | Нова сторінка / компонент                   | `docs/GOTCHAS.md` — SSR пастки, auth патерни, UI антипатерни          |
 | Зміна сервісу / FSM / інвентар / розрахунки | `docs/BUSINESS-RULES.md` — інваріанти, singleton-сервіси              |
-| Нова Prisma модель / міграція               | `packages/database/prisma/schema.prisma`                              |
-| Еталон для нової сторінки-списку            | `apps/web/src/app/work-orders/page.tsx`                               |
+| Нова Prisma модель / міграція               | `packages/database/prisma/schema/*.prisma`                            |
+| Еталон для нової сторінки-списку            | `apps/web/src/app/(app)/work-orders/page.tsx`                         |
 
 **Aggregate → dossier lookup:**
 `WorkOrder→docs/objects/work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
 
 **За запитом (не щоразу):**
 
-- `packages/shared/src/types/index.ts` — shared типи
+- `packages/shared/src/types.ts` — shared типи
 - `docs/architecture/` — ADR файли
 - `docs/PATTERNS.md` — B1-B7 universal patterns, EntityPickerField
 - `docs/ARCHITECTURE.md` — всі 41 модель, 28 модулів, singleton сервіси

@@ -42,7 +42,7 @@ apps/web/src/
 │   ├── work-orders/page.tsx    ← ЕТАЛОН списку (читай перед новою сторінкою)
 │   ├── work-orders/[id]/       ← деталі наряду
 │   ├── employees/page.tsx
-│   ├── crm/page.tsx
+│   ├── counterparties/page.tsx
 │   ├── invoices/page.tsx
 │   ├── purchase-orders/page.tsx
 │   ├── stock-documents/page.tsx
@@ -103,7 +103,7 @@ qc.invalidateQueries({ queryKey: ['resource'] });
 
 ## Список сторінки — повний шаблон
 
-> **Еталон:** `apps/web/src/app/work-orders/page.tsx` — читай перед написанням будь-якого списку.
+> **Еталон:** `apps/web/src/app/(app)/work-orders/page.tsx` — читай перед написанням будь-якого списку.
 
 ```typescript
 'use client';
@@ -719,7 +719,7 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 ## Стандарт layout довідника (ОБОВ'ЯЗКОВО дотримуватись)
 
-> **Еталон:** `apps/web/src/app/(app)/crm/page.tsx`  
+> **Еталон:** `apps/web/src/app/(app)/counterparties/page.tsx`  
 > Всі довідникові сторінки (список + фільтри + таблиця) МАЮТЬ виглядати однаково.  
 > Якщо правиш існуючу сторінку — звір з цим стандартом і виправ відступи.
 
@@ -750,7 +750,7 @@ import { myResourceKeys } from '@/hooks/api/useMyResource';
 
 ## Стандарт таблиці (ОБОВ'ЯЗКОВО)
 
-> **Еталон:** `apps/web/src/app/(app)/crm/page.tsx` + `employees/page.tsx`
+> **Еталон:** `apps/web/src/app/(app)/counterparties/page.tsx` + `employees/page.tsx`
 
 ### Контейнер таблиці
 
@@ -952,7 +952,7 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 
 **Де застосовано:**
 
-- `crm/page.tsx` — редагування контрагента → вкладка "Авто клієнта"
+- `counterparties/page.tsx` — редагування контрагента → вкладка "Авто клієнта"
 - `employees/page.tsx` — редагування співробітника → вкладки "Зони/Підйомники", "Категорії", "Філії"
 
 ---

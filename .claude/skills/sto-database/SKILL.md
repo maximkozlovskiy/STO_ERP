@@ -24,7 +24,7 @@ bypassPermissions: true
 1. Read `MemoryManual.md` — current project state, gotchas, last migration
 2. **Identify the aggregate** being touched → read its `docs/objects/<entity>.md` dossier — existing Prisma model, relations, indexes, business rules
 3. Read `docs/BUSINESS-RULES.md` — FSM rules, append-only tables (StockMovement, SettlementTransaction have NO deletedAt), soft-delete rules
-4. Read `packages/database/schema.prisma` — know current state
+4. Read `packages/database/prisma/schema/*.prisma` — know current state
 5. Identify which Bounded Context you're modifying
 
 **Aggregate → dossier lookup:**
@@ -33,7 +33,7 @@ bypassPermissions: true
 **Red flags from dossiers to check before migrating:**
 
 - Models without `deletedAt`: SettlementAccount, SettlementTransaction, StockMovement, Payment, WorkOrderLineEmployee — never add soft-delete to these
-- GIN trgm indexes (Good.name/sku, Counterparty.firstName/lastName) are manual migrations — do NOT add to schema.prisma
+- GIN trgm indexes (Good.name/sku, Counterparty.firstName/lastName) are manual migrations — do NOT add to the schema files
 
 ---
 
@@ -75,7 +75,10 @@ model WorkOrder {
 ## Core Schema Template
 
 ```prisma
-// packages/database/schema.prisma
+// packages/database/prisma/schema/*.prisma — схема БАГАТОФАЙЛОВА (prisma.config.ts):
+// 00_config · 01_enums · 02_infrastructure · 03_employees · 04_crm · 05_catalog · 06_work-orders
+// 07_inventory · 08_finance · 09_settings · 10_scheduling-sync-misc. Нова модель — у файл свого домену.
+// Нижче — ШАБЛОН полів і неймінгу, а не актуальний вміст (актуальний — лише у файлах).
 
 generator client {
   provider = "prisma-client-js"

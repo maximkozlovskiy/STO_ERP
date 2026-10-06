@@ -75,6 +75,29 @@ cat .claude/memory/MEMORY.md
 
 ---
 
+## Спец-модель: тест шукається через дос'є (ОБОВ'ЯЗКОВО)
+
+> Повна інструкція — `/sto-spec`. Тут лише те, що потрібно на цьому кроці.
+
+1. **Знайти тест.** Агрегат → `docs/objects/<entity>.md` → секція «Аспекти і тести, що їх
+   стережуть». Правиш один аспект — ганяєш ОДИН файл:
+   `cd apps/api && npx vitest run src/modules/<mod>/<mod>.<аспект>.spec.ts`
+2. **Додати тест.** В аспектний файл `<mod>.<аспект>.spec.ts`; `<mod>.service.spec.ts` НЕ
+   створювати. Нове правило → `BR-XXX-NNN` у дос'є. Новий спек-файл → рядок у реєстрі дос'є.
+3. **Після будь-якої зміни тестів — три гейти** (втрата кейсів · моноліти · реєстр):
+
+   ```bash
+   cd apps/api && npx vitest run --reporter=default --reporter=json --outputFile=.vitest-report.json
+   python ../../scripts/check-spec-registry.py --from-report .vitest-report.json
+   ```
+
+   Гейт A каже «зник кейс» → тест утрачено: повернути його, а НЕ оновлювати baseline, щоб
+   позеленити. Baseline оновлюється лише коли кейс додано/перейменовано свідомо:
+   `python ../../scripts/spec-baseline.py .vitest-report.json --out test-baseline.json`
+   — і його diff іде в той самий коміт.
+
+4. **Вердикт** — лише `scripts/verdict.sh`; **цифра** — лише `scripts/measure.sh`.
+
 ## Крок 1 — Визначення блоку для реалізації
 
 ### Якщо аргумент переданий (`/sto-phase B12` або `/sto-phase F9`)
@@ -108,7 +131,7 @@ cat .claude/memory/MEMORY.md
 Швидкий чеклист:
 
 ```
-1. Прочитай schema.prisma — перевір чи модель вже існує
+1. Прочитай `packages/database/prisma/schema/*.prisma` (схема розбита на 11 файлів за доменами) — перевір чи модель вже існує
 2. Додай модель з обов'язковими полями (id UUID, orgId, createdAt, updatedAt, deletedAt, syncVersion)
 3. pnpm --filter @sto/database prisma migrate dev --name <block-name>
 4. ПЕРЕВІР: grep "DROP INDEX" migration.sql — якщо є GIN-індекси, видали DROP команди

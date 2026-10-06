@@ -9,7 +9,7 @@
 
 ### Schema
 
-**Файл:** `packages/database/prisma/schema.prisma`
+**Файл:** `packages/database/prisma/schema/*.prisma`
 
 Головний опис структури бази даних. Містить:
 

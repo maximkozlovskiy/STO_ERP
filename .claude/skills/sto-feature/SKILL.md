@@ -34,6 +34,10 @@ model: sonnet
 **Aggregate → dossier lookup:**
 `WorkOrder→work-order.md` | `Invoice→invoice.md` | `PurchaseOrder→purchase-order.md` | `StockDocument→stock-document.md` | `Counterparty→counterparty.md` | `Good→good.md` | `Work/WorkCategory→work.md` | `CalendarSlot→calendar.md` | `StockItem/StockMovement→inventory.md` | `SettlementAccount/Transaction→settlements.md`
 
+> **Спец-модель.** У плані кожна backend-задача називає аспектний спек-файл і BR-ID, які зміняться. Інваріанти агрегату й тести, що їх стережуть, — у `docs/objects/<entity>.md`
+> (секція «Аспекти і тести, що їх стережуть»). Зачепив спек-файл → прогнати гейти:
+> `python scripts/check-spec-registry.py --gate-size --gate-registry`. Деталі — `/sto-spec`.
+
 ## Output Format
 
 When planning a feature, produce all sections below. Be specific about file names, endpoint paths, and DB changes.

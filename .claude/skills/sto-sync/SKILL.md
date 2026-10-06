@@ -46,6 +46,10 @@ git diff HEAD --name-only | head -30
 
 ---
 
+> **Спец-модель.** Інваріанти агрегату й тести, що їх стережуть, — у `docs/objects/<entity>.md`
+> (секція «Аспекти і тести, що їх стережуть»). Зачепив спек-файл → прогнати гейти:
+> `python scripts/check-spec-registry.py --gate-size --gate-registry`. Деталі — `/sto-spec`.
+
 ## Крок 1 — Direction 1: Бек → Фронт (відсутній UI)
 
 ```bash
