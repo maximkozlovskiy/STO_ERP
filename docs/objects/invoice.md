@@ -218,9 +218,9 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 
 Правило без unit-тесту:
 
-- BR-INV-016 — FK `ON DELETE SET NULL` на `Payment.bankAccountId`/`cashRegisterId`: властивість
-  схеми БД, unit-тестом із моком Prisma не перевіряється; потрібен integration-тест на живій БД
-  (integration, пише головний агент).
+- Дію `ON DELETE SET NULL` на `Payment.bankAccountId`/`cashRegisterId` стереже integration-спек
+  `apps/api/src/prisma/schema-integrity.integration.spec.ts` (читає `pg_constraint` живої БД; без
+  БД кейс пропускається). Сам hard-delete рахунку чи каси з наявним платежем не відтворюється.
 
 Web-половина правила про підсумки (прев'ю «Разом» у `InvoiceCreateModal`: сума `priceWithVat`
 рядків з API, для незбереженого рядка — `quantity × unitPrice`) тесту не має: розрахунок живе в

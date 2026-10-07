@@ -95,12 +95,14 @@ describe('BankStatementProvidersController', () => {
         ],
       );
 
+    // guards: BR-BANK-015
     it('read + pull-now доступні ACCOUNTANT (list/verify/branchConfigs/pullNow)', () => {
       for (const m of ['list', 'verify', 'branchConfigs', 'pullNow']) {
         expect(rolesOf(m)).toEqual(expect.arrayContaining(['OWNER', 'ADMIN', 'ACCOUNTANT']));
       }
     });
 
+    // guards: BR-BANK-015
     it('write (upsert/activate) — лише OWNER/ADMIN, БЕЗ ACCOUNTANT', () => {
       for (const m of ['upsert', 'activate']) {
         expect(rolesOf(m)).toEqual(['OWNER', 'ADMIN']);

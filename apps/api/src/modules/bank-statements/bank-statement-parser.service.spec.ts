@@ -41,6 +41,7 @@ describe('BankStatementParserService.parseRows — CSV', () => {
     service = new BankStatementParserService();
   });
 
+  // guards: BR-BANK-006
   it('UA-число «1 250,00» + дата DD.MM.YYYY → RawTx з amount 1250 і UTC-північ', async () => {
     // Сума «1 250,00» містить кому-десяткову → мусить бути у лапках, інакше CSV розіб'є на колонки.
     const csv =
@@ -84,6 +85,7 @@ describe('BankStatementParserService.parseRows — CSV', () => {
     expect(rows[0]!.operationDate.toISOString()).toBe('2026-03-05T00:00:00.000Z');
   });
 
+  // guards: BR-BANK-003
   it('РЕГРЕС: неіснуюча дата 31.02.2026 НЕ rollover у березень — рядок відкидається', async () => {
     // 31.02 → JS Date перекотив би у 03.03; parseDate тепер повертає null → рядок пропускається
     // (немає валідної дати). Раніше створювалась би транзакція з зіпсованою operationDate.
@@ -97,6 +99,7 @@ describe('BankStatementParserService.parseRows — CSV', () => {
     expect(rows[0]!.operationDate.toISOString()).toBe('2026-03-15T00:00:00.000Z');
   });
 
+  // guards: BR-BANK-003
   it('РЕГРЕС: неіснуюча ISO-дата 2026-02-31 НЕ rollover — рядок відкидається', async () => {
     // ISO-гілка раніше НЕ мала rollover-guard (на відміну від DD.MM.YYYY): new Date('2026-02-31')
     // перекочувало б у 03-03 → зіпсована operationDate (визначає курс для amountBase). Тепер null.

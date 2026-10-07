@@ -13,6 +13,7 @@ const APPEND_ONLY = new Set(['payment', 'settlementTransaction', 'stockMovement'
 describe('report-registry цілісність', () => {
   const ORG = 'org-1';
 
+  // guards: BR-RPT-001
   it('усі 9 сутностей присутні', () => {
     expect(Object.keys(REGISTRY).sort()).toEqual(
       [
@@ -29,6 +30,7 @@ describe('report-registry цілісність', () => {
     );
   });
 
+  // guards: BR-RPT-007
   it('hasSoftDelete узгоджений з profile (APPEND_ONLY → hasSoftDelete:false)', () => {
     for (const [key, e] of Object.entries(REGISTRY)) {
       if (APPEND_ONLY.has(key)) {
@@ -41,6 +43,7 @@ describe('report-registry цілісність', () => {
     }
   });
 
+  // guards: BR-RPT-007
   it('append-only сутність: buildQuery НЕ інжектить deletedAt у корінь', () => {
     for (const key of APPEND_ONLY) {
       const q = buildQuery({ entity: key, columns: [], groupBy: [] }, ORG);
@@ -49,6 +52,7 @@ describe('report-registry цілісність', () => {
     }
   });
 
+  // guards: BR-RPT-007
   it('FULL сутність: buildQuery інжектить deletedAt:null', () => {
     const q = buildQuery({ entity: 'invoice', columns: [], groupBy: [] }, ORG);
     expect(q.args.where).toMatchObject({ orgId: ORG, deletedAt: null });
@@ -86,5 +90,33 @@ describe('report-registry цілісність', () => {
     const qty = sm.fields.find(f => f.key === 'quantity')!;
     expect(qty.signedByType).toBe('type');
     expect(sm.fields.some(f => f.key === qty.signedByType)).toBe(true);
+  });
+
+  // guards: BR-RPT-006
+  it('кожна з 9 сутностей: orgId викликача стоїть у корені where', () => {
+    for (const key of Object.keys(REGISTRY)) {
+      const q = buildQuery({ entity: key, columns: [], groupBy: [] }, 'org-caller');
+      expect((q.args.where as Record<string, unknown>).orgId, key).toBe('org-caller');
+    }
+  });
+
+  // guards: BR-RPT-006, BR-RPT-007
+  it('фільтр по будь-якому полю реєстру не перезаписує orgId і deletedAt кореня', () => {
+    for (const e of Object.values(REGISTRY)) {
+      for (const f of e.fields.filter(x => x.filterable)) {
+        const where = buildQuery(
+          {
+            entity: e.key,
+            columns: [],
+            groupBy: [],
+            filters: [{ field: f.key, op: 'isNull', value: true }],
+          },
+          ORG,
+        ).args.where as Record<string, unknown>;
+        expect(where.orgId, `${e.key}.${f.key} orgId`).toBe(ORG);
+        expect('deletedAt' in where, `${e.key}.${f.key} deletedAt`).toBe(e.hasSoftDelete);
+        if (e.hasSoftDelete) expect(where.deletedAt, `${e.key}.${f.key}`).toBeNull();
+      }
+    }
   });
 });

@@ -57,6 +57,7 @@ describe('PayrollService.preview', () => {
     service = makeService(m);
   });
 
+  // guards: BR-PAYR-004
   it('агрегує виробіток і рахує accrued за rateScheme', async () => {
     m.prisma.$queryRaw.mockResolvedValueOnce([
       {
@@ -75,6 +76,7 @@ describe('PayrollService.preview', () => {
     expect(res.totalAccrued).toBe(2000);
   });
 
+  // guards: BR-PAYR-007
   it('невалідна rateScheme → accrued 0, rateSchemeType=unknown', async () => {
     m.prisma.$queryRaw.mockResolvedValueOnce([
       {
@@ -92,12 +94,14 @@ describe('PayrollService.preview', () => {
     expect(res.lines[0].rateSchemeType).toBe('unknown');
   });
 
+  // guards: BR-PAYR-002
   it('from > to → BadRequest', async () => {
     await expect(service.preview(ORG, '2026-09-30', '2026-09-01')).rejects.toThrow(
       BadRequestException,
     );
   });
 
+  // guards: BR-PAYR-003
   it('branchId не належить org → 404', async () => {
     m.prisma.garageBranch.findFirst.mockResolvedValueOnce(null);
     await expect(service.preview(ORG, '2026-09-01', '2026-09-30', 'bad-branch')).rejects.toThrow(
@@ -114,6 +118,7 @@ describe('PayrollService.compute — FSM', () => {
     service = makeService(m);
   });
 
+  // guards: BR-PAYR-009
   it('не-DRAFT → BadRequest (не рахуємо)', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({
       id: PID,
@@ -131,6 +136,7 @@ describe('PayrollService.compute — FSM', () => {
     await expect(service.compute(ORG, PID)).rejects.toThrow(NotFoundException);
   });
 
+  // guards: BR-PAYR-009
   it('DRAFT → фіксує lines у транзакції (claim + createMany)', async () => {
     m.prisma.payrollPeriod.findFirst
       .mockResolvedValueOnce({
@@ -180,6 +186,7 @@ describe('PayrollService.compute — FSM', () => {
     );
   });
 
+  // guards: BR-PAYR-009
   it('DRAFT → фіксує розшифровку по нарядах (snapshot номера/авто)', async () => {
     m.prisma.payrollPeriod.findFirst
       .mockResolvedValueOnce({
@@ -333,6 +340,7 @@ describe('PayrollService.compute — FSM', () => {
     expect(byId['wo-plate']).toBe('BC5678HK'); // лише plate
   });
 
+  // guards: BR-PAYR-009
   it('кілька співробітників — розшифровка не «протікає» між рядками (правильний payrollLineId)', async () => {
     m.prisma.payrollPeriod.findFirst
       .mockResolvedValueOnce({
@@ -462,6 +470,7 @@ describe('PayrollService.compute — FSM', () => {
     );
   });
 
+  // guards: BR-PAYR-009
   it('claim програв гонку (count=0) → BadRequest', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({
       id: PID,
@@ -483,11 +492,13 @@ describe('PayrollService.pay — FSM', () => {
     service = makeService(m);
   });
 
+  // guards: BR-PAYR-010
   it('не-COMPUTED → BadRequest', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ id: PID, status: 'DRAFT' });
     await expect(service.pay(ORG, PID)).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-PAYR-010
   it('COMPUTED → PAID (updateMany claim + paidAmount=accrued)', async () => {
     m.prisma.payrollPeriod.findFirst
       .mockResolvedValueOnce({ id: PID, status: 'COMPUTED' })
@@ -512,6 +523,7 @@ describe('PayrollService.pay — FSM', () => {
     expect(m.tx.$executeRaw).toHaveBeenCalled();
   });
 
+  // guards: BR-PAYR-011
   it('cashRegisterId → cash-out OUT/PAYROLL по кожному співробітнику (amount>0)', async () => {
     m.prisma.payrollPeriod.findFirst
       .mockResolvedValueOnce({ id: PID, status: 'COMPUTED' })
@@ -552,6 +564,7 @@ describe('PayrollService.pay — FSM', () => {
     expect(firstTx).toBe(m.tx); // ЄДИНА транзакція — cash-out бачить paidAmount claim
   });
 
+  // guards: BR-PAYR-011
   it('overdraft на N-му співробітнику → весь період відкат (createOperation throw пропагується, не проковтнутий)', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ id: PID, status: 'COMPUTED' });
     m.prisma.payrollLine.findMany.mockResolvedValueOnce([
@@ -579,12 +592,14 @@ describe('PayrollService.remove — guard', () => {
     service = makeService(m);
   });
 
+  // guards: BR-PAYR-012
   it('PAID не видаляється → BadRequest', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'PAID' });
     await expect(service.remove(ORG, PID)).rejects.toThrow(BadRequestException);
     expect(m.prisma.payrollPeriod.updateMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAYR-012
   it('COMPUTED видаляється (ще не виплачено) → soft-delete', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'COMPUTED' });
     await service.remove(ORG, PID, 'user-1');
@@ -594,6 +609,7 @@ describe('PayrollService.remove — guard', () => {
     });
   });
 
+  // guards: BR-PAYR-012
   it('DRAFT → soft-delete', async () => {
     m.prisma.payrollPeriod.findFirst.mockResolvedValueOnce({ status: 'DRAFT' });
     await service.remove(ORG, PID, 'user-1');
@@ -765,6 +781,7 @@ describe('PayrollService.findAll — пагінація + фільтр стат�
     expect(res.limit).toBe(20);
   });
 
+  // guards: BR-PAYR-013
   it('фільтр статусу попадає у where ОБОХ запитів (findMany + count)', async () => {
     await service.findAll(ORG, 1, 20, 'PAID');
     const findArgs = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
@@ -774,6 +791,7 @@ describe('PayrollService.findAll — пагінація + фільтр стат�
     expect(countArgs.where).toEqual(findArgs.where);
   });
 
+  // guards: BR-PAYR-013
   it('без статусу → where лише tenant + soft-delete (без status)', async () => {
     await service.findAll(ORG);
     const findArgs = m.prisma.payrollPeriod.findMany.mock.calls[0][0];
@@ -781,6 +799,7 @@ describe('PayrollService.findAll — пагінація + фільтр стат�
     expect(findArgs.where).not.toHaveProperty('status');
   });
 
+  // guards: BR-PAYR-013
   it('tenant isolation + soft delete: кожен запит фільтрується по orgId і deletedAt=null', async () => {
     await service.findAll(ORG, 3, 50, 'DRAFT');
     for (const call of [

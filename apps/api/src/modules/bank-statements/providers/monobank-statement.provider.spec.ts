@@ -20,6 +20,7 @@ describe('MonobankStatementProvider', () => {
     provider = new MonobankStatementProvider(client as unknown as MonoStatementClient);
   });
 
+  // guards: BR-BANK-013
   it('MONEY-CRITICAL: amount у мінор-одиницях ÷100 (15000 → 150.00)', async () => {
     client.fetchStatements.mockResolvedValue([
       { id: 'm1', time: 1757060000, amount: 15000, comment: 'оплата' },
@@ -31,6 +32,7 @@ describe('MonobankStatementProvider', () => {
     expect(rows[0].purpose).toBe('оплата');
   });
 
+  // guards: BR-BANK-013
   it('MONEY-CRITICAL: credit-межа minor=1 → 0.01 проходить (не губимо копійку)', async () => {
     // Найменша можлива вхідна проводка: 1 копійка. Фільтр minor>0 → проходить; ÷100 → 0.01.
     client.fetchStatements.mockResolvedValue([{ id: 'penny', time: 1757060000, amount: 1 }]);
@@ -59,6 +61,7 @@ describe('MonobankStatementProvider', () => {
     expect(rows.map(r => r.externalId)).toEqual(['ok']);
   });
 
+  // guards: BR-BANK-013
   it('credit-фільтр: amount≤0 (debit від’ємний / нуль) → skip', async () => {
     client.fetchStatements.mockResolvedValue([
       { id: 'in', time: 1757060000, amount: 5000 }, // ✓ вхідний

@@ -76,6 +76,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     });
   });
 
+  // guards: BR-CASH-005
   it('нефіскальна каса → операція без зміни (cashShiftId=null)', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -96,6 +97,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     );
   });
 
+  // guards: BR-CASH-010
   it('мультивалюта: UAH-каса → amountBase=amount, rateUsed=1 (базова)', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -123,6 +125,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     );
   });
 
+  // guards: BR-CASH-010
   it('мультивалюта: USD-каса → amountBase = amount×rate (з конвертації)', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -147,6 +150,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     );
   });
 
+  // guards: BR-CASH-010
   it('мультивалюта: немає курсу на дату → 400 (resolveBaseConversion кидає), операція не створюється', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -168,6 +172,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-005
   it('фіскальна каса без відкритої зміни → BadRequest', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -186,6 +191,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-005
   it('фіскальна каса з відкритою зміною → cashShiftId проставлено', async () => {
     // OUT: findFirst викликається двічі (register-guard + getBalance.initialBalance) → mockResolvedValue.
     m.prisma.cashRegister.findFirst.mockResolvedValue({
@@ -206,6 +212,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     );
   });
 
+  // guards: BR-CASH-003
   it('каса не належить org → 404', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce(null);
     await expect(
@@ -218,6 +225,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     ).rejects.toThrow(NotFoundException);
   });
 
+  // guards: BR-CASH-004
   it('amount ≤ 0 → BadRequest', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -252,6 +260,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     ).rejects.toThrow(NotFoundException);
   });
 
+  // guards: BR-CASH-007
   it('тип↔напрям: OUT + стаття EXPENSE → ок', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValue({
       id: REG,
@@ -270,6 +279,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     expect(m.prisma.cashOperation.create).toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-007
   it('тип↔напрям: OUT + стаття INCOME → 400 (для видачі оберіть статтю витрат)', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -289,6 +299,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-007
   it('тип↔напрям: IN + стаття INCOME → ок; IN + EXPENSE → 400', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValue({ id: REG, isFiscal: false, branchId: 'b1' });
     m.prisma.expenseCategory.findFirst.mockResolvedValueOnce({ type: 'INCOME', isActive: true });
@@ -314,6 +325,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
   });
 
   // Bug #735: вимкнена стаття (isActive=false) не приймається для НОВОЇ операції.
+  // guards: BR-CASH-007
   it('вимкнена стаття (isActive=false) → 400 «Стаття вимкнена»', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValue({
       id: REG,
@@ -334,6 +346,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-011
   it('зовнішній tx → без власного $transaction', async () => {
     m.prisma.cashRegister.findFirst.mockResolvedValueOnce({
       id: REG,
@@ -357,6 +370,7 @@ describe('CashService.createOperation — єдина точка руху', () =>
 });
 
 describe('CashService.createManual — EXPENSE вимагає статтю', () => {
+  // guards: BR-CASH-008
   it('EXPENSE без expenseCategoryId → BadRequest', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -396,6 +410,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     });
   };
 
+  // guards: BR-CASH-006
   it('OUT перевищує залишок → 400 «Недостатньо готівки», операція не створюється', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -411,6 +426,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-006
   it('OUT рівно на залишок → проходить (баланс → 0)', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -424,6 +440,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     expect(m.prisma.cashOperation.create).toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-006
   it('копійкова нестача (баланс 100.00, OUT 100.01) → 400 (толеранс −0.001 не пропускає)', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -439,6 +456,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-006
   it('float-дрейф (баланс 0.30, OUT 0.30) → проходить (толеранс поглинає IEEE-754)', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -453,6 +471,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     expect(m.prisma.cashOperation.create).toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-006
   it('IN не перевіряється залишком (готівка додається навіть при 0)', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -466,6 +485,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     expect(m.prisma.cashOperation.create).toHaveBeenCalled();
   });
 
+  // guards: BR-CASH-006
   it('multi-OUT в одній зовнішній tx: другий OUT бачить списане першим → 400', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -525,6 +545,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
     ).rejects.toThrow(/Недостатньо готівки/);
   });
 
+  // guards: BR-CASH-011
   it('без-tx шлях → Serializable транзакція', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -543,6 +564,7 @@ describe('CashService.createOperation — overdraft-guard (OUT не нижче 0
 });
 
 describe('CashService.getBalance — initial + Σ(sign)', () => {
+  // guards: BR-CASH-009
   it('balance = initialBalance + IN − OUT', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -554,6 +576,7 @@ describe('CashService.getBalance — initial + Σ(sign)', () => {
     expect(balance).toBe(2800); // 1000 + 3000 − 1200
   });
 
+  // guards: BR-CASH-009
   it('каса не знайдена → 404', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -561,6 +584,7 @@ describe('CashService.getBalance — initial + Σ(sign)', () => {
     await expect(service.getBalance(ORG, REG)).rejects.toThrow(NotFoundException);
   });
 
+  // guards: BR-CASH-003
   it('агрегати балансу scoped по orgId (tenant-isolation — guard не тече між org)', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -576,6 +600,7 @@ describe('CashService.getBalance — initial + Σ(sign)', () => {
 describe('CashService.getBalances — пакетний баланс (perf: 1 groupBy замість 3×N)', () => {
   const REG2 = '33333333-3333-4333-8333-333333333333';
 
+  // guards: BR-CASH-003, BR-CASH-009
   it('семантика ІДЕНТИЧНА getBalance: initial + Σ(IN) − Σ(OUT) на реєстр, один groupBy', async () => {
     const m = makeMocks();
     const service = makeService(m);
@@ -602,6 +627,7 @@ describe('CashService.getBalances — пакетний баланс (perf: 1 gro
     });
   });
 
+  // guards: BR-CASH-009
   it('каса без операцій → чистий initialBalance', async () => {
     const m = makeMocks();
     const service = makeService(m);

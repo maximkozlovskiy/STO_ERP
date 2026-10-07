@@ -75,6 +75,7 @@ describe('BankReconciliationService.resolveBatch', () => {
     service = build(prisma, makeExchange(), makePayments());
   });
 
+  // guards: BR-BANK-004, BR-BANK-006
   it('IBAN exact-1 → matched confidence 1.0 reason iban', async () => {
     prisma.counterparty.findMany.mockResolvedValueOnce([CP('cp-1', { iban: 'UA123456789' })]);
     const txs: RawTx[] = [
@@ -88,6 +89,7 @@ describe('BankReconciliationService.resolveBatch', () => {
     expect(m.reason).toBe('iban');
   });
 
+  // guards: BR-BANK-005
   it('IBAN >1 → ambiguous з кандидатами', async () => {
     prisma.counterparty.findMany.mockResolvedValueOnce([
       CP('cp-1', { iban: 'UA999' }),
@@ -102,6 +104,7 @@ describe('BankReconciliationService.resolveBatch', () => {
     expect(m.candidates).toHaveLength(2);
   });
 
+  // guards: BR-BANK-004
   it('EDRPOU exact-1 → matched confidence 0.9 reason edrpou', async () => {
     // Транзакція без IBAN → iban-findMany взагалі не викликається (service гейтить по uniqueIbans).
     // Єдиний counterparty.findMany — edrpou lookup.
@@ -117,6 +120,7 @@ describe('BankReconciliationService.resolveBatch', () => {
     expect(m.reason).toBe('edrpou');
   });
 
+  // guards: BR-BANK-004
   it('purpose → INVOICE match confidence 0.7 reason purpose', async () => {
     prisma.invoice.findMany.mockResolvedValueOnce([
       {
@@ -139,6 +143,7 @@ describe('BankReconciliationService.resolveBatch', () => {
     expect(m.reason).toBe('purpose');
   });
 
+  // guards: BR-BANK-004
   it('нічого не збіглось → notFound', async () => {
     const txs: RawTx[] = [
       { externalId: 'e1', operationDate: new Date(), amount: 100, purpose: 'просто переказ' },
@@ -168,6 +173,7 @@ describe('BankReconciliationService.resolveBatch', () => {
 });
 
 describe('BankReconciliationService.applyImport — дедуп', () => {
+  // guards: BR-BANK-002
   it('createMany зі skipDuplicates; skipped = rows - created', async () => {
     const prisma = makePrisma();
     prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'cur-1' });
@@ -234,6 +240,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     return { prisma, payments, service };
   }
 
+  // guards: BR-BANK-008
   it('SERVICE → settlementType PAYMENT у payments.create', async () => {
     const { payments, service } = setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' });
@@ -244,6 +251,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(dto.sourceType).toBe('BANK_ACCOUNT');
   });
 
+  // guards: BR-BANK-008
   it('PREPAYMENT → settlementType PREPAYMENT', async () => {
     const { payments, service } = setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'PREPAYMENT' });
@@ -251,6 +259,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(dto.settlementType).toBe('PREPAYMENT');
   });
 
+  // guards: BR-BANK-008
   it('REFUND → settlementType REFUND', async () => {
     const { payments, service } = setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'REFUND' });
@@ -258,6 +267,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(dto.settlementType).toBe('REFUND');
   });
 
+  // guards: BR-BANK-007
   it('подвійний match → CAS count 0 → Conflict', async () => {
     const { prisma, payments, service } = setupMatch();
     prisma.bankTransaction.updateMany.mockResolvedValueOnce({ count: 0 }); // CAS не захопив
@@ -268,6 +278,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(payments.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-009
   it('payments.create кинув → відкат status=UNMATCHED, помилка проброшена', async () => {
     const { prisma, payments, service } = setupMatch();
     payments.create.mockRejectedValueOnce(new Error('currency mismatch'));
@@ -281,6 +292,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(rollbackCall).toBeDefined();
   });
 
+  // guards: BR-BANK-008
   it('INVOICE → settlementType PAYMENT + invoiceId переданий у payments.create; сума=amount tx', async () => {
     const INV_ID = '33333333-3333-4333-8333-333333333333';
     const { prisma, payments, service } = setupMatch();
@@ -298,6 +310,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(dto.amount).toBe(500);
   });
 
+  // guards: BR-BANK-010
   it('INVOICE без invoiceId → BadRequest, payments.create НЕ викликаний, CAS не чіпається', async () => {
     const { prisma, payments, service } = setupMatch();
     await expect(
@@ -307,6 +320,7 @@ describe('BankReconciliationService.matchTransaction', () => {
     expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-010, BR-BANK-016
   it('невалідний контрагент (не в org) → NotFound, CAS не чіпається', async () => {
     const { prisma, payments, service } = setupMatch();
     prisma.counterparty.findFirst.mockResolvedValueOnce(null);
@@ -319,6 +333,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 });
 
 describe('BankReconciliationService.previewImport — дедуп по externalId', () => {
+  // guards: BR-BANK-002
   it('уже імпортований externalId → matchStatus=duplicate (перекриває авто-матч)', async () => {
     const prisma = makePrisma();
     prisma.counterparty.findMany.mockResolvedValue([]);
@@ -338,6 +353,7 @@ describe('BankReconciliationService.previewImport — дедуп по externalId
 });
 
 describe('BankReconciliationService.applyImport — amountBase + невалідний рахунок', () => {
+  // guards: BR-BANK-016
   it('невідомий bankAccountId → NotFound (до транзакції)', async () => {
     const prisma = makePrisma();
     prisma.bankAccount.findFirst.mockResolvedValue(null);
@@ -351,6 +367,7 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-001
   it('amountBase рахується через resolveBaseConversion по валюті рахунку', async () => {
     const prisma = makePrisma();
     prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'usd' });
@@ -386,6 +403,7 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
   // РЕГРЕС (date-rollover клас, Cycle-3): operationDate у public POST import/apply — лише @IsString.
   // Без guard `new Date('2026-02-31')` тихо перекочувало у 03-02 → неправильний курс для amountBase
   // (money-critical), а 'garbage' → Invalid Date → падіння на @db.Date. Тепер → 400, БЕЗ $transaction.
+  // guards: BR-BANK-003
   it.each(['2026-02-31', '2025-02-29', 'garbage', '31.02.2026', ''])(
     'невалідна operationDate «%s» → 400 (до транзакції, без тихого спотворення amountBase)',
     async bad => {

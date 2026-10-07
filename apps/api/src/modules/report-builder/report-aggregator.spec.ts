@@ -59,6 +59,7 @@ describe('report-aggregator', () => {
     ]);
   });
 
+  // guards: BR-RPT-015
   it('плоский режим склеює ІДЕНТИЧНІ рядки в 1 з сумою (mergeDetailRows)', () => {
     // 3 рядки з однаковим good.name → 1 merged-рядок, amount підсумовано, __mergedCount=3.
     const rows = [
@@ -134,6 +135,7 @@ describe('report-aggregator', () => {
     expect(r.tree[0].value).toBe('2026-09-03'); // value — день, не timestamp
   });
 
+  // guards: BR-RPT-010
   it('date-групування — KYIV-день, не UTC (регресія: нічні операції не «стрибають»)', () => {
     // 04.09.2026 00:30 Kyiv (літо EEST = UTC+3) → 03.09.2026 21:30 UTC.
     // Без Kyiv-конверсії потрапляло б у бакет '2026-09-03' → зсув фінансового звіту.
@@ -156,6 +158,7 @@ describe('report-aggregator', () => {
     expect(buckets['2026-09-03']).toBeUndefined(); // жоден Kyiv-день 03.09 у датасеті
   });
 
+  // guards: BR-RPT-010
   it('date-групування — зимовий час (EET = UTC+2), межа доби Kyiv', () => {
     // 15.01.2026 00:30 Kyiv (зима EET = UTC+2) → 14.01.2026 22:30 UTC.
     // Kyiv-YMD → '2026-01-15'; UTC-slice повертав би '2026-01-14'.
@@ -215,6 +218,7 @@ describe('report-aggregator', () => {
     expect(brakes.count).toBe(2);
   });
 
+  // guards: BR-RPT-013
   it('grandTotals — незалежний прохід (== Σ листків для SUM)', () => {
     const rows = [part({ cp: 'А', amount: 100 }), part({ cp: 'Б', amount: 250 })];
     const r = aggregate(
@@ -230,6 +234,7 @@ describe('report-aggregator', () => {
     expect(r.grandTotals.SUM_amount).toBe(350);
   });
 
+  // guards: BR-RPT-011
   it('недозволена агрегація для поля → BadRequestException', () => {
     // price у workOrderPart має лише AVG/MIN/MAX (не SUM)
     expect(() =>
@@ -331,6 +336,7 @@ describe('report-aggregator', () => {
     expect(r.grandTotals.SUM_quantity).toBe(10);
   });
 
+  // guards: BR-RPT-014
   it('Bug #619: WRITEOFF з випадково додатним raw теж стає негативним (backstop)', () => {
     const sm = getEntity('stockMovement');
     const rows = [
@@ -345,6 +351,7 @@ describe('report-aggregator', () => {
     expect(r.grandTotals.SUM_quantity).toBe(7);
   });
 
+  // guards: BR-RPT-014
   it('Bug #619: групування по type — RESERVATION/RESERVATION_RELEASE бакети мають SUM=0', () => {
     const sm = getEntity('stockMovement');
     const rows = [
@@ -363,5 +370,54 @@ describe('report-aggregator', () => {
     expect(buckets.RESERVATION).toBe(0); // всі значення null → sum=0
     expect(buckets.RESERVATION_RELEASE).toBe(0);
     expect(r.grandTotals.SUM_quantity).toBe(10);
+  });
+
+  // guards: BR-RPT-002
+  it('невідоме поле в aggregations або groupBy → BadRequestException', () => {
+    expect(() =>
+      aggregate(
+        [part({})],
+        { groupBy: [], aggregations: [{ field: 'secretField', agg: 'SUM' }] },
+        woPart,
+      ),
+    ).toThrow(BadRequestException);
+    expect(() => aggregate([part({})], { groupBy: ['secretField'] }, woPart)).toThrow(
+      BadRequestException,
+    );
+  });
+
+  // guards: BR-RPT-008
+  it('truncated: 5000 рядків і більше → true, 4999 → false', () => {
+    const rows = Array.from({ length: 5000 }, () => ({ amount: 1 }));
+    expect(aggregate(rows, { groupBy: [] }, woPart).truncated).toBe(true);
+    expect(aggregate(rows.slice(0, 4999), { groupBy: [] }, woPart).truncated).toBe(false);
+  });
+
+  // guards: BR-RPT-013
+  it('Σ листкових SUM == загальний підсумок на 2 рівнях; AVG загальний — по рядках, не середнє груп', () => {
+    const rows = [
+      part({ cp: 'А', goodName: 'Гальма', amount: 100 }),
+      part({ cp: 'А', goodName: 'Гальма', amount: 50 }),
+      part({ cp: 'А', goodName: 'Масло', amount: 30 }),
+      part({ cp: 'Б', goodName: 'Фільтр', amount: 20 }),
+    ];
+    const r = aggregate(
+      rows,
+      {
+        groupBy: ['workOrder.counterparty.companyName', 'good.name'],
+        aggregations: [
+          { field: 'amount', agg: 'SUM' },
+          { field: 'amount', agg: 'AVG' },
+        ],
+      },
+      woPart,
+    );
+    const leaves = r.tree.flatMap(n => n.children);
+    expect(leaves).toHaveLength(3);
+    expect(leaves.reduce((s, n) => s + (n.aggregates.SUM_amount as number), 0)).toBe(200);
+    expect(r.tree.reduce((s, n) => s + (n.aggregates.SUM_amount as number), 0)).toBe(200);
+    expect(r.grandTotals.SUM_amount).toBe(200);
+    // AVG: 200 / 4 рядки = 50; середнє двох груп верхнього рівня було б (60 + 20) / 2 = 40.
+    expect(r.grandTotals.AVG_amount).toBe(50);
   });
 });

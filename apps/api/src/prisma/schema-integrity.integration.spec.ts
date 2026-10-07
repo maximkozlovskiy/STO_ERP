@@ -222,4 +222,24 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     const missing = ['pg_trgm', 'btree_gist'].filter(e => !present.has(e));
     expect(missing, 'Втрачено PG-розширення — trgm/exclusion індекси не збудуються').toEqual([]);
   });
+
+  // guards: BR-INV-016
+  it('джерело платежу: FK payments.bankAccountId / cashRegisterId — ON DELETE SET NULL', async () => {
+    if (!dbAvailable) return;
+    // confdeltype: 'n' = SET NULL, 'r' = RESTRICT, 'c' = CASCADE, 'a' = NO ACTION.
+    // SET NULL означає: hard-delete рахунку чи каси не забирає з собою платіж і не блокується —
+    // платіж лишається, зникає лише посилання на джерело коштів. Борг від нього не залежить.
+    const rows = await raw.$queryRawUnsafe<{ column: string; onDelete: string }[]>(
+      `SELECT a.attname AS "column", c.confdeltype::text AS "onDelete"
+         FROM pg_constraint c
+         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+        WHERE c.conrelid = 'payments'::regclass AND c.contype = 'f'
+          AND a.attname IN ('bankAccountId', 'cashRegisterId')
+        ORDER BY a.attname`,
+    );
+    expect(rows).toEqual([
+      { column: 'bankAccountId', onDelete: 'n' },
+      { column: 'cashRegisterId', onDelete: 'n' },
+    ]);
+  });
 });

@@ -595,6 +595,32 @@
    "BankAccounts — HTTP Contract POST /bank-accounts — IBAN валідація повертає 400 коли IBAN відсутній",
    "BankAccounts — HTTP Contract POST /bank-accounts — IBAN валідація повертає 400 при невалідному IBAN (не UA / неправильна довжина)"
   ],
+  "apps/api/src/modules/bank-statements/bank-reconciliation.auto-match.spec.ts": [
+   "BankReconciliationService.resolveBatch — tenant-фільтр resolveBatch: контрагенти, рахунки-фактури й наряди шукаються лише у своїй orgId і невидалені",
+   "BankReconciliationService.resolveBatch — пріоритет каскаду і неоднозначність IBAN має пріоритет над ЄДРПОУ: рядок з обома ознаками → контрагент за IBAN, confidence 1",
+   "BankReconciliationService.resolveBatch — пріоритет каскаду і неоднозначність purpose → наряд (WO-…) → matched SERVICE confidence 0.7, без invoiceId",
+   "BankReconciliationService.resolveBatch — пріоритет каскаду і неоднозначність ЄДРПОУ >1 → ambiguous з кандидатами, reason edrpou (контрагент не вгадується)",
+   "BankReconciliationService.resolveBatch — пріоритет каскаду і неоднозначність неоднозначний IBAN зупиняє каскад: однозначний ЄДРПОУ того ж рядка його НЕ розв’язує"
+  ],
+  "apps/api/src/modules/bank-statements/bank-reconciliation.import.spec.ts": [
+   "BankReconciliationService.applyImport — tenant-фільтр applyImport: банківський рахунок шукається у своїй orgId і лише невидалений",
+   "BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN createMany викликається зі skipDuplicates: true — повторний імпорт не дублює рядок",
+   "BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN payerIban зберігається нормалізованим (UPPERCASE, без пробілів); порожній → null",
+   "BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN імпорт лише кладе рядки у staging: Payment НЕ створюється",
+   "BankReconciliationService.previewImport — межі дедуп-перевірки наявні externalId шукаються лише у своєму рахунку своєї організації"
+  ],
+  "apps/api/src/modules/bank-statements/bank-reconciliation.posting.spec.ts": [
+   "BankReconciliationService.ignoreTransaction UNMATCHED → IGNORED з причиною через CAS (where status=UNMATCHED, paymentId=null); Payment НЕ створюється",
+   "BankReconciliationService.ignoreTransaction рядка не існує (або чужа організація) → 404",
+   "BankReconciliationService.ignoreTransaction рядок уже рознесений або проігнорований (CAS count 0, рядок існує) → 409",
+   "BankReconciliationService.list — tenant-фільтр list: вибірка і лічильник фільтруються по orgId і deletedAt=null (+ статус із запиту)",
+   "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку INVOICE з рахунком-фактурою поза організацією/видаленим → 404, CAS не чіпається",
+   "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку tenant: контрагент і рахунок-фактура перевіряються у межах orgId і лише невидалені",
+   "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку відкат після збою платежу — умовний: лише MATCHED без paymentId → UNMATCHED, контрагент і тип очищено",
+   "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку захоплення рядка — CAS: where status=UNMATCHED і paymentId=null; data MATCHED + контрагент + тип",
+   "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку платіж створюється на рахунок рядка, а його id лінкується у paymentId рядка",
+   "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку рядка не існує (або чужа організація) → 404, payments.create НЕ викликаний"
+  ],
   "apps/api/src/modules/bank-statements/bank-reconciliation.service.spec.ts": [
    "BankReconciliationService.applyImport — amountBase + невалідний рахунок amountBase рахується через resolveBaseConversion по валюті рахунку",
    "BankReconciliationService.applyImport — amountBase + невалідний рахунок валідний повний ISO (toISOString upstream) — парситься, amountBase рахується",
@@ -679,6 +705,27 @@
    "BankStatementPullScheduler onModuleinit без reschedule не викликається окремо: reschedule видаляє лише свій org-key",
    "BankStatementPullScheduler reschedule clamp: <15 → 15, >1440 → 1440",
    "BankStatementPullScheduler rescheduleForOrg: видаляє старий repeatable + re-add з новим інтервалом"
+  ],
+  "apps/api/src/modules/bank-statements/bank-statement.dto.spec.ts": [
+   "ApplyImportDto — межі імпорту 1000 рядків за запит проходить, 1001 — відхиляється (rows.arrayMaxSize)",
+   "ApplyImportDto — межі імпорту bankAccountId не UUID → відхиляється",
+   "ApplyImportDto — межі імпорту рядок без externalId або без дати операції → відхиляється",
+   "ApplyImportDto — межі імпорту сума рядка -150 → відхиляється (мінімум 0.01)",
+   "ApplyImportDto — межі імпорту сума рядка 0 → відхиляється (мінімум 0.01)",
+   "ApplyImportDto — межі імпорту сума рядка 0.009 → відхиляється (мінімум 0.01)",
+   "ApplyImportDto — межі імпорту сума рядка 0.01 (одна копійка) проходить",
+   "MatchTransactionDto / IgnoreTransactionDto тип рознесення поза переліком → відхиляється; кожен дозволений тип проходить",
+   "MatchTransactionDto / IgnoreTransactionDto ігнорування без причини → відхиляється"
+  ],
+  "apps/api/src/modules/bank-statements/bank-statements.controller.spec.ts": [
+   "BankStatementsController — доступ apply — рівно OWNER / ADMIN / ACCOUNTANT",
+   "BankStatementsController — доступ ignore — рівно OWNER / ADMIN / ACCOUNTANT",
+   "BankStatementsController — доступ list — рівно OWNER / ADMIN / ACCOUNTANT",
+   "BankStatementsController — доступ match — рівно OWNER / ADMIN / ACCOUNTANT",
+   "BankStatementsController — доступ preview — рівно OWNER / ADMIN / ACCOUNTANT",
+   "BankStatementsController — доступ rawPreview — рівно OWNER / ADMIN / ACCOUNTANT",
+   "BankStatementsController — доступ жоден метод-маршрут контролера не лишився поза переліком цього спеку",
+   "BankStatementsController — доступ контролер закритий JwtAuthGuard + RolesGuard (без них @Roles нічого не обмежує)"
   ],
   "apps/api/src/modules/bank-statements/providers/mono-statement.client.spec.ts": [
    "MonoStatementClient SSRF: приватний apiUrl → кидає, fetch не викликається",
@@ -959,6 +1006,43 @@
    "CashRegistersService — assertFiscalProvider (привʼязка каси до ПРРО) без fiscalProvider (fallback per-branch) → assertFiscalProvider пропускає, конфіг не читає",
    "CashRegistersService — assertFiscalProvider (привʼязка каси до ПРРО) валідний провайдер із кредами → create проходить + привʼязку записано"
   ],
+  "apps/api/src/modules/cash/cash.access.spec.ts": [
+   "CashRegistersController — ролі доступу до каси balance — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST",
+   "CashRegistersController — ролі доступу до каси create каси — лише OWNER і ADMIN",
+   "CashRegistersController — ролі доступу до каси findAll — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST",
+   "CashRegistersController — ролі доступу до каси operations — перегляд: OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST",
+   "CashRegistersController — ролі доступу до каси remove каси — лише OWNER і ADMIN",
+   "CashRegistersController — ролі доступу до каси update каси — лише OWNER і ADMIN",
+   "CashRegistersController — ролі доступу до каси картку однієї каси (findOne) відкривають OWNER, ADMIN, ACCOUNTANT — без приймальника",
+   "CashRegistersController — ролі доступу до каси ручну операцію (внести/видати) проводять лише OWNER, ADMIN, ACCOUNTANT — без приймальника"
+  ],
+  "apps/api/src/modules/cash/cash.operation-record.spec.ts": [
+   "CashService — прив’язка операції до документа createManual: автор = користувач запиту; документ і співробітник не задаються",
+   "CashService — прив’язка операції до документа documentType/documentId/counterpartyId/employeeId/notes/createdBy пишуться як передані",
+   "CashService — прив’язка операції до документа непередані поля прив’язки пишуться як null",
+   "CashService — стаття руху коштів createManual: EXPENSE без статті → 400 «Для витрати вкажіть статтю витрат», касу не читаємо",
+   "CashService — стаття руху коштів createManual: інша причина (MANUAL_OUT) без статті → проходить",
+   "CashService — стаття руху коштів без статті операція проходить, статтю не шукаємо, expenseCategoryId = null",
+   "CashService — стаття руху коштів стаття не знайдена → 404 «Статтю не знайдено» (не 404 каси), нічого не пишемо",
+   "CashService.createOperation — аудит автора немає → в аудит нічого не пишеться",
+   "CashService.createOperation — аудит збій аудиту не валить операцію — вона вже записана",
+   "CashService.createOperation — аудит є автор → запис CREATE в аудит із напрямом, сумою і причиною",
+   "CashService.createOperation — зміна фіскальної каси без відкритої зміни → 400 з підказкою відкрити зміну",
+   "CashService.createOperation — зміна фіскальної каси шукає ВІДКРИТУ невидалену зміну саме цієї каси в цій організації",
+   "CashService.createOperation — конкурентний конфлікт P2034 (serialization failure) → 400 «Каса зайнята паралельною операцією»",
+   "CashService.createOperation — конкурентний конфлікт зовнішній tx: каса, баланс і запис ідуть через НЬОГО, а не через this.prisma",
+   "CashService.createOperation — конкурентний конфлікт інша помилка БД не маскується під 400 — летить як є",
+   "CashService.createOperation — сума операції знак несе direction: OUT пишеться з ДОДАТНОЮ сумою",
+   "CashService.createOperation — сума операції сума Infinity → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
+   "CashService.createOperation — сума операції сума NaN → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
+   "CashService.createOperation — сума операції сума від’ємна → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
+   "CashService.createOperation — сума операції сума менша за пів копійки (округлюється до 0) → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
+   "CashService.createOperation — сума операції сума мінус копійка → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
+   "CashService.createOperation — сума операції сума округлюється до копійки ДО запису й конвертації (10.126 → 10.13)",
+   "CashService.listOperations — історія операцій запит понад стелю (10000) обрізається до 500; менший ліміт (20) лишається",
+   "CashService.listOperations — історія операцій найновіші першими, за замовчуванням не більше 100 рядків",
+   "CashService.listOperations — історія операцій рядок історії: числа — number, дата — ISO, назва статті — з довідника"
+  ],
   "apps/api/src/modules/cash/cash.service.spec.ts": [
    "CashService.createManual — EXPENSE вимагає статтю EXPENSE без expenseCategoryId → BadRequest",
    "CashService.createOperation — overdraft-guard (OUT не нижче 0) IN не перевіряється залишком (готівка додається навіть при 0)",
@@ -988,6 +1072,18 @@
    "CashService.getBalances — пакетний баланс (perf: 1 groupBy замість 3×N) каса без операцій → чистий initialBalance",
    "CashService.getBalances — пакетний баланс (perf: 1 groupBy замість 3×N) пустий вхід → 0 запитів, пуста мапа",
    "CashService.getBalances — пакетний баланс (perf: 1 groupBy замість 3×N) семантика ІДЕНТИЧНА getBalance: initial + Σ(IN) − Σ(OUT) на реєстр, один groupBy"
+  ],
+  "apps/api/src/modules/cash/cash.single-writer.spec.ts": [
+   "Cash — єдиний писар руху готівки (статичний сторож) журнал append-only: у коді api немає зміни чи видалення CashOperation",
+   "Cash — єдиний писар руху готівки (статичний сторож) сторож справді обходить код: файлів сотні, серед них викликачі каси",
+   "Cash — єдиний писар руху готівки (статичний сторож) у CashOperation пише лише CashService.createOperation — один create на весь api"
+  ],
+  "apps/api/src/modules/cash/cash.tenant.spec.ts": [
+   "CashService — ізоляція організацій (where/data несуть orgId) createOperation шукає касу за id + orgId серед невидалених",
+   "CashService — ізоляція організацій (where/data несуть orgId) getBalance шукає касу за id + orgId серед невидалених",
+   "CashService — ізоляція організацій (where/data несуть orgId) listOperations фільтрує історію за orgId і касою",
+   "CashService — ізоляція організацій (where/data несуть orgId) операція пишеться з orgId викликача і в касу, знайдену в цій організації",
+   "CashService — ізоляція організацій (where/data несуть orgId) стаття шукається за id + orgId серед невидалених"
   ],
   "apps/api/src/modules/comments/comments.service.spec.ts": [
    "CommentsService create — cross-tenant FK guard поліморфної сутності FK guard читає батька у СВОЇЙ org і не видаленого",
@@ -2491,18 +2587,74 @@
    "ProviderConfigService upsertConfig (creds write-only merge) view повертає hasCredentials, НЕ сирі credentials",
    "ProviderConfigService upsertConfig (creds write-only merge) нові непорожні поля мерджаться у наявні; порожнє не затирає"
   ],
+  "apps/api/src/modules/payroll/payroll.access.spec.ts": [
+   "PayrollController — ролі доступу compute — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
+   "PayrollController — ролі доступу create — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
+   "PayrollController — ролі доступу findAll — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
+   "PayrollController — ролі доступу findOne — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
+   "PayrollController — ролі доступу pay — лише OWNER, ADMIN (бухгалтер не виплачує і не видаляє)",
+   "PayrollController — ролі доступу preview — OWNER, ADMIN, ACCOUNTANT (перегляд, створення, розрахунок)",
+   "PayrollController — ролі доступу remove — лише OWNER, ADMIN (бухгалтер не виплачує і не видаляє)",
+   "PayrollController — ролі доступу жоден маршрут не відкритий MECHANIC чи RECEPTIONIST і жоден не лишився без @Roles"
+  ],
   "apps/api/src/modules/payroll/payroll.calculator.spec.ts": [
    "computeAccrued fixed_plus_bonus з нульовим виробітком → лише фікс",
+   "computeAccrued fixed_plus_bonus: відʼємна база не зменшує фіксовану частину",
+   "computeAccrued fixed_plus_bonus: сума фіксу й бонусу округлюється до копійки один раз",
    "computeAccrued fixed_plus_bonus: фікс + % від суми",
+   "computeAccrued per_normo_hour не залежить від суми робіт, percent_normo — від нормо-годин",
    "computeAccrued per_normo_hour: ставка × нормо-години",
    "computeAccrued percent_normo: % від суми робіт",
    "computeAccrued відʼємний/нульовий виробіток → 0 (clamp)",
+   "computeAccrued відʼємні нормо-години рахуються як 0 (per_normo_hour не дає мінуса)",
    "computeAccrued невалідна схема → 0",
    "computeAccrued округлення до копійки (half-away-from-zero)",
+   "computeAccrued рівно пів копійки округлюється від нуля: 0.5 год × 0.25 грн = 0.125 → 0.13",
    "parseRateScheme fixed_plus_bonus валідний",
    "parseRateScheme per_normo_hour валідний",
    "parseRateScheme percent_normo валідний",
    "parseRateScheme сміття/невідомий тип/нечислові params → null"
+  ],
+  "apps/api/src/modules/payroll/payroll.fsm.spec.ts": [
+   "PayrollService — підсумки відомості «нараховано» і «виплачено» відомості = сума рядків, округлена до копійки (0.10 + 0.20 = 0.30)",
+   "PayrollService — підсумки відомості підсумок попереднього розрахунку = сума нарахувань рядків, округлена до копійки",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок жодної завершеної роботи за період → відомість усе одно стає COMPUTED, без рядків",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок знімок рядка: співробітник, тип схеми, база, нормо-години, кількість робіт і нараховане",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок перехід фіксує статус COMPUTED, час і автора розрахунку",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок програна гонка за розрахунок → 400 з текстом, рядки не чіпаються",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок рядок на кожного співробітника з виробітком — по одному, у порядку агрегату",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок статус CANCELLED не розраховується повторно → 400, нічого не читається й не пишеться",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок статус COMPUTED не розраховується повторно → 400, нічого не читається й не пишеться",
+   "PayrollService.compute — DRAFT → COMPUTED і знімок статус PAID не розраховується повторно → 400, нічого не читається й не пишеться",
+   "PayrollService.create — відомість народжується чернеткою створює DRAFT без рядків: дати як задано, без філії — branchId null",
+   "PayrollService.pay — COMPUTED → PAID виплачене := нараховане — для рядків САМЕ цієї відомості цієї організації",
+   "PayrollService.pay — COMPUTED → PAID перехід фіксує статус PAID, час і автора виплати — умовно, лише з COMPUTED",
+   "PayrollService.pay — COMPUTED → PAID програна гонка за виплату → 400 з текстом; суми не проставляються, каса не чіпається",
+   "PayrollService.pay — COMPUTED → PAID статус CANCELLED не виплачується → 400, жодного запису (PAID — захист від подвійної виплати)",
+   "PayrollService.pay — COMPUTED → PAID статус DRAFT не виплачується → 400, жодного запису (PAID — захист від подвійної виплати)",
+   "PayrollService.pay — COMPUTED → PAID статус PAID не виплачується → 400, жодного запису (PAID — захист від подвійної виплати)",
+   "PayrollService.pay — каса без каси — лише фіксація виплати: касових операцій немає, хоч нарахування є",
+   "PayrollService.pay — каса з касою — кожному рівно його нараховане (Decimal → число), від імені того, хто виплачує",
+   "PayrollService.pay — каса касова видача йде ПІСЛЯ захоплення статусу, у тій самій транзакції",
+   "PayrollService.remove — що можна відкинути CANCELLED видаляється так само, як DRAFT і COMPUTED (м’яко)",
+   "PayrollService.remove — що можна відкинути видалення не чіпає рядків і розшифровки — лише позначка на самій відомості",
+   "PayrollService.remove — що можна відкинути виплачена відомість → 400 з текстом «Не можна видалити виплачений період»",
+   "PayrollService.remove — що можна відкинути відомості немає → 404, нічого не позначається"
+  ],
+  "apps/api/src/modules/payroll/payroll.period-bounds.spec.ts": [
+   "PayrollService — межі періоду за Києвом compute бере межі зі збереженого періоду і дає ТІ САМІ межі обом запитам (рядки + розшифровка)",
+   "PayrollService — межі періоду за Києвом зимовий час (UTC+2): 01.01–31.01 → від 31.12 22:00:00.000Z до 31.01 21:59:59.999Z",
+   "PayrollService — межі періоду за Києвом літній час (UTC+3): 01.09–30.09 → від 31.08 21:00:00.000Z до 30.09 20:59:59.999Z",
+   "PayrollService — межі періоду за Києвом межі порівнюються з датою завершення наряду (completedAt), обидві включно",
+   "PayrollService — межі періоду за Києвом один день (from = to) — це повна київська доба, а не порожній проміжок",
+   "PayrollService — межі періоду за Києвом період через перехід на літній час (березень): початок за зимовим зсувом, кінець за літнім",
+   "PayrollService — межі періоду за Києвом попередній розрахунок з початком пізніше кінця → 400 з текстом, агрегат не запускається",
+   "PayrollService — межі періоду за Києвом створення періоду з початком пізніше кінця → 400, запис не створюється",
+   "PayrollService — філія періоду compute застосовує філію ЗБЕРЕЖЕНОГО періоду до рядків і до розшифровки",
+   "PayrollService — філія періоду без філії — фільтра по філії в агрегаті немає (усі філії організації)",
+   "PayrollService — філія періоду з філією — агрегат отримує умову по branchId наряду",
+   "PayrollService — філія періоду попередній розрахунок по філії, якої немає в організації → 404, агрегат не запускається",
+   "PayrollService — філія періоду створення періоду по філії, якої немає в організації → 404, запис не створюється"
   ],
   "apps/api/src/modules/payroll/payroll.service.spec.ts": [
    "PayrollService.compute — FSM DRAFT → фіксує lines у транзакції (claim + createMany)",
@@ -2538,6 +2690,21 @@
    "PayrollService.remove — guard COMPUTED видаляється (ще не виплачено) → soft-delete",
    "PayrollService.remove — guard DRAFT → soft-delete",
    "PayrollService.remove — guard PAID не видаляється → BadRequest"
+  ],
+  "apps/api/src/modules/payroll/payroll.tenant.spec.ts": [
+   "PayrollService — ізоляція організацій compute по чужій відомості → «Період не знайдено», жодного запису й касової операції",
+   "PayrollService — ізоляція організацій compute шукає відомість за id + orgId викликача + «не видалена»",
+   "PayrollService — ізоляція організацій findOne по чужій відомості → «Період не знайдено», жодного запису й касової операції",
+   "PayrollService — ізоляція організацій findOne шукає відомість за id + orgId викликача + «не видалена»",
+   "PayrollService — ізоляція організацій pay по чужій відомості → «Період не знайдено», жодного запису й касової операції",
+   "PayrollService — ізоляція організацій pay шукає відомість за id + orgId викликача + «не видалена»",
+   "PayrollService — ізоляція організацій remove по чужій відомості → «Період не знайдено», жодного запису й касової операції",
+   "PayrollService — ізоляція організацій remove шукає відомість за id + orgId викликача + «не видалена»",
+   "PayrollService — ізоляція організацій агрегат виробітку отримує orgId і для рядків робіт, і для нарядів — в обох запитах",
+   "PayrollService — ізоляція організацій виплата читає рядки своєї організації й передає її orgId касі",
+   "PayrollService — ізоляція організацій нова відомість записується в організацію викликача",
+   "PayrollService — ізоляція організацій розрахунок пише й чистить лише в організації викликача",
+   "PayrollService — ізоляція організацій філія перевіряється в межах організації викликача (попередній розрахунок і створення)"
   ],
   "apps/api/src/modules/pdf/pdf.service.spec.ts": [
    "PdfService — pdfmake integration Bug #269: handles WorkOrder with empty counterparty/vehicleLabel without crashing",
@@ -2794,27 +2961,68 @@
    "report-aggregator includeRows з групуванням → детальні рядки на листі",
    "report-aggregator null-значення групування → окрема група \"∅\" у кінці",
    "report-aggregator sortByAggregate сортує групи за агрегатом (desc)",
+   "report-aggregator truncated: 5000 рядків і більше → true, 4999 → false",
+   "report-aggregator Σ листкових SUM == загальний підсумок на 2 рівнях; AVG загальний — по рядках, не середнє груп",
    "report-aggregator групування по date-полю нормалізує ключ до дня (YYYY-MM-DD, без годин)",
+   "report-aggregator невідоме поле в aggregations або groupBy → BadRequestException",
    "report-aggregator недозволена агрегація для поля → BadRequestException",
    "report-aggregator плоский режим склеює ІДЕНТИЧНІ рядки в 1 з сумою (mergeDetailRows)",
    "report-aggregator ієрархічне групування: контрагент → товар (як у вимозі)"
   ],
+  "apps/api/src/modules/report-builder/report-builder.access.spec.ts": [
+   "ReportBuilderController — ролі доступу createSaved — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу getMetadata — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу getSaved — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу listSaved — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу removeSaved — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу run — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу runSaved — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу updateSaved — лише OWNER, ADMIN, ACCOUNTANT",
+   "ReportBuilderController — ролі доступу кожен маршрут контролера має @Roles — жодного відкритого методу"
+  ],
+  "apps/api/src/modules/report-builder/report-builder.dto.spec.ts": [
+   "ReportConfigDto — межі config groupBy: 5 рівнів проходить, 6 — помилка валідації з ключем err.dto.reportBuilder.groupBy.max"
+  ],
+  "apps/api/src/modules/report-builder/report-builder.saved-reports.spec.ts": [
+   "ReportBuilderService — tenant-межа запуску run: findMany моделі з реєстру отримує where.orgId викликача і take-ліміт",
+   "ReportBuilderService — tenant-межа запуску runSaved: orgId береться від викликача, а не зі збереженого config",
+   "ReportBuilderService — збережені звіти createSaved з невалідним config → BadRequestException, запис не створюється",
+   "ReportBuilderService — збережені звіти createSaved пише orgId викликача, entity з config і автора у createdBy",
+   "ReportBuilderService — збережені звіти getSaved шукає за id + orgId + deletedAt:null; не знайдено → NotFoundException",
+   "ReportBuilderService — збережені звіти listSaved: лише свої (orgId) і не видалені, без фільтра за автором",
+   "ReportBuilderService — збережені звіти removeSaved — soft delete: updateMany з deletedAt, фізичного delete немає",
+   "ReportBuilderService — збережені звіти updateSaved / removeSaved / runSaved чужого або видаленого звіту → NotFoundException, запису й запуску немає",
+   "ReportBuilderService — збережені звіти updateSaved з невалідним config → BadRequestException, оновлення не виконується",
+   "ReportBuilderService — збережені звіти updateSaved: where оновлення несе id + orgId + deletedAt:null"
+  ],
   "apps/api/src/modules/report-builder/report-builder.service.spec.ts": [
    "ReportBuilderService — Bug #620: aggregations enrichment Bug #620: run повинен збагачувати aggregations типом і label (перевіряється у e2e/integration; тут — контракт типу)",
-   "ReportBuilderService — Bug #620: aggregations enrichment effectiveAggregations додає авто-SUM тільки для числових колонок без явного agg"
+   "ReportBuilderService — Bug #620: aggregations enrichment effectiveAggregations додає авто-SUM тільки для числових колонок без явного agg",
+   "ReportBuilderService — Bug #620: aggregations enrichment авто-SUM не додається числовій колонці, якій реєстр SUM не дозволяє (price: лише AVG/MIN/MAX)"
   ],
   "apps/api/src/modules/report-builder/report-query.builder.spec.ts": [
    "report-query.builder Bug #617: include-merge спільних префіксів (good.name + good.brand.name) — тільки select",
    "report-query.builder Bug #617: multi-hop (workOrder.counterparty.companyName + workOrder.number) — тільки select",
+   "report-query.builder contains для enum-, number- і decimal-поля → BadRequestException, для тексту — нечутливий до регістру",
+   "report-query.builder dateRange лягає на dateField сутності (stockMovement → createdAt), а не на фіксоване поле",
+   "report-query.builder dateRange — межі київської доби: літо UTC+3 і зима UTC+2",
    "report-query.builder dateRange → фільтр по entity.dateField (Kyiv-межі)",
+   "report-query.builder dateRange: початок пізніше кінця → BadRequestException",
    "report-query.builder enum-фільтр з валідним значенням проходить, з невалідним → 400",
    "report-query.builder orderBy fallback на defaultSort коли sort порожній",
    "report-query.builder proto-injection у entity (__proto__/constructor) → BadRequestException",
    "report-query.builder relation-колонка будує nested select (без include/select mix — Bug #617)",
    "report-query.builder relation-фільтр додає nested deletedAt (Bug #607)",
    "report-query.builder sort по relation-полю будує вкладений orderBy",
+   "report-query.builder take завжди 5000 — для кожної сутності реєстру, незалежно від config",
    "report-query.builder невідома сутність → BadRequestException",
    "report-query.builder невідоме поле у columns → BadRequestException",
+   "report-query.builder невідоме поле у filters → BadRequestException",
+   "report-query.builder невідоме поле у groupBy → BadRequestException",
+   "report-query.builder невідоме поле у sort → BadRequestException",
+   "report-query.builder оператор in без масиву → BadRequestException",
+   "report-query.builder оператор фільтра поза білим списком → BadRequestException",
+   "report-query.builder фільтр по нефільтровному полю (stockMovement.quantity) → BadRequestException",
    "report-query.builder інжектить orgId + deletedAt для FULL-профілю"
   ],
   "apps/api/src/modules/report-builder/report-registry.spec.ts": [
@@ -2823,8 +3031,10 @@
    "report-registry цілісність hasSoftDelete узгоджений з profile (APPEND_ONLY → hasSoftDelete:false)",
    "report-registry цілісність signedByType поле посилається на сусіднє enum-поле (StockMovement.quantity → type)",
    "report-registry цілісність кожен relation-field prismaPath має валідний relation-prefix",
+   "report-registry цілісність кожна з 9 сутностей: orgId викликача стоїть у корені where",
    "report-registry цілісність кожне enum-поле посилається на наявний REGISTRY_ENUMS",
-   "report-registry цілісність усі 9 сутностей присутні"
+   "report-registry цілісність усі 9 сутностей присутні",
+   "report-registry цілісність фільтр по будь-якому полю реєстру не перезаписує orgId і deletedAt кореня"
   ],
   "apps/api/src/modules/reports/reports.service.spec.ts": [
    "ReportsService — Bug #629 квантування грошей у звітах profitability — laborCostRatio per-org (§13) boundary 0 → жодних labor-витрат (totalCostLabor=0)",
@@ -3945,6 +4155,7 @@
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) GiST EXCLUDE-констрейнт антидубль-бронювання живий (calendar_slots_no_overlap)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) append-only immutability тригери живі (ledger — фізична незмінність)",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) partial-unique / інваріантні індекси існують (fiscal doc-number + business invariants)",
+   "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) джерело платежу: FK payments.bankAccountId / cashRegisterId — ON DELETE SET NULL",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) передумова: dev-БД доступна",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) розширення pg_trgm і btree_gist встановлені",
    "Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration) усі partial-unique doc-number індекси справді ЧАСТКОВІ (мають predicate WHERE deletedAt IS NULL)"

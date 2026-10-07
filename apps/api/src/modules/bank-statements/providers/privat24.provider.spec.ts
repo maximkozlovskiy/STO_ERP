@@ -19,6 +19,7 @@ describe('Privat24Provider', () => {
     provider = new Privat24Provider(client as unknown as Privat24Client);
   });
 
+  // guards: BR-BANK-013
   it('TRANTYPE-фільтр: лише credit (C) залишається, debit (D) відкидається', async () => {
     client.fetchTransactions.mockResolvedValue([
       { REF: 'in-1', TRANTYPE: 'C', SUM: '100.50', DAT_OD: '05.09.2026', OSND: 'оплата' },
@@ -68,6 +69,7 @@ describe('Privat24Provider', () => {
     expect(rows[0].operationDate.toISOString()).toBe('2026-03-15T14:30:00.000Z');
   });
 
+  // guards: BR-BANK-003
   it('РЕГРЕС: неіснуюча дата 31.02.2026 НЕ rollover — рядок відкидається', async () => {
     // parseDate DD.MM.YYYY-гілка раніше не мала rollover-guard: Date.UTC(2026,1,31) перекочувало б
     // у 03-02 → зіпсована operationDate (визначає курс для amountBase). Тепер → null → skip.
@@ -107,6 +109,7 @@ describe('Privat24Provider', () => {
     expect(rows.map(r => r.externalId)).toEqual(['ok-1', 'ok-2']);
   });
 
+  // guards: BR-BANK-013
   it("amount=0 та амаунт від'ємний → skip (лише додатні надходження)", async () => {
     client.fetchTransactions.mockResolvedValue([
       { REF: 'z', TRANTYPE: 'C', SUM: '0.00', DAT_OD: '05.09.2026' },
@@ -116,6 +119,7 @@ describe('Privat24Provider', () => {
     expect(rows).toEqual([]);
   });
 
+  // guards: BR-BANK-003
   it('РЕГРЕС: ISO-fallback (гілка в) — неіснуюча 2026-02-31 НЕ rollover, валідна ISO парситься', async () => {
     // parseDate гілка (в) (нативний new Date) раніше не мала guard: new Date('2026-02-31')
     // тихо перекочувало у 03-02 → зіпсована operationDate (визначає курс для amountBase).

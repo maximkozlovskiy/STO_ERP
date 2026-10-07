@@ -133,6 +133,27 @@ Nav — «Банківські платежі» (Landmark, section settlements).
   monobank (account-id резолв, rate-limit), DBF-поля/encoding Ощад/Райф/ПУМБ (win1251/cp866). Захисна
   нормалізація толерантна до різних назв.
 
+## Бізнес-правила (BR-BANK)
+
+> Правила виведено з коду 2026-10-08, власником не затверджені.
+
+- **BR-BANK-001**: Імпорт виписки (файл або auto-pull) лише кладе рядки у staging `BankTransaction`: `direction=IN`, `status=UNMATCHED`, валюта = валюта банківського рахунку, `amountBase`/`rateUsed` — через `ExchangeRatesService.resolveBaseConversion` на дату операції; `source` = `FILE_IMPORT` для файлу, `PRIVAT24_API` / `MONOBANK_API` для auto-pull. `Payment` на етапі імпорту не створюється.
+- **BR-BANK-002**: Імпорт ідемпотентний: той самий `externalId` у тому самому банківському рахунку не заводиться двічі (`createMany` зі `skipDuplicates` на унікальному ключі `orgId + bankAccountId + externalId`); результат — `{created, skipped = рядків − created}`. Прев'ю позначає вже імпортований рядок `duplicate` (перекриває авто-матч) і шукає його лише у своєму рахунку.
+- **BR-BANK-003**: Дата операції ніколи не «перекочується»: неіснуюча дата (31.02, 29.02 невисокосного року) у файлі чи у відповіді Privat24 відкидає рядок, а в `import/apply` неіснуюча або нерозбірна дата дає 400 до будь-якого запису (дата визначає курс для `amountBase`).
+- **BR-BANK-004**: Авто-матч рядка з контрагентом іде каскадом, перший збіг виграє: IBAN платника → `SERVICE`, confidence 1.0; ЄДРПОУ → `SERVICE`, 0.9; номер рахунку-фактури у призначенні → `INVOICE` + `invoiceId`, 0.7; номер наряду у призначенні → `SERVICE`, 0.7; інакше `notFound`.
+- **BR-BANK-005**: Більше одного контрагента з тим самим IBAN або ЄДРПОУ → `ambiguous` зі списком кандидатів: контрагент не вгадується, і каскад для цього рядка далі не йде.
+- **BR-BANK-006**: IBAN платника порівнюється і зберігається нормалізованим — UPPERCASE, без пробілів (файловий парсер, `applyImport`, `resolveBatch`); порожній → `null`.
+- **BR-BANK-007**: Статус рядка змінюється лише з `UNMATCHED` і лише атомарним CAS (`updateMany where status=UNMATCHED, paymentId=null`): `match` → `MATCHED` (+ контрагент, тип), `ignore` → `IGNORED` (+ причина, без `Payment`). Повторна спроба на вже обробленому рядку → 409, неіснуючий рядок → 404.
+- **BR-BANK-008**: Рознесення створює рівно один `Payment` і лише через `PaymentsService.create`: сума = сума рядка (не з запиту), `method=bank`, `sourceType=BANK_ACCOUNT`, рахунок = рахунок рядка; `settlementType`: `PREPAYMENT` → PREPAYMENT, `REFUND` → REFUND, `SERVICE` / `INVOICE` / `OTHER` → PAYMENT; `invoiceId` передається лише для типу `INVOICE`. Id платежу записується у `paymentId` рядка.
+- **BR-BANK-009**: Якщо `PaymentsService.create` впав — рядок повертається в `UNMATCHED` (контрагент і тип очищуються; лише поки `paymentId` порожній), оригінальна помилка віддається клієнту, рядок можна рознести повторно.
+- **BR-BANK-010**: Вхід рознесення перевіряється ДО захоплення рядка: тип `INVOICE` без `invoiceId` → 400; контрагент або рахунок-фактура не знайдені → 404; рядок і платежі при цьому не чіпаються.
+- **BR-BANK-011**: Auto-pull сам розносить лише впевнений збіг — `matched` з confidence = 1 (IBAN) і відомим контрагентом; збіги за ЄДРПОУ чи призначенням, `ambiguous` і `notFound` лишаються `UNMATCHED` для ручного рознесення.
+- **BR-BANK-012**: Auto-pull обробляє лише рахунки з `autoPullEnabled`; збій одного рахунку (API банку, імпорт, матч) не зупиняє інші; курсор `lastPulledAt` рухається лише після успішного імпорту або порожнього вікна — після збою імпорту вікно буде повторене.
+- **BR-BANK-013**: З банківських API у staging потрапляють лише вхідні (credit) проводки з додатною сумою; monobank віддає суму в копійках — вона ділиться на 100.
+- **BR-BANK-014**: Межі запитів `import/apply`, `match`, `ignore` (DTO): не більше 1000 рядків за запит; сума рядка ≥ 0.01; `externalId` і дата операції обов'язкові; `bankAccountId` — UUID; тип рознесення — лише з переліку (`SERVICE` / `PREPAYMENT` / `INVOICE` / `REFUND` / `OTHER`); ігнорування — лише з непорожньою причиною.
+- **BR-BANK-015**: Доступ: імпорт, список, рознесення й ігнорування — лише `OWNER` / `ADMIN` / `ACCOUNTANT`; змінювати налаштування банк-провайдера (зберегти, активувати) — лише `OWNER` / `ADMIN`; бухгалтер може їх переглядати, перевіряти ключі й запускати «Підтягнути зараз».
+- **BR-BANK-016**: Tenant: кожен запит модуля фільтрується по `orgId`; банківський рахунок імпорту, контрагент, рахунок-фактура й рядок виписки шукаються лише у своїй організації й лише невидалені — чужий або видалений → 404.
+
 ---
 
 ## Аспекти і тести, що їх стережуть
@@ -145,19 +166,28 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/bank-statements/`
 
-| Аспект           | Тест                                            | Кейсів |
-| ---------------- | ----------------------------------------------- | ------ |
-| сервісна логіка  | `bank-reconciliation.service.spec.ts`           | 27     |
-| сервісна логіка  | `bank-statement-parser.service.spec.ts`         | 17     |
-| контролер        | `bank-statement-providers.controller.spec.ts`   | 7      |
-| BullMQ-processor | `bank-statement-pull.processor.spec.ts`         | 20     |
-| scheduler        | `bank-statement-pull.scheduler.spec.ts`         | 4      |
-| HTTP-клієнт      | `providers/mono-statement.client.spec.ts`       | 13     |
-| провайдер        | `providers/monobank-statement.provider.spec.ts` | 17     |
-| HTTP-клієнт      | `providers/privat24.client.spec.ts`             | 10     |
-| провайдер        | `providers/privat24.provider.spec.ts`           | 15     |
-| purpose parser   | `purpose-parser.spec.ts`                        | 11     |
+| Аспект                         | Тест                                            | Кейсів |
+| ------------------------------ | ----------------------------------------------- | ------ |
+| авто-матч з контрагентом       | `bank-reconciliation.auto-match.spec.ts`        | 5      |
+| імпорт у staging               | `bank-reconciliation.import.spec.ts`            | 5      |
+| рознесення / ігнорування (FSM) | `bank-reconciliation.posting.spec.ts`           | 10     |
+| сервісна логіка                | `bank-reconciliation.service.spec.ts`           | 27     |
+| парсер файлу виписки           | `bank-statement-parser.service.spec.ts`         | 17     |
+| контролер провайдерів          | `bank-statement-providers.controller.spec.ts`   | 7      |
+| BullMQ-processor               | `bank-statement-pull.processor.spec.ts`         | 20     |
+| scheduler                      | `bank-statement-pull.scheduler.spec.ts`         | 4      |
+| DTO-межі запитів               | `bank-statement.dto.spec.ts`                    | 9      |
+| доступ (ролі)                  | `bank-statements.controller.spec.ts`            | 8      |
+| HTTP-клієнт                    | `providers/mono-statement.client.spec.ts`       | 13     |
+| провайдер                      | `providers/monobank-statement.provider.spec.ts` | 17     |
+| HTTP-клієнт                    | `providers/privat24.client.spec.ts`             | 10     |
+| провайдер                      | `providers/privat24.provider.spec.ts`           | 15     |
+| purpose parser                 | `purpose-parser.spec.ts`                        | 11     |
 
-Разом: **141** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків).
 
-**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+Разом: **178** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей.
+Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); гонка двох одночасних рознесень одного рядка (CAS перевірено за формою `where`, не конкурентно); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.
+Файловий парсер за знаком суми не фільтрує (від'ємні й нульові рядки доходять до прев'ю) — тесту на це свідомо немає: поведінка схожа на недогляд, а не на правило.

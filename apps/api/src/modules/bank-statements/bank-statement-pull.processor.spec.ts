@@ -89,6 +89,7 @@ describe('BankStatementPullProcessor', () => {
     );
   });
 
+  // guards: BR-BANK-012, BR-BANK-016
   it('findMany фільтрує лише autoPullEnabled рахунки в межах orgId', async () => {
     await processor.process(makeJob({ orgId: ORG }));
     expect(prisma.bankAccount.findMany.mock.calls[0][0].where).toMatchObject({
@@ -124,6 +125,7 @@ describe('BankStatementPullProcessor', () => {
     expect(typeof dto.rows[0].operationDate).toBe('string');
   });
 
+  // guards: BR-BANK-011
   it('авто-матч: confidence===1 → matchTransaction; confidence<1 → пропуск', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('sure'), rawTx('weak')]);
     reconciliation.resolveBatch.mockResolvedValue(
@@ -162,6 +164,7 @@ describe('BankStatementPullProcessor', () => {
     expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-012
   it('авто-матч: помилка matchTransaction не валить pull (log-and-continue)', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('sure')]);
     reconciliation.resolveBatch.mockResolvedValue(
@@ -178,6 +181,7 @@ describe('BankStatementPullProcessor', () => {
     expect(prisma.bankAccount.updateMany).toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-012
   it('оновлює lastPulledAt курсор після успіху', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('r1')]);
     await processor.process(makeJob({ orgId: ORG }));
@@ -188,6 +192,7 @@ describe('BankStatementPullProcessor', () => {
     expect(call.data.lastPulledAt).toBeInstanceOf(Date);
   });
 
+  // guards: BR-BANK-012
   it('порожній результат → все одно рухає курсор', async () => {
     providerImpl.fetchStatements.mockResolvedValue([]);
     await processor.process(makeJob({ orgId: ORG }));
@@ -219,6 +224,7 @@ describe('BankStatementPullProcessor', () => {
     // Гроші-безпека: жодного повторного Payment на повторному вікні.
   });
 
+  // guards: BR-BANK-011
   it('авто-матч НЕ спрацьовує на ambiguous/notFound (confidence undefined) — гроші лишаються у staging', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('amb'), rawTx('nf')]);
     reconciliation.resolveBatch.mockResolvedValue(
@@ -234,6 +240,7 @@ describe('BankStatementPullProcessor', () => {
     expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-011
   it('авто-матч edrpou confidence 0.9 (matched, але <1) → НЕ авто-матчиться', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('edr')]);
     reconciliation.resolveBatch.mockResolvedValue(
@@ -248,6 +255,7 @@ describe('BankStatementPullProcessor', () => {
     expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-011
   it('confidence===1 але counterpartyId відсутній → НЕ матчиться (guard проти битого MatchResult)', async () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('nocp')]);
     reconciliation.resolveBatch.mockResolvedValue(
@@ -257,6 +265,7 @@ describe('BankStatementPullProcessor', () => {
     expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-BANK-012
   it('per-account isolation: рахунок що кидає applyImport → інші рахунки продовжують курсор', async () => {
     prisma.bankAccount.findMany.mockResolvedValue([
       acctRow({ id: 'acc-a' }),
@@ -275,6 +284,7 @@ describe('BankStatementPullProcessor', () => {
     expect(updatedAccIds).not.toContain('acc-a'); // acc-a курсор НЕ рухається (втрати даних немає)
   });
 
+  // guards: BR-BANK-012
   it('помилка fetchStatements одного рахунку → інші обробляються', async () => {
     prisma.bankAccount.findMany.mockResolvedValue([
       acctRow({ id: 'acc-fail' }),
@@ -291,6 +301,7 @@ describe('BankStatementPullProcessor', () => {
 
   // ─── Multi-bank: provider-routing + source ────────────────────────────────────
 
+  // guards: BR-BANK-001
   it('provider=monobank → resolveByCode (НЕ resolveActive) + source MONOBANK_API', async () => {
     prisma.bankAccount.findMany.mockResolvedValue([acctRow({ provider: 'monobank' })]);
     providerImpl.fetchStatements.mockResolvedValue([rawTx('m1')]);
@@ -304,6 +315,7 @@ describe('BankStatementPullProcessor', () => {
     );
   });
 
+  // guards: BR-BANK-001
   it('provider=privat24 → resolveByCode + source PRIVAT24_API', async () => {
     prisma.bankAccount.findMany.mockResolvedValue([acctRow({ provider: 'privat24' })]);
     providerConfig.resolveByCode.mockResolvedValue({

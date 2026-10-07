@@ -23,6 +23,7 @@ describe('ReportBuilderService — Bug #620: aggregations enrichment', () => {
     {} as any,
   );
 
+  // guards: BR-RPT-012
   it('effectiveAggregations додає авто-SUM тільки для числових колонок без явного agg', () => {
     const entity = getEntity('invoice');
     const config = {
@@ -37,6 +38,17 @@ describe('ReportBuilderService — Bug #620: aggregations enrichment', () => {
       { field: 'amount', agg: 'AVG' },
       { field: 'totalVat', agg: 'SUM' },
     ]);
+  });
+
+  // guards: BR-RPT-012
+  it('авто-SUM не додається числовій колонці, якій реєстр SUM не дозволяє (price: лише AVG/MIN/MAX)', () => {
+    const entity = getEntity('workOrderPart');
+    const eff = callEffective(service, entity, {
+      entity: 'workOrderPart',
+      columns: ['price', 'amount'],
+      groupBy: [],
+    });
+    expect(eff).toEqual([{ field: 'amount', agg: 'SUM' }]);
   });
 
   it('Bug #620: run повинен збагачувати aggregations типом і label (перевіряється у e2e/integration; тут — контракт типу)', () => {

@@ -5,6 +5,7 @@ import { buildQuery, REPORT_TAKE_CAP } from './report-query.builder';
 const ORG = 'org-1';
 
 describe('report-query.builder', () => {
+  // guards: BR-RPT-006, BR-RPT-007
   it('інжектить orgId + deletedAt для FULL-профілю', () => {
     const q = buildQuery({ entity: 'workOrder', columns: ['number'], groupBy: [] }, ORG);
     expect(q.model).toBe('workOrder');
@@ -12,12 +13,14 @@ describe('report-query.builder', () => {
     expect(q.args.take).toBe(REPORT_TAKE_CAP);
   });
 
+  // guards: BR-RPT-001
   it('невідома сутність → BadRequestException', () => {
     expect(() => buildQuery({ entity: 'hacker', columns: [], groupBy: [] }, ORG)).toThrow(
       BadRequestException,
     );
   });
 
+  // guards: BR-RPT-001
   it('proto-injection у entity (__proto__/constructor) → BadRequestException', () => {
     for (const bad of ['__proto__', 'constructor', 'toString']) {
       expect(() => buildQuery({ entity: bad, columns: [], groupBy: [] }, ORG)).toThrow(
@@ -26,6 +29,7 @@ describe('report-query.builder', () => {
     }
   });
 
+  // guards: BR-RPT-002
   it('невідоме поле у columns → BadRequestException', () => {
     expect(() =>
       buildQuery({ entity: 'workOrder', columns: ['secretField'], groupBy: [] }, ORG),
@@ -80,6 +84,7 @@ describe('report-query.builder', () => {
     });
   });
 
+  // guards: BR-RPT-004
   it('enum-фільтр з валідним значенням проходить, з невалідним → 400', () => {
     expect(() =>
       buildQuery(
@@ -105,6 +110,7 @@ describe('report-query.builder', () => {
     ).toThrow(BadRequestException);
   });
 
+  // guards: BR-RPT-007
   it('relation-фільтр додає nested deletedAt (Bug #607)', () => {
     const q = buildQuery(
       {
@@ -152,5 +158,150 @@ describe('report-query.builder', () => {
       ORG,
     );
     expect(q.args.orderBy).toEqual([{ good: { name: 'asc' } }]);
+  });
+
+  // ── Білий список полів, операторів і фільтрів ─────────────────────────────────
+
+  // guards: BR-RPT-002
+  it.each([
+    ['groupBy', { groupBy: ['secretField'] }],
+    ['filters', { filters: [{ field: 'secretField', op: 'eq' as const, value: 1 }] }],
+    ['sort', { sort: [{ field: 'secretField', dir: 'asc' as const }] }],
+  ])('невідоме поле у %s → BadRequestException', (_slot, part) => {
+    expect(() =>
+      buildQuery({ entity: 'workOrder', columns: [], groupBy: [], ...part }, ORG),
+    ).toThrow(BadRequestException);
+  });
+
+  // guards: BR-RPT-003
+  it('оператор фільтра поза білим списком → BadRequestException', () => {
+    for (const op of ['startsWith', 'search', 'OR', '__proto__']) {
+      expect(() =>
+        buildQuery(
+          {
+            entity: 'workOrder',
+            columns: [],
+            groupBy: [],
+            filters: [{ field: 'number', op: op as never, value: 'WO' }],
+          },
+          ORG,
+        ),
+      ).toThrow(BadRequestException);
+    }
+  });
+
+  // guards: BR-RPT-003
+  it('contains для enum-, number- і decimal-поля → BadRequestException, для тексту — нечутливий до регістру', () => {
+    const run = (entity: string, field: string, value: unknown) =>
+      buildQuery(
+        { entity, columns: [], groupBy: [], filters: [{ field, op: 'contains', value }] },
+        ORG,
+      );
+    expect(() => run('workOrder', 'status', 'COMPLETED')).toThrow(BadRequestException); // enum
+    expect(() => run('workOrderPart', 'quantity', 5)).toThrow(BadRequestException); // number
+    expect(() => run('invoice', 'amount', 100)).toThrow(BadRequestException); // decimal
+    expect(run('workOrder', 'number', 'wo-1').args.where).toMatchObject({
+      number: { contains: 'wo-1', mode: 'insensitive' },
+    });
+  });
+
+  // guards: BR-RPT-003
+  it('оператор in без масиву → BadRequestException', () => {
+    expect(() =>
+      buildQuery(
+        {
+          entity: 'workOrder',
+          columns: [],
+          groupBy: [],
+          filters: [{ field: 'number', op: 'in', value: 'WO-1' }],
+        },
+        ORG,
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  // guards: BR-RPT-005
+  it('фільтр по нефільтровному полю (stockMovement.quantity) → BadRequestException', () => {
+    expect(() =>
+      buildQuery(
+        {
+          entity: 'stockMovement',
+          columns: [],
+          groupBy: [],
+          filters: [{ field: 'quantity', op: 'gt', value: 0 }],
+        },
+        ORG,
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  // ── Ліміт рядків ──────────────────────────────────────────────────────────────
+
+  // guards: BR-RPT-008
+  it('take завжди 5000 — для кожної сутності реєстру, незалежно від config', () => {
+    for (const entity of [
+      'workOrder',
+      'workOrderPart',
+      'purchaseOrderLine',
+      'invoice',
+      'payment',
+      'settlementTransaction',
+      'stockMovement',
+      'stockBatch',
+      'stockItem',
+    ]) {
+      const q = buildQuery({ entity, columns: [], groupBy: [], take: 1_000_000 } as never, ORG);
+      expect(q.args.take, entity).toBe(5000);
+    }
+  });
+
+  // ── Період за Києвом ──────────────────────────────────────────────────────────
+
+  // guards: BR-RPT-009
+  it('dateRange — межі київської доби: літо UTC+3 і зима UTC+2', () => {
+    const range = (from: string, to: string) =>
+      (
+        buildQuery({ entity: 'invoice', columns: [], groupBy: [], dateRange: { from, to } }, ORG)
+          .args.where as Record<string, { gte: Date; lte: Date }>
+      ).documentDate;
+    const summer = range('2026-09-01', '2026-09-30');
+    expect(summer.gte.toISOString()).toBe('2026-08-31T21:00:00.000Z'); // 01.09 00:00 Київ
+    // Верхня межа — кінець київської доби 30.09. Точне значення не фіксуємо: kyivOffsetMs губить
+    // мілісекунди, тож межа зсунута на 999 мс за північ (знахідка в дос'є, «Знахідки 2026-10-08»).
+    expect(summer.lte.getTime()).toBeGreaterThanOrEqual(Date.parse('2026-09-30T20:59:59.999Z'));
+    expect(summer.lte.getTime()).toBeLessThan(Date.parse('2026-09-30T21:00:01.000Z'));
+    const winter = range('2026-01-15', '2026-01-15');
+    expect(winter.gte.toISOString()).toBe('2026-01-14T22:00:00.000Z');
+    expect(winter.lte.getTime()).toBeGreaterThanOrEqual(Date.parse('2026-01-15T21:59:59.999Z'));
+    expect(winter.lte.getTime()).toBeLessThan(Date.parse('2026-01-15T22:00:01.000Z'));
+  });
+
+  // guards: BR-RPT-009
+  it('dateRange лягає на dateField сутності (stockMovement → createdAt), а не на фіксоване поле', () => {
+    const where = buildQuery(
+      {
+        entity: 'stockMovement',
+        columns: [],
+        groupBy: [],
+        dateRange: { from: '2026-09-01', to: '2026-09-01' },
+      },
+      ORG,
+    ).args.where;
+    expect(Object.keys(where).sort()).toEqual(['createdAt', 'orgId']);
+  });
+
+  // guards: BR-RPT-009
+  it('dateRange: початок пізніше кінця → BadRequestException', () => {
+    expect(() =>
+      buildQuery(
+        {
+          entity: 'invoice',
+          columns: [],
+          groupBy: [],
+          dateRange: { from: '2026-09-30', to: '2026-09-01' },
+        },
+        ORG,
+      ),
+    ).toThrow(BadRequestException);
   });
 });
