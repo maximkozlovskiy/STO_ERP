@@ -592,6 +592,8 @@ export const uk: Record<string, string> = {
 
   // ── Exception-повідомлення: counterparties-модуль ──
   'err.counterparty.notFound': 'Контрагента не знайдено',
+  'err.counterparty.notAClient': 'Контрагент є постачальником — оберіть клієнта',
+  'err.counterparty.notASupplier': 'Контрагент не є постачальником',
   'err.counterparty.statusNotFound': 'Статус не знайдено',
   'err.counterparty.statusNotAssigned': 'Статус не призначено цьому контрагенту',
   'err.counterparty.nameRequired': 'Вкажіть назву компанії або ім’я/прізвище контрагента',

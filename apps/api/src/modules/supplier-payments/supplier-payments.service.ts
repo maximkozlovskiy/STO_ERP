@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
+import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
@@ -579,11 +580,7 @@ export class SupplierPaymentsService {
       throw new NotFoundException(
         translateError('err.supplierPayment.supplierNotFound', getLocale()),
       );
-    if (supplier.type === 'CLIENT') {
-      throw new BadRequestException(
-        translateError('err.supplierPayment.notASupplier', getLocale()),
-      );
-    }
+    assertCounterpartyRole(supplier.type, 'supplier'); // BR-CP-001
     if (dto.bankAccountId && !bankAccount) {
       throw new NotFoundException(
         translateError('err.supplierPayment.bankAccountNotFound', getLocale()),
@@ -730,10 +727,7 @@ export class SupplierPaymentsService {
         throw new NotFoundException(
           translateError('err.supplierPayment.supplierNotFound', getLocale()),
         );
-      if (supplier.type === 'CLIENT')
-        throw new BadRequestException(
-          translateError('err.supplierPayment.notASupplier', getLocale()),
-        );
+      assertCounterpartyRole(supplier.type, 'supplier'); // BR-CP-001
     }
     if (nextSourceType === PaymentSourceType.BANK_ACCOUNT && nextBankAccountId && !bankAccount) {
       throw new NotFoundException(

@@ -10,6 +10,7 @@ import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
 import type { VatMode } from '@prisma/client';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -311,7 +312,7 @@ export class InvoicesService {
     const [counterparty, wo] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, type: true },
       }),
       dto.workOrderId
         ? this.prisma.workOrder.findFirst({
@@ -322,6 +323,7 @@ export class InvoicesService {
     ]);
     if (!counterparty)
       throw new NotFoundException(translateError('err.invoice.counterpartyNotFound', getLocale()));
+    assertCounterpartyRole(counterparty.type, 'client'); // BR-CP-001
     if (dto.workOrderId && !wo)
       throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
 
@@ -607,12 +609,13 @@ export class InvoicesService {
     // Prisma P2003 would surface as HTTP 500 instead of a friendly 404.
     const counterparty = await this.prisma.counterparty.findFirst({
       where: { id: original.counterpartyId, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!counterparty)
       throw new NotFoundException(
         translateError('err.invoice.counterpartyDeletedNoClone', getLocale()),
       );
+    assertCounterpartyRole(counterparty.type, 'client'); // BR-CP-001
 
     const number = await this.docNumbers.next(orgId, 'INVOICE');
 

@@ -7,6 +7,7 @@ import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calcVatOnBase } from '../../common/utils/vat';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
+import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import { InvoiceStatus, RepairCategory, WorkOrderStatus } from '@prisma/client';
@@ -298,7 +299,7 @@ export class WorkOrdersService {
       }),
       this.prisma.counterparty.findFirst({
         where: { id: dto.counterpartyId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, type: true },
       }),
       dto.liftId
         ? this.prisma.lift.findFirst({
@@ -335,6 +336,7 @@ export class WorkOrdersService {
       throw new NotFoundException(
         translateError('err.workOrder.counterpartyNotFound', getLocale()),
       );
+    assertCounterpartyRole(counterparty.type, 'client'); // BR-CP-001
     if (dto.liftId && !lift)
       throw new NotFoundException(translateError('err.lift.notFound', getLocale()));
     // When client supplies contractId, contractResult must be a match — otherwise 404.
@@ -603,7 +605,7 @@ export class WorkOrdersService {
       }),
       this.prisma.counterparty.findFirst({
         where: { id: original.counterpartyId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, type: true },
       }),
       this.prisma.garageBranch.findFirst({
         where: { id: original.branchId, orgId, deletedAt: null },
@@ -619,6 +621,7 @@ export class WorkOrdersService {
       throw new NotFoundException(
         translateError('err.workOrder.counterpartyDeletedNoClone', getLocale()),
       );
+    assertCounterpartyRole(counterparty.type, 'client'); // BR-CP-001
     if (!branch)
       throw new NotFoundException(
         translateError('err.workOrder.branchDeletedNoClone', getLocale()),

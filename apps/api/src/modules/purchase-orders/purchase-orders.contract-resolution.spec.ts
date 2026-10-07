@@ -179,8 +179,19 @@ describe('PurchaseOrdersService.update — contract resolution', () => {
     );
     expect(prisma.counterparty.findFirst).toHaveBeenCalledWith({
       where: { id: NEW_SUPPLIER, orgId: ORG, deletedAt: null },
-      select: { id: true },
+      select: { id: true, type: true },
     });
+    expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CP-001
+  it('зміна постачальника на контрагента-клієнта → BadRequestException, жоден write', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce(draftPo());
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: NEW_SUPPLIER, type: 'CLIENT' });
+
+    await expect(service.update(ORG, PO_ID, { supplierId: NEW_SUPPLIER })).rejects.toThrow(
+      'Контрагент не є постачальником',
+    );
     expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
   });
 

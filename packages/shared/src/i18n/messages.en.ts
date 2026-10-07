@@ -604,6 +604,8 @@ export const en: Record<string, string> = {
 
   // ── Exception messages: counterparties module ──
   'err.counterparty.notFound': 'Counterparty not found',
+  'err.counterparty.notAClient': 'The counterparty is a supplier — choose a client',
+  'err.counterparty.notASupplier': 'The counterparty is not a supplier',
   'err.counterparty.statusNotFound': 'Status not found',
   'err.counterparty.statusNotAssigned': 'The status is not assigned to this counterparty',
   'err.counterparty.nameRequired': "Enter the company name or the counterparty's first/last name",

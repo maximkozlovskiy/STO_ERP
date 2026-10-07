@@ -624,6 +624,8 @@ export const VALIDATION_KEYS = [
   'err.dto.bankStatement.type.invalid',
   // Exception-повідомлення: counterparties-модуль
   'err.counterparty.notFound',
+  'err.counterparty.notAClient',
+  'err.counterparty.notASupplier',
   'err.counterparty.statusNotFound',
   'err.counterparty.statusNotAssigned',
   'err.counterparty.nameRequired',

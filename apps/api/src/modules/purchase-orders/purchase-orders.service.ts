@@ -7,6 +7,7 @@ import { safeCoeff } from '../../common/utils/math';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
+import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -249,7 +250,7 @@ export class PurchaseOrdersService {
     const [supplier, warehouse, contract] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.supplierId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, type: true },
       }),
       this.prisma.warehouse.findFirst({
         where: { id: dto.warehouseId, orgId, deletedAt: null },
@@ -281,6 +282,7 @@ export class PurchaseOrdersService {
       throw new NotFoundException(
         translateError('err.purchaseOrder.supplierNotFound', getLocale()),
       );
+    assertCounterpartyRole(supplier.type, 'supplier'); // BR-CP-001
     if (!warehouse)
       throw new NotFoundException(
         translateError('err.purchaseOrder.warehouseNotFound', getLocale()),
@@ -446,7 +448,7 @@ export class PurchaseOrdersService {
       dto.supplierId
         ? this.prisma.counterparty.findFirst({
             where: { id: dto.supplierId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, type: true },
           })
         : Promise.resolve(null),
       dto.warehouseId
@@ -473,6 +475,8 @@ export class PurchaseOrdersService {
       throw new NotFoundException(
         translateError('err.purchaseOrder.supplierNotFound', getLocale()),
       );
+    // BR-CP-001: only when the supplier actually changes - a legacy PO stays editable.
+    if (supplier && supplierChanged) assertCounterpartyRole(supplier.type, 'supplier');
     if (dto.warehouseId && !warehouse)
       throw new NotFoundException(
         translateError('err.purchaseOrder.warehouseNotFound', getLocale()),

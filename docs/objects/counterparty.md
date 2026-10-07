@@ -146,7 +146,7 @@ model CounterpartyStatusLink {
 
 ## Бізнес-правила (BR-CP)
 
-- **BR-CP-001**: `CounterpartyType`: CLIENT — тільки у клієнтських WO/Invoice; SUPPLIER — тільки у PO; BOTH — обидва потоки
+- **BR-CP-001**: `CounterpartyType`: CLIENT — тільки у клієнтських WO/Invoice; SUPPLIER — тільки у PO й оплаті постачальнику; BOTH — обидва потоки. Перевіряє API (`assertCounterpartyRole`, `common/utils/counterparty-role.ts`) при створенні й клонуванні наряду та рахунку, при створенні PO і зміні його постачальника, при створенні й правці оплати постачальнику → 400. Документи, створені до 2026-10-07 з «чужим» типом, лишаються редагованими (перевірка лише на вході контрагента в документ)
 - **BR-CP-002**: Пошук по `firstName + lastName` АБО `companyName` (similarity окремо для кожного)
 - **BR-CP-003**: `companyName` — B2B клієнти, `firstName + lastName` — фізичні особи; поля nullable у схемі, але **«назва» обов'язкова на рівні сервісу** (cross-field, гнучко): `create`/`update` вимагають `companyName` АБО `firstName`/`lastName` (`hasCounterpartyName()` guard, `BadRequest`). PATCH перевіряє merged-стан (очищення останньої назви теж → 400). Frontend: 3 точки створення (`CounterpartyEditModal` create/edit + `CalendarSlotModal` майстер) синхронізовані — guard з `.trim()` + однакове повідомлення; кнопка «Зберегти» disabled без назви; SUPPLIER → «Назва компанії» required
 - **BR-CP-004**: **isPrimary в CounterpartyContract:** при soft-delete договору з `isPrimary: true` → promote наступного (`findFirst({ orderBy: { createdAt: 'asc' } })`) у той самий `$transaction`
@@ -194,7 +194,6 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
 але показує окремим рядком.
 
-- **BR-CP-001** — дос'є: CLIENT — лише у наряді/рахунку, SUPPLIER — лише у замовленні постачальнику; код: API тип контрагента не перевіряє (`purchase-orders`, `work-orders`, `invoices` шукають за `id`). Обмеження тримається лише на фільтрах пікерів у web; бекова перевірка є тільки в `supplier-payments`.
 - **BR-CP-012** — дос'є: `SettlementAccount` створюється ліниво при першій транзакції; код: створюється одразу в `CounterpartiesService.create`, а `createTransaction` без рахунку кидає NotFound. `upsert` у коді немає.
 
 **Чого тут НЕМА.** Правила, які жоден unit-тест не стереже, і чому:
