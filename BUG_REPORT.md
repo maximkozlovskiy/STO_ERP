@@ -638,3 +638,173 @@ tab-порядку.
 - Детектор «Escape на одному елементі складеного віджета» дає 6 кандидатів у
   `components/ui` (`columns-dropdown`, `entity-picker-field`, `InvoiceCreateModal`,
   `PurchaseOrderCreateModal`, `saved-filters-bar`, `search-combobox`) — не перевірялись.
+
+---
+
+## Session 2026-10-07 — Bug hunt `986e2240..HEAD` (селектор тестів `affected-tests.py`, Playwright на :3002, гейт C «Маршрути UI»)
+
+Метод — мутаційний: у прод-файл вноситься зміна, що ламає поведінку, ганяється ПОВНИЙ набір
+пакета і команда, яку для цього файла друкує селектор; тест, що впав у повному прогоні, мусить
+бути у виборі. 13 unit-мутацій (api 7, web 5 + 2 у `packages/shared`) і 3 E2E-мутації. Розбіжностей — дві.
+
+## Bug #785 — [HIGH] Селектор не вибирає спек, який читає код з диска (tenant-guard-static)
+
+**Файл:** `scripts/affected-tests.py` — `select()`, гілка api-модуля (стан до фіксу)
+**Severity:** HIGH
+**Категорія:** tooling / tenant isolation
+
+**Опис:** для файла api-модуля селектор друкує `vitest related <файл> <спеки теки модуля>`.
+`vitest related` іде графом імпортів. `apps/api/src/prisma/tenant-guard-static.spec.ts` сервіси
+не імпортує — він обходить `modules/**/*.service.ts` через `readdirSync`/`readFileSync` і шукає
+`update/delete({ where: { id } })` без `orgId`. Тобто саме той спек, що стереже tenant isolation
+статично (unit-специ мокають Prisma, і A1-guard у них не виконується), у локальний вибір не
+потрапляв ніколи.
+
+**Доказ (мутація):** `vehicles.service.ts:71` — `where: { id, orgId }` → `where: { id }`.
+Повний api-набір: 1 файл червоний — `src/prisma/tenant-guard-static.spec.ts`. Команда селектора
+(`vitest related "src/modules/vehicles/vehicles.service.ts" "…/vehicles.service.spec.ts"`):
+зелена. Агент, що працює за інструкцією «локально лише зачеплене», отримав би зелений
+прогін на записі без tenant-токена (у рантаймі — HTTP 500 від guard-а).
+
+**Фікс:** `scanning_specs()` — тести, які читають файли з диска (`readFileSync`, `readdirSync`,
+`globSync`, `import … from 'fs'`, `import.meta.glob`) І шукають їх від власного розташування
+(`__dirname`, `process.cwd()`, `import.meta.url`), визначаються автоматично й додаються до
+вибору при зміні будь-якого не-тестового файла пакета. Перелік вручну не ведеться. Спек, що
+пише й читає власний тимчасовий файл (`bank-statement-parser.service.spec.ts`, `mkdtemp`),
+сканером не вважається. Після фіксу та сама мутація вбивається командою селектора.
+
+**Тест:** `scripts/test-affected-tests.py` — «спек, що читає код з диска (статичний детектор) →
+у виборі для будь-якого файлу модуля».
+
+**Статус:** [x] виправлено (`ca1186d3`)
+
+## Bug #786 — [MEDIUM] Тест `packages/shared` не входить ні в «повний прогін» селектора, ні в CI
+
+**Файл:** `scripts/affected-tests.py` — `render()`/`script_checks()`; `.github/workflows/ci.yml:55`
+**Severity:** MEDIUM
+**Категорія:** tooling / CI
+
+**Опис:** для `packages/shared/**` селектор каже «ПОВНИЙ ПРОГІН» і друкує три команди —
+API / WEB / E2E. Власний тест пакета (`packages/shared/src/i18n/key-parity.spec.ts`, 4 кейси:
+парність ключів uk↔en, порожні значення, `VALIDATION_KEYS`, плейсхолдери) у жодну з них не
+входить. Докстрінг селектора посилається на CI («ганяє все завжди»), але крок «Unit tests» у
+CI фільтрував лише `@sto/api` і `@sto/web` — тобто цей спек не ганявся ніде, крім ручного
+`pnpm test`.
+
+**Доказ (мутації):** (1) видалено ключ `v.email` з `messages.en.ts` → shared червоний, api
+червоний (`common/pipes/validation-i18n-parity.spec.ts` перекриває цей випадок), web зелений.
+(2) `{{max}}` → `{{mx}}` у `messages.en.ts` → червоний ЛИШЕ `key-parity.spec.ts`; повні api і
+web — зелені. Користувач en-локалі побачив би «{{max}}» у тексті.
+
+**Фікс:** селектор для пакета з власними тестами друкує `ІНШЕ: cd packages/<name> && npx vitest run`
+(пакет без тестів команди не отримує — вона впала б із «No test files found»); у CI до кроку
+«Unit tests» додано `pnpm --filter @sto/shared run test`.
+
+**Тест:** `scripts/test-affected-tests.py` — «пакет із власними тестами (packages/shared) → його
+команда у виводі повного прогону».
+
+**Статус:** [x] виправлено (`ca1186d3`)
+
+## Bug #787 — [HIGH] Рядок `**Маршрути UI:**` ЗАМІНЯВ виведені маршрути; ребро «E2E-спек → API» не враховувалось
+
+**Файл:** `scripts/affected-tests.py` — `module_routes()` (`if declared: return set(declared), None`), `select()`
+**Severity:** HIGH
+**Категорія:** tooling / E2E selection
+
+**Опис:** дві причини одного пропуску.
+(1) Якщо в дос'є є `**Маршрути UI:**`, селектор брав РІВНО ці маршрути і не дивився, які
+сторінки звертаються до URL контролерів модуля. Для `counterparties` у дос'є стоїть
+`/counterparties, /vehicles` — і це сховало 12 сторінок, де контрагента вибирають у документі
+(наряди, рахунки, закупівлі, календар, оплати…).
+(2) E2E-спеки самі ходять в API (`fetch(`${API}/counterparties?limit=1`)`), щоб узяти
+контрагента для документа, який створюють. Це ребро не проходить через жодну сторінку —
+ні маршрут, ні граф імпортів web його не бачать.
+
+**Доказ (мутація, живий API на :3000):** `counterparties.service.ts` `findAll` → `items: []`.
+Повний E2E (`--retries=1`): 13 failed, 1 flaky, 54 did not run; червоні 12 спек-файлів —
+client-payments, crud-calendar-slot, crud-counterparty, crud-invoice, crud-purchase-order,
+detail-panel-toggle, import-wizard, invoices, purchase-orders-receive, supplier-payments,
+supplier-returns, work-orders-detail. Вибір селектора: 4 спеки (counterparty-detail, crm,
+crud-counterparty, vehicles) — з червоних там був ОДИН.
+
+**Фікс:** (1) рядок дос'є тепер ДОПОВНЮЄ виведене з коду: `declared ∪ однойменна сторінка ∪
+сторінки з URL контролерів` (спільні файли, як і раніше, не враховуються; до «весь E2E» не
+ескалюється). (2) `specs_calling()` — не наскрізні спеки, у тексті яких є URL контролерів
+зміненого модуля, йдуть у вибір незалежно від маршруту. Після фіксу всі 12 червоних файлів
+(і flaky crud-work-order) — у виборі; вибір для `counterparties` виріс із 4 до 35 спеків із 50,
+і це чесна ціна: модуль справді використовується майже скрізь. Для решти api-модулів вибір
+змінився лише в чотирьох (bank-statements +1, vehicles +1, dashboard +3, setup +3).
+
+**Тест:** `scripts/test-affected-tests.py` — «**Маршрути UI:** доповнює виведене з коду…» і
+«спек, який сам ходить в API модуля, у виборі…».
+
+**Контроль після фіксу (нова мутація):** `vehicles.service.ts` `findAll` → порожній список.
+Повний E2E: 2 червоні файли — `vehicles.spec.ts`, `work-orders-detail.spec.ts`; обидва у виборі
+(другий — лише завдяки `specs_calling()`: спек ходить на `/work-orders`, а авто бере через API).
+
+**Статус:** [x] виправлено (`cb46d0ff`)
+
+## Bug #788 — [LOW] Зміна api, чию сторінку відвідує лише наскрізний спек: «E2E : —» і хибна примітка
+
+**Файл:** `scripts/affected-tests.py` — `select()`, обчислення `no_e2e`
+**Severity:** LOW
+**Категорія:** tooling
+
+**Опис:** для `apps/api/src/modules/setup/setup.service.ts` селектор друкував `E2E : —` і
+`УВАГА: маршрути без жодного E2E-спека: setup`. Обидва твердження хибні: `/setup` відвідують
+`smoke.spec.ts` і `api-errors.spec.ts`. Причина — наскрізні спеки виключені з пошуку за
+маршрутом і для зміни лише api не додаються взагалі; для сторінки без власного спека вони
+лишались єдиною вартою, яку селектор не називав. Знайдено читанням виводу, НЕ мутацією: тест
+`/setup` у smoke сам читає `/setup/status` і підлаштовується під відповідь, тож убити його
+зміною api не вдалось.
+
+**Фікс:** маршрут без власного спека отримує ті наскрізні спеки, які його відвідують (літерал
+у `goto`); примітка «без жодного E2E-спека» лишається лише для справді непокритих. Заодно
+причина «використовується на 0+ сторінках» (модуль, який кличе оболонка) замінена на
+«використовується оболонкою всіх сторінок».
+
+**Тест:** `scripts/test-affected-tests.py` — «зміна api, чию сторінку відвідує лише наскрізний
+спек → він у виборі, а не «E2E : —»».
+
+**Статус:** [x] виправлено (`cb46d0ff`)
+
+### Таблиця мутацій (сесія `986e2240..HEAD`)
+
+| #   | Файл (мутація)                                                             | Упало в повному прогоні                                | Усе у виборі селектора?        |
+| --- | -------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------ |
+| a1  | `vehicles.service.ts` — `where: { id }` без orgId                          | `prisma/tenant-guard-static.spec.ts`                   | НІ → Bug #785                  |
+| a2  | `inventory.service.ts` — throw у `resolveCostMethod`                       | 2 файли inventory (12 тестів)                          | так                            |
+| a3  | `document-number.service.ts` — throw у `next()`                            | `document-number.service.spec.ts` (7)                  | так                            |
+| a4  | `invoices.dto.ts` — `@Min(0.01)` → `@Min(1000000)`                         | нічого (мутант вижив)                                  | — (прогалина покриття DTO)     |
+| a4b | `goods.dto.ts` — прибрано `@Transform(trimQueryValue)`                     | `goods-query.dto.spec.ts` (2)                          | так                            |
+| a5  | `invoice-overdue.processor.ts` — `OVERDUE` → `PAID`                        | `invoice-overdue.processor.spec.ts` (1)                | так                            |
+| a6  | `email.provider.ts` — `sendMail` → `sendMailX` (ізольований проєкт vitest) | `email.provider.spec.ts` (3)                           | так                            |
+| s1  | `packages/shared` `messages.en.ts` — видалено ключ                         | shared key-parity (2) + api validation-i18n-parity (2) | НІ (shared-спек) → Bug #786    |
+| s2  | `packages/shared` `messages.en.ts` — `{{max}}` → `{{mx}}`                  | лише shared key-parity (1)                             | НІ → Bug #786                  |
+| w1  | `lib/format.ts` — `fmtMoney` → `'MUT'`                                     | 4 файли (6 тестів)                                     | так                            |
+| w2  | `hooks/api/useInvoices.ts` — URL transition                                | `useInvoices.test.tsx` (1)                             | так                            |
+| w3  | `components/ui/button.tsx` — `{children}` → `{null}`                       | 24 файли (94 тести)                                    | так (1 файл у виборі не впав)  |
+| w4  | `invoices/page.tsx` — текст кнопки                                         | нічого (unit-тесту сторінки немає)                     | — (ловить E2E, див. e1)        |
+| w5  | `InvoiceCreateModal.tsx` — текст кнопки                                    | `DocumentCreateModals.test.tsx` (2)                    | так                            |
+| w6  | `work-orders/[id]/InvoiceSection.tsx` — сума                               | `InvoiceSection.test.tsx` (1)                          | так (шлях із `[id]` і `(app)`) |
+| w7  | `payroll/page.tsx` — ранній return                                         | 2 файли payroll (13)                                   | так                            |
+| e1  | E2E: `invoices/page.tsx` — текст кнопки «Рахунок»                          | `crud-invoice`, `invoices`                             | так                            |
+| e2  | E2E: `StockDocumentCreateModal.tsx` — «Створити документ»                  | `stock-documents`                                      | так                            |
+| e3  | E2E: `counterparties.service.ts` — `findAll` → `[]` (живий API)            | 12 спек-файлів                                         | НІ (1 з 12) → Bug #787         |
+| e4  | E2E: `vehicles.service.ts` — `findAll` → `[]` (після фіксу #787)           | `vehicles`, `work-orders-detail`                       | так                            |
+
+w3: `QrPaymentModal.test.tsx` упав у повному прогоні й пройшов у вибраному (файл у виборі був) —
+недетермінований під мутацією, не пропуск селектора.
+
+### Спостереження поза обсягом — НЕ виправлялись
+
+- **Мутант a4 вижив:** `@Min` на `CreateInvoiceDto.amount` не стереже жоден тест (повний api-набір зелений
+  при `@Min(1000000)`).
+- **w4:** у `invoices/page.tsx` немає unit-тесту — зміну тексту кнопки ловить лише E2E.
+- **Гейт C і селектор мовчки відкидають маршрут із великою літерою** (`/Inventory` у `**Маршрути UI:**`):
+  регекс `[a-z0-9-]+` його не бачить, рядок просто стає коротшим.
+- **Видалений web-файл:** селектор не знаходить його в графі (файла вже немає) і друкує «не досягає
+  жодної сторінки»; тести, що його імпортували, у вибір не йдуть. Ловить `tsc`, не селектор.
+- **E2E-спек → API лише для модуля зміненого файла.** Для модулів-споживачів (ті, що імпортують
+  змінений сервіс) правило `specs_calling()` не застосовується — свідомо, інакше зміна
+  `settings.service.ts` давала б майже весь suite. Мутацією не перевірено.

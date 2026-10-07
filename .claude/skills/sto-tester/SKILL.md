@@ -47,7 +47,14 @@ pnpm --filter @sto/shared exec tsc --noEmit
 # web-тест не лишиться невидимим, як бувало при запуску лише @sto/api.
 python scripts/affected-tests.py            # робоче дерево; для діапазону: --base <sha>
 # → виконати надруковані команди API / WEB / E2E як є (E2E йде на власному сервері :3002,
-#   dev-сервер :3001 не чіпати).
+#   dev-сервер :3001 не чіпати). Рядки «ІНШЕ:» — теж команди до виконання (тест селектора,
+#   гейти, `cd packages/shared && npx vitest run`), а не довідка.
+#   · Команди з `&&` — для Git Bash; у Windows PowerShell 5.1 `&&` — помилка парсера.
+#   · Вердикт: `<команда> 2>&1 | bash ../../scripts/verdict.sh "мітка"` (після `cd apps/…`
+#     шлях до скрипта вже відносний). `--reporter=json` підсумку не друкує → «НЕ РОЗПІЗНАНО».
+#   · Поки йде Playwright — не правити `apps/api/src` і `packages/shared`: `nest --watch`
+#     перезапустить API, і globalSetup впаде з `ECONNREFUSED 127.0.0.1:3000`.
+#   · Після E2E повернути `apps/web/next-env.d.ts` на `.next` (docs/GOTCHAS.md, 2026-10-07).
 # «ПОВНИЙ ПРОГІН ПОТРІБЕН: так» АБО режим FULL → повні набори:
 #   pnpm --filter @sto/api test --run 2>&1 | tail -30
 #   pnpm --filter @sto/web exec vitest run 2>&1 | tail -10
@@ -925,6 +932,14 @@ done
 ---
 
 ### §1.5 — Тест-покриття Backend
+
+- [ ] **Змінено `scripts/affected-tests.py` або додано тест нового виду (Bugs #785–#788):** селектор
+      бачить лише граф імпортів і маршрути. Питати про кожен новий тест «чим він прив'язаний до
+      коду»: читає файли з диска → має бути в `scanning_specs()`; лежить у `packages/<name>` →
+      у виводі має бути `ІНШЕ: cd packages/<name> && npx vitest run`; E2E ходить в API напряму →
+      `specs_calling()`. Перевірка — мутаційна, проти повного прогону як оракула (не пробами
+      «для X вибрано X»): `→ sto-tester-approaches.md`, запис 2026-10-07 про селектор.
+      Детектор кандидатів: `grep -rlE "readFileSync|readdirSync|import\.meta\.glob" apps/*/src packages/*/src --include=*.spec.ts --include=*.test.ts --include=*.test.tsx`
 
 ```bash
 # Contract тести
