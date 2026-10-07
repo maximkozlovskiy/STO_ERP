@@ -6,7 +6,8 @@
 сказати «лише зачеплене». Цей скрипт — єдина відповідь на питання «що запускати».
 
 ЗВІДКИ ЗНАННЯ. Нічого не зберігається — усе виводиться з коду при кожному запуску:
-  · unit (api, web) — граф імпортів, його рахує сам `vitest related`;
+  · unit (api, web) — граф імпортів, його рахує сам `vitest related`; спеки, що читають код
+    з диска (статичні детектори), граф не бачить — вони додаються до вибору завжди;
   · E2E — маршрут. Карта «спек → маршрути» будується з `page.goto('/…')` у спеках, а
     «змінений файл → маршрути» — зворотним графом імпортів web до сторінок `app/`.
 Для api-модуля маршрути шукаються так:
@@ -25,7 +26,8 @@ api давала б «весь E2E». Тобто використання API ч
 
 КОЛИ СКРИПТ КАЖЕ «ПОВНИЙ ПРОГІН». Локальність безпечна лише для локального коду.
 Спільний код (shared-пакети, каркас api поза modules/, layout, api-client, конфіги, .env)
-зачіпає все, і вгадувати там — означає пропускати падіння. Так само, якщо резолвер імпортів
+зачіпає все, і вгадувати там — означає пропускати падіння. Пакет із власними тестами
+(packages/shared) отримує ще й свою команду рядком «ІНШЕ:» — у api/web/E2E його тест не входить. Так само, якщо резолвер імпортів
 чогось не розв'язав: невідоме ≠ не зачеплене.
 
 Запуск:
@@ -152,6 +154,18 @@ OPAQUE = "<нелітеральний import()>"
 # І `@Controller('x')`, і `@Controller({ path: 'x', version: … })`.
 CONTROLLER_RE = re.compile(r"""@Controller\(\s*(?:\{[^}]*?\bpath:\s*)?['"]([^'"]+)['"]""")
 GOTO_RE = re.compile(r"""goto\(\s*[`'"](/[a-z0-9-]*)""")
+# Спек, що ЧИТАЄ вихідний код з диска (fs), а не імпортує його: статичний детектор на кшталт
+# prisma/tenant-guard-static.spec.ts обходить усі *.service.ts через readdirSync/readFileSync.
+# Граф імпортів (`vitest related`) такого зв'язку не бачить — див. scanning_specs().
+FS_SCAN_RE = re.compile(
+    r"\b(?:readFileSync|readdirSync|globSync|fs\.promises|import\.meta\.glob)\b"
+    r"""|\bfrom\s+['"](?:node:)?fs(?:/promises)?['"]"""
+)
+# …і при цьому шукає їх від власного розташування, тобто в репозиторії. Спек, що пише й читає
+# тимчасовий файл (mkdtemp), сюди не потрапляє.
+FS_ANCHOR_RE = re.compile(
+    r"\b__dirname\b|\bprocess\.cwd\(|\bimport\.meta\.(?:url|dirname|glob)\b"
+)
 REG_MODULE = re.compile(r"^\*\*Модуль:\*\*\s*(.+)$", re.M)
 REG_ROUTES = re.compile(r"^\*\*Маршрути UI:\*\*\s*(.+)$", re.M)
 
@@ -176,6 +190,49 @@ def exists(path):
 def is_test(path):
     name = os.path.basename(path)
     return ".spec." in name or ".test." in name
+
+
+_SCANNING = {}
+
+
+def scanning_specs(src):
+    """Тести під `src`, які читають файли з диска: йдуть у вибір при БУДЬ-ЯКІЙ зміні коду пакета.
+
+    Мутаційна перевірка 2026-10-07: `update({ where: { id } })` без orgId у vehicles.service.ts
+    валить prisma/tenant-guard-static.spec.ts, а `vitest related vehicles.service.ts` його не
+    запускає — спек сервіс не імпортує, він читає його текст. Перелік не ведеться вручну:
+    новий такий спек потрапить сюди сам. Зайвий запуск (спек читає фікстуру, а не код)
+    коштує мілісекунди; пропущений — зелений прогін із зламаним інваріантом.
+    """
+    if src not in _SCANNING:
+        found = []
+        for ext in CODE_EXT:
+            for p in glob.glob(os.path.join(ROOT, src, "**", "*" + ext), recursive=True):
+                rel = norm(os.path.relpath(p, ROOT))
+                if not is_test(rel):
+                    continue
+                text = read(rel)
+                if FS_SCAN_RE.search(text) and FS_ANCHOR_RE.search(text):
+                    found.append(rel)
+        _SCANNING[src] = sorted(found)
+    return _SCANNING[src]
+
+
+def package_tests_cmd(path):
+    """Команда власних тестів пакета `packages/<name>/`, якщо вони в нього є; інакше None.
+
+    «Повний прогін» — це api + web + E2E; тест, що лежить у самому пакеті
+    (packages/shared/src/i18n/key-parity.spec.ts), у жоден із трьох наборів не входить.
+    """
+    parts = path.split("/")
+    if len(parts) < 3 or parts[0] != "packages":
+        return None
+    pkg = "packages/" + parts[1]
+    for ext in CODE_EXT:
+        for p in glob.glob(os.path.join(ROOT, pkg, "src", "**", "*" + ext), recursive=True):
+            if is_test(norm(p)):
+                return "cd %s && npx vitest run" % pkg
+    return None
 
 
 def git_lines(args):
@@ -506,6 +563,9 @@ def e2e_full_reason(path):
 
 def script_checks(path):
     cmds = [cmd for keys, cmd in SCRIPT_CHECKS if path.startswith(keys)]
+    pkg_cmd = package_tests_cmd(path)
+    if pkg_cmd:
+        cmds.append(pkg_cmd)
     # Чіпав api-спек → гейти (втрачений кейс, новий моноліт, реєстр дос'є).
     if path.startswith(API_SRC) and is_test(path) and GATES_CMD not in cmds:
         cmds.append(GATES_CMD)
@@ -602,6 +662,8 @@ def select(files):
                 api_units.append(norm(os.path.relpath(p, ROOT)))
             if is_test(f):
                 continue
+            # Спеки-сканери читають код модулів з диска — граф імпортів їх не приведе.
+            api_units += scanning_specs(API_SRC)
             need_web_graph()
             if api_reverse is None:
                 api_reverse = api_reverse_graph()
@@ -628,6 +690,7 @@ def select(files):
             if is_test(f) or "/__tests__/" in f:
                 continue
             web_code_changed = True
+            web_units += [t for t in scanning_specs(WEB_SRC) if t != f]
             need_web_graph()
             reached = routes_reached(f, ctx["reverse"])
             stem = os.path.splitext(os.path.basename(f))[0]

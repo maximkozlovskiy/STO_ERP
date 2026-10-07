@@ -52,8 +52,11 @@ jobs:
 
       # --reporter=json ДОДАТКОВО до дефолтного: звіт потрібен гейту A нижче, і так
       # він не коштує окремого прогону тестів.
+      # @sto/shared: його єдиний спек (i18n key-parity) до 2026-10-07 не ганявся НІДЕ в CI —
+      # крок називався «Unit tests», а фільтрував лише api та web. Мутація плейсхолдера
+      # `{{max}}` в messages.en.ts лишала api і web зеленими.
       - name: Unit tests
-        run: pnpm --filter @sto/api exec vitest run --reporter=default --reporter=json --outputFile=.vitest-report.json && pnpm --filter @sto/web run test
+        run: pnpm --filter @sto/api exec vitest run --reporter=default --reporter=json --outputFile=.vitest-report.json && pnpm --filter @sto/web run test && pnpm --filter @sto/shared run test
 
       # Пороги покриття живуть у apps/api/vitest.config.ts і зафіксовані від фактичного
       # рівня (аудит 2026-10). Крок падає, якщо покриття просіло нижче порога — раніше

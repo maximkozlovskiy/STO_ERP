@@ -281,6 +281,38 @@ def _():
     assert "apps/api/src/modules/invoices/invoices.due-date.spec.ts" in r["api"]
 
 
+# ── знайдено мутаціями (2026-10-07): тест упав у повному прогоні, а у виборі його не було ──
+
+
+@case("спек, що читає код з диска (статичний детектор) → у виборі для будь-якого файлу модуля")
+def _():
+    # `update({ where: { id } })` без orgId у сервісі валить саме цей спек, а сервіс він не
+    # імпортує — читає його текст через readFileSync, тож `vitest related` його не приводить.
+    static = "apps/api/src/prisma/tenant-guard-static.spec.ts"
+    for f in ("vehicles/vehicles.service.ts", "invoices/invoice-overdue.processor.ts"):
+        assert static in run("apps/api/src/modules/" + f)["api"], f
+    # Зміна лише спека нічого в коді не міняє — сканер для неї не потрібен.
+    r = run("apps/api/src/modules/vehicles/vehicles.service.spec.ts")
+    assert static not in r["api"], r["api"]
+    # Спек, що читає власний ТИМЧАСОВИЙ файл (mkdtemp), — не сканер коду.
+    mod = load()
+    tmp = "apps/api/src/modules/bank-statements/bank-statement-parser.service.spec.ts"
+    assert tmp not in mod.scanning_specs(mod.API_SRC), mod.scanning_specs(mod.API_SRC)
+
+
+@case("пакет із власними тестами (packages/shared) → його команда у виводі повного прогону")
+def _():
+    # Плейсхолдер {{max}} → {{mx}} у messages.en.ts: api і web зелені, червоний лише
+    # packages/shared/src/i18n/key-parity.spec.ts, якого в «API / WEB / E2E» немає.
+    cmd = "cd packages/shared && npx vitest run"
+    r = run("packages/shared/src/i18n/messages.en.ts")
+    assert r["full"] and cmd in r["scripts"], r["scripts"]
+    out = run_raw("packages/shared/src/i18n/messages.en.ts").stdout.decode("utf-8")
+    assert "ІНШЕ: " + cmd in out, out
+    # Пакет без тестів команди не отримує: вона впала б із «No test files found».
+    assert not [c for c in run("packages/ui/src/index.ts")["scripts"] if "vitest" in c]
+
+
 @case("кожен E2E-спек досяжний: або наскрізний, або відвідує наявний маршрут")
 def _():
     mod = load()
