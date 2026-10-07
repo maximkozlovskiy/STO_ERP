@@ -12,7 +12,16 @@ export const vehicleMileageKeys = {
   byVehicle: (vehicleId: string) => [...vehicleMileageKeys.all, vehicleId] as const,
 };
 
-const OPTS = { staleTime: 60_000, gcTime: 5 * 60_000 } as const;
+/**
+ * staleTime: 0 — історія перечитується щоразу, коли відкривають картку авто (Bug #799).
+ * Вона будується з нарядів, а наряд міняють у багатьох місцях, які цей ключ не інвалідовують:
+ * реквізити в картці наряду (пробіг, дата), створення наряду, планшет механіка, інший
+ * користувач. Із staleTime 60 с шлях «побачив відкат → відкрив наряд → виправив пробіг →
+ * повернувся» показував стару історію з тим самим попередженням. Решта картки авто й так
+ * вантажиться заново на кожне відкриття; gcTime лишає кеш, тож повернення не блимає
+ * скелетоном — старі дані видно, доки йде фоновий запит.
+ */
+const OPTS = { staleTime: 0, gcTime: 5 * 60_000 } as const;
 
 export function useVehicleMileage(vehicleId: string | null) {
   return useQuery({

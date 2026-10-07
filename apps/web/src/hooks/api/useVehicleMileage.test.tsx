@@ -65,6 +65,37 @@ describe('useVehicleMileage', () => {
     expect(result.current.data).toEqual(POINTS);
   });
 
+  it('Bug #799: повторне відкриття картки авто перечитує історію, а не бере кеш до 60 с', async () => {
+    // Продакшн-клієнт має staleTime 30 с за замовчуванням — відтворюємо його, щоб тест
+    // перевіряв саме налаштування хука, а не типову поведінку «голого» QueryClient.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const fixed: VehicleMileagePoint[] = [
+      POINTS[0]!,
+      { ...POINTS[1]!, mileage: 86000, isRollback: false },
+    ];
+    apiFetchMock.mockResolvedValueOnce(POINTS).mockResolvedValueOnce(fixed);
+
+    // 1) картка авто відкрита: історія з відкатом
+    const first = renderHook(() => useVehicleMileage('v-1'), { wrapper });
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    expect(first.result.current.data?.[1]?.isRollback).toBe(true);
+    // 2) перехід у наряд (картка розмонтована), пробіг виправлено
+    first.unmount();
+    // 3) повернення на картку в межах хвилини
+    const second = renderHook(() => useVehicleMileage('v-1'), { wrapper });
+    // кеш показано одразу — без скелетона
+    expect(second.result.current.isLoading).toBe(false);
+    expect(second.result.current.data).toEqual(POINTS);
+
+    await waitFor(() => expect(second.result.current.data).toEqual(fixed));
+    expect(apiFetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('vehicleId = null → запит не виконується', () => {
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => useVehicleMileage(null), { wrapper });

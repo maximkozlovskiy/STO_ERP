@@ -65,8 +65,9 @@ export function invalidatePaymentSideEffects(qc: QueryClient): void {
  * власний список нарядів та рахунки (auto-invoice). Один виклик замість 5 розкиданих.
  *
  * Плюс історія пробігу авто: вона будується з нарядів (BR-VEH-001/002) — завершення міняє
- * дату запису на `completedAt`, скасування прибирає запис. Без цього картка авто, відкрита
- * в межах staleTime після переходу наряду, показувала б стару історію.
+ * дату запису на `completedAt`, скасування прибирає запис. Це потрібно для картки авто, що
+ * ЛИШАЄТЬСЯ відкритою під модалкою наряду: повторне відкриття картки історію й так
+ * перечитує (`staleTime: 0` у useVehicleMileage, Bug #799).
  */
 export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: workOrdersKeys.all });
