@@ -38,6 +38,7 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
   // parse fails) → validation error. Дзеркалить існуючий контракт для `from`/`to`
   // у `SupplierPaymentScheduleQueryDto` (Bug #595).
   describe('Bug #616 — DTO validation for `date` catches semantic-invalid dates', () => {
+    // guards: BR-SUPPAY-010
     it.each(['2026-99-99', '2026-13-01', '2026-02-31', '9999-99-99'])(
       'date=%s → validation error (не пропускається у сервіс)',
       async badDate => {
@@ -74,6 +75,7 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
     });
   });
 
+  // guards: BR-SUPPAY-010
   it('date задано → делегує з target {kind:date}', async () => {
     await controller.getScheduleDocuments(ORG, q({ date: '2026-09-08', supplierId: 'sup-1' }));
     expect(service.getScheduleDocuments).toHaveBeenCalledWith(
@@ -85,6 +87,7 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
     );
   });
 
+  // guards: BR-SUPPAY-010
   it('target=overdue → делегує з {kind:overdue}', async () => {
     await controller.getScheduleDocuments(ORG, q({ target: 'overdue' }));
     expect(service.getScheduleDocuments).toHaveBeenCalledWith(
@@ -96,6 +99,7 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
     );
   });
 
+  // guards: BR-SUPPAY-010
   it('date + target разом → BadRequestException (взаємовиключні)', () => {
     expect(() =>
       controller.getScheduleDocuments(ORG, q({ date: '2026-09-08', target: 'overdue' })),
@@ -103,6 +107,7 @@ describe('SupplierPaymentsController — schedule/documents contract', () => {
     expect(service.getScheduleDocuments).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SUPPAY-010
   it('ні date, ні target → BadRequestException', () => {
     expect(() => controller.getScheduleDocuments(ORG, q({}))).toThrow(BadRequestException);
     expect(service.getScheduleDocuments).not.toHaveBeenCalled();

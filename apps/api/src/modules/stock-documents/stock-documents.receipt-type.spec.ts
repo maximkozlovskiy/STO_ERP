@@ -110,6 +110,7 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
   // create()
   // ──────────────────────────────────────────────────────────────────────
 
+  // guards: BR-SDOC-001
   it('create(): type=RECEIPT не вимагає targetWarehouseId; docNumbers.next отримує STOCK_RECEIPT', async () => {
     prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: BRANCH_ID });
     prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });
@@ -152,6 +153,7 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
   // Pre-prod audit (cross-tenant FK-injection): goodId рядка з іншої org → 404, БЕЗ запису.
   // Good.id глобально унікальний → без tenant-guard org A підсунула б goodId org B → на confirm
   // createMovement писав би рух проти чужого товару.
+  // guards: BR-SDOC-002
   it('create(): foreign goodId (не в цій org) → 404, жодного stockDocument.create/createMany', async () => {
     prisma.garageBranch.findFirst.mockResolvedValueOnce({ id: BRANCH_ID });
     prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });

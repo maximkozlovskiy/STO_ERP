@@ -54,11 +54,14 @@ describe('SupplierPaymentsService — update-guards', () => {
     expect(prisma.supplierPayment.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SUPPAY-004
   it('create(): purchaseOrder іншого постачальника → BadRequestException (cross-supplier)', async () => {
     const OTHER_SUPPLIER = '88888888-8888-4888-8888-888888888888';
     const PO_ID = '99999999-9999-4999-8999-999999999999';
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID, type: 'SUPPLIER' });
-    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    // currencyId обов'язковий у моку: без нього 400 кидав би guard «рахунок без валюти»,
+    // і тест не помічав би зникнення cross-supplier перевірки (мутація 2026-10-07).
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID, currencyId: 'uah-cur' });
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,
       supplierId: OTHER_SUPPLIER,
@@ -80,6 +83,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     expect(prisma.supplierPayment.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SUPPAY-006
   it('update(): PATCH на CONFIRMED → BadRequestException, ніяких writes', async () => {
     prisma.supplierPayment.findFirst.mockResolvedValueOnce({
       id: SP_ID,
@@ -96,6 +100,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SUPPAY-002
   it('update(): PATCH sourceType=BANK_ACCOUNT без bankAccountId → BadRequestException', async () => {
     prisma.supplierPayment.findFirst.mockResolvedValueOnce({
       id: SP_ID,
@@ -112,6 +117,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
   });
 
+  // guards: BR-SUPPAY-004
   it('update(): зміна supplierId без purchaseOrderId → авто-очищення orphan PO (Bug #588)', async () => {
     const NEW_SUPPLIER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const OLD_PO = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -166,5 +172,46 @@ describe('SupplierPaymentsService — update-guards', () => {
       data: Record<string, unknown>;
     };
     expect(updateCall.data).not.toHaveProperty('purchaseOrderId');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // update() — ті самі правила, що й у create(): тип контрагента і власник PO
+  // ──────────────────────────────────────────────────────────────────────
+
+  const draftRow = {
+    id: SP_ID,
+    status: SupplierPaymentStatus.DRAFT,
+    supplierId: SUPPLIER_ID,
+    sourceType: PaymentSourceType.CASH_REGISTER,
+    bankAccountId: null,
+    cashRegisterId: CASH_ID,
+    purchaseOrderId: null,
+  };
+
+  // guards: BR-SUPPAY-003
+  it('update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes', async () => {
+    const CLIENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce(draftRow);
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: CLIENT_ID, type: 'CLIENT' });
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+
+    await expect(service.update(ORG, SP_ID, { supplierId: CLIENT_ID })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SUPPAY-004
+  it('update(): PATCH purchaseOrderId іншого постачальника → BadRequestException, ніяких writes', async () => {
+    const OTHER_SUPPLIER = '88888888-8888-4888-8888-888888888888';
+    const PO_ID = '99999999-9999-4999-8999-999999999999';
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce(draftRow);
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ id: PO_ID, supplierId: OTHER_SUPPLIER });
+
+    await expect(service.update(ORG, SP_ID, { purchaseOrderId: PO_ID })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
   });
 });

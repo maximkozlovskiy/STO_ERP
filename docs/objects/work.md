@@ -137,8 +137,30 @@ cd apps/api && npx vitest run src/modules/works/<файл>.spec.ts
 
 Разом: **19** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-WORK-002** — дос'є: `isWarranty: true` — робота виконується безкоштовно; код: прапорець лише зберігається й показується (чекбокс і бейдж у каталозі). Ціну рядка наряду чи рахунку ніщо не обнуляє; поза модулем `works` в api `isWarranty` не згадується.
+- **BR-WORK-004** — дос'є: `WorkGoodCategoryLink` дає підказки товарів у наряді; код: модель, сід і два read-endpoint-и є, але ні web, ні mobile до них не звертаються — підказок у наряді немає.
+- **BR-WORK-005** — дос'є: ієрархія необмеженої глибини, UI показує 2 рівні; код: бекенд справді без ліміту, але UI рендерить УСІ рівні рекурсивно (`category-tree.tsx`), а менеджер категорій дозволяє створити 3 рівні (`category-manager-modal.tsx`).
+- **BR-WORK-006** — дос'є: пошук по `name` через GIN trgm індекс; код: `contains` + `insensitive` (ILIKE), а trgm-індексу на `works.name` немає в жодній міграції (є для work_orders, counterparties, goods). Живу БД не опитували.
+
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
 
 Покриття мінімальне — один спек-файл на весь агрегат; розбиття за аспектами стане доречним, коли файл почне рости.
+
+Правила без тесту-сторожа (у `works.service.spec.ts` їм місця немає — їх виконує не `WorksService`):
+
+- BR-WORK-001 — `plannedHours` наряду рахує фронт: `calcPlannedHoursFromLines` у
+  `CreateWorkOrderModal.tsx` (max(поточне, Σ `normoHours` рядків), лише коли
+  `recalcPlannedHoursFromLines` увімкнено); API бере `plannedHours` із DTO як є. Компонентного
+  тесту на перерахунок немає — `CreateWorkOrderModal.test.tsx` перевіряє лише, що `normoHours`
+  роботи доходить у payload рядка, і що `prefill.plannedHours` не перераховується з дат.
+- BR-WORK-003 — заборону видаляти системну категорію виконує `WorkCategoriesService.remove`
+  (модуль `work-categories`, 400 `err.workCategory.systemUndeletable`), а UI ховає кнопку в
+  `category-manager-modal.tsx`. Юніт-спеку сервісу в `work-categories` немає (лише контрактний,
+  із замоканим сервісом), компонентного тесту модалки теж — потрібен
+  `work-categories.service.spec.ts`.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

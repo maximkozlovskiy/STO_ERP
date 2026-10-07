@@ -278,6 +278,7 @@ describe('BatchService', () => {
       );
     });
 
+    // guards: BR-GOOD-005
     it('FIFO: orderBy createdAt asc (найстаріша перша)', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'old', remainingQty: 5, costPrice: 100 },

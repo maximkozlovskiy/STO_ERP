@@ -133,13 +133,20 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | cancel remove                           | `supplier-payments.cancel-remove.spec.ts` | 3      |
 | confirm                                 | `supplier-payments.confirm.spec.ts`       | 5      |
 | HTTP-контракт (DTO, статуси, валідація) | `supplier-payments.contract.spec.ts`      | 18     |
-| create                                  | `supplier-payments.create.spec.ts`        | 4      |
+| create                                  | `supplier-payments.create.spec.ts`        | 6      |
 | пов'язані документи                     | `supplier-payments.linked-docs.spec.ts`   | 8      |
 | payables fx                             | `supplier-payments.payables-fx.spec.ts`   | 10     |
-| schedule                                | `supplier-payments.schedule.spec.ts`      | 22     |
+| schedule                                | `supplier-payments.schedule.spec.ts`      | 25     |
 | сортування (whitelist orderBy)          | `supplier-payments.sort.spec.ts`          | 6      |
-| update guards                           | `supplier-payments.update-guards.spec.ts` | 6      |
+| update guards                           | `supplier-payments.update-guards.spec.ts` | 8      |
 
-Разом: **82** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **89** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
+
+- BR-SUPPAY-007 — правило про ВІДСУТНІСТЬ поведінки (оплата постачальнику не фіскалізується через Checkbox і не нараховує лояльність). У модулі немає жодної залежності від ПРРО чи лояльності, тож unit-тесту нема за що зачепитись; тест «конструктор не приймає CheckboxService» був би тестом для галочки. Стереже лише рев'ю.
+- Ексклюзивність джерела коштів у `update()` перевірена однією гілкою з чотирьох (перехід на банк без рахунку); усі чотири гілки стережуться лише через `create()` — обидва шляхи йдуть крізь спільний `assertSourceConsistency`, але якщо `update()` перестане його кликати для решти комбінацій, тести цього не помітять.
+- Race-safety проведення перевірена на моках (CAS повернув `count=0` → settlement не пишеться). Двох справжніх одночасних транзакцій проти БД не ганяє ніхто — потрібен integration-спек.
+- Графік оплат: trade-off зі звітом «Взаєморозрахунки» (`schedule.totals.total ≤ reports.settlements.totalCredit`, Bug #600) не стережеться — це нерівність між двома модулями, unit-тест одного сервісу її не бачить. Take-cap 5000 рядків на запит теж без тесту.
+- Drill-down: «некликабельність» синтетичного рядка «борг без документа» — поведінка `SupplierPaymentScheduleTab.tsx`; API-тест стереже лише маркер (`poId=''`, бакет overdue), компонентного тесту вкладки немає.
+- Payables FX і мультивалюта (блоки під Prisma-моделлю) мають свій спек (`payables-fx`), але не мають BR-ID — у простежуваність «правило → тест» не входять.

@@ -312,6 +312,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
   // Sequential for-loop мав last-write-wins. Promise.all без dedup → race → нондетерміністичний
   // salePrice у БД. dedupedPlan робить last-wins ДО Promise.all. Цей тест ловить refactor що
   // дропне deduplicateBy(): без нього updateMany викликався б ДВІЧІ для одного PK.
+  // guards: BR-GOOD-002
   it('Bug #489: дублікати по goodId у lines → updateMany викликається ОДИН раз (last-wins у БД)', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
       id: PO_ID,

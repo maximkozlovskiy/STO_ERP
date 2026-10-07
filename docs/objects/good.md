@@ -186,8 +186,14 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 | dto                                     | `goods-query.dto.spec.ts`             | 6      |
 | HTTP-контракт (DTO, статуси, валідація) | `goods-stock-totals.contract.spec.ts` | 12     |
 | рольовий доступ                         | `goods.role-gate.spec.ts`             | 14     |
-| сервісна логіка                         | `goods.service.spec.ts`               | 55     |
+| сервісна логіка                         | `goods.service.spec.ts`               | 58     |
+| статуси-мітки (assign / unassign, ролі) | `goods.statuses.spec.ts`              | 11     |
 
-Разом: **87** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **101** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
+**Чого тут НЕМА.** Мітки `guards:` стоять, але unit-тести стережуть не все, що сказано у правилах:
+
+- Пошук: тест фіксує форму запиту (рівно три поля, `contains` + `insensitive`), але не існування самих GIN trgm-індексів — вони живуть у ручних міграціях, і зниклий індекс unit-тест не помітить; це видно лише з `EXPLAIN` на живій БД.
+- Статуси-мітки: у цьому модулі покрито assign / unassign, фільтр soft-deleted статусу в DTO, скидання кешу і ролі двох endpoint-ів. CRUD довідника, TTL кешу і restore статусу стереже сусідній `good-statuses.service.spec.ts`; ролі OWNER/ADMIN на `/api/good-statuses` не асертить ніхто. UI (`GoodStatusManager`, `GoodStatusesTab`) без компонентних тестів.
+- Тотожність UoM: стережеться лише запис `Good.unitId` у трьох методах сервісу (addUoM / setDefaultUoM / removeUoM). Споживачі `unitOfMeasureId` в інших модулях і на фронті (рядки документів, вибір одиниці у формах) цим не покриті.
+- Необов'язковість постачальника перевіряється на рівні сервісу (create без FK проходить); `@IsOptional` у DTO окремим кейсом не асертиться.

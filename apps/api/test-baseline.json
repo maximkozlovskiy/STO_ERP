@@ -1363,6 +1363,7 @@
   ],
   "apps/api/src/modules/goods/goods.service.spec.ts": [
    "GoodsService addUoM 1-ша UoM сетить isDefault=true і оновлює Good.unit/unitId",
+   "GoodsService addUoM 1-ша UoM: у Good.unitId пишеться unitOfMeasureId, а не id рядка GoodUoM",
    "GoodsService addUoM Bug #223: cross-tenant good (findFirst → null) → NotFoundException",
    "GoodsService addUoM Bug #223: cross-tenant unit → NotFoundException",
    "GoodsService addUoM Bug #225: TOCTOU race → P2002 у create мапиться у ConflictException 409",
@@ -1386,6 +1387,7 @@
    "GoodsService findAll — пошук за штрих-кодом ?barcode= sub-ШК some.orgId == orgId запитувача (не leak між org)",
    "GoodsService findAll — пошук за штрих-кодом ?q= sub-ШК some.orgId == orgId запитувача (не leak між org)",
    "GoodsService findAll — пошук за штрих-кодом ?q= sub-ШК гілка exact (equals), головний barcode гілка contains",
+   "GoodsService findAll — пошук за штрих-кодом ?q= шукає по name, sku і barcode через contains + insensitive",
    "GoodsService findAll — пошук за штрих-кодом ?q= шукає і по name/sku/barcode, і по barcodes[] (точний матч, orgId)",
    "GoodsService findAll — пошук за штрих-кодом include підтягує barcodes; toDto без barcodes → []",
    "GoodsService findOne кидає NotFoundException якщо товар не знайдено в org",
@@ -1404,6 +1406,7 @@
    "GoodsService setDefaultUoM Bug #223: soft-deleted good → NotFoundException (findOne fails first)",
    "GoodsService setDefaultUoM happy path: всі поточні UoMs скидаються, target стає isDefault, Good.unit оновлюється",
    "GoodsService setDefaultUoM uom з чужої org → NotFoundException",
+   "GoodsService setDefaultUoM у Good.unitId пишеться unitOfMeasureId обраної UoM, а не uomId з URL",
    "GoodsService stockTotals Bug #452: SUM(quantity) за goodId по кільком складам — повертає агрегат",
    "GoodsService stockTotals Bug #452: _sum.quantity = null (Prisma агрегат без рядків) → totalQuantity 0, не NaN",
    "GoodsService stockTotals Bug #452: query фільтрується по orgId + deletedAt: null (tenant isolation + soft-delete)",
@@ -1417,6 +1420,19 @@
    "GoodsService update sku не передано → skuNormalized НЕ у data (не чіпаємо)",
    "GoodsService update sku очищується (порожній рядок) → skuNormalized=null",
    "GoodsService update оновлює товар коли FK не передані"
+  ],
+  "apps/api/src/modules/goods/goods.statuses.spec.ts": [
+   "GoodsController — ролі на статусах-мітках assignStatus — рівно OWNER / ADMIN / STOREKEEPER",
+   "GoodsController — ролі на статусах-мітках unassignStatus — рівно OWNER / ADMIN / STOREKEEPER",
+   "GoodsService — статуси-мітки (assign / unassign) assign повторно (P2002 на @@unique[goodId,statusId]) → no-op: без помилки, повертає товар",
+   "GoodsService — статуси-мітки (assign / unassign) assign: помилка БД, відмінна від P2002, не ковтається",
+   "GoodsService — статуси-мітки (assign / unassign) assign: статус не з цієї org або soft-deleted → NotFoundException, link не створюється",
+   "GoodsService — статуси-мітки (assign / unassign) assign: створює link {orgId, goodId, statusId} і скидає кеш довідника статусів",
+   "GoodsService — статуси-мітки (assign / unassign) assign: товар не з цієї org → NotFoundException, link не створюється",
+   "GoodsService — статуси-мітки (assign / unassign) assign: і товар, і статус шукаються в org запитувача (orgId + deletedAt:null)",
+   "GoodsService — статуси-мітки (assign / unassign) toDto: soft-deleted статус прихований у statuses, активний лишається",
+   "GoodsService — статуси-мітки (assign / unassign) unassign неіснуючого призначення → NotFoundException, кеш не чіпається",
+   "GoodsService — статуси-мітки (assign / unassign) unassign: видаляє link лише в межах org (orgId + goodId + statusId) і скидає кеш"
   ],
   "apps/api/src/modules/inspection/inspection.service.spec.ts": [
    "InspectionService.create CRITICAL points + editable WO: створює line з amount = normoHours * price",
@@ -2873,6 +2889,10 @@
    "StockDocuments — HTTP Contract POST /stock-documents/linked-counts повертає 400 для non-UUID елемента",
    "StockDocuments — HTTP Contract POST /stock-documents/linked-counts повертає 400 для порожнього масиву (ArrayMinSize)"
   ],
+  "apps/api/src/modules/stock-documents/stock-documents.line-goods-tenant.spec.ts": [
+   "StockDocumentsService — tenant-guard goodId рядків на update (BR-SDOC-002) update(): пошук товарів обмежений org і живими записами (where: orgId + deletedAt:null)",
+   "StockDocumentsService — tenant-guard goodId рядків на update (BR-SDOC-002) update(): чужий goodId серед рядків → 404 ДО запису (рядки не soft-delete-нуті, нові не створені)"
+  ],
   "apps/api/src/modules/stock-documents/stock-documents.linked-docs.spec.ts": [
    "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: TRANSFER із soft-deleted ЛИШЕ target-складом → warehouses=1 (не 2)",
    "StockDocumentsService — linked documents (Phase D3) getLinkedCounts: purchaseOrder=1 коли purchaseOrderId задано; warehouses=2 для TRANSFER (count == detail)",
@@ -2882,6 +2902,13 @@
    "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: TRANSFER з targetWarehouseId → 2 склади; orgId+deletedAt:null; Decimal→Number",
    "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: без purchaseOrderId і targetWarehouseId → лише джерело-склад",
    "StockDocumentsService — linked documents (Phase D3) getLinkedDocuments: неіснуючий/чужий документ → порожні секції (без throw)"
+  ],
+  "apps/api/src/modules/stock-documents/stock-documents.numbering.spec.ts": [
+   "StockDocumentsService — нумерація документа (BR-SDOC-001) create() пише у БД і повертає саме той номер, що видав лічильник; номер із DTO ігнорується",
+   "StockDocumentsService — нумерація документа (BR-SDOC-001) create(type=OPENING_BALANCE) → docNumbers.next(orgId, свій лічильник типу), рівно один раз",
+   "StockDocumentsService — нумерація документа (BR-SDOC-001) create(type=RECEIPT) → docNumbers.next(orgId, свій лічильник типу), рівно один раз",
+   "StockDocumentsService — нумерація документа (BR-SDOC-001) create(type=TRANSFER) → docNumbers.next(orgId, свій лічильник типу), рівно один раз",
+   "StockDocumentsService — нумерація документа (BR-SDOC-001) create(type=WRITEOFF) → docNumbers.next(orgId, свій лічильник типу), рівно один раз"
   ],
   "apps/api/src/modules/stock-documents/stock-documents.purchase-order-link.spec.ts": [
    "StockDocumentsService — create() з purchaseOrderId (Phase D2) create() без purchaseOrderId → persist null; FK-guard не викликається",
@@ -2902,6 +2929,10 @@
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED) — НЕ викликає createMovement з targetWarehouseId (на відміну від TRANSFER)",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): MOVEMENT_TYPES[RECEIPT] resolved → не кидає \"Непідтримуваний тип документу\"",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): inventory.createMovement викликаний ОДИН раз з type=RECEIPT і ПОЗИТИВНОЮ quantity"
+  ],
+  "apps/api/src/modules/stock-documents/stock-documents.type-labels.invariants.spec.ts": [
+   "STOCK_DOC_TYPE_LABELS ↔ StockDocumentType (BR-SDOC-005) ключі мапи збігаються з Prisma-enum StockDocumentType — жодного пропущеного і жодного зайвого",
+   "STOCK_DOC_TYPE_LABELS ↔ StockDocumentType (BR-SDOC-005) кожен тип має непорожню назву кирилицею (не сирий enum-код)"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.cancel-remove.spec.ts": [
    "SupplierPaymentsService — cancel-remove cancel(): DRAFT → CANCELLED, settlement НЕ пишеться",
@@ -2937,6 +2968,8 @@
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.create.spec.ts": [
    "SupplierPaymentsService — create create(): BANK_ACCOUNT без bankAccountId → BadRequestException",
+   "SupplierPaymentsService — create create(): BANK_ACCOUNT одночасно з cashRegisterId → BadRequestException, БЕЗ DB-виклику",
+   "SupplierPaymentsService — create create(): CASH_REGISTER без cashRegisterId → BadRequestException, БЕЗ DB-виклику",
    "SupplierPaymentsService — create create(): CASH_REGISTER одночасно з bankAccountId → BadRequestException",
    "SupplierPaymentsService — create create(): контрагент-CLIENT → BadRequestException (не постачальник)",
    "SupplierPaymentsService — create create(): успішне створення з касою → DRAFT, settlement НЕ пишеться"
@@ -2966,6 +2999,7 @@
   "apps/api/src/modules/supplier-payments/supplier-payments.schedule.spec.ts": [
    "SupplierPaymentsService — schedule getSchedule(): FIFO часткове перекриття — перший PO повний, другий частково",
    "SupplierPaymentsService — schedule getSchedule(): FIFO — сума = balance, борг лягає на найстаріші PO (47 vs 30953)",
+   "SupplierPaymentsService — schedule getSchedule(): PO-запит — лише RECEIVED/PARTIAL, FIFO-порядок paymentDate asc nulls first",
    "SupplierPaymentsService — schedule getSchedule(): SettlementAccount-запит виключає видалених + не-supplier counterparty (Bug #599)",
    "SupplierPaymentsService — schedule getSchedule(): from > to → BadRequestException, БЕЗ DB-виклику (Bug #597)",
    "SupplierPaymentsService — schedule getSchedule(): payable з балансу розподіляється по PO-датах (overdue/byDate/planned)",
@@ -2974,6 +3008,7 @@
    "SupplierPaymentsService — schedule getSchedule(): борг з балансу без відкритих PO → усе в overdue",
    "SupplierPaymentsService — schedule getSchedule(): борг з балансу понад суму PO → надлишок в overdue",
    "SupplierPaymentsService — schedule getSchedule(): вікно > 100 днів → BadRequestException, БЕЗ DB-виклику (Bug #597)",
+   "SupplierPaymentsService — schedule getSchedule(): залишок PO = totalAmount − Σ проведених оплат; повністю сплачений PO пропускається",
    "SupplierPaymentsService — schedule getSchedule(): кредит-ліміт віднімає з найпізніших (5000 борг, 2000 ліміт → 3000)",
    "SupplierPaymentsService — schedule getSchedule(): ліміт з АКТИВНОГО договору навіть коли PO без contract (review #5)",
    "SupplierPaymentsService — schedule getSchedule(): ліміт покриває planned ПЕРШИМ, overdue лишається повним",
@@ -2985,6 +3020,7 @@
    "SupplierPaymentsService — schedule getScheduleDocuments(): planned-бакет — PO поза вікном",
    "SupplierPaymentsService — schedule getScheduleDocuments(): supplierId звужує запити до одного постачальника",
    "SupplierPaymentsService — schedule getScheduleDocuments(): КОНСИСТЕНТНІСТЬ — Σ allocated бакета == клітинка getSchedule (той самий mock)",
+   "SupplierPaymentsService — schedule getScheduleDocuments(): борг понад ΣPO → синтетичний рядок без документа (poId порожній) в overdue",
    "SupplierPaymentsService — schedule getScheduleDocuments(): кредит-ліміт зменшує allocated з найпізніших"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.sort.spec.ts": [
@@ -2998,10 +3034,12 @@
   "apps/api/src/modules/supplier-payments/supplier-payments.update-guards.spec.ts": [
    "SupplierPaymentsService — update-guards create(): purchaseOrder іншого постачальника → BadRequestException (cross-supplier)",
    "SupplierPaymentsService — update-guards create(): невідомий bankAccountId (для BANK_ACCOUNT) → NotFoundException",
+   "SupplierPaymentsService — update-guards update(): PATCH purchaseOrderId іншого постачальника → BadRequestException, ніяких writes",
    "SupplierPaymentsService — update-guards update(): PATCH sourceType=BANK_ACCOUNT без bankAccountId → BadRequestException",
    "SupplierPaymentsService — update-guards update(): PATCH на CONFIRMED → BadRequestException, ніяких writes",
    "SupplierPaymentsService — update-guards update(): зміна supplierId без purchaseOrderId → авто-очищення orphan PO (Bug #588)",
-   "SupplierPaymentsService — update-guards update(): зміна supplierId коли purchaseOrderId вже null → НЕ пише зайвий purchaseOrderId"
+   "SupplierPaymentsService — update-guards update(): зміна supplierId коли purchaseOrderId вже null → НЕ пише зайвий purchaseOrderId",
+   "SupplierPaymentsService — update-guards update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes"
   ],
   "apps/api/src/modules/supplier-returns/supplier-returns.confirm-fsm.spec.ts": [
    "SupplierReturnsService — regression guards cancel() з CONFIRMED → BadRequestException (FSM правило)",

@@ -122,6 +122,7 @@ describe('GoodsService', () => {
   });
 
   describe('create', () => {
+    // guards: BR-GOOD-004
     it('створює товар коли FK не передані (happy path)', async () => {
       prisma.good.findFirst.mockResolvedValueOnce(null); // SKU check
       const res = await service.create('org-1', { name: 'Олива', salePrice: 150 });
@@ -221,6 +222,7 @@ describe('GoodsService', () => {
     });
 
     // Bug: restore лабельованого товару повертає його у goodCount → кеш good-statuses треба скинути.
+    // guards: BR-GOOD-006
     it('відновлення товару з міткою → скидає кеш good-statuses', async () => {
       prisma.good.findFirst
         .mockResolvedValueOnce({ sku: 'OIL', internalCode: 'T-000001' })
@@ -255,6 +257,7 @@ describe('GoodsService', () => {
 
     // Bug: soft-delete лабельованого товару має скинути кеш good-statuses, бо goodCount
     // (_count.links where good.deletedAt:null) падає, а кешований довідник тримає старе значення до TTL.
+    // guards: BR-GOOD-006
     it('товар з міткою → soft-delete скидає кеш good-statuses', async () => {
       prisma.stockItem.findFirst.mockResolvedValueOnce(null);
       prisma.good.updateMany.mockResolvedValueOnce({ count: 1 });
@@ -473,6 +476,32 @@ describe('GoodsService', () => {
       expect(goodUpdateMany).not.toHaveBeenCalled();
     });
 
+    // GoodUoM.id ('uom-1') і UnitOfMeasure.id ('unit-1') — різні ідентифікатори. У Good.unitId
+    // має потрапити саме unitOfMeasureId; id рядка GoodUoM там — FK на неіснуючу одиницю.
+    // guards: BR-GOOD-001
+    it('1-ша UoM: у Good.unitId пишеться unitOfMeasureId, а не id рядка GoodUoM', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(null);
+      prisma.goodUoM.count.mockResolvedValueOnce(0);
+      const goodUpdateMany = vi.fn().mockResolvedValueOnce({ count: 1 });
+      prisma.$transaction.mockImplementationOnce(async (cb: any) =>
+        cb({
+          goodUoM: { create: vi.fn().mockResolvedValueOnce({ ...uomRow, isDefault: true }) },
+          good: { updateMany: goodUpdateMany },
+        }),
+      );
+
+      const res = await service.addUoM('org-1', 'good-1', { unitOfMeasureId: 'unit-1' });
+      expect(goodUpdateMany).toHaveBeenCalledWith({
+        where: { id: 'good-1', orgId: 'org-1', deletedAt: null },
+        data: { unitId: 'unit-1', unit: 'л' },
+      });
+      // DTO віддає обидва ідентифікатори окремо — фронт не має плутати їх.
+      expect(res.id).toBe('uom-1');
+      expect(res.unitOfMeasureId).toBe('unit-1');
+    });
+
     it('Bug #223: cross-tenant good (findFirst → null) → NotFoundException', async () => {
       prisma.good.findFirst.mockResolvedValueOnce(null); // not in org
       prisma.unitOfMeasure.findFirst.mockResolvedValueOnce(unitRow);
@@ -550,6 +579,19 @@ describe('GoodsService', () => {
       expect(Array.isArray(ops)).toBe(true);
       expect(ops.length).toBe(3);
     });
+
+    // guards: BR-GOOD-001
+    it('у Good.unitId пишеться unitOfMeasureId обраної UoM, а не uomId з URL', async () => {
+      prisma.good.findFirst.mockResolvedValueOnce(goodRow);
+      prisma.goodUoM.findFirst.mockResolvedValueOnce(uomRow); // id 'uom-1' → unitOfMeasureId 'unit-1'
+      prisma.$transaction.mockResolvedValueOnce([{ count: 3 }, uomRow, { count: 1 }]);
+
+      await service.setDefaultUoM('org-1', 'good-1', 'uom-1');
+      expect(prisma.good.updateMany).toHaveBeenCalledWith({
+        where: { id: 'good-1', orgId: 'org-1', deletedAt: null },
+        data: { unitId: 'unit-1', unit: 'л' },
+      });
+    });
   });
 
   describe('removeUoM', () => {
@@ -594,6 +636,7 @@ describe('GoodsService', () => {
       expect(txUpdateMany).not.toHaveBeenCalled();
     });
 
+    // guards: BR-GOOD-001
     it('видалення default коли total>1 → промотує наступний UoM (createdAt asc) у default + оновлює Good.unit', async () => {
       prisma.good.findFirst.mockResolvedValueOnce(goodRow);
       prisma.goodUoM.findFirst.mockResolvedValueOnce({ ...uomRow, isDefault: true });
@@ -752,6 +795,22 @@ describe('GoodsService', () => {
       expect(hasBarcodesSome).toBe(true);
       // toDto віддає barcodes як string[]
       expect(res.items[0].barcodes).toEqual(['999']);
+    });
+
+    // Текстовий пошук — рівно три поля, і всі через contains + insensitive: Prisma будує ILIKE
+    // '%q%', який Postgres обслуговує GIN trgm-індексами goods(name / sku / barcode).
+    // equals/startsWith або зникле поле змінили б і видачу, і план запиту.
+    // guards: BR-GOOD-003
+    it('?q= шукає по name, sku і barcode через contains + insensitive', async () => {
+      prisma.good.findMany.mockResolvedValueOnce([]);
+      prisma.good.count.mockResolvedValueOnce(0);
+      await service.findAll('org-1', q({ q: 'олив' }));
+      const branches = prisma.good.findMany.mock.calls[0][0].where.OR as Array<
+        Record<string, unknown>
+      >;
+      for (const field of ['name', 'sku', 'barcode']) {
+        expect(branches).toContainEqual({ [field]: { contains: 'олив', mode: 'insensitive' } });
+      }
     });
 
     it('?barcode= (exact) шукає головний АБО додатковий ШК; фільтрує orgId', async () => {

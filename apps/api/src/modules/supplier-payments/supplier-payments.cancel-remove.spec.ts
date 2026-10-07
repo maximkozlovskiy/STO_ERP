@@ -46,6 +46,7 @@ describe('SupplierPaymentsService — cancel-remove', () => {
     });
   });
 
+  // guards: BR-SUPPAY-006
   it('remove(): CONFIRMED оплату видалити не можна → BadRequestException', async () => {
     prisma.supplierPayment.findFirst.mockResolvedValueOnce({
       status: SupplierPaymentStatus.CONFIRMED,

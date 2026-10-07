@@ -83,6 +83,7 @@ describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () 
     service = module.get(StockDocumentsService);
   });
 
+  // guards: BR-SDOC-006
   it('create() з валідним purchaseOrderId → персистить purchaseOrderId у data + повертає у DTO', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({ id: PO_ID });
     prisma.stockDocument.create.mockResolvedValueOnce({ id: DOC_ID });
@@ -107,6 +108,7 @@ describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () 
     expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
   });
 
+  // guards: BR-SDOC-006
   it('create() без purchaseOrderId → persist null; FK-guard не викликається', async () => {
     prisma.stockDocument.create.mockResolvedValueOnce({ id: DOC_ID });
     prisma.stockDocument.findFirstOrThrow.mockResolvedValueOnce(buildReturnDoc(null));
@@ -124,6 +126,7 @@ describe('StockDocumentsService — create() з purchaseOrderId (Phase D2)', () 
     expect(res.purchaseOrderId).toBeNull();
   });
 
+  // guards: BR-SDOC-006
   it('create() з невалідним purchaseOrderId (чужа org / soft-deleted) → BadRequestException', async () => {
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce(null);
 
@@ -215,6 +218,7 @@ describe('StockDocumentsService — update() зберігає purchaseOrderId (P
     service = module.get(StockDocumentsService);
   });
 
+  // guards: BR-SDOC-006
   it('update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO', async () => {
     const res = await service.update(ORG, DOC_ID, { notes: 'нове' } as never);
 

@@ -44,6 +44,7 @@ describe('SupplierPaymentsService — confirm', () => {
   // confirm() — головний FSM-step
   // ──────────────────────────────────────────────────────────────────────
 
+  // guards: BR-SUPPAY-001, BR-SUPPAY-005
   it('confirm(): settlement SUPPLIER_PAYMENT (+1, наш борг ↓) + documentType=SupplierPayment', async () => {
     prisma.supplierPayment.findFirst
       // pre-tx read: status+supplierId+amount+джерело (для settlement + cash-out). BANK_ACCOUNT → без каси.
@@ -131,6 +132,7 @@ describe('SupplierPaymentsService — confirm', () => {
     expect(cash.createOperation).toHaveBeenCalledTimes(1);
   });
 
+  // guards: BR-SUPPAY-008
   it('confirm(): CAS програв (updateMany count=0, concurrent) → BadRequest, settlement НЕ пишеться', async () => {
     prisma.supplierPayment.findFirst.mockResolvedValueOnce({
       status: SupplierPaymentStatus.DRAFT, // pre-check проходить

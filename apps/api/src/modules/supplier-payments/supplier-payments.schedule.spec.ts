@@ -58,6 +58,7 @@ describe('SupplierPaymentsService — schedule', () => {
       },
     ]);
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): payable з балансу розподіляється по PO-датах (overdue/byDate/planned)', async () => {
     // Балансовий борг 4200 = точна сума PO-outstanding → FIFO покриває всі PO повністю.
     mockPayable(4200);
@@ -77,6 +78,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(r.totals.total).toBe(4200);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): FIFO — сума = balance, борг лягає на найстаріші PO (47 vs 30953)', async () => {
     // Ключовий регрес-guard: реальний борг = 47, а PO роздуті до 30953.
     // FIFO наливає 47 на НАЙСТАРІШИЙ PO (953-overdue за датою 08-10, nulls/asc порядок
@@ -94,6 +96,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(row.byDate['2026-08-25']).toBeUndefined(); // пізніший PO не показується
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): FIFO часткове перекриття — перший PO повний, другий частково', async () => {
     // payable=1500 наливається: PO[0] (1000) повний, PO[1] (1000) отримує 500, решта відсічена.
     mockPayable(1500);
@@ -108,6 +111,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(row.total).toBe(1500);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): борг з балансу понад суму PO → надлишок в overdue', async () => {
     // payable=1200, єдиний PO outstanding=1000 → 1000 у дату, 200 надлишку → overdue.
     mockPayable(1200);
@@ -121,6 +125,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(row.total).toBe(1200);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): борг з балансу без відкритих PO → усе в overdue', async () => {
     // Баланс від'ємний (борг з поверненя/коригування), жодного RECEIVED/PARTIAL PO.
     mockPayable(500);
@@ -131,6 +136,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(r.suppliers[0].total).toBe(500);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): постачальник з балансом ≥ 0 не показується (нічого не винні)', async () => {
     // Немає SettlementAccount з balance<0 → рядка немає, навіть якщо є відкриті PO.
     prisma.settlementAccount.findMany.mockResolvedValueOnce([]);
@@ -142,6 +148,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(r.totals.total).toBe(0);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): кредит-ліміт віднімає з найпізніших (5000 борг, 2000 ліміт → 3000)', async () => {
     mockPayable(5000);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
@@ -165,6 +172,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(r.suppliers[0].total).toBe(3000);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): ліміт покриває planned ПЕРШИМ, overdue лишається повним', async () => {
     mockPayable(2000);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
@@ -190,6 +198,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(r.totals.total).toBe(0);
   });
 
+  // guards: BR-SUPPAY-009
   it('getSchedule(): SettlementAccount-запит виключає видалених + не-supplier counterparty (Bug #599)', async () => {
     // Bug #599 — payableAccounts має відфільтрувати:
     //   (а) deleted counterparty (orphan-рядки — див. Bug #600 divergence зі звітом);
@@ -210,6 +219,39 @@ describe('SupplierPaymentsService — schedule', () => {
       type: { in: ['SUPPLIER', 'BOTH'] },
     });
     expect(where.balance).toEqual({ lt: 0 });
+  });
+
+  // guards: BR-SUPPAY-009
+  it('getSchedule(): PO-запит — лише RECEIVED/PARTIAL, FIFO-порядок paymentDate asc nulls first', async () => {
+    // FIFO-налив іде у порядку, в якому PO прийшли з БД, тож порядок і фільтр статусів —
+    // частина правила: інший orderBy тихо перекидає борг з прострочених на пізніші дати.
+    await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    const arg = prisma.purchaseOrder.findMany.mock.calls[0]![0] as {
+      where: { orgId: string; deletedAt: null; status: { in: string[] } };
+      orderBy: unknown[];
+    };
+    expect(arg.where.orgId).toBe(ORG);
+    expect(arg.where.deletedAt).toBeNull();
+    expect(arg.where.status).toEqual({ in: ['RECEIVED', 'PARTIAL'] });
+    expect(arg.orderBy[0]).toEqual({ paymentDate: { sort: 'asc', nulls: 'first' } });
+  });
+
+  // guards: BR-SUPPAY-009
+  it('getSchedule(): залишок PO = totalAmount − Σ проведених оплат; повністю сплачений PO пропускається', async () => {
+    // payable=1000. PO[0] сплачений повністю (1000 з 1000) → у FIFO не бере участі.
+    // PO[1]: 1000 − 700 = 300 реального залишку → бере 300; PO[2] отримує решту 700.
+    mockPayable(1000);
+    prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-24', paid: [600, 400] }),
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-25', paid: [700] }),
+      poRow({ totalAmount: 1000, paymentDate: '2026-08-26' }),
+    ]);
+    const r = await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    const row = r.suppliers[0];
+    expect(row.byDate['2026-08-24']).toBeUndefined();
+    expect(row.byDate['2026-08-25']).toBe(300);
+    expect(row.byDate['2026-08-26']).toBe(700);
+    expect(row.total).toBe(1000);
   });
 
   // ──────────────────────────────────────────────────────────────────────
@@ -310,6 +352,7 @@ describe('SupplierPaymentsService — schedule', () => {
     supplierPayments: (over.paid ?? []).map(a => ({ amount: a })),
   });
 
+  // guards: BR-SUPPAY-010
   it('getScheduleDocuments(): date-бакет повертає лише PO цього дня + Σ allocated == клітинка', async () => {
     // 2 PO у 25-го, 1 у 26-го; balance=1600 покриває всі → date 25-го = 1000+400? Ні:
     // FIFO наливає 1600: PO1(1000)@25 повний, PO2(600)@26 повний → 25-го = 1000, 26-го = 600.
@@ -329,6 +372,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(sum).toBe(1000); // == клітинка byDate['2026-08-25'] у getSchedule
   });
 
+  // guards: BR-SUPPAY-010
   it('getScheduleDocuments(): overdue-бакет фільтрує лише прострочені/null-date', async () => {
     mockPayable(1500);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
@@ -343,6 +387,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(docs.reduce((s, d) => s + d.allocated, 0)).toBe(900); // 500 + 400
   });
 
+  // guards: BR-SUPPAY-010
   it('getScheduleDocuments(): planned-бакет — PO поза вікном', async () => {
     mockPayable(700);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
@@ -356,6 +401,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(docs[0].allocated).toBe(700);
   });
 
+  // guards: BR-SUPPAY-010
   it('getScheduleDocuments(): КОНСИСТЕНТНІСТЬ — Σ allocated бакета == клітинка getSchedule (той самий mock)', async () => {
     // Один набір даних → викликаємо ОБИДВА методи → суми мають збігатися по кожному бакету.
     const setup = () => {
@@ -388,6 +434,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(docs26[0].allocated).toBe(500);
   });
 
+  // guards: BR-SUPPAY-010
   it('getScheduleDocuments(): кредит-ліміт зменшує allocated з найпізніших', async () => {
     // borg 2000: overdue 1000 + planned 1000; ліміт 1500 з'їдає planned(1000)→0 + overdue 500.
     mockPayable(2000);
@@ -403,6 +450,7 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(overdueDocs.reduce((s, d) => s + d.allocated, 0)).toBe(500);
   });
 
+  // guards: BR-SUPPAY-010
   it('getScheduleDocuments(): supplierId звужує запити до одного постачальника', async () => {
     mockPayable(500);
     prisma.purchaseOrder.findMany.mockResolvedValueOnce([
@@ -421,6 +469,33 @@ describe('SupplierPaymentsService — schedule', () => {
     expect(poWhere.supplierId).toBe(SUPPLIER_ID);
     const saWhere = prisma.settlementAccount.findMany.mock.calls[0]![0].where;
     expect(saWhere.counterpartyId).toBe(SUPPLIER_ID);
+  });
+
+  // guards: BR-SUPPAY-010
+  it('getScheduleDocuments(): борг понад ΣPO → синтетичний рядок без документа (poId порожній) в overdue', async () => {
+    // payable=1200, єдиний PO на 1000 у вікні → 200 надлишку не має документа.
+    const setup = () => {
+      mockPayable(1200);
+      prisma.purchaseOrder.findMany.mockResolvedValueOnce([
+        poDoc({ id: 'po-1', number: 'ЗАМ-1', totalAmount: 1000, paymentDate: '2026-08-25' }),
+      ]);
+    };
+    setup();
+    const overdue = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'overdue',
+    });
+    expect(overdue).toHaveLength(1);
+    expect(overdue[0].poId).toBe(''); // маркер «некликабельний» для UI
+    expect(overdue[0].paymentDate).toBeNull();
+    expect(overdue[0].allocated).toBe(200);
+
+    // Синтетичний рядок не «протікає» у бакет дати реального PO.
+    setup();
+    const byDate = await service.getScheduleDocuments(ORG, '2026-08-20', '2026-09-08', {
+      kind: 'date',
+      date: '2026-08-25',
+    });
+    expect(byDate.map(d => d.poId)).toEqual(['po-1']);
   });
 
   it('getScheduleDocuments(): from > to → BadRequestException (спільний guard)', async () => {

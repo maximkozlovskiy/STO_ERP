@@ -118,19 +118,38 @@ describe; 2026-10-05 розбито за аспектами — 54 кейси м
 
 **Модуль:** `apps/api/src/modules/stock-documents/`
 
-| Аспект                                                                       | Тест                                          | Кейсів | Правила     |
-| ---------------------------------------------------------------------------- | --------------------------------------------- | ------ | ----------- |
-| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`        | 12     | BR-SDOC-004 |
-| Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`         | 8      | —           |
-| `purchaseOrderId` на create і update (Phase D2)                              | `stock-documents.purchase-order-link.spec.ts` | 4      | BR-SDOC-006 |
-| HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`            | 23     | BR-SDOC-002 |
-| Асиметричний reverse рухів                                                   | `asymmetric-reverse.invariants.spec.ts`       | 7      | BR-SDOC-004 |
+| Аспект                                                                       | Тест                                             | Кейсів | Правила                               |
+| ---------------------------------------------------------------------------- | ------------------------------------------------ | ------ | ------------------------------------- |
+| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`           | 12     | BR-SDOC-001, BR-SDOC-002, BR-SDOC-004 |
+| Нумерація: кожен тип → свій лічильник, номер лише з лічильника               | `stock-documents.numbering.spec.ts`              | 5      | BR-SDOC-001                           |
+| Tenant-guard goodId рядків на update                                         | `stock-documents.line-goods-tenant.spec.ts`      | 2      | BR-SDOC-002                           |
+| Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 8      | —                                     |
+| `purchaseOrderId` на create і update (Phase D2)                              | `stock-documents.purchase-order-link.spec.ts`    | 4      | BR-SDOC-006                           |
+| HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`               | 23     | —                                     |
+| Асиметричний reverse рухів                                                   | `asymmetric-reverse.invariants.spec.ts`          | 7      | BR-SDOC-004                           |
+| Інваріант `STOCK_DOC_TYPE_LABELS` ↔ Prisma `StockDocumentType`               | `stock-documents.type-labels.invariants.spec.ts` | 2      | BR-SDOC-005                           |
 
-**Чого тут НЕМА.** `BR-SDOC-001` (нумерація), `BR-SDOC-003` (дедуп рядків),
-`BR-SDOC-005` і `BR-SDOC-007` (`STOCK_DOC_TYPE_LABELS` як SOT типів) власних тестів не
-мають. Перші два покриті побічно у contract-спеку; два останні — фронтові й стережуться
-лише тим, що `Object.keys()` читається з `@sto/shared`. Свідома прогалина: окремий
-інваріантний спек для `STOCK_DOC_TYPE_LABELS` ↔ `StockDocumentType` вартий того, бо новий
-тип у Prisma без запису у shared ламає і таб-бар, і фільтр — тихо.
+Web-тест таб-бару типів (`BR-SDOC-007`) лежить поза модулем:
+`apps/web/src/app/(app)/stock-documents/__tests__/StockDocTypeTabs.test.tsx` — 4 кейси. У
+мапу shared підкладено п'ятий тип, якого сторінка «не знає»: він мусить стати вкладкою і
+прийматись із `?type=`.
+
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-SDOC-003** — дос'є: дедуп рядків перед transition — `Set(lineIds)`, дубль → BadRequest; код: `transition()` не приймає `lineIds` узагалі (DTO має лише `status`), дедупу з винятком у сервісі немає. Раніше в прогалинах стояло хибне «покрите побічно у contract-спеку».
+- **BR-SDOC-004** — дос'є: рухи TRANSFER ідуть у `Promise.all`; код: `Promise.all` лише між рядками документа, а всередині TRANSFER списання й оприбуткування навмисно ПОСЛІДОВНІ — собівартість зі списання йде в ціну оприбуткування (Bug #610), і два тести стережуть саме це.
+
+**Чого тут НЕМА.** Прогалин за ідентифікатором не лишилось — нижче те, що покрите лише
+частково.
+
+- Перелік типів у модалці створення (`StockDocumentCreateModal`) теж читає ключі мапи
+  shared, але компонентного тесту на це немає: інваріантний спек стереже саму мапу, web-тест —
+  лише таб-бар і `?type=` на сторінці.
+- UI-половина PO-джерела (пікер «Замовлення (джерело)» у модалці, read-only в edit-режимі)
+  unit-тестом не покрита — спек стереже лише сервіс.
+- Повідомлення помилок у сервісних спеках звіряються за класом винятку, а не за текстом
+  (виняток — «Товар не знайдено» на create).
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
