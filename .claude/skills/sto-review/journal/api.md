@@ -150,3 +150,17 @@
 **Grep:** `for t in $(grep -rhoE "\.next\(orgId, '[A-Z_]+'" apps/api/src --include="*.ts" | grep -oE "[A-Z_]{4,}" | sort -u); do grep -q "$t" apps/api/src/modules/setup/setup.service.ts || echo "setup без $t"; grep -q "$t" packages/database/prisma/seed.ts || echo "seed без $t"; done`
 **Фікс:** тип у `seed.ts` + `setup.service.ts` + міграція-backfill окремим файлом (нове enum-значення не можна вжити в тій самій транзакції, взірець — `20260703100001_seed_supplier_payment_doc_numbers`).
 **Severity:** CRITICAL — фіча недоступна на кожній інсталяції; потребує міграції.
+
+### 2026-10-08 — Deadlock: дві транзакції пишуть акт і наряд у різному порядку — §4
+
+**Сигнал:** у `transition()` одного агрегату додано `tx.<іншийАгрегат>.updateMany(...)` ПІСЛЯ CAS власного рядка, а сервіс того агрегату в своїй tx спершу блокує свій рядок і лише потім чужий (`CompletionActsService.sign()`: акт → наряд; `WorkOrdersService.transition(CANCELLED)`: наряд → акт). Одночасні «підписати акт» і «скасувати наряд» → Postgres deadlock → 500.
+**Grep:** `grep -rnE "tx\.[a-zA-Z]+\.updateMany\(" apps/api/src/modules --include="*.service.ts" | grep -v spec` → для кожної tx, що пише ≥2 моделей, знайти зворотну пару в сервісі другої моделі й порівняти порядок.
+**Фікс:** вирівняти порядок (запис у чужий рядок — до CAS власного; відкат tx покриває невдалий CAS) + асерт `mock.invocationCallOrder` у unit-тесті.
+**Severity:** IMPORTANT — дані лишаються узгодженими, але користувач отримує 500 на рідкісній гонці.
+
+### 2026-10-08 — Правило додано на create/clone, а update і сусідній документ лишились повз нього — §5
+
+**Сигнал:** нова перевірка FK-контрагента (`assertCounterpartyRole`) стоїть у create/clone, а `update` тієї ж сутності пише `counterpartyId: dto.counterpartyId ?? undefined` без жодного читання контрагента (заразом і без перевірки `orgId` — чужий tenant); сусідній документ тієї ж ролі (`supplier-returns`) не отримав перевірки взагалі; web-пікер і E2E-сід беруть «першого-ліпшого» контрагента й отримують 400.
+**Grep:** `grep -rnE "(counterpartyId|supplierId): dto\.(counterpartyId|supplierId)" apps/api/src/modules --include="*.service.ts" | grep -v spec` → кожен запис: чи є вище `findFirst({ where: { id, orgId, deletedAt: null } })` і перевірка ролі. Плюс `grep -rn "counterparties?limit\|counterparties?q=" apps/web/src apps/web/e2e | grep -v types` для пікерів і сідів без фільтра типу.
+**Фікс:** перевірка в update лише при ЗМІНІ FK (старі документи лишаються редагованими); рядок у статичному стороже підключення; `types=CLIENT&types=BOTH` у пікері й сідах.
+**Severity:** IMPORTANT (обхід правила) / CRITICAL там, де update не перевіряв `orgId` FK.

@@ -5,6 +5,7 @@ import { kyivToday } from '../../common/utils/kyiv-date';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
+import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -137,7 +138,7 @@ export class SupplierReturnsService {
     const [supplier, warehouse, purchaseOrder] = await Promise.all([
       this.prisma.counterparty.findFirst({
         where: { id: dto.supplierId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, type: true },
       }),
       this.prisma.warehouse.findFirst({
         where: { id: dto.warehouseId, orgId, deletedAt: null },
@@ -156,6 +157,7 @@ export class SupplierReturnsService {
       throw new NotFoundException(
         translateError('err.supplierReturn.supplierNotFound', getLocale()),
       );
+    assertCounterpartyRole(supplier.type, 'supplier'); // BR-CP-001
     if (!warehouse)
       throw new NotFoundException(
         translateError('err.supplierReturn.warehouseNotFound', getLocale()),
@@ -229,7 +231,7 @@ export class SupplierReturnsService {
   ): Promise<SupplierReturnResponseDto> {
     const sr = await this.prisma.supplierReturn.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, status: true },
+      select: { id: true, status: true, supplierId: true },
     });
     if (!sr)
       throw new NotFoundException(translateError('err.supplierReturn.notFound', getLocale()));
@@ -238,13 +240,14 @@ export class SupplierReturnsService {
         translateError('err.supplierReturn.onlyDraftEditable', getLocale()),
       );
     }
+    const supplierChanged = dto.supplierId !== undefined && dto.supplierId !== sr.supplierId;
 
     // Parallel validation: supplier + warehouse (independent queries)
     const [supplier, warehouse] = await Promise.all([
       dto.supplierId
         ? this.prisma.counterparty.findFirst({
             where: { id: dto.supplierId, orgId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, type: true },
           })
         : Promise.resolve(null),
       dto.warehouseId
@@ -258,6 +261,8 @@ export class SupplierReturnsService {
       throw new NotFoundException(
         translateError('err.supplierReturn.supplierNotFound', getLocale()),
       );
+    // BR-CP-001: only when the supplier actually changes - a legacy return stays editable.
+    if (supplier && supplierChanged) assertCounterpartyRole(supplier.type, 'supplier');
     if (dto.warehouseId && !warehouse)
       throw new NotFoundException(
         translateError('err.supplierReturn.warehouseNotFound', getLocale()),

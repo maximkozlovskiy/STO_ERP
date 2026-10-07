@@ -757,7 +757,21 @@ export class WorkOrdersService {
     // 50+ parts can exceed the 5s Prisma default.
     const updated = await this.prisma.$transaction(
       async tx => {
-        // CAS-перехід ПЕРШИМ (не stale-read!): flip wo.status→newStatus атомарно у where. Без
+        // BR-WO-006 (Bug #795): чернетки актів скасованого наряду скасовуються разом із ним, у тій
+        // самій транзакції. Підписані акти не чіпаємо — це вже виданий клієнтові документ.
+        // Стоїть ДО CAS наряду свідомо — через порядок блокувань: CompletionActsService.sign()
+        // блокує рядок акту, потім рядок наряду (COMPLETED→INVOICED). Якби тут було навпаки
+        // (наряд → акт), одночасні «підписати» і «скасувати» давали б deadlock і 500 замість
+        // 400 «статус змінився». Якщо CAS нижче не пройде — транзакція відкотить і цей запис.
+        if (newStatus === 'CANCELLED') {
+          await tx.completionAct.updateMany({
+            where: { orgId, workOrderId: id, deletedAt: null, status: 'DRAFT' },
+            data: { status: 'CANCELLED' },
+          });
+        }
+
+        // CAS-перехід наряду — ПЕРШИМ серед записів у сам наряд, склад і борг (не stale-read!):
+        // flip wo.status→newStatus атомарно у where. Без
         // цього два concurrent transition(COMPLETED) обидва проходять re-read → ПОДВІЙНИЙ CHARGE
         // (для labor-only наряду нема stockItem-lock, що інакше випадково серіалізує) + подвійний
         // WRITEOFF. count===0 → інший перехід уже стався. Дзеркалить stock-documents.transition.
@@ -793,15 +807,6 @@ export class WorkOrdersService {
         // емітується рівно 1× (та сама гарантія, що не дає подвійного CHARGE).
         if (newStatus === 'CANCELLED' && wo.status === 'COMPLETED') {
           await this.stockEffects.returnPartsAndCredit(orgId, wo, userId, tx);
-        }
-
-        // BR-WO-006 (Bug #795): чернетки актів скасованого наряду скасовуються разом із ним, у тій
-        // самій транзакції. Підписані акти не чіпаємо — це вже виданий клієнтові документ.
-        if (newStatus === 'CANCELLED') {
-          await tx.completionAct.updateMany({
-            where: { orgId, workOrderId: id, deletedAt: null, status: 'DRAFT' },
-            data: { status: 'CANCELLED' },
-          });
         }
 
         // Статус/completedAt уже застосовані CAS-updateMany вище — тут лише fetch з include.

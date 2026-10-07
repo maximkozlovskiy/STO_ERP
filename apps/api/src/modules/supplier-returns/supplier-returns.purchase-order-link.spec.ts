@@ -96,6 +96,16 @@ describe('SupplierReturnsService — create() з purchaseOrderId (Phase D2)', ()
     expect(res.purchaseOrderNumber).toBe('ЗП-2026-0007');
   });
 
+  // guards: BR-CP-001
+  it('create() на контрагента-клієнта → 400, документ не створюється', async () => {
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID, type: 'CLIENT' });
+
+    await expect(
+      service.create(ORG, { supplierId: SUPPLIER_ID, warehouseId: WAREHOUSE_ID } as never),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.supplierReturn.create).not.toHaveBeenCalled();
+  });
+
   it('create() без purchaseOrderId → persist null; FK-guard не викликається', async () => {
     prisma.supplierReturn.create.mockResolvedValueOnce(buildReturnDoc(null));
 
@@ -212,6 +222,51 @@ describe('SupplierReturnsService — update() зберігає purchaseOrderId (
       ],
     }).compile();
     service = module.get(SupplierReturnsService);
+  });
+
+  // guards: BR-CP-001
+  it('update() міняє постачальника на клієнта → 400, документ не пишеться', async () => {
+    prisma.supplierReturn.findFirst.mockReset();
+    prisma.supplierReturn.findFirst.mockResolvedValueOnce({
+      id: SR_ID,
+      status: SupplierReturnStatus.DRAFT,
+      supplierId: 's1',
+    });
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 's2', type: 'CLIENT' });
+
+    await expect(service.update(ORG, SR_ID, { supplierId: 's2' } as never)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(updateData).toBeUndefined();
+  });
+
+  // guards: BR-CP-001
+  it('update() з тим самим постачальником-клієнтом (старий документ) → проходить', async () => {
+    prisma.supplierReturn.findFirst.mockReset();
+    prisma.supplierReturn.findFirst
+      .mockResolvedValueOnce({ id: SR_ID, status: SupplierReturnStatus.DRAFT, supplierId: 's1' })
+      .mockResolvedValueOnce({
+        id: SR_ID,
+        orgId: ORG,
+        number: 'ПВП-20260615-000001',
+        status: SupplierReturnStatus.DRAFT,
+        supplierId: 's1',
+        warehouseId: 'w1',
+        purchaseOrderId: null,
+        totalAmount: 0,
+        notes: null,
+        documentDate: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        supplier: { firstName: 'Іван', lastName: 'Клієнт', companyName: null },
+        warehouse: { name: 'С1' },
+        purchaseOrder: null,
+        lines: [],
+      });
+    prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 's1', type: 'CLIENT' });
+
+    await expect(service.update(ORG, SR_ID, { supplierId: 's1' } as never)).resolves.toBeDefined();
+    expect(updateData).toBeDefined();
   });
 
   it('update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO', async () => {

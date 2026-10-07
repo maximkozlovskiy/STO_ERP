@@ -20,6 +20,8 @@ grep -rn "async findAll\|async getAll" apps/api/src/modules/ --include="*.servic
 - [ ] Нові модулі → зареєстровані в `app.module.ts`
 - [ ] Cross-service `.catch(() => {})` → `.catch(e => { if (!expected) logger.warn(...) })`
 - [ ] FSM auto-transition у tx → re-read entity всередині tx + перевірка `status === expected`
+- [ ] **Новий запис у ЧУЖИЙ агрегат усередині tx → порядок блокувань той самий, що в сервісі-власнику.** Два сервіси, що в одній tx пишуть ті самі два рядки у різному порядку (A: акт → наряд, B: наряд → акт), дають deadlock → 500 замість 400 «статус змінився». Unit-тести з моками цього не бачать (`journal/api.md`, 2026-10-08)
+- [ ] **Нове правило на `create` → перевір `update` тієї ж сутності і сусідні документи тієї ж ролі.** FK з тіла PATCH (`counterpartyId`, `supplierId`) має пройти ту саму перевірку, що на create, і статичний сторож підключення має рахувати й ці виклики (`journal/api.md`, 2026-10-08)
 
 #### §4.1 Circular DI
 

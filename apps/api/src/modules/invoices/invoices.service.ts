@@ -390,11 +390,27 @@ export class InvoicesService {
     // Раніше тягнуло amount/dueDate/notes/totalWithVat/syncVersion + counterpartyId/workOrderId/orgId.
     const inv = await this.prisma.invoice.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { status: true },
+      select: { status: true, counterpartyId: true },
     });
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
     if (inv.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException(translateError('err.invoice.onlyDraftEditable', getLocale()));
+
+    // Зміна контрагента: FK з тіла запиту має належати цій org (інакше рахунок можна було
+    // переписати на контрагента чужої організації — update нижче перевіряє лише сам рахунок)
+    // і проходити BR-CP-001. Той самий контрагент не перевіряється — рахунок, створений до
+    // 2026-10-07 на постачальника, лишається редагованим.
+    if (dto.counterpartyId && dto.counterpartyId !== inv.counterpartyId) {
+      const counterparty = await this.prisma.counterparty.findFirst({
+        where: { id: dto.counterpartyId, orgId, deletedAt: null },
+        select: { id: true, type: true },
+      });
+      if (!counterparty)
+        throw new NotFoundException(
+          translateError('err.invoice.counterpartyNotFound', getLocale()),
+        );
+      assertCounterpartyRole(counterparty.type, 'client'); // BR-CP-001
+    }
 
     const updated = await this.prisma.invoice.update({
       where: { id, orgId },

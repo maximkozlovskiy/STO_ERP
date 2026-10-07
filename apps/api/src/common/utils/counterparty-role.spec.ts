@@ -43,8 +43,9 @@ describe('assertCounterpartyRole (BR-CP-001)', () => {
   const WIRING: [string, CounterpartyRole, number][] = [
     ['purchase-orders/purchase-orders.service.ts', 'supplier', 2], // create, update (зміна постачальника)
     ['work-orders/work-orders.service.ts', 'client', 2], // create, clone
-    ['invoices/invoices.service.ts', 'client', 2], // create, clone
+    ['invoices/invoices.service.ts', 'client', 3], // create, update (зміна контрагента), clone
     ['supplier-payments/supplier-payments.service.ts', 'supplier', 2], // create, update
+    ['supplier-returns/supplier-returns.service.ts', 'supplier', 2], // create, update (зміна постачальника)
   ];
 
   // guards: BR-CP-001

@@ -61,7 +61,10 @@ async function apiDelete(page: Page, path: string): Promise<void> {
 
 /** Повертає id першого активного контрагента або null */
 async function firstCpId(page: Page): Promise<string | null> {
-  const d = await apiGet<{ items: { id: string }[] }>(page, '/counterparties?limit=1');
+  const d = await apiGet<{ items: { id: string }[] }>(
+    page,
+    '/counterparties?types=CLIENT,BOTH&limit=1',
+  );
   return d.items?.[0]?.id ?? null;
 }
 

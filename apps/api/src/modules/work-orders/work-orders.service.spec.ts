@@ -242,6 +242,13 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
       where: { orgId: ORG, workOrderId: WO_ID, deletedAt: null, status: 'DRAFT' },
       data: { status: 'CANCELLED' },
     });
+    // Порядок блокувань: акт → наряд, як у CompletionActsService.sign(). Навпаки — deadlock
+    // при одночасних «підписати акт» і «скасувати наряд».
+    const woCas = (prisma as unknown as { workOrder: { updateMany: ReturnType<typeof vi.fn> } })
+      .workOrder.updateMany;
+    expect(actsUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      woCas.mock.invocationCallOrder[0],
+    );
   });
 
   // guards: BR-WO-006

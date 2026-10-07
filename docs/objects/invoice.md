@@ -199,6 +199,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | line totals (recalcTotals на бекенді)   | `invoices.line-totals.spec.ts`             | 3      |
 | refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 10     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
+| update: зміна контрагента (org, роль)   | `invoices.update-counterparty.spec.ts`     | 5      |
 
 Разом: **84** кейсів (цифри з `vitest --reporter=json`, не з grep).
 

@@ -121,9 +121,12 @@ test.describe('Рахунки — CRUD', () => {
     // Знайти контрагента
     const cpRes = await page.evaluate(
       async ({ token }) => {
-        const r = await fetch('http://localhost:3000/api/v1/counterparties?limit=1', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const r = await fetch(
+          'http://localhost:3000/api/v1/counterparties?types=CLIENT,BOTH&limit=1',
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         const d = await r.json();
         return d.items?.[0]?.id ?? null;
       },

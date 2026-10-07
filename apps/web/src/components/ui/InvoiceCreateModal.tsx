@@ -353,9 +353,11 @@ export function InvoiceCreateModal({
   type CpItem = SearchPickerItem & { phone?: string | null };
 
   const fetchCpItems = useCallback(async (q: string): Promise<CpItem[]> => {
+    // BR-CP-001: рахунок виставляється клієнту — API відхиляє постачальника (400), тож і
+    // пікер його не пропонує. Як у CreateWorkOrderModal.
     const url = q.trim()
-      ? `/counterparties?q=${encodeURIComponent(q.trim())}&limit=30`
-      : `/counterparties?limit=30`;
+      ? `/counterparties?q=${encodeURIComponent(q.trim())}&types=CLIENT&types=BOTH&limit=30`
+      : `/counterparties?types=CLIENT&types=BOTH&limit=30`;
     const data = await apiFetch<{ items: Counterparty[] }>(url);
     return data.items.map(c => ({
       id: c.id,

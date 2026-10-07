@@ -297,9 +297,10 @@
    "deduplicateBy підтримує numeric ключі (Map зберігає insertion order — k=1 на першому місці)"
   ],
   "apps/api/src/common/utils/counterparty-role.spec.ts": [
-   "assertCounterpartyRole (BR-CP-001) invoices/invoices.service.ts перевіряє роль «client» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) invoices/invoices.service.ts перевіряє роль «client» у 3 місцях",
    "assertCounterpartyRole (BR-CP-001) purchase-orders/purchase-orders.service.ts перевіряє роль «supplier» у 2 місцях",
    "assertCounterpartyRole (BR-CP-001) supplier-payments/supplier-payments.service.ts перевіряє роль «supplier» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) supplier-returns/supplier-returns.service.ts перевіряє роль «supplier» у 2 місцях",
    "assertCounterpartyRole (BR-CP-001) work-orders/work-orders.service.ts перевіряє роль «client» у 2 місцях",
    "assertCounterpartyRole (BR-CP-001) повідомлення українською і різне для двох ролей",
    "assertCounterpartyRole (BR-CP-001) тип BOTH у ролі client → дозволено: true",
@@ -1993,6 +1994,13 @@
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) іновалютний standalone PARTIALLY_PAID→PAID: FX-проводка обнуляє base-залишок (Bug #745)",
    "InvoicesService — transition-settlements transition — manual PAID + дзеркальний PAYMENT для standalone (Bug #675) іновалютний ручний →PAID, FX вже проведено (count>0) → повторно НЕ бронюється (Bug #745 idempotency)"
   ],
+  "apps/api/src/modules/invoices/invoices.update-counterparty.spec.ts": [
+   "InvoicesService — update: зміна контрагента контрагента немає в цій org (чужий або видалений) → 404, рахунок не пишеться",
+   "InvoicesService — update: зміна контрагента новий контрагент типу BOTH → проходить",
+   "InvoicesService — update: зміна контрагента новий контрагент шукається в межах org серед невидалених",
+   "InvoicesService — update: зміна контрагента новий контрагент — постачальник → 400, рахунок не пишеться",
+   "InvoicesService — update: зміна контрагента той самий контрагент (старий рахунок на постачальника) → без перевірки, правка проходить"
+  ],
   "apps/api/src/modules/loyalty/loyalty.processor.spec.ts": [
    "LoyaltyProcessor documentId опційний → undefined прокидається",
    "LoyaltyProcessor помилка earn прокидається (BullMQ retry)",
@@ -3510,7 +3518,10 @@
    "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() без purchaseOrderId → persist null; FK-guard не викликається",
    "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() з валідним purchaseOrderId → персистить purchaseOrderId + повертає у DTO",
    "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() з невалідним purchaseOrderId → BadRequestException; create не викликається",
-   "SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2) update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO"
+   "SupplierReturnsService — create() з purchaseOrderId (Phase D2) create() на контрагента-клієнта → 400, документ не створюється",
+   "SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2) update() НЕ передає purchaseOrderId у data → FK зберігається; DTO повертає існуючий PO",
+   "SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2) update() з тим самим постачальником-клієнтом (старий документ) → проходить",
+   "SupplierReturnsService — update() зберігає purchaseOrderId (Phase D2) update() міняє постачальника на клієнта → 400, документ не пишеться"
   ],
   "apps/api/src/modules/supplier-returns/supplier-returns.totals.spec.ts": [
    "SupplierReturnsService.create — Bug #778: Σ(lines.amount) === totalAmount сума per-line amount дорівнює збереженому totalAmount (дробові кількості)"
