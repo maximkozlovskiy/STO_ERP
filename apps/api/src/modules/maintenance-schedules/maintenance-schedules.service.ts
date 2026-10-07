@@ -114,8 +114,10 @@ export class MaintenanceSchedulesService {
   ): Promise<MaintenanceScheduleResponseDto> {
     // Narrow select — read лише поля що потрібні для recalc/fallback. existing toDto
     // не використовується (фінальний DTO будується з результату update().vehicle).
+    // BR-MAINT-005 (Bug #802): графік видаленого авто не існує і для PATCH. Без фільтра по авто
+    // GET давав 404, а PATCH того самого id — 200 із повним DTO графіка (перевірено на живому API).
     const existing = await this.prisma.maintenanceSchedule.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, deletedAt: null, vehicle: { deletedAt: null } },
       select: {
         lastMaintenanceDate: true,
         lastMaintenanceMileage: true,

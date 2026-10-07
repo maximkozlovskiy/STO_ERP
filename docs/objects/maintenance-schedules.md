@@ -66,6 +66,8 @@ model MaintenanceSchedule {
   `lastMaintenanceMileage`, `intervalDays`, `intervalMileage`); інакше `next*` лишаються.
 - **BR-MAINT-004**: `create` перевіряє існування `Vehicle` (org-scoped) → `NotFound('Авто не знайдено')`.
 - **BR-MAINT-005**: Усі reads фільтруються `orgId`, `deletedAt: null`, `vehicle.deletedAt: null`.
+  Те саме — читання-guard у `update`: PATCH графіка видаленого авто → 404, як і GET (Bug #802).
+  `remove` фільтра по авто не має свідомо — графік видаленого авто можна прибрати.
 
 ---
 
@@ -108,9 +110,9 @@ cd apps/api && npx vitest run src/modules/maintenance-schedules/<файл>.spec.
 
 | Аспект          | Тест                                    | Кейсів |
 | --------------- | --------------------------------------- | ------ |
-| сервісна логіка | `maintenance-schedules.service.spec.ts` | 29     |
+| сервісна логіка | `maintenance-schedules.service.spec.ts` | 30     |
 
-Разом: **29** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **30** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
 

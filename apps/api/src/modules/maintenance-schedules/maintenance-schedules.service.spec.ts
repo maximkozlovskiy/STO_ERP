@@ -354,6 +354,24 @@ describe('MaintenanceSchedulesService', () => {
       }
     });
 
+    // guards: BR-MAINT-005
+    // Bug #802: на живому API GET графіка видаленого авто давав 404, а PATCH того самого id — 200
+    // із повним DTO. Читання-guard у update мусить мати той самий фільтр по авто.
+    it('update графіка ВИДАЛЕНОГО авто → 404, запису немає', async () => {
+      prisma.maintenanceSchedule.findFirst.mockResolvedValue(null);
+      await expect(svc.update(ORG, 'ms-1', { intervalDays: 90 } as never)).rejects.toThrow(
+        NotFoundException,
+      );
+      const where = prisma.maintenanceSchedule.findFirst.mock.calls[0][0].where;
+      expect(where).toEqual({
+        id: 'ms-1',
+        orgId: ORG,
+        deletedAt: null,
+        vehicle: { deletedAt: null },
+      });
+      expect(prisma.maintenanceSchedule.update).not.toHaveBeenCalled();
+    });
+
     it('findOne чужого графіка → 404 (не 200 з даними іншої org)', async () => {
       prisma.maintenanceSchedule.findFirst.mockResolvedValue(null);
       await expect(svc.findOne(ORG, 'foreign')).rejects.toThrow(NotFoundException);
