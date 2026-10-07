@@ -65,13 +65,27 @@ E2E запускай сам: Playwright ходить на власний сер�
 
 ## FIRST THING: Read the current skill definition
 
-**Always start by reading the full skill file:**
+**Скіл розкладено на ядро і секції — читай рівно стільки, скільки треба:**
 
-```
-e:\Git\STO ERP\.claude\skills\sto-tester\SKILL.md
-```
+1. Прочитай ядро одним Read (воно влазить цілком):
 
-This file is the single source of truth. Follow its algorithm exactly — it may have been updated since this agent was written.
+   ```
+   e:\Git\STO ERP\.claude\skills\sto-tester\SKILL.md
+   ```
+
+2. З `git diff HEAD --name-only` визнач типи змін і за матрицею з ядра — потрібні секції.
+3. Прочитай **цілком** лише ці файли з `sections/` (кожен влазить в один Read). Не читай секції,
+   яких матриця не призначила, і не читай `journal/` цілком — у журналі шукають (`grep`), коли
+   знахідка схожа на вже описану.
+4. Незалежні перевірки запускай разом — кілька tool-викликів в одній відповіді або одна
+   команда: `tsc` api і web, кілька grep-детекторів однієї секції. Кожен окремий виклик — це
+   окремий крок і ще одне перечитування всього контексту.
+
+Ядро — єдине джерело правди про алгоритм; воно могло змінитись після написання цього агента.
+
+У `sections/s1-N-*.md` довгі пункти чекліста стоять заголовком із кодом `T1.N-NNN`. Прочитавши
+перелік, вибери коди пунктів, що стосуються diff-у, і дістань їхні повні тексти ОДНІЄЮ командою
+(вона наведена на початку кожного переліку).
 
 ## Algorithm summary (full detail in SKILL.md)
 
@@ -83,7 +97,7 @@ This file is the single source of truth. Follow its algorithm exactly — it may
 5. Крок 4: Verify — tsc + unit + contract tests green
 6. Крок 5: Розширені тести (property-based, E2E, component) — FULL режим
 7. Крок 6: git commit + Update MemoryManual.md
-8. Крок 7: Self-improvement — update SKILL.md with new patterns
+8. Крок 7: Self-improvement — новий пункт у секцію, новий випадок у журнал (ядро не росте)
 ```
 
 ## Dev server management (non-blocking)
@@ -134,11 +148,13 @@ After fixing all bugs — ask yourself:
 
 > "Did I find any bug that wasn't covered by an existing checklist item in §1.1–§1.7?"
 
-If YES — update SKILL.md:
+If YES — онови скіл (НЕ ядро `SKILL.md`, а файли секцій і журналу):
 
-1. Add the checklist item to the right section (§1.1 business logic, §1.2 TS, §1.3 frontend, etc.)
+1. Add the checklist item to the right section file `sections/s1-N-*.md`. Короткий (до ~350 байт) —
+   дослівно; довгий — повний текст у `journal/details-1-N.md` під наступним вільним кодом
+   `<!-- T1.N-NNN -->`, а в перелік — рядок `- [ ] <заголовок> (Bug #…) — \`T1.N-NNN\``
 2. Add a grep command if the bug is detectable statically
-3. Add a new entry to the **"Накопичені підходи"** section with this format:
+3. Add a new entry to the journal `journal/approaches-YYYY-MM.md` (поточний місяць, зверху) with this format:
 
    ```
    ### [Date] — [Bug type] — [Area: backend / frontend / db / contract]

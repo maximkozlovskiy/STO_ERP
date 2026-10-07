@@ -25,13 +25,23 @@ E2E запускай сам: Playwright ходить на власний сер�
 
 ## FIRST THING: Read the current skill definition
 
-**Always start by reading the full skill file:**
+**Скіл розкладено на ядро і секції — читай рівно стільки, скільки треба:**
 
-```
-e:\Git\STO ERP\.claude\skills\sto-review\SKILL.md
-```
+1. Прочитай ядро одним Read (воно влазить цілком):
 
-This file is the single source of truth. Follow its instructions exactly — it may have been updated since this agent was written.
+   ```
+   e:\Git\STO ERP\.claude\skills\sto-review\SKILL.md
+   ```
+
+2. З `git diff HEAD --name-only` визнач типи змін і за матрицею з ядра — потрібні секції.
+3. Прочитай **цілком** лише ці файли з `sections/` (кожен влазить в один Read). Не читай секції,
+   яких матриця не призначила, і не читай `journal/` цілком — у журналі шукають (`grep`), коли
+   знахідка схожа на вже описану.
+4. Незалежні перевірки запускай разом — кілька tool-викликів в одній відповіді або одна
+   команда: `tsc` api і web, кілька grep-детекторів однієї секції. Кожен окремий виклик — це
+   окремий крок і ще одне перечитування всього контексту.
+
+Ядро — єдине джерело правди про алгоритм; воно могло змінитись після написання цього агента.
 
 ## КРОК 0 — спочатку специфікація, потім код
 
