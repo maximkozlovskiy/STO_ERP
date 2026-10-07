@@ -128,13 +128,22 @@ OVERDUE → PAID / CANCELLED
 - **BR-INV-005**: `OVERDUE` встановлюється автоматично (scheduler або при відкритті списку)
 - **BR-INV-006**: При оплаті → `SettlementsService.createTransaction(PAYMENT)` (не пряма зміна балансу)
 - **BR-INV-007**: `InvoiceLine`: кожен рядок має `vatRate`, `priceWithoutVat`, `vatAmount`, `priceWithVat`
-- **BR-INV-008**: `calcVatTotals()` з `apps/web/src/lib/utils.ts` — для розрахунку підсумків на фронті
+- **BR-INV-008**: Підсумки рахунку рахує **бекенд**, не фронт. Після кожної зміни рядка
+  (`addLine`/`updateLine`/`removeLine`) `InvoicesService.recalcTotals()` бере
+  `invoiceLine.aggregate(_sum)` → `totalWithoutVat`/`totalVat`/`totalWithVat` і ставить
+  `amount = totalWithVat`. Web ці суми показує, а не обчислює: сторінка `/invoices` виводить поля з
+  API; `InvoiceCreateModal` для прев'ю «Разом» складає `priceWithVat` рядків, повернутий API, а для
+  ще не збереженого рядка — `quantity × unitPrice` (ПДВ додасть бекенд при збереженні).
+  `calcVatTotals()` з `apps/web/src/lib/utils.ts` рахунок **не використовує** — єдиний споживач
+  `CreateWorkOrderModal`.
 
 ### Часткова оплата (модель грошей, Фаза 1)
 
 - **BR-INV-009**: `paidAmount` — **авторитетна колонка** сплаченого. Оновлюється транзакційно при кожному
   платежі. `toDto` читає її; фолбек на `sum(payments)` лише коли колонки немає у вибірці.
-- **BR-INV-010**: **Оплата** (`PaymentsService.create` з `invoiceId`): дозволена лише для `SENT`/`PARTIALLY_PAID`;
+- **BR-INV-010**: **Оплата** (`PaymentsService.create` з `invoiceId`): дозволена лише для
+  `SENT`/`PARTIALLY_PAID`/`OVERDUE` (прострочений рахунок усе ще належить сплатити; збігається з
+  BR-PAY-003 у [payments.md](payments.md)), інакше 400;
   переплата (`amount > amount − paidAmount`) → 400. Атомарно: **CAS** `updateMany({ where:
 paidAmount = прочитане }, data: paidAmount += amount, status: newPaid>=amount ? PAID :
 PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу) → throw → rollback усього
@@ -143,13 +152,16 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
 - **BR-INV-011**: **Ledger:** кожен частковий платіж створює один `PAYMENT`-settlement своєї суми
   (`BALANCE_SIGN[PAYMENT] = −1`) → борг зменшується рівно на суму кожного платежу; подвійного
   списання немає.
-- **BR-INV-012**: **Ручний PAID** (`transition` → `PAID`): синхронізує `paidAmount = amount` (щоб «залишок» був 0),
-  але **НЕ створює** `Payment`/`PAYMENT`-settlement. Це статус-узгодження, не рух грошей.
-  ⚠️ Наслідок: для **standalone**-рахунку (CHARGE нараховано при `SENT`) ручний PAID лишає
-  CHARGE без offset-PAYMENT у settlement-ledger → баланс контрагента покаже борг попри «PAID»
-  статус рахунку. Правильний шлях повного погашення — реєстрація платежу (кнопка «Оплатити»),
-  не ручний FSM-перехід. Ручний PAID призначений для WO-рахунків (CHARGE вже net при COMPLETED)
-  або як адмін-корекція.
+- **BR-INV-012**: **Ручний PAID** (`transition` → `PAID`): синхронізує `paidAmount = amount` (щоб «залишок» був 0).
+  Для **standalone**-рахунку (`workOrderId = null`, CHARGE нараховано при `SENT`) у тій самій
+  транзакції створює **дзеркальний `PAYMENT`-settlement** на непокритий залишок
+  (`amount − paidAmount`, `documentType: 'Invoice'`) — він закриває CHARGE у леджері, тож баланс
+  контрагента не показує борг за рахунком у статусі «PAID» (Bug #675). Раніше зроблені часткові
+  оплати не подвоюються: проводка лише на залишок, а при нульовому залишку її немає.
+  Для **WO-рахунку** `PAYMENT` НЕ створюється (його CHARGE нараховано при COMPLETED наряду, оплата
+  йде окремо через `payments`) — інакше подвійний облік. Рядок `Payment` ручний перехід не створює
+  в жодному випадку: це закриття боргу в леджері, а не запис про отримані гроші (без каси, ПРРО
+  і рахунку-призначення). Звичайний шлях погашення — реєстрація платежу (кнопка «Оплатити»).
 
 ### Рахунок-призначення платежу (`Payment.sourceType`)
 
@@ -184,38 +196,36 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | dto and linked docs                     | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
 | due date                                | `invoices.due-date.spec.ts`                | 7      |
 | find by work order                      | `invoices.find-by-work-order.spec.ts`      | 5      |
+| line totals (recalcTotals на бекенді)   | `invoices.line-totals.spec.ts`             | 3      |
 | refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 10     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
 
-Разом: **81** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **84** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+Правила оплати рахунку виконує `PaymentsService` (модуль `payments`), тому їхні сторожі живуть
+у спеках того модуля, а не тут (реєстр цих файлів — у [payments.md](payments.md)):
+
+- `apps/api/src/modules/payments/payments.money-model.spec.ts` — BR-INV-010, 011, 013, 014, 015;
+- `apps/api/src/modules/payments/payments.idempotency.spec.ts` — BR-INV-010, 014.
 
 **Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
 виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
 але показує окремим рядком.
 
 - **BR-INV-002** — дос'є: `POST /from-work-order/:id` переносить роботи й товари; код: `createFromWorkOrder` створює рахунок лише із сумою наряду, без рядків (`invoices.service.ts`, create). Рядки переносить тільки `refreshFromWorkOrder`.
-- **BR-INV-008** — дос'є: `calcVatTotals()` рахує підсумки на фронті рахунку; код: `InvoiceCreateModal` і сторінка рахунків його не викликають — єдиний споживач `CreateWorkOrderModal`.
-- **BR-INV-010** — дос'є: оплата дозволена лише для `SENT`/`PARTIALLY_PAID`; код приймає ще й `OVERDUE` (`payments.service.ts`), і BR-PAY-003 у `payments.md` каже так само. Два дос'є суперечать одне одному.
-- **BR-INV-012** — дос'є: ручний перехід у PAID НЕ створює PAYMENT-settlement; код після Bug #675 створює дзеркальний PAYMENT для standalone-рахунку, і тест це стереже. Текст правила описує вже виправлений баг.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
-Правила, які живуть у `PaymentsService` (модуль `payments`), а не тут — у спеках `invoices` тесту
-на них немає й бути не може; мітку `guards:` на них у цьому модулі не ставимо:
+Правило без unit-тесту:
 
-- BR-INV-011 — «один платіж = один `PAYMENT`-settlement своєї суми» виконує `PaymentsService.create`;
-  стереже `payments.money-model.spec.ts` («Bug #668: часткова оплата 200 → рівно 1
-  PAYMENT-settlement на 200»), без мітки з цим ID.
-- BR-INV-013 — резолв джерела платежу (DTO → дефолт `PaymentMethodConfig` → `null`) у
-  `PaymentsService`; стереже `payments.money-model.spec.ts` (Bug #673, #674), без мітки з цим ID.
-- BR-INV-014 — `resolveDestinationAccount` (явний невалідний → 4xx, stale-дефолт → `null`) у
-  `PaymentsService`; стережуть `payments.money-model.spec.ts` (Bug #673) і
-  `payments.idempotency.spec.ts` («config-дефолт … stale → degrade to null»), без мітки з цим ID.
-- BR-INV-015 — «source-link — опційні метадані, борг від нього не залежить»: окремого тесту на
-  незалежність settlement від джерела немає; найближче — `payments.money-model.spec.ts`
-  («Bug #674: methodConfig=null → джерело null, платіж успішний»).
 - BR-INV-016 — FK `ON DELETE SET NULL` на `Payment.bankAccountId`/`cashRegisterId`: властивість
-  схеми БД, unit-тестом із моком Prisma не перевіряється; потрібен integration-тест на живій БД.
+  схеми БД, unit-тестом із моком Prisma не перевіряється; потрібен integration-тест на живій БД
+  (integration, пише головний агент).
+
+Web-половина правила про підсумки (прев'ю «Разом» у `InvoiceCreateModal`: сума `priceWithVat`
+рядків з API, для незбереженого рядка — `quantity × unitPrice`) тесту не має: розрахунок живе в
+`useMemo` компонента, потрібен компонентний тест. Бекенд-половину стереже
+`invoices.line-totals.spec.ts`.
 
 Web-половина правила про `invoiceType` (нормалізація значення поза enum-ом у `InvoiceCreateModal`
 через `normalizeInvoiceType()`) тесту не має: функція не експортована, потрібен компонентний тест.

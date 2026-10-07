@@ -175,7 +175,7 @@ describe('InvoicesService — transition-settlements', () => {
       lines: [],
     };
 
-    // guards: BR-INV-006
+    // guards: BR-INV-006, BR-INV-012
     it('standalone SENT→PAID: paidAmount=amount + дзеркальний PAYMENT на весь залишок (Bug #675 fix)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
@@ -211,6 +211,7 @@ describe('InvoicesService — transition-settlements', () => {
       );
     });
 
+    // guards: BR-INV-012
     it('standalone PARTIALLY_PAID→PAID: PAYMENT лише на НЕПОКРИТИЙ залишок (не подвоює часткові)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({
@@ -306,6 +307,7 @@ describe('InvoicesService — transition-settlements', () => {
       expect(fxCall).toBeUndefined();
     });
 
+    // guards: BR-INV-012
     it('WO-рахунок →PAID: БЕЗ PAYMENT (CHARGE був через COMPLETED, уникаємо подвійного обліку)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({

@@ -180,10 +180,10 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |
 | recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 7      |
 | рольовий доступ                         | `work-orders.role-gate.spec.ts`                | 24     |
-| сервісна логіка                         | `work-orders.service.spec.ts`                  | 23     |
+| сервісна логіка                         | `work-orders.service.spec.ts`                  | 25     |
 | share public                            | `work-orders.share-public.spec.ts`             | 9      |
 
-Разом: **178** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **180** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
 виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,

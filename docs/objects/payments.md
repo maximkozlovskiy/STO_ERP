@@ -278,13 +278,13 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | BullMQ-processor         | `payment-polling.processor.spec.ts`         | 19     |
 | fiscal gate              | `payments.fiscal-gate.spec.ts`              | 7      |
 | idempotency              | `payments.idempotency.spec.ts`              | 7      |
-| money model              | `payments.money-model.spec.ts`              | 14     |
+| money model              | `payments.money-model.spec.ts`              | 17     |
 | multicurrency            | `payments.multicurrency.spec.ts`            | 17     |
 | query dto                | `payments.query-dto.spec.ts`                | 28     |
 | передумови + наряд       | `payments.work-order.spec.ts`               | 13     |
 | сервісна логіка          | `provider-config.service.spec.ts`           | 27     |
 
-Разом: **309** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **312** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

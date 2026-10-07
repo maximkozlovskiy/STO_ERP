@@ -5,6 +5,7 @@ import { BookingService } from './booking.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { fakeSlot, matchesWhere, type FakeSlot } from '../calendar/calendar.spec-fixture';
 
 /**
  * Bug #254: unit-покриття `BookingService.create` + `confirm` + `cancel`.
@@ -307,6 +308,7 @@ describe('BookingService', () => {
 
   // Bug #511: DST-safe bookedTimes — слот блокується по Kyiv-локальному ключу, не UTC.
   describe('getAvailability — Bug #511', () => {
+    // guards: BR-CAL-004
     it('блокує підтверджене бронювання на 09:00 Kyiv (= 06:00Z у літо) — ключ Kyiv-local', async () => {
       prisma.lift.findMany.mockResolvedValueOnce([{ id: 'lift-1', name: 'Підйомник 1' }]);
       prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
@@ -330,6 +332,7 @@ describe('BookingService', () => {
       expect(blockedSlot).toBeUndefined();
     });
 
+    // guards: BR-CAL-004
     it('повертає [] для вихідного дня (workDays не включає неділю)', async () => {
       prisma.lift.findMany.mockResolvedValueOnce([{ id: 'lift-1', name: 'Підйомник 1' }]);
       prisma.calendarSlot.findMany.mockResolvedValueOnce([]);
@@ -375,6 +378,132 @@ describe('BookingService', () => {
       expect(slots.length).toBeGreaterThan(0);
       // Перший слот має бути 09:00 Kyiv (= 06:00Z літо)
       expect(slots[0]!.startAt).toBe('2026-06-01T06:00:00.000Z');
+    });
+  });
+
+  // BR-CAL-004 (docs/objects/calendar.md): «відкритих» слотів для онлайн-запису немає.
+  // Вільний час = сітка з BranchSettings мінус БУДЬ-ЯКИЙ невидалений CalendarSlot (статус
+  // значення не має) мінус заявки зі статусом CONFIRMED. Запити до calendarSlot і
+  // bookingRequest тут ВИКОНУЮТЬСЯ над рядками (matchesWhere), а не повертають заготовку:
+  // інакше доданий у where фільтр за статусом лишився б непоміченим.
+  describe('getAvailability — вільний час онлайн-запису (BR-CAL-004)', () => {
+    const DATE = '2026-06-01'; // понеділок, літо (+03:00): 09:00 Kyiv = 06:00Z
+    const kyiv = (hhmm: string) => new Date(`${DATE}T${hhmm}:00.000+03:00`);
+    const DEFAULT_SETTINGS = {
+      workStartTime: '09:00',
+      workEndTime: '18:00',
+      slotDurationMinutes: 30,
+      workDays: [1, 2, 3, 4, 5],
+    };
+
+    type Where = Record<string, unknown>;
+    type RequestRow = Record<string, unknown>;
+
+    const request = (status: string, hhmm: string): RequestRow => ({
+      orgId,
+      branchId,
+      status,
+      requestedDate: kyiv(hhmm),
+      liftId: null,
+      confirmedSlotId: null,
+      deletedAt: null,
+    });
+
+    function arrange(opts: {
+      slots?: FakeSlot[];
+      requests?: RequestRow[];
+      settings?: Record<string, unknown>;
+    }) {
+      prisma.lift.findMany.mockResolvedValue([{ id: 'lift-1', name: 'Підйомник 1' }]);
+      prisma.branchSettings.findUnique.mockResolvedValue(opts.settings ?? DEFAULT_SETTINGS);
+      prisma.calendarSlot.findMany.mockImplementation(({ where }: { where: Where }) =>
+        Promise.resolve((opts.slots ?? []).filter(r => matchesWhere(r, where))),
+      );
+      prisma.bookingRequest.findMany.mockImplementation(({ where }: { where: Where }) =>
+        Promise.resolve((opts.requests ?? []).filter(r => matchesWhere(r, where))),
+      );
+    }
+
+    /** Початки вільних вікон у Kyiv-часі: ['09:00', '09:30', …]. */
+    async function freeTimes(): Promise<string[]> {
+      const slots = await service.getAvailability(orgId, branchId, DATE);
+      const fmt = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Kyiv',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      return slots.map(s => fmt.format(new Date(s.startAt)));
+    }
+
+    // Суть правила: AVAILABLE не означає «вільно» — такий слот займає час так само, як BOOKED.
+    // guards: BR-CAL-004
+    it.each(['BOOKED', 'AVAILABLE', 'BLOCKED'])(
+      'слот зі статусом %s на єдиному підйомнику 10:00–11:00 → 10:00 і 10:30 недоступні, 09:30 і 11:00 доступні',
+      async status => {
+        arrange({
+          slots: [
+            fakeSlot({ liftId: 'lift-1', status, startAt: kyiv('10:00'), endAt: kyiv('11:00') }),
+          ],
+        });
+
+        const times = await freeTimes();
+
+        expect(times).not.toContain('10:00');
+        expect(times).not.toContain('10:30');
+        expect(times).toContain('09:30');
+        expect(times).toContain('11:00');
+      },
+    );
+
+    // guards: BR-CAL-004
+    it('видалений слот (deletedAt) час не займає', async () => {
+      arrange({
+        slots: [
+          fakeSlot({
+            liftId: 'lift-1',
+            startAt: kyiv('10:00'),
+            endAt: kyiv('11:00'),
+            deletedAt: kyiv('08:00'),
+          }),
+        ],
+      });
+
+      const times = await freeTimes();
+
+      expect(times).toContain('10:00');
+      expect(times).toContain('10:30');
+    });
+
+    // guards: BR-CAL-004
+    it('сітка будується з BranchSettings: 10:00–12:00 кроком 60 хв → рівно 10:00 і 11:00', async () => {
+      arrange({
+        settings: {
+          workStartTime: '10:00',
+          workEndTime: '12:00',
+          slotDurationMinutes: 60,
+          workDays: [1, 2, 3, 4, 5],
+        },
+      });
+
+      expect(await freeTimes()).toEqual(['10:00', '11:00']);
+    });
+
+    // guards: BR-CAL-004
+    it('час займає лише заявка CONFIRMED: PENDING і CANCELLED вікно не закривають', async () => {
+      arrange({
+        requests: [
+          request('PENDING', '09:00'),
+          request('CONFIRMED', '10:00'),
+          request('CANCELLED', '11:00'),
+        ],
+      });
+
+      const times = await freeTimes();
+
+      expect(times).toContain('09:00');
+      expect(times).not.toContain('10:00');
+      expect(times).toContain('11:00');
     });
   });
 
@@ -503,6 +632,7 @@ describe('BookingService', () => {
       expect(prisma.bookingRequest.updateMany).toHaveBeenCalledTimes(1);
     });
 
+    // guards: BR-CAL-004
     it('CAL-H3/H4: заявка З ліфтом → матеріалізує CalendarSlot + записує confirmedSlotId', async () => {
       const reqDate = new Date('2026-10-01T10:00:00.000+03:00');
       prisma.bookingRequest.findFirst.mockResolvedValueOnce({

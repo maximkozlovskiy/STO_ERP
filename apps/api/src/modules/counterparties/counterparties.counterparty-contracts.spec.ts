@@ -10,6 +10,7 @@
  */
 
 import { Test } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CounterpartiesService } from './counterparties.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -620,6 +621,181 @@ describe('CounterpartiesService — contract flows', () => {
       // ISO-string createdAt/updatedAt (не Date object) — DTO contract
       expect(typeof res.createdAt).toBe('string');
       expect(typeof res.updatedAt).toBe('string');
+    });
+  });
+
+  // BR-CP-005 (бекова пара фільтра «Вид договору» у формі): SUPPLIER → лише PURCHASE,
+  // CLIENT → лише SALE, BOTH → обидва. Перевірка йде ДО транзакції — нічого не пишеться.
+  describe('validateContractType — вид договору за типом контрагента', () => {
+    const contractRow = (contractType: 'PURCHASE' | 'SALE') => ({
+      id: 'con-1',
+      orgId: 'org-1',
+      counterpartyId: 'cp-1',
+      number: 'ДГ-1',
+      contractType,
+      startDate: new Date('2026-01-01'),
+      endDate: null,
+      isPrimary: true,
+      creditLimit: null,
+      currencyCode: 'UAH',
+      paymentDeferDays: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+
+    // guards: BR-CP-005
+    it('createContract: SUPPLIER + SALE → BadRequest, транзакція не починається', async () => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: 'cp-1', type: 'SUPPLIER' });
+      await expect(
+        service.createContract('org-1', 'cp-1', {
+          contractType: 'SALE',
+          startDate: '2026-01-01',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CP-005
+    it('createContract: CLIENT + PURCHASE → BadRequest, транзакція не починається', async () => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: 'cp-1', type: 'CLIENT' });
+      await expect(
+        service.createContract('org-1', 'cp-1', {
+          contractType: 'PURCHASE',
+          startDate: '2026-01-01',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CP-005
+    it('createContract: BOTH приймає і PURCHASE, і SALE', async () => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: 'cp-1', type: 'BOTH' });
+      for (const contractType of ['PURCHASE', 'SALE'] as const) {
+        const txInner = {
+          counterpartyContract: {
+            updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+            create: vi.fn().mockResolvedValue(contractRow(contractType)),
+          },
+        };
+        prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+        const dto = await service.createContract('org-1', 'cp-1', {
+          contractType,
+          startDate: '2026-01-01',
+        } as any);
+        expect(dto.contractType).toBe(contractType);
+      }
+    });
+
+    // guards: BR-CP-005
+    it('updateContract: зміна виду на недозволений для типу контрагента → BadRequest, транзакція не починається', async () => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: 'cp-1', type: 'CLIENT' });
+      prisma.counterpartyContract.findFirst.mockResolvedValue({ contractType: 'SALE' });
+      await expect(
+        service.updateContract('org-1', 'cp-1', 'con-1', { contractType: 'PURCHASE' } as any),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  // BR-CP-006 (бекова частина): «головний» ексклюзивний У МЕЖАХ contractType. Контрагент
+  // BOTH тримає головний PURCHASE і головний SALE одночасно — swap не чіпає інший тип.
+  describe('isPrimary swap — лише в межах того самого contractType (swapType-scope)', () => {
+    const contractRow = (contractType: 'PURCHASE' | 'SALE') => ({
+      id: 'con-sale',
+      orgId: 'org-1',
+      counterpartyId: 'cp-1',
+      number: 'ДГ-2',
+      contractType,
+      startDate: new Date('2026-01-01'),
+      endDate: null,
+      isPrimary: true,
+      creditLimit: null,
+      currencyCode: 'UAH',
+      paymentDeferDays: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+    const makeTx = (contractType: 'PURCHASE' | 'SALE') => ({
+      counterpartyContract: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        create: vi.fn().mockResolvedValue(contractRow(contractType)),
+        update: vi.fn().mockResolvedValue(contractRow(contractType)),
+      },
+    });
+
+    beforeEach(() => {
+      prisma.counterparty.findFirst.mockResolvedValue({ id: 'cp-1', type: 'BOTH' });
+    });
+
+    // guards: BR-CP-006
+    it('createContract SALE з isPrimary → знімає «головний» лише з SALE-договорів контрагента', async () => {
+      prisma.counterpartyContract.count.mockResolvedValue(1); // SALE вже є → primary лише через прапорець
+      const txInner = makeTx('SALE');
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.createContract('org-1', 'cp-1', {
+        contractType: 'SALE',
+        startDate: '2026-01-01',
+        isPrimary: true,
+      } as any);
+
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledTimes(1);
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledWith({
+        where: { counterpartyId: 'cp-1', orgId: 'org-1', deletedAt: null, contractType: 'SALE' },
+        data: { isPrimary: false },
+      });
+    });
+
+    // guards: BR-CP-006
+    it('updateContract isPrimary без contractType у PATCH → scope за ПОТОЧНИМ типом договору, сам договір виключено', async () => {
+      prisma.counterpartyContract.findFirst.mockResolvedValue({ contractType: 'SALE' });
+      const txInner = makeTx('SALE');
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.updateContract('org-1', 'cp-1', 'con-sale', { isPrimary: true } as any);
+
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledTimes(1);
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledWith({
+        where: {
+          counterpartyId: 'cp-1',
+          orgId: 'org-1',
+          deletedAt: null,
+          contractType: 'SALE',
+          id: { not: 'con-sale' },
+        },
+        data: { isPrimary: false },
+      });
+    });
+
+    // guards: BR-CP-006
+    it('updateContract isPrimary + зміна contractType → scope за НОВИМ типом (не за старим)', async () => {
+      prisma.counterpartyContract.findFirst.mockResolvedValue({ contractType: 'SALE' });
+      const txInner = makeTx('PURCHASE');
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.updateContract('org-1', 'cp-1', 'con-sale', {
+        isPrimary: true,
+        contractType: 'PURCHASE',
+      } as any);
+
+      expect(txInner.counterpartyContract.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ contractType: 'PURCHASE', id: { not: 'con-sale' } }),
+        }),
+      );
+    });
+
+    // guards: BR-CP-006
+    it('updateContract без isPrimary → «головний» ні з кого не знімається', async () => {
+      prisma.counterpartyContract.findFirst.mockResolvedValue({ contractType: 'SALE' });
+      const txInner = makeTx('SALE');
+      prisma.$transaction.mockImplementationOnce(async (cb: any) => cb(txInner));
+
+      await service.updateContract('org-1', 'cp-1', 'con-sale', { number: 'ДГ-9' } as any);
+
+      expect(txInner.counterpartyContract.updateMany).not.toHaveBeenCalled();
     });
   });
 });

@@ -108,9 +108,9 @@ cd apps/api && npx vitest run src/modules/maintenance-schedules/<файл>.spec.
 
 | Аспект          | Тест                                    | Кейсів |
 | --------------- | --------------------------------------- | ------ |
-| сервісна логіка | `maintenance-schedules.service.spec.ts` | 28     |
+| сервісна логіка | `maintenance-schedules.service.spec.ts` | 29     |
 
-Разом: **28** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **29** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
 

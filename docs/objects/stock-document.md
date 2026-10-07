@@ -124,7 +124,7 @@ describe; 2026-10-05 розбито за аспектами — 54 кейси м
 
 | Аспект                                                                       | Тест                                             | Кейсів | Правила                               |
 | ---------------------------------------------------------------------------- | ------------------------------------------------ | ------ | ------------------------------------- |
-| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`           | 12     | BR-SDOC-001, BR-SDOC-002, BR-SDOC-004 |
+| RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`           | 13     | BR-SDOC-001, BR-SDOC-002, BR-SDOC-004 |
 | Нумерація: кожен тип → свій лічильник, номер лише з лічильника               | `stock-documents.numbering.spec.ts`              | 5      | BR-SDOC-001                           |
 | Tenant-guard goodId рядків на update                                         | `stock-documents.line-goods-tenant.spec.ts`      | 2      | BR-SDOC-002                           |
 | Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 8      | —                                     |

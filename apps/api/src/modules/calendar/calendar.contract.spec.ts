@@ -216,6 +216,31 @@ describe('Calendar — HTTP Contract', () => {
       );
     });
 
+    // BR-CAL-004: значення AVAILABLE ніхто не створює, але DTO його формально приймає —
+    // якщо enum у DTO звузять, правило в дос'є треба переписати разом із ним.
+    // guards: BR-CAL-004
+    it.each(['AVAILABLE', 'BOOKED', 'BLOCKED'])(
+      'приймає status=%s і передає його в сервіс як є (201)',
+      async status => {
+        serviceMock.createSlot.mockResolvedValueOnce({ slots: [] });
+        const res = await (app as NestFastifyApplication).inject({
+          method: 'POST',
+          url: '/calendar/slots',
+          payload: {
+            liftId: LIFT_ID,
+            status,
+            startAt: '2026-05-22T10:00:00.000Z',
+            endAt: '2026-05-22T11:00:00.000Z',
+          },
+        });
+        expect(res.statusCode).toBe(201);
+        expect(serviceMock.createSlot).toHaveBeenCalledWith(
+          'org-1',
+          expect.objectContaining({ status }),
+        );
+      },
+    );
+
     // Bug #244 regression-guard: @Transform(emptyToUndefined) у CreateCalendarSlotDto
     // має зробити '' → undefined для liftId/employeeId/workOrderId/counterpartyId.
     // Без цього sprint c551dd5 буде регресувати у 400 без видимих тестових провалів.

@@ -202,7 +202,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `receive()` — UoM-override + tenant-валідація  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
 | `receive()` — CAS рядків → RECEIPT → борг      | `purchase-orders.receive-ledger.spec.ts`                         | 2      |
 | `create`/`update` — tenant-guard goodId рядків | `purchase-orders.line-goods.spec.ts`                             | 3      |
-| `update()` — резолв контракту контрагента      | `purchase-orders.contract-resolution.spec.ts`                    | 8      |
+| `update()` — резолв контракту контрагента      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`        | `purchase-orders.fsm.spec.ts`                                    | 15     |
 | `findAll` — `sortBy=paymentDate`, nulls-last   | `purchase-orders.sort.spec.ts`                                   | 4      |
 | linked-documents — межові випадки              | `purchase-orders.linked-docs.spec.ts`                            | 5      |

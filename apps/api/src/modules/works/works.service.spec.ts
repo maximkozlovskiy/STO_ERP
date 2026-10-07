@@ -217,6 +217,36 @@ describe('WorksService', () => {
     });
   });
 
+  describe('isWarranty — інформаційна позначка, на ціну не впливає', () => {
+    // guards: BR-WORK-002
+    it('create зберігає isWarranty=true і ціну роботи як є (не обнуляє)', async () => {
+      await svc.create(ORG, {
+        categoryId: CAT,
+        name: 'Гарантійна заміна',
+        normoHours: 1,
+        price: 500,
+        isWarranty: true,
+      } as never);
+      const data = prisma.work.create.mock.calls[0][0].data;
+      expect(data.isWarranty).toBe(true);
+      expect(data.price).toBe(500);
+    });
+
+    // guards: BR-WORK-002
+    it('відповідь повертає isWarranty і ціну гарантійної роботи без змін', async () => {
+      prisma.work.findFirst.mockResolvedValue(row({ isWarranty: true }));
+      const dto = await svc.findOne(ORG, ID);
+      expect(dto.isWarranty).toBe(true);
+      expect(dto.price).toBe(500);
+    });
+
+    // guards: BR-WORK-002
+    it('update isWarranty=true пише лише прапорець — ціну не чіпає', async () => {
+      await svc.update(ORG, ID, { isWarranty: true } as never);
+      expect(prisma.work.update.mock.calls[0][0].data).toEqual({ isWarranty: true });
+    });
+  });
+
   describe('tenant isolation — зведено', () => {
     it('orgId присутній у where кожного читання', async () => {
       await svc.findAll(ORG, query());

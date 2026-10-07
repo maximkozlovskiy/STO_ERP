@@ -170,6 +170,7 @@ describe('WorkCategories — HTTP Contract', () => {
   });
 
   describe('GET /work-categories/:id/linked-good-categories', () => {
+    // guards: BR-WORK-004
     it('повертає 200 + масив UUID-ів', async () => {
       serviceMock.getLinkedGoodCategories.mockResolvedValueOnce([VALID_UUID_2]);
       const res = await (app as NestFastifyApplication).inject({

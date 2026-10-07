@@ -295,6 +295,19 @@
    "deduplicateBy підтримує null/undefined як ключ — group all",
    "deduplicateBy підтримує numeric ключі (Map зберігає insertion order — k=1 на першому місці)"
   ],
+  "apps/api/src/common/utils/counterparty-role.spec.ts": [
+   "assertCounterpartyRole (BR-CP-001) invoices/invoices.service.ts перевіряє роль «client» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) purchase-orders/purchase-orders.service.ts перевіряє роль «supplier» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) supplier-payments/supplier-payments.service.ts перевіряє роль «supplier» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) work-orders/work-orders.service.ts перевіряє роль «client» у 2 місцях",
+   "assertCounterpartyRole (BR-CP-001) повідомлення українською і різне для двох ролей",
+   "assertCounterpartyRole (BR-CP-001) тип BOTH у ролі client → дозволено: true",
+   "assertCounterpartyRole (BR-CP-001) тип BOTH у ролі supplier → дозволено: true",
+   "assertCounterpartyRole (BR-CP-001) тип CLIENT у ролі client → дозволено: true",
+   "assertCounterpartyRole (BR-CP-001) тип CLIENT у ролі supplier → дозволено: false",
+   "assertCounterpartyRole (BR-CP-001) тип SUPPLIER у ролі client → дозволено: false",
+   "assertCounterpartyRole (BR-CP-001) тип SUPPLIER у ролі supplier → дозволено: true"
+  ],
   "apps/api/src/common/utils/currency.spec.ts": [
    "convertToBase (мультивалютна конвертація у базову) base = amount × rate / coefficient (coeff=1)",
    "convertToBase (мультивалютна конвертація у базову) coefficient>1 (курс за N одиниць): base = amount × rate / coeff",
@@ -770,7 +783,13 @@
    "BookingService getAvailability — Bug #511 блокує підтверджене бронювання на 09:00 Kyiv (= 06:00Z у літо) — ключ Kyiv-local",
    "BookingService getAvailability — Bug #511 використовує дефолти 09:00-18:00 + Mon-Fri коли BranchSettings відсутній",
    "BookingService getAvailability — Bug #511 повертає [] для вихідного дня (workDays не включає неділю)",
-   "BookingService getAvailability — Bug #511 повертає [] якщо немає ліфтів (порожня філія)"
+   "BookingService getAvailability — Bug #511 повертає [] якщо немає ліфтів (порожня філія)",
+   "BookingService getAvailability — вільний час онлайн-запису (BR-CAL-004) видалений слот (deletedAt) час не займає",
+   "BookingService getAvailability — вільний час онлайн-запису (BR-CAL-004) слот зі статусом AVAILABLE на єдиному підйомнику 10:00–11:00 → 10:00 і 10:30 недоступні, 09:30 і 11:00 доступні",
+   "BookingService getAvailability — вільний час онлайн-запису (BR-CAL-004) слот зі статусом BLOCKED на єдиному підйомнику 10:00–11:00 → 10:00 і 10:30 недоступні, 09:30 і 11:00 доступні",
+   "BookingService getAvailability — вільний час онлайн-запису (BR-CAL-004) слот зі статусом BOOKED на єдиному підйомнику 10:00–11:00 → 10:00 і 10:30 недоступні, 09:30 і 11:00 доступні",
+   "BookingService getAvailability — вільний час онлайн-запису (BR-CAL-004) сітка будується з BranchSettings: 10:00–12:00 кроком 60 хв → рівно 10:00 і 11:00",
+   "BookingService getAvailability — вільний час онлайн-запису (BR-CAL-004) час займає лише заявка CONFIRMED: PENDING і CANCELLED вікно не закривають"
   ],
   "apps/api/src/modules/booking/booking.throttle.contract.spec.ts": [
    "BookingController — @Throttle contract createPublic має @Throttle({ limit: 5, ttl: 60000 })",
@@ -829,6 +848,35 @@
    "registerBullBoardGuard маршрутизація префіксу схожий, але не той префікс (/api/admin/queuesX) НЕ захищається",
    "registerBullBoardGuard маршрутизація префіксу точний /api/admin/queues захищається (без токена → 401)"
   ],
+  "apps/api/src/modules/calendar/calendar.conflicts.spec.ts": [
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot EXCLUDE-порушення (23P01) на вставці → 409 ConflictException, а не 500",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot split-day: продовження наступного дня потрапляє на зайнятий підйомник → 400 «…на наступний день», нічого не створено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot split-day: продовження наступного дня потрапляє на зайнятого механіка → 400 «…на наступний день»",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot видалений слот (deletedAt) час не займає",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot дотик меж не є перетином (закінчується рівно тоді, коли починається зайнятий) → слот створюється",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot дотик меж не є перетином (починається рівно тоді, коли закінчується зайнятий) → слот створюється",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot механік зайнятий на іншому підйомнику в той самий час → 400 «співробітник зайнятий»",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot механік: дотик меж не є перетином → слот створюється",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot наявний слот зі статусом AVAILABLE (не BOOKED) теж займає підйомник → 400",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot наявний слот зі статусом BLOCKED (не BOOKED) теж займає підйомник → 400",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot перетин на тому самому підйомнику (заходить на кінець зайнятого) → 400 «підйомник зайнятий», слот не створено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot перетин на тому самому підйомнику (заходить на початок зайнятого) → 400 «підйомник зайнятий», слот не створено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot перетин на тому самому підйомнику (збігається із зайнятим хвилина в хвилину) → 400 «підйомник зайнятий», слот не створено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot перетин на тому самому підйомнику (лежить усередині зайнятого) → 400 «підйомник зайнятий», слот не створено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot перетин на тому самому підйомнику (накриває зайнятий цілком) → 400 «підйомник зайнятий», слот не створено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot слот іншої організації час не займає",
+   "CalendarService — конфлікти слотів (BR-CAL-006) createSlot той самий час на іншому підйомнику — не конфлікт",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot EXCLUDE-порушення (23P01) на оновленні → 409 ConflictException, а не 500",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot видалений слот (deletedAt) перенесенню не заважає",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot дотик меж не є перетином: слот можна подовжити впритул до сусіднього",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot оновлення слота не конфліктує сам із собою: зсув, що перетинає власний старий інтервал, проходить",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot перенесення на час, зайнятий іншим слотом того самого підйомника → 400, слот не змінено",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot перенесення на інший підйомник, зайнятий у цей час → 400 (проба йде по НОВОМУ підйомнику)",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot перенесення на інший, вільний підйомник у час, зайнятий на старому, — не конфлікт",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot призначення механіка, зайнятого в цей час на іншому підйомнику → 400 «співробітник зайнятий»",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot сусідній слот зі статусом AVAILABLE (не BOOKED) теж займає підйомник → 400",
+   "CalendarService — конфлікти слотів (BR-CAL-006) updateSlot сусідній слот зі статусом BLOCKED (не BOOKED) теж займає підйомник → 400"
+  ],
   "apps/api/src/modules/calendar/calendar.contract.spec.ts": [
    "Calendar — HTTP Contract DELETE /calendar/slots/:id повертає 204 при успіху (soft delete)",
    "Calendar — HTTP Contract DELETE /calendar/slots/:id повертає 404 коли слот не знайдено",
@@ -854,6 +902,9 @@
    "Calendar — HTTP Contract POST /calendar/slots — валідація повертає 400 коли liftId не UUID",
    "Calendar — HTTP Contract POST /calendar/slots — валідація повертає 400 коли startAt не ISO-8601",
    "Calendar — HTTP Contract POST /calendar/slots — валідація повертає 400 коли startAt/endAt відсутні",
+   "Calendar — HTTP Contract POST /calendar/slots — валідація приймає status=AVAILABLE і передає його в сервіс як є (201)",
+   "Calendar — HTTP Contract POST /calendar/slots — валідація приймає status=BLOCKED і передає його в сервіс як є (201)",
+   "Calendar — HTTP Contract POST /calendar/slots — валідація приймає status=BOOKED і передає його в сервіс як є (201)",
    "Calendar — HTTP Contract POST /calendar/slots/check-conflicts emptyToUndefined: excludeWorkOrderId=\"\" → проходить валідацію",
    "Calendar — HTTP Contract POST /calendar/slots/check-conflicts повертає 200 + порожній результат коли немає liftId+employeeId (read-only, short-circuit)",
    "Calendar — HTTP Contract POST /calendar/slots/check-conflicts повертає 400 коли excludeWorkOrderId не UUID",
@@ -882,6 +933,7 @@
   ],
   "apps/api/src/modules/calendar/calendar.slot-kinds.spec.ts": [
    "CalendarService — види слотів (BR-CAL) counterpartyId без workOrderId → слот зберігає прямого клієнта, наряд лишається null",
+   "CalendarService — види слотів (BR-CAL) status не передано → слот створюється як BOOKED, а не AVAILABLE",
    "CalendarService — види слотів (BR-CAL) type=BREAK без наряду і без клієнта → слот створюється саме з цим типом",
    "CalendarService — види слотів (BR-CAL) type=MAINTENANCE без наряду і без клієнта → слот створюється саме з цим типом",
    "CalendarService — види слотів (BR-CAL) type=MEETING без наряду і без клієнта → слот створюється саме з цим типом",
@@ -968,9 +1020,12 @@
    "CompletionActsService — sign() idempotency + auto-invoice sign(): авто-рахунок упав з довільної причини → підписання і перехід лишаються, подія вже пішла, збій у warn",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): акт не знайдено → NotFoundException",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): вже SIGNED → BadRequestException ПЕРЕД CAS",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд ARCHIVED → акт підписується",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд CANCELLED → 400, акт лишається DRAFT, рахунок не створюється",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд INVOICED → акт підписується",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд PAID → акт підписується",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд не у COMPLETED → статус не чіпається і подія переходу не емітиться",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд скасовано між читанням і записом (CAS по статусу програв) → 400, підписання відкочується, рахунок не створюється",
-   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд уже CANCELLED → акт усе одно стає SIGNED, наряд не чіпається, рахунку немає (відмову проковтнуто у warn)",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): перехід COMPLETED→INVOICED дає подію TRANSITIONED з автором — аудит не губиться",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): транзакція не закомітилась → події переходу й авто-рахунку немає (емісія ПІСЛЯ коміту, не всередині)"
   ],
@@ -1016,6 +1071,10 @@
    "CounterpartiesService — contract flows createContract — Bug #361: валідація currencyCode передає валідний currencyCode → currency.findFirst викликано з UPPERCASE кодом",
    "CounterpartiesService — contract flows findContracts — showDeleted showDeleted=true → фільтр deletedAt знято, але orgId + counterpartyId лишаються",
    "CounterpartiesService — contract flows findContracts — showDeleted без прапорця → лише активні договори (deletedAt:null)",
+   "CounterpartiesService — contract flows isPrimary swap — лише в межах того самого contractType (swapType-scope) createContract SALE з isPrimary → знімає «головний» лише з SALE-договорів контрагента",
+   "CounterpartiesService — contract flows isPrimary swap — лише в межах того самого contractType (swapType-scope) updateContract isPrimary + зміна contractType → scope за НОВИМ типом (не за старим)",
+   "CounterpartiesService — contract flows isPrimary swap — лише в межах того самого contractType (swapType-scope) updateContract isPrimary без contractType у PATCH → scope за ПОТОЧНИМ типом договору, сам договір виключено",
+   "CounterpartiesService — contract flows isPrimary swap — лише в межах того самого contractType (swapType-scope) updateContract без isPrimary → «головний» ні з кого не знімається",
    "CounterpartiesService — contract flows removeContract — Bug #351: auto-promote next primary soft-delete primary → промотує наступний договір того ж типу у primary",
    "CounterpartiesService — contract flows removeContract — Bug #351: auto-promote next primary soft-delete НЕ primary → НЕ промотує жодного",
    "CounterpartiesService — contract flows removeContract — Bug #351: auto-promote next primary soft-delete вже втрачено race-партнером → exit без auto-promote",
@@ -1027,7 +1086,11 @@
    "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards data містить isPrimary:false (уникнення дубля-primary того ж contractType)",
    "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards updateMany where містить counterpartyId + orgId + NOT:{deletedAt:null} (cross-CP + tenant)",
    "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards повертає ContractResponseDto зі всіх ISO дат + deletedAt=null",
-   "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards пре-check CP містить orgId + deletedAt:null (tenant isolation)"
+   "CounterpartiesService — contract flows restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards пре-check CP містить orgId + deletedAt:null (tenant isolation)",
+   "CounterpartiesService — contract flows validateContractType — вид договору за типом контрагента createContract: BOTH приймає і PURCHASE, і SALE",
+   "CounterpartiesService — contract flows validateContractType — вид договору за типом контрагента createContract: CLIENT + PURCHASE → BadRequest, транзакція не починається",
+   "CounterpartiesService — contract flows validateContractType — вид договору за типом контрагента createContract: SUPPLIER + SALE → BadRequest, транзакція не починається",
+   "CounterpartiesService — contract flows validateContractType — вид договору за типом контрагента updateContract: зміна виду на недозволений для типу контрагента → BadRequest, транзакція не починається"
   ],
   "apps/api/src/modules/counterparties/counterparties.crud-search.spec.ts": [
    "CounterpartiesService findAll — showDeleted showDeleted=false (за замовчуванням) фільтрує deletedAt:null",
@@ -1061,6 +1124,11 @@
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
    "CounterpartiesService — linked documents (Phase C) getLinkedDocuments: неіснуючий/чужий контрагент → порожні секції (без throw)",
    "CounterpartiesService — linked documents (Phase C) getLinkedDocuments: усі запити фільтрують orgId + deletedAt:null; Decimal→Number"
+  ],
+  "apps/api/src/modules/counterparties/counterparties.settlement-account.spec.ts": [
+   "CounterpartiesService — рахунок розрахунків (SettlementAccount) create BOTH → рахунок створюється одразу, у тій самій транзакції, з нульовим балансом",
+   "CounterpartiesService — рахунок розрахунків (SettlementAccount) create CLIENT → рахунок створюється одразу, у тій самій транзакції, з нульовим балансом",
+   "CounterpartiesService — рахунок розрахунків (SettlementAccount) create SUPPLIER → рахунок створюється одразу, у тій самій транзакції, з нульовим балансом"
   ],
   "apps/api/src/modules/counterparties/counterparties.status-labels.spec.ts": [
    "CounterpartiesService — статуси-мітки (assign / unassign) DTO показує лише активні мітки: link на soft-deleted статус лишається, але прихований",
@@ -1786,6 +1854,11 @@
    "InvoicesService — find-by-work-order findByWorkOrder — Bug #405 повертає { id, number, status, amount, currency*, documentDate } коли invoice існує (Bug #508)",
    "InvoicesService — find-by-work-order findByWorkOrder — Bug #405 повертає валютні поля (currencyCode/totalAmountBase/rateUsed) для інвалютного рахунку (Фаза 3)"
   ],
+  "apps/api/src/modules/invoices/invoices.line-totals.spec.ts": [
+   "InvoicesService — line-totals (recalcTotals на бекенді) addLine → підсумки рахунку = Σ рядків з БД (aggregate), amount = totalWithVat",
+   "InvoicesService — line-totals (recalcTotals на бекенді) removeLine останнього рядка → aggregate дає null → усі підсумки й amount = 0",
+   "InvoicesService — line-totals (recalcTotals на бекенді) updateLine → підсумки перераховано з aggregate, amount = totalWithVat (не сума без ПДВ)"
+  ],
   "apps/api/src/modules/invoices/invoices.refresh-from-work-order.spec.ts": [
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Bug #403 status guard кидає BadRequestException якщо existing.status=OVERDUE",
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Bug #403 status guard кидає BadRequestException якщо existing.status=PAID",
@@ -1874,6 +1947,7 @@
    "MaintenanceSchedulesService remove — soft delete, не hard updateMany з deletedAt (CLAUDE.md §5: hard delete заборонений)",
    "MaintenanceSchedulesService tenant isolation findOne чужого графіка → 404 (не 200 з даними іншої org)",
    "MaintenanceSchedulesService tenant isolation orgId присутній у where КОЖНОГО читання",
+   "MaintenanceSchedulesService tenant isolation усі три читання відсіюють видалений графік І графік видаленого авто",
    "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH intervalDays → обидва next* перераховано з нових і збережених значень",
    "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH intervalMileage → обидва next* перераховано з нових і збережених значень",
    "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH lastMaintenanceDate → обидва next* перераховано з нових і збережених значень",
@@ -2306,7 +2380,10 @@
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: explicit sourceType=BANK_ACCOUNT БЕЗ bankAccountId → 400, без Payment",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: explicit sourceType=CASH_REGISTER БЕЗ cashRegisterId → 400, без Payment",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: methodConfig=null (невідомий метод) → джерело null, платіж успішний",
-   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок у OVERDUE → оплата приймається: часткова → PARTIALLY_PAID, повна → PAID"
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) DTO без джерела + config-дефолт BANK_ACCOUNT (живий рахунок) → джерело платежу з config",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) settlement і paidAmount однакові без джерела, з BANK_ACCOUNT і з CASH_REGISTER (борг не залежить від source-link)",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок у OVERDUE → оплата приймається: часткова → PARTIALLY_PAID, повна → PAID",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) явне джерело з DTO (CASH_REGISTER) переважає config-дефолт (BANK_ACCOUNT)"
   ],
   "apps/api/src/modules/payments/payments.multicurrency.spec.ts": [
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) WO-linked USD-інвойс: chargeBase береться з WorkOrder-CHARGE (леджер), documentType=Invoice у FX",
@@ -2568,7 +2645,8 @@
    "PurchaseOrdersService.update — contract resolution Bug #475: cross-org warehouseId → NotFoundException, жоден write",
    "PurchaseOrdersService.update — contract resolution Bug #476: contractId з іншого постачальника → NotFoundException, жоден write",
    "PurchaseOrdersService.update — contract resolution Bug #476: valid contractId передано → встановлюється, validate проти effective supplier",
-   "PurchaseOrdersService.update — contract resolution non-DRAFT PO → BadRequestException, жоден write"
+   "PurchaseOrdersService.update — contract resolution non-DRAFT PO → BadRequestException, жоден write",
+   "PurchaseOrdersService.update — contract resolution зміна постачальника на контрагента-клієнта → BadRequestException, жоден write"
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.contract.spec.ts": [
    "PurchaseOrders — HTTP Contract GET /purchase-orders (showDeleted + q forwarding) dateFrom + dateTo → service.findAll отримує дати",
@@ -2973,7 +3051,8 @@
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED) без рядків → BadRequestException; createMovement не викликаний",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED) — НЕ викликає createMovement з targetWarehouseId (на відміну від TRANSFER)",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): MOVEMENT_TYPES[RECEIPT] resolved → не кидає \"Непідтримуваний тип документу\"",
-   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): inventory.createMovement викликаний ОДИН раз з type=RECEIPT і ПОЗИТИВНОЮ quantity"
+   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): inventory.createMovement викликаний ОДИН раз з type=RECEIPT і ПОЗИТИВНОЮ quantity",
+   "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition: два рядки ОДНОГО товару з різною ціною → два рухи зі своїми цінами, строго по черзі"
   ],
   "apps/api/src/modules/stock-documents/stock-documents.type-labels.invariants.spec.ts": [
    "STOCK_DOC_TYPE_LABELS ↔ StockDocumentType (BR-SDOC-005) ключі мапи збігаються з Prisma-enum StockDocumentType — жодного пропущеного і жодного зайвого",
@@ -3136,6 +3215,7 @@
    "SupplierReturnsService.create — Bug #778: Σ(lines.amount) === totalAmount сума per-line amount дорівнює збереженому totalAmount (дробові кількості)"
   ],
   "apps/api/src/modules/sync/sync.contract.spec.ts": [
+   "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) pull counterparties: phone / email / edrpou НЕ потрапляють у payload (PULL_FIELD_BLACKLIST)",
    "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) видалені записи приходять як operation=DELETE з payload={id}",
    "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) повертає 200 і коректно серіалізує BigInt syncVersion у payload",
    "Sync — HTTP Contract GET /sync/pull (Bug #128 regression) повертає порожній масив коли немає змін з even since cursor",
@@ -3313,6 +3393,18 @@
    "WorkCategories — HTTP Contract PATCH /work-categories/:id/toggle-active повертає 400 при невалідному UUID id",
    "WorkCategories — HTTP Contract POST /work-categories повертає 201 коли parentId=\"\" (порожній рядок → undefined через @Transform)",
    "WorkCategories — HTTP Contract POST /work-categories повертає 400 коли name відсутнє"
+  ],
+  "apps/api/src/modules/work-categories/work-categories.service.spec.ts": [
+   "WorkCategoriesService getLinkedGoodCategories — зв’язки лише читаються повертає goodCategoryId зв’язків категорії у своїй org",
+   "WorkCategoriesService remove — системна категорія не видаляється isSystem=true → 400, жодного запису в БД і кеш не скидається",
+   "WorkCategoriesService remove — системна категорія не видаляється гард читає категорію у СВОЇЙ org і не видалену",
+   "WorkCategoriesService remove — системна категорія не видаляється звичайна категорія → soft-delete її та всіх нащадків у своїй org",
+   "WorkCategoriesService remove — системна категорія не видаляється чужа/видалена категорія → 404, запису немає",
+   "WorkCategoriesService update — системну категорію не перейменувати й не перенести isSystem=true + name → 400, updateMany не викликається",
+   "WorkCategoriesService update — системну категорію не перейменувати й не перенести isSystem=true + лише sortOrder/icon → дозволено (косметика per-org)",
+   "WorkCategoriesService ієрархія — бекенд не обмежує глибину create з чужим/видаленим батьком → 404, категорія не створюється",
+   "WorkCategoriesService ієрархія — бекенд не обмежує глибину create під батьком, який сам є вкладеним, не відхиляється",
+   "WorkCategoriesService ієрархія — бекенд не обмежує глибину findAll будує дерево з чотирьох рівнів без обрізання"
   ],
   "apps/api/src/modules/work-order-media/work-order-media.service.spec.ts": [
    "WorkOrderMediaService findAll — total ≠ take-зріз findMany і count скоуплені по orgId+workOrderId",
@@ -3528,6 +3620,8 @@
    "WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2) per part → RETURN(+baseQty) з documentLineId; один CREDIT_NOTE = roundMoney(totalAmount)",
    "WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2) zero-total наряд → RETURN є, але CREDIT_NOTE НЕ створюється (і без throw)",
    "WorkOrdersService.returnPartsAndCredit — COMPLETED→CANCELLED (C2) без частин → жодного RETURN, але CREDIT_NOTE на суму боргу (списання не було)",
+   "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) Bug #795: перехід НЕ в CANCELLED актів не чіпає",
+   "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) Bug #795: →CANCELLED скасовує чернетки актів цього наряду в тій самій транзакції",
    "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) CAS програв (updateMany count=0) → throw, side-effects НЕ виконуються повторно",
    "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) WO-C1: APPROVED→IN_PROGRESS резервує (reserveParts викликано)",
    "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) WO-C1: ON_HOLD→IN_PROGRESS НЕ резервує повторно (reserveParts НЕ викликано)",
@@ -3566,6 +3660,9 @@
    "WorksService findAll — фільтри каталогу без showDeleted: ховає видалені роботи І роботи вимкнених категорій",
    "WorksService findOne — tenant isolation читає у своїй org, не видалене",
    "WorksService findOne — tenant isolation чужа/видалена робота → 404 (не 200 з даними іншої org)",
+   "WorksService isWarranty — інформаційна позначка, на ціну не впливає create зберігає isWarranty=true і ціну роботи як є (не обнуляє)",
+   "WorksService isWarranty — інформаційна позначка, на ціну не впливає update isWarranty=true пише лише прапорець — ціну не чіпає",
+   "WorksService isWarranty — інформаційна позначка, на ціну не впливає відповідь повертає isWarranty і ціну гарантійної роботи без змін",
    "WorksService remove — soft delete count=0 (чужа org або вже видалено) → 404",
    "WorksService remove — soft delete updateMany з deletedAt + orgId (hard delete заборонений, CLAUDE.md §5)",
    "WorksService restore — лише видалене своєї org count=0 (не видалена або чужа) → 404, read-back не виконується",

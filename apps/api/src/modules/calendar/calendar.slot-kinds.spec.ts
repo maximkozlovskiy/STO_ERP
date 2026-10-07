@@ -186,4 +186,22 @@ describe('CalendarService — види слотів (BR-CAL)', () => {
       expect(result.slots[0]).toMatchObject({ type, workOrderId: null, counterpartyId: null });
     },
   );
+
+  // «Відкритих» слотів немає: слот без явного статусу — це вже зайнятий час.
+  // guards: BR-CAL-004
+  it('status не передано → слот створюється як BOOKED, а не AVAILABLE', async () => {
+    const prisma = buildCreatePrisma();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const service = new CalendarService(prisma as any);
+
+    const result = await service.createSlot(ORG_ID, {
+      liftId: LIFT_ID,
+      startAt: START_AT,
+      endAt: END_AT,
+    } as never);
+
+    const data = prisma._create.mock.calls[0][0].data as SlotData;
+    expect(data.status).toBe('BOOKED');
+    expect(result.slots[0]).toMatchObject({ status: 'BOOKED' });
+  });
 });

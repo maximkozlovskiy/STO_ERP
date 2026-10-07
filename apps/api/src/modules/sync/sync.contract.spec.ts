@@ -166,6 +166,59 @@ describe('Sync — HTTP Contract', () => {
       expect(cpRecord!.payload.firstName).toBe('Іван');
     });
 
+    // guards: BR-CP-013
+    it('pull counterparties: phone / email / edrpou НЕ потрапляють у payload (PULL_FIELD_BLACKLIST)', async () => {
+      // Рядок із БД містить усі три PII-поля — саме тому тест щось доводить: якби їх не було
+      // в моку, асерт «поля відсутні» пройшов би й без blacklist-у.
+      prismaMock.counterparty.findMany.mockResolvedValueOnce([
+        {
+          id: 'cp-pii',
+          orgId: ORG_ID,
+          type: 'CLIENT',
+          firstName: 'Олена',
+          lastName: 'Шевченко',
+          companyName: null,
+          phone: '+380501234567',
+          email: 'olena@example.com',
+          edrpou: '12345678',
+          notes: 'постійний клієнт',
+          syncVersion: 8n,
+          createdAt: new Date('2026-05-26T10:00:00Z'),
+          updatedAt: new Date('2026-05-26T10:00:00Z'),
+          deletedAt: null,
+        },
+      ]);
+
+      const res = await app.inject({ method: 'GET', url: '/sync/pull?since=0' });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Array<{
+        table: string;
+        id: string;
+        payload: Record<string, unknown>;
+      }>;
+      const cpRecord = body.find(r => r.table === 'counterparties' && r.id === 'cp-pii');
+      expect(cpRecord).toBeDefined();
+
+      // Ключів немає взагалі (не null і не порожній рядок).
+      expect(cpRecord!.payload).not.toHaveProperty('phone');
+      expect(cpRecord!.payload).not.toHaveProperty('email');
+      expect(cpRecord!.payload).not.toHaveProperty('edrpou');
+      // І значення не просочились під іншим ключем.
+      expect(res.body).not.toContain('+380501234567');
+      expect(res.body).not.toContain('olena@example.com');
+      expect(res.body).not.toContain('12345678');
+
+      // Решта полів доїжджає — blacklist вирізає лише три поля, а не весь запис.
+      expect(cpRecord!.payload).toMatchObject({
+        id: 'cp-pii',
+        type: 'CLIENT',
+        firstName: 'Олена',
+        lastName: 'Шевченко',
+        notes: 'постійний клієнт',
+        syncVersion: 8,
+      });
+    });
+
     it('повертає порожній масив коли немає змін з even since cursor', async () => {
       const res = await app.inject({ method: 'GET', url: '/sync/pull?since=999999' });
       expect(res.statusCode).toBe(200);

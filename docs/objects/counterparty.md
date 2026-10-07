@@ -157,7 +157,7 @@ model CounterpartyStatusLink {
 - **BR-CP-009**: **Показ видалених + відновлення (CounterpartyEditModal, вкладки «Договори»/«Авто»):** галка «Показувати видалені» → GET з `?showDeleted=true`; видалені рядки приглушені (opacity-60) + бейдж «Видалено», дії → кнопка «Відновити» (RotateCcw) замість олівець/кошик. Restore: `deletedAt→null`; для договору `isPrimary→false` (уникнення дубля-головного). **Restore авто перевіряє ланцюг parent'ів** — не можна відновити авто у видалений гараж/контрагента (Bug #601/#602 — silent orphan). Окремі toggle-useEffect на кожну галку (both directions, skip-first-run ref скидається на CP-switch), stale-guard reqRef.
 - **BR-CP-010**: **Статуси-мітки (кастомні, M:N):** per-org довідник `CounterpartyStatus` (name+color, configuration-over-hardcode — не enum), M:N через `CounterpartyStatusLink`. Assign/unassign валідують, що і контрагент, і статус належать org (tenant-isolation); assign ідемпотентний (`@@unique[counterpartyId,statusId]`, P2002→no-op); unassign неіснуючого → 404. **Soft-delete статусу лишає links** (не каскадить) — `toDto` контрагента фільтрує `status.deletedAt:null`, restore статусу відновлює призначення. Assign/unassign скидають кеш довідника (`counterpartyCount` застаріває). Керування правами: assign/unassign — OWNER/ADMIN/RECEPTIONIST; CRUD довідника — OWNER/ADMIN.
 - **BR-CP-011**: **isDefault в CustomerGarage:** аналогічна поведінка при видаленні
-- **BR-CP-012**: `SettlementAccount` створюється автоматично (lazy upsert) при першій транзакції
+- **BR-CP-012**: `SettlementAccount` — один на контрагента, створюється **одразу разом із контрагентом**: `CounterpartiesService.create` робить `settlementAccount.create` (баланс 0) у тому самому `$transaction`, що й самого контрагента, для будь-якого типу. Лінивого створення немає: `SettlementsService.createTransaction` для контрагента без рахунку кидає `NotFound`, а не дотворює рахунок
 - **BR-CP-013**: `syncVersion` — поле для cloud sync (pull blacklist: `phone`, `edrpou`, `email` не синхронізуються на мобільний)
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
@@ -181,30 +181,43 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 | --------------------------------------- | ----------------------------------------------- | ------ |
 | audit snapshot                          | `counterparties.audit-snapshot.spec.ts`         | 4      |
 | HTTP-контракт (DTO, статуси, валідація) | `counterparties.contract.spec.ts`               | 21     |
-| counterparty contracts                  | `counterparties.counterparty-contracts.spec.ts` | 24     |
+| counterparty contracts                  | `counterparties.counterparty-contracts.spec.ts` | 32     |
 | crud search                             | `counterparties.crud-search.spec.ts`            | 17     |
 | гаражі (isDefault)                      | `counterparties.garages.spec.ts`                | 6      |
 | пов'язані документи                     | `counterparties.linked-docs.spec.ts`            | 4      |
+| рахунок розрахунків (SettlementAccount) | `counterparties.settlement-account.spec.ts`     | 3      |
 | статуси-мітки (assign / unassign)       | `counterparties.status-labels.spec.ts`          | 9      |
 | supplier naming (+ назва обов'язкова)   | `counterparties.supplier-naming.spec.ts`        | 6      |
 
-Разом: **91** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **102** кейси (цифри з `vitest --reporter=json`, не з grep).
 
-**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
-виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
-але показує окремим рядком.
+Поза модулем правила цього агрегату стережуть ще два файли:
 
-- **BR-CP-012** — дос'є: `SettlementAccount` створюється ліниво при першій транзакції; код: створюється одразу в `CounterpartiesService.create`, а `createTransaction` без рахунку кидає NotFound. `upsert` у коді немає.
+- `apps/web/src/components/ui/__tests__/CounterpartyEditModal.test.tsx` — 14 кейсів: вкладки
+  «Договори» й «Авто» форми контрагента (вид договору за типом контрагента, CRUD договору,
+  CRUD авто з авто-створенням гаража). Запуск:
+  `cd apps/web && npx vitest run src/components/ui/__tests__/CounterpartyEditModal.test.tsx`.
+- `apps/api/src/modules/sync/sync.contract.spec.ts` — кейс «pull counterparties: phone / email /
+  edrpou НЕ потрапляють у payload» (pull-blacklist живе в `sync/sync.service.ts`, не в цьому модулі).
 
-**Чого тут НЕМА.** Правила, які жоден unit-тест не стереже, і чому:
-
-- BR-CP-005 — фільтр «Вид договору» за типом контрагента живе у `CounterpartyEditModal.tsx` (`contractTypesForCounterparty()` / `defaultContractType()` — приватні функції модуля, не експортовані); unit-тесту немає, потрібен компонентний тест `CounterpartyEditModal`. Бекова пара (`validateContractType`: SUPPLIER → лише PURCHASE, CLIENT → лише SALE) теж без тесту.
-- BR-CP-006 — CRUD договору у формі: чиста UI-поведінка (optimistic-оновлення, `useConfirm`, tenant-guard `cpIdAtStart`); потрібен компонентний тест `CounterpartyEditModal` або E2E вкладки «Договори». Бековий `swapType`-scope в `updateContract`/`createContract` окремим кейсом теж не покритий.
-- BR-CP-007 — CRUD авто у формі (вкладка «Авто»): чиста UI-поведінка, включно з авто-створенням гаража «Основний»; потрібен компонентний тест або E2E.
-- BR-CP-013 — pull-blacklist (`phone`/`edrpou`/`email`) живе у `sync/sync.service.ts` (`PULL_FIELD_BLACKLIST`), не в цьому модулі. Кейс pull у `sync.contract.spec.ts` є, але відсутність цих полів у payload не асертить (у моку їх навіть немає) — тест треба дописати там.
+**Чого тут НЕМА.** Правил без жодного тесту не лишилось; розходжень дос'є з кодом теж.
 
 Часткове покриття правил, що мають мітку `guards:` (щоб мітка не читалась як «покрито все»):
 
 - правило 002 — міткою стережеться пошук списку (`findAll ?q=`, `contains` по трьох полях). Частина «similarity окремо для кожного» — це глобальний пошук `search/search.service.ts` (`sim_person` / `sim_company`), у `search.service.spec.ts` на неї кейсу немає.
+- правило 005 — стережуться обидві половини: фільтр і дефолт у формі (web) та
+  `validateContractType` (api). Форма РЕДАГУВАННЯ договору, вид якого вже не дозволений типу
+  контрагента (тип контрагента змінили після створення договору), тестом не покрита — і в
+  правилі цей випадок не описаний.
+- правило 006 — tenant-guard (`cpIdAtStart` vs `currentCpIdRef`) перевірений лише для
+  збереження договору; у `deleteContract` / `restoreContract` той самий guard — без тесту.
+- правило 007 — tenant-guard у `saveVehicle` / `deleteVehicle` без тесту (перевірено лише
+  CRUD-шлях: POST із гаражем, PATCH без `customerGarageId`, DELETE через `useConfirm`).
 - правило 009 — міткою стережеться бекова частина для договорів (`?showDeleted=true`, restore → `isPrimary:false`). UI (галка, приглушення рядків, кнопка «Відновити») — без компонентного тесту; restore авто з перевіркою ланцюга parent'ів — у модулі `vehicles`.
 - правило 010 — міткою стережеться сервіс. Ролі (`@Roles` на assign/unassign) не перевіряються: у contract-спеку `RolesGuard` замокано. «Soft-delete статусу лишає links» — поведінка модуля `counterparty-statuses`.
+- правило 012 — міткою стережеться створення рахунку в `create()`. Друга половина («транзакція
+  без рахунку → NotFound») перевіряється в `settlements/settlements.service.spec.ts`, кейс
+  `кидає NotFoundException якщо немає SettlementAccount`; це модуль агрегату розрахунків, мітки
+  цього правила там немає.
+- правило 013 — стережеться лише pull-blacklist. Парний push-whitelist (ті самі три поля не
+  приймаються з мобільного) у правилі не згаданий і окремого кейсу не має.
