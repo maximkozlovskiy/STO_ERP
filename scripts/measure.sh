@@ -82,13 +82,10 @@ m_docs() {
   hr; echo "РОЗМІР ДОКУМЕНТІВ (CLAUDE.md задає ліміти — тут факт)"
   printf "  %-26s %5s рядків  (ціль ~150)\n" "MemoryManual.md" "$(wc -l < MemoryManual.md)"
   printf "  %-26s %5s рядків\n" "BUG_REPORT.md" "$(wc -l < BUG_REPORT.md)"
-  echo "  скіли понад 1500 рядків (ціль: 0):"
-  local any=0
-  for d in .claude/skills/*/; do
-    local n; n=$(wc -l < "$d/SKILL.md" 2>/dev/null || echo 0)
-    (( n > 1500 )) && { printf "    %-18s %5s\n" "$(basename "$d")" "$n"; any=1; }
-  done
-  (( any )) || echo "    — немає"
+  # Ліміт у КБ, не в рядках: sto-tester/SKILL.md був 1362 рядки і 364 КБ — «в нормі»
+  # за рядками, хоча в один Read (~39 КБ) не влазив і вдесятеро менший файл.
+  echo "  скіли понад ліміт розміру (ядро 32 КБ, секція 36 КБ; ціль: 0):"
+  python scripts/check-skill-size.py | sed 's/^/  /'
 }
 
 case "$SECTION" in
