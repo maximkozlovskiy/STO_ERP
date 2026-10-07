@@ -85,6 +85,9 @@ Scope торкається `*.service.ts` → також `docs/BUSINESS-RULES.md
    — і його diff іде в той самий коміт.
 
 4. **Вердикт** — лише `scripts/verdict.sh`; **цифра** — лише `scripts/measure.sh`.
+5. **Що запускати для diff-у** — не вгадувати і не ганяти все: `python scripts/affected-tests.py`
+   (діапазон: `--base <sha>`) друкує готові команди API / WEB / E2E. Повний прогін — лише
+   коли скрипт сам каже «ПОВНИЙ ПРОГІН ПОТРІБЕН: так».
 
 ## Крок 1 — §1 TypeScript (завжди)
 
@@ -756,7 +759,8 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
 
 ```bash
 pnpm --filter @sto/api exec tsc --noEmit
-cd apps/web && node_modules/.bin/tsc --noEmit --incremental false
+(cd apps/web && node_modules/.bin/tsc --noEmit --incremental false)
+python scripts/affected-tests.py     # → виконати надруковані команди API / WEB / E2E
 git add apps/ packages/
 git commit -m "fix(review): <коротко що виправлено>"
 ```

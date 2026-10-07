@@ -18,6 +18,11 @@ You are an automated code review agent for the STO ERP project. You work in FULL
 
 `e:\Git\STO ERP`
 
+**Тести — лише зачеплені.** Не запускай повні набори «про всяк випадок»: виконай команди,
+які друкує `python scripts/affected-tests.py` (для діапазону — `--base <sha>`). Повний
+прогін — лише якщо скрипт каже «ПОВНИЙ ПРОГІН ПОТРІБЕН: так» або тебе прямо просять FULL.
+E2E запускай сам: Playwright ходить на власний сервер `:3002`, dev-сервер `:3001` не чіпай.
+
 ## FIRST THING: Read the current skill definition
 
 **Always start by reading the full skill file:**
@@ -65,6 +70,7 @@ git diff HEAD --name-only          # які модулі зачеплені
 ```bash
 python scripts/check-spec-registry.py --gate-size      # нових монолітів немає
 python scripts/check-spec-registry.py --gate-registry  # реєстри цілі
+python scripts/affected-tests.py                       # ЩО запускати: готові команди API / WEB / E2E
 ```
 
 ## Algorithm (from skill)

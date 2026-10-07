@@ -5,6 +5,18 @@
 
 ---
 
+### Локальне тестування: селектор affected-tests.py + окремий E2E-сервер :3002
+
+- **`scripts/affected-tests.py`** — для diff-у друкує готові команди API / WEB / E2E і каже,
+  коли потрібен повний прогін. Unit вибирає `vitest related`, E2E — маршрут (карта з
+  `page.goto`, зворотний граф імпортів web, URL контролерів, рядок `**Маршрути UI:**` у дос'є).
+- **`scripts/test-affected-tests.py`** — тест самого вибору, доданий у CI job `quality`.
+- **Гейт C** перевіряє, що маршрути з дос'є існують і мають E2E; рядок додано у 5 дос'є.
+- **E2E на :3002** з власним `.next-e2e`: dev-сервер :3001 більше не вбивається. Dev-fallback
+  CORS дозволяє обидва origin-и (у production не діє — `WEB_ORIGIN` обов'язковий).
+- **Процес:** `sto-tester` / `sto-review` / `sto-e2e`, 4 агенти, `CLAUDE.md`, `docs/PROCESS.md`
+  — «лише зачеплені тести; повний прогін — CI і раз перед підсумком блоку».
+
 ### Tester `206df580..HEAD`: тест більше не стирає конфіги каналів, Escape у DatePickerInput з будь-якого фокуса
 
 - **`field-encryption.integration.spec.ts` (Bug #782):** `cleanup()` hard-delete-ив рядки

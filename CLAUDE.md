@@ -314,7 +314,8 @@ claude --totally-fake-flag-zzz auth status  # КОНТРОЛЬ: мусить д�
 Після завершення **будь-якого** завдання і git commit — виконай **послідовно**:
 
 ```
-0. [якщо чіпав тести] → python scripts/check-spec-registry.py --gate-size --gate-registry
+0. → python scripts/affected-tests.py   — ЩО запускати: готові команди API / WEB / E2E
+   [якщо чіпав тести] → python scripts/check-spec-registry.py --gate-size --gate-registry
 1. [якщо змінились frontend і backend] → Agent(sto-sync-agent)
 2. → Agent(sto-review-agent)   — code review, виправити всі знайдені проблеми
 3. → Agent(sto-tester-agent)   — тести, BUG_REPORT.md, виправити всі баги
@@ -335,6 +336,15 @@ python ../../scripts/spec-baseline.py .vitest-report.json --out test-baseline.js
 
 Baseline правиться **лише цим скриптом** — тоді diff показує рівно ті кейси, що
 змінились. Деталі моделі — `/sto-spec`.
+
+**Локально — лише зачеплені тести; повний прогін — у двох місцях.** `affected-tests.py`
+вибирає unit за графом імпортів і E2E за маршрутом, а для спільного коду сам каже
+«ПОВНИЙ ПРОГІН ПОТРІБЕН». Усе цілком ганяє CI і — один раз — я перед підсумковим звітом
+блоку. Повний E2E після кожної правки не запускати: за один запит 2026-10-07 він ішов
+4 рази по ~4 хв, і це нічого не дало понад останній прогін.
+
+E2E локально ходить на **власний сервер `:3002`** (`apps/web/playwright.config.ts`);
+dev-сервер `:3001` заради Playwright не зупиняти.
 
 > Виняток: якщо сам запит був review або tester агент — не запускати рекурсивно.
 

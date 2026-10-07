@@ -45,15 +45,20 @@ bypassPermissions: true
 
 > **Спец-модель стосується unit-спеків api**, не Playwright. Але якщо E2E знайшов баг у
 > бізнес-правилі — регресійний unit-тест іде в аспектний файл агрегату (`docs/objects/<entity>.md`
-> → реєстр), а не лише в E2E. Перед запуском suite: НЕ піднімати web вручну — Playwright має
-> стартувати його сам із `NEXT_PUBLIC_E2E`, інакше всі тести підуть у `/login`.
+> → реєстр), а не лише в E2E.
+>
+> **Два web-сервери.** Dev на `:3001` — для ручної роботи, зібраний БЕЗ `NEXT_PUBLIC_E2E`:
+> на ньому всі тести йдуть у `/login`. Playwright локально ходить на `:3002` і сам піднімає
+> там свій екземпляр (`.next-e2e`). Dev-сервер НЕ зупиняти й не перезапускати заради E2E.
 
 ## Крок 1 — Перевірка серверів
 
 ```bash
 docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "postgres|redis|minio"
 curl -s http://localhost:3000/api/health | head -c 80 && echo "" || echo "API:DOWN"
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 | grep -qE "^(200|30)" && echo "WEB:UP" || echo "WEB:DOWN"
+# Web для E2E перевіряти не треба: Playwright піднімає власний екземпляр на :3002.
+# Щоб не платити за старт щоразу, його можна тримати запущеним (Playwright підхопить):
+#   cd apps/web && NEXT_PUBLIC_E2E=1 NEXT_DIST_DIR=.next-e2e npx next dev --turbopack -p 3002
 ```
 
 Якщо API:DOWN:
@@ -68,6 +73,16 @@ until curl -s http://localhost:3000/api/health > /dev/null 2>&1; do sleep 3; don
 ---
 
 ## Крок 2 — Запуск тестів
+
+**За замовчуванням — лише зачеплене.** Які спеки стосуються змін, каже селектор:
+
+```bash
+python scripts/affected-tests.py          # робоче дерево; діапазон: --base <sha>
+# → рядок «E2E : cd apps/web && npx playwright test e2e/…» виконати як є
+```
+
+Повний suite (~4 хв) — коли селектор друкує «ВЕСЬ suite» / «ПОВНИЙ ПРОГІН», перед
+підсумком блоку, або на пряме прохання:
 
 ```bash
 cd apps/web

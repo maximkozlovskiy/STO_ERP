@@ -92,6 +92,12 @@ jobs:
       - name: Stop-hook contract (claims need evidence)
         run: python3 scripts/hooks/test-check-claims.py
 
+      # Селектор вирішує, які тести НЕ запускати локально. Помилка в ньому дає не червоний
+      # тест, а зелений прогін без потрібного тесту — тож сам вибір перевіряється тут.
+      # CI при цьому завжди ганяє ВСЕ; селектор — лише для локального циклу.
+      - name: Test selector contract (affected-tests)
+        run: python3 scripts/test-affected-tests.py
+
       # Посилання між .md не валідує ні tsc, ні eslint, а в GitHub-рендері битий лінк
       # виглядає як звичайний текст — помітно лише коли клікнеш. Станом на 2026-10-05
       # битими були 14 із 66: docs/ARCHITECTURE.md посилався на ../objects/<entity>.md,

@@ -94,6 +94,8 @@ python scripts/check-doc-links.py                      # посилання мі
 | `scripts/check-spec-registry.py`                                                         | Три гейти: втрата кейсів (множини fullName), нові моноліти (>900 і >=2 describe), цілісність реєстрів дос'є           |
 | `scripts/spec-baseline.py`                                                               | Дистилює vitest-звіт у стабільний `apps/api/test-baseline.json` (файл -> fullName); детермінований, у .prettierignore |
 | `.claude/skills/sto-spec/SKILL.md`                                                       | Специфікація агрегату: BR-ID, аспектні спеки, реєстр, гейти; між sto-analyst і sto-feature                            |
+| `scripts/affected-tests.py`                                                              | Селектор: готові команди API / WEB / E2E для diff-у; каже, коли потрібен повний прогін                                |
+| `scripts/test-affected-tests.py`                                                         | Тест самого вибору на реальних файлах репо (у CI job `quality`)                                                       |
 
 ---
 
@@ -116,6 +118,9 @@ python scripts/check-doc-links.py                      # посилання мі
 - SMS-канал через `NotificationsService.send(orgId, eventType, payload)` — НЕ прямий `smsQueue.add()`
 - **NestJS SWC на Windows**: залишити tsc builder (`nest start --watch` без `--builder swc`)
 - **`rootDir: "src"` у api tsconfig** — обов'язково (інакше dist/apps/api/src/main.js → MODULE_NOT_FOUND)
+- **Тести локально — лише зачеплені:** `python scripts/affected-tests.py` друкує команди.
+  Повний прогін — CI і раз перед підсумком блоку. E2E ходить на ВЛАСНИЙ сервер `:3002`
+  (`.next-e2e`, `NEXT_PUBLIC_E2E=1`); dev-сервер `:3001` заради Playwright не зупиняти
 - **tsc web incremental cache** ламається → використовувати `npx tsc --noEmit --incremental false`
   (голий tsc дає фантомну PricingRulesClient-помилку)
 

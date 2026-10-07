@@ -43,13 +43,14 @@ pnpm --filter @sto/api exec tsc --noEmit
 cd apps/web && node_modules/.bin/tsc --noEmit --incremental false 2>&1 | tail -20
 pnpm --filter @sto/shared exec tsc --noEmit
 
-# Unit tests
-pnpm --filter @sto/api test --run 2>&1 | tail -30
-
-# ОБОВ'ЯЗКОВО: web component suite ТАКОЖ у baseline (не лише API).
-# Червоний web-тест невидимий якщо запускати лише @sto/api → виявиться аж на Кроці 4.
-# Стале component-vs-test drift (тест асертить текст/поведінку якої компонент не має) ловиться ЛИШЕ тут.
-pnpm --filter @sto/web exec vitest run 2>&1 | tail -10
+# ЩО ЗАПУСКАТИ — каже селектор (AUTO). Він дивиться і в api, і в web, тож червоний
+# web-тест не лишиться невидимим, як бувало при запуску лише @sto/api.
+python scripts/affected-tests.py            # робоче дерево; для діапазону: --base <sha>
+# → виконати надруковані команди API / WEB / E2E як є (E2E йде на власному сервері :3002,
+#   dev-сервер :3001 не чіпати).
+# «ПОВНИЙ ПРОГІН ПОТРІБЕН: так» АБО режим FULL → повні набори:
+#   pnpm --filter @sto/api test --run 2>&1 | tail -30
+#   pnpm --filter @sto/web exec vitest run 2>&1 | tail -10
 
 # Scope (AUTO: тільки змінені файли; FULL: весь проєкт)
 git diff HEAD --name-only | head -30
@@ -147,14 +148,16 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks
    — і його diff іде в той самий коміт.
 
 4. **Вердикт** — лише `scripts/verdict.sh`; **цифра** — лише `scripts/measure.sh`.
+5. **Що запускати для diff-у** — не вгадувати і не ганяти все: `python scripts/affected-tests.py`
+   (діапазон: `--base <sha>`) друкує готові команди API / WEB / E2E. Повний прогін — лише
+   коли скрипт сам каже «ПОВНИЙ ПРОГІН ПОТРІБЕН: так».
 
-> **Межі цього блоку (перевірено 2026-10-07).** Через дос'є знаходяться лише спеки
-> агрегатів — `apps/api/src/modules/<mod>/`. Інфраструктурні спеки (`apps/api/src/prisma/*`,
-> `src/common/*`) і web-тести (`apps/web/**/__tests__/*.test.tsx`) у жодному
-> `docs/objects/*.md` не названі: їх шукати за шляхом зміненого файла, а не через реєстр.
-> Гейт A їх усе одно стереже для API (вони є в `test-baseline.json`); web-тести не стереже
-> жоден із трьох гейтів. `--gate-size` на успіху друкує `0 passed (0)` — це «монолітів 0»,
-> а не «нічого не перевірено».
+> **Межі цього блоку.** Через дос'є знаходяться лише спеки агрегатів —
+> `apps/api/src/modules/<mod>/`. Інфраструктурні спеки (`src/prisma/*`, `src/common/*`),
+> web-тести й E2E у реєстрах не названі — їх знаходить селектор із п. 5 (граф імпортів і
+> маршрути), а не дос'є. Гейт A стереже лише api (`test-baseline.json`); web-тести не
+> стереже жоден із трьох гейтів. `--gate-size` на успіху друкує `0 passed (0)` — це
+> «монолітів 0», а не «нічого не перевірено».
 
 ## Крок 1 — Статичний аналіз (збір багів)
 
@@ -1162,8 +1165,9 @@ pnpm --filter @sto/api exec tsc --noEmit
 pnpm --filter @sto/web exec tsc --noEmit --incremental false
 pnpm --filter @sto/shared exec tsc --noEmit
 
-# Unit тести
-pnpm --filter @sto/api test --run 2>&1 | tail -30
+# Тести — ті самі команди селектора, що й на Кроці 0 (після фіксів diff міг вирости,
+# тому скрипт запускається ЗАНОВО, а не береться старий вивід)
+python scripts/affected-tests.py
 
 # Build
 pnpm --filter @sto/api build 2>&1 | tail -10
