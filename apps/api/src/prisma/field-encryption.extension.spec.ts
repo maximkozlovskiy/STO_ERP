@@ -271,13 +271,17 @@ describe('Шифрування секретів at-rest — справжній P
 
         // at-rest: у параметрах SQL немає жодного значення секрету; є шифротекст цілого JSON.
         const args = stringArgs();
+        const ciphertexts = args.filter(a => a.startsWith(PREFIX));
+        // Відкритий текст шукаємо лише ПОЗА шифротекстами (Bug #803): шифротекст — випадковий
+        // base64, і короткий секрет ('r1') збігався з його підрядком приблизно у 2–3% прогонів —
+        // тест падав без жодного витоку. Сам шифротекст перевіряється нижче розшифруванням.
+        const plaintexts = args.filter(a => !a.startsWith(PREFIX));
         for (const secret of Object.values(credentials)) {
           expect(
-            args.filter(a => a.includes(secret)),
+            plaintexts.filter(a => a.includes(secret)),
             `секрет ${secret} у параметрах SQL`,
           ).toEqual([]);
         }
-        const ciphertexts = args.filter(a => a.startsWith(PREFIX));
         expect(ciphertexts.length).toBeGreaterThanOrEqual(1);
         for (const c of ciphertexts) expect(JSON.parse(enc.decrypt(c))).toEqual(credentials);
 
