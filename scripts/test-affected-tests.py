@@ -21,14 +21,23 @@ SELECTOR = os.path.join(ROOT, "scripts", "affected-tests.py")
 CROSS = "console-errors.spec.ts"  # представник наскрізних E2E
 
 
+def run_raw(*args, cwd=ROOT):
+    return subprocess.run([sys.executable, SELECTOR] + list(args), cwd=cwd, capture_output=True)
+
+
 def run(*files):
-    proc = subprocess.run(
-        [sys.executable, SELECTOR, "--json"] + list(files),
-        cwd=ROOT,
-        capture_output=True,
-    )
+    proc = run_raw("--json", *files)
     assert proc.returncode == 0, proc.stderr.decode("utf-8", errors="replace")
     return json.loads(proc.stdout.decode("utf-8"))
+
+
+def load():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("affected", SELECTOR)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 CASES = []
@@ -47,7 +56,7 @@ def _():
     r = run("apps/api/src/modules/invoices/invoices.service.ts")
     assert not r["full"] and not r["e2e_full"], r["reasons"]
     assert "invoices.spec.ts" in r["e2e"] and "crud-invoice.spec.ts" in r["e2e"], r["e2e"]
-    assert "payroll.spec.ts" not in r["e2e"], "вибір не локальний"
+    assert "crud-employee.spec.ts" not in r["e2e"], "вибір не локальний"
 
 
 @case("api-модуль → усі спеки його теки потрапляють у команду API")
@@ -129,8 +138,122 @@ def _():
 
 @case("api-модуль, до якого web не звертається → «не визначено», а не тиша")
 def _():
+    r = run("apps/api/src/modules/reconciliation/reconciliation.processor.ts")
+    assert r["e2e_undetermined"] == ["reconciliation"], r
+
+
+# ── хибна локальність: зміни, для яких «лише своє» означало б пропущений тест ──────────
+
+
+@case("api-модуль з однойменною сторінкою → ще й сторінки, що звертаються до його URL")
+def _():
+    # Рахунок створюють із наряду: /work-orders кличе /invoices, і його E2E мусить піти.
+    r = run("apps/api/src/modules/invoices/invoices.service.ts")
+    assert "work-orders" in r["routes"], r["routes"]
+    # Публічна сторінка /booking однойменна з модулем, але UI персоналу живе на /bookings.
+    r = run("apps/api/src/modules/booking/booking.service.ts")
+    assert "bookings.spec.ts" in r["e2e"] and "crud-booking.spec.ts" in r["e2e"], r["e2e"]
+
+
+@case("сервіс, який інжектять інші модулі → E2E і їхніх сторінок")
+def _():
+    r = run("apps/api/src/modules/inventory/inventory.service.ts")
+    for route in ("inventory", "work-orders", "stock-documents", "purchase-orders"):
+        assert route in r["routes"], (route, r["routes"])
+    # Модуль без контролера і без сторінки: маршрути дають ті, хто його споживає.
     r = run("apps/api/src/modules/pdf/pdf.service.ts")
-    assert r["e2e_undetermined"] == ["pdf"], r
+    assert "invoices" in r["routes"] and not r["e2e_undetermined"], r
+
+
+@case("каркас api поза modules/ (main.ts, app.module.ts, health) → повний прогін")
+def _():
+    for f in ("main.ts", "app.module.ts", "health/health.controller.ts"):
+        assert run("apps/api/src/" + f)["full"], f
+
+
+@case("css, public/, .env, setup-файл vitest → не «нічого запускати»")
+def _():
+    assert run("apps/web/src/app/globals.css")["full"]
+    assert run("apps/web/src/__tests__/setup.ts")["full"]
+    assert run(".env.dev")["full"] and run("apps/web/.env.e2e")["full"]
+    assert run("docker-compose.dev.yml")["full"]
+    assert not run(".env.example")["full"]
+    r = run("apps/web/public/sw.js")
+    assert r["e2e_full"] and not r["full"], r
+
+
+@case("файл, для якого тесту немає, названо у виводі, а не замовчано")
+def _():
+    r = run("docker-compose.yml", "installer/scripts/Setup-Stack.ps1", "docs/PROCESS.md")
+    assert r["uncovered"] == ["docker-compose.yml", "installer/scripts/Setup-Stack.ps1"], r
+    out = run_raw("docker-compose.yml").stdout.decode("utf-8")
+    assert "ПОЗА СЕЛЕКТОРОМ" in out and "docker-compose.yml" in out, out
+
+
+@case("скрипти з власними тестами → їхня команда у виводі")
+def _():
+    assert "python scripts/test-affected-tests.py" in run("scripts/affected-tests.py")["scripts"]
+    gates = "python scripts/check-spec-registry.py --gate-size --gate-registry"
+    assert gates in run("docs/objects/invoice.md")["scripts"]
+    assert gates in run("apps/api/src/modules/invoices/invoices.due-date.spec.ts")["scripts"]
+
+
+@case("помилка git або прапорця → exit 2, а не «0 змінених файлів»")
+def _():
+    for args in (["--base", "no-such-ref-zzz"], ["--base"], ["--bse", "HEAD"]):
+        proc = run_raw(*args)
+        out = proc.stdout.decode("utf-8")
+        assert proc.returncode == 2, (args, proc.returncode, out)
+        assert "Нічого запускати" not in out, out
+
+
+@case("абсолютний шлях, ./шлях і шлях від іншої теки дають той самий вибір")
+def _():
+    rel = "apps/api/src/modules/invoices/invoices.service.ts"
+    want = run(rel)["api"]
+    assert want
+    assert run(os.path.join(ROOT, *rel.split("/")))["api"] == want
+    assert run("./" + rel)["api"] == want
+    proc = run_raw("--json", "src/modules/invoices/invoices.service.ts", cwd=os.path.join(ROOT, "apps", "api"))
+    assert json.loads(proc.stdout.decode("utf-8"))["api"] == want
+
+
+@case("сторінка без власного E2E-спека → наскрізні спеки все одно йдуть")
+def _():
+    r = run("apps/web/src/app/booking/page.tsx")
+    assert not r["e2e_full"], r["reasons"]
+    assert CROSS in r["e2e"], r
+
+
+@case("задовгий перелік файлів → порада ганяти весь набір, а не команда, що не стартує")
+def _():
+    mod = load()
+    mod.MAX_ARGS_CHARS = 10
+    res = mod.select(["apps/api/src/modules/invoices/invoices.service.ts"])
+    api_line = [line for line in mod.render(res).split(chr(10)) if line.startswith("API")][0]
+    assert res["api_all"] and "vitest run" in api_line and "related" not in api_line, api_line
+
+
+@case("@Controller({ path: … }) розпізнається так само, як @Controller('…')")
+def _():
+    mod = load()
+    found = mod.CONTROLLER_RE.findall(
+        "@Controller({ path: 'public/work-orders', version: VERSION_NEUTRAL })"
+        + chr(10)
+        + "@Controller('invoices')"
+    )
+    assert found == ["public/work-orders", "invoices"], found
+
+
+@case("нелітеральний import()/require() — сліпа зона графа, а не тиша")
+def _():
+    mod = load()
+    bt = chr(96)
+    for src in ("import(" + bt + "./x/${n}" + bt + ")", "import(path)", "require( /* c */ './a')"):
+        assert mod.OPAQUE_IMPORT_RE.search(src), src
+    for src in ("import('./a')", 'import("./a")', "typeof import('./a').T", "important(x)"):
+        assert not mod.OPAQUE_IMPORT_RE.search(src), src
+    assert mod.IMPORT_RE.findall("export * from './a'; const b = require('./b')") == ["./a", "./b"]
 
 
 @case("змінений E2E-спек → запускається він сам")
@@ -160,11 +283,7 @@ def _():
 
 @case("кожен E2E-спек досяжний: або наскрізний, або відвідує наявний маршрут")
 def _():
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("affected", SELECTOR)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = load()
     routes = mod.app_routes()
     orphans = [
         s for s, rs in mod.spec_routes().items() if s not in mod.CROSS_E2E and not (rs & routes)
@@ -174,11 +293,7 @@ def _():
 
 @case("граф імпортів web розв'язаний повністю (нерозв'язане = сліпа зона)")
 def _():
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("affected", SELECTOR)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = load()
     _, unresolved = mod.web_reverse_graph()
     assert not unresolved, unresolved[:5]
 

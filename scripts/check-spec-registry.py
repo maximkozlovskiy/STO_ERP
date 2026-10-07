@@ -127,10 +127,24 @@ def gate_b(problems):
     return found
 
 
+def cross_e2e():
+    """Наскрізні спеки з селектора: за маршрутом він їх НЕ вибирає.
+
+    Список читається з самого scripts/affected-tests.py, а не дублюється: розійшовшись,
+    гейт казав би «маршрут покритий», а селектор для нього вибирав би порожньо.
+    """
+    src = io.open(os.path.join(REPO, "scripts", "affected-tests.py"), encoding="utf-8").read()
+    block = re.search(r"^CROSS_E2E = \((.*?)^\)", src, re.M | re.S)
+    return set(re.findall(r'"([^"]+\.spec\.ts)"', block.group(1))) if block else set()
+
+
 def e2e_routes():
-    """Маршрути, які відвідує хоч один Playwright-спек (перший сегмент page.goto)."""
+    """Маршрути, які відвідує хоч один НЕ наскрізний Playwright-спек (перший сегмент goto)."""
     routes = set()
+    skip = cross_e2e()
     for spec in glob.glob(os.path.join(REPO, "apps", "web", "e2e", "*.spec.ts")):
+        if os.path.basename(spec) in skip:
+            continue
         src = io.open(spec, encoding="utf-8", errors="replace").read()
         routes.update(m.strip("/") for m in GOTO.findall(src))
     return routes
@@ -156,6 +170,15 @@ def gate_c_routes(doc, src, problems, visited):
     if not routes:
         problems.append("ПОРОЖНІ **Маршрути UI:** %s" % rel(doc))
         return 0
+    # Селектор прив'язує маршрути до api-модуля з рядка **Модуль:** (остання тека шляху).
+    # Без нього або з неіснуючою текою рядок маршрутів мовчки нічого не перевизначає.
+    mods = REG_MODULE.search(src)
+    bases = [m.strip().strip("`") for m in mods.group(1).split(",")] if mods else []
+    if not bases:
+        problems.append("**Маршрути UI:** БЕЗ **Модуль:** %s — селектор їх не побачить" % rel(doc))
+    for base in bases:
+        if not os.path.isdir(os.path.join(REPO, base)):
+            problems.append("НЕМА ТЕКИ МОДУЛЯ %s (названа у %s)" % (base, rel(doc)))
     for route in routes:
         if not route_exists(route):
             problems.append("НЕМА МАРШРУТУ /%s (названий у %s)" % (route, rel(doc)))

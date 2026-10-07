@@ -119,6 +119,8 @@ python scripts/check-doc-links.py                      # посилання мі
 - **NestJS SWC на Windows**: залишити tsc builder (`nest start --watch` без `--builder swc`)
 - **`rootDir: "src"` у api tsconfig** — обов'язково (інакше dist/apps/api/src/main.js → MODULE_NOT_FOUND)
 - **Тести локально — лише зачеплені:** `python scripts/affected-tests.py` друкує команди.
+  `exit 2` = вибір НЕ зроблено (не «нічого запускати»); рядок «ПОЗА СЕЛЕКТОРОМ» = тесту
+  для файлу немає взагалі; E2E для api-модуля враховує й модулі, що імпортують змінений файл.
   Повний прогін — CI і раз перед підсумком блоку. E2E ходить на ВЛАСНИЙ сервер `:3002`
   (`.next-e2e`, `NEXT_PUBLIC_E2E=1`); dev-сервер `:3001` заради Playwright не зупиняти
 - **tsc web incremental cache** ламається → використовувати `npx tsc --noEmit --incremental false`

@@ -112,7 +112,8 @@ function checkProdStrict(config: Record<string, unknown>): Issue[] {
   // NOTIFICATION_ENC_KEY у prod: обовʼязковий І ≥32 символів (hardening проти слабкої
   // ентропії ключа шифрування секретів at-rest). У dev короткий ключ дозволено —
   // EncryptionService нормалізує його через SHA-256 (див. коментар до поля вище).
-  // WEB_ORIGIN: без нього CORS мовчки падає на dev-fallback `http://localhost:3001`.
+  // WEB_ORIGIN: без нього CORS мовчки падає на dev-fallback `DEV_WEB_ORIGINS`
+  // (`http://localhost:3001` і `:3002`, див. common/cors.options.ts).
   // У поточному розгортанні web і API за одним Caddy (same-origin), тож CORS не задіяний
   // і шкоди немає — але конфіг, що ТИХО деградує у проді, рано чи пізно вистрілить на
   // окремому домені API чи мобільному web-клієнті. Краще не стартувати, ніж стартувати

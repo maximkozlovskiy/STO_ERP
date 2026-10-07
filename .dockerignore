@@ -11,6 +11,9 @@
 **/dist
 **/build
 **/.next
+# distDir E2E-екземпляра Next (NEXT_DIST_DIR у playwright.config.ts): `**/.next` його не
+# накриває, і сотні МБ dev-кешу їхали б у build-контекст через `COPY . .`.
+**/.next-e2e
 **/out
 apps/api/public
 *.tsbuildinfo

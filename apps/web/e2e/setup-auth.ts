@@ -1,4 +1,4 @@
-import { chromium } from '@playwright/test';
+import { chromium, type FullConfig } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -8,12 +8,14 @@ import * as fs from 'fs';
  *
  * Запускається один раз перед усіма тестами (globalSetup в playwright.config.ts).
  */
-async function globalSetup() {
-  // Той самий вибір, що й у playwright.config.ts: локально E2E-екземпляр на :3002.
-  // storageState прив'язаний до origin — логін на іншому порту дав би порожню сесію.
-  const baseURL =
-    process.env.PLAYWRIGHT_BASE_URL ??
-    (process.env.CI ? 'http://localhost:3001' : 'http://localhost:3002');
+async function globalSetup(config: FullConfig) {
+  // baseURL береться з playwright.config.ts, а не обчислюється тут удруге: storageState
+  // прив'язаний до origin, і якби два файли розійшлись у порту, логін ліг би на один
+  // origin, а тести ходили б на інший — з порожньою сесією і редіректом на /login.
+  const baseURL = config.projects[0]?.use.baseURL;
+  if (!baseURL) {
+    throw new Error('E2E auth setup: у playwright.config.ts не задано use.baseURL');
+  }
   // Bug #566: Force IPv4 (127.0.0.1) to avoid Node ::1 (IPv6) resolution on Windows
   // when API binds only to 0.0.0.0 (IPv4). Otherwise globalSetup intermittently fails
   // with ECONNREFUSED ::1:3000 during fetch().
