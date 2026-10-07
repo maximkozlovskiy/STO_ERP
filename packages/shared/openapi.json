@@ -3797,6 +3797,48 @@
         ]
       }
     },
+    "/api/v1/vehicles/{id}/mileage": {
+      "get": {
+        "operationId": "VehiclesController_getMileageHistory_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VehicleMileagePointDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Авто не знайдено"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Історія пробігу авто",
+        "tags": [
+          "Автомобілі"
+        ]
+      }
+    },
     "/api/v1/vehicles/{id}/nodes": {
       "get": {
         "operationId": "VehiclesController_findNodes_v1",
@@ -18724,6 +18766,36 @@
           "model",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "VehicleMileagePointDto": {
+        "type": "object",
+        "properties": {
+          "workOrderId": {
+            "type": "string"
+          },
+          "workOrderNumber": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "description": "ISO-рядок: completedAt, а якщо наряд не завершено — documentDate"
+          },
+          "mileage": {
+            "type": "number",
+            "description": "outMileage, а якщо його немає — inMileage"
+          },
+          "isRollback": {
+            "type": "boolean",
+            "description": "true, якщо пробіг менший за попередній запис"
+          }
+        },
+        "required": [
+          "workOrderId",
+          "workOrderNumber",
+          "date",
+          "mileage",
+          "isRollback"
         ]
       },
       "VehicleNodeResponseDto": {
