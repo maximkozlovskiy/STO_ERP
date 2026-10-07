@@ -86,9 +86,7 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 
 Разом: **37** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Індексу `work_orders (orgId, vehicleId)` у схемі немає: запит історії
-пробігу (і фільтр нарядів за авто) іде через індекси з префіксом `orgId` і відсіює `vehicleId`
-фільтром — потрібна міграція (знайдено на review 2026-10-07, не зроблено). Contract-спеку для `vehicles.controller.ts` немає — ролі й
+**Чого тут НЕМА.** Contract-спеку для `vehicles.controller.ts` немає — ролі й
 `ParseUUIDPipe` (зокрема для `GET /:id/mileage`) перевіряються лише читанням.
 Вузли авто (`createNode` / `removeNode`) unit-тестами не покриті. Правил для самого авто
 (унікальність VIN, заборона видалення авто з активними нарядами) у дос'є ще не сформульовано,
