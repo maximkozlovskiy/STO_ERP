@@ -17,7 +17,11 @@ Playwright локально ходить на власний екземпляр 
    `cors.options.ts`). Якщо `WEB_ORIGIN` заданий в оточенні API — лишається ОДИН origin, і
    весь E2E падає на логіні з `TypeError: Failed to fetch`, не називаючи причини.
 
-Playwright гасить свій сервер після прогону. Тримати його теплим:
+Пункт 2 виведено з коду, наживо із заданим `WEB_ORIGIN` не відтворювали. `.env.example`
+містить `WEB_ORIGIN=http://localhost:3001` — хто скопіює його як є, отримає саме цю пастку.
+
+Playwright гасить свій сервер після прогону. Тримати його теплим (команда не перевірена
+запуском — гілку `reuseExistingServer` на :3002 ще ніхто не проходив):
 `cd apps/web && NEXT_PUBLIC_E2E=1 NEXT_DIST_DIR=.next-e2e npx next dev --turbopack -p 3002`.
 
 ---
