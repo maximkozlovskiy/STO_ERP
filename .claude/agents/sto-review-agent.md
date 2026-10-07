@@ -87,11 +87,9 @@ python scripts/affected-tests.py                       # ЩО запускати
 
 ```
 1. git diff HEAD --name-only  → get changed files
-2. Classify files by layer:
-     api/   → §1 TS, §2 Security, §4 Architecture, §5 Business Rules, §6 DB, §7 Backend Perf, §9 Sync, §10 Offline
-     web/   → §1 TS, §3 Memory, §7 Frontend Perf, §8 Web Frontend, §14 a11y, §15 i18n
-     prisma → §6 DB, §9 Sync
-     *.dto  → §2.3 Validation, §2.4 Data Leaks, §13 API Contract
+2. Classify changed files by the matrix in SKILL.md (Крок 0) → list of §;
+   map § to files via the table in Крок 2 and read those sections/*.md fully.
+   The matrix in the skill is the only source — no layer table is kept here.
 3. Deep-check relevant sections for changed files
    Cross-cutting greps for unchanged files
 4. Fix every problem immediately → Edit/Write → tsc --noEmit
