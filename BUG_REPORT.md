@@ -961,6 +961,12 @@ attempts ≥ 10 + backoff» сховане під «Public endpoint double-stric
 
 ## Bug #795 — [MEDIUM] Акт підписується для вже скасованого наряду (правила немає, рішення за власником)
 
+> **ВИПРАВЛЕНО 2026-10-07** за рішенням власника — обидва запобіжники (BR-WO-006):
+> `WorkOrdersService.transition()` при переході в `CANCELLED` скасовує чернетки актів наряду в
+> тій самій транзакції; `CompletionActsService.sign()` для скасованого наряду кидає 400
+> «Наряд скасовано — акт підписати не можна». Наряд у `INVOICED`/`PAID`/`ARCHIVED` підпис
+> дозволяє. Обидві гілки вбиті мутаціями. Наживо не перевірено.
+
 **Файл:** `apps/api/src/modules/completion-acts/completion-acts.service.ts:184` (`sign`)
 **Severity:** MEDIUM
 **Категорія:** business-logic

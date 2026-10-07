@@ -215,6 +215,7 @@ export const en: Record<string, string> = {
     'An act can be created only for a completed work order',
   'err.completionAct.activeExists': 'An active act already exists for this work order',
   'err.completionAct.onlyDraftSignable': 'Only a draft act can be signed',
+  'err.completionAct.workOrderCancelled': 'The work order is cancelled — the act cannot be signed',
   'err.completionAct.statusChanged': 'The act status has changed — repeat the action',
   'err.completionAct.signedNotCancelable': 'A signed act cannot be cancelled',
 

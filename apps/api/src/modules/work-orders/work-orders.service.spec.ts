@@ -228,6 +228,33 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     expect(partsFindMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-WO-006
+  it('Bug #795: →CANCELLED скасовує чернетки актів цього наряду в тій самій транзакції', async () => {
+    const { prisma } = makeTransitionPrisma('DRAFT');
+    const actsUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    (prisma as unknown as Record<string, unknown>).completionAct = { updateMany: actsUpdateMany };
+
+    await makeService(prisma).transition(ORG, WO_ID, 'CANCELLED' as never);
+
+    // Лише DRAFT цього наряду у своїй org: підписаний акт — уже виданий документ, його не чіпаємо.
+    expect(actsUpdateMany).toHaveBeenCalledTimes(1);
+    expect(actsUpdateMany).toHaveBeenCalledWith({
+      where: { orgId: ORG, workOrderId: WO_ID, deletedAt: null, status: 'DRAFT' },
+      data: { status: 'CANCELLED' },
+    });
+  });
+
+  // guards: BR-WO-006
+  it('Bug #795: перехід НЕ в CANCELLED актів не чіпає', async () => {
+    const { prisma } = makeTransitionPrisma('APPROVED');
+    const actsUpdateMany = vi.fn();
+    (prisma as unknown as Record<string, unknown>).completionAct = { updateMany: actsUpdateMany };
+
+    await makeService(prisma).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
+
+    expect(actsUpdateMany).not.toHaveBeenCalled();
+  });
+
   // Сервісний рівень FSM. Саму карту WORK_ORDER_TRANSITIONS стережуть invariants/parity-спеки,
   // але вони не виконують transition(): якщо з нього зникне assertFsmTransition, карта лишиться
   // правильною, а будь-який статус стане досяжним — і жоден із тих спеків цього не помітить.

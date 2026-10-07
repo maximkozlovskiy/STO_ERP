@@ -291,35 +291,41 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     warn.mockRestore();
   });
 
-  // ПОТОЧНА поведінка, не правило (Bug #795, відкрите рішення власника): акт створено, поки наряд
-  // був COMPLETED, потім наряд скасували (COMPLETED→CANCELLED повертає запчастини і сторнує борг).
-  // sign() на статус наряду не дивиться — підписує. Тест зеленіє на теперішньому коді й стане
-  // червоним, щойно з'явиться заборона: тоді його переписати під нове правило, а не видаляти.
-  it('sign(): наряд уже CANCELLED → акт усе одно стає SIGNED, наряд не чіпається, рахунку немає (відмову проковтнуто у warn)', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  // Bug #795 (рішення власника 2026-10-07): акт скасованого наряду не підписується. Раніше підпис
+  // проходив, авто-рахунок відхилявся і ковтався у warn — користувач бачив успіх без рахунку.
+  // Скасування наряду саме гасить чернетки актів (work-orders.service.spec); цей кейс — про гонку,
+  // коли акт прочитано до скасування.
+  // guards: BR-WO-006
+  it('sign(): наряд CANCELLED → 400, акт лишається DRAFT, рахунок не створюється', async () => {
     prisma.completionAct.findFirst.mockResolvedValueOnce({
       status: CompletionActStatus.DRAFT,
       workOrder: { id: WO_ID, status: 'CANCELLED' },
     });
+
+    await expect(
+      service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1'),
+    ).rejects.toThrow('Наряд скасовано — акт підписати не можна');
+
+    expect(prisma.completionAct.updateMany).not.toHaveBeenCalled();
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+    expect(invoices.createFromWorkOrder).not.toHaveBeenCalled();
+  });
+
+  // Наряд, що пішов далі за FSM (оплачений, архівний), акт підписати дозволяє: клієнт часто
+  // платить раніше, ніж підписує. Заборона стосується лише скасованого.
+  // guards: BR-WO-006
+  it.each(['INVOICED', 'PAID', 'ARCHIVED'])('sign(): наряд %s → акт підписується', async status => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status },
+    });
     prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
-    // Так відповідає справжній InvoicesService.createFromWorkOrder для не-INVOICEABLE статусу.
-    invoices.createFromWorkOrder.mockRejectedValueOnce(
-      new BadRequestException('Рахунок можна виставити лише для завершеного наряду'),
-    );
 
     const res = await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
 
     expect(res.status).toBe(CompletionActStatus.SIGNED);
-    expect(prisma.completionAct.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: CompletionActStatus.SIGNED }),
-      }),
-    );
     expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
-    expect(events.emit).not.toHaveBeenCalled();
-    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
   });
 
   // ── cancel(): підписаний акт не скасовується, зокрема під гонкою з sign() (Bug #793) ──

@@ -147,6 +147,9 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 - **BR-WO-003**: WO parts loops — **sequential** for-loop (shared StockItem composite key — unsafe to parallelize)
 - **BR-WO-004**: Номер авто-генерується: `DocumentNumberService.next(orgId, 'WorkOrder')`
 - **BR-WO-005**: `plannedHours` / `actualHours` — Decimal(8,2), nullable
+- **BR-WO-006**: Скасування наряду скасовує чернетки його актів виконаних робіт (у тій самій
+  транзакції; підписані акти не чіпаються). Акт скасованого наряду не підписується → 400.
+  Наряд у `INVOICED` / `PAID` / `ARCHIVED` акт підписати дозволяє (Bug #795)
 
 → Детально у [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 

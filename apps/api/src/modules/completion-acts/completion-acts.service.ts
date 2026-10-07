@@ -205,6 +205,15 @@ export class CompletionActsService {
             translateError('err.completionAct.onlyDraftSignable', getLocale()),
           );
         }
+        // BR-WO-006 (Bug #795): акт скасованого наряду не підписується. Раніше підпис проходив,
+        // користувач бачив успіх, а авто-рахунок мовчки не створювався. Скасування наряду саме
+        // гасить чернетки актів (WorkOrdersService.transition) — ця гілка закриває гонку, коли
+        // акт створили або прочитали до скасування.
+        if (act.workOrder?.status === 'CANCELLED') {
+          throw new BadRequestException(
+            translateError('err.completionAct.workOrderCancelled', getLocale()),
+          );
+        }
 
         // Ідемпотентність sign (анти-race/анти-retry): findFirst вище — plain SELECT під
         // READ COMMITTED (без блокування), тож два concurrent sign() обидва бачать DRAFT →
@@ -254,7 +263,9 @@ export class CompletionActsService {
         await this.invoices.createFromWorkOrder(orgId, workOrderId);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (!msg.includes('вже існує активний рахунок')) {
+        // Порівнюємо з перекладом ключа, а не з українським рядком: з локаллю en очікуване
+        // «рахунок уже є» писалось у лог як збій.
+        if (msg !== translateError('err.invoice.activeExists', getLocale())) {
           this.logger.warn(`Auto-invoice failed for act ${id}: ${msg}`);
         }
       }

@@ -311,6 +311,7 @@ export const VALIDATION_KEYS = [
   'err.completionAct.workOrderNotCompleted',
   'err.completionAct.activeExists',
   'err.completionAct.onlyDraftSignable',
+  'err.completionAct.workOrderCancelled',
   'err.completionAct.statusChanged',
   'err.completionAct.signedNotCancelable',
   // Exception-повідомлення: files-модуль

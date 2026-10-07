@@ -218,6 +218,7 @@ export const uk: Record<string, string> = {
   'err.completionAct.workOrderNotCompleted': 'Акт можна сформувати лише для завершеного наряду',
   'err.completionAct.activeExists': 'Для цього наряду вже існує активний акт',
   'err.completionAct.onlyDraftSignable': 'Підписати можна лише чернетку акту',
+  'err.completionAct.workOrderCancelled': 'Наряд скасовано — акт підписати не можна',
   'err.completionAct.statusChanged': 'Статус акту змінився — повторіть дію',
   'err.completionAct.signedNotCancelable': 'Підписаний акт не можна скасувати',
 

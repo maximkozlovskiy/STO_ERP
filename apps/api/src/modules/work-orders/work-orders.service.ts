@@ -795,6 +795,15 @@ export class WorkOrdersService {
           await this.stockEffects.returnPartsAndCredit(orgId, wo, userId, tx);
         }
 
+        // BR-WO-006 (Bug #795): чернетки актів скасованого наряду скасовуються разом із ним, у тій
+        // самій транзакції. Підписані акти не чіпаємо — це вже виданий клієнтові документ.
+        if (newStatus === 'CANCELLED') {
+          await tx.completionAct.updateMany({
+            where: { orgId, workOrderId: id, deletedAt: null, status: 'DRAFT' },
+            data: { status: 'CANCELLED' },
+          });
+        }
+
         // Статус/completedAt уже застосовані CAS-updateMany вище — тут лише fetch з include.
         return tx.workOrder.findFirstOrThrow({
           where: { id, orgId },
