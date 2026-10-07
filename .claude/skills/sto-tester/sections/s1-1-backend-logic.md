@@ -142,6 +142,8 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] CAS захищає concurrency, але НЕ бізнес-діапазон/max (Bug #712) — `T1.1-055`
 
+- [ ] Статус пишеться `update({ where: { id } })` після окремого читання-guard-а → конкурентний термінальний перехід мовчки перезаписано; гонку шукати зсувом запитів, а не одночасним стартом (Bug #793) — `T1.1-079`
+
 - [ ] Role-gated sensitive DTO field без regression-guard spec (Bug #527, #529) — `T1.1-056`
 
 - [ ] Secret-redaction regex матчить КОРОТКІ підрядки → over-redaction діагностичних полів (Bug #759) — `T1.1-057`
@@ -177,6 +179,7 @@ done
 
 - [ ] Schema↔migration parity (Bug #220) — `T1.1-059`
 - [ ] DocumentType enum + INSERT backfill парність (Bug #533) — `T1.1-060`
+- [ ] Набори типів нумерації розійшлись ДАВНО (не в diff-і): enum `DocumentType` ↔ `seed.ts` ↔ `setup.service.ts` ↔ виклики `.next(orgId, '…')`; чиста інсталяція = лише `/setup/init` (Bug #794) — `T1.1-080`
 - [ ] Constructor DI drift у \*.service.spec.ts (Bug #534, #536) — `T1.1-061`
 
 #### Soft Delete
