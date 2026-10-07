@@ -44,7 +44,7 @@ export class MaintenanceSchedulesService {
 
   async findOne(orgId: string, id: string): Promise<MaintenanceScheduleResponseDto> {
     const item = await this.prisma.maintenanceSchedule.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, deletedAt: null, vehicle: { deletedAt: null } },
       include: { vehicle: { select: { make: true, model: true, licensePlate: true } } },
     });
     if (!item)

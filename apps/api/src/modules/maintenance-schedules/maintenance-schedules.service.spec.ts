@@ -337,6 +337,23 @@ describe('MaintenanceSchedulesService', () => {
       }
     });
 
+    // guards: BR-MAINT-005
+    it('усі три читання відсіюють видалений графік І графік видаленого авто', async () => {
+      prisma.maintenanceSchedule.findFirst.mockResolvedValue(null);
+      await svc.findAll(ORG);
+      await svc.findUpcoming(ORG, 30);
+      await svc.findOne(ORG, 'ms-1').catch(() => undefined);
+      const calls = [
+        ...prisma.maintenanceSchedule.findMany.mock.calls,
+        ...prisma.maintenanceSchedule.findFirst.mock.calls,
+      ];
+      expect(calls).toHaveLength(3);
+      for (const call of calls) {
+        expect(call[0].where.deletedAt).toBeNull();
+        expect(call[0].where.vehicle).toEqual({ deletedAt: null });
+      }
+    });
+
     it('findOne чужого графіка → 404 (не 200 з даними іншої org)', async () => {
       prisma.maintenanceSchedule.findFirst.mockResolvedValue(null);
       await expect(svc.findOne(ORG, 'foreign')).rejects.toThrow(NotFoundException);
