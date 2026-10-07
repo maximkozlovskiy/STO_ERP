@@ -53,6 +53,10 @@ TOP_DESCRIBE = re.compile(r"^describe(?:\.(?:skip|only|each|concurrent|sequentia
 # Рядок реєстру: | аспект | `файл.spec.ts` | кейсів | ...
 REG_ROW = re.compile(r"^\|[^|]*\|\s*`([^`]+\.spec\.ts)`\s*\|", re.M)
 REG_MODULE = re.compile(r"^\*\*Модуль:\*\*\s*(.+)$", re.M)
+# Необов'язковий рядок дос'є: сторінки, на яких живе UI агрегату. Його читає
+# scripts/affected-tests.py, щоб для зміни api-модуля вибрати E2E-спеки.
+REG_ROUTES = re.compile(r"^\*\*Маршрути UI:\*\*\s*(.+)$", re.M)
+GOTO = re.compile(r"""goto\(\s*[`'"](/[a-z0-9-]*)""")
 
 
 def rel(path):
@@ -123,13 +127,52 @@ def gate_b(problems):
     return found
 
 
+def e2e_routes():
+    """Маршрути, які відвідує хоч один Playwright-спек (перший сегмент page.goto)."""
+    routes = set()
+    for spec in glob.glob(os.path.join(REPO, "apps", "web", "e2e", "*.spec.ts")):
+        src = io.open(spec, encoding="utf-8", errors="replace").read()
+        routes.update(m.strip("/") for m in GOTO.findall(src))
+    return routes
+
+
+def route_exists(route):
+    app = os.path.join(REPO, "apps", "web", "src", "app")
+    return os.path.isdir(os.path.join(app, route)) or bool(
+        glob.glob(os.path.join(app, "(*)", route))
+    )
+
+
+def gate_c_routes(doc, src, problems, visited):
+    """**Маршрути UI:** — кожен маршрут існує в app/ і має хоч один E2E-спек.
+
+    Без цього селектор тестів мовчки вибрав би порожній список E2E для перейменованої
+    сторінки — так само, як grep-детектори мовчали на неіснуючому schema.prisma.
+    """
+    line = REG_ROUTES.search(src)
+    if not line:
+        return 0
+    routes = re.findall(r"/([a-z0-9-]+)", line.group(1))
+    if not routes:
+        problems.append("ПОРОЖНІ **Маршрути UI:** %s" % rel(doc))
+        return 0
+    for route in routes:
+        if not route_exists(route):
+            problems.append("НЕМА МАРШРУТУ /%s (названий у %s)" % (route, rel(doc)))
+        elif route not in visited:
+            problems.append("МАРШРУТ БЕЗ E2E /%s (названий у %s)" % (route, rel(doc)))
+    return len(routes)
+
+
 def gate_c(problems):
-    """Файли, названі у реєстрах дос'є, існують."""
+    """Файли й маршрути, названі у реєстрах дос'є, існують."""
     checked = 0
+    visited = e2e_routes()
     for doc in sorted(glob.glob(os.path.join(REPO, "docs", "objects", "*.md"))):
         if "_TEMPLATE" in doc:
             continue
         src = io.open(doc, encoding="utf-8", errors="replace").read()
+        checked += gate_c_routes(doc, src, problems, visited)
         rows = REG_ROW.findall(src)
         if not rows:
             continue

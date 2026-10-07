@@ -179,6 +179,8 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/goods/`
 
+**Маршрути UI:** `/catalog`, `/inventory`, `/pricing-rules`
+
 | Аспект                                  | Тест                                  | Кейсів |
 | --------------------------------------- | ------------------------------------- | ------ |
 | dto                                     | `goods-query.dto.spec.ts`             | 6      |

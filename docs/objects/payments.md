@@ -263,6 +263,8 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/payments/`
 
+**Маршрути UI:** `/payments`, `/cash`, `/invoices`
+
 | Аспект                   | Тест                                        | Кейсів |
 | ------------------------ | ------------------------------------------- | ------ |
 | сервісна логіка          | `cash-shift.service.spec.ts`                | 31     |

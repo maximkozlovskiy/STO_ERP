@@ -104,6 +104,8 @@ cd apps/api && npx vitest run src/modules/maintenance-schedules/<файл>.spec.
 
 **Модуль:** `apps/api/src/modules/maintenance-schedules/`
 
+**Маршрути UI:** `/vehicles`, `/counterparties`
+
 | Аспект          | Тест                                    | Кейсів |
 | --------------- | --------------------------------------- | ------ |
 | сервісна логіка | `maintenance-schedules.service.spec.ts` | 21     |

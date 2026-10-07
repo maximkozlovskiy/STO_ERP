@@ -129,6 +129,8 @@ cd apps/api && npx vitest run src/modules/works/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/works/`
 
+**Маршрути UI:** `/catalog`, `/work-orders`
+
 | Аспект          | Тест                    | Кейсів |
 | --------------- | ----------------------- | ------ |
 | сервісна логіка | `works.service.spec.ts` | 19     |

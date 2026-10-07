@@ -175,6 +175,8 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/counterparties/`
 
+**Маршрути UI:** `/counterparties`, `/vehicles`
+
 | Аспект                                  | Тест                                            | Кейсів |
 | --------------------------------------- | ----------------------------------------------- | ------ |
 | audit snapshot                          | `counterparties.audit-snapshot.spec.ts`         | 4      |
