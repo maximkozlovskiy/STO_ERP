@@ -961,7 +961,10 @@
    "CompletionActsService — sign() idempotency + auto-invoice sign(): WO НЕ у COMPLETED → перехід INVOICED пропускається, підписання відбувається",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): auto-invoice \"вже існує активний рахунок\" НЕ роллбечить підписання (best-effort ПОЗА tx)",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): акт не знайдено → NotFoundException",
-   "CompletionActsService — sign() idempotency + auto-invoice sign(): вже SIGNED → BadRequestException ПЕРЕД CAS"
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): вже SIGNED → BadRequestException ПЕРЕД CAS",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд не у COMPLETED → статус не чіпається і подія переходу не емітиться",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд скасовано між читанням і записом (CAS по статусу програв) → 400, підписання відкочується, рахунок не створюється",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): перехід COMPLETED→INVOICED дає подію TRANSITIONED з автором — аудит не губиться"
   ],
   "apps/api/src/modules/counterparties/counterparties.audit-snapshot.spec.ts": [
    "CounterpartiesService — Bug #719: коректність audit-знімка в update() old-snapshot НЕ містить id і НЕ містить полів поза PATCH (нема фейкового «→undefined»)",
@@ -3308,6 +3311,16 @@
    "FSM parity: backend ↔ @sto/shared WorkOrder: shared-копія збігається з беком",
    "FSM parity: backend ↔ @sto/shared WorkOrder: кожна ціль переходу є відомим статусом",
    "FSM parity: backend ↔ @sto/shared WorkOrder: набір статусів однаковий"
+  ],
+  "apps/api/src/modules/work-orders/work-order-status.spec.ts": [
+   "BR-WO-001 — статус наряду пишеться лише у двох місцях детектор справді бачить прямий запис статусу (контроль: інакше тест вище завжди зелений)",
+   "BR-WO-001 — статус наряду пишеться лише у двох місцях жоден модуль поза work-orders не пише workOrder.status напряму",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції CAS не знайшов рядка (статус уже змінив хтось інший) → 400",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції дозволений перехід → CAS по ПОТОЧНОМУ статусу (id + orgId + deletedAt:null + status)",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід поза WORK_ORDER_TRANSITIONS → 400, у БД нічого не пишеться",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у CANCELLED (має складські/фінансові side-effects) звідси заборонено — лише transition()",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у COMPLETED (має складські/фінансові side-effects) звідси заборонено — лише transition()",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у IN_PROGRESS (має складські/фінансові side-effects) звідси заборонено — лише transition()"
   ],
   "apps/api/src/modules/work-orders/work-order-stock-effects.integration.spec.ts": [
    "WorkOrderStockEffectsService — guarded goodUoM.findMany (integration, live DB, A3) A3-фікс: reserveParts з UoM-частиною через guarded client → 0 TenantIsolationError",

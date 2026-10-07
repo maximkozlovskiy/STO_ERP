@@ -185,7 +185,6 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
 але показує окремим рядком.
 
-- **BR-WO-001** — КОД ПОРУШУЄ ПРАВИЛО (критичне правило 9 з CLAUDE.md). Дос'є: статус наряду змінюється лише через `WORK_ORDER_TRANSITIONS`; код: `completion-acts.service.ts` пише `workOrder.update({ status: 'INVOICED' })` напряму — без `assertFsmTransition`, без CAS по статусу, без події TRANSITIONED (аудиту переходу немає). У модулі `work-orders` правило дотримано. Окремо: діаграма FSM у дос'є містить `IN_PROGRESS → CANCELLED`, якого в `work-orders.fsm.ts` немає.
 - **BR-WO-005** — дос'є: `plannedHours`/`actualHours` — `Decimal(8,2)`, nullable; схема: `Float?`. Nullable-частина правдива й покрита тестами, тип — ні.
 
 **Чого тут НЕМА.** Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.

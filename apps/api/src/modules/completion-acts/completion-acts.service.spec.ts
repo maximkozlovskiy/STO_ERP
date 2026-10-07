@@ -1,4 +1,10 @@
 import { Test } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import type {
+  WorkOrderTransitionedEvent} from '../work-orders/events/work-order.events';
+import {
+  WORK_ORDER_EVENTS
+} from '../work-orders/events/work-order.events';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
@@ -18,10 +24,11 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
       update: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
-    workOrder: { update: ReturnType<typeof vi.fn> };
+    workOrder: { update: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
   let invoices: { createFromWorkOrder: ReturnType<typeof vi.fn> };
+  let events: { emit: ReturnType<typeof vi.fn> };
 
   const ORG = 'org-1';
   const ACT_ID = '11111111-1111-4111-8111-111111111111';
@@ -56,7 +63,10 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
         update: vi.fn().mockResolvedValue({}),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
-      workOrder: { update: vi.fn().mockResolvedValue({}) },
+      workOrder: {
+        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       $transaction: vi.fn().mockImplementation((arg: unknown) => {
         if (Array.isArray(arg)) return Promise.all(arg as Promise<unknown>[]);
         if (typeof arg === 'function') return (arg as (tx: unknown) => Promise<unknown>)(prisma);
@@ -64,6 +74,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
       }),
     };
     invoices = { createFromWorkOrder: vi.fn().mockResolvedValue({}) };
+    events = { emit: vi.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -72,6 +83,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
         { provide: DocumentNumberService, useValue: { next: vi.fn() } },
         { provide: InvoicesService, useValue: invoices },
         { provide: PdfService, useValue: { generateCompletionActPdf: vi.fn() } },
+        { provide: EventEmitter2, useValue: events },
       ],
     }).compile();
     service = module.get(CompletionActsService);
@@ -94,13 +106,12 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
         data: expect.objectContaining({ status: CompletionActStatus.SIGNED, signedBy: 'Іван' }),
       }),
     );
-    // WO COMPLETED → INVOICED
-    expect(prisma.workOrder.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: WO_ID, orgId: ORG },
-        data: { status: 'INVOICED' },
-      }),
-    );
+    // WO COMPLETED → INVOICED — через FSM-хелпер: CAS по поточному статусу, не прямий update
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: WO_ID, orgId: ORG, deletedAt: null, status: 'COMPLETED' },
+      data: { status: 'INVOICED' },
+    });
+    expect(prisma.workOrder.update).not.toHaveBeenCalled();
     // auto-invoice викликається ПІСЛЯ tx (не всередині)
     expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
   });
@@ -117,6 +128,7 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
       BadRequestException,
     );
     expect(prisma.workOrder.update).not.toHaveBeenCalled();
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
     expect(invoices.createFromWorkOrder).not.toHaveBeenCalled();
   });
 
@@ -166,5 +178,60 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     expect(prisma.workOrder.update).not.toHaveBeenCalled();
     // auto-invoice усе одно намагається (WO існує) — best-effort
     expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+  });
+
+  // ── BR-WO-001: статус наряду змінюється лише через FSM ──────────────────────────────
+
+  // guards: BR-WO-001
+  it('sign(): наряд скасовано між читанням і записом (CAS по статусу програв) → 400, підписання відкочується, рахунок не створюється', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' }, // застарілий знімок
+    });
+    // Конкурентний transition(CANCELLED) уже змінив статус: рядка зі status=COMPLETED немає.
+    prisma.workOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1'),
+    ).rejects.toThrow(BadRequestException);
+    expect(invoices.createFromWorkOrder).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-001
+  it('sign(): перехід COMPLETED→INVOICED дає подію TRANSITIONED з автором — аудит не губиться', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+
+    await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(events.emit).toHaveBeenCalledTimes(1);
+    const [name, event] = events.emit.mock.calls[0] as [string, WorkOrderTransitionedEvent];
+    expect(name).toBe(WORK_ORDER_EVENTS.TRANSITIONED);
+    expect(event).toMatchObject({
+      orgId: ORG,
+      workOrderId: WO_ID,
+      fromStatus: 'COMPLETED',
+      toStatus: 'INVOICED',
+      userId: 'user-1',
+    });
+  });
+
+  // guards: BR-WO-001
+  it('sign(): наряд не у COMPLETED → статус не чіпається і подія переходу не емітиться', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'INVOICED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+
+    await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(prisma.workOrder.update).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
   });
 });

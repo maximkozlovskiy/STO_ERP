@@ -21,6 +21,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
 import { CompletionActsService } from './completion-acts.service';
 import {
@@ -75,8 +76,9 @@ export class CompletionActsController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SignCompletionActDto,
+    @CurrentUser() user: { id: string },
   ) {
-    return this.service.sign(orgId, id, dto);
+    return this.service.sign(orgId, id, dto, user.id);
   }
 
   @Get(':id/pdf')

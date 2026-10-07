@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CompletionActStatus } from '@prisma/client';
 import {
   formatPersonName,
@@ -13,6 +14,11 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 import { InvoicesService } from '../invoices/invoices.service';
 import { PdfService } from '../pdf/pdf.service';
 import { INVOICEABLE_STATUSES } from '../work-orders/work-orders.fsm';
+import { transitionWorkOrderStatusInTx } from '../work-orders/work-order-status';
+import {
+  WORK_ORDER_EVENTS,
+  WorkOrderTransitionedEvent,
+} from '../work-orders/events/work-order.events';
 import {
   CompletionActResponseDto,
   CompletionActLineDto,
@@ -29,6 +35,7 @@ export class CompletionActsService {
     private readonly docNumbers: DocumentNumberService,
     private readonly invoices: InvoicesService,
     private readonly pdf: PdfService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async findAll(orgId: string, workOrderId?: string): Promise<PaginatedCompletionActsDto> {
@@ -178,8 +185,10 @@ export class CompletionActsService {
     orgId: string,
     id: string,
     dto: SignCompletionActDto,
+    userId?: string,
   ): Promise<CompletionActResponseDto> {
     let workOrderId: string | null = null;
+    let invoicedFromCompleted = false;
 
     await this.prisma.$transaction(
       async tx => {
@@ -219,16 +228,26 @@ export class CompletionActsService {
           );
         }
 
+        // BR-WO-001: статус наряду — лише через FSM. Не прямий update: той не перевіряв
+        // перехід і не мав CAS, тож наряд, скасований між читанням вище і цим записом,
+        // мовчки ставав INVOICED. Тепер такий конфлікт відкочує підписання.
         if (act.workOrder?.status === 'COMPLETED') {
-          await tx.workOrder.update({
-            where: { id: act.workOrder.id, orgId },
-            data: { status: 'INVOICED' },
-          });
+          await transitionWorkOrderStatusInTx(tx, orgId, act.workOrder.id, 'COMPLETED', 'INVOICED');
+          invoicedFromCompleted = true;
         }
         workOrderId = act.workOrder?.id ?? null;
       },
       { timeout: TRANSACTION_TIMEOUT_MS },
     ); // Explicit 5s timeout: SELECT + 2 UPDATEs — well below Prisma default 30s.
+
+    // Аудит переходу — ПІСЛЯ коміту (у транзакції не можна: вона ще могла відкотитись).
+    // Той самий канал, що й у WorkOrdersService.transition(); хендлер сам гейтить userId.
+    if (workOrderId && invoicedFromCompleted) {
+      this.events.emit(
+        WORK_ORDER_EVENTS.TRANSITIONED,
+        new WorkOrderTransitionedEvent(orgId, workOrderId, 'COMPLETED', 'INVOICED', userId),
+      );
+    }
 
     if (workOrderId) {
       try {

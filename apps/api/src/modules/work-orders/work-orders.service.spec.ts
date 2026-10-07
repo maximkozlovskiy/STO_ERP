@@ -231,6 +231,7 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
   // Сервісний рівень FSM. Саму карту WORK_ORDER_TRANSITIONS стережуть invariants/parity-спеки,
   // але вони не виконують transition(): якщо з нього зникне assertFsmTransition, карта лишиться
   // правильною, а будь-який статус стане досяжним — і жоден із тих спеків цього не помітить.
+  // guards: BR-WO-001
   it('перехід поза WORK_ORDER_TRANSITIONS (усі заборонені пари) → 400, статус не пишеться, side-effects немає', async () => {
     const statuses = Object.keys(WORK_ORDER_TRANSITIONS) as WorkOrderStatus[];
     let checked = 0;
