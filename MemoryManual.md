@@ -96,6 +96,8 @@ python scripts/check-doc-links.py                      # посилання мі
 | `.claude/skills/sto-spec/SKILL.md`                                                       | Специфікація агрегату: BR-ID, аспектні спеки, реєстр, гейти; між sto-analyst і sto-feature                            |
 | `scripts/affected-tests.py`                                                              | Селектор: готові команди API / WEB / E2E для diff-у; каже, коли потрібен повний прогін                                |
 | `scripts/test-affected-tests.py`                                                         | Тест самого вибору на реальних файлах репо (у CI job `quality`)                                                       |
+| `scripts/check-skill-size.py`                                                            | Гейт розміру скілів у КБ (ядро 32, секція 36); у CI job `quality`                                                     |
+| `scripts/qa-bench/seeded.patch`                                                          | Контрольний diff із 4 дефектами — порівнювати QA-агентів на однаковому вході                                          |
 
 ---
 

@@ -101,6 +101,11 @@ jobs:
       - name: Test selector contract (affected-tests)
         run: python3 scripts/test-affected-tests.py
 
+      # Скіл, який агент мусить прочитати, має влазити в один Read. Без гейта файли
+      # тихо роздуваються (sto-tester/SKILL.md доріс до 364 КБ, і його читали на 5–10%).
+      - name: Skill size gate
+        run: python3 scripts/check-skill-size.py
+
       # Посилання між .md не валідує ні tsc, ні eslint, а в GitHub-рендері битий лінк
       # виглядає як звичайний текст — помітно лише коли клікнеш. Станом на 2026-10-05
       # битими були 14 із 66: docs/ARCHITECTURE.md посилався на ../objects/<entity>.md,
