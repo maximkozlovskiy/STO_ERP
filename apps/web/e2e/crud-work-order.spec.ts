@@ -153,12 +153,16 @@ test.describe('Наряди — картка (seed дані)', () => {
         sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
     );
     const wo = await page.evaluate(async t => {
-      const r = await fetch('http://localhost:3000/api/v1/work-orders?limit=1', {
+      // НЕ найновіший наряд (Bug #797): список відсортовано від найновішого, а паралельний
+      // CRUD-тест саме зараз створює і видаляє свій — картка відкривалась уже на «Наряд не
+      // знайдено». Беремо останній із двадцяти: він існував до початку прогону.
+      const r = await fetch('http://localhost:3000/api/v1/work-orders?limit=20', {
         headers: { Authorization: `Bearer ${t}` },
       });
       if (!r.ok) return null;
       const j = await r.json();
-      return Array.isArray(j) ? j[0] : (j.items?.[0] ?? null);
+      const items = Array.isArray(j) ? j : (j.items ?? []);
+      return items[items.length - 1] ?? null;
     }, token);
     expect(wo, 'Seed має містити хоча б 1 наряд').toBeTruthy();
     if (!wo) return null;
@@ -174,7 +178,7 @@ test.describe('Наряди — картка (seed дані)', () => {
     await expect(
       page
         .locator(
-          'text=/Чернетка|Кошторис|Затверджено|В роботі|Виконано|Виставлено|Оплачено|Архів|Скасовано/',
+          'text=/Чернетка|Кошторис|Затверджено|В роботі|Призупинено|Виконано|Виставлено|Оплачено|Архів|Скасовано/',
         )
         .first(),
     ).toBeVisible({ timeout: 15_000 });
@@ -194,7 +198,9 @@ test.describe('Наряди — картка (seed дані)', () => {
 
     // Статус-badge завжди присутній
     const statusBadge = page
-      .locator('text=/Чернетка|Кошторис|Затверджено|В роботі|Виконано|Виставлено|Оплачено|Архів/')
+      .locator(
+        'text=/Чернетка|Кошторис|Затверджено|В роботі|Призупинено|Виконано|Виставлено|Оплачено|Архів|Скасовано/',
+      )
       .first();
     await expect(statusBadge).toBeVisible({ timeout: 10_000 });
 
