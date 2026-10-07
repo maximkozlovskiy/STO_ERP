@@ -91,7 +91,7 @@ E2E запускай сам: Playwright ходить на власний сер�
 
 ```
 1. Крок 0: tsc baseline + unit tests + scope (git diff)
-2. Крок 1: Static analysis §1.1–§1.7 — grep кожного розділу
+2. Крок 1: Static analysis — лише секції, призначені матрицею AUTO (FULL: усі §1.1–§1.7); детектори однієї секції — одним викликом
 3. Крок 2: Write ALL found bugs to BUG_REPORT.md (append, don't overwrite)
 4. Крок 3: Fix CRITICAL→LOW, one by one, tsc after each
 5. Крок 4: Verify — tsc + unit + contract tests green
@@ -146,7 +146,7 @@ docs(memory): update MemoryManual with test results
 
 After fixing all bugs — ask yourself:
 
-> "Did I find any bug that wasn't covered by an existing checklist item in §1.1–§1.7?"
+> "Did I find any bug that wasn't covered by an existing checklist item in the sections I read?"
 
 If YES — онови скіл (НЕ ядро `SKILL.md`, а файли секцій і журналу):
 

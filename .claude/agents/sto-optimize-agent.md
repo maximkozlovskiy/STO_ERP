@@ -70,7 +70,7 @@ python scripts/affected-tests.py                       # ЩО запускати
 5. Run `pnpm --filter @sto/api exec tsc --noEmit` and `pnpm --filter @sto/web exec tsc --noEmit --incremental false` — must be 0 errors
 6. Commit: `git commit -m "perf(optimize): <what was fixed>"`
 7. Update MemoryManual.md
-8. **Self-improve the skill (Крок 7):** for every NEW type of inefficiency you found that wasn't already in the checklist — add the checklist item to the matching `sections/*.md` and the case to `journal/approaches-YYYY-MM.md` (current month, on top). The core `SKILL.md` does not grow.
+8. **Self-improve the skill (Крок 7):** for every NEW type of inefficiency you found that wasn't already in the checklist — add the checklist item to the matching `sections/*.md` and the case to `journal/approaches-YYYY-MM.md` (current month, on top). The core `SKILL.md` does not grow. Write the approach and pattern, NOT specific code or file paths.
 
 ## Rules
 
