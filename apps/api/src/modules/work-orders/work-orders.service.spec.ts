@@ -216,7 +216,6 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     return { prisma, partsFindMany };
   }
 
-  // guards: BR-WO-002
   it('WO-C1: APPROVED→IN_PROGRESS резервує (reserveParts викликано)', async () => {
     const { prisma, partsFindMany } = makeTransitionPrisma('APPROVED');
     await makeService(prisma).transition(ORG, WO_ID, 'IN_PROGRESS' as never);

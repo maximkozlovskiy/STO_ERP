@@ -97,6 +97,8 @@ python scripts/check-doc-links.py                      # посилання мі
 | `scripts/affected-tests.py`                                                              | Селектор: готові команди API / WEB / E2E для diff-у; каже, коли потрібен повний прогін                                |
 | `scripts/test-affected-tests.py`                                                         | Тест самого вибору на реальних файлах репо (у CI job `quality`)                                                       |
 | `scripts/check-skill-size.py`                                                            | Гейт розміру скілів у КБ (ядро 32, секція 36); у CI job `quality`                                                     |
+| `scripts/agent-scopes.py`                                                                | Сфери запису паралельних агентів: plan / snapshot / verify; тест у CI                                                 |
+| `.claude/agents/sto-{br-trace,review-finder,tester-finder,fixer}*`                       | Паралельні агенти; НОВІ ТИПИ доступні лише з наступної сесії — перевірити запуск за іменем                            |
 | `scripts/qa-bench/seeded.patch`                                                          | Контрольний diff із 4 дефектами — порівнювати QA-агентів на однаковому вході                                          |
 
 ---
@@ -120,6 +122,10 @@ python scripts/check-doc-links.py                      # посилання мі
 - SMS-канал через `NotificationsService.send(orgId, eventType, payload)` — НЕ прямий `smsQueue.add()`
 - **NestJS SWC на Windows**: залишити tsc builder (`nest start --watch` без `--builder swc`)
 - **`rootDir: "src"` у api tsconfig** — обов'язково (інакше dist/apps/api/src/main.js → MODULE_NOT_FOUND)
+- **Правило → тест:** над тестом `// guards: BR-XXX-NNN`; гейт D у CI. У дос'є три стани правила:
+  мітка, запис у «Чого тут НЕМА», запис у «Розходження з кодом» (18 відкритих — рішення власника)
+- **Паралельні агенти** пишуть лише у сферу з `agent-scopes.py plan`, не комітять; після хвилі —
+  `verify`. E2E, integration-спеки, повні набори й baseline — лише головний, послідовно
 - **Тести локально — лише зачеплені:** `python scripts/affected-tests.py` друкує команди.
   `exit 2` = вибір НЕ зроблено (не «нічого запускати»); рядок «ПОЗА СЕЛЕКТОРОМ» = тесту
   для файлу немає взагалі; E2E для api-модуля враховує й модулі, що імпортують змінений файл,
