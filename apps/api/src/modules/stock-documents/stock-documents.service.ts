@@ -38,6 +38,22 @@ const MOVEMENT_TYPES: Partial<Record<StockDocumentType, StockMovementType>> = {
   RECEIPT: StockMovementType.RECEIPT,
 };
 
+/**
+ * BR-SDOC-008 (Bug #801): бюджет транзакції проведення росте з кількістю рядків.
+ *
+ * Рядки проводяться послідовно (BR-SDOC-004), кожен — кілька запитів у createMovement, а TRANSFER
+ * робить два рухи на рядок. Заміряно на dev-БД 2026-10-08 (127.0.0.1): TRANSFER ≈ 28 мс/рядок на
+ * чистому товарі й більше, коли в товару накопичились партії. Фіксовані 15 с документ на 500 рядків
+ * (стільки пропускає DTO) проходив із запасом 5% (14,3 с), а вдруге на тих самих товарах падав:
+ * 500 «Внутрішня помилка сервера» через 15,1 с, усі рухи відкочено. 120 мс/рядок — це ×4 від
+ * заміряного: 500 рядків → 60 с. Малі документи лишаються на 15 с.
+ */
+export const CONFIRM_TX_BASE_TIMEOUT_MS = 15_000;
+export const CONFIRM_TX_PER_LINE_MS = 120;
+export function confirmTxTimeoutMs(lineCount: number): number {
+  return Math.max(CONFIRM_TX_BASE_TIMEOUT_MS, lineCount * CONFIRM_TX_PER_LINE_MS);
+}
+
 // sto-optimize (cycle 3/3): sort-field whitelist hoisted from findAll body — static string-map,
 // re-allocated on every list request under polling. Sibling to SP_SORT_FIELDS/INV_SORT_FIELDS/WO_SORT/PO_SORT.
 const SD_SORT_FIELDS: Record<string, string> = {
@@ -480,8 +496,9 @@ export class StockDocumentsService {
           // Статус вже переведено CAS-ом на початку tx (DRAFT→CONFIRMED). Повторний update не
           // потрібен — рухи складу вище виконались у тій самій tx після успішного CAS-гейту.
         },
-        { timeout: 15_000 },
-      ); // explicit 15s timeout: N rows × createMovement (StockMovement + upsert stockItem); exceeds Prisma default at ~50+ lines
+        // BR-SDOC-008: не фіксовані 15 с — бюджет залежить від кількості рядків (Bug #801).
+        { timeout: confirmTxTimeoutMs(doc.lines.length) },
+      );
     } else {
       await this.prisma.stockDocument.update({ where: { id, orgId }, data: { status: newStatus } });
     }

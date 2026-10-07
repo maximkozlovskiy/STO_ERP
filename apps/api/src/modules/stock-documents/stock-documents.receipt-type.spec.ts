@@ -11,7 +11,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { DocumentType } from '@prisma/client';
 import { StockDocumentType, StockMovementType } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { StockDocumentsService } from './stock-documents.service';
+import { StockDocumentsService, confirmTxTimeoutMs } from './stock-documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
@@ -729,6 +729,68 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
       [GOOD_ID, 3, 140],
     ]);
     expect(maxInFlight).toBe(1);
+  });
+
+  // Bug #801: на живій dev-БД TRANSFER на 500 рядків (стільки пропускає DTO) ішов 14,3 с із 15,
+  // а вдруге на тих самих товарах упав із 500 через 15,1 с. Бюджет транзакції росте з рядками.
+  // guards: BR-SDOC-008
+  it.each([
+    [1, 15_000],
+    [125, 15_000],
+    [126, 15_120],
+    [250, 30_000],
+    [500, 60_000],
+  ])(
+    'confirmTxTimeoutMs(%i рядків) = %i мс: малі документи — 15 с, далі 120 мс на рядок',
+    (lines, expected) => {
+      expect(confirmTxTimeoutMs(lines)).toBe(expected);
+    },
+  );
+
+  // guards: BR-SDOC-008
+  it('transition(CONFIRMED): таймаут транзакції береться з кількості рядків документа, а не фіксовані 15 с', async () => {
+    const lines = Array.from({ length: 300 }, (_, i) => ({
+      id: `line-${i}`,
+      goodId: GOOD_ID,
+      quantity: 1,
+      price: 10,
+      good: { unitId: null },
+    }));
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0003',
+      type: StockDocumentType.RECEIPT,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      lines,
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0003',
+      type: StockDocumentType.RECEIPT,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад 1' },
+      targetWarehouse: null,
+      lines: [],
+    });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+
+    expect(inventory.createMovement).toHaveBeenCalledTimes(300);
+    expect(prisma.$transaction.mock.calls[0][1]).toEqual({ timeout: 36_000 });
   });
 });
 
