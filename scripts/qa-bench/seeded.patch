@@ -1,0 +1,84 @@
+diff --git a/apps/api/src/modules/vehicles/vehicles.service.ts b/apps/api/src/modules/vehicles/vehicles.service.ts
+index 09446fd7..a2144197 100644
+--- a/apps/api/src/modules/vehicles/vehicles.service.ts
++++ b/apps/api/src/modules/vehicles/vehicles.service.ts
+@@ -68,7 +68,7 @@ export class VehiclesService {
+     // → крос-тенант-перенос неможливий за побудовою, окремий guard не потрібен.
+     // MD-H2: VIN unique (виключаючи сам авто).
+     await this.assertVinUnique(orgId, dto.vin, id);
+-    const item = await this.prisma.vehicle.update({ where: { id, orgId }, data: dto });
++    const item = await this.prisma.vehicle.update({ where: { id }, data: dto });
+     return this.toDto(item);
+   }
+ 
+@@ -213,10 +213,7 @@ export class VehiclesService {
+     ]);
+     if (!vehicle) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
+     if (!node) throw new NotFoundException(translateError('err.vehicle.nodeNotFound', getLocale()));
+-    await this.prisma.vehicleNode.update({
+-      where: { id: nodeId, orgId },
+-      data: { deletedAt: new Date() },
+-    });
++    await this.prisma.vehicleNode.delete({ where: { id: nodeId, orgId } });
+   }
+ 
+   private toDto(v: {
+diff --git a/apps/web/src/components/ui/date-picker-input.tsx b/apps/web/src/components/ui/date-picker-input.tsx
+index b8ba1553..c1669dd8 100644
+--- a/apps/web/src/components/ui/date-picker-input.tsx
++++ b/apps/web/src/components/ui/date-picker-input.tsx
+@@ -86,22 +86,6 @@ export function DatePickerInput({
+     return () => document.removeEventListener('mousedown', handler);
+   }, [open]);
+ 
+-  // Escape закриває ЛИШЕ календар, де б не був фокус: у полі, на кнопці-іконці чи на дні
+-  // в попапі. Обробник лише на <input> цього не покривав — календар, відкритий кнопкою
+-  // (фокус на ній), на Escape закривав усю модалку-батька разом із незбереженою формою.
+-  // Capture + stopImmediatePropagation, як у DateTimePickerInput: <Modal> слухає Escape на
+-  // document у bubble-фазі, тож перехопити треба раніше за нього.
+-  useEffect(() => {
+-    if (!open) return;
+-    const handler = (e: KeyboardEvent) => {
+-      if (e.key !== 'Escape') return;
+-      e.stopImmediatePropagation();
+-      setOpen(false);
+-    };
+-    document.addEventListener('keydown', handler, true);
+-    return () => document.removeEventListener('keydown', handler, true);
+-  }, [open]);
+-
+   // parse min/max bounds and enforce them in both manual typing and DayPicker.
+   // Memoize: parseApiDate створює новий Date об'єкт на кожен виклик. Без useMemo
+   // disabledMatchers нижче перебудовується на кожен ререндер → DayPicker втрачає
+diff --git a/apps/web/src/hooks/api/useVehicleMileage.ts b/apps/web/src/hooks/api/useVehicleMileage.ts
+new file mode 100644
+index 00000000..7853eeec
+--- /dev/null
++++ b/apps/web/src/hooks/api/useVehicleMileage.ts
+@@ -0,0 +1,26 @@
++import { useQuery } from '@tanstack/react-query';
++import { useAuth, TOKEN_KEY } from '@/lib/auth';
++
++export interface VehicleMileagePoint {
++  date: string;
++  mileage: number;
++  workOrderId: string | null;
++}
++
++const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
++
++/** Історія пробігу авто для графіка в картці. */
++export function useVehicleMileage(vehicleId: string | null) {
++  const { employee } = useAuth();
++  return useQuery({
++    queryKey: ['vehicle-mileage', vehicleId],
++    enabled: !!vehicleId && !!employee,
++    queryFn: async (): Promise<VehicleMileagePoint[]> => {
++      const token = sessionStorage.getItem(TOKEN_KEY);
++      const res = await fetch(`${API_URL}/api/v1/vehicles/${vehicleId}/mileage`, {
++        headers: { Authorization: `Bearer ${token}` },
++      });
++      return res.json();
++    },
++  });
++}
