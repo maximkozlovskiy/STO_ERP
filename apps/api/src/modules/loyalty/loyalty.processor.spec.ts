@@ -41,3 +41,21 @@ describe('LoyaltyProcessor', () => {
     ).rejects.toThrow('DB down');
   });
 });
+
+// Конфіг воркера живе в декораторі `@Processor('loyalty', { concurrency })` і не проходить крізь
+// жоден виклик process() — без цього сторожа зміна числа не валила жодного тесту. Читаємо метадані,
+// які @nestjs/bullmq кладе на клас і з яких потім будує Worker (ключі — bull.constants.js пакета).
+describe('LoyaltyProcessor — конфіг воркера (метадані @Processor)', () => {
+  it("слухає чергу 'loyalty'", () => {
+    expect(Reflect.getMetadata('bullmq:processor_metadata', LoyaltyProcessor)).toEqual({
+      name: 'loyalty',
+    });
+  });
+
+  // guards: BR-LOY-002
+  it('concurrency = 3 — earn-джоби це легкі записи в БД, паралельність зменшує затримку, коли платежі приходять пачкою', () => {
+    expect(Reflect.getMetadata('bullmq:worker_metadata', LoyaltyProcessor)).toEqual({
+      concurrency: 3,
+    });
+  });
+});

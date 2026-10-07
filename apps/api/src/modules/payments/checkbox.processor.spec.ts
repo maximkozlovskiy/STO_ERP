@@ -298,3 +298,20 @@ describe('CheckboxProcessor (ПРРО registry — sell у зміну)', () => {
     });
   });
 });
+
+// Конфіг воркера живе в декораторі `@Processor('checkbox', { concurrency })` і не проходить крізь
+// жоден виклик process() — без цього сторожа зміна числа не валила жодного тесту. Читаємо метадані,
+// які @nestjs/bullmq кладе на клас і з яких потім будує Worker (ключі — bull.constants.js пакета).
+describe('CheckboxProcessor — конфіг воркера (метадані @Processor)', () => {
+  it("слухає чергу 'checkbox'", () => {
+    expect(Reflect.getMetadata('bullmq:processor_metadata', CheckboxProcessor)).toEqual({
+      name: 'checkbox',
+    });
+  });
+
+  it('concurrency = 3 — кожен job це мережевий виклик ПРРО до 15 с: число обмежує паралелізм (rate-limit ліцензії) і дренить чергу ~3× швидше', () => {
+    expect(Reflect.getMetadata('bullmq:worker_metadata', CheckboxProcessor)).toEqual({
+      concurrency: 3,
+    });
+  });
+});

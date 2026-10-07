@@ -134,6 +134,23 @@ describe('PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .c
     expect(lastCreateData?.fiscalStatus).toBe('QUEUED');
   });
 
+  // Критичне правило проєкту (CLAUDE.md «Офлайн-незалежність»): зовнішні API лише через чергу з
+  // exponential backoff; для ПРРО attempts=288. Сусідній кейс вище фіксує лише attempts і
+  // removeOnFail — зміна типу backoff на 'fixed' або стартової затримки його не валила.
+  it('чек ПРРО при створенні платежу: attempts=288 + exponential backoff від 5 хв — ретраї тримають чек, поки каса/інтернет недоступні (офлайн-незалежність ПРРО)', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({ requiresFiscal: true });
+
+    await service.create(ORG, dto, 'user-1');
+
+    expect(checkboxQueue.add).toHaveBeenCalledTimes(1);
+    expect(checkboxQueue.add.mock.calls[0][2]).toEqual({
+      attempts: 288,
+      backoff: { type: 'exponential', delay: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: 200,
+    });
+  });
+
   it('requiresFiscal=false → add НЕ викликано + fiscalStatus=null', async () => {
     prisma.paymentMethodConfig.findFirst.mockResolvedValue({ requiresFiscal: false });
 

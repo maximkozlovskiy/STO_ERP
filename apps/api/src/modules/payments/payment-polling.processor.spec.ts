@@ -407,3 +407,23 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     );
   });
 });
+
+// Конфіг воркера живе в декораторі `@Processor('payment-polling', { concurrency })` і не проходить
+// крізь жоден виклик process() — без цього сторожа зміна числа не валила жодного тесту. Читаємо
+// метадані, які @nestjs/bullmq кладе на клас (ключі — bull.constants.js пакета).
+describe('PaymentPollingProcessor — конфіг воркера (метадані @Processor)', () => {
+  it("слухає чергу 'payment-polling'", () => {
+    expect(Reflect.getMetadata('bullmq:processor_metadata', PaymentPollingProcessor)).toEqual({
+      name: 'payment-polling',
+    });
+  });
+
+  // Чому саме 3 — у коді не записано (над декоратором немає коментаря, на відміну від checkbox і
+  // loyalty); сторож фіксує значення з дос'є, щоб зміна була свідомою.
+  // guards: BR-PAY-007
+  it("concurrency = 3 (значення з дос'є; обґрунтування в коді не записане)", () => {
+    expect(Reflect.getMetadata('bullmq:worker_metadata', PaymentPollingProcessor)).toEqual({
+      concurrency: 3,
+    });
+  });
+});

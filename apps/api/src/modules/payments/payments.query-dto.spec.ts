@@ -290,6 +290,24 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     );
   });
 
+  // Повторна фіскалізація — окремий `.add()` у retryFiscal зі своєю копією опцій: мусить тримати
+  // ту саму політику, що й первинний чек (CLAUDE.md «Офлайн-незалежність»: ПРРО attempts=288,
+  // backoff exponential). Сусідній кейс вище фіксує лише attempts.
+  it('retryFiscal: повторний чек ПРРО ставиться з attempts=288 + exponential backoff від 5 хв — як первинний', async () => {
+    prisma.payment.findFirst
+      .mockResolvedValueOnce(failedPayment())
+      .mockResolvedValueOnce(paymentRow({ fiscalStatus: 'QUEUED' }));
+    await service.retryFiscal(ORG, PAY_ID);
+
+    expect(checkboxQueue.add).toHaveBeenCalledTimes(1);
+    expect(checkboxQueue.add.mock.calls[0][2]).toEqual({
+      attempts: 288,
+      backoff: { type: 'exponential', delay: 300_000 },
+      removeOnComplete: true,
+      removeOnFail: 200,
+    });
+  });
+
   it('retryFiscal: вже має fiscalReceiptId → 400 «уже пробито», БЕЗ enqueue (idempotency)', async () => {
     prisma.payment.findFirst.mockResolvedValue(
       failedPayment({ fiscalReceiptId: 'RCPT-1', fiscalStatus: 'FAILED' }),

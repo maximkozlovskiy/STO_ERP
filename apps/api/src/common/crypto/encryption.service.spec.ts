@@ -68,6 +68,18 @@ describe('EncryptionService (ключ заданий)', () => {
   it('битий формат (не 3 частини) → кидає', () => {
     expect(() => svc.decrypt('enc:v1:onlyonepart')).toThrow('Невірний формат');
   });
+
+  // Усі кейси вище шифрують і розшифровують ОДНИМ екземпляром — вони лишались зеленими, навіть
+  // якщо ключ узагалі не залежав від NOTIFICATION_ENC_KEY (перевірено мутацією: константа замість
+  // значення з конфігу). А тоді секрети кожної інсталяції відкривались би одним спільним ключем.
+  it('ключ походить із NOTIFICATION_ENC_KEY: зашифроване одним ключем іншим не розшифровується, тим самим — так', () => {
+    const enc = svc.encrypt('prro-license-key');
+    expect(() => makeService('another-installation-key').decrypt(enc)).toThrow();
+    // Той самий ключ в іншому екземплярі (рестарт API) — розшифровує: ключ детермінований.
+    expect(makeService('dev_notification_enc_key_change_in_prod').decrypt(enc)).toBe(
+      'prro-license-key',
+    );
+  });
 });
 
 describe('EncryptionService (ключ НЕ заданий)', () => {

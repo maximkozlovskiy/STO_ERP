@@ -37,7 +37,8 @@
    "EncryptionService (ключ заданий) encrypt ідемпотентний — вже зашифроване не шифрується вдруге",
    "EncryptionService (ключ заданий) encrypt→decrypt round-trip повертає оригінал",
    "EncryptionService (ключ заданий) tamper-детекція: змінений ciphertext → decrypt кидає (GCM tag)",
-   "EncryptionService (ключ заданий) битий формат (не 3 частини) → кидає"
+   "EncryptionService (ключ заданий) битий формат (не 3 частини) → кидає",
+   "EncryptionService (ключ заданий) ключ походить із NOTIFICATION_ENC_KEY: зашифроване одним ключем іншим не розшифровується, тим самим — так"
   ],
   "apps/api/src/common/filters/http-exception.filter.spec.ts": [
    "HttpExceptionFilter Bug #627: Fastify content-type-parser помилки → 4xx (не 500) Bug #774: FST_REQ_FILE_TOO_LARGE (413) → 413 \"Файл завеликий\" без Sentry (не 500)",
@@ -1995,7 +1996,9 @@
   "apps/api/src/modules/loyalty/loyalty.processor.spec.ts": [
    "LoyaltyProcessor documentId опційний → undefined прокидається",
    "LoyaltyProcessor помилка earn прокидається (BullMQ retry)",
-   "LoyaltyProcessor прокидає (orgId, counterpartyId, paymentAmount, documentId) у earn"
+   "LoyaltyProcessor прокидає (orgId, counterpartyId, paymentAmount, documentId) у earn",
+   "LoyaltyProcessor — конфіг воркера (метадані @Processor) concurrency = 3 — earn-джоби це легкі записи в БД, паралельність зменшує затримку, коли платежі приходять пачкою",
+   "LoyaltyProcessor — конфіг воркера (метадані @Processor) слухає чергу 'loyalty'"
   ],
   "apps/api/src/modules/loyalty/loyalty.service.spec.ts": [
    "LoyaltyService.earn Bug #271: paymentAmount=0 → ранній return без $transaction",
@@ -2326,7 +2329,9 @@
    "CheckboxProcessor (ПРРО registry — sell у зміну) success: sell у зміну через provider(cfg,token) → DONE + fiscalReceiptId",
    "CheckboxProcessor (ПРРО registry — sell у зміну) ПРРО не налаштовано (resolveActive→null) → SKIPPED, без sell",
    "CheckboxProcessor (ПРРО registry — sell у зміну) не-401 помилка sell → throw (retry), без DONE",
-   "CheckboxProcessor (ПРРО registry — sell у зміну) платіж не знайдено → skip (deleted/cross-tenant)"
+   "CheckboxProcessor (ПРРО registry — sell у зміну) платіж не знайдено → skip (deleted/cross-tenant)",
+   "CheckboxProcessor — конфіг воркера (метадані @Processor) concurrency = 3 — кожен job це мережевий виклик ПРРО до 15 с: число обмежує паралелізм (rate-limit ліцензії) і дренить чергу ~3× швидше",
+   "CheckboxProcessor — конфіг воркера (метадані @Processor) слухає чергу 'checkbox'"
   ],
   "apps/api/src/modules/payments/fiscal/fiscal-provider-registry.spec.ts": [
    "CheckboxProvider (обгортка parity) CheckboxUnauthorizedError → FiscalUnauthorizedError (провайдер-агностичний)",
@@ -2455,7 +2460,9 @@
    "PaymentPollingProcessor (QR monobank polling) немає gatewayInvoiceId → стоп (нема що опитувати)",
    "PaymentPollingProcessor (QR monobank polling) термінальний FAILED вже у БД → стоп (не опитуємо)",
    "PaymentPollingProcessor (QR monobank polling) усі intent-запити несуть orgId (findFirst + CAS)",
-   "PaymentPollingProcessor (QR monobank polling) шлюз більше не налаштовано (config зник) → FAILED"
+   "PaymentPollingProcessor (QR monobank polling) шлюз більше не налаштовано (config зник) → FAILED",
+   "PaymentPollingProcessor — конфіг воркера (метадані @Processor) concurrency = 3 (значення з дос'є; обґрунтування в коді не записане)",
+   "PaymentPollingProcessor — конфіг воркера (метадані @Processor) слухає чергу 'payment-polling'"
   ],
   "apps/api/src/modules/payments/payments.fiscal-gate.spec.ts": [
    "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() Bug #662: checkboxQueue.add reject (Redis лежить) → create() НЕ кидає (no 500) + payment QUEUED→FAILED",
@@ -2464,7 +2471,8 @@
    "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() requiresFiscal=true → checkboxQueue.add викликано + fiscalStatus=\"QUEUED\"",
    "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() невідомий метод (methodConfig=null) → add НЕ викликано + fiscalStatus=null (safe default)",
    "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() тригер каси: оплата у ЗВИЧАЙНУ касу + requiresFiscal=false → fiscalStatus=null (без чека)",
-   "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() тригер каси: оплата у ФІСКАЛЬНУ касу → fiscalStatus=\"QUEUED\" навіть при requiresFiscal=false"
+   "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() тригер каси: оплата у ФІСКАЛЬНУ касу → fiscalStatus=\"QUEUED\" навіть при requiresFiscal=false",
+   "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() чек ПРРО при створенні платежу: attempts=288 + exponential backoff від 5 хв — ретраї тримають чек, поки каса/інтернет недоступні (офлайн-незалежність ПРРО)"
   ],
   "apps/api/src/modules/payments/payments.idempotency.spec.ts": [
    "PaymentsService — FIN-C1 ідемпотентність оплати CAS count=0 (paidAmount змінено паралельно) → throw, БЕЗ payment.create та settlement",
@@ -2533,6 +2541,7 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: queue.add reject (Redis лежить) → .catch ставить FAILED, create НЕ кидає",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: вже має fiscalReceiptId → 400 «уже пробито», БЕЗ enqueue (idempotency)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: гейт receiptId перевіряється ПЕРЕД гейтом статусу (правильний порядок)",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: повторний чек ПРРО ставиться з attempts=288 + exponential backoff від 5 хв — як первинний",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: статус DONE (не FAILED) → 400, БЕЗ enqueue",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: статус QUEUED (не FAILED) → 400",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: статус SKIPPED (не FAILED) → 400",
@@ -2542,6 +2551,14 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto toDto: обидва присутні → пріоритет банку (bank ?? cash)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto where завжди містить orgId (tenant isolation базово)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto без дат → where.createdAt відсутній (немає фільтра діапазону)"
+  ],
+  "apps/api/src/modules/payments/payments.queue-retry-policy.spec.ts": [
+   "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») registerQueue: defaultJobOptions — лише спільний DEFAULT_JOB_OPTS, а він не задає attempts/backoff: політика ретраїв живе в кожному add()",
+   "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») ПРРО: кожен add() у чергу checkbox — attempts=288 + exponential backoff від 5 хв (ретраї ~24 год, поки каса чи інтернет недоступні)",
+   "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») білий список не містить застарілих записів: кожен запис — досі порушення і з тими самими опціями",
+   "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») жодна черга зовнішнього API не має attempts < 10 чи не-exponential backoff — крім відомих порушень із білого списку",
+   "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») кожна черга з коду класифікована: зовнішнє API або внутрішня (нова черга змушує вирішити)",
+   "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») сторож бачить код: перепис add()-сайтів зовнішніх черг збігається, нерозібраних викликів немає"
   ],
   "apps/api/src/modules/payments/payments.work-order.spec.ts": [
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) transition(PAID) кидає → create НЕ валиться: платіж і settlement уже закомічені (best-effort)",
@@ -4140,6 +4157,29 @@
    "append-only тригери — поведінка (жива БД) stock_movements: DELETE заборонено",
    "append-only тригери — поведінка (жива БД) stock_movements: UPDATE quantity (не-batchId) заборонено",
    "append-only тригери — поведінка (жива БД) stock_movements: одноразове \"batchId\" NULL→value ДОЗВОЛЕНО (createMovement flow)"
+  ],
+  "apps/api/src/prisma/field-encryption.extension.spec.ts": [
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції create: credentials — шифротекст; несекретні поля (provider) лишаються як є",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції createMany: кожен рядок шифрується окремо",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції update: credentials — шифротекст",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції upsert: шифруються ОБИДВІ гілки — і create, і update",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера BranchProviderConfig.credentials — усі write-операції порожній рядок і null не шифруються (немає секрету — немає шифротексту)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API getBranchConfigs: у БД шифротекст → у відповіді ні секрету, ні шифротексту, лише hasCredentials",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API legacy-рядок із відкритим текстом (записаний до ввімкнення шифрування) читається як є",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API resolveActive: шифротекст із БД доходить до процесора розшифрованим (інакше ПРРО отримав би enc:v1:… замість ключа)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API upsertConfig DELIVERY/nova-poshta: жоден секрет не йде в SQL відкритим текстом, відповідь без секретів",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API upsertConfig FISCAL/checkbox: жоден секрет не йде в SQL відкритим текстом, відповідь без секретів",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API upsertConfig FISCAL/vchasno: жоден секрет не йде в SQL відкритим текстом, відповідь без секретів",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API upsertConfig PAYMENT/liqpay: жоден секрет не йде в SQL відкритим текстом, відповідь без секретів",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера ProviderConfigService: креденшали провайдерів — шифротекст у БД, лише hasCredentials в API upsertConfig PAYMENT/monobank: жоден секрет не йде в SQL відкритим текстом, відповідь без секретів",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера дамп БД без ключа марний: шифротекст, записаний цим сервісом, іншим ключем не розшифровується",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом BranchProviderConfig.credentials — ПРРО / платіжний шлюз / служба доставки",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом BranchSettings.checkboxLicenseKey — ПРРО Checkbox (legacy-колонка)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом BranchSettings.checkboxPinCode — PIN касира ПРРО (legacy-колонка)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом BranchSettings.monobankToken — еквайринг monobank (legacy-колонка)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом BranchSettings.smsApiKey — SMS-провайдер (legacy-колонка)",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом CashShift.checkboxAccessToken — токен касира відкритої зміни ПРРО",
+   "Шифрування секретів at-rest — справжній PrismaService поверх фейкового драйвера кожне секретне поле пишеться шифротекстом NotificationChannelConfig.apiKey — канал сповіщень SMS / Viber / Email"
   ],
   "apps/api/src/prisma/field-encryption.integration.spec.ts": [
    "Prisma field-encryption extension (integration, live DB) (a) write через розширення → CIPHERTEXT at-rest у Postgres (не plaintext)",

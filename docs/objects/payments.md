@@ -265,37 +265,48 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Маршрути UI:** `/payments`, `/cash`, `/invoices`
 
-| Аспект                   | Тест                                        | Кейсів |
-| ------------------------ | ------------------------------------------- | ------ |
-| сервісна логіка          | `cash-shift.service.spec.ts`                | 31     |
-| HTTP-клієнт              | `checkbox.client.spec.ts`                   | 31     |
-| BullMQ-processor         | `checkbox.processor.spec.ts`                | 17     |
-| fiscal provider registry | `fiscal/fiscal-provider-registry.spec.ts`   | 16     |
-| провайдер                | `fiscal/vchasno.provider.spec.ts`           | 29     |
-| payment gateway registry | `gateways/payment-gateway-registry.spec.ts` | 12     |
-| HTTP-клієнт              | `monobank.client.spec.ts`                   | 26     |
-| сервісна логіка          | `online-payment.service.spec.ts`            | 15     |
-| BullMQ-processor         | `payment-polling.processor.spec.ts`         | 19     |
-| fiscal gate              | `payments.fiscal-gate.spec.ts`              | 7      |
-| idempotency              | `payments.idempotency.spec.ts`              | 7      |
-| money model              | `payments.money-model.spec.ts`              | 17     |
-| multicurrency            | `payments.multicurrency.spec.ts`            | 17     |
-| query dto                | `payments.query-dto.spec.ts`                | 28     |
-| передумови + наряд       | `payments.work-order.spec.ts`               | 13     |
-| сервісна логіка          | `provider-config.service.spec.ts`           | 27     |
+| Аспект                   | Тест                                              | Кейсів |
+| ------------------------ | ------------------------------------------------- | ------ |
+| сервісна логіка          | `cash-shift.service.spec.ts`                      | 31     |
+| HTTP-клієнт              | `checkbox.client.spec.ts`                         | 31     |
+| BullMQ-processor         | `checkbox.processor.spec.ts`                      | 19     |
+| fiscal provider registry | `fiscal/fiscal-provider-registry.spec.ts`         | 16     |
+| провайдер                | `fiscal/vchasno.provider.spec.ts`                 | 29     |
+| payment gateway registry | `gateways/payment-gateway-registry.spec.ts`       | 12     |
+| HTTP-клієнт              | `monobank.client.spec.ts`                         | 26     |
+| сервісна логіка          | `online-payment.service.spec.ts`                  | 15     |
+| BullMQ-processor         | `payment-polling.processor.spec.ts`               | 21     |
+| fiscal gate              | `payments.fiscal-gate.spec.ts`                    | 8      |
+| idempotency              | `payments.idempotency.spec.ts`                    | 7      |
+| money model              | `payments.money-model.spec.ts`                    | 17     |
+| multicurrency            | `payments.multicurrency.spec.ts`                  | 17     |
+| query dto                | `payments.query-dto.spec.ts`                      | 29     |
+| передумови + наряд       | `payments.work-order.spec.ts`                     | 13     |
+| політика повторів черг   | `payments.queue-retry-policy.spec.ts`             | 6      |
+| сервісна логіка          | `provider-config.service.spec.ts`                 | 27     |
+| шифрування at-rest       | `../../prisma/field-encryption.extension.spec.ts` | 21     |
+| шифрування (сервіс)      | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **312** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **356** кейсів — 324 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
 HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
 
-Друга половина правила про креденшели провайдерів — шифрування `credentials` at-rest
-(`prisma.service ENCRYPTED_FIELDS`) і виключення `branch_provider_configs` з `PULL_TABLES` —
-unit-тестом не стережеться: обидва живуть поза модулем (`prisma/`, `sync/`), там тестів на цю
-модель немає. Мітка `guards:` стоїть лише на write-only частині (`hasCredentials` без сирих секретів).
+Виключення `branch_provider_configs` з `PULL_TABLES` (друга половина правила про креденшели
+провайдерів) unit-тестом не стережеться: список живе в `sync/`, там тестів на цю модель немає.
 
-Параметри декораторів і черг (`concurrency: 3` у processor-ах, `attempts: 288` / backoff черги
-`checkbox`) жодним тестом не перевіряються — значення читаються лише з коду.
+Шифрування at-rest стережеться лише для операцій, які розширення знає: `create`, `createMany`,
+`update`, `updateMany`, `upsert` верхнього рівня. Перевірено пробою 2026-10-08 — повз шифрування
+йдуть `createManyAndReturn`, `updateManyAndReturn`, обгортка `{ set: … }`, вкладений запис через
+батьківську модель (`garageBranch.update({ data: { branchSettings: { update } } })`) і сирий SQL.
+Продукт-код цими шляхами секрети зараз не пише, але й тесту, що заборонив би, немає.
+Integration-спек `field-encryption.integration.spec.ts` ганяє round-trip на живій БД, проте на
+власній копії розширення — зміну продуктового `ENCRYPTED_FIELDS` він не помічає.
+
+Статичний сторож `payments.queue-retry-policy.spec.ts` тримає білий список відомих порушень правила
+«зовнішнє API → attempts ≥ 10, exponential backoff» (черги `nbu-fetch`, `bank-statement-polling`,
+`payment-polling`, `nova-poshta-polling`): код не правився, запис у списку — не дозвіл, а межа між
+старим і новим. Чому `payment-polling` має `concurrency: 3`, у коді не записано — тест фіксує число.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
