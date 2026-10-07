@@ -18,7 +18,6 @@
   python scripts/check-skill-size.py          # вердикт у формі verdict.sh
   python scripts/check-skill-size.py --list   # усі файли з розмірами
 """
-import glob
 import os
 import sys
 
@@ -33,7 +32,20 @@ SECTION_LIMIT_KB = 36
 
 
 def kb(path):
-    return os.path.getsize(path) / 1024.0
+    # Розмір рахується як у репозиторії (LF): checkout із core.autocrlf=true додає байт на
+    # рядок (+2–3%), і файл біля межі був би «понад ліміт» на Windows та «в нормі» в CI.
+    with open(path, "rb") as fh:
+        data = fh.read()
+    return (len(data) - data.count(bytes((13, 10)))) / 1024.0
+
+
+def md_files(root):
+    # os.walk, а не glob('*.md'): glob на Linux чутливий до регістру, тож `BIG.MD` гейт
+    # бачив би на Windows і пропускав би в CI.
+    found = []
+    for base, _dirs, names in os.walk(root):
+        found.extend(os.path.join(base, n) for n in names if n.lower().endswith(".md"))
+    return sorted(found)
 
 
 def classify(rel):
@@ -50,7 +62,7 @@ def classify(rel):
 
 def main():
     rows = []
-    for path in sorted(glob.glob(os.path.join(SKILLS, "**", "*.md"), recursive=True)):
+    for path in md_files(SKILLS):
         rel = os.path.relpath(path, SKILLS).replace(BS, "/")
         kind, limit = classify(rel)
         rows.append((rel, kind, limit, kb(path)))
@@ -65,7 +77,7 @@ def main():
     checked = len([r for r in rows if r[2] is not None])
     for rel, kind, limit, size in sorted(problems, key=lambda r: -r[3]):
         what = "ЯДРО" if kind == "core" else "СЕКЦІЯ"
-        print("  %s ПОНАД ЛІМІТ %s — %.0f КБ (ліміт %d): не влазить в один Read" % (what, rel, size, limit))
+        print("  %s ПОНАД ЛІМІТ %s — %.2f КБ (ліміт %d): не влазить в один Read" % (what, rel, size, limit))
     print()
     # Порожній вибір — не «чисто»: хибний шлях до тек або cwd без .claude/skills дав би
     # «0 passed (0)» з exit 0, і verdict.sh назвав би це зеленим.
