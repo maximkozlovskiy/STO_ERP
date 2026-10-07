@@ -61,8 +61,8 @@ function attr(el: Element | undefined, name: string): string | null {
   return el ? el.getAttribute(name) : null;
 }
 
-function renderChart() {
-  const { container } = render(<MileageChart points={points} />);
+function renderChart(data: VehicleMileagePoint[] = points) {
+  const { container } = render(<MileageChart points={data} />);
   const dots = [...container.querySelectorAll('.recharts-line-dots circle')];
   const xs = dots.map(d => Number(d.getAttribute('cx')));
   const ys = dots.map(d => Number(d.getAttribute('cy')));
@@ -102,6 +102,21 @@ describe('MileageChart — реальний рендер recharts', () => {
       expect(attr(dots[i], 'fill')).toBe('var(--color-primary)');
       expect(attr(dots[i], 'r')).toBe('3');
     }
+  });
+
+  it('Bug #798: записи одного дня з датою, що «йде назад», не малюють лінію справа наліво', () => {
+    // Порядок бекенду в межах дня — за номером наряду: спершу завершений (17:23Z), потім
+    // відкритий того ж дня (дата без часу → 00:00Z). X другої точки не може бути лівіше.
+    const sameDay: VehicleMileagePoint[] = [
+      { ...points[0]!, date: '2026-10-01T09:00:00.000Z', mileage: 50000 },
+      { ...points[1]!, date: '2026-10-07T17:23:57.000Z', mileage: 50100 },
+      { ...points[3]!, date: '2026-10-07T00:00:00.000Z', mileage: 50200 },
+    ];
+    const { dots, xs, ys } = renderChart(sameDay);
+    expect(dots).toHaveLength(3);
+    expect(Number(xs[2])).toBeGreaterThanOrEqual(Number(xs[1]));
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+    expect(Number(ys[2])).toBeLessThan(Number(ys[1])); // 50 200 вище за 50 100
   });
 
   it('підпис осі X — дата за Києвом: 22:30 UTC 10.01 показано як 11.01', () => {

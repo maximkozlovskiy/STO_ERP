@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { translateError, type VehicleMileagePoint } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { kyivYmd } from '../../common/utils/kyiv-date';
 import {
   CreateVehicleDto,
   CreateVehicleNodeDto,
@@ -205,24 +206,29 @@ export class VehiclesService {
       take: MILEAGE_HISTORY_FETCH_CAP,
     });
 
-    const records: { id: string; number: string; at: Date; mileage: number }[] = [];
+    const records: { id: string; number: string; at: Date; day: string; mileage: number }[] = [];
     for (const wo of workOrders) {
       // BR-VEH-001: outMileage, а якщо його немає — inMileage; без обох — не запис історії.
       const mileage = wo.outMileage ?? wo.inMileage;
       if (mileage === null || mileage === undefined) continue;
       // BR-VEH-002: completedAt, а якщо наряд не завершено — documentDate.
+      // `day` — календарний день запису за Києвом, ключ сортування. documentDate — дата БЕЗ
+      // часу (`@db.Date` → опівніч UTC київської дати), completedAt — момент. Порівнювати їх
+      // як мітки часу не можна: наряд, відкритий того ж дня ПІСЛЯ вже завершеного, ставав
+      // перед ним, і завершений наряд хибно отримував isRollback (Bug #798).
       records.push({
         id: wo.id,
         number: wo.number,
         at: wo.completedAt ?? wo.documentDate,
+        day: wo.completedAt ? kyivYmd(wo.completedAt) : wo.documentDate.toISOString().slice(0, 10),
         mileage,
       });
     }
 
-    // BR-VEH-002: від старішого до новішого; за рівної дати — за номером наряду.
+    // BR-VEH-002: від старішого дня до новішого; у межах одного дня — за номером наряду.
     records.sort(
       (a, b) =>
-        a.at.getTime() - b.at.getTime() ||
+        (a.day < b.day ? -1 : a.day > b.day ? 1 : 0) ||
         a.number.localeCompare(b.number, 'uk', { numeric: true }),
     );
 

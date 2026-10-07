@@ -46,15 +46,19 @@ function MileageDot({ cx, cy, payload }: MileageDotProps) {
 // картки авто), тож recharts не проходить повний reconcile на кожен локальний setState сторінки.
 function MileageChart({ points }: { points: VehicleMileagePoint[] }) {
   const { t } = useTranslation('vehicles');
-  const data = useMemo<ChartRow[]>(
-    () =>
-      points.map(p => ({
-        ts: new Date(p.date).getTime(),
-        mileage: p.mileage,
-        isRollback: p.isRollback,
-      })),
-    [points],
-  );
+  const data = useMemo<ChartRow[]>(() => {
+    // Порядок записів задає бекенд (BR-VEH-002: день за Києвом, у межах дня — номер наряду),
+    // а `date` у межах одного дня не мусить зростати: незавершений наряд має дату без часу
+    // (опівніч UTC), завершений того ж дня — момент завершення. Якби X брався з `date` як є,
+    // лінія між ними йшла б справа наліво і читалась би як падіння пробігу (Bug #798).
+    // Тому X не спадає: точка стає не лівіше за попередню.
+    let last = Number.NEGATIVE_INFINITY;
+    return points.map(p => {
+      const ts = Math.max(new Date(p.date).getTime(), last);
+      last = ts;
+      return { ts, mileage: p.mileage, isRollback: p.isRollback };
+    });
+  }, [points]);
 
   return (
     <ResponsiveContainer width="100%" height={220}>

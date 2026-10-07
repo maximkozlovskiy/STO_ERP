@@ -376,6 +376,77 @@ describe('VehiclesService — історія пробігу (BR-VEH-001…005)',
         ]);
       }
     });
+    // guards: BR-VEH-002, BR-VEH-003
+    it('Bug #798: наряд, відкритий того ж дня ПІСЛЯ завершеного, стоїть за ним — завершений не стає відкатом', async () => {
+      // documentDate — дата без часу (опівніч UTC), completedAt — момент того ж дня. Порівняння
+      // міток часу ставило відкритий наряд (00:00Z) перед завершеним (17:23Z), і завершений
+      // із меншим пробігом хибно отримував isRollback. Відтворено на живому API.
+      const done = wo('done', {
+        number: 'WO-001091',
+        inMileage: 50_000,
+        outMileage: 50_100,
+        documentDate: d('2026-10-07T00:00:00Z'),
+        completedAt: d('2026-10-07T17:23:57Z'),
+      });
+      const open = wo('open', {
+        number: 'WO-001092',
+        status: 'DRAFT',
+        inMileage: 50_200,
+        documentDate: d('2026-10-07T00:00:00Z'),
+        completedAt: null,
+      });
+
+      for (const order of [
+        [done, open],
+        [open, done],
+      ]) {
+        workOrders = order;
+        const res = await history();
+        expect(ids(res)).toEqual(['done', 'open']);
+        expect(res.map(p => p.isRollback)).toEqual([false, false]);
+        // Дата запису лишається за правилом: completedAt / documentDate.
+        expect(res.map(time)).toEqual([
+          d('2026-10-07T17:23:57Z').getTime(),
+          d('2026-10-07T00:00:00Z').getTime(),
+        ]);
+      }
+    });
+
+    // guards: BR-VEH-002
+    it('Bug #798: день запису — за Києвом: завершений о 01:30 за Києвом належить новому дню, а не дню UTC', async () => {
+      // 22:30Z 06.10 = 01:30 07.10 за Києвом (UTC+3). За днем UTC "night" потрапив би у 06.10
+      // і став би перед "open" попри більший номер; за Києвом вони одного дня → за номером.
+      const open = wo('open', {
+        number: 'WO-000201',
+        status: 'IN_PROGRESS',
+        inMileage: 70_000,
+        documentDate: d('2026-10-07T00:00:00Z'),
+        completedAt: null,
+      });
+      const night = wo('night', {
+        number: 'WO-000202',
+        outMileage: 70_300,
+        documentDate: d('2026-10-06T00:00:00Z'),
+        completedAt: d('2026-10-06T22:30:00Z'),
+      });
+      // Контроль: попередній київський день справді стоїть раніше.
+      const before = wo('before', {
+        number: 'WO-000203',
+        outMileage: 69_000,
+        documentDate: d('2026-10-06T00:00:00Z'),
+        completedAt: d('2026-10-06T20:30:00Z'), // 23:30 06.10 за Києвом
+      });
+
+      for (const order of [
+        [night, open, before],
+        [open, before, night],
+      ]) {
+        workOrders = order;
+        const res = await history();
+        expect(ids(res)).toEqual(['before', 'open', 'night']);
+        expect(res.map(p => p.isRollback)).toEqual([false, false, false]);
+      }
+    });
   });
 
   describe('BR-VEH-003 — відкат пробігу', () => {
@@ -470,6 +541,27 @@ describe('VehiclesService — історія пробігу (BR-VEH-001…005)',
     });
 
     // guards: BR-VEH-004
+    it('текст 404 — той самий, що в GET /vehicles/:id («Автомобіль не знайдено»), для чужої org і для видаленого', async () => {
+      const textOf = (p: Promise<unknown>) =>
+        p.then(
+          () => 'не кинуло',
+          (e: unknown) =>
+            e instanceof NotFoundException ? e.message : `інша помилка: ${String(e)}`,
+        );
+
+      for (const state of [
+        [vehicle({ orgId: 'org-2' })],
+        [vehicle({ deletedAt: d('2026-03-01T00:00:00Z') })],
+      ]) {
+        vehicles = state;
+        seedHistory();
+        const mileageText = await textOf(history('org-1', 'veh-1'));
+        expect(mileageText).toBe('Автомобіль не знайдено');
+        expect(mileageText).toBe(await textOf(service.findOne('org-1', 'veh-1')));
+      }
+    });
+
+    // guards: BR-VEH-004
     it('своє активне авто: перевірка окремим findFirst з id + orgId + deletedAt:null → масив', async () => {
       const res = await history('org-1', 'veh-1');
 
@@ -514,6 +606,30 @@ describe('VehiclesService — історія пробігу (BR-VEH-001…005)',
       workOrders = seed(200);
 
       expect(ids(await history())).toEqual(expectedIds(0, 199));
+    });
+
+    // guards: BR-VEH-003, BR-VEH-005
+    it('відкат на межі обрізання: перший запис вікна лишається isRollback, хоча його попередника відрізано', async () => {
+      // 201 запис: w0 відрізається. w1 (перший у вікні) має пробіг МЕНШИЙ за w0 — відкат
+      // видно лише з повної історії. Позначка, порахована після slice, тут зникла б.
+      workOrders = seed(201).map(row => (row.id === 'w0' ? { ...row, outMileage: 500_000 } : row));
+
+      const res = await history();
+
+      expect(res).toHaveLength(200);
+      expect(res[0]?.workOrderId).toBe('w1');
+      expect(res[0]?.isRollback).toBe(true);
+      expect(res.slice(1).some(p => p.isRollback)).toBe(false);
+    });
+
+    // guards: BR-VEH-003, BR-VEH-005
+    it('і навпаки: перший запис вікна без відкату не отримує позначку лише тому, що він перший', async () => {
+      workOrders = seed(201);
+
+      const res = await history();
+
+      expect(res[0]?.workOrderId).toBe('w1');
+      expect(res.some(p => p.isRollback)).toBe(false);
     });
 
     // guards: BR-VEH-005, BR-VEH-001

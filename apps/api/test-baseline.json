@@ -3182,6 +3182,23 @@
    "UserPreferences — HTTP Contract PUT /user-preferences/:key → 400 якщо value не об'єкт",
    "UserPreferences — HTTP Contract PUT /user-preferences/:key → 403 без токена"
   ],
+  "apps/api/src/modules/vehicles/vehicles.contract.spec.ts": [
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage 200: голий масив записів як є; сервіс отримує orgId із токена та id зі шляху",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage JwtAuthGuard відмовив (немає сесії) → запит не доходить до сервісу",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage id \"11111111-1111-1111-1111-11111111111\" не UUID → 400, сервіс не викликається",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage id \"123\" не UUID → 400, сервіс не викликається",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage id \"not-a-uuid\" не UUID → 400, сервіс не викликається",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage авто чужої org / видалене: NotFoundException сервісу → 404 з його текстом",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage маршрут /:id/mileage не перехоплюється GET /:id",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль ACCOUNTANT → 403, сервіс не викликається",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль ADMIN → 200",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль CLIENT → 403, сервіс не викликається",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль MECHANIC → 200",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль OWNER → 200",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль RECEPTIONIST → 200",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль STOREKEEPER → 403, сервіс не викликається",
+   "Vehicles — HTTP Contract: GET /vehicles/:id/mileage роль XLSX_MANAGER → 403, сервіс не викликається"
+  ],
   "apps/api/src/modules/vehicles/vehicles.mileage-history.spec.ts": [
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг CANCELLED-наряд не входить навіть із пробігом; решта статусів входять",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг soft-deleted наряд (deletedAt) не входить",
@@ -3189,6 +3206,8 @@
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг наряд без inMileage і без outMileage в історію не входить",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг наряд іншого авто або іншої організації не входить",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг пробіг запису = outMileage, а якщо його немає — inMileage",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок Bug #798: день запису — за Києвом: завершений о 01:30 за Києвом належить новому дню, а не дню UTC",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок Bug #798: наряд, відкритий того ж дня ПІСЛЯ завершеного, стоїть за ним — завершений не стає відкатом",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок від старішого до новішого за ДАТОЮ ЗАПИСУ, хоч би в якому порядку прийшли рядки",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок дата = completedAt, а якщо наряд не завершено — documentDate; це ISO-рядок",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок рівна дата → за номером наряду",
@@ -3199,10 +3218,13 @@
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 видалене авто → NotFoundException, наряди не запитуються",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 неіснуюче авто → NotFoundException, наряди не запитуються",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 своє активне авто: перевірка окремим findFirst з id + orgId + deletedAt:null → масив",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 текст 404 — той самий, що в GET /vehicles/:id («Автомобіль не знайдено»), для чужої org і для видаленого",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів \"останні\" — за ДАТОЮ ЗАПИСУ: давно відкритий, але щойно завершений наряд не відрізається",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів 205 записів → рівно 200 ОСТАННІХ, від старішого до новішого",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів відкат на межі обрізання: перший запис вікна лишається isRollback, хоча його попередника відрізано",
    "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів ліміт рахує ЗАПИСИ історії: новіші наряди без пробігу / CANCELLED / видалені їх не витісняють",
-   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів рівно 200 записів → усі 200 (межа включна)"
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів рівно 200 записів → усі 200 (межа включна)",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів і навпаки: перший запис вікна без відкату не отримує позначку лише тому, що він перший"
   ],
   "apps/api/src/modules/vehicles/vehicles.service.spec.ts": [
    "VehiclesService create/update — VIN uniqueness (MD-H2) create без VIN → перевірка пропускається",
