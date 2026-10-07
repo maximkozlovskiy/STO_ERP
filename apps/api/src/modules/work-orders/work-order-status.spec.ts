@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, WorkOrderStatus } from '@prisma/client';
 import { transitionWorkOrderStatusInTx } from './work-order-status';
+import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 
 const ORG = 'org-1';
 const WO_ID = '22222222-2222-4222-8222-222222222222';
@@ -51,6 +52,46 @@ describe('transitionWorkOrderStatusInTx — статус наряду в чуж�
       expect(updateMany).not.toHaveBeenCalled();
     },
   );
+
+  // Повна матриця from×to: одиничні кейси вище тримають лише COMPLETED→INVOICED і три заборонені
+  // цілі. Якщо дозволену ціль (PAID, ARCHIVED, …) помилково перевести у «має side-effects» або
+  // навпаки — жоден із них не впаде. Очікування рахується з WORK_ORDER_TRANSITIONS і з явного
+  // списку цілей із side-effects, а не з мапи всередині хелпера.
+  // guards: BR-WO-001
+  it('уся матриця переходів: ціль із side-effects → відмова; пара з FSM → CAS; решта → 400', async () => {
+    const WITH_SIDE_EFFECTS = new Set<WorkOrderStatus>(['IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
+    const statuses = Object.keys(WORK_ORDER_TRANSITIONS) as WorkOrderStatus[];
+    const seen = { refused: 0, written: 0, rejected: 0 };
+
+    for (const from of statuses) {
+      for (const to of statuses) {
+        const { tx, updateMany } = makeTx();
+        const run = transitionWorkOrderStatusInTx(tx, ORG, WO_ID, from, to);
+        if (WITH_SIDE_EFFECTS.has(to)) {
+          await expect(run, `${from}→${to}`).rejects.toThrow(/side-effects/);
+          expect(updateMany, `${from}→${to}`).not.toHaveBeenCalled();
+          seen.refused++;
+        } else if (WORK_ORDER_TRANSITIONS[from].includes(to)) {
+          await expect(run, `${from}→${to}`).resolves.toBeUndefined();
+          expect(updateMany, `${from}→${to}`).toHaveBeenCalledWith({
+            where: { id: WO_ID, orgId: ORG, deletedAt: null, status: from },
+            data: { status: to },
+          });
+          seen.written++;
+        } else {
+          await expect(run, `${from}→${to}`).rejects.toThrow(BadRequestException);
+          expect(updateMany, `${from}→${to}`).not.toHaveBeenCalled();
+          seen.rejected++;
+        }
+      }
+    }
+
+    // Контроль від порожнього циклу: кожна з трьох гілок справді виконувалась.
+    expect(seen.refused).toBe(statuses.length * WITH_SIDE_EFFECTS.size);
+    expect(seen.written).toBeGreaterThan(0);
+    expect(seen.rejected).toBeGreaterThan(0);
+    expect(seen.refused + seen.written + seen.rejected).toBe(statuses.length ** 2);
+  });
 });
 
 /**

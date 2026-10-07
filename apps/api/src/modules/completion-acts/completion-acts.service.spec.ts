@@ -2,10 +2,11 @@ import { Test } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { WorkOrderTransitionedEvent } from '../work-orders/events/work-order.events';
 import { WORK_ORDER_EVENTS } from '../work-orders/events/work-order.events';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { CompletionActsService } from './completion-acts.service';
+import { CompletionActsController } from './completion-acts.controller';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -230,5 +231,147 @@ describe('CompletionActsService — sign() idempotency + auto-invoice', () => {
     expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
     expect(prisma.workOrder.update).not.toHaveBeenCalled();
     expect(events.emit).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-001
+  it('sign() без userId (системний виклик): подія переходу все одно емітиться — гейтить хендлер, не сервіс', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+
+    await service.sign(ORG, ACT_ID, {} as never);
+
+    expect(events.emit).toHaveBeenCalledTimes(1);
+    const [name, event] = events.emit.mock.calls[0] as [string, WorkOrderTransitionedEvent];
+    expect(name).toBe(WORK_ORDER_EVENTS.TRANSITIONED);
+    expect(event).toMatchObject({
+      workOrderId: WO_ID,
+      fromStatus: 'COMPLETED',
+      toStatus: 'INVOICED',
+    });
+    expect(event.userId).toBeUndefined();
+  });
+
+  // guards: BR-WO-001
+  it('sign(): транзакція не закомітилась → події переходу й авто-рахунку немає (емісія ПІСЛЯ коміту, не всередині)', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    // Тіло транзакції відпрацювало повністю (обидва CAS успішні), а коміт упав — як при
+    // serialization failure / timeout / обриві з'єднання.
+    prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      await fn(prisma);
+      throw new Error('commit failed');
+    });
+
+    await expect(service.sign(ORG, ACT_ID, {} as never, 'user-1')).rejects.toThrow('commit failed');
+
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledTimes(1); // тіло справді дійшло до переходу
+    expect(events.emit).not.toHaveBeenCalled();
+    expect(invoices.createFromWorkOrder).not.toHaveBeenCalled();
+  });
+
+  it('sign(): авто-рахунок упав з довільної причини → підписання і перехід лишаються, подія вже пішла, збій у warn', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'COMPLETED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+    invoices.createFromWorkOrder.mockRejectedValueOnce(new Error('exchange rate missing'));
+
+    const res = await service.sign(ORG, ACT_ID, {} as never, 'user-1');
+
+    expect(res.status).toBe(CompletionActStatus.SIGNED);
+    expect(events.emit).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('exchange rate missing'));
+    warn.mockRestore();
+  });
+
+  // ПОТОЧНА поведінка, не правило (Bug #795, відкрите рішення власника): акт створено, поки наряд
+  // був COMPLETED, потім наряд скасували (COMPLETED→CANCELLED повертає запчастини і сторнує борг).
+  // sign() на статус наряду не дивиться — підписує. Тест зеленіє на теперішньому коді й стане
+  // червоним, щойно з'явиться заборона: тоді його переписати під нове правило, а не видаляти.
+  it('sign(): наряд уже CANCELLED → акт усе одно стає SIGNED, наряд не чіпається, рахунку немає (відмову проковтнуто у warn)', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    prisma.completionAct.findFirst.mockResolvedValueOnce({
+      status: CompletionActStatus.DRAFT,
+      workOrder: { id: WO_ID, status: 'CANCELLED' },
+    });
+    prisma.completionAct.findFirst.mockResolvedValueOnce(signedActRow);
+    // Так відповідає справжній InvoicesService.createFromWorkOrder для не-INVOICEABLE статусу.
+    invoices.createFromWorkOrder.mockRejectedValueOnce(
+      new BadRequestException('Рахунок можна виставити лише для завершеного наряду'),
+    );
+
+    const res = await service.sign(ORG, ACT_ID, { signedBy: 'Іван' } as never, 'user-1');
+
+    expect(res.status).toBe(CompletionActStatus.SIGNED);
+    expect(prisma.completionAct.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: CompletionActStatus.SIGNED }),
+      }),
+    );
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(events.emit).not.toHaveBeenCalled();
+    expect(invoices.createFromWorkOrder).toHaveBeenCalledWith(ORG, WO_ID);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  // ── cancel(): підписаний акт не скасовується, зокрема під гонкою з sign() (Bug #793) ──
+
+  it('cancel(): DRAFT → CAS updateMany з предикатом status ≠ SIGNED (не update за id)', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({ status: CompletionActStatus.DRAFT });
+
+    await service.cancel(ORG, ACT_ID);
+
+    expect(prisma.completionAct.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: ACT_ID,
+        orgId: ORG,
+        deletedAt: null,
+        status: { not: CompletionActStatus.SIGNED },
+      },
+      data: { status: CompletionActStatus.CANCELLED },
+    });
+    expect(prisma.completionAct.update).not.toHaveBeenCalled();
+  });
+
+  it('cancel(): sign() закомітився між читанням і записом (CAS count=0) → 400, акт не перезаписано', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({ status: CompletionActStatus.DRAFT }); // застарілий знімок
+    prisma.completionAct.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.cancel(ORG, ACT_ID)).rejects.toThrow(BadRequestException);
+    expect(prisma.completionAct.update).not.toHaveBeenCalled();
+  });
+
+  it('cancel(): уже SIGNED → 400 ще до запису; не знайдено → 404', async () => {
+    prisma.completionAct.findFirst.mockResolvedValueOnce({ status: CompletionActStatus.SIGNED });
+    await expect(service.cancel(ORG, ACT_ID)).rejects.toThrow(BadRequestException);
+
+    prisma.completionAct.findFirst.mockResolvedValueOnce(null);
+    await expect(service.cancel(ORG, ACT_ID)).rejects.toThrow(NotFoundException);
+
+    expect(prisma.completionAct.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// Контролер — єдине місце, де автор підписання потрапляє в сервіс. Без нього перехід наряду
+// COMPLETED→INVOICED лишається без запису аудиту (хендлер пропускає події без userId), і жоден
+// сервісний тест цього не помітить: вони передають userId самі.
+describe('CompletionActsController — sign() передає автора', () => {
+  // guards: BR-WO-001
+  it('sign(): user.id іде четвертим аргументом у CompletionActsService.sign', async () => {
+    const sign = vi.fn().mockResolvedValue({ id: 'act' });
+    const controller = new CompletionActsController({ sign } as unknown as CompletionActsService);
+    const dto = { signedBy: 'Іван' };
+
+    await controller.sign('org-1', 'act-1', dto as never, { id: 'user-1' });
+
+    expect(sign).toHaveBeenCalledWith('org-1', 'act-1', dto, 'user-1');
   });
 });

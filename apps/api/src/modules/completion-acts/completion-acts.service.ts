@@ -264,9 +264,8 @@ export class CompletionActsService {
   }
 
   async cancel(orgId: string, id: string): Promise<void> {
-    // sto-optimize: status-guarded soft-delete з narrow `select: { status: true }`
-    // замість full row read. -50-80% wire payload на guard read. Race-safe оскільки
-    // status check + update happen sequentially (race window unchanged from prior code).
+    // sto-optimize: narrow `select: { status: true }` замість full row read — читання тут лише
+    // для точного 404 / 400; від гонки воно НЕ захищає (див. CAS нижче).
     const act = await this.prisma.completionAct.findFirst({
       where: { id, orgId, deletedAt: null },
       select: { status: true },
@@ -278,10 +277,19 @@ export class CompletionActsService {
         translateError('err.completionAct.signedNotCancelable', getLocale()),
       );
     }
-    await this.prisma.completionAct.update({
-      where: { id, orgId },
+    // CAS, а не update за id (Bug #793): читання вище — plain SELECT, тож sign(), що закомітився
+    // між ним і записом, мовчки перезаписувався: акт CANCELLED при наряді INVOICED і вже
+    // виставленому рахунку (відтворено на живій БД). Предикат `status ≠ SIGNED` у where
+    // перевіряється під row-lock: якщо sign() встиг першим — рядків 0, скасування відхилено.
+    const cas = await this.prisma.completionAct.updateMany({
+      where: { id, orgId, deletedAt: null, status: { not: CompletionActStatus.SIGNED } },
       data: { status: CompletionActStatus.CANCELLED },
     });
+    if (cas.count === 0) {
+      throw new BadRequestException(
+        translateError('err.completionAct.signedNotCancelable', getLocale()),
+      );
+    }
   }
 
   async generatePdf(orgId: string, id: string): Promise<Buffer> {

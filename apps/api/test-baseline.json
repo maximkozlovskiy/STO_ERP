@@ -956,15 +956,23 @@
    "CommentsService remove — право на видалення + atomic hard delete чужий автор + не адмін → 403, deleteMany НЕ викликається"
   ],
   "apps/api/src/modules/completion-acts/completion-acts.service.spec.ts": [
+   "CompletionActsController — sign() передає автора sign(): user.id іде четвертим аргументом у CompletionActsService.sign",
+   "CompletionActsService — sign() idempotency + auto-invoice cancel(): DRAFT → CAS updateMany з предикатом status ≠ SIGNED (не update за id)",
+   "CompletionActsService — sign() idempotency + auto-invoice cancel(): sign() закомітився між читанням і записом (CAS count=0) → 400, акт не перезаписано",
+   "CompletionActsService — sign() idempotency + auto-invoice cancel(): уже SIGNED → 400 ще до запису; не знайдено → 404",
    "CompletionActsService — sign() idempotency + auto-invoice sign() (concurrent/retry): CAS count=0 → BadRequestException, WO не оновлено, auto-invoice не викликано",
+   "CompletionActsService — sign() idempotency + auto-invoice sign() без userId (системний виклик): подія переходу все одно емітиться — гейтить хендлер, не сервіс",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): CAS updateMany where status:DRAFT переводить у SIGNED + WO COMPLETED→INVOICED + auto-invoice",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): WO НЕ у COMPLETED → перехід INVOICED пропускається, підписання відбувається",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): auto-invoice \"вже існує активний рахунок\" НЕ роллбечить підписання (best-effort ПОЗА tx)",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): авто-рахунок упав з довільної причини → підписання і перехід лишаються, подія вже пішла, збій у warn",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): акт не знайдено → NotFoundException",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): вже SIGNED → BadRequestException ПЕРЕД CAS",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд не у COMPLETED → статус не чіпається і подія переходу не емітиться",
    "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд скасовано між читанням і записом (CAS по статусу програв) → 400, підписання відкочується, рахунок не створюється",
-   "CompletionActsService — sign() idempotency + auto-invoice sign(): перехід COMPLETED→INVOICED дає подію TRANSITIONED з автором — аудит не губиться"
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): наряд уже CANCELLED → акт усе одно стає SIGNED, наряд не чіпається, рахунку немає (відмову проковтнуто у warn)",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): перехід COMPLETED→INVOICED дає подію TRANSITIONED з автором — аудит не губиться",
+   "CompletionActsService — sign() idempotency + auto-invoice sign(): транзакція не закомітилась → події переходу й авто-рахунку немає (емісія ПІСЛЯ коміту, не всередині)"
   ],
   "apps/api/src/modules/counterparties/counterparties.audit-snapshot.spec.ts": [
    "CounterpartiesService — Bug #719: коректність audit-знімка в update() old-snapshot НЕ містить id і НЕ містить полів поза PATCH (нема фейкового «→undefined»)",
@@ -3330,7 +3338,8 @@
    "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід поза WORK_ORDER_TRANSITIONS → 400, у БД нічого не пишеться",
    "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у CANCELLED (має складські/фінансові side-effects) звідси заборонено — лише transition()",
    "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у COMPLETED (має складські/фінансові side-effects) звідси заборонено — лише transition()",
-   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у IN_PROGRESS (має складські/фінансові side-effects) звідси заборонено — лише transition()"
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції перехід у IN_PROGRESS (має складські/фінансові side-effects) звідси заборонено — лише transition()",
+   "transitionWorkOrderStatusInTx — статус наряду в чужій транзакції уся матриця переходів: ціль із side-effects → відмова; пара з FSM → CAS; решта → 400"
   ],
   "apps/api/src/modules/work-orders/work-order-stock-effects.integration.spec.ts": [
    "WorkOrderStockEffectsService — guarded goodUoM.findMany (integration, live DB, A3) A3-фікс: reserveParts з UoM-частиною через guarded client → 0 TenantIsolationError",
