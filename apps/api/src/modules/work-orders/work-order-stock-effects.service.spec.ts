@@ -473,3 +473,218 @@ describe('WorkOrderStockEffectsService.releasePartReservations — Bug #780 (rel
     expect(rel[0][1].quantity).toBe(-7);
   });
 });
+
+/**
+ * Порядок і послідовність складських рухів наряду (BR-WO-002, BR-WO-003).
+ *
+ * Мок-«журнал» дзеркалить ДВА guard-и реального InventoryService.createMovement:
+ *   • WRITEOFF проходить лише коли available = quantity − reserved ≥ |qty|;
+ *   • RESERVATION_RELEASE — лише коли |qty| ≤ reserved.
+ * Рухи RESERVATION/RESERVATION_RELEASE пишуться у журнал, і stockMovement.findMany читає саме
+ * його — тож нетто-резерв наряду (Bug #780) рахується з того, що сервіс реально зробив, а не
+ * з наперед заготованого масиву.
+ */
+function makeLedgerService(opts: {
+  parts: Array<{ id: string; goodId: string; quantity: number }>;
+  /** Фізичний залишок на (good, склад) — один для всіх товарів тесту. */
+  onHand: number;
+  /** true → кожен createMovement «триває» одну макрозадачу (для перевірки послідовності). */
+  slow?: boolean;
+}) {
+  const ledger: Array<{ goodId: string; warehouseId: string; quantity: number; type: string }> = [];
+  const stock = new Map<string, { quantity: number; reserved: number }>();
+  const item = (goodId: string) => {
+    let s = stock.get(goodId);
+    if (!s) {
+      s = { quantity: opts.onHand, reserved: 0 };
+      stock.set(goodId, s);
+    }
+    return s;
+  };
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const createMovement = vi
+    .fn()
+    .mockImplementation(
+      async (_org: string, dto: { type: string; goodId: string; quantity: number }) => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        try {
+          if (opts.slow) await new Promise(resolve => setTimeout(resolve, 0));
+          const s = item(dto.goodId);
+          if (dto.type === 'RESERVATION') {
+            s.reserved += dto.quantity;
+            ledger.push({ ...dto, warehouseId: WH_ID });
+          } else if (dto.type === 'RESERVATION_RELEASE') {
+            if (Math.abs(dto.quantity) > s.reserved)
+              throw new Error('cannotReleaseMoreThanReserved');
+            s.reserved += dto.quantity;
+            ledger.push({ ...dto, warehouseId: WH_ID });
+          } else if (dto.type === 'WRITEOFF') {
+            if (s.quantity - s.reserved < Math.abs(dto.quantity))
+              throw new Error('insufficientStock');
+            s.quantity += dto.quantity;
+            return { consumed: [{ batchId: 'b1' }], weightedCostPrice: 7 };
+          } else if (dto.type === 'RETURN') {
+            s.quantity += dto.quantity;
+          }
+          return { consumed: [], weightedCostPrice: null };
+        } finally {
+          inFlight--;
+        }
+      },
+    );
+  const prisma = {
+    workOrderPart: {
+      findMany: vi.fn().mockResolvedValue(
+        opts.parts.map(p => ({
+          id: p.id,
+          goodId: p.goodId,
+          warehouseId: WH_ID,
+          quantity: p.quantity,
+          unitOfMeasureId: null,
+        })),
+      ),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    workOrder: { findFirst: vi.fn().mockResolvedValue({ totalAmount: 500 }) },
+    goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+    stockMovement: {
+      findMany: vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(
+            ledger.filter(m => m.type === 'RESERVATION' || m.type === 'RESERVATION_RELEASE'),
+          ),
+        ),
+    },
+  } as unknown as PrismaService;
+  const createTransaction = vi.fn().mockResolvedValue({});
+  const svc = new WorkOrderStockEffectsService(
+    prisma,
+    { createMovement } as unknown as InventoryService,
+    { createTransaction } as unknown as SettlementsService,
+  );
+  return {
+    svc,
+    createMovement,
+    createTransaction,
+    stockOf: (goodId: string) => item(goodId),
+    getMaxInFlight: () => maxInFlight,
+    resetMaxInFlight: () => {
+      maxInFlight = 0;
+    },
+    types: () => createMovement.mock.calls.map(c => (c[1] as { type: string }).type),
+  };
+}
+
+const LEDGER_WO = { id: 'wo-1', counterpartyId: 'cp-1', totalAmount: 500 as never };
+
+describe('WorkOrderStockEffectsService — порядок рухів RESERVATION → RELEASE → WRITEOFF', () => {
+  // guards: BR-WO-002
+  it('увесь залишок у резерві наряду (5 із 5): резерв знімається ДО списання, WRITEOFF не падає', async () => {
+    // Найвужчий випадок: на складі рівно стільки, скільки зарезервував наряд. available = 5 − 5 = 0,
+    // тож WRITEOFF раніше за RELEASE впирається у guard InventoryService «недостатньо товару».
+    const { svc, types, stockOf, createTransaction } = makeLedgerService({
+      parts: [{ id: 'part-1', goodId: GOOD_ID, quantity: 5 }],
+      onHand: 5,
+    });
+
+    await svc.reserveParts(ORG, LEDGER_WO.id, 'user-1'); // APPROVED → IN_PROGRESS
+    expect(stockOf(GOOD_ID)).toEqual({ quantity: 5, reserved: 5 });
+
+    await svc.writeOffPartsAndCharge(ORG, LEDGER_WO, 'user-1'); // IN_PROGRESS → COMPLETED
+
+    expect(types()).toEqual(['RESERVATION', 'RESERVATION_RELEASE', 'WRITEOFF']);
+    expect(stockOf(GOOD_ID)).toEqual({ quantity: 0, reserved: 0 });
+    // Борг нараховується лише після того, як склад відпрацював без винятку.
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  // guards: BR-WO-002
+  it('кілька запчастин: для КОЖНОЇ пара RELEASE → WRITEOFF іде саме в цьому порядку', async () => {
+    const GOOD_2 = '44444444-4444-4444-8444-444444444444';
+    const { svc, createMovement } = makeLedgerService({
+      parts: [
+        { id: 'part-1', goodId: GOOD_ID, quantity: 3 },
+        { id: 'part-2', goodId: GOOD_2, quantity: 3 },
+      ],
+      onHand: 3,
+    });
+
+    await svc.reserveParts(ORG, LEDGER_WO.id, 'user-1');
+    createMovement.mockClear();
+    await svc.writeOffPartsAndCharge(ORG, LEDGER_WO, 'user-1');
+
+    expect(
+      createMovement.mock.calls.map(c => {
+        const dto = c[1] as { type: string; goodId: string };
+        return `${dto.type}:${dto.goodId === GOOD_ID ? 1 : 2}`;
+      }),
+    ).toEqual(['RESERVATION_RELEASE:1', 'WRITEOFF:1', 'RESERVATION_RELEASE:2', 'WRITEOFF:2']);
+  });
+});
+
+describe('WorkOrderStockEffectsService — цикли по запчастинах послідовні, не паралельні', () => {
+  // Три рядки на ТОЙ САМИЙ (товар, склад): саме тут паралельність небезпечна — усі рухи б'ють
+  // в один StockItem (композитний ключ orgId+goodId+warehouseId).
+  const PARTS = [
+    { id: 'part-1', goodId: GOOD_ID, quantity: 2 },
+    { id: 'part-2', goodId: GOOD_ID, quantity: 2 },
+    { id: 'part-3', goodId: GOOD_ID, quantity: 2 },
+  ];
+
+  // guards: BR-WO-003
+  it('reserveParts: наступний RESERVATION стартує лише після завершення попереднього', async () => {
+    const { svc, createMovement, getMaxInFlight } = makeLedgerService({
+      parts: PARTS,
+      onHand: 6,
+      slow: true,
+    });
+    await svc.reserveParts(ORG, LEDGER_WO.id, 'user-1');
+    expect(createMovement).toHaveBeenCalledTimes(3);
+    expect(getMaxInFlight()).toBe(1);
+  });
+
+  // guards: BR-WO-003
+  it('releasePartReservations: RESERVATION_RELEASE по рядках ідуть один за одним', async () => {
+    const { svc, createMovement, getMaxInFlight, resetMaxInFlight } = makeLedgerService({
+      parts: PARTS,
+      onHand: 6,
+      slow: true,
+    });
+    await svc.reserveParts(ORG, LEDGER_WO.id, 'user-1');
+    createMovement.mockClear();
+    resetMaxInFlight(); // міряємо лише метод під тестом, не підготовчий reserveParts
+    await svc.releasePartReservations(ORG, LEDGER_WO.id, 'user-1');
+    expect(createMovement).toHaveBeenCalledTimes(3);
+    expect(getMaxInFlight()).toBe(1);
+  });
+
+  // guards: BR-WO-003
+  it('writeOffPartsAndCharge: RELEASE/WRITEOFF по рядках ідуть один за одним', async () => {
+    const { svc, createMovement, getMaxInFlight, resetMaxInFlight } = makeLedgerService({
+      parts: PARTS,
+      onHand: 6,
+      slow: true,
+    });
+    await svc.reserveParts(ORG, LEDGER_WO.id, 'user-1');
+    createMovement.mockClear();
+    resetMaxInFlight(); // міряємо лише метод під тестом, не підготовчий reserveParts
+    await svc.writeOffPartsAndCharge(ORG, LEDGER_WO, 'user-1');
+    expect(createMovement).toHaveBeenCalledTimes(6);
+    expect(getMaxInFlight()).toBe(1);
+  });
+
+  // guards: BR-WO-003
+  it('returnPartsAndCredit: RETURN по рядках ідуть один за одним', async () => {
+    const { svc, createMovement, getMaxInFlight } = makeLedgerService({
+      parts: PARTS,
+      onHand: 0,
+      slow: true,
+    });
+    await svc.returnPartsAndCredit(ORG, LEDGER_WO, 'user-1');
+    expect(createMovement).toHaveBeenCalledTimes(3);
+    expect(getMaxInFlight()).toBe(1);
+  });
+});

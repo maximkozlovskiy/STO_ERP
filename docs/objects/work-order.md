@@ -167,17 +167,30 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | handlers                                | `events/work-order.handlers.spec.ts`           | 10     |
 | fsm parity                              | `fsm-parity.spec.ts`                           | 12     |
 | integration на живій БД                 | `work-order-stock-effects.integration.spec.ts` | 4      |
-| сервісна логіка                         | `work-order-stock-effects.service.spec.ts`     | 13     |
+| сервісна логіка                         | `work-order-stock-effects.service.spec.ts`     | 19     |
 | сервісна логіка                         | `work-orders-export.service.spec.ts`           | 4      |
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.contract.spec.ts`                 | 22     |
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.fsm.contract.spec.ts`             | 2      |
 | інваріанти (property-based)             | `work-orders.fsm.invariants.spec.ts`           | 16     |
+| нумерація (create/clone)                | `work-orders.numbering.spec.ts`                | 2      |
 | recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |
 | recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 7      |
 | рольовий доступ                         | `work-orders.role-gate.spec.ts`                | 24     |
-| сервісна логіка                         | `work-orders.service.spec.ts`                  | 22     |
+| сервісна логіка                         | `work-orders.service.spec.ts`                  | 23     |
 | share public                            | `work-orders.share-public.spec.ts`             | 9      |
 
-Разом: **150** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **159** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-WO-001** — КОД ПОРУШУЄ ПРАВИЛО (критичне правило 9 з CLAUDE.md). Дос'є: статус наряду змінюється лише через `WORK_ORDER_TRANSITIONS`; код: `completion-acts.service.ts` пише `workOrder.update({ status: 'INVOICED' })` напряму — без `assertFsmTransition`, без CAS по статусу, без події TRANSITIONED (аудиту переходу немає). У модулі `work-orders` правило дотримано. Окремо: діаграма FSM у дос'є містить `IN_PROGRESS → CANCELLED`, якого в `work-orders.fsm.ts` немає.
+- **BR-WO-005** — дос'є: `plannedHours`/`actualHours` — `Decimal(8,2)`, nullable; схема: `Float?`. Nullable-частина правдива й покрита тестами, тип — ні.
+
+**Чого тут НЕМА.** Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
+
+- Guard `available >= qty` живе в `InventoryService.createMovement` (модуль inventory). Спек порядку рухів наряду відтворює його моком-«журналом»; сам guard на живому складі перевіряє лише `work-order-stock-effects.integration.spec.ts`.
+- Порядок рухів доведено на рівні `WorkOrderStockEffectsService`. Наскрізного unit-тесту «`transition()` → правильний метод ефектів» для COMPLETED і CANCELLED немає — лише для входу в IN_PROGRESS.
+- Послідовність циклів перевірено для чотирьох методів `WorkOrderStockEffectsService`. Цикли в `recalcTotals` і `clone` рухів складу не створюють і цим не охоплені.
+- Нумерація: перевірено, що номер береться з `DocumentNumberService`; формат номера й унікальність під конкурентним створенням — зона модуля document-number.

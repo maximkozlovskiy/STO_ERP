@@ -862,6 +862,7 @@
   "apps/api/src/modules/calendar/calendar.service.spec.ts": [
    "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots Bug #628: конвертує EXCLUDE-порушення (23P01) на UPDATE парента у 409 ConflictException",
    "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots Bug #628: не-exclusion помилка пробрасується as-is (не маскується під 409)",
+   "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots conflict probe шукає ЧУЖІ слоти (workOrderId ≠ свій) у half-open перетині на lift АБО employee парента",
    "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots кидає 400 «Підйомник вже зайнятий» коли парент-слот перетинається з іншим WO на тому ж lift",
    "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots кидає 400 «Співробітник вже зайнятий» коли парент-слот перетинається з іншим WO на тому ж employee",
    "CalendarService.syncWorkOrderSlots Bug #444 — conflict check vs OTHER WO slots пропускає conflict check коли parent slot без lift/employee (немає що бронювати)",
@@ -878,6 +879,14 @@
    "CalendarService.syncWorkOrderSlots кидає 404 коли наряд не існує / належить іншій org (Bug #442 tenant guard)",
    "CalendarService.syncWorkOrderSlots повертає { updated: 0 } коли parent slot не існує (no-op)",
    "CalendarService.syncWorkOrderSlots у $transaction робить soft-delete continuation FIRST, потім update parent (Gotcha #review-7640de)"
+  ],
+  "apps/api/src/modules/calendar/calendar.slot-kinds.spec.ts": [
+   "CalendarService — види слотів (BR-CAL) counterpartyId без workOrderId → слот зберігає прямого клієнта, наряд лишається null",
+   "CalendarService — види слотів (BR-CAL) type=BREAK без наряду і без клієнта → слот створюється саме з цим типом",
+   "CalendarService — види слотів (BR-CAL) type=MAINTENANCE без наряду і без клієнта → слот створюється саме з цим типом",
+   "CalendarService — види слотів (BR-CAL) type=MEETING без наряду і без клієнта → слот створюється саме з цим типом",
+   "CalendarService — види слотів (BR-CAL) updateSlot з employeeId=null → знімає механіка зі слота, проба лишається тільки по підйомнику",
+   "CalendarService — види слотів (BR-CAL) слот на підйомник без employeeId → створюється з employeeId=null, зайнятість механіка не перевіряється"
   ],
   "apps/api/src/modules/cash-registers/cash-registers.contract.spec.ts": [
    "CashRegisters — HTTP Contract GET /cash-registers повертає 200 + { items, total } (не голий масив)",
@@ -1837,11 +1846,13 @@
   ],
   "apps/api/src/modules/maintenance-schedules/maintenance-schedules.service.spec.ts": [
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО FK-guard шукає авто у СВОЇЙ org і не видалене",
+   "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО lastDate пізно ввечері за UTC = вже наступна доба в Києві → відлік від КИЇВСЬКОЇ дати",
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО maintenanceType за замовчуванням REGULAR, orgId із контексту",
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО без lastMaintenanceDate або без intervalDays → наступна дата null (не «сьогодні»)",
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО дата наступного ТО = lastDate + intervalDays у КИЇВСЬКОМУ календарі",
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО неіснуюче/видалене авто → 404 (графік не створюється)",
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО пробіг наступного ТО = останній + інтервал; без одного з них → null",
+   "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО є останній пробіг, але немає інтервалу → пробіг наступного ТО null",
    "MaintenanceSchedulesService findAll — bulk-фільтр і видалені авто vehicleId (одиничний) має пріоритет над vehicleIds",
    "MaintenanceSchedulesService findAll — bulk-фільтр і видалені авто vehicleIds обрізається до 200 (захист від сотень id у CSV-параметрі)",
    "MaintenanceSchedulesService findAll — bulk-фільтр і видалені авто графік ВИДАЛЕНОГО авто не потрапляє у список (вкладений vehicle.deletedAt)",
@@ -1852,6 +1863,11 @@
    "MaintenanceSchedulesService remove — soft delete, не hard updateMany з deletedAt (CLAUDE.md §5: hard delete заборонений)",
    "MaintenanceSchedulesService tenant isolation findOne чужого графіка → 404 (не 200 з даними іншої org)",
    "MaintenanceSchedulesService tenant isolation orgId присутній у where КОЖНОГО читання",
+   "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH intervalDays → обидва next* перераховано з нових і збережених значень",
+   "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH intervalMileage → обидва next* перераховано з нових і збережених значень",
+   "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH lastMaintenanceDate → обидва next* перераховано з нових і збережених значень",
+   "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH lastMaintenanceMileage → обидва next* перераховано з нових і збережених значень",
+   "MaintenanceSchedulesService update — next* перераховуються лише за зміни впливового поля PATCH без впливових полів (notes, isActive, maintenanceType) → next* лишаються як були",
    "MaintenanceSchedulesService updateAfterWorkOrder — перерахунок після закритого наряду без пробігу в наряді — беремо попередній пробіг графіка (не скидаємо в null)",
    "MaintenanceSchedulesService updateAfterWorkOrder — перерахунок після закритого наряду бере лише активні графіки свого авто й org",
    "MaintenanceSchedulesService updateAfterWorkOrder — перерахунок після закритого наряду з пробігом — перезаписує останній і рахує наступний від нього",
@@ -2596,6 +2612,11 @@
    "PurchaseOrdersService.transition — FSM map Bug #481: tenant isolation — findFirst отримує orgId+deletedAt у where",
    "PurchaseOrdersService.transition — FSM map Bug #541: PO line DTO містить goodInternalCode / goodSku / goodBrandName"
   ],
+  "apps/api/src/modules/purchase-orders/purchase-orders.line-goods.spec.ts": [
+   "PurchaseOrdersService.create/update — tenant-guard goodId рядків create: goodId рядка з іншої організації → NotFoundException ДО будь-якого запису",
+   "PurchaseOrdersService.create/update — tenant-guard goodId рядків update без поля lines → товари не перевіряються (рядки не чіпаються), 404 немає",
+   "PurchaseOrdersService.create/update — tenant-guard goodId рядків update: goodId рядка з іншої організації → NotFoundException ДО будь-якого запису"
+  ],
   "apps/api/src/modules/purchase-orders/purchase-orders.linked-docs.spec.ts": [
    "PurchaseOrdersService — linked-documents edge cases Bug #A: soft-deleted постачальник → counterparty count=0",
    "PurchaseOrdersService — linked-documents edge cases getLinkedCounts: cross-org → нулі, orgId у where",
@@ -2613,6 +2634,10 @@
    "PurchaseOrdersService.applyPricing пропускає line.good=null (soft-deleted Good) без TypeError",
    "PurchaseOrdersService.applyPricing ціна змінилась → виклик $transaction([good.updateMany, priceHistory.createMany])",
    "PurchaseOrdersService.applyPricing ціна не змінилась (різниця < 0.001) → skip: не пише ні good.updateMany ні priceHistory"
+  ],
+  "apps/api/src/modules/purchase-orders/purchase-orders.receive-ledger.spec.ts": [
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE CAS ДРУГОГО рядка не зійшовся → throw; жодного RECEIPT-руху (і для першого рядка теж) і без SUPPLIER_CHARGE",
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE два рядки → CAS обох рядків ДО першого руху; RECEIPT на кожен рядок; РІВНО ОДИН SUPPLIER_CHARGE на Σ"
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.receive-uom.spec.ts": [
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) Bug #237: partial receive без override → line.unitOfMeasureId НЕ оновлюється (receivedQty > 0)",
@@ -3291,6 +3316,12 @@
    "WorkOrderStockEffectsService — guarded goodUoM.findMany (integration, live DB, A3) передумова: dev-БД доступна"
   ],
   "apps/api/src/modules/work-orders/work-order-stock-effects.service.spec.ts": [
+   "WorkOrderStockEffectsService — порядок рухів RESERVATION → RELEASE → WRITEOFF кілька запчастин: для КОЖНОЇ пара RELEASE → WRITEOFF іде саме в цьому порядку",
+   "WorkOrderStockEffectsService — порядок рухів RESERVATION → RELEASE → WRITEOFF увесь залишок у резерві наряду (5 із 5): резерв знімається ДО списання, WRITEOFF не падає",
+   "WorkOrderStockEffectsService — цикли по запчастинах послідовні, не паралельні releasePartReservations: RESERVATION_RELEASE по рядках ідуть один за одним",
+   "WorkOrderStockEffectsService — цикли по запчастинах послідовні, не паралельні reserveParts: наступний RESERVATION стартує лише після завершення попереднього",
+   "WorkOrderStockEffectsService — цикли по запчастинах послідовні, не паралельні returnPartsAndCredit: RETURN по рядках ідуть один за одним",
+   "WorkOrderStockEffectsService — цикли по запчастинах послідовні, не паралельні writeOffPartsAndCharge: RELEASE/WRITEOFF по рядках ідуть один за одним",
    "WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy safeCoeff→1 (A3 gap) GoodUoM-рядок відсутній (uom set, але lookup порожній) → safeCoeff(undefined)→1, baseQty=quantity",
    "WorkOrderStockEffectsService.fetchPartCoefficients — coeff=0/legacy safeCoeff→1 (A3 gap) GoodUoM.coefficient=0 (legacy/seed) → safeCoeff→1, baseQty=quantity (без Infinity) — MUTATION-VERIFY",
    "WorkOrderStockEffectsService.fetchPartCoefficients — tenant-scope (A3) GoodUoM-lookup несе orgId у where (tenant-isolation) — MUTATION-VERIFY",
@@ -3357,6 +3388,10 @@
    "WORK_ORDER_TRANSITIONS — property-based invariants перехід у PAID можливий тільки з INVOICED",
    "WORK_ORDER_TRANSITIONS — property-based invariants самоперехід (from === to) ніколи не дозволений"
   ],
+  "apps/api/src/modules/work-orders/work-orders.numbering.spec.ts": [
+   "WorkOrdersService — номер наряду з DocumentNumberService clone(): клон отримує НОВИЙ номер із DocumentNumberService, а не номер оригіналу",
+   "WorkOrdersService — номер наряду з DocumentNumberService create(): номер = DocumentNumberService.next(orgId, WORK_ORDER), рівно один виклик"
+  ],
   "apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts": [
    "WorkOrdersService.recalcTotals — defensive take: 1000 cap обробляє великий список (500 рядків) у single-pass reduce без CPU вибуху",
    "WorkOrdersService.recalcTotals — defensive take: 1000 cap обробляє рівно 1000 рядків без truncation/exception (boundary)",
@@ -3411,6 +3446,7 @@
    "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) CAS програв (updateMany count=0) → throw, side-effects НЕ виконуються повторно",
    "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) WO-C1: APPROVED→IN_PROGRESS резервує (reserveParts викликано)",
    "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) WO-C1: ON_HOLD→IN_PROGRESS НЕ резервує повторно (reserveParts НЕ викликано)",
+   "WorkOrdersService.transition — in-tx status re-read guard (double-CHARGE) перехід поза WORK_ORDER_TRANSITIONS (усі заборонені пари) → 400, статус не пишеться, side-effects немає",
    "WorkOrdersService.update — query shape (Bug #350 follow-up) include carries contract { id, number } so toDto can map contractNumber",
    "WorkOrdersService.update — query shape (Bug #350 follow-up) returned dto carries contractNumber from the included contract.number",
    "WorkOrdersService.update — query shape (Bug #350 follow-up) update scopes write to tenant via where.orgId (defense-in-depth)",

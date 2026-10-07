@@ -108,9 +108,15 @@ cd apps/api && npx vitest run src/modules/maintenance-schedules/<файл>.spec.
 
 | Аспект          | Тест                                    | Кейсів |
 | --------------- | --------------------------------------- | ------ |
-| сервісна логіка | `maintenance-schedules.service.spec.ts` | 21     |
+| сервісна логіка | `maintenance-schedules.service.spec.ts` | 28     |
 
-Разом: **21** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **28** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-MAINT-005** — дос'є: усі читання фільтруються `orgId`, `deletedAt: null`, `vehicle.deletedAt: null`; код: `findOne` не має `vehicle.deletedAt` — графік видаленого авто відкривається за id. `findAll` і `findUpcoming` правило виконують. Окремо: зняття `deletedAt: null` з `findOne` і `findUpcoming` не валить жодного тесту.
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
 

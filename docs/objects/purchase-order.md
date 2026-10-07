@@ -196,23 +196,39 @@ else → newContractId = po.contractId                         // unchanged
 cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.spec.ts
 ```
 
-| Аспект                                        | Тест                                                             | Кейсів |
-| --------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| `applyPricing` — правила ціноутворення        | `purchase-orders.pricing.spec.ts`                                | 9      |
-| `receive()` — UoM-override + tenant-валідація | `purchase-orders.receive-uom.spec.ts`                            | 13     |
-| `update()` — резолв контракту контрагента     | `purchase-orders.contract-resolution.spec.ts`                    | 8      |
-| `transition()` — карта `PO_TRANSITIONS`       | `purchase-orders.fsm.spec.ts`                                    | 15     |
-| `findAll` — `sortBy=paymentDate`, nulls-last  | `purchase-orders.sort.spec.ts`                                   | 4      |
-| linked-documents — межові випадки             | `purchase-orders.linked-docs.spec.ts`                            | 5      |
-| `create` — Σ(lines.amount) === totalAmount    | `purchase-orders.totals.spec.ts`                                 | 1      |
-| HTTP-контракт (DTO, статуси, валідація)       | `purchase-orders.contract.spec.ts`                               | 34     |
-| Доставка (Нова Пошта)                         | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
+| Аспект                                         | Тест                                                             | Кейсів |
+| ---------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| `applyPricing` — правила ціноутворення         | `purchase-orders.pricing.spec.ts`                                | 9      |
+| `receive()` — UoM-override + tenant-валідація  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
+| `receive()` — CAS рядків → RECEIPT → борг      | `purchase-orders.receive-ledger.spec.ts`                         | 2      |
+| `create`/`update` — tenant-guard goodId рядків | `purchase-orders.line-goods.spec.ts`                             | 3      |
+| `update()` — резолв контракту контрагента      | `purchase-orders.contract-resolution.spec.ts`                    | 8      |
+| `transition()` — карта `PO_TRANSITIONS`        | `purchase-orders.fsm.spec.ts`                                    | 15     |
+| `findAll` — `sortBy=paymentDate`, nulls-last   | `purchase-orders.sort.spec.ts`                                   | 4      |
+| linked-documents — межові випадки              | `purchase-orders.linked-docs.spec.ts`                            | 5      |
+| `create` — Σ(lines.amount) === totalAmount     | `purchase-orders.totals.spec.ts`                                 | 1      |
+| HTTP-контракт (DTO, статуси, валідація)        | `purchase-orders.contract.spec.ts`                               | 34     |
+| Доставка (Нова Пошта)                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
 
 Спільні DI-провайдери — `purchase-orders.spec-fixture.ts`. Якщо у конструктор
 `PurchaseOrdersService` додається сервіс, усі спеки впадуть із «Nest can't resolve
 dependencies» — це очікувано (клас Bug #536, #724): падіння видно одразу.
 
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-PO-001** — дос'є: `activeLines` — рядки, де `quantity - receivedQty > 0` (за залишком рядка); код: рядки запиту, де рядок замовлення існує і `receivedQty` у запиті > 0. Повністю прийнятий рядок не відфільтровується, а дає 400 від over-receipt guard; невідомий `lineId` мовчки відкидається.
+- **BR-PO-002** — дос'є: `deduplicateBy(receivedLines, l => l.lineId)` перед транзакцією (тихе схлопування дублів); код: дубль `lineId` у запиті → BadRequest до транзакції, `deduplicateBy` у `receive()` не викликається. Фактичну поведінку стереже тест Bug #483 у `purchase-orders.receive-uom.spec.ts`.
+
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) у PurchaseOrder немає,
 хоча агрегат на шляху грошей і статусів. `fsm.spec.ts` перевіряє карту переходів, але
 не властивості на кшталт «фінальний статус не має виходів» — так, як це робить
 `work-orders.fsm.invariants.spec.ts`. Це усвідомлена прогалина, не недогляд.
+
+Справжня гонка двох `receive()` на живій БД не перевіряється: спеки моделюють програний CAS
+моком `updateMany → { count: 0 }` і стежать за порядком викликів, але відкат уже інкрементованого
+рядка і те, що конкурентна транзакція справді бачить змінений `receivedQty`, — властивість
+PostgreSQL, і довести її може лише інтеграційний тест. Tenant-guard goodId перевірено для
+`create`/`update`; шлях імпорту рядків із накладної (`document-line-import.adapter.ts`) має
+власну валідацію і цими спеками не покритий.

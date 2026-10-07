@@ -113,6 +113,7 @@ describe('MaintenanceSchedulesService', () => {
   });
 
   describe('create — FK-guard і розрахунок наступного ТО', () => {
+    // guards: BR-MAINT-004
     it('неіснуюче/видалене авто → 404 (графік не створюється)', async () => {
       prisma.vehicle.findFirst.mockResolvedValue(null);
       await expect(
@@ -121,6 +122,7 @@ describe('MaintenanceSchedulesService', () => {
       expect(prisma.maintenanceSchedule.create).not.toHaveBeenCalled();
     });
 
+    // guards: BR-MAINT-004
     it('FK-guard шукає авто у СВОЇЙ org і не видалене', async () => {
       await svc.create(ORG, { vehicleId: VEHICLE, intervalDays: 30 } as never);
       expect(prisma.vehicle.findFirst.mock.calls[0][0].where).toEqual({
@@ -130,6 +132,7 @@ describe('MaintenanceSchedulesService', () => {
       });
     });
 
+    // guards: BR-MAINT-001
     it('дата наступного ТО = lastDate + intervalDays у КИЇВСЬКОМУ календарі', async () => {
       await svc.create(ORG, {
         vehicleId: VEHICLE,
@@ -141,6 +144,7 @@ describe('MaintenanceSchedulesService', () => {
       expect((data.nextMaintenanceDate as Date).toISOString().slice(0, 10)).toBe('2026-07-09');
     });
 
+    // guards: BR-MAINT-001
     it('без lastMaintenanceDate або без intervalDays → наступна дата null (не «сьогодні»)', async () => {
       await svc.create(ORG, { vehicleId: VEHICLE, intervalDays: 180 } as never);
       expect(
@@ -154,6 +158,7 @@ describe('MaintenanceSchedulesService', () => {
       ).toBeNull();
     });
 
+    // guards: BR-MAINT-002
     it('пробіг наступного ТО = останній + інтервал; без одного з них → null', async () => {
       await svc.create(ORG, {
         vehicleId: VEHICLE,
@@ -171,12 +176,79 @@ describe('MaintenanceSchedulesService', () => {
       ).toBeNull();
     });
 
+    // guards: BR-MAINT-001
+    it('lastDate пізно ввечері за UTC = вже наступна доба в Києві → відлік від КИЇВСЬКОЇ дати', async () => {
+      // 10.01 22:30Z = 11.01 00:30 у Києві. Незалежно від TZ машини: server-local `setDate`
+      // зберіг би час доби (22:30Z / 21:30Z), а UTC-календар дав би 09.07 замість 10.07.
+      await svc.create(ORG, {
+        vehicleId: VEHICLE,
+        intervalDays: 180,
+        lastMaintenanceDate: '2026-01-10T22:30:00.000Z',
+      } as never);
+      const data = prisma.maintenanceSchedule.create.mock.calls[0][0].data;
+      expect((data.nextMaintenanceDate as Date).toISOString()).toBe('2026-07-10T00:00:00.000Z');
+    });
+
+    // guards: BR-MAINT-002
+    it('є останній пробіг, але немає інтервалу → пробіг наступного ТО null', async () => {
+      await svc.create(ORG, { vehicleId: VEHICLE, lastMaintenanceMileage: 50_000 } as never);
+      expect(
+        prisma.maintenanceSchedule.create.mock.calls[0][0].data.nextMaintenanceMileage,
+      ).toBeNull();
+    });
+
     it('maintenanceType за замовчуванням REGULAR, orgId із контексту', async () => {
       await svc.create(ORG, { vehicleId: VEHICLE, intervalDays: 30 } as never);
       const data = prisma.maintenanceSchedule.create.mock.calls[0][0].data;
       expect(data.maintenanceType).toBe('REGULAR');
       expect(data.orgId).toBe(ORG);
     });
+  });
+
+  describe('update — next* перераховуються лише за зміни впливового поля', () => {
+    // «Застарілі» next* навмисно НЕ дорівнюють last + interval: так видно, чи їх
+    // перерахували (2026-07-09 / 60 000), чи лишили як були (2026-08-01 / 61 500).
+    const STALE_DATE = new Date('2026-08-01T00:00:00.000Z');
+    const STALE_MILEAGE = 61_500;
+
+    beforeEach(() => {
+      prisma.maintenanceSchedule.findFirst.mockResolvedValue({
+        lastMaintenanceDate: new Date('2026-01-10T00:00:00.000Z'),
+        lastMaintenanceMileage: 50_000,
+        intervalDays: 180,
+        intervalMileage: 10_000,
+        nextMaintenanceDate: STALE_DATE,
+        nextMaintenanceMileage: STALE_MILEAGE,
+      });
+    });
+
+    // guards: BR-MAINT-003
+    it('PATCH без впливових полів (notes, isActive, maintenanceType) → next* лишаються як були', async () => {
+      await svc.update(ORG, 'ms-1', {
+        notes: 'нотатка',
+        isActive: false,
+        maintenanceType: 'OIL',
+      } as never);
+      const data = prisma.maintenanceSchedule.update.mock.calls[0][0].data;
+      expect(data.nextMaintenanceDate).toBe(STALE_DATE);
+      expect(data.nextMaintenanceMileage).toBe(STALE_MILEAGE);
+    });
+
+    // guards: BR-MAINT-003
+    it.each([
+      ['lastMaintenanceDate', { lastMaintenanceDate: '2026-02-01' }, '2026-07-31', 60_000],
+      ['lastMaintenanceMileage', { lastMaintenanceMileage: 55_000 }, '2026-07-09', 65_000],
+      ['intervalDays', { intervalDays: 90 }, '2026-04-10', 60_000],
+      ['intervalMileage', { intervalMileage: 15_000 }, '2026-07-09', 65_000],
+    ])(
+      'PATCH %s → обидва next* перераховано з нових і збережених значень',
+      async (_field, dto, expectedDate, expectedMileage) => {
+        await svc.update(ORG, 'ms-1', dto as never);
+        const data = prisma.maintenanceSchedule.update.mock.calls[0][0].data;
+        expect((data.nextMaintenanceDate as Date).toISOString().slice(0, 10)).toBe(expectedDate);
+        expect(data.nextMaintenanceMileage).toBe(expectedMileage);
+      },
+    );
   });
 
   describe('remove — soft delete, не hard', () => {

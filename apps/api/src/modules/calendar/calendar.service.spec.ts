@@ -190,6 +190,7 @@ describe('CalendarService.syncWorkOrderSlots', () => {
     const liftId = '22222222-2222-4222-8222-222222222222';
     const employeeId = '33333333-3333-4333-8333-333333333333';
 
+    // guards: BR-CAL-005
     it('кидає 400 «Підйомник вже зайнятий» коли парент-слот перетинається з іншим WO на тому ж lift', async () => {
       const prisma = buildPrismaMock({
         parentSlot: { id: 'parent-1', liftId, employeeId: null },
@@ -207,6 +208,7 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       expect(prisma._txCalendarSlot.updateMany).not.toHaveBeenCalled();
     });
 
+    // guards: BR-CAL-005
     it('кидає 400 «Співробітник вже зайнятий» коли парент-слот перетинається з іншим WO на тому ж employee', async () => {
       const prisma = buildPrismaMock({
         parentSlot: { id: 'parent-1', liftId: null, employeeId },
@@ -221,6 +223,32 @@ describe('CalendarService.syncWorkOrderSlots', () => {
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma._txCalendarSlot.updateMany).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CAL-005
+    it('conflict probe шукає ЧУЖІ слоти (workOrderId ≠ свій) у half-open перетині на lift АБО employee парента', async () => {
+      const prisma = buildPrismaMock({
+        parentSlot: { id: 'parent-1', liftId, employeeId },
+        conflictingSlot: null,
+        updatedCount: 1,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      await service.syncWorkOrderSlots(orgId, workOrderId, {
+        startAt: '2026-05-22T10:00:00.000Z',
+        endAt: '2026-05-22T11:00:00.000Z',
+      });
+      // findFirst #1 — parent lookup, #2 — conflict probe.
+      expect(prisma._txCalendarSlot.findFirst).toHaveBeenCalledTimes(2);
+      const where = prisma._txCalendarSlot.findFirst.mock.calls[1][0].where;
+      expect(where).toEqual({
+        orgId,
+        deletedAt: null,
+        workOrderId: { not: workOrderId },
+        startAt: { lt: new Date('2026-05-22T11:00:00.000Z') },
+        endAt: { gt: new Date('2026-05-22T10:00:00.000Z') },
+        OR: [{ liftId }, { employeeId }],
+      });
     });
 
     it('пропускає conflict check коли parent slot без lift/employee (немає що бронювати)', async () => {

@@ -5,6 +5,8 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { InventoryService } from '../inventory/inventory.service';
 import type { SettlementsService } from '../settlements/settlements.service';
 import type { WorkOrderQueryDto } from './work-orders.dto';
+import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
+import type { WorkOrderStatus } from '@prisma/client';
 
 // ─── Query-shape regression spec (Bug #163 / #171 pattern) ────────────────────
 //
@@ -214,6 +216,7 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     return { prisma, partsFindMany };
   }
 
+  // guards: BR-WO-002
   it('WO-C1: APPROVED→IN_PROGRESS резервує (reserveParts викликано)', async () => {
     const { prisma, partsFindMany } = makeTransitionPrisma('APPROVED');
     await makeService(prisma).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
@@ -224,6 +227,35 @@ describe('WorkOrdersService.transition — in-tx status re-read guard (double-CH
     const { prisma, partsFindMany } = makeTransitionPrisma('ON_HOLD');
     await makeService(prisma).transition(ORG, WO_ID, 'IN_PROGRESS' as never);
     expect(partsFindMany).not.toHaveBeenCalled();
+  });
+
+  // Сервісний рівень FSM. Саму карту WORK_ORDER_TRANSITIONS стережуть invariants/parity-спеки,
+  // але вони не виконують transition(): якщо з нього зникне assertFsmTransition, карта лишиться
+  // правильною, а будь-який статус стане досяжним — і жоден із тих спеків цього не помітить.
+  it('перехід поза WORK_ORDER_TRANSITIONS (усі заборонені пари) → 400, статус не пишеться, side-effects немає', async () => {
+    const statuses = Object.keys(WORK_ORDER_TRANSITIONS) as WorkOrderStatus[];
+    let checked = 0;
+    for (const from of statuses) {
+      for (const to of statuses) {
+        if (WORK_ORDER_TRANSITIONS[from].includes(to)) continue;
+        const { prisma, partsFindMany } = makeTransitionPrisma(from);
+        const spies = prisma as unknown as {
+          workOrder: { updateMany: ReturnType<typeof vi.fn> };
+          $transaction: ReturnType<typeof vi.fn>;
+        };
+
+        await expect(makeService(prisma).transition(ORG, WO_ID, to)).rejects.toThrow(
+          `Перехід зі статусу "${from}" в "${to}" неможливий`,
+        );
+        expect(spies.$transaction).not.toHaveBeenCalled();
+        expect(spies.workOrder.updateMany).not.toHaveBeenCalled();
+        expect(partsFindMany).not.toHaveBeenCalled();
+        checked++;
+      }
+    }
+    // Запобіжник від «порожнього» проходу: заборонених пар завжди більше, ніж статусів
+    // (щонайменше самоперехід кожного статусу).
+    expect(checked).toBeGreaterThanOrEqual(statuses.length);
   });
 });
 

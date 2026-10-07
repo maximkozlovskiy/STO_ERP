@@ -476,6 +476,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
   // CAS receive (pre-prod audit H1): concurrent/дубльований receive() з однаковим payload не має
   // подвоювати оприбуткування + SUPPLIER_CHARGE. updateMany where receivedQty=<очікуване> —
   // якщо інша транзакція вже змінила рядок → count=0 → throw ДО createMovement/createTransaction.
+  // guards: BR-PO-005
   it('CAS-guard: рядок уже змінено (updateMany count=0) → throw, БЕЗ RECEIPT-руху і БЕЗ SUPPLIER_CHARGE', async () => {
     prisma.purchaseOrder.findFirst.mockReset();
     prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
@@ -640,6 +641,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
   // ── Bug #712: over-receipt guard (receivedQty не може перевищити orderedQty) ──────────────
   // Mutation-verified: якщо прибрати guard `line.receivedQty + recv.receivedQty > line.quantity`,
   // прийом 100 на замовлені 10 пройшов би → RECEIPT +100 у склад + SUPPLIER_CHARGE ×100·price.
+  // guards: BR-PO-003
   it('Bug #712: прийом > orderedQty (fresh line) → 400, ЖОДНОГО inventory/settlement write', async () => {
     // Дефолтна фікстура beforeEach: line quantity=10, receivedQty=0. Приймаємо 11 (>10).
     await expect(
@@ -651,6 +653,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     expect(prisma.purchaseOrderLine.updateMany).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PO-003
   it('Bug #712: кумулятивний прийом перевищує orderedQty (partial line) → 400', async () => {
     // Лінія вже частково прийнята: quantity=10, receivedQty=7 → залишок 3. Приймаємо 5 (>3).
     prisma.purchaseOrder.findFirst.mockReset();
