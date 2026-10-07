@@ -11,10 +11,13 @@
   · E2E — маршрут. Карта «спек → маршрути» будується з `page.goto('/…')` у спеках, а
     «змінений файл → маршрути» — зворотним графом імпортів web до сторінок `app/`.
 Для api-модуля маршрути шукаються так:
-  1. рядок `**Маршрути UI:**` у дос'є агрегату (`docs/objects/*.md`) — явне перевизначення;
-  2. інакше однойменна тека в `app/(app)/` (invoices → /invoices) ПЛЮС сторінки, чий власний
+  1. рядок `**Маршрути UI:**` у дос'є агрегату (`docs/objects/*.md`) — явне ДОПОВНЕННЯ: до
+     нього додаються сторінки з п.2/3 (без ескалації до «весь E2E»), він їх не заміняє;
+  2. однойменна тека в `app/(app)/` (invoices → /invoices) ПЛЮС сторінки, чий власний
      код звертається до URL контролерів модуля (/work-orders створює рахунок → теж у виборі);
   3. без однойменної теки — лише шляхи `@Controller('…')` → web-файли з цими URL → сторінки.
+Окремо від маршрутів — E2E-спеки, які САМІ звертаються до URL контролерів модуля (беруть через
+API контрагента чи товар для свого документа): вони у виборі незалежно від сторінок.
 До цього додаються маршрути api-модулів, які (транзитивно) ІМПОРТУЮТЬ змінений файл:
 InventoryService правлять в inventory, а ламається він у нарядах і накладних.
 
@@ -423,10 +426,10 @@ def dossier_routes():
     return out
 
 
-def controller_patterns(mod):
-    """Регекси URL-літералів web для кожного `@Controller('…')` модуля.
+def controller_bodies(mod):
+    """Регекс-тіла шляхів `@Controller('…')` модуля.
 
-    'work-orders/:workOrderId/media' → літерал, що починається з /work-orders/<будь-що>/media.
+    'work-orders/:workOrderId/media' → work-orders/<будь-що>/media.
     """
     out = []
     pattern = os.path.join(ROOT, API_MODULES, mod, "**", "*.controller.ts")
@@ -435,9 +438,35 @@ def controller_patterns(mod):
             segs = [x for x in m.group(1).strip("/").split("/") if x]
             if not segs or segs[0].startswith(":"):
                 continue
-            body = "/".join("[^/'\"`?]+" if x.startswith(":") else re.escape(x) for x in segs)
-            out.append(re.compile("['\"`]/" + body + "(?=[/'\"`?$])"))
+            out.append(
+                "/".join("[^/'\"`?]+" if x.startswith(":") else re.escape(x) for x in segs)
+            )
     return out
+
+
+def controller_patterns(mod):
+    """Регекси URL-літералів web: літерал, що ПОЧИНАЄТЬСЯ з шляху контролера модуля."""
+    return [re.compile("['\"`]/" + b + "(?=[/'\"`?$])") for b in controller_bodies(mod)]
+
+
+def specs_calling(mod, smap):
+    """E2E-спеки (не наскрізні), у ТЕКСТІ яких є URL контролерів модуля.
+
+    Спек сам ходить в API: `fetch(`${API}/counterparties?limit=1`)`, щоб узяти контрагента для
+    документа, який створює. Це ребро «спек → api» не проходить через жодну сторінку, тож ні
+    маршрут, ні граф імпортів web його не бачать. Мутаційна перевірка 2026-10-07: порожній
+    список із GET /counterparties валить 11 спек-файлів поза /counterparties і /vehicles.
+    На відміну від web-літералів, тут URL буває посеред рядка (`${API}/…`, `http://…/api/v1/…`).
+    """
+    tail = r"(?![\w-])"
+    pats = [re.compile(r"(?<![\w-])/" + b + tail) for b in controller_bodies(mod)]
+    if not pats:
+        return []
+    return sorted(
+        spec
+        for spec in smap
+        if spec not in CROSS_E2E and any(p.search(read(E2E_DIR + spec)) for p in pats)
+    )
 
 
 def url_hits(mod, reverse):
@@ -459,19 +488,29 @@ def module_routes(mod, primary, ctx):
     змінений файл), і для нього береться лише найближче: власна сторінка або, якщо її
     немає, сторінки з прямими зверненнями до його URL.
     """
-    declared = ctx["droutes"].get(mod)
-    if declared:
-        return set(declared), None
+    declared = set(ctx["droutes"].get(mod) or ())
     own = {mod} & ctx["all_routes"]
-    if own and not primary:
-        return own, None
+    if not primary and (declared or own):
+        return declared or own, None
     hits = url_hits(mod, ctx["reverse"])
+    if primary and declared:
+        # Рядок дос'є ДОПОВНЮЄ виведене з коду, а не заміняє його. Коли він заміняв,
+        # `/counterparties, /vehicles` у дос'є контрагента ховав 12 сторінок, що звертаються
+        # до /counterparties (наряди, рахунки, закупівлі, календар…): зламаний список
+        # контрагентів давав вибір із 4 спеків при 12 червоних файлах у повному прогоні.
+        # До «весь E2E» тут не ескалюємо: рядок у дос'є і є відповіддю на «забагато сторінок».
+        found = declared | own
+        for reached in hits:
+            if not is_shared(reached):
+                found |= reached
+        return found, None
     if primary and not own:
         # Сторінки з такою назвою немає, тож літерал URL — це виклик API, а не href.
         via = set().union(*hits) if hits else set()
+        if "" in via:
+            return set(), "api-модуль %s використовується оболонкою всіх сторінок" % mod
         if is_shared(via):
-            reason = "api-модуль %s використовується на %d+ сторінках" % (mod, len(via - {""}))
-            return set(), reason
+            return set(), "api-модуль %s використовується на %d сторінках" % (mod, len(via))
         return via, None
     direct = set(own)
     for reached in hits:
@@ -615,6 +654,7 @@ def select(files):
     ctx = {"all_routes": app_routes(), "droutes": dossier_routes(), "reverse": None}
     unresolved = api_reverse = None
     routes, api_units, web_units, direct_specs = set(), [], [], []
+    calling = {}
     web_code_changed = False
     route_cache = {}
 
@@ -679,7 +719,9 @@ def select(files):
                 if why:
                     file_routes.add("")  # визначено: весь E2E
                 file_routes |= found
-            if not file_routes and mod not in res["e2e_undetermined"]:
+            if mod not in calling:
+                calling[mod] = specs_calling(mod, smap)
+            if not file_routes and not calling[mod] and mod not in res["e2e_undetermined"]:
                 res["e2e_undetermined"].append(mod)
             routes.update(file_routes - {""})
             continue
@@ -724,7 +766,16 @@ def select(files):
     res["web_all"] = len(quote(res["web"], "apps/web/")) > MAX_ARGS_CHARS
 
     specs = set(direct_specs) | set(specs_for_routes(routes, smap))
+    for found in calling.values():
+        specs.update(found)
     no_e2e = sorted(r for r in routes if not specs_for_routes([r], smap))
+    # Маршрут без власного спека, який відвідує лише наскрізний (/setup — smoke і api-errors):
+    # для зміни api наскрізні загалом не додаються, але тут вони — єдина варта сторінки.
+    # Без цього вибір був порожній, а примітка казала «без жодного E2E-спека» — неправду.
+    guards = {r: sorted(s for s in CROSS_E2E if r in smap.get(s, ())) for r in no_e2e}
+    for found in guards.values():
+        specs.update(found)
+    no_e2e = [r for r in no_e2e if not guards[r]]
     if no_e2e:
         res["notes"].append("маршрути без жодного E2E-спека: " + ", ".join(no_e2e))
     # Наскрізні спеки (a11y, console-errors, smoke…) обходять усі сторінки й коштують

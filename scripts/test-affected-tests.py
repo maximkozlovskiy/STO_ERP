@@ -121,7 +121,7 @@ def _():
     assert r["routes"] == ["invoices"], r["routes"]
 
 
-@case("**Маршрути UI:** у дос'є перевизначає маршрут api-модуля")
+@case("**Маршрути UI:** у дос'є задає маршрут api-модуля без однойменної сторінки")
 def _():
     r = run("apps/api/src/modules/goods/goods.service.ts")
     assert "catalog" in r["routes"] and "inventory" in r["routes"], r["routes"]
@@ -311,6 +311,45 @@ def _():
     assert "ІНШЕ: " + cmd in out, out
     # Пакет без тестів команди не отримує: вона впала б із «No test files found».
     assert not [c for c in run("packages/ui/src/index.ts")["scripts"] if "vitest" in c]
+
+
+@case("**Маршрути UI:** доповнює виведене з коду, а не ховає сторінки, що кличуть API модуля")
+def _():
+    # Мутація: GET /counterparties віддає порожній список → 12 червоних спек-файлів, з них
+    # у старому виборі (рівно маршрути з дос'є: /counterparties, /vehicles) був один.
+    r = run("apps/api/src/modules/counterparties/counterparties.service.ts")
+    assert not r["full"] and not r["e2e_full"], r["reasons"]
+    assert "vehicles" in r["routes"], "маршрут із дос'є мусить лишитись"
+    # сторінки, чий код звертається до /counterparties (вибір контрагента в документі)
+    for spec in ("crud-invoice.spec.ts", "crud-purchase-order.spec.ts", "crud-calendar-slot.spec.ts"):
+        assert spec in r["e2e"], (spec, r["e2e"])
+    assert CROSS not in r["e2e"], "зміна лише api наскрізних не тягне"
+
+
+@case("спек, який сам ходить в API модуля, у виборі — навіть якщо сторінка модуля не його")
+def _():
+    # work-orders-detail бере гараж через `/counterparties/${id}/garages`, а ходить лише на
+    # /work-orders; vehicles — модуль без рядка в дос'є, тож це чисте ребро «спек → api».
+    r = run("apps/api/src/modules/vehicles/vehicles.service.ts")
+    assert "work-orders" not in r["routes"], r["routes"]
+    assert "work-orders-detail.spec.ts" in r["e2e"], r["e2e"]
+    mod = load()
+    smap = mod.spec_routes()
+    assert "client-payments.spec.ts" in mod.specs_calling("counterparties", smap)
+    assert "a11y.spec.ts" not in mod.specs_calling("counterparties", smap), "наскрізні — окремо"
+    assert mod.specs_calling("reconciliation", smap) == [], "модуль без контролера"
+
+
+@case("зміна api, чию сторінку відвідує лише наскрізний спек → він у виборі, а не «E2E : —»")
+def _():
+    # /setup не має власного спека: його відвідують smoke і api-errors. Раніше для
+    # setup.service.ts вибір був порожній, а примітка казала «маршрути без жодного E2E-спека».
+    r = run("apps/api/src/modules/setup/setup.service.ts")
+    assert "smoke.spec.ts" in r["e2e"] and "api-errors.spec.ts" in r["e2e"], r["e2e"]
+    assert CROSS not in r["e2e"], "наскрізний спек, що /setup не відвідує, тут зайвий"
+    assert not [n for n in r["notes"] if "без жодного E2E" in n], r["notes"]
+    # Модуль із власною сторінкою і спеком наскрізних, як і раніше, не тягне.
+    assert CROSS not in run("apps/api/src/modules/invoices/invoices.service.ts")["e2e"]
 
 
 @case("кожен E2E-спек досяжний: або наскрізний, або відвідує наявний маршрут")
