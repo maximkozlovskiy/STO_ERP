@@ -56,14 +56,24 @@ describe('transitionWorkOrderStatusInTx — статус наряду в чуж�
 /**
  * Статичний сторож BR-WO-001. Unit-тести з моками не бачать, що десь у ІНШОМУ модулі з'явився
  * прямий запис статусу наряду — саме так `completion-acts` роками писав `INVOICED` повз FSM.
- * Цей тест читає код усіх модулів і валиться, якщо знайде `workOrder.update*( … status: … )`
- * поза двома дозволеними місцями.
+ * Цей тест читає весь прод-код `apps/api/src` і валиться, якщо знайде запис статусу наряду поза
+ * двома дозволеними файлами.
+ *
+ * Сторож fail-closed: виклик, чий `data` він не може прочитати як літерал (змінна, shorthand,
+ * spread, виклик функції), — теж порушення. Перша версія такі форми мовчки пропускала, а саме
+ * так пише сам `transition()` (`data: updates`).
+ *
+ * ЧОГО ВІН НЕ БАЧИТЬ (свідомо — regex, не AST):
+ *  - делегат через псевдонім: `const wo = tx.workOrder; wo.update(...)`;
+ *  - динамічний делегат: `(prisma as any)[model].update(...)` (так пише sync push — там статус
+ *    наряду захищає `PUSH_FIELD_WHITELIST`, а не цей тест);
+ *  - сирий SQL, де назва таблиці зібрана з частин.
  */
 describe('BR-WO-001 — статус наряду пишеться лише у двох місцях', () => {
-  const MODULES = join(__dirname, '..');
+  const SRC = join(__dirname, '..', '..');
   const ALLOWED = new Set([
-    'work-orders/work-orders.service.ts',
-    'work-orders/work-order-status.ts',
+    'modules/work-orders/work-orders.service.ts',
+    'modules/work-orders/work-order-status.ts',
   ]);
 
   function walk(dir: string, out: string[] = []): string[] {
@@ -76,34 +86,62 @@ describe('BR-WO-001 — статус наряду пишеться лише у �
     return out;
   }
 
-  /** Виклики `workOrder.update(` / `workOrder.updateMany(`, у чиєму `data` є ключ `status`. */
+  /** Текст від `open` (індекс відкривної дужки) до парної закривної, включно. */
+  function balanced(src: string, open: number, l: string, r: string): string {
+    let depth = 0;
+    let i = open;
+    do {
+      if (src[i] === l) depth++;
+      else if (src[i] === r) depth--;
+      i++;
+    } while (i < src.length && depth > 0);
+    return src.slice(open, i);
+  }
+
+  const short = (text: string) => text.replace(/\s+/g, ' ').slice(0, 120);
+
+  /** Записи статусу наряду: виклики делегата, вкладений запис через зв'язок, сирий SQL. */
   function statusWrites(src: string): string[] {
     const hits: string[] = [];
-    const call = /\bworkOrder\s*\.\s*(?:update|updateMany)\s*\(/g;
-    while (call.exec(src) !== null) {
-      // тіло виклику — до парної закривної дужки
-      let depth = 1;
-      let i = call.lastIndex;
-      while (i < src.length && depth > 0) {
-        if (src[i] === '(') depth++;
-        else if (src[i] === ')') depth--;
-        i++;
+
+    // 1. tx.workOrder.update( / updateMany( / upsert( — також tx['workOrder'].update(
+    const call =
+      /\bworkOrder['"]?\s*\]?\s*\.\s*(?:update|updateMany|updateManyAndReturn|upsert)\s*\(/g;
+    let m: RegExpExecArray | null;
+    while ((m = call.exec(src)) !== null) {
+      const body = balanced(src, call.lastIndex - 1, '(', ')');
+      // update/updateMany несуть зміни в `data:`, upsert — в `update:`
+      const key = /\b(?:data|update)\s*:\s*/.exec(body);
+      if (!key) {
+        hits.push(`data не літерал (не перевірити): ${short(m[0] + body.slice(1))}`);
+        continue;
       }
-      const body = src.slice(call.lastIndex, i);
-      const data = /\bdata\s*:\s*(\{[\s\S]*\}|\w+)/.exec(body);
-      if (!data) continue;
-      // `status:` як ключ об'єкта data, або data — змінна з назвою на кшталт `updates` (перевіряємо ім'я)
-      if (/(^|[{,\s])status\s*[:,}]/.test(data[1]))
-        hits.push(body.replace(/\s+/g, ' ').slice(0, 120));
+      const at = key.index + key[0].length;
+      if (body[at] !== '{') {
+        hits.push(`data не літерал (не перевірити): ${short(m[0] + body.slice(1))}`);
+        continue;
+      }
+      const data = balanced(body, at, '{', '}');
+      if (/\.\.\./.test(data)) hits.push(`spread у data (не перевірити): ${short(data)}`);
+      else if (/(^|[{,\s])status\s*[:,}]/.test(data)) hits.push(short(m[0] + body.slice(1)));
     }
+
+    // 2. вкладений запис із іншої моделі: invoice.update({ data: { workOrder: { update: {…} } } })
+    const nested = /\bworkOrder\s*:\s*\{\s*(?:update|updateMany|upsert)\s*:/g;
+    while ((m = nested.exec(src)) !== null) hits.push(`вкладений запис: ${short(m[0])}`);
+
+    // 3. сирий SQL
+    const raw = /\bUPDATE\s+(?:ONLY\s+)?(?:"?public"?\s*\.\s*)?"?work_orders"?/gi;
+    while ((m = raw.exec(src)) !== null) hits.push(`сирий SQL: ${short(m[0])}`);
+
     return hits;
   }
 
   // guards: BR-WO-001
-  it('жоден модуль поза work-orders не пише workOrder.status напряму', () => {
+  it('жоден файл поза двома дозволеними не пише workOrder.status напряму', () => {
     const offenders: string[] = [];
-    for (const file of walk(MODULES)) {
-      const rel = relative(MODULES, file).split(sep).join('/');
+    for (const file of walk(SRC)) {
+      const rel = relative(SRC, file).split(sep).join('/');
       if (ALLOWED.has(rel)) continue;
       for (const hit of statusWrites(readFileSync(file, 'utf-8'))) offenders.push(`${rel}: ${hit}`);
     }
@@ -115,5 +153,39 @@ describe('BR-WO-001 — статус наряду пишеться лише у �
     const ok = `await tx.workOrder.update({ where: { id, orgId }, data: { paidAmount: { increment: 1 } } });`;
     expect(statusWrites(bad)).toHaveLength(1);
     expect(statusWrites(ok)).toHaveLength(0);
+  });
+
+  // guards: BR-WO-001
+  it.each([
+    ['data — змінна', `await tx.workOrder.updateMany({ where: { id, orgId }, data: updates });`],
+    ['data — shorthand', `await tx.workOrder.update({ where: { id, orgId }, data });`],
+    ['spread у data', `await tx.workOrder.update({ where: { id, orgId }, data: { ...patch } });`],
+    ['shorthand status', `await tx.workOrder.update({ where: { id, orgId }, data: { status } });`],
+    [
+      'upsert',
+      `await tx.workOrder.upsert({ where: { id }, create: base, update: { status: 'PAID' } });`,
+    ],
+    [
+      'делегат через індекс',
+      `await tx['workOrder'].update({ where: { id }, data: { status: s } });`,
+    ],
+    [
+      'вкладений запис',
+      `await tx.invoice.update({ where: { id, orgId }, data: { workOrder: { update: { status: 'PAID' } } } });`,
+    ],
+    ['сирий SQL', 'await tx.$executeRaw`UPDATE work_orders SET status = ${s} WHERE id = ${id}`;'],
+    ['сирий SQL у лапках', 'await tx.$executeRaw`update "work_orders" set "status" = ${s}`;'],
+  ])('детектор ловить обхідну форму: %s', (_name, code) => {
+    expect(statusWrites(code).length).toBeGreaterThan(0);
+  });
+
+  it('детектор не плутає `status` у where із записом статусу (без хибних спрацювань)', () => {
+    const casOnOtherField = `await this.prisma.workOrder.updateMany({
+      data: { shareToken: token },
+      where: { id, orgId, status: 'DRAFT', deletedAt: null },
+    });`;
+    const readOnly = `await tx.workOrder.findFirst({ where: { id, orgId }, select: { status: true } });`;
+    expect(statusWrites(casOnOtherField)).toEqual([]);
+    expect(statusWrites(readOnly)).toEqual([]);
   });
 });

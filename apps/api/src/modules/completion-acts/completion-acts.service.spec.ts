@@ -1,10 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import type {
-  WorkOrderTransitionedEvent} from '../work-orders/events/work-order.events';
-import {
-  WORK_ORDER_EVENTS
-} from '../work-orders/events/work-order.events';
+import type { WorkOrderTransitionedEvent } from '../work-orders/events/work-order.events';
+import { WORK_ORDER_EVENTS } from '../work-orders/events/work-order.events';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CompletionActStatus } from '@prisma/client';
 import { vi, describe, it, expect, beforeEach } from 'vitest';

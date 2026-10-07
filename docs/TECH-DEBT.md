@@ -405,6 +405,25 @@ serious/critical шести типів:
   loyalty/payments, `attempts`/backoff черги `checkbox`, шифрування at-rest провайдер-конфігів,
   conflict probe у `createSlot`/`updateSlot` календаря, `deletedAt: null` у `findOne` і
   `findUpcoming` графіків ТО (мутація не валить жодного тесту).
+- **Акт виконаних робіт не створюється на жодній org — немає `DocumentNumberConfig` для
+  `COMPLETION_ACT`** (знайдено review 2026-10-07 живим запитом): `POST
+/completion-acts/from-work-order/:id` на dev-БД дає 404 «Конфігурацію нумерації для
+  "COMPLETION_ACT" не знайдено». Тип є в enum (міграція `20260525044816`), але його немає ні в
+  `seed.ts`, ні в `setup.service.ts`, ні в backfill-міграції — на відміну від `SUPPLIER_RETURN`,
+  `GOOD_INTERNAL_CODE`, `SUPPLIER_PAYMENT`, які мають міграції `seed_*_doc_numbers`. Потрібні
+  міграція-backfill + рядок у seed і setup; префікс — за власником. Окремо: `setup.service.ts`
+  створює 8 типів із 13 (без `SUPPLIER_RETURN`, `COUNTERPARTY_AGREEMENT`, `GOOD_INTERNAL_CODE`,
+  `SUPPLIER_PAYMENT`, `COMPLETION_ACT`) — org, створена через `/setup/init` ПІСЛЯ тих міграцій,
+  backfill-ом не покрита (не перевірено на чистій інсталяції — лише читанням коду).
+- **`CompletionActsService.sign()` не перевіряє статус наряду.** Акт-чернетку можна підписати
+  для наряду, скасованого після створення акта (`COMPLETED → CANCELLED` повертає запчастини й
+  сторнує борг): акт стає `SIGNED`, авто-рахунок мовчки не створюється (`logger.warn`). Після
+  BR-WO-001 це ще й шлях «після гонки»: CAS дає 400 «Статус наряду змінився — повторіть дію»,
+  повтор підписує акт уже скасованого наряду. Рішення за власником: забороняти підпис поза
+  `INVOICEABLE_STATUSES` чи скасовувати чернетки актів при `CANCELLED`.
+- `sign()` розпізнає «рахунок уже є» за українським текстом помилки
+  (`msg.includes('вже існує активний рахунок')`): з локаллю `en` очікувана ситуація пишеться в
+  лог як збій авто-рахунку. Лише шум у логах, не поведінка.
 - 6 дос'є без жодного `BR-…` (bank-statements, cash, inventory, payroll, report-builder,
   settlements): правила ще треба сформулювати, перш ніж їх можна буде прив'язати до тестів.
 

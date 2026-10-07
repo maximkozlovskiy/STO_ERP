@@ -67,6 +67,8 @@ grep -nE "paidAmount.*(increment|decrement).*dto\.amount|prevPaid \+ dto\.amount
 - [ ] Soft delete скрізь; **без deletedAt** (append-only): `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `CashOperation`, `WorkOrderLineEmployee`, `Comment`, `EmployeeBranch`
 - [ ] Кожен `$transaction(async cb)` → `{ timeout: N }` (5s–15s)
 - [ ] `SettlementsService.createTransaction` → internal `amount > 0 && Number.isFinite(amount)` guard
+- [ ] **Новий виклик `docNumbers.next(orgId, 'X')` → тип `X` є в `seed.ts`, `setup.service.ts` І в backfill-міграції.** Інакше створення документа дає 404 на кожній org, а unit-тести (мок `DocumentNumberService`) зелені. Детектор і взірець міграції — `journal/api.md`, запис 2026-10-07. Severity: CRITICAL
+- [ ] **Статичний сторож у spec (читає код regex-ом) — fail-closed:** аргумент, який він не може прочитати як літерал (`data: updates`, shorthand, spread), має бути порушенням, і на кожну обхідну форму є контрольний кейс (`journal/api.md`, 2026-10-07)
 
 #### §5.1 Pricing & Batches
 

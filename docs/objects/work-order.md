@@ -166,6 +166,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | --------------------------------------- | ---------------------------------------------- | ------ |
 | handlers                                | `events/work-order.handlers.spec.ts`           | 10     |
 | fsm parity                              | `fsm-parity.spec.ts`                           | 12     |
+| статус у чужій транзакції + сторож FSM  | `work-order-status.spec.ts`                    | 18     |
 | integration на живій БД                 | `work-order-stock-effects.integration.spec.ts` | 4      |
 | сервісна логіка                         | `work-order-stock-effects.service.spec.ts`     | 19     |
 | сервісна логіка                         | `work-orders-export.service.spec.ts`           | 4      |
@@ -179,7 +180,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | сервісна логіка                         | `work-orders.service.spec.ts`                  | 23     |
 | share public                            | `work-orders.share-public.spec.ts`             | 9      |
 
-Разом: **159** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **177** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
 виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
@@ -192,4 +193,5 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 - Guard `available >= qty` живе в `InventoryService.createMovement` (модуль inventory). Спек порядку рухів наряду відтворює його моком-«журналом»; сам guard на живому складі перевіряє лише `work-order-stock-effects.integration.spec.ts`.
 - Порядок рухів доведено на рівні `WorkOrderStockEffectsService`. Наскрізного unit-тесту «`transition()` → правильний метод ефектів» для COMPLETED і CANCELLED немає — лише для входу в IN_PROGRESS.
 - Послідовність циклів перевірено для чотирьох методів `WorkOrderStockEffectsService`. Цикли в `recalcTotals` і `clone` рухів складу не створюють і цим не охоплені.
+- Сторож прямого запису статусу наряду (`work-order-status.spec.ts`) — regex, не AST: не бачить делегат через псевдонім (`const wo = tx.workOrder`), динамічний делегат (`prisma[model]`, так пише sync push) і сирий SQL зі складеною назвою таблиці. Нелітеральний `data` він вважає порушенням.
 - Нумерація: перевірено, що номер береться з `DocumentNumberService`; формат номера й унікальність під конкурентним створенням — зона модуля document-number.

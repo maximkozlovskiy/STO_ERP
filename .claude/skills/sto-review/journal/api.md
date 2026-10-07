@@ -136,3 +136,17 @@
 **Severity:** CRITICAL — тихе псування фін-обліку (paidAmount/статус PAID) для не-base оплат; base-only тести не ловлять. Sample: payments.service invoice+WO (12bf3e2d).
 
 > **UPD 2026-09-15 (review цикл 1/3):** Invoice/WorkOrder ПЕРЕЙШЛИ у Фазу 3 — тепер `currencyId NOT NULL` + `amount/paidAmount/totalAmount` у ВАЛЮТІ документа (не base). payments.service тепер коректно: (1) `sameCurrency(payment, invoice)` guard перед алокацією → оплата у тій самій валюті → `dto.amount` накопичується правильно; (2) base-леджер через settlement (`amountBase`); (3) FX_GAIN/FX_LOSS реалізується коли рахунок став PAID у іновалюті. Тобто `dto.amount → paidAmount` тут НЕ баг (обидва у валюті документа). Правило лишається валідним для СПРАВДІ base-only сіблінгів — але спершу перевір `currencyId` у моделі-цілі (може бути Фаза 3), інакше false-positive на payments.service.
+
+### 2026-10-07 — статичний сторож-regex пропускає нелітеральний `data` (fail-open) — §5
+
+**Сигнал:** spec-«сторож», що читає код і шукає заборонений запис (`workOrder.update({ data: { status } })`), перевіряє лише літерал `data: { … }`. Форми `data: updates`, shorthand `data`, `{ ...patch }`, `upsert`, вкладений `workOrder: { update: … }`, сирий `UPDATE work_orders` він мовчки пропускає — а `data: updates` це форма, якою пише сам `transition()`. Контрольний кейс «детектор бачить порушення» був лише на одну форму.
+**Grep:** `grep -rn "readFileSync" apps/api/src --include="*.spec.ts" -l` → у кожному сторожі перевірити: що він робить із викликом, чий аргумент НЕ літерал? Має бути порушення, а не `continue`.
+**Фікс:** fail-closed — «не можу прочитати → порушення»; контрольний `it.each` на кожну обхідну форму + кейс проти хибних спрацювань; у дос'є «Чого тут НЕМА» назвати форми, яких regex не бачить (псевдонім делегата, динамічний делегат).
+**Severity:** IMPORTANT — сторож зелений, а правило обходиться першим же рефакторингом.
+
+### 2026-10-07 — `DocumentType` без `DocumentNumberConfig`: `docNumbers.next()` → 404 на кожній org — §5
+
+**Сигнал:** сервіс кличе `docNumbers.next(orgId, 'X')`, а тип `X` не створюється ні в `seed.ts`, ні в `setup.service.ts`, ні backfill-міграцією. Unit-тести мокають `DocumentNumberService` → зелено; наживо створення документа дає 404. Знайдено живим запитом: `COMPLETION_ACT` (акт виконаних робіт не створюється взагалі).
+**Grep:** `for t in $(grep -rhoE "\.next\(orgId, '[A-Z_]+'" apps/api/src --include="*.ts" | grep -oE "[A-Z_]{4,}" | sort -u); do grep -q "$t" apps/api/src/modules/setup/setup.service.ts || echo "setup без $t"; grep -q "$t" packages/database/prisma/seed.ts || echo "seed без $t"; done`
+**Фікс:** тип у `seed.ts` + `setup.service.ts` + міграція-backfill окремим файлом (нове enum-значення не можна вжити в тій самій транзакції, взірець — `20260703100001_seed_supplier_payment_doc_numbers`).
+**Severity:** CRITICAL — фіча недоступна на кожній інсталяції; потребує міграції.

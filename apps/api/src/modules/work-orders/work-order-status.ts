@@ -6,10 +6,32 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { WORK_ORDER_TRANSITIONS } from './work-orders.fsm';
 
 /**
- * Переходи, які несуть складські/фінансові side-effects (резерв, списання + CHARGE, реверс).
- * Їх виконує ЛИШЕ `WorkOrdersService.transition()` — звідси вони заборонені.
+ * Чи можна ввійти в статус ЗВІДСИ, тобто без `WorkOrdersService.transition()`.
+ *
+ * `false` — вхід у статус несе там side-effects, яких хелпер не виконує:
+ *  - IN_PROGRESS: резерв запчастин (при вході з APPROVED; ON_HOLD→IN_PROGRESS ефектів не має,
+ *    але заборонений тут разом з усією ціллю — простіше й безпечніше, ніж розрізняти `from`);
+ *  - COMPLETED: списання + CHARGE, `completedAt`, подія `WORK_ORDER_EVENTS.COMPLETED`
+ *    (пробіг, ТО, гарантія, сповіщення клієнту);
+ *  - CANCELLED: зняття резерву або реверс складу й боргу.
+ * `true` — `transition()` для цієї цілі робить лише CAS і подію TRANSITIONED (звірено з усіма
+ * гілками `transition()` 2026-10-07).
+ *
+ * `Record`, а не список заборонених: новий статус у `WorkOrderStatus` не скомпілюється, доки тут
+ * не вирішено, чи має він side-effects. Зі списком заборон він мовчки став би дозволеним.
  */
-const SIDE_EFFECT_TARGETS: readonly WorkOrderStatus[] = ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+const ALLOWED_WITHOUT_SIDE_EFFECTS: Record<WorkOrderStatus, boolean> = {
+  DRAFT: true,
+  ESTIMATE: true,
+  APPROVED: true,
+  ON_HOLD: true,
+  INVOICED: true,
+  PAID: true,
+  ARCHIVED: true,
+  IN_PROGRESS: false,
+  COMPLETED: false,
+  CANCELLED: false,
+};
 
 /**
  * Перехід статусу наряду ВСЕРЕДИНІ чужої транзакції — для модулів, яким зміна статусу наряду
@@ -31,7 +53,7 @@ export async function transitionWorkOrderStatusInTx(
   from: WorkOrderStatus,
   to: WorkOrderStatus,
 ): Promise<void> {
-  if (SIDE_EFFECT_TARGETS.includes(to)) {
+  if (!ALLOWED_WITHOUT_SIDE_EFFECTS[to]) {
     throw new Error(
       `transitionWorkOrderStatusInTx: перехід у ${to} має side-effects — лише через WorkOrdersService.transition()`,
     );
