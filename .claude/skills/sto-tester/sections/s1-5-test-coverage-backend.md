@@ -74,7 +74,7 @@ done
 
 - [ ] Widened return-type service method + stale 2-field mock/assert у paired spec (Bug #508-#509) — `T1.5-007`
 
-- [ ] Stale `$transaction` callback mock (Bug #489 sub-pattern) — `T1.5-008`
+- [ ] Stale `$transaction` callback mock (Bug #489 sub-pattern; зразок мока і grep — одразу під пунктом, у журналі їх нема) — `T1.5-008`
 
 ```ts
 $transaction: vi.fn().mockImplementation((arg: unknown) => {
@@ -112,7 +112,7 @@ Grep: для кожного `$transaction(async ... =>` у service.ts → у п�
 - [ ] Boundary-кейси для діапазонних правил (COST_TIER, sliding-scale, age-brackets, tax-brackets) — `T1.5-011`
 - [ ] Cross-tenant FK contract test для optional FK у payload — `T1.5-012`
 
-- [ ] Integration-спек на dev-БД видаляє/змінює рядки за ПРИРОДНИМ ключем, а не за власним `id` (Bug #782) — `T1.5-013`
+- [ ] Integration-спек на dev-БД видаляє/змінює рядки за ПРИРОДНИМ ключем, а не за власним `id` (Bug #782; детектор і доказ — одразу під пунктом, у журналі їх нема) — `T1.5-013`
 
   ```bash
   grep -rnE 'DELETE FROM|deleteMany\(' apps/api/src --include=*.integration.spec.ts | grep -vE 'WHERE id ?= ?(ANY\()?\$1'

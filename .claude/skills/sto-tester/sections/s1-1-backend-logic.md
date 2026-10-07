@@ -86,14 +86,14 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] Defense-in-depth для `update` (Bug #191) — `T1.1-016`
 - [ ] Fail-closed guard судить ПРИСУТНІСТЬ токена, не його ФОРМУ → негація обходить (Bug #721) — `T1.1-017`
 - [ ] Публічний/unauth endpoint читає tenant-scoped модель без `runUnscoped` → fail-closed guard кидає 500 (Bug #730) — `T1.1-018`
-- [ ] Write-time «X налаштовано?»-guard розходиться семантикою з runtime-резолвером X (Bugs #731/#732) — `T1.1-019`
+- [ ] Write-time «X налаштовано?»-guard (X = фіскальний провайдер / платіжний шлюз / канал сповіщень / креди) розходиться семантикою з runtime-резолвером X (Bugs #731/#732) — `T1.1-019`
 - [ ] Multi-`updateMany` «exclusive mutation» у `$transaction` — orgId у КОЖНОМУ where (Bug #657) — `T1.1-020`
 - [ ] Frontend «only-one-active» toggle-тріада (Bug #657) — `T1.1-021`
 - [ ] Узагальнення поля до типізованого locator + per-channel selection + структуровані креди (Bugs #658-#660) — `T1.1-022`
 - [ ] FSM transition write-path persistence для new nullable row column (Bug #236) — `T1.1-023`
 - [ ] BullMQ processor idempotency guard (Bug #346) — `T1.1-024`
 
-- [ ] Dead-feature integration audit (Bugs #267, #268) — `T1.1-025`
+- [ ] Dead-feature integration audit: сервіс із queue/processor-компаньйоном, який жоден trigger-flow (payments/invoices/work-orders) не викликає (Bugs #267, #268) — `T1.1-025`
 
 - [ ] Self-re-enqueue polling: domain-service enqueue-гілки + clamp + zombie-job без прямих тестів (Bugs #696-#698) — `T1.1-026`
 
@@ -104,11 +104,11 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] restore() вузла ієрархії з soft-deleted батьком → сирота у buildTree (Bug #734) — `T1.1-030`
 
-- [ ] reference-time guard приймає вимкнений (isActive=false) довідниковий запис (Bug #735) — `T1.1-031`
+- [ ] reference-time guard приймає вимкнений (isActive=false) довідниковий запис — payment-method / tax-rate / category / template / account (Bug #735) — `T1.1-031`
 
 - [ ] Backend без depth-guard на self-relation дереві коли UI обмежує глибину (Bug #736) — `T1.1-032`
 
-- [ ] Soft string FK без validation (Bug #361) — `T1.1-033`
+- [ ] Soft string FK без validation: plain-String поле, що посилається на іншу таблицю (`currencyCode`, `paymentMethodCode`, `eventType`) (Bug #361) — `T1.1-033`
 
 - [ ] Auto-create child resource ignores parent settings inheritance (Bug #360) — `T1.1-034`
 
@@ -146,7 +146,7 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 
 - [ ] Secret-redaction regex матчить КОРОТКІ підрядки → over-redaction діагностичних полів (Bug #759) — `T1.1-057`
 
-- [ ] Не-JSON-safe значення у JSONB/лог-payload зривають запис → fail-open тиха втрата рядка (Bug #760) — `T1.1-058`
+- [ ] Не-JSON-safe значення (BigInt/Date) у JSONB/лог-payload/`job.data` зривають запис → fail-open тиха втрата рядка, зокрема DLQ-аудиту (Bug #760) — `T1.1-058`
 
 #### Prisma schema ↔ migration parity (release-blocker)
 

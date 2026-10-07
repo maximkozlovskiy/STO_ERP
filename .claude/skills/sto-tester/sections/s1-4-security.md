@@ -57,7 +57,7 @@ done
 - [ ] `@IsArray()` → `@ArrayMaxSize(N)` (N = реалістичний бізнес-ліміт)
 - [ ] Вільний `@IsString()` → `@MaxLength(N)` (anti-DoS)
 - [ ] `@IsIn(['A','B','C'])` для union-string типів (`'OK' | 'WARN' | 'CRITICAL'`)
-- [ ] Public endpoint double-strict audit (Bugs #251 + #252) — `T1.4-002`
+- [ ] Public endpoint double-strict audit; там само: виклик external service (SMS, ПРРО) → черга з attempts ≥ 10 + exponential backoff (Bugs #251 + #252) — `T1.4-002`
 - [ ] Secret at-rest via Prisma `$extends` (Bug #652) — `T1.4-003`
 
 ---

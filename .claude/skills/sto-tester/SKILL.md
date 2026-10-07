@@ -66,18 +66,19 @@ cat MemoryManual.md | head -50
 
 **Визнач агрегати зі scope → читай відповідні дос'є (бізнес-правила для тест-кейсів):**
 
-| Ключові слова у змінених файлах   | Читати                                                           |
-| --------------------------------- | ---------------------------------------------------------------- |
-| `work-order`, `WorkOrder`         | `docs/objects/work-order.md` (FSM transitions + side-effects)    |
-| `invoice`, `Invoice`              | `docs/objects/invoice.md` (from-work-order flow, calcVatTotals)  |
-| `purchase-order`, `PurchaseOrder` | `docs/objects/purchase-order.md` (receive() invariants)          |
-| `stock-document`, `StockDocument` | `docs/objects/stock-document.md` (type→movement map)             |
-| `counterpart`, `Counterparty`     | `docs/objects/counterparty.md` (isPrimary promote)               |
-| `good`, `Good`                    | `docs/objects/good.md` (pricing hierarchy, GoodUoM guard)        |
-| `work`, `Work`, `WorkCategory`    | `docs/objects/work.md`                                           |
-| `calendar`, `CalendarSlot`        | `docs/objects/calendar.md` (split-day invariant, conflict check) |
-| `stock-item`, `StockMovement`     | `docs/objects/inventory.md` (createMovement only)                |
-| `settlement`, `transaction`       | `docs/objects/settlements.md` (createTransaction only)           |
+| Ключові слова у змінених файлах   | Читати                                                                                                                                               |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `work-order`, `WorkOrder`         | `docs/objects/work-order.md` (FSM transitions + side-effects)                                                                                        |
+| `invoice`, `Invoice`              | `docs/objects/invoice.md` (from-work-order flow, calcVatTotals)                                                                                      |
+| `purchase-order`, `PurchaseOrder` | `docs/objects/purchase-order.md` (receive() invariants)                                                                                              |
+| `stock-document`, `StockDocument` | `docs/objects/stock-document.md` (type→movement map)                                                                                                 |
+| `counterpart`, `Counterparty`     | `docs/objects/counterparty.md` (isPrimary promote)                                                                                                   |
+| `good`, `Good`                    | `docs/objects/good.md` (pricing hierarchy, GoodUoM guard)                                                                                            |
+| `work`, `Work`, `WorkCategory`    | `docs/objects/work.md`                                                                                                                               |
+| `calendar`, `CalendarSlot`        | `docs/objects/calendar.md` (split-day invariant, conflict check)                                                                                     |
+| `stock-item`, `StockMovement`     | `docs/objects/inventory.md` (createMovement only)                                                                                                    |
+| `settlement`, `transaction`       | `docs/objects/settlements.md` (createTransaction only)                                                                                               |
+| інший модуль                      | `ls docs/objects/` — є ще `payments`, `cash`, `supplier-payment`, `bank-statements`, `loyalty`, `payroll`, `maintenance-schedules`, `report-builder` |
 
 Дос'є містять **бізнес-інваріанти** — саме їх порушення і є багами, які треба шукати.
 
@@ -130,7 +131,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks
 | `prisma/schema/*.prisma`                                | §1.1 (soft delete fields, orgId), §1.2 (TS)                               |
 | `components/ui/` only                                   | §1.3 (стани), §1.7 (a11y)                                                 |
 | `hooks/**`, `lib/**` (web)                              | §1.3                                                                      |
-| BullMQ processor / scheduler                            | §1.1, §1.2                                                                |
+| BullMQ processor / scheduler                            | §1.1, §1.2 (+ §1.4, якщо ходить у зовнішній API)                          |
 | Інше в `apps/api/src`                                   | §1.1, §1.2 — краще зайва секція, ніж жодної                               |
 | Інше в `apps/web/src`                                   | §1.3                                                                      |
 | `*.spec.ts` в `apps/api`, `scripts/affected-tests.py`   | §1.5 (якість і покриття тестів)                                           |
