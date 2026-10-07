@@ -18,6 +18,7 @@
   ],
   "apps/api/src/common/cors.options.spec.ts": [
    "CORS — живий preflight через Fastify-адаптер allow-methods не звужується до дефолту GET,HEAD,POST",
+   "CORS — живий preflight через Fastify-адаптер dev-fallback дозволяє і dev-сервер (:3001), і E2E-сервер (:3002); чужий origin — ні",
    "CORS — живий preflight через Fastify-адаптер origin відбивається у відповіді разом із credentials",
    "CORS — живий preflight через Fastify-адаптер preflight для DELETE повертає цей метод у allow-methods",
    "CORS — живий preflight через Fastify-адаптер preflight для PATCH повертає цей метод у allow-methods",

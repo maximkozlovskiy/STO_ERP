@@ -1,6 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3001';
+// Локально E2E живе на ВЛАСНОМУ порту :3002, а не на dev-сервері :3001. Dev-сервер зібраний
+// без `NEXT_PUBLIC_E2E`, і на ньому всі тести йдуть у /login; раніше доводилось його вбивати,
+// чекати холодну компіляцію, а потім піднімати назад. Окремий екземпляр живе між прогонами
+// (reuseExistingServer) і не заважає ручній роботі. У CI сервер піднімає workflow на :3001.
+const BASE_URL =
+  process.env.PLAYWRIGHT_BASE_URL ??
+  (process.env.CI ? 'http://localhost:3001' : 'http://localhost:3002');
+const E2E_PORT = new URL(BASE_URL).port || '3002';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 export default defineConfig({
@@ -38,13 +45,13 @@ export default defineConfig({
     },
   ],
 
-  // Автозапуск Next.js dev-сервера якщо він не запущений.
+  // Автозапуск E2E-екземпляра Next.js, якщо він ще не запущений.
   // CI: пропускаємо (сервер запускається окремо у workflow).
-  // Local: стартуємо якщо порт 3001 вільний.
+  // Local: стартуємо на E2E-порту з власним distDir; уже запущений — перевикористовуємо.
   webServer: process.env.CI
     ? undefined
     : {
-        command: 'pnpm --filter @sto/web dev',
+        command: `pnpm --filter @sto/web exec next dev --turbopack -p ${E2E_PORT}`,
         url: BASE_URL,
         reuseExistingServer: true,
         timeout: 60_000,
@@ -53,6 +60,7 @@ export default defineConfig({
           // Вмикає E2E-auth-hatch у context.tsx (hydrate токена з localStorage + skip refresh).
           // Гейт build-time — у прод-збірці (без цієї змінної) hatch tree-shake-иться геть.
           NEXT_PUBLIC_E2E: '1',
+          NEXT_DIST_DIR: '.next-e2e',
         },
       },
 

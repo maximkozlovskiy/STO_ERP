@@ -12,7 +12,7 @@ export default defineConfig({
     // node_modules/.next перенесені з мертвого vitest.config.mts (аудит 2026-10): у web
     // лежали ДВА конфіги, і експеримент (навмисна синтаксична помилка в кожному) показав,
     // що vitest бере саме .ts — отже .mts роками нічого не робив. Його видалено.
-    exclude: ['e2e/**', 'node_modules/**', '.next/**'],
+    exclude: ['e2e/**', 'node_modules/**', '.next/**', '.next-e2e/**'],
     // Ліміт воркерів, як і в api (там 4). Без нього `turbo run test` ганяє api і web
     // ПАРАЛЕЛЬНО: api займає 4 ядра з 16, web бере решту 12 і жене всі 95 файлів разом —
     // timing-sensitive тести з userEvent голодують за CPU і падають по таймауту

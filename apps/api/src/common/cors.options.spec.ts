@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { Controller, Delete, Module, Patch } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { CORS_OPTIONS, REQUIRED_CORS_METHODS } from './cors.options';
+import { CORS_OPTIONS, DEV_WEB_ORIGINS, REQUIRED_CORS_METHODS } from './cors.options';
+
+// `origin` — рядок (WEB_ORIGIN заданий) або dev-список; для preflight-проб беремо перший.
+const ORIGIN = ([] as string[]).concat(CORS_OPTIONS.origin)[0];
 
 /**
  * Регресія Bug #779 — preflight мусить дозволяти DELETE/PATCH/PUT.
@@ -74,7 +77,7 @@ describe('CORS — живий preflight через Fastify-адаптер', () =
           method: 'OPTIONS',
           url: '/probe/abc',
           headers: {
-            origin: CORS_OPTIONS.origin as string,
+            origin: ORIGIN,
             'access-control-request-method': method,
           },
         });
@@ -121,12 +124,45 @@ describe('CORS — живий preflight через Fastify-адаптер', () =
           method: 'OPTIONS',
           url: '/probe/abc',
           headers: {
-            origin: CORS_OPTIONS.origin as string,
+            origin: ORIGIN,
             'access-control-request-method': 'DELETE',
           },
         });
-      expect(res.headers['access-control-allow-origin']).toBe(CORS_OPTIONS.origin);
+      expect(res.headers['access-control-allow-origin']).toBe(ORIGIN);
       expect(res.headers['access-control-allow-credentials']).toBe('true');
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Локально є два web-сервери: :3001 (dev) і :3002 (Playwright). Якщо E2E-origin випаде
+  // зі списку, КОЖЕН запит E2E-сторінки до API заблокує браузер — і весь suite впаде на
+  // логіні, не назвавши причину.
+  it('dev-fallback дозволяє і dev-сервер (:3001), і E2E-сервер (:3002); чужий origin — ні', async () => {
+    const app = await NestFactory.create<NestFastifyApplication>(
+      ProbeModule,
+      new FastifyAdapter(),
+      {
+        logger: false,
+      },
+    );
+    app.enableCors({ ...CORS_OPTIONS, origin: DEV_WEB_ORIGINS });
+    await app.init();
+    try {
+      const allowOrigin = async (origin: string) => {
+        const res = await app
+          .getHttpAdapter()
+          .getInstance()
+          .inject({
+            method: 'OPTIONS',
+            url: '/probe/abc',
+            headers: { origin, 'access-control-request-method': 'DELETE' },
+          });
+        return res.headers['access-control-allow-origin'];
+      };
+      expect(await allowOrigin('http://localhost:3001')).toBe('http://localhost:3001');
+      expect(await allowOrigin('http://localhost:3002')).toBe('http://localhost:3002');
+      expect(await allowOrigin('http://evil.example')).toBeUndefined();
     } finally {
       await app.close();
     }

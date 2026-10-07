@@ -47,6 +47,7 @@ module.exports = {
   },
   ignorePatterns: [
     '.next/',
+    '.next-e2e/',
     'out/',
     'node_modules/',
     'next-env.d.ts',

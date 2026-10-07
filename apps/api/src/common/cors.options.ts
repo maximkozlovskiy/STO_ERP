@@ -19,8 +19,18 @@ type FastifyCorsOptions = Parameters<NestFastifyApplication['enableCors']>[0];
  * (origin, path, method, header-set). Chrome обрізає до 7200с, але це все одно краще за
  * відсутність кешу. Виніс сюди разом із `methods`, щоб конфіг не розʼїхався між файлами.
  */
+/**
+ * Dev-fallback, коли `WEB_ORIGIN` не заданий. Два origin-и, бо локально живуть ДВА web-сервери:
+ * :3001 — звичайний dev для ручної роботи, :3002 — окремий екземпляр для Playwright
+ * (зібраний із `NEXT_PUBLIC_E2E=1`, див. `apps/web/playwright.config.ts`). Раніше E2E
+ * вимагав убити dev-сервер і підняти його заново з прапорцем.
+ *
+ * У production цей список не діє: `env.schema.ts` не дає стартувати без `WEB_ORIGIN`.
+ */
+export const DEV_WEB_ORIGINS = ['http://localhost:3001', 'http://localhost:3002'];
+
 export const CORS_OPTIONS = {
-  origin: process.env.WEB_ORIGIN ?? 'http://localhost:3001',
+  origin: process.env.WEB_ORIGIN ?? DEV_WEB_ORIGINS,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   credentials: true,
   maxAge: 86400,
