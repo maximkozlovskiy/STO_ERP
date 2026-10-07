@@ -29,6 +29,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { ExpiryBadge } from '@/components/ui/expiry-badge';
 import { fmtInt, fmtDate } from '@/lib/format';
+import { MileageHistory } from './MileageHistory';
 
 interface Vehicle {
   id: string;
@@ -566,6 +567,9 @@ export default function VehicleCardPage() {
           </div>
         ))}
       </div>
+
+      {/* Mileage history */}
+      <MileageHistory vehicleId={vehicle.id} />
 
       {/* Maintenance Schedules */}
       <div className="bg-surface rounded-xl border border-border p-5">

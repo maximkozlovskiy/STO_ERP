@@ -46,6 +46,19 @@
       "installedAt": "Встановлено при {{mileage}} км",
       "deleteConfirmTitle": "Видалити вузол?"
     },
+    "mileage": {
+      "title": "Історія пробігу",
+      "empty": "Ще немає нарядів із зафіксованим пробігом",
+      "retry": "Повторити",
+      "rollback": "Пробіг менший за попередній",
+      "chartSeries": "Пробіг, км",
+      "columns": {
+        "date": "Дата",
+        "workOrder": "Наряд",
+        "mileage": "Пробіг, км",
+        "delta": "Приріст, км"
+      }
+    },
     "schedules": {
       "title": "Регламент ТО",
       "addButton": "Регламент",

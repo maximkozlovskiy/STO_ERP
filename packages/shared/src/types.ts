@@ -171,3 +171,19 @@ export function formatVehicleLabel(
   if (!vehicle) return '';
   return `${vehicle.make} ${vehicle.model}${vehicle.licensePlate ? ` (${vehicle.licensePlate})` : ''}`;
 }
+
+/**
+ * Запис історії пробігу авто — контракт `GET /vehicles/:id/mileage` (BR-VEH-001…005,
+ * `docs/objects/vehicle.md`). Один запис = один наряд авто із зафіксованим пробігом.
+ * Тип спільний для api (відповідь сервісу) і web (хук), щоб обидва боки не розійшлись.
+ */
+export interface VehicleMileagePoint {
+  workOrderId: string;
+  workOrderNumber: string;
+  /** ISO-рядок; `completedAt`, а якщо наряд не завершено — `documentDate`. */
+  date: string;
+  /** `outMileage`, а якщо його немає — `inMileage`. */
+  mileage: number;
+  /** true, якщо пробіг менший за попередній запис (BR-VEH-003). */
+  isRollback: boolean;
+}

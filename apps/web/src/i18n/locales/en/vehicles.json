@@ -46,6 +46,19 @@
       "installedAt": "Installed at {{mileage}} km",
       "deleteConfirmTitle": "Delete node?"
     },
+    "mileage": {
+      "title": "Mileage history",
+      "empty": "No work orders with recorded mileage yet",
+      "retry": "Retry",
+      "rollback": "Mileage is lower than the previous record",
+      "chartSeries": "Mileage, km",
+      "columns": {
+        "date": "Date",
+        "workOrder": "Work order",
+        "mileage": "Mileage, km",
+        "delta": "Change, km"
+      }
+    },
     "schedules": {
       "title": "Maintenance schedule",
       "addButton": "Schedule",

@@ -17,7 +17,12 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
-import { CreateVehicleNodeDto, VehicleNodeResponseDto, VehicleResponseDto } from './vehicles.dto';
+import {
+  CreateVehicleNodeDto,
+  VehicleMileagePointDto,
+  VehicleNodeResponseDto,
+  VehicleResponseDto,
+} from './vehicles.dto';
 import { VehiclesService } from './vehicles.service';
 import {
   vehicleCreateSchema,
@@ -90,6 +95,15 @@ export class VehiclesController {
   @ApiResponse({ status: 201, type: VehicleResponseDto })
   restore(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.restore(orgId, id);
+  }
+
+  @Get(':id/mileage')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC')
+  @ApiOperation({ summary: 'Історія пробігу авто' })
+  @ApiResponse({ status: 200, type: [VehicleMileagePointDto] })
+  @ApiResponse({ status: 404, description: 'Авто не знайдено' })
+  getMileageHistory(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getMileageHistory(orgId, id);
   }
 
   @Get(':id/nodes')

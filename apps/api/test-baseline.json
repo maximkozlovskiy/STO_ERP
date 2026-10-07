@@ -3182,6 +3182,28 @@
    "UserPreferences — HTTP Contract PUT /user-preferences/:key → 400 якщо value не об'єкт",
    "UserPreferences — HTTP Contract PUT /user-preferences/:key → 403 без токена"
   ],
+  "apps/api/src/modules/vehicles/vehicles.mileage-history.spec.ts": [
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг CANCELLED-наряд не входить навіть із пробігом; решта статусів входять",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг soft-deleted наряд (deletedAt) не входить",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг запит нарядів обмежено у where: orgId + vehicleId + deletedAt:null (tenant isolation)",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг наряд без inMileage і без outMileage в історію не входить",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг наряд іншого авто або іншої організації не входить",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-001 — які наряди входять і звідки пробіг пробіг запису = outMileage, а якщо його немає — inMileage",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок від старішого до новішого за ДАТОЮ ЗАПИСУ, хоч би в якому порядку прийшли рядки",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок дата = completedAt, а якщо наряд не завершено — documentDate; це ISO-рядок",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-002 — дата запису і порядок рівна дата → за номером наряду",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-003 — відкат пробігу \"попередній\" — за порядком дат, а не за порядком рядків із БД",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-003 — відкат пробігу порівняння з ПОПЕРЕДНІМ записом (не з максимумом); рівний пробіг і перший запис — не відкат",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-003 — відкат пробігу пробіг менший за попередній → isRollback:true; запис лишається з внесеним значенням",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 авто чужої організації → NotFoundException, наряди не запитуються",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 видалене авто → NotFoundException, наряди не запитуються",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 неіснуюче авто → NotFoundException, наряди не запитуються",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-004 — авто чужої організації або видалене → 404 своє активне авто: перевірка окремим findFirst з id + orgId + deletedAt:null → масив",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів \"останні\" — за ДАТОЮ ЗАПИСУ: давно відкритий, але щойно завершений наряд не відрізається",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів 205 записів → рівно 200 ОСТАННІХ, від старішого до новішого",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів ліміт рахує ЗАПИСИ історії: новіші наряди без пробігу / CANCELLED / видалені їх не витісняють",
+   "VehiclesService — історія пробігу (BR-VEH-001…005) BR-VEH-005 — не більше 200 останніх записів рівно 200 записів → усі 200 (межа включна)"
+  ],
   "apps/api/src/modules/vehicles/vehicles.service.spec.ts": [
    "VehiclesService create/update — VIN uniqueness (MD-H2) create без VIN → перевірка пропускається",
    "VehiclesService create/update — VIN uniqueness (MD-H2) create з дубль-VIN → BadRequestException",

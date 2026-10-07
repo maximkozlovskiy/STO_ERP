@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { translateError } from '@sto/shared';
+import { translateError, type VehicleMileagePoint } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import {
@@ -9,6 +9,15 @@ import {
   VehicleNodeResponseDto,
   VehicleResponseDto,
 } from './vehicles.dto';
+
+/** BR-VEH-005: скільки останніх записів історії пробігу віддаємо. */
+const MILEAGE_HISTORY_LIMIT = 200;
+/**
+ * Запобіжна стеля вибірки нарядів одного авто. Дата запису — `completedAt ?? documentDate`
+ * (BR-VEH-002), тобто обчислюване поле: відсортувати й обрізати «останні 200» у БД одним
+ * `orderBy` неможливо, тому сортуємо в пам'яті. Стеля лише не дає запиту бути безрозмірним.
+ */
+const MILEAGE_HISTORY_FETCH_CAP = 2000;
 
 @Injectable()
 export class VehiclesService {
@@ -162,6 +171,76 @@ export class VehiclesService {
       throw new NotFoundException(translateError('err.vehicle.deletedNotFound', getLocale()));
     const item = await this.prisma.vehicle.findFirstOrThrow({ where: { id, orgId } });
     return this.toDto(item);
+  }
+
+  // ─── Історія пробігу ─────────────────────────────────────
+
+  async getMileageHistory(orgId: string, vehicleId: string): Promise<VehicleMileagePoint[]> {
+    // BR-VEH-004: авто перевіряється окремим запитом (orgId + deletedAt: null) — чужа org
+    // і видалене авто дають той самий 404, що й GET /vehicles/:id.
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: vehicleId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!vehicle) throw new NotFoundException(translateError('err.vehicle.notFound', getLocale()));
+
+    // BR-VEH-001: наряди цього авто у своїй org, не видалені, не CANCELLED, із пробігом.
+    const workOrders = await this.prisma.workOrder.findMany({
+      where: {
+        orgId,
+        vehicleId,
+        deletedAt: null,
+        status: { not: 'CANCELLED' },
+        OR: [{ outMileage: { not: null } }, { inMileage: { not: null } }],
+      },
+      select: {
+        id: true,
+        number: true,
+        inMileage: true,
+        outMileage: true,
+        completedAt: true,
+        documentDate: true,
+      },
+      orderBy: [{ documentDate: 'desc' }, { number: 'desc' }],
+      take: MILEAGE_HISTORY_FETCH_CAP,
+    });
+
+    const records: { id: string; number: string; at: Date; mileage: number }[] = [];
+    for (const wo of workOrders) {
+      // BR-VEH-001: outMileage, а якщо його немає — inMileage; без обох — не запис історії.
+      const mileage = wo.outMileage ?? wo.inMileage;
+      if (mileage === null || mileage === undefined) continue;
+      // BR-VEH-002: completedAt, а якщо наряд не завершено — documentDate.
+      records.push({
+        id: wo.id,
+        number: wo.number,
+        at: wo.completedAt ?? wo.documentDate,
+        mileage,
+      });
+    }
+
+    // BR-VEH-002: від старішого до новішого; за рівної дати — за номером наряду.
+    records.sort(
+      (a, b) =>
+        a.at.getTime() - b.at.getTime() ||
+        a.number.localeCompare(b.number, 'uk', { numeric: true }),
+    );
+
+    // BR-VEH-003: відкат рахується по ПОВНІЙ історії до обрізання — інакше перший запис
+    // вікна втратив би позначку лише тому, що його попередник не потрапив у 200.
+    const points = records.map((record, index): VehicleMileagePoint => {
+      const previous = index > 0 ? records[index - 1] : undefined;
+      return {
+        workOrderId: record.id,
+        workOrderNumber: record.number,
+        date: record.at.toISOString(),
+        mileage: record.mileage,
+        isRollback: previous !== undefined && record.mileage < previous.mileage,
+      };
+    });
+
+    // BR-VEH-005: не більше 200 ОСТАННІХ записів, порядок лишається старіший → новіший.
+    return points.slice(-MILEAGE_HISTORY_LIMIT);
   }
 
   // ─── VehicleNodes ────────────────────────────────────────

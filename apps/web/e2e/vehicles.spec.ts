@@ -72,6 +72,37 @@ test.describe('Автомобілі', () => {
     });
   });
 
+  test('карточка авто — секція "Історія пробігу" показує рівно те, що віддає API', async ({
+    page,
+  }) => {
+    expect(vehicleId).toBeTruthy();
+    const mileageResponse = page.waitForResponse(
+      r => r.url().includes(`/vehicles/${vehicleId}/mileage`) && r.request().method() === 'GET',
+      { timeout: 30_000 },
+    );
+    await page.goto(`/vehicles/${vehicleId}`);
+
+    const section = page.getByTestId('mileage-history');
+    await expect(section.locator('h2:has-text("Історія пробігу")')).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const response = await mileageResponse;
+    expect(response.status(), 'GET /vehicles/:id/mileage має відповісти 200').toBe(200);
+    const points = (await response.json()) as { workOrderId: string; isRollback: boolean }[];
+    expect(Array.isArray(points), 'контракт: масив, не { items, total }').toBe(true);
+
+    await expect(section.getByTestId('mileage-skeleton')).toHaveCount(0, { timeout: 10_000 });
+    await expect(section.locator('[role="alert"]')).toHaveCount(0);
+    await expect(section.locator('tbody tr')).toHaveCount(points.length);
+    await expect(section.locator('tbody tr[data-rollback="true"]')).toHaveCount(
+      points.filter(p => p.isRollback).length,
+    );
+    await expect(section.getByText('Ще немає нарядів із зафіксованим пробігом')).toHaveCount(
+      points.length === 0 ? 1 : 0,
+    );
+  });
+
   test('карточка авто — секція "Регламент ТО" присутня', async ({ page }) => {
     expect(vehicleId).toBeTruthy();
     await page.goto(`/vehicles/${vehicleId}`);

@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import type { VehicleMileagePoint } from '@sto/shared';
 // в”Ђв”Ђв”Ђ Vehicle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 export class CreateVehicleDto {
@@ -112,4 +113,17 @@ export class VehicleNodeResponseDto {
   @ApiPropertyOptional() mileageAtInstall?: number | null;
   @ApiPropertyOptional() notes?: string | null;
   @ApiProperty() createdAt!: string;
+}
+
+// ─── Історія пробігу ─────────────────────────────────────
+
+/** Swagger-дзеркало контракту `VehicleMileagePoint` з `@sto/shared` (одне місце правди — там). */
+export class VehicleMileagePointDto implements VehicleMileagePoint {
+  @ApiProperty() workOrderId!: string;
+  @ApiProperty() workOrderNumber!: string;
+  @ApiProperty({ description: 'ISO-рядок: completedAt, а якщо наряд не завершено — documentDate' })
+  date!: string;
+  @ApiProperty({ description: 'outMileage, а якщо його немає — inMileage' }) mileage!: number;
+  @ApiProperty({ description: 'true, якщо пробіг менший за попередній запис' })
+  isRollback!: boolean;
 }
