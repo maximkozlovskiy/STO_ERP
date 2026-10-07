@@ -103,6 +103,7 @@ const REQUIRED_TRGM: { table: string; column: string }[] = [
   { table: 'goods', column: 'name' },
   { table: 'goods', column: 'sku' },
   { table: 'goods', column: 'barcode' },
+  { table: 'works', column: 'name' },
 ];
 
 describe('Schema integrity — manual-SQL конструкти живі у БД (TD2 guard, integration)', () => {
@@ -144,6 +145,7 @@ describe('Schema integrity — manual-SQL конструкти живі у БД 
     ).toEqual([]);
   });
 
+  // guards: BR-WORK-006
   it('GIN pg_trgm пошукові індекси існують на всіх критичних (таблиця, колонка)', async () => {
     if (!dbAvailable) return;
     // Семантична перевірка через indexdef (повний текст CREATE INDEX): GIN-індекс на потрібній
