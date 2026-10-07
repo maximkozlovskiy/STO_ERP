@@ -74,6 +74,7 @@ done
 - [ ] `syncVersion: Number(row.syncVersion)` у всіх DTO (Decimal/BigInt → Number)
 - [ ] `@Param(':id')` → `ParseUUIDPipe`
 - [ ] date-only `@Query('dateTo')` → `lte` МУСИТЬ бути inclusive-of-day (Bug #678) — `T1.2-001`
+- [ ] `a ?? b`, де `a` — момент (`DateTime`), а `b` — `@db.Date` (дата без часу = опівніч UTC), далі сортується чи порівнюється як мітка часу → запис із датою без часу завжди «найраніший за день». Порівнювати календарний день (`kyivYmd`) + явний tie-break (Bug #798). Grep: `grep -rnE "(completedAt|paidAt|signedAt|confirmedAt) \?\? \w+\.(documentDate|date)\b" apps/api/src --include=*.ts`
 - [ ] query-string enum-фільтр → `Set(Object.values(Enum)).has()` guard ПЕРЕД `as EnumType` (Bug #679) — `T1.2-002`
 - [ ] raw `@Query('page'/'limit')` → `+page`/`Number()` → `Math.max/min`-clamp БЕЗ `Number.isFinite`-guard → NaN у Prisma `skip/take` = HTTP 500 (Bug #764) — `T1.2-003`
 - [ ] Per-item isolation loop обгортає ЛИШЕ network-крок, DB-write + cursor-advance поза catch → одне падіння валить решту батчу (Bug #768) — `T1.2-004`

@@ -211,6 +211,7 @@ done
 - [ ] FormData upload через `apiFetch` замість `apiMultipartFetch` (Bug #197) → CRITICAL — `T1.3-011`
 - [ ] React Query cross-resource invalidation audit (Bug #210-#212, повторено у #590) — `T1.3-012`
 - [ ] Same-data-другий-namespace invalidation gap: dashboard/summary-віджет читає окремий query-namespace, який мутація ресурсу НЕ чіпає (Bug #718) — `T1.3-013`
+- [ ] Новий query-хук ПОХІДНИХ даних (історія/зведення, зібране з чужого ресурсу) зі `staleTime` > 0: перелічити ВСІ місця, що міняють джерело (сторінка без useMutation, модалки створення, інші пристрої), і пройти в браузері шлях «побачив → перейшов за посиланням із цього ж блоку → виправив → Назад». Якщо місць більше, ніж інвалідацій, — `staleTime: 0` (Bug #799)
 - [ ] React Query migration completeness: mutation hooks експортовані але не використовуються (Bug #213) — `T1.3-014`
 - [ ] React Query custom hook без `*.test.tsx` (Bug #214) — `T1.3-015`
 - [ ] Token-guard debouncer: early-return гілка інкрементує reqId (Bug #396) — `T1.3-016`
