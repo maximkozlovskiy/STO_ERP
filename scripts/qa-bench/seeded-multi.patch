@@ -1,0 +1,74 @@
+diff --git a/apps/api/src/common/utils/kyiv-date.ts b/apps/api/src/common/utils/kyiv-date.ts
+index b3c4c7ce..34f574e1 100644
+--- a/apps/api/src/common/utils/kyiv-date.ts
++++ b/apps/api/src/common/utils/kyiv-date.ts
+@@ -16,7 +16,7 @@ export const kyivYmd = (d: Date): string => KYIV_YMD.format(d);
+  * і додаємо дні через UTC-арифметику, щоб уникнути DST-стрибків.
+  */
+ export const addDaysKyiv = (base: Date, days: number): Date => {
+-  const ymd = KYIV_YMD.format(base); // 'YYYY-MM-DD' у Kyiv
++  const ymd = base.toISOString().slice(0, 10);
+   const d = new Date(ymd + 'T00:00:00Z');
+   d.setUTCDate(d.getUTCDate() + days);
+   return new Date(d.toISOString().slice(0, 10));
+diff --git a/apps/api/src/modules/invoices/invoices.service.ts b/apps/api/src/modules/invoices/invoices.service.ts
+index 0f3031b3..5d2ececd 100644
+--- a/apps/api/src/modules/invoices/invoices.service.ts
++++ b/apps/api/src/modules/invoices/invoices.service.ts
+@@ -142,7 +142,7 @@ export class InvoicesService {
+ 
+   async findOne(orgId: string, id: string): Promise<InvoiceResponseDto> {
+     const inv = await this.prisma.invoice.findFirst({
+-      where: { id, orgId, deletedAt: null },
++      where: { id, orgId },
+       include: {
+         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+         workOrder: { select: { number: true } },
+diff --git a/apps/api/src/modules/payments/payments.service.ts b/apps/api/src/modules/payments/payments.service.ts
+index 9a2df30d..e0b10cfe 100644
+--- a/apps/api/src/modules/payments/payments.service.ts
++++ b/apps/api/src/modules/payments/payments.service.ts
+@@ -355,7 +355,7 @@ export class PaymentsService {
+             // Мультивалюта (Фаза 3): invoice.amount/paidAmount тепер у ВАЛЮТІ рахунку, а оплата — у
+             // тій самій валюті (перевірено вище) → порівнюємо/накопичуємо dto.amount (у валюті),
+             // НЕ conv.amountBase. Борг у леджері все одно лягає у base через settlement.
+-            if (dto.amount > remaining + 1e-9) {
++            if (dto.amount > invAmount + 1e-9) {
+               throw new BadRequestException(
+                 translateError('err.payment.amountExceedsInvoiceRemaining', getLocale(), {
+                   remaining: remaining.toFixed(2),
+diff --git a/apps/api/src/modules/purchase-orders/purchase-orders.service.ts b/apps/api/src/modules/purchase-orders/purchase-orders.service.ts
+index ef52bc34..73ad8ca1 100644
+--- a/apps/api/src/modules/purchase-orders/purchase-orders.service.ts
++++ b/apps/api/src/modules/purchase-orders/purchase-orders.service.ts
+@@ -602,7 +602,7 @@ export class PurchaseOrdersService {
+ 
+         assertFsmTransition(PO_TRANSITIONS, po.status, newStatus);
+ 
+-        await tx.purchaseOrder.update({ where: { id, orgId }, data: { status: newStatus } });
++        await tx.purchaseOrder.update({ where: { id }, data: { status: newStatus } });
+       },
+       { timeout: TRANSACTION_TIMEOUT_MS },
+     );
+@@ -699,7 +699,7 @@ export class PurchaseOrdersService {
+     // allReceived (receivedQty>=quantity) хибно flip-ає у RECEIVED. Fail-fast 400 до $transaction.
+     // QTY_EPSILON — толеранс дробових одиниць (літри/кг) від IEEE-754-дрейфу.
+     for (const { recv, line } of activeLines) {
+-      if (line.receivedQty + recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) {
++      if (recv.receivedQty > line.quantity + RECEIVE_QTY_EPSILON) {
+         // remaining — КІЛЬКІСТЬ (літри/кг), не гроші: money() тут був би семантично
+         // неправильним (MP-B13). Значення йде лише у текст помилки, тож округлюємо
+         // до 2 знаків суто для читабельності.
+diff --git a/apps/web/src/hooks/api/useInvoices.ts b/apps/web/src/hooks/api/useInvoices.ts
+index 693bdf68..c8e4e88b 100644
+--- a/apps/web/src/hooks/api/useInvoices.ts
++++ b/apps/web/src/hooks/api/useInvoices.ts
+@@ -63,7 +63,7 @@ export function useInvoiceTransition() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: ({ id, status }: { id: string; status: string }) =>
+-      apiFetch(`/invoices/${id}/transition`, {
++      apiFetch(`/invoices/${id}/status`, {
+         method: 'POST',
+         body: JSON.stringify({ status }),
+       }),

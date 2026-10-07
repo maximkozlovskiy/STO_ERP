@@ -18,3 +18,19 @@ git apply -R scripts/qa-bench/seeded.patch   # зняти (якщо агент �
 
 Агентові цей файл не показувати: вимір має сенс лише коли дефекти шукають наосліп.
 Результати — `docs/PERFORMANCE-BASELINE.md`.
+
+## `seeded-multi.patch` — шість дефектів у трьох агрегатах і на стику
+
+Для виміру шардування (один шукач на весь diff проти шукача на кожен агрегат).
+
+| #   | Файл                                                              | Дефект                                                     |
+| --- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | `apps/api/src/modules/invoices/invoices.service.ts`               | з `findOne` прибрано `deletedAt: null`                     |
+| 2   | `apps/web/src/hooks/api/useInvoices.ts`                           | хук кличе `/invoices/:id/status`, якого немає в контролері |
+| 3   | `apps/api/src/modules/payments/payments.service.ts`               | переплата порівнюється з повною сумою, а не із залишком    |
+| 4   | `apps/api/src/modules/purchase-orders/purchase-orders.service.ts` | over-receipt guard не враховує вже прийняте                |
+| 5   | там само                                                          | статус пишеться з `where: { id }` без `orgId`              |
+| 6   | `apps/api/src/common/utils/kyiv-date.ts`                          | СТИК: дні рахуються від UTC-дня, а не київського           |
+
+Обидва патчі лежать у репозиторії, і шукач може їх знайти grep-ом — у прогоні 2026-10-07 двоє
+так і здогадались, що дефекти підсаджені. Для чистого виміру патч треба тримати поза деревом.
