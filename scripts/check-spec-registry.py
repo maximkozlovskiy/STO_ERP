@@ -20,6 +20,14 @@ slug `contract` збігся з іменем, яке вже існувало. В
 Файли, названі у реєстрах `docs/objects/*.md`, мусять існувати. `check-doc-links.py` цього
 не ловить за конструкцією: він перевіряє лише `.md`-цілі (так у його докстрингу й написано).
 
+ГЕЙТ D — ПРОСТЕЖУВАНІСТЬ «ПРАВИЛО -> ТЕСТ».
+Кожне правило `BR-XXX-NNN` із дос'є мусить або мати тест із міткою `// guards: BR-XXX-NNN`
+(api-спек, web-тест чи E2E), або бути назване з ідентифікатором у блоці «Чого тут НЕМА»
+свого дос'є. Мітка з ID, якого немає в жодному дос'є, — помилка. До 2026-10-07 правил було
+106, а згадок BR-ID у тестах — нуль: реєстр зв'язував аспект із файлом, але не правило з тестом.
+Мітка — коментар, а не назва тесту: назви входять у baseline гейта A, і перейменування
+сотні кейсів зробило б його сліпим на справжні втрати.
+
 ЧОМУ НЕ `vitest list` ЯК ДЖЕРЕЛО ФАКТУ. Він статично парсить AST і зараховує сторонні
 виклики: на supplier-returns дав 31 замість 26. Джерело факту — лише раннер.
 
@@ -28,6 +36,8 @@ slug `contract` збігся з іменем, яке вже існувало. В
   python scripts/check-spec-registry.py --from-report r.json  # з готовим звітом (CI)
   python scripts/check-spec-registry.py --gate-size           # лише B
   python scripts/check-spec-registry.py --gate-registry       # лише C
+  python scripts/check-spec-registry.py --gate-br             # лише D
+  python scripts/check-spec-registry.py --gate-br --list      # D + таблиця по дос'є
 """
 import glob
 import io
@@ -42,6 +52,9 @@ if hasattr(sys.stdout, "reconfigure"):
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(REPO, "apps", "api", "test-baseline.json")
 SIZE_LIMIT = 900
+# Гейт D входить у загальний прогін (і в CI) лише коли True. Вмикається одним комітом разом
+# із останньою хвилею розмітки правил.
+BR_GATE_ENFORCED = False
 
 # Маркер у файлі, що великий розмір свідомий. Причина живе ПОРУЧ з кодом, а не у
 # списку винятків, який ніхто не перечитує.
@@ -217,21 +230,94 @@ def gate_c(problems):
     return checked
 
 
+BR_ID = re.compile(r"BR-[A-Z]+-\d+")
+GUARDS = re.compile(r"guards:\s*((?:BR-[A-Z]+-\d+)(?:\s*,\s*BR-[A-Z]+-\d+)*)")
+GAPS_BLOCK = re.compile(r"\*\*Чого тут НЕМА\.\*\*(.*?)(?:\n## |\Z)", re.S)
+TEST_GLOBS = (
+    ("apps", "api", "src", "**", "*.spec.ts"),
+    ("apps", "web", "src", "**", "*.test.ts"),
+    ("apps", "web", "src", "**", "*.test.tsx"),
+    ("apps", "web", "e2e", "*.spec.ts"),
+    ("packages", "shared", "src", "**", "*.spec.ts"),
+)
+
+
+def guard_tags():
+    """{BR-ID: [файли тестів із міткою `guards:`]}."""
+    tags = {}
+    for parts in TEST_GLOBS:
+        for path in glob.glob(os.path.join(REPO, *parts), recursive=True):
+            if "node_modules" in path:
+                continue
+            src = io.open(path, encoding="utf-8", errors="replace").read()
+            for m in GUARDS.finditer(src):
+                for br in BR_ID.findall(m.group(1)):
+                    tags.setdefault(br, [])
+                    if rel(path) not in tags[br]:
+                        tags[br].append(rel(path))
+    return tags
+
+
+def gate_d(problems, listing=False):
+    """Кожне BR із дос'є має тест із міткою або назване у «Чого тут НЕМА»."""
+    tags = guard_tags()
+    known, checked, rows = set(), 0, []
+    for doc in sorted(glob.glob(os.path.join(REPO, "docs", "objects", "*.md"))):
+        if "_TEMPLATE" in doc:
+            continue
+        src = io.open(doc, encoding="utf-8", errors="replace").read()
+        ids = sorted(set(BR_ID.findall(src)))
+        if not ids:
+            continue
+        gaps_m = GAPS_BLOCK.search(src)
+        in_gaps = set(BR_ID.findall(gaps_m.group(1))) if gaps_m else set()
+        n_tag = n_gap = n_none = 0
+        for br in ids:
+            known.add(br)
+            checked += 1
+            if br in tags:
+                n_tag += 1
+                if br in in_gaps:
+                    problems.append("BR І З МІТКОЮ, І В ПРОГАЛИНАХ %s (%s) — одне з двох застаріло" % (br, rel(doc)))
+            elif br in in_gaps:
+                n_gap += 1
+            else:
+                n_none += 1
+                problems.append("BR БЕЗ ТЕСТУ %s (%s) — немає мітки `guards:` і немає у «Чого тут НЕМА»" % (br, rel(doc)))
+        rows.append((os.path.basename(doc), len(ids), n_tag, n_gap, n_none))
+    for br, files in sorted(tags.items()):
+        if br not in known:
+            problems.append("МІТКА НА НЕІСНУЮЧЕ ПРАВИЛО %s у %s" % (br, files[0]))
+    if listing:
+        print("  %-28s %6s %8s %10s %9s" % ("дос'є", "правил", "з тестом", "прогалина", "без нічого"))
+        for name, n, a, b, c in rows:
+            print("  %-28s %6d %8d %10d %9d" % (name, n, a, b, c))
+        tot = [sum(r[i] for r in rows) for i in (1, 2, 3, 4)]
+        print("  %-28s %6d %8d %10d %9d" % ("РАЗОМ", tot[0], tot[1], tot[2], tot[3]))
+        print()
+    return checked
+
+
 def main():
     only_size = "--gate-size" in sys.argv
     only_reg = "--gate-registry" in sys.argv
+    only_br = "--gate-br" in sys.argv
     report = None
     if "--from-report" in sys.argv:
         report = sys.argv[sys.argv.index("--from-report") + 1]
 
     problems, checked = [], 0
-    run_all = not (only_size or only_reg)
+    run_all = not (only_size or only_reg or only_br)
     if run_all:
         checked += gate_a(report, problems)
     if run_all or only_size:
         checked += gate_b(problems)
     if run_all or only_reg:
         checked += gate_c(problems)
+    # Гейт D у загальний прогін (CI) вмикається прапорцем BR_GATE_ENFORCED нижче — після того,
+    # як усі правила отримали мітку або запис у прогалинах; до того він завалив би CI цілком.
+    if only_br or (run_all and BR_GATE_ENFORCED):
+        checked += gate_d(problems, listing="--list" in sys.argv)
 
     for p in problems:
         print("  %s" % p)
