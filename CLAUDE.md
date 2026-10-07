@@ -314,7 +314,7 @@ claude --totally-fake-flag-zzz auth status  # КОНТРОЛЬ: мусить д�
 Після завершення **будь-якого** завдання і git commit — виконай **послідовно**:
 
 ```
-0. → python scripts/affected-tests.py   — ЩО запускати: готові команди API / WEB / E2E
+0. → python scripts/affected-tests.py   — ЩО запускати: готові команди API / WEB / E2E / ІНШЕ
    [якщо чіпав тести] → python scripts/check-spec-registry.py --gate-size --gate-registry
 1. [якщо змінились frontend і backend] → Agent(sto-sync-agent)
 2. → Agent(sto-review-agent)   — code review, виправити всі знайдені проблеми

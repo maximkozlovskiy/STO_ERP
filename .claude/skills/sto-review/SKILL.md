@@ -86,7 +86,7 @@ Scope торкається `*.service.ts` → також `docs/BUSINESS-RULES.md
 
 4. **Вердикт** — лише `scripts/verdict.sh`; **цифра** — лише `scripts/measure.sh`.
 5. **Що запускати для diff-у** — не вгадувати і не ганяти все: `python scripts/affected-tests.py`
-   (діапазон: `--base <sha>`) друкує готові команди API / WEB / E2E. Повний прогін — лише
+   (діапазон: `--base <sha>`) друкує готові команди API / WEB / E2E / ІНШЕ. Повний прогін — лише
    коли скрипт сам каже «ПОВНИЙ ПРОГІН ПОТРІБЕН: так».
 
 ## Крок 1 — §1 TypeScript (завжди)

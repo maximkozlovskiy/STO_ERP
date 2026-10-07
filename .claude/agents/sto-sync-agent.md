@@ -54,7 +54,7 @@ git diff HEAD --name-only          # які модулі зачеплені
 ```bash
 python scripts/check-spec-registry.py --gate-size      # нових монолітів немає
 python scripts/check-spec-registry.py --gate-registry  # реєстри цілі
-python scripts/affected-tests.py                       # ЩО запускати: готові команди API / WEB / E2E
+python scripts/affected-tests.py                       # ЩО запускати: готові команди API / WEB / E2E / ІНШЕ
 ```
 
 ## FIRST THING: Read the current skill definition
