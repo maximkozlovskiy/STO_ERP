@@ -1633,6 +1633,7 @@
   ],
   "apps/api/src/modules/inventory/inventory.create-movement.spec.ts": [
    "InventoryService.createMovement guards AVG_COST агрегат batchId=null НЕ викликає stockMovement.update (uuid guard)",
+   "InventoryService.createMovement guards AVG_COST: getAvgCost викликається ДО consumeBatch (середня до списання)",
    "InventoryService.createMovement guards AVG_COST: weightedCostPrice = getAvgCost, партії все одно списуються FIFO (інваріант)",
    "InventoryService.createMovement guards Bug #15: RECEIPT з price=0 (безкоштовний зразок) створює партію з нульовою собівартістю",
    "InventoryService.createMovement guards Bug #238: unitOfMeasureId tenant guard cross-tenant unitOfMeasureId → BadRequestException, stockMovement.create НЕ викликаний",
@@ -1650,8 +1651,11 @@
    "InventoryService.createMovement guards RECEIPT НЕ викликає consumeBatch (лише розхід списує партії)",
    "InventoryService.createMovement guards RECEIPT збільшує quantity і не торкається reserved",
    "InventoryService.createMovement guards RESERVATION тільки інкрементує reserved, не quantity",
+   "InventoryService.createMovement guards RESERVATION_RELEASE з додатною кількістю → 400 навіть коли резерву достатньо",
+   "InventoryService.createMovement guards RESERVATION_RELEASE зменшує лише reserved: quantity не змінюється, партії не списуються",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) 0 негативних consumption (AVG_COST / без партій) → StockItem++, returnToBatch НЕ викликається, без throw",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) RETURN без documentType/documentId → BadRequest (нема як знайти джерело)",
+   "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) RETURN з від'ємною к-стю → 400 навіть за достатнього залишку (не стає списанням)",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) RETURN з від'ємною к-стю → BadRequest",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) shared-batch: дві частини з ОДНІЄЇ партії → ОДИН агрегований returnToBatch (per-line hazard)",
    "InventoryService.createMovement guards RETURN — повернення на склад (реверс WRITEOFF) позитивна к-сть інкрементує StockItem.quantity і НЕ створює нову партію",
@@ -1660,6 +1664,9 @@
    "InventoryService.createMovement guards WRITEOFF викликає consumeBatch з costMethod із налаштувань + повертає weightedCostPrice",
    "InventoryService.createMovement guards WRITEOFF з достатніми залишками декрементує quantity",
    "InventoryService.createMovement guards WRITEOFF опускає quantity нижче reserved → throw (available не від'ємний)",
+   "InventoryService.createMovement guards WRITEOFF у межах quantity, але понад available (частину зарезервовано) → 400, рух не записано",
+   "InventoryService.createMovement guards WRITEOFF: costMethod не задано або налаштування недоступні → FIFO",
+   "InventoryService.createMovement guards WRITEOFF: costMethod=LIFO з налаштувань доходить до consumeBatch без підміни",
    "InventoryService.createMovement guards WRITEOFF: create-гілка upsert клампить quantity до ≥0 (Postgres CHECK vs ON CONFLICT)",
    "InventoryService.createMovement guards createMovement без tx re-enter через $transaction (атомарність)",
    "InventoryService.createMovement guards createMovement з tx НЕ обгортається повторно у $transaction",
@@ -1686,6 +1693,12 @@
    "Inventory — balance invariants (property-based) кумулятивно RECEIPT N разів = sum(receipts)",
    "Inventory — balance invariants (property-based) повний цикл RECEIPT → RESERVATION → WRITEOFF → RESERVATION_RELEASE → quantity=0, reserved=0",
    "Inventory — balance invariants (property-based) після будь-яких валідних рухів: quantity ≥ 0, reserved ≥ 0, available ≥ 0"
+  ],
+  "apps/api/src/modules/inventory/inventory.single-writer.spec.ts": [
+   "Inventory — єдина точка запису залишків (статичний сторож) StockMovement у коді не видаляється, а єдиний update проставляє лише batchId",
+   "Inventory — єдина точка запису залишків (статичний сторож) sync push не приймає складські таблиці (PUSH_SAFE_TABLES без stock_*/batch_*)",
+   "Inventory — єдина точка запису залишків (статичний сторож) немає сирого SQL, що пише у складські таблиці (UPDATE / INSERT / DELETE)",
+   "Inventory — єдина точка запису залишків (статичний сторож) поза переліком дозволених немає жодного Prisma-запису у stockItem/stockMovement/stockBatch/batchConsumption"
   ],
   "apps/api/src/modules/inventory/pricing-rules.contract.spec.ts": [
    "PricingRules — HTTP Contract C1b audit: record() аргументи CREATE → record(orgId, PricingRule, id, CREATE, userId) ПІСЛЯ inline-write",
@@ -2726,7 +2739,10 @@
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.receive-ledger.spec.ts": [
    "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE CAS ДРУГОГО рядка не зійшовся → throw; жодного RECEIPT-руху (і для першого рядка теж) і без SUPPLIER_CHARGE",
-   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE два рядки → CAS обох рядків ДО першого руху; RECEIPT на кожен рядок; РІВНО ОДИН SUPPLIER_CHARGE на Σ"
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE lineId, якого немає серед рядків замовлення → мовчки відкидається (без 4xx); решта запиту приймається",
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE два рядки → CAS обох рядків ДО першого руху; RECEIPT на кожен рядок; РІВНО ОДИН SUPPLIER_CHARGE на Σ",
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE повністю прийнятий рядок із receivedQty>0 у запиті → НЕ відфільтровується за залишком, а дає 400 over-receipt",
+   "PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUPPLIER_CHARGE рядок запиту з receivedQty=0 → не активний: без CAS і без RECEIPT для нього; борг лише за прийнятий рядок"
   ],
   "apps/api/src/modules/purchase-orders/purchase-orders.receive-uom.spec.ts": [
    "PurchaseOrdersService.receive — UoM override tenant validation (Bug #239) Bug #237: partial receive без override → line.unitOfMeasureId НЕ оновлюється (receivedQty > 0)",
@@ -2924,6 +2940,22 @@
    "SettingsService.verifyFiscal — Bug #665 мережевий збій (fetch reject) → {valid:false} з повідомленням, не кидає",
    "SettingsService.verifyFiscal — Bug #665 невідома філія → NotFoundException"
   ],
+  "apps/api/src/modules/settlements/settlements.access.spec.ts": [
+   "SettlementsController — ролі доступу createAct — лише OWNER, ADMIN, ACCOUNTANT (без приймальника)",
+   "SettlementsController — ролі доступу downloadActPdf — лише OWNER, ADMIN, ACCOUNTANT (без приймальника)",
+   "SettlementsController — ролі доступу getActs — лише OWNER, ADMIN, ACCOUNTANT (без приймальника)",
+   "SettlementsController — ролі доступу getTransactions — лише OWNER, ADMIN, ACCOUNTANT (без приймальника)",
+   "SettlementsController — ролі доступу баланс контрагента бачать OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST"
+  ],
+  "apps/api/src/modules/settlements/settlements.account-read.spec.ts": [
+   "SettlementsAccountService — читання балансу і журналу баланс контрагента без рахунку → 0, а не помилка",
+   "SettlementsAccountService — читання балансу і журналу баланс читається за організацією і контрагентом і віддається числом",
+   "SettlementsAccountService — читання балансу і журналу журнал контрагента без рахунку → порожня сторінка, транзакції не читаються",
+   "SettlementsAccountService — читання балансу і журналу журнал: лише свій рахунок і своя організація, від найновіших",
+   "SettlementsAccountService — читання балансу і журналу розмір сторінки журналу обрізається до 200",
+   "SettlementsAccountService — читання балансу і журналу рядок журналу: сума у валюті транзакції, код валюти, сума у базовій і курс — числами; порожні лишаються null",
+   "SettlementsAccountService — читання балансу і журналу список актів звірки: лише своя організація і цей контрагент, від найновіших"
+  ],
   "apps/api/src/modules/settlements/settlements.invariants.spec.ts": [
    "Settlements — balance invariants (property-based) BALANCE_SIGN покриває ВСІ SettlementTransactionType (exhaustive) і кожен ±1",
    "Settlements — balance invariants (property-based) CHARGE + PAYMENT де payment >= charge → balance ≤ 0 (overpaid)",
@@ -2944,6 +2976,17 @@
    "Settlements — balance invariants (property-based) сума CHARGE = сума PAYMENT → balance = 0",
    "Settlements — balance invariants (property-based) частковий постач. цикл: receive(X) − pay(Y<X) + refund(Z) → −(X−Y−Z)"
   ],
+  "apps/api/src/modules/settlements/settlements.reconciliation-act.spec.ts": [
+   "SettlementsAccountService — акт звірки PDF: акт шукається за id + організація + контрагент; не знайдено → NotFound, PDF не будується",
+   "SettlementsAccountService — акт звірки відкриваючий баланс = поточний баланс − Σ знак×сума транзакцій періоду (знак з BALANCE_SIGN)",
+   "SettlementsAccountService — акт звірки знімок рядків зберігається в акті: дата, тип, сума, сума у базовій валюті, валюта, документ",
+   "SettlementsAccountService — акт звірки контрагента немає у цій організації (чужий або видалений) → NotFound, акт не створюється",
+   "SettlementsAccountService — акт звірки межі періоду — календарні дні Києва, зимовий час (UTC+2)",
+   "SettlementsAccountService — акт звірки межі періоду — календарні дні Києва, літній час (UTC+3)",
+   "SettlementsAccountService — акт звірки транзакції періоду беруться лише зі свого рахунку і своєї організації, від найстаріших",
+   "SettlementsAccountService — акт звірки у контрагента немає рахунку → NotFound, акт не створюється",
+   "SettlementsAccountService — акт звірки іновалютна транзакція входить у дельту сумою у базовій валюті, історична без amountBase — сумою amount"
+  ],
   "apps/api/src/modules/settlements/settlements.service.spec.ts": [
    "SettlementsService.createTransaction CHARGE інкрементує balance на +amount",
    "SettlementsService.createTransaction CREDIT_NOTE декрементує balance на -amount",
@@ -2955,13 +2998,23 @@
    "SettlementsService.createTransaction SUPPLIER_REFUND інкрементує balance на +amount (наш борг постачальнику меншає)",
    "SettlementsService.createTransaction без currencyId → base (rate=1, amountBase=amount), resolveBaseConversion не викликається",
    "SettlementsService.createTransaction без date → new Date(); без fallbackToLatest → false (BC для Фази 2)",
+   "SettlementsService.createTransaction без tx відкриває власну $transaction: рядок журналу і зміна балансу — в ній обидва",
    "SettlementsService.createTransaction з currencyId (USD) → balanceDelta від amountBase, не від amount",
+   "SettlementsService.createTransaction з переданим tx пише журнал і баланс у транзакції викликача, власну не відкриває",
    "SettlementsService.createTransaction кидає BadRequestException при amount < 0",
    "SettlementsService.createTransaction кидає BadRequestException при amount = 0",
+   "SettlementsService.createTransaction кидає BadRequestException при amount = Infinity, нічого не пише",
    "SettlementsService.createTransaction кидає BadRequestException при amount = NaN",
    "SettlementsService.createTransaction кидає NotFoundException якщо немає SettlementAccount",
+   "SettlementsService.createTransaction курсу немає (конвертація кидає) → помилка йде назовні, журнал і баланс не чіпаються",
    "SettlementsService.createTransaction пробрасує date + fallbackToLatest у resolveBaseConversion (документний потік)",
+   "SettlementsService.createTransaction рахунок шукається за організацією і контрагентом — чужа організація рахунку не бачить",
    "SettlementsService.createTransaction створює settlementTransaction з усіма полями"
+  ],
+  "apps/api/src/modules/settlements/settlements.single-writer.spec.ts": [
+   "Settlements — єдиний писар балансу (статичний сторож) журнал append-only: у коді api немає зміни чи видалення SettlementTransaction",
+   "Settlements — єдиний писар балансу (статичний сторож) сторож справді обходить код: файлів сотні, серед них сервіси інших модулів",
+   "Settlements — єдиний писар балансу (статичний сторож) у SettlementAccount і SettlementTransaction пише лише createTransaction; рахунок створює лише CounterpartiesService.create"
   ],
   "apps/api/src/modules/setup/setup.service.spec.ts": [
    "SetupService.init — TOCTOU race guard email власника нормалізується у lowercase",
@@ -3108,6 +3161,22 @@
    "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: bank account soft-deleted → account:[] (не crash)",
    "SupplierPaymentsService — linked-documents edge cases getLinkedDocuments: cross-org id → порожні секції"
   ],
+  "apps/api/src/modules/supplier-payments/supplier-payments.no-fiscal-loyalty.spec.ts": [
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: BullModule.registerQueue({ name: 'loyalty' }),",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: await this.loyalty.queueEarn(orgId, supplierId, amount, id);",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: constructor(@InjectQueue('checkbox') private readonly q: Queue) {}",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: data: { fiscalStatus: 'QUEUED' },",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: import { CheckboxClient } from '../payments/checkbox.client';",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: import { FiscalProviderRegistry } from '../payments/fiscal/fiscal-provider-registry';",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: import { LoyaltyModule } from '../loyalty/loyalty.module';",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор бачить порушення: import { PaymentsService } from '../payments/payments.service';",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор не чіпає дозволене: /** Не фіскалізується: LoyaltyService тут не потрібен. */\nexport const y = 2;",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор не чіпає дозволене: const x = 1; // без Checkbox (ПРРО) і без лояльності — supplier-side",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор не чіпає дозволене: import { SettlementsModule } from '../settlements/settlements.module';",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності детектор не чіпає дозволене: import { SupplierPaymentsService } from './supplier-payments.service';",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності жоден вихідник модуля не імпортує і не згадує фіскалізацію (ПРРО) чи лояльність",
+   "BR-SUPPAY-007 — оплата постачальнику без ПРРО і без лояльності сторож читає справжні вихідники модуля (інакше кейс нижче зелений на порожньому списку)"
+  ],
   "apps/api/src/modules/supplier-payments/supplier-payments.payables-fx.spec.ts": [
    "SupplierPaymentsService — payables-fx SP без purchaseOrderId → confirm без guard/FX/paidAmount tracking",
    "SupplierPaymentsService — payables-fx base-валютний PO повністю сплачено → FX НЕ бронюється",
@@ -3138,6 +3207,7 @@
    "SupplierPaymentsService — schedule getSchedule(): ліміт покриває planned ПЕРШИМ, overdue лишається повним",
    "SupplierPaymentsService — schedule getSchedule(): ліміт ≥ борг → постачальник не показується",
    "SupplierPaymentsService — schedule getSchedule(): постачальник з балансом ≥ 0 не показується (нічого не винні)",
+   "SupplierPaymentsService — schedule getSchedule(): усі три запити графіка обмежені take-cap 5000",
    "SupplierPaymentsService — schedule getScheduleDocuments(): date-бакет повертає лише PO цього дня + Σ allocated == клітинка",
    "SupplierPaymentsService — schedule getScheduleDocuments(): from > to → BadRequestException (спільний guard)",
    "SupplierPaymentsService — schedule getScheduleDocuments(): overdue-бакет фільтрує лише прострочені/null-date",
@@ -3160,10 +3230,14 @@
    "SupplierPaymentsService — update-guards create(): невідомий bankAccountId (для BANK_ACCOUNT) → NotFoundException",
    "SupplierPaymentsService — update-guards update(): PATCH purchaseOrderId іншого постачальника → BadRequestException, ніяких writes",
    "SupplierPaymentsService — update-guards update(): PATCH sourceType=BANK_ACCOUNT без bankAccountId → BadRequestException",
+   "SupplierPaymentsService — update-guards update(): PATCH sourceType=CASH_REGISTER без cashRegisterId (чернетка на банку) → BadRequestException, БЕЗ DB-виклику",
+   "SupplierPaymentsService — update-guards update(): PATCH без полів джерела → збережене джерело проходить перевірку і переписується як було",
    "SupplierPaymentsService — update-guards update(): PATCH на CONFIRMED → BadRequestException, ніяких writes",
    "SupplierPaymentsService — update-guards update(): зміна supplierId без purchaseOrderId → авто-очищення orphan PO (Bug #588)",
    "SupplierPaymentsService — update-guards update(): зміна supplierId коли purchaseOrderId вже null → НЕ пише зайвий purchaseOrderId",
-   "SupplierPaymentsService — update-guards update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes"
+   "SupplierPaymentsService — update-guards update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes",
+   "SupplierPaymentsService — update-guards update(): перехід банк → каса → у запис іде cashRegisterId, а bankAccountId обнуляється",
+   "SupplierPaymentsService — update-guards update(): перехід каса → банк → у запис іде bankAccountId, а cashRegisterId обнуляється"
   ],
   "apps/api/src/modules/supplier-returns/supplier-returns.confirm-fsm.spec.ts": [
    "SupplierReturnsService — regression guards cancel() з CONFIRMED → BadRequestException (FSM правило)",

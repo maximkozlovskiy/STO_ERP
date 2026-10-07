@@ -293,6 +293,7 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     );
   }
 
+  // guards: BR-INVT-013, BR-INVT-014
   it('shared-batch: 2 частини з ОДНІЄЇ партії → RETURN відновлює РІВНО списане (агрегація)', async () => {
     seedBatch('b1', 10, 0);
     await writeoff('part-A', 4); // remaining 6
@@ -326,6 +327,7 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     expect(db._batches.find(b => b.id === 'b1')!.remainingQty).toBe(7);
   });
 
+  // guards: BR-INVT-014
   it('multi-batch span: частина списана через 2 партії → RETURN відновлює обидві', async () => {
     seedBatch('b1', 4, 0); // старіша (FIFO списує першою)
     seedBatch('b2', 10, 1);

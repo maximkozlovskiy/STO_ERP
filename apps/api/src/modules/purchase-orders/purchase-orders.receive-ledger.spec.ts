@@ -235,4 +235,106 @@ describe('PurchaseOrdersService.receive — CAS рядків → RECEIPT → SUP
     expect(settlements.createTransaction).not.toHaveBeenCalled();
     expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
   });
+  // ── BR-PO-001: які рядки ЗАПИТУ стають «активними» ─────────────────────────────────────────
+  // Фільтр дивиться на запит, а не на залишок рядка замовлення: рядок активний, коли його lineId
+  // належить цьому замовленню І receivedQty у запиті > 0. Мутації, якими доведено три кейси:
+  // (6) прибрано `x.recv.receivedQty > 0`; (7) прибрано `!!x.line`; (8) у фільтр додано
+  // «залишок рядка > 0» (стара редакція правила) — кожна валить свій кейс.
+
+  // guards: BR-PO-001
+  it('рядок запиту з receivedQty=0 → не активний: без CAS і без RECEIPT для нього; борг лише за прийнятий рядок', async () => {
+    await service.receive(
+      ORG,
+      PO_ID,
+      {
+        lines: [
+          { lineId: LINE_1, receivedQty: 4 },
+          { lineId: LINE_2, receivedQty: 0 },
+        ],
+      },
+      USER_ID,
+    );
+
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: LINE_1, orgId: ORG, receivedQty: 2 } }),
+    );
+    expect(inventory.createMovement).toHaveBeenCalledTimes(1);
+    expect(inventory.createMovement).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'RECEIPT', goodId: GOOD_1, quantity: 4 }),
+      prisma,
+    );
+    // 4 × 100,00 — рядок 2 у суму боргу не потрапив.
+    expect(settlements.createTransaction).toHaveBeenCalledTimes(1);
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'SUPPLIER_CHARGE', amount: 400 }),
+      prisma,
+    );
+  });
+
+  // guards: BR-PO-001
+  it('lineId, якого немає серед рядків замовлення → мовчки відкидається (без 4xx); решта запиту приймається', async () => {
+    const UNKNOWN_LINE = '22222222-2222-4222-8222-22222222222f';
+
+    await expect(
+      service.receive(
+        ORG,
+        PO_ID,
+        {
+          lines: [
+            { lineId: UNKNOWN_LINE, receivedQty: 3 },
+            { lineId: LINE_1, receivedQty: 4 },
+          ],
+        },
+        USER_ID,
+      ),
+    ).resolves.toBeDefined();
+
+    // Жодного запису з чужим lineId: CAS і рух — лише для рядка 1.
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.purchaseOrderLine.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: LINE_1, orgId: ORG, receivedQty: 2 } }),
+    );
+    expect(inventory.createMovement).toHaveBeenCalledTimes(1);
+    expect(settlements.createTransaction).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ type: 'SUPPLIER_CHARGE', amount: 400 }),
+      prisma,
+    );
+  });
+
+  // guards: BR-PO-001
+  it('повністю прийнятий рядок із receivedQty>0 у запиті → НЕ відфільтровується за залишком, а дає 400 over-receipt', async () => {
+    // Рядок 1 уже прийнято повністю (10 із 10) — залишок 0.
+    prisma.purchaseOrder.findFirst.mockReset();
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      ...poWithLines,
+      lines: [{ ...poWithLines.lines[0], receivedQty: 10 }, poWithLines.lines[1]],
+    });
+
+    const err: unknown = await service
+      .receive(
+        ORG,
+        PO_ID,
+        {
+          lines: [
+            { lineId: LINE_1, receivedQty: 1 },
+            { lineId: LINE_2, receivedQty: 5 },
+          ],
+        },
+        USER_ID,
+      )
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    // Саме over-receipt guard (текст називає залишок), а не CAS / дубль lineId.
+    expect((err as Error).message).toMatch(/перевищує залишок/i);
+    // Fail-fast до транзакції: рядок 2 (цілком законний) теж не прийнято.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrderLine.updateMany).not.toHaveBeenCalled();
+    expect(inventory.createMovement).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+  });
 });

@@ -197,6 +197,7 @@ describe('Settlements — balance invariants (property-based)', () => {
   });
 
   // Bug #608 regression guard: наступний refactor знаку не втратить жодне enum-значення.
+  // guards: BR-SETL-003
   it('BALANCE_SIGN покриває ВСІ SettlementTransactionType (exhaustive) і кожен ±1', () => {
     const enumValues = Object.values(SettlementTransactionType);
     // Не менше 10 значень (CHARGE/PAYMENT/PREPAYMENT/REFUND/CREDIT_NOTE + 3 SUPPLIER_* + 2 FX_*).
@@ -225,6 +226,7 @@ describe('Settlements — balance invariants (property-based)', () => {
   // локальний Set → зміна бекового BALANCE_SIGN мовчки десинхронізувала б знак на UI (жоден тест
   // не ловив). Цей тест прив'язує shared-константу до бекового BALANCE_SIGN: інвертація/додавання
   // типу без синхронного оновлення shared → CI червоний ДО релізу.
+  // guards: BR-SETL-003
   it('shared SETTLEMENT_BALANCE_SIGN дзеркалить бековий BALANCE_SIGN 1-в-1 (усі типи, кожен знак)', () => {
     const enumValues = Object.values(SettlementTransactionType);
     // Кожен enum-тип присутній у shared і має ТОЙ САМИЙ знак, що й бек.

@@ -504,4 +504,23 @@ describe('SupplierPaymentsService — schedule', () => {
     ).rejects.toThrow(BadRequestException);
     expect(prisma.purchaseOrder.findMany).not.toHaveBeenCalled();
   });
+
+  // Take-cap: графік читає три таблиці одним Promise.all. Без верхньої межі організація з
+  // десятками тисяч PO/рахунків тягнула б усе в памʼять на кожне відкриття вкладки.
+  it('getSchedule(): усі три запити графіка обмежені take-cap 5000', async () => {
+    await service.getSchedule(ORG, '2026-08-20', '2026-09-08');
+    const queries = {
+      purchaseOrder: prisma.purchaseOrder.findMany,
+      settlementAccount: prisma.settlementAccount.findMany,
+      counterpartyContract: prisma.counterpartyContract.findMany,
+    };
+    const takes = Object.fromEntries(
+      Object.entries(queries).map(([model, fn]) => [model, fn.mock.calls[0]![0].take]),
+    );
+    expect(takes).toEqual({
+      purchaseOrder: 5000,
+      settlementAccount: 5000,
+      counterpartyContract: 5000,
+    });
+  });
 });

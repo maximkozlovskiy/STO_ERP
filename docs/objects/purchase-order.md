@@ -154,8 +154,15 @@ UI показує режим лише коли в документі вже є �
 
 ## Бізнес-правила: receive() інваріанти (BR-PO)
 
-1. **BR-PO-001**: `activeLines` = лише рядки де `line.quantity - line.receivedQty > 0`
-2. **BR-PO-002**: `deduplicateBy(receivedLines, l => l.lineId)` ПЕРЕД `$transaction` — запобігає дублям у payload
+1. **BR-PO-001**: `activeLines` — рядки ЗАПИТУ (`dto.lines`), у яких `lineId` належить цьому замовленню
+   і `receivedQty` у запиті > 0. На залишок рядка (`quantity - receivedQty`) фільтр НЕ дивиться:
+   рядок запиту з `receivedQty = 0` пропускається без запису; `lineId`, якого немає серед рядків
+   замовлення, мовчки відкидається (без 4xx); повністю прийнятий рядок із `receivedQty > 0` у запиті
+   не відфільтровується, а дає 400 від over-receipt guard (BR-PO-003).
+2. **BR-PO-002**: дубль `lineId` у `dto.lines` → 400 `err.purchaseOrder.receiveLineMustBeUnique` ДО
+   `$transaction` (перевірка через `Set`, жодного запису). Дублі НЕ схлопуються: два рядки з тим самим
+   `lineId` дали б подвійний `increment`. `deduplicateBy` у `receive()` не вживається — єдиний його
+   виклик у сервісі стоїть в `applyPricing()` і схлопує план за `goodId` перед оновленням `Good.salePrice`.
 3. **BR-PO-003**: `receivedQty` не може перевищити `line.quantity` (guard у DTO)
 4. **BR-PO-004**: **create/update: `validateLineGoodIds(orgId, lines)`** — усі goodId рядків мусять належати org
    (Good.id глобально унікальний → інакше cross-tenant FK-injection). Кидає 404 ДО запису.
@@ -200,7 +207,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | ---------------------------------------------- | ---------------------------------------------------------------- | ------ |
 | `applyPricing` — правила ціноутворення         | `purchase-orders.pricing.spec.ts`                                | 9      |
 | `receive()` — UoM-override + tenant-валідація  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
-| `receive()` — CAS рядків → RECEIPT → борг      | `purchase-orders.receive-ledger.spec.ts`                         | 2      |
+| `receive()` — activeLines, CAS → RECEIPT, борг | `purchase-orders.receive-ledger.spec.ts`                         | 5      |
 | `create`/`update` — tenant-guard goodId рядків | `purchase-orders.line-goods.spec.ts`                             | 3      |
 | `update()` — резолв контракту контрагента      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`        | `purchase-orders.fsm.spec.ts`                                    | 15     |
@@ -213,13 +220,6 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 Спільні DI-провайдери — `purchase-orders.spec-fixture.ts`. Якщо у конструктор
 `PurchaseOrdersService` додається сервіс, усі спеки впадуть із «Nest can't resolve
 dependencies» — це очікувано (клас Bug #536, #724): падіння видно одразу.
-
-**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
-виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
-але показує окремим рядком.
-
-- **BR-PO-001** — дос'є: `activeLines` — рядки, де `quantity - receivedQty > 0` (за залишком рядка); код: рядки запиту, де рядок замовлення існує і `receivedQty` у запиті > 0. Повністю прийнятий рядок не відфільтровується, а дає 400 від over-receipt guard; невідомий `lineId` мовчки відкидається.
-- **BR-PO-002** — дос'є: `deduplicateBy(receivedLines, l => l.lineId)` перед транзакцією (тихе схлопування дублів); код: дубль `lineId` у запиті → BadRequest до транзакції, `deduplicateBy` у `receive()` не викликається. Фактичну поведінку стереже тест Bug #483 у `purchase-orders.receive-uom.spec.ts`.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) у PurchaseOrder немає,
 хоча агрегат на шляху грошей і статусів. `fsm.spec.ts` перевіряє карту переходів, але

@@ -188,7 +188,7 @@ describe('SupplierPaymentsService — update-guards', () => {
     purchaseOrderId: null,
   };
 
-  // guards: BR-SUPPAY-003
+  // guards: BR-SUPPAY-003, BR-CP-001
   it('update(): зміна supplierId на контрагента-CLIENT → BadRequestException, ніяких writes', async () => {
     const CLIENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
     prisma.supplierPayment.findFirst.mockResolvedValueOnce(draftRow);
@@ -213,5 +213,98 @@ describe('SupplierPaymentsService — update-guards', () => {
       BadRequestException,
     );
     expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // update() — джерело коштів: гілки, яких не бачив єдиний кейс «банк без рахунку».
+  // update() рахує ЕФЕКТИВНЕ джерело (патч поверх збереженого) і сам передає у
+  // assertSourceConsistency лише поле свого sourceType, тож гілки «sourceConflict» з
+  // update() недосяжні за побудовою. Ексклюзивність там тримає не 400, а запис:
+  // чуже поле джерела завжди пишеться null. Нижче — обидві половини.
+  // ──────────────────────────────────────────────────────────────────────
+
+  const bankDraftRow = {
+    ...draftRow,
+    sourceType: PaymentSourceType.BANK_ACCOUNT,
+    bankAccountId: BANK_ID,
+    cashRegisterId: null,
+  };
+
+  // guards: BR-SUPPAY-002
+  it('update(): PATCH sourceType=CASH_REGISTER без cashRegisterId (чернетка на банку) → BadRequestException, БЕЗ DB-виклику', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce(bankDraftRow);
+
+    await expect(
+      service.update(ORG, SP_ID, { sourceType: PaymentSourceType.CASH_REGISTER }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // Старий bankAccountId не «рятує» касове джерело, і guard стоїть ДО читання FK.
+    expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
+    expect(prisma.cashRegister.findFirst).not.toHaveBeenCalled();
+    expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SUPPAY-002
+  it('update(): перехід каса → банк → у запис іде bankAccountId, а cashRegisterId обнуляється', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce(draftRow) // чернетка на касі CASH_ID
+      .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID });
+
+    await service.update(ORG, SP_ID, {
+      sourceType: PaymentSourceType.BANK_ACCOUNT,
+      bankAccountId: BANK_ID,
+    });
+
+    expect(prisma.supplierPayment.update).toHaveBeenCalledTimes(1);
+    const { data } = prisma.supplierPayment.update.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).toMatchObject({
+      sourceType: PaymentSourceType.BANK_ACCOUNT,
+      bankAccountId: BANK_ID,
+      cashRegisterId: null,
+    });
+    // Стара каса не читається: вона вже не джерело.
+    expect(prisma.cashRegister.findFirst).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SUPPAY-002
+  it('update(): перехід банк → каса → у запис іде cashRegisterId, а bankAccountId обнуляється', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce(bankDraftRow)
+      .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
+    prisma.cashRegister.findFirst.mockResolvedValueOnce({ id: CASH_ID });
+
+    await service.update(ORG, SP_ID, {
+      sourceType: PaymentSourceType.CASH_REGISTER,
+      cashRegisterId: CASH_ID,
+    });
+
+    expect(prisma.supplierPayment.update).toHaveBeenCalledTimes(1);
+    const { data } = prisma.supplierPayment.update.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).toMatchObject({
+      sourceType: PaymentSourceType.CASH_REGISTER,
+      cashRegisterId: CASH_ID,
+      bankAccountId: null,
+    });
+    expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SUPPAY-002
+  it('update(): PATCH без полів джерела → збережене джерело проходить перевірку і переписується як було', async () => {
+    prisma.supplierPayment.findFirst
+      .mockResolvedValueOnce(bankDraftRow)
+      .mockResolvedValueOnce({ ...confirmedRow, status: 'DRAFT' }); // findOne
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: BANK_ID });
+
+    await service.update(ORG, SP_ID, { amount: 750 });
+
+    const { data } = prisma.supplierPayment.update.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data).toMatchObject({ amount: 750, bankAccountId: BANK_ID, cashRegisterId: null });
+    expect(data).not.toHaveProperty('sourceType');
   });
 });

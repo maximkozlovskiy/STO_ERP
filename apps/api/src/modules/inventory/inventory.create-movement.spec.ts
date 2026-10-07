@@ -77,6 +77,7 @@ describe('InventoryService.createMovement guards', () => {
     ...overrides,
   });
 
+  // guards: BR-INVT-002
   it('кидає при quantity = 0', async () => {
     await expect(service.createMovement('org-1', dto({ quantity: 0 }))).rejects.toThrow(
       BadRequestException,
@@ -89,6 +90,7 @@ describe('InventoryService.createMovement guards', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-INVT-003
   it('кидає при WRITEOFF якщо available < |quantity|', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 5, reserved: 0 });
     await expect(
@@ -96,6 +98,7 @@ describe('InventoryService.createMovement guards', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-INVT-005
   it('кидає при RESERVATION якщо available < quantity', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 8 });
     await expect(
@@ -103,6 +106,7 @@ describe('InventoryService.createMovement guards', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-INVT-005
   it('кидає при RESERVATION_RELEASE якщо |quantity| > reserved', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 2 });
     await expect(
@@ -113,6 +117,7 @@ describe('InventoryService.createMovement guards', () => {
   // CRITICAL (audit 2026-09-04): OPENING_BALANCE збільшує quantity, тож МУСИТЬ створити партію —
   // інакше Σ remainingQty=0 при quantity>0 → товар несписуваний («Недостатньо партій»). Початкові
   // залишки (міграція даних при впровадженні) — типовий сценарій; раніше партія не створювалась.
+  // guards: BR-INVT-008
   it('OPENING_BALANCE створює партію (як RECEIPT), інакше залишок несписуваний', async () => {
     await service.createMovement(
       'org-1',
@@ -125,6 +130,7 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-008
   it('OPENING_BALANCE без price → fallback до good.purchasePrice (партія створюється)', async () => {
     prisma.good.findFirst.mockResolvedValue({ purchasePrice: 42 });
     await service.createMovement('org-1', dto({ type: 'OPENING_BALANCE', quantity: 100 }));
@@ -137,6 +143,7 @@ describe('InventoryService.createMovement guards', () => {
 
   // MEDIUM (audit 2026-09-04): симетричний race-guard проти НАД-резервування. Два concurrent
   // RESERVATION проходять stale pre-check; post-check row-locked reserved>quantity → throw.
+  // guards: BR-INVT-006
   it('over-reservation guard: upsert віддає reserved > quantity → throw (concurrent RESERVATION)', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 }); // pre-check пройде
     prisma.stockItem.upsert.mockResolvedValue({ quantity: 10, reserved: 20 }); // race: reserved>quantity
@@ -148,6 +155,7 @@ describe('InventoryService.createMovement guards', () => {
   // Pre-prod audit R2: WRITEOFF, що опускає quantity НИЖЧЕ reserved (пряме списання без RELEASE),
   // раніше не ловилось (reserved>quantity guard був лише на reservedDelta>0). Тепер throw і на
   // quantityDelta<0 → available не стане від'ємним при обох полях ≥0.
+  // guards: BR-INVT-006
   it("WRITEOFF опускає quantity нижче reserved → throw (available не від'ємний)", async () => {
     // pre-check бачить reserved=0 → available=20 ≥ 8, WRITEOFF проходить pre-check.
     prisma.stockItem.findFirst.mockResolvedValueOnce({ quantity: 20, reserved: 0 });
@@ -161,11 +169,13 @@ describe('InventoryService.createMovement guards', () => {
 
   // Bug #613 (cycle 2 code-review): виклик без tx має самообгортатись у $transaction,
   // щоб throw (race/нестача) не лишив orphan-записів (StockMovement/StockItem/BatchConsumption).
+  // guards: BR-INVT-007
   it('createMovement без tx re-enter через $transaction (атомарність)', async () => {
     await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 50 }));
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
+  // guards: BR-INVT-007
   it('createMovement з tx НЕ обгортається повторно у $transaction', async () => {
     await service.createMovement(
       'org-1',
@@ -190,6 +200,7 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-008
   it('Bug #26: RECEIPT без price fallback до good.purchasePrice', async () => {
     prisma.good.findFirst.mockResolvedValue({ purchasePrice: 42 });
     await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 }));
@@ -200,6 +211,7 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-008
   it('Bug #26: RECEIPT без price і без purchasePrice → costPrice=0', async () => {
     prisma.good.findFirst.mockResolvedValue({ purchasePrice: null });
     await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10 }));
@@ -210,6 +222,7 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-008
   it('Bug #15: RECEIPT з price=0 (безкоштовний зразок) створює партію з нульовою собівартістю', async () => {
     await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 5, price: 0 }));
     expect(prisma.stockMovement.create).toHaveBeenCalled();
@@ -220,18 +233,21 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-002
   it('Bug #26: createMovement кидає при NaN quantity', async () => {
     await expect(
       service.createMovement('org-1', dto({ quantity: NaN, price: 50 })),
     ).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-INVT-002
   it('Bug #26: createMovement кидає при NaN price', async () => {
     await expect(
       service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 5, price: NaN })),
     ).rejects.toThrow(BadRequestException);
   });
 
+  // guards: BR-INVT-004
   it('RESERVATION тільки інкрементує reserved, не quantity', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     await service.createMovement('org-1', dto({ type: 'RESERVATION', quantity: 5 }));
@@ -280,6 +296,7 @@ describe('InventoryService.createMovement guards', () => {
 
   // Партійне списання (COGS) — головний фікс: WRITEOFF викликає consumeBatch з costMethod
   // з налаштувань і повертає зважену собівартість.
+  // guards: BR-INVT-009
   it('WRITEOFF викликає consumeBatch з costMethod із налаштувань + повертає weightedCostPrice', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'FIFO' });
@@ -306,6 +323,7 @@ describe('InventoryService.createMovement guards', () => {
     expect(prisma.stockMovement.update).not.toHaveBeenCalled();
   });
 
+  // guards: BR-INVT-016
   it('WRITEOFF single-batch → проставляє batchId у stockMovement', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     batchService.consumeBatch.mockResolvedValue([{ batchId: 'b1', quantity: 5, costPrice: 100 }]);
@@ -316,6 +334,7 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-010
   it('AVG_COST: weightedCostPrice = getAvgCost, партії все одно списуються FIFO (інваріант)', async () => {
     prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
     settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'AVG_COST' });
@@ -337,6 +356,7 @@ describe('InventoryService.createMovement guards', () => {
     );
   });
 
+  // guards: BR-INVT-009
   it('RECEIPT НЕ викликає consumeBatch (лише розхід списує партії)', async () => {
     await service.createMovement('org-1', dto({ type: 'RECEIPT', quantity: 10, price: 100 }));
     expect(batchService.consumeBatch).not.toHaveBeenCalled();
@@ -357,6 +377,86 @@ describe('InventoryService.createMovement guards', () => {
     expect(prisma.stockMovement.update).not.toHaveBeenCalled();
   });
 
+  // Pre-check рахує від ДОСТУПНОГО (quantity − reserved), не від фізичного залишку: інакше
+  // пряме списання «з'їло» б чужий резерв. Тут фізично є 10, але 8 зарезервовано → доступно 2.
+  // guards: BR-INVT-003
+  it('WRITEOFF у межах quantity, але понад available (частину зарезервовано) → 400, рух не записано', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 8 });
+    await expect(
+      service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 })),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    expect(prisma.stockItem.upsert).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-INVT-004
+  it('RESERVATION_RELEASE зменшує лише reserved: quantity не змінюється, партії не списуються', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 5 });
+    prisma.stockItem.upsert.mockResolvedValue({ quantity: 10, reserved: 0 });
+    await service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: -5 }));
+    expect(prisma.stockItem.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          quantity: { increment: 0 },
+          reserved: { increment: -5 },
+        }),
+      }),
+    );
+    expect(batchService.consumeBatch).not.toHaveBeenCalled();
+    expect(batchService.createFromReceipt).not.toHaveBeenCalled();
+  });
+
+  // Сусідній кейс вище ставить costMethod='FIFO' — те саме, що й fallback, тож «метод узято з
+  // налаштувань» він не доводить. LIFO відрізняється від fallback: якщо метод захардкодити, впаде.
+  // guards: BR-INVT-009
+  it('WRITEOFF: costMethod=LIFO з налаштувань доходить до consumeBatch без підміни', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'LIFO' });
+    await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(settingsService.getOrganisationSettings).toHaveBeenCalledWith('org-1');
+    expect(batchService.consumeBatch).toHaveBeenCalledTimes(1);
+    expect(batchService.consumeBatch.mock.calls[0]![7]).toBe('LIFO');
+  });
+
+  // guards: BR-INVT-009
+  it('WRITEOFF: costMethod не задано або налаштування недоступні → FIFO', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    settingsService.getOrganisationSettings.mockResolvedValueOnce({ costMethod: null });
+    await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(batchService.consumeBatch.mock.calls[0]![7]).toBe('FIFO');
+
+    settingsService.getOrganisationSettings.mockRejectedValueOnce(new Error('redis down'));
+    await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(batchService.consumeBatch.mock.calls[1]![7]).toBe('FIFO');
+  });
+
+  // Середня рахується по партіях ДО списання: після FIFO-декременту найстаріші (зазвичай
+  // дешевші) партії вже зменшені, і та сама формула дала б іншу собівартість.
+  // guards: BR-INVT-010
+  it('AVG_COST: getAvgCost викликається ДО consumeBatch (середня до списання)', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 100, reserved: 0 });
+    settingsService.getOrganisationSettings.mockResolvedValue({ costMethod: 'AVG_COST' });
+    batchService.getAvgCost.mockResolvedValue(110);
+    batchService.consumeBatch.mockResolvedValue([{ batchId: 'b1', quantity: 5, costPrice: 100 }]);
+    await service.createMovement('org-1', dto({ type: 'WRITEOFF', quantity: -5 }));
+    expect(batchService.getAvgCost).toHaveBeenCalledTimes(1);
+    expect(batchService.getAvgCost.mock.invocationCallOrder[0]!).toBeLessThan(
+      batchService.consumeBatch.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  // Сусідній кейс «RESERVATION_RELEASE з positive quantity» не задає залишку, тож його 400 дає
+  // сусідній guard «знімаєш більше, ніж зарезервовано». Тут резерву достатньо: без перевірки
+  // знака додатний RELEASE збільшив би reserved в обхід перевірки available.
+  // guards: BR-INVT-005
+  it('RESERVATION_RELEASE з додатною кількістю → 400 навіть коли резерву достатньо', async () => {
+    prisma.stockItem.findFirst.mockResolvedValue({ quantity: 20, reserved: 10 });
+    await expect(
+      service.createMovement('org-1', dto({ type: 'RESERVATION_RELEASE', quantity: 5 })),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+  });
+
   // Bug #238: defense-in-depth tenant guard for caller-supplied unitOfMeasureId
   describe('Bug #238: unitOfMeasureId tenant guard', () => {
     const OWN_UOM = '11111111-1111-4111-8111-111111111111';
@@ -369,6 +469,7 @@ describe('InventoryService.createMovement guards', () => {
       ).unitOfMeasure = { findFirst: vi.fn() };
     });
 
+    // guards: BR-INVT-017
     it('cross-tenant unitOfMeasureId → BadRequestException, stockMovement.create НЕ викликаний', async () => {
       (
         prisma as unknown as { unitOfMeasure: { findFirst: ReturnType<typeof vi.fn> } }
@@ -415,6 +516,7 @@ describe('InventoryService.createMovement guards', () => {
   // рядково → другий залишає quantity=-N. Post-check ПІСЛЯ upsert ловить негатив і
   // throws → $transaction rollback. Без guard: silent quantity<0 у StockItem.
   describe('Bug #613 — concurrent WRITEOFF race-condition guard', () => {
+    // guards: BR-INVT-006
     it('WRITEOFF з concurrent race (upsert повернув quantity<0) → BadRequestException', async () => {
       prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });
       // Симулюємо race: pre-check бачить 10, але між pre-check і upsert інший tx
@@ -425,6 +527,7 @@ describe('InventoryService.createMovement guards', () => {
       ).rejects.toThrow(/Недостатньо товару.*concurrent/i);
     });
 
+    // guards: BR-INVT-006
     it('RESERVATION_RELEASE з concurrent race (reserved<0 після upsert) → BadRequestException', async () => {
       prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 5 });
       prisma.stockItem.upsert.mockResolvedValueOnce({ quantity: 10, reserved: -1 });
@@ -457,6 +560,7 @@ describe('InventoryService.createMovement guards', () => {
       ...overrides,
     });
 
+    // guards: BR-INVT-014
     it('позитивна к-сть інкрементує StockItem.quantity і НЕ створює нову партію', async () => {
       await service.createMovement('org-1', retDto());
       // StockItem upsert з increment: +3 (не batch-creating)
@@ -465,6 +569,7 @@ describe('InventoryService.createMovement guards', () => {
       expect(batchService.createFromReceipt).not.toHaveBeenCalled();
     });
 
+    // guards: BR-INVT-014
     it('шукає негативні BatchConsumption документа й повертає у КОЖНУ партію', async () => {
       prisma.batchConsumption.findMany.mockResolvedValue([
         { batchId: 'b1', quantity: -2 },
@@ -499,6 +604,7 @@ describe('InventoryService.createMovement guards', () => {
       );
     });
 
+    // guards: BR-INVT-014
     it('shared-batch: дві частини з ОДНІЄЇ партії → ОДИН агрегований returnToBatch (per-line hazard)', async () => {
       // Дві негативні consumption на b1 (різні documentLineId) → агрегуються у 2+3=5.
       prisma.batchConsumption.findMany.mockResolvedValue([
@@ -524,6 +630,7 @@ describe('InventoryService.createMovement guards', () => {
       expect(batchService.returnToBatch).not.toHaveBeenCalled();
     });
 
+    // guards: BR-INVT-014
     it('RETURN без documentType/documentId → BadRequest (нема як знайти джерело)', async () => {
       await expect(
         service.createMovement('org-1', retDto({ documentType: undefined })),
@@ -537,6 +644,18 @@ describe('InventoryService.createMovement guards', () => {
       await expect(service.createMovement('org-1', retDto({ quantity: -3 }))).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    // Кейс вище не задає залишку — без перевірки знака його 400 дав би guard «недостатньо товару».
+    // Тут товару достатньо: без перевірки знака від'ємний RETURN став би звичайним списанням.
+    // guards: BR-INVT-014
+    it("RETURN з від'ємною к-стю → 400 навіть за достатнього залишку (не стає списанням)", async () => {
+      prisma.stockItem.findFirst.mockResolvedValue({ quantity: 10, reserved: 0 });
+      await expect(service.createMovement('org-1', retDto({ quantity: -3 }))).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+      expect(batchService.consumeBatch).not.toHaveBeenCalled();
     });
   });
 });

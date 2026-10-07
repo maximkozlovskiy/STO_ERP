@@ -65,6 +65,30 @@
 
 ---
 
+## Бізнес-правила (BR-INVT)
+
+> Правила виведено з коду 2026-10-07, власником не затверджені.
+
+- **BR-INVT-001**: Залишки й партії змінює лише `InventoryService.createMovement()`: у коді api немає жодного запису в `StockItem`, `StockMovement`, `StockBatch`, `BatchConsumption` поза `inventory.service.ts` і `batch.service.ts` — ні через Prisma, ні сирим SQL, ні через sync push. Єдиний запис повз `createMovement` — `updateMinStock`, що пише лише поріг `minStock`.
+- **BR-INVT-002**: Рух із кількістю 0, `NaN` чи нескінченністю або з нечисловою ціною відхиляється (400) до будь-якого запису.
+- **BR-INVT-003**: Розхід (від'ємна кількість будь-якого типу, крім `RESERVATION_RELEASE`) дозволений лише в межах доступного `available = quantity − reserved`; інакше 400 і рух не записується.
+- **BR-INVT-004**: `RESERVATION` і `RESERVATION_RELEASE` змінюють тільки `reserved`: фізична `quantity` і партії лишаються без змін.
+- **BR-INVT-005**: `RESERVATION` відхиляється, якщо кількість більша за `available`; `RESERVATION_RELEASE` приймає лише від'ємну кількість і не може зняти більше, ніж зарезервовано.
+- **BR-INVT-006**: Після запису руху перевіряються фактичні значення рядка залишку: `quantity ≥ 0`, `reserved ≥ 0`, `reserved ≤ quantity`. Порушення (конкурентний рух проскочив попередню перевірку) → 400 і відкат усієї транзакції.
+- **BR-INVT-007**: Рух атомарний: запис руху, зміна залишку, партії та журнал списань ідуть в одній транзакції; якщо викликач транзакцію не передав, `createMovement` відкриває власну.
+- **BR-INVT-008**: Кожен додатний `RECEIPT` і `OPENING_BALANCE` створює партію на всю кількість руху. Собівартість партії — ціна руху (0 — теж ціна), без ціни — `Good.purchasePrice`, без неї — 0.
+- **BR-INVT-009**: Фізичний розхід списує партії методом `OrganisationSettings.costMethod` (не задано або налаштування недоступні — FIFO) і повертає зважену собівартість списаного: `Σ(кількість × costPrice) / Σ кількість`.
+- **BR-INVT-010**: При методі `AVG_COST` собівартість розходу — зважена середня активних партій (`Σ remainingQty × costPrice / Σ remainingQty`), порахована ДО списання; самі партії зменшуються в порядку FIFO.
+- **BR-INVT-011**: Порядок списання партій: FIFO — від найстарішої (`createdAt asc`), LIFO — від найновішої (`createdAt desc`), FEFO — за `expiryDate asc`, партії без терміну придатності останніми.
+- **BR-INVT-012**: Партія не йде в мінус: зменшення умовне (`remainingQty ≥ кількість`). Якщо умова не спрацювала (конкурентне списання) або активних партій не вистачило — 400 і відкат.
+- **BR-INVT-013**: Кожне списання з партії лишає запис `BatchConsumption` з від'ємною кількістю та посиланням на документ і його рядок.
+- **BR-INVT-014**: `RETURN` приймає лише додатну кількість і лише з посиланням на документ-джерело. Він збільшує `quantity`, нової партії не створює, а повертає товар у ті самі партії, з яких документ списував, — один раз на партію, сумою всіх списань документа з неї.
+- **BR-INVT-015**: Повернення в партію ідемпотентне за парою (партія, документ) і не може підняти `remainingQty` вище `receivedQty` (інакше 400).
+- **BR-INVT-016**: `StockMovement` — append-only: код ніколи не видаляє рух, а єдина зміна наявного руху — проставлення `batchId`, коли розхід списано рівно з однієї партії.
+- **BR-INVT-017**: Одиниця виміру, передана в рух, мусить належати організації; чужа або видалена → 400 до будь-якого запису.
+
+---
+
 ## Аспекти і тести, що їх стережуть
 
 Правите один аспект — ганяєте один файл:
@@ -75,21 +99,30 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/inventory/`
 
-| Аспект                                  | Тест                                  | Кейсів |
-| --------------------------------------- | ------------------------------------- | ------ |
-| інваріанти (property-based)             | `batch.invariants.spec.ts`            | 29     |
-| сервісна логіка                         | `batch.service.spec.ts`               | 21     |
-| HTTP-контракт (DTO, статуси, валідація) | `batches.contract.spec.ts`            | 4      |
-| by batch                                | `inventory.by-batch.spec.ts`          | 7      |
-| by document                             | `inventory.by-document.spec.ts`       | 9      |
-| create movement                         | `inventory.create-movement.spec.ts`   | 37     |
-| find movements                          | `inventory.find-movements.spec.ts`    | 5      |
-| інваріанти (property-based)             | `inventory.invariants.spec.ts`        | 8      |
-| HTTP-контракт (DTO, статуси, валідація) | `pricing-rules.contract.spec.ts`      | 25     |
-| сервісна логіка                         | `pricing.service.spec.ts`             | 34     |
-| інваріанти (property-based)             | `return-roundtrip.invariants.spec.ts` | 5      |
-| HTTP-контракт (DTO, статуси, валідація) | `stock-items.contract.spec.ts`        | 20     |
+| Аспект                                                | Тест                                  | Кейсів | Правила                         |
+| ----------------------------------------------------- | ------------------------------------- | ------ | ------------------------------- |
+| інваріанти партій на моделі у спеку (property-based)  | `batch.invariants.spec.ts`            | 29     | —                               |
+| партії: створення, списання, середня, повернення      | `batch.service.spec.ts`               | 21     | BR-INVT-010, 011, 012, 013, 015 |
+| HTTP-контракт (DTO, статуси, валідація)               | `batches.contract.spec.ts`            | 4      | —                               |
+| by batch                                              | `inventory.by-batch.spec.ts`          | 7      | —                               |
+| by document                                           | `inventory.by-document.spec.ts`       | 9      | —                               |
+| create movement                                       | `inventory.create-movement.spec.ts`   | 44     | BR-INVT-002…010, 014, 016, 017  |
+| find movements                                        | `inventory.find-movements.spec.ts`    | 5      | —                               |
+| інваріанти балансу на моделі у спеку (property-based) | `inventory.invariants.spec.ts`        | 8      | —                               |
+| єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                |
+| HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 25     | —                               |
+| сервісна логіка                                       | `pricing.service.spec.ts`             | 34     | —                               |
+| WRITEOFF→RETURN на справжніх сервісах, Σ-інваріант    | `return-roundtrip.invariants.spec.ts` | 5      | BR-INVT-013, 014                |
+| HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 20     | —                               |
 
-Разом: **204** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **215** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
+Мітки `// guards: BR-INVT-…` стоять над конкретними `it(`; колонка «Правила» — лише покажчик файла.
+
+**Чого тут НЕМА.** Кожне правило має unit-сторожа, але частину захисту unit-тест із моком Prisma бачити не може:
+
+- Захист на рівні БД — CHECK `stock_items_quantity_nonneg` і `stock_batches_remaining_nonneg`, тригер `trg_stock_movements_immutable` (останній рубіж для правил 006, 012 і 016) — у цьому модулі не перевіряється. Його стережуть integration-спеки на живій БД: `apps/api/src/prisma/schema-integrity.integration.spec.ts` і `append-only-triggers.integration.spec.ts`.
+- Справжньої конкурентності (дві паралельні транзакції) немає: перевірки «після запису» (правила 006 і 012) тестуються підставленим результатом `upsert` / `updateMany`, а не гонкою.
+- Інваріант `Σ remainingQty(active) == StockItem.quantity` на продукт-коді стережеться лише для циклу WRITEOFF→RETURN (`return-roundtrip.invariants.spec.ts`). `inventory.invariants.spec.ts` і `batch.invariants.spec.ts` перевіряють МОДЕЛЬ, написану в самому спеку, — вони не впадуть, якщо зламати сервіс; для прийому, списання й переміщення наскрізного сторожа інваріанту немає.
+- `createMovement` не перевіряє відповідність знака типу руху (крім `RESERVATION_RELEASE` і `RETURN`) і не перевіряє, що `goodId` / `warehouseId` належать організації, — це лишено викликачам, і тест цього не фіксує.
+- Сторінка залишків (`InventoryTab`) тут не розглядається: її E2E — `apps/web/e2e/inventory.spec.ts`, опис UI — у `stock-document.md`.

@@ -451,6 +451,7 @@ describe('PurchaseOrdersService.receive — UoM override tenant validation (Bug 
     });
   });
 
+  // guards: BR-PO-002
   it('Bug #483 (review): duplicate lineId у dto.lines → BadRequestException (без подвійного increment)', async () => {
     // Без dedup-guard Promise.all виконав би два update.increment для того самого lineId,
     // що подвоїло б receivedQty. Service кидає ще ДО $transaction.

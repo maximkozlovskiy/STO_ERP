@@ -200,6 +200,7 @@ describe('BatchService', () => {
       ]);
     });
 
+    // guards: BR-INVT-012
     it('кидає якщо партій недостатньо', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([{ id: 'b1', remainingQty: 3, costPrice: 100 }]);
       await expect(
@@ -242,6 +243,7 @@ describe('BatchService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    // guards: BR-INVT-013
     it('записує BatchConsumption з негативним quantity', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'b1', remainingQty: 10, costPrice: 100 },
@@ -255,6 +257,7 @@ describe('BatchService', () => {
     // Bug #609: regression-guard для orderBy різних costMethod. Refactor який
     // випадково поміняє asc↔desc для LIFO/FEFO пройде CI зеленим без цих тестів
     // (verified live: LIFO бере найновішу партію @120, FEFO fallback на createdAt asc).
+    // guards: BR-INVT-011
     it('LIFO: використовує orderBy createdAt desc (найновіша перша)', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'newer', remainingQty: 5, costPrice: 200 },
@@ -266,6 +269,7 @@ describe('BatchService', () => {
       );
     });
 
+    // guards: BR-INVT-011
     it('FEFO: orderBy expiryDate asc nulls last, then createdAt asc', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'exp-soon', remainingQty: 5, costPrice: 100 },
@@ -278,7 +282,7 @@ describe('BatchService', () => {
       );
     });
 
-    // guards: BR-GOOD-005
+    // guards: BR-GOOD-005, BR-INVT-011
     it('FIFO: orderBy createdAt asc (найстаріша перша)', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'old', remainingQty: 5, costPrice: 100 },
@@ -293,6 +297,7 @@ describe('BatchService', () => {
     // захищає від concurrent consume race window: два одночасних WRITEOFF одного
     // goodId+warehouseId читають ту саму findMany snapshot → без gte-фільтра другий
     // декремент дав би від'ємний remainingQty. updateMany з count=0 = race lost → throw.
+    // guards: BR-INVT-012
     it('Bug #613: використовує updateMany з фільтром remainingQty: { gte: take } (не update)', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'b1', remainingQty: 10, costPrice: 100 },
@@ -307,6 +312,7 @@ describe('BatchService', () => {
       expect(prisma.stockBatch.update).not.toHaveBeenCalled();
     });
 
+    // guards: BR-INVT-012
     it('Bug #613: race lost (updateMany.count=0) → BadRequestException + $tx rollback', async () => {
       prisma.stockBatch.findMany.mockResolvedValue([
         { id: 'b1', remainingQty: 10, costPrice: 100 },
@@ -327,6 +333,7 @@ describe('BatchService', () => {
       expect(cost).toBe(0);
     });
 
+    // guards: BR-INVT-010
     it('зважена середня по remainingQty', async () => {
       // Postgres рахує: SUM(qty*cost)=2*100+8*200=1800, SUM(qty)=10; service ділить на 10 → 180.
       prisma.$queryRaw.mockResolvedValueOnce([{ total_cost: 1800, total_qty: 10 }]);
@@ -343,6 +350,7 @@ describe('BatchService', () => {
       );
     });
 
+    // guards: BR-INVT-015
     it('інкрементує remainingQty (CAS з верхнім cap) + isActive=true + batchConsumption', async () => {
       prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
       prisma.stockBatch.updateMany.mockResolvedValueOnce({ count: 1 });
@@ -357,6 +365,7 @@ describe('BatchService', () => {
       });
     });
 
+    // guards: BR-INVT-015
     it('cap: повернення перевищує залишок місткості (updateMany.count=0) → BadRequest + rollback', async () => {
       prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
       // remainingQty=8, повертаємо 5 → 8 > 10-5=5 → CAS не матчить → count=0.
@@ -369,6 +378,7 @@ describe('BatchService', () => {
     // ВАЖЛИВО: guard ігнорує documentLineId — саме тому InventoryService.restoreBatchesForReturn
     // (C2) агрегує negative consumption ПО batchId у межах документа й викликає returnToBatch РАЗ
     // на партію: по-рядкові виклики на спільну партію тут би тихо пропустились → недоповернення.
+    // guards: BR-INVT-015
     it('ідемпотентність: наявне повернення на той самий документ → skip (без подвоєння)', async () => {
       prisma.stockBatch.findFirst.mockResolvedValue({ id: 'b1', goodId: 'g1', receivedQty: 10 });
       prisma.batchConsumption.findFirst.mockResolvedValueOnce({ id: 'existing' });

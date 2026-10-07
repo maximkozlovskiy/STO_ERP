@@ -95,7 +95,7 @@ describe('SupplierPaymentsService — create', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  // guards: BR-SUPPAY-003
+  // guards: BR-SUPPAY-003, BR-CP-001
   it('create(): контрагент-CLIENT → BadRequestException (не постачальник)', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID, type: 'CLIENT' });
     // currencyId обов'язковий у моку: без нього 400 кидав би сусідній guard «рахунок без
