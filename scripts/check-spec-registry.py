@@ -233,6 +233,12 @@ def gate_c(problems):
 BR_ID = re.compile(r"BR-[A-Z]+-\d+")
 GUARDS = re.compile(r"guards:\s*((?:BR-[A-Z]+-\d+)(?:\s*,\s*BR-[A-Z]+-\d+)*)")
 GAPS_BLOCK = re.compile(r"\*\*Чого тут НЕМА\.\*\*(.*?)(?:\n## |\Z)", re.S)
+# Правило, де дос'є й код розходяться: агент його не «лагодить», рішення за людиною. Гейт
+# таке правило не блокує (інакше CI стояв би до рішення), але рахує й показує окремо.
+MISMATCH_BLOCK = re.compile(
+    r"\*\*Розходження з кодом\.\*\*(.*?)(?:\*\*Чого тут НЕМА\.\*\*|\n## |\Z)", re.S
+)
+MISMATCH_ITEM = re.compile(r"^- \*\*(BR-[A-Z]+-\d+)\*\*", re.M)
 TEST_GLOBS = (
     ("apps", "api", "src", "**", "*.spec.ts"),
     ("apps", "web", "src", "**", "*.test.ts"),
@@ -269,12 +275,23 @@ def gate_d(problems, listing=False):
         ids = sorted(set(BR_ID.findall(src)))
         if not ids:
             continue
+        # Own rules only: a dossier may MENTION another aggregate's rule (BR-PAY-003 inside
+        # invoice.md). Its own rules share the prefix that dominates the file.
+        prefixes = [i.rsplit("-", 1)[0] for i in BR_ID.findall(src)]
+        own = max(set(prefixes), key=prefixes.count)
+        ids = [i for i in ids if i.rsplit("-", 1)[0] == own]
         gaps_m = GAPS_BLOCK.search(src)
         in_gaps = set(BR_ID.findall(gaps_m.group(1))) if gaps_m else set()
-        n_tag = n_gap = n_none = 0
+        mis_m = MISMATCH_BLOCK.search(src)
+        # лише ID на початку пункту: у тексті розходження можуть згадуватись інші правила
+        in_mis = set(MISMATCH_ITEM.findall(mis_m.group(1))) if mis_m else set()
+        n_tag = n_gap = n_none = n_mis = 0
         for br in ids:
             known.add(br)
             checked += 1
+            if br in in_mis:
+                n_mis += 1
+                continue
             if br in tags:
                 n_tag += 1
                 if br in in_gaps:
@@ -284,16 +301,17 @@ def gate_d(problems, listing=False):
             else:
                 n_none += 1
                 problems.append("BR БЕЗ ТЕСТУ %s (%s) — немає мітки `guards:` і немає у «Чого тут НЕМА»" % (br, rel(doc)))
-        rows.append((os.path.basename(doc), len(ids), n_tag, n_gap, n_none))
+        rows.append((os.path.basename(doc), len(ids), n_tag, n_gap, n_mis, n_none))
     for br, files in sorted(tags.items()):
         if br not in known:
             problems.append("МІТКА НА НЕІСНУЮЧЕ ПРАВИЛО %s у %s" % (br, files[0]))
     if listing:
-        print("  %-28s %6s %8s %10s %9s" % ("дос'є", "правил", "з тестом", "прогалина", "без нічого"))
-        for name, n, a, b, c in rows:
-            print("  %-28s %6d %8d %10d %9d" % (name, n, a, b, c))
-        tot = [sum(r[i] for r in rows) for i in (1, 2, 3, 4)]
-        print("  %-28s %6d %8d %10d %9d" % ("РАЗОМ", tot[0], tot[1], tot[2], tot[3]))
+        fmt = "  %-28s %6s %8s %10s %12s %10s"
+        print(fmt % ("дос'є", "правил", "з тестом", "прогалина", "розходження", "без нічого"))
+        for row in rows:
+            print(fmt % row)
+        tot = [sum(r[i] for r in rows) for i in (1, 2, 3, 4, 5)]
+        print(fmt % ("РАЗОМ", tot[0], tot[1], tot[2], tot[3], tot[4]))
         print()
     return checked
 

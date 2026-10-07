@@ -78,6 +78,7 @@ describe('CounterpartiesService — Bug #739: SUPPLIER потребує companyN
     service = module.get(CounterpartiesService);
   });
 
+  // guards: BR-CP-003
   it('create SUPPLIER лише з firstName (без companyName) → BadRequestException', async () => {
     await expect(
       service.create('org-1', { type: 'SUPPLIER', firstName: 'Іван' } as any),
@@ -124,6 +125,7 @@ describe('CounterpartiesService — Bug #739: SUPPLIER потребує companyN
     ).resolves.toBeDefined();
   });
 
+  // guards: BR-CP-003
   it('update CLIENT(firstName-only)→SUPPLIER без companyName → BadRequestException (ефективний тип)', async () => {
     // existing: CLIENT з firstName, без companyName. PATCH міняє лише type→SUPPLIER.
     prisma.counterparty.findFirst.mockResolvedValue({
@@ -173,5 +175,49 @@ describe('CounterpartiesService — Bug #739: SUPPLIER потребує companyN
       service.update('org-1', 'cp-1', { phone: '+380501112233' } as any),
     ).resolves.toBeDefined();
     expect(prisma.counterparty.update).toHaveBeenCalled();
+  });
+
+  // ─── Базова половина правила: «назва» обов'язкова для БУДЬ-ЯКОГО типу ───────────
+  // Кейси вище стережуть лише SUPPLIER-гілку guard'а; не-SUPPLIER гілку (companyName АБО
+  // firstName/lastName) без цих двох можна вимкнути, і жоден тест не впаде.
+
+  // guards: BR-CP-003
+  it('create CLIENT без жодної назви (лише пробіли/порожньо) → BadRequestException, транзакція не починається', async () => {
+    await expect(
+      service.create('org-1', {
+        type: 'CLIENT',
+        companyName: '',
+        firstName: '   ',
+        phone: '+380501112233',
+      } as any),
+    ).rejects.toThrow(/назву компанії або/i);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CP-003
+  it('update: PATCH очищає останню назву (merged-стан без назви) → BadRequestException', async () => {
+    // existing: CLIENT лише з firstName. PATCH не чіпає type/companyName/lastName, а firstName стирає.
+    prisma.counterparty.findFirst.mockResolvedValue({
+      type: 'CLIENT',
+      companyName: null,
+      firstName: 'Іван',
+      lastName: null,
+      edrpou: null,
+      vatPayer: false,
+      phone: null,
+      email: null,
+      notes: null,
+      legalForm: null,
+      legalAddress: null,
+      actualAddress: null,
+      bankAccount: null,
+      bankName: null,
+      contactPerson: null,
+      taxNumber: null,
+    });
+    await expect(service.update('org-1', 'cp-1', { firstName: '' } as any)).rejects.toThrow(
+      /назву компанії або/i,
+    );
+    expect(prisma.counterparty.update).not.toHaveBeenCalled();
   });
 });

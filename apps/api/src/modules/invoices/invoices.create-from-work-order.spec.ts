@@ -91,6 +91,7 @@ describe('InvoicesService — create-from-work-order', () => {
   // createFromWorkOrder також резолвить dueDate через invoiceDueDays (обчислюється ПОЗА
   // Serializable tx). Раніше dueDate був завжди null для WO-рахунків (§13 config gap).
   describe('createFromWorkOrder — dueDate за invoiceDueDays (§13)', () => {
+    // guards: BR-INV-004
     it('дефолтний dueDate = documentDate(kyivToday) + invoiceDueDays проброшено у create', async () => {
       prisma.workOrder.findFirst.mockResolvedValue({
         id: WO_ID,

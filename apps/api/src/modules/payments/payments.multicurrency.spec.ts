@@ -311,6 +311,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     expect(prisma.payment.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-005
   it('оплата USD-наряду з USD-каси: WorkOrder.paidAmount інкрементиться dto.amount (валюта наряду)', async () => {
     const WO_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     prisma.cashRegister.findFirst.mockResolvedValue({

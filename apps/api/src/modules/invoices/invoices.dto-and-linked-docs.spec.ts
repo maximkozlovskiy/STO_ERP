@@ -76,6 +76,7 @@ describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
     service = module.get(InvoicesService);
   });
 
+  // guards: BR-INV-009
   it('віддає paidAmount з колонки (200), навіть якщо Σpayments розходиться (999)', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       ...baseInv,
@@ -105,6 +106,7 @@ describe('InvoicesService — toDto paidAmount authority (Bug #676)', () => {
     expect(dto.paidAmount).toBe(150);
   });
 
+  // guards: BR-INV-009
   it('paidAmount=0 (колонка є, ще нічого не оплачено) → 0, не undefined/фолбек', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       ...baseInv,

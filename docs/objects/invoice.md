@@ -179,6 +179,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | --------------------------------------- | ------------------------------------------ | ------ |
 | BullMQ-processor                        | `invoice-overdue.processor.spec.ts`        | 4      |
 | HTTP-контракт (DTO, статуси, валідація) | `invoices.contract.spec.ts`                | 27     |
+| create defaults (номер, invoiceType)    | `invoices.create-defaults.spec.ts`         | 5      |
 | create from work order                  | `invoices.create-from-work-order.spec.ts`  | 5      |
 | dto and linked docs                     | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
 | due date                                | `invoices.due-date.spec.ts`                | 7      |
@@ -186,8 +187,37 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 10     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
 
-Разом: **76** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **81** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-INV-002** — дос'є: `POST /from-work-order/:id` переносить роботи й товари; код: `createFromWorkOrder` створює рахунок лише із сумою наряду, без рядків (`invoices.service.ts`, create). Рядки переносить тільки `refreshFromWorkOrder`.
+- **BR-INV-008** — дос'є: `calcVatTotals()` рахує підсумки на фронті рахунку; код: `InvoiceCreateModal` і сторінка рахунків його не викликають — єдиний споживач `CreateWorkOrderModal`.
+- **BR-INV-010** — дос'є: оплата дозволена лише для `SENT`/`PARTIALLY_PAID`; код приймає ще й `OVERDUE` (`payments.service.ts`), і BR-PAY-003 у `payments.md` каже так само. Два дос'є суперечать одне одному.
+- **BR-INV-012** — дос'є: ручний перехід у PAID НЕ створює PAYMENT-settlement; код після Bug #675 створює дзеркальний PAYMENT для standalone-рахунку, і тест це стереже. Текст правила описує вже виправлений баг.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
+
+Правила, які живуть у `PaymentsService` (модуль `payments`), а не тут — у спеках `invoices` тесту
+на них немає й бути не може; мітку `guards:` на них у цьому модулі не ставимо:
+
+- BR-INV-011 — «один платіж = один `PAYMENT`-settlement своєї суми» виконує `PaymentsService.create`;
+  стереже `payments.money-model.spec.ts` («Bug #668: часткова оплата 200 → рівно 1
+  PAYMENT-settlement на 200»), без мітки з цим ID.
+- BR-INV-013 — резолв джерела платежу (DTO → дефолт `PaymentMethodConfig` → `null`) у
+  `PaymentsService`; стереже `payments.money-model.spec.ts` (Bug #673, #674), без мітки з цим ID.
+- BR-INV-014 — `resolveDestinationAccount` (явний невалідний → 4xx, stale-дефолт → `null`) у
+  `PaymentsService`; стережуть `payments.money-model.spec.ts` (Bug #673) і
+  `payments.idempotency.spec.ts` («config-дефолт … stale → degrade to null»), без мітки з цим ID.
+- BR-INV-015 — «source-link — опційні метадані, борг від нього не залежить»: окремого тесту на
+  незалежність settlement від джерела немає; найближче — `payments.money-model.spec.ts`
+  («Bug #674: methodConfig=null → джерело null, платіж успішний»).
+- BR-INV-016 — FK `ON DELETE SET NULL` на `Payment.bankAccountId`/`cashRegisterId`: властивість
+  схеми БД, unit-тестом із моком Prisma не перевіряється; потрібен integration-тест на живій БД.
+
+Web-половина правила про `invoiceType` (нормалізація значення поза enum-ом у `InvoiceCreateModal`
+через `normalizeInvoiceType()`) тесту не має: функція не експортована, потрібен компонентний тест.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

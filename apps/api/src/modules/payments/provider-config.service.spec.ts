@@ -70,6 +70,7 @@ describe('ProviderConfigService', () => {
       });
     });
 
+    // guards: BR-PAY-014
     it('немає конфіга → legacy fallback на BranchSettings.monobank*', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
       prisma.branchSettings.findFirst.mockResolvedValue({
@@ -86,6 +87,7 @@ describe('ProviderConfigService', () => {
       });
     });
 
+    // guards: BR-PAY-014
     it('немає конфіга + legacy checkbox → FISCAL fallback з license/pin/cashRegister', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
       prisma.branchSettings.findFirst.mockResolvedValue({
@@ -120,6 +122,7 @@ describe('ProviderConfigService', () => {
       expect(await svc.resolveActive(ORG, BRANCH, 'PAYMENT')).toBeNull();
     });
 
+    // guards: BR-PAY-014
     it('DELIVERY без конфіга → null навіть якщо є legacy monobankToken (немає легасі-колонок доставки)', async () => {
       // Регресія: legacyFromBranchSettings мала PAYMENT-гілку як «дефолт» для будь-якого не-FISCAL
       // kind → для DELIVERY помилково повертала monobank-конфіг чужого kind. Тепер kind!=='PAYMENT' → null.
@@ -356,6 +359,7 @@ describe('ProviderConfigService', () => {
   });
 
   describe('activate (ексклюзивність)', () => {
+    // guards: BR-PAY-013
     it('вимикає інших + вмикає активного (атомарно), guard creds ok', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue({
         id: 'c1',
@@ -378,6 +382,7 @@ describe('ProviderConfigService', () => {
       expect(enableCall.data).toEqual({ enabled: true });
     });
 
+    // guards: BR-PAY-013
     it('провайдер без збережених creds → 400 (спершу введіть креди)', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue({ id: 'c1', credentials: null });
       await expect(svc.activate(ORG, BRANCH, 'PAYMENT', 'monobank')).rejects.toThrow(
@@ -393,6 +398,7 @@ describe('ProviderConfigService', () => {
       );
     });
 
+    // guards: BR-PAY-013
     it('kind-незалежність: активація FISCAL-провайдера НЕ чіпає PAYMENT-конфіги (kind у обох where)', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue({
         id: 'c1',
@@ -437,6 +443,7 @@ describe('ProviderConfigService', () => {
       expect(mergedCreds).toEqual({ publicKey: 'NEW-PUB', privateKey: 'OLD-PRIV' });
     });
 
+    // guards: BR-PAY-015
     it('view повертає hasCredentials, НЕ сирі credentials', async () => {
       prisma.branchProviderConfig.findFirst.mockResolvedValue(null);
       prisma.branchProviderConfig.upsert.mockResolvedValue({
@@ -463,6 +470,7 @@ describe('ProviderConfigService', () => {
   });
 
   describe('getBranchConfigs', () => {
+    // guards: BR-PAY-015
     it('НЕ повертає сирі credentials — лише hasCredentials', async () => {
       prisma.branchProviderConfig.findMany.mockResolvedValue([
         {

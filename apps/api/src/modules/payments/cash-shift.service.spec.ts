@@ -107,6 +107,7 @@ describe('CashShiftService (ПРРО registry)', () => {
 
   // ── open ─────────────────────────────────────────────────────────────────
   describe('open', () => {
+    // guards: BR-PAY-010
     it('happy: signIn → openShift → persist OPEN + token + provider + shiftId', async () => {
       cashRegisterFindFirst.mockResolvedValueOnce({ id: 'reg-1' });
       cashShiftFindFirst.mockResolvedValueOnce(null); // no existing OPEN
@@ -134,6 +135,7 @@ describe('CashShiftService (ПРРО registry)', () => {
       expect(dto.checkboxShiftId).toBe('cbx-1');
     });
 
+    // guards: BR-PAY-010
     it('guard: провайдер не налаштовано (resolveActive→null) → 400, без зовнішнього виклику', async () => {
       // open() спершу знаходить касу філії, потім резолвить провайдера — тож каса має існувати,
       // щоб потік дійшов до провайдер-guard (інакше кине «Немає каси»).
@@ -149,6 +151,7 @@ describe('CashShiftService (ПРРО registry)', () => {
       expect(signIn).not.toHaveBeenCalled();
     });
 
+    // guards: BR-PAY-010
     it('guard: вже є OPEN-зміна на касі → 400 "вже відкрита", без зовнішнього виклику', async () => {
       cashRegisterFindFirst.mockResolvedValueOnce({ id: 'reg-1' });
       cashShiftFindFirst.mockResolvedValueOnce({ id: 'existing' });
@@ -156,6 +159,7 @@ describe('CashShiftService (ПРРО registry)', () => {
       expect(signIn).not.toHaveBeenCalled();
     });
 
+    // guards: BR-PAY-010
     it('P2002-recovery: create кидає P2002 (гонка) → повертає winner OPEN-зміну, НЕ помилку', async () => {
       cashRegisterFindFirst.mockResolvedValueOnce({ id: 'reg-1' });
       cashShiftFindFirst.mockResolvedValueOnce(null); // pre-check: нема OPEN
@@ -247,6 +251,7 @@ describe('CashShiftService (ПРРО registry)', () => {
 
   // ── close ────────────────────────────────────────────────────────────────
   describe('close', () => {
+    // guards: BR-PAY-011
     it('OPEN → CAS-claim → ensureToken → closeShift → CLOSED + zReportId', async () => {
       cashShiftFindFirst
         .mockResolvedValueOnce(okShiftRow({ status: 'OPEN' })) // close() head
@@ -280,6 +285,7 @@ describe('CashShiftService (ПРРО registry)', () => {
     // Bug #711 mutation-verified: якщо прибрати CAS-claim (лишити stale-read update),
     // конкурентний close() пройшов би head-guard і пробив би ДРУГИЙ Z-звіт. Тут claim програний
     // (count:0) → 400 і closeShift НЕ викликається (жодного другого фіскального Z-звіту).
+    // guards: BR-PAY-011
     it('CAS-claim програний (concurrent close виграв) → 400, closeShift НЕ викликається', async () => {
       cashShiftFindFirst.mockResolvedValueOnce(okShiftRow({ status: 'OPEN' })); // head бачить OPEN
       cashShiftUpdateMany.mockResolvedValueOnce({ count: 0 }); // інший close уже захопив
@@ -290,6 +296,7 @@ describe('CashShiftService (ПРРО registry)', () => {
 
     // Bug #711: зовнішній Z-звіт упав ПІСЛЯ виграного claim → відкат claim у OPEN (щоб касир
     // повторив), інакше зміна лишилась би CLOSED без реального Z-звіту.
+    // guards: BR-PAY-011
     it('claim виграний, але closeShift кидає → revert у OPEN + rethrow', async () => {
       cashShiftFindFirst
         .mockResolvedValueOnce(okShiftRow({ status: 'OPEN' }))
@@ -462,6 +469,7 @@ describe('CashShiftService (ПРРО registry)', () => {
 
   // ── getCurrent ─────────────────────────────────────────────────────────────
   describe('getCurrent', () => {
+    // guards: BR-PAY-012
     it('OPEN → dto + pendingReceipts scoped до THIS branch (workOrder.branchId)', async () => {
       cashShiftFindFirst.mockResolvedValueOnce(okShiftRow());
       paymentCount.mockResolvedValueOnce(3);
@@ -472,6 +480,7 @@ describe('CashShiftService (ПРРО registry)', () => {
       });
     });
 
+    // guards: BR-PAY-012
     it('per-branch: дві філії з QUEUED — count запитано саме для запитаної філії', async () => {
       cashShiftFindFirst.mockResolvedValueOnce(okShiftRow());
       paymentCount.mockResolvedValueOnce(5);

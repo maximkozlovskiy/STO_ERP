@@ -124,6 +124,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
 
   // ── Часткова→повна послідовність + рівно-залишок ──────────────────────────
 
+  // guards: BR-PAY-003
   it('Bug #668: оплата залишку з PARTIALLY_PAID-бази (300 при paid=200/500) → paidAmount=500, PAID', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'PARTIALLY_PAID',
@@ -144,6 +145,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     );
   });
 
+  // guards: BR-PAY-003
   it('Bug #669: оплата РІВНО залишку (100 при paid=400/500) → PAID, не PARTIALLY_PAID', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'PARTIALLY_PAID',
@@ -162,6 +164,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     );
   });
 
+  // guards: BR-PAY-003
   it('Bug #670: переплата з PARTIALLY_PAID-бази (300 при залишку 200) → throw ПЕРЕД CAS/create', async () => {
     // amount 500, paid 300 → remaining 200; платіж 300 > 200.
     prisma.invoice.findFirst.mockResolvedValue({
@@ -181,6 +184,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
 
   // ── Concurrency: два платежі, обидва читають paidAmount=0 ─────────────────
 
+  // guards: BR-PAY-003
   it('Bug #671: два послідовних платежі (count=1, потім count=0) → другий throw, БЕЗ Payment/settlement', async () => {
     // Обидва читають paidAmount=0 (stale). Перший CAS виграє (count=1), другий програє (count=0).
     prisma.invoice.findFirst.mockResolvedValue({
@@ -208,6 +212,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
 
   // ── status-gate: PAID / CANCELLED (не лише DRAFT) ─────────────────────────
 
+  // guards: BR-PAY-003
   it('Bug #672: рахунок у PAID → throw (лише SENT/PARTIALLY_PAID приймають оплату)', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'PAID',
@@ -221,6 +226,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-003
   it('Bug #672: рахунок у CANCELLED → throw', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'CANCELLED',
@@ -230,6 +236,36 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     });
     await expect(service.create(ORG, baseDto, 'user-1')).rejects.toThrow(BadRequestException);
     expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  // OVERDUE — третій оплачуваний статус: прострочений рахунок усе ще належить сплатити.
+  // guards: BR-PAY-003
+  it('рахунок у OVERDUE → оплата приймається: часткова → PARTIALLY_PAID, повна → PAID', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({
+      status: 'OVERDUE',
+      workOrderId: null,
+      amount: 500,
+      paidAmount: 0,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.create(ORG, { ...baseDto, amount: 200 }, 'user-1');
+    await service.create(ORG, { ...baseDto, amount: 500 }, 'user-1');
+
+    expect(prisma.invoice.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 200, status: 'PARTIALLY_PAID' }),
+      }),
+    );
+    expect(prisma.invoice.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 500, status: 'PAID' }),
+      }),
+    );
+    expect(prisma.payment.create).toHaveBeenCalledTimes(2);
+    expect(settlements.createTransaction).toHaveBeenCalledTimes(2);
   });
 
   // ── resolveDestinationAccount: CASH_REGISTER + explicit-strict варіанти ────
@@ -260,6 +296,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     expect(lastCreateData?.bankAccountId).toBeNull();
   });
 
+  // guards: BR-PAY-002
   it('Bug #673: explicit CASH_REGISTER + чужа/видалена каса → NotFound (строга валідація), без Payment', async () => {
     prisma.cashRegister.findFirst.mockResolvedValue(null);
     await expect(
@@ -293,6 +330,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     expect(lastCreateData?.cashRegisterId).toBeNull();
   });
 
+  // guards: BR-PAY-002
   it('Bug #674: explicit sourceType=BANK_ACCOUNT БЕЗ bankAccountId → 400, без Payment', async () => {
     await expect(
       service.create(ORG, { ...baseDto, sourceType: 'BANK_ACCOUNT' }, 'user-1'),
@@ -302,6 +340,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-002
   it('Bug #674: explicit sourceType=CASH_REGISTER БЕЗ cashRegisterId → 400, без Payment', async () => {
     await expect(
       service.create(ORG, { ...baseDto, sourceType: 'CASH_REGISTER' }, 'user-1'),
@@ -331,6 +370,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
 
   // ── Кожна часткова оплата → рівно один PAYMENT-settlement своєї суми ──────
 
+  // guards: BR-PAY-004
   it('Bug #668: часткова оплата 200 → рівно 1 PAYMENT-settlement на 200 (борг зменшується на суму)', async () => {
     prisma.invoice.findFirst.mockResolvedValue({
       status: 'SENT',

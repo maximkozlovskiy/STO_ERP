@@ -98,6 +98,7 @@ describe('InvoicesService — refresh-from-work-order', () => {
   // ─── Bug #406: vatRate=20 default ────────────────────────────────────────
 
   describe('refreshFromWorkOrder — VAT з налаштувань org (не хардкод)', () => {
+    // guards: BR-INV-007
     it('EXCLUSIVE 20% → створює invoice lines з vatRate=20 для робіт і запчастин', async () => {
       // Раніше vatRate був хардкод 20 незалежно від org; тепер береться з getDefaultVatRate.
       settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });

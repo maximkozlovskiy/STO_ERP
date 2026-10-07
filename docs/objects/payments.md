@@ -274,19 +274,28 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | провайдер                | `fiscal/vchasno.provider.spec.ts`           | 29     |
 | payment gateway registry | `gateways/payment-gateway-registry.spec.ts` | 12     |
 | HTTP-клієнт              | `monobank.client.spec.ts`                   | 26     |
-| сервісна логіка          | `online-payment.service.spec.ts`            | 14     |
+| сервісна логіка          | `online-payment.service.spec.ts`            | 15     |
 | BullMQ-processor         | `payment-polling.processor.spec.ts`         | 19     |
 | fiscal gate              | `payments.fiscal-gate.spec.ts`              | 7      |
 | idempotency              | `payments.idempotency.spec.ts`              | 7      |
-| money model              | `payments.money-model.spec.ts`              | 13     |
+| money model              | `payments.money-model.spec.ts`              | 14     |
 | multicurrency            | `payments.multicurrency.spec.ts`            | 17     |
 | query dto                | `payments.query-dto.spec.ts`                | 28     |
+| передумови + наряд       | `payments.work-order.spec.ts`               | 13     |
 | сервісна логіка          | `provider-config.service.spec.ts`           | 27     |
 
-Разом: **294** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **309** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
 HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
+Друга половина правила про креденшели провайдерів — шифрування `credentials` at-rest
+(`prisma.service ENCRYPTED_FIELDS`) і виключення `branch_provider_configs` з `PULL_TABLES` —
+unit-тестом не стережеться: обидва живуть поза модулем (`prisma/`, `sync/`), там тестів на цю
+модель немає. Мітка `guards:` стоїть лише на write-only частині (`hasCredentials` без сирих секретів).
+
+Параметри декораторів і черг (`concurrency: 3` у processor-ах, `attempts: 288` / backoff черги
+`checkbox`) жодним тестом не перевіряються — значення читаються лише з коду.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

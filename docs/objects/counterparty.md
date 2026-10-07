@@ -181,11 +181,31 @@ cd apps/api && npx vitest run src/modules/counterparties/<файл>.spec.ts
 | --------------------------------------- | ----------------------------------------------- | ------ |
 | audit snapshot                          | `counterparties.audit-snapshot.spec.ts`         | 4      |
 | HTTP-контракт (DTO, статуси, валідація) | `counterparties.contract.spec.ts`               | 21     |
-| counterparty contracts                  | `counterparties.counterparty-contracts.spec.ts` | 22     |
-| crud search                             | `counterparties.crud-search.spec.ts`            | 16     |
+| counterparty contracts                  | `counterparties.counterparty-contracts.spec.ts` | 24     |
+| crud search                             | `counterparties.crud-search.spec.ts`            | 17     |
+| гаражі (isDefault)                      | `counterparties.garages.spec.ts`                | 6      |
 | пов'язані документи                     | `counterparties.linked-docs.spec.ts`            | 4      |
-| supplier naming                         | `counterparties.supplier-naming.spec.ts`        | 4      |
+| статуси-мітки (assign / unassign)       | `counterparties.status-labels.spec.ts`          | 9      |
+| supplier naming (+ назва обов'язкова)   | `counterparties.supplier-naming.spec.ts`        | 6      |
 
-Разом: **71** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **91** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Істотних прогалин не видно: є і контракт, і аспектні спеки. Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
+**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
+виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
+але показує окремим рядком.
+
+- **BR-CP-001** — дос'є: CLIENT — лише у наряді/рахунку, SUPPLIER — лише у замовленні постачальнику; код: API тип контрагента не перевіряє (`purchase-orders`, `work-orders`, `invoices` шукають за `id`). Обмеження тримається лише на фільтрах пікерів у web; бекова перевірка є тільки в `supplier-payments`.
+- **BR-CP-012** — дос'є: `SettlementAccount` створюється ліниво при першій транзакції; код: створюється одразу в `CounterpartiesService.create`, а `createTransaction` без рахунку кидає NotFound. `upsert` у коді немає.
+
+**Чого тут НЕМА.** Правила, які жоден unit-тест не стереже, і чому:
+
+- BR-CP-005 — фільтр «Вид договору» за типом контрагента живе у `CounterpartyEditModal.tsx` (`contractTypesForCounterparty()` / `defaultContractType()` — приватні функції модуля, не експортовані); unit-тесту немає, потрібен компонентний тест `CounterpartyEditModal`. Бекова пара (`validateContractType`: SUPPLIER → лише PURCHASE, CLIENT → лише SALE) теж без тесту.
+- BR-CP-006 — CRUD договору у формі: чиста UI-поведінка (optimistic-оновлення, `useConfirm`, tenant-guard `cpIdAtStart`); потрібен компонентний тест `CounterpartyEditModal` або E2E вкладки «Договори». Бековий `swapType`-scope в `updateContract`/`createContract` окремим кейсом теж не покритий.
+- BR-CP-007 — CRUD авто у формі (вкладка «Авто»): чиста UI-поведінка, включно з авто-створенням гаража «Основний»; потрібен компонентний тест або E2E.
+- BR-CP-013 — pull-blacklist (`phone`/`edrpou`/`email`) живе у `sync/sync.service.ts` (`PULL_FIELD_BLACKLIST`), не в цьому модулі. Кейс pull у `sync.contract.spec.ts` є, але відсутність цих полів у payload не асертить (у моку їх навіть немає) — тест треба дописати там.
+
+Часткове покриття правил, що мають мітку `guards:` (щоб мітка не читалась як «покрито все»):
+
+- правило 002 — міткою стережеться пошук списку (`findAll ?q=`, `contains` по трьох полях). Частина «similarity окремо для кожного» — це глобальний пошук `search/search.service.ts` (`sim_person` / `sim_company`), у `search.service.spec.ts` на неї кейсу немає.
+- правило 009 — міткою стережеться бекова частина для договорів (`?showDeleted=true`, restore → `isPrimary:false`). UI (галка, приглушення рядків, кнопка «Відновити») — без компонентного тесту; restore авто з перевіркою ланцюга parent'ів — у модулі `vehicles`.
+- правило 010 — міткою стережеться сервіс. Ролі (`@Roles` на assign/unassign) не перевіряються: у contract-спеку `RolesGuard` замокано. «Soft-delete статусу лишає links» — поведінка модуля `counterparty-statuses`.

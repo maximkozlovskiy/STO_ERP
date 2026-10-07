@@ -119,6 +119,20 @@ describe('CounterpartiesService', () => {
       expect(where.orgId).toBe('org-2');
       expect(where.deletedAt).toBeNull();
     });
+
+    // guards: BR-CP-002
+    it('?q= шукає і по firstName, і по lastName, і по companyName — окремими OR-гілками, без урахування регістру', async () => {
+      await service.findAll('org-1', query({ q: 'петр' }));
+      const where = prisma.counterparty.findMany.mock.calls[0][0].where;
+
+      // Фізособа (ім'я/прізвище) АБО компанія: кожне поле — власна гілка, тож збіг в одному
+      // не вимагає збігу в іншому (у фізособи companyName = null, у компанії — навпаки).
+      for (const field of ['firstName', 'lastName', 'companyName']) {
+        expect(where.OR, `where.OR має містити гілку ${field}`).toContainEqual({
+          [field]: { contains: 'петр', mode: 'insensitive' },
+        });
+      }
+    });
   });
 
   describe('findAll — showDeleted', () => {

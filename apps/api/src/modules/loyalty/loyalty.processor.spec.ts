@@ -20,6 +20,7 @@ describe('LoyaltyProcessor', () => {
 
   const job = (data: Record<string, unknown>) => ({ data }) as unknown as Job;
 
+  // guards: BR-LOY-002
   it('прокидає (orgId, counterpartyId, paymentAmount, documentId) у earn', async () => {
     await processor.process(
       job({ orgId: 'o1', counterpartyId: 'c1', paymentAmount: 500, documentId: 'pay-1' }),

@@ -107,6 +107,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
   });
 
   // ── once-only + CAS ──────────────────────────────────────────────────────────
+  // guards: BR-PAY-007, BR-PAY-008
   it('paid + PENDING → CAS count=1 → payments.create РІВНО один раз + paymentId set', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
     monobank.getStatus.mockResolvedValue({ status: 'paid', raw: 'success' });
@@ -135,6 +136,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
   });
 
+  // guards: BR-PAY-007
   it('конкурентний 2-й poll: paid але CAS count=0 → payments.create НЕ викликається (no double)', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
     monobank.getStatus.mockResolvedValue({ status: 'paid', raw: 'success' });
@@ -179,6 +181,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
   });
 
   // ── Bug #688: idempotency-лінк проти double-charge ───────────────────────────
+  // guards: BR-PAY-008
   it('Bug #688: reconcile після create-succeeds-link-fails → наявний Payment ЗНАЙДЕНО, create НЕ повторюється (no double-charge)', async () => {
     // Вікно збою: попередній finalize створив Payment (onlinePaymentIntentId=intentId), але
     // link-write paymentId упав → intent досі PAID+paymentId=null. Наступний poll:
@@ -206,6 +209,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
   });
 
+  // guards: BR-PAY-008
   it('Bug #688: P2002 на create (гонка) → дістає наявний Payment і лінкує (не помилка, не дубль)', async () => {
     const { Prisma } = await import('@prisma/client');
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
@@ -258,6 +262,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
   });
 
+  // guards: BR-PAY-007
   it('finalize failure на останній спробі (MAX) → стоп, НЕ re-enqueue', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
       paidIntentSnapshot({ status: 'PAID', paymentId: null }),
@@ -294,6 +299,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
   });
 
+  // guards: BR-PAY-007
   it('wall-clock expiresAt у минулому → EXPIRED БЕЗ виклику monobank', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
       paidIntentSnapshot({ expiresAt: new Date(Date.now() - 1000) }),
@@ -306,6 +312,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
   });
 
+  // guards: BR-PAY-007
   it('pending → re-enqueue poll (jobId-дедуп) + pollAttempts+1', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
     monobank.getStatus.mockResolvedValue({ status: 'pending', raw: 'processing' });
@@ -317,6 +324,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     expect(pollQueue.add.mock.calls[0][1].pollAttempts).toBe(6);
   });
 
+  // guards: BR-PAY-007
   it('F2: pollAttempts ≥ MAX + без expiresAt → EXPIRED, НЕ re-enqueue (стеля-запобіжник)', async () => {
     // Намір без expiresAt (wall-clock guard не спрацює), шлюз навічно pending.
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot({ expiresAt: null }));

@@ -86,6 +86,7 @@ describe('QrPaymentModal (QR-оплата monobank)', () => {
     expect(screen.getByText(/Очікуємо підтвердження/)).toBeInTheDocument();
   });
 
+  // guards: BR-PAY-009
   it('polling PAID → «Оплачено» + onPaid РІВНО один раз', async () => {
     let calls = 0;
     // перший GET — ще PENDING, наступні — PAID.

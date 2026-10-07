@@ -271,6 +271,7 @@ describe('CounterpartiesService — contract flows', () => {
   });
 
   describe('removeContract — Bug #351: auto-promote next primary', () => {
+    // guards: BR-CP-004
     it('soft-delete primary → промотує наступний договір того ж типу у primary', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1', type: 'SUPPLIER' });
       prisma.counterpartyContract.findFirst.mockResolvedValueOnce({
@@ -456,6 +457,36 @@ describe('CounterpartiesService — contract flows', () => {
     });
   });
 
+  // Галка «Показувати видалені» у формі контрагента (вкладка «Договори») → ?showDeleted=true.
+  describe('findContracts — showDeleted', () => {
+    // guards: BR-CP-009
+    it('showDeleted=true → фільтр deletedAt знято, але orgId + counterpartyId лишаються', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.findMany = vi.fn().mockResolvedValueOnce([]);
+
+      await service.findContracts('org-1', 'cp-1', true);
+
+      expect(prisma.counterpartyContract.findMany.mock.calls[0][0].where).toEqual({
+        counterpartyId: 'cp-1',
+        orgId: 'org-1',
+      });
+    });
+
+    // guards: BR-CP-009
+    it('без прапорця → лише активні договори (deletedAt:null)', async () => {
+      prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
+      prisma.counterpartyContract.findMany = vi.fn().mockResolvedValueOnce([]);
+
+      await service.findContracts('org-1', 'cp-1');
+
+      expect(prisma.counterpartyContract.findMany.mock.calls[0][0].where).toEqual({
+        counterpartyId: 'cp-1',
+        orgId: 'org-1',
+        deletedAt: null,
+      });
+    });
+  });
+
   // Bug #603 + #605: regression-guard для restoreContract (парний check parent CP + семантика).
   describe('restoreContract — Bug #603 parent-CP guard + Bug #605 regression-guards', () => {
     it('Bug #603: NotFoundException коли parent CP soft-deleted (найде null → пре-check фейлить ДО updateMany)', async () => {
@@ -532,6 +563,7 @@ describe('CounterpartiesService — contract flows', () => {
       });
     });
 
+    // guards: BR-CP-009
     it('data містить isPrimary:false (уникнення дубля-primary того ж contractType)', async () => {
       prisma.counterparty.findFirst.mockResolvedValueOnce({ id: 'cp-1' });
       prisma.counterpartyContract.updateMany.mockResolvedValueOnce({ count: 1 });

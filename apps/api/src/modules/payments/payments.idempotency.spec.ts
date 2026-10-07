@@ -117,6 +117,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     method: 'CASH',
   };
 
+  // guards: BR-PAY-003
   it('CAS count=0 (paidAmount змінено паралельно) → throw, БЕЗ payment.create та settlement', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
@@ -141,6 +142,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     expect(checkboxQueue.add).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-003, BR-PAY-004
   it('happy-path: CAS(paidAmount) count=1 → paidAmount+=amount, status→PAID ПЕРЕД create + settlement', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
@@ -177,6 +179,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     );
   });
 
+  // guards: BR-PAY-003
   it('часткова оплата: 200 з 500 → paidAmount=200, status=PARTIALLY_PAID', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
@@ -203,6 +206,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     );
   });
 
+  // guards: BR-PAY-003
   it('переплата: сума > залишку → throw ПЕРЕД CAS (без updateMany/create)', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
@@ -225,6 +229,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     expect(settlements.createTransaction).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-003
   it('рахунок у DRAFT → throw ПЕРЕД CAS (лише SENT/PARTIALLY_PAID приймають оплату)', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
@@ -249,6 +254,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
   // ── resolveDestinationAccount: явний ввід (строго) vs config-дефолт (best-effort) ──
   const BANK_ID = '55555555-5555-4555-8555-555555555555';
 
+  // guards: BR-PAY-002
   it('явний sourceType=BANK_ACCOUNT з DTO + невалідний/чужий рахунок → NotFound (строга валідація вводу)', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,
@@ -270,6 +276,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     expect(prisma.payment.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-002
   it('config-дефолт BANK_ACCOUNT з видаленим рахунком (stale) → degrade to null, платіж УСПІШНИЙ (offline-first)', async () => {
     prisma.counterparty.findFirst.mockResolvedValue({
       id: CP_ID,

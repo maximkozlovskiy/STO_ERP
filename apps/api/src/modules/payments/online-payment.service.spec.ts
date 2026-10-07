@@ -130,6 +130,7 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
     await expect(service.createIntent(ORG, { invoiceId: INV_ID })).rejects.toThrow(/Немає залишку/);
   });
 
+  // guards: BR-PAY-006
   it('немає активного шлюзу → 400; intent НЕ створюється; gateway НЕ викликається', async () => {
     prisma.invoice.findFirst.mockResolvedValue(sentInvoice());
     providerConfig.resolveActive.mockResolvedValue(null);
@@ -141,6 +142,7 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
     expect(pollQueue.add).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-006, BR-PAY-007
   it('happy: intent PENDING створено ПЕРШИМ → gateway → checkoutUrl → poll enqueued', async () => {
     prisma.invoice.findFirst.mockResolvedValue(sentInvoice());
 
@@ -171,6 +173,22 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
     expect(dto.status).toBe('PENDING');
   });
 
+  // guards: BR-PAY-006
+  it('expiresAt наміру = момент створення + 15 хв (TTL QR-оплати)', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(sentInvoice());
+    const TTL_MS = 15 * 60 * 1000;
+
+    const before = Date.now();
+    await service.createIntent(ORG, { invoiceId: INV_ID });
+    const after = Date.now();
+
+    const expiresAt = (
+      prisma.onlinePaymentIntent.create.mock.calls[0][0].data.expiresAt as Date
+    ).getTime();
+    expect(expiresAt).toBeGreaterThanOrEqual(before + TTL_MS);
+    expect(expiresAt).toBeLessThanOrEqual(after + TTL_MS);
+  });
+
   it('intent.gateway = активний провайдер (liqpay), не хардкод monobank', async () => {
     prisma.invoice.findFirst.mockResolvedValue(sentInvoice());
     providerConfig.resolveActive.mockResolvedValue({
@@ -191,6 +209,7 @@ describe('OnlinePaymentService.createIntent (QR registry)', () => {
     expect(gateways.get).toHaveBeenCalledWith('liqpay');
   });
 
+  // guards: BR-PAY-006
   it('ORDERING: intent створюється ПЕРЕД gateway.createInvoice', async () => {
     prisma.invoice.findFirst.mockResolvedValue(sentInvoice());
     const order: string[] = [];

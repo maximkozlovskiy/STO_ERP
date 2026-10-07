@@ -994,6 +994,8 @@
    "CounterpartiesService — contract flows createContract — Bug #361: валідація currencyCode omitted currencyCode → currency.findFirst НЕ викликано (back-compat)",
    "CounterpartiesService — contract flows createContract — Bug #361: валідація currencyCode кидає BadRequestException якщо currency code не існує у Currency таблиці",
    "CounterpartiesService — contract flows createContract — Bug #361: валідація currencyCode передає валідний currencyCode → currency.findFirst викликано з UPPERCASE кодом",
+   "CounterpartiesService — contract flows findContracts — showDeleted showDeleted=true → фільтр deletedAt знято, але orgId + counterpartyId лишаються",
+   "CounterpartiesService — contract flows findContracts — showDeleted без прапорця → лише активні договори (deletedAt:null)",
    "CounterpartiesService — contract flows removeContract — Bug #351: auto-promote next primary soft-delete primary → промотує наступний договір того ж типу у primary",
    "CounterpartiesService — contract flows removeContract — Bug #351: auto-promote next primary soft-delete НЕ primary → НЕ промотує жодного",
    "CounterpartiesService — contract flows removeContract — Bug #351: auto-promote next primary soft-delete вже втрачено race-партнером → exit без auto-promote",
@@ -1012,6 +1014,7 @@
    "CounterpartiesService findAll — showDeleted showDeleted=true ЗАВЖДИ зберігає tenant-фільтр orgId (не витікають інші org)",
    "CounterpartiesService findAll — showDeleted showDeleted=true прибирає deletedAt:null з where (повертає й видалених)",
    "CounterpartiesService findAll — showDeleted showDeleted=true разом з ?q= зберігає orgId і OR-пошук, але без deletedAt-фільтра верхнього рівня",
+   "CounterpartiesService findAll — пошук ?q= ?q= шукає і по firstName, і по lastName, і по companyName — окремими OR-гілками, без урахування регістру",
    "CounterpartiesService findAll — пошук ?q= Bug #163: ?q= будує where.OR з PLURAL relation-іменами customerGarages → vehicles (а не singular)",
    "CounterpartiesService findAll — пошук ?q= без ?q= не додає OR-гілку (лише orgId + deletedAt)",
    "CounterpartiesService findAll — пошук ?q= завжди фільтрує по orgId + deletedAt:null (tenant isolation + soft delete)",
@@ -1025,17 +1028,38 @@
    "CounterpartiesService remove — MD-H1 guard кидає BadRequestException при ненульовому балансі",
    "CounterpartiesService remove — MD-H1 guard кидає NotFound коли контрагента не знайдено"
   ],
+  "apps/api/src/modules/counterparties/counterparties.garages.spec.ts": [
+   "CounterpartiesService — гаражі (isDefault) createGarage без isDefault → чужий default не чіпає",
+   "CounterpartiesService — гаражі (isDefault) createGarage з isDefault:true → знімає default з решти гаражів контрагента",
+   "CounterpartiesService — гаражі (isDefault) removeGarage: default був єдиним гаражем → soft-delete без promote (нема кого)",
+   "CounterpartiesService — гаражі (isDefault) removeGarage: видалення default-гаража → найстаріший активний сусід стає default (у тій самій tx)",
+   "CounterpartiesService — гаражі (isDefault) removeGarage: видалення НЕ default-гаража → нікого не промотує",
+   "CounterpartiesService — гаражі (isDefault) removeGarage: гараж не цього контрагента/org → NotFound, транзакція не починається"
+  ],
   "apps/api/src/modules/counterparties/counterparties.linked-docs.spec.ts": [
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: groupBy фільтрує deletedAt:null (count == detail, урок Bug #641)",
    "CounterpartiesService — linked documents (Phase C) getLinkedCounts: zero-init для КОЖНОГО id + порожній вхід → {}",
    "CounterpartiesService — linked documents (Phase C) getLinkedDocuments: неіснуючий/чужий контрагент → порожні секції (без throw)",
    "CounterpartiesService — linked documents (Phase C) getLinkedDocuments: усі запити фільтрують orgId + deletedAt:null; Decimal→Number"
   ],
+  "apps/api/src/modules/counterparties/counterparties.status-labels.spec.ts": [
+   "CounterpartiesService — статуси-мітки (assign / unassign) DTO показує лише активні мітки: link на soft-deleted статус лишається, але прихований",
+   "CounterpartiesService — статуси-мітки (assign / unassign) assign і unassign скидають кеш довідника статусів своєї org",
+   "CounterpartiesService — статуси-мітки (assign / unassign) assign ідемпотентний: P2002 (мітка вже призначена) → no-op, повертає DTO",
+   "CounterpartiesService — статуси-мітки (assign / unassign) assign: будь-яка ІНША помилка create не ковтається",
+   "CounterpartiesService — статуси-мітки (assign / unassign) assign: контрагент не з цієї org → NotFound, link НЕ створюється",
+   "CounterpartiesService — статуси-мітки (assign / unassign) assign: статус не з цієї org → NotFound, link НЕ створюється",
+   "CounterpartiesService — статуси-мітки (assign / unassign) assign: і контрагент, і статус шукаються у СВОЇЙ org (orgId + deletedAt:null)",
+   "CounterpartiesService — статуси-мітки (assign / unassign) unassign: видаляє link лише у своїй org (where містить orgId)",
+   "CounterpartiesService — статуси-мітки (assign / unassign) unassign: мітку не призначено (deleteMany.count === 0) → NotFound"
+  ],
   "apps/api/src/modules/counterparties/counterparties.supplier-naming.spec.ts": [
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create CLIENT без жодної назви (лише пробіли/порожньо) → BadRequestException, транзакція не починається",
    "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create CLIENT лише з firstName (без companyName) → дозволено (guard пропускає)",
    "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) create SUPPLIER лише з firstName (без companyName) → BadRequestException",
    "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update CLIENT(firstName-only)→SUPPLIER без companyName → BadRequestException (ефективний тип)",
-   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update SUPPLIER з companyName → проходить"
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update SUPPLIER з companyName → проходить",
+   "CounterpartiesService — Bug #739: SUPPLIER потребує companyName (не приховане ім) update: PATCH очищає останню назву (merged-стан без назви) → BadRequestException"
   ],
   "apps/api/src/modules/counterparty-import-mappings/counterparty-import-mappings.service.spec.ts": [
    "CounterpartyImportMappingsService get мапінг існує → повертається як DTO",
@@ -1686,6 +1710,13 @@
    "Invoices — HTTP Contract POST /invoices/linked-counts повертає 400 для non-UUID елемента",
    "Invoices — HTTP Contract POST /invoices/linked-counts повертає 400 для порожнього масиву (ArrayMinSize)"
   ],
+  "apps/api/src/modules/invoices/invoices.create-defaults.spec.ts": [
+   "InvoicesService — create-defaults invoiceType — явно STANDARD, а не дефолт колонки create без invoiceType у DTO → у БД іде \"STANDARD\" (не undefined → Prisma-дефолт \"INVOICE\")",
+   "InvoicesService — create-defaults invoiceType — явно STANDARD, а не дефолт колонки createFromWorkOrder → у БД іде \"STANDARD\" (найчастіший шлях створення рахунку)",
+   "InvoicesService — create-defaults номер документа — лише з DocumentNumberService clone: клон отримує НОВИЙ номер із лічильника, а не номер оригіналу",
+   "InvoicesService — create-defaults номер документа — лише з DocumentNumberService create: number = DocumentNumberService.next(orgId, \"INVOICE\"), без змін",
+   "InvoicesService — create-defaults номер документа — лише з DocumentNumberService createFromWorkOrder: number = DocumentNumberService.next(orgId, \"INVOICE\"), без змін"
+  ],
   "apps/api/src/modules/invoices/invoices.create-from-work-order.spec.ts": [
    "InvoicesService — create-from-work-order createFromWorkOrder — Bug #412 serializable race protection Bug #412: re-check всередині $transaction виявляє race-створений invoice → throw",
    "InvoicesService — create-from-work-order createFromWorkOrder — Bug #412 serializable race protection кидає BadRequestException якщо WO не у COMPLETED/INVOICED статусі",
@@ -1752,10 +1783,19 @@
    "LoyaltyService.earn Bug #271: paymentAmount=0 → ранній return без $transaction",
    "LoyaltyService.earn Bug #271: paymentAmount=Infinity → ранній return без $transaction",
    "LoyaltyService.earn Bug #271: paymentAmount=NaN → ранній return без doторкання $transaction",
+   "LoyaltyService.earn P2002 БЕЗ documentId не ковтається: якоря ідемпотентності немає, це справжня помилка",
    "LoyaltyService.earn happy path: paymentAmount=1000, earnPer=100, earnPoints=1 → +10 points",
    "LoyaltyService.earn loyaltyEnabled=false → ранній return після перевірки settings",
+   "LoyaltyService.earn points = floor(amount / earnPer) × earnPoints, квантовано до 2dp: 350 / 100 × 1.1 → 3.3",
+   "LoyaltyService.earn без documentId: read-guard не виконується, нарахування завжди нове, рядок без документа",
+   "LoyaltyService.earn будь-яка інша помилка транзакції (не P2002) прокидається далі — BullMQ має повторити job",
+   "LoyaltyService.earn оплата менша за крок нарахування (99 грн при earnPer=100) → 0 балів, нічого не пишеться",
+   "LoyaltyService.earn паралельний job: P2002 від partial-unique на insert EARN ковтається — earn завершується без помилки",
    "LoyaltyService.earn ідемпотентність: перше нарахування за documentId проходить (findFirst=null)",
    "LoyaltyService.earn ідемпотентність: повторний job з тим самим documentId НЕ подвоює нарахування",
+   "LoyaltyService.queueEarn ставить job 'earn' у чергу loyalty: attempts=10, exponential backoff 30 с, payload один-в-один",
+   "LoyaltyService.redeem REDEEM-рядок леджера пишеться через tx-клієнт тієї ж $transaction, що й decrement",
+   "LoyaltyService.redeem discountAmount квантується до 2dp: 10.01 бала × 1.1 грн → 11.01 (не 11.011)",
    "LoyaltyService.redeem happy path: атомарний updateMany з balance: { gte: points }, потім LoyaltyTransaction",
    "LoyaltyService.redeem points <= 0 → BadRequestException (\"Кількість балів має бути > 0\")",
    "LoyaltyService.redeem redeemRate з налаштувань впливає на discountAmount",
@@ -1763,6 +1803,21 @@
    "LoyaltyService.redeem контрагент відсутній → NotFoundException, $transaction не викликаний",
    "LoyaltyService.redeem недостатньо балів: updateMany.count === 0 → BadRequestException",
    "LoyaltyService.redeem обліковий запис лояльності відсутній → NotFoundException(\"Рахунок лояльності не знайдено\")"
+  ],
+  "apps/api/src/modules/loyalty/loyalty.tenant.spec.ts": [
+   "LoyaltyService — tenant isolation LoyaltyAccount читається з orgId getBalance: loyaltyAccount.findFirst where { counterpartyId, orgId }",
+   "LoyaltyService — tenant isolation LoyaltyAccount читається з orgId getBalance: рахунку в цій організації немає → баланс 0, а не чужий",
+   "LoyaltyService — tenant isolation LoyaltyAccount читається з orgId getTransactions: loyaltyAccount.findFirst where { counterpartyId, orgId }",
+   "LoyaltyService — tenant isolation LoyaltyAccount читається з orgId redeem: рахунок шукається з orgId, і decrement теж обмежений orgId",
+   "LoyaltyService — tenant isolation контрагент чужий або видалений → NotFound, запису немає earn → NotFoundException, рахунок не створюється і бали не нараховуються",
+   "LoyaltyService — tenant isolation контрагент чужий або видалений → NotFound, запису немає getBalance → NotFoundException (баланс чужого рахунку не віддається)",
+   "LoyaltyService — tenant isolation контрагент чужий або видалений → NotFound, запису немає getOrCreateAccount → NotFoundException, upsert не викликається",
+   "LoyaltyService — tenant isolation контрагент чужий або видалений → NotFound, запису немає getTransactions → NotFoundException, леджер не читається",
+   "LoyaltyService — tenant isolation контрагент: { id, orgId, deletedAt: null } earn шукає контрагента у своїй організації серед невидалених",
+   "LoyaltyService — tenant isolation контрагент: { id, orgId, deletedAt: null } getBalance шукає контрагента у своїй організації серед невидалених",
+   "LoyaltyService — tenant isolation контрагент: { id, orgId, deletedAt: null } getOrCreateAccount шукає контрагента у своїй організації серед невидалених",
+   "LoyaltyService — tenant isolation контрагент: { id, orgId, deletedAt: null } getTransactions шукає контрагента у своїй організації серед невидалених",
+   "LoyaltyService — tenant isolation контрагент: { id, orgId, deletedAt: null } redeem шукає контрагента у своїй організації серед невидалених"
   ],
   "apps/api/src/modules/maintenance-schedules/maintenance-schedules.service.spec.ts": [
    "MaintenanceSchedulesService create — FK-guard і розрахунок наступного ТО FK-guard шукає авто у СВОЇЙ org і не видалене",
@@ -2143,6 +2198,7 @@
    "OnlinePaymentService.createIntent (QR registry) PARTIALLY_PAID дозволено; remaining → cents",
    "OnlinePaymentService.createIntent (QR registry) amount <= 0 (немає залишку) → 400",
    "OnlinePaymentService.createIntent (QR registry) createIntent scope-ить invoice по orgId",
+   "OnlinePaymentService.createIntent (QR registry) expiresAt наміру = момент створення + 15 хв (TTL QR-оплати)",
    "OnlinePaymentService.createIntent (QR registry) gateway.createInvoice throws → intent → FAILED + throw + poll НЕ enqueued",
    "OnlinePaymentService.createIntent (QR registry) getIntent orgId-scoped; НЕ повертає секрети",
    "OnlinePaymentService.createIntent (QR registry) getIntent намір не знайдено → NotFound",
@@ -2206,7 +2262,8 @@
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #673: explicit CASH_REGISTER + чужа/видалена каса → NotFound (строга валідація), без Payment",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: explicit sourceType=BANK_ACCOUNT БЕЗ bankAccountId → 400, без Payment",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: explicit sourceType=CASH_REGISTER БЕЗ cashRegisterId → 400, без Payment",
-   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: methodConfig=null (невідомий метод) → джерело null, платіж успішний"
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #674: methodConfig=null (невідомий метод) → джерело null, платіж успішний",
+   "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) рахунок у OVERDUE → оплата приймається: часткова → PARTIALLY_PAID, повна → PAID"
   ],
   "apps/api/src/modules/payments/payments.multicurrency.spec.ts": [
    "PaymentsService — мультивалюта Фаза 2 (Payment currencyId/amountBase + fiscal-UAH guard) WO-linked USD-інвойс: chargeBase береться з WorkOrder-CHARGE (леджер), documentType=Invoice у FX",
@@ -2256,6 +2313,21 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto toDto: обидва присутні → пріоритет банку (bank ?? cash)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto where завжди містить orgId (tenant isolation базово)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto без дат → where.createdAt відсутній (немає фільтра діапазону)"
+  ],
+  "apps/api/src/modules/payments/payments.work-order.spec.ts": [
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) transition(PAID) кидає → create НЕ валиться: платіж і settlement уже закомічені (best-effort)",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) контрагента не знайдено (чужа org / видалений) → NotFound, без транзакції/Payment/settlement",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд INVOICED → paidAmount += amount У транзакції, а transition(PAID) — ПІСЛЯ неї",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі APPROVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ARCHIVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі CANCELLED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі COMPLETED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі DRAFT (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ESTIMATE (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі IN_PROGRESS (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ON_HOLD (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі PAID (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата без workOrderId → наряд не чіпаємо: ні paidAmount, ні transition"
   ],
   "apps/api/src/modules/payments/provider-config.service.spec.ts": [
    "ProviderConfigService activate (ексклюзивність) kind-незалежність: активація FISCAL-провайдера НЕ чіпає PAYMENT-конфіги (kind у обох where)",

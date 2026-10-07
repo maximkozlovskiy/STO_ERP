@@ -175,6 +175,7 @@ describe('InvoicesService — transition-settlements', () => {
       lines: [],
     };
 
+    // guards: BR-INV-006
     it('standalone SENT→PAID: paidAmount=amount + дзеркальний PAYMENT на весь залишок (Bug #675 fix)', async () => {
       prisma.invoice.findFirst
         .mockResolvedValueOnce({

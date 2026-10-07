@@ -7,6 +7,7 @@ test.describe.configure({ mode: 'serial' });
 const uid = () => Date.now().toString().slice(-6);
 
 test.describe('CRM — CRUD контрагента', () => {
+  // guards: BR-CP-008
   test('створити фізособу-клієнта → перевірити в таблиці → видалити', async ({ page }) => {
     const name = `E2E-${uid()}`;
 

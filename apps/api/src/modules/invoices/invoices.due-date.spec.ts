@@ -114,6 +114,7 @@ describe('InvoicesService — due-date', () => {
       expect((arg.dueDate as Date).toISOString().slice(0, 10)).toBe('2026-04-04');
     });
 
+    // guards: BR-INV-004
     it('invoiceDueDays=0 → dueDate === documentDate (термін оплати того ж дня)', async () => {
       setup();
       settingsMock.getOrganisationSettings.mockResolvedValueOnce({ invoiceDueDays: 0 });

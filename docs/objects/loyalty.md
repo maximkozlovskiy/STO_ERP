@@ -153,12 +153,26 @@ cd apps/api && npx vitest run src/modules/loyalty/<файл>.spec.ts
 | Аспект           | Тест                        | Кейсів |
 | ---------------- | --------------------------- | ------ |
 | BullMQ-processor | `loyalty.processor.spec.ts` | 3      |
-| сервісна логіка  | `loyalty.service.spec.ts`   | 14     |
+| сервісна логіка  | `loyalty.service.spec.ts`   | 23     |
+| tenant isolation | `loyalty.tenant.spec.ts`    | 13     |
 
-Разом: **17** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **39** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
 HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+
+Чотири правила мають мітку `// guards:`, але unit-тест стереже їх лише частково (ідентифікатори тут
+навмисно не повторено — гейт D вважає правило, назване в цьому блоці, прогалиною):
+
+- постановка в чергу при платежі — у цьому модулі стережеться лише `queueEarn` (черга, job, `attempts`,
+  backoff). Виклик з `PaymentsService.create()` і non-blocking `catch` живуть у спеках модуля `payments`.
+- `LoyaltyProcessor` — `concurrency: 3` у декораторі `@Processor` не перевіряється (конфіг воркера).
+- паралельні earn-джоби — стережеться лише те, що `earn()` ковтає `P2002`. Сам partial-unique індекс
+  `loyalty_earn_one_per_document_uq` і відкат `balance`-increment разом із транзакцією перевіряються
+  тільки на справжній БД; інтеграційного тесту на паралельні джоби немає.
+- atomic check-and-decrement — атомарність `UPDATE … WHERE balance >= N` дає Postgres; unit-тест стереже
+  форму запиту (`gte` + `decrement` в одному `updateMany`) і реакцію на `count === 0`, а не саму гонку
+  двох redeem.
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)

@@ -20,6 +20,7 @@ describe('InvoiceOverdueProcessor', () => {
     processor = new InvoiceOverdueProcessor(prisma as never, { capture: vi.fn() } as never);
   });
 
+  // guards: BR-INV-005
   it('updateMany: SENT/PARTIALLY_PAID + dueDate<сьогодні + orgId + deletedAt:null → OVERDUE', async () => {
     prisma.invoice.updateMany.mockResolvedValue({ count: 3 });
     await processor.process(makeJob(ORG));
