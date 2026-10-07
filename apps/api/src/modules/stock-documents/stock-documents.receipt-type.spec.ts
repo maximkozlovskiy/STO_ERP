@@ -668,6 +668,68 @@ describe('StockDocumentsService — RECEIPT type (Bug #480 regression guard)', (
     // КРИТИЧНО: жодного руху складу — інакше залишки подвоїлися б.
     expect(inventory.createMovement).not.toHaveBeenCalled();
   });
+
+  // Рішення власника 2026-10-07: один товар двома рядками — це дві партії з різною ціною.
+  // Такі рядки ділять StockItem і партії FIFO, тож рухи мусять іти по черзі, а не впереміш.
+  // guards: BR-SDOC-003, BR-SDOC-004
+  it('transition: два рядки ОДНОГО товару з різною ціною → два рухи зі своїми цінами, строго по черзі', async () => {
+    const SECOND_LINE = '77777777-7777-4777-8777-777777777777';
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0002',
+      type: StockDocumentType.RECEIPT,
+      status: 'DRAFT',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      lines: [
+        { id: LINE_ID, goodId: GOOD_ID, quantity: 7, price: 100, good: { unitId: null } },
+        { id: SECOND_LINE, goodId: GOOD_ID, quantity: 3, price: 140, good: { unitId: null } },
+      ],
+    });
+    prisma.stockDocument.findFirst.mockResolvedValueOnce({
+      id: DOC_ID,
+      orgId: ORG,
+      number: 'ПТ-2026-0002',
+      type: StockDocumentType.RECEIPT,
+      status: 'CONFIRMED',
+      branchId: BRANCH_ID,
+      warehouseId: WAREHOUSE_ID,
+      targetWarehouseId: null,
+      notes: null,
+      documentDate: new Date(),
+      confirmedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      branch: { name: 'Філія 1' },
+      warehouse: { name: 'Склад 1' },
+      targetWarehouse: null,
+      lines: [],
+    });
+    // Рух «триває» кілька тіків: якщо рядки запущено разом, другий стартує, поки перший не завершився.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    inventory.createMovement.mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return undefined;
+    });
+
+    await service.transition(ORG, DOC_ID, 'CONFIRMED', 'user-1');
+
+    expect(inventory.createMovement).toHaveBeenCalledTimes(2);
+    const moves = inventory.createMovement.mock.calls.map(
+      c => c[1] as { goodId: string; quantity: number; price: number },
+    );
+    expect(moves.map(m => [m.goodId, m.quantity, m.price])).toEqual([
+      [GOOD_ID, 7, 100],
+      [GOOD_ID, 3, 140],
+    ]);
+    expect(maxInFlight).toBe(1);
+  });
 });
 
 /**

@@ -408,72 +408,74 @@ export class StockDocumentsService {
               translateError('err.stockDocument.unsupportedType', getLocale(), { type: doc.type }),
             );
 
-          // sto-optimize: всі лінії незалежні (різні goodId/warehouseId rows) — паралелимо.
-          // Всередині кожної лінії: createMovement і UoM-update пишуть у різні таблиці — теж
-          // паралельно. Для TRANSFER: writeoff+receipt мають різні warehouseId → race-safe.
-          // NB: усередині одного $transaction Prisma виконує DB-операції послідовно над
-          // прикріпленим connection, тож Promise.all дає лише JS-рівневий overhead-economy
-          // (не справжній паралелізм) — але це безпечно для race-конкуренції stockItem upsert
-          // (Postgres serialize ON CONFLICT під тим самим connection).
-          await Promise.all(
-            doc.lines.map(async line => {
-              const lineUnitId = line.good?.unitId ?? null;
-              // persist resolved UoM — extracted to avoid duplication in both branches.
-              // defense-in-depth: include orgId у where (узгоджено з PO.receive
-              // де line update теж компаундний where: { id, orgId }).
-              const maybeUpdateUom = lineUnitId
-                ? tx.stockDocumentLine.update({
-                    where: { id: line.id, orgId },
-                    data: { unitOfMeasureId: lineUnitId },
-                  })
-                : Promise.resolve();
-              // Shared movement fields — only warehouseId/type/quantity differ per branch.
-              const baseArgs = {
-                goodId: line.goodId,
-                price: line.price ? Number(line.price) : undefined,
-                documentType: 'StockDocument' as const,
-                documentId: id,
-                createdBy: userId,
-                unitOfMeasureId: lineUnitId,
-              };
-              if (doc.type === 'TRANSFER') {
-                // ПОСЛІДОВНО (не Promise.all): спершу writeoff зі складу-джерела списує партії
-                // FIFO і повертає собівартість; цільова партія створюється з ЦІЄЮ собівартістю
-                // (перенос cost, не ціна продажу). Fallback baseArgs.price якщо консюм порожній.
-                const src = await this.inventory.createMovement(
-                  orgId,
-                  {
-                    ...baseArgs,
-                    warehouseId: doc.warehouseId,
-                    type: 'WRITEOFF',
-                    quantity: -line.quantity,
-                  },
-                  tx,
-                );
-                await this.inventory.createMovement(
-                  orgId,
-                  {
-                    ...baseArgs,
-                    warehouseId: doc.targetWarehouseId!,
-                    type: 'RECEIPT',
-                    quantity: line.quantity,
-                    price: src.weightedCostPrice ?? baseArgs.price,
-                  },
-                  tx,
-                );
-                return maybeUpdateUom;
-              }
-              const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
-              return Promise.all([
-                this.inventory.createMovement(
-                  orgId,
-                  { ...baseArgs, warehouseId: doc.warehouseId, type: movType!, quantity },
-                  tx,
-                ),
-                maybeUpdateUom,
-              ]);
-            }),
-          );
+          // BR-SDOC-003/004: рядки проводяться ПОСЛІДОВНО. Один товар може стояти в документі
+          // кількома рядками (різні партії з різною ціною — це дозволено), а такі рядки ділять
+          // один StockItem і ті самі партії FIFO: createMovement читає залишок і партії, потім
+          // пише, тож два рухи одного товару, запущені через Promise.all, перемежовувались би
+          // на await-ах. Раніше тут стояв Promise.all із коментарем «усі лінії мають різні
+          // goodId» — код цього ніколи не гарантував. Виграшу паралельність не давала: у межах
+          // однієї транзакції Prisma однаково виконує запити по черзі. Той самий підхід, що для
+          // запчастин наряду (BR-WO-003).
+          const applyLine = async (line: (typeof doc.lines)[number]): Promise<unknown> => {
+            const lineUnitId = line.good?.unitId ?? null;
+            // persist resolved UoM — extracted to avoid duplication in both branches.
+            // defense-in-depth: include orgId у where (узгоджено з PO.receive
+            // де line update теж компаундний where: { id, orgId }).
+            const maybeUpdateUom = lineUnitId
+              ? tx.stockDocumentLine.update({
+                  where: { id: line.id, orgId },
+                  data: { unitOfMeasureId: lineUnitId },
+                })
+              : Promise.resolve();
+            // Shared movement fields — only warehouseId/type/quantity differ per branch.
+            const baseArgs = {
+              goodId: line.goodId,
+              price: line.price ? Number(line.price) : undefined,
+              documentType: 'StockDocument' as const,
+              documentId: id,
+              createdBy: userId,
+              unitOfMeasureId: lineUnitId,
+            };
+            if (doc.type === 'TRANSFER') {
+              // ПОСЛІДОВНО (не Promise.all): спершу writeoff зі складу-джерела списує партії
+              // FIFO і повертає собівартість; цільова партія створюється з ЦІЄЮ собівартістю
+              // (перенос cost, не ціна продажу). Fallback baseArgs.price якщо консюм порожній.
+              const src = await this.inventory.createMovement(
+                orgId,
+                {
+                  ...baseArgs,
+                  warehouseId: doc.warehouseId,
+                  type: 'WRITEOFF',
+                  quantity: -line.quantity,
+                },
+                tx,
+              );
+              await this.inventory.createMovement(
+                orgId,
+                {
+                  ...baseArgs,
+                  warehouseId: doc.targetWarehouseId!,
+                  type: 'RECEIPT',
+                  quantity: line.quantity,
+                  price: src.weightedCostPrice ?? baseArgs.price,
+                },
+                tx,
+              );
+              return maybeUpdateUom;
+            }
+            const quantity = doc.type === 'WRITEOFF' ? -line.quantity : line.quantity;
+            return Promise.all([
+              this.inventory.createMovement(
+                orgId,
+                { ...baseArgs, warehouseId: doc.warehouseId, type: movType!, quantity },
+                tx,
+              ),
+              maybeUpdateUom,
+            ]);
+          };
+          for (const line of doc.lines) {
+            await applyLine(line);
+          }
 
           // Статус вже переведено CAS-ом на початку tx (DRAFT→CONFIRMED). Повторний update не
           // потрібен — рухи складу вище виконались у тій самій tx після успішного CAS-гейту.
