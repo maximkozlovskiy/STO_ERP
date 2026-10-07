@@ -101,6 +101,11 @@ jobs:
       - name: Test selector contract (affected-tests)
         run: python3 scripts/test-affected-tests.py
 
+      # Сфери запису паралельних агентів: перетин сфер або пропущений вихід за сферу дає
+      # перемішані правки двох агентів в одному файлі — мовчки.
+      - name: Agent scopes contract
+        run: python3 scripts/test-agent-scopes.py
+
       # Скіл, який агент мусить прочитати, має влазити в один Read. Без гейта файли
       # тихо роздуваються (sto-tester/SKILL.md доріс до 364 КБ, і його читали на 5–10%).
       - name: Skill size gate
