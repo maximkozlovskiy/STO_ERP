@@ -127,6 +127,7 @@ grep -rn "data: { \.\.\.dto\|data: dto\b" apps/api/src/modules/ --include="*.ser
 - [ ] Кешований filtered-`_count` розсинхронізується від мутації РІДНОЇ сутності, що зсуває фільтр, а не самого link (Bug #725) — `T1.1-045`
 - [ ] Захисні гілки перенесеного методу після refactor-extract без прямого тесту (A3 e8ae4d70) — `T1.1-046`
 - [ ] Cross-endpoint status-filter inconsistency для одного resource (Bug #415) — `T1.1-047`
+- [ ] Фільтр, доданий у `findOne` (`vehicle: { deletedAt: null }`, статус, роль), перевірити в читанні-guard-і `update`/`remove` того ж сервісу: наживо GET і PATCH того самого id мусять давати однаковий 404 (Bug #802: GET 404, PATCH 200 з DTO). Grep: `grep -n "findFirst" <service>` → порівняти `where` усіх читань за id
 - [ ] Concurrent-create race for "1 active per parent" resources без unique index (Bug #412) — `T1.1-048`
 - [ ] Inner $tx re-check тест для Serializable race fix (Bug #416, paired with #412) — `T1.1-049`
 
@@ -305,6 +306,7 @@ done
 ```
 
 - [ ] Кожен `$transaction(async callback)` має `{ timeout: N }` (5000–15000ms)
+- [ ] Фіксований `timeout` транзакції, що в циклі проводить рядки документа, звірити з `@ArrayMaxSize` DTO: провести НАЖИВО документ максимального розміру двічі на тих самих товарах (другий прохід повільніший — накопичились партії). Запас < ×2 → таймаут від кількості рядків (Bug #801: 500 рядків TRANSFER = 14,3 с із 15, вдруге — 500)
 
 #### Deploy / infra (docker-compose, Dockerfile, nginx, reverse-proxy)
 

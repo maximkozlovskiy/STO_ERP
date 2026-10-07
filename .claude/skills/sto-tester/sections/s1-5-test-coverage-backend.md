@@ -111,6 +111,7 @@ Grep: для кожного `$transaction(async ... =>` у service.ts → у п�
 - [ ] Нові query-param фільтри (dateFrom, dateTo, branchId, q...) у існуючому QueryDto (Bugs #338, #339) — `T1.5-010`
 - [ ] Boundary-кейси для діапазонних правил (COST_TIER, sliding-scale, age-brackets, tax-brackets) — `T1.5-011`
 - [ ] Cross-tenant FK contract test для optional FK у payload — `T1.5-012`
+- [ ] Тест шукає значення підрядком (`includes`) у рядку з ВИПАДКОВИМ вмістом (шифротекст, base64, uuid, hash): короткий зразок (`'r1'`, `'ab'`) збігається випадково → падіння раз на десятки прогонів. Шукати лише поза випадковими рядками або брати зразок із символом поза алфавітом (Bug #803). Grep: `grep -rnE "includes\((secret|token|value)\)" apps/api/src --include=*.spec.ts`
 
 - [ ] Integration-спек на dev-БД видаляє/змінює рядки за ПРИРОДНИМ ключем, а не за власним `id` (Bug #782; детектор і доказ — одразу під пунктом, у журналі їх нема) — `T1.5-013`
 
