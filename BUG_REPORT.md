@@ -910,6 +910,13 @@ attempts ≥ 10 + backoff» сховане під «Public endpoint double-stric
 
 ## Bug #794 — [CRITICAL] Нумерація документів: `COMPLETION_ACT` не має конфігурації ніде; `/setup/init` створює 8 типів із 13
 
+> **ВИПРАВЛЕНО 2026-10-07.** `/setup/init` бере типи з `document-number-defaults.ts` —
+> `Record<DocumentType, …>`, тож новий тип enum не скомпілюється без рядка там. Міграція
+> `20261007120000_backfill_missing_document_number_configs` додає п'ять відсутніх типів наявним
+> організаціям (ідемпотентно, наявні префікси й лічильники не чіпає); seed отримав
+> `COMPLETION_ACT` («АВР»). На dev-БД міграцію застосовано: 13 типів із 13.
+> НЕ перевірено: чиста інсталяція через інсталятор і створення акта через UI.
+
 **Файл:** `packages/database/prisma/seed.ts:162` (`docConfigs`), `apps/api/src/modules/setup/setup.service.ts:89` (`docTypes`),
 `packages/database/prisma/migrations/` (немає backfill для двох типів)
 **Severity:** CRITICAL

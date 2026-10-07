@@ -174,6 +174,7 @@ async function main() {
     { documentType: DocumentType.STOCK_TRANSFER, prefix: 'ПРМ' },
     { documentType: DocumentType.STOCK_OPENING, prefix: 'ВЗЛ' },
     { documentType: DocumentType.RECONCILIATION_ACT, prefix: 'АКТ' },
+    { documentType: DocumentType.COMPLETION_ACT, prefix: 'АВР' },
     { documentType: DocumentType.COUNTERPARTY_AGREEMENT, prefix: 'ДГ' },
     { documentType: DocumentType.SUPPLIER_PAYMENT, prefix: 'ОПП' },
     {

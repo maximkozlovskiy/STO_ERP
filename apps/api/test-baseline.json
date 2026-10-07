@@ -2889,7 +2889,16 @@
    "SetupService.init — TOCTOU race guard email власника нормалізується у lowercase",
    "SetupService.init — TOCTOU race guard happy path: count=0 зовні і всередині tx → створює org + повертає токен",
    "SetupService.init — TOCTOU race guard outer guard: якщо система вже налаштована (outer count>0) → 400 до входу в tx",
-   "SetupService.init — TOCTOU race guard race: зовнішній count=0, але всередині tx count=1 (інша init закомітила) → 400, org НЕ створюється вдруге"
+   "SetupService.init — TOCTOU race guard race: зовнішній count=0, але всередині tx count=1 (інша init закомітила) → 400, org НЕ створюється вдруге",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) COMPLETION_ACT — тип, якого бракувало на чистій інсталяції, тепер створюється з префіксом",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) COUNTERPARTY_AGREEMENT — тип, якого бракувало на чистій інсталяції, тепер створюється з префіксом",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) DOCUMENT_NUMBER_DEFAULTS покриває enum (якщо хтось обійде типізацію через as)",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) GOOD_INTERNAL_CODE — тип, якого бракувало на чистій інсталяції, тепер створюється з префіксом",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) SUPPLIER_PAYMENT — тип, якого бракувало на чистій інсталяції, тепер створюється з префіксом",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) SUPPLIER_RETURN — тип, якого бракувало на чистій інсталяції, тепер створюється з префіксом",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) внутрішній код товару — без дати і без щорічного скиду; решта скидається щороку",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) кожне значення enum DocumentType отримує конфіг — жодного пропущеного і жодного зайвого",
+   "SetupService.init — нумерація для ВСІХ типів документів (Bug #794) префікси не повторюються — два типи документів не ділять один номерний ряд на вигляд"
   ],
   "apps/api/src/modules/stock-documents/asymmetric-reverse.invariants.spec.ts": [
    "Асиметричний inc↔reverse: структурні FSM-guard-и (клас Bug #780) Invoice (INV_TRANSITIONS) CANCELLED термінальний — скасований рахунок не воскрешається",

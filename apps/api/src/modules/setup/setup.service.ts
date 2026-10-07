@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import type { DocumentType } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
 import { runUnscoped, getLocale } from '../../common/tenant/tenant-context';
 import { SetupInitDto, SetupInitResponseDto } from './setup.dto';
+import { DOCUMENT_NUMBER_DEFAULTS, type DocumentNumberDefault } from './document-number-defaults';
 
 @Injectable()
 export class SetupService {
@@ -86,36 +88,17 @@ export class SetupService {
               },
             });
 
-            const docTypes = [
-              'WORK_ORDER',
-              'INVOICE',
-              'PURCHASE_ORDER',
-              'STOCK_RECEIPT',
-              'STOCK_WRITEOFF',
-              'STOCK_TRANSFER',
-              'STOCK_OPENING',
-              'RECONCILIATION_ACT',
-            ] as const;
-
-            const prefixMap: Record<string, string> = {
-              WORK_ORDER: 'НЗ',
-              INVOICE: 'РФ',
-              PURCHASE_ORDER: 'ПО',
-              STOCK_RECEIPT: 'ПТ',
-              STOCK_WRITEOFF: 'СП',
-              STOCK_TRANSFER: 'ПМ',
-              STOCK_OPENING: 'ВЗ',
-              RECONCILIATION_ACT: 'АС',
-            };
-
-            // createMany: single round-trip replaces 8+5 sequential creates.
-            // Doc-configs and payment methods have no relations → batch insert is safe inside bootstrap tx.
+            // Bug #794: усі типи з enum, не ручний перелік — див. document-number-defaults.ts.
+            // createMany: один round-trip; конфіги не мають зв'язків → безпечно в bootstrap tx.
             await tx.documentNumberConfig.createMany({
-              data: docTypes.map(docType => ({
+              data: (
+                Object.entries(DOCUMENT_NUMBER_DEFAULTS) as [DocumentType, DocumentNumberDefault][]
+              ).map(([documentType, cfg]) => ({
                 orgId: org.id,
-                documentType: docType,
-                prefix: prefixMap[docType] ?? null,
-                resetPeriod: 'YEARLY' as const,
+                documentType,
+                prefix: cfg.prefix,
+                resetPeriod: cfg.resetPeriod,
+                ...(cfg.includeDate === undefined ? {} : { includeDate: cfg.includeDate }),
               })),
             });
 

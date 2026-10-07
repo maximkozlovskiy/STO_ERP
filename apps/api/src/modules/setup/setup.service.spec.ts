@@ -4,6 +4,8 @@ import { SetupService } from './setup.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuthService } from '../../auth/auth.service';
 import type { SetupInitDto } from './setup.dto';
+import { DocumentType } from '@prisma/client';
+import { DOCUMENT_NUMBER_DEFAULTS } from './document-number-defaults';
 
 /**
  * Regression (audit settings/setup/reports): TOCTOU race у first-run wizard.
@@ -120,5 +122,67 @@ describe('SetupService.init — TOCTOU race guard', () => {
 
     const call = tx.authAccount.create.mock.calls[0]?.[0] as { data: { email: string } };
     expect(call.data.email).toBe('owner@sto.local');
+  });
+});
+
+// ── Bug #794: нумерація документів для нової організації ───────────────────────────────
+describe('SetupService.init — нумерація для ВСІХ типів документів (Bug #794)', () => {
+  const authService = {
+    generateAccessToken: vi.fn().mockReturnValue('jwt-token'),
+  } as unknown as AuthService;
+
+  async function createdConfigs() {
+    const { prisma, tx } = makePrisma(0, 0);
+    await new SetupService(prisma, authService).init(dto);
+    const arg = tx.documentNumberConfig.createMany.mock.calls[0][0] as {
+      data: {
+        documentType: string;
+        prefix: string | null;
+        includeDate?: boolean;
+        resetPeriod: string;
+      }[];
+    };
+    return arg.data;
+  }
+
+  it('кожне значення enum DocumentType отримує конфіг — жодного пропущеного і жодного зайвого', async () => {
+    const created = (await createdConfigs()).map(c => c.documentType).sort();
+    expect(created).toEqual(Object.values(DocumentType).sort());
+  });
+
+  it.each([
+    'COMPLETION_ACT',
+    'COUNTERPARTY_AGREEMENT',
+    'GOOD_INTERNAL_CODE',
+    'SUPPLIER_PAYMENT',
+    'SUPPLIER_RETURN',
+  ])(
+    '%s — тип, якого бракувало на чистій інсталяції, тепер створюється з префіксом',
+    async type => {
+      const cfg = (await createdConfigs()).find(c => c.documentType === type);
+      expect(cfg).toBeDefined();
+      expect(cfg?.prefix).toBeTruthy();
+    },
+  );
+
+  it('префікси не повторюються — два типи документів не ділять один номерний ряд на вигляд', async () => {
+    const prefixes = (await createdConfigs()).map(c => c.prefix);
+    expect(new Set(prefixes).size).toBe(prefixes.length);
+  });
+
+  it('внутрішній код товару — без дати і без щорічного скиду; решта скидається щороку', async () => {
+    const configs = await createdConfigs();
+    const good = configs.find(c => c.documentType === 'GOOD_INTERNAL_CODE');
+    expect(good).toMatchObject({ includeDate: false, resetPeriod: 'NEVER' });
+    for (const c of configs.filter(x => x.documentType !== 'GOOD_INTERNAL_CODE')) {
+      expect(c.resetPeriod).toBe('YEARLY');
+      expect(c.includeDate).toBeUndefined(); // дефолт схеми = true
+    }
+  });
+
+  it('DOCUMENT_NUMBER_DEFAULTS покриває enum (якщо хтось обійде типізацію через as)', () => {
+    expect(Object.keys(DOCUMENT_NUMBER_DEFAULTS).sort()).toEqual(
+      Object.values(DocumentType).sort(),
+    );
   });
 });
