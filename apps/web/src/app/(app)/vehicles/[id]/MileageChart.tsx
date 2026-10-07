@@ -83,9 +83,13 @@ function MileageChart({ points }: { points: VehicleMileagePoint[] }) {
           width={64}
         />
         <Tooltip
+          // Фон і колір тексту — токенами: recharts за замовчуванням малює підказку на білому,
+          // а підпис (дата) успадковує колір сторінки → у темній темі світлий текст на білому.
           contentStyle={{
             borderRadius: 8,
             border: '1px solid var(--color-border)',
+            backgroundColor: 'var(--color-surface-raised)',
+            color: 'var(--color-foreground)',
             fontSize: 12,
             boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
           }}

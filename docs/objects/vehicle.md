@@ -40,10 +40,17 @@
 | -------------------- | -------------------------------------------- |
 | Картка авто          | `app/(app)/vehicles/[id]/PageClient.tsx`     |
 | Історія пробігу      | `app/(app)/vehicles/[id]/MileageHistory.tsx` |
+| Графік пробігу       | `app/(app)/vehicles/[id]/MileageChart.tsx`   |
 | Hook історії пробігу | `hooks/api/useVehicleMileage.ts`             |
 | Створення авто       | `app/(app)/vehicles/new/PageClient.tsx`      |
 
 Окремої сторінки-списку авто немає: авто відкривають із картки контрагента.
+
+Кеш історії пробігу (`vehicleMileageKeys`) скидає `invalidateWorkOrderSideEffects`
+(`lib/cache-invalidation.ts`): історія будується з нарядів, тож перехід наряду її змінює.
+Графік має власний тест реального рендера recharts —
+`vehicles/[id]/__tests__/MileageChart.test.tsx` (часова вісь, дата за Києвом, точка відкату,
+підказка на токенах теми).
 
 ## Бізнес-правила (BR-VEH)
 
@@ -79,7 +86,9 @@ cd apps/api && npx vitest run src/modules/vehicles/<файл>.spec.ts
 
 Разом: **37** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** Contract-спеку для `vehicles.controller.ts` немає — ролі й
+**Чого тут НЕМА.** Індексу `work_orders (orgId, vehicleId)` у схемі немає: запит історії
+пробігу (і фільтр нарядів за авто) іде через індекси з префіксом `orgId` і відсіює `vehicleId`
+фільтром — потрібна міграція (знайдено на review 2026-10-07, не зроблено). Contract-спеку для `vehicles.controller.ts` немає — ролі й
 `ParseUUIDPipe` (зокрема для `GET /:id/mileage`) перевіряються лише читанням.
 Вузли авто (`createNode` / `removeNode`) unit-тестами не покриті. Правил для самого авто
 (унікальність VIN, заборона видалення авто з активними нарядами) у дос'є ще не сформульовано,

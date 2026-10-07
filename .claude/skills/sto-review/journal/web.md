@@ -243,3 +243,17 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** детектор у §3.1 (`createPortal` без `keydown|onKeyDown`).
 **Фікс:** `useEffect` поки `open`: `document.addEventListener('keydown', h, true)` + `e.stopImmediatePropagation()` + закрити попап. `onKeyDown` на інпуті не досить — фокус може бути в елементі порталу. Для НЕпортального попапа всередині порталу модалки (`date-picker-input.tsx`) синтетичний `e.stopPropagation()` працює лише тому, що React вішає слухачі на контейнер порталу (`body`) — перевіряти в браузері, не лише в jsdom.
 **Severity:** IMPORTANT.
+
+### 2026-10-07 — recharts Tooltip без фону на токенах → нечитабельна підказка в темній темі — §8.2
+
+**Сигнал:** `<Tooltip contentStyle={{ border, borderRadius, fontSize }}>` без `backgroundColor`/`color`. `DefaultTooltipContent` recharts 3 має типові `backgroundColor: '#fff'` і колір лише для рядків значень; підпис (`recharts-tooltip-label`) кольору не має й успадковує `color` сторінки — у темній темі це світлий текст на білому. Скопійовано зі взірця (`RevenueChart`) у новий `MileageChart`; компонентний тест графік стабив, тож рендер ніхто не бачив.
+**Grep:** `grep -rn "<Tooltip" -A8 apps/web/src --include="*.tsx" | grep backgroundColor` — кожен `<Tooltip` recharts має дати рядок. `ReportsCharts.tsx` досі на типових стилях і hex-кольорах (свідомо не чіпано цим проходом).
+**Фікс:** `backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-foreground)'` у `contentStyle`. Тест реального рендера: підмінити ЛИШЕ `ResponsiveContainer` (у jsdom розмір 0) на `cloneElement(children, { width, height })` — решта recharts справжня, і `.recharts-default-tooltip` присутній у DOM навіть без наведення.
+**Severity:** IMPORTANT.
+
+### 2026-10-07 — Похідний query-key поза cross-cache інвалідатором — §8.2
+
+**Сигнал:** новий хук `useVehicleMileage` (`staleTime` 60 с) читає дані, збудовані з нарядів, але `invalidateWorkOrderSideEffects` його ключа не знав: наряд завершили або скасували → картка авто, відкрита протягом хвилини, показує стару історію (скасований запис на місці, дата не `completedAt`).
+**Grep:** `grep -rn "Keys = {" apps/web/src/hooks/api` → для кожного ключа `grep -rn "<ім'я>Keys" apps/web/src/lib/cache-invalidation.ts apps/web/src/hooks`.
+**Фікс:** `void qc.invalidateQueries({ queryKey: vehicleMileageKeys.all })` у хелпері, який уже викликають усі точки переходу наряду.
+**Severity:** SUGGESTION — застаріле до `staleTime`, не втрата даних.

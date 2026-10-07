@@ -11,6 +11,7 @@ import { invoicesKeys } from '@/hooks/api/useInvoices';
 import { reportsKeys } from '@/hooks/api/useReports';
 import { dashboardKeys } from '@/hooks/api/useDashboardData';
 import { paymentsKeys } from '@/hooks/api/usePayments';
+import { vehicleMileageKeys } from '@/hooks/api/useVehicleMileage';
 
 /**
  * Спільні cross-cache інвалідатори (WEB-H1/H2 з аудиту).
@@ -62,9 +63,14 @@ export function invalidatePaymentSideEffects(qc: QueryClient): void {
 /**
  * Завершення/скасування наряду: рухає І склад (writeoff запчастин), І баланс (CHARGE), плюс
  * власний список нарядів та рахунки (auto-invoice). Один виклик замість 5 розкиданих.
+ *
+ * Плюс історія пробігу авто: вона будується з нарядів (BR-VEH-001/002) — завершення міняє
+ * дату запису на `completedAt`, скасування прибирає запис. Без цього картка авто, відкрита
+ * в межах staleTime після переходу наряду, показувала б стару історію.
  */
 export function invalidateWorkOrderSideEffects(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: workOrdersKeys.all });
+  void qc.invalidateQueries({ queryKey: vehicleMileageKeys.all });
   void qc.invalidateQueries({ queryKey: invoicesKeys.all });
   invalidateStockAffected(qc);
   invalidateBalanceAffected(qc);
