@@ -56,14 +56,18 @@ model WorkOrder {
 ## FSM
 
 ```
-DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD
-                 ↘ CANCELLED    ↘ CANCELLED    ↘ CANCELLED
-                                               ↓
-                                         IN_PROGRESS ← (ON_HOLD)
-                                               ↓
-                                          COMPLETED → INVOICED → PAID → ARCHIVED
-                                         ↘ CANCELLED
+DRAFT       → ESTIMATE, CANCELLED
+ESTIMATE    → APPROVED, DRAFT, CANCELLED
+APPROVED    → IN_PROGRESS, ON_HOLD, CANCELLED
+IN_PROGRESS → ON_HOLD, COMPLETED            (скасувати можна лише через ON_HOLD)
+ON_HOLD     → IN_PROGRESS, CANCELLED
+COMPLETED   → INVOICED, CANCELLED           (скасування повертає запчастини й сторнує борг)
+INVOICED    → PAID
+PAID        → ARCHIVED
 ```
+
+Джерело правди — `WORK_ORDER_TRANSITIONS` у `work-orders.fsm.ts`; прямого переходу
+`IN_PROGRESS → CANCELLED` немає.
 
 > COMPLETED→CANCELLED (C2) реверсує склад+борг (див. side-effects). INVOICED/PAID/ARCHIVED
 > **незворотні** (там уже рахунок/гроші) — CANCELLED з них заборонено FSM.
@@ -79,7 +83,7 @@ DRAFT → ESTIMATE → APPROVED → IN_PROGRESS → ON_HOLD
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | → `IN_PROGRESS`                | `InventoryService.createMovement(RESERVATION)` для кожної запчастини (sequential for-loop)                                                                                                                                                                                                                                                        |
 | → `COMPLETED`                  | RESERVATION_RELEASE → WRITEOFF → `SettlementsService.createTransaction(CHARGE)` (у цьому порядку)                                                                                                                                                                                                                                                 |
-| → `CANCELLED` з IN_PROGRESS    | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                                                                                                                                                      |
+| → `CANCELLED` з ON_HOLD        | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                                                                                                                                                      |
 | → `CANCELLED` з ON_HOLD        | `InventoryService.createMovement(RESERVATION_RELEASE)` для кожної запчастини                                                                                                                                                                                                                                                                      |
 | → `CANCELLED` з COMPLETED (C2) | `returnPartsAndCredit`: per part `createMovement(RETURN, +baseQty)` (StockItem++ + `returnToBatch` у ті самі партії) → один `SettlementsService.createTransaction(CREDIT_NOTE)` = сума CHARGE. Реверс `writeOffPartsAndCharge`. Резерв НЕ відновлюється (на COMPLETED уже знято). Single-shot через in-tx status re-read + термінальний CANCELLED |
 
@@ -146,7 +150,8 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 - **BR-WO-002**: RESERVATION → RELEASE → WRITEOFF порядок обов'язковий (guard `available >= qty`)
 - **BR-WO-003**: WO parts loops — **sequential** for-loop (shared StockItem composite key — unsafe to parallelize)
 - **BR-WO-004**: Номер авто-генерується: `DocumentNumberService.next(orgId, 'WorkOrder')`
-- **BR-WO-005**: `plannedHours` / `actualHours` — Decimal(8,2), nullable
+- **BR-WO-005**: `plannedHours` / `actualHours` — `Float?`: порожнє означає «не задано», а `0` —
+  це значення (нуль фактичних годин не підміняється нормо-годинами)
 - **BR-WO-006**: Скасування наряду скасовує чернетки його актів виконаних робіт (у тій самій
   транзакції; підписані акти не чіпаються). Акт скасованого наряду не підписується → 400.
   Наряд у `INVOICED` / `PAID` / `ARCHIVED` акт підписати дозволяє (Bug #795)
@@ -184,12 +189,6 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | share public                            | `work-orders.share-public.spec.ts`             | 9      |
 
 Разом: **180** кейсів (цифри з `vitest --reporter=json`, не з grep).
-
-**Розходження з кодом.** Правила, де дос'є каже одне, а код робить інше. Агент цього не «лагодить»: рішення —
-виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
-але показує окремим рядком.
-
-- **BR-WO-005** — дос'є: `plannedHours`/`actualHours` — `Decimal(8,2)`, nullable; схема: `Float?`. Nullable-частина правдива й покрита тестами, тип — ні.
 
 **Чого тут НЕМА.** Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
 

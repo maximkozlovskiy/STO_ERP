@@ -127,6 +127,7 @@ describe('WorkOrdersService.recalcTotals — totalActualLabor formula', () => {
     expect(data.totalAmount).toBe(0);
   });
 
+  // guards: BR-WO-005
   it('all actualHours=null → totalActualLabor === totalLabor (fallback to normoHours)', async () => {
     const lines: LineRow[] = [
       { amount: 200, actualHours: null, normoHours: 2, price: 100 },
@@ -193,6 +194,7 @@ describe('WorkOrdersService.recalcTotals — totalActualLabor formula', () => {
     expect(data.totalAmount).not.toBe(data.totalLabor + data.totalParts);
   });
 
+  // guards: BR-WO-005
   it('actualHours=0 is treated as actual (not falsy fallback to normoHours)', async () => {
     // Critical: ?? (nullish) vs || (falsy). actualHours=0 means "0 hours worked"
     // (e.g. work was started but cancelled), not "fall back to plan".

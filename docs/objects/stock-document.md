@@ -56,7 +56,7 @@ DRAFT → CONFIRMED
 | ------------------- | -------------------- | ------------------------------------------------ | ---------------- |
 | `WRITEOFF`          | `WRITEOFF`           | Списати `-qty` з `warehouseId`                   | `STOCK_WRITEOFF` |
 | `TRANSFER`          | `WRITEOFF + RECEIPT` | WRITEOFF з source, RECEIPT у `targetWarehouseId` | `STOCK_TRANSFER` |
-| `OPENING_BALANCE`   | `RECEIPT`            | Встановити початкові залишки `+qty`              | `STOCK_OPENING`  |
+| `OPENING_BALANCE`   | `OPENING_BALANCE`    | Встановити початкові залишки `+qty`              | `STOCK_OPENING`  |
 | `RECEIPT`           | `RECEIPT`            | Оприбуткування без PO — `+qty` у `warehouseId`   | `STOCK_RECEIPT`  |
 
 **TRANSFER:** `targetWarehouseId` обов'язковий. Два рухи у `Promise.all` (disjoint rows — safe).
