@@ -26,7 +26,7 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 - [ ] Кожен **новий shared UI-компонент** (`components/ui/`) → парний `*.test.tsx` (render, інтерактив-стани, edge: порожні дані/`null`-render, badge з `0`)
 - [ ] Кожен **новий custom hook** (`apps/web/src/hooks/use*.ts`) що містить `useEffect`/`useState` АБО викликає `apiFetch`/`localStorage`/`fetch` — `T1.6-001`
 - [ ] `smoke.spec.ts` — обов'язковий: `/`, `/login`, `/setup` без auth, auth redirect
-- [ ] Component-vs-test drift — `T1.6-002`
+- [ ] Component-vs-test drift: червоний `getByText/getByRole` у baseline — правити компонент чи тест — `T1.6-002`
 - [ ] Flaky component-тест: дефолтний waitFor timeout (1000ms) під повним паралельним suite (Bug #746) — `T1.6-003`
 - [ ] Component-тест RHF-модалки зі схемою `.uuid()` — placeholder-id фікстури тихо блокують submit (Фаза 5, 0-баг але хибно-зелений guard) — `T1.6-004`
 - [ ] Новий optional boolean prop у existing UI component (Bug #194) — `T1.6-005`

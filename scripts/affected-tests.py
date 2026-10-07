@@ -105,6 +105,8 @@ SCRIPT_CHECKS = (
         "python scripts/test-affected-tests.py",
     ),
     (("scripts/hooks/",), "python scripts/hooks/test-check-claims.py"),
+    # Скіл, що не влазить в один Read, агент читає шматками; гейт у CI, тут — до коміту.
+    (("scripts/check-skill-size.py", ".claude/skills/"), "python scripts/check-skill-size.py"),
     (
         (
             "scripts/check-spec-registry.py",

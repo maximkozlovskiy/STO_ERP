@@ -121,19 +121,23 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks
 
 **AUTO: матриця що перевіряти за типом зміни**
 
-| Тип зміни                      | Секції Кроку 1                                                            |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| Новий `@Controller` / endpoint | §1.1 (tenant, soft delete), §1.2 (TS, API contract), §1.5 (contract spec) |
-| Змінений `*.service.ts`        | §1.1 (business logic, FSM, inventory, settlements)                        |
-| Нова `page.tsx` / зміна UI     | §1.3 (frontend стани, hydration, routing)                                 |
-| Новий `*.dto.ts`               | §1.2 (validation guards, @IsUUID версія)                                  |
-| `prisma/schema/*.prisma`       | §1.1 (soft delete fields, orgId), §1.2 (TS)                               |
-| `components/ui/` only          | §1.3 (стани), §1.6 (a11y)                                                 |
-| `hooks/**`, `lib/**` (web)     | §1.3                                                                      |
-| BullMQ processor / scheduler   | §1.1, §1.2                                                                |
-| Інше в `apps/api/src`          | §1.1, §1.2 — краще зайва секція, ніж жодної                               |
-| Інше в `apps/web/src`          | §1.3                                                                      |
-| Config / docs / тести          | §0 (tsc) — більше нічого                                                  |
+| Тип зміни                                               | Секції Кроку 1                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Новий `@Controller` / endpoint                          | §1.1 (tenant, soft delete), §1.2 (TS, API contract), §1.5 (contract spec) |
+| Змінений `*.service.ts`                                 | §1.1 (business logic, FSM, inventory, settlements)                        |
+| Нова `page.tsx` / зміна UI                              | §1.3 (frontend стани, hydration, routing)                                 |
+| Новий `*.dto.ts`                                        | §1.2 (validation guards, @IsUUID версія)                                  |
+| `prisma/schema/*.prisma`                                | §1.1 (soft delete fields, orgId), §1.2 (TS)                               |
+| `components/ui/` only                                   | §1.3 (стани), §1.7 (a11y)                                                 |
+| `hooks/**`, `lib/**` (web)                              | §1.3                                                                      |
+| BullMQ processor / scheduler                            | §1.1, §1.2                                                                |
+| Інше в `apps/api/src`                                   | §1.1, §1.2 — краще зайва секція, ніж жодної                               |
+| Інше в `apps/web/src`                                   | §1.3                                                                      |
+| `*.spec.ts` в `apps/api`, `scripts/affected-tests.py`   | §1.5 (якість і покриття тестів)                                           |
+| `*.test.tsx`, `apps/web/e2e/*.spec.ts`                  | §1.6 (fake-green асерти, drift тесту й компонента)                        |
+| Guard / `@Public()` / webhook / зовнішній URL / секрети | §1.4                                                                      |
+| `locales/*.json`, i18n-каталоги, новий текст у UI       | §1.7                                                                      |
+| Config / docs / скіли                                   | §0 (tsc) — більше нічого                                                  |
 
 ---
 
@@ -314,7 +318,8 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 Якщо **НІ** — одразу оновити скіл:
 
-1. Додати новий пункт у відповідний розділ SKILL.md (§1.1–§1.7) з grep-командою
+1. Додати новий пункт у перелік відповідної секції `sections/s1-N-*.md` (§1.1–§1.7) з grep-командою;
+   довгий пункт — текст у `journal/details-1-N.md` під наступним вільним кодом, у перелік — заголовок із кодом
 2. Записати підхід у **`journal/approaches-YYYY-MM.md`** поточного місяця (найновіше зверху, формат нижче)
 3. Commit: `docs(skills): add <баг> to sto-tester checklist`
 
@@ -342,17 +347,9 @@ E2E (Playwright):✅ N passed (або ⏭ Playwright не встановлени
 
 ---
 
-## Накопичені підходи → окремий файл
+## Накопичені підходи → журнал
 
-> Журнал накопичених патернів багів винесено у **`journal/approaches-YYYY-MM.md`** (структурний split, TD3 —
-> був ~2575 рядків, 68% файлу). Читай його ЗА ПОТРЕБОЮ: перед статичним аналізом (Крок 1), щоб звірити
-> чи знайдений баг уже описаний, і на Кроці 7, щоб дописати новий патерн.
->
-> `→ дивись journal/approaches-*.md` — формат запису (Сигнал/Фікс/Severity/Де ще) і всі bug-номери там.
-
----
-
-Журнал розкладено за місяцями: `journal/approaches-YYYY-MM.md`. Цілком не читати — шукати:
+Журнал накопичених патернів багів (Сигнал/Фікс/Severity/Де ще, усі bug-номери) розкладено за місяцями: `journal/approaches-YYYY-MM.md`. Цілком не читати — шукати:
 `grep -n "<ключове слово>" .claude/skills/sto-tester/journal/approaches-*.md`. Новий запис —
 у файл поточного місяця (зверху). Новий пункт чекліста — у перелік секції (довгий: текст у
 `journal/details-1-N.md` з наступним вільним кодом, у перелік — рядок-заголовок із цим кодом).

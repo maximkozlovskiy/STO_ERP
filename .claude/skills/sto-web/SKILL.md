@@ -585,7 +585,7 @@ import { ModalTabs, type ModalTab } from '@/components/ui/modal-tabs';
 - [ ] **Поле-посилання на об'єкт** → `<EntityPickerField>` (НЕ кнопка з `<Search>` всередині)
 - [ ] **Кнопка 🔍 у EntityPickerField** → lazy fetch + `*EditModal` (НЕ `router.push` чи `window.open`)
 - [ ] **Форма редагування > 5 полів** → окремий `*EditModal` компонент у `components/ui/`
-- [ ] Новий тип об'єкта → додати `*EditModal` у реєстр `sto-dev §24.4`
+- [ ] Новий тип об'єкта → додати `*EditModal` у реєстр `sto-dev §24.4` (`.claude/skills/sto-dev/sections/web-ui-standards-2.md`)
 - [ ] `useConfirm` + `<ConfirmDialog {...dialogProps} />` для видалень
 - [ ] `toast.success/error/warning` замість `alert()` або `window.confirm()`
 - [ ] `Promise.allSettled` для bulk-операцій (ніколи `Promise.all`)

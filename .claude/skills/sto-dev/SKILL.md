@@ -12,24 +12,29 @@ bypassPermissions: true
 
 ## Зміст
 
-| §    | Секція                                                                                                                                                                                                           | Для кого                                      |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| §1   | [TypeScript](#typescript)                                                                                                                                                                                        | Всі `.ts`/`.tsx`                              |
-| §2   | [NestJS / API](#nestjs--api)                                                                                                                                                                                     | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
-| §3   | [Next.js 15 / Web](#nextjs-15--web)                                                                                                                                                                              | `apps/web/src/**`                             |
-| §4   | [UX/UI Features System](#uxui-features-system-phase-20)                                                                                                                                                          | Хуки та компоненти UI                         |
-| §5   | [Tailwind 4 — Canonical Syntax](#tailwind-4--canonical-syntax)                                                                                                                                                   | Будь-який `.tsx` з className                  |
-| §6   | [Prisma 5](#prisma-5)                                                                                                                                                                                            | `schema.prisma`, `*.service.ts` з Prisma      |
-| §7   | [SSE — Real-time](#sse-server-sent-events--real-time-дані-без-websocket)                                                                                                                                         | Streaming endpoints, EventSource              |
-| §8   | [Optimistic UI](#optimistic-ui--миттєвий-відгук-без-очікування-api)                                                                                                                                              | FSM кнопки, форми з негайним відгуком         |
-| §9   | [Polymorphic entities](#polymorphic-entities--comments-auditlog-media)                                                                                                                                           | Comments, AuditLog, Media                     |
-| §10  | [Webhook pattern](#webhook-pattern--вихідні-нотифікації)                                                                                                                                                         | Outbound webhooks                             |
-| §11  | [Offline-first / BullMQ](#offline-first--bullmq)                                                                                                                                                                 | Зовнішні API, SMS, ПРРО                       |
-| §12  | [Безпека](#безпека)                                                                                                                                                                                              | Auth guards, tenant isolation                 |
-| §13  | [Checklist перед здачею](#checklist-перед-здачею-коду)                                                                                                                                                           | Всі зміни перед комітом                       |
-| §14+ | Модульність (§14), DRY хуки (§25), Modal+Tabs (§18), Schema-driven UI (§15), shared constants (§16, §25.5), API-хуки (§17/§20/§22), Zod (§21), TableContainer (§23), EntityPickerField (§24), Settings Tab (§26) | UI-архітектура                                |
+| §                      | Секція                                                                                                                                         | Де лежить                        | Для кого                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
+| §1                     | TypeScript                                                                                                                                     | цей файл                         | Всі `.ts`/`.tsx`                              |
+| §2                     | NestJS / API                                                                                                                                   | `sections/api.md`                | `*.controller.ts`, `*.service.ts`, `*.dto.ts` |
+| §3                     | Next.js 15 / Web                                                                                                                               | `sections/web.md`                | `apps/web/src/**`                             |
+| §4                     | UX/UI Features System                                                                                                                          | `sections/web.md`                | Хуки та компоненти UI                         |
+| §5                     | Tailwind 4 — Canonical Syntax                                                                                                                  | `sections/web.md`                | Будь-який `.tsx` з className                  |
+| §6                     | Prisma 5                                                                                                                                       | `sections/api.md`                | `schema.prisma`, `*.service.ts` з Prisma      |
+| §7                     | SSE — Real-time                                                                                                                                | `sections/api.md`                | Streaming endpoints, EventSource              |
+| §8                     | Optimistic UI                                                                                                                                  | `sections/web.md`                | FSM кнопки, форми з негайним відгуком         |
+| §9                     | Polymorphic entities                                                                                                                           | `sections/api.md`                | Comments, AuditLog, Media                     |
+| §10                    | Webhook pattern                                                                                                                                | `sections/api.md`                | Outbound webhooks                             |
+| §11                    | Offline-first / BullMQ                                                                                                                         | `sections/api.md`                | Зовнішні API, SMS, ПРРО                       |
+| §12                    | Безпека                                                                                                                                        | цей файл                         | Auth guards, tenant isolation                 |
+| §13                    | Checklist перед здачею                                                                                                                         | цей файл                         | Всі зміни перед комітом                       |
+| §14, §15, §18, §25     | Модульність (§14), Schema-driven UI (§15), Modal+Tabs (§18), DRY хуки і shared constants (§25, §25.5)                                          | `sections/web-ui-standards-1.md` | UI-архітектура                                |
+| §16, §17, §19–§24, §26 | shared constants (§16), API-хуки (§17/§20/§22), FSMButtons (§19), Zod (§21), TableContainer (§23), EntityPickerField (§24), Settings Tab (§26) | `sections/web-ui-standards-2.md` | UI-архітектура                                |
 
-> **Швидкий старт:** новий контролер → §1+§2+§12. Нова сторінка → §1+§3+§5. Prisma модель → §1+§6.
+Секції з колонки «Де лежить» читати цілком (кожна влазить в один Read) — лише ті, яких стосується
+задача. Заголовки-вказівники «## Назва → `sections/x.md`» нижче лишені, щоб пошук за назвою
+розділу в цьому файлі приводив до потрібного файла.
+
+> **Швидкий старт:** новий контролер → §1+§2+§12 (цей файл + `sections/api.md`). Нова сторінка → §1+§3+§5 (цей файл + `sections/web.md`; list-сторінка, модалка, таблиця — ще й `web-ui-standards-*.md`). Prisma модель → §1+§6 (цей файл + `sections/api.md`).
 
 ---
 
@@ -198,7 +203,7 @@ export const statusesProvider = () => ({ provide: X, useValue: { f: vi.fn() } })
 
 ## Безпека
 
-Cross-tenant scoping (`orgId` у кожному запиті) — див. §2 Service правило 1.
+Cross-tenant scoping (`orgId` у кожному запиті) — див. §2 Service правило 1 (`sections/api.md`).
 
 ```typescript
 // ❌ Сирий SQL з інтерполяцією

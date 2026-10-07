@@ -30,7 +30,7 @@ grep -rn "WRITEOFF\|CHARGE\|prisma\.\$transaction" apps/api/src/modules/work-ord
 - [ ] `CANCELLED` зі статусу з резервом → `RESERVATION_RELEASE`
 - [ ] Bug #780 (CRITICAL): реверс side-effect, що припускає стан, якого альтернативний ВАЛІДНИЙ шлях не створив. — `T1.1-001`
 - [ ] Недозволений перехід → `BadRequestException` українською
-- [ ] Bug #508 — `T1.1-002`
+- [ ] Зміна семантики denormalized поля (`totalAmount`, `balance`) протікає у share/public endpoint (Bug #508) — `T1.1-002`
 
 #### Інвентар
 
@@ -46,7 +46,7 @@ grep -n "available\|quantity\|BadRequestException" apps/api/src/modules/inventor
 - [ ] `RESERVATION`: `available < qty` → `BadRequestException`
 - [ ] `WRITEOFF`: `quantity < Math.abs(qty)` → `BadRequestException`
 - [ ] `quantity=0` → `BadRequestException`
-- [ ] Bug #619 — `T1.1-003`
+- [ ] SUM(quantity) у звітах/агрегаторах має виключати RESERVATION/RESERVATION_RELEASE (Bug #619) — `T1.1-003`
 - [ ] Bug #621 (CRITICAL): Prisma `upsert` create-гілка × Postgres CHECK-констрейнт. — `T1.1-004`
 
 #### Розрахунки
@@ -346,7 +346,7 @@ grep -rn "@Controller.*health\|@Controller.*metrics\|@Sse\|@Controller.*webhook"
 done
 ```
 
-- [ ] Кожен compose healthcheck — `T1.1-072`
+- [ ] Compose healthcheck: бінарник є в образі (minio → лише `mc`), шлях узгоджений з `/api`-prefix — `T1.1-072`
 - [ ] Перевірити blast-radius: сервіси з `depends_on: X: { condition: service_healthy }` не стартують якщо healthcheck X завжди FAIL → CRITICAL
 - [ ] Root `.dockerignore` присутній якщо будь-який Dockerfile робить `COPY . .` (інакше node_modules/.git/.env/out у контексті — повільно + ризик leak)
 - [ ] Build-скрипт не копіює у мертвий шлях (`apps/api/public` коли API не реєструє `@fastify/static`/`useStaticAssets`)

@@ -300,6 +300,16 @@ def _():
     assert tmp not in mod.scanning_specs(mod.API_SRC), mod.scanning_specs(mod.API_SRC)
 
 
+@case("зміна скіла або гейта розміру → гейт розміру у виводі (а .claude/ більше ніщо не стереже)")
+def _():
+    cmd = "python scripts/check-skill-size.py"
+    for f in (".claude/skills/sto-review/sections/web.md", "scripts/check-skill-size.py"):
+        r = run(f)
+        assert cmd in r["scripts"] and not r["uncovered"], (f, r)
+    # Агент чи налаштування поза skills/ гейта не стосуються.
+    assert cmd not in run(".claude/agents/sto-review-agent.md")["scripts"]
+
+
 @case("пакет із власними тестами (packages/shared) → його команда у виводі повного прогону")
 def _():
     # Плейсхолдер {{max}} → {{mx}} у messages.en.ts: api і web зелені, червоний лише

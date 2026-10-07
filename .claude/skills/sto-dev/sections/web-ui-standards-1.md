@@ -101,7 +101,7 @@ const [pickerQuery, setPickerQuery] = useState(''); // не потрібен —
   [ ] Поле-посилання → <EntityPickerField> (НЕ кастомна кнопка з Search іконкою)
   [ ] Лупа у EntityPickerField → відкриває *EditModal, НЕ router.push/window.open
   [ ] Форма редагування об'єкта → окремий *EditModal компонент (не inline у page.tsx)
-  [ ] *EditModal зареєстрований у реєстрі §24.4
+  [ ] *EditModal зареєстрований у реєстрі §24.4 (web-ui-standards-2.md)
   [ ] Inline IIFE `{(() => {...})()}` у JSX → замінити компонентом
   [ ] Форма > 5 полів у page.tsx → виносити в окремий файл
   [ ] Підтвердження дії → <ConfirmDialog>

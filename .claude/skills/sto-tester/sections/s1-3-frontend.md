@@ -196,7 +196,7 @@ done
 - [ ] PUBLIC_ROUTES (`/booking`, `/setup`, `/login`, `/403`) → `publicFetch`, не `apiFetch`
 - [ ] `import type { ReactNode, ChangeEvent, MouseEvent } from 'react'` (не `React.ReactNode`)
 - [ ] `setTimeout` / `setInterval` у `useEffect` → `clearTimeout` / `clearInterval` у cleanup
-- [ ] Timeline/gantt drag/resize — `T1.3-003`
+- [ ] Timeline/gantt drag/resize: px→години без clamp у вікно → Invalid Date у `toISOString()` — `T1.3-003`
 - [ ] Swallowed-fetch що годує **обов'язковий** контрол — `T1.3-004`
 - [ ] Swallowed-fetch у read-only panel мапиться у empty-state (Bug #414) — `T1.3-005`
 - [ ] FE canX status-whitelist симетричний з backend X_STATUSES (Bug #401) — `T1.3-006`

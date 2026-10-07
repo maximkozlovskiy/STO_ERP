@@ -4,6 +4,10 @@
 
 ## Крок 5 — Розширені тести (FULL режим)
 
+> Повні шаблони коду тестів — окремі файли, читати той, що потрібен: `templates-api.md`
+> (contract, property-based, service-спеки: §4.3, §4.4, §4.8, §4.9, §S) і `templates-web-e2e.md`
+> (E2E, component, хуки: §4.5–§4.7).
+
 ### 5.1 — Property-based (fast-check)
 
 ```bash

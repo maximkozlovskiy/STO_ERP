@@ -39,7 +39,9 @@ def kb(path):
 def classify(rel):
     """rel — шлях від .claude/skills/. Повертає (вид, ліміт у КБ або None)."""
     parts = rel.split("/")
-    if "journal" in parts[1:-1]:
+    # Лише <скіл>/journal/…: тека `journal` глибше (sections/journal/) або скіл із назвою
+    # `journal` ліміту не уникають — інакше будь-який файл ховається від гейта перейменуванням теки.
+    if len(parts) >= 3 and parts[1] == "journal":
         return "journal", None
     if parts[-1] == "SKILL.md" and len(parts) == 2:
         return "core", CORE_LIMIT_KB
@@ -65,6 +67,13 @@ def main():
         what = "ЯДРО" if kind == "core" else "СЕКЦІЯ"
         print("  %s ПОНАД ЛІМІТ %s — %.0f КБ (ліміт %d): не влазить в один Read" % (what, rel, size, limit))
     print()
+    # Порожній вибір — не «чисто»: хибний шлях до тек або cwd без .claude/skills дав би
+    # «0 passed (0)» з exit 0, і verdict.sh назвав би це зеленим.
+    cores = len([r for r in rows if r[1] == "core"])
+    if cores == 0:
+        print("  НЕ ЗНАЙДЕНО жодного ядра SKILL.md у %s — гейт нічого не перевірив" % SKILLS)
+        print("1 failed | 0 passed (%d)" % checked)
+        return 1
     if problems:
         print("%d failed | %d passed (%d)" % (len(problems), checked - len(problems), checked))
         return 1

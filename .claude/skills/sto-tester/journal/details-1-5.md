@@ -10,7 +10,7 @@
       коду»: читає файли з диска → має бути в `scanning_specs()`; лежить у `packages/<name>` →
       у виводі має бути `ІНШЕ: cd packages/<name> && npx vitest run`; E2E ходить в API напряму →
       `specs_calling()`. Перевірка — мутаційна, проти повного прогону як оракула (не пробами
-      «для X вибрано X»): `→ sto-tester-approaches.md`, запис 2026-10-07 про селектор.
+      «для X вибрано X»): `→ journal/approaches-2026-10.md`, запис 2026-10-07 про селектор.
       Детектор кандидатів: `grep -rlE "readFileSync|readdirSync|import\.meta\.glob" apps/*/src packages/*/src --include=*.spec.ts --include=*.test.ts --include=*.test.tsx`
 
 <!-- T1.5-002 -->

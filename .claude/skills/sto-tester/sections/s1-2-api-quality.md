@@ -79,7 +79,7 @@ done
 - [ ] Per-item isolation loop обгортає ЛИШЕ network-крок, DB-write + cursor-advance поза catch → одне падіння валить решту батчу (Bug #768) — `T1.2-004`
 - [ ] `throw new XxxException('...')` — повідомлення українською
 - [ ] `@IsUUID()` без версії ('all') відхиляє nil-UUID → у **тестах** для UUID-полів: `11111111-1111-4111-8111-111111111111` (v4 layout)
-- [ ] JSON/Record DTO поля — `T1.2-005`
+- [ ] JSON/Record DTO поля без `@IsObject()`/`@ValidateNested()` — whitelist мовчки знімає поле (Bug #182) — `T1.2-005`
 - [ ] Multipart `await req.file()` обгорнутий у try/catch (Bug #192) — `T1.2-006`
 - [ ] Mass DTO migration completeness — grep variant audit (Bug #215) — `T1.2-007`
 - [ ] Mass DTO migration variant validator-family audit (Bugs #257-#265) — `T1.2-008`
