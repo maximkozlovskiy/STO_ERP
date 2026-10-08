@@ -128,6 +128,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     });
     // amount 500 / paidAmount 0 → повна оплата 500; але CAS програє гонку (count=0).
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 500,
@@ -152,6 +153,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       companyName: 'ТОВ',
     });
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 500,
@@ -189,6 +191,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       companyName: 'ТОВ',
     });
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 500,
@@ -217,6 +220,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     });
     // залишок = 500−400 = 100; платіж 500 → переплата.
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'PARTIALLY_PAID',
       workOrderId: null,
       amount: 500,
@@ -239,6 +243,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
       companyName: 'ТОВ',
     });
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'DRAFT',
       workOrderId: null,
       amount: 500,
@@ -294,6 +299,7 @@ describe('PaymentsService — FIN-C1 ідемпотентність оплати
     });
     prisma.bankAccount.findFirst.mockResolvedValue(null); // stale default
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 500,

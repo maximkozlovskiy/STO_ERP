@@ -290,6 +290,8 @@ export const uk: Record<string, string> = {
   'err.payment.currencyMustMatchWorkOrder': 'Валюта оплати має збігатися з валютою наряду',
   'err.payment.invoiceStatusNoPayment': 'Рахунок у статусі "{{status}}" — оплата неможлива',
   'err.payment.invoiceNotForWorkOrder': 'Рахунок не належить до вказаного наряду',
+  'err.payment.invoiceNotForCounterparty':
+    'Рахунок виписано на іншого контрагента — оплату приймаємо лише від платника рахунку',
   'err.payment.currencyMustMatchInvoice': 'Валюта оплати має збігатися з валютою рахунку',
   'err.payment.amountExceedsInvoiceRemaining': 'Сума перевищує залишок за рахунком ({{remaining}})',
   'err.payment.invoiceConcurrentChange': 'Рахунок змінено паралельною операцією — повторіть',

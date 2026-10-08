@@ -44,7 +44,7 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
   function setup() {
     const prisma = makePrisma();
     prisma.counterparty.findFirst.mockResolvedValue({ id: CP_ID });
-    prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID });
+    prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID, counterpartyId: CP_ID });
     prisma.bankTransaction.updateMany.mockResolvedValue({ count: 1 });
     prisma.bankTransaction.findFirst.mockResolvedValue({
       id: TX_ID,
@@ -146,6 +146,21 @@ describe('BankReconciliationService.matchTransaction — CAS, лінк плат�
     ).rejects.toMatchObject({ status: 404 });
     expect(payments.create).not.toHaveBeenCalled();
     expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-BANK-010, BR-PAY-016
+  it('INVOICE з рахунком іншого контрагента → 400 ДО захоплення рядка; платіж не створюється', async () => {
+    const { prisma, payments, service } = setup();
+    prisma.invoice.findFirst.mockResolvedValueOnce({ id: INV_ID, counterpartyId: 'cp-other' });
+    await expect(
+      service.matchTransaction(ORG, TX_ID, {
+        counterpartyId: CP_ID,
+        type: 'INVOICE',
+        invoiceId: INV_ID,
+      }),
+    ).rejects.toThrow('Рахунок виписано на іншого контрагента');
+    expect(prisma.bankTransaction.updateMany).not.toHaveBeenCalled();
+    expect(payments.create).not.toHaveBeenCalled();
   });
 
   // guards: BR-BANK-016

@@ -247,6 +247,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     });
     // Рахунок у USD, залишок = 90 USD; платіж 100 USD > 90 → переплата (у валюті рахунку).
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 90,
@@ -270,6 +271,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     });
     // Рахунок 100 USD, залишок 100; платіж 100 USD → рівно закриває → PAID (у валюті).
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 100,
@@ -297,6 +299,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     });
     // Рахунок у базовій валюті (currencyId=UAH_ID), оплата з USD-каси → розбіжність валют.
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       status: 'SENT',
       workOrderId: null,
       amount: 100,
@@ -372,6 +375,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       currencyId: USD_ID,
     });
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       id: INV_FX,
       status: 'SENT',
       workOrderId: null,
@@ -438,6 +442,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       currencyId: USD_ID,
     });
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       id: INV_FX,
       status: 'SENT',
       workOrderId: null,
@@ -458,6 +463,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       currencyId: UAH_ID,
     });
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       id: INV_FX,
       status: 'SENT',
       workOrderId: null,
@@ -485,6 +491,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
     });
     prisma.workOrder.update.mockResolvedValue({});
     prisma.invoice.findFirst.mockResolvedValue({
+      counterpartyId: CP_ID,
       id: INV_FX,
       status: 'SENT',
       workOrderId: WO, // WO-linked → chargeDoc = WorkOrder

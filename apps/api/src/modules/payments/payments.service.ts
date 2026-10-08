@@ -315,6 +315,7 @@ export class PaymentsService {
               id: true,
               status: true,
               workOrderId: true,
+              counterpartyId: true,
               amount: true,
               paidAmount: true,
               currencyId: true,
@@ -332,6 +333,14 @@ export class PaymentsService {
                 translateError('err.payment.invoiceStatusNoPayment', getLocale(), {
                   status: inv.status,
                 }),
+              );
+            }
+            // Рахунок закриває лише його платник. Раніше платіж контрагента A міг закрити рахунок
+            // контрагента B: гроші лягали на баланс A, а борг B зникав. Єдине місце правди для
+            // ручного платежу, рознесення виписки й онлайн-оплати (усі йдуть через create).
+            if (inv.counterpartyId !== dto.counterpartyId) {
+              throw new BadRequestException(
+                translateError('err.payment.invoiceNotForCounterparty', getLocale()),
               );
             }
             if (dto.workOrderId && inv.workOrderId && inv.workOrderId !== dto.workOrderId) {

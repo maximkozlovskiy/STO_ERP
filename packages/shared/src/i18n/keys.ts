@@ -373,6 +373,7 @@ export const VALIDATION_KEYS = [
   'err.payment.currencyMustMatchWorkOrder',
   'err.payment.invoiceStatusNoPayment',
   'err.payment.invoiceNotForWorkOrder',
+  'err.payment.invoiceNotForCounterparty',
   'err.payment.currencyMustMatchInvoice',
   'err.payment.amountExceedsInvoiceRemaining',
   'err.payment.invoiceConcurrentChange',

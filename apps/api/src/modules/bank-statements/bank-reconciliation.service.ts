@@ -496,11 +496,19 @@ export class BankReconciliationService {
     if (dto.type === 'INVOICE' && dto.invoiceId) {
       const inv = await this.prisma.invoice.findFirst({
         where: { id: dto.invoiceId, orgId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, counterpartyId: true },
       });
       if (!inv) {
         throw new NotFoundException(
           translateError('err.bankStatement.invoiceNotFound', getLocale()),
+        );
+      }
+      // BR-BANK-010 / BR-PAY-016: рахунок закриває лише його платник. PaymentsService.create
+      // відмовив би так само, але вже після захоплення рядка — тут відмовляємо ДО CAS, щоб не
+      // робити захоплення й відкат на завідомо хибному вводі.
+      if (inv.counterpartyId !== dto.counterpartyId) {
+        throw new BadRequestException(
+          translateError('err.payment.invoiceNotForCounterparty', getLocale()),
         );
       }
     }

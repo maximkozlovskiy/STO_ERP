@@ -292,6 +292,8 @@ export const en: Record<string, string> = {
   'err.payment.invoiceStatusNoPayment':
     'Invoice is in "{{status}}" status — payment is not possible',
   'err.payment.invoiceNotForWorkOrder': 'The invoice does not belong to the specified work order',
+  'err.payment.invoiceNotForCounterparty':
+    'The invoice is issued to another counterparty — payment is accepted only from the invoice payer',
   'err.payment.currencyMustMatchInvoice': 'The payment currency must match the invoice currency',
   'err.payment.amountExceedsInvoiceRemaining':
     'The amount exceeds the invoice balance ({{remaining}})',

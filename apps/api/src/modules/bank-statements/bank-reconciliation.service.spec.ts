@@ -296,7 +296,7 @@ describe('BankReconciliationService.matchTransaction', () => {
   it('INVOICE → settlementType PAYMENT + invoiceId переданий у payments.create; сума=amount tx', async () => {
     const INV_ID = '33333333-3333-4333-8333-333333333333';
     const { prisma, payments, service } = setupMatch();
-    prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID }); // валідація рахунку у межах org
+    prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID, counterpartyId: CP_ID }); // валідація рахунку у межах org
     await service.matchTransaction(ORG, TX_ID, {
       counterpartyId: CP_ID,
       type: 'INVOICE',

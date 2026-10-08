@@ -234,6 +234,10 @@ create (метод без requiresFiscal) → null
 PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(checkbox) і PAYMENT(monobank).
 - **BR-PAY-015**: `credentials` — JSON-рядок, шифрується at-rest (`prisma.service ENCRYPTED_FIELDS`); write-only у API
   (GET-и повертають лише `hasCredentials`). `BranchProviderConfig` виключено з PULL_TABLES (містить секрети).
+- **BR-PAY-016**: Рахунок закриває лише його платник: платіж із `invoiceId` приймається, тільки якщо
+  контрагент платежу — контрагент цього рахунку, інакше 400 «Рахунок виписано на іншого
+  контрагента…», рахунок і баланс не чіпаються. Перевірка стоїть у `PaymentsService.create`, тож діє
+  для ручного платежу, рознесення банківської виписки й онлайн-оплати.
 
 ### Конкретні провайдери
 
