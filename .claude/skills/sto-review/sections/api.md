@@ -70,7 +70,8 @@ grep -nE "paidAmount.*(increment|decrement).*dto\.amount|prevPaid \+ dto\.amount
 - [ ] `IN_PROGRESS` → `RESERVATION`; `COMPLETED` → `WRITEOFF+RESERVATION_RELEASE+CHARGE` у `$transaction`
 - [ ] `CANCELLED` зі статусу з резервом → `RESERVATION_RELEASE`
 - [ ] Soft delete скрізь; **без deletedAt** (append-only): `SettlementTransaction`, `StockMovement`, `StockBatch`, `BatchConsumption`, `PriceHistory`, `Payment`, `CashOperation`, `WorkOrderLineEmployee`, `Comment`, `EmployeeBranch`
-- [ ] Кожен `$transaction(async cb)` → `{ timeout: N }` (5s–15s)
+- [ ] Кожен `$transaction(async cb)` → `{ timeout: N }` (5s–15s). Детектор вище шукає лише `$transaction(async` — форму `$transaction(tx => …)` без `async` перевір окремо: `grep -rnE '\$transaction\([a-z]+ =>' apps/api/src --include="*.ts" | grep -v spec`
+- [ ] **Залишок округлення «в останній рядок» → перевір, що рядок може його вмістити.** Вирівнювання Σ рядків до суми документа, яке безумовно править `lines[lines.length - 1]`, дає від'ємну суму чи ПДВ, коли останній рядок нульовий (робота з 0 годин) або замалий. Залишок бере останній ненульовий рядок, що лишається ≥ 0; у тесті — кейс із нульовим останнім рядком (`journal/api.md`, 2026-10-08)
 - [ ] `SettlementsService.createTransaction` → internal `amount > 0 && Number.isFinite(amount)` guard
 - [ ] **Новий виклик `docNumbers.next(orgId, 'X')` → тип `X` є в `seed.ts`, `setup.service.ts` І в backfill-міграції.** Інакше створення документа дає 404 на кожній org, а unit-тести (мок `DocumentNumberService`) зелені. Детектор і взірець міграції — `journal/api.md`, запис 2026-10-07. Severity: CRITICAL
 - [ ] **Статичний сторож у spec (читає код regex-ом) — fail-closed:** аргумент, який він не може прочитати як літерал (`data: updates`, shorthand, spread), має бути порушенням, і на кожну обхідну форму є контрольний кейс (`journal/api.md`, 2026-10-07)
