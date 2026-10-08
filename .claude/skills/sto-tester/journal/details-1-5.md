@@ -60,3 +60,16 @@
 <!-- T1.5-013 -->
 
 - [ ] **Integration-спек на dev-БД видаляє/змінює рядки за ПРИРОДНИМ ключем, а не за власним `id` (Bug #782):** `cleanup()` виду `DELETE ... WHERE "branchId" = <findFirst()> AND <enum-поле> IN (...)` стирає справжні дані розробника — набір при цьому зелений. Назва константи `TEST_*` не ізолює, якщо значення доменне (enum/код) і на нього є `@@unique`. Детектор дає КАНДИДАТІВ (видалення не за `id`), кожен перевірити очима: маркер унікальний для тесту? видалення всередині транзакції з відкатом?
+
+<!-- T1.5-014 -->
+
+- [ ] **Новий integration-спек поза CI (Bug #806):** job `integration-tests` у `.github/workflows/ci.yml` запускає специ за ЯВНИМ списком шляхів; `*.integration.spec.ts`, якого там немає, у CI потрапляє лише в unit-job без Postgres/Redis і йде у skip. Друга половина тієї ж пастки: спек бере «шаблон» із наявних даних (`workOrder.findFirst()`), а seed таких рядків не створює — з `REQUIRE_DB=1` на чистій базі він упаде, щойно його додадуть у список. Детектор:
+
+  ```bash
+  for f in $(git ls-files 'apps/api/src/**/*.integration.spec.ts'); do
+    d=$(dirname "${f#apps/api/}"); grep -q -e "${f#apps/api/}" -e "$d " -e "$d$" .github/workflows/ci.yml || echo "НЕ В CI: $f"
+  done
+  grep -n "findFirst" $(git diff --name-only <base>..HEAD -- '*.integration.spec.ts') | head   # звірити з packages/database/prisma/seed.ts
+  ```
+
+  Фікс — дописати шлях у список job-а (і сервіс, якого спек потребує: Redis → `REQUIRE_REDIS=1`), дані брати з довідників, які seed гарантує (філія, авто, контрагент, валюта, робота). Severity MEDIUM.

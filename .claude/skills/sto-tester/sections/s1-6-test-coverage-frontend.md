@@ -43,4 +43,6 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 
 - [ ] Stale regression-guard test після backend-compat URL/payload fix (Bug #390) — `T1.6-014`
 
+- [ ] Нове правило «документ входить лише в один …» проти E2E, що створює незворотний документ на широкий діапазон: наступний тест лишається без даних, dev-база — без документів (Bug #805) — `T1.6-015`
+
 ---

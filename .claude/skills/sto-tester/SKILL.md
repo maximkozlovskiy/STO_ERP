@@ -191,12 +191,12 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/_next/static/chunks
 
 | §    | Перелік (читати цілком)                   | Повні тексти (вибірково) | Пунктів                |
 | ---- | ----------------------------------------- | ------------------------ | ---------------------- |
-| §1.1 | `sections/s1-1-backend-logic.md`          | `journal/details-1-1.md` | 111 (з них 78 — кодом) |
+| §1.1 | `sections/s1-1-backend-logic.md`          | `journal/details-1-1.md` | 116 (з них 81 — кодом) |
 | §1.2 | `sections/s1-2-api-quality.md`            | `journal/details-1-2.md` | 27 (з них 21 — кодом)  |
 | §1.3 | `sections/s1-3-frontend.md`               | `journal/details-1-3.md` | 56 (з них 50 — кодом)  |
 | §1.4 | `sections/s1-4-security.md`               | `journal/details-1-4.md` | 8 (з них 3 — кодом)    |
-| §1.5 | `sections/s1-5-test-coverage-backend.md`  | `journal/details-1-5.md` | 18 (з них 13 — кодом)  |
-| §1.6 | `sections/s1-6-test-coverage-frontend.md` | `journal/details-1-6.md` | 17 (з них 14 — кодом)  |
+| §1.5 | `sections/s1-5-test-coverage-backend.md`  | `journal/details-1-5.md` | 20 (з них 14 — кодом)  |
+| §1.6 | `sections/s1-6-test-coverage-frontend.md` | `journal/details-1-6.md` | 18 (з них 15 — кодом)  |
 | §1.7 | `sections/s1-7-a11y-i18n.md`              | `journal/details-1-7.md` | 7 (з них 1 — кодом)    |
 
 ---

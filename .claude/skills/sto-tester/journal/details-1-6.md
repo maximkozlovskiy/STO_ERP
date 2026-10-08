@@ -58,3 +58,14 @@
 <!-- T1.6-014 -->
 
 - [ ] **Stale regression-guard test після backend-compat URL/payload fix (Bug #390):** будь-який `fix(<area>): <change> X serialization format` / `fix(<area>): remove [] suffix` / `fix(<area>): switch to camelCase keys` commit що ЗМІНЮЄ форму запиту (URL params / body keys / header values) ОБОВ'ЯЗКОВО оновлює парний `*.test.tsx` що асертить старий формат. Симптом: web baseline test suite червоний на `expect(url).toContain('<old-form>')` АБО `expect(payload).toEqual({ <old-key>: ... })`. Особливо підступно з URL-encoded формами: тест шукає `categoryIds%5B%5D=` (URL-encoded `[]`), фікс шле `categoryIds=` (репитед keys) → `.toContain` фейлиться, але повідомлення помилки виглядає як «component-bug» а не «test-stale». tsc green бо це runtime string assertion. API contract spec теж може не ловити (mock-based, не реальний parser). Grep для виявлення PRE-commit: `git diff HEAD~3 HEAD -- 'apps/web/src/**/*.tsx' | grep -E "^\+.*params\.(append|set)\b" | grep -v test` → кожен match — pair-check `__tests__/<Component>.test.tsx` на `.toContain(<param-name>` і `.toContain(<encoded-bracket>`. Альтернативний detection: червоний `vitest run` у baseline + `.toContain('%5B%5D')` у failing test. Severity: CRITICAL коли весь web suite червоний (release-blocker baseline → майбутні tester-сесії ховають реальні регресії за шумом). Fix-pattern: оновити assertion на новий формат + ДОДАТИ negation guard `expect(url).not.toContain('<old-form>')` як regression-guard щоб майбутня «спроба повернути старий формат» не пройшла CI зеленою. Парне з §1.5 «query-shape fix потребує service-spec» (Bug #163) — той самий принцип «після fix-у синхронізувати парний spec», але для frontend URL-serialization.
+
+<!-- T1.6-015 -->
+
+- [ ] **Правило ексклюзивності проти E2E з незворотним документом (Bug #805):** коли diff вводить «X входить лише в один документ Y» (наряд — в одну відомість, платіж — в один рахунок), перечитати E2E цього агрегату: тест, що створює Y на широкий діапазон і доводить до НЕЗВОРОТНОГО статусу (PAID, POSTED), тепер назавжди забирає всі X бази; наступний тест того ж файла, який чекає «у широкому діапазоні дані завжди є», лишається без них, а dev-база — без документів для людини. Детектор:
+
+  ```bash
+  grep -nE "FROM = '20[0-2][0-9]|TO = '20[3-9][0-9]|periodStart|dateFrom" apps/web/e2e/<агрегат>.spec.ts
+  grep -nE "afterAll|\.catch\(\(\) => \{\}\)" apps/web/e2e/<агрегат>.spec.ts   # прибирання, що ковтає власні помилки
+  ```
+
+  Доказ без шкоди базі — повторити послідовність тесту через API, зупинившись ПЕРЕД незворотним кроком, і видалити створене. Окремо перевірити, що прибирання в `afterAll` справді щось видаляє (порахувати документи з маркером до й після): `.catch(() => {})` ховає і падіння самого прибирання. Фікс — незворотний крок у порожньому далекому вікні; тест, якому потрібні дані, створює їх сам і прибирає у `finally`. Severity MEDIUM.

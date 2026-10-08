@@ -322,3 +322,14 @@
 <!-- T1.1-080 -->
 
 - [ ] **Набори типів нумерації розійшлись давно, не в diff-і (Bug #794):** `T1.1-060` спрацьовує лише на нове значення enum у diff-і, тож старий пропуск живе роками. Рядки `document_number_configs` створюють ТРИ місця: `packages/database/prisma/seed.ts` (`docConfigs`, лише dev), `apps/api/src/modules/setup/setup.service.ts` (`docTypes`, чиста інсталяція — `First-Run.ps1` seed не запускає) і backfill-міграції `seed_*_doc_numbers` (лише org, що існували на момент міграції; на чистій інсталяції вставляють 0 рядків, бо org ще немає). Звірка чотирьох наборів однією командою: `grep -rhoE "\.next\(\s*orgId,\s*'[A-Z_]+'" apps/api/src --include=*.ts | grep -oE "[A-Z_]{4,}" | sort -u` (хто кличе) проти `grep -oE "DocumentType\.[A-Z_]+" packages/database/prisma/seed.ts | sort -u` і блоку `docTypes` у `setup.service.ts`. Тип, який кличуть, але якого немає в `setup.service.ts`, = фіча мертва на кожній новій інсталяції (на 2026-10-07 таких п'ять, серед них `GOOD_INTERNAL_CODE` — створення будь-якого товару). Живий доказ: `select "documentType" from document_number_configs where "orgId" = …` проти `enum_range(null::"DocumentType")`, і `select count(*)` у таблиці документа — 0 рядків за весь час означає, що створення не працювало ніколи. Спек setup із `createMany: { count: 8 }` цього не ловить — потрібен тест «`docTypes` ⊇ типи з викликів `next()`». Severity CRITICAL. Не виправляти мовчки: префікс нового типу — рішення власника.
+
+<!-- T1.1-081 -->
+
+- [ ] **BullMQ self-re-enqueue під `jobId` активної задачі (Bug #804):** polling-процесор, що з `process()` ставить наступну задачу в ТУ САМУ чергу з ТИМ САМИМ `jobId` («single-flight»), на справжній черзі не працює: `queue.add` для id, який уже є в Redis, нічого не додає й не кидає, а активна задача існує до повернення з `process` (і з `removeOnComplete: true` теж). Ланцюг обривається після першого кроку. Unit-спек із моком черги зелений і часто ще й ЗАКРІПЛЮЄ баг асертом `jobId === той самий`. Детектор — процесор, що додає у власну чергу з custom id:
+
+  ```bash
+  grep -rnE "@InjectQueue\('([a-z-]+)'\)" apps/api/src --include=*.processor.ts
+  grep -rnE "jobId: *`[a-z-]+\$\{[a-zA-Z]+\}`" apps/api/src --include=*.processor.ts
+  ```
+
+  Обидва збіглись в одному файлі → порівняти id із тим, під яким задачу ставить сервіс-ініціатор: однакові — баг. Доказ лише на живій черзі (BullMQ + Redis, власна назва черги, `job.promote()` замість очікування delay): рахувати, скільки разів виконався обробник. Фікс — детермінований id на крок (`<база>-p<крок>`; двокрапка в id заборонена). Severity CRITICAL, якщо ланцюг несе гроші (підтвердження оплати), HIGH — якщо статус доставки.
