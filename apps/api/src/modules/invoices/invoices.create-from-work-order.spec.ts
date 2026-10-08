@@ -316,6 +316,25 @@ describe('InvoicesService — create-from-work-order', () => {
       expect(order).toEqual(['tx-begin', 'create', 'tx-rollback']);
     });
 
+    // Bug #814: порядок рядків рахунку = порядок рядків наряду. Без orderBy «останній рядок», що
+    // забирає копійку округлення, був випадковим. Mutation-verify: прибрати orderBy → падає.
+    // guards: BR-INV-002
+    it('рядки наряду читаються в порядку введення (createdAt, далі id): роботи й запчастини', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx } = arrange(WO_EXCL);
+
+      await service.createFromWorkOrder(ORG, WO_ID);
+
+      const select = (
+        tx.workOrder.findFirst.mock.calls[0][0] as {
+          select: { lines: { orderBy: unknown }; parts: { orderBy: unknown } };
+        }
+      ).select;
+      const byEntry = [{ createdAt: 'asc' }, { id: 'asc' }];
+      expect(select.lines.orderBy).toEqual(byEntry);
+      expect(select.parts.orderBy).toEqual(byEntry);
+    });
+
     // guards: BR-INV-002
     it('тотали наряду не відповідають рядкам → 400 ЗСЕРЕДИНИ транзакції: рахунок не лишається, рядки й суми не пишуться', async () => {
       // Рядки на 700, а наряд каже 1000 — це не копійки округлення.

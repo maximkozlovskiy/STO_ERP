@@ -1261,8 +1261,12 @@ export class WorkOrdersService {
           counterparty: {
             select: { firstName: true, lastName: true, companyName: true, phone: true },
           },
+          // Рядки друкованого наряду — у порядку введення, як на екрані, в акті й кошторисі. Без
+          // orderBy Postgres віддавав їх довільно: три однакові наряди друкувались трьома
+          // різними порядками рядків (Bug #814).
           lines: {
             where: { deletedAt: null },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             take: 500,
             select: {
               normoHours: true,
@@ -1274,6 +1278,7 @@ export class WorkOrdersService {
           },
           parts: {
             where: { deletedAt: null },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
             take: 500,
             select: {
               quantity: true,

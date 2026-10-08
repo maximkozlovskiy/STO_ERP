@@ -181,4 +181,29 @@ describe('InspectionService.create', () => {
 
     expect(result.autoCreatedLines).toBe(1);
   });
+
+  // Bug #813. Mutation-verify: прибрати money() в InspectionService.create → amount = 30.014999999999997.
+  // guards: BR-WO-007
+  it('авто-рядок із «незручною» сумою округлюється як у тоталах наряду: 0.3 × 100.05 = 30.02, не сирі 30.0149…', async () => {
+    prisma.workOrder.findFirst.mockResolvedValueOnce({ id: workOrderId, orgId, status: 'DRAFT' });
+    prisma.inspectionReport.findFirst.mockResolvedValueOnce(null);
+    prisma.work.findMany.mockResolvedValueOnce([
+      { id: 'work-1', name: 'Гальмівні колодки — заміна', price: 100.05, normoHours: 0.3 },
+    ]);
+    prisma.inspectionReport.create.mockResolvedValueOnce({
+      id: 'rep-1',
+      orgId,
+      workOrderId,
+      mileage: null,
+      points: dtoWithCritical.points,
+      createdBy: userId,
+      createdAt: new Date(),
+    });
+    prisma.workOrderLine.createMany.mockResolvedValueOnce({ count: 1 });
+
+    await service.create(orgId, workOrderId, dtoWithCritical, userId);
+
+    expect(0.3 * 100.05).not.toBe(30.02); // сирий добуток — 30.014999999999997
+    expect(prisma.workOrderLine.createMany.mock.calls[0][0].data[0].amount).toBe(30.02);
+  });
 });

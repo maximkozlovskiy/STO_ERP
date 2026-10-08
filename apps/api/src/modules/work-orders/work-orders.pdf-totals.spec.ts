@@ -152,4 +152,19 @@ describe('WorkOrdersService.generatePdf — підсумок із тоталів
     );
     expect(missing.generateWorkOrderPdf).not.toHaveBeenCalled();
   });
+
+  // Bug #814: без orderBy Postgres віддає рядки довільно — три однакові наряди друкувались трьома
+  // різними порядками робіт і запчастин. Mutation-verify: прибрати orderBy у generatePdf → падає.
+  it('роботи й запчастини читаються в порядку введення (createdAt, далі id) — як на екрані й в акті', async () => {
+    const { service, woFindFirst } = setup({ totalNet: 700, totalAmount: 840 });
+    await service.generatePdf(ORG, WO_ID);
+    const select = (
+      woFindFirst.mock.calls[0]?.[0] as {
+        select: { lines: { orderBy: unknown }; parts: { orderBy: unknown } };
+      }
+    ).select;
+    const order = [{ createdAt: 'asc' }, { id: 'asc' }];
+    expect(select.lines.orderBy).toEqual(order);
+    expect(select.parts.orderBy).toEqual(order);
+  });
 });

@@ -1648,6 +1648,7 @@
    "InspectionService.create CRITICAL points + non-editable WO (COMPLETED) → BadRequestException",
    "InspectionService.create cross-tenant WO → NotFoundException",
    "InspectionService.create happy path без CRITICAL: створює report, lines НЕ створюються",
+   "InspectionService.create авто-рядок із «незручною» сумою округлюється як у тоталах наряду: 0.3 × 100.05 = 30.02, не сирі 30.0149…",
    "InspectionService.create повторний звіт для того ж WO → ConflictException; inspectionReport.create НЕ викликаний"
   ],
   "apps/api/src/modules/integration-logs/integration-log-purge.processor.spec.ts": [
@@ -1976,6 +1977,7 @@
    "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) порожній наряд із нульовою сумою → рахунок на 0 без рядків (createMany не кличеться)",
    "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) режим ПДВ рядків визначає наряд: налаштування «ПДВ зверху 20%», наряд без ПДВ у сумі → рахунок на 700 без ПДВ",
    "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) рядки наряду пишуться клієнтом ТІЄЇ САМОЇ транзакції, що створила рахунок, до її завершення",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) рядки наряду читаються в порядку введення (createdAt, далі id): роботи й запчастини",
    "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) сума рахунку = сума наряду до сплати: amount = totalWithVat = wo.totalAmount, totalWithoutVat = wo.totalNet",
    "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) тотали наряду не відповідають рядкам → 400 ЗСЕРЕДИНИ транзакції: рахунок не лишається, рядки й суми не пишуться"
   ],
@@ -4077,6 +4079,7 @@
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) «ПДВ у ціні»: total = сума рядків (700), ПДВ виділено тоталами наряду; vatTotal квантовано до копійки",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд без ПДВ: vatTotal = 0 (підсумок друкується одним рядком), total = totalNet",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд читається у межах свого orgId разом із totalNet/totalAmount; чужий → 404, PDF не будується",
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) роботи й запчастини читаються в порядку введення (createdAt, далі id) — як на екрані й в акті",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) рядок роботи округлено до копійки так само, як у тоталах: рядки складаються в підсумок"
   ],
   "apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts": [

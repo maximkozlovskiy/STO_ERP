@@ -11,6 +11,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { CreateInspectionDto, InspectionResponseDto } from './inspection.dto';
 import { EDITABLE_STATUSES } from '../work-orders/work-orders.fsm';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
+import { money } from '../../common/utils/money';
 
 // Дефолтні точки огляду
 export const DEFAULT_INSPECTION_POINTS = [
@@ -133,7 +134,10 @@ export class InspectionService {
           const price = Number(work.price);
           const normoHours = Number(work.normoHours);
           // Bug pattern §5.1: labour amount = normoHours * price, NOT just price.
-          const amount = normoHours * price;
+          // BR-WO-007: рядок округлюється тим самим money(), що й у addLine і в тоталах. Сирий добуток
+          // (0.3 × 100.05 = 30.014999…) Postgres клав у Decimal як 30.01, а тотали наряду брали
+          // цей рядок як 30.02 — кошторис і сума наряду розходились на копійку (Bug #813).
+          const amount = money(normoHours * price);
 
           linesData.push({
             orgId,

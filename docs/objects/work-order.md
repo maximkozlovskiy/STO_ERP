@@ -200,14 +200,14 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.fsm.contract.spec.ts`             | 2      |
 | інваріанти (property-based)             | `work-orders.fsm.invariants.spec.ts`           | 16     |
 | нумерація (create/clone)                | `work-orders.numbering.spec.ts`                | 2      |
-| друкований наряд: підсумок із тоталів   | `work-orders.pdf-totals.spec.ts`               | 5      |
+| друкований наряд: підсумок із тоталів   | `work-orders.pdf-totals.spec.ts`               | 6      |
 | recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |
 | recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 21     |
 | рольовий доступ                         | `work-orders.role-gate.spec.ts`                | 24     |
 | сервісна логіка                         | `work-orders.service.spec.ts`                  | 25     |
 | share public                            | `work-orders.share-public.spec.ts`             | 14     |
 
-Разом: **215** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **216** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 

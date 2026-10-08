@@ -913,8 +913,12 @@ export class InvoicesService {
       select: {
         totalNet: true,
         totalAmount: true,
+        // Порядок рядків рахунку = порядок рядків наряду (як на екрані й в акті). Без orderBy
+        // Postgres віддавав їх довільно, і «останній рядок», що забирає копійку округлення
+        // (BR-INV-002), був випадковим (Bug #814).
         lines: {
           where: { deletedAt: null },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           select: {
             workId: true,
             price: true,
@@ -925,6 +929,7 @@ export class InvoicesService {
         },
         parts: {
           where: { deletedAt: null },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           select: {
             goodId: true,
             price: true,
