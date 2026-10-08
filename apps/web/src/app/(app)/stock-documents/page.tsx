@@ -67,6 +67,11 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
 import { cn, UUID_RE } from '@/lib/utils';
+import {
+  PAGE_TAB_ACTIVE as TAB_ACTIVE,
+  PAGE_TAB_CLASS as TAB_CLASS,
+  PAGE_TAB_IDLE as TAB_IDLE,
+} from '@/lib/page-tabs';
 import { fmtDate, fmtDateTime, fmtMoney, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
@@ -882,12 +887,6 @@ function StockDocumentsPageClient() {
     </>
   );
 }
-
-const TAB_CLASS =
-  'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
-const TAB_ACTIVE = 'border-primary text-primary';
-const TAB_IDLE =
-  'border-transparent text-muted-foreground hover:text-foreground hover:border-border';
 
 /**
  * Рядок вкладок сторінки «Склад»: типи документів (з `STOCK_DOC_TYPE_LABELS`, BR-SDOC-007) і

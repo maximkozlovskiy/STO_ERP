@@ -7,6 +7,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useRequireAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import {
+  PAGE_TAB_ACTIVE as TAB_ACTIVE,
+  PAGE_TAB_CLASS as TAB_CLASS,
+  PAGE_TAB_IDLE as TAB_IDLE,
+} from '@/lib/page-tabs';
 import type { BankTxDirection } from '@/hooks/api/useBankStatements';
 
 const BankTransactionsTab = dynamic(() => import('./BankTransactionsTab'), { ssr: false });
@@ -19,12 +24,6 @@ const DIRECTION_TABS: { key: '' | BankTxDirection; labelKey: string }[] = [
   { key: 'IN', labelKey: 'page.tabs.incoming' },
   { key: 'OUT', labelKey: 'page.tabs.outgoing' },
 ];
-
-const TAB_CLASS =
-  'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
-const TAB_ACTIVE = 'border-primary text-primary';
-const TAB_IDLE =
-  'border-transparent text-muted-foreground hover:text-foreground hover:border-border';
 
 function BankStatementsPageShell() {
   // Ролі однакові для обох вкладок (перегляд платежів і керування рахунками — OWNER/ADMIN/ACCOUNTANT).

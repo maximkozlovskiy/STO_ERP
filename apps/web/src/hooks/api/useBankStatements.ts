@@ -67,7 +67,8 @@ export interface MatchTransactionInput {
   invoiceId?: string;
 }
 
-export type BankTxDirection = 'IN' | 'OUT';
+/** Напрямок платежу (BankTransactionDirection) — зі згенерованого, як і решта union-ів файла. */
+export type BankTxDirection = BankTransaction['direction'];
 
 export interface BankTransactionsFilter extends Record<string, unknown> {
   status?: string;
