@@ -263,4 +263,8 @@ done
 
 - [ ] ISO-мітка часу з API порівнюється з київським «сьогодні» через `.slice(0, 10)` — це UTC-дата, перші 2–3 години доби випадають (Bug #812). Перевіряти наживо між 00:00 і 03:00 або тестом на `…T21:30Z`. Grep: `grep -rnE "At\??\.slice\(0, 10\) ===" apps/web/src`
 
+- [ ] Поле з власним текстом (`inputText` поруч із `value`) відхиляє ввід мовчки, але лишає його на екрані: показане ≠ застосоване (Bug #815). Наживо у відборі «З / По»: ввести межу, що суперечить іншій, потім виправити другу — порівняти поля з query-рядком запиту. Grep: `grep -rnL "onBlur" $(grep -rlE "setInputText|setRawText" apps/web/src/components)`
+
+- [ ] Поле пошуку без `maxLength`, а бекенд відхиляє довгий `q` (`@MaxLength` у query-DTO) → 400 і рядки попереднього пошуку під новим текстом (Bug #816). Наживо: вставити 150 символів. Grep: `grep -rn "MaxLength" apps/api/src/modules --include=*.dto.ts | grep -B3 " q?:"` проти `grep -rn "searchPlaceholder" apps/web/src/app -A3 | grep -c maxLength`
+
 ---
