@@ -1,19 +1,41 @@
 import { defineConfig, devices } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
+import * as path from 'node:path';
 
 // Локально E2E живе на ВЛАСНОМУ порту :3002, а не на dev-сервері :3001. Dev-сервер зібраний
 // без `NEXT_PUBLIC_E2E`, і на ньому всі тести йдуть у /login; раніше доводилось його вбивати,
 // чекати холодну компіляцію, а потім піднімати назад. Окремий екземпляр не заважає ручній
 // роботі. Сервер, який Playwright підняв САМ, він же й зупиняє наприкінці прогону (після
 // прогону :3002 не слухає — перевірено); між прогонами живе лише екземпляр, запущений
-// окремо вручну — тоді reuseExistingServer його підхоплює. Такий екземпляр треба зупиняти
-// після себе: забутий, він псується, а `webServer.url` перевіряє лише корінь. Від цього
-// страхує сторож динамічних маршрутів у e2e/setup-auth.ts. У CI сервер піднімає workflow
-// на :3001.
+// окремо вручну — тоді reuseExistingServer його підхоплює. Забутий такий екземпляр псується,
+// а `webServer.url` перевіряє лише корінь — тому нижче стоїть самовідновлення
+// (e2e/ensure-e2e-server.cjs), а в e2e/setup-auth.ts — сторож динамічних маршрутів. У CI сервер
+// піднімає workflow на :3001.
 const BASE_URL =
   process.env.PLAYWRIGHT_BASE_URL ??
   (process.env.CI ? 'http://localhost:3001' : 'http://localhost:3002');
 const E2E_PORT = new URL(BASE_URL).port || '3002';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+
+// Самовідновлення: якщо на E2E-порту вже висить ЗІПСОВАНИЙ екземпляр (корінь 200, сторінки
+// `/…/[id]` — 5xx), зупиняємо його ще до того, як webServer вирішить «перевикористати». Далі
+// Playwright піднімає свіжий. Без цього прогін або йшов би на мертвому сервері, або зупинявся
+// б і чекав людину — а чекати нема чого. Деталі й запобіжники — e2e/ensure-e2e-server.cjs.
+// Прапорець в env — щоб перевірка йшла раз на прогін: конфіг вантажиться ще й у кожному воркері.
+if (!process.env.CI && !process.env.STO_E2E_SERVER_CHECKED) {
+  process.env.STO_E2E_SERVER_CHECKED = '1';
+  const ensured = spawnSync(
+    process.execPath,
+    [path.resolve(__dirname, 'e2e/ensure-e2e-server.cjs'), BASE_URL],
+    { stdio: 'inherit' },
+  );
+  if (ensured.status !== 0) {
+    throw new Error(
+      `E2E: на ${BASE_URL} висить зіпсований сервер, і звільнити порт автоматично не вдалося — ` +
+        'зупиніть процес на цьому порту вручну (команда — у виводі вище).',
+    );
+  }
+}
 
 export default defineConfig({
   testDir: './e2e',

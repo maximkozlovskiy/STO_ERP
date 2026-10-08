@@ -40,11 +40,13 @@ async function assertServerRendersDynamicRoutes(baseURL: string): Promise<void> 
     const port = probe.port || '80';
     throw new Error(
       `E2E: сервер ${baseURL} віддає HTTP ${status} на динамічну сторінку ${probe.pathname} — ` +
-        'екземпляр зіпсований, тести на ньому впадуть не через код.\n' +
-        `Зупиніть процес на порту ${port} і запустіть прогін знову — Playwright підніме свіжий:\n` +
+        'тести на ньому впадуть не через код.\n' +
+        'Зіпсований екземпляр на E2E-порту конфіг зупиняє сам (e2e/ensure-e2e-server.cjs), тож ' +
+        'якщо ви бачите це повідомлення — або сервер СВІЖИЙ і 5xx справжній (дивіться лог ' +
+        'next dev), або це не E2E-порт / CI, де автоматика нічого не чіпає.\n' +
+        `Звільнити порт ${port} вручну:\n` +
         `  PowerShell:  Get-NetTCPConnection -LocalPort ${port} -State Listen | ` +
-        'ForEach-Object { taskkill /PID $_.OwningProcess /T /F }\n' +
-        'Якщо 500 повторюється на свіжому сервері — це вже справжня помилка: дивіться лог next dev.',
+        'ForEach-Object { taskkill /PID $_.OwningProcess /T /F }',
     );
   }
 }
