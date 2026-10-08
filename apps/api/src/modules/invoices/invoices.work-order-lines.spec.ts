@@ -421,6 +421,51 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
         { numRuns: 500 },
       );
     });
+
+    // Нульова кількість — робота з 0 фактичних годин (BR-WO-005: нуль — це значення); копійчані
+    // ціни — щоб ПДВ рядка округлявся до нуля. Саме на таких рядках вирівнювання копійки давало
+    // від'ємні суми, а властивість вище їх не генерувала й не перевіряла знак.
+    const qtyOrZero = fc.oneof(
+      { weight: 1, arbitrary: fc.constant(0) },
+      { weight: 3, arbitrary: fc.integer({ min: 1, max: 300 }).map(c => c / 100) },
+    );
+    const smallPrice = fc.oneof(
+      fc.integer({ min: 1, max: 60 }).map(c => c / 100),
+      fc.integer({ min: 100, max: 50_000 }).map(c => c / 100),
+    );
+    const edgeRow = fc.tuple(qtyOrZero, smallPrice);
+
+    // guards: BR-INV-002
+    it("нульові кількості й копійчані ціни: Σ рядків = тотали наряду і жодного від'ємного рядка", () => {
+      fc.assert(
+        fc.property(
+          fc.array(edgeRow, { minLength: 0, maxLength: 12 }),
+          fc.array(edgeRow, { minLength: 0, maxLength: 12 }),
+          mode,
+          rate,
+          (works, parts, vatMode, vatRate) => {
+            fc.pre(works.length + parts.length > 0);
+            const settingsRate = vatMode === 'NONE' ? 0 : vatRate;
+            const totals = totalsLikeRecalc(works, parts, vatMode, settingsRate);
+            const source = wo(works, parts, totals);
+
+            const lines = buildInvoiceLinesFromWorkOrder(source, {
+              vatMode,
+              vatRate: settingsRate,
+            });
+
+            expect(lines).toHaveLength(works.length + parts.length);
+            expectLinesMatchWorkOrder(lines, source);
+            for (const l of lines) {
+              expect(l.priceWithoutVat).toBeGreaterThanOrEqual(0);
+              expect(l.vatAmount).toBeGreaterThanOrEqual(0);
+              expect(l.priceWithVat).toBeGreaterThanOrEqual(0);
+            }
+          },
+        ),
+        { numRuns: 2000 },
+      );
+    });
   });
 
   // guards: BR-INV-002

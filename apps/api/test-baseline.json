@@ -1122,7 +1122,8 @@
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ зверху»: сума акта = wo.totalAmount (840), а не сума рядків (700); totalNet і vatTotal передано",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ у ціні»: сума акта = wo.totalAmount (700), сума без ПДВ і ПДВ — з тоталів наряду",
    "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) акт читається у межах свого orgId разом із тоталами наряду; чужий/відсутній → 404, PDF не будується",
-   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума рядків"
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ, сума рядків відстає на копійку (Bug #807): сума акта = wo.totalAmount (100.07), а не Σ рядків (100.06)",
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума наряду"
   ],
   "apps/api/src/modules/completion-acts/completion-acts.service.spec.ts": [
    "CompletionActsController — sign() передає автора sign(): user.id іде четвертим аргументом у CompletionActsService.sign",
@@ -2073,7 +2074,8 @@
    "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду три режими ПДВ: сума рядків = сума наряду ПДВ зверху 20%: рядок = сума без ПДВ + ПДВ, Σ з ПДВ = totalAmount наряду",
    "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду три режими ПДВ: сума рядків = сума наряду ПДВ у ціні 20%: ПДВ виділено з суми рядка, Σ з ПДВ = сума рядків наряду",
    "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду три режими ПДВ: сума рядків = сума наряду без ПДВ: рядки без ПДВ, ставка 0, Σ = сума наряду",
-   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду інваріант (property-based) для тоталів, порахованих як у наряді, Σ рядків рахунку = тотали наряду в усіх режимах"
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду інваріант (property-based) для тоталів, порахованих як у наряді, Σ рядків рахунку = тотали наряду в усіх режимах",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду інваріант (property-based) нульові кількості й копійчані ціни: Σ рядків = тотали наряду і жодного від'ємного рядка"
   ],
   "apps/api/src/modules/loyalty/loyalty.processor.spec.ts": [
    "LoyaltyProcessor documentId опційний → undefined прокидається",
@@ -3210,6 +3212,7 @@
    "ReportsService — Bug #629 квантування грошей у звітах settlements: totalDebit/totalCredit = Σ балансів квантовано",
    "ReportsService — Bug #629 квантування грошей у звітах vatReport: net = invoiced − purchases квантовано",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) profitability: прибуток і маржа — від суми без ПДВ; ПДВ і сума з ПДВ віддаються окремо",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: день рахується за Києвом від UTC-мітки — AT TIME ZONE UTC, потім Europe/Kyiv (Bug #808)",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: наряд без ПДВ у сумі (totalNet = totalAmount) дає ПДВ 0, а не збережений totalVat",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: рядок дня несе суму без ПДВ, ПДВ як різницю і суму з ПДВ",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: сума без ПДВ береться з totalNet, сума з ПДВ — з totalAmount; totalVat у запиті не бере участі"

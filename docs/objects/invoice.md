@@ -213,9 +213,9 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 15     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)   | `invoices.update-counterparty.spec.ts`     | 5      |
-| рядки рахунку з наряду (чиста функція)  | `invoices.work-order-lines.spec.ts`        | 22     |
+| рядки рахунку з наряду (чиста функція)  | `invoices.work-order-lines.spec.ts`        | 23     |
 
-Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **134** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

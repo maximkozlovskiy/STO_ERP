@@ -374,12 +374,14 @@ export class CompletionActsService {
     const builtLines = this.buildLines(act.workOrder);
     // BR-WO-007: сума акта = сума наряду до сплати (вона ж борг клієнта), а не сума рядків:
     // у режимі «ПДВ зверху» рядки без ПДВ, і акт на суму рядків розходився б із боргом і рахунком.
-    // Рядки акта будуються з тієї самої кількості, що й тотали наряду, тож без ПДВ суми збігаються.
+    // Без ПДВ — так само сума наряду (Bug #807): наряд округлює суму рядків РАЗ, а рядки акта —
+    // кожен окремо, тож сума рядків може відстати на копійку (3 × 33,33 + 0,07 = 100,06 проти
+    // 100,07 у боргу). Сума рядків лишається тільки для акта без наряду.
     const linesTotal = sumMoney(builtLines.map(l => l.amount));
     const woNet = act.workOrder ? money(Number(act.workOrder.totalNet)) : linesTotal;
     const woTotal = act.workOrder ? money(Number(act.workOrder.totalAmount)) : linesTotal;
     const vatTotal = money(woTotal - woNet);
-    const total = vatTotal > 0 ? woTotal : linesTotal;
+    const total = woTotal;
 
     return this.pdf.generateCompletionActPdf({
       org: { name: org?.name ?? 'СТО', edrpou: null, address: null },

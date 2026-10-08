@@ -205,9 +205,9 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | збережені звіти, tenant-межа запуску               | `report-builder.saved-reports.spec.ts` | 10     |
 | ролі доступу                                       | `report-builder.access.spec.ts`        | 9      |
 | межі config (DTO)                                  | `report-builder.dto.spec.ts`           | 1      |
-| фіксовані звіти (сусідній модуль `reports`)        | `reports.service.spec.ts`              | 16     |
+| фіксовані звіти (сусідній модуль `reports`)        | `reports.service.spec.ts`              | 17     |
 
-Разом: **97** кейсів — 76 конструктора і 12 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **98** кейсів — 81 конструктора і 17 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 23 кейси. Перевіряє чисту частину

@@ -319,6 +319,19 @@ describe('ReportsService — Bug #629 квантування грошей у з�
       expect(sql).not.toContain('"totalVat"');
     });
 
+    it('revenue: день рахується за Києвом від UTC-мітки — AT TIME ZONE UTC, потім Europe/Kyiv (Bug #808)', async () => {
+      // "completedAt" — timestamp без зони (UTC). Один `AT TIME ZONE 'Europe/Kyiv'` читає його як
+      // київський час і зсуває назад: наряд, завершений о 01:30 за Києвом, ішов у вчорашній рядок.
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await service.revenue(orgId, from, to);
+
+      const sql = sqlOf(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toMatch(
+        /DATE_TRUNC\('day',\s*"completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe\/Kyiv'\)/,
+      );
+    });
+
     // guards: BR-RPT-023
     it('profitability: прибуток і маржа — від суми без ПДВ; ПДВ і сума з ПДВ віддаються окремо', async () => {
       prisma.$queryRaw

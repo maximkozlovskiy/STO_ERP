@@ -22,7 +22,10 @@ type PdfArg = {
   lines: { amount: number }[];
 };
 
-function setup(woTotals: { totalNet: number; totalAmount: number } | null) {
+function setup(
+  woTotals: { totalNet: number; totalAmount: number } | null,
+  rows?: { lines: unknown[]; parts: unknown[] },
+) {
   const actFindFirst = vi.fn().mockResolvedValue(
     woTotals === null
       ? null
@@ -45,26 +48,28 @@ function setup(woTotals: { totalNet: number; totalAmount: number } | null) {
               actualAddress: null,
             },
             vehicle: { make: 'Toyota', model: 'Corolla', licensePlate: 'AA1234BB' },
-            // 2 год × 100 = 200 (фактичні години мають пріоритет над нормо-годинами)
-            lines: [
-              {
-                normoHours: 5,
-                actualHours: 2,
-                price: 100,
-                amount: 500,
-                workId: 'w-1',
-                work: { name: 'Заміна масла' },
-              },
-            ],
-            parts: [
-              {
-                quantity: 1,
-                price: 500,
-                amount: 500,
-                goodId: 'g-1',
-                good: { name: 'Фільтр', unit: 'шт' },
-              },
-            ],
+            ...(rows ?? {
+              // 2 год × 100 = 200 (фактичні години мають пріоритет над нормо-годинами)
+              lines: [
+                {
+                  normoHours: 5,
+                  actualHours: 2,
+                  price: 100,
+                  amount: 500,
+                  workId: 'w-1',
+                  work: { name: 'Заміна масла' },
+                },
+              ],
+              parts: [
+                {
+                  quantity: 1,
+                  price: 500,
+                  amount: 500,
+                  goodId: 'g-1',
+                  good: { name: 'Фільтр', unit: 'шт' },
+                },
+              ],
+            }),
           },
         },
   );
@@ -111,7 +116,44 @@ describe('CompletionActsService.generatePdf — сума акта з ПДВ (BR-
   });
 
   // guards: BR-WO-007
-  it('наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума рядків', async () => {
+  // guards: BR-WO-007
+  it('наряд без ПДВ, сума рядків відстає на копійку (Bug #807): сума акта = wo.totalAmount (100.07), а не Σ рядків (100.06)', async () => {
+    // Наряд округлює 3 × (0.3 × 111.11) + 0.07 = 100.069 РАЗ → 100.07 (це борг клієнта);
+    // рядки акта округлені кожен окремо: 33.33 × 3 + 0.07 = 100.06.
+    const line = {
+      normoHours: 0.3,
+      actualHours: null,
+      price: 111.11,
+      amount: 33.33,
+      workId: 'w-1',
+      work: { name: 'Діагностика' },
+    };
+    const { service, pdfArg } = setup(
+      { totalNet: 100.07, totalAmount: 100.07 },
+      {
+        lines: [line, line, line],
+        parts: [
+          {
+            quantity: 1,
+            price: 0.07,
+            amount: 0.07,
+            goodId: 'g-1',
+            good: { name: 'Шайба', unit: 'шт' },
+          },
+        ],
+      },
+    );
+
+    await service.generatePdf(ORG, ACT_ID);
+
+    const arg = pdfArg();
+    expect(arg.lines.reduce((s, l) => s + l.amount, 0)).toBeCloseTo(100.06, 2);
+    expect(arg.total).toBe(100.07);
+    expect(Object.prototype.hasOwnProperty.call(arg, 'vatTotal')).toBe(false);
+  });
+
+  // guards: BR-WO-007
+  it('наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума наряду', async () => {
     const { service, pdfArg } = setup({ totalNet: 700, totalAmount: 700 });
 
     await service.generatePdf(ORG, ACT_ID);

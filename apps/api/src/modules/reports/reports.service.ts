@@ -74,7 +74,10 @@ export class ReportsService {
         : Promise.resolve(null),
       this.prisma.$queryRaw<RevenueRow[]>`
         SELECT
-          DATE_TRUNC('day', "completedAt" AT TIME ZONE 'Europe/Kyiv') AS date,
+          -- "completedAt" — timestamp БЕЗ зони, у UTC. Один AT TIME ZONE 'Europe/Kyiv' трактував би
+          -- його як київський час і зсував у зворотний бік: усе, завершене між 00:00 і 06:00 за
+          -- Києвом, потрапляло у попередній день (Bug #808). Спершу UTC, потім Київ.
+          DATE_TRUNC('day', "completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv') AS date,
           COALESCE(SUM("totalNet"),    0)::float AS revenue,
           COALESCE(SUM("totalAmount"), 0)::float AS "revenueWithVat",
           COALESCE(SUM("totalLabor"),  0)::float AS labor,
