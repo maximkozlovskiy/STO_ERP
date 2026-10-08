@@ -141,7 +141,7 @@ describe; 2026-10-05 розбито за аспектами — 54 кейси м
 | Tenant-guard goodId рядків на update                                         | `stock-documents.line-goods-tenant.spec.ts`      | 2      | BR-SDOC-002                                        |
 | Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 8      | —                                                  |
 | `purchaseOrderId` на create і update (Phase D2)                              | `stock-documents.purchase-order-link.spec.ts`    | 4      | BR-SDOC-006                                        |
-| HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`               | 23     | —                                                  |
+| HTTP-контракт (DTO, статуси, валідація)                                      | `stock-documents.contract.spec.ts`               | 29     | —                                                  |
 | Асиметричний reverse рухів                                                   | `asymmetric-reverse.invariants.spec.ts`          | 7      | BR-SDOC-004                                        |
 | Інваріант `STOCK_DOC_TYPE_LABELS` ↔ Prisma `StockDocumentType`               | `stock-documents.type-labels.invariants.spec.ts` | 2      | BR-SDOC-005                                        |
 

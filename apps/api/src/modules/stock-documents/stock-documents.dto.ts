@@ -1,6 +1,7 @@
 import {
   IsUUID,
   IsString,
+  Matches,
   MaxLength,
   IsOptional,
   IsIn,
@@ -150,6 +151,8 @@ export class PaginatedStockDocumentsDto {
   @ApiProperty() limit!: number;
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export class StockDocumentQueryDto {
   @ApiPropertyOptional({ enum: StockDocumentType })
   @IsOptional()
@@ -175,16 +178,21 @@ export class StockDocumentQueryDto {
   @MaxLength(100)
   q?: string;
 
+  // Лише календарна дата: нестрогий `@IsDateString()` пропускав `2026-02-31` (JS перекочує в
+  // 03.03 — відбір мовчки йшов за іншим днем) і повний ISO з часом (у `dateTo` — безіменний 400
+  // від Prisma). Bug #817.
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(YMD_RE)
+  @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(YMD_RE)
+  @IsDateString({ strict: true })
   dateTo?: string;
 
   @ApiPropertyOptional({ description: 'Поле сортування', enum: ['documentDate', 'createdAt'] })

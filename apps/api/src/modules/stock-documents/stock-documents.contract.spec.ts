@@ -136,6 +136,34 @@ describe('StockDocuments — HTTP Contract', () => {
       );
     });
 
+    // Bug #817: нестрогий @IsDateString() пропускав неіснуючу дату (JS перекочує 31.02 у 03.03 —
+    // відбір мовчки йшов за іншим днем) і ISO з часом (у dateTo — безіменний 400 від Prisma).
+    it.each([
+      ['dateFrom', '2026-02-31'],
+      ['dateTo', '2026-02-31'],
+      ['dateFrom', '2026-10-09T10:00:00Z'],
+      ['dateTo', '2026-10-09T10:00:00Z'],
+      ['dateFrom', 'abc'],
+    ])('Bug #817: %s=%s → 400, сервіс не викликається', async (param, value) => {
+      serviceMock.findAll.mockClear();
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/stock-documents?${param}=${encodeURIComponent(value)}`,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(serviceMock.findAll).not.toHaveBeenCalled();
+    });
+
+    it('Bug #817: порожня дата (dateFrom=) лишається «без межі», не помилкою', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-documents?dateFrom=&dateTo=2026-02-28',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll.mock.calls.at(-1)?.slice(6, 8)).toEqual([undefined, '2026-02-28']);
+    });
+
     it('Bug #339: showDeleted=true → service.findAll отримує true', async () => {
       serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
       const res = await (app as NestFastifyApplication).inject({
