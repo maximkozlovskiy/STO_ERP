@@ -16,7 +16,14 @@ import { PrismaPg } from '@prisma/adapter-pg';
  * прямому запуску (`ts-node prisma/seed-catalog.ts`, як описано в його ж хедері)
  * конфіг не виконується — без цього рядка скрипт падав би на відсутньому URL.
  */
-process.loadEnvFile?.(path.join(__dirname, '..', '.env'));
+// Файла може не бути: у CI і в Docker `.env` немає (він у .gitignore), DATABASE_URL приходить
+// змінною середовища. loadEnvFile на відсутньому файлі кидає ENOENT - 2026-10-08 саме так
+// падав крок «Seed database» у трьох завданнях CI, хоча URL був заданий.
+try {
+  process.loadEnvFile?.(path.join(__dirname, '..', '.env'));
+} catch {
+  // немає .env - лишається process.env; відсутній URL нижче дасть зрозумілу помилку
+}
 
 export function createPgAdapter(url?: string): PrismaPg {
   const connectionString = url ?? process.env.DATABASE_URL;
