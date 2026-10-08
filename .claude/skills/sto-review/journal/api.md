@@ -164,3 +164,15 @@
 **Grep:** `grep -rnE "(counterpartyId|supplierId): dto\.(counterpartyId|supplierId)" apps/api/src/modules --include="*.service.ts" | grep -v spec` → кожен запис: чи є вище `findFirst({ where: { id, orgId, deletedAt: null } })` і перевірка ролі. Плюс `grep -rn "counterparties?limit\|counterparties?q=" apps/web/src apps/web/e2e | grep -v types` для пікерів і сідів без фільтра типу.
 **Фікс:** перевірка в update лише при ЗМІНІ FK (старі документи лишаються редагованими); рядок у статичному стороже підключення; `types=CLIENT&types=BOTH` у пікері й сідах.
 **Severity:** IMPORTANT (обхід правила) / CRITICAL там, де update не перевіряв `orgId` FK.
+
+### 2026-10-08 — Акт звірки з трьох окремих читань — §4
+
+**Сигнал:** `closing = account.balance − Σ(транзакції після періоду)`, де баланс, рядки періоду й агрегат читаються трьома запитами поза транзакцією. Платіж між читаннями потрапляє в агрегат, але не в баланс → закриваючий залишок з'їжджає на його суму; акт зберігається й підписується. **Grep:** `grep -rn "groupBy\|aggregate(" apps/api/src/modules --include="*.service.ts" -B30 | grep "balance"` → чи читання балансу й агрегату в одній транзакції. **Фікс:** `$transaction(async tx => …, { isolationLevel: 'RepeatableRead', timeout })`, баланс перечитати всередині. **Severity:** IMPORTANT
+
+### 2026-10-08 — EXPIRED за годинником при недоступному шлюзі — §4
+
+**Сигнал:** процесор опитування ставив `EXPIRED` щойно `expiresAt < now`, не питаючи шлюз. Разом із «збій getStatus → опитати знову» це давало: інтернет СТО лежить 15 хв, клієнт платить із телефона, намір закривається як «час вичерпано» при списаних грошах. **Grep:** `grep -rn "expiresAt" apps/api/src/modules --include="*.processor.ts" -A4 | grep -i "EXPIRED\|transition"`. **Фікс:** після дедлайну — останній запит статусу; закриває лише відповідь; збій → рідше опитування до стелі з причиною «не підтверджено». **Severity:** IMPORTANT (гроші)
+
+### 2026-10-08 — Правило платника на рахунку, але не на прямій оплаті наряду — §4
+
+**Сигнал:** `inv.counterpartyId !== dto.counterpartyId` додано для `invoiceId`, а гілка `workOrderId` без рахунку лишилась без перевірки (той самий `create`). Це пункт «нове правило на create → сусідні документи тієї ж ролі», тільки сусід — інша гілка того ж методу. **Фікс:** та сама перевірка для наряду, коли рахунку немає. **Severity:** IMPORTANT

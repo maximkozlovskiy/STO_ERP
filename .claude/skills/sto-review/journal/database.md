@@ -15,3 +15,7 @@
 **Grep:** `grep -rn "getLinkedCounts" apps/api/src/modules --include="*.service.ts"` → для кожного: чи є `findMany` живих реф-id (PO/warehouse/counterparty) + `Set`-membership перед інкрементом, чи безумовне `? 1 : 0` / `= 1`. Обов'язковий FK (`warehouseId`/`supplierId`) ≠ живий → теж gate через liveness.
 **Фікс:** зібрати унікальні реф-id → `findMany({ where: { id: { in: [...] }, orgId, deletedAt: null }, select: { id: true } })` → `new Set(...)` → `refId && liveSet.has(refId) ? 1 : 0` (дзеркалить invoices). +spec: soft-deleted реф → count=0.
 **Severity:** IMPORTANT — badge/панель розсинхрон; німа degradation (лише коли реф soft-deleted поки документ на нього посилається).
+
+### 2026-10-08 — NOT EXISTS по таблиці-знімку без індексу — §6
+
+**Сигнал:** `NOT EXISTS (… payroll_line_work_orders plw WHERE plw."orgId" = … AND plw."workOrderId" = wo.id …)` при індексах лише `(orgId, payrollLineId)`, `(orgId, syncVersion)`. `EXPLAIN`: `Nested Loop Anti Join` → `Seq Scan on payroll_line_work_orders` на кожен рядок робіт. **Grep:** `grep -rn "NOT EXISTS\|EXISTS (" apps/api/src --include="*.ts" -A8 | grep -v spec` → для кожної колонки кореляції перевірити `@@index` у схемі. **Фікс:** міграція `CREATE INDEX IF NOT EXISTS … ("orgId", "workOrderId")` + `@@index` у схемі; після — `EXPLAIN` показує `Index Scan`. **Severity:** IMPORTANT
