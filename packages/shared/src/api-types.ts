@@ -17658,9 +17658,13 @@ export interface operations {
     CashRegistersController_operations_v1: {
         parameters: {
             query?: {
+                /** @description Максимум рядків (за замовчуванням 100) */
                 limit?: string;
+                /** @description Примітка або стаття витрат */
                 q?: string;
+                /** @description Київський день операції від (YYYY-MM-DD), включно */
                 dateFrom?: string;
+                /** @description Київський день операції до (YYYY-MM-DD), включно */
                 dateTo?: string;
             };
             header?: never;

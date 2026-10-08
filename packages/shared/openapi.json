@@ -16139,6 +16139,7 @@
             "name": "limit",
             "required": false,
             "in": "query",
+            "description": "Максимум рядків (за замовчуванням 100)",
             "schema": {
               "type": "string"
             }
@@ -16147,6 +16148,7 @@
             "name": "q",
             "required": false,
             "in": "query",
+            "description": "Примітка або стаття витрат",
             "schema": {
               "type": "string"
             }
@@ -16155,6 +16157,7 @@
             "name": "dateFrom",
             "required": false,
             "in": "query",
+            "description": "Київський день операції від (YYYY-MM-DD), включно",
             "schema": {
               "type": "string"
             }
@@ -16163,6 +16166,7 @@
             "name": "dateTo",
             "required": false,
             "in": "query",
+            "description": "Київський день операції до (YYYY-MM-DD), включно",
             "schema": {
               "type": "string"
             }

@@ -93,6 +93,22 @@ export class CashRegistersController {
   @Get(':id/operations')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
   @ApiOperation({ summary: 'Історія касових операцій' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Максимум рядків (за замовчуванням 100)',
+  })
+  @ApiQuery({ name: 'q', required: false, description: 'Примітка або стаття витрат' })
+  @ApiQuery({
+    name: 'dateFrom',
+    required: false,
+    description: 'Київський день операції від (YYYY-MM-DD), включно',
+  })
+  @ApiQuery({
+    name: 'dateTo',
+    required: false,
+    description: 'Київський день операції до (YYYY-MM-DD), включно',
+  })
   operations(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
