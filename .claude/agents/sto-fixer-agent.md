@@ -36,6 +36,8 @@ python scripts/affected-tests.py          # виконати надрукова�
 
 - вердикт кожної команди — через `bash scripts/verdict.sh`;
 - E2E йде на власному сервері `:3002`; dev-сервер `:3001` не зупиняти;
+- підняв `:3002` вручну — зупини після себе; на зіпсованому сервері прогін зупинить сторож у
+  `e2e/setup-auth.ts` — звільни порт командою з його повідомлення;
 - додав/перейменував api-кейси → повний api-прогін із json-звітом і
   `python scripts/spec-baseline.py …` (baseline правиться лише цим скриптом);
 - гейти: `python scripts/check-spec-registry.py --from-report apps/api/.vitest-report.json`;

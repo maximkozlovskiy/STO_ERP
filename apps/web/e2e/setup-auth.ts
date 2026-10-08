@@ -8,6 +8,47 @@ import * as fs from 'fs';
  *
  * Запускається один раз перед усіма тестами (globalSetup в playwright.config.ts).
  */
+/**
+ * Сторож «зіпсований сервер»: перед прогоном просимо одну ДИНАМІЧНУ сторінку (`/…/[id]`).
+ *
+ * `reuseExistingServer: true` підхоплює будь-що, що слухає порт, а `webServer.url` перевіряє
+ * лише корінь. 2026-10-08 на :3002 висів екземпляр, запущений вручну добою раніше: статичні
+ * маршрути віддавали 200, а всі `/…/[id]` — 500 («Jest worker encountered child process
+ * exceptions»). Прогін ішов 24 хв і дав 23 падіння та 35 незапущених тестів, жодне з яких не
+ * було багом у коді. Після зупинки того процесу Playwright сам підняв свіжий сервер, і ті самі
+ * спеки пройшли.
+ *
+ * UUID завідомо неіснуючий: здоровий сервер віддає оболонку сторінки (200), дані тягне клієнт.
+ * Запит заодно прогріває компіляцію динамічного маршруту.
+ */
+async function assertServerRendersDynamicRoutes(baseURL: string): Promise<void> {
+  // 127.0.0.1 замість localhost — та сама причина, що й для apiBase нижче (Bug #566).
+  const probe = new URL('/vehicles/00000000-0000-4000-8000-000000000000/', baseURL);
+  if (probe.hostname === 'localhost') probe.hostname = '127.0.0.1';
+  let status: number;
+  try {
+    // Холодна компіляція динамічного маршруту в next dev — до 25 с (Bug #343), беремо із запасом.
+    const res = await fetch(probe, { signal: AbortSignal.timeout(90_000), redirect: 'manual' });
+    status = res.status;
+  } catch (e) {
+    throw new Error(
+      `E2E: сервер ${baseURL} не відповів на динамічну сторінку ${probe.pathname}: ` +
+        `${(e as Error).message}. Прогін зупинено до початку тестів.`,
+    );
+  }
+  if (status >= 500) {
+    const port = probe.port || '80';
+    throw new Error(
+      `E2E: сервер ${baseURL} віддає HTTP ${status} на динамічну сторінку ${probe.pathname} — ` +
+        'екземпляр зіпсований, тести на ньому впадуть не через код.\n' +
+        `Зупиніть процес на порту ${port} і запустіть прогін знову — Playwright підніме свіжий:\n` +
+        `  PowerShell:  Get-NetTCPConnection -LocalPort ${port} -State Listen | ` +
+        'ForEach-Object { taskkill /PID $_.OwningProcess /T /F }\n' +
+        'Якщо 500 повторюється на свіжому сервері — це вже справжня помилка: дивіться лог next dev.',
+    );
+  }
+}
+
 async function globalSetup(config: FullConfig) {
   // baseURL береться з playwright.config.ts, а не обчислюється тут удруге: storageState
   // прив'язаний до origin, і якби два файли розійшлись у порту, логін ліг би на один
@@ -16,6 +57,7 @@ async function globalSetup(config: FullConfig) {
   if (!baseURL) {
     throw new Error('E2E auth setup: у playwright.config.ts не задано use.baseURL');
   }
+  await assertServerRendersDynamicRoutes(baseURL);
   // Bug #566: Force IPv4 (127.0.0.1) to avoid Node ::1 (IPv6) resolution on Windows
   // when API binds only to 0.0.0.0 (IPv4). Otherwise globalSetup intermittently fails
   // with ECONNREFUSED ::1:3000 during fetch().
