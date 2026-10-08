@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -21,6 +22,9 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CashRegistersService } from './cash-registers.service';
 import { CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-registers.dto';
 import { CashService } from '../cash/cash.service';
+import { translateError } from '@sto/shared';
+import { getLocale } from '../../common/tenant/tenant-context';
+import { isCalendarDate } from '../../common/utils/kyiv-date';
 import { CreateCashOperationDto } from '../cash/cash.dto';
 
 @ApiTags('Каса')
@@ -93,8 +97,20 @@ export class CashRegistersController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,
+    @Query('q') q?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.cash.listOperations(orgId, id, limit ? Number(limit) : 100);
+    // Query-параметри без DTO → дату перевіряємо тут: сміття чи 31.02 дали б Invalid Date і 500.
+    for (const value of [dateFrom, dateTo]) {
+      if (value && !isCalendarDate(value))
+        throw new BadRequestException(translateError('err.cash.invalidDateFilter', getLocale()));
+    }
+    return this.cash.listOperations(orgId, id, limit ? Number(limit) : 100, {
+      q,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    });
   }
 
   @Post(':id/operations')

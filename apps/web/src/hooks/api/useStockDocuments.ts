@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import type { ApiSchema } from '@sto/shared';
+import type { ApiSchema, operations } from '@sto/shared';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
 /**
@@ -21,7 +21,11 @@ export type StockDocLine = ApiSchema<'StockDocumentLineResponseDto'>;
 export type StockDocStatusValue = StockDoc['status'];
 export type StockDocTypeValue = StockDoc['type'];
 
-export interface StockDocsFilter extends Record<string, unknown> {
+type StockDocsQuery = NonNullable<
+  operations['StockDocumentsController_findAll_v1']['parameters']['query']
+>;
+
+export interface StockDocsFilter extends Record<string, unknown>, Pick<StockDocsQuery, 'q'> {
   page?: number;
   limit?: number;
   type?: string;

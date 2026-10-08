@@ -1,0 +1,75 @@
+/**
+ * Фільтри «з дня / по день» для списків документів: київська доба для міток часу, календарна
+ * дата для `@db.Date`, перевірка існування дати.
+ *
+ * Bug #808 (звіт «Виручка» зсував день назад) і Bug #798 — саме про плутанину між датою без
+ * часу і міткою часу; тому дві функції, і різницю між ними тримають тести.
+ */
+import { describe, it, expect } from 'vitest';
+import { dateOnlyRangeFilter, isCalendarDate, kyivDayRangeFilter } from './kyiv-date';
+
+describe('kyivDayRangeFilter — межі київської доби для DateTime', () => {
+  it('літо (UTC+3): 09.07 — це 08.07 21:00Z … 09.07 20:59:59.999Z', () => {
+    const r = kyivDayRangeFilter('2026-07-09', '2026-07-09')!;
+    expect(r.gte!.toISOString()).toBe('2026-07-08T21:00:00.000Z');
+    expect(r.lte!.toISOString()).toBe('2026-07-09T20:59:59.999Z');
+  });
+
+  it('зима (UTC+2): 15.01 — це 14.01 22:00Z … 15.01 21:59:59.999Z', () => {
+    const r = kyivDayRangeFilter('2026-01-15', '2026-01-15')!;
+    expect(r.gte!.toISOString()).toBe('2026-01-14T22:00:00.000Z');
+    expect(r.lte!.toISOString()).toBe('2026-01-15T21:59:59.999Z');
+  });
+
+  it('операція о 00:20 за Києвом потрапляє у свій день, а не в попередній', () => {
+    const op = new Date('2026-10-08T21:20:00.000Z'); // 09.10 00:20 Київ
+    const day9 = kyivDayRangeFilter('2026-10-09', '2026-10-09')!;
+    const day8 = kyivDayRangeFilter('2026-10-08', '2026-10-08')!;
+    expect(op >= day9.gte! && op <= day9.lte!).toBe(true);
+    expect(op >= day8.gte! && op <= day8.lte!).toBe(false);
+  });
+
+  it('лише «з» або лише «по» — одна межа; жодної — undefined (умову не додають)', () => {
+    expect(kyivDayRangeFilter('2026-07-09')).toEqual({ gte: new Date('2026-07-08T21:00:00.000Z') });
+    expect(kyivDayRangeFilter(undefined, '2026-07-09')).toEqual({
+      lte: new Date('2026-07-09T20:59:59.999Z'),
+    });
+    expect(kyivDayRangeFilter()).toBeUndefined();
+    expect(kyivDayRangeFilter('', '')).toBeUndefined();
+  });
+});
+
+describe('dateOnlyRangeFilter — межі для колонки @db.Date', () => {
+  it('межі — самі календарні дати, без зсуву на пояс; обидві включні', () => {
+    expect(dateOnlyRangeFilter('2026-10-08', '2026-10-09')).toEqual({
+      gte: new Date('2026-10-08T00:00:00.000Z'),
+      lte: new Date('2026-10-09T00:00:00.000Z'),
+    });
+  });
+
+  it('один день: gte = lte = ця дата (рядок з датою 09.10 входить, 08.10 і 10.10 — ні)', () => {
+    const r = dateOnlyRangeFilter('2026-10-09', '2026-10-09')!;
+    const stored = (d: string) => new Date(`${d}T00:00:00.000Z`); // так Prisma віддає @db.Date
+    const inside = (d: string) => stored(d) >= r.gte! && stored(d) <= r.lte!;
+    expect(inside('2026-10-09')).toBe(true);
+    expect(inside('2026-10-08')).toBe(false);
+    expect(inside('2026-10-10')).toBe(false);
+  });
+
+  it('жодної межі — undefined', () => {
+    expect(dateOnlyRangeFilter()).toBeUndefined();
+  });
+});
+
+describe('isCalendarDate', () => {
+  it.each(['2026-10-09', '2024-02-29', '2026-12-31'])('%s — існує', v => {
+    expect(isCalendarDate(v)).toBe(true);
+  });
+
+  it.each(['2026-02-31', '2026-02-29', '2026-13-01', '09.10.2026', '2026-10-9', 'сьогодні', ''])(
+    '%j — не дата (31.02 не перекочується в березень)',
+    v => {
+      expect(isCalendarDate(v)).toBe(false);
+    },
+  );
+});

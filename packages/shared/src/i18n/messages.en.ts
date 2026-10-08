@@ -532,6 +532,7 @@ export const en: Record<string, string> = {
   'err.calendar.slotNotFound': 'Slot not found',
   'err.calendar.invalidTimeInterval': 'Invalid time interval',
   'err.calendar.invalidDateFormat': 'Invalid date format',
+  'err.cash.invalidDateFilter': 'Invalid date in the filter: expected YYYY-MM-DD',
 
   // ── Exception messages: xlsx module ──
   'err.xlsx.purchaseOrderNotDraft': 'The purchase order is not in DRAFT status',

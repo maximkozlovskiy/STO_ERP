@@ -80,6 +80,7 @@ export class StockDocumentsService {
     dateTo?: string,
     sortBy?: string,
     sortDir?: 'asc' | 'desc',
+    q?: string,
   ): Promise<PaginatedStockDocumentsDto> {
     const where: Prisma.StockDocumentWhereInput = {
       orgId,
@@ -87,6 +88,14 @@ export class StockDocumentsService {
     };
     if (type) where.type = type as StockDocumentType;
     if (status) where.status = status as DocStatus;
+    // Пошук — за номером документа або приміткою; orgId лишається на верхньому рівні where.
+    const search = q?.trim();
+    if (search) {
+      where.OR = [
+        { number: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } },
+      ];
+    }
     if (dateFrom || dateTo) {
       where.documentDate = {
         ...(dateFrom ? { gte: new Date(dateFrom) } : {}),

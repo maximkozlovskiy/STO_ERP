@@ -9,6 +9,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Wallet,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
@@ -17,7 +18,9 @@ import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from '@/lib/toast';
-import { fmtMoney, fmtDateTime } from '@/lib/format';
+import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
+import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import {
   Table,
@@ -65,7 +68,25 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
   const { data: shift, isLoading: shiftLoading } = useCurrentShift(selected?.branchId ?? null);
   const openShift = useOpenShift();
   const closeShift = useCloseShift();
-  const { data: operations, isLoading: opsLoading } = useCashOperations(selectedId || null);
+  // Період за замовчуванням — сьогодні (київський день): касир дивиться поточну зміну, а не
+  // всю історію каси.
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
+  const [dateFrom, setDateFrom] = useState(() => kyivToday());
+  const [dateTo, setDateTo] = useState(() => kyivToday());
+  const opsFilter = useMemo(
+    () => ({
+      q: debouncedSearch.trim() || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    }),
+    [debouncedSearch, dateFrom, dateTo],
+  );
+  const hasOpsFilter = !!(opsFilter.q || opsFilter.dateFrom || opsFilter.dateTo);
+  const { data: operations, isLoading: opsLoading } = useCashOperations(
+    selectedId || null,
+    opsFilter,
+  );
   // Статті витрат потрібні лише для модалки IN/OUT (привід EXPENSE), доступної тим, хто canOperate.
   // GET /expense-categories вимагає ACCOUNTANT+ — RECEPTIONIST (лише перегляд) інакше отримав би 403.
   const { data: expenseCats } = useExpenseCategories(false, canOperate);
@@ -252,6 +273,40 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         </div>
       )}
 
+      {/* Пошук · З · По */}
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={t('operations.searchPlaceholder')}
+          aria-label={t('operations.searchPlaceholder')}
+          leftElement={<Search />}
+          className="w-64 h-8 text-[13px]"
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('operations.dateFrom')}
+          </span>
+          <DatePickerInput
+            value={dateFrom}
+            onChange={setDateFrom}
+            max={dateTo || undefined}
+            className="w-36"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('operations.dateTo')}
+          </span>
+          <DatePickerInput
+            value={dateTo}
+            onChange={setDateTo}
+            min={dateFrom || undefined}
+            className="w-36"
+          />
+        </div>
+      </div>
+
       {/* Історія операцій */}
       <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">
         <Table>
@@ -284,7 +339,11 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                   <EmptyState
                     icon={Wallet}
                     title={t('operations.empty')}
-                    description={t('operations.emptyDescription')}
+                    description={t(
+                      hasOpsFilter
+                        ? 'operations.emptyFilteredDescription'
+                        : 'operations.emptyDescription',
+                    )}
                   />
                 </TableCell>
               </TableRow>

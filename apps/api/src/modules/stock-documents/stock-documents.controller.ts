@@ -66,6 +66,7 @@ export class StockDocumentsController {
       query.dateTo,
       query.sortBy,
       query.sortDir,
+      query.q,
     );
   }
 

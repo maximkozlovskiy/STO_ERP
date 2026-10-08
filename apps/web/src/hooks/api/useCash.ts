@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { operations } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 
 export interface CashRegister {
@@ -51,10 +52,16 @@ export interface CreateCashOperationBody {
   notes?: string;
 }
 
+export type CashOperationsFilter = Pick<
+  NonNullable<operations['CashRegistersController_operations_v1']['parameters']['query']>,
+  'q' | 'dateFrom' | 'dateTo'
+>;
+
 export const cashKeys = {
   all: ['cash'] as const,
   registers: () => [...cashKeys.all, 'registers'] as const,
-  operations: (id: string) => [...cashKeys.all, 'operations', id] as const,
+  operations: (id: string, filters: CashOperationsFilter = {}) =>
+    [...cashKeys.all, 'operations', id, filters] as const,
 };
 
 export const CASH_REASON_LABELS: Record<string, string> = {
@@ -115,11 +122,28 @@ export function useCashRegisters() {
   });
 }
 
-export function useCashOperations(cashRegisterId: string | null) {
+export function useCashOperations(
+  cashRegisterId: string | null,
+  filters: CashOperationsFilter = {},
+) {
+  const params = new URLSearchParams();
+  if (filters.q) params.set('q', filters.q);
+  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+  if (filters.dateTo) params.set('dateTo', filters.dateTo);
+  const qs = params.toString();
+
   return useQuery({
-    queryKey: cashKeys.operations(cashRegisterId ?? ''),
-    queryFn: () => apiFetch<CashOperation[]>(`/cash-registers/${cashRegisterId}/operations`),
+    queryKey: cashKeys.operations(cashRegisterId ?? '', filters),
+    queryFn: ({ signal }) =>
+      apiFetch<CashOperation[]>(
+        `/cash-registers/${cashRegisterId}/operations${qs ? `?${qs}` : ''}`,
+        { signal },
+      ),
     enabled: !!cashRegisterId,
+    // Зміна пошуку чи дати — це новий ключ: без цього таблиця на мить порожніла б.
+    // Лише в межах тієї самої каси: рядки попередньої каси під назвою нової — неправда.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[2] === cashRegisterId ? prev : undefined,
   });
 }
 

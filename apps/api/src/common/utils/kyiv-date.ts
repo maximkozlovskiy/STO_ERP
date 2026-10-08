@@ -34,8 +34,57 @@ export const addDaysKyiv = (base: Date, days: number): Date => {
 export const kyivOffsetMs = (d: Date): number => {
   const kyivStr = d.toLocaleString('en-US', { timeZone: 'Europe/Kyiv', hour12: false });
   const kyivDate = new Date(kyivStr + ' UTC');
-  return kyivDate.getTime() - d.getTime();
+  // toLocaleString віддає час до секунди, без мілісекунд. Для миті з мілісекундами (кінець
+  // доби 23:59:59.999) різниця з d виходила на 999 мс меншою за справжній зсув, і межа
+  // «по день» з'їжджала на першу секунду наступної доби. Порівнюємо з d, обрізаним до секунди.
+  return kyivDate.getTime() - Math.floor(d.getTime() / 1000) * 1000;
 };
+
+/**
+ * Фільтр «з дня / по день» для списків документів: кожна межа необов'язкова, обидві включні,
+ * день — КИЇВСЬКИЙ (DST-aware). Повертає `undefined`, якщо жодної межі не задано — тоді умову
+ * на дату в `where` не додають. Для колонок-міток часу (`DateTime`); для `@db.Date` межі
+ * порівнюють датою без часу — див. `dateOnlyRangeFilter`.
+ */
+export function kyivDayRangeFilter(
+  from?: string,
+  to?: string,
+): { gte?: Date; lte?: Date } | undefined {
+  if (!from && !to) return undefined;
+  const range: { gte?: Date; lte?: Date } = {};
+  if (from) {
+    const d = new Date(`${from}T00:00:00Z`);
+    range.gte = new Date(d.getTime() - kyivOffsetMs(d));
+  }
+  if (to) {
+    const d = new Date(`${to}T23:59:59.999Z`);
+    range.lte = new Date(d.getTime() - kyivOffsetMs(d));
+  }
+  return range;
+}
+
+/**
+ * Те саме для колонки `@db.Date` (дата БЕЗ часу, напр. дата банківської операції): межі — самі
+ * календарні дати. Зсув на київський пояс тут був би помилкою — «09.10» у базі це 09.10, а не
+ * мить часу, і `gte 08.10T21:00Z` зачепив би попередній день.
+ */
+export function dateOnlyRangeFilter(
+  from?: string,
+  to?: string,
+): { gte?: Date; lte?: Date } | undefined {
+  if (!from && !to) return undefined;
+  return {
+    ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
+    ...(to ? { lte: new Date(`${to}T00:00:00.000Z`) } : {}),
+  };
+}
+
+/** YYYY-MM-DD, що існує в календарі (31.02 → false): для query-параметрів без DTO. */
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
 
 /**
  * Перетворює YYYY-MM-DD діапазон (from/to) у UTC-межі Kyiv-доби: `fromDate` = початок дня від,

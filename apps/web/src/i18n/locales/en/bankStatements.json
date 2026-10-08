@@ -2,6 +2,11 @@
   "page": {
     "title": "Bank payments",
     "import": "Import statement",
+    "filters": {
+      "searchPlaceholder": "Search by payer, purpose, IBAN…",
+      "dateFrom": "From",
+      "dateTo": "To"
+    },
     "tabs": {
       "all": "All",
       "incoming": "Incoming",

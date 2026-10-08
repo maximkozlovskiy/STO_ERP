@@ -2,8 +2,9 @@
   "page": {
     "title": "Оплати клієнтів",
     "filters": {
-      "dateFrom": "Від",
-      "dateTo": "До",
+      "searchPlaceholder": "Пошук за клієнтом, рахунком, нарядом…",
+      "dateFrom": "З",
+      "dateTo": "По",
       "method": "Метод",
       "allMethods": "Усі методи",
       "fiscalStatus": "Фіскальний статус",

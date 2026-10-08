@@ -2,6 +2,11 @@
   "page": {
     "title": "Банківські платежі",
     "import": "Імпорт виписки",
+    "filters": {
+      "searchPlaceholder": "Пошук за платником, призначенням, IBAN…",
+      "dateFrom": "З",
+      "dateTo": "По"
+    },
     "tabs": {
       "all": "Всі",
       "incoming": "Вхідні",

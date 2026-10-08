@@ -21,6 +21,7 @@
   "filters": {
     "all": "Всі",
     "status": "Статус",
+    "searchPlaceholder": "Пошук за номером або приміткою…",
     "dateFrom": "З",
     "dateTo": "По",
     "showDeleted": "Показати видалені",
@@ -81,6 +82,7 @@
     "allWarehouses": "Усі склади",
     "filterType": "Тип руху",
     "allTypes": "Усі типи",
+    "searchPlaceholder": "Пошук за товаром або артикулом…",
     "dateFrom": "З",
     "dateTo": "По",
     "reset": "Скинути",

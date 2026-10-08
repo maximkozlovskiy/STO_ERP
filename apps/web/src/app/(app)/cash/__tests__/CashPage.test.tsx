@@ -15,6 +15,8 @@ vi.mock('@/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/format', () => ({
   fmtMoney: (v: number) => String(v),
   fmtDateTime: (v: string) => v,
+  // Період операцій за замовчуванням — сьогодні (CashOperationsTab.filters.test.tsx).
+  kyivToday: () => '2026-09-06',
 }));
 
 // Одна фіскальна каса — щоб рендерився блок зміни.

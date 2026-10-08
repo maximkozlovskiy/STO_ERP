@@ -67,7 +67,7 @@ DRAFT → CONFIRMED
 
 | Метод  | URL                                   | Дія                                                                 |
 | ------ | ------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/api/stock-documents`                | Список (фільтри: type, status, branchId, warehouseId, dateFrom/To)  |
+| GET    | `/api/stock-documents`                | Список (фільтри: type, status, q — номер або примітка, dateFrom/To) |
 | GET    | `/api/stock-documents/:id`            | Деталь з lines                                                      |
 | POST   | `/api/stock-documents`                | Створити (lines у body; опц. `purchaseOrderId` — джерело, Phase D2) |
 | PATCH  | `/api/stock-documents/:id`            | Оновити (тільки DRAFT)                                              |
@@ -136,6 +136,7 @@ describe; 2026-10-05 розбито за аспектами — 54 кейси м
 | Аспект                                                                       | Тест                                             | Кейсів | Правила                                            |
 | ---------------------------------------------------------------------------- | ------------------------------------------------ | ------ | -------------------------------------------------- |
 | RECEIPT-тип: transition→CONFIRMED, else-гілка, позитивна quantity (Bug #480) | `stock-documents.receipt-type.spec.ts`           | 19     | BR-SDOC-001, BR-SDOC-002, BR-SDOC-004, BR-SDOC-008 |
+| пошук у списку: номер або примітка, tenant-фільтр                            | `stock-documents.search.spec.ts`                 | 7      | —                                                  |
 | Нумерація: кожен тип → свій лічильник, номер лише з лічильника               | `stock-documents.numbering.spec.ts`              | 5      | BR-SDOC-001                                        |
 | Tenant-guard goodId рядків на update                                         | `stock-documents.line-goods-tenant.spec.ts`      | 2      | BR-SDOC-002                                        |
 | Пов'язані документи (Phase D3)                                               | `stock-documents.linked-docs.spec.ts`            | 8      | —                                                  |

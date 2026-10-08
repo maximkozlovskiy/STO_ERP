@@ -132,6 +132,7 @@ describe('StockDocuments — HTTP Contract', () => {
         '2026-01-31',
         undefined,
         undefined,
+        undefined, // q
       );
     });
 
@@ -153,6 +154,7 @@ describe('StockDocuments — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        undefined, // q
       );
     });
 
@@ -174,6 +176,7 @@ describe('StockDocuments — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        undefined, // q
       );
     });
 
@@ -333,6 +336,7 @@ describe('StockDocuments — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        undefined, // q
       );
     });
 

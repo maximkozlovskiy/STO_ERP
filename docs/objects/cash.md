@@ -71,7 +71,7 @@ model ExpenseCategory {        // довідник статей витрат (pe
 | GET               | `/cash-registers`                | Список кас (+ isFiscal/initialBalance/balance) |
 | POST/PATCH/DELETE | `/cash-registers[/:id]`          | CRUD (OWNER/ADMIN)                             |
 | GET               | `/cash-registers/:id/balance`    | Поточний залишок                               |
-| GET               | `/cash-registers/:id/operations` | Історія операцій                               |
+| GET               | `/cash-registers/:id/operations` | Історія операцій (limit, q, dateFrom, dateTo)  |
 | POST              | `/cash-registers/:id/operations` | Ручна IN/OUT (OWNER/ADMIN/ACCOUNTANT)          |
 
 **Статті витрат** (`/api/expense-categories`) — GET OWNER/ADMIN/ACCOUNTANT; CRUD OWNER/ADMIN
@@ -149,12 +149,12 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | Аспект                                                                 | Тест                            | Кейсів |
 | ---------------------------------------------------------------------- | ------------------------------- | ------ |
 | сервісна логіка: гілки createOperation, overdraft, залишок             | `cash.service.spec.ts`          | 28     |
-| рядок журналу: сума, зміна, стаття, конфлікт, документ, аудит, історія | `cash.operation-record.spec.ts` | 25     |
+| рядок журналу: сума, зміна, стаття, конфлікт, документ, аудит, історія | `cash.operation-record.spec.ts` | 28     |
 | ізоляція організацій (умови запитів)                                   | `cash.tenant.spec.ts`           | 5      |
 | єдиний писар і append-only (статичний сторож по вихідному коду)        | `cash.single-writer.spec.ts`    | 3      |
 | ролі на маршрутах `/cash-registers`                                    | `cash.access.spec.ts`           | 8      |
 
-Разом: **69** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness нових спеків — `cash.spec-fixture.ts`.
+Разом: **72** кейсів (цифри з `vitest --reporter=json`, не з grep). Спільний harness нових спеків — `cash.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 

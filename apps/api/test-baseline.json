@@ -363,6 +363,25 @@
    "normalizeHeader типографське тире і пробіли навколо дефіса стискаються",
    "normalizeHeader № → "
   ],
+  "apps/api/src/common/utils/kyiv-date.filters.spec.ts": [
+   "dateOnlyRangeFilter — межі для колонки @db.Date жодної межі — undefined",
+   "dateOnlyRangeFilter — межі для колонки @db.Date межі — самі календарні дати, без зсуву на пояс; обидві включні",
+   "dateOnlyRangeFilter — межі для колонки @db.Date один день: gte = lte = ця дата (рядок з датою 09.10 входить, 08.10 і 10.10 — ні)",
+   "isCalendarDate \"\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate \"09.10.2026\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate \"2026-02-29\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate \"2026-02-31\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate \"2026-10-9\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate \"2026-13-01\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate \"сьогодні\" — не дата (31.02 не перекочується в березень)",
+   "isCalendarDate 2024-02-29 — існує",
+   "isCalendarDate 2026-10-09 — існує",
+   "isCalendarDate 2026-12-31 — існує",
+   "kyivDayRangeFilter — межі київської доби для DateTime зима (UTC+2): 15.01 — це 14.01 22:00Z … 15.01 21:59:59.999Z",
+   "kyivDayRangeFilter — межі київської доби для DateTime лише «з» або лише «по» — одна межа; жодної — undefined (умову не додають)",
+   "kyivDayRangeFilter — межі київської доби для DateTime літо (UTC+3): 09.07 — це 08.07 21:00Z … 09.07 20:59:59.999Z",
+   "kyivDayRangeFilter — межі київської доби для DateTime операція о 00:20 за Києвом потрапляє у свій день, а не в попередній"
+  ],
   "apps/api/src/common/utils/linked-counts.spec.ts": [
    "initCountsMap дублікати id → одна спільна колонка (останній перезапис), без aliasing між різними id",
    "initCountsMap кожен id отримує НЕЗАЛЕЖНИЙ обʼєкт (немає aliasing)",
@@ -627,8 +646,10 @@
    "BankReconciliationService.ignoreTransaction UNMATCHED → IGNORED з причиною через CAS (where status=UNMATCHED, paymentId=null); Payment НЕ створюється",
    "BankReconciliationService.ignoreTransaction рядка не існує (або чужа організація) → 404",
    "BankReconciliationService.ignoreTransaction рядок уже рознесений або проігнорований (CAS count 0, рядок існує) → 409",
+   "BankReconciliationService.list — tenant-фільтр list: dateFrom/dateTo → дата операції календарними датами (це @db.Date, без зсуву на пояс)",
    "BankReconciliationService.list — tenant-фільтр list: direction=IN звужує і вибірку, і лічильник; orgId та deletedAt лишаються",
    "BankReconciliationService.list — tenant-фільтр list: direction=OUT звужує і вибірку, і лічильник; orgId та deletedAt лишаються",
+   "BankReconciliationService.list — tenant-фільтр list: q → платник, призначення, IBAN (без пробілів) або ЄДРПОУ; tenant лишається зверху",
    "BankReconciliationService.list — tenant-фільтр list: без direction умови на напрямок немає — «Всі» показує обидва",
    "BankReconciliationService.list — tenant-фільтр list: вибірка і лічильник фільтруються по orgId і deletedAt=null (+ статус із запиту)",
    "BankReconciliationService.matchTransaction — CAS, лінк платежу, валідація рахунку INVOICE з рахунком іншого контрагента → 400 ДО захоплення рядка; платіж не створюється",
@@ -1057,6 +1078,9 @@
    "CashService.createOperation — сума операції сума менша за пів копійки (округлюється до 0) → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
    "CashService.createOperation — сума операції сума мінус копійка → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
    "CashService.createOperation — сума операції сума округлюється до копійки ДО запису й конвертації (10.126 → 10.13)",
+   "CashService.listOperations — історія операцій dateFrom/dateTo → межі КИЇВСЬКОЇ доби за createdAt, каса й організація лишаються",
+   "CashService.listOperations — історія операцій q → примітка АБО назва статті витрат; без урахування регістру",
+   "CashService.listOperations — історія операцій без фільтрів where — як раніше: лише організація і каса",
    "CashService.listOperations — історія операцій запит понад стелю (10000) обрізається до 500; менший ліміт (20) лишається",
    "CashService.listOperations — історія операцій найновіші першими, за замовчуванням не більше 100 рядків",
    "CashService.listOperations — історія операцій рядок історії: числа — number, дата — ISO, назва статті — з довідника"
@@ -1801,9 +1825,13 @@
   ],
   "apps/api/src/modules/inventory/inventory.find-movements.spec.ts": [
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) limit капується (MAX 200) — DoS guard",
+   "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) q → товар за назвою АБО артикулом; умова «товар не видалено» лишається",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) tenant + soft-delete + orderBy desc + пагінація у findMany/count",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) мапить рядок у DTO (goodName/warehouseName/price Number|null)",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) порожньо → { items: [], total: 0, page: 1, limit: 50 }",
+   "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) порожній q (\"   \") пошук не вмикає",
+   "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) порожній q (\"\") пошук не вмикає",
+   "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) порожній q (undefined) пошук не вмикає",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) фільтри goodId/warehouseId/type/from-to потрапляють у where"
   ],
   "apps/api/src/modules/inventory/inventory.invariants.spec.ts": [
@@ -2636,6 +2664,7 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto fiscalStatus=garbage → фільтр НЕ застосовано (без 500) — MUTATION guard enum-Set",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto method=card → where.method=card (eq)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto pagination: limit клампиться у [1,200], page у [1,∞) — DoS-hardening",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto q → клієнт (назва / прізвище / імʼя), номер рахунку, номер наряду або примітка",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: FAILED + без receiptId → update QUEUED + checkboxQueue.add",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: cross-org id → NotFound (tenant-scoped), БЕЗ enqueue/update",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: queue.add reject (Redis лежить) → .catch ставить FAILED, create НЕ кидає",
@@ -2650,7 +2679,11 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto toDto: ні bank ні cash → sourceName = null",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto toDto: обидва присутні → пріоритет банку (bank ?? cash)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto where завжди містить orgId (tenant isolation базово)",
-   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto без дат → where.createdAt відсутній (немає фільтра діапазону)"
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto без дат → where.createdAt відсутній (немає фільтра діапазону)",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto порожній q (\"   \") умови не додає",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto порожній q (\"\") умови не додає",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto порожній q (undefined) умови не додає",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto пошук не послаблює tenant-фільтр і діє разом з іншими фільтрами"
   ],
   "apps/api/src/modules/payments/payments.queue-retry-policy.spec.ts": [
    "Політика повторів черг зовнішніх API (статичний сторож, CLAUDE.md «Офлайн-незалежність») registerQueue: defaultJobOptions — лише спільний DEFAULT_JOB_OPTS, а він не задає attempts/backoff: політика ретраїв живе в кожному add()",
@@ -3521,6 +3554,15 @@
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): MOVEMENT_TYPES[RECEIPT] resolved → не кидає \"Непідтримуваний тип документу\"",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition(RECEIPT → CONFIRMED): inventory.createMovement викликаний ОДИН раз з type=RECEIPT і ПОЗИТИВНОЮ quantity",
    "StockDocumentsService — RECEIPT type (Bug #480 regression guard) transition: два рядки ОДНОГО товару з різною ціною → два рухи зі своїми цінами, строго по черзі"
+  ],
+  "apps/api/src/modules/stock-documents/stock-documents.search.spec.ts": [
+   "StockDocumentsService.findAll — пошук за номером і приміткою orgId і deletedAt лишаються на верхньому рівні — OR не відкриває чужі документи",
+   "StockDocumentsService.findAll — пошук за номером і приміткою q шукає за номером АБО приміткою, без урахування регістру",
+   "StockDocumentsService.findAll — пошук за номером і приміткою порожній пошук (\"   \") умови не додає",
+   "StockDocumentsService.findAll — пошук за номером і приміткою порожній пошук (\"\") умови не додає",
+   "StockDocumentsService.findAll — пошук за номером і приміткою порожній пошук (undefined) умови не додає",
+   "StockDocumentsService.findAll — пошук за номером і приміткою пошук діє і на вибірку, і на лічильник — сторінок стільки, скільки знайдено",
+   "StockDocumentsService.findAll — пошук за номером і приміткою пробіли довкола запиту обрізаються"
   ],
   "apps/api/src/modules/stock-documents/stock-documents.type-labels.invariants.spec.ts": [
    "STOCK_DOC_TYPE_LABELS ↔ StockDocumentType (BR-SDOC-005) ключі мапи збігаються з Prisma-enum StockDocumentType — жодного пропущеного і жодного зайвого",

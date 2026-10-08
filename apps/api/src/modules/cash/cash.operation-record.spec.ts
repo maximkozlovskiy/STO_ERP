@@ -397,4 +397,48 @@ describe('CashService.listOperations — історія операцій', () =>
       createdAt: '2026-10-08T09:00:00.000Z',
     });
   });
+
+  // Пошук і відбір за датою в історії операцій (рішення власника 2026-10-09).
+  it('dateFrom/dateTo → межі КИЇВСЬКОЇ доби за createdAt, каса й організація лишаються', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, 100, { dateFrom: '2026-10-09', dateTo: '2026-10-09' });
+
+    expect(m.prisma.cashOperation.findMany.mock.calls[0][0].where).toEqual({
+      orgId: ORG,
+      cashRegisterId: REG,
+      createdAt: {
+        gte: new Date('2026-10-08T21:00:00.000Z'),
+        lte: new Date('2026-10-09T20:59:59.999Z'),
+      },
+    });
+  });
+
+  it('q → примітка АБО назва статті витрат; без урахування регістру', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, 100, { q: ' оренда ' });
+
+    const where = m.prisma.cashOperation.findMany.mock.calls[0][0].where;
+    expect(where.orgId).toBe(ORG);
+    expect(where.cashRegisterId).toBe(REG);
+    expect(where.OR).toEqual([
+      { notes: { contains: 'оренда', mode: 'insensitive' } },
+      { expenseCategory: { name: { contains: 'оренда', mode: 'insensitive' } } },
+    ]);
+  });
+
+  it('без фільтрів where — як раніше: лише організація і каса', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG);
+
+    expect(m.prisma.cashOperation.findMany.mock.calls[0][0].where).toEqual({
+      orgId: ORG,
+      cashRegisterId: REG,
+    });
+  });
 });

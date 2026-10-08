@@ -21,6 +21,7 @@
   "filters": {
     "all": "All",
     "status": "Status",
+    "searchPlaceholder": "Search by number or note…",
     "dateFrom": "From",
     "dateTo": "To",
     "showDeleted": "Show deleted",
@@ -81,6 +82,7 @@
     "allWarehouses": "All warehouses",
     "filterType": "Movement type",
     "allTypes": "All types",
+    "searchPlaceholder": "Search by item or SKU…",
     "dateFrom": "From",
     "dateTo": "To",
     "reset": "Reset",

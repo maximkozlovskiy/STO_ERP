@@ -21,6 +21,7 @@ import {
   Pencil,
   ClipboardList,
   Warehouse,
+  Search,
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { StockMovementsTab } from './StockMovementsTab';
@@ -30,6 +31,7 @@ import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { stockDocumentLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   STOCK_DOC_TYPE_LABELS,
@@ -59,6 +61,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { useSortState } from '@/hooks/useSortState';
+import { useDebounce } from '@/hooks/useDebounce';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
 import { BulkActionsBar, type BulkAction } from '@/components/ui/bulk-actions-bar';
 import { ColumnsDropdown } from '@/components/ui/columns-dropdown';
@@ -88,6 +91,8 @@ interface StockDocFilters extends Record<string, unknown> {
   showDeleted: boolean;
   dateFrom: string;
   dateTo: string;
+  // Опційне: пресети, збережені до появи пошуку, цього поля не мають.
+  search?: string;
 }
 
 // Module-level — статичні колонки (label = i18n labelKey, резолвиться у компоненті) +
@@ -180,6 +185,8 @@ function StockDocumentsPageClient() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const { sort: sdSort, toggle: toggleSdSort } = useSortState('createdAt', 'desc');
 
   const qc = useQueryClient();
@@ -189,6 +196,7 @@ function StockDocumentsPageClient() {
     type: typeFilter || undefined,
     status: statusFilter || undefined,
     showDeleted,
+    q: debouncedSearch.trim() || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     sortBy: sdSort.sortBy,
@@ -266,6 +274,7 @@ function StockDocumentsPageClient() {
       setShowDeleted(preset.filters.showDeleted ?? false);
       setDateFrom(preset.filters.dateFrom ?? '');
       setDateTo(preset.filters.dateTo ?? '');
+      setSearch(preset.filters.search ?? '');
       resetPage();
       setActiveSavedFilterId(preset.id);
     },
@@ -274,7 +283,14 @@ function StockDocumentsPageClient() {
 
   const handleSaveFilter = useCallback(
     (name: string) => {
-      const preset = saveFilter(name, { typeFilter, statusFilter, showDeleted, dateFrom, dateTo });
+      const preset = saveFilter(name, {
+        typeFilter,
+        statusFilter,
+        showDeleted,
+        dateFrom,
+        dateTo,
+        search,
+      });
       setActiveSavedFilterId(preset.id);
       if (features.toastEnabled) toast.success(t('filters.filterSaved', { name }));
     },
@@ -285,6 +301,7 @@ function StockDocumentsPageClient() {
       showDeleted,
       dateFrom,
       dateTo,
+      search,
       features.toastEnabled,
       setActiveSavedFilterId,
       t,
@@ -456,6 +473,18 @@ function StockDocumentsPageClient() {
             />
           ))}
         </div>
+        <Input
+          value={search}
+          onChange={e => {
+            setSearch(e.target.value);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          placeholder={t('filters.searchPlaceholder')}
+          aria-label={t('filters.searchPlaceholder')}
+          leftElement={<Search />}
+          className="w-64 h-8 text-[13px]"
+        />
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-muted-foreground shrink-0">
             {t('filters.dateFrom')}

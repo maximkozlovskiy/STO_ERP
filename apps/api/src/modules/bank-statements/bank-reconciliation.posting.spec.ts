@@ -293,4 +293,43 @@ describe('BankReconciliationService.list — tenant-фільтр', () => {
       deletedAt: null,
     });
   });
+
+  // Пошук і відбір за датою (рішення власника 2026-10-09).
+  it('list: q → платник, призначення, IBAN (без пробілів) або ЄДРПОУ; tenant лишається зверху', async () => {
+    const prisma = makePrisma();
+    prisma.bankTransaction.findMany.mockResolvedValue([]);
+    prisma.bankTransaction.count.mockResolvedValue(0);
+    const service = build(prisma, makeExchange(), makePayments());
+
+    await service.list(ORG, { q: ' UA21 3223 ' });
+
+    const where = prisma.bankTransaction.findMany.mock.calls[0]![0].where;
+    expect(where).toMatchObject({ orgId: ORG, deletedAt: null });
+    expect(where.OR).toEqual([
+      { payerName: { contains: 'UA21 3223', mode: 'insensitive' } },
+      { purpose: { contains: 'UA21 3223', mode: 'insensitive' } },
+      { payerIban: { contains: 'UA213223', mode: 'insensitive' } },
+      { payerEdrpou: { contains: 'UA21 3223', mode: 'insensitive' } },
+    ]);
+    expect(prisma.bankTransaction.count.mock.calls[0]![0].where).toEqual(where);
+  });
+
+  it('list: dateFrom/dateTo → дата операції календарними датами (це @db.Date, без зсуву на пояс)', async () => {
+    const prisma = makePrisma();
+    prisma.bankTransaction.findMany.mockResolvedValue([]);
+    prisma.bankTransaction.count.mockResolvedValue(0);
+    const service = build(prisma, makeExchange(), makePayments());
+
+    await service.list(ORG, { dateFrom: '2026-10-08', dateTo: '2026-10-09', direction: 'IN' });
+
+    expect(prisma.bankTransaction.findMany.mock.calls[0]![0].where).toEqual({
+      orgId: ORG,
+      deletedAt: null,
+      direction: 'IN',
+      operationDate: {
+        gte: new Date('2026-10-08T00:00:00.000Z'),
+        lte: new Date('2026-10-09T00:00:00.000Z'),
+      },
+    });
+  });
 });

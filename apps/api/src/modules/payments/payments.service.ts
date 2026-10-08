@@ -57,6 +57,7 @@ export class PaymentsService {
       dateTo?: string;
       method?: string;
       fiscalStatus?: string;
+      q?: string;
     } = {},
   ): Promise<PaginatedPaymentsDto> {
     // DoS hardening: cap user-controlled pagination params.
@@ -89,6 +90,20 @@ export class PaymentsService {
       where.createdAt = createdAt;
     }
     if (opts.method) where.method = opts.method;
+    // Пошук: клієнт (назва / прізвище / ім'я), номер рахунку, номер наряду, примітка. orgId
+    // лишається на верхньому рівні where — OR його не послаблює.
+    const search = opts.q?.trim().slice(0, 100);
+    if (search) {
+      const contains = { contains: search, mode: 'insensitive' as const };
+      where.OR = [
+        { notes: contains },
+        { counterparty: { companyName: contains } },
+        { counterparty: { lastName: contains } },
+        { counterparty: { firstName: contains } },
+        { invoice: { number: contains } },
+        { workOrder: { number: contains } },
+      ];
+    }
     // fiscalStatus: 'none' → фіскалізація не застосовна (null); інакше eq на enum-значенні.
     // Валідуємо проти enum ДО передачі у Prisma: невалідне значення (напр. ?fiscalStatus=garbage)
     // Prisma відхиляє на рівні запиту → HTTP 500 (не-i18n, шум у Sentry). Ігноруємо невідоме

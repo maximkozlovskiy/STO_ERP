@@ -368,6 +368,41 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     );
     await expect(service.retryFiscal(ORG, PAY_ID)).rejects.toThrow(/уже пробито/);
   });
+
+  // ── Пошук (рішення власника 2026-10-09) ───────────────────────────────────
+
+  it('q → клієнт (назва / прізвище / імʼя), номер рахунку, номер наряду або примітка', async () => {
+    await service.findAll(ORG, { q: 'петренко' });
+
+    const contains = { contains: 'петренко', mode: 'insensitive' };
+    expect(lastWhere().OR).toEqual([
+      { notes: contains },
+      { counterparty: { companyName: contains } },
+      { counterparty: { lastName: contains } },
+      { counterparty: { firstName: contains } },
+      { invoice: { number: contains } },
+      { workOrder: { number: contains } },
+    ]);
+  });
+
+  it('пошук не послаблює tenant-фільтр і діє разом з іншими фільтрами', async () => {
+    await service.findAll(ORG, { q: 'РАХ-2026', method: 'cash', dateFrom: '2026-09-01' });
+
+    const where = lastWhere();
+    expect(where.orgId).toBe(ORG);
+    expect(where.method).toBe('cash');
+    expect(where.createdAt).toBeDefined();
+    expect(JSON.stringify(where.OR)).not.toContain('orgId');
+    expect(
+      (prisma.payment.count.mock.calls[0][0] as { where: Record<string, unknown> }).where,
+    ).toEqual(where);
+  });
+
+  it.each([undefined, '', '   '])('порожній q (%j) умови не додає', async q => {
+    await service.findAll(ORG, { q });
+
+    expect(lastWhere()).not.toHaveProperty('OR');
+  });
 });
 
 /**

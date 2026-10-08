@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsDateString,
   IsEnum,
   IsIn,
   IsInt,
@@ -11,6 +12,8 @@ import {
   IsString,
   IsNotEmpty,
   IsUUID,
+  Matches,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -205,6 +208,25 @@ export class ListQueryDto {
   @IsOptional()
   @IsEnum(BankTransactionDirection)
   direction?: BankTransactionDirection;
+
+  @ApiPropertyOptional({ description: 'Пошук: платник, призначення, IBAN або ЄДРПОУ платника' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  // Дата операції — `@db.Date` (дата без часу): межі порівнюються датами, без зсуву на пояс.
+  @ApiPropertyOptional({ description: 'Дата операції від (YYYY-MM-DD), включно' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true })
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ description: 'Дата операції до (YYYY-MM-DD), включно' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true })
+  dateTo?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

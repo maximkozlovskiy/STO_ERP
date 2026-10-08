@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { operations } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { counterpartiesKeys } from './useCounterparties';
@@ -31,7 +32,11 @@ export interface Payment {
   createdAt: string;
 }
 
-export interface PaymentsFilter extends Record<string, unknown> {
+type PaymentsQuery = NonNullable<
+  operations['PaymentsController_findAll_v1']['parameters']['query']
+>;
+
+export interface PaymentsFilter extends Record<string, unknown>, Pick<PaymentsQuery, 'q'> {
   page?: number;
   limit?: number;
   counterpartyId?: string;

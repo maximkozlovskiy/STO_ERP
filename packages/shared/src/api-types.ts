@@ -11572,6 +11572,8 @@ export interface operations {
                 to?: string;
                 page?: number;
                 limit?: number;
+                /** @description Назва або артикул товару */
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -14901,9 +14903,10 @@ export interface operations {
             query?: {
                 type?: "WRITEOFF" | "TRANSFER" | "OPENING_BALANCE" | "RECEIPT";
                 status?: "DRAFT" | "CONFIRMED" | "CANCELLED";
-                q?: string;
                 /** @description Показати видалені */
                 showDeleted?: string;
+                /** @description Пошук за номером документа або приміткою */
+                q?: string;
                 /** @description Дата документа від (YYYY-MM-DD) */
                 dateFrom?: string;
                 /** @description Дата документа до (YYYY-MM-DD) */
@@ -15440,6 +15443,8 @@ export interface operations {
                 dateTo?: string;
                 method?: string;
                 fiscalStatus?: string;
+                /** @description Клієнт, номер рахунку, номер наряду або примітка */
+                q?: string;
                 limit?: unknown;
                 page?: unknown;
             };
@@ -15981,6 +15986,12 @@ export interface operations {
             query?: {
                 status?: "UNMATCHED" | "MATCHED" | "IGNORED";
                 direction?: "IN" | "OUT";
+                /** @description Пошук: платник, призначення, IBAN або ЄДРПОУ платника */
+                q?: string;
+                /** @description Дата операції від (YYYY-MM-DD), включно */
+                dateFrom?: string;
+                /** @description Дата операції до (YYYY-MM-DD), включно */
+                dateTo?: string;
                 page?: number;
                 limit?: number;
             };
@@ -17648,6 +17659,9 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: string;
+                q?: string;
+                dateFrom?: string;
+                dateTo?: string;
             };
             header?: never;
             path: {

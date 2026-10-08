@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
+import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { CashOperationResponseDto, CashReasonDto, CreateCashOperationDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
@@ -288,9 +289,24 @@ export class CashService {
     orgId: string,
     cashRegisterId: string,
     limit = 100,
+    filters: { q?: string; dateFrom?: string; dateTo?: string } = {},
   ): Promise<CashOperationResponseDto[]> {
+    // Відбір за київським днем операції та пошук за приміткою або статтею витрат. Контрагент в
+    // операції — лише id без зв'язку в схемі, тому за ним тут не шукаємо.
+    const createdAt = kyivDayRangeFilter(filters.dateFrom, filters.dateTo);
+    const search = filters.q?.trim().slice(0, 100);
     const ops = await this.prisma.cashOperation.findMany({
-      where: { orgId, cashRegisterId },
+      where: {
+        orgId,
+        cashRegisterId,
+        ...(createdAt && { createdAt }),
+        ...(search && {
+          OR: [
+            { notes: { contains: search, mode: 'insensitive' as const } },
+            { expenseCategory: { name: { contains: search, mode: 'insensitive' as const } } },
+          ],
+        }),
+      },
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 500),
       include: { expenseCategory: { select: { name: true } } },

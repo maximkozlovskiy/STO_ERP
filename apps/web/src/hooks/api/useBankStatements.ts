@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ApiSchema } from '@sto/shared';
+import type { ApiSchema, operations } from '@sto/shared';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 
@@ -70,7 +70,12 @@ export interface MatchTransactionInput {
 /** Напрямок платежу (BankTransactionDirection) — зі згенерованого, як і решта union-ів файла. */
 export type BankTxDirection = BankTransaction['direction'];
 
-export interface BankTransactionsFilter extends Record<string, unknown> {
+type BankTransactionsQuery = NonNullable<
+  operations['BankStatementsController_list_v1']['parameters']['query']
+>;
+
+export interface BankTransactionsFilter
+  extends Record<string, unknown>, Pick<BankTransactionsQuery, 'q' | 'dateFrom' | 'dateTo'> {
   status?: string;
   /** Напрямок платежу: 'IN' — вхідні, 'OUT' — вихідні; без значення — усі. */
   direction?: BankTxDirection;

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PackageSearch } from 'lucide-react';
+import { PackageSearch, Search } from 'lucide-react';
 import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
 import { stockMovementTypeLabel } from '@/i18n/enumLabel';
 import { Select } from '@/components/ui/select';
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/table';
 import { useWarehouses } from '@/hooks/api/useInfrastructure';
 import { useStockMovements } from '@/hooks/api/useInventory';
+import { useDebounce } from '@/hooks/useDebounce';
 
 // Колір/знак — СТРОГО за знаком записаної кількості (StockMovement.quantity), не за типом.
 // Backend-конвенція знаку (createMovement): RECEIPT/OPENING_BALANCE/RETURN/RESERVATION → qty > 0;
@@ -41,6 +42,8 @@ export function StockMovementsTab() {
   const [type, setType] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [page, setPage] = useState(1);
 
   const filters = useMemo(
@@ -49,10 +52,11 @@ export function StockMovementsTab() {
       type: type || undefined,
       from: from || undefined,
       to: to || undefined,
+      q: debouncedSearch.trim() || undefined,
       page,
       limit: PAGE_SIZE,
     }),
-    [warehouseId, type, from, to, page],
+    [warehouseId, type, from, to, debouncedSearch, page],
   );
 
   const { data, isLoading, isFetching } = useStockMovements(filters);
@@ -104,6 +108,14 @@ export function StockMovementsTab() {
             ))}
           </Select>
         </div>
+        <Input
+          value={search}
+          onChange={e => resetAnd(() => setSearch(e.target.value))}
+          placeholder={t('movements.searchPlaceholder')}
+          aria-label={t('movements.searchPlaceholder')}
+          leftElement={<Search />}
+          className="w-64 h-8 text-[13px]"
+        />
         <div>
           <label className="block text-[12px] text-muted-foreground mb-1">
             {t('movements.dateFrom')}
@@ -126,7 +138,7 @@ export function StockMovementsTab() {
             className="w-36 h-8 text-[13px]"
           />
         </div>
-        {(warehouseId || type || from || to) && (
+        {(warehouseId || type || from || to || search) && (
           <Button
             variant="ghost"
             size="sm"
@@ -136,6 +148,7 @@ export function StockMovementsTab() {
                 setType('');
                 setFrom('');
                 setTo('');
+                setSearch('');
               })
             }
           >

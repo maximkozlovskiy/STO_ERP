@@ -519,6 +519,7 @@ export const uk: Record<string, string> = {
   'err.calendar.slotNotFound': 'Слот не знайдено',
   'err.calendar.invalidTimeInterval': 'Невірний інтервал часу',
   'err.calendar.invalidDateFormat': 'Невірний формат дати',
+  'err.cash.invalidDateFilter': 'Невірна дата у відборі: очікується РРРР-ММ-ДД',
 
   // ── Exception-повідомлення: xlsx-модуль ──
   'err.xlsx.purchaseOrderNotDraft': 'Замовлення постачальника не в статусі DRAFT',

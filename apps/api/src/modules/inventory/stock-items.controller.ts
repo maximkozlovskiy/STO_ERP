@@ -122,6 +122,7 @@ export class StockItemsController {
   @ApiQuery({ name: 'type', required: false, enum: StockMovementType })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'q', required: false, description: 'Назва або артикул товару' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiOkResponse({ type: PaginatedStockMovementsDto })
@@ -134,6 +135,7 @@ export class StockItemsController {
     @Query('to') to?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('q') q?: string,
   ) {
     // Валідація type проти enum (невідоме значення → 400, не тихий ігнор/500).
     // hasOwnProperty, а не `in` — `in` резолвить прототипні ключі (constructor/toString/
@@ -150,6 +152,7 @@ export class StockItemsController {
       type: type as StockMovementType | undefined,
       from,
       to,
+      q,
       page: page != null ? Number(page) : undefined,
       limit: limit != null ? Number(limit) : undefined,
     });

@@ -2,6 +2,7 @@
   "page": {
     "title": "Customer payments",
     "filters": {
+      "searchPlaceholder": "Search by customer, invoice, work order…",
       "dateFrom": "From",
       "dateTo": "To",
       "method": "Method",

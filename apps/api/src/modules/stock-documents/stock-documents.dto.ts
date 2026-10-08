@@ -1,6 +1,7 @@
 import {
   IsUUID,
   IsString,
+  MaxLength,
   IsOptional,
   IsIn,
   IsNumber,
@@ -162,12 +163,17 @@ export class StockDocumentQueryDto {
   @IsEnum(['DRAFT', 'CONFIRMED', 'CANCELLED'])
   status?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
-
   @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @IsBooleanString()
   showDeleted?: string;
+
+  @ApiPropertyOptional({ description: 'Пошук за номером документа або приміткою' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(100)
+  q?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate } from '@/lib/format';
+import { useDebounce } from '@/hooks/useDebounce';
 
 const LIMIT = 20;
 
@@ -50,6 +51,8 @@ function PaymentsPageInner() {
   const { t } = useTranslation('payments');
 
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [method, setMethod] = useState('');
@@ -62,6 +65,7 @@ function PaymentsPageInner() {
   const filters: PaymentsFilter = {
     page,
     limit: LIMIT,
+    q: debouncedSearch.trim() || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     method: method || undefined,
@@ -111,26 +115,43 @@ function PaymentsPageInner() {
       <h1 className="page-title mb-6">{t('page.title')}</h1>
 
       {/* Фільтри */}
-      <div className="flex flex-wrap items-end gap-3 mb-4">
-        <div className="w-40">
+      <div className="flex flex-wrap items-center gap-3 shrink-0 mb-4">
+        <Input
+          value={search}
+          onChange={e => resetPageAnd(() => setSearch(e.target.value))}
+          placeholder={t('page.filters.searchPlaceholder')}
+          aria-label={t('page.filters.searchPlaceholder')}
+          leftElement={<Search />}
+          className="w-64 h-8 text-[13px]"
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('page.filters.dateFrom')}
+          </span>
           <DatePickerInput
-            label={t('page.filters.dateFrom')}
             value={dateFrom}
             onChange={v => resetPageAnd(() => setDateFrom(v))}
+            max={dateTo || undefined}
+            className="w-36"
           />
         </div>
-        <div className="w-40">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('page.filters.dateTo')}
+          </span>
           <DatePickerInput
-            label={t('page.filters.dateTo')}
             value={dateTo}
             onChange={v => resetPageAnd(() => setDateTo(v))}
+            min={dateFrom || undefined}
+            className="w-36"
           />
         </div>
         <div className="w-48">
           <Select
-            label={t('page.filters.method')}
+            aria-label={t('page.filters.method')}
             value={method}
             onChange={e => resetPageAnd(() => setMethod(e.target.value))}
+            className="h-8 text-[13px]"
           >
             <option value="">{t('page.filters.allMethods')}</option>
             {methods.map(m => (
@@ -140,11 +161,16 @@ function PaymentsPageInner() {
             ))}
           </Select>
         </div>
-        <div className="w-48">
+        <div className="flex items-center gap-2">
+          {/* «Усі» без підпису не каже, усі ЩО — тому підпис лишається, але в рядок, як у дат. */}
+          <span className="text-[13px] text-muted-foreground shrink-0">
+            {t('page.filters.fiscalStatus')}
+          </span>
           <Select
-            label={t('page.filters.fiscalStatus')}
+            aria-label={t('page.filters.fiscalStatus')}
             value={fiscalStatus}
             onChange={e => resetPageAnd(() => setFiscalStatus(e.target.value))}
+            className="w-48 h-8 text-[13px]"
           >
             <option value="">{t('page.filters.all')}</option>
             {Object.keys(FISCAL_STATUS_LABELS).map(code => (

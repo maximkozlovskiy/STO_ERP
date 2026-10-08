@@ -37,6 +37,11 @@ export class PaymentsController {
   @ApiQuery({ name: 'dateTo', required: false })
   @ApiQuery({ name: 'method', required: false })
   @ApiQuery({ name: 'fiscalStatus', required: false })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'Клієнт, номер рахунку, номер наряду або примітка',
+  })
   findAll(
     @OrgContext() orgId: string,
     @Query('page') page = '1',
@@ -46,6 +51,7 @@ export class PaymentsController {
     @Query('dateTo') dateTo?: string,
     @Query('method') method?: string,
     @Query('fiscalStatus') fiscalStatus?: string,
+    @Query('q') q?: string,
   ) {
     return this.service.findAll(orgId, {
       page: +page,
@@ -55,6 +61,7 @@ export class PaymentsController {
       dateTo,
       method,
       fiscalStatus,
+      q,
     });
   }
 

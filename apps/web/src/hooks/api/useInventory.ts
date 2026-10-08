@@ -1,7 +1,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
-import type { ApiSchema } from '@sto/shared';
+import type { ApiSchema, operations } from '@sto/shared';
 
 export interface StockByDocumentFilter {
   warehouseId?: string;
@@ -35,7 +35,11 @@ export interface InventoryFilter {
   q?: string;
 }
 
-export interface StockMovementFilter {
+type StockMovementsQuery = NonNullable<
+  operations['StockItemsController_movements_v1']['parameters']['query']
+>;
+
+export interface StockMovementFilter extends Pick<StockMovementsQuery, 'q'> {
   goodId?: string;
   warehouseId?: string;
   type?: string;
@@ -120,6 +124,7 @@ export function useStockMovements(filters: StockMovementFilter = {}, enabled: bo
   if (filters.type) params.set('type', filters.type);
   if (filters.from) params.set('from', filters.from);
   if (filters.to) params.set('to', filters.to);
+  if (filters.q) params.set('q', filters.q);
   if (filters.page) params.set('page', String(filters.page));
   if (filters.limit) params.set('limit', String(filters.limit));
   const qs = params.toString();

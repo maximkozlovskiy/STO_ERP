@@ -113,4 +113,27 @@ describe('InventoryService.findMovements() — журнал рухів (пагі
       documentType: 'PurchaseOrder',
     });
   });
+
+  // Пошук у журналі рухів (рішення власника 2026-10-09): назва або артикул товару.
+  it('q → товар за назвою АБО артикулом; умова «товар не видалено» лишається', async () => {
+    await service.findMovements('org-1', { q: 'фільтр' });
+
+    const where = prisma.stockMovement.findMany.mock.calls[0][0].where;
+    expect(where.orgId).toBe('org-1');
+    expect(where.good).toEqual({
+      deletedAt: null,
+      OR: [
+        { name: { contains: 'фільтр', mode: 'insensitive' } },
+        { sku: { contains: 'фільтр', mode: 'insensitive' } },
+      ],
+    });
+    // лічильник — з тим самим where, інакше сторінок більше, ніж рядків
+    expect(prisma.stockMovement.count.mock.calls[0][0].where).toEqual(where);
+  });
+
+  it.each([undefined, '', '   '])('порожній q (%j) пошук не вмикає', async q => {
+    await service.findMovements('org-1', { q });
+
+    expect(prisma.stockMovement.findMany.mock.calls[0][0].where.good).toEqual({ deletedAt: null });
+  });
 });

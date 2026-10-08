@@ -773,6 +773,8 @@ export class InventoryService {
       type?: StockMovementType;
       from?: string;
       to?: string;
+      /** Пошук за назвою або артикулом товару. */
+      q?: string;
       page?: number;
       limit?: number;
     },
@@ -797,6 +799,7 @@ export class InventoryService {
     limit: number;
   }> {
     const createdAt = this.normalizeDates(filters.from, filters.to);
+    const search = filters.q?.trim().slice(0, 100);
     const { skip, take } = calculatePagination({ page: filters.page, limit: filters.limit });
     const where: Prisma.StockMovementWhereInput = {
       orgId,
@@ -805,7 +808,16 @@ export class InventoryService {
       ...(filters.type && { type: filters.type }),
       ...(createdAt && { createdAt }),
       // Узгоджено з byDocument: не показувати рухи soft-deleted товарів/складів.
-      good: { deletedAt: null },
+      // Пошук звужує той самий зв'язок good (назва або артикул) — умова на deletedAt лишається.
+      good: {
+        deletedAt: null,
+        ...(search && {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { sku: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }),
+      },
       warehouse: { deletedAt: null },
     };
     const [items, total] = await Promise.all([

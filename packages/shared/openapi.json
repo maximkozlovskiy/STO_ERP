@@ -5301,6 +5301,15 @@
             "schema": {
               "type": "number"
             }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Назва або артикул товару",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -11284,19 +11293,21 @@
             }
           },
           {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "showDeleted",
             "required": false,
             "in": "query",
             "description": "Показати видалені",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Пошук за номером документа або приміткою",
+            "schema": {
+              "maxLength": 100,
               "type": "string"
             }
           },
@@ -12336,6 +12347,15 @@
             }
           },
           {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Клієнт, номер рахунку, номер наряду або примітка",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "required": false,
             "in": "query",
@@ -13258,6 +13278,36 @@
                 "IN",
                 "OUT"
               ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Пошук: платник, призначення, IBAN або ЄДРПОУ платника",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Дата операції від (YYYY-MM-DD), включно",
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "description": "Дата операції до (YYYY-MM-DD), включно",
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
             }
           },
           {
@@ -16087,6 +16137,30 @@
           },
           {
             "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
             "required": false,
             "in": "query",
             "schema": {
