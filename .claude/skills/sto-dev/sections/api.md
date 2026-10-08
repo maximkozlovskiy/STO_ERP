@@ -144,6 +144,26 @@ await tx.purchaseOrderLine.updateMany({ where: { id, receivedQty: line.receivedQ
 if (line.receivedQty + recv.qty > line.quantity + 1e-6) throw new BadRequestException('Кількість прийому перевищує залишок');
 ```
 
+### Пошук `q` у списку — текст користувача через `escapeLike()`
+
+Prisma будує `ILIKE ('%' || $1 || '%')` і значення не екранує: `%` та `_` у запиті користувача
+працюють як символи підстановки (`q=%` повертає всю таблицю, `AB_12` знаходить і `ABX12`).
+
+```ts
+// ❌ текст користувача як є
+where.OR = [{ number: { contains: search, mode: 'insensitive' } }];
+
+// ✅ обрізати, обмежити довжину, екранувати; orgId лишається на верхньому рівні where
+const search = q?.trim().slice(0, 100);
+if (search) {
+  const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
+  where.OR = [{ number: contains }, { notes: contains }];
+}
+```
+
+`escapeLike` — `common/utils/like-pattern.ts`. Довжину `q` обмежує DTO (`@MaxLength(100)`) або
+`slice(0, 100)`, якщо параметр приходить через `@Query('q')` без DTO.
+
 ### DTO — обов'язкові декоратори
 
 ```typescript

@@ -241,3 +241,13 @@ done
 - [ ] **Export/render parity (екран↔файл):** окремий `exportCell`/`toCsvCell` поруч із екранним `fmtCell`/`renderCell` → ТІ САМІ лейбли для КОЖНОГО `type` (enum, boolean, date). Grep обидва, порівняй гілки по-типах: пропущена гілка = мовчазна розбіжність. Sample (audit e4f2ed2e): `exportCell` без `boolean`-гілки → boolean-колонка експортувалась "true"/"false" (англ.), екран давав «Так/Ні». Виняток — числове форматування: у файлі число raw для XLSX `ss:Type=Number` (значення те саме, лише без grouping/decimals), НЕ розбіжність лейблів. Grep: `grep -nE "function (export|toCsv|toXlsx)[A-Za-z]*Cell" apps/web/src`
 
 ---
+
+#### §8.7 Доступна назва поля у рядку фільтрів
+
+```bash
+# Поле дати з підписом-<span> поруч, але без label/ariaLabel
+grep -rn "<DatePickerInput" -A6 apps/web/src/app --include="*.tsx" | grep -c "label=\|ariaLabel="
+grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
+```
+
+- [ ] **Підпис поля винесено з `label=` у сусідній `<span>` (рядок фільтрів «в лінію») → полю потрібна `aria-label` / `ariaLabel`.** `<span>` із полем не пов'язаний: читач екрана називає поле за placeholder-ом, і два поля періоду звучать однаково — «ДД.ММ.РРРР». Відбір «З … По …» — готовий `<DateRangeFilter>` (`components/ui/date-range-filter.tsx`), не дві копії блоку. Sample: `payments/page.tsx` втратив `label=` під час переходу на рядок фільтрів (review 2026-10-09)

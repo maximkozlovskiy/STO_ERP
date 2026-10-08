@@ -257,3 +257,10 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rn "Keys = {" apps/web/src/hooks/api` → для кожного ключа `grep -rn "<ім'я>Keys" apps/web/src/lib/cache-invalidation.ts apps/web/src/hooks`.
 **Фікс:** `void qc.invalidateQueries({ queryKey: vehicleMileageKeys.all })` у хелпері, який уже викликають усі точки переходу наряду.
 **Severity:** SUGGESTION — застаріле до `staleTime`, не втрата даних.
+
+### 2026-10-09 — Підпис поля у `<span>` поруч замість `label=` — §8.7
+
+**Сигнал:** фіча «пошук і відбір за датою» перевела фільтри оплат із `<DatePickerInput label=…>` на рядок «підпис-span + поле»; ту саму розмітку скопійовано на банк і касу (взірець — складські документи). `DatePickerInput` не мав способу дати полю назву без видимого `label`, тож чотири екрани лишились із двома полями дати без доступної назви.
+**Grep:** `grep -rn "<DatePickerInput" -A6 apps/web/src/app --include="*.tsx"` → кожне поле має `label=` або `ariaLabel=`.
+**Фікс:** проп `ariaLabel` у `DatePickerInput`; спільний `<DateRangeFilter from to onFromChange onToChange fromLabel toLabel>` замість чотирьох копій блоку; тест `DateRangeFilter.test.tsx` шукає поля через `getByLabelText`.
+**Severity:** SUGGESTION (a11y) — для оплат це регресія: до фічі поля мали `label`.

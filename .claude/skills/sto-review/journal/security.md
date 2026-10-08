@@ -124,3 +124,11 @@
 **Grep:** `grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method)\b" apps/api/src/modules --include="*.controller.ts" --include="*.service.ts" | grep -v spec`.
 **Фікс:** `Object.prototype.hasOwnProperty.call(SomeEnum, value)` замість `value in SomeEnum` (той самий клас, що `buildSortOrderBy` hasOwnProperty-fix у pagination.ts). Контракт-тест на `?type=constructor` → 400.
 **Severity:** IMPORTANT — `?type=constructor` → Prisma enum-колонка → `P2009 invalid enum` → HTTP 500 замість 400; звичайний garbage (`?type=НЕВІДОМО`) 400-ить коректно, тож unit-тест з нормальним garbage ховає баг. Sample: stock-items.controller `movements` (71f01134).
+
+### 2026-10-09 — Prisma `contains` не екранує `%` і `_` — §2.3
+
+**Сигнал:** новий пошук `q` на п'яти списках (`stock-documents`, рухи складу, оплати, банк, каса) передавав текст користувача просто в `contains`. У завданні на review стояло «Prisma екранує — підтвердь»; перевірка на dev-базі спростувала: SQL — `"name" ILIKE ('%' || $1 || '%')`, параметр іде як є. `contains: '%'` і `contains: '_'` повернули всі рядки таблиці товарів, після `escapeLike` — нуль, як і `String.includes` по тих самих назвах.
+**Grep:** `grep -rnE "contains: (search|q|query|term|dto\.|opts\.|filters\.)" apps/api/src/modules --include="*.service.ts" | grep -v "escapeLike\|spec"`.
+**Фікс:** `const contains = { contains: escapeLike(search), mode: 'insensitive' as const }` — `escapeLike` подвоює `\` і ставить `\` перед `%` та `_` (зворотна коса — символ екранування LIKE за замовчуванням). У тесті — запит із `%_` і очікуваний екранований рядок.
+**Як перевіряти твердження «бібліотека це робить сама»:** не з пам'яті й не з документації — увімкнути `log: [{ emit: 'event', level: 'query' }]` на PrismaClient, виконати запит і прочитати SQL; поруч контроль — той самий запит із заздалегідь відомою відповіддю.
+**Severity:** IMPORTANT — неточний пошук і дорогий шаблон; не витік (tenant-умова не послаблюється). Старі пошуки (товари, контрагенти, наряди тощо) лишились без екранування — окремий прохід.

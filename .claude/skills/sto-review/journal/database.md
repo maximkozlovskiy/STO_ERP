@@ -19,3 +19,10 @@
 ### 2026-10-08 — NOT EXISTS по таблиці-знімку без індексу — §6
 
 **Сигнал:** `NOT EXISTS (… payroll_line_work_orders plw WHERE plw."orgId" = … AND plw."workOrderId" = wo.id …)` при індексах лише `(orgId, payrollLineId)`, `(orgId, syncVersion)`. `EXPLAIN`: `Nested Loop Anti Join` → `Seq Scan on payroll_line_work_orders` на кожен рядок робіт. **Grep:** `grep -rn "NOT EXISTS\|EXISTS (" apps/api/src --include="*.ts" -A8 | grep -v spec` → для кожної колонки кореляції перевірити `@@index` у схемі. **Фікс:** міграція `CREATE INDEX IF NOT EXISTS … ("orgId", "workOrderId")` + `@@index` у схемі; після — `EXPLAIN` показує `Index Scan`. **Severity:** IMPORTANT
+
+### 2026-10-09 — «Порядок введення» за `createdAt` для рядків, створених однією транзакцією — §6
+
+**Сигнал:** Bug #814 додав у друкований наряд і в рахунок з наряду `orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]` з коментарем «у порядку введення, як на екрані». Екран (`findOne`) читає рядки з `orderBy: { createdAt: 'asc' }` без другого ключа. На dev-базі є наряди, де кілька рядків мають однаковий `createdAt` (створені разом із нарядом), а `id` — `gen_random_uuid()`. Отже друк упорядковує такі рядки за випадковим UUID, а екран — як віддасть Postgres (зазвичай у порядку вставки, доки рядок не оновили).
+**Grep:** `grep -rnE "orderBy: (\[\{ createdAt: 'asc' \}, \{ id: 'asc' \}\]|\{ createdAt: 'asc' \})" apps/api/src/modules/work-orders apps/api/src/modules/invoices --include="*.service.ts"`; перевірка даних: `select "workOrderId" from work_order_lines group by "workOrderId", "createdAt" having count(*) > 1`.
+**Фікс:** не зроблено — потрібне рішення власника: колонка позиції рядка (міграція) або один `orderBy` на всі читання. Детермінованість «останнього рядка», що забирає копійку округлення (BR-INV-002), Bug #814 уже дав.
+**Severity:** IMPORTANT — документ друкується не в тому порядку, що на екрані; на суми не впливає.
