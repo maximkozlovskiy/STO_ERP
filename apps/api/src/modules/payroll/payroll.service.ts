@@ -7,7 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
-import { computeAccrued, parseRateScheme } from './payroll.calculator';
+import { computeAccrued, monthShareOfPeriod, parseRateScheme } from './payroll.calculator';
 import {
   CreatePayrollPeriodDto,
   PaginatedPayrollPeriodsDto,
@@ -17,6 +17,10 @@ import {
   PayrollPeriodResponseDto,
   PayrollPreviewDto,
 } from './payroll.dto';
+
+// Розрахунок тепер тримає в транзакції два агрегати й чекає на блокування організації —
+// спільних 5 с (TRANSACTION_TIMEOUT_MS) для цього замало.
+const COMPUTE_TX_TIMEOUT_MS = 30_000;
 
 // Kyiv-aware межі дат (дзеркалить reports.service.normalizeDateRange).
 const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
@@ -36,6 +40,42 @@ function normalizeDateRange(from: string, to: string) {
   if (fromDate > toDate)
     throw new BadRequestException(translateError('err.payroll.startAfterEnd', getLocale()));
   return { fromDate, toDate };
+}
+
+/** Клієнт БД для агрегатів: звичайний або транзакційний (розрахунок іде всередині транзакції). */
+type PayrollDb = Pick<Prisma.TransactionClient, '$queryRaw' | 'employee'>;
+
+/** Параметри одного розрахунку: межі, календарні дати періоду, філія, поточна відомість. */
+interface AccrualScope {
+  fromDate: Date;
+  toDate: Date;
+  /** Календарні дати періоду `YYYY-MM-DD` — для частки окладу. */
+  from: string;
+  to: string;
+  branchId?: string;
+  /** Відомість, яку рахуємо: її власний знімок «уже нарахованим» не вважається. */
+  periodId?: string;
+}
+
+/**
+ * BR-PAYR-015: роботи наряду пропускаються, якщо пара (наряд, працівник) уже є в розшифровці
+ * іншої невидаленої відомості у статусі COMPUTED або PAID. Періоди можуть перетинатись
+ * (тижневі, «догнати» пізно закритий наряд) — двічі за ті самі роботи не платимо. Видалена
+ * відомість свої наряди звільняє.
+ */
+function notAccruedElsewhere(orgId: string, periodId?: string): Prisma.Sql {
+  return Prisma.sql`AND NOT EXISTS (
+        SELECT 1
+        FROM payroll_line_work_orders plw
+        JOIN payroll_lines pl   ON pl.id = plw."payrollLineId"
+        JOIN payroll_periods pp ON pp.id = pl."periodId"
+        WHERE plw."orgId"       = ${orgId}::uuid
+          AND plw."workOrderId" = wo.id
+          AND pl."employeeId"   = wol."employeeId"
+          AND pp."deletedAt" IS NULL
+          AND pp."status" = ANY(ARRAY['COMPUTED','PAID']::"PayrollPeriodStatus"[])
+          ${periodId ? Prisma.sql`AND pp.id <> ${periodId}::uuid` : Prisma.empty}
+      )`;
 }
 
 // Агрегований виробіток співробітника за завершеними роботами періоду.
@@ -88,20 +128,14 @@ export class PayrollService {
    * (логіка revenue(), НЕ workOrders()). Рахує лише primary employeeId (асистенти — поза v1).
    */
   private async aggregate(
+    db: PayrollDb,
     orgId: string,
-    fromDate: Date,
-    toDate: Date,
-    branchId?: string,
+    scope: AccrualScope,
   ): Promise<PayrollLineDto[]> {
-    if (branchId) {
-      const branch = await this.prisma.garageBranch.findFirst({
-        where: { id: branchId, orgId, deletedAt: null },
-        select: { id: true },
-      });
-      if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
-    }
+    const { fromDate, toDate, branchId } = scope;
+    const monthShare = monthShareOfPeriod(scope.from, scope.to);
 
-    const rows = await this.prisma.$queryRaw<WorkAggRow[]>`
+    const rows = await db.$queryRaw<WorkAggRow[]>`
       SELECT
         wol."employeeId",
         e."firstName",
@@ -122,11 +156,12 @@ export class PayrollService {
         AND wo."completedAt" >= ${fromDate}
         AND wo."completedAt" <= ${toDate}
         ${branchId ? Prisma.sql`AND wo."branchId" = ${branchId}::uuid` : Prisma.empty}
+        ${notAccruedElsewhere(orgId, scope.periodId)}
       GROUP BY wol."employeeId", e."firstName", e."lastName", e."rateScheme"
       ORDER BY "totalAmount" DESC
     `;
 
-    return rows.map(r => {
+    const lines: PayrollLineDto[] = rows.map(r => {
       const scheme = parseRateScheme(r.rateScheme);
       const baseAmount = money(r.totalAmount); // ::float у SQL → вже number
       const normoHours = Number(r.totalNormoHours);
@@ -137,9 +172,79 @@ export class PayrollService {
         baseAmount,
         normoHours,
         linesCount: Number(r.linesCount),
-        accruedAmount: computeAccrued(scheme, { baseAmount, normoHours }),
+        accruedAmount: computeAccrued(scheme, { baseAmount, normoHours }, monthShare),
       };
     });
+
+    return [...lines, ...(await this.salariedWithoutWork(db, orgId, scope, lines, monthShare))];
+  }
+
+  /**
+   * BR-PAYR-001: працівник на окладі (`fixed_plus_bonus`) отримує рядок у відомості й без жодної
+   * завершеної роботи за період — база 0, оклад за часткою періоду. Раніше агрегат починався з
+   * рядків робіт, і такий працівник у відомість не потрапляв узагалі.
+   * Беруться активні невидалені працівники, прийняті не пізніше кінця періоду й не звільнені до
+   * його початку; у відомості по філії — лише прив'язані до неї (або з доступом до всіх філій).
+   */
+  private async salariedWithoutWork(
+    db: PayrollDb,
+    orgId: string,
+    scope: AccrualScope,
+    withWork: PayrollLineDto[],
+    monthShare: number,
+  ): Promise<PayrollLineDto[]> {
+    const periodStart = new Date(`${scope.from}T00:00:00Z`);
+    const periodEnd = new Date(`${scope.to}T23:59:59.999Z`);
+    const employees = await db.employee.findMany({
+      where: {
+        orgId,
+        deletedAt: null,
+        status: 'ACTIVE',
+        id: { notIn: withWork.map(l => l.employeeId) },
+        AND: [
+          { OR: [{ dateOfHire: null }, { dateOfHire: { lte: periodEnd } }] },
+          { OR: [{ dateOfFire: null }, { dateOfFire: { gte: periodStart } }] },
+          ...(scope.branchId
+            ? [
+                {
+                  OR: [
+                    { allBranches: true },
+                    { employeeBranches: { some: { branchId: scope.branchId } } },
+                  ],
+                },
+              ]
+            : []),
+        ],
+      },
+      select: { id: true, firstName: true, lastName: true, rateScheme: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      take: 1000,
+    });
+    const result: PayrollLineDto[] = [];
+    for (const e of employees) {
+      const scheme = parseRateScheme(e.rateScheme);
+      if (scheme?.type !== 'fixed_plus_bonus') continue;
+      result.push({
+        employeeId: e.id,
+        employeeName: formatPersonName(e.lastName, e.firstName),
+        rateSchemeType: scheme.type,
+        baseAmount: money(0),
+        normoHours: 0,
+        linesCount: 0,
+        accruedAmount: computeAccrued(scheme, { baseAmount: 0, normoHours: 0 }, monthShare),
+      });
+    }
+    return result;
+  }
+
+  /** Філія відомості мусить існувати в організації й не бути видаленою (BR-PAYR-003). */
+  private async assertBranch(orgId: string, branchId?: string | null): Promise<void> {
+    if (!branchId) return;
+    const branch = await this.prisma.garageBranch.findFirst({
+      where: { id: branchId, orgId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new NotFoundException(translateError('err.branch.notFound', getLocale()));
   }
 
   /**
@@ -148,12 +253,12 @@ export class PayrollService {
    * Повертає Map<employeeId, WorkOrderAggRow[]> (для snapshot розбивки при compute()).
    */
   private async aggregateWorkOrders(
+    db: PayrollDb,
     orgId: string,
-    fromDate: Date,
-    toDate: Date,
-    branchId?: string,
+    scope: AccrualScope,
   ): Promise<Map<string, WorkOrderAggRow[]>> {
-    const rows = await this.prisma.$queryRaw<WorkOrderAggRow[]>`
+    const { fromDate, toDate, branchId } = scope;
+    const rows = await db.$queryRaw<WorkOrderAggRow[]>`
       SELECT
         wol."employeeId",
         wo.id                                      AS "workOrderId",
@@ -175,6 +280,7 @@ export class PayrollService {
         AND wo."completedAt" >= ${fromDate}
         AND wo."completedAt" <= ${toDate}
         ${branchId ? Prisma.sql`AND wo."branchId" = ${branchId}::uuid` : Prisma.empty}
+        ${notAccruedElsewhere(orgId, scope.periodId)}
       GROUP BY wol."employeeId", wo.id, wo."number", v."make", v."model", v."licensePlate"
       ORDER BY "baseAmount" DESC
     `;
@@ -195,7 +301,14 @@ export class PayrollService {
     branchId?: string,
   ): Promise<PayrollPreviewDto> {
     const { fromDate, toDate } = normalizeDateRange(from, to);
-    const lines = await this.aggregate(orgId, fromDate, toDate, branchId);
+    await this.assertBranch(orgId, branchId);
+    const lines = await this.aggregate(this.prisma, orgId, {
+      fromDate,
+      toDate,
+      from,
+      to,
+      branchId,
+    });
     const totalAccrued = sumMoney(lines.map(l => l.accruedAmount));
     return { lines, totalAccrued, from, to };
   }
@@ -301,17 +414,23 @@ export class PayrollService {
     const fromStr = period.periodStart.toISOString().slice(0, 10);
     const toStr = period.periodEnd.toISOString().slice(0, 10);
     const { fromDate, toDate } = normalizeDateRange(fromStr, toStr);
-    const lines = await this.aggregate(orgId, fromDate, toDate, period.branchId ?? undefined);
-    // Розбивка виробітку по нарядах (snapshot розшифровки нарахувань).
-    const woByEmployee = await this.aggregateWorkOrders(
-      orgId,
+    await this.assertBranch(orgId, period.branchId);
+    const scope: AccrualScope = {
       fromDate,
       toDate,
-      period.branchId ?? undefined,
-    );
+      from: fromStr,
+      to: toStr,
+      branchId: period.branchId ?? undefined,
+      periodId: id,
+    };
+    let lines: PayrollLineDto[] = [];
 
     await this.prisma.$transaction(
       async tx => {
+        // BR-PAYR-015: розрахунки однієї організації йдуть по черзі. Без цього два одночасні
+        // розрахунки перетинних відомостей обидва не побачили б знімок одне одного й нарахували
+        // б ті самі наряди двічі. Блокування транзакційне — знімається разом із commit/rollback.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payroll:${orgId}`}))`;
         // Атомарний claim: лише DRAFT → COMPUTED (переможець гонки — count===1).
         const claim = await tx.payrollPeriod.updateMany({
           where: { id, orgId, status: 'DRAFT' },
@@ -333,6 +452,11 @@ export class PayrollService {
           });
         }
         await tx.payrollLine.deleteMany({ where: { orgId, periodId: id } });
+        // Агрегати — у ТІЙ САМІЙ транзакції, після блокування: бачать знімки вже розрахованих
+        // відомостей і не бачать власного (старі рядки щойно видалено, periodId виключено).
+        lines = await this.aggregate(tx, orgId, scope);
+        // Розбивка виробітку по нарядах (snapshot розшифровки нарахувань).
+        const woByEmployee = await this.aggregateWorkOrders(tx, orgId, scope);
         if (lines.length > 0) {
           // createMany не повертає id — створюємо рядки по одному, щоб отримати lineId для розшифровки.
           for (const l of lines) {
@@ -367,7 +491,7 @@ export class PayrollService {
           }
         }
       },
-      { timeout: TRANSACTION_TIMEOUT_MS },
+      { timeout: COMPUTE_TX_TIMEOUT_MS },
     );
 
     if (userId) {

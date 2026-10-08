@@ -190,7 +190,7 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | Аспект                                             | Тест                                   | Кейсів |
 | -------------------------------------------------- | -------------------------------------- | ------ |
 | цілісність реєстру, tenant-умова по всіх сутностях | `report-registry.spec.ts`              | 9      |
-| побудова запиту: білі списки, ліміт, період        | `report-query.builder.spec.ts`         | 23     |
+| побудова запиту: білі списки, ліміт, період        | `report-query.builder.spec.ts`         | 28     |
 | групування, агрегації, підсумки                    | `report-aggregator.spec.ts`            | 21     |
 | авто-SUM і збагачення агрегацій                    | `report-builder.service.spec.ts`       | 3      |
 | збережені звіти, tenant-межа запуску               | `report-builder.saved-reports.spec.ts` | 10     |
@@ -198,7 +198,7 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | межі config (DTO)                                  | `report-builder.dto.spec.ts`           | 1      |
 | фіксовані звіти (сусідній модуль `reports`)        | `reports.service.spec.ts`              | 12     |
 
-Разом: **88** кейсів — 76 конструктора і 12 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **93** кейсів — 76 конструктора і 12 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.**
 

@@ -8,6 +8,10 @@ const ORG = '11111111-1111-4111-8111-111111111111';
 const PID = '22222222-2222-4222-8222-222222222222';
 
 function makeMocks() {
+  // compute() runs the aggregates INSIDE the transaction: tx shares the same $queryRaw and
+  // employee mocks as prisma, so specs keep asserting on one place.
+  const $queryRaw = vi.fn().mockResolvedValue([]);
+  const employee = { findMany: vi.fn().mockResolvedValue([]) };
   const tx = {
     payrollPeriod: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     payrollLine: {
@@ -18,6 +22,8 @@ function makeMocks() {
     },
     payrollLineWorkOrder: { deleteMany: vi.fn(), createMany: vi.fn() },
     $executeRaw: vi.fn(),
+    $queryRaw,
+    employee,
   };
   return {
     tx,
@@ -31,7 +37,8 @@ function makeMocks() {
       },
       payrollLine: { findMany: vi.fn().mockResolvedValue([]) },
       garageBranch: { findFirst: vi.fn() },
-      $queryRaw: vi.fn().mockResolvedValue([]),
+      $queryRaw,
+      employee,
       $transaction: vi
         .fn()
         .mockImplementation(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),

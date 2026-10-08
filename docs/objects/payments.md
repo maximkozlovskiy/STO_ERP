@@ -281,10 +281,10 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | payment gateway registry | `gateways/payment-gateway-registry.spec.ts`       | 12     |
 | HTTP-клієнт              | `monobank.client.spec.ts`                         | 26     |
 | сервісна логіка          | `online-payment.service.spec.ts`                  | 15     |
-| BullMQ-processor         | `payment-polling.processor.spec.ts`               | 21     |
+| BullMQ-processor         | `payment-polling.processor.spec.ts`               | 23     |
 | fiscal gate              | `payments.fiscal-gate.spec.ts`                    | 8      |
 | idempotency              | `payments.idempotency.spec.ts`                    | 7      |
-| money model              | `payments.money-model.spec.ts`                    | 17     |
+| money model              | `payments.money-model.spec.ts`                    | 19     |
 | multicurrency            | `payments.multicurrency.spec.ts`                  | 17     |
 | query dto                | `payments.query-dto.spec.ts`                      | 29     |
 | передумови + наряд       | `payments.work-order.spec.ts`                     | 13     |
@@ -293,7 +293,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | шифрування at-rest       | `../../prisma/field-encryption.extension.spec.ts` | 21     |
 | шифрування (сервіс)      | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **356** кейсів — 324 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **360** кейсів — 324 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

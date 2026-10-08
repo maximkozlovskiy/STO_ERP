@@ -14,6 +14,10 @@ export const BRANCH = '33333333-3333-4333-8333-333333333333';
  * `beforeEach` мусить отримати свіжі моки. Форма моків — та сама, що в `payroll.service.spec.ts`.
  */
 export function makePayrollFixture() {
+  // compute() runs the aggregates INSIDE the transaction: tx shares the same $queryRaw and
+  // employee mocks as prisma, so specs keep asserting on one place.
+  const $queryRaw = vi.fn().mockResolvedValue([]);
+  const employee = { findMany: vi.fn().mockResolvedValue([]) };
   const tx = {
     payrollPeriod: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     payrollLine: {
@@ -24,6 +28,8 @@ export function makePayrollFixture() {
     },
     payrollLineWorkOrder: { deleteMany: vi.fn(), createMany: vi.fn() },
     $executeRaw: vi.fn(),
+    $queryRaw,
+    employee,
   };
   const prisma = {
     payrollPeriod: {
@@ -35,7 +41,8 @@ export function makePayrollFixture() {
     },
     payrollLine: { findMany: vi.fn().mockResolvedValue([]) },
     garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    $queryRaw,
+    employee,
     $transaction: vi.fn().mockImplementation((fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };

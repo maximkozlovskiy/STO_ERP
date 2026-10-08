@@ -17,9 +17,9 @@ import {
 const datesOf = (values: unknown[]): string[] =>
   values.filter((v): v is Date => v instanceof Date).map(d => d.toISOString());
 
-/** Значення, вкладені у фрагмент Prisma.sql / Prisma.empty (остання інтерполяція агрегату). */
+/** Значення, вкладені у фрагмент Prisma.sql / Prisma.empty (передостання інтерполяція агрегату: остання — «наряд уже в іншій відомості», BR-PAYR-015). */
 const fragmentValues = (values: unknown[]): unknown[] =>
-  (values[values.length - 1] as { values: unknown[] }).values;
+  (values[values.length - 2] as { values: unknown[] }).values;
 
 describe('PayrollService — межі періоду за Києвом', () => {
   let f: ReturnType<typeof makePayrollFixture>;
@@ -120,7 +120,7 @@ describe('PayrollService — філія періоду', () => {
     await f.service.preview(ORG, '2026-09-01', '2026-09-30', BRANCH);
     const values = sqlValues(f.prisma.$queryRaw);
     expect(fragmentValues(values)).toEqual([BRANCH]);
-    const fragment = values[values.length - 1] as { strings: string[] };
+    const fragment = values[values.length - 2] as { strings: string[] };
     expect(fragment.strings.join('?')).toContain('wo."branchId" = ?');
   });
 

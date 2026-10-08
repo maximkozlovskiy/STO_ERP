@@ -41,13 +41,13 @@ describe('computeAccrued', () => {
   // guards: BR-PAYR-004
   it('percent_normo: % від суми робіт', () => {
     const s = parseRateScheme({ type: 'percent_normo', params: { percent: 40 } });
-    expect(computeAccrued(s, work)).toBe(4000); // 40% від 10000
+    expect(computeAccrued(s, work, 1)).toBe(4000); // 40% від 10000
   });
 
   // guards: BR-PAYR-005
   it('per_normo_hour: ставка × нормо-години', () => {
     const s = parseRateScheme({ type: 'per_normo_hour', params: { ratePerHour: 150 } });
-    expect(computeAccrued(s, work)).toBe(3000); // 150 × 20
+    expect(computeAccrued(s, work, 1)).toBe(3000); // 150 × 20
   });
 
   // guards: BR-PAYR-006
@@ -56,26 +56,26 @@ describe('computeAccrued', () => {
       type: 'fixed_plus_bonus',
       params: { fixedMonthly: 8000, bonusPercent: 10 },
     });
-    expect(computeAccrued(s, work)).toBe(9000); // 8000 + 10% від 10000
+    expect(computeAccrued(s, work, 1)).toBe(9000); // 8000 + 10% від 10000
   });
 
   // guards: BR-PAYR-008
   it('округлення до копійки (half-away-from-zero)', () => {
     const s = parseRateScheme({ type: 'percent_normo', params: { percent: 33.33 } });
     // 33.33% від 100.10 = 33.363... → 33.36
-    expect(computeAccrued(s, { baseAmount: 100.1, normoHours: 0 })).toBe(33.36);
+    expect(computeAccrued(s, { baseAmount: 100.1, normoHours: 0 }, 1)).toBe(33.36);
   });
 
   // guards: BR-PAYR-007
   it('невалідна схема → 0', () => {
-    expect(computeAccrued(null, work)).toBe(0);
+    expect(computeAccrued(null, work, 1)).toBe(0);
   });
 
   // guards: BR-PAYR-008
   it('відʼємний/нульовий виробіток → 0 (clamp)', () => {
     const s = parseRateScheme({ type: 'percent_normo', params: { percent: 40 } });
-    expect(computeAccrued(s, { baseAmount: 0, normoHours: 0 })).toBe(0);
-    expect(computeAccrued(s, { baseAmount: -500, normoHours: 0 })).toBe(0);
+    expect(computeAccrued(s, { baseAmount: 0, normoHours: 0 }, 1)).toBe(0);
+    expect(computeAccrued(s, { baseAmount: -500, normoHours: 0 }, 1)).toBe(0);
   });
 
   // guards: BR-PAYR-006
@@ -84,13 +84,13 @@ describe('computeAccrued', () => {
       type: 'fixed_plus_bonus',
       params: { fixedMonthly: 8000, bonusPercent: 10 },
     });
-    expect(computeAccrued(s, { baseAmount: 0, normoHours: 0 })).toBe(8000);
+    expect(computeAccrued(s, { baseAmount: 0, normoHours: 0 }, 1)).toBe(8000);
   });
 
   // guards: BR-PAYR-008
   it('рівно пів копійки округлюється від нуля: 0.5 год × 0.25 грн = 0.125 → 0.13', () => {
     const s = parseRateScheme({ type: 'per_normo_hour', params: { ratePerHour: 0.25 } });
-    expect(computeAccrued(s, { baseAmount: 0, normoHours: 0.5 })).toBe(0.13);
+    expect(computeAccrued(s, { baseAmount: 0, normoHours: 0.5 }, 1)).toBe(0.13);
   });
 
   // guards: BR-PAYR-008
@@ -100,13 +100,13 @@ describe('computeAccrued', () => {
       params: { fixedMonthly: 8000, bonusPercent: 10 },
     });
     // 8000 + 10% від 12345.67 = 9234.567 → 9234.57
-    expect(computeAccrued(s, { baseAmount: 12345.67, normoHours: 0 })).toBe(9234.57);
+    expect(computeAccrued(s, { baseAmount: 12345.67, normoHours: 0 }, 1)).toBe(9234.57);
   });
 
   // guards: BR-PAYR-008
   it('відʼємні нормо-години рахуються як 0 (per_normo_hour не дає мінуса)', () => {
     const s = parseRateScheme({ type: 'per_normo_hour', params: { ratePerHour: 150 } });
-    expect(computeAccrued(s, { baseAmount: 0, normoHours: -4 })).toBe(0);
+    expect(computeAccrued(s, { baseAmount: 0, normoHours: -4 }, 1)).toBe(0);
   });
 
   // guards: BR-PAYR-006, BR-PAYR-008
@@ -115,14 +115,14 @@ describe('computeAccrued', () => {
       type: 'fixed_plus_bonus',
       params: { fixedMonthly: 8000, bonusPercent: 10 },
     });
-    expect(computeAccrued(s, { baseAmount: -5000, normoHours: 0 })).toBe(8000);
+    expect(computeAccrued(s, { baseAmount: -5000, normoHours: 0 }, 1)).toBe(8000);
   });
 
   // guards: BR-PAYR-005
   it('per_normo_hour не залежить від суми робіт, percent_normo — від нормо-годин', () => {
     const perHour = parseRateScheme({ type: 'per_normo_hour', params: { ratePerHour: 150 } });
-    expect(computeAccrued(perHour, { baseAmount: 999999, normoHours: 2 })).toBe(300);
+    expect(computeAccrued(perHour, { baseAmount: 999999, normoHours: 2 }, 1)).toBe(300);
     const percent = parseRateScheme({ type: 'percent_normo', params: { percent: 40 } });
-    expect(computeAccrued(percent, { baseAmount: 1000, normoHours: 999 })).toBe(400);
+    expect(computeAccrued(percent, { baseAmount: 1000, normoHours: 999 }, 1)).toBe(400);
   });
 });
