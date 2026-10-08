@@ -245,6 +245,13 @@ export class PaymentsService {
     // Рахунок-призначення: DTO задає явно, інакше дефолт з methodConfig. sourceType↔id узгоджені.
     const resolvedSource = await this.resolveDestinationAccount(orgId, dto, methodConfig);
 
+    // Наряд вказано, але його немає (чужа org або видалений) → 404 ДО транзакції. Без цього всі
+    // перевірки наряду нижче (`&& workOrder`) мовчали: статус, замовник, валюта й залишок
+    // (BR-PAY-001/016/017) не застосовувались, а видалений наряд (читання в транзакції не
+    // дивилось на deletedAt) отримував paidAmount.
+    if (dto.workOrderId && !workOrder)
+      throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
+
     // Pre-validate work order status before opening transaction to avoid partial commit.
     // Status was fetched in the parallel batch above — no extra query needed.
     if (dto.workOrderId && workOrder && workOrder.status !== 'INVOICED') {
@@ -543,7 +550,7 @@ export class PaymentsService {
           // оплачене в транзакції; пряма оплата (без рахунку) не може перевищити залишок; paidAmount
           // пишеться CAS-ом (як у рахунку) — два одночасні платежі не «з'їдять» один одного.
           const woInTx = await tx.workOrder.findFirst({
-            where: { id: dto.workOrderId, orgId },
+            where: { id: dto.workOrderId, orgId, deletedAt: null },
             select: { totalAmount: true, paidAmount: true },
           });
           if (!woInTx)

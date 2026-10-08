@@ -73,7 +73,6 @@ interface RevenueDay {
 interface WorkOrderSummary {
   status: string;
   completedAt?: string | null;
-  totalAmount: number;
 }
 interface InvoiceSummary {
   amount: number;

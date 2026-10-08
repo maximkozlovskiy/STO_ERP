@@ -2664,6 +2664,7 @@
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) контрагента не знайдено (чужа org / видалений) → NotFound, без транзакції/Payment/settlement",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) копійки: 0.1 + 0.2 із 0.3 — це повна оплата, а не «бракує 4e-17»",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд INVOICED → paidAmount += amount У транзакції, а transition(PAID) — ПІСЛЯ неї",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд не знайдено (чужа org / видалений) → NotFound ДО транзакції, без Payment/settlement",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд оформлено на іншого контрагента (пряма оплата без рахунку) → 400 ДО транзакції, наряд не чіпається",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі APPROVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ARCHIVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
@@ -2679,7 +2680,8 @@
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата з рахунком: часткова оплата рахунку наряду теж лишає наряд INVOICED",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) паралельний платіж змінив paidAmount (CAS count=0) → 400 «повторіть», transition не кличеться",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) пряма оплата понад залишок (500 при залишку 300) → 400, без Payment, settlement і зміни наряду",
-   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) часткова оплата (500 із 1200) → paidAmount 500, наряд лишається INVOICED: transition не кличеться"
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) часткова оплата (500 із 1200) → paidAmount 500, наряд лишається INVOICED: transition не кличеться",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) читання наряду В ТРАНЗАКЦІЇ теж не бачить видалений: видалили між перевіркою і записом → NotFound, paidAmount не пишеться"
   ],
   "apps/api/src/modules/payments/provider-config.service.spec.ts": [
    "ProviderConfigService activate (ексклюзивність) kind-незалежність: активація FISCAL-провайдера НЕ чіпає PAYMENT-конфіги (kind у обох where)",
@@ -4074,7 +4076,8 @@
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) «ПДВ зверху»: total = wo.totalAmount (840, до сплати), totalNet = 700, vatTotal = 140 — не сума рядків",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) «ПДВ у ціні»: total = сума рядків (700), ПДВ виділено тоталами наряду; vatTotal квантовано до копійки",
    "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд без ПДВ: vatTotal = 0 (підсумок друкується одним рядком), total = totalNet",
-   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд читається у межах свого orgId разом із totalNet/totalAmount; чужий → 404, PDF не будується"
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд читається у межах свого orgId разом із totalNet/totalAmount; чужий → 404, PDF не будується",
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) рядок роботи округлено до копійки так само, як у тоталах: рядки складаються в підсумок"
   ],
   "apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts": [
    "WorkOrdersService.recalcTotals — defensive take: 1000 cap обробляє великий список (500 рядків) у single-pass reduce без CPU вибуху",

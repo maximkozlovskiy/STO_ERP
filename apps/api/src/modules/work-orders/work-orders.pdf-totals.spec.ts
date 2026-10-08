@@ -24,7 +24,15 @@ type PdfArg = {
   parts: { total: number }[];
 };
 
-function setup(woTotals: { totalNet: number; totalAmount: number } | null) {
+type LineRow = { normoHours: number; actualHours: number | null; price: number; amount: number };
+
+function setup(
+  woTotals: { totalNet: number; totalAmount: number } | null,
+  lineRows: LineRow[] = [{ normoHours: 2, actualHours: null, price: 100, amount: 200 }],
+  partRows: { quantity: number; price: number; amount: number }[] = [
+    { quantity: 1, price: 500, amount: 500 },
+  ],
+) {
   const woFindFirst = vi.fn().mockResolvedValue(
     woTotals === null
       ? null
@@ -39,17 +47,9 @@ function setup(woTotals: { totalNet: number; totalAmount: number } | null) {
             companyName: null,
             phone: '+380501112233',
           },
-          // 2 год × 100 = 200
-          lines: [
-            {
-              normoHours: 2,
-              actualHours: null,
-              price: 100,
-              amount: 200,
-              work: { name: 'Заміна масла' },
-            },
-          ],
-          parts: [{ quantity: 1, price: 500, amount: 500, good: { name: 'Фільтр' } }],
+          // типово: 2 год × 100 = 200 і одна запчастина на 500
+          lines: lineRows.map(l => ({ ...l, work: { name: 'Заміна масла' } })),
+          parts: partRows.map(p => ({ ...p, good: { name: 'Фільтр' } })),
         },
   );
   const prisma = {
@@ -110,6 +110,29 @@ describe('WorkOrdersService.generatePdf — підсумок із тоталів
     expect(arg.total).toBe(700);
     expect(arg.totalNet).toBe(700);
     expect(arg.vatTotal).toBe(0);
+  });
+
+  // Регресія (review 03e45456): рядок роботи йшов у PDF сирим добутком, і форматер округлював
+  // його інакше, ніж тотали наряду: 0.3 × 100.05 = 30.014999… друкувалось «30,01» при 30.02 у
+  // підсумку. Mutation-verify: прибрати money() у generatePdf → кейс падає.
+  // guards: BR-WO-007
+  it('рядок роботи округлено до копійки так само, як у тоталах: рядки складаються в підсумок', async () => {
+    // Два рядки по 0.3 год × 100.05 → 30.02 + 30.02 = 60.04 (так рахує WorkOrderTotalsService).
+    const { service, pdfArg } = setup(
+      { totalNet: 60.04, totalAmount: 60.04 },
+      [
+        { normoHours: 1, actualHours: 0.3, price: 100.05, amount: 100.05 },
+        { normoHours: 0.3, actualHours: null, price: 100.05, amount: 30.02 },
+      ],
+      [],
+    );
+
+    await service.generatePdf(ORG, WO_ID);
+
+    const arg = pdfArg();
+    expect(arg.works.map(w => w.total)).toEqual([30.02, 30.02]);
+    const rowsSum = Math.round(arg.works.reduce((s, r) => s + r.total, 0) * 100) / 100;
+    expect(rowsSum).toBe(arg.total);
   });
 
   // guards: BR-WO-007

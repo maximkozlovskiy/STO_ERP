@@ -182,7 +182,7 @@ create (метод без requiresFiscal) → null
 
 ### `create()` — реєстрація платежу
 
-- **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO має бути в статусі `INVOICED`.
+- **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO існує (org-scoped, не видалений; інакше 404 до транзакції) і має бути в статусі `INVOICED`.
 - **BR-PAY-002**: **Рахунок-призначення** (`resolveDestinationAccount`): DTO явно → сувора валідація (4xx на невалідний);
   дефолт з `PaymentMethodConfig` → best-effort (stale конфіг → тихо `null`, не валимо платіж). Деталі — [invoice.md](invoice.md#рахунок-призначення-платежу-paymentsourcetype) («Рахунок-призначення платежу»).
 - **BR-PAY-003**: **Часткова оплата Invoice** (у `$transaction`): дозволені статуси `SENT`/`PARTIALLY_PAID`/`OVERDUE`;
@@ -305,13 +305,13 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | money model               | `payments.money-model.spec.ts`                    | 19     |
 | multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
 | query dto                 | `payments.query-dto.spec.ts`                      | 29     |
-| передумови + наряд        | `payments.work-order.spec.ts`                     | 21     |
+| передумови + наряд        | `payments.work-order.spec.ts`                     | 23     |
 | політика повторів черг    | `payments.queue-retry-policy.spec.ts`             | 6      |
 | сервісна логіка           | `provider-config.service.spec.ts`                 | 27     |
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts` | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **372** кейсів — 334 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **374** кейсів — 342 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

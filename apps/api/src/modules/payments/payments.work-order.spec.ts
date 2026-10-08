@@ -178,6 +178,44 @@ describe('PaymentsService.create — передумови і звʼязок з �
     },
   );
 
+  // Регресія (review 03e45456): наряд не знайдено (чужа org або видалений) — усі перевірки
+  // наряду стояли за `&& workOrder` і мовчали, а читання в транзакції не дивилось на deletedAt:
+  // видалений наряд (DRAFT/CANCELLED) отримував paidAmount в обхід статусу й залишку.
+  // Mutation-verify: прибрати ранній NotFound → кейс падає (транзакція відкривається).
+  // guards: BR-PAY-001
+  it('наряд не знайдено (чужа org / видалений) → NotFound ДО транзакції, без Payment/settlement', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue(null);
+
+    await expect(service.create(ORG, woDto, 'user-1')).rejects.toThrow(NotFoundException);
+
+    expect(prisma.workOrder.findFirst.mock.calls[0][0].where).toEqual({
+      id: WO_ID,
+      orgId: ORG,
+      deletedAt: null,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-017
+  it('читання наряду В ТРАНЗАКЦІЇ теж не бачить видалений: видалили між перевіркою і записом → NotFound, paidAmount не пишеться', async () => {
+    prisma.workOrder.findFirst
+      .mockResolvedValueOnce(invoicedWorkOrder) // до транзакції
+      .mockResolvedValueOnce(null); // у транзакції
+
+    await expect(service.create(ORG, woDto, 'user-1')).rejects.toThrow(NotFoundException);
+
+    expect(prisma.workOrder.findFirst.mock.calls[1][0].where).toEqual({
+      id: WO_ID,
+      orgId: ORG,
+      deletedAt: null,
+    });
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
   // ── BR-PAY-005: paidAmount наряду + best-effort FSM ───────────────────────
 
   // Та сама діра, що BR-PAY-016 закрив для рахунку: платіж контрагента A піднімав paidAmount

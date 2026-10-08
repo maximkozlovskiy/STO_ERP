@@ -1306,13 +1306,16 @@ export class WorkOrdersService {
         // (див. recalcTotals). Тут симетрично: quantity і total мають збігатися —
         // інакше у PDF "5 год × 100 ₴ = 300 ₴" (де total — це planned amount), а сума
         // рядків ≠ ЗАГАЛЬНА СУМА. Тримаємо single-source: рахуємо total з displayed quantity.
+        // BR-WO-007: money() — те саме округлення рядка, що в тоталах наряду й в акті. Сирий
+        // добуток форматер PDF округлював по-своєму: 0.3 год × 100.05 = 30.014999… друкувалось
+        // «30,01», а в підсумок наряду цей рядок увійшов як 30.02.
         const quantity = l.actualHours ?? l.normoHours;
         const price = Number(l.price);
         return {
           name: l.work?.name ?? '',
           quantity,
           price,
-          total: quantity * price,
+          total: money(quantity * price),
         };
       }),
       parts: wo.parts.map(p => ({
