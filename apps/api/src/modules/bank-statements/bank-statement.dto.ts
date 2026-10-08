@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsEnum,
   IsIn,
   IsInt,
   IsNumber,
@@ -198,6 +199,12 @@ export class ListQueryDto {
   @IsOptional()
   @IsIn(BANK_TX_STATUSES)
   status?: BankTransactionStatus;
+
+  // Вкладки списку «Вхідні» / «Вихідні». Без параметра — обидва напрямки.
+  @ApiPropertyOptional({ enum: BankTransactionDirection })
+  @IsOptional()
+  @IsEnum(BankTransactionDirection)
+  direction?: BankTransactionDirection;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

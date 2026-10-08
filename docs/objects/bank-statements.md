@@ -62,24 +62,29 @@ Orphan-Payment (create ok, link fail) benign: retry натрапляє на CAS-
 
 ## API Endpoints (bank-statements.controller, ролі OWNER/ADMIN/ACCOUNTANT)
 
-| Метод | Шлях                                       | Призначення                        |
-| ----- | ------------------------------------------ | ---------------------------------- |
-| POST  | `/bank-statements/import/raw-preview`      | сира сітка (multipart)             |
-| POST  | `/bank-statements/import/preview`          | dry-run матч (multipart + mapping) |
-| POST  | `/bank-statements/import/apply`            | створити UNMATCHED-транзакції      |
-| GET   | `/bank-statements/transactions`            | список (status/page/limit)         |
-| POST  | `/bank-statements/transactions/:id/match`  | рознести → Payment                 |
-| POST  | `/bank-statements/transactions/:id/ignore` | позначити IGNORED                  |
+| Метод | Шлях                                       | Призначення                          |
+| ----- | ------------------------------------------ | ------------------------------------ |
+| POST  | `/bank-statements/import/raw-preview`      | сира сітка (multipart)               |
+| POST  | `/bank-statements/import/preview`          | dry-run матч (multipart + mapping)   |
+| POST  | `/bank-statements/import/apply`            | створити UNMATCHED-транзакції        |
+| GET   | `/bank-statements/transactions`            | список (status/direction/page/limit) |
+| POST  | `/bank-statements/transactions/:id/match`  | рознести → Payment                   |
+| POST  | `/bank-statements/transactions/:id/ignore` | позначити IGNORED                    |
 
 ## UI (Web)
 
-Сторінка `bank-statements/page.tsx` — **вкладкова** (tab-shell за cash-зразком: Suspense+dynamic ssr:false,
-`?tab=` через useSearchParams+router.replace):
+Сторінка `bank-statements/page.tsx` — один рядок вкладок, як на «Купівлі» і «Складі» (рішення
+власника 2026-10-08): зліва розрізи списку платежів за напрямком, праворуч — «Банк. рахунки».
 
-- **[Список платежів]** `BankTransactionsTab` — список транзакцій (колонки: дата/платник/призначення/сума/
-  **Рахунок**(bankAccountName ?? скорочений IBAN, join у list())/статус) + фільтр + пагінація + `MatchBankTransactionModal`
-  (контрагент+тип+опц.invoice) + `BankStatementImportModal` (3-крок wizard: рахунок+файл → колонки → preview → apply).
-- **[Банк. рахунки]** `BankAccountsTab` (перенесено з НДІ) — CRUD банк-рахунків; форма += provider-dropdown
+- **[Всі] / [Вхідні] / [Вихідні]** — той самий `BankTransactionsTab` із фільтром `direction`
+  (`?direction=IN|OUT`, без параметра — усі). Колонки: дата / платник / **Рахунок**
+  (bankAccountName ?? скорочений IBAN, join у list()) / призначення / сума / статус; фільтр статусу
+  і кнопка «Імпорт виписки» в одному рядку; пагінація; `MatchBankTransactionModal`
+  (контрагент+тип+опц.invoice); `BankStatementImportModal` (3-крок wizard: рахунок+файл → колонки →
+  preview → apply). **«Вихідні» поки завжди порожні:** імпорт кладе лише `direction=IN`
+  (BR-BANK-001) — вкладка і фільтр готові до появи імпорту вихідних платежів.
+- **[Банк. рахунки]** (`?tab=accounts`, остання вкладка рядка) `BankAccountsTab` (перенесено з НДІ)
+  — CRUD банк-рахунків; форма += provider-dropdown
   «Банк для auto-pull» + autoPullEnabled toggle; у списку **Badge «Авто-pull: <банк>»** для відмічених рахунків.
   Ref-cache+apiFetch (НЕ React-Query). Тип з `../ndi/types`, namespace `ndi`.
 
@@ -170,7 +175,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | ------------------------------ | ----------------------------------------------- | ------ |
 | авто-матч з контрагентом       | `bank-reconciliation.auto-match.spec.ts`        | 5      |
 | імпорт у staging               | `bank-reconciliation.import.spec.ts`            | 5      |
-| рознесення / ігнорування (FSM) | `bank-reconciliation.posting.spec.ts`           | 11     |
+| рознесення / ігнорування (FSM) | `bank-reconciliation.posting.spec.ts`           | 14     |
 | сервісна логіка                | `bank-reconciliation.service.spec.ts`           | 27     |
 | парсер файлу виписки           | `bank-statement-parser.service.spec.ts`         | 17     |
 | контролер провайдерів          | `bank-statement-providers.controller.spec.ts`   | 7      |
@@ -186,7 +191,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 
 Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків).
 
-Разом: **179** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **182** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей.
 Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); гонка двох одночасних рознесень одного рядка (CAS перевірено за формою `where`, не конкурентно); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.

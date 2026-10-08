@@ -13249,6 +13249,18 @@
             }
           },
           {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "IN",
+                "OUT"
+              ]
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",

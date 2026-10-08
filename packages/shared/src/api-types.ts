@@ -15980,6 +15980,7 @@ export interface operations {
         parameters: {
             query?: {
                 status?: "UNMATCHED" | "MATCHED" | "IGNORED";
+                direction?: "IN" | "OUT";
                 page?: number;
                 limit?: number;
             };

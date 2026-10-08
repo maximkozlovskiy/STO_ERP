@@ -22,18 +22,25 @@ async function getToken(page: import('@playwright/test').Page): Promise<string> 
 }
 
 test.describe('Банківські платежі', () => {
-  test('дві вкладки: «Список платежів» + «Банк. рахунки», перемикання оновлює URL', async ({
+  test('вкладки «Всі / Вхідні / Вихідні» + «Банк. рахунки», перемикання оновлює URL', async ({
     page,
   }) => {
     await page.goto('/bank-statements');
     await expect(page.locator('h1:has-text("Банківські платежі")')).toBeVisible({
       timeout: 20_000,
     });
-    // Обидві вкладки присутні.
-    await expect(page.getByRole('button', { name: 'Список платежів' })).toBeVisible({
+    // Вкладки напрямку і «Банк. рахунки» присутні; окремої «Список платежів» більше немає.
+    await expect(page.getByRole('button', { name: 'Всі', exact: true })).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByRole('button', { name: 'Вхідні', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Вихідні', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Банк. рахунки' })).toBeVisible();
+
+    // «Вихідні» → URL ?direction=OUT, список лишається (кнопка імпорту на місці).
+    await page.getByRole('button', { name: 'Вихідні', exact: true }).click();
+    await expect(page).toHaveURL(/direction=OUT/, { timeout: 5_000 });
+    await expect(page.locator('button:has-text("Імпорт виписки")').first()).toBeVisible();
 
     // Перемикаємо на «Банк. рахунки» → URL ?tab=accounts + контент вкладки рахунків.
     await page.getByRole('button', { name: 'Банк. рахунки' }).click();
@@ -42,9 +49,9 @@ test.describe('Банківські платежі', () => {
       timeout: 10_000,
     });
 
-    // Назад на «Список платежів» → URL без ?tab= + кнопка імпорту.
+    // Назад на «Всі» → URL без параметрів + кнопка імпорту.
     // trailingSlash:true (next.config) → базовий URL є /bank-statements/ без query.
-    await page.getByRole('button', { name: 'Список платежів' }).click();
+    await page.getByRole('button', { name: 'Всі', exact: true }).click();
     await expect(page).toHaveURL(/\/bank-statements\/$/, { timeout: 5_000 });
     await expect(page.locator('button:has-text("Імпорт виписки")').first()).toBeVisible();
   });
@@ -59,7 +66,7 @@ test.describe('Банківські платежі', () => {
     });
   });
 
-  test('невалідний ?tab=xxx → fallback на вкладку «Список платежів»', async ({ page }) => {
+  test('невалідний ?tab=xxx → fallback на список платежів', async ({ page }) => {
     await page.goto('/bank-statements?tab=xxx');
     await expect(page.locator('h1:has-text("Банківські платежі")')).toBeVisible({
       timeout: 20_000,

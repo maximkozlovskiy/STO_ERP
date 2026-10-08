@@ -3,7 +3,9 @@
     "title": "Банківські платежі",
     "import": "Імпорт виписки",
     "tabs": {
-      "transactions": "Список платежів",
+      "all": "Всі",
+      "incoming": "Вхідні",
+      "outgoing": "Вихідні",
       "accounts": "Банк. рахунки"
     },
     "columns": {

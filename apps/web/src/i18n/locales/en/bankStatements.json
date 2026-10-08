@@ -3,7 +3,9 @@
     "title": "Bank payments",
     "import": "Import statement",
     "tabs": {
-      "transactions": "Payments",
+      "all": "All",
+      "incoming": "Incoming",
+      "outgoing": "Outgoing",
       "accounts": "Bank accounts"
     },
     "columns": {

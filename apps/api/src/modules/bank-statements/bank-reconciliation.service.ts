@@ -436,6 +436,7 @@ export class BankReconciliationService {
 
     const where: Prisma.BankTransactionWhereInput = { orgId, deletedAt: null };
     if (query.status) where.status = query.status;
+    if (query.direction) where.direction = query.direction;
 
     const skip = (safePage - 1) * safeLimit;
     const [items, total] = await Promise.all([

@@ -127,4 +127,27 @@ describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
     render(<BankTransactionsTab />);
     expect(screen.getByText('200 EUR')).toBeInTheDocument();
   });
+
+  // Рішення власника 2026-10-08: напрямок задає вкладка сторінки, кнопка імпорту — у рядку
+  // фільтрів статусу (окремої смуги під одну кнопку немає).
+  it.each(['IN', 'OUT'] as const)('direction=%s іде у запит списку', direction => {
+    useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+    render(<BankTransactionsTab direction={direction} />);
+    expect(useBankTransactionsMock).toHaveBeenCalledWith(expect.objectContaining({ direction }));
+  });
+
+  it('без direction запит іде без фільтра напрямку', () => {
+    useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+    render(<BankTransactionsTab />);
+    expect(useBankTransactionsMock.mock.calls[0]![0].direction).toBeUndefined();
+  });
+
+  it('«Імпорт виписки» стоїть у тому самому рядку, що й фільтри статусу, останньою', () => {
+    useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+    render(<BankTransactionsTab />);
+    const importBtn = screen.getByRole('button', { name: /Імпорт виписки/ });
+    const allPill = screen.getByRole('button', { name: 'Усі' });
+    expect(importBtn.parentElement).toBe(allPill.parentElement);
+    expect(importBtn.parentElement?.lastElementChild).toBe(importBtn);
+  });
 });

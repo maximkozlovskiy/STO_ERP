@@ -25,6 +25,7 @@ import {
   useBankTransactions,
   useIgnoreBankTransaction,
   type BankTransaction,
+  type BankTxDirection,
   type BankTxStatus,
 } from '@/hooks/api/useBankStatements';
 import { MatchBankTransactionModal } from '@/components/ui/MatchBankTransactionModal';
@@ -45,7 +46,7 @@ function shortIban(iban: string): string {
   return iban.length > 8 ? `…${iban.slice(-4)}` : iban;
 }
 
-export default function BankTransactionsTab() {
+export default function BankTransactionsTab({ direction }: { direction?: BankTxDirection }) {
   const { t } = useTranslation('bankStatements');
 
   const [status, setStatus] = useState('');
@@ -59,6 +60,7 @@ export default function BankTransactionsTab() {
 
   const { data, isLoading, error } = useBankTransactions({
     status: status || undefined,
+    direction,
     page,
     limit,
   });
@@ -89,23 +91,19 @@ export default function BankTransactionsTab() {
     }
   };
 
+  // Фрагмент, а не власний контейнер: рядки стають прямими дітьми `.page-fill` сторінки й
+  // отримують її рівний відступ 8px — як на «Купівлі». Раніше вкладений `.page-fill` із
+  // окремою смугою під одну кнопку давав порожнє місце між вкладками й фільтрами.
   return (
-    <div className="page-fill">
-      <div className="page-header pt-4">
-        <div />
-        <Button onClick={() => setImportOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
-          {t('page.import')}
-        </Button>
-      </div>
-
+    <>
       {error && (
-        <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
+        <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
           {error instanceof Error ? error.message : t('page.error.load')}
         </div>
       )}
 
-      {/* Status filter pills */}
-      <div className="flex flex-wrap gap-1.5 shrink-0">
+      {/* Status filter pills + дія сторінки праворуч */}
+      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
         <StatusPill
           value=""
           label={t('page.pills.all')}
@@ -127,6 +125,13 @@ export default function BankTransactionsTab() {
             }}
           />
         ))}
+        <Button
+          className="ml-auto"
+          onClick={() => setImportOpen(true)}
+          leftIcon={<Plus className="h-4 w-4" />}
+        >
+          {t('page.import')}
+        </Button>
       </div>
 
       {/* Table */}
@@ -271,6 +276,6 @@ export default function BankTransactionsTab() {
       </Modal>
 
       <BankStatementImportModal open={importOpen} onClose={() => setImportOpen(false)} />
-    </div>
+    </>
   );
 }

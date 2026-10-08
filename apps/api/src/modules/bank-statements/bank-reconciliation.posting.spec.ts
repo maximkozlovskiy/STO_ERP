@@ -266,4 +266,31 @@ describe('BankReconciliationService.list — tenant-фільтр', () => {
     expect(prisma.bankTransaction.findMany.mock.calls[0]![0].where).toEqual(where);
     expect(prisma.bankTransaction.count.mock.calls[0]![0].where).toEqual(where);
   });
+
+  // Вкладки списку «Вхідні» / «Вихідні» (рішення власника 2026-10-08).
+  it.each(['IN', 'OUT'] as const)(
+    'list: direction=%s звужує і вибірку, і лічильник; orgId та deletedAt лишаються',
+    async direction => {
+      const prisma = makePrisma();
+      prisma.bankTransaction.findMany.mockResolvedValue([]);
+      prisma.bankTransaction.count.mockResolvedValue(0);
+      const service = build(prisma, makeExchange(), makePayments());
+      await service.list(ORG, { direction, status: 'MATCHED' });
+      const where = { orgId: ORG, deletedAt: null, status: 'MATCHED', direction };
+      expect(prisma.bankTransaction.findMany.mock.calls[0]![0].where).toEqual(where);
+      expect(prisma.bankTransaction.count.mock.calls[0]![0].where).toEqual(where);
+    },
+  );
+
+  it('list: без direction умови на напрямок немає — «Всі» показує обидва', async () => {
+    const prisma = makePrisma();
+    prisma.bankTransaction.findMany.mockResolvedValue([]);
+    prisma.bankTransaction.count.mockResolvedValue(0);
+    const service = build(prisma, makeExchange(), makePayments());
+    await service.list(ORG, {});
+    expect(prisma.bankTransaction.findMany.mock.calls[0]![0].where).toEqual({
+      orgId: ORG,
+      deletedAt: null,
+    });
+  });
 });

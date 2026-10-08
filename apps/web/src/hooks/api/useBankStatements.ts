@@ -67,8 +67,12 @@ export interface MatchTransactionInput {
   invoiceId?: string;
 }
 
+export type BankTxDirection = 'IN' | 'OUT';
+
 export interface BankTransactionsFilter extends Record<string, unknown> {
   status?: string;
+  /** Напрямок платежу: 'IN' — вхідні, 'OUT' — вихідні; без значення — усі. */
+  direction?: BankTxDirection;
   page?: number;
   limit?: number;
 }
