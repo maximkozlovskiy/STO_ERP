@@ -40,6 +40,11 @@ RUN pnpm install --frozen-lockfile --filter @sto/api... --prod=false
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
+# Prisma 7 більше не шукає схему сама: шлях до multi-file схеми (prisma/schema), до міграцій
+# (prisma/migrations) і рядок підключення живуть у prisma.config.ts. Без цього файла у рантайм-
+# образі падає і `prisma generate` нижче («Could not find Prisma Schema»), і `prisma migrate
+# deploy`, який інсталятор запускає при First-Run/Update.
+COPY --from=builder /app/packages/database/prisma.config.ts ./packages/database/prisma.config.ts
 # Моделі розпізнавання (ukr+eng, 7.7 МБ) для OCR сканів і фото накладних. Їдуть УСЕРЕДИНІ
 # образу → автоматично потрапляють у docker save .tar.gz офлайн-інсталятора (ADR-003),
 # тож змін в installer/ не потрібно. Без цього рядка OCR кине OcrModelsMissingError.

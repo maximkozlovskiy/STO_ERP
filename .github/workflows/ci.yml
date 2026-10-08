@@ -28,6 +28,10 @@ jobs:
       DATABASE_URL: postgresql://sto:sto@localhost:5432/sto_erp
     steps:
       - uses: actions/checkout@v4
+        with:
+          # test-agent-scopes.py and test-affected-tests.py diff against HEAD~30: with the default
+          # shallow clone (depth 1) that base does not exist and the contract case fails.
+          fetch-depth: 50
 
       - uses: pnpm/action-setup@v4
         with:
@@ -105,6 +109,11 @@ jobs:
       # перемішані правки двох агентів в одному файлі — мовчки.
       - name: Agent scopes contract
         run: python3 scripts/test-agent-scopes.py
+
+      # Self-test of the drift guard's parser (the guard itself needs a database and runs in
+      # the integration-tests job right after `migrate deploy`).
+      - name: Schema drift guard self-test
+        run: python3 scripts/check-schema-drift.py --self-test
 
       # Скіл, який агент мусить прочитати, має влазити в один Read. Без гейта файли
       # тихо роздуваються (sto-tester/SKILL.md доріс до 364 КБ, і його читали на 5–10%).
@@ -272,6 +281,13 @@ jobs:
 
       - name: Apply migrations
         run: pnpm --filter @sto/database exec prisma migrate deploy
+
+      # База щойно створена з нуля самими міграціями — єдине місце, де видно, чи описують вони
+      # ту саму схему, що й schema.prisma. 2026-10-08 саме тут виявилось, що двох колонок і семи
+      # індексів немає в жодній міграції (у dev-базах вони були через `db push`), тобто чиста
+      # інсталяція не запускалась.
+      - name: Schema drift (migrations vs schema.prisma)
+        run: python3 scripts/check-schema-drift.py
 
       - name: Generate Prisma client
         run: pnpm --filter @sto/database exec prisma generate
