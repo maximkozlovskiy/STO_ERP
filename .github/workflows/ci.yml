@@ -169,8 +169,9 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
-  # 7 integration-специв (tenant-guard, append-only тригери, field-encryption,
-  # schema-integrity, dead-letter, stock-effects, line-import) ходять у РЕАЛЬНУ Postgres.
+  # 9 integration-специв (tenant-guard, append-only тригери, field-encryption,
+  # schema-integrity, dead-letter, stock-effects, line-import, нарахування зарплати — у РЕАЛЬНУ
+  # Postgres; ланцюг опитування онлайн-оплати — у РЕАЛЬНИЙ Redis).
   # Досі CI їх не піднімав → вони завжди йшли у skip, і «ЄДИНЕ реальне покриття guard-а»
   # (цитата з коментаря в tenant-guard.integration.spec.ts) не виконувалось жодного разу.
   #
@@ -236,9 +237,24 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Redis — для спеку ланцюга опитування онлайн-оплати: він ганяє справжню чергу BullMQ
+      # (payment-polling.queue.integration.spec.ts). Мок черги не бачить, що BullMQ відкидає
+      # повторний add з id активної задачі — саме так опитування й обривалось (Bug #804).
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://sto:sto_dev_secret@localhost:5432/sto_erp
+      REDIS_URL: redis://localhost:6379
       REQUIRE_DB: '1'
+      # Те саме для Redis: без прапорця спек черги при недоступному Redis тихо пропуститься.
+      REQUIRE_REDIS: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -266,7 +282,10 @@ jobs:
         run: pnpm --filter @sto/database run seed
 
       - name: Integration tests
-        run: pnpm --filter @sto/api exec vitest run src/prisma src/modules/dead-letter src/modules/work-orders/work-order-stock-effects.integration.spec.ts src/modules/xlsx/document-line-import.adapter.integration.spec.ts
+        # Список явний: новий `*.integration.spec.ts` сюди треба ДОПИСАТИ, інакше в CI він іде
+        # у skip у звичайному unit-job (там немає ні Postgres, ні Redis). Так спек нарахування
+        # зарплати (BR-PAYR-001/015 — сирий SQL) жив поза CI від самого додавання (Bug #806).
+        run: pnpm --filter @sto/api exec vitest run src/prisma src/modules/dead-letter src/modules/work-orders/work-order-stock-effects.integration.spec.ts src/modules/xlsx/document-line-import.adapter.integration.spec.ts src/modules/payroll/payroll.accrual.integration.spec.ts src/modules/payments/payment-polling.queue.integration.spec.ts
 
   # E2E (smoke-підмножина). 321 тест ганявся ЛИШЕ локально — у CI Playwright не було
   # взагалі. Тут беремо smoke + auth-flow (14 тестів): вони відповідають на головне

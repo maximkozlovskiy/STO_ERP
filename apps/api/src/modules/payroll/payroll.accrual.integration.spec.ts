@@ -102,16 +102,38 @@ beforeAll(async () => {
   // From here on the DB is reachable: a failure in data preparation must FAIL the suite, not
   // skip it. A silent skip here once made all seven cases green while none of them ran.
   {
-    const template = await raw.workOrder.findFirst({
+    // Реквізити наряду — із довідників seed, а НЕ з готового наряду: seed нарядів не створює,
+    // тож у CI (чиста база + seed) пошук «будь-якого наряду» лишав спек без даних (Bug #806).
+    const branch = await raw.garageBranch.findFirst({
       where: { deletedAt: null },
-      select: {
-        orgId: true,
-        branchId: true,
-        vehicleId: true,
-        counterpartyId: true,
-        currencyId: true,
-      },
+      select: { id: true, orgId: true },
     });
+    const [vehicle, counterparty, currency] = branch
+      ? await Promise.all([
+          raw.vehicle.findFirst({
+            where: { orgId: branch.orgId, deletedAt: null },
+            select: { id: true },
+          }),
+          raw.counterparty.findFirst({
+            where: { orgId: branch.orgId, deletedAt: null },
+            select: { id: true },
+          }),
+          raw.currency.findFirst({
+            where: { orgId: branch.orgId, deletedAt: null, isSystem: true },
+            select: { id: true },
+          }),
+        ])
+      : [null, null, null];
+    const template =
+      branch && vehicle && counterparty && currency
+        ? {
+            orgId: branch.orgId,
+            branchId: branch.id,
+            vehicleId: vehicle.id,
+            counterpartyId: counterparty.id,
+            currencyId: currency.id,
+          }
+        : null;
     const work = template
       ? await raw.work.findFirst({
           where: { orgId: template.orgId, deletedAt: null },
@@ -119,7 +141,7 @@ beforeAll(async () => {
         })
       : null;
     if (!template || !work) {
-      handleDbUnavailable('немає наряду або роботи в seed');
+      handleDbUnavailable('у seed немає філії, авто, контрагента, валюти або роботи');
       return;
     }
     orgId = template.orgId;
