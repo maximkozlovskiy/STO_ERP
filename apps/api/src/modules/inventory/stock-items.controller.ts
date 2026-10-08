@@ -51,7 +51,7 @@ export class StockItemsController {
   constructor(private readonly inventory: InventoryService) {}
 
   @Get()
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Залишки по складах' })
   @ApiQuery({ name: 'warehouseId', required: false })
   @ApiQuery({ name: 'goodId', required: false })
@@ -76,7 +76,7 @@ export class StockItemsController {
 
   // Specific sub-routes BEFORE :id — Fastify matches in declaration order
   @Get('by-document')
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Залишки по документах (товар → рухи по документах)' })
   @ApiQuery({ name: 'warehouseId', required: false })
   @ApiQuery({ name: 'goodId', required: false })
@@ -97,7 +97,7 @@ export class StockItemsController {
   // MECHANIC excluded — response includes batch.costPrice/salePrice. Pricing
   // exposure is restricted to OWNER/ADMIN/STOREKEEPER/ACCOUNTANT/RECEPTIONIST
   // (RECEPTIONIST already sees salePrice on the goods-list endpoint).
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Залишки по партіях (партія → товар → рухи)' })
   @ApiQuery({ name: 'warehouseId', required: false })
   @ApiQuery({ name: 'goodId', required: false })

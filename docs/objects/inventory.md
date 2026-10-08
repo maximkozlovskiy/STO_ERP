@@ -2,9 +2,10 @@
 
 > Товар (Good) + залишки (StockItem) + рухи (StockMovement) + партії (StockBatch) + собівартість.
 
-> **UI:** сторінка залишків тепер — вкладка **«Залишки»** на сторінці «Склад»
-> (`/stock-documents?tab=stock`), компонент `app/(app)/inventory/InventoryTab.tsx`. Маршрут
-> `/inventory` — redirect на цю вкладку. Деталі — `docs/objects/stock-document.md` (секція UI).
+> **UI:** залишки — вкладка **«Залишки»** у «Звітах» (`/reports?tab=inventory`), компонент
+> `app/(app)/inventory/InventoryTab.tsx`. Маршрути `/inventory` і `/stock-documents?tab=stock` —
+> redirect на неї. Рухи — вкладка «Рухи» на сторінці «Склад». Деталі —
+> `docs/objects/stock-document.md` (секція UI).
 
 ## Ключові факти
 

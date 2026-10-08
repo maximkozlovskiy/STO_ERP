@@ -12,7 +12,7 @@ import { toast } from '@/lib/toast';
  *   Alt+W      → /work-orders
  *   Alt+D      → /dashboard
  *   Alt+C      → /counterparties
- *   Alt+I      → /inventory
+ *   Alt+I      → /reports?tab=inventory (залишки)
  *   N          → new record in current section
  *   ?          → show shortcuts help toast
  *
@@ -66,7 +66,7 @@ export function useGlobalShortcuts(enabled: boolean) {
     useCallback(
       e => {
         e.preventDefault();
-        router.push('/inventory');
+        router.push('/reports?tab=inventory');
       },
       [router],
     ),

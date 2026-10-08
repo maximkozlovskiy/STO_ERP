@@ -110,6 +110,49 @@ describe('Таб-бар типів складського документа (BR
     expect(useStockDocumentsMock).toHaveBeenCalledWith(expect.objectContaining({ type: NEW_TYPE }));
   });
 
+  // Рішення власника 2026-10-08: верхньої смуги «Документи складу / Залишки / Рухи» немає;
+  // «Рухи» — вкладка праворуч у цьому ж рядку, «Залишки» — у «Звітах».
+  it('«Рухи» — остання вкладка рядка типів; окремих вкладок «Документи складу» і «Залишки» немає', async () => {
+    renderPage();
+
+    const movements = await screen.findByRole('button', { name: 'Рухи' });
+    const typeTab = screen.getByRole('button', { name: 'Переміщення' });
+    expect(movements.parentElement).toBe(typeTab.parentElement);
+    expect(movements.parentElement?.lastElementChild).toBe(movements);
+    expect(screen.queryByRole('button', { name: 'Документи складу' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Залишки' })).not.toBeInTheDocument();
+  });
+
+  it('клік по «Рухи» веде на ?tab=movements; у тому режимі список документів не запитується', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Рухи' }));
+    expect(replaceMock).toHaveBeenCalledWith('/stock-documents?tab=movements', { scroll: false });
+
+    useStockDocumentsMock.mockReset();
+    currentSearch = 'tab=movements';
+    renderPage();
+    expect(useStockDocumentsMock).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('button', { name: 'Рухи' }).at(-1)).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('у режимі «Рухи» клік по типу повертає до документів цього типу', async () => {
+    currentSearch = 'tab=movements';
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Переміщення' }));
+    expect(replaceMock).toHaveBeenCalledWith('/stock-documents?type=TRANSFER', { scroll: false });
+  });
+
+  it('старе посилання ?tab=stock перенаправляє у «Звіти → Залишки», сторінка складу не рендериться', async () => {
+    currentSearch = 'tab=stock';
+    renderPage();
+    expect(replaceMock).toHaveBeenCalledWith('/reports?tab=inventory');
+    expect(screen.queryByRole('button', { name: 'Переміщення' })).not.toBeInTheDocument();
+    expect(useStockDocumentsMock).not.toHaveBeenCalled();
+  });
+
   it('невідомий ?type= відкидається — список запитується без фільтра типу', async () => {
     currentSearch = 'type=NO_SUCH_TYPE';
     renderPage();

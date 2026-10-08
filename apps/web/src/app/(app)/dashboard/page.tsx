@@ -144,7 +144,7 @@ const ALL_QUICK_ACTIONS = [
   { href: '/purchase-orders', labelKey: 'purchaseOrders', icon: ShoppingCart },
   { href: '/invoices', labelKey: 'invoices', icon: Receipt },
   { href: '/calendar', labelKey: 'calendar', icon: CalendarClock },
-  { href: '/inventory', labelKey: 'inventory', icon: BarChart2 },
+  { href: '/reports?tab=inventory', labelKey: 'inventory', icon: BarChart2 },
 ];
 
 const DEFAULT_QUICK_ACTIONS = ['/work-orders', '/counterparties', '/purchase-orders', '/invoices'];
@@ -361,7 +361,7 @@ export default function DashboardPage() {
                 className="w-full"
               />
             </Link>
-            <Link href="/inventory" className="flex">
+            <Link href="/reports?tab=inventory" className="flex">
               <KpiCard
                 label={t('kpi.lowStock')}
                 value={streamData?.lowStockCount ?? kpi.lowStockCount}

@@ -133,12 +133,15 @@ export function useStockMovements(filters: StockMovementFilter = {}, enabled: bo
   });
 }
 
+const LOW_STOCK_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+
 export function useLowStockItems() {
   const { employee } = useAuth();
   return useQuery<LowStockItem[]>({
     queryKey: inventoryKeys.low(),
     queryFn: ({ signal }) => apiFetch('/stock-items/low', { signal }),
-    enabled: !!employee,
+    // backend @Roles on /stock-items/low: other roles of the balances tab would only get 403
+    enabled: !!employee && LOW_STOCK_ROLES.includes(employee.role),
     staleTime: 60_000,
   });
 }

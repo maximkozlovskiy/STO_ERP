@@ -78,22 +78,28 @@ DRAFT → CONFIRMED
 
 ## UI (Web)
 
-Сторінка меню **«Склад»** (`/stock-documents`) — таб-обгортка з двома вкладками:
-**«Документи складу»** (список складських документів) + **«Залишки»** (колишня сторінка
-`/inventory` як `InventoryTab`). `?tab=stock` відкриває «Залишки». Guard обгортки —
-OWNER/ADMIN/STOREKEEPER/RECEPTIONIST; вкладка «Документи складу» прихована для RECEPTIONIST
-(backend `@Roles` без RECEPTIONIST → default форсується на «Залишки»). Маршрут `/inventory`
-лишається як **redirect** на `/stock-documents?tab=stock` (старі посилання не ламаються).
+Сторінка меню **«Склад»** (`/stock-documents`) — список складських документів з одним рядком
+вкладок: типи документів (з `STOCK_DOC_TYPE_LABELS`, BR-SDOC-007) і праворуч — **«Рухи»**
+(`?tab=movements`, журнал рухів замість таблиці документів). Окремої верхньої смуги
+«Документи складу / Залишки / Рухи» немає (рішення власника 2026-10-08). Guard сторінки —
+OWNER/ADMIN/STOREKEEPER (документи й рухи містять ціни та собівартість; так само обмежує backend).
 
-| Компонент / сторінка  | Файл                                                            |
-| --------------------- | --------------------------------------------------------------- |
-| Таб-обгортка «Склад»  | `app/(app)/stock-documents/page.tsx` (StockTabsShell)           |
-| Список документів     | `app/(app)/stock-documents/page.tsx` (StockDocumentsPageClient) |
-| Вкладка «Залишки»     | `app/(app)/inventory/InventoryTab.tsx`                          |
-| Redirect /inventory   | `app/(app)/inventory/page.tsx`                                  |
-| Модалка створення     | `components/ui/StockDocumentCreateModal.tsx`                    |
-| Detail Panel schema   | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA`                |
-| Hook (TanStack Query) | `hooks/api/useStockDocuments.ts`                                |
+**«Залишки»** живуть у «Звітах»: `/reports?tab=inventory` рендерить той самий `InventoryTab`.
+Комірник і приймальник заходять у «Звіти» лише заради цієї вкладки — інших вкладок не бачать, і
+запит фінансового звіту для них не йде; бухгалтер бачить залишки разом із рештою звітів (API:
+`GET /stock-items`, `/stock-items/by-batch`, `/stock-items/by-document`, `/warehouses`).
+Старі адреси `/inventory` і `/stock-documents?tab=stock` — **redirect** на `/reports?tab=inventory`.
+
+| Компонент / сторінка  | Файл                                                                    |
+| --------------------- | ----------------------------------------------------------------------- |
+| Сторінка «Склад»      | `app/(app)/stock-documents/page.tsx` (StockPageShell, StockTypeTabs)    |
+| Список документів     | `app/(app)/stock-documents/page.tsx` (StockDocumentsPageClient)         |
+| Вкладка «Рухи»        | `app/(app)/stock-documents/StockMovementsTab.tsx`                       |
+| Вкладка «Залишки»     | `app/(app)/inventory/InventoryTab.tsx` (у `app/(app)/reports/page.tsx`) |
+| Redirect /inventory   | `app/(app)/inventory/page.tsx`                                          |
+| Модалка створення     | `components/ui/StockDocumentCreateModal.tsx`                            |
+| Detail Panel schema   | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA`                        |
+| Hook (TanStack Query) | `hooks/api/useStockDocuments.ts`                                        |
 
 ---
 

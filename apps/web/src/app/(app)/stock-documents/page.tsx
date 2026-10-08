@@ -23,7 +23,6 @@ import {
   Warehouse,
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
-import { InventoryTab } from '../inventory/InventoryTab';
 import { StockMovementsTab } from './StockMovementsTab';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
@@ -419,28 +418,19 @@ function StockDocumentsPageClient() {
         />
       )}
 
-      {/* Type tabs */}
-      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {TYPE_FILTERS.map(t2 => (
-          <button
-            key={t2}
-            type="button"
-            onClick={() => {
-              setTypeFilter(t2);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
-              typeFilter === t2
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
-            )}
-          >
-            {t2 ? stockDocTypeLabel(t2) : t('filters.all')}
-          </button>
-        ))}
-      </div>
+      {/* Type tabs (+ «Рухи» праворуч) */}
+      <StockTypeTabs
+        activeType={typeFilter}
+        movementsActive={false}
+        onSelectType={t2 => {
+          setTypeFilter(t2);
+          resetPage();
+          setActiveSavedFilterId(null);
+        }}
+        onSelectMovements={() =>
+          router.replace('/stock-documents?tab=movements', { scroll: false })
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -893,42 +883,63 @@ function StockDocumentsPageClient() {
   );
 }
 
-type StockTab = 'documents' | 'stock' | 'movements';
-// `restricted` — вкладка лише для OWNER/ADMIN/STOREKEEPER (backend @Roles; містить ціни/собівартість).
-// RECEPTIONIST бачить лише «Залишки».
-const STOCK_TABS: { key: StockTab; labelKey: string; restricted: boolean }[] = [
-  { key: 'documents', labelKey: 'tabs.documents', restricted: true },
-  { key: 'stock', labelKey: 'tabs.stock', restricted: false },
-  { key: 'movements', labelKey: 'tabs.movements', restricted: true },
-];
+const TAB_CLASS =
+  'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
+const TAB_ACTIVE = 'border-primary text-primary';
+const TAB_IDLE =
+  'border-transparent text-muted-foreground hover:text-foreground hover:border-border';
 
-// Ролі, яким backend дозволяє «Документи складу» + «Рухи» (stock-documents/stock-items movements
-// @Roles). RECEPTIONIST сюди НЕ входить (price-дані) → приховуємо, лишаючи лише «Залишки».
-const DOCS_TAB_ROLES = ['OWNER', 'ADMIN', 'STOREKEEPER'];
-
-// Таб-обгортка сторінки «Склад»: вкладка «Документи складу» (наявний список) + «Залишки»
-// (колишня сторінка /inventory як InventoryTab). Обидві вкладки — без власного page-shell.
-function StockTabsShell() {
+/**
+ * Рядок вкладок сторінки «Склад»: типи документів (з `STOCK_DOC_TYPE_LABELS`, BR-SDOC-007) і
+ * праворуч — «Рухи». Окремої верхньої смуги «Документи складу / Залишки / Рухи» більше немає:
+ * «Залишки» переїхали у «Звіти» (`/reports?tab=inventory`), а «Рухи» стали вкладкою тут.
+ */
+function StockTypeTabs({
+  activeType,
+  movementsActive,
+  onSelectType,
+  onSelectMovements,
+}: {
+  /** Активний тип документа; '' — «Всі». Ігнорується, коли відкрито «Рухи». */
+  activeType: string;
+  movementsActive: boolean;
+  onSelectType: (type: string) => void;
+  onSelectMovements: () => void;
+}) {
   const { t } = useTranslation('stockDocuments');
-  // Ширший guard — «Залишки» доступні і RECEPTIONIST (як була сторінка /inventory).
-  const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER', 'RECEPTIONIST']);
+  return (
+    <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
+      {TYPE_FILTERS.map(t2 => (
+        <button
+          key={t2}
+          type="button"
+          onClick={() => onSelectType(t2)}
+          className={cn(TAB_CLASS, !movementsActive && activeType === t2 ? TAB_ACTIVE : TAB_IDLE)}
+        >
+          {t2 ? stockDocTypeLabel(t2) : t('filters.all')}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onSelectMovements}
+        aria-current={movementsActive ? 'page' : undefined}
+        className={cn(TAB_CLASS, 'ml-auto', movementsActive ? TAB_ACTIVE : TAB_IDLE)}
+      >
+        {t('tabs.movements')}
+      </button>
+    </div>
+  );
+}
+
+// Сторінка «Склад»: документи складу + «Рухи». Ціни й собівартість → лише ролі документів
+// (backend @Roles на /stock-documents і рухах); приймальник сюди більше не заходить — його
+// «Залишки» тепер у «Звітах».
+function StockPageShell() {
+  const { t } = useTranslation('stockDocuments');
+  useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // RECEPTIONIST допущений до обгортки заради «Залишків», але backend /stock-documents
-  // 403-ить для нього → вкладку «Документи складу» приховуємо і форсуємо активну «stock».
-  const canSeeRestricted = !!employee && DOCS_TAB_ROLES.includes(employee.role);
-  const visibleTabs = canSeeRestricted ? STOCK_TABS : STOCK_TABS.filter(tab2 => !tab2.restricted);
-  const rawTab = searchParams.get('tab');
-  const requestedTab: StockTab =
-    rawTab === 'stock' ? 'stock' : rawTab === 'movements' ? 'movements' : 'documents';
-  // Обмежені вкладки недоступні RECEPTIONIST → форсуємо «Залишки».
-  const tab: StockTab = !canSeeRestricted && requestedTab !== 'stock' ? 'stock' : requestedTab;
-
-  const setTab = (next: StockTab) =>
-    router.replace(next === 'documents' ? '/stock-documents' : `/stock-documents?tab=${next}`, {
-      scroll: false,
-    });
+  const showMovements = searchParams.get('tab') === 'movements';
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -938,30 +949,20 @@ function StockTabsShell() {
         </div>
       </div>
 
-      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
-        {visibleTabs.map(tab2 => (
-          <button
-            key={tab2.key}
-            onMouseEnter={() => {
-              if (tab2.key === 'stock') void import('../inventory/InventoryTab');
-            }}
-            onClick={() => setTab(tab2.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === tab2.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t(tab2.labelKey)}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'stock' ? (
-        <InventoryTab />
-      ) : tab === 'movements' ? (
-        <StockMovementsTab />
+      {showMovements ? (
+        <>
+          <StockTypeTabs
+            activeType=""
+            movementsActive
+            onSelectType={type =>
+              router.replace(type ? `/stock-documents?type=${type}` : '/stock-documents', {
+                scroll: false,
+              })
+            }
+            onSelectMovements={() => undefined}
+          />
+          <StockMovementsTab />
+        </>
       ) : (
         <StockDocumentsPageClient />
       )}
@@ -969,10 +970,24 @@ function StockTabsShell() {
   );
 }
 
+// Старі посилання й закладки на вкладку «Залишки» (`?tab=stock`) ведуть у «Звіти». Редирект
+// стоїть ДО рольового guard-а сторінки: приймальник не має доступу до «Складу», але має до
+// залишків, і guard відправив би його геть раніше за редирект.
+function StockDocumentsRoute() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const legacyStockTab = searchParams.get('tab') === 'stock';
+  useEffect(() => {
+    if (legacyStockTab) router.replace('/reports?tab=inventory');
+  }, [legacyStockTab, router]);
+  if (legacyStockTab) return null;
+  return <StockPageShell />;
+}
+
 export default function StockDocumentsPage() {
   return (
     <Suspense fallback={null}>
-      <StockTabsShell />
+      <StockDocumentsRoute />
     </Suspense>
   );
 }

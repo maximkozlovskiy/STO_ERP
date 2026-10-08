@@ -33,7 +33,7 @@ export class WarehousesController {
   // MECHANIC needs read-only access — work order /parts modal renders a
   // warehouse <Select> and MECHANIC is permitted to add parts via
   // WorkOrdersController.@Roles('...','MECHANIC').
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'STOREKEEPER', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список складів' })
   @ApiQuery({ name: 'branchId', required: false })
   @ApiQuery({ name: 'showDeleted', required: false, type: Boolean })

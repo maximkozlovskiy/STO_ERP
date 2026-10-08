@@ -4,7 +4,8 @@
     "tabs": {
       "revenue": "Revenue",
       "workOrders": "Work orders",
-      "stock": "Stock",
+      "inventory": "Stock balances",
+      "stock": "Stock report",
       "settlements": "Settlements",
       "settlementsDetail": "Accounts",
       "load": "Utilization",

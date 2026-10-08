@@ -4,7 +4,8 @@
     "tabs": {
       "revenue": "Виручка",
       "workOrders": "Наряди",
-      "stock": "Залишки",
+      "inventory": "Залишки",
+      "stock": "Звіт по складу",
       "settlements": "Взаєморозрахунки",
       "settlementsDetail": "Розрахунки",
       "load": "Завантаженість",

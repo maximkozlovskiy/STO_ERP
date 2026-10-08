@@ -101,10 +101,10 @@ test.describe('Cross-cache invalidation (WEB-H1/H2) — рух складу он
 
     try {
       // 1) Відкриваємо «Залишки» (goods mode) — монтуємо+кешуємо inventory query.
-      //    /inventory тепер redirect → /stock-documents?tab=stock; ідемо напряму на ціль,
+      //    /inventory тепер redirect → /reports?tab=inventory; ідемо напряму на ціль,
       //    щоб уникнути гонки redirect-хопу (h1 «Склад» — таб-обгортка).
-      await page.goto('/stock-documents?tab=stock');
-      await expect(page.locator('h1:has-text("Склад")')).toBeVisible({ timeout: 20_000 });
+      await page.goto('/reports?tab=inventory');
+      await expect(page.locator('h1:has-text("Звіти")')).toBeVisible({ timeout: 20_000 });
       // Дочекатись завантаження таблиці залишків (query у кеші).
       await expect(
         page
@@ -136,8 +136,8 @@ test.describe('Cross-cache invalidation (WEB-H1/H2) — рух складу он
       await expect(confirmBtn).toBeHidden({ timeout: 15_000 });
 
       // 4) Навігація назад на «Залишки». Query була інвалідована → рефетч.
-      await page.goto('/stock-documents?tab=stock');
-      await expect(page.locator('h1:has-text("Склад")')).toBeVisible({ timeout: 20_000 });
+      await page.goto('/reports?tab=inventory');
+      await expect(page.locator('h1:has-text("Звіти")')).toBeVisible({ timeout: 20_000 });
 
       // 5) Читаємо кількість товару ПІСЛЯ проведення — має бути before + RECEIPT_QTY.
       //    (Джерело те саме що useStockItems; доводить що рух складу проведено.)

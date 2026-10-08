@@ -111,6 +111,8 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Склад',
     icon: FileText,
     section: 'documents',
+    // Документи складу й рухи містять ціни й собівартість (backend @Roles).
+    roles: ['OWNER', 'ADMIN', 'STOREKEEPER'],
   },
 
   // ─── Взаєморозрахунки ─────────────────────────────────────────────
@@ -179,7 +181,8 @@ export const MASTER_NAV_ITEMS: NavItem[] = [
     label: 'Звіти',
     icon: BarChart2,
     section: 'reports',
-    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT'],
+    // Комірник і приймальник бачать тут лише вкладку «Залишки» (reports/page.tsx).
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'STOREKEEPER', 'RECEPTIONIST'],
   },
 
   // ─── Довідники ────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/table';
 import { cn, escapeCsvCell } from '@/lib/utils';
 import { fmtMoney, kyivToday } from '@/lib/format';
+import { InventoryTab } from '../inventory/InventoryTab';
 import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
 import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
@@ -44,7 +45,12 @@ const LoadChart = dynamic(() => import('./ReportsCharts').then(m => m.LoadChart)
   loading: () => <div className="h-72 bg-surface-hover animate-pulse rounded-xl" />,
 });
 
-type Tab = ReportTab | 'builder';
+type Tab = ReportTab | 'builder' | 'inventory';
+
+// Фінансові звіти — лише цим ролям (так само обмежує бекенд /reports). Комірник і приймальник
+// заходять на сторінку заради вкладки «Залишки» (переїхала сюди зі «Складу») і бачать лише її.
+const FINANCE_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
+const INVENTORY_ONLY_ROLES = ['STOREKEEPER', 'RECEPTIONIST'];
 
 // Форми звітів — ЗІ ЗГЕНЕРОВАНИХ схем, не рукописні: тепер вони є в OpenAPI-документі
 // (reports.dto.ts), тож зміна на беку ламає компіляцію ТУТ, а не дає тихий undefined
@@ -88,11 +94,15 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 }
 
 function ReportsPageClient() {
-  useRequireAuth(['OWNER', 'ADMIN', 'ACCOUNTANT']);
+  const { employee } = useRequireAuth([...FINANCE_ROLES, ...INVENTORY_ONLY_ROLES]);
   const { t } = useTranslation('reports');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = (searchParams.get('tab') ?? 'revenue') as Tab;
+  // Поки роль невідома (auth ще вантажиться) — вважаємо доступ вузьким: фінансовий запит не
+  // має піти раніше, ніж з'ясується, що користувач має на нього право.
+  const canSeeFinance = !!employee && FINANCE_ROLES.includes(employee.role);
+  const requestedTab = (searchParams.get('tab') ?? 'revenue') as Tab;
+  const tab: Tab = canSeeFinance ? requestedTab : 'inventory';
   const setTab = (t: Tab) => router.replace(`?tab=${t}`, { scroll: false });
   // `new Date()` тримати ВСЕРЕДИНІ useState initializer — він викликається
   // тільки на першому render; винесена в render path змінна перевиконується на кожний
@@ -102,7 +112,12 @@ function ReportsPageClient() {
 
   // 'builder' — окрема self-contained вкладка (не фіксований звіт). Мапимо на
   // 'settlements-detail' лише щоб useReport НЕ слав запит (той tab має enabled:false).
-  const reportQuery = useReport(tab === 'builder' ? 'settlements-detail' : tab, from, to);
+  // 'inventory' — так само self-contained (InventoryTab має власні дані й фільтри).
+  const reportQuery = useReport(
+    tab === 'builder' || tab === 'inventory' ? 'settlements-detail' : tab,
+    from,
+    to,
+  );
   const { data: rawData, isLoading: loading, error: queryError } = reportQuery;
   // keepPreviousData повертає старі дані при зміні tab — треба використовувати _tab
   // з реального queryKey (не поточний tab), щоб не рендерити stock-поля для revenue-даних.
@@ -112,9 +127,10 @@ function ReportsPageClient() {
   const data = rawData && resolvedTab ? ({ ...rawData, _tab: resolvedTab } as ReportData) : null;
   const error = queryError instanceof Error ? queryError.message : '';
 
-  const tabs: { id: Tab; label: string }[] = [
+  const allTabs: { id: Tab; label: string }[] = [
     { id: 'revenue', label: t('page.tabs.revenue') },
     { id: 'work-orders', label: t('page.tabs.workOrders') },
+    { id: 'inventory', label: t('page.tabs.inventory') },
     { id: 'stock', label: t('page.tabs.stock') },
     { id: 'settlements', label: t('page.tabs.settlements') },
     { id: 'settlements-detail', label: t('page.tabs.settlementsDetail') },
@@ -123,6 +139,7 @@ function ReportsPageClient() {
     { id: 'vat', label: t('page.tabs.vat') },
     { id: 'builder', label: t('page.tabs.builder') },
   ];
+  const tabs = canSeeFinance ? allTabs : allTabs.filter(x => x.id === 'inventory');
 
   const needsDates = ['revenue', 'work-orders', 'load', 'stock', 'profitability', 'vat'].includes(
     tab,
@@ -160,8 +177,11 @@ function ReportsPageClient() {
       {/* Конструктор — self-contained вкладка (власні фільтри/дані/експорт) */}
       {tab === 'builder' && <ReportBuilder />}
 
+      {/* Залишки — self-contained вкладка (колишня сторінка /inventory) */}
+      {tab === 'inventory' && <InventoryTab />}
+
       {/* Filters — один рядок, приховуємо для вкладок Розрахунки/Конструктор */}
-      {!isSettlementsDetail && tab !== 'builder' && (
+      {!isSettlementsDetail && tab !== 'builder' && tab !== 'inventory' && (
         <div className="flex flex-wrap gap-3 py-4 items-center shrink-0">
           {needsDates && (
             <>
@@ -212,7 +232,7 @@ function ReportsPageClient() {
       {/* Scrollable content area — page-fill = overflow-hidden, тому тут власний скрол.
           Конструктор (builder) рендериться вище (self-contained) → сюди не заходить,
           інакше під ним показувався б порожній placeholder «Оберіть параметри». */}
-      {tab !== 'builder' && (
+      {tab !== 'builder' && tab !== 'inventory' && (
         <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Розрахунки — власний split-panel UI, не пов'язаний з useReport */}
           {isSettlementsDetail && <SettlementsTabContent />}

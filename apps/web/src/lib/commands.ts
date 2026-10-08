@@ -56,7 +56,7 @@ const NAV_COMMANDS: CommandDef[] = [
     id: 'nav:inventory',
     label: 'Залишки на складах',
     group: 'navigation',
-    href: '/stock-documents?tab=stock',
+    href: '/reports?tab=inventory',
     keywords: ['залишки', 'запчастини', 'stock', 'склад'],
   },
   {
