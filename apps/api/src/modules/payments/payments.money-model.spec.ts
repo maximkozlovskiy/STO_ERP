@@ -500,7 +500,7 @@ describe('PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674)',
     ];
     const storedSources: unknown[] = [];
     for (const source of variants) {
-      await service.create(ORG, { ...baseDto, amount: 200, ...source }, 'user-1');
+      await service.create(ORG, { ...baseDto, amount: 200, ...source } as never, 'user-1');
       storedSources.push(lastCreateData?.sourceType);
     }
 

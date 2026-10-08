@@ -201,8 +201,8 @@ afterAll(async () => {
   if (raw) await raw.$disconnect();
 });
 
-const lineOf = (period: { lines: { employeeId: string }[] }, employeeId: string) =>
-  period.lines.find(l => l.employeeId === employeeId) as
+const lineOf = (period: { lines?: { employeeId: string }[] }, employeeId: string) =>
+  (period.lines ?? []).find(l => l.employeeId === employeeId) as
     { baseAmount: number; accruedAmount: number; linesCount: number } | undefined;
 
 describe('PayrollService — нарахування на живій БД (integration)', () => {
