@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import { useState } from 'react';
 import { vi, it, expect, describe } from 'vitest';
 import { DateRangeFilter } from '../date-range-filter';
 
@@ -53,5 +54,39 @@ describe('DateRangeFilter', () => {
     const { onFromChange } = setup('', '');
     fireEvent.change(screen.getByLabelText('З'), { target: { value: '10.10.2026' } });
     expect(onFromChange).toHaveBeenCalledWith('2026-10-10');
+  });
+
+  // Bug #815, наживо на «Касі»: період 09.03–09.03, касир хоче 11.03–11.03 і вводить спершу «З».
+  // «З 11.03» пізніше за «По» → відхиляється; далі «По 11.03» приймається. Поля показували
+  // «11.03 – 11.03», а застосовано було 09.03 – 11.03: список за три дні під періодом в один.
+  it('відхилена межа не лишається в полі: показаний період дорівнює застосованому', () => {
+    let applied = { from: '', to: '' };
+    const Harness = () => {
+      const [from, setFrom] = useState('2026-03-09');
+      const [to, setTo] = useState('2026-03-09');
+      applied = { from, to };
+      return (
+        <DateRangeFilter
+          from={from}
+          to={to}
+          onFromChange={setFrom}
+          onToChange={setTo}
+          fromLabel="З"
+          toLabel="По"
+        />
+      );
+    };
+    render(<Harness />);
+    const fromInput = screen.getByLabelText('З');
+    const toInput = screen.getByLabelText('По');
+
+    fireEvent.change(fromInput, { target: { value: '11.03.2026' } });
+    fireEvent.blur(fromInput);
+    fireEvent.change(toInput, { target: { value: '11.03.2026' } });
+    fireEvent.blur(toInput);
+
+    expect(applied).toEqual({ from: '2026-03-09', to: '2026-03-11' });
+    expect(fromInput).toHaveValue('09.03.2026');
+    expect(toInput).toHaveValue('11.03.2026');
   });
 });

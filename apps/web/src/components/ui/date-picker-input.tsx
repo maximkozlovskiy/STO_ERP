@@ -124,8 +124,8 @@ export function DatePickerInput({
     // Try to parse DD.MM.YYYY manually typed input
     if (text.length === 10) {
       const parsed = parse(text, 'dd.MM.yyyy', new Date());
-      // reject out-of-range dates (silently — UI shows raw text, but
-      // onChange does not fire so parent's `value` stays valid).
+      // reject out-of-range dates: onChange does not fire so parent's `value` stays valid;
+      // the raw text stays only while the field is focused — onBlur restores the applied value.
       if (isValid(parsed) && isWithinBounds(parsed)) {
         onChange(format(parsed, 'yyyy-MM-dd'));
       }
@@ -165,6 +165,11 @@ export function DatePickerInput({
           type="text"
           value={inputText}
           onChange={handleInputChange}
+          // Поле показує лише те, що справді застосовано. Недописана дата («10.03») або дата поза
+          // межами min/max до батька не доходить, і без цього лишалась у полі назавжди: у відборі
+          // «З 09.03 По 09.03» ввід «З 11.03» відхилявся мовчки, далі «По 11.03» — і на екрані
+          // стояло «11.03 – 11.03», а список показував 09.03 – 11.03 (Bug #815).
+          onBlur={() => setInputText(displayDate(value))}
           onFocus={() => setOpen(true)}
           // Після Enter/Escape фокус лишається в полі, а календар закритий. Без onClick
           // повторний клік по полю нічого не робив (focus не спрацьовує вдруге) — календар

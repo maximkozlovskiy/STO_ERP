@@ -1,5 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { vi, it, expect, describe } from 'vitest';
 import { DatePickerInput } from '../date-picker-input';
 
@@ -71,5 +72,44 @@ describe('DatePickerInput — закриття календаря з клаві�
     expect(document.activeElement).toBe(input);
     await user.click(input);
     expect(calendar()).not.toBeNull();
+  });
+});
+
+// Bug #815: дата, яку поле не прийняло (поза межами min/max або недописана), до батька не
+// доходить. Раніше вона лишалась у полі назавжди — на екрані стояла одна дата, а застосована
+// була інша.
+describe('DatePickerInput — поле показує лише застосовану дату', () => {
+  it('дата поза межами: onChange не кличеться, після виходу з поля повертається застосована', () => {
+    const onChange = vi.fn();
+    render(<DatePickerInput value="2026-03-09" onChange={onChange} max="2026-03-09" />);
+    const input = screen.getByPlaceholderText('ДД.ММ.РРРР');
+    fireEvent.change(input, { target: { value: '11.03.2026' } });
+    expect(onChange).not.toHaveBeenCalled();
+    // поки поле у фокусі — користувач бачить, що ввів
+    expect(input).toHaveValue('11.03.2026');
+    fireEvent.blur(input);
+    expect(input).toHaveValue('09.03.2026');
+  });
+
+  it('недописана дата після виходу з поля не лишається', () => {
+    const onChange = vi.fn();
+    render(<DatePickerInput value="2026-03-09" onChange={onChange} />);
+    const input = screen.getByPlaceholderText('ДД.ММ.РРРР');
+    fireEvent.change(input, { target: { value: '11.03' } });
+    fireEvent.blur(input);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input).toHaveValue('09.03.2026');
+  });
+
+  it('очищене поле лишається порожнім: «без межі» — теж застосоване значення', () => {
+    const Harness = () => {
+      const [value, setValue] = useState('2026-03-09');
+      return <DatePickerInput value={value} onChange={setValue} />;
+    };
+    render(<Harness />);
+    const input = screen.getByPlaceholderText('ДД.ММ.РРРР');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue('');
   });
 });
