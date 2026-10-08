@@ -367,4 +367,8 @@ done
 
 - [ ] BullMQ self-re-enqueue під `jobId` активної задачі — `add` мовчки відкидається, ланцюг опитування обривається після першого кроку (Bug #804) — `T1.1-081`
 
+- [ ] Друкований документ бере суму з рядків, а борг — з тоталу документа-джерела: тотал округлено раз, рядки — кожен окремо, різниця в копійку (Bug #807). Наживо: 3 × (0,3 × 111,11) + 0,07 у КОЖНОМУ режимі ПДВ; звірити PDF з боргом. Grep: `grep -rn "linesTotal\|sumMoney(.*lines" apps/api/src/modules --include=*.service.ts`
+
+- [ ] Raw SQL: `<timestamp без зони> AT TIME ZONE 'Europe/Kyiv'` зсуває UTC-мітку НАЗАД — нічні події йдуть у попередній день (Bug #808). Правильно: `AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv'`. Grep: `grep -rn "AT TIME ZONE" apps/api/src --include=*.ts | grep -v "'UTC' AT TIME ZONE"`
+
 ---

@@ -45,4 +45,6 @@ test -f apps/web/playwright.config.ts && echo "playwright OK" || echo "playwrigh
 
 - [ ] Нове правило «документ входить лише в один …» проти E2E, що створює незворотний документ на широкий діапазон: наступний тест лишається без даних, dev-база — без документів (Bug #805) — `T1.6-015`
 
+- [ ] `await waitFor(текст)` і одразу `expect(callback).toHaveBeenCalledTimes(1)`, коли callback кличе `useEffect`, а оновлення приходить із таймера/refetch поза `act`: під навантаженням ефект ще не виконався → «got 0 times» (Bug #809). Чекати сам виклик у `waitFor`, «рівно один» — після паузи. Відтворення: спек поруч із повним `vitest run`.
+
 ---
