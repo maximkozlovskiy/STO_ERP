@@ -440,10 +440,7 @@ function StockDocumentsPageClient() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 shrink-0">
         {/* Status filters */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">
-            {t('filters.status')}
-          </span>
+        <div className="flex items-center gap-1.5" role="group" aria-label={t('filters.status')}>
           {STATUS_FILTERS.map(s => (
             <StatusPill
               key={s}
