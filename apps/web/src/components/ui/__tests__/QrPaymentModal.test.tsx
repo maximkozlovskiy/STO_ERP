@@ -105,7 +105,13 @@ describe('QrPaymentModal (QR-оплата monobank)', () => {
     await waitFor(() => expect(screen.getByText('Оплачено')).toBeInTheDocument(), {
       timeout: 10_000,
     });
-    // onPaid викликано (гейт status==='PAID' один раз через залежність [status]).
+    // onPaid кличе пасивний ефект ПІСЛЯ коміту, що намалював «Оплачено». Оновлення приходить з
+    // таймера React Query (поза act), тож між появою тексту й ефектом є проміжок: під навантаженням
+    // негайний expect бачив 0 викликів. Чекаємо виклик, а «рівно один» перевіряємо вже після нього.
+    await waitFor(() => expect(onPaid).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 50));
+    });
     expect(onPaid).toHaveBeenCalledTimes(1);
   }, 15_000);
 
@@ -117,6 +123,8 @@ describe('QrPaymentModal (QR-оплата monobank)', () => {
     );
     await waitFor(() => expect(screen.getByText('Оплачено')).toBeInTheDocument());
     expect(screen.queryByTestId('qr')).not.toBeInTheDocument();
+    // той самий проміжок між комітом і пасивним ефектом, що й у тесті вище
+    await waitFor(() => expect(onPaid).toHaveBeenCalled());
     expect(onPaid).toHaveBeenCalledTimes(1);
   });
 
