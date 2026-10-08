@@ -158,4 +158,11 @@ describe('BankTransactionsTab — пошук і дати', () => {
     expect(searchRow).toHaveTextContent('З');
     expect(searchRow).toHaveTextContent('По');
   });
+
+  // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле
+  // не дає ввести більше, ніж буде знайдено.
+  it('поле пошуку обмежене 100 символами — межа бекенду', () => {
+    render(<BankTransactionsTab />);
+    expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
+  });
 });

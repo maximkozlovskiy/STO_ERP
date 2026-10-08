@@ -144,4 +144,11 @@ describe('PaymentsPage — пошук і дати', () => {
     expect(row).toHaveTextContent('З');
     expect(row).toHaveTextContent('По');
   });
+
+  // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле
+  // не дає ввести більше, ніж буде знайдено.
+  it('поле пошуку обмежене 100 символами — межа бекенду', () => {
+    render(<PaymentsPage />);
+    expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
+  });
 });

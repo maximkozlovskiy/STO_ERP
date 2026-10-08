@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/table';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate } from '@/lib/format';
+import { LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 
 const LIMIT = 20;
@@ -120,6 +121,7 @@ function PaymentsPageInner() {
           onChange={e => resetPageAnd(() => setSearch(e.target.value))}
           placeholder={t('page.filters.searchPlaceholder')}
           aria-label={t('page.filters.searchPlaceholder')}
+          maxLength={LIST_SEARCH_MAX_LENGTH}
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />

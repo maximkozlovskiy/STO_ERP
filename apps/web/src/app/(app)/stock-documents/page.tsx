@@ -69,7 +69,7 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
-import { cn, UUID_RE } from '@/lib/utils';
+import { cn, UUID_RE, LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
 import {
   PAGE_TAB_ACTIVE as TAB_ACTIVE,
   PAGE_TAB_CLASS as TAB_CLASS,
@@ -482,6 +482,7 @@ function StockDocumentsPageClient() {
           }}
           placeholder={t('filters.searchPlaceholder')}
           aria-label={t('filters.searchPlaceholder')}
+          maxLength={LIST_SEARCH_MAX_LENGTH}
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />

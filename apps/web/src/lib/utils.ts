@@ -144,6 +144,14 @@ export function lineAmount(qty: number, price: number): number {
   return roundMoney(qty * price);
 }
 
+/**
+ * Найдовший текст пошуку у списках документів (складські документи, рухи, оплати, банк, каса).
+ * Та сама межа, що на бекенді: два списки відхиляють довший `q` помилкою 400 (DTO `@MaxLength(100)`),
+ * три — мовчки обрізають. Без обмеження в полі вставлений довгий рядок давав 400, а таблиця
+ * лишалась із рядками попереднього пошуку (Bug #816).
+ */
+export const LIST_SEARCH_MAX_LENGTH = 100;
+
 /** Режим ПДВ організації (`OrganisationSettings.vatMode`). */
 export type VatModeValue = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
 

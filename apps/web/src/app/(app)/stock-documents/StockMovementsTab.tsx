@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
 import { fmtMoney, fmtDateTime } from '@/lib/format';
 import {
   Table,
@@ -113,6 +113,7 @@ export function StockMovementsTab() {
           onChange={e => resetAnd(() => setSearch(e.target.value))}
           placeholder={t('movements.searchPlaceholder')}
           aria-label={t('movements.searchPlaceholder')}
+          maxLength={LIST_SEARCH_MAX_LENGTH}
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />

@@ -88,4 +88,11 @@ describe('StockMovementsTab — пошук', () => {
     expect(search.compareDocumentPosition(from!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(from!.compareDocumentPosition(to!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле
+  // не дає ввести більше, ніж буде знайдено.
+  it('поле пошуку обмежене 100 символами — межа бекенду', () => {
+    render(<StockMovementsTab />);
+    expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
+  });
 });

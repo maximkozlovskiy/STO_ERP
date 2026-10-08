@@ -33,6 +33,7 @@ import { BankStatementImportModal } from '@/components/ui/BankStatementImportMod
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 
 const STATUS_OPTIONS: BankTxStatus[] = ['UNMATCHED', 'MATCHED', 'IGNORED'];
@@ -148,6 +149,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
           }}
           placeholder={t('page.filters.searchPlaceholder')}
           aria-label={t('page.filters.searchPlaceholder')}
+          maxLength={LIST_SEARCH_MAX_LENGTH}
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />

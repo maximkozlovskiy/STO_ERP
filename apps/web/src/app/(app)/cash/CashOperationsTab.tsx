@@ -21,7 +21,7 @@ import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { useDebounce } from '@/hooks/useDebounce';
-import { cn } from '@/lib/utils';
+import { cn, LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
 import {
   Table,
   TableHeader,
@@ -280,6 +280,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
           onChange={e => setSearch(e.target.value)}
           placeholder={t('operations.searchPlaceholder')}
           aria-label={t('operations.searchPlaceholder')}
+          maxLength={LIST_SEARCH_MAX_LENGTH}
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />

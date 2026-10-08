@@ -178,4 +178,12 @@ describe('Складські документи — пошук', () => {
     expect(searchInput()).toHaveValue('');
     expect(lastFilter()).toEqual(expect.objectContaining({ q: undefined, status: 'DRAFT' }));
   });
+
+  // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле
+  // не дає ввести більше, ніж буде знайдено.
+  it('поле пошуку обмежене 100 символами — межа бекенду', async () => {
+    renderPage();
+    await screen.findByPlaceholderText(SEARCH);
+    expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
+  });
 });

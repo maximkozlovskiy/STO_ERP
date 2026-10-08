@@ -140,4 +140,11 @@ describe('CashOperationsTab — пошук і дати', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('Внесіть або видайте готівку')).not.toBeInTheDocument();
   });
+
+  // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле
+  // не дає ввести більше, ніж буде знайдено.
+  it('поле пошуку обмежене 100 символами — межа бекенду', () => {
+    render(<CashOperationsTab />);
+    expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
+  });
 });
