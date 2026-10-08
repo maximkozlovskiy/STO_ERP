@@ -773,6 +773,8 @@ export const uk: Record<string, string> = {
   // ── Exception-повідомлення: settlements-модуль ──
   'err.settlement.counterpartyNotFound': 'Контрагента не знайдено',
   'err.settlement.accountNotFound': 'Розрахунковий рахунок не знайдено',
+  'err.settlement.actPeriodTooLarge':
+    'У періоді понад {{limit}} транзакцій — звузьте період акта звірки',
   'err.settlement.reconciliationActNotFound': 'Акт звірки не знайдено',
   'err.settlement.amountMustBePositive': 'Сума транзакції повинна бути більшою за нуль',
   'err.settlement.counterpartyAccountNotFound': 'Розрахунковий рахунок контрагента не знайдено',

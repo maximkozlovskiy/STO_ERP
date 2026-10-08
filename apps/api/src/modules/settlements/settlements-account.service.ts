@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -7,6 +7,9 @@ import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 import { BALANCE_SIGN } from './settlements.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
+
+/** Max rows in one reconciliation act snapshot; a larger period is rejected, not truncated. */
+const ACT_MAX_TRANSACTIONS = 5000;
 
 // Module-level Intl singleton — DateTimeFormat constructor is the expensive part (locale-data init).
 // Both kyivStartOfDay/kyivEndOfDay used to allocate a new formatter per call; createReconciliationAct
@@ -100,6 +103,34 @@ export class SettlementsAccountService {
     };
   }
 
+  /**
+   * Σ(знак × сума у базовій валюті) транзакцій рахунку, пізніших за `after`. Два агрегати по
+   * типах: рядки з `amountBase` і історичні без нього (до мультивалюти: amount = base).
+   */
+  private async signedDeltaAfter(
+    settlementAccountId: string,
+    orgId: string,
+    after: Date,
+  ): Promise<number> {
+    const where = { settlementAccountId, orgId, createdAt: { gt: after } };
+    const [withBase, legacy] = await Promise.all([
+      this.prisma.settlementTransaction.groupBy({
+        by: ['type'],
+        where: { ...where, amountBase: { not: null } },
+        _sum: { amountBase: true },
+      }),
+      this.prisma.settlementTransaction.groupBy({
+        by: ['type'],
+        where: { ...where, amountBase: null },
+        _sum: { amount: true },
+      }),
+    ]);
+    let delta = 0;
+    for (const g of withBase) delta += BALANCE_SIGN[g.type] * Number(g._sum.amountBase ?? 0);
+    for (const g of legacy) delta += BALANCE_SIGN[g.type] * Number(g._sum.amount ?? 0);
+    return money(delta);
+  }
+
   async createReconciliationAct(
     orgId: string,
     counterpartyId: string,
@@ -139,8 +170,17 @@ export class SettlementsAccountService {
         createdAt: { gte: from, lte: to },
       },
       orderBy: { createdAt: 'asc' },
-      take: 5000,
+      // +1 понад стелю — лише щоб помітити переповнення: акт з обрізаним переліком і повними
+      // сумами клієнт підписати не може, тож краще відмовити, ніж мовчки обрізати.
+      take: ACT_MAX_TRANSACTIONS + 1,
     });
+    if (transactions.length > ACT_MAX_TRANSACTIONS) {
+      throw new BadRequestException(
+        translateError('err.settlement.actPeriodTooLarge', getLocale(), {
+          limit: ACT_MAX_TRANSACTIONS,
+        }),
+      );
+    }
 
     // Opening balance derived from current snapshot balance minus in-period delta
     // This avoids a full table scan on the append-only transactions log
@@ -161,7 +201,12 @@ export class SettlementsAccountService {
       ),
     );
 
-    const closingBalance = moneyFromDecimal(account.balance);
+    // BR-SETL-011: закриваючий баланс — СТАНОМ НА КІНЕЦЬ ПЕРІОДУ, а не поточний. До 2026-10-08
+    // сюди йшов `account.balance` як є, і акт за січень, сформований у березні, показував
+    // березневий залишок. Поточний баланс мінус усе, що сталося ПІСЛЯ періоду, дає залишок на
+    // його кінець; транзакцій після періоду може бути скільки завгодно, тому — агрегат, не вибірка.
+    const afterPeriodDelta = await this.signedDeltaAfter(account.id, orgId, to);
+    const closingBalance = money(moneyFromDecimal(account.balance) - afterPeriodDelta);
     const openingBalance = money(closingBalance - periodDelta);
 
     const act = await this.prisma.reconciliationAct.create({

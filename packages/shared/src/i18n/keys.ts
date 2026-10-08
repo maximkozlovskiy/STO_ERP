@@ -772,6 +772,7 @@ export const VALIDATION_KEYS = [
   // Exception-повідомлення: settlements-модуль
   'err.settlement.counterpartyNotFound',
   'err.settlement.accountNotFound',
+  'err.settlement.actPeriodTooLarge',
   'err.settlement.reconciliationActNotFound',
   'err.settlement.amountMustBePositive',
   'err.settlement.counterpartyAccountNotFound',

@@ -14,6 +14,8 @@ export function makeAccountFixture() {
     settlementTransaction: {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
+      // Транзакції ПІСЛЯ періоду акта (агрегат по типах); за замовчуванням їх немає.
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     counterparty: { findFirst: vi.fn().mockResolvedValue({ id: 'cp-1' }) },
     reconciliationAct: {

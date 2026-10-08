@@ -787,6 +787,8 @@ export const en: Record<string, string> = {
   // ── Exception messages: settlements module ──
   'err.settlement.counterpartyNotFound': 'Counterparty not found',
   'err.settlement.accountNotFound': 'Settlement account not found',
+  'err.settlement.actPeriodTooLarge':
+    'The period has more than {{limit}} transactions — narrow the reconciliation act period',
   'err.settlement.reconciliationActNotFound': 'Reconciliation act not found',
   'err.settlement.amountMustBePositive': 'The transaction amount must be greater than zero',
   'err.settlement.counterpartyAccountNotFound': 'Counterparty settlement account not found',

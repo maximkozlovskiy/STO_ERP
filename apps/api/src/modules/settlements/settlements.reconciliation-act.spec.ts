@@ -58,6 +58,87 @@ describe('SettlementsAccountService — акт звірки', () => {
     expect(act.openingBalance).toBe(-2650);
   });
 
+  // До 2026-10-08 закриваючий баланс брався з поточного залишку: акт за липень, сформований
+  // у вересні, показував вересневий залишок, і клієнт підписував не ті цифри.
+  // guards: BR-SETL-011
+  it('акт за минулий період: закриваючий = залишок на КІНЕЦЬ періоду (поточний мінус усе пізніше)', async () => {
+    // Поточний баланс 1000. У липні: +300 −100 = +200. Після липня: +500 (CHARGE) −50 (PAYMENT) = +450.
+    prisma.settlementTransaction.findMany.mockResolvedValue([
+      txRow({ type: 'CHARGE', amount: '300.00', amountBase: '300.00' }),
+      txRow({ type: 'PAYMENT', amount: '100.00', amountBase: '100.00' }),
+    ]);
+    prisma.settlementTransaction.groupBy.mockImplementation(
+      ({ where }: { where: { amountBase: unknown } }) =>
+        Promise.resolve(
+          where.amountBase === null
+            ? []
+            : [
+                { type: 'CHARGE', _sum: { amountBase: '500.00' } },
+                { type: 'PAYMENT', _sum: { amountBase: '50.00' } },
+              ],
+        ),
+    );
+
+    const act = await service.createReconciliationAct('org-1', 'cp-1', period);
+
+    expect(act.closingBalance).toBe(550); // 1000 − 450
+    expect(act.openingBalance).toBe(350); // 550 − 200
+  });
+
+  // guards: BR-SETL-011, BR-SETL-006
+  it('транзакції після періоду: лише свій рахунок і організація, строго ПІСЛЯ кінця періоду; історичні без amountBase — сумою amount', async () => {
+    prisma.settlementTransaction.groupBy.mockImplementation(
+      ({ where }: { where: { amountBase: unknown } }) =>
+        Promise.resolve(
+          where.amountBase === null ? [{ type: 'PAYMENT', _sum: { amount: '70.00' } }] : [],
+        ),
+    );
+
+    const act = await service.createReconciliationAct('org-1', 'cp-1', period);
+
+    expect(act.closingBalance).toBe(1070); // 1000 − (−70)
+    const to = new Date('2026-07-31T20:59:59.999Z');
+    expect(prisma.settlementTransaction.groupBy).toHaveBeenCalledTimes(2);
+    for (const call of prisma.settlementTransaction.groupBy.mock.calls) {
+      expect(call[0].where).toMatchObject({
+        settlementAccountId: 'acc-1',
+        orgId: 'org-1',
+        createdAt: { gt: to },
+      });
+    }
+  });
+
+  // guards: BR-SETL-011
+  it('після періоду нічого не було → закриваючий = поточний баланс', async () => {
+    const act = await service.createReconciliationAct('org-1', 'cp-1', period);
+    expect(act.closingBalance).toBe(1000);
+    expect(act.openingBalance).toBe(1000);
+  });
+
+  // guards: BR-SETL-011
+  it('у періоді понад 5000 транзакцій → 400 «звузьте період», акт не створюється (не обрізаємо мовчки)', async () => {
+    prisma.settlementTransaction.findMany.mockResolvedValue(
+      Array.from({ length: 5001 }, () => txRow()),
+    );
+
+    await expect(service.createReconciliationAct('org-1', 'cp-1', period)).rejects.toThrow(
+      'У періоді понад 5000 транзакцій — звузьте період акта звірки',
+    );
+    expect(prisma.reconciliationAct.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-SETL-011
+  it('рівно 5000 транзакцій у періоді — акт створюється з усіма рядками', async () => {
+    prisma.settlementTransaction.findMany.mockResolvedValue(
+      Array.from({ length: 5000 }, () => txRow({ amount: '1.00', amountBase: '1.00' })),
+    );
+
+    const act = await service.createReconciliationAct('org-1', 'cp-1', period);
+
+    expect(act.transactions).toHaveLength(5000);
+    expect(act.openingBalance).toBe(-4000); // 1000 − 5000 × 1
+  });
+
   // guards: BR-SETL-011
   it('межі періоду — календарні дні Києва, літній час (UTC+3)', async () => {
     await service.createReconciliationAct('org-1', 'cp-1', period);
