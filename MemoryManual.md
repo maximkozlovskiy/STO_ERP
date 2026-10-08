@@ -122,6 +122,12 @@ python scripts/check-doc-links.py                      # посилання мі
 - CalendarSlot.parentSlotId — split-day continuation invariant (не колапсувати через updateMany)
 - BullMQ API: `@Processor('queue', { concurrency: N })` + `extends WorkerHost` + `async process(job: Job<T>)`
 - SMS-канал через `NotificationsService.send(orgId, eventType, payload)` — НЕ прямий `smsQueue.add()`
+- **Self-re-enqueue у BullMQ — лише під НОВИМ `jobId` на крок** (`payment-poll-<намір>-p<крок>`): `add` з id
+  активної задачі мовчки відкидається (Bug #804, docs/GOTCHAS.md). Перевіряється лише на живій черзі —
+  `payment-polling.queue.integration.spec.ts` (Redis; у CI `REQUIRE_REDIS=1`). Нова пошта — ще зі старим id
+- **Новий `*.integration.spec.ts` дописувати у список job-а `integration-tests`** (`ci.yml`) — список явний
+- **Після коміту з новими i18n-ключами — `pnpm --filter @sto/shared build`:** dev-API читає `dist`, без
+  перезбирання віддає сирий ключ (`err.payment.…`) замість тексту
 - **NestJS SWC на Windows**: залишити tsc builder (`nest start --watch` без `--builder swc`)
 - **`rootDir: "src"` у api tsconfig** — обов'язково (інакше dist/apps/api/src/main.js → MODULE_NOT_FOUND)
 - **Правило → тест:** над тестом `// guards: BR-XXX-NNN`; гейт D у CI. У дос'є три стани правила:
