@@ -11,7 +11,7 @@ import { PaymentPollingProcessor } from './payment-polling.processor';
  *  - idempotency: PAID + paymentId set → no-op.
  *  - finalize failure → PAID+error + re-enqueue до MAX_FINALIZE_ATTEMPTS, далі стоп.
  *  - MONEY: create вдалося але link-write впав → повторний reconcile НЕ подвоює Payment.
- *  - term-стани: failed→FAILED, expired→EXPIRED, wall-clock past→EXPIRED без monobank, pending→re-enqueue.
+ *  - term-стани: failed→FAILED, expired→EXPIRED, wall-clock past→останній запит до шлюзу, EXPIRED лише на «не оплачено», pending→re-enqueue.
  *  - tenant: CAS updateMany + усі intent-запити несуть orgId.
  */
 
@@ -23,6 +23,7 @@ function makeJob(data: {
   orgId: string;
   finalizeAttempts?: number;
   pollAttempts?: number;
+  lastPollFailed?: boolean;
 }): Job<typeof data> {
   return { data } as Job<typeof data>;
 }
@@ -300,15 +301,81 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
   });
 
   // guards: BR-PAY-007
-  it('wall-clock expiresAt у минулому → EXPIRED БЕЗ виклику monobank', async () => {
+  // До 2026-10-08 намір закривався за годинником БЕЗ запиту до шлюзу: оплата в останні секунди
+  // (або поки наш інтернет лежав) давала EXPIRED при списаних у клієнта грошах.
+  it('expiresAt у минулому → шлюз питаємо востаннє; pending → EXPIRED, без re-enqueue', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
       paidIntentSnapshot({ expiresAt: new Date(Date.now() - 1000) }),
     );
+    monobank.getStatus.mockResolvedValue({ status: 'pending', raw: 'processing' });
     await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG }));
-    expect(monobank.getStatus).not.toHaveBeenCalled();
+    expect(monobank.getStatus).toHaveBeenCalledTimes(1);
     expect(prisma.onlinePaymentIntent.updateMany).toHaveBeenCalledWith({
       where: { id: INTENT_ID, orgId: ORG, status: 'PENDING' },
       data: { status: 'EXPIRED', error: 'Час на оплату вичерпано' },
+    });
+    expect(pollQueue.add).not.toHaveBeenCalled();
+    expect(payments.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-007
+  it('expiresAt у минулому, але шлюз каже paid → Payment створюється (гроші не губляться)', async () => {
+    prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
+      paidIntentSnapshot({ expiresAt: new Date(Date.now() - 1000) }),
+    );
+    monobank.getStatus.mockResolvedValue({ status: 'paid', raw: 'success' });
+    await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG }));
+    expect(prisma.onlinePaymentIntent.updateMany).toHaveBeenCalledWith({
+      where: { id: INTENT_ID, orgId: ORG, status: 'PENDING' },
+      data: { status: 'PAID' },
+    });
+    expect(payments.create).toHaveBeenCalledTimes(1);
+    expect(prisma.onlinePaymentIntent.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'EXPIRED' }) }),
+    );
+  });
+
+  // guards: BR-PAY-007
+  it('expiresAt у минулому і шлюз недоступний → намір лишається PENDING, опитування рідше (60 с)', async () => {
+    prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
+      paidIntentSnapshot({ expiresAt: new Date(Date.now() - 1000) }),
+    );
+    monobank.getStatus.mockRejectedValue(new Error('getaddrinfo ENOTFOUND'));
+    await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: 180 }));
+    // Статус невідомий — закривати намір не можна.
+    expect(prisma.onlinePaymentIntent.updateMany).not.toHaveBeenCalled();
+    expect(pollQueue.add).toHaveBeenCalledTimes(1);
+    expect(pollQueue.add.mock.calls[0][1]).toMatchObject({
+      pollAttempts: 181,
+      lastPollFailed: true,
+    });
+    expect(pollQueue.add.mock.calls[0][2]).toMatchObject({
+      delay: 60_000,
+      jobId: `payment-poll-${INTENT_ID}`,
+    });
+  });
+
+  // guards: BR-PAY-007
+  it('стеля опитувань після збоїв шлюзу → EXPIRED із причиною «не підтверджено», а не «час вичерпано»', async () => {
+    prisma.onlinePaymentIntent.findFirst.mockResolvedValue(
+      paidIntentSnapshot({ expiresAt: new Date(Date.now() - 1000) }),
+    );
+    await processor.process(
+      makeJob({
+        intentId: INTENT_ID,
+        orgId: ORG,
+        pollAttempts: MAX_POLL_ATTEMPTS,
+        lastPollFailed: true,
+      }),
+    );
+    expect(monobank.getStatus).not.toHaveBeenCalled();
+    expect(pollQueue.add).not.toHaveBeenCalled();
+    expect(prisma.onlinePaymentIntent.updateMany).toHaveBeenCalledWith({
+      where: { id: INTENT_ID, orgId: ORG, status: 'PENDING' },
+      data: {
+        status: 'EXPIRED',
+        error: 'Статус оплати у шлюзі не підтверджено (шлюз недоступний) — перевірте оплату вручну',
+      },
     });
   });
 
@@ -331,6 +398,8 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       pollAttempts: 6, // збій теж рахується — стеля опитувань колись закриє намір
     });
     expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}`);
+    // До expiresAt касир чекає біля QR — темп опитування звичайний.
+    expect(pollQueue.add.mock.calls[0][2].delay).toBe(5_000);
     expect(prisma.onlinePaymentIntent.updateMany).not.toHaveBeenCalled();
     expect(payments.create).not.toHaveBeenCalled();
   });

@@ -217,7 +217,7 @@ export class PaymentsService {
             where: { id: dto.workOrderId, orgId, deletedAt: null },
             // Мультивалюта (Фаза 3): currencyId наряду — оплата має бути у ТІЙ САМІЙ валюті
             // (WO.paidAmount ведеться у валюті наряду; крос-валютна алокація = FX-політика, поза scope).
-            select: { branchId: true, status: true, currencyId: true },
+            select: { branchId: true, status: true, currencyId: true, counterpartyId: true },
           })
         : Promise.resolve(null),
       // Спосіб оплати: requiresFiscal (для ПРРО) + дефолтний рахунок-призначення (мапінг
@@ -245,6 +245,22 @@ export class PaymentsService {
         translateError('err.payment.workOrderStatusNoPayment', getLocale(), {
           status: workOrder.status,
         }),
+      );
+    }
+
+    // BR-PAY-016, пряма оплата наряду (без рахунку): наряд закриває лише його замовник. Без цього
+    // платіж контрагента A піднімав paidAmount наряду контрагента B і переводив його в PAID, а
+    // гроші лягали на баланс A — та сама діра, що її перевірка платника закриває для рахунку.
+    // Якщо рахунок вказано, платника визначає РАХУНОК (його можна виписати на іншого платника,
+    // напр. страхову) — тоді ця перевірка мовчить, діє перевірка рахунку нижче.
+    if (
+      dto.workOrderId &&
+      !dto.invoiceId &&
+      workOrder &&
+      workOrder.counterpartyId !== dto.counterpartyId
+    ) {
+      throw new BadRequestException(
+        translateError('err.payment.workOrderNotForCounterparty', getLocale()),
       );
     }
 

@@ -294,6 +294,8 @@ export const en: Record<string, string> = {
   'err.payment.invoiceNotForWorkOrder': 'The invoice does not belong to the specified work order',
   'err.payment.invoiceNotForCounterparty':
     'The invoice is issued to another counterparty — payment is accepted only from the invoice payer',
+  'err.payment.workOrderNotForCounterparty':
+    'The work order belongs to another counterparty — payment is accepted only from its customer',
   'err.payment.currencyMustMatchInvoice': 'The payment currency must match the invoice currency',
   'err.payment.amountExceedsInvoiceRemaining':
     'The amount exceeds the invoice balance ({{remaining}})',

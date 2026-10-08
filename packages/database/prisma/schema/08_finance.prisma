@@ -354,6 +354,8 @@ model PayrollLineWorkOrder {
   payrollLine PayrollLine @relation(fields: [payrollLineId], references: [id])
 
   @@index([orgId, payrollLineId])
+  // BR-PAYR-015: пошук «наряд уже в іншій відомості» (NOT EXISTS у payroll.service) йде за нарядом.
+  @@index([orgId, workOrderId])
   @@index([orgId, syncVersion])
   @@map("payroll_line_work_orders")
 }

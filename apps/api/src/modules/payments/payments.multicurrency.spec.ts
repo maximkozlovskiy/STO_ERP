@@ -327,6 +327,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       branchId: 'br-1',
       status: 'INVOICED',
       currencyId: USD_ID,
+      counterpartyId: CP_ID,
     });
     prisma.workOrder.update.mockResolvedValue({});
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
@@ -354,6 +355,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       branchId: 'br-1',
       status: 'INVOICED',
       currencyId: null,
+      counterpartyId: CP_ID,
     });
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
 
@@ -488,6 +490,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       branchId: 'br-1',
       status: 'INVOICED',
       currencyId: USD_ID,
+      counterpartyId: CP_ID,
     });
     prisma.workOrder.update.mockResolvedValue({});
     prisma.invoice.findFirst.mockResolvedValue({

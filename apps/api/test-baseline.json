@@ -2456,6 +2456,9 @@
    "PaymentPollingProcessor (QR monobank polling) Bug #688: reconcile після create-succeeds-link-fails → наявний Payment ЗНАЙДЕНО, create НЕ повторюється (no double-charge)",
    "PaymentPollingProcessor (QR monobank polling) F2: pollAttempts ≥ MAX + без expiresAt → EXPIRED, НЕ re-enqueue (стеля-запобіжник)",
    "PaymentPollingProcessor (QR monobank polling) crash-recovery: intent уже PAID + paymentId=null → finalize створює Payment",
+   "PaymentPollingProcessor (QR monobank polling) expiresAt у минулому і шлюз недоступний → намір лишається PENDING, опитування рідше (60 с)",
+   "PaymentPollingProcessor (QR monobank polling) expiresAt у минулому → шлюз питаємо востаннє; pending → EXPIRED, без re-enqueue",
+   "PaymentPollingProcessor (QR monobank polling) expiresAt у минулому, але шлюз каже paid → Payment створюється (гроші не губляться)",
    "PaymentPollingProcessor (QR monobank polling) finalize failure на останній спробі (MAX) → стоп, НЕ re-enqueue",
    "PaymentPollingProcessor (QR monobank polling) finalize failure → PAID+error + re-enqueue з finalizeAttempts+1",
    "PaymentPollingProcessor (QR monobank polling) idempotent: PAID + paymentId set → no-op (жодного другого Payment)",
@@ -2464,10 +2467,10 @@
    "PaymentPollingProcessor (QR monobank polling) monobank failed → CAS FAILED",
    "PaymentPollingProcessor (QR monobank polling) paid + PENDING → CAS count=1 → payments.create РІВНО один раз + paymentId set",
    "PaymentPollingProcessor (QR monobank polling) pending → re-enqueue poll (jobId-дедуп) + pollAttempts+1",
-   "PaymentPollingProcessor (QR monobank polling) wall-clock expiresAt у минулому → EXPIRED БЕЗ виклику monobank",
    "PaymentPollingProcessor (QR monobank polling) workOrder-branch: провайдер резолвиться по branchId наряду + intent.gateway",
    "PaymentPollingProcessor (QR monobank polling) конкурентний 2-й poll: paid але CAS count=0 → payments.create НЕ викликається (no double)",
    "PaymentPollingProcessor (QR monobank polling) немає gatewayInvoiceId → стоп (нема що опитувати)",
+   "PaymentPollingProcessor (QR monobank polling) стеля опитувань після збоїв шлюзу → EXPIRED із причиною «не підтверджено», а не «час вичерпано»",
    "PaymentPollingProcessor (QR monobank polling) термінальний FAILED вже у БД → стоп (не опитуємо)",
    "PaymentPollingProcessor (QR monobank polling) усі intent-запити несуть orgId (findFirst + CAS)",
    "PaymentPollingProcessor (QR monobank polling) шлюз більше не налаштовано (config зник) → FAILED",
@@ -2578,6 +2581,7 @@
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) transition(PAID) кидає → create НЕ валиться: платіж і settlement уже закомічені (best-effort)",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) контрагента не знайдено (чужа org / видалений) → NotFound, без транзакції/Payment/settlement",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд INVOICED → paidAmount += amount У транзакції, а transition(PAID) — ПІСЛЯ неї",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд оформлено на іншого контрагента (пряма оплата без рахунку) → 400 ДО транзакції, наряд не чіпається",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі APPROVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ARCHIVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі CANCELLED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
@@ -2587,7 +2591,8 @@
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі IN_PROGRESS (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ON_HOLD (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі PAID (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
-   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата без workOrderId → наряд не чіпаємо: ні paidAmount, ні transition"
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата без workOrderId → наряд не чіпаємо: ні paidAmount, ні transition",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата з рахунком і нарядом: платника визначає рахунок (його можна виписати на іншого платника), перевірка наряду мовчить"
   ],
   "apps/api/src/modules/payments/provider-config.service.spec.ts": [
    "ProviderConfigService activate (ексклюзивність) kind-незалежність: активація FISCAL-провайдера НЕ чіпає PAYMENT-конфіги (kind у обох where)",
@@ -3260,6 +3265,7 @@
   "apps/api/src/modules/settlements/settlements.reconciliation-act.spec.ts": [
    "SettlementsAccountService — акт звірки PDF: акт шукається за id + організація + контрагент; не знайдено → NotFound, PDF не будується",
    "SettlementsAccountService — акт звірки акт за минулий період: закриваючий = залишок на КІНЕЦЬ періоду (поточний мінус усе пізніше)",
+   "SettlementsAccountService — акт звірки баланс і журнал читаються з одного знімка: RepeatableRead, баланс — той, що прочитано в транзакції",
    "SettlementsAccountService — акт звірки відкриваючий баланс = поточний баланс − Σ знак×сума транзакцій періоду (знак з BALANCE_SIGN)",
    "SettlementsAccountService — акт звірки знімок рядків зберігається в акті: дата, тип, сума, сума у базовій валюті, валюта, документ",
    "SettlementsAccountService — акт звірки контрагента немає у цій організації (чужий або видалений) → NotFound, акт не створюється",

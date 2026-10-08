@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { translateError } from '@sto/shared';
+import type { Prisma } from '@prisma/client';
+import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { calculatePagination } from '../../common/utils/pagination';
@@ -108,18 +109,19 @@ export class SettlementsAccountService {
    * типах: рядки з `amountBase` і історичні без нього (до мультивалюти: amount = base).
    */
   private async signedDeltaAfter(
+    db: Pick<Prisma.TransactionClient, 'settlementTransaction'>,
     settlementAccountId: string,
     orgId: string,
     after: Date,
   ): Promise<number> {
     const where = { settlementAccountId, orgId, createdAt: { gt: after } };
     const [withBase, legacy] = await Promise.all([
-      this.prisma.settlementTransaction.groupBy({
+      db.settlementTransaction.groupBy({
         by: ['type'],
         where: { ...where, amountBase: { not: null } },
         _sum: { amountBase: true },
       }),
-      this.prisma.settlementTransaction.groupBy({
+      db.settlementTransaction.groupBy({
         by: ['type'],
         where: { ...where, amountBase: null },
         _sum: { amount: true },
@@ -162,25 +164,43 @@ export class SettlementsAccountService {
     const from = kyivStartOfDay(dto.periodFrom);
     const to = kyivEndOfDay(dto.periodTo);
 
-    // Transactions within period
-    const transactions = await this.prisma.settlementTransaction.findMany({
-      where: {
-        settlementAccountId: account.id,
-        orgId,
-        createdAt: { gte: from, lte: to },
+    // Баланс, транзакції періоду й агрегат «після періоду» читаються з ОДНОГО знімка БД
+    // (RepeatableRead). Три окремі читання давали акт, що не сходиться сам із собою: платіж,
+    // проведений між читанням балансу й агрегатом, потрапляв у «після періоду», але не в баланс,
+    // і закриваючий залишок з'їжджав рівно на його суму. Транзакція лише читає — конфліктів
+    // серіалізації RepeatableRead тут не дає.
+    const { balance, transactions, afterPeriodDelta } = await this.prisma.$transaction(
+      async tx => {
+        const snapshot = await tx.settlementAccount.findFirst({
+          where: { id: account.id, orgId },
+          select: { balance: true },
+        });
+        const rows = await tx.settlementTransaction.findMany({
+          where: {
+            settlementAccountId: account.id,
+            orgId,
+            createdAt: { gte: from, lte: to },
+          },
+          orderBy: { createdAt: 'asc' },
+          // +1 понад стелю — лише щоб помітити переповнення: акт з обрізаним переліком і повними
+          // сумами клієнт підписати не може, тож краще відмовити, ніж мовчки обрізати.
+          take: ACT_MAX_TRANSACTIONS + 1,
+        });
+        if (rows.length > ACT_MAX_TRANSACTIONS) {
+          throw new BadRequestException(
+            translateError('err.settlement.actPeriodTooLarge', getLocale(), {
+              limit: ACT_MAX_TRANSACTIONS,
+            }),
+          );
+        }
+        return {
+          balance: snapshot?.balance ?? account.balance,
+          transactions: rows,
+          afterPeriodDelta: await this.signedDeltaAfter(tx, account.id, orgId, to),
+        };
       },
-      orderBy: { createdAt: 'asc' },
-      // +1 понад стелю — лише щоб помітити переповнення: акт з обрізаним переліком і повними
-      // сумами клієнт підписати не може, тож краще відмовити, ніж мовчки обрізати.
-      take: ACT_MAX_TRANSACTIONS + 1,
-    });
-    if (transactions.length > ACT_MAX_TRANSACTIONS) {
-      throw new BadRequestException(
-        translateError('err.settlement.actPeriodTooLarge', getLocale(), {
-          limit: ACT_MAX_TRANSACTIONS,
-        }),
-      );
-    }
+      { isolationLevel: 'RepeatableRead', timeout: TRANSACTION_TIMEOUT_MS },
+    );
 
     // Opening balance derived from current snapshot balance minus in-period delta
     // This avoids a full table scan on the append-only transactions log
@@ -205,8 +225,7 @@ export class SettlementsAccountService {
     // сюди йшов `account.balance` як є, і акт за січень, сформований у березні, показував
     // березневий залишок. Поточний баланс мінус усе, що сталося ПІСЛЯ періоду, дає залишок на
     // його кінець; транзакцій після періоду може бути скільки завгодно, тому — агрегат, не вибірка.
-    const afterPeriodDelta = await this.signedDeltaAfter(account.id, orgId, to);
-    const closingBalance = money(moneyFromDecimal(account.balance) - afterPeriodDelta);
+    const closingBalance = money(moneyFromDecimal(balance) - afterPeriodDelta);
     const openingBalance = money(closingBalance - periodDelta);
 
     const act = await this.prisma.reconciliationAct.create({

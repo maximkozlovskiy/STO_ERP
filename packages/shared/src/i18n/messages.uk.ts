@@ -292,6 +292,8 @@ export const uk: Record<string, string> = {
   'err.payment.invoiceNotForWorkOrder': 'Рахунок не належить до вказаного наряду',
   'err.payment.invoiceNotForCounterparty':
     'Рахунок виписано на іншого контрагента — оплату приймаємо лише від платника рахунку',
+  'err.payment.workOrderNotForCounterparty':
+    'Наряд оформлено на іншого контрагента — оплату наряду приймаємо лише від його замовника',
   'err.payment.currencyMustMatchInvoice': 'Валюта оплати має збігатися з валютою рахунку',
   'err.payment.amountExceedsInvoiceRemaining': 'Сума перевищує залишок за рахунком ({{remaining}})',
   'err.payment.invoiceConcurrentChange': 'Рахунок змінено паралельною операцією — повторіть',

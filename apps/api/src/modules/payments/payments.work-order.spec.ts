@@ -68,7 +68,12 @@ describe('PaymentsService.create — передумови і звʼязок з �
     counterparty: { firstName: null, lastName: null, companyName: 'ТОВ' },
   };
 
-  const invoicedWorkOrder = { branchId: 'br-1', status: 'INVOICED', currencyId: null };
+  const invoicedWorkOrder = {
+    branchId: 'br-1',
+    status: 'INVOICED',
+    currencyId: null,
+    counterpartyId: CP_ID,
+  };
 
   beforeEach(async () => {
     inTx = false;
@@ -166,6 +171,51 @@ describe('PaymentsService.create — передумови і звʼязок з �
   );
 
   // ── BR-PAY-005: paidAmount наряду + best-effort FSM ───────────────────────
+
+  // Та сама діра, що BR-PAY-016 закрив для рахунку: платіж контрагента A піднімав paidAmount
+  // наряду контрагента B і переводив його в PAID, а гроші лягали на баланс A.
+  // guards: BR-PAY-016
+  it('наряд оформлено на іншого контрагента (пряма оплата без рахунку) → 400 ДО транзакції, наряд не чіпається', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue({
+      ...invoicedWorkOrder,
+      counterpartyId: 'cp-other',
+    });
+
+    await expect(service.create(ORG, woDto, 'user-1')).rejects.toThrow(
+      'Наряд оформлено на іншого контрагента — оплату наряду приймаємо лише від його замовника',
+    );
+
+    expect(prisma.workOrder.findFirst.mock.calls[0][0].select.counterpartyId).toBe(true);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(prisma.workOrder.update).not.toHaveBeenCalled();
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-016
+  it('оплата з рахунком і нарядом: платника визначає рахунок (його можна виписати на іншого платника), перевірка наряду мовчить', async () => {
+    // Наряд клієнта cp-owner, рахунок за цим нарядом виписано на платника CP_ID (напр. страхову).
+    prisma.workOrder.findFirst.mockResolvedValue({
+      ...invoicedWorkOrder,
+      counterpartyId: 'cp-owner',
+    });
+    prisma.invoice.findFirst.mockResolvedValue({
+      id: 'inv-1',
+      counterpartyId: CP_ID,
+      status: 'SENT',
+      workOrderId: WO_ID,
+      amount: 500,
+      paidAmount: 0,
+      currencyId: null,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.create(ORG, { ...woDto, invoiceId: 'inv-1' }, 'user-1'),
+    ).resolves.toBeDefined();
+    expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+  });
 
   // guards: BR-PAY-001, BR-PAY-005
   it('наряд INVOICED → paidAmount += amount У транзакції, а transition(PAID) — ПІСЛЯ неї', async () => {

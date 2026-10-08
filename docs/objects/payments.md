@@ -210,8 +210,13 @@ create (метод без requiresFiscal) → null
 - **BR-PAY-007**: Enqueue у чергу `payment-polling` (`jobId=payment-poll-<intentId>`, single-flight). `PaymentPollingProcessor`
   (concurrency 3, self-re-enqueue) опитує gateway: `paid` → **CAS** `PENDING→PAID` → `finalizePayment`.
   Збій самого опитування (шлюз недоступний, 5xx, таймаут) намір не кидає: ставиться наступне
-  опитування з лічильником +1, тож намір закриє або відповідь шлюзу, або стеля опитувань / `expiresAt`.
-  Стелі: `MAX_POLL_ATTEMPTS=1440`, finalize `MAX_FINALIZE_ATTEMPTS=360`, `expiresAt` past → `EXPIRED`.
+  опитування з лічильником +1. **Намір закриває лише відповідь шлюзу або стеля опитувань, а не
+  годинник:** після `expiresAt` шлюз питають ще раз — `paid` → Payment створюється, `pending` →
+  `EXPIRED` «Час на оплату вичерпано»; шлюз недоступний → намір лишається `PENDING`, опитування
+  раз на 60 с (клієнт міг заплатити, поки наш інтернет лежав). Стеля `MAX_POLL_ATTEMPTS=1440`
+  (≈ доба після `expiresAt`) закриває намір як `EXPIRED`; якщо останнє опитування впало — з
+  причиною «Статус оплати у шлюзі не підтверджено… перевірте оплату вручну». Finalize —
+  `MAX_FINALIZE_ATTEMPTS=360`.
 - **BR-PAY-008**: **`finalizePayment` idempotency:** спершу шукає Payment по `onlinePaymentIntentId`; якщо є — лише
   релінкує. Інакше `payments.create({ method: '<gateway>_qr', onlinePaymentIntentId })`. `P2002` на
   `@unique onlinePaymentIntentId` → знаходить наявний і лінкує (без подвійного списання, Bug #688).
@@ -237,7 +242,10 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
 - **BR-PAY-016**: Рахунок закриває лише його платник: платіж із `invoiceId` приймається, тільки якщо
   контрагент платежу — контрагент цього рахунку, інакше 400 «Рахунок виписано на іншого
   контрагента…», рахунок і баланс не чіпаються. Перевірка стоїть у `PaymentsService.create`, тож діє
-  для ручного платежу, рознесення банківської виписки й онлайн-оплати.
+  для ручного платежу, рознесення банківської виписки й онлайн-оплати. Те саме для прямої оплати
+  наряду (`workOrderId` без `invoiceId`): контрагент платежу мусить бути замовником наряду, інакше
+  400 «Наряд оформлено на іншого контрагента…» ДО транзакції. Якщо вказано і рахунок, і наряд —
+  платника визначає рахунок (його можна виписати на іншого платника, напр. страхову).
 
 ### Конкретні провайдери
 
@@ -281,19 +289,19 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | payment gateway registry | `gateways/payment-gateway-registry.spec.ts`       | 12     |
 | HTTP-клієнт              | `monobank.client.spec.ts`                         | 26     |
 | сервісна логіка          | `online-payment.service.spec.ts`                  | 15     |
-| BullMQ-processor         | `payment-polling.processor.spec.ts`               | 23     |
+| BullMQ-processor         | `payment-polling.processor.spec.ts`               | 26     |
 | fiscal gate              | `payments.fiscal-gate.spec.ts`                    | 8      |
 | idempotency              | `payments.idempotency.spec.ts`                    | 7      |
 | money model              | `payments.money-model.spec.ts`                    | 19     |
 | multicurrency            | `payments.multicurrency.spec.ts`                  | 17     |
 | query dto                | `payments.query-dto.spec.ts`                      | 29     |
-| передумови + наряд       | `payments.work-order.spec.ts`                     | 13     |
+| передумови + наряд       | `payments.work-order.spec.ts`                     | 15     |
 | політика повторів черг   | `payments.queue-retry-policy.spec.ts`             | 6      |
 | сервісна логіка          | `provider-config.service.spec.ts`                 | 27     |
 | шифрування at-rest       | `../../prisma/field-encryption.extension.spec.ts` | 21     |
 | шифрування (сервіс)      | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **360** кейсів — 324 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **365** кейсів — 333 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

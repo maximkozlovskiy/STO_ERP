@@ -115,6 +115,27 @@ describe('SettlementsAccountService — акт звірки', () => {
     expect(act.openingBalance).toBe(1000);
   });
 
+  // Баланс, журнал періоду й агрегат «після періоду» мусять бути з одного знімка БД: інакше
+  // платіж, проведений між читаннями, зсуває закриваючий залишок рівно на свою суму.
+  // guards: BR-SETL-011
+  it('баланс і журнал читаються з одного знімка: RepeatableRead, баланс — той, що прочитано в транзакції', async () => {
+    prisma.settlementAccount.findFirst
+      .mockResolvedValueOnce({ id: 'acc-1', balance: '1000.00' }) // перевірка існування рахунку
+      .mockResolvedValueOnce({ balance: '1200.00' }); // знімок усередині транзакції
+
+    const act = await service.createReconciliationAct('org-1', 'cp-1', period);
+
+    expect(act.closingBalance).toBe(1200);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction.mock.calls[0][1]).toMatchObject({
+      isolationLevel: 'RepeatableRead',
+    });
+    expect(prisma.settlementAccount.findFirst).toHaveBeenLastCalledWith({
+      where: { id: 'acc-1', orgId: 'org-1' },
+      select: { balance: true },
+    });
+  });
+
   // guards: BR-SETL-011
   it('у періоді понад 5000 транзакцій → 400 «звузьте період», акт не створюється (не обрізаємо мовчки)', async () => {
     prisma.settlementTransaction.findMany.mockResolvedValue(

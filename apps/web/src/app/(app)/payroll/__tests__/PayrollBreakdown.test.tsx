@@ -181,6 +181,37 @@ describe('Payroll — розшифровка по нарядах (drill-down)', 
     ).toBeInTheDocument();
   });
 
+  // BR-PAYR-001: окладник без жодної роботи за період має рядок із базою 0 і linesCount 0.
+  // Розшифровки в нього немає, бо немає нарядів, — текст «період розраховано до впровадження»
+  // тут був би неправдою.
+  it('окладник без робіт (linesCount=0, workOrders=[]) → «лише оклад», а не «період до впровадження»', () => {
+    const line = makeLine({
+      rateSchemeType: 'fixed_plus_bonus',
+      baseAmount: 0,
+      normoHours: 0,
+      linesCount: 0,
+      accruedAmount: 7000,
+      workOrders: [],
+    });
+    listData.push(makePeriod([{ ...line, workOrders: undefined }]));
+    detailData = makePeriod([line]);
+
+    render(<PayrollPage />);
+    fireEvent.click(screen.getByLabelText('Розгорнути'));
+    // Рядок із нульовою базою не сховано.
+    expect(screen.getByText('Коваль Іван')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Показати наряди'));
+
+    expect(
+      screen.getByText(
+        'За період немає завершених робіт — нараховано лише оклад за частку періоду.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Розшифровка недоступна (період розраховано до її впровадження).'),
+    ).not.toBeInTheDocument();
+  });
+
   it('поки деталь вантажиться (isLoading) → спінер у розкритій розшифровці, не breakdown.empty', () => {
     const line = makeLine({ workOrders: undefined }); // список без розшифровки
     listData.push(makePeriod([line]));

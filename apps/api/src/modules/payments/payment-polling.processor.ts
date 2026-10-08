@@ -20,9 +20,19 @@ interface PollJob {
   // F2: лічильник pending-опитувань. Захист для наміру БЕЗ expiresAt (wall-clock guard не спрацює):
   // шлюз, що ніколи не відповідає paid/failed/expired, інакше опитувався б вічно кожні 5с.
   pollAttempts?: number;
+  // Попереднє опитування шлюзу впало (мережа/5xx): статус наміру НЕВІДОМИЙ. Потрібен, щоб стеля
+  // опитувань закрила намір із чесною причиною «не підтверджено», а не «час вичерпано».
+  lastPollFailed?: boolean;
 }
 
 const POLL_INTERVAL_MS = 5_000;
+// Після expiresAt касир уже не чекає біля QR — шлюз, що не відповідає, опитуємо рідше. Разом зі
+// стелею MAX_POLL_ATTEMPTS це дає ~добу спроб дізнатись правду про гроші (як у черги ПРРО).
+const OUTAGE_POLL_INTERVAL_MS = 60_000;
+// Причини закриття наміру (поле error; показуються касиру як є).
+const ERR_EXPIRED = 'Час на оплату вичерпано';
+const ERR_EXPIRED_UNCONFIRMED =
+  'Статус оплати у шлюзі не підтверджено (шлюз недоступний) — перевірте оплату вручну';
 // Стеля спроб довести Payment до створення після PAID. ~ MAX × POLL_INTERVAL = ~30 хв опитувань.
 // Далі лишаємо PAID+error для ручного розбору касиром (гроші у gateway є, Payment треба вручну).
 const MAX_FINALIZE_ATTEMPTS = 360;
@@ -55,7 +65,13 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
 
   async process(job: Job<PollJob>): Promise<void> {
     return runWithTenant({ orgId: job.data.orgId }, async () => {
-      const { intentId, orgId, finalizeAttempts = 0, pollAttempts = 0 } = job.data;
+      const {
+        intentId,
+        orgId,
+        finalizeAttempts = 0,
+        pollAttempts = 0,
+        lastPollFailed = false,
+      } = job.data;
 
       const intent = await this.prisma.onlinePaymentIntent.findFirst({
         where: { id: intentId, orgId, deletedAt: null },
@@ -87,19 +103,19 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
       if (intent.status !== 'PENDING') return; // FAILED/EXPIRED — термінальний, стоп
       if (!intent.gatewayInvoiceId) return; // немає gateway-рахунку — нема що опитувати
 
-      // Жорсткий wall-clock таймаут → EXPIRED (не опитуємо вічно).
-      if (intent.expiresAt && intent.expiresAt.getTime() < Date.now()) {
-        await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
-        return;
-      }
-      // F2: запобіжник для наміру БЕЗ expiresAt — wall-clock guard вище його б не закрив, тож
-      // шлюз що ніколи не резолвиться крутив би 5с-цикл вічно. Стеля опитувань → EXPIRED.
+      // Wall-clock таймаут. Намір НЕ закривається тут одразу: клієнт міг заплатити в останні
+      // секунди або поки НАШ інтернет лежав (його телефон у мережі, наш сервер — ні). Спершу
+      // питаємо шлюз востаннє; EXPIRED ставимо лише на відповідь «не оплачено» (нижче).
+      const pastDeadline = !!intent.expiresAt && intent.expiresAt.getTime() < Date.now();
+      // Стеля опитувань — єдине, що закриває намір без відповіді шлюзу: намір БЕЗ expiresAt, який
+      // вічно pending, або шлюз, недоступний ~добу після expiresAt. У другому випадку причина
+      // чесна: оплату не підтверджено, а не «не оплачено».
       if (pollAttempts >= MAX_POLL_ATTEMPTS) {
         await this.transition(
           intentId,
           orgId,
           'EXPIRED',
-          'Час на оплату вичерпано (стеля опитувань)',
+          lastPollFailed ? ERR_EXPIRED_UNCONFIRMED : `${ERR_EXPIRED} (стеля опитувань)`,
         );
         return;
       }
@@ -128,8 +144,9 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
       // BR-PAY-007: недоступний шлюз (мережа, 5xx, таймаут) — не привід кидати намір. У задачі
       // одна спроба (ретраї тут — це self-re-enqueue), тож виняток обривав би ланцюг опитування,
       // і намір лишався б PENDING, хоч клієнт міг уже заплатити. Збій = «ще не знаємо»: ставимо
-      // наступне опитування, як для pending. Лічильник росте, тож стеля MAX_POLL_ATTEMPTS і
-      // wall-clock expiresAt усе одно закриють намір. Сам збій уже записав integrationLog.wrap.
+      // наступне опитування. expiresAt такий намір НЕ закриває (статус невідомий) — після нього
+      // опитуємо рідше; закриє відповідь шлюзу або стеля MAX_POLL_ATTEMPTS. Сам збій уже записав
+      // integrationLog.wrap.
       let status: Awaited<ReturnType<typeof gateway.getStatus>>['status'];
       try {
         ({ status } = await this.integrationLog.wrap(
@@ -150,7 +167,10 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`getStatus failed for intent ${intentId}, will poll again: ${msg}`);
-        await this.enqueueNextPoll(intentId, orgId, pollAttempts);
+        await this.enqueueNextPoll(intentId, orgId, pollAttempts, {
+          lastPollFailed: true,
+          delay: pastDeadline ? OUTAGE_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+        });
         return;
       }
 
@@ -176,10 +196,15 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
         return;
       }
       if (status === 'expired') {
-        await this.transition(intentId, orgId, 'EXPIRED', 'Час на оплату вичерпано');
+        await this.transition(intentId, orgId, 'EXPIRED', ERR_EXPIRED);
         return;
       }
 
+      // pending після expiresAt: шлюз відповів «не оплачено», час вийшов → EXPIRED.
+      if (pastDeadline) {
+        await this.transition(intentId, orgId, 'EXPIRED', ERR_EXPIRED);
+        return;
+      }
       // pending → опитати знову (з інкрементом лічильника опитувань для F2-стелі).
       await this.enqueueNextPoll(intentId, orgId, pollAttempts);
     });
@@ -190,12 +215,18 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
     intentId: string,
     orgId: string,
     pollAttempts: number,
+    opts: { lastPollFailed?: boolean; delay?: number } = {},
   ): Promise<void> {
     await this.pollQueue.add(
       'poll',
-      { intentId, orgId, pollAttempts: pollAttempts + 1 },
       {
-        delay: POLL_INTERVAL_MS,
+        intentId,
+        orgId,
+        pollAttempts: pollAttempts + 1,
+        ...(opts.lastPollFailed ? { lastPollFailed: true } : {}),
+      },
+      {
+        delay: opts.delay ?? POLL_INTERVAL_MS,
         jobId: `payment-poll-${intentId}`,
         removeOnComplete: true,
         removeOnFail: 200,

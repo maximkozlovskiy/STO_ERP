@@ -42,7 +42,8 @@ model PayrollLineWorkOrder {     // розшифровка нарахуванн�
   normoHours Float               // Σ normoHours робіт наряду
   baseAmount Decimal(12,2)       // Σ amount робіт наряду (частка бази)
   syncVersion, createdAt, updatedAt
-  // @@index([orgId,payrollLineId]) [orgId,syncVersion]; FK → payroll_lines RESTRICT
+  // @@index([orgId,payrollLineId]) [orgId,workOrderId] [orgId,syncVersion]; FK → payroll_lines RESTRICT
+  // [orgId,workOrderId] — пошук «наряд уже в іншій відомості» (BR-PAYR-015), міграція 20261008120000
 }
 ```
 
@@ -53,11 +54,11 @@ SYNC_VERSION_MODELS += PayrollPeriod/PayrollLine; audit whitelist += PayrollPeri
 
 ## rateScheme (Employee.rateScheme, Zod у employees.dto.ts)
 
-| type               | params                           | нарахування                               |
-| ------------------ | -------------------------------- | ----------------------------------------- |
-| `percent_normo`    | `{ percent }`                    | percent% × baseAmount (сума робіт)        |
-| `per_normo_hour`   | `{ ratePerHour }`                | ratePerHour × normoHours                  |
-| `fixed_plus_bonus` | `{ fixedMonthly, bonusPercent }` | fixedMonthly + bonusPercent% × baseAmount |
+| type               | params                           | нарахування                                                                       |
+| ------------------ | -------------------------------- | --------------------------------------------------------------------------------- |
+| `percent_normo`    | `{ percent }`                    | percent% × baseAmount (сума робіт)                                                |
+| `per_normo_hour`   | `{ ratePerHour }`                | ratePerHour × normoHours                                                          |
+| `fixed_plus_bonus` | `{ fixedMonthly, bonusPercent }` | fixedMonthly × частка періоду в місяці + bonusPercent% × baseAmount (BR-PAYR-006) |
 
 Розрахунок — `payroll.calculator.ts` (`computeAccrued`), гроші через `roundMoney` (half-away-from-zero).
 Невалідна/відсутня схема → 0.
@@ -68,7 +69,7 @@ SYNC_VERSION_MODELS += PayrollPeriod/PayrollLine; audit whitelist += PayrollPeri
 
 ```
 DRAFT → COMPUTED → PAID
-   ↘ (delete)      (delete заборонено на COMPUTED/PAID)
+   ↘ (delete)      (delete заборонено лише на PAID — BR-PAYR-012)
 ```
 
 - **compute** (DRAFT→COMPUTED): рахує та ФІКСУЄ PayrollLine[] (snapshot) у `$transaction` з atomic claim
@@ -127,6 +128,8 @@ tenant-isolation: orgId у WHERE на wol/wo.
 - `findOne()` вантажить `lines.workOrders`; **`findAll()` НЕ вантажить** (важко) → UI при розкритті
   періоду робить окремий `GET /periods/:id`.
 - Періоди, розраховані ДО впровадження, розшифровки не мають → UI показує `breakdown.empty`.
+- Окладник без робіт за період (`linesCount = 0`, BR-PAYR-001) розшифровки не має за змістом → UI
+  показує `breakdown.noWorks` («нараховано лише оклад»), а не `breakdown.empty`.
 
 ---
 
@@ -160,7 +163,7 @@ drill-down на один `getByTestId`. Декілька `<tbody>` в одній
 **E2E:** `apps/web/e2e/payroll.spec.ts` (7 тестів) — сторінка/панелі/nav, preview-розрахунок, повний
 FSM через UI (create→compute→pay через модалку виплати), drill-down, FSM-guard. Cleanup-хелпер
 читає `?page=1&limit=200` (список paginated).
-**Component-тести:** `__tests__/PayrollBreakdown.test.tsx` (5 — drill-down) +
+**Component-тести:** `__tests__/PayrollBreakdown.test.tsx` (6 — drill-down, окладник без робіт) +
 `__tests__/PayrollListPage.test.tsx` (8 — пагінація/фільтр/колонки/testid).
 
 ---

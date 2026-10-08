@@ -654,7 +654,12 @@ export default function PayrollPage() {
                                           </div>
                                         ) : !wos || wos.length === 0 ? (
                                           <p className="text-[12px] text-muted-foreground px-4 py-3">
-                                            {t('breakdown.empty')}
+                                            {/* linesCount 0 — окладник без робіт за період
+                                                (BR-PAYR-001): розшифровки немає, бо немає нарядів,
+                                                а не тому, що період старий. */}
+                                            {l.linesCount === 0
+                                              ? t('breakdown.noWorks')
+                                              : t('breakdown.empty')}
                                           </p>
                                         ) : (
                                           <div className="px-4 py-2">

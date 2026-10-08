@@ -31,7 +31,10 @@ export function makeAccountFixture() {
       findMany: vi.fn().mockResolvedValue([]),
     },
     organisation: { findFirst: vi.fn().mockResolvedValue({ name: 'СТО Тест' }) },
+    // Акт звірки читає баланс і журнал з одного знімка: callback отримує той самий мок.
+    $transaction: vi.fn(),
   };
+  prisma.$transaction.mockImplementation((cb: (tx: typeof prisma) => unknown) => cb(prisma));
   const pdf = { generateReconciliationActPdf: vi.fn().mockResolvedValue(Buffer.from('pdf')) };
   const service = new SettlementsAccountService(
     prisma as unknown as PrismaService,

@@ -53,6 +53,7 @@
     "workOrder": "Work order",
     "vehicle": "Vehicle",
     "works": "Works",
+    "noWorks": "No completed work in this period — only the salary share for the period is accrued.",
     "empty": "Breakdown unavailable (period was calculated before this feature).",
     "total": "Base total",
     "note": "Accrual is calculated from the base total per the pay scheme, so it is not split across work orders."
