@@ -134,6 +134,16 @@ export function roundMoney(value: number): number {
   return (sign * Math.round(Math.abs(value) * 100 + 1e-9)) / 100;
 }
 
+/**
+ * BR-WO-007: сума рядка документа (кількість × ціна), округлена до копійки тим самим правилом,
+ * яким бекенд пише `amount` рядка і складає тотали наряду (`money()`). Сирий добуток показувати
+ * й сумувати не можна: `0.3 × 100.05 = 30.014999…` через `toFixed(2)` дає «30.01», а збережено
+ * 30.02; три рядки `0.3 × 111.11` сирими дають 99.999 → 100.00, а сума наряду — 99.99 (Bug #811).
+ */
+export function lineAmount(qty: number, price: number): number {
+  return roundMoney(qty * price);
+}
+
 /** Режим ПДВ організації (`OrganisationSettings.vatMode`). */
 export type VatModeValue = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
 

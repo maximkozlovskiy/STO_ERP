@@ -7,6 +7,7 @@ import {
   splitVatTotals,
   workOrderVatSplit,
   plannedWorkOrderAmount,
+  lineAmount,
 } from './utils';
 
 // Regression-guard для клієнтського грошового квантування у модалках (WO-H2 / FIN-H1).
@@ -252,5 +253,23 @@ describe('plannedWorkOrderAmount — закреслена «планова» с�
         totalAmount: 1200,
       }),
     ).toBe(1000);
+  });
+});
+
+// guards: BR-WO-007
+describe('lineAmount — сума рядка, округлена як на бекенді (Bug #811)', () => {
+  it('0.3 × 100.05 = 30.02, а не 30.01 від toFixed на сирому добутку', () => {
+    expect((0.3 * 100.05).toFixed(2)).toBe('30.01'); // сирий добуток 30.014999…
+    expect(lineAmount(0.3, 100.05)).toBe(30.02);
+    expect(lineAmount(1.5, 333.33)).toBe(500);
+  });
+
+  it('три рядки 0.3 × 111.11 складаються в 99.99 (сума округлених), а не в 100.00 (округлена сума сирих)', () => {
+    const raw = 0.3 * 111.11 * 3;
+    expect(roundMoney(raw)).toBe(100);
+    const rounded = roundMoney(lineAmount(0.3, 111.11) * 3);
+    expect(rounded).toBe(99.99);
+    // те саме число дає calcVatTotals, яким модалка рахує планові роботи
+    expect(calcVatTotals(Array(3).fill({ qty: 0.3, price: 111.11 }), 20, 'NONE').total).toBe(99.99);
   });
 });

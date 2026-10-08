@@ -50,6 +50,7 @@ function mockApi(opts: {
   taxRates?: TaxRate[];
   defaultVatRateId?: string | null;
   actualHours?: number | null;
+  lines?: { normoHours: number; actualHours?: number | null; price: number }[];
 }) {
   const taxRates = opts.taxRates ?? [{ id: 'r20', rate: 20, isDefault: true, isActive: true }];
   apiFetchMock.mockImplementation((path: string) => {
@@ -89,17 +90,17 @@ function mockApi(opts: {
         dueDate: null,
         plannedHours: 2,
         actualHours: null,
-        lines: [
-          {
-            id: 'l1',
-            workId: 'work-1',
-            workName: 'Заміна колодок',
-            employeeId: 'e1',
-            normoHours: 2,
-            actualHours: opts.actualHours ?? null,
-            price: 500,
-          },
-        ],
+        lines: (
+          opts.lines ?? [{ normoHours: 2, actualHours: opts.actualHours ?? null, price: 500 }]
+        ).map((l, i) => ({
+          id: `l${i + 1}`,
+          workId: `work-${i + 1}`,
+          workName: i === 0 ? 'Заміна колодок' : `Робота ${i + 1}`,
+          employeeId: 'e1',
+          normoHours: l.normoHours,
+          actualHours: l.actualHours ?? null,
+          price: l.price,
+        })),
         parts: [
           {
             id: 'p1',
@@ -169,6 +170,35 @@ describe('CreateWorkOrderModal — підсумок з ПДВ за режимо�
     await waitFor(() => expect(row('vat-totals-gross')).toBe('Разом2 040,00'));
     expect(row('vat-totals-net')).toBe('Сума без ПДВ1 700,00');
     expect(row('vat-totals-vat')).toBe('ПДВ340,00');
+  });
+
+  // Bug #811: бекенд складає ОКРУГЛЕНІ рядки (BR-WO-007). Сирі добутки давали 239.992 → 239.99 + 200 і
+  // «Разом 527,99» у модалці при збережених 527,98.
+  it('рядки з копійками: підсумок = сума округлених рядків, як зберігає бекенд', async () => {
+    mockApi({
+      vatMode: 'EXCLUSIVE',
+      lines: [
+        { normoHours: 0.3, price: 111.11 },
+        { normoHours: 0.3, price: 111.11 },
+        { normoHours: 0.3, price: 111.11 },
+        { normoHours: 0.7, price: 199.99 },
+      ],
+    });
+    await openModal();
+
+    // 33.33 × 3 + 139.99 = 239.98; + запчастина 200 = 439.98; ПДВ 88.00
+    await waitFor(() => expect(row('vat-totals-net')).toBe('Сума без ПДВ439,98'));
+    expect(row('vat-totals-vat')).toBe('ПДВ88,00');
+    expect(row('vat-totals-gross')).toBe('Разом527,98');
+  });
+
+  it('рядок 0.3 × 100.05 показано як 30.02 — так само, як його зберігає бекенд', async () => {
+    mockApi({ vatMode: 'NONE', lines: [{ normoHours: 0.3, price: 100.05 }] });
+    await openModal();
+
+    await waitFor(() => expect(row('vat-totals-gross')).toBe('Разом230,02'));
+    expect(screen.getAllByText('30.02').length).toBeGreaterThan(0);
+    expect(screen.queryByText('30.01')).toBeNull();
   });
 
   it('ставка за замовчуванням береться з налаштувань організації, а не з прапорця isDefault', async () => {

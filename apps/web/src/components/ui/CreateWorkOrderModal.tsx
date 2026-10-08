@@ -39,7 +39,14 @@ import { useStockTotals } from '@/hooks/useStockTotals';
 import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
 import { getCached } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
-import { cn, displayCounterpartyName, calcVatTotals, splitVatTotals } from '@/lib/utils';
+import {
+  cn,
+  displayCounterpartyName,
+  calcVatTotals,
+  splitVatTotals,
+  lineAmount,
+  roundMoney,
+} from '@/lib/utils';
 import { VatTotalsSummary } from '@/components/ui/work-order/VatTotalsSummary';
 import {
   WO_STATUS_LABELS,
@@ -1508,10 +1515,10 @@ export function CreateWorkOrderModal({
       const nh = toNumberOrUndefined(l.normoHours);
       const h = ah ?? nh;
       const p = toNumberOrUndefined(l.price);
-      if (h != null && p != null) total += h * p;
+      if (h != null && p != null) total += lineAmount(h, p);
       if (ah != null) hasAnyActual = true;
     }
-    return { total, hasAny: hasAnyActual };
+    return { total: roundMoney(total), hasAny: hasAnyActual };
   }, [lines]);
 
   // Live sum of (actualHours ?? normoHours) across lines — shown in "Фактичні показники → Нормогодин"

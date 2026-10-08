@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
-import { calcVatOnBase } from '@/lib/utils';
+import { calcVatOnBase, lineAmount } from '@/lib/utils';
 import type { LocalPart, Warehouse, Unit } from './types';
 
 export interface PartsTableProps {
@@ -157,7 +157,7 @@ export function PartsTable(props: PartsTableProps) {
               const wh = warehousesById.get(part.warehouseId);
               const qty = toNumberOrUndefined(part.quantity);
               const p = toNumberOrUndefined(part.price);
-              const sum = qty != null && p != null ? qty * p : null;
+              const sum = qty != null && p != null ? lineAmount(qty, p) : null;
               return (
                 <tr
                   key={part._key}
@@ -379,7 +379,7 @@ export function PartsTable(props: PartsTableProps) {
                       {vatMode !== 'NONE' && (
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                           {qty != null && p != null && vatRate > 0
-                            ? calcVatOnBase(qty * p, vatRate, vatMode).toFixed(2)
+                            ? calcVatOnBase(lineAmount(qty, p), vatRate, vatMode).toFixed(2)
                             : '—'}
                         </td>
                       )}
@@ -530,7 +530,7 @@ export function PartsTable(props: PartsTableProps) {
                       const qty = toNumberOrUndefined(newPart.quantity);
                       const p = toNumberOrUndefined(newPart.price);
                       return qty != null && p != null && vatRate > 0
-                        ? calcVatOnBase(qty * p, vatRate, vatMode).toFixed(2)
+                        ? calcVatOnBase(lineAmount(qty, p), vatRate, vatMode).toFixed(2)
                         : '—';
                     })()}
                   </td>
@@ -539,7 +539,7 @@ export function PartsTable(props: PartsTableProps) {
                   {(() => {
                     const qty = toNumberOrUndefined(newPart.quantity);
                     const p = toNumberOrUndefined(newPart.price);
-                    return qty != null && p != null ? (qty * p).toFixed(2) : '—';
+                    return qty != null && p != null ? lineAmount(qty, p).toFixed(2) : '—';
                   })()}
                 </td>
                 <td className="px-1.5 py-1.5">

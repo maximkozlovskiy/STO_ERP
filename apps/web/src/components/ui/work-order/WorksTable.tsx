@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type WorkPickerItem } from '@/components/ui/WorkPickerModal';
-import { calcVatOnBase } from '@/lib/utils';
+import { calcVatOnBase, lineAmount } from '@/lib/utils';
 import type { LocalLine, Employee, WorkOrderFormState } from './types';
 
 export interface WorksTableProps {
@@ -173,7 +173,7 @@ export function WorksTable(props: WorksTableProps) {
               const emp = employeesById.get(line.employeeId);
               const h = toNumberOrUndefined(line.normoHours);
               const p = toNumberOrUndefined(line.price);
-              const sum = h != null && p != null ? h * p : null;
+              const sum = h != null && p != null ? lineAmount(h, p) : null;
               return (
                 <tr
                   key={line._key}
@@ -266,7 +266,7 @@ export function WorksTable(props: WorksTableProps) {
                             const h = toNumberOrUndefined(editingLine.normoHours);
                             const p = toNumberOrUndefined(editingLine.price);
                             return h != null && p != null && vatRate > 0
-                              ? calcVatOnBase(h * p, vatRate, vatMode).toFixed(2)
+                              ? calcVatOnBase(lineAmount(h, p), vatRate, vatMode).toFixed(2)
                               : '—';
                           })()}
                         </td>
@@ -275,7 +275,7 @@ export function WorksTable(props: WorksTableProps) {
                         {(() => {
                           const h = toNumberOrUndefined(editingLine.normoHours);
                           const p = toNumberOrUndefined(editingLine.price);
-                          return h != null && p != null ? (h * p).toFixed(2) : '—';
+                          return h != null && p != null ? lineAmount(h, p).toFixed(2) : '—';
                         })()}
                       </td>
                       <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
@@ -284,7 +284,7 @@ export function WorksTable(props: WorksTableProps) {
                           const nh = toNumberOrUndefined(editingLine.normoHours);
                           const h = ah ?? nh;
                           const p = toNumberOrUndefined(editingLine.price);
-                          return h != null && p != null ? (h * p).toFixed(2) : '—';
+                          return h != null && p != null ? lineAmount(h, p).toFixed(2) : '—';
                         })()}
                       </td>
                       <td className="px-1.5 py-1.5">
@@ -341,7 +341,7 @@ export function WorksTable(props: WorksTableProps) {
                       {vatMode !== 'NONE' && (
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                           {h != null && p != null && vatRate > 0
-                            ? calcVatOnBase(h * p, vatRate, vatMode).toFixed(2)
+                            ? calcVatOnBase(lineAmount(h, p), vatRate, vatMode).toFixed(2)
                             : '—'}
                         </td>
                       )}
@@ -353,7 +353,7 @@ export function WorksTable(props: WorksTableProps) {
                           const ah = toNumberOrUndefined(line.actualHours);
                           const nh = toNumberOrUndefined(line.normoHours);
                           const h = ah ?? nh;
-                          return h != null && p != null ? (h * p).toFixed(2) : '—';
+                          return h != null && p != null ? lineAmount(h, p).toFixed(2) : '—';
                         })()}
                       </td>
                       <td className="px-1.5 py-1.5 text-left">
@@ -485,7 +485,7 @@ export function WorksTable(props: WorksTableProps) {
                       const h = toNumberOrUndefined(newLine.normoHours);
                       const p = toNumberOrUndefined(newLine.price);
                       return h != null && p != null && vatRate > 0
-                        ? calcVatOnBase(h * p, vatRate, vatMode).toFixed(2)
+                        ? calcVatOnBase(lineAmount(h, p), vatRate, vatMode).toFixed(2)
                         : '—';
                     })()}
                   </td>
@@ -494,7 +494,7 @@ export function WorksTable(props: WorksTableProps) {
                   {(() => {
                     const h = toNumberOrUndefined(newLine.normoHours);
                     const p = toNumberOrUndefined(newLine.price);
-                    return h != null && p != null ? (h * p).toFixed(2) : '—';
+                    return h != null && p != null ? lineAmount(h, p).toFixed(2) : '—';
                   })()}
                 </td>
                 <td className="px-2 py-1.5 text-left tabular-nums text-[12px] text-muted-foreground">
