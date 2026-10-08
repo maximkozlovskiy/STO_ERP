@@ -518,7 +518,62 @@ async function main() {
       brandId: boschId,
     },
   });
-  console.warn('  Goods: 2');
+  // Ще чотири товари й дві одиниці виміру. Без них integration-спеки на ЧИСТІЙ базі (CI) не
+  // мали з чого зібрати дані: імпорт рядків замовлення потребує щонайменше п'яти товарів, а
+  // списання запчастин в іншій одиниці — хоча б однієї одиниці виміру організації. У dev-базах
+  // це було завжди (накопичені дані), тому локально спеки проходили, а в CI — ні.
+  const extraGoods = [
+    {
+      id: 'a1000000-0000-4000-8000-000000000072',
+      name: 'Фільтр повітряний',
+      sku: 'FILTER-AIR-001',
+      salePrice: '320.00',
+    },
+    {
+      id: 'a1000000-0000-4000-8000-000000000073',
+      name: 'Фільтр салону',
+      sku: 'FILTER-CABIN-001',
+      salePrice: '290.00',
+    },
+    {
+      id: 'a1000000-0000-4000-8000-000000000074',
+      name: 'Колодки гальмівні передні',
+      sku: 'BRAKE-PAD-F-001',
+      salePrice: '1450.00',
+    },
+    {
+      id: 'a1000000-0000-4000-8000-000000000075',
+      name: 'Свічка запалювання',
+      sku: 'SPARK-PLUG-001',
+      salePrice: '210.00',
+    },
+  ];
+  for (const g of extraGoods) {
+    await prisma.good.upsert({
+      where: { id: g.id },
+      update: {},
+      create: { ...g, orgId: ORG_ID, unit: 'шт', brandId: boschId },
+    });
+  }
+  console.warn(`  Goods: ${2 + extraGoods.length}`);
+
+  const units = [
+    { id: 'a1000000-0000-4000-8000-000000000080', name: 'Штука', shortName: 'шт', coefficient: 1 },
+    {
+      id: 'a1000000-0000-4000-8000-000000000081',
+      name: 'Упаковка (4 шт)',
+      shortName: 'уп',
+      coefficient: 4,
+    },
+  ];
+  for (const u of units) {
+    await prisma.unitOfMeasure.upsert({
+      where: { id: u.id },
+      update: {},
+      create: { ...u, orgId: ORG_ID, isSystem: true },
+    });
+  }
+  console.warn(`  UnitsOfMeasure: ${units.length}`);
 
   // ─── SystemTemplates ─────────────────────────────────────────────────────────
   const systemTemplates = [

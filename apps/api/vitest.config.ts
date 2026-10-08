@@ -34,14 +34,25 @@ export default defineConfig({
         test: {
           name: 'shared',
           include: ['src/**/*.spec.ts'],
-          exclude: ['src/modules/notifications/providers/email.provider.spec.ts'],
+          exclude: [
+            'src/modules/notifications/providers/email.provider.spec.ts',
+            'src/**/*.integration.spec.ts',
+          ],
         },
       },
       {
         extends: true,
         test: {
           name: 'isolated',
-          include: ['src/modules/notifications/providers/email.provider.spec.ts'],
+          // Integration-спеки працюють зі СПРАВЖНІМИ модулями на живій БД, тож чужий vi.mock у
+          // спільному графі для них фатальний. 2026-10-08 у CI `dead-letter.integration` потрапив
+          // в один воркер із `dead-letter.service.spec` (той мокає tenant-context без
+          // isTenantBypassed) — запис у БД тихо не відбувався (сервіс fail-open), 2 кейси падали.
+          // Локально не відтворювалось: на 4 воркерах файли розходились по різних.
+          include: [
+            'src/modules/notifications/providers/email.provider.spec.ts',
+            'src/**/*.integration.spec.ts',
+          ],
           isolate: true,
         },
       },
