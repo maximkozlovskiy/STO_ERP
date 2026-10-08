@@ -10,6 +10,9 @@ import { BrandsService } from '../brands/brands.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
+import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
+
+const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
 
 const ORG = 'org-1';
 const MAPPING: ImportMapping = {
@@ -91,6 +94,8 @@ describe('XlsxService — generic import (preview/apply)', () => {
         // sto-optimize: OCR-grid кеш за хешем вмісту. xlsx-канал цих специв кеш не чіпає
         // (parseGridCached повертається рано для не-OCR форматів), але DI потребує провайдера.
         { provide: CacheService, useValue: { get: vi.fn().mockResolvedValue(null), set: vi.fn() } },
+        // BR-WO-007: імпорт запчастин у наряд перераховує тотали через єдиного власника.
+        { provide: WorkOrderTotalsService, useValue: workOrderTotals },
       ],
     }).compile();
     service = module.get(XlsxService);

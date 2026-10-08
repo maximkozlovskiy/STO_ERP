@@ -155,6 +155,17 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 - **BR-WO-006**: Скасування наряду скасовує чернетки його актів виконаних робіт (у тій самій
   транзакції; підписані акти не чіпаються). Акт скасованого наряду не підписується → 400.
   Наряд у `INVOICED` / `PAID` / `ARCHIVED` акт підписати дозволяє (Bug #795)
+- **BR-WO-007**: Сума наряду до сплати містить ПДВ у всіх режимах. `totalAmount` — сума до сплати
+  (її бере борг клієнта при `COMPLETED` і рахунок), `totalNet` — сума без ПДВ; інваріант
+  `totalNet + totalVat = totalAmount`. За режимом організації: без ПДВ — обидві дорівнюють сумі
+  рядків; «ПДВ у ціні» — `totalAmount` = сума рядків, `totalNet` = сума рядків − ПДВ; «ПДВ зверху»
+  — `totalNet` = сума рядків, `totalAmount` = сума рядків + ПДВ. Тотали пише лише
+  `WorkOrderTotalsService.recalc` — у тій самій транзакції, що змінила рядки: правка роботи чи
+  запчастини, клонування наряду, авто-рядки з огляду авто. XLSX-імпорт запчастин допускає
+  частковий успіх (рядки пишуться поодинці, поза спільною транзакцією), тому перераховує тотали
+  один раз одразу після запису, окремою транзакцією, і лише якщо щось записано. Наряди,
+  завершені до 2026-10-08, не перераховані: у них `totalNet = totalAmount` (ПДВ зверху клієнтові
+  не нараховували)
 
 → Детально у [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 
@@ -177,18 +188,33 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | статус у чужій транзакції + сторож FSM  | `work-order-status.spec.ts`                    | 19     |
 | integration на живій БД                 | `work-order-stock-effects.integration.spec.ts` | 4      |
 | сервісна логіка                         | `work-order-stock-effects.service.spec.ts`     | 19     |
-| сервісна логіка                         | `work-orders-export.service.spec.ts`           | 4      |
+| сервісна логіка                         | `work-orders-export.service.spec.ts`           | 11     |
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.contract.spec.ts`                 | 22     |
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.fsm.contract.spec.ts`             | 2      |
 | інваріанти (property-based)             | `work-orders.fsm.invariants.spec.ts`           | 16     |
 | нумерація (create/clone)                | `work-orders.numbering.spec.ts`                | 2      |
+| друкований наряд: підсумок із тоталів   | `work-orders.pdf-totals.spec.ts`               | 4      |
 | recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |
-| recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 7      |
+| recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 18     |
 | рольовий доступ                         | `work-orders.role-gate.spec.ts`                | 24     |
 | сервісна логіка                         | `work-orders.service.spec.ts`                  | 25     |
-| share public                            | `work-orders.share-public.spec.ts`             | 9      |
+| share public                            | `work-orders.share-public.spec.ts`             | 14     |
 
-Разом: **180** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **207** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
+
+- `work-orders.recalc-totals.spec.ts` — `WorkOrderTotalsService.recalc` у трьох режимах (що лягає
+  в `totalNet` / `totalVat` / `totalAmount`), `totalAmountBase` від суми до сплати; `clone()` —
+  create без полів `total*`, `recalc` для клона в тій самій транзакції.
+- `work-orders.share-public.spec.ts` — публічний кошторис і SMS `{{totalAmount}}`: планова сума з ПДВ.
+- `work-orders-export.service.spec.ts` — `getEstimateData` і рядки «Сума без ПДВ / ПДВ» у XLSX і DOCX.
+- `work-orders.pdf-totals.spec.ts` — `generatePdf` передає `total` / `totalNet` / `vatTotal` наряду.
+- поза модулем: `apps/api/src/common/utils/vat.spec.ts` (`splitWorkOrderTotal`,
+  `plannedWorkOrderTotals`), `apps/api/src/modules/xlsx/xlsx.service.spec.ts` (імпорт запчастин
+  кличе `recalc` рівно раз), `apps/api/src/modules/pdf/pdf.document-total.spec.ts` (підсумок наряду
+  й акта), `apps/api/src/modules/completion-acts/completion-acts.pdf-totals.spec.ts` (сума акта =
+  сума наряду до сплати), `apps/api/src/modules/inspection/inspection.service.spec.ts` (авто-рядки огляду).
 
 **Чого тут НЕМА.** Перевіряти при додаванні нового бізнес-правила — чи з'явився тест.
 

@@ -1,10 +1,119 @@
 import { describe, it, expect } from 'vitest';
 
-import { roundMoney, calcVatTotals } from './utils';
+import {
+  roundMoney,
+  calcVatTotals,
+  calcVatOnBase,
+  splitVatTotals,
+  workOrderVatSplit,
+} from './utils';
 
 // Regression-guard для клієнтського грошового квантування у модалках (WO-H2 / FIN-H1).
 // Дзеркалить backend apps/api/src/common/utils/math.ts + vat.ts — обидві сторони мають
 // округлювати ІДЕНТИЧНО, інакше preview-сума у tfoot розходиться з бекендовим amount.
+
+// guards: BR-WO-007
+describe('calcVatTotals — три режими ПДВ організації (BR-WO-007)', () => {
+  const rows = [
+    { qty: 2, price: 500 },
+    { qty: 1, price: 200 },
+  ]; // сума рядків 1200
+
+  it('NONE: ПДВ немає, «без ПДВ» = «разом» = сума рядків — навіть при ненульовій ставці', () => {
+    expect(calcVatTotals(rows, 20, 'NONE')).toEqual({
+      total: 1200,
+      net: 1200,
+      vat: 0,
+      gross: 1200,
+    });
+  });
+
+  it('EXCLUSIVE («ПДВ зверху»): без ПДВ = сума рядків, разом = сума рядків + ПДВ', () => {
+    expect(calcVatTotals(rows, 20, 'EXCLUSIVE')).toEqual({
+      total: 1200,
+      net: 1200,
+      vat: 240,
+      gross: 1440,
+    });
+  });
+
+  it('INCLUSIVE («ПДВ у ціні»): разом = сума рядків, без ПДВ = сума рядків − ПДВ', () => {
+    expect(calcVatTotals(rows, 20, 'INCLUSIVE')).toEqual({
+      total: 1200,
+      net: 1000,
+      vat: 200,
+      gross: 1200,
+    });
+  });
+
+  it('ставка 0 у режимі з ПДВ → ПДВ немає', () => {
+    expect(calcVatTotals(rows, 0, 'EXCLUSIVE')).toEqual({
+      total: 1200,
+      net: 1200,
+      vat: 0,
+      gross: 1200,
+    });
+  });
+
+  it('інваріант net + vat = gross тримається на «незручних» сумах в обох режимах', () => {
+    for (const base of [0.01, 0.03, 7.59, 100.33, 999.99, 1234.57]) {
+      for (const mode of ['EXCLUSIVE', 'INCLUSIVE'] as const) {
+        for (const rate of [7, 14, 20]) {
+          const s = splitVatTotals(base, rate, mode);
+          expect(roundMoney(s.net + s.vat)).toBe(s.gross);
+        }
+      }
+    }
+  });
+});
+
+describe('calcVatOnBase — формула бекенду', () => {
+  it('EXCLUSIVE = round(base × rate / 100)', () => {
+    expect(calcVatOnBase(7.59, 20, 'EXCLUSIVE')).toBe(1.52);
+  });
+
+  it('INCLUSIVE = round(base − base / (1 + rate/100))', () => {
+    expect(calcVatOnBase(100, 20, 'INCLUSIVE')).toBe(16.67);
+    expect(calcVatOnBase(1200, 20, 'INCLUSIVE')).toBe(200);
+  });
+
+  it('NONE → 0', () => {
+    expect(calcVatOnBase(1200, 20, 'NONE')).toBe(0);
+  });
+});
+
+// guards: BR-WO-007
+describe('workOrderVatSplit — ПДВ збереженого наряду як totalAmount − totalNet', () => {
+  it('ПДВ зверху: 1200 без ПДВ, 1440 до сплати → ПДВ 240', () => {
+    expect(workOrderVatSplit({ totalAmount: 1440, totalNet: 1200 })).toEqual({
+      net: 1200,
+      vat: 240,
+      gross: 1440,
+    });
+  });
+
+  it('наряд, завершений до 2026-10-08 (totalNet = totalAmount) → ПДВ у сумі немає', () => {
+    expect(workOrderVatSplit({ totalAmount: 1200, totalNet: 1200 })).toEqual({
+      net: 1200,
+      vat: 0,
+      gross: 1200,
+    });
+  });
+
+  it('totalNet відсутній у відповіді → ПДВ у сумі немає, без NaN', () => {
+    expect(workOrderVatSplit({ totalAmount: 500 })).toEqual({ net: 500, vat: 0, gross: 500 });
+    expect(workOrderVatSplit({ totalAmount: 500, totalNet: null })).toEqual({
+      net: 500,
+      vat: 0,
+      gross: 500,
+    });
+  });
+
+  it('float-дрейф різниці не дає «ПДВ 0,00» окремим рядком', () => {
+    // 0.1 + 0.2 = 0.30000000000000004 — різниця з 0.3 менша за копійку.
+    expect(workOrderVatSplit({ totalAmount: 0.1 + 0.2, totalNet: 0.3 }).vat).toBe(0);
+  });
+});
 
 describe('roundMoney — дзеркало backend math.ts', () => {
   it('квантує до 2 знаків half-away-from-zero', () => {
@@ -34,6 +143,7 @@ describe('calcVatTotals — дзеркало backend work-orders recalcTotals', 
         { qty: 1, price: 0.2 },
       ],
       0,
+      'NONE',
     );
     expect(total).toBe(0.3);
     expect(vat).toBe(0);
@@ -51,6 +161,7 @@ describe('calcVatTotals — дзеркало backend work-orders recalcTotals', 
         { qty: 1, price: 2.525 },
       ],
       20,
+      'EXCLUSIVE',
     );
     expect(total).toBe(7.59);
     expect(vat).toBe(1.52);
@@ -64,6 +175,7 @@ describe('calcVatTotals — дзеркало backend work-orders recalcTotals', 
         { qty: 3, price: 10 },
       ],
       0,
+      'NONE',
     );
     expect(total).toBe(30);
   });
@@ -75,6 +187,7 @@ describe('calcVatTotals — дзеркало backend work-orders recalcTotals', 
         { qty: 2, price: 49.99 },
       ],
       0,
+      'NONE',
     );
     // 300.99 + 99.98 = 400.97 — точно, без хвостів.
     expect(total).toBe(400.97);

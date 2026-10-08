@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderTotalsService } from './work-order-totals.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 // ─── Regression spec: recalcTotals — defensive take: 1000 cap ─────────────
@@ -76,6 +77,16 @@ function makeService(prisma: PrismaService): WorkOrdersService {
   const settingsService = {
     getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
   } as never;
+  const exchangeRates = {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
+  } as never;
   return new WorkOrdersService(
     prisma,
     null as never, // stockEffects (A3 — не задіяний у recalc-шляху)
@@ -84,17 +95,9 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // audit
     settingsService, // settingsService (Bug #536)
     // exchangeRates (Фаза 3): default base — recalcTotals пише totalAmountBase (base=amount, rate=1)
-    {
-      resolveBaseConversion: vi
-        .fn()
-        .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
-          rateUsed: 1,
-          amountBase: amount,
-        })),
-      getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-      requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-    } as never,
+    exchangeRates,
     null as never, // events (EventEmitter2)
+    new WorkOrderTotalsService(settingsService, exchangeRates),
   );
 }
 

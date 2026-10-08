@@ -10,6 +10,7 @@ import { WorksModule } from '../works/works.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
+import { WorkOrderTotalsModule } from '../work-orders/work-order-totals.module';
 import {
   DocumentLineImportAdapterRegistry,
   PurchaseOrderImportAdapter,
@@ -25,6 +26,7 @@ import {
     InventoryModule,
     SettingsModule,
     ExchangeRatesModule,
+    WorkOrderTotalsModule,
   ],
   controllers: [XlsxController],
   providers: [

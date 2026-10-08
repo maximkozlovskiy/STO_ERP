@@ -141,7 +141,9 @@ export function useReferenceData() {
         recalcActualHoursFromLines?: boolean;
         syncCalendarSlotWithPlannedHours?: boolean;
       }>('/settings/organisation'),
-      apiFetch<{ id: string; rate: number; isDefault: boolean }[]>('/settings/tax-rates'),
+      apiFetch<{ id: string; rate: number; isDefault: boolean; isActive?: boolean }[]>(
+        '/settings/tax-rates',
+      ),
     ])
       .then(([org, rates]) => {
         setVatMode((org.vatMode as VatMode) ?? 'NONE');
@@ -150,8 +152,11 @@ export function useReferenceData() {
         setRecalcPlannedHoursEnabled(org.recalcPlannedHoursFromLines ?? true);
         setRecalcActualHoursEnabled(org.recalcActualHoursFromLines ?? true);
         setSyncCalendarEnabled(org.syncCalendarSlotWithPlannedHours ?? true);
-        const def = (Array.isArray(rates) ? rates : []).find(r => r.isDefault);
-        if (def) setVatRate(Number(def.rate));
+        const list = Array.isArray(rates) ? rates : [];
+        const def = org.defaultVatRateId
+          ? list.find(r => r.id === org.defaultVatRateId)
+          : list.find(r => r.isDefault && r.isActive !== false);
+        setVatRate(org.vatMode === 'NONE' ? 0 : Number(def?.rate ?? 0));
       })
       .catch(() => {});
   }, []);

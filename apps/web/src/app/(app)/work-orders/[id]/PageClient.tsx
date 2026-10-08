@@ -35,6 +35,7 @@ import { WorkOrderLinesSection } from './WorkOrderLinesSection';
 import { WorkOrderPartsSection } from './WorkOrderPartsSection';
 import { WorkOrderMediaSection } from './WorkOrderMediaSection';
 import { WarrantySection } from './WarrantySection';
+import { WorkOrderTotals } from './WorkOrderTotals';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { WorkOrderAuditSection } from './WorkOrderAuditSection';
 import { InvoiceSection, type InvoiceRef } from './InvoiceSection';
@@ -128,6 +129,7 @@ interface WorkOrderDetail {
   totalActualLabor: number;
   totalParts: number;
   totalAmount: number;
+  totalNet?: number;
   totalVat?: number;
   paidAmount: number;
   hasActiveWarranty?: boolean;
@@ -935,44 +937,15 @@ export default function WorkOrderCardPage() {
       </div>
 
       {/* Totals */}
-      {/* Bug #506: коли totalActualLabor !== totalLabor (механік ввів фактичні години),
-          показуємо обидва значення щоб математика сходилась з totalAmount у header.
-          totalAmount = totalActualLabor + totalParts (бекенд recalcTotals). */}
-      <div className="bg-surface rounded-xl border border-border p-5 grid grid-cols-3 gap-4 text-sm">
-        <div>
-          <p className="text-xs text-muted-foreground">
-            {wo.totalActualLabor !== wo.totalLabor ? t('detail.laborPlan') : t('detail.labor')}
-          </p>
-          <p className="text-lg font-semibold text-foreground tabular-nums">
-            {fmtMoney(wo.totalLabor)} {sym}
-          </p>
-          {wo.totalActualLabor !== wo.totalLabor && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {t('detail.actualPrefix')}
-              <span className="font-medium text-foreground tabular-nums">
-                {fmtMoney(wo.totalActualLabor)} {sym}
-              </span>
-            </p>
-          )}
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">{t('detail.parts')}</p>
-          <p className="text-lg font-semibold text-foreground tabular-nums">
-            {fmtMoney(wo.totalParts)} {sym}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">{t('detail.paid')}</p>
-          <p
-            className={cn(
-              'text-lg font-semibold tabular-nums',
-              wo.paidAmount >= wo.totalAmount ? 'text-success' : 'text-foreground',
-            )}
-          >
-            {fmtMoney(wo.paidAmount)} {sym}
-          </p>
-        </div>
-      </div>
+      <WorkOrderTotals
+        totalLabor={wo.totalLabor}
+        totalActualLabor={wo.totalActualLabor}
+        totalParts={wo.totalParts}
+        totalAmount={wo.totalAmount}
+        totalNet={wo.totalNet}
+        paidAmount={wo.paidAmount}
+        sym={sym}
+      />
 
       {/* Completion Act */}
       {(WO_INVOICEABLE_STATUSES.includes(wo.status) || completionAct) && (

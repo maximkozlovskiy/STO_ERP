@@ -16,6 +16,8 @@ interface ApiWorkOrder {
   completedAt?: string | null;
   totalLabor: number;
   totalParts: number;
+  totalNet?: number;
+  totalVat?: number;
   totalAmount: number;
   paidAmount: number;
   lines: ApiWorkOrderLine[];
@@ -50,6 +52,8 @@ function applyWorkOrderFields(r: any, api: ApiWorkOrder, syncedAt: number) {
   r.completedAt = api.completedAt ? new Date(api.completedAt).getTime() : null;
   r.totalLabor = Number(api.totalLabor);
   r.totalParts = Number(api.totalParts);
+  r.totalNet = api.totalNet == null ? null : Number(api.totalNet);
+  r.totalVat = api.totalVat == null ? null : Number(api.totalVat);
   r.totalAmount = Number(api.totalAmount);
   r.paidAmount = Number(api.paidAmount);
   r.syncedAt = syncedAt;
@@ -100,10 +104,8 @@ export async function syncWorkOrders(): Promise<void> {
       const existing = woByRemoteId.get(api.id);
 
       if (existing) {
-        if (!(existing as any).isDirty) {
-          operations.push(
-            (existing as any).prepareUpdate((r: any) => applyWorkOrderFields(r, api, now)),
-          );
+        if (!existing.isDirty) {
+          operations.push(existing.prepareUpdate((r: any) => applyWorkOrderFields(r, api, now)));
         }
       } else {
         operations.push(

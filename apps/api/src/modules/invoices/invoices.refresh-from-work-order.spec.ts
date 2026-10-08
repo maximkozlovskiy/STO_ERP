@@ -11,7 +11,7 @@
  */
 
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   makeInvoicesHarness,
   ORG,
@@ -30,9 +30,10 @@ describe('InvoicesService — refresh-from-work-order', () => {
   let service: InvoicesHarness['service'];
   let prisma: InvoicesHarness['prisma'];
   let settingsMock: InvoicesHarness['settings'];
+  let exchangeRates: InvoicesHarness['exchangeRates'];
 
   beforeEach(async () => {
-    ({ service, prisma, settings: settingsMock } = await makeInvoicesHarness());
+    ({ service, prisma, settings: settingsMock, exchangeRates } = await makeInvoicesHarness());
   });
 
   // ─── Bug #403: refreshFromWorkOrder DRAFT-only guard ─────────────────────
@@ -107,7 +108,9 @@ describe('InvoicesService — refresh-from-work-order', () => {
         orgId: ORG,
         status: 'COMPLETED',
         counterpartyId: 'c-1',
-        totalAmount: 1000,
+        // Тотали наряду «ПДВ зверху» (BR-WO-007): 700 без ПДВ + 140 ПДВ = 840 до сплати.
+        totalNet: 700,
+        totalAmount: 840,
         lines: [
           { id: 'l-1', workId: 'w-1', normoHours: 2, price: 100, work: { name: 'Робота 1' } },
         ],
@@ -167,7 +170,9 @@ describe('InvoicesService — refresh-from-work-order', () => {
         orgId: ORG,
         status: 'COMPLETED',
         counterpartyId: 'c-1',
-        totalAmount: 1000,
+        // Наряд без ПДВ (BR-WO-007): обидві суми = сума рядків (200 + 500).
+        totalNet: 700,
+        totalAmount: 700,
         lines: [
           { id: 'l-1', workId: 'w-1', normoHours: 2, price: 100, work: { name: 'Робота 1' } },
         ],
@@ -225,6 +230,7 @@ describe('InvoicesService — refresh-from-work-order', () => {
         orgId: ORG,
         status: 'COMPLETED',
         counterpartyId: 'c-1',
+        totalNet: 100,
         totalAmount: 100,
         lines: [{ id: 'l-1', workId: 'w-1', normoHours: 1, price: 100, work: null }],
         parts: [],
@@ -324,6 +330,176 @@ describe('InvoicesService — refresh-from-work-order', () => {
 
       await expect(service.refreshFromWorkOrder(ORG, WO_ID)).rejects.toThrow(NotFoundException);
       expect(prisma.invoiceLine.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── BR-INV-002: «Оновити з наряду» — той самий код рядків і сум, що й створення ───
+  //
+  // `$transaction` тут віддає ОКРЕМИЙ об'єкт tx (у фікстурі tx === prisma): видно, що старі
+  // рядки зносяться, нові пишуться і суми оновлюються одним клієнтом транзакції.
+  describe('refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002)', () => {
+    type Fn = ReturnType<typeof vi.fn>;
+    const DOC_DATE = new Date('2026-09-15');
+    // 2 год × 100 + 1 шт × 500 = 700; ПДВ зверху 20% → до сплати 840.
+    const WO_EXCL = {
+      totalNet: 700,
+      totalAmount: 840,
+      lines: [
+        { workId: 'w-1', price: 100, normoHours: 2, actualHours: null, work: { name: 'Робота 1' } },
+      ],
+      parts: [{ goodId: 'g-1', price: 500, quantity: 1, good: { name: 'Запчастина 1' } }],
+    };
+
+    function arrange(woInTx: typeof WO_EXCL, currencyId: string | null = null) {
+      const order: string[] = [];
+      const step = <T>(name: string, value: T) =>
+        vi.fn().mockImplementation(() => {
+          order.push(name);
+          return Promise.resolve(value);
+        });
+      const tx = {
+        invoice: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ status: 'DRAFT', currencyId, documentDate: DOC_DATE }),
+          update: step('update', {}),
+        },
+        invoiceLine: {
+          deleteMany: step('deleteMany', { count: 3 }),
+          createMany: step('createMany', { count: 2 }),
+        },
+        workOrder: { findFirst: vi.fn().mockResolvedValue(woInTx) },
+      };
+      prisma.workOrder.findFirst.mockResolvedValue({ id: WO_ID, status: 'COMPLETED' });
+      // 1-й findFirst — pre-check активного рахунку; 2-й — findOne після транзакції.
+      prisma.invoice.findFirst
+        .mockResolvedValueOnce({ id: INV_ID, status: 'DRAFT' })
+        .mockResolvedValueOnce({
+          id: INV_ID,
+          orgId: ORG,
+          number: 'INV-1',
+          status: 'DRAFT',
+          counterpartyId: 'c-1',
+          workOrderId: WO_ID,
+          amount: woInTx.totalAmount,
+          totalWithoutVat: woInTx.totalNet,
+          totalVat: 0,
+          totalWithVat: woInTx.totalAmount,
+          invoiceType: 'STANDARD',
+          notes: null,
+          dueDate: null,
+          documentDate: DOC_DATE,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lines: [],
+          payments: [],
+        });
+      prisma.$transaction.mockImplementation(async (cb: (t: unknown) => Promise<unknown>) => {
+        order.push('tx-begin');
+        try {
+          const res = await cb(tx);
+          order.push('tx-commit');
+          return res;
+        } catch (err) {
+          order.push('tx-rollback');
+          throw err;
+        }
+      });
+      return { tx, order };
+    }
+
+    const lineData = (tx: { invoiceLine: { createMany: Fn } }) =>
+      tx.invoiceLine.createMany.mock.calls[0][0].data as Record<string, unknown>[];
+    const updateData = (tx: { invoice: { update: Fn } }) =>
+      tx.invoice.update.mock.calls[0][0].data as Record<string, unknown>;
+
+    // guards: BR-INV-002
+    it('старі рядки зносяться, нові пишуться і суми оновлюються в одній транзакції; сума = wo.totalAmount', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx, order } = arrange(WO_EXCL);
+
+      await service.refreshFromWorkOrder(ORG, WO_ID);
+
+      expect(order).toEqual(['tx-begin', 'deleteMany', 'createMany', 'update', 'tx-commit']);
+      expect(tx.invoiceLine.deleteMany).toHaveBeenCalledWith({
+        where: { invoiceId: INV_ID, orgId: ORG },
+      });
+      const data = lineData(tx) as { priceWithVat: number; invoiceId: string; orgId: string }[];
+      expect(data).toHaveLength(2);
+      for (const l of data) expect(l).toMatchObject({ orgId: ORG, invoiceId: INV_ID });
+      expect(data.reduce((s, l) => s + l.priceWithVat, 0)).toBe(840);
+      expect(updateData(tx)).toMatchObject({
+        amount: 840,
+        totalWithVat: 840,
+        totalWithoutVat: 700,
+        totalVat: 140,
+      });
+      expect(tx.invoice.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: INV_ID, orgId: ORG } }),
+      );
+      // Поза транзакцією рядки й суми не чіпаються.
+      expect(prisma.invoiceLine.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.invoiceLine.createMany).not.toHaveBeenCalled();
+      expect(prisma.invoice.update).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-INV-002
+    it('оновлює суму в базовій валюті та курс: валюта й дата — рахунку, сума — наряду до сплати', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx } = arrange(WO_EXCL, 'cur-usd');
+      exchangeRates.resolveBaseConversion.mockImplementation(
+        (_o: string, _c: string, _d: Date, amount: number) =>
+          Promise.resolve({ rateUsed: 41.5, amountBase: amount * 41.5 }),
+      );
+
+      await service.refreshFromWorkOrder(ORG, WO_ID);
+
+      expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledTimes(1);
+      expect(exchangeRates.resolveBaseConversion).toHaveBeenCalledWith(
+        ORG,
+        'cur-usd',
+        DOC_DATE,
+        840,
+        true,
+      );
+      expect(updateData(tx)).toMatchObject({ totalAmountBase: 34_860, rateUsed: 41.5 });
+    });
+
+    // guards: BR-INV-002
+    it('рахунок у базовій валюті: base-сума = нова сума до сплати, курс 1 (стара base-сума не лишається)', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx } = arrange(WO_EXCL);
+
+      await service.refreshFromWorkOrder(ORG, WO_ID);
+
+      expect(exchangeRates.resolveBaseConversion).not.toHaveBeenCalled();
+      expect(updateData(tx)).toMatchObject({ totalAmountBase: 840, rateUsed: 1 });
+    });
+
+    // guards: BR-INV-002
+    it('режим ПДВ рядків визначає наряд: налаштування «ПДВ зверху 20%», наряд без ПДВ у сумі → 700 без ПДВ', async () => {
+      settingsMock.getDefaultVatRate.mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 });
+      const { tx } = arrange({ ...WO_EXCL, totalNet: 700, totalAmount: 700 });
+
+      await service.refreshFromWorkOrder(ORG, WO_ID);
+
+      for (const l of lineData(tx)) {
+        expect(l.vatRate).toBe(0);
+        expect(l.vatAmount).toBe(0);
+      }
+      expect(updateData(tx)).toMatchObject({ amount: 700, totalWithVat: 700, totalVat: 0 });
+    });
+
+    // guards: BR-INV-002
+    it('тотали наряду не відповідають рядкам → 400 ЗСЕРЕДИНИ транзакції: старі рядки не втрачаються, суми не пишуться', async () => {
+      const { tx, order } = arrange({ ...WO_EXCL, totalNet: 1000, totalAmount: 1000 });
+
+      await expect(service.refreshFromWorkOrder(ORG, WO_ID)).rejects.toThrow(BadRequestException);
+
+      // deleteMany уже відбувся в tx — помилка мусить вийти з колбека, щоб Prisma його відкотила.
+      expect(order).toEqual(['tx-begin', 'deleteMany', 'tx-rollback']);
+      expect(tx.invoiceLine.createMany).not.toHaveBeenCalled();
+      expect(tx.invoice.update).not.toHaveBeenCalled();
     });
   });
 });

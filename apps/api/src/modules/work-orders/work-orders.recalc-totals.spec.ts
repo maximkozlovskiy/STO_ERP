@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderTotalsService } from './work-order-totals.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 // ─── Regression spec for totalActualLabor (commits 0665024c, ca5aef48) ───────
@@ -91,6 +92,16 @@ function makeService(prisma: PrismaService): WorkOrdersService {
   const settingsService = {
     getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'NONE', vatRate: 0 }),
   } as never;
+  const exchangeRates = {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
+  } as never;
   return new WorkOrdersService(
     prisma,
     null as never, // stockEffects (A3 — не задіяний у recalc-шляху)
@@ -99,17 +110,9 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // audit
     settingsService, // settingsService (Bug #536)
     // exchangeRates (Фаза 3): default base — recalcTotals пише totalAmountBase (base=amount, rate=1)
-    {
-      resolveBaseConversion: vi
-        .fn()
-        .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
-          rateUsed: 1,
-          amountBase: amount,
-        })),
-      getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-      requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-    } as never,
+    exchangeRates,
     null as never, // events (EventEmitter2)
+    new WorkOrderTotalsService(settingsService, exchangeRates),
   );
 }
 
@@ -223,5 +226,364 @@ describe('WorkOrdersService.recalcTotals — totalActualLabor formula', () => {
     expect(data.totalAmount).toBe(500); // 300 actual + 200 parts
     expect(data.totalAmountBase).toBe(500);
     expect(data.rateUsed).toBe(1);
+  });
+});
+
+// ─── BR-WO-007: склад суми наряду за режимом ПДВ ─────────────────────────────
+//
+// `totalAmount` — сума ДО СПЛАТИ (з ПДВ у всіх режимах), `totalNet` — без ПДВ,
+// інваріант `totalNet + totalVat = totalAmount`. Тут — сам власник тоталів
+// `WorkOrderTotalsService.recalc(workOrderId, tx, orgId)` на tx-моку: що саме лягає у
+// `tx.workOrder.update` для кожного режиму організації.
+
+type VatSettings = { vatMode: 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE'; vatRate: number };
+
+function makeTotals(opts: {
+  vat: VatSettings;
+  lines: LineRow[];
+  partsSum: number;
+  currencyId?: string | null;
+  documentDate?: Date;
+  rate?: number;
+}) {
+  const woUpdate = vi.fn().mockResolvedValue({});
+  const tx = {
+    workOrder: {
+      update: woUpdate,
+      findFirst: vi.fn().mockResolvedValue({
+        currencyId: opts.currencyId ?? null,
+        documentDate: opts.documentDate ?? new Date('2026-10-01'),
+      }),
+    },
+    workOrderLine: { findMany: vi.fn().mockResolvedValue(opts.lines) },
+    workOrderPart: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { amount: opts.partsSum } }),
+    },
+  };
+  const settings = { getDefaultVatRate: vi.fn().mockResolvedValue(opts.vat) };
+  const rate = opts.rate ?? 1;
+  const resolveBaseConversion = vi
+    .fn()
+    .mockImplementation((_o: string, _c: string, _d: Date, amount: number) =>
+      Promise.resolve({ rateUsed: rate, amountBase: amount * rate }),
+    );
+  const service = new WorkOrderTotalsService(settings as never, { resolveBaseConversion } as never);
+  const run = async () => {
+    await service.recalc(WO_ID, tx as never, ORG);
+    return woUpdate.mock.calls[0][0] as { where: unknown; data: Record<string, number> };
+  };
+  return { run, tx, woUpdate, settings, resolveBaseConversion };
+}
+
+describe('WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007)', () => {
+  // 3 год × 100 = 300 робіт + 200 запчастин → сума рядків 500.
+  const LINES: LineRow[] = [{ amount: 300, actualHours: 3, normoHours: 3, price: 100 }];
+
+  // guards: BR-WO-007
+  it('без ПДВ: totalNet = totalAmount = сума рядків, totalVat = 0', async () => {
+    const { run, settings } = makeTotals({
+      vat: { vatMode: 'NONE', vatRate: 0 },
+      lines: LINES,
+      partsSum: 200,
+    });
+
+    const { data } = await run();
+
+    expect(settings.getDefaultVatRate).toHaveBeenCalledWith(ORG);
+    expect(data.totalNet).toBe(500);
+    expect(data.totalVat).toBe(0);
+    expect(data.totalAmount).toBe(500);
+  });
+
+  // guards: BR-WO-007
+  it('ПДВ у ціні 20%: totalAmount = сума рядків, totalNet = сума рядків − ПДВ', async () => {
+    // Рядки на 600 з ПДВ у ціні → ПДВ 100, без ПДВ 500.
+    const { run } = makeTotals({
+      vat: { vatMode: 'INCLUSIVE', vatRate: 20 },
+      lines: [{ amount: 400, actualHours: 4, normoHours: 4, price: 100 }],
+      partsSum: 200,
+    });
+
+    const { data } = await run();
+
+    expect(data.totalAmount).toBe(600);
+    expect(data.totalVat).toBe(100);
+    expect(data.totalNet).toBe(500);
+    expect(data.totalNet + data.totalVat).toBe(data.totalAmount);
+  });
+
+  // guards: BR-WO-007
+  it('ПДВ зверху 20%: totalNet = сума рядків, totalAmount = сума рядків + ПДВ (до сплати)', async () => {
+    const { run } = makeTotals({
+      vat: { vatMode: 'EXCLUSIVE', vatRate: 20 },
+      lines: LINES,
+      partsSum: 200,
+    });
+
+    const { data } = await run();
+
+    expect(data.totalNet).toBe(500);
+    expect(data.totalVat).toBe(100);
+    // До BR-WO-007 сюди лягало 500 — борг клієнта при COMPLETED виходив без ПДВ.
+    expect(data.totalAmount).toBe(600);
+    expect(data.totalNet + data.totalVat).toBe(data.totalAmount);
+    // Складові рядків від режиму не залежать.
+    expect(data.totalActualLabor).toBe(300);
+    expect(data.totalParts).toBe(200);
+  });
+
+  // guards: BR-WO-007
+  it('ПДВ зверху: копійки — ПДВ від суми рядків, усі три суми квантовано (99.99 → 20.00 → 119.99)', async () => {
+    const { run } = makeTotals({
+      vat: { vatMode: 'EXCLUSIVE', vatRate: 20 },
+      lines: [{ amount: 66.66, actualHours: null, normoHours: 2, price: 33.33 }],
+      partsSum: 33.33,
+    });
+
+    const { data } = await run();
+
+    expect(data.totalNet).toBe(99.99);
+    expect(data.totalVat).toBe(20);
+    expect(data.totalAmount).toBe(119.99);
+  });
+
+  // guards: BR-WO-007
+  it('totalAmountBase рахується від суми ДО СПЛАТИ (з ПДВ), а не від суми рядків', async () => {
+    const documentDate = new Date('2026-09-15');
+    const { run, resolveBaseConversion } = makeTotals({
+      vat: { vatMode: 'EXCLUSIVE', vatRate: 20 },
+      lines: LINES,
+      partsSum: 200,
+      currencyId: 'cur-usd',
+      documentDate,
+      rate: 40,
+    });
+
+    const { data } = await run();
+
+    expect(resolveBaseConversion).toHaveBeenCalledTimes(1);
+    expect(resolveBaseConversion).toHaveBeenCalledWith(ORG, 'cur-usd', documentDate, 600, true);
+    expect(data.totalAmountBase).toBe(24_000); // 600 × 40, не 500 × 40
+    expect(data.rateUsed).toBe(40);
+  });
+
+  // guards: BR-WO-007
+  it('базова валюта (без currencyId), ПДВ зверху: totalAmountBase = totalAmount з ПДВ, rate = 1', async () => {
+    const { run, resolveBaseConversion } = makeTotals({
+      vat: { vatMode: 'EXCLUSIVE', vatRate: 20 },
+      lines: LINES,
+      partsSum: 200,
+    });
+
+    const { data } = await run();
+
+    expect(resolveBaseConversion).not.toHaveBeenCalled();
+    expect(data.totalAmountBase).toBe(600);
+    expect(data.rateUsed).toBe(1);
+  });
+
+  // guards: BR-WO-007
+  it('пише тотали одним update у переданій транзакції, у межах свого orgId', async () => {
+    const { run, tx, woUpdate } = makeTotals({
+      vat: { vatMode: 'INCLUSIVE', vatRate: 20 },
+      lines: LINES,
+      partsSum: 200,
+    });
+
+    const { where } = await run();
+
+    expect(woUpdate).toHaveBeenCalledTimes(1);
+    expect(where).toEqual({ id: WO_ID, orgId: ORG });
+    expect(tx.workOrderLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workOrderId: WO_ID, orgId: ORG, deletedAt: null },
+      }),
+    );
+    expect(tx.workOrderPart.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workOrderId: WO_ID, orgId: ORG, deletedAt: null },
+      }),
+    );
+  });
+});
+
+// ─── BR-WO-007: клон наряду — тотали рахує recalc, а не копія з оригіналу ─────
+
+describe('WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007)', () => {
+  const VEHICLE = '55555555-5555-4555-8555-555555555555';
+  const CP = '66666666-6666-4666-8666-666666666666';
+  const BRANCH = '77777777-7777-4777-8777-777777777777';
+  const CLONE_ID = '88888888-8888-4888-8888-888888888888';
+
+  /** Рядок, який повертає перечитування клона — рівно стільки, скільки читає toDto. */
+  const clonedRow = (totalAmount: number) => ({
+    id: CLONE_ID,
+    orgId: ORG,
+    number: 'НЗ-2026-000042',
+    status: 'DRAFT',
+    priority: 'NORMAL',
+    repairCategory: null,
+    branchId: BRANCH,
+    branch: { name: 'Br' },
+    vehicleId: VEHICLE,
+    vehicle: { make: 'X', model: 'Y', licensePlate: 'AB1234' },
+    counterpartyId: CP,
+    counterparty: { firstName: 'Іван', lastName: 'Петров', companyName: null },
+    contractId: null,
+    contract: null,
+    description: null,
+    inMileage: null,
+    outMileage: null,
+    plannedAt: null,
+    dueDate: null,
+    completedAt: null,
+    warrantyUntil: null,
+    clientApproval: false,
+    totalLabor: 200,
+    totalParts: 500,
+    totalNet: 700,
+    totalVat: 140,
+    totalAmount,
+    paidAmount: 0,
+    documentDate: new Date('2026-10-08'),
+    syncVersion: 0n,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    deletedAt: null,
+  });
+
+  function setupClone() {
+    const order: string[] = [];
+    // Оригінал завершено за старих налаштувань: його тотали (999) клонові не годяться.
+    const original = {
+      number: 'НЗ-2026-000001',
+      vehicleId: VEHICLE,
+      counterpartyId: CP,
+      branchId: BRANCH,
+      liftId: null,
+      description: null,
+      inMileage: null,
+      priority: 'NORMAL',
+      repairCategory: null,
+      dueDate: null,
+      plannedHours: null,
+      currencyId: null,
+      totalLabor: 999,
+      totalActualLabor: 999,
+      totalParts: 999,
+      totalNet: 999,
+      totalVat: 999,
+      totalAmount: 999,
+      totalAmountBase: 999,
+      rateUsed: 9,
+      lines: [
+        {
+          workId: 'w-1',
+          employeeId: null,
+          liftId: null,
+          price: 100,
+          normoHours: 2,
+          actualHours: 5,
+          notes: null,
+          amount: 200,
+        },
+      ],
+      parts: [{ goodId: 'g-1', quantity: 1, price: 500, warehouseId: 'wh-1', amount: 500 }],
+    };
+    const tx = {
+      workOrder: {
+        create: vi.fn().mockImplementation(() => {
+          order.push('create');
+          return Promise.resolve({ id: CLONE_ID });
+        }),
+        findFirstOrThrow: vi.fn().mockImplementation(() => {
+          order.push('reread');
+          return Promise.resolve(clonedRow(840));
+        }),
+      },
+    };
+    const outerCreate = vi.fn();
+    const prisma = {
+      workOrder: { findFirst: vi.fn().mockResolvedValue(original), create: outerCreate },
+      vehicle: { findFirst: vi.fn().mockResolvedValue({ id: VEHICLE }) },
+      counterparty: { findFirst: vi.fn().mockResolvedValue({ id: CP }) },
+      garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
+      $transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => {
+        order.push('tx-begin');
+        const res = await cb(tx);
+        order.push('tx-end');
+        return res;
+      }),
+    } as unknown as PrismaService;
+    const recalc = vi.fn().mockImplementation(() => {
+      order.push('recalc');
+      return Promise.resolve();
+    });
+    const service = new WorkOrdersService(
+      prisma,
+      null as never, // stockEffects
+      { next: vi.fn().mockResolvedValue('НЗ-2026-000042') } as never, // docNumbers
+      null as never, // pdf
+      null as never, // audit (userId не передаємо → не викликається)
+      null as never, // settingsService
+      { resolveBaseConversion: vi.fn(), requireBaseCurrencyId: vi.fn() } as never,
+      { emit: vi.fn() } as never, // events
+      { recalc } as never, // totals — єдиний власник суми наряду
+    );
+    return { service, tx, recalc, order, outerCreate };
+  }
+
+  // guards: BR-WO-007
+  it('create клона не несе жодного поля total* / rateUsed — тотали оригіналу не копіюються', async () => {
+    const { service, tx } = setupClone();
+
+    await service.clone(ORG, 'wo-orig', undefined as never);
+
+    const data = tx.workOrder.create.mock.calls[0][0].data as Record<string, unknown>;
+    const totalKeys = Object.keys(data).filter(k => k.startsWith('total') || k === 'rateUsed');
+    expect(totalKeys).toEqual([]);
+    // Рядки при цьому скопійовано — саме з них recalc порахує суму.
+    expect((data.lines as { create: unknown[] }).create).toHaveLength(1);
+    expect((data.parts as { create: unknown[] }).create).toHaveLength(1);
+  });
+
+  // guards: BR-WO-007
+  it('recalc кличеться рівно раз — для КЛОНА, у тій самій транзакції, після create і до перечитування', async () => {
+    const { service, tx, recalc, order, outerCreate } = setupClone();
+
+    await service.clone(ORG, 'wo-orig', undefined as never);
+
+    expect(recalc).toHaveBeenCalledTimes(1);
+    expect(recalc).toHaveBeenCalledWith(CLONE_ID, tx, ORG);
+    expect(order).toEqual(['tx-begin', 'create', 'recalc', 'reread', 'tx-end']);
+    // Клон створюється лише через tx: create поза транзакцією лишив би наряд без тоталів.
+    expect(outerCreate).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-WO-007
+  it('відповідь несе тотали, перечитані ПІСЛЯ recalc (840), а не суму оригіналу (999)', async () => {
+    const { service, tx } = setupClone();
+
+    const dto = await service.clone(ORG, 'wo-orig', undefined as never);
+
+    expect(tx.workOrder.findFirstOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: CLONE_ID, orgId: ORG } }),
+    );
+    expect(dto.totalAmount).toBe(840);
+  });
+
+  // guards: BR-WO-007
+  it('recalc упав → помилка виходить із транзакції (клон без тоталів не лишається)', async () => {
+    const { service, recalc, order } = setupClone();
+    recalc.mockImplementation(() => {
+      order.push('recalc');
+      return Promise.reject(new Error('recalc failed'));
+    });
+
+    await expect(service.clone(ORG, 'wo-orig', undefined as never)).rejects.toThrow(
+      'recalc failed',
+    );
+    // Колбек транзакції не дійшов до кінця → Prisma відкочує create.
+    expect(order).toEqual(['tx-begin', 'create', 'recalc']);
   });
 });

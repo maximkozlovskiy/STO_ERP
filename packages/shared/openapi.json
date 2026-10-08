@@ -21829,6 +21829,9 @@
           "totalParts": {
             "type": "number"
           },
+          "totalNet": {
+            "type": "number"
+          },
           "totalAmount": {
             "type": "number"
           },
@@ -21903,6 +21906,7 @@
           "totalLabor",
           "totalActualLabor",
           "totalParts",
+          "totalNet",
           "totalAmount",
           "totalVat",
           "paidAmount",
@@ -22403,6 +22407,9 @@
           "totalParts": {
             "type": "number"
           },
+          "totalNet": {
+            "type": "number"
+          },
           "totalAmount": {
             "type": "number"
           },
@@ -22489,6 +22496,7 @@
           "totalLabor",
           "totalActualLabor",
           "totalParts",
+          "totalNet",
           "totalAmount",
           "totalVat",
           "paidAmount",
@@ -22654,6 +22662,12 @@
           "totalParts": {
             "type": "number"
           },
+          "totalNet": {
+            "type": "number"
+          },
+          "totalVat": {
+            "type": "number"
+          },
           "totalAmount": {
             "type": "number"
           },
@@ -22675,6 +22689,8 @@
           "status",
           "totalLabor",
           "totalParts",
+          "totalNet",
+          "totalVat",
           "totalAmount",
           "lines",
           "parts"
@@ -25550,7 +25566,15 @@
           },
           "revenue": {
             "type": "number",
-            "description": "Виручка за день"
+            "description": "Виручка за день БЕЗ ПДВ (Σ totalNet)"
+          },
+          "vat": {
+            "type": "number",
+            "description": "ПДВ за день (revenueWithVat − revenue)"
+          },
+          "revenueWithVat": {
+            "type": "number",
+            "description": "Виручка за день З ПДВ (Σ totalAmount)"
           },
           "labor": {
             "type": "number",
@@ -25568,6 +25592,8 @@
         "required": [
           "date",
           "revenue",
+          "vat",
+          "revenueWithVat",
           "labor",
           "parts",
           "count"
@@ -25584,7 +25610,15 @@
           },
           "totalRevenue": {
             "type": "number",
-            "description": "Σ виручки за період"
+            "description": "Σ виручки за період БЕЗ ПДВ"
+          },
+          "totalVat": {
+            "type": "number",
+            "description": "Σ ПДВ за період"
+          },
+          "totalRevenueWithVat": {
+            "type": "number",
+            "description": "Σ виручки за період З ПДВ"
           },
           "totalOrders": {
             "type": "number",
@@ -25602,6 +25636,8 @@
         "required": [
           "rows",
           "totalRevenue",
+          "totalVat",
+          "totalRevenueWithVat",
           "totalOrders",
           "from",
           "to"
@@ -25778,7 +25814,16 @@
         "type": "object",
         "properties": {
           "totalRevenue": {
-            "type": "number"
+            "type": "number",
+            "description": "Виручка БЕЗ ПДВ — база прибутку й маржі"
+          },
+          "totalVat": {
+            "type": "number",
+            "description": "ПДВ у виручці"
+          },
+          "totalRevenueWithVat": {
+            "type": "number",
+            "description": "Виручка З ПДВ"
           },
           "totalCost": {
             "type": "number",
@@ -25815,6 +25860,8 @@
         },
         "required": [
           "totalRevenue",
+          "totalVat",
+          "totalRevenueWithVat",
           "totalCost",
           "totalCostParts",
           "totalCostLabor",

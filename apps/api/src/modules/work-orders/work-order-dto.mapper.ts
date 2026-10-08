@@ -43,6 +43,7 @@ export function mapWorkOrderToDto(wo: {
   totalLabor: Prisma.Decimal;
   totalActualLabor?: Prisma.Decimal | null;
   totalParts: Prisma.Decimal;
+  totalNet?: Prisma.Decimal | null;
   totalAmount: Prisma.Decimal;
   totalVat?: Prisma.Decimal | null;
   paidAmount: Prisma.Decimal | null;
@@ -100,6 +101,9 @@ export function mapWorkOrderToDto(wo: {
     totalLabor: Number(wo.totalLabor),
     totalActualLabor: Number(wo.totalActualLabor ?? 0),
     totalParts: Number(wo.totalParts),
+    // totalNet відсутній лише у вузьких select-ах без нього — тоді сума без ПДВ невідома, і
+    // чесніше показати суму наряду, ніж нуль.
+    totalNet: Number(wo.totalNet ?? wo.totalAmount),
     totalAmount: Number(wo.totalAmount),
     totalVat: Number(wo.totalVat ?? 0),
     paidAmount: wo.paidAmount != null ? Number(wo.paidAmount) : 0,

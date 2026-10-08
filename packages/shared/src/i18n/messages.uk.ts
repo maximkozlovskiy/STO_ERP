@@ -258,6 +258,8 @@ export const uk: Record<string, string> = {
   'err.invoice.notFound': 'Рахунок не знайдено',
   'err.invoice.workOrderNotFound': 'Наряд не знайдено',
   'err.invoice.onlyCompletedInvoiceable': 'Рахунок можна виставити лише для завершеного наряду',
+  'err.invoice.workOrderTotalsMismatch':
+    'Сума наряду не відповідає його рядкам — рахунок не сформовано. Перевірте роботи й запчастини наряду',
   'err.invoice.activeExists': 'Для цього наряду вже існує активний рахунок',
   'err.invoice.counterpartyNotFound': 'Контрагента не знайдено',
   'err.invoice.onlyDraftEditable': 'Редагувати можна лише чернетку',

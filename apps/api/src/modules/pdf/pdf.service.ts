@@ -88,7 +88,11 @@ export interface CompletionActPdfData {
   signedAt?: Date | null;
   signedBy?: string | null;
   lines: Array<{ description: string; quantity: number; unitPrice: number; amount: number }>;
+  /** Сума до сплати (з ПДВ, якщо він є). */
   total: number;
+  /** Сума без ПДВ і ПДВ — задані, коли в сумі є ПДВ: тоді підсумок друкується трьома рядками. */
+  totalNet?: number;
+  vatTotal?: number;
   notes?: string | null;
 }
 
@@ -100,7 +104,11 @@ export interface WorkOrderPdfData {
   date: Date;
   works: Array<{ name: string; quantity: number; price: number; total: number }>;
   parts: Array<{ name: string; quantity: number; price: number; total: number }>;
+  /** Сума до сплати (з ПДВ, якщо він є). */
   total: number;
+  /** Сума без ПДВ і ПДВ — задані, коли в сумі є ПДВ: тоді підсумок друкується трьома рядками. */
+  totalNet?: number;
+  vatTotal?: number;
 }
 
 type Content = Record<string, unknown> | string | Content[];
@@ -252,15 +260,7 @@ export class PdfService {
           layout: 'lightHorizontalLines',
         },
         { text: ' ', margin: [0, 4] },
-        {
-          columns: [
-            { width: '*', text: '' },
-            {
-              width: 200,
-              stack: [{ text: `Разом: ${this.fmtMoney(data.total)}`, bold: true, fontSize: 11 }],
-            },
-          ],
-        },
+        this.documentTotal(data),
         ...(data.notes
           ? [{ text: `Примітки: ${data.notes}`, margin: [0, 8, 0, 0], fontSize: 9 }]
           : []),
@@ -292,15 +292,7 @@ export class PdfService {
           ? [{ text: 'Запчастини:', bold: true, margin: [0, 8, 0, 4] }, this.itemsTable(data.parts)]
           : []),
         { text: ' ', margin: [0, 4] },
-        {
-          columns: [
-            { width: '*', text: '' },
-            {
-              width: 200,
-              stack: [{ text: `Разом: ${this.fmtMoney(data.total)}`, bold: true, fontSize: 11 }],
-            },
-          ],
-        },
+        this.documentTotal(data),
         {
           text: '\n\nПідпис клієнта: _____________________     Підпис виконавця: _____________________',
           margin: [0, 32, 0, 0],
@@ -342,6 +334,24 @@ export class PdfService {
         ...(party.phone ? [{ text: `Тел: ${party.phone}`, fontSize: 9 }] : []),
       ],
       margin: [0, 2, 0, 2],
+    };
+  }
+
+  /**
+   * Підсумок наряду й акта: коли в сумі є ПДВ — «Сума без ПДВ / ПДВ / Разом» (той самий блок,
+   * що в рахунку), інакше один рядок «Разом». Клієнт бачить ту саму суму, що в його боргу.
+   */
+  private documentTotal(data: { total: number; totalNet?: number; vatTotal?: number }): Content {
+    if (data.vatTotal && data.vatTotal > 0 && data.totalNet != null)
+      return this.totalsBlock(data.totalNet, data.vatTotal, data.total);
+    return {
+      columns: [
+        { width: '*', text: '' },
+        {
+          width: 200,
+          stack: [{ text: `Разом: ${this.fmtMoney(data.total)}`, bold: true, fontSize: 11 }],
+        },
+      ],
     };
   }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkOrdersService } from './work-orders.service';
+import { WorkOrderTotalsService } from './work-order-totals.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { InventoryService } from '../inventory/inventory.service';
@@ -46,6 +47,16 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     } as never,
     { createTransaction: vi.fn().mockResolvedValue({}) } as never,
   );
+  const exchangeRates = {
+    resolveBaseConversion: vi
+      .fn()
+      .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
+        rateUsed: 1,
+        amountBase: amount,
+      })),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
+  } as never;
   return new WorkOrdersService(
     prisma,
     stockEffects,
@@ -54,17 +65,9 @@ function makeService(prisma: PrismaService): WorkOrdersService {
     null as never, // audit
     null as never, // settingsService
     // exchangeRates (Фаза 3): default base-конвертація (rate=1, amountBase=amount)
-    {
-      resolveBaseConversion: vi
-        .fn()
-        .mockImplementation(async (_o: string, _c: string, _d: Date, amount: number) => ({
-          rateUsed: 1,
-          amountBase: amount,
-        })),
-      getBaseCurrency: vi.fn().mockResolvedValue({ id: null, code: 'UAH' }),
-      requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-    } as never,
+    exchangeRates,
     { emit: vi.fn() } as never, // events (EventEmitter2)
+    new WorkOrderTotalsService(null as never, exchangeRates),
   );
 }
 

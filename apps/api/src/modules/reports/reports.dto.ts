@@ -22,7 +22,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class RevenueRowDto {
   @ApiProperty({ example: '2026-10-04', description: 'День (Europe/Kyiv, YYYY-MM-DD)' })
   date!: string;
-  @ApiProperty({ description: 'Виручка за день' }) revenue!: number;
+  @ApiProperty({ description: 'Виручка за день БЕЗ ПДВ (Σ totalNet)' }) revenue!: number;
+  @ApiProperty({ description: 'ПДВ за день (revenueWithVat − revenue)' }) vat!: number;
+  @ApiProperty({ description: 'Виручка за день З ПДВ (Σ totalAmount)' }) revenueWithVat!: number;
   @ApiProperty({ description: 'З них роботи' }) labor!: number;
   @ApiProperty({ description: 'З них запчастини' }) parts!: number;
   @ApiProperty({ description: 'Кількість нарядів' }) count!: number;
@@ -30,7 +32,9 @@ export class RevenueRowDto {
 
 export class RevenueReportDto {
   @ApiProperty({ type: [RevenueRowDto] }) rows!: RevenueRowDto[];
-  @ApiProperty({ description: 'Σ виручки за період' }) totalRevenue!: number;
+  @ApiProperty({ description: 'Σ виручки за період БЕЗ ПДВ' }) totalRevenue!: number;
+  @ApiProperty({ description: 'Σ ПДВ за період' }) totalVat!: number;
+  @ApiProperty({ description: 'Σ виручки за період З ПДВ' }) totalRevenueWithVat!: number;
   @ApiProperty({ description: 'Σ нарядів за період' }) totalOrders!: number;
   @ApiProperty({ example: '2026-10-01' }) from!: string;
   @ApiProperty({ example: '2026-10-31' }) to!: string;
@@ -91,7 +95,9 @@ export class StockReportDto {
 // ─── /reports/profitability ──────────────────────────────────────────────────
 
 export class ProfitabilityReportDto {
-  @ApiProperty() totalRevenue!: number;
+  @ApiProperty({ description: 'Виручка БЕЗ ПДВ — база прибутку й маржі' }) totalRevenue!: number;
+  @ApiProperty({ description: 'ПДВ у виручці' }) totalVat!: number;
+  @ApiProperty({ description: 'Виручка З ПДВ' }) totalRevenueWithVat!: number;
   @ApiProperty({ description: 'Собівартість = запчастини + роботи' }) totalCost!: number;
   @ApiProperty() totalCostParts!: number;
   @ApiProperty({ description: 'totalLabor × LABOR_COST_RATIO' }) totalCostLabor!: number;

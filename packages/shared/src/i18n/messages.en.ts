@@ -256,6 +256,8 @@ export const en: Record<string, string> = {
   'err.invoice.workOrderNotFound': 'Work order not found',
   'err.invoice.onlyCompletedInvoiceable':
     'An invoice can only be issued for a completed work order',
+  'err.invoice.workOrderTotalsMismatch':
+    'Work order total does not match its lines — the invoice was not generated. Check the work order labour and parts',
   'err.invoice.activeExists': 'An active invoice already exists for this work order',
   'err.invoice.counterpartyNotFound': 'Counterparty not found',
   'err.invoice.onlyDraftEditable': 'Only a draft can be edited',

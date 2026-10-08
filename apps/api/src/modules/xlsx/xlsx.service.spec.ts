@@ -10,6 +10,9 @@ import { BrandsService } from '../brands/brands.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
+import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
+
+const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
 
 // Bug #188: regression-захист для applyPricingFromList + generatePricingListTemplate
 describe('XlsxService', () => {
@@ -70,6 +73,8 @@ describe('XlsxService', () => {
         // sto-optimize: XlsxService кешує OCR-сітку за хешем вмісту (parseGridCached) через
         // CacheService. xlsx/csv-канали кеш не чіпають, але DI все одно потребує провайдера.
         { provide: CacheService, useValue: { get: vi.fn().mockResolvedValue(null), set: vi.fn() } },
+        // BR-WO-007: імпорт запчастин у наряд перераховує тотали через єдиного власника.
+        { provide: WorkOrderTotalsService, useValue: workOrderTotals },
       ],
     }).compile();
     service = module.get(XlsxService);
@@ -664,6 +669,138 @@ describe('XlsxService', () => {
       expect(pn('')).toBeUndefined();
       expect(pn(null)).toBeUndefined();
       expect(pn('abc')).toBeUndefined();
+    });
+  });
+
+  // ─── importWOParts — тотали наряду після імпорту запчастин (BR-WO-007) ──────────
+  //
+  // Імпорт змінює запчастини наряду, тож суму наряду мусить перерахувати єдиний власник
+  // тоталів — `WorkOrderTotalsService.recalc(woId, tx, orgId)`. Рівно раз і лише коли імпорт
+  // справді щось записав: якщо всі рядки дали помилку, рядки наряду не змінились.
+  describe('importWOParts — перерахунок тоталів наряду (BR-WO-007)', () => {
+    const WO = 'wo-1';
+    const TX = { marker: 'tx' };
+    let wo: {
+      workOrder: { findFirst: ReturnType<typeof vi.fn> };
+      workOrderPart: {
+        findMany: ReturnType<typeof vi.fn>;
+        update: ReturnType<typeof vi.fn>;
+        createMany: ReturnType<typeof vi.fn>;
+      };
+      warehouse: { findFirst: ReturnType<typeof vi.fn> };
+    };
+    const calls: string[] = [];
+
+    const rows = (...items: { sku: string; quantity: number; price: number }[]) =>
+      vi
+        .spyOn(service, 'parsePOLines')
+        .mockResolvedValue(items.map(i => ({ ...i, name: `Товар ${i.sku}` })));
+
+    beforeEach(() => {
+      calls.length = 0;
+      workOrderTotals.recalc.mockReset();
+      workOrderTotals.recalc.mockImplementation(() => {
+        calls.push('recalc');
+        return Promise.resolve();
+      });
+      wo = {
+        workOrder: { findFirst: vi.fn().mockResolvedValue({ id: WO, status: 'DRAFT' }) },
+        workOrderPart: {
+          findMany: vi.fn().mockResolvedValue([]),
+          update: vi.fn().mockImplementation(() => {
+            calls.push('part.update');
+            return Promise.resolve({});
+          }),
+          createMany: vi.fn().mockImplementation(() => {
+            calls.push('part.createMany');
+            return Promise.resolve({ count: 1 });
+          }),
+        },
+        warehouse: { findFirst: vi.fn().mockResolvedValue({ id: 'wh-1' }) },
+      };
+      Object.assign(prisma, wo);
+      // Каталог: два товари, які імпорт знаходить за SKU.
+      prisma.good.findMany.mockResolvedValue([
+        { id: 'g-1', sku: 'A-1', name: 'Товар A-1' },
+        { id: 'g-2', sku: 'B-2', name: 'Товар B-2' },
+      ]);
+      // Окремий об'єкт tx — щоб було видно, що recalc отримав саме клієнт транзакції.
+      prisma.$transaction.mockImplementation((cb: (tx: unknown) => Promise<unknown>) => cb(TX));
+    });
+
+    // guards: BR-WO-007
+    it('створено нову запчастину → recalc(woId, tx, orgId) рівно раз, після запису рядків', async () => {
+      rows({ sku: 'A-1', quantity: 2, price: 150 });
+
+      const res = await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(res).toMatchObject({ created: 1, updated: 0, errors: [] });
+      expect(workOrderTotals.recalc).toHaveBeenCalledTimes(1);
+      expect(workOrderTotals.recalc).toHaveBeenCalledWith(WO, TX, ORG);
+      expect(calls).toEqual(['part.createMany', 'recalc']);
+    });
+
+    // guards: BR-WO-007
+    it('оновлено наявну запчастину (нічого не створено) → recalc рівно раз', async () => {
+      wo.workOrderPart.findMany.mockResolvedValue([{ id: 'p-1', goodId: 'g-1' }]);
+      rows({ sku: 'A-1', quantity: 3, price: 100 });
+
+      const res = await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(res).toMatchObject({ created: 0, updated: 1 });
+      expect(wo.workOrderPart.createMany).not.toHaveBeenCalled();
+      expect(workOrderTotals.recalc).toHaveBeenCalledTimes(1);
+      expect(workOrderTotals.recalc).toHaveBeenCalledWith(WO, TX, ORG);
+      expect(calls).toEqual(['part.update', 'recalc']);
+    });
+
+    // guards: BR-WO-007
+    it('і створено, і оновлено → recalc один раз на весь імпорт, а не на рядок', async () => {
+      wo.workOrderPart.findMany.mockResolvedValue([{ id: 'p-1', goodId: 'g-1' }]);
+      rows({ sku: 'A-1', quantity: 3, price: 100 }, { sku: 'B-2', quantity: 1, price: 50 });
+
+      const res = await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(res).toMatchObject({ created: 1, updated: 1 });
+      expect(workOrderTotals.recalc).toHaveBeenCalledTimes(1);
+      expect(calls[calls.length - 1]).toBe('recalc');
+    });
+
+    // guards: BR-WO-007
+    it('частина рядків з помилкою, один записано → recalc усе одно кличеться', async () => {
+      rows({ sku: 'NOPE', quantity: 1, price: 10 }, { sku: 'A-1', quantity: 1, price: 10 });
+
+      const res = await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(res.created).toBe(1);
+      expect(res.errors).toHaveLength(1);
+      expect(workOrderTotals.recalc).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-WO-007
+    it('усі рядки дали помилку (товар не знайдено) → recalc НЕ кличеться, транзакція не відкривається', async () => {
+      rows({ sku: 'NOPE-1', quantity: 1, price: 10 }, { sku: 'NOPE-2', quantity: 2, price: 20 });
+
+      const res = await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(res).toMatchObject({ created: 0, updated: 0 });
+      expect(res.errors).toHaveLength(2);
+      expect(workOrderTotals.recalc).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-WO-007
+    it('запис рядків упав (createMany і update відхилено) → нічого не змінено → recalc НЕ кличеться', async () => {
+      wo.workOrderPart.findMany.mockResolvedValue([{ id: 'p-1', goodId: 'g-1' }]);
+      wo.workOrderPart.update.mockRejectedValue(new Error('db down'));
+      wo.workOrderPart.createMany.mockRejectedValue(new Error('db down'));
+      rows({ sku: 'A-1', quantity: 3, price: 100 }, { sku: 'B-2', quantity: 1, price: 50 });
+
+      const res = await service.importWOParts(ORG, WO, Buffer.from(''));
+
+      expect(res).toMatchObject({ created: 0, updated: 0 });
+      expect(res.errors).toHaveLength(2);
+      expect(workOrderTotals.recalc).not.toHaveBeenCalled();
     });
   });
 });

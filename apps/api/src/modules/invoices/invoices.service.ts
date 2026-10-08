@@ -7,6 +7,11 @@ import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
+import {
+  buildInvoiceLinesFromWorkOrder,
+  WorkOrderTotalsMismatchError,
+  type InvoiceLineDraft,
+} from './work-order-invoice-lines';
 import type { VatMode } from '@prisma/client';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -55,17 +60,28 @@ const INV_SORT_FIELDS: Record<string, string> = {
 };
 
 /**
- * A5-money: ПДВ на РІВНІ РЯДКА (line-total семантика) через ЄДИНЕ джерело формули common/utils/vat.
- * `calcLineVat(price=lineSum, qty=1)` — вхід трактується як готова сума рядка (не per-unit), тож
- * priceWithoutVat/vatAmount/priceWithVat рахуються на цій сумі. Раніше формула дублювалась inline тут.
+ * ПДВ рядка, введеного вручну (addLine / updateLine). Ціна рядка трактується за режимом
+ * організації: «ПДВ у ціні» → ПДВ виділяється з суми, інакше — нараховується зверху. Раніше
+ * ручний рядок завжди рахувався «зверху», і в організації «ПДВ у ціні» рахунок із наряду після
+ * правки одного рядка дорожчав на ставку ПДВ.
+ * Режим NONE з явною ставкою в запиті лишається «зверху» — ставку ввів користувач свідомо.
  */
-function lineVatTotals(
+function manualLineVat(
   lineSum: number,
   vatRate: number,
   vatMode: VatMode,
 ): { priceWithoutVat: number; vatAmount: number; priceWithVat: number } {
-  const { priceWithoutVat, vatAmount, priceWithVat } = calcLineVat(lineSum, 1, vatRate, vatMode);
-  return { priceWithoutVat, vatAmount, priceWithVat };
+  if (vatMode === 'INCLUSIVE') {
+    const v = calcLineVat(lineSum, 1, vatRate, 'INCLUSIVE');
+    return {
+      priceWithVat: v.priceWithVat,
+      vatAmount: v.vatAmount,
+      priceWithoutVat: money(v.priceWithVat - v.vatAmount),
+    };
+  }
+  const priceWithoutVat = money(lineSum);
+  const vatAmount = money(priceWithoutVat * (vatRate / 100));
+  return { priceWithoutVat, vatAmount, priceWithVat: money(priceWithoutVat + vatAmount) };
 }
 
 @Injectable()
@@ -183,7 +199,6 @@ export class InvoicesService {
           id: true,
           status: true,
           counterpartyId: true,
-          totalAmount: true,
           currencyId: true,
         },
       }),
@@ -215,18 +230,9 @@ export class InvoicesService {
     const documentDate = kyivToday();
     const dueDate = await this.resolveDueDate(orgId, undefined, documentDate);
 
-    // Мультивалюта (Фаза 3): рахунок успадковує валюту наряду; base-сума — по курсу на дату рахунку
-    // (rate-on-date per event; fallbackToLatest — документний потік). Без валюти → base (rate=1).
-    const invoiceAmount = moneyFromDecimal(wo.totalAmount);
-    const conv = wo.currencyId
-      ? await this.exchangeRates.resolveBaseConversion(
-          orgId,
-          wo.currencyId,
-          documentDate,
-          invoiceAmount,
-          true,
-        )
-      : { rateUsed: 1, amountBase: invoiceAmount };
+    // Налаштування ПДВ читаємо ПОЗА Serializable tx (як і термін оплати). Режим рядків однаково
+    // визначає сам наряд (work-order-invoice-lines.ts) — звідси береться лише ставка.
+    const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
 
     // Serializable isolation + re-check `existing` within the tx prevents two concurrent
     // createFromWorkOrder calls from BOTH passing the pre-check and creating duplicate invoices.
@@ -246,16 +252,15 @@ export class InvoicesService {
           if (existing)
             throw new BadRequestException(translateError('err.invoice.activeExists', getLocale()));
 
-          return tx.invoice.create({
+          const created = await tx.invoice.create({
             data: {
               orgId,
               counterpartyId: wo.counterpartyId,
               workOrderId: wo.id,
               number,
-              amount: invoiceAmount,
+              // суми й base-конвертацію одразу нижче пише writeLinesFromWorkOrder
+              amount: 0,
               currencyId: wo.currencyId,
-              totalAmountBase: conv.amountBase,
-              rateUsed: conv.rateUsed,
               // Явно STANDARD — без цього лягав Prisma-дефолт 'INVOICE' (поза UI-enum
               // STANDARD/PREPAYMENT/CREDIT_NOTE), і web-форма падала на zodResolver при
               // редагуванні рахунку виставленого з наряду (найчастіший шлях створення).
@@ -265,6 +270,17 @@ export class InvoicesService {
               notes: null,
               status: InvoiceStatus.DRAFT,
             },
+            select: { id: true },
+          });
+          // BR-INV-002: рядки й суми — одразу, у тій самій транзакції. Рахунок без рядків, який
+          // треба було окремо «оновити з наряду», більше не існує ні на мить.
+          await this.writeLinesFromWorkOrder(tx, orgId, created.id, workOrderId, {
+            settingsVat,
+            currencyId: wo.currencyId,
+            documentDate,
+          });
+          return tx.invoice.findFirstOrThrow({
+            where: { id: created.id, orgId },
             include: {
               counterparty: { select: { firstName: true, lastName: true, companyName: true } },
               workOrder: { select: { number: true } },
@@ -743,13 +759,13 @@ export class InvoicesService {
     // §13: без явного vatRate — дефолт org (getDefaultVatRate вже дає 0 для vatMode NONE),
     // НЕ хардкод 20% (інакше NONE-org отримав би 20% ПДВ на ручному рядку). Дзеркалить
     // createFromWorkOrder/PO/WO.
-    const vatRate =
-      dto.vatRate != null
-        ? dto.vatRate
-        : (await this.settingsService.getDefaultVatRate(orgId)).vatRate;
-    const priceWithoutVat = money(dto.quantity * dto.unitPrice);
-    const vatAmount = money(priceWithoutVat * (vatRate / 100));
-    const priceWithVat = money(priceWithoutVat + vatAmount);
+    const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
+    const vatRate = dto.vatRate != null ? dto.vatRate : settingsVat.vatRate;
+    const { priceWithoutVat, vatAmount, priceWithVat } = manualLineVat(
+      dto.quantity * dto.unitPrice,
+      vatRate,
+      settingsVat.vatMode,
+    );
 
     const line = await this.prisma.invoiceLine.create({
       data: {
@@ -809,9 +825,12 @@ export class InvoicesService {
     const unitPrice =
       dto.unitPrice !== undefined ? money(dto.unitPrice) : moneyFromDecimal(existing.unitPrice);
     const vatRate = dto.vatRate !== undefined ? dto.vatRate : Number(existing.vatRate);
-    const priceWithoutVat = money(quantity * unitPrice);
-    const vatAmount = money(priceWithoutVat * (vatRate / 100));
-    const priceWithVat = money(priceWithoutVat + vatAmount);
+    const { vatMode } = await this.settingsService.getDefaultVatRate(orgId);
+    const { priceWithoutVat, vatAmount, priceWithVat } = manualLineVat(
+      quantity * unitPrice,
+      vatRate,
+      vatMode,
+    );
 
     const updated = await this.prisma.invoiceLine.update({
       where: { id: lineId, orgId },
@@ -870,6 +889,116 @@ export class InvoicesService {
     if (result.count === 0)
       throw new NotFoundException(translateError('err.invoice.lineNotFound', getLocale()));
     await this.recalcTotals(orgId, invoiceId);
+  }
+
+  /**
+   * BR-INV-002: читає рядки наряду В ТРАНЗАКЦІЇ (закриває TOCTOU з конкурентним addLine/removePart),
+   * пише рядки рахунку і його суми. Сума рахунку = `wo.totalAmount` — те, що вже нараховано боргом.
+   * Спільне для createFromWorkOrder і refreshFromWorkOrder: раніше рядки вмів будувати лише refresh,
+   * і щойно створений рахунок лишався порожнім, доки його не «оновлять з наряду».
+   */
+  private async writeLinesFromWorkOrder(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    invoiceId: string,
+    workOrderId: string,
+    ctx: {
+      settingsVat: { vatMode: VatMode; vatRate: number };
+      currencyId: string | null;
+      documentDate: Date;
+    },
+  ): Promise<void> {
+    const wo = await tx.workOrder.findFirst({
+      where: { id: workOrderId, orgId, deletedAt: null },
+      select: {
+        totalNet: true,
+        totalAmount: true,
+        lines: {
+          where: { deletedAt: null },
+          select: {
+            workId: true,
+            price: true,
+            normoHours: true,
+            actualHours: true,
+            work: { select: { name: true } },
+          },
+        },
+        parts: {
+          where: { deletedAt: null },
+          select: {
+            goodId: true,
+            price: true,
+            quantity: true,
+            good: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!wo)
+      throw new NotFoundException(translateError('err.invoice.workOrderNotFound', getLocale()));
+
+    let drafts: InvoiceLineDraft[];
+    try {
+      drafts = buildInvoiceLinesFromWorkOrder(
+        {
+          totalNet: moneyFromDecimal(wo.totalNet),
+          totalAmount: moneyFromDecimal(wo.totalAmount),
+          // quantity = actualHours ?? normoHours — те саме, з чого наряд рахує totalActualLabor.
+          lines: wo.lines.map(l => ({
+            workId: l.workId,
+            name: l.work?.name ?? null,
+            quantity: Number(l.actualHours ?? l.normoHours ?? 0),
+            unitPrice: Number(l.price),
+          })),
+          parts: wo.parts.map(p => ({
+            goodId: p.goodId,
+            name: p.good?.name ?? null,
+            quantity: Number(p.quantity),
+            unitPrice: Number(p.price),
+          })),
+        },
+        ctx.settingsVat,
+      );
+    } catch (err) {
+      if (err instanceof WorkOrderTotalsMismatchError) {
+        this.logger.warn(`Наряд ${workOrderId}: ${err.message}`);
+        throw new BadRequestException(
+          translateError('err.invoice.workOrderTotalsMismatch', getLocale()),
+        );
+      }
+      throw err;
+    }
+
+    if (drafts.length > 0) {
+      await tx.invoiceLine.createMany({
+        data: drafts.map(d => ({ ...d, orgId, invoiceId })),
+      });
+    }
+
+    const totalWithVat = moneyFromDecimal(wo.totalAmount);
+    const totalWithoutVat = moneyFromDecimal(wo.totalNet);
+    // Мультивалюта (Фаза 3): рахунок успадковує валюту наряду; base-сума — по курсу на дату рахунку
+    // (rate-on-date per event; fallbackToLatest — документний потік). Без валюти → base (rate=1).
+    const conv = ctx.currencyId
+      ? await this.exchangeRates.resolveBaseConversion(
+          orgId,
+          ctx.currencyId,
+          ctx.documentDate,
+          totalWithVat,
+          true,
+        )
+      : { rateUsed: 1, amountBase: totalWithVat };
+    await tx.invoice.update({
+      where: { id: invoiceId, orgId },
+      data: {
+        totalWithoutVat,
+        totalVat: money(totalWithVat - totalWithoutVat),
+        totalWithVat,
+        amount: totalWithVat,
+        totalAmountBase: conv.amountBase,
+        rateUsed: conv.rateUsed,
+      },
+    });
   }
 
   private async recalcTotals(orgId: string, invoiceId: string): Promise<void> {
@@ -977,10 +1106,10 @@ export class InvoicesService {
     if (existing.status !== InvoiceStatus.DRAFT)
       throw new BadRequestException(translateError('err.invoice.onlyDraftRefresh', getLocale()));
 
-    // VAT-режим і ставка з налаштувань org (НЕ хардкод 20%) — інакше для org із vatMode=NONE
-    // рахунок роздувався на неіснуючий ПДВ, а для нестандартної ставки давав хибну суму.
-    // Консистентно з WorkOrder.recalcTotals і createFromWorkOrder (обидва беруть getDefaultVatRate).
-    const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
+    // Ставка ПДВ — з налаштувань org (НЕ хардкод 20%); режим рядків визначає сам наряд
+    // (work-order-invoice-lines.ts): борг уже нараховано на wo.totalAmount, рахунок мусить вийти
+    // рівно на цю суму.
+    const settingsVat = await this.settingsService.getDefaultVatRate(orgId);
 
     // WO lines+parts fetched inside tx to close TOCTOU between pre-check (reads WO contents)
     // and createMany (writes invoice lines). ReadCommitted allows concurrent addLine/refreshFromWorkOrder
@@ -989,83 +1118,24 @@ export class InvoicesService {
     try {
       await this.prisma.$transaction(
         async tx => {
-          const [invInTx, wo] = await Promise.all([
-            tx.invoice.findFirst({
-              where: { id: existing.id, orgId, deletedAt: null },
-              select: { status: true },
-            }),
-            tx.workOrder.findFirst({
-              where: { id: workOrderId, orgId, deletedAt: null },
-              include: {
-                lines: {
-                  where: { deletedAt: null },
-                  include: { work: { select: { name: true } } },
-                },
-                parts: {
-                  where: { deletedAt: null },
-                  include: { good: { select: { name: true } } },
-                },
-              },
-            }),
-          ]);
+          const invInTx = await tx.invoice.findFirst({
+            where: { id: existing.id, orgId, deletedAt: null },
+            select: { status: true, currencyId: true, documentDate: true },
+          });
           if (!invInTx)
             throw new NotFoundException(translateError('err.invoice.activeNotFound', getLocale()));
           if (invInTx.status !== InvoiceStatus.DRAFT)
             throw new BadRequestException(
               translateError('err.invoice.onlyDraftRefresh', getLocale()),
             );
-          if (!wo)
-            throw new NotFoundException(
-              translateError('err.invoice.workOrderNotFound', getLocale()),
-            );
 
           await tx.invoiceLine.deleteMany({
             where: { invoiceId: existing.id, orgId },
           });
-
-          const lineData = [
-            ...wo.lines.map((l, i) => {
-              // quantity = actualHours ?? normoHours: раніше `l.normoHours * price` не враховувало
-              // actualHours → invoice.amount розходилась з WO.totalAmount (totalActualLabor).
-              const quantity = l.actualHours ?? l.normoHours;
-              const unitPrice = Number(l.price);
-              const v = lineVatTotals(quantity * unitPrice, vatRate, vatMode);
-              return {
-                orgId,
-                invoiceId: existing.id,
-                workId: l.workId,
-                description: l.work?.name ?? 'Робота',
-                quantity,
-                unitPrice,
-                vatRate: vatMode === 'NONE' ? 0 : vatRate,
-                ...v,
-                sortOrder: i,
-              };
-            }),
-            ...wo.parts.map((p, i) => {
-              const v = lineVatTotals(Number(p.quantity) * Number(p.price), vatRate, vatMode);
-              return {
-                orgId,
-                invoiceId: existing.id,
-                goodId: p.goodId,
-                description: p.good?.name ?? 'Запчастина',
-                quantity: Number(p.quantity),
-                unitPrice: Number(p.price),
-                vatRate: vatMode === 'NONE' ? 0 : vatRate,
-                ...v,
-                sortOrder: wo.lines.length + i,
-              };
-            }),
-          ];
-
-          if (lineData.length > 0) {
-            await tx.invoiceLine.createMany({ data: lineData });
-          }
-
-          const { totalWithoutVat, totalVat, totalWithVat } = sumLineTotals(lineData);
-          await tx.invoice.update({
-            where: { id: existing.id, orgId },
-            data: { totalWithoutVat, totalVat, totalWithVat, amount: totalWithVat },
+          await this.writeLinesFromWorkOrder(tx, orgId, existing.id, workOrderId, {
+            settingsVat,
+            currencyId: invInTx.currencyId,
+            documentDate: invInTx.documentDate ?? new Date(),
           });
         },
         { isolationLevel: 'Serializable', timeout: 10_000 },

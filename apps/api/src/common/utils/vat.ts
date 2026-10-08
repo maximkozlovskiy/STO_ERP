@@ -50,6 +50,71 @@ export function calcVatOnBase(base: number, vatRate: number, vatMode: VatMode): 
 }
 
 /**
+ * BR-WO-007: розкладає суму рядків наряду (`base`) на «без ПДВ» і «до сплати» за режимом ПДВ.
+ * `vat` — результат `calcVatOnBase(base, …)` для того самого режиму.
+ *
+ *   NONE      → обидві = база
+ *   INCLUSIVE → ПДВ уже в цінах: до сплати = база, без ПДВ = база − ПДВ
+ *   EXCLUSIVE → ПДВ зверху: без ПДВ = база, до сплати = база + ПДВ
+ *
+ * Інваріант у всіх режимах: totalNet + vat = totalAmount.
+ */
+export function splitWorkOrderTotal(
+  base: Money,
+  vat: Money,
+  vatMode: VatMode,
+): { totalNet: Money; totalAmount: Money } {
+  if (vatMode === 'EXCLUSIVE') return { totalNet: base, totalAmount: money(base + vat) };
+  if (vatMode === 'INCLUSIVE') return { totalNet: money(base - vat), totalAmount: base };
+  return { totalNet: base, totalAmount: base };
+}
+
+/**
+ * Плановий підсумок наряду для КОШТОРИСУ клієнтові (публічна сторінка, PDF/XLSX/DOCX, SMS).
+ *
+ * Кошторис показує план (`totalLabor + totalParts`, нормо-години), а тотали наряду рахуються від
+ * факту (`totalActualLabor + totalParts`). Щоб кошторис ніс той самий ПДВ, що й наряд, режим і
+ * частка ПДВ беруться з уже записаних тоталів наряду (BR-WO-007), а не з налаштувань: публічний
+ * кошторис працює без tenant-контексту, і наряд — єдине джерело того, що побачить клієнт у боргу.
+ * Якщо план збігається з фактом (типово для кошторису — фактичних годин ще немає), повертаються
+ * рівно тотали наряду, без повторного округлення.
+ */
+export function plannedWorkOrderTotals(wo: {
+  totalLabor: unknown;
+  totalActualLabor: unknown;
+  totalParts: unknown;
+  totalNet: unknown;
+  totalAmount: unknown;
+}): { totalNet: Money; totalVat: Money; totalAmount: Money } {
+  const parts = Number(wo.totalParts);
+  const plannedBase = money(Number(wo.totalLabor) + parts);
+  const actualBase = money(Number(wo.totalActualLabor) + parts);
+  const net = money(Number(wo.totalNet));
+  const total = money(Number(wo.totalAmount));
+  const vat = money(total - net);
+
+  if (vat === 0 || actualBase === 0) {
+    return { totalNet: plannedBase, totalVat: money(0), totalAmount: plannedBase };
+  }
+  if (plannedBase === actualBase) return { totalNet: net, totalVat: vat, totalAmount: total };
+  // «ПДВ зверху»: база наряду = сума без ПДВ. Інакше ПДВ сидить у цінах («ПДВ у ціні»).
+  if (net === actualBase) {
+    const plannedVat = money((plannedBase * vat) / net);
+    return {
+      totalNet: plannedBase,
+      totalVat: plannedVat,
+      totalAmount: money(plannedBase + plannedVat),
+    };
+  }
+  const plannedVat = money((plannedBase * vat) / total);
+  return {
+    totalNet: money(plannedBase - plannedVat),
+    totalVat: plannedVat,
+    totalAmount: plannedBase,
+  };
+}
+
+/**
  * Сумує ВЖЕ-ОБЧИСЛЕНІ per-line значення ПДВ у підсумки документа (single-pass).
  * На відміну від `calcDocVat` (перераховує з raw price/qty/vatRate/vatMode) — тут рядки
  * несуть готові `priceWithoutVat`/`vatAmount`/`priceWithVat` (напр. InvoiceLine у БД).

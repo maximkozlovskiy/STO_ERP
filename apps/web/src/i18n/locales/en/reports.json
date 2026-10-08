@@ -22,9 +22,21 @@
     },
     "empty": "Select parameters and click “Generate”",
     "revenue": {
-      "totalRevenue": "Total revenue",
+      "totalRevenue": "Amount (excl. VAT)",
       "totalOrders": "Work orders count",
-      "avgCheck": "Average ticket"
+      "avgCheck": "Average ticket (excl. VAT)",
+      "totalVat": "VAT",
+      "totalRevenueWithVat": "Amount incl. VAT",
+      "byDayTitle": "Revenue by day",
+      "colDate": "Date",
+      "colOrders": "Work orders",
+      "colLabor": "Labour",
+      "colParts": "Parts",
+      "colRevenue": "Amount",
+      "colVat": "VAT",
+      "colRevenueWithVat": "Amount incl. VAT",
+      "rowTotal": "Total",
+      "noRows": "No completed work orders in this period"
     },
     "workOrders": {
       "totalNormoHours": "Total standard hours",
@@ -53,7 +65,7 @@
       "colBalance": "Balance"
     },
     "profitability": {
-      "revenue": "Revenue",
+      "revenue": "Revenue (excl. VAT)",
       "revenueSub": "{{count}} work orders",
       "cost": "Cost of goods",
       "costSub": "Parts: {{parts}}",
@@ -64,10 +76,13 @@
       "colIndicator": "Indicator",
       "colAmount": "Amount",
       "colPctOfRevenue": "% of revenue",
-      "rowRevenue": "Revenue",
+      "rowRevenue": "Revenue (excl. VAT)",
       "rowParts": "— Parts (cost)",
       "rowLabor": "— Labor (40% estimate)",
-      "rowGrossProfit": "Gross profit"
+      "rowGrossProfit": "Gross profit",
+      "rowVat": "VAT",
+      "rowRevenueWithVat": "Revenue incl. VAT",
+      "vatNote": "VAT is not part of profit or margin"
     },
     "load": {
       "colLift": "Lift",
@@ -88,7 +103,7 @@
     },
     "csv": {
       "date": "Date",
-      "revenue": "Revenue",
+      "revenue": "Amount",
       "labor": "Labor",
       "parts": "Parts",
       "ordersCount": "Work orders",
@@ -112,13 +127,18 @@
       "pctOfRevenue": "% of revenue",
       "profParts": "Parts",
       "profLabor": "Labor",
-      "grossProfit": "Gross profit"
+      "grossProfit": "Gross profit",
+      "vat": "VAT",
+      "revenueWithVat": "Amount incl. VAT",
+      "profRevenue": "Revenue (excl. VAT)",
+      "profVat": "VAT",
+      "profRevenueWithVat": "Revenue incl. VAT"
     }
   },
   "charts": {
-    "revenueByDay": "Revenue by day",
+    "revenueByDay": "Revenue by day (excl. VAT)",
     "laborVsParts": "Labor vs Parts",
-    "revenue": "Revenue",
+    "revenue": "Revenue (excl. VAT)",
     "labor": "Labor",
     "parts": "Parts",
     "structure": "Structure",

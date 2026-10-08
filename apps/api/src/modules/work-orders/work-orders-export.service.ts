@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { plannedWorkOrderTotals } from '../../common/utils/vat';
 import ExcelJS from 'exceljs';
 import PizZip from 'pizzip';
 import * as path from 'path';
@@ -31,10 +32,18 @@ interface EstimateForExport {
   description: string;
   totalLabor: number;
   totalParts: number;
+  /** Сума без ПДВ; дорівнює totalAmount, коли ПДВ немає. */
+  totalNet: number;
+  totalVat: number;
+  /** Сума до сплати (з ПДВ). */
   totalAmount: number;
   lines: { name: string; normoHours: number; price: number; amount: number }[];
   parts: { name: string; quantity: number; unit: string; price: number; amount: number }[];
 }
+
+/** Підпис підсумку: коли в сумі є ПДВ, клієнт має бачити це в самому підписі. */
+const grandTotalLabel = (d: { totalVat: number }): string =>
+  d.totalVat > 0 ? 'ЗАГАЛЬНА СУМА З ПДВ' : 'ЗАГАЛЬНА СУМА';
 
 const UAH_FMT = new Intl.NumberFormat('uk-UA', {
   minimumFractionDigits: 2,
@@ -133,13 +142,10 @@ export class EstimateExportService {
         description: wo.description ?? '',
         totalLabor: Number(wo.totalLabor),
         totalParts: Number(wo.totalParts),
-        // PDF/XLSX/DOCX estimate shows PLANNED total, not actual.
-        // wo.totalAmount = totalActualLabor + totalParts (uses actual hours when entered).
-        // For SHAREABLE_STATUSES (DRAFT/ESTIMATE/APPROVED) this is semantically wrong:
-        // the client sees an estimate, not a completion act.
-        // Row math (normoHours × price) must match the grand total shown to the client.
-        // Symmetric with work-orders.service.ts findByShareToken (JSON endpoint).
-        totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
+        // PDF/XLSX/DOCX estimate shows the PLANNED total, not the actual one: the client sees an
+        // estimate, not a completion act, and row math (normoHours × price) must match it.
+        // VAT follows the work order (BR-WO-007). Symmetric with findByShareToken (JSON endpoint).
+        ...plannedWorkOrderTotals(wo),
         lines: wo.lines.map(l => ({
           name: l.work?.name ?? '—',
           normoHours: l.normoHours,
@@ -372,6 +378,24 @@ export class EstimateExportService {
       );
     }
 
+    // Сума без ПДВ / ПДВ — лише коли ПДВ є; тоді «загальна сума» нижче — це сума з ПДВ
+    if (d.totalVat > 0) {
+      doc.moveDown(0.3);
+      for (const [label, value] of [
+        ['Сума без ПДВ', d.totalNet],
+        ['ПДВ', d.totalVat],
+      ] as const) {
+        doc
+          .font('Roboto')
+          .fontSize(10)
+          .fillColor('#000000')
+          .text(`${label}: ${fmt(value)} грн`, doc.page.margins.left + 4, doc.y, {
+            width: PAGE_W - 8,
+            align: 'right',
+          });
+      }
+    }
+
     // Grand total
     doc.moveDown(0.3);
     const gtY = doc.y;
@@ -380,10 +404,15 @@ export class EstimateExportService {
       .font('Roboto-Bold')
       .fontSize(12)
       .fillColor('#000000')
-      .text(`ЗАГАЛЬНА СУМА: ${fmt(d.totalAmount)} грн`, doc.page.margins.left + 4, gtY + 5, {
-        width: PAGE_W - 8,
-        align: 'right',
-      });
+      .text(
+        `${grandTotalLabel(d)}: ${fmt(d.totalAmount)} грн`,
+        doc.page.margins.left + 4,
+        gtY + 5,
+        {
+          width: PAGE_W - 8,
+          align: 'right',
+        },
+      );
 
     // Collect buffer
     const chunks: Buffer[] = [];
@@ -559,8 +588,23 @@ export class EstimateExportService {
       row += 2;
     }
 
+    if (d.totalVat > 0) {
+      for (const [label, value] of [
+        ['Сума без ПДВ:', d.totalNet],
+        ['ПДВ:', d.totalVat],
+      ] as const) {
+        ws.getCell(`C${row}`).value = label;
+        ws.getCell(`C${row}`).alignment = { horizontal: 'right' };
+        ws.mergeCells(`C${row}:D${row}`);
+        ws.getCell(`E${row}`).value = value;
+        ws.getCell(`E${row}`).numFmt = '#,##0.00 ₴';
+        ws.getCell(`E${row}`).alignment = { horizontal: 'right' };
+        row++;
+      }
+    }
+
     // Grand total
-    ws.getCell(`C${row}`).value = 'ЗАГАЛЬНА СУМА:';
+    ws.getCell(`C${row}`).value = `${grandTotalLabel(d)}:`;
     ws.getCell(`C${row}`).font = { ...headerFont, size: 12 };
     ws.getCell(`C${row}`).alignment = { horizontal: 'right' };
     ws.mergeCells(`C${row}:D${row}`);
@@ -693,9 +737,20 @@ export class EstimateExportService {
       rows.push(this.para(''));
     }
 
+    if (d.totalVat > 0) {
+      for (const [label, value] of [
+        ['Сума без ПДВ', d.totalNet],
+        ['ПДВ', d.totalVat],
+      ] as const) {
+        rows.push(
+          `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${label}: ${this.esc(fmt(value))} ₴</w:t></w:r></w:p>`,
+        );
+      }
+    }
+
     // Grand total
     rows.push(
-      `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>ЗАГАЛЬНА СУМА: ${this.esc(fmt(d.totalAmount))} ₴</w:t></w:r></w:p>`,
+      `<w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="28"/></w:rPr><w:t>${grandTotalLabel(d)}: ${this.esc(fmt(d.totalAmount))} ₴</w:t></w:r></w:p>`,
     );
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

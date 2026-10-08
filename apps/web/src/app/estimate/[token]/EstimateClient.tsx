@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { publicNeutralFetch } from '@/lib/api-client';
+import { EstimateTotals } from './EstimateTotals';
 
 interface EstimateLine {
   id: string;
@@ -36,6 +37,8 @@ interface EstimateData {
   inMileage?: number | null;
   totalLabor: number;
   totalParts: number;
+  totalNet?: number;
+  totalVat?: number;
   totalAmount: number;
   lines: EstimateLine[];
   parts: EstimatePart[];
@@ -291,12 +294,7 @@ export default function EstimateClient() {
         )}
 
         {/* Total */}
-        <div className="border-t-2 border-gray-800 pt-4 flex justify-end">
-          <div className="text-right">
-            <div className="text-base font-medium text-gray-600">Загальна сума:</div>
-            <div className="text-2xl font-bold">{fmt(data.totalAmount)} ₴</div>
-          </div>
-        </div>
+        <EstimateTotals totalAmount={data.totalAmount} totalNet={data.totalNet} />
 
         {/* Footer note */}
         <div className="mt-8 pt-4 border-t border-gray-200 text-xs text-gray-400 text-center no-print">

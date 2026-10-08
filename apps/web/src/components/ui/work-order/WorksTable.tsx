@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type WorkPickerItem } from '@/components/ui/WorkPickerModal';
+import { calcVatOnBase } from '@/lib/utils';
 import type { LocalLine, Employee, WorkOrderFormState } from './types';
 
 export interface WorksTableProps {
@@ -265,7 +266,7 @@ export function WorksTable(props: WorksTableProps) {
                             const h = toNumberOrUndefined(editingLine.normoHours);
                             const p = toNumberOrUndefined(editingLine.price);
                             return h != null && p != null && vatRate > 0
-                              ? ((h * p * vatRate) / 100).toFixed(2)
+                              ? calcVatOnBase(h * p, vatRate, vatMode).toFixed(2)
                               : '—';
                           })()}
                         </td>
@@ -340,7 +341,7 @@ export function WorksTable(props: WorksTableProps) {
                       {vatMode !== 'NONE' && (
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                           {h != null && p != null && vatRate > 0
-                            ? ((h * p * vatRate) / 100).toFixed(2)
+                            ? calcVatOnBase(h * p, vatRate, vatMode).toFixed(2)
                             : '—'}
                         </td>
                       )}
@@ -484,7 +485,7 @@ export function WorksTable(props: WorksTableProps) {
                       const h = toNumberOrUndefined(newLine.normoHours);
                       const p = toNumberOrUndefined(newLine.price);
                       return h != null && p != null && vatRate > 0
-                        ? ((h * p * vatRate) / 100).toFixed(2)
+                        ? calcVatOnBase(h * p, vatRate, vatMode).toFixed(2)
                         : '—';
                     })()}
                   </td>

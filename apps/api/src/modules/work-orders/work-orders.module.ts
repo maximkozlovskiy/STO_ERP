@@ -16,6 +16,7 @@ import { AuditModule } from '../audit/audit.module';
 import { WarrantiesModule } from '../warranties/warranties.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
+import { WorkOrderTotalsModule } from './work-order-totals.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
     WarrantiesModule,
     SettingsModule,
     ExchangeRatesModule, // мультивалюта (Фаза 3): base-конвертація тоталів наряду
+    WorkOrderTotalsModule, // BR-WO-007: єдиний власник тоталів наряду
   ],
   controllers: [WorkOrdersController, WorkOrdersPublicController],
   // A2: WorkOrderEventHandlers — @OnEvent-хендлери lifecycle-side-effects (реагують на події з

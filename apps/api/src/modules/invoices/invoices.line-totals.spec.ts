@@ -20,6 +20,7 @@ type Fn = ReturnType<typeof vi.fn>;
 describe('InvoicesService — line-totals (recalcTotals на бекенді)', () => {
   let service: InvoicesHarness['service'];
   let prisma: InvoicesHarness['prisma'];
+  let settings: InvoicesHarness['settings'];
   let lines: { create: Fn; update: Fn; findFirst: Fn; aggregate: Fn; deleteMany: Fn };
 
   const LINE_ID = '77777777-7777-4777-8777-777777777777';
@@ -45,7 +46,7 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
   };
 
   beforeEach(async () => {
-    ({ service, prisma } = await makeInvoicesHarness());
+    ({ service, prisma, settings } = await makeInvoicesHarness());
     lines = prisma.invoiceLine as unknown as typeof lines;
     lines.create = vi.fn().mockResolvedValue(dbLine);
     lines.update = vi.fn().mockResolvedValue(dbLine);
@@ -138,5 +139,155 @@ describe('InvoicesService — line-totals (recalcTotals на бекенді)', (
         }),
       }),
     );
+  });
+
+  // ─── BR-INV-017: ПДВ ручного рядка — за режимом організації ─────────────────
+  //
+  // Сума рядка = кількість × ціна. «ПДВ у ціні» — ПДВ ВИДІЛЯЄТЬСЯ з цієї суми (рядок не
+  // дорожчає); інакше — нараховується зверху. Перевіряється те, що лягає в БД рядка.
+  describe('ПДВ ручного рядка за режимом організації (BR-INV-017)', () => {
+    const vat = (vatMode: 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE', vatRate: number) =>
+      settings.getDefaultVatRate.mockResolvedValue({ vatMode, vatRate });
+    const created = () => lines.create.mock.calls[0][0].data as Record<string, number>;
+    const updated = () => lines.update.mock.calls[0][0].data as Record<string, number>;
+    const add = (dto: Record<string, unknown>) =>
+      service.addLine(ORG, INV_ID, { description: 'Діагностика', ...dto } as never);
+
+    beforeEach(() => {
+      lines.aggregate.mockResolvedValue({
+        _sum: { priceWithoutVat: 0, vatAmount: 0, priceWithVat: 0 },
+      });
+    });
+
+    // guards: BR-INV-017
+    it('addLine, «ПДВ у ціні» 20%: 100 → без ПДВ 83.33, ПДВ 16.67, з ПДВ 100 (рядок не дорожчає)', async () => {
+      vat('INCLUSIVE', 20);
+
+      await add({ quantity: 1, unitPrice: 100 });
+
+      expect(created()).toMatchObject({
+        vatRate: 20,
+        priceWithoutVat: 83.33,
+        vatAmount: 16.67,
+        priceWithVat: 100,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('addLine, «ПДВ у ціні»: сума рядка = кількість × ціна (4 × 25 = 100), ПДВ виділено з неї', async () => {
+      vat('INCLUSIVE', 20);
+
+      await add({ quantity: 4, unitPrice: 25 });
+
+      expect(created()).toMatchObject({
+        quantity: 4,
+        unitPrice: 25,
+        priceWithoutVat: 83.33,
+        vatAmount: 16.67,
+        priceWithVat: 100,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('addLine, «ПДВ у ціні» з явною ставкою 7%: ПДВ виділяється з суми за ставкою запиту', async () => {
+      vat('INCLUSIVE', 20);
+
+      await add({ quantity: 1, unitPrice: 107, vatRate: 7 });
+
+      expect(created()).toMatchObject({
+        vatRate: 7,
+        priceWithoutVat: 100,
+        vatAmount: 7,
+        priceWithVat: 107,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('addLine, «ПДВ зверху» 20%: 100 → без ПДВ 100, ПДВ 20, з ПДВ 120', async () => {
+      vat('EXCLUSIVE', 20);
+
+      await add({ quantity: 1, unitPrice: 100 });
+
+      expect(created()).toMatchObject({
+        vatRate: 20,
+        priceWithoutVat: 100,
+        vatAmount: 20,
+        priceWithVat: 120,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('addLine, без ПДВ в організації і без ставки в запиті → ставка 0, ПДВ 0', async () => {
+      vat('NONE', 0);
+
+      await add({ quantity: 1, unitPrice: 100 });
+
+      expect(created()).toMatchObject({
+        vatRate: 0,
+        priceWithoutVat: 100,
+        vatAmount: 0,
+        priceWithVat: 100,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('addLine, без ПДВ в організації, але ставку 20% передано явно → нараховується зверху', async () => {
+      vat('NONE', 0);
+
+      await add({ quantity: 1, unitPrice: 100, vatRate: 20 });
+
+      expect(created()).toMatchObject({
+        vatRate: 20,
+        priceWithoutVat: 100,
+        vatAmount: 20,
+        priceWithVat: 120,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('updateLine, «ПДВ у ціні» 20%: рядок 1 × 100 → 83.33 / 16.67 / 100', async () => {
+      vat('INCLUSIVE', 20);
+
+      await service.updateLine(ORG, INV_ID, LINE_ID, { quantity: 1, unitPrice: 100 } as never);
+
+      expect(updated()).toMatchObject({
+        quantity: 1,
+        unitPrice: 100,
+        vatRate: 20, // ставка наявного рядка, у запиті її не міняли
+        priceWithoutVat: 83.33,
+        vatAmount: 16.67,
+        priceWithVat: 100,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('updateLine, «ПДВ зверху» 20%: рядок 1 × 100 → 100 / 20 / 120', async () => {
+      vat('EXCLUSIVE', 20);
+
+      await service.updateLine(ORG, INV_ID, LINE_ID, { quantity: 1, unitPrice: 100 } as never);
+
+      expect(updated()).toMatchObject({
+        priceWithoutVat: 100,
+        vatAmount: 20,
+        priceWithVat: 120,
+      });
+    });
+
+    // guards: BR-INV-017
+    it('тотожність рядка в обох режимах на «незручній» сумі 33.33: без ПДВ + ПДВ = з ПДВ', async () => {
+      vat('INCLUSIVE', 20);
+      await add({ quantity: 1, unitPrice: 33.33 });
+      const incl = created();
+      expect(incl.priceWithVat).toBe(33.33);
+      expect(Math.round((incl.priceWithoutVat + incl.vatAmount) * 100)).toBe(3333);
+
+      lines.create.mockClear();
+      vat('EXCLUSIVE', 20);
+      await add({ quantity: 1, unitPrice: 33.33 });
+      const excl = created();
+      expect(excl.priceWithoutVat).toBe(33.33);
+      expect(excl.vatAmount).toBe(6.67);
+      expect(excl.priceWithVat).toBe(40);
+    });
   });
 });

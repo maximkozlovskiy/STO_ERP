@@ -3,13 +3,13 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
-import { calcVatOnBase } from '../../common/utils/vat';
+import { money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WorkOrderStockEffectsService } from './work-order-stock-effects.service';
+import { WorkOrderTotalsService } from './work-order-totals.service';
 import { InvoiceStatus, RepairCategory, WorkOrderStatus } from '@prisma/client';
 import {
   formatPersonName,
@@ -110,6 +110,8 @@ export class WorkOrdersService {
     // side-effects переходів — у WorkOrderStockEffectsService (тому inventory/settlements більше не тут).
     // Fan-out WorkOrdersService: 11 → 7 → 6.
     private readonly events: EventEmitter2,
+    // Єдиний власник складу суми наряду (BR-WO-007); його ж кличуть огляд і XLSX-імпорт запчастин.
+    private readonly totals: WorkOrderTotalsService,
   ) {}
 
   // ─── CRUD ────────────────────────────────────────────────
@@ -627,80 +629,68 @@ export class WorkOrdersService {
         translateError('err.workOrder.branchDeletedNoClone', getLocale()),
       );
 
-    // 3. Pre-compute totals from the original's lines/parts so the cloned WO
-    // ships consistent totalLabor/totalParts/totalAmount. Without this,
-    // Prisma defaults leave them at 0 while lines[].amount has real values.
-    const totalLabor = sumMoney(original.lines.map(l => moneyFromDecimal(l.amount)));
-    const totalParts = sumMoney(original.parts.map(p => moneyFromDecimal(p.amount)));
-    const clonedTotal = money(totalLabor + totalParts);
-    // Мультивалюта (Фаза 3): клон — новий DRAFT на сьогодні → base-сума по СВІЖОМУ курсу (не курс
-    // оригіналу). Успадковує currencyId оригіналу; без валюти → base (rate=1).
-    const clonedConv = original.currencyId
-      ? await this.exchangeRates.resolveBaseConversion(
-          orgId,
-          original.currencyId,
-          new Date(),
-          clonedTotal,
-          true,
-        )
-      : { rateUsed: 1, amountBase: clonedTotal };
-
-    // 4. Create cloned WO as DRAFT
-    const cloned = await this.prisma.workOrder.create({
-      data: {
-        orgId,
-        number,
-        status: WorkOrderStatus.DRAFT,
-        vehicleId: original.vehicleId,
-        counterpartyId: original.counterpartyId,
-        branchId: original.branchId,
-        liftId: original.liftId ?? null,
-        description: original.description,
-        inMileage: original.inMileage,
-        priority: original.priority,
-        repairCategory: original.repairCategory,
-        dueDate: original.dueDate,
-        // plannedHours copied from original — clone preserves all planning fields.
-        // actualHours intentionally omitted — clone is a new DRAFT session, actual hours do not yet exist.
-        plannedHours: original.plannedHours,
-        currencyId: original.currencyId ?? null,
-        totalLabor,
-        totalActualLabor: totalLabor,
-        totalParts,
-        totalAmount: clonedTotal,
-        totalAmountBase: clonedConv.amountBase,
-        rateUsed: clonedConv.rateUsed,
-        lines: {
-          // clones are DRAFT — actualHours reset to null; copying original value misleads labour reports for the new visit.
-          create: original.lines.map(l => ({
+    // 3-4. Клон створюється разом із рядками, а тотали рахує recalcTotals у тій самій транзакції —
+    // єдине місце, що знає склад суми за режимом ПДВ (BR-WO-007) і курс на сьогодні (клон — новий
+    // DRAFT, тож base-сума йде по свіжому курсу, а не по курсу оригіналу).
+    const cloned = await this.prisma.$transaction(
+      async tx => {
+        const created = await tx.workOrder.create({
+          data: {
             orgId,
-            workId: l.workId,
-            employeeId: l.employeeId,
-            liftId: l.liftId ?? undefined,
-            price: l.price,
-            normoHours: l.normoHours,
-            actualHours: null,
-            notes: l.notes ?? null,
-            amount: l.amount,
-          })),
-        },
-        parts: {
-          create: original.parts.map(p => ({
-            orgId,
-            goodId: p.goodId,
-            quantity: p.quantity,
-            price: p.price,
-            warehouseId: p.warehouseId,
-            amount: p.amount,
-          })),
-        },
+            number,
+            status: WorkOrderStatus.DRAFT,
+            vehicleId: original.vehicleId,
+            counterpartyId: original.counterpartyId,
+            branchId: original.branchId,
+            liftId: original.liftId ?? null,
+            description: original.description,
+            inMileage: original.inMileage,
+            priority: original.priority,
+            repairCategory: original.repairCategory,
+            dueDate: original.dueDate,
+            // plannedHours copied from original — clone preserves all planning fields.
+            // actualHours intentionally omitted — clone is a new DRAFT session, actual hours do not yet exist.
+            plannedHours: original.plannedHours,
+            currencyId: original.currencyId ?? null,
+            lines: {
+              // clones are DRAFT — actualHours reset to null; copying original value misleads labour reports for the new visit.
+              create: original.lines.map(l => ({
+                orgId,
+                workId: l.workId,
+                employeeId: l.employeeId,
+                liftId: l.liftId ?? undefined,
+                price: l.price,
+                normoHours: l.normoHours,
+                actualHours: null,
+                notes: l.notes ?? null,
+                amount: l.amount,
+              })),
+            },
+            parts: {
+              create: original.parts.map(p => ({
+                orgId,
+                goodId: p.goodId,
+                quantity: p.quantity,
+                price: p.price,
+                warehouseId: p.warehouseId,
+                amount: p.amount,
+              })),
+            },
+          },
+          select: { id: true },
+        });
+        await this.recalcTotals(created.id, tx, orgId);
+        return tx.workOrder.findFirstOrThrow({
+          where: { id: created.id, orgId },
+          include: {
+            vehicle: { select: { make: true, model: true, licensePlate: true } },
+            counterparty: { select: { firstName: true, lastName: true, companyName: true } },
+            branch: { select: { name: true } },
+          },
+        });
       },
-      include: {
-        vehicle: { select: { make: true, model: true, licensePlate: true } },
-        counterparty: { select: { firstName: true, lastName: true, companyName: true } },
-        branch: { select: { name: true } },
-      },
-    });
+      { timeout: 15_000 },
+    ); // explicit timeout: create + recalcTotals
 
     if (userId) {
       this.audit
@@ -1240,82 +1230,12 @@ export class WorkOrdersService {
 
   // ─── Helpers ─────────────────────────────────────────────
 
-  private async recalcTotals(
+  private recalcTotals(
     workOrderId: string,
     tx: Prisma.TransactionClient,
     orgId: string,
   ): Promise<void> {
-    // sto-optimize 2026-06-17 (twin-scan + take cap):
-    // (1) Defense-in-depth `take: 1000` — addLine/addPart endpoints не мають
-    //     ArrayMaxSize, теоретично lines/parts можуть рости неконтрольовано.
-    //     Same upper bound що інші bulk reads у цьому сервісі (reserveParts:802).
-    // (2) Single-pass reduce замість twin-scan: раніше `lines.reduce`
-    //     викликався двічі по тому ж масиву (totalLabor + totalActualLabor).
-    //     Для WO з 50+ рядками — половина CPU/GC роботи у hot path mutation.
-    const [lines, partsAgg, wo] = await Promise.all([
-      tx.workOrderLine.findMany({
-        where: { workOrderId, orgId, deletedAt: null },
-        select: { amount: true, actualHours: true, normoHours: true, price: true },
-        take: 1000,
-      }),
-      tx.workOrderPart.aggregate({
-        where: { workOrderId, orgId, deletedAt: null },
-        _sum: { amount: true },
-      }),
-      // Мультивалюта (Фаза 3): валюта + дата документа для base-конвертації тоталу.
-      tx.workOrder.findFirst({
-        where: { id: workOrderId, orgId },
-        select: { currencyId: true, documentDate: true },
-      }),
-    ]);
-
-    // Single-pass: рахуємо totalLabor (planned) і totalActualLabor разом.
-    // totalLabor = SUM(amount), totalActualLabor = SUM((actualHours ?? normoHours) × price).
-    // sto-simplify: `Number(actualHours ?? normoHours ?? 0)` рівносильно verbose тернаркі
-    // бо Prisma Decimal `?? null`-fallback працює на null/undefined (а 0-години у normoHours
-    // зустрічається лише при ручному вводі і не змінює sum — 0 × price = 0).
-    // Акумулятори сирі (НЕ Money) свідомо: округлення РАЗ у кінці точніше за покрокове —
-    // виміряно у money.ts (на сирих значеннях покрокове накопичує помилку ~51%). Бренд
-    // ставиться на РЕЗУЛЬТАТ, не на проміжну суму.
-    let totalLabor = 0;
-    let totalActualLabor = 0;
-    for (const l of lines) {
-      totalLabor += moneyFromDecimal(l.amount);
-      totalActualLabor += Number(l.actualHours ?? l.normoHours ?? 0) * moneyFromDecimal(l.price);
-    }
-    const totalParts = moneyFromDecimal(partsAgg._sum.amount);
-    const totalBase = totalActualLabor + totalParts;
-
-    // A5-money: ПДВ через єдине джерело формули (common/utils/vat) — та сама математика, що в invoices.
-    const { vatMode, vatRate } = await this.settingsService.getDefaultVatRate(orgId);
-    const totalVat = calcVatOnBase(totalBase, vatRate, vatMode);
-
-    // WO-H2: квантуємо всі грошові суми до копійки перед записом у Decimal(12,2) —
-    // інакше float-дрейф дає Σ(рядки)≠total і невірну базу для CHARGE при COMPLETED.
-    const totalAmount = money(totalBase);
-    // Мультивалюта (Фаза 3): base-сума тоталу по курсу на дату документа (fallbackToLatest — документний
-    // потік). Без currencyId → base (rate=1, base=total). Курс — на documentDate (наряд ведеться у валюті).
-    const conv = wo?.currencyId
-      ? await this.exchangeRates.resolveBaseConversion(
-          orgId,
-          wo.currencyId,
-          wo.documentDate ?? new Date(),
-          totalAmount,
-          true,
-        )
-      : { rateUsed: 1, amountBase: totalAmount };
-    await tx.workOrder.update({
-      where: { id: workOrderId, orgId },
-      data: {
-        totalLabor: money(totalLabor),
-        totalActualLabor: money(totalActualLabor),
-        totalParts: money(totalParts),
-        totalAmount,
-        totalVat, // calcVatOnBase уже віддає Money — повторний money() був би шумом
-        totalAmountBase: conv.amountBase,
-        rateUsed: conv.rateUsed,
-      },
-    });
+    return this.totals.recalc(workOrderId, tx, orgId);
   }
 
   // ─── Mappers ─────────────────────────────────────────────
@@ -1330,6 +1250,7 @@ export class WorkOrdersService {
         select: {
           number: true,
           createdAt: true,
+          totalNet: true,
           totalAmount: true,
           vehicle: { select: { make: true, model: true, licensePlate: true } },
           counterparty: {
@@ -1395,7 +1316,10 @@ export class WorkOrdersService {
         price: Number(p.price),
         total: Number(p.amount),
       })),
+      // BR-WO-007: до сплати — з ПДВ; сума без ПДВ і ПДВ друкуються окремо, коли ПДВ є
       total: Number(wo.totalAmount),
+      totalNet: Number(wo.totalNet),
+      vatTotal: money(Number(wo.totalAmount) - Number(wo.totalNet)),
     });
   }
 

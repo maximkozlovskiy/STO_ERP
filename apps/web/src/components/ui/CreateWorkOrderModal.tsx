@@ -39,7 +39,8 @@ import { useStockTotals } from '@/hooks/useStockTotals';
 import { useWorkOrderActions } from '@/hooks/useWorkOrderActions';
 import { getCached } from '@/lib/ref-cache';
 import { kyivToday, isoToKyivLocalDateTime, localDateTimeToISO } from '@/lib/format';
-import { cn, displayCounterpartyName, calcVatTotals } from '@/lib/utils';
+import { cn, displayCounterpartyName, calcVatTotals, splitVatTotals } from '@/lib/utils';
+import { VatTotalsSummary } from '@/components/ui/work-order/VatTotalsSummary';
 import {
   WO_STATUS_LABELS,
   WO_STATUS_DESCRIPTIONS,
@@ -1535,8 +1536,9 @@ export function CreateWorkOrderModal({
           price: toNumberOrUndefined(l.price),
         })),
         vatRate,
+        vatMode,
       ),
-    [lines, vatRate],
+    [lines, vatRate, vatMode],
   );
   const partsTotals = useMemo(
     () =>
@@ -1546,8 +1548,16 @@ export function CreateWorkOrderModal({
           price: toNumberOrUndefined(pt.price),
         })),
         vatRate,
+        vatMode,
       ),
-    [parts, vatRate],
+    [parts, vatRate, vatMode],
+  );
+  // Підсумок документа за BR-WO-007. База — ФАКТИЧНІ роботи (actualHours ?? normoHours) плюс
+  // запчастини: саме від неї бекенд рахує ПДВ і суму до сплати, і рахує ПДВ один раз на всю
+  // базу — сума ПДВ із двох таблиць могла б відрізнятись на копійку.
+  const documentTotals = useMemo(
+    () => splitVatTotals(actualTotals.total + partsTotals.total, vatRate, vatMode),
+    [actualTotals.total, partsTotals.total, vatRate, vatMode],
   );
   const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) : true;
   // Share/print/SMS allowed in DRAFT/ESTIMATE/APPROVED; after IN_PROGRESS the public link is inactive.
@@ -2249,6 +2259,12 @@ export function CreateWorkOrderModal({
                   setGoodPickerOpen={setGoodPickerOpen}
                   setEditGoodPickerOpen={setEditGoodPickerOpen}
                 />
+
+                {(lines.length > 0 || parts.length > 0) && (
+                  <div className="flex justify-end px-3 py-3">
+                    <VatTotalsSummary split={documentTotals} currencySymbol="" />
+                  </div>
+                )}
               </div>
               {/* /flex-1 tables area */}
             </div>

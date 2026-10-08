@@ -134,24 +134,77 @@ export function roundMoney(value: number): number {
   return (sign * Math.round(Math.abs(value) * 100 + 1e-9)) / 100;
 }
 
+/** Режим ПДВ організації (`OrganisationSettings.vatMode`). */
+export type VatModeValue = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
+
+/** Три величини підсумку документа; інваріант `net + vat = gross`. */
+export interface VatSplit {
+  /** Сума без ПДВ. */
+  net: number;
+  /** Сума ПДВ. */
+  vat: number;
+  /** Разом до сплати, з ПДВ. */
+  gross: number;
+}
+
+/**
+ * ПДВ на сумарній базі. Дзеркалить backend `common/utils/vat.ts:calcVatOnBase`:
+ * EXCLUSIVE — ПДВ зверху, INCLUSIVE — ПДВ уже в базі (виділяємо), NONE або ставка 0 — нуль.
+ */
+export function calcVatOnBase(base: number, vatRate: number, vatMode: VatModeValue): number {
+  if (vatMode === 'NONE' || !(vatRate > 0)) return 0;
+  if (vatMode === 'INCLUSIVE') return roundMoney(base - base / (1 + vatRate / 100));
+  return roundMoney((base * vatRate) / 100);
+}
+
+/**
+ * BR-WO-007: розкладає суму рядків (`base`) на «без ПДВ / ПДВ / разом» за режимом організації.
+ * Дзеркалить backend `splitWorkOrderTotal`:
+ *   NONE      → без ПДВ = разом = база
+ *   INCLUSIVE → разом = база, без ПДВ = база − ПДВ
+ *   EXCLUSIVE → без ПДВ = база, разом = база + ПДВ
+ */
+export function splitVatTotals(base: number, vatRate: number, vatMode: VatModeValue): VatSplit {
+  const b = roundMoney(base);
+  const vat = calcVatOnBase(b, vatRate, vatMode);
+  if (vat === 0) return { net: b, vat: 0, gross: b };
+  if (vatMode === 'INCLUSIVE') return { net: roundMoney(b - vat), vat, gross: b };
+  return { net: b, vat, gross: roundMoney(b + vat) };
+}
+
+/**
+ * ПДВ у сумі збереженого наряду — як різниця `totalAmount − totalNet`, НЕ поле `totalVat`:
+ * наряди, завершені до 2026-10-08, не перераховані, у них `totalNet = totalAmount` при
+ * ненульовому `totalVat` (ПДВ зверху клієнтові не нараховували). `totalNet` може бути відсутній
+ * у кеші старої відповіді — тоді ПДВ у сумі немає.
+ */
+export function workOrderVatSplit(wo: { totalAmount: number; totalNet?: number | null }): VatSplit {
+  const gross = roundMoney(Number(wo.totalAmount));
+  const net = wo.totalNet == null ? gross : roundMoney(Number(wo.totalNet));
+  const vat = roundMoney(gross - net);
+  return vat > 0 ? { net, vat, gross } : { net: gross, vat: 0, gross };
+}
+
 /**
  * Single-pass VAT + total computation for line/part rows.
  *
  * ЄДИНИЙ споживач — CreateWorkOrderModal (preview у tfoot). Тому квантування МУСИТЬ
- * дзеркалити backend `work-orders.service.ts:recalcTotals`, а не `calcLineVat`:
+ * дзеркалити backend `WorkOrderTotalsService.recalc`, а не `calcLineVat`:
  *   • total  = Σ(roundMoney(qty × price))  — per-line rounded amounts складаються
  *              (backend `l.amount` вже округлений per-line у addLine/addPart → totalLabor).
- *   • vat    = roundMoney(base × vatRate/100)  — ПДВ рахується ОДИН раз на агрегованій
- *              (вже округленій) базі, EXCLUSIVE-режим. НЕ per-line: recalcTotals робить
- *              `(totalBase * vatRate)/100` над сумою, тож per-line-квантування ПДВ дало б
- *              preview на копійку більше за збережений amount (напр. 3×2.525@20%: per-line
- *              Σ=1.53, aggregate=1.52 → preview≠saved). WO-H2 / FIN-H1.
+ *              Це сума РЯДКІВ: у режимі «ПДВ у ціні» вона вже з ПДВ, у «ПДВ зверху» — без.
+ *   • vat    — ПДВ рахується ОДИН раз на агрегованій (вже округленій) базі за режимом
+ *              організації. НЕ per-line: бекенд рахує ПДВ над сумою, тож per-line-квантування
+ *              дало б preview на копійку більше за збережений amount (напр. 3×2.525@20%:
+ *              per-line Σ=1.53, aggregate=1.52 → preview≠saved). WO-H2 / FIN-H1.
+ *   • net / gross — «без ПДВ» і «разом з ПДВ» за BR-WO-007 (див. `splitVatTotals`).
  * `base` — вже roundMoney(total), тож повторний roundMoney лишає його стабільним.
  */
 export function calcVatTotals(
   rows: { qty: number | undefined; price: number | undefined }[],
   vatRate: number,
-): { total: number; vat: number } {
+  vatMode: VatModeValue,
+): { total: number } & VatSplit {
   let total = 0;
   for (const r of rows) {
     if (r.qty != null && r.price != null) {
@@ -159,6 +212,5 @@ export function calcVatTotals(
     }
   }
   const base = roundMoney(total);
-  const vat = vatRate > 0 ? roundMoney((base * vatRate) / 100) : 0;
-  return { total: base, vat };
+  return { total: base, ...splitVatTotals(base, vatRate, vatMode) };
 }

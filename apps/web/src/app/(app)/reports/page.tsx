@@ -27,6 +27,8 @@ import { downloadBlob } from '@/lib/download';
 import dynamic from 'next/dynamic';
 import { SettlementsTabContent } from '../settlements/SettlementsTabContent';
 import { ReportBuilder } from './ReportBuilder';
+import { RevenueReport, buildRevenueCsv } from './RevenueReport';
+import { StatCard } from './StatCard';
 
 const RevenueCharts = dynamic(() => import('./ReportsCharts').then(m => m.RevenueCharts), {
   ssr: false,
@@ -82,16 +84,6 @@ function fmtNum(n: number) {
 }
 
 // Sv-SE формат сьогоднішньої дати в Kyiv (YYYY-MM-DD) — централізовано у lib/format.kyivToday().
-
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="bg-surface rounded-xl border border-border p-5">
-      <div className="text-[13px] text-muted-foreground">{label}</div>
-      <div className="text-2xl font-bold text-foreground mt-1">{value}</div>
-      {sub && <div className="text-[12px] text-muted-foreground mt-1">{sub}</div>}
-    </div>
-  );
-}
 
 function ReportsPageClient() {
   const { employee } = useRequireAuth([...FINANCE_ROLES, ...INVENTORY_ONLY_ROLES]);
@@ -251,17 +243,7 @@ function ReportsPageClient() {
 
           {/* Revenue report */}
           {data && data._tab === 'revenue' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-3 gap-4">
-                <StatCard label={t('page.revenue.totalRevenue')} value={fmt(data.totalRevenue)} />
-                <StatCard label={t('page.revenue.totalOrders')} value={String(data.totalOrders)} />
-                <StatCard
-                  label={t('page.revenue.avgCheck')}
-                  value={data.totalOrders > 0 ? fmt(data.totalRevenue / data.totalOrders) : '—'}
-                />
-              </div>
-              <RevenueCharts rows={data.rows} />
-            </div>
+            <RevenueReport data={data} charts={<RevenueCharts rows={data.rows} />} />
           )}
 
           {/* Work orders report */}
@@ -484,12 +466,24 @@ function ReportsPageClient() {
                         value: data.grossProfit,
                         pct: data.margin,
                       },
+                      {
+                        id: 'vat',
+                        label: t('page.profitability.rowVat'),
+                        value: data.totalVat,
+                        pct: null,
+                      },
+                      {
+                        id: 'revenueWithVat',
+                        label: t('page.profitability.rowRevenueWithVat'),
+                        value: data.totalRevenueWithVat,
+                        pct: null,
+                      },
                     ].map(row => (
                       <TableRow key={row.id}>
                         <TableCell className="text-foreground">{row.label}</TableCell>
                         <TableCell
                           className={cn(
-                            'text-right font-semibold',
+                            'text-right font-semibold tabular-nums',
                             row.id === 'grossProfit'
                               ? row.value >= 0
                                 ? 'text-success'
@@ -499,13 +493,16 @@ function ReportsPageClient() {
                         >
                           {fmt(row.value)}
                         </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {row.pct.toFixed(1)}%
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {row.pct == null ? '—' : `${row.pct.toFixed(1)}%`}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                <p className="px-4 py-2 text-[12px] text-muted-foreground">
+                  {t('page.profitability.vatNote')}
+                </p>
               </div>
             </div>
           )}
@@ -601,19 +598,7 @@ export default function ReportsPage() {
 }
 
 function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
-  if (tab === 'revenue' && data._tab === 'revenue') {
-    const rows = [
-      [
-        t('page.csv.date'),
-        t('page.csv.revenue'),
-        t('page.csv.labor'),
-        t('page.csv.parts'),
-        t('page.csv.ordersCount'),
-      ],
-      ...data.rows.map(r => [r.date, r.revenue, r.labor, r.parts, r.count]),
-    ];
-    return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
-  }
+  if (tab === 'revenue' && data._tab === 'revenue') return buildRevenueCsv(data, t);
   if (tab === 'work-orders' && data._tab === 'work-orders') {
     const rows = [
       [t('page.csv.mechanic'), t('page.csv.normoHours'), t('page.csv.lines'), t('page.csv.amount')],
@@ -663,7 +648,7 @@ function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
   if (tab === 'profitability' && data._tab === 'profitability') {
     const rows = [
       [t('page.csv.indicator'), t('page.csv.amount'), t('page.csv.pctOfRevenue')],
-      [t('page.csv.revenue'), data.totalRevenue, '100.0'],
+      [t('page.csv.profRevenue'), data.totalRevenue, '100.0'],
       [
         t('page.csv.profParts'),
         data.totalCostParts,
@@ -675,6 +660,8 @@ function buildCsv(tab: Tab, data: ReportData, t: TFunction<'reports'>): string {
         data.totalRevenue > 0 ? ((data.totalCostLabor / data.totalRevenue) * 100).toFixed(1) : '0',
       ],
       [t('page.csv.grossProfit'), data.grossProfit, data.margin.toFixed(1)],
+      [t('page.csv.profVat'), data.totalVat, ''],
+      [t('page.csv.profRevenueWithVat'), data.totalRevenueWithVat, ''],
     ];
     return rows.map(r => r.map(c => escapeCsvCell(c)).join(';')).join('\n');
   }

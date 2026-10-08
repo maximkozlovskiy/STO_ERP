@@ -37,6 +37,7 @@ function makePrismaForPublicShare(opts: { hasUoMIds: boolean; partsCount?: numbe
     inMileage: 50000,
     totalLabor: 1000,
     totalParts: 500,
+    totalNet: 1500,
     totalAmount: 1500,
     totalActualLabor: 1200, // навмисно != totalLabor — щоб переконатись що
     // публічний DTO повертає PLANNED (Bug #508 guard у самому handler)
@@ -186,6 +187,7 @@ describe('WorkOrderShareService.findByShareToken — public DTO leak guards', ()
           inMileage: null,
           totalLabor: 1000,
           totalParts: 500,
+          totalNet: 1700,
           totalAmount: 1700, // wo.totalAmount містить actual (мав би бути 1500 planned)
           totalActualLabor: 1200,
           branch: { name: 'Br' },
@@ -293,5 +295,115 @@ describe('WorkOrderShareService.findByShareToken — public DTO leak guards', ()
     await expect(service.findByShareToken('bad-token')).rejects.toThrow(
       'Посилання не дійсне або термін дії минув',
     );
+  });
+});
+
+// ─── BR-WO-007: публічний кошторис і SMS несуть суму з ПДВ ──────────────────
+//
+// Клієнт бачить плановий підсумок (totalLabor + totalParts) із тим самим ПДВ, що й наряд:
+// totalNet / totalVat / totalAmount, де totalAmount — сума до сплати. SMS {{totalAmount}} —
+// та сама цифра, що й на сторінці за посиланням.
+describe('WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007)', () => {
+  // план 1000 + 500 = 1500; факт 1200 + 500 = 1700.
+  const PLAN_FACT = { totalLabor: 1000, totalActualLabor: 1200, totalParts: 500 };
+  const EXCL = { ...PLAN_FACT, totalNet: 1700, totalAmount: 2040 }; // «ПДВ зверху» 20%
+  const INCL = { ...PLAN_FACT, totalNet: 1416.67, totalAmount: 1700 }; // «ПДВ у ціні» 20%
+  const NO_VAT = { ...PLAN_FACT, totalNet: 1700, totalAmount: 1700 };
+
+  function publicPrisma(totals: Record<string, number>) {
+    return {
+      workOrder: {
+        findFirst: vi.fn().mockResolvedValue({
+          orgId: 'org-1',
+          number: 'WO-2026-0042',
+          status: 'ESTIMATE',
+          documentDate: new Date('2026-06-17'),
+          description: null,
+          inMileage: null,
+          ...totals,
+          branch: { name: 'Br' },
+          counterparty: { firstName: 'І', lastName: 'П', companyName: null },
+          vehicle: { make: 'X', model: 'Y', licensePlate: 'Z' },
+          lines: [],
+          parts: [],
+        }),
+      },
+      organisation: { findFirst: vi.fn().mockResolvedValue({ name: 'O', logoUrl: null }) },
+      goodUoM: { findMany: vi.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+  }
+
+  // guards: BR-WO-007
+  it('findByShareToken, «ПДВ зверху»: totalNet = план, totalVat = ПДВ на план, totalAmount = план + ПДВ', async () => {
+    const dto = await makeService(publicPrisma(EXCL)).findByShareToken(TOKEN);
+
+    expect(dto).toMatchObject({ totalNet: 1500, totalVat: 300, totalAmount: 1800 });
+  });
+
+  // guards: BR-WO-007
+  it('findByShareToken, «ПДВ у ціні»: totalAmount = план, ПДВ виділено з нього', async () => {
+    const dto = await makeService(publicPrisma(INCL)).findByShareToken(TOKEN);
+
+    expect(dto).toMatchObject({ totalNet: 1250, totalVat: 250, totalAmount: 1500 });
+  });
+
+  // guards: BR-WO-007
+  it('findByShareToken, наряд без ПДВ: totalVat = 0, totalNet = totalAmount = план', async () => {
+    const dto = await makeService(publicPrisma(NO_VAT)).findByShareToken(TOKEN);
+
+    expect(dto).toMatchObject({ totalNet: 1500, totalVat: 0, totalAmount: 1500 });
+  });
+
+  function smsService(totals: Record<string, number>) {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      workOrder: {
+        findFirst: vi.fn().mockResolvedValue({
+          branchId: 'br-1',
+          number: 'WO-2026-0042',
+          ...totals,
+          vehicle: { licensePlate: 'AB1234CD', make: 'X', model: 'Y' },
+          counterparty: {
+            phone: '+380501112233',
+            email: null,
+            firstName: 'Іван',
+            lastName: 'Петров',
+            companyName: null,
+          },
+        }),
+      },
+    } as unknown as PrismaService;
+    const service = new WorkOrderShareService(
+      prisma,
+      { get: vi.fn().mockReturnValue('https://sto.example') } as never,
+      { send } as never,
+    );
+    // Токен — окремий аспект; тут важлива лише сума в повідомленні.
+    vi.spyOn(service, 'getOrCreateShareToken').mockResolvedValue({ token: TOKEN });
+    return { service, send };
+  }
+  const smsVars = (send: ReturnType<typeof vi.fn>) =>
+    send.mock.calls[0][2] as { totalAmount: string; link: string };
+
+  // guards: BR-WO-007
+  it('sendEstimateSms, «ПДВ зверху»: {{totalAmount}} = планова сума З ПДВ (1800.00), не сума без ПДВ і не факт', async () => {
+    const { service, send } = smsService(EXCL);
+
+    await service.sendEstimateSms('org-1', 'wo-1');
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('org-1', 'WO_ESTIMATE_READY', expect.anything());
+    expect(smsVars(send).totalAmount).toBe('1800.00');
+  });
+
+  // guards: BR-WO-007
+  it('sendEstimateSms: сума в SMS = сума на сторінці за посиланням (той самий наряд)', async () => {
+    for (const totals of [EXCL, INCL, NO_VAT]) {
+      const { service, send } = smsService(totals);
+      await service.sendEstimateSms('org-1', 'wo-1');
+      const page = await makeService(publicPrisma(totals)).findByShareToken(TOKEN);
+
+      expect(smsVars(send).totalAmount).toBe(page.totalAmount.toFixed(2));
+    }
   });
 });

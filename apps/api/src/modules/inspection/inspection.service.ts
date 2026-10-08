@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { CreateInspectionDto, InspectionResponseDto } from './inspection.dto';
 import { EDITABLE_STATUSES } from '../work-orders/work-orders.fsm';
+import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
 
 // Дефолтні точки огляду
 export const DEFAULT_INSPECTION_POINTS = [
@@ -25,7 +26,10 @@ export const DEFAULT_INSPECTION_POINTS = [
 
 @Injectable()
 export class InspectionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly totals: WorkOrderTotalsService,
+  ) {}
 
   private toDto(
     r: {
@@ -121,7 +125,6 @@ export class InspectionService {
         // Build line data array up front — replaces N sequential tx.workOrderLine.create
         // with one tx.workOrderLine.createMany (1 INSERT vs N). criticalPoints can be
         // 50+ items (DEFAULT_INSPECTION_POINTS + custom) → noticeable speedup inside tx.
-        let addedLabor = 0;
         const linesData: Prisma.WorkOrderLineCreateManyInput[] = [];
         for (const point of criticalPoints) {
           const work = pickWork(point.name);
@@ -142,7 +145,6 @@ export class InspectionService {
             amount,
             notes: `Авто з огляду: ${point.name} — ${point.value}${point.unit ? ' ' + point.unit : ''}`,
           });
-          addedLabor += amount;
         }
 
         const createdLines = linesData.length;
@@ -150,15 +152,10 @@ export class InspectionService {
           await tx.workOrderLine.createMany({ data: linesData });
         }
 
-        // Recalc WO totals so they match the freshly-inserted labour lines.
+        // Тотали наряду — лише через єдиного власника (BR-WO-007): ручний increment не знав ні
+        // ПДВ, ні суми без ПДВ, ні base-суми у валюті.
         if (createdLines > 0) {
-          await tx.workOrder.update({
-            where: { id: workOrderId, orgId },
-            data: {
-              totalLabor: { increment: addedLabor },
-              totalAmount: { increment: addedLabor },
-            },
-          });
+          await this.totals.recalc(workOrderId, tx, orgId);
         }
 
         return { report: created, autoCreatedLines: createdLines };

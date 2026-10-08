@@ -17,6 +17,8 @@ export class WorkOrderModel extends Model {
   @field('completed_at') completedAt!: number | null;
   @field('total_labor') totalLabor!: number;
   @field('total_parts') totalParts!: number;
+  @field('total_net') totalNet!: number | null;
+  @field('total_vat') totalVat!: number | null;
   @field('total_amount') totalAmount!: number;
   @field('paid_amount') paidAmount!: number;
   @field('synced_at') syncedAt!: number;

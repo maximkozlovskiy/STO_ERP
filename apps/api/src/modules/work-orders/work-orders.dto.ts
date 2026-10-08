@@ -330,6 +330,9 @@ export class WorkOrderResponseDto {
   @ApiProperty() totalLabor!: number;
   @ApiProperty() totalActualLabor!: number;
   @ApiProperty() totalParts!: number;
+  // BR-WO-007: totalAmount = amount to pay (VAT included), totalNet = without VAT;
+  // totalNet + totalVat = totalAmount.
+  @ApiProperty() totalNet!: number;
   @ApiProperty() totalAmount!: number;
   @ApiProperty() totalVat!: number;
   @ApiProperty() paidAmount!: number;
@@ -507,6 +510,9 @@ export class EstimatePublicDto {
   @ApiPropertyOptional() inMileage?: number | null;
   @ApiProperty() totalLabor!: number;
   @ApiProperty() totalParts!: number;
+  // Planned totals of the estimate; totalAmount = amount to pay (VAT included).
+  @ApiProperty() totalNet!: number;
+  @ApiProperty() totalVat!: number;
   @ApiProperty() totalAmount!: number;
   @ApiProperty({ type: [EstimatePublicLineDto] }) lines!: EstimatePublicLineDto[];
   @ApiProperty({ type: [EstimatePublicPartDto] }) parts!: EstimatePublicPartDto[];

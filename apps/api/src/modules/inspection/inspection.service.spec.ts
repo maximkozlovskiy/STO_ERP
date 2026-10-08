@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { InspectionService } from './inspection.service';
+import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -20,11 +21,13 @@ describe('InspectionService.create', () => {
   let service: InspectionService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  const totals = { recalc: vi.fn().mockResolvedValue(undefined) };
   const orgId = 'org-1';
   const workOrderId = 'wo-1';
   const userId = 'user-1';
 
   beforeEach(async () => {
+    totals.recalc.mockClear();
     prisma = {
       workOrder: {
         findFirst: vi.fn(),
@@ -40,7 +43,11 @@ describe('InspectionService.create', () => {
       $transaction: vi.fn(async (cb: (tx: typeof prisma) => Promise<unknown>) => await cb(prisma)),
     };
     const module = await Test.createTestingModule({
-      providers: [InspectionService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        InspectionService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: WorkOrderTotalsService, useValue: totals },
+      ],
     }).compile();
     service = module.get(InspectionService);
   });
@@ -165,11 +172,12 @@ describe('InspectionService.create', () => {
     expect(createManyArgs.data[0].amount).toBe(150);
     expect(createManyArgs.data[0].workId).toBe('work-1');
 
-    // WO totals incremented by labour
-    expect(prisma.workOrder.update).toHaveBeenCalledTimes(1);
-    const updateArgs = prisma.workOrder.update.mock.calls[0][0];
-    expect(updateArgs.data.totalLabor).toEqual({ increment: 150 });
-    expect(updateArgs.data.totalAmount).toEqual({ increment: 150 });
+    // guards: BR-WO-007
+    // Тотали наряду перераховує єдиний власник у ТІЙ САМІЙ транзакції; сам огляд суму не пише
+    // (ручний increment не знав ні ПДВ, ні суми без ПДВ).
+    expect(totals.recalc).toHaveBeenCalledTimes(1);
+    expect(totals.recalc).toHaveBeenCalledWith(workOrderId, prisma, orgId);
+    expect(prisma.workOrder.update).not.toHaveBeenCalled();
 
     expect(result.autoCreatedLines).toBe(1);
   });

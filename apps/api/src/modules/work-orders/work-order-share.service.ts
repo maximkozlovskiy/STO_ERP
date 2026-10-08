@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { plannedWorkOrderTotals } from '../../common/utils/vat';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { formatPersonName, translateError } from '@sto/shared';
@@ -174,11 +175,10 @@ export class WorkOrderShareService {
         inMileage: wo.inMileage ?? null,
         totalLabor: Number(wo.totalLabor),
         totalParts: Number(wo.totalParts),
-        // Public estimate shows PLANNED total: wo.totalAmount = totalActualLabor + totalParts
-        // (uses actual hours when entered). For SHAREABLE_STATUSES this is semantically wrong —
-        // the client sees an estimate, not a completion act. Compute locally as totalLabor + totalParts
-        // so row math (normoHours × price) matches the grand total.
-        totalAmount: Number(wo.totalLabor) + Number(wo.totalParts),
+        // Public estimate shows the PLANNED total (normoHours × price), not the actual one the WO
+        // totals are built from — the client sees an estimate, not a completion act. VAT follows
+        // the work order itself (BR-WO-007): totalAmount is the amount to pay, VAT included.
+        ...plannedWorkOrderTotals(wo),
         lines: wo.lines.map(l => ({
           id: l.id,
           workName: l.work?.name,
@@ -214,6 +214,10 @@ export class WorkOrderShareService {
       select: {
         branchId: true,
         number: true,
+        totalLabor: true,
+        totalActualLabor: true,
+        totalParts: true,
+        totalNet: true,
         totalAmount: true,
         vehicle: { select: { licensePlate: true, make: true, model: true } },
         counterparty: {
@@ -252,7 +256,8 @@ export class WorkOrderShareService {
       email: wo.counterparty.email,
       clientName,
       vehiclePlate,
-      totalAmount: Number(wo.totalAmount).toFixed(2),
+      // та сама сума, що клієнт побачить на сторінці за посиланням: планова, з ПДВ
+      totalAmount: plannedWorkOrderTotals(wo).totalAmount.toFixed(2),
       woNumber: wo.number,
       link,
     });

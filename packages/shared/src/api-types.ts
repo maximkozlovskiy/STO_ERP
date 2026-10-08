@@ -1107,6 +1107,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vehicles/{id}/mileage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Історія пробігу авто */
+        get: operations["VehiclesController_getMileageHistory_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/vehicles/{id}/nodes": {
         parameters: {
             query?: never;
@@ -5791,6 +5808,16 @@ export interface components {
             /** @description Проставлене коли авто soft-deleted */
             deletedAt?: string | null;
         };
+        VehicleMileagePointDto: {
+            workOrderId: string;
+            workOrderNumber: string;
+            /** @description ISO-рядок: completedAt, а якщо наряд не завершено — documentDate */
+            date: string;
+            /** @description outMileage, а якщо його немає — inMileage */
+            mileage: number;
+            /** @description true, якщо пробіг менший за попередній запис */
+            isRollback: boolean;
+        };
         VehicleNodeResponseDto: {
             id: string;
             vehicleId: string;
@@ -6673,6 +6700,7 @@ export interface components {
             totalLabor: number;
             totalActualLabor: number;
             totalParts: number;
+            totalNet: number;
             totalAmount: number;
             totalVat: number;
             paidAmount: number;
@@ -6822,6 +6850,7 @@ export interface components {
             totalLabor: number;
             totalActualLabor: number;
             totalParts: number;
+            totalNet: number;
             totalAmount: number;
             totalVat: number;
             paidAmount: number;
@@ -6886,6 +6915,8 @@ export interface components {
             inMileage?: number | null;
             totalLabor: number;
             totalParts: number;
+            totalNet: number;
+            totalVat: number;
             totalAmount: number;
             lines: components["schemas"]["EstimatePublicLineDto"][];
             parts: components["schemas"]["EstimatePublicPartDto"][];
@@ -7680,8 +7711,12 @@ export interface components {
              * @example 2026-10-04
              */
             date: string;
-            /** @description Виручка за день */
+            /** @description Виручка за день БЕЗ ПДВ (Σ totalNet) */
             revenue: number;
+            /** @description ПДВ за день (revenueWithVat − revenue) */
+            vat: number;
+            /** @description Виручка за день З ПДВ (Σ totalAmount) */
+            revenueWithVat: number;
             /** @description З них роботи */
             labor: number;
             /** @description З них запчастини */
@@ -7691,8 +7726,12 @@ export interface components {
         };
         RevenueReportDto: {
             rows: components["schemas"]["RevenueRowDto"][];
-            /** @description Σ виручки за період */
+            /** @description Σ виручки за період БЕЗ ПДВ */
             totalRevenue: number;
+            /** @description Σ ПДВ за період */
+            totalVat: number;
+            /** @description Σ виручки за період З ПДВ */
+            totalRevenueWithVat: number;
             /** @description Σ нарядів за період */
             totalOrders: number;
             /** @example 2026-10-01 */
@@ -7753,7 +7792,12 @@ export interface components {
             totalValue: number;
         };
         ProfitabilityReportDto: {
+            /** @description Виручка БЕЗ ПДВ — база прибутку й маржі */
             totalRevenue: number;
+            /** @description ПДВ у виручці */
+            totalVat: number;
+            /** @description Виручка З ПДВ */
+            totalRevenueWithVat: number;
             /** @description Собівартість = запчастини + роботи */
             totalCost: number;
             totalCostParts: number;
@@ -10773,6 +10817,34 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["VehicleResponseDto"];
                 };
+            };
+        };
+    };
+    VehiclesController_getMileageHistory_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleMileagePointDto"][];
+                };
+            };
+            /** @description Авто не знайдено */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -22,6 +22,7 @@ import type { StockDoc } from '@/hooks/api/useStockDocuments';
 import type { StockItem } from '@/hooks/api/useInventory';
 import type { Counterparty } from '@/hooks/api/useCounterparties';
 import { fmtMoney, fmtDate, fmtDateTime } from '@/lib/format';
+import { workOrderVatSplit } from '@/lib/utils';
 
 // ─── Core types ───────────────────────────────────────────────────────────────
 
@@ -156,7 +157,26 @@ export const WORK_ORDER_PANEL_SCHEMA = [
   { key: 'repairCategory', label: 'Категорія' },
   { key: 'counterpartyName', label: 'Клієнт' },
   { key: 'vehicleSummary', label: 'Автомобіль' },
+  // BR-WO-007: `totalAmount` — сума до сплати, вже з ПДВ. Розкладка показується лише коли ПДВ
+  // у сумі є, і рахується як `totalAmount − totalNet` (не з `totalVat`: у нарядах, завершених
+  // до 2026-10-08, він ненульовий при `totalNet = totalAmount`).
   { key: 'totalAmount', label: 'Сума', type: 'money' },
+  {
+    key: 'totalNet',
+    label: 'Сума без ПДВ',
+    render: (_v, wo) => {
+      const split = workOrderVatSplit(wo);
+      return split.vat > 0 ? `${fmtMoney(split.net)} ₴` : undefined;
+    },
+  },
+  {
+    key: 'totalVat',
+    label: 'ПДВ',
+    render: (_v, wo) => {
+      const split = workOrderVatSplit(wo);
+      return split.vat > 0 ? `${fmtMoney(split.vat)} ₴` : undefined;
+    },
+  },
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'dueDate', label: 'Дедлайн', type: 'date' },
   { key: 'plannedAt', label: 'Заплановано', type: 'datetime' },

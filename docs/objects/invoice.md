@@ -116,7 +116,15 @@ OVERDUE → PAID / CANCELLED
 ## Бізнес-правила (BR-INV)
 
 - **BR-INV-001**: Номер авто-генерується: `DocumentNumberService.next(orgId, 'INVOICE')`
-- **BR-INV-002**: Рахунок з наряду: `POST /from-work-order/:id` автоматично переносить роботи і товари з WO
+- **BR-INV-002**: Рахунок із наряду (`POST /from-work-order/:id`) одразу, у тій самій транзакції,
+  отримує рядки — роботи й запчастини наряду — і суму, що дорівнює сумі наряду до сплати
+  (`amount = totalWithVat = wo.totalAmount`, `totalWithoutVat = wo.totalNet`): саме її вже
+  нараховано клієнтові боргом. Режим ПДВ рядків визначає сам наряд, а не поточні налаштування:
+  наряд без ПДВ у сумі дає рядки без ПДВ. Наряд рахує ПДВ від суми, рядки — кожен від себе, тож
+  різницю в копійки забирає останній рядок; різниця понад копійку на рядок — помилка 400
+  (тотали наряду не відповідають рядкам), а не вирівнювання. «Оновити з наряду»
+  (`POST /from-work-order/:id/refresh`, лише DRAFT) будує рядки тим самим кодом і оновлює також
+  суму в базовій валюті та курс
 - **BR-INV-003**: `invoiceType` — UI-enum `STANDARD`/`PREPAYMENT`/`CREDIT_NOTE` (`INVOICE_TYPE_VALUES`/
   `INVOICE_TYPE_LABELS` у `@sto/shared`). Prisma-колонка має `@default("INVOICE")` (legacy,
   поза enum-ом) — тому `create()` і `createFromWorkOrder()` в `invoices.service.ts` ЗАВЖДИ
@@ -174,6 +182,10 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
 - **BR-INV-015**: Source-link — **опційна метадані**; борг/settlement від нього не залежать (два різні виміри).
 - **BR-INV-016**: FK `ON DELETE SET NULL` (рахунки нормально soft-delete-яться; hard-delete лишає Payment з
   `null`-source, зберігаючи суму й settlement).
+- **BR-INV-017**: Рядок рахунку, доданий чи змінений вручну, рахує ПДВ за режимом організації:
+  «ПДВ у ціні» — ПДВ виділяється із суми рядка (сума рядка = кількість × ціна), інакше —
+  нараховується зверху. Без ПДВ в організації ставка за замовчуванням 0; ставка, явно передана в
+  запиті, нараховується зверху
 
 ---
 
@@ -192,16 +204,30 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | BullMQ-processor                        | `invoice-overdue.processor.spec.ts`        | 4      |
 | HTTP-контракт (DTO, статуси, валідація) | `invoices.contract.spec.ts`                | 27     |
 | create defaults (номер, invoiceType)    | `invoices.create-defaults.spec.ts`         | 5      |
-| create from work order                  | `invoices.create-from-work-order.spec.ts`  | 5      |
+| create from work order                  | `invoices.create-from-work-order.spec.ts`  | 13     |
 | dto and linked docs                     | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
 | due date                                | `invoices.due-date.spec.ts`                | 7      |
 | find by work order                      | `invoices.find-by-work-order.spec.ts`      | 5      |
-| line totals (recalcTotals на бекенді)   | `invoices.line-totals.spec.ts`             | 3      |
-| refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 10     |
+| line totals (recalcTotals на бекенді)   | `invoices.line-totals.spec.ts`             | 12     |
+| refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 15     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)   | `invoices.update-counterparty.spec.ts`     | 5      |
+| рядки рахунку з наряду (чиста функція)  | `invoices.work-order-lines.spec.ts`        | 20     |
 
-Разом: **84** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
+
+Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
+
+- `invoices.work-order-lines.spec.ts` — BR-INV-002: `buildInvoiceLinesFromWorkOrder` на числах — три
+  режими ПДВ, Σ рядків = тотали наряду, тотожність рядка, копійка в останній рядок, межа допуску
+  (копійка на рядок), режим і ставка з наряду, а не з налаштувань, `WorkOrderTotalsMismatchError`,
+  порядок і `sortOrder`; один кейс property-based (fast-check) на тоталах, порахованих як у наряді.
+- `invoices.create-from-work-order.spec.ts` — BR-INV-002: рядки й суми пишуться клієнтом тієї
+  самої транзакції, що створила рахунок; `amount = totalWithVat = wo.totalAmount`; розбіжність
+  тоталів → 400 зсередини транзакції; base-сума і курс.
+- `invoices.refresh-from-work-order.spec.ts` — BR-INV-002: «Оновити з наряду» тим самим кодом,
+  оновлення `totalAmountBase` / `rateUsed`; розбіжність → 400 після `deleteMany` у транзакції.
+- `invoices.line-totals.spec.ts` — BR-INV-017: `addLine` / `updateLine` у трьох режимах організації.
 
 Правила оплати рахунку виконує `PaymentsService` (модуль `payments`), тому їхні сторожі живуть
 у спеках того модуля, а не тут (реєстр цих файлів — у [payments.md](payments.md)):
@@ -213,7 +239,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 виправити код чи переписати правило — за людиною. Поки запис тут, гейт D правило не блокує,
 але показує окремим рядком.
 
-- **BR-INV-002** — дос'є: `POST /from-work-order/:id` переносить роботи й товари; код: `createFromWorkOrder` створює рахунок лише із сумою наряду, без рядків (`invoices.service.ts`, create). Рядки переносить тільки `refreshFromWorkOrder`.
+_Немає._
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

@@ -249,4 +249,95 @@ describe('ReportsService — Bug #629 квантування грошей у з�
     expect(has2Decimals(r.totalDebit)).toBe(true);
     expect(has2Decimals(r.totalCredit)).toBe(true);
   });
+
+  // BR-RPT-023: виручка у звітах — три величини (сума без ПДВ, ПДВ, сума з ПДВ).
+  describe('виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023)', () => {
+    // Текст сирого запиту: tagged template → перший аргумент — масив рядкових шматків.
+    const sqlOf = (call: unknown[]): string => (call[0] as string[]).join('?');
+
+    // guards: BR-RPT-023
+    it('revenue: рядок дня несе суму без ПДВ, ПДВ як різницю і суму з ПДВ', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([
+        {
+          date: new Date('2026-03-10T10:00:00Z'),
+          revenue: 1000,
+          revenueWithVat: 1200,
+          labor: 600,
+          parts: 400,
+          count: 2,
+        },
+        {
+          date: new Date('2026-03-11T10:00:00Z'),
+          revenue: 333.33,
+          revenueWithVat: 400,
+          labor: 333.33,
+          parts: 0,
+          count: 1,
+        },
+      ]);
+
+      const r = await service.revenue(orgId, from, to);
+
+      expect(r.rows[0]).toMatchObject({ revenue: 1000, vat: 200, revenueWithVat: 1200 });
+      expect(r.rows[1]).toMatchObject({ revenue: 333.33, vat: 66.67, revenueWithVat: 400 });
+      expect(r.totalRevenue).toBe(1333.33);
+      expect(r.totalRevenueWithVat).toBe(1600);
+      expect(r.totalVat).toBe(266.67);
+      // три підсумки узгоджені між собою до копійки
+      expect(r.totalVat).toBe(Math.round((r.totalRevenueWithVat - r.totalRevenue) * 100) / 100);
+    });
+
+    // guards: BR-RPT-023
+    it('revenue: наряд без ПДВ у сумі (totalNet = totalAmount) дає ПДВ 0, а не збережений totalVat', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([
+        {
+          date: new Date('2026-03-10T10:00:00Z'),
+          revenue: 500,
+          revenueWithVat: 500,
+          labor: 500,
+          parts: 0,
+          count: 1,
+        },
+      ]);
+
+      const r = await service.revenue(orgId, from, to);
+
+      expect(r.rows[0].vat).toBe(0);
+      expect(r.totalVat).toBe(0);
+      expect(r.totalRevenue).toBe(r.totalRevenueWithVat);
+    });
+
+    // guards: BR-RPT-023
+    it('revenue: сума без ПДВ береться з totalNet, сума з ПДВ — з totalAmount; totalVat у запиті не бере участі', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await service.revenue(orgId, from, to);
+
+      const sql = sqlOf(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toMatch(/SUM\("totalNet"\),\s*0\)::float\s+AS revenue/);
+      expect(sql).toMatch(/SUM\("totalAmount"\),\s*0\)::float\s+AS "revenueWithVat"/);
+      expect(sql).not.toContain('"totalVat"');
+    });
+
+    // guards: BR-RPT-023
+    it('profitability: прибуток і маржа — від суми без ПДВ; ПДВ і сума з ПДВ віддаються окремо', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([
+          { totalRevenue: 1000, totalRevenueWithVat: 1200, totalLabor: 500, ordersCount: 1n },
+        ])
+        .mockResolvedValueOnce([{ costParts: 300, unknownCount: 0n }]);
+
+      const r = await service.profitability(orgId, from, to);
+
+      expect(r.totalRevenue).toBe(1000);
+      expect(r.totalVat).toBe(200);
+      expect(r.totalRevenueWithVat).toBe(1200);
+      // собівартість 300 + 500 × 0.4 = 500 → прибуток 500 від 1000, а не 700 від 1200
+      expect(r.grossProfit).toBe(500);
+      expect(r.margin).toBe(50);
+
+      const sql = sqlOf(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toMatch(/SUM\("totalNet"\),\s*0\)::float\s+AS "totalRevenue"/);
+    });
+  });
 });

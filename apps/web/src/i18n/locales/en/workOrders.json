@@ -294,5 +294,10 @@
     "lineAdded": "Work added",
     "slotNotFound": "No calendar slot found for this work order",
     "slotSyncFailed": "Calendar slot not updated: {{error}}"
+  },
+  "totals": {
+    "net": "Amount excl. VAT",
+    "vat": "VAT",
+    "gross": "Total"
   }
 }

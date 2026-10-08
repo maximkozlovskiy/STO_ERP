@@ -59,8 +59,17 @@ function setup(originalForClone?: Record<string, unknown>) {
     .mockImplementation((args: { data: { number: string } }) =>
       Promise.resolve(createdRow(args.data.number)),
     );
+  const workOrder = {
+    create,
+    findFirst: vi.fn().mockResolvedValue(originalForClone ?? null),
+    // clone() перечитує клон після перерахунку тоталів у транзакції
+    findFirstOrThrow: vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(createdRow(create.mock.calls[0]?.[0].data.number))),
+  };
   const prisma = {
-    workOrder: { create, findFirst: vi.fn().mockResolvedValue(originalForClone ?? null) },
+    workOrder,
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({ workOrder })),
     garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: BRANCH }) },
     vehicle: { findFirst: vi.fn().mockResolvedValue({ id: VEHICLE }) },
     counterparty: { findFirst: vi.fn().mockResolvedValue({ id: CP }) },
@@ -68,6 +77,10 @@ function setup(originalForClone?: Record<string, unknown>) {
     counterpartyContract: { findFirst: vi.fn().mockResolvedValue(null) },
   } as unknown as PrismaService;
   const next = vi.fn().mockResolvedValue('НЗ-2026-000042');
+  const exchangeRates = {
+    requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
+    resolveBaseConversion: vi.fn(),
+  } as never;
   const service = new WorkOrdersService(
     prisma,
     null as never, // stockEffects
@@ -75,11 +88,9 @@ function setup(originalForClone?: Record<string, unknown>) {
     null as never, // pdf
     null as never, // audit (userId не передаємо → не викликається)
     null as never, // settingsService
-    {
-      requireBaseCurrencyId: vi.fn().mockResolvedValue('base-cur-id'),
-      resolveBaseConversion: vi.fn(),
-    } as never,
+    exchangeRates,
     { emit: vi.fn() } as never,
+    { recalc: vi.fn().mockResolvedValue(undefined) } as never, // totals (BR-WO-007) — тут не перевіряється
   );
   return { service, create, next };
 }

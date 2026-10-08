@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: 'work_orders',
@@ -19,6 +19,8 @@ export const schema = appSchema({
         { name: 'completed_at', type: 'number', isOptional: true },
         { name: 'total_labor', type: 'number' },
         { name: 'total_parts', type: 'number' },
+        { name: 'total_net', type: 'number', isOptional: true },
+        { name: 'total_vat', type: 'number', isOptional: true },
         { name: 'total_amount', type: 'number' },
         { name: 'paid_amount', type: 'number' },
         { name: 'synced_at', type: 'number', isOptional: true },

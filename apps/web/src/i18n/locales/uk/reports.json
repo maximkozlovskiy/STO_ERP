@@ -22,9 +22,21 @@
     },
     "empty": "Оберіть параметри і натисніть «Сформувати»",
     "revenue": {
-      "totalRevenue": "Загальна виручка",
+      "totalRevenue": "Сума (без ПДВ)",
       "totalOrders": "Кількість нарядів",
-      "avgCheck": "Середній чек"
+      "avgCheck": "Середній чек (без ПДВ)",
+      "totalVat": "ПДВ",
+      "totalRevenueWithVat": "Сума з ПДВ",
+      "byDayTitle": "Виручка по днях",
+      "colDate": "Дата",
+      "colOrders": "Нарядів",
+      "colLabor": "Роботи",
+      "colParts": "Запчастини",
+      "colRevenue": "Сума",
+      "colVat": "ПДВ",
+      "colRevenueWithVat": "Сума з ПДВ",
+      "rowTotal": "Разом",
+      "noRows": "За період немає завершених нарядів"
     },
     "workOrders": {
       "totalNormoHours": "Всього норм-годин",
@@ -53,7 +65,7 @@
       "colBalance": "Баланс"
     },
     "profitability": {
-      "revenue": "Виручка",
+      "revenue": "Виручка (без ПДВ)",
       "revenueSub": "{{count}} нарядів",
       "cost": "Собівартість",
       "costSub": "Запч: {{parts}}",
@@ -64,10 +76,13 @@
       "colIndicator": "Показник",
       "colAmount": "Сума",
       "colPctOfRevenue": "% до виручки",
-      "rowRevenue": "Виручка",
+      "rowRevenue": "Виручка (без ПДВ)",
       "rowParts": "— Запчастини (собівартість)",
       "rowLabor": "— Праця (оцінка 40%)",
-      "rowGrossProfit": "Валовий прибуток"
+      "rowGrossProfit": "Валовий прибуток",
+      "rowVat": "ПДВ",
+      "rowRevenueWithVat": "Виручка з ПДВ",
+      "vatNote": "ПДВ у прибуток і маржу не входить"
     },
     "load": {
       "colLift": "Підйомник",
@@ -88,7 +103,7 @@
     },
     "csv": {
       "date": "Дата",
-      "revenue": "Виручка",
+      "revenue": "Сума",
       "labor": "Роботи",
       "parts": "Запчастини",
       "ordersCount": "Нарядів",
@@ -112,13 +127,18 @@
       "pctOfRevenue": "% до виручки",
       "profParts": "Запчастини",
       "profLabor": "Праця",
-      "grossProfit": "Валовий прибуток"
+      "grossProfit": "Валовий прибуток",
+      "vat": "ПДВ",
+      "revenueWithVat": "Сума з ПДВ",
+      "profRevenue": "Виручка (без ПДВ)",
+      "profVat": "ПДВ",
+      "profRevenueWithVat": "Виручка з ПДВ"
     }
   },
   "charts": {
-    "revenueByDay": "Виручка по днях",
+    "revenueByDay": "Виручка по днях (без ПДВ)",
     "laborVsParts": "Роботи vs Запчастини",
-    "revenue": "Виручка",
+    "revenue": "Виручка (без ПДВ)",
     "labor": "Роботи",
     "parts": "Запчастини",
     "structure": "Структура",

@@ -23,12 +23,12 @@
     "completedToday": "{{n}} completed today",
     "open": "Pending",
     "revenueToday": "Revenue today",
-    "revenueMonth": "Revenue this month",
+    "revenueMonth": "Revenue this month (excl. VAT)",
     "unpaidInvoices": "Unpaid invoices",
     "lowStock": "Low stock"
   },
   "revenue": {
-    "title": "Revenue over 7 days",
+    "title": "Revenue over 7 days (excl. VAT)",
     "allReports": "All reports →"
   },
   "maintenance": {
@@ -50,6 +50,6 @@
     "empty": "No active actions — click ⚙ to configure"
   },
   "chart": {
-    "revenue": "Revenue"
+    "revenue": "Revenue (excl. VAT)"
   }
 }

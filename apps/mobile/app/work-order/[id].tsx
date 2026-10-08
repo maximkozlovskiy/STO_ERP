@@ -45,6 +45,7 @@ interface WorkOrderDetail {
   completedAt?: string | null;
   totalLabor: number;
   totalParts: number;
+  totalNet?: number;
   totalAmount: number;
   paidAmount: number;
   lines: WorkOrderLine[];
@@ -132,7 +133,7 @@ export default function WorkOrderDetailScreen() {
 
   useEffect(() => {
     setLoading(true);
-    load().finally(() => setLoading(false));
+    void load().finally(() => setLoading(false));
   }, [load]);
 
   const onRefresh = async () => {
@@ -143,7 +144,7 @@ export default function WorkOrderDetailScreen() {
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
+    if (status !== ImagePicker.PermissionStatus.GRANTED) {
       Alert.alert('Дозвіл відхилено', 'Дозвольте доступ до камери в налаштуваннях');
       return;
     }
@@ -158,7 +159,7 @@ export default function WorkOrderDetailScreen() {
     try {
       const asset = result.assets[0];
       const filename = `wo_${id}_${Date.now()}.jpg`;
-      const uploaded = await uploadWorkOrderPhoto(id as string, asset.uri, filename);
+      const uploaded = await uploadWorkOrderPhoto(id, asset.uri, filename);
       setPhotos(prev => [...prev, uploaded.url]);
     } catch (e: unknown) {
       Alert.alert('Помилка', e instanceof Error ? e.message : 'Не вдалося завантажити фото');
@@ -174,20 +175,21 @@ export default function WorkOrderDetailScreen() {
       {
         text: 'Підтвердити',
         style: newStatus === 'CANCELLED' ? 'destructive' : 'default',
-        onPress: async () => {
-          setTransitioning(true);
-          try {
-            await apiFetch(`/work-orders/${id}/transition`, {
-              method: 'POST',
-              body: JSON.stringify({ status: newStatus }),
-            });
-            await load();
-          } catch (e: unknown) {
-            Alert.alert('Помилка', e instanceof Error ? e.message : 'Не вдалося змінити статус');
-          } finally {
-            setTransitioning(false);
-          }
-        },
+        onPress: () =>
+          void (async () => {
+            setTransitioning(true);
+            try {
+              await apiFetch(`/work-orders/${id}/transition`, {
+                method: 'POST',
+                body: JSON.stringify({ status: newStatus }),
+              });
+              await load();
+            } catch (e: unknown) {
+              Alert.alert('Помилка', e instanceof Error ? e.message : 'Не вдалося змінити статус');
+            } finally {
+              setTransitioning(false);
+            }
+          })(),
       },
     ]);
   };
@@ -219,7 +221,11 @@ export default function WorkOrderDetailScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563eb" />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void onRefresh()}
+          tintColor="#2563eb"
+        />
       }
     >
       {/* Header */}
@@ -259,11 +265,37 @@ export default function WorkOrderDetailScreen() {
       )}
 
       {/* Totals */}
-      <View style={styles.totalsRow}>
-        <TotalCard label="Роботи" value={wo.totalLabor} />
-        <TotalCard label="Запчастини" value={wo.totalParts} />
-        <TotalCard label="Разом" value={wo.totalAmount} highlight />
-      </View>
+      {/* BR-WO-007: totalAmount — сума до сплати з ПДВ. ПДВ у сумі — це totalAmount − totalNet
+          (не totalVat: у нарядах, завершених до 2026-10-08, він ненульовий при totalNet =
+          totalAmount). Коли ПДВ є, «роботи + запчастини» можуть не дорівнювати «Разом», тому
+          розкладка йде окремим рядком. */}
+      {(() => {
+        const total = Number(wo.totalAmount);
+        const net = wo.totalNet == null ? total : Number(wo.totalNet);
+        const vat = Math.round((total - net) * 100) / 100;
+        if (vat <= 0) {
+          return (
+            <View style={styles.totalsRow}>
+              <TotalCard label="Роботи" value={wo.totalLabor} />
+              <TotalCard label="Запчастини" value={wo.totalParts} />
+              <TotalCard label="Разом" value={total} highlight />
+            </View>
+          );
+        }
+        return (
+          <>
+            <View style={styles.totalsRow}>
+              <TotalCard label="Роботи" value={wo.totalLabor} />
+              <TotalCard label="Запчастини" value={wo.totalParts} />
+            </View>
+            <View style={styles.totalsRow}>
+              <TotalCard label="Без ПДВ" value={net} />
+              <TotalCard label="ПДВ" value={vat} />
+              <TotalCard label="Разом" value={total} highlight />
+            </View>
+          </>
+        );
+      })()}
 
       {/* Info */}
       {(wo.inMileage != null || wo.plannedAt || wo.description) && (
@@ -337,7 +369,7 @@ export default function WorkOrderDetailScreen() {
         <Text style={styles.sectionTitle}>Фото ({photos.length})</Text>
         <TouchableOpacity
           style={[styles.photoBtn, uploading && { opacity: 0.6 }]}
-          onPress={takePhoto}
+          onPress={() => void takePhoto()}
           disabled={uploading}
           activeOpacity={0.8}
         >

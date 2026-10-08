@@ -168,9 +168,19 @@ const workOrder: ReportEntityDef = {
       filterable: true,
       groupable: true,
     },
+    // BR-RPT-023 / BR-WO-007: три однозначні суми наряду — без ПДВ, ПДВ, до сплати (з ПДВ).
+    {
+      key: 'totalNet',
+      label: 'Сума (без ПДВ)',
+      type: 'decimal',
+      prismaPath: 'totalNet',
+      aggregations: ['SUM', 'AVG', 'MIN', 'MAX'],
+      filterable: true,
+      groupable: false,
+    },
     {
       key: 'totalAmount',
-      label: 'Сума',
+      label: 'Сума з ПДВ',
       type: 'decimal',
       prismaPath: 'totalAmount',
       aggregations: ['SUM', 'AVG', 'MIN', 'MAX'],

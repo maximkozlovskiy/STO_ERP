@@ -56,6 +56,7 @@ export class ReportsService {
     type RevenueRow = {
       date: Date;
       revenue: number;
+      revenueWithVat: number;
       labor: number;
       parts: number;
       count: number;
@@ -74,7 +75,8 @@ export class ReportsService {
       this.prisma.$queryRaw<RevenueRow[]>`
         SELECT
           DATE_TRUNC('day', "completedAt" AT TIME ZONE 'Europe/Kyiv') AS date,
-          COALESCE(SUM("totalAmount"), 0)::float AS revenue,
+          COALESCE(SUM("totalNet"),    0)::float AS revenue,
+          COALESCE(SUM("totalAmount"), 0)::float AS "revenueWithVat",
           COALESCE(SUM("totalLabor"),  0)::float AS labor,
           COALESCE(SUM("totalParts"),  0)::float AS parts,
           COUNT(*)::int                          AS count
@@ -94,9 +96,14 @@ export class ReportsService {
 
     // Convert raw rows to API shape; формат `YYYY-MM-DD` через Kyiv-формaтер
     // зберігається ідентичний до попередньої версії.
+    // BR-RPT-023: три величини — сума (без ПДВ), ПДВ, сума з ПДВ. ПДВ = різниця двох сум наряду
+    // (інваріант BR-WO-007), а не збережений totalVat: у нарядів, завершених до 2026-10-08 в режимі
+    // «ПДВ зверху», totalVat записаний, але клієнтові його не нараховували (totalNet = totalAmount).
     const result = rows.map(r => ({
       date: KYIV_DATE_FMT.format(r.date),
       revenue: Number(r.revenue),
+      vat: money(Number(r.revenueWithVat) - Number(r.revenue)),
+      revenueWithVat: Number(r.revenueWithVat),
       labor: Number(r.labor),
       parts: Number(r.parts),
       count: Number(r.count),
@@ -105,9 +112,19 @@ export class ReportsService {
     // Bug #629: Σ квантованих рядків у JS-float теж дрейфує (0.1+0.2) — квантуємо підсумок
     // до копійки (дзеркалить sumLineTotals / invoice recalcTotals). count — ціле, без money().
     const totalRevenue = sumMoney(result.map(r => r.revenue));
+    const totalRevenueWithVat = sumMoney(result.map(r => r.revenueWithVat));
+    const totalVat = money(totalRevenueWithVat - totalRevenue);
     const totalOrders = result.reduce((s, r) => s + r.count, 0);
 
-    return { rows: result, totalRevenue, totalOrders, from, to };
+    return {
+      rows: result,
+      totalRevenue,
+      totalVat,
+      totalRevenueWithVat,
+      totalOrders,
+      from,
+      to,
+    };
   }
 
   async workOrders(orgId: string, from: string, to: string, employeeId?: string) {
@@ -252,7 +269,12 @@ export class ReportsService {
   async profitability(orgId: string, from: string, to: string) {
     const { fromDate, toDate } = normalizeDateRange(from, to);
 
-    type WOAgg = { totalRevenue: number; totalLabor: number; ordersCount: bigint };
+    type WOAgg = {
+      totalRevenue: number;
+      totalRevenueWithVat: number;
+      totalLabor: number;
+      ordersCount: bigint;
+    };
     type PartAgg = { costParts: number; unknownCount: bigint };
 
     // Частка ФОП per-org (§13, не hardcoded); clamp [0,1] + fallback при недоступності налаштувань.
@@ -270,7 +292,8 @@ export class ReportsService {
       // Aggregate revenue + labor from work orders
       this.prisma.$queryRaw<WOAgg[]>`
         SELECT
-          COALESCE(SUM("totalAmount"), 0)::float AS "totalRevenue",
+          COALESCE(SUM("totalNet"),    0)::float AS "totalRevenue",
+          COALESCE(SUM("totalAmount"), 0)::float AS "totalRevenueWithVat",
           COALESCE(SUM("totalLabor"),  0)::float AS "totalLabor",
           COUNT(*)                                AS "ordersCount"
         FROM work_orders
@@ -298,7 +321,10 @@ export class ReportsService {
       `,
     ]);
 
+    // BR-RPT-023: виручка для прибутку й маржі — БЕЗ ПДВ (ПДВ — не дохід СТО, а податок до
+    // сплати); сума з ПДВ і сам ПДВ віддаються окремо.
     const totalRevenue = moneyFromDecimal(woAgg[0]?.totalRevenue);
+    const totalRevenueWithVat = moneyFromDecimal(woAgg[0]?.totalRevenueWithVat);
     const ordersCount = Number(woAgg[0]?.ordersCount ?? 0);
     const totalCostParts = moneyFromDecimal(partAgg[0]?.costParts);
     const unknownCostPartsCount = Number(partAgg[0]?.unknownCount ?? 0);
@@ -313,6 +339,8 @@ export class ReportsService {
 
     return {
       totalRevenue,
+      totalVat: money(totalRevenueWithVat - totalRevenue),
+      totalRevenueWithVat,
       totalCost,
       totalCostParts,
       totalCostLabor,

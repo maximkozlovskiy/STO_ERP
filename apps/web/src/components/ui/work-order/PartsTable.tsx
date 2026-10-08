@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
+import { calcVatOnBase } from '@/lib/utils';
 import type { LocalPart, Warehouse, Unit } from './types';
 
 export interface PartsTableProps {
@@ -285,7 +286,7 @@ export function PartsTable(props: PartsTableProps) {
                             const q = toNumberOrUndefined(editingPart.quantity);
                             const pr = toNumberOrUndefined(editingPart.price);
                             return q != null && pr != null && vatRate > 0
-                              ? ((q * pr * vatRate) / 100).toFixed(2)
+                              ? calcVatOnBase(q * pr, vatRate, vatMode).toFixed(2)
                               : '—';
                           })()}
                         </td>
@@ -378,7 +379,7 @@ export function PartsTable(props: PartsTableProps) {
                       {vatMode !== 'NONE' && (
                         <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                           {qty != null && p != null && vatRate > 0
-                            ? ((qty * p * vatRate) / 100).toFixed(2)
+                            ? calcVatOnBase(qty * p, vatRate, vatMode).toFixed(2)
                             : '—'}
                         </td>
                       )}
@@ -529,7 +530,7 @@ export function PartsTable(props: PartsTableProps) {
                       const qty = toNumberOrUndefined(newPart.quantity);
                       const p = toNumberOrUndefined(newPart.price);
                       return qty != null && p != null && vatRate > 0
-                        ? ((qty * p * vatRate) / 100).toFixed(2)
+                        ? calcVatOnBase(qty * p, vatRate, vatMode).toFixed(2)
                         : '—';
                     })()}
                   </td>

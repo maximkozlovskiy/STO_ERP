@@ -322,6 +322,8 @@ export class CompletionActsService {
           workOrder: {
             select: {
               number: true,
+              totalNet: true,
+              totalAmount: true,
               counterparty: {
                 select: {
                   firstName: true,
@@ -370,7 +372,14 @@ export class CompletionActsService {
     const vehicleLabel = formatVehicleLabel(act.workOrder?.vehicle);
 
     const builtLines = this.buildLines(act.workOrder);
-    const total = sumMoney(builtLines.map(l => l.amount));
+    // BR-WO-007: сума акта = сума наряду до сплати (вона ж борг клієнта), а не сума рядків:
+    // у режимі «ПДВ зверху» рядки без ПДВ, і акт на суму рядків розходився б із боргом і рахунком.
+    // Рядки акта будуються з тієї самої кількості, що й тотали наряду, тож без ПДВ суми збігаються.
+    const linesTotal = sumMoney(builtLines.map(l => l.amount));
+    const woNet = act.workOrder ? money(Number(act.workOrder.totalNet)) : linesTotal;
+    const woTotal = act.workOrder ? money(Number(act.workOrder.totalAmount)) : linesTotal;
+    const vatTotal = money(woTotal - woNet);
+    const total = vatTotal > 0 ? woTotal : linesTotal;
 
     return this.pdf.generateCompletionActPdf({
       org: { name: org?.name ?? 'СТО', edrpou: null, address: null },
@@ -387,6 +396,7 @@ export class CompletionActsService {
         amount: l.amount,
       })),
       total,
+      ...(vatTotal > 0 ? { totalNet: woNet, vatTotal } : {}),
       notes: act.notes,
     });
   }

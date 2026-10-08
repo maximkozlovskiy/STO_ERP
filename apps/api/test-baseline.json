@@ -529,7 +529,19 @@
    "calcVatOnBase (A5-money) INCLUSIVE → виділяє ПДВ із бази (base − base/(1+rate/100))",
    "calcVatOnBase (A5-money) NONE або rate=0 → 0",
    "calcVatOnBase (A5-money) квантує до копійки",
-   "calcVatOnBase (A5-money) узгодженість з calcLineVat(qty=1): ПДВ бази = vatAmount рядка"
+   "calcVatOnBase (A5-money) узгодженість з calcLineVat(qty=1): ПДВ бази = vatAmount рядка",
+   "plannedWorkOrderTotals (BR-WO-007) «ПДВ зверху», план ≠ факт → ПДВ нараховано на ПЛАН: без ПДВ = план, до сплати = план + ПДВ",
+   "plannedWorkOrderTotals (BR-WO-007) «ПДВ у ціні», план ≠ факт → до сплати = план, ПДВ виділено з плану",
+   "plannedWorkOrderTotals (BR-WO-007) наряд «старої моделі» (організація з ПДВ, але totalNet = totalAmount) → ПДВ 0, сума = план",
+   "plannedWorkOrderTotals (BR-WO-007) наряд без ПДВ → плановий підсумок без ПДВ: обидві суми = план",
+   "plannedWorkOrderTotals (BR-WO-007) план = факт → рівно тотали наряду, без повторного округлення",
+   "plannedWorkOrderTotals (BR-WO-007) приймає Decimal-подібні значення з БД (рядки) так само, як числа",
+   "plannedWorkOrderTotals (BR-WO-007) інваріант: totalNet + totalVat = totalAmount; план лишається базою свого режиму",
+   "splitWorkOrderTotal (BR-WO-007) ПДВ зверху → «без ПДВ» = сума рядків, «до сплати» = сума рядків + ПДВ",
+   "splitWorkOrderTotal (BR-WO-007) ПДВ у ціні → «до сплати» = сума рядків, «без ПДВ» = сума рядків − ПДВ",
+   "splitWorkOrderTotal (BR-WO-007) без ПДВ → і «без ПДВ», і «до сплати» = сума рядків",
+   "splitWorkOrderTotal (BR-WO-007) результат квантовано до копійки (99.99 + 20.00, 100.10 − 16.68 без float-хвоста)",
+   "splitWorkOrderTotal (BR-WO-007) інваріант: totalNet + ПДВ = totalAmount для будь-якої бази, режиму й ставки"
   ],
   "apps/api/src/config/env.schema.spec.ts": [
    "validateEnv — fail-fast env валідація NOTIFICATION_ENC_KEY: короткий (<32) ключ дозволений у dev — SHA-256 нормалізує",
@@ -1105,6 +1117,12 @@
    "CommentsService remove — право на видалення + atomic hard delete видалення — HARD deleteMany з orgId у where (Comment не має deletedAt — за задумом схеми)",
    "CommentsService remove — право на видалення + atomic hard delete неіснуючий/чужий коментар → 404",
    "CommentsService remove — право на видалення + atomic hard delete чужий автор + не адмін → 403, deleteMany НЕ викликається"
+  ],
+  "apps/api/src/modules/completion-acts/completion-acts.pdf-totals.spec.ts": [
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ зверху»: сума акта = wo.totalAmount (840), а не сума рядків (700); totalNet і vatTotal передано",
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) «ПДВ у ціні»: сума акта = wo.totalAmount (700), сума без ПДВ і ПДВ — з тоталів наряду",
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) акт читається у межах свого orgId разом із тоталами наряду; чужий/відсутній → 404, PDF не будується",
+   "CompletionActsService.generatePdf — сума акта з ПДВ (BR-WO-007) наряд без ПДВ: totalNet / vatTotal НЕ передаються (ключів немає), сума = сума рядків"
   ],
   "apps/api/src/modules/completion-acts/completion-acts.service.spec.ts": [
    "CompletionActsController — sign() передає автора sign(): user.id іде четвертим аргументом у CompletionActsService.sign",
@@ -1947,7 +1965,15 @@
    "InvoicesService — create-from-work-order createFromWorkOrder — Bug #412 serializable race protection кидає BadRequestException якщо WO не у COMPLETED/INVOICED статусі",
    "InvoicesService — create-from-work-order createFromWorkOrder — Bug #412 serializable race protection кидає BadRequestException якщо pre-check виявляє існуючий invoice",
    "InvoicesService — create-from-work-order createFromWorkOrder — Bug #412 serializable race protection кидає NotFoundException якщо WO не знайдено",
-   "InvoicesService — create-from-work-order createFromWorkOrder — dueDate за invoiceDueDays (§13) дефолтний dueDate = documentDate(kyivToday) + invoiceDueDays проброшено у create"
+   "InvoicesService — create-from-work-order createFromWorkOrder — dueDate за invoiceDueDays (§13) дефолтний dueDate = documentDate(kyivToday) + invoiceDueDays проброшено у create",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) кількість роботи = фактичні години, якщо задані (0 — теж значення), інакше нормо-години",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) наряд у валюті: base-сума рахунку = сума до сплати × курс на дату рахунку",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) наряд у транзакції читається у межах orgId; зник між pre-check і транзакцією → 404, запис відкочується",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) порожній наряд із нульовою сумою → рахунок на 0 без рядків (createMany не кличеться)",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) режим ПДВ рядків визначає наряд: налаштування «ПДВ зверху 20%», наряд без ПДВ у сумі → рахунок на 700 без ПДВ",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) рядки наряду пишуться клієнтом ТІЄЇ САМОЇ транзакції, що створила рахунок, до її завершення",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) сума рахунку = сума наряду до сплати: amount = totalWithVat = wo.totalAmount, totalWithoutVat = wo.totalNet",
+   "InvoicesService — create-from-work-order createFromWorkOrder — рядки й сума з наряду в тій самій транзакції (BR-INV-002) тотали наряду не відповідають рядкам → 400 ЗСЕРЕДИНИ транзакції: рахунок не лишається, рядки й суми не пишуться"
   ],
   "apps/api/src/modules/invoices/invoices.dto-and-linked-docs.spec.ts": [
    "InvoicesService — linked-documents edge cases Bug #A: soft-deleted контрагент → count=0 (відповідає порожній detail-секції)",
@@ -1978,7 +2004,16 @@
   "apps/api/src/modules/invoices/invoices.line-totals.spec.ts": [
    "InvoicesService — line-totals (recalcTotals на бекенді) addLine → підсумки рахунку = Σ рядків з БД (aggregate), amount = totalWithVat",
    "InvoicesService — line-totals (recalcTotals на бекенді) removeLine останнього рядка → aggregate дає null → усі підсумки й amount = 0",
-   "InvoicesService — line-totals (recalcTotals на бекенді) updateLine → підсумки перераховано з aggregate, amount = totalWithVat (не сума без ПДВ)"
+   "InvoicesService — line-totals (recalcTotals на бекенді) updateLine → підсумки перераховано з aggregate, amount = totalWithVat (не сума без ПДВ)",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) addLine, «ПДВ зверху» 20%: 100 → без ПДВ 100, ПДВ 20, з ПДВ 120",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) addLine, «ПДВ у ціні» 20%: 100 → без ПДВ 83.33, ПДВ 16.67, з ПДВ 100 (рядок не дорожчає)",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) addLine, «ПДВ у ціні» з явною ставкою 7%: ПДВ виділяється з суми за ставкою запиту",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) addLine, «ПДВ у ціні»: сума рядка = кількість × ціна (4 × 25 = 100), ПДВ виділено з неї",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) addLine, без ПДВ в організації і без ставки в запиті → ставка 0, ПДВ 0",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) addLine, без ПДВ в організації, але ставку 20% передано явно → нараховується зверху",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) updateLine, «ПДВ зверху» 20%: рядок 1 × 100 → 100 / 20 / 120",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) updateLine, «ПДВ у ціні» 20%: рядок 1 × 100 → 83.33 / 16.67 / 100",
+   "InvoicesService — line-totals (recalcTotals на бекенді) ПДВ ручного рядка за режимом організації (BR-INV-017) тотожність рядка в обох режимах на «незручній» сумі 33.33: без ПДВ + ПДВ = з ПДВ"
   ],
   "apps/api/src/modules/invoices/invoices.refresh-from-work-order.spec.ts": [
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Bug #403 status guard кидає BadRequestException якщо existing.status=OVERDUE",
@@ -1990,7 +2025,12 @@
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Serializable inner re-check race protection re-check всередині $transaction виявляє soft-deleted invoice → NotFound",
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Serializable inner re-check race protection re-check всередині $transaction виявляє статус-mutation → throw без deleteMany",
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — VAT з налаштувань org (не хардкод) EXCLUSIVE 20% → створює invoice lines з vatRate=20 для робіт і запчастин",
-   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — VAT з налаштувань org (не хардкод) NONE → vatRate=0, ПДВ не додається (не хардкод 20 для безПДВ-org)"
+   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — VAT з налаштувань org (не хардкод) NONE → vatRate=0, ПДВ не додається (не хардкод 20 для безПДВ-org)",
+   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002) оновлює суму в базовій валюті та курс: валюта й дата — рахунку, сума — наряду до сплати",
+   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002) рахунок у базовій валюті: base-сума = нова сума до сплати, курс 1 (стара base-сума не лишається)",
+   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002) режим ПДВ рядків визначає наряд: налаштування «ПДВ зверху 20%», наряд без ПДВ у сумі → 700 без ПДВ",
+   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002) старі рядки зносяться, нові пишуться і суми оновлюються в одній транзакції; сума = wo.totalAmount",
+   "InvoicesService — refresh-from-work-order refreshFromWorkOrder — рядки й сума з наряду, base-сума і курс (BR-INV-002) тотали наряду не відповідають рядкам → 400 ЗСЕРЕДИНИ транзакції: старі рядки не втрачаються, суми не пишуться"
   ],
   "apps/api/src/modules/invoices/invoices.transition-settlements.spec.ts": [
    "InvoicesService — transition-settlements transition — FIN-C2 CHARGE для standalone на DRAFT→SENT CAS: updateMany count=0 (статус змінився паралельно) → throw, CHARGE не створюється",
@@ -2010,6 +2050,28 @@
    "InvoicesService — update: зміна контрагента новий контрагент шукається в межах org серед невидалених",
    "InvoicesService — update: зміна контрагента новий контрагент — постачальник → 400, рахунок не пишеться",
    "InvoicesService — update: зміна контрагента той самий контрагент (старий рахунок на постачальника) → без перевірки, правка проходить"
+  ],
+  "apps/api/src/modules/invoices/invoices.work-order-lines.spec.ts": [
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду копійчана різниця — в останній рядок ПДВ зверху: три рядки по 33.33 — ПДВ від суми 20.00, Σ ПДВ рядків 20.01 → копійку знімає останній",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду копійчана різниця — в останній рядок ПДВ у ціні: різницю і по ПДВ, і по сумі без ПДВ забирає останній рядок, сума з ПДВ не змінюється",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду копійчана різниця — в останній рядок розбіжність рівно копійка на рядок — ще вирівнювання (межа допуску)",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду копійчаний наряд «ПДВ у ціні» (10 × 0.06): режим — за ближчою сумою, від'ємних рядків немає",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду перенесення рядків quantity і unitPrice переносяться як є (не перераховуються з суми рядка)",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду перенесення рядків порожній наряд із нульовою сумою → []",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду перенесення рядків порядок: спершу роботи, потім запчастини; sortOrder наскрізний від 0",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду перенесення рядків рядок без назви роботи/товару все одно отримує непорожній опис",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду режим і ставку ПДВ визначає наряд, а не поточні налаштування ПДВ в організації вимкнули після завершення наряду з ПДВ → рядки з ПДВ наряду",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду режим і ставку ПДВ визначає наряд, а не поточні налаштування налаштування — ПДВ зверху, а наряд рахований «ПДВ у ціні» → рядки за режимом наряду",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду режим і ставку ПДВ визначає наряд, а не поточні налаштування наряд «старої моделі» (налаштування — ПДВ зверху 20%, але totalNet = totalAmount) → рядки без ПДВ",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду режим і ставку ПДВ визначає наряд, а не поточні налаштування ставку змінили після завершення (налаштування 7%, наряд рахований на 20%) → ставка з наряду",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду тотали наряду не відповідають рядкам → помилка, а не вирівнювання наряд без ПДВ: сума наряду 1000 при рядках на 700 → WorkOrderTotalsMismatchError",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду тотали наряду не відповідають рядкам → помилка, а не вирівнювання наряд із ПДВ: ні сума без ПДВ (650), ні до сплати (780) не збігаються з рядками на 700 → помилка",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду тотали наряду не відповідають рядкам → помилка, а не вирівнювання порожній наряд із ненульовою сумою → помилка (рахунок на суму без рядків не виставляється)",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду тотали наряду не відповідають рядкам → помилка, а не вирівнювання розбіжність понад копійку на рядок (два рядки, 3 копійки) → помилка",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду три режими ПДВ: сума рядків = сума наряду ПДВ зверху 20%: рядок = сума без ПДВ + ПДВ, Σ з ПДВ = totalAmount наряду",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду три режими ПДВ: сума рядків = сума наряду ПДВ у ціні 20%: ПДВ виділено з суми рядка, Σ з ПДВ = сума рядків наряду",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду три режими ПДВ: сума рядків = сума наряду без ПДВ: рядки без ПДВ, ставка 0, Σ = сума наряду",
+   "buildInvoiceLinesFromWorkOrder — рядки рахунку з наряду інваріант (property-based) для тоталів, порахованих як у наряді, Σ рядків рахунку = тотали наряду в усіх режимах"
   ],
   "apps/api/src/modules/loyalty/loyalty.processor.spec.ts": [
    "LoyaltyProcessor documentId опційний → undefined прокидається",
@@ -2789,6 +2851,14 @@
    "PayrollService — ізоляція організацій розрахунок пише й чистить лише в організації викликача",
    "PayrollService — ізоляція організацій філія перевіряється в межах організації викликача (попередній розрахунок і створення)"
   ],
+  "apps/api/src/modules/pdf/pdf.document-total.spec.ts": [
+   "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) vatTotal = 0 (наряд без ПДВ, totalNet = total) → теж один рядок «Разом»",
+   "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) vatTotal > 0 → три рядки: «Сума без ПДВ» = totalNet, «ПДВ» = vatTotal, «Разом» = сума до сплати",
+   "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) ПДВ немає (vatTotal не передано) → один рядок «Разом» із сумою, без рядків про ПДВ",
+   "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) акт без ПДВ → один рядок «Разом»",
+   "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) друкований акт будує підсумок із total / totalNet / vatTotal акта",
+   "PdfService — підсумок наряду й акта з ПДВ (BR-WO-007) друкований наряд будує підсумок із total / totalNet / vatTotal наряду"
+  ],
   "apps/api/src/modules/pdf/pdf.service.spec.ts": [
    "PdfService — pdfmake integration Bug #269: handles WorkOrder with empty counterparty/vehicleLabel without crashing",
    "PdfService — pdfmake integration Bug #269: handles minimal Invoice data (empty lines, null edrpou, empty counterparty fields)",
@@ -3136,7 +3206,11 @@
    "ReportsService — Bug #629 квантування грошей у звітах profitability: totalCostLabor/totalCost/grossProfit квантовані (drift від ×0.4 усунено)",
    "ReportsService — Bug #629 квантування грошей у звітах revenue: totalRevenue = Σ рядків квантовано (JS-float Σ не дрейфує)",
    "ReportsService — Bug #629 квантування грошей у звітах settlements: totalDebit/totalCredit = Σ балансів квантовано",
-   "ReportsService — Bug #629 квантування грошей у звітах vatReport: net = invoiced − purchases квантовано"
+   "ReportsService — Bug #629 квантування грошей у звітах vatReport: net = invoiced − purchases квантовано",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) profitability: прибуток і маржа — від суми без ПДВ; ПДВ і сума з ПДВ віддаються окремо",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: наряд без ПДВ у сумі (totalNet = totalAmount) дає ПДВ 0, а не збережений totalVat",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: рядок дня несе суму без ПДВ, ПДВ як різницю і суму з ПДВ",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: сума без ПДВ береться з totalNet, сума з ПДВ — з totalAmount; totalVat у запиті не бере участі"
   ],
   "apps/api/src/modules/search/search.service.spec.ts": [
    "SearchController limit клемпиться у [1,50]: 999→50, 0/невалід→10",
@@ -3912,6 +3986,13 @@
    "WorkOrderStockEffectsService.writeOffPartsAndCharge — zero-total throw (A3 gap) in-tx re-read перекриває stale pre-tx суму: totalAmount pre-tx=500, freshWo=0 → throw"
   ],
   "apps/api/src/modules/work-orders/work-orders-export.service.spec.ts": [
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) DOCX без ПДВ: жодного рядка про ПДВ, підсумок «ЗАГАЛЬНА СУМА» = план",
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) DOCX з ПДВ: «Сума без ПДВ», «ПДВ» і «ЗАГАЛЬНА СУМА З ПДВ» із сумою до сплати",
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) XLSX без ПДВ: рядків «Сума без ПДВ» / «ПДВ» немає, підсумок «ЗАГАЛЬНА СУМА»",
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) XLSX з ПДВ: рядки «Сума без ПДВ» і «ПДВ», підсумок «ЗАГАЛЬНА СУМА З ПДВ» = сума до сплати",
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) getEstimateData, «ПДВ зверху»: totalNet = план, totalVat = ПДВ на план, totalAmount = план + ПДВ",
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) getEstimateData, «ПДВ у ціні»: totalAmount = план, ПДВ виділено з нього",
+   "EstimateExportService — ПДВ у кошторисі (BR-WO-007) getEstimateData, наряд без ПДВ: totalVat = 0, totalNet = totalAmount = план",
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) NotFoundException якщо токен не знайдено (sanity)",
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) totalAmount = totalLabor + totalParts (NOT wo.totalAmount)",
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) лише запчастини, без рядків робіт → totalAmount = totalParts",
@@ -3967,6 +4048,12 @@
    "WorkOrdersService — номер наряду з DocumentNumberService clone(): клон отримує НОВИЙ номер із DocumentNumberService, а не номер оригіналу",
    "WorkOrdersService — номер наряду з DocumentNumberService create(): номер = DocumentNumberService.next(orgId, WORK_ORDER), рівно один виклик"
   ],
+  "apps/api/src/modules/work-orders/work-orders.pdf-totals.spec.ts": [
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) «ПДВ зверху»: total = wo.totalAmount (840, до сплати), totalNet = 700, vatTotal = 140 — не сума рядків",
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) «ПДВ у ціні»: total = сума рядків (700), ПДВ виділено тоталами наряду; vatTotal квантовано до копійки",
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд без ПДВ: vatTotal = 0 (підсумок друкується одним рядком), total = totalNet",
+   "WorkOrdersService.generatePdf — підсумок із тоталів наряду (BR-WO-007) наряд читається у межах свого orgId разом із totalNet/totalAmount; чужий → 404, PDF не будується"
+  ],
   "apps/api/src/modules/work-orders/work-orders.recalc-cap.spec.ts": [
    "WorkOrdersService.recalcTotals — defensive take: 1000 cap обробляє великий список (500 рядків) у single-pass reduce без CPU вибуху",
    "WorkOrdersService.recalcTotals — defensive take: 1000 cap обробляє рівно 1000 рядків без truncation/exception (boundary)",
@@ -3975,6 +4062,17 @@
    "WorkOrdersService.recalcTotals — invoked from all mutation paths addPart викликає recalcTotals → workOrderLine.findMany з take: 1000"
   ],
   "apps/api/src/modules/work-orders/work-orders.recalc-totals.spec.ts": [
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) totalAmountBase рахується від суми ДО СПЛАТИ (з ПДВ), а не від суми рядків",
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) ПДВ зверху 20%: totalNet = сума рядків, totalAmount = сума рядків + ПДВ (до сплати)",
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) ПДВ зверху: копійки — ПДВ від суми рядків, усі три суми квантовано (99.99 → 20.00 → 119.99)",
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) ПДВ у ціні 20%: totalAmount = сума рядків, totalNet = сума рядків − ПДВ",
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) базова валюта (без currencyId), ПДВ зверху: totalAmountBase = totalAmount з ПДВ, rate = 1",
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) без ПДВ: totalNet = totalAmount = сума рядків, totalVat = 0",
+   "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) пише тотали одним update у переданій транзакції, у межах свого orgId",
+   "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) create клона не несе жодного поля total* / rateUsed — тотали оригіналу не копіюються",
+   "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) recalc кличеться рівно раз — для КЛОНА, у тій самій транзакції, після create і до перечитування",
+   "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) recalc упав → помилка виходить із транзакції (клон без тоталів не лишається)",
+   "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) відповідь несе тотали, перечитані ПІСЛЯ recalc (840), а не суму оригіналу (999)",
    "WorkOrdersService.recalcTotals — totalActualLabor formula actualHours=0 is treated as actual (not falsy fallback to normoHours)",
    "WorkOrdersService.recalcTotals — totalActualLabor formula all actualHours set → totalActualLabor uses ONLY actualHours (planned amount ignored)",
    "WorkOrdersService.recalcTotals — totalActualLabor formula all actualHours=null → totalActualLabor === totalLabor (fallback to normoHours)",
@@ -4037,6 +4135,11 @@
    "WorkOrdersService.writeOffPartsAndCharge — batchCostPrice/batchId writeback weightedCostPrice=null → workOrderPart.update НЕ викликається (не перезаписує NULL)"
   ],
   "apps/api/src/modules/work-orders/work-orders.share-public.spec.ts": [
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) findByShareToken, «ПДВ зверху»: totalNet = план, totalVat = ПДВ на план, totalAmount = план + ПДВ",
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) findByShareToken, «ПДВ у ціні»: totalAmount = план, ПДВ виділено з нього",
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) findByShareToken, наряд без ПДВ: totalVat = 0, totalNet = totalAmount = план",
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms, «ПДВ зверху»: {{totalAmount}} = планова сума З ПДВ (1800.00), не сума без ПДВ і не факт",
+   "WorkOrderShareService — ПДВ у публічному кошторисі та SMS (BR-WO-007) sendEstimateSms: сума в SMS = сума на сторінці за посиланням (той самий наряд)",
    "WorkOrderShareService.findByShareToken — public DTO leak guards NotFoundException якщо токен не знайдено",
    "WorkOrderShareService.findByShareToken — public DTO leak guards org та goodUoM запити викликаються паралельно (не sequential)",
    "WorkOrderShareService.findByShareToken — public DTO leak guards parts[] МАЄ НЕ МІСТИТИ costPrice (key absent, not undefined/null)",
@@ -4215,6 +4318,12 @@
    "XlsxService applyPricingFromList — XLSX парсить XLSX worksheet з колонками sku/barcode/name → знаходить good",
    "XlsxService applyPricingFromList — XLSX порожній XLSX → BadRequestException",
    "XlsxService generatePricingListTemplate повертає Buffer з BOM + header + 2 sample-рядки",
+   "XlsxService importWOParts — перерахунок тоталів наряду (BR-WO-007) запис рядків упав (createMany і update відхилено) → нічого не змінено → recalc НЕ кличеться",
+   "XlsxService importWOParts — перерахунок тоталів наряду (BR-WO-007) оновлено наявну запчастину (нічого не створено) → recalc рівно раз",
+   "XlsxService importWOParts — перерахунок тоталів наряду (BR-WO-007) створено нову запчастину → recalc(woId, tx, orgId) рівно раз, після запису рядків",
+   "XlsxService importWOParts — перерахунок тоталів наряду (BR-WO-007) усі рядки дали помилку (товар не знайдено) → recalc НЕ кличеться, транзакція не відкривається",
+   "XlsxService importWOParts — перерахунок тоталів наряду (BR-WO-007) частина рядків з помилкою, один записано → recalc усе одно кличеться",
+   "XlsxService importWOParts — перерахунок тоталів наряду (BR-WO-007) і створено, і оновлено → recalc один раз на весь імпорт, а не на рядок",
    "XlsxService parseNumber — UA-кома backstop крапка-роздільник \"1.5\" лишається валідним",
    "XlsxService parseNumber — UA-кома backstop порожнє/невалідне → undefined",
    "XlsxService parseNumber — UA-кома backstop пробіли-роздільники тисяч прибираються",
