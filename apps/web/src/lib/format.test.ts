@@ -6,6 +6,7 @@ import {
   localDateTimeToISO,
   fmtMoney,
   fmtInt,
+  kyivDateOf,
 } from './format';
 
 /**
@@ -157,5 +158,29 @@ describe('fmtMoney vs fmtInt — kopiyka distinction (WEB-M9)', () => {
     expect(fmtMoney(undefined)).toBe('—');
     expect(fmtInt(null)).toBe('—');
     expect(fmtInt(undefined)).toBe('—');
+  });
+});
+
+describe('kyivDateOf — київська дата UTC-мітки (Bug #812)', () => {
+  it('перші години київської доби: UTC ще «вчора», Київ — вже «сьогодні»', () => {
+    // літній час (UTC+3): 21:30Z 8 жовтня = 00:30 9 жовтня за Києвом
+    const iso = '2026-10-08T21:30:00.000Z';
+    expect(iso.slice(0, 10)).toBe('2026-10-08');
+    expect(kyivDateOf(iso)).toBe('2026-10-09');
+    // зимовий час (UTC+2): 22:30Z 14 січня = 00:30 15 січня
+    expect(kyivDateOf('2026-01-14T22:30:00.000Z')).toBe('2026-01-15');
+    // 21:30Z взимку — ще 23:30 того самого дня
+    expect(kyivDateOf('2026-01-14T21:30:00.000Z')).toBe('2026-01-14');
+  });
+
+  it('денна мітка — та сама дата; Date приймається нарівні з рядком', () => {
+    expect(kyivDateOf('2026-10-09T10:00:00.000Z')).toBe('2026-10-09');
+    expect(kyivDateOf(new Date('2026-10-08T21:30:00.000Z'))).toBe('2026-10-09');
+  });
+
+  it('порожня або невалідна мітка → порожній рядок (не збігається з жодним днем)', () => {
+    expect(kyivDateOf(null)).toBe('');
+    expect(kyivDateOf(undefined)).toBe('');
+    expect(kyivDateOf('not-a-date')).toBe('');
   });
 });

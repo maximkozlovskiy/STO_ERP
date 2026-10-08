@@ -163,6 +163,17 @@ export function kyivToday(): string {
   return KYIV_YMD_FMT.format(new Date());
 }
 
+/**
+ * Київська календарна дата `YYYY-MM-DD` мітки часу (ISO-рядок із API — це UTC). Порівнювати з
+ * `kyivToday()` треба саме її, а не `iso.slice(0, 10)`: перші дві-три години київської доби в UTC
+ * ще належать вчорашньому дню (Bug #812). Невалідна або порожня мітка → `''`.
+ */
+export function kyivDateOf(d: string | Date | null | undefined): string {
+  if (!d) return '';
+  const date = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(date.getTime()) ? '' : KYIV_YMD_FMT.format(date);
+}
+
 /** Додає `days` днів до дати `YYYY-MM-DD` і повертає `YYYY-MM-DD` (UTC-арифметика, без DST-стрибків). */
 export function addDaysISO(ymd: string, days: number): string {
   const d = new Date(ymd + 'T00:00:00Z');

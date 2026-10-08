@@ -40,7 +40,7 @@ import { KpiCard, Card, CardContent, CardHeader, CardTitle } from '@/components/
 import { PageSpinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import { fmtInt, fmtMoney, fmtDate, kyivToday } from '@/lib/format';
+import { fmtInt, fmtMoney, fmtDate, kyivToday, kyivDateOf } from '@/lib/format';
 
 interface MaintenanceSchedule {
   id: string;
@@ -199,7 +199,9 @@ export default function DashboardPage() {
     const allOrders: WorkOrderSummary[] =
       (ordersData as { items?: WorkOrderSummary[] }).items ?? [];
     const todayOrders = allOrders.filter(
-      o => o.completedAt && o.completedAt.slice(0, 10) === today,
+      // Київська дата завершення, не UTC-зріз ISO-рядка: наряд, закритий о 00:30 за Києвом,
+      // в UTC ще «вчора» і в лічильник «завершено сьогодні» не потрапляв (Bug #812).
+      o => kyivDateOf(o.completedAt) === today,
     );
     const allInvoices: InvoiceSummary[] =
       (invoicesData as { items?: InvoiceSummary[] }).items ?? [];
