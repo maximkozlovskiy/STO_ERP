@@ -111,7 +111,7 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 | by batch                                              | `inventory.by-batch.spec.ts`          | 7      | —                               |
 | by document                                           | `inventory.by-document.spec.ts`       | 9      | —                               |
 | create movement                                       | `inventory.create-movement.spec.ts`   | 44     | BR-INVT-002…010, 014, 016, 017  |
-| find movements                                        | `inventory.find-movements.spec.ts`    | 9      | —                               |
+| find movements                                        | `inventory.find-movements.spec.ts`    | 10     | —                               |
 | інваріанти балансу на моделі у спеку (property-based) | `inventory.invariants.spec.ts`        | 8      | —                               |
 | єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                |
 | HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 25     | —                               |
@@ -120,7 +120,7 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 | ролі доступу до залишків (метадані @Roles)            | `stock-items.access.spec.ts`          | 7      | —                               |
 | HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 20     | —                               |
 
-Разом: **219** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **220** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Мітки `// guards: BR-INVT-…` стоять над конкретними `it(`; колонка «Правила» — лише покажчик файла.
 

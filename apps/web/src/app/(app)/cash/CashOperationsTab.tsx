@@ -19,7 +19,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import {
@@ -283,28 +283,14 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('operations.dateFrom')}
-          </span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={setDateFrom}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('operations.dateTo')}
-          </span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={setDateTo}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={setDateFrom}
+          onToChange={setDateTo}
+          fromLabel={t('operations.dateFrom')}
+          toLabel={t('operations.dateTo')}
+        />
       </div>
 
       {/* Історія операцій */}

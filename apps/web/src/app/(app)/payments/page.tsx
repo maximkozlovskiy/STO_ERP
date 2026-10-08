@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense, useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { HandCoins, Search, RotateCw } from 'lucide-react';
@@ -14,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { Pagination } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -124,28 +123,14 @@ function PaymentsPageInner() {
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('page.filters.dateFrom')}
-          </span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => resetPageAnd(() => setDateFrom(v))}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('page.filters.dateTo')}
-          </span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => resetPageAnd(() => setDateTo(v))}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={v => resetPageAnd(() => setDateFrom(v))}
+          onToChange={v => resetPageAnd(() => setDateTo(v))}
+          fromLabel={t('page.filters.dateFrom')}
+          toLabel={t('page.filters.dateTo')}
+        />
         <div className="w-48">
           <Select
             aria-label={t('page.filters.method')}

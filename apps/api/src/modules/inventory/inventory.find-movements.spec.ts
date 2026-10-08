@@ -131,6 +131,16 @@ describe('InventoryService.findMovements() — журнал рухів (пагі
     expect(prisma.stockMovement.count.mock.calls[0][0].where).toEqual(where);
   });
 
+  it('q із символами підстановки LIKE: артикул «AB_12%» шукається буквально', async () => {
+    await service.findMovements('org-1', { q: 'AB_12%' });
+
+    const contains = { contains: 'AB\\_12\\%', mode: 'insensitive' };
+    expect(prisma.stockMovement.findMany.mock.calls[0][0].where.good.OR).toEqual([
+      { name: contains },
+      { sku: contains },
+    ]);
+  });
+
   it.each([undefined, '', '   '])('порожній q (%j) пошук не вмикає', async q => {
     await service.findMovements('org-1', { q });
 

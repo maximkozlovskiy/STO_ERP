@@ -175,7 +175,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | ------------------------------ | ----------------------------------------------- | ------ |
 | авто-матч з контрагентом       | `bank-reconciliation.auto-match.spec.ts`        | 5      |
 | імпорт у staging               | `bank-reconciliation.import.spec.ts`            | 5      |
-| рознесення / ігнорування (FSM) | `bank-reconciliation.posting.spec.ts`           | 16     |
+| рознесення / ігнорування (FSM) | `bank-reconciliation.posting.spec.ts`           | 17     |
 | сервісна логіка                | `bank-reconciliation.service.spec.ts`           | 27     |
 | парсер файлу виписки           | `bank-statement-parser.service.spec.ts`         | 17     |
 | контролер провайдерів          | `bank-statement-providers.controller.spec.ts`   | 7      |
@@ -191,7 +191,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 
 Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків).
 
-Разом: **184** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **185** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей.
 Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); гонка двох одночасних рознесень одного рядка (CAS перевірено за формою `where`, не конкурентно); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.

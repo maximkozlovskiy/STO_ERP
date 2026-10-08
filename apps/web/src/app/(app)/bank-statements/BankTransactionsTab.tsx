@@ -32,7 +32,7 @@ import { MatchBankTransactionModal } from '@/components/ui/MatchBankTransactionM
 import { BankStatementImportModal } from '@/components/ui/BankStatementImportModal';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { useDebounce } from '@/hooks/useDebounce';
 
 const STATUS_OPTIONS: BankTxStatus[] = ['UNMATCHED', 'MATCHED', 'IGNORED'];
@@ -151,34 +151,20 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('page.filters.dateFrom')}
-          </span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => {
-              setDateFrom(v);
-              setPage(1);
-            }}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('page.filters.dateTo')}
-          </span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => {
-              setDateTo(v);
-              setPage(1);
-            }}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={v => {
+            setDateFrom(v);
+            setPage(1);
+          }}
+          onToChange={v => {
+            setDateTo(v);
+            setPage(1);
+          }}
+          fromLabel={t('page.filters.dateFrom')}
+          toLabel={t('page.filters.dateTo')}
+        />
         <div className="flex items-center gap-2 ml-auto">
           <Button onClick={() => setImportOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
             {t('page.import')}

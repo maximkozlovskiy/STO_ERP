@@ -11,7 +11,8 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService, BatchConsumeResult } from './batch.service';
 import { SettingsService } from '../settings/settings.service';
-import { kyivOffsetMs } from '../../common/utils/kyiv-date';
+import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
+import { escapeLike } from '../../common/utils/like-pattern';
 import { calculatePagination } from '../../common/utils/pagination';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -520,17 +521,7 @@ export class InventoryService {
   }
 
   private normalizeDates(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
-    if (!from && !to) return undefined;
-    const range: { gte?: Date; lte?: Date } = {};
-    if (from) {
-      const d = new Date(`${from}T00:00:00Z`);
-      range.gte = new Date(d.getTime() - kyivOffsetMs(d));
-    }
-    if (to) {
-      const d = new Date(`${to}T23:59:59.999Z`);
-      range.lte = new Date(d.getTime() - kyivOffsetMs(d));
-    }
-    return range;
+    return kyivDayRangeFilter(from, to);
   }
 
   private docLabel(documentType: string | null, documentId: string | null): string {
@@ -800,6 +791,9 @@ export class InventoryService {
   }> {
     const createdAt = this.normalizeDates(filters.from, filters.to);
     const search = filters.q?.trim().slice(0, 100);
+    const contains = search
+      ? { contains: escapeLike(search), mode: 'insensitive' as const }
+      : undefined;
     const { skip, take } = calculatePagination({ page: filters.page, limit: filters.limit });
     const where: Prisma.StockMovementWhereInput = {
       orgId,
@@ -811,12 +805,7 @@ export class InventoryService {
       // Пошук звужує той самий зв'язок good (назва або артикул) — умова на deletedAt лишається.
       good: {
         deletedAt: null,
-        ...(search && {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { sku: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }),
+        ...(contains && { OR: [{ name: contains }, { sku: contains }] }),
       },
       warehouse: { deletedAt: null },
     };

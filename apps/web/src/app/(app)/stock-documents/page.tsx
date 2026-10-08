@@ -46,7 +46,7 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -485,34 +485,22 @@ function StockDocumentsPageClient() {
           leftElement={<Search />}
           className="w-64 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('filters.dateFrom')}
-          </span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => {
-              setDateFrom(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">{t('filters.dateTo')}</span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => {
-              setDateTo(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={v => {
+            setDateFrom(v);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          onToChange={v => {
+            setDateTo(v);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          fromLabel={t('filters.dateFrom')}
+          toLabel={t('filters.dateTo')}
+        />
         <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="outline"

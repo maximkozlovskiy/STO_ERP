@@ -430,6 +430,35 @@ describe('CashService.listOperations — історія операцій', () =>
     ]);
   });
 
+  it('q із символами підстановки LIKE (% _) шукається буквально', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, 100, { q: '5%_' });
+
+    const contains = { contains: '5\\%\\_', mode: 'insensitive' };
+    expect(m.prisma.cashOperation.findMany.mock.calls[0][0].where.OR).toEqual([
+      { notes: contains },
+      { expenseCategory: { name: contains } },
+    ]);
+  });
+
+  // guards: BR-CASH-015
+  it.each([
+    [Number.NaN, 100],
+    [0, 100],
+    [-5, 100],
+    [Number.POSITIVE_INFINITY, 100],
+    [20.9, 20],
+  ])('limit із query-рядка %s → take %s (не NaN і не відʼємне)', async (limit, take) => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, limit);
+
+    expect(m.prisma.cashOperation.findMany.mock.calls[0][0].take).toBe(take);
+  });
+
   it('без фільтрів where — як раніше: лише організація і каса', async () => {
     const { m, service } = setup();
     m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);

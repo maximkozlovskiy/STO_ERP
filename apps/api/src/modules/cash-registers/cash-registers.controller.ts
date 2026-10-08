@@ -117,7 +117,8 @@ export class CashRegistersController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
   ) {
-    // Query-параметри без DTO → дату перевіряємо тут: сміття чи 31.02 дали б Invalid Date і 500.
+    // Query-параметри без DTO → дату перевіряємо тут. Сміття дало б Invalid Date і безіменний
+    // 400 від Prisma, а 31.02 `new Date` мовчки перекочує в березень — відбір за іншим днем.
     for (const value of [dateFrom, dateTo]) {
       if (value && !isCalendarDate(value))
         throw new BadRequestException(translateError('err.cash.invalidDateFilter', getLocale()));

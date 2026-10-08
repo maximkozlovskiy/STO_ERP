@@ -33,6 +33,8 @@ interface DatePickerInputProps {
   value: string; // YYYY-MM-DD для API
   onChange: (value: string) => void;
   label?: string;
+  /** Доступна назва поля, коли видимий підпис стоїть поруч, а не в `label`. */
+  ariaLabel?: string;
   hint?: string;
   errorMessage?: string;
   required?: boolean;
@@ -58,6 +60,7 @@ export function DatePickerInput({
   value,
   onChange,
   label,
+  ariaLabel,
   hint,
   errorMessage,
   required,
@@ -173,6 +176,7 @@ export function DatePickerInput({
             if (open && e.key === 'Enter') setOpen(false);
           }}
           placeholder={placeholder}
+          aria-label={ariaLabel}
           disabled={disabled}
           maxLength={10}
           className={cn(

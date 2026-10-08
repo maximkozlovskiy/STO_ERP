@@ -11,6 +11,7 @@ import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
+import { escapeLike } from '../../common/utils/like-pattern';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
@@ -91,10 +92,8 @@ export class StockDocumentsService {
     // Пошук — за номером документа або приміткою; orgId лишається на верхньому рівні where.
     const search = q?.trim();
     if (search) {
-      where.OR = [
-        { number: { contains: search, mode: 'insensitive' } },
-        { notes: { contains: search, mode: 'insensitive' } },
-      ];
+      const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
+      where.OR = [{ number: contains }, { notes: contains }];
     }
     if (dateFrom || dateTo) {
       where.documentDate = {

@@ -314,6 +314,22 @@ describe('BankReconciliationService.list — tenant-фільтр', () => {
     expect(prisma.bankTransaction.count.mock.calls[0]![0].where).toEqual(where);
   });
 
+  it('list: q із символами підстановки LIKE (% _) шукається буквально в усіх чотирьох полях', async () => {
+    const prisma = makePrisma();
+    prisma.bankTransaction.findMany.mockResolvedValue([]);
+    prisma.bankTransaction.count.mockResolvedValue(0);
+    const service = build(prisma, makeExchange(), makePayments());
+
+    await service.list(ORG, { q: 'ПДВ 20%_' });
+
+    expect(prisma.bankTransaction.findMany.mock.calls[0]![0].where.OR).toEqual([
+      { payerName: { contains: 'ПДВ 20\\%\\_', mode: 'insensitive' } },
+      { purpose: { contains: 'ПДВ 20\\%\\_', mode: 'insensitive' } },
+      { payerIban: { contains: 'ПДВ20\\%\\_', mode: 'insensitive' } },
+      { payerEdrpou: { contains: 'ПДВ 20\\%\\_', mode: 'insensitive' } },
+    ]);
+  });
+
   it('list: dateFrom/dateTo → дата операції календарними датами (це @db.Date, без зсуву на пояс)', async () => {
     const prisma = makePrisma();
     prisma.bankTransaction.findMany.mockResolvedValue([]);

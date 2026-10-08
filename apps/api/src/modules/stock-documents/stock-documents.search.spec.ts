@@ -87,6 +87,17 @@ describe('StockDocumentsService.findAll — пошук за номером і п
     expect(whereOf(prisma.stockDocument.findMany)).not.toHaveProperty('OR');
   });
 
+  // Prisma значення `contains` не екранує: без escapeLike «%» знаходив би всі документи.
+  it('символи підстановки LIKE (% _ і зворотна коса) шукаються буквально', async () => {
+    await search('50%_знижка\\');
+
+    const contains = { contains: '50\\%\\_знижка\\\\', mode: 'insensitive' };
+    expect(whereOf(prisma.stockDocument.findMany).OR).toEqual([
+      { number: contains },
+      { notes: contains },
+    ]);
+  });
+
   it('пробіли довкола запиту обрізаються', async () => {
     await search('  ПРХ-7  ');
 

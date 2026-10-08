@@ -398,6 +398,14 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
     ).toEqual(where);
   });
 
+  it('q із символами підстановки LIKE (% _) шукається буквально', async () => {
+    await service.findAll(ORG, { q: '100%_' });
+
+    const or = lastWhere().OR as Record<string, unknown>[];
+    expect(or[0]).toEqual({ notes: { contains: '100\\%\\_', mode: 'insensitive' } });
+    expect(JSON.stringify(or)).not.toContain('"100%_"');
+  });
+
   it.each([undefined, '', '   '])('порожній q (%j) умови не додає', async q => {
     await service.findAll(ORG, { q });
 

@@ -13,6 +13,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
+import { escapeLike } from '../../common/utils/like-pattern';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -94,7 +95,7 @@ export class PaymentsService {
     // лишається на верхньому рівні where — OR його не послаблює.
     const search = opts.q?.trim().slice(0, 100);
     if (search) {
-      const contains = { contains: search, mode: 'insensitive' as const };
+      const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
       where.OR = [
         { notes: contains },
         { counterparty: { companyName: contains } },

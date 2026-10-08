@@ -377,10 +377,20 @@
    "isCalendarDate 2024-02-29 — існує",
    "isCalendarDate 2026-10-09 — існує",
    "isCalendarDate 2026-12-31 — існує",
+   "kyivDayRangeFilter — межі київської доби для DateTime 25.10.2026 (перехід на зимовий час): доба з 25 годин — 24.10 21:00Z … 25.10 21:59:59.999Z",
+   "kyivDayRangeFilter — межі київської доби для DateTime 29.03.2026 (перехід на літній час): доба з 23 годин — 28.03 22:00Z … 29.03 20:59:59.999Z",
    "kyivDayRangeFilter — межі київської доби для DateTime зима (UTC+2): 15.01 — це 14.01 22:00Z … 15.01 21:59:59.999Z",
    "kyivDayRangeFilter — межі київської доби для DateTime лише «з» або лише «по» — одна межа; жодної — undefined (умову не додають)",
    "kyivDayRangeFilter — межі київської доби для DateTime літо (UTC+3): 09.07 — це 08.07 21:00Z … 09.07 20:59:59.999Z",
-   "kyivDayRangeFilter — межі київської доби для DateTime операція о 00:20 за Києвом потрапляє у свій день, а не в попередній"
+   "kyivDayRangeFilter — межі київської доби для DateTime операція о 00:20 за Києвом потрапляє у свій день, а не в попередній",
+   "kyivDayRangeFilter — межі київської доби для DateTime сусідні доби не перетинаються і не лишають проміжку — і довкола переходу теж"
+  ],
+  "apps/api/src/common/utils/like-pattern.spec.ts": [
+   "escapeLike — символи підстановки LIKE у тексті пошуку % екранується: «100%» шукає саме знак відсотка, а не «100» і будь-що далі",
+   "escapeLike — символи підстановки LIKE у тексті пошуку _ екранується: артикул «AB_12» не збігається з «ABX12»",
+   "escapeLike — символи підстановки LIKE у тексті пошуку звичайний текст (кирилиця, цифри, дефіс, пробіл) не змінюється",
+   "escapeLike — символи підстановки LIKE у тексті пошуку зворотна коса подвоюється — інакше вона сама екранувала б наступний символ",
+   "escapeLike — символи підстановки LIKE у тексті пошуку кілька символів підряд екрануються всі"
   ],
   "apps/api/src/common/utils/linked-counts.spec.ts": [
    "initCountsMap дублікати id → одна спільна колонка (останній перезапис), без aliasing між різними id",
@@ -649,6 +659,7 @@
    "BankReconciliationService.list — tenant-фільтр list: dateFrom/dateTo → дата операції календарними датами (це @db.Date, без зсуву на пояс)",
    "BankReconciliationService.list — tenant-фільтр list: direction=IN звужує і вибірку, і лічильник; orgId та deletedAt лишаються",
    "BankReconciliationService.list — tenant-фільтр list: direction=OUT звужує і вибірку, і лічильник; orgId та deletedAt лишаються",
+   "BankReconciliationService.list — tenant-фільтр list: q із символами підстановки LIKE (% _) шукається буквально в усіх чотирьох полях",
    "BankReconciliationService.list — tenant-фільтр list: q → платник, призначення, IBAN (без пробілів) або ЄДРПОУ; tenant лишається зверху",
    "BankReconciliationService.list — tenant-фільтр list: без direction умови на напрямок немає — «Всі» показує обидва",
    "BankReconciliationService.list — tenant-фільтр list: вибірка і лічильник фільтруються по orgId і deletedAt=null (+ статус із запиту)",
@@ -1079,6 +1090,12 @@
    "CashService.createOperation — сума операції сума мінус копійка → 400 «Сума має бути додатною», касу не читаємо, нічого не пишемо",
    "CashService.createOperation — сума операції сума округлюється до копійки ДО запису й конвертації (10.126 → 10.13)",
    "CashService.listOperations — історія операцій dateFrom/dateTo → межі КИЇВСЬКОЇ доби за createdAt, каса й організація лишаються",
+   "CashService.listOperations — історія операцій limit із query-рядка -5 → take 100 (не NaN і не відʼємне)",
+   "CashService.listOperations — історія операцій limit із query-рядка 0 → take 100 (не NaN і не відʼємне)",
+   "CashService.listOperations — історія операцій limit із query-рядка 20.9 → take 20 (не NaN і не відʼємне)",
+   "CashService.listOperations — історія операцій limit із query-рядка Infinity → take 100 (не NaN і не відʼємне)",
+   "CashService.listOperations — історія операцій limit із query-рядка NaN → take 100 (не NaN і не відʼємне)",
+   "CashService.listOperations — історія операцій q із символами підстановки LIKE (% _) шукається буквально",
    "CashService.listOperations — історія операцій q → примітка АБО назва статті витрат; без урахування регістру",
    "CashService.listOperations — історія операцій без фільтрів where — як раніше: лише організація і каса",
    "CashService.listOperations — історія операцій запит понад стелю (10000) обрізається до 500; менший ліміт (20) лишається",
@@ -1825,6 +1842,7 @@
   ],
   "apps/api/src/modules/inventory/inventory.find-movements.spec.ts": [
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) limit капується (MAX 200) — DoS guard",
+   "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) q із символами підстановки LIKE: артикул «AB_12%» шукається буквально",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) q → товар за назвою АБО артикулом; умова «товар не видалено» лишається",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) tenant + soft-delete + orderBy desc + пагінація у findMany/count",
    "InventoryService.findMovements() — журнал рухів (пагінація + фільтри) мапить рядок у DTO (goodName/warehouseName/price Number|null)",
@@ -2664,6 +2682,7 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto fiscalStatus=garbage → фільтр НЕ застосовано (без 500) — MUTATION guard enum-Set",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto method=card → where.method=card (eq)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto pagination: limit клампиться у [1,200], page у [1,∞) — DoS-hardening",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto q із символами підстановки LIKE (% _) шукається буквально",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto q → клієнт (назва / прізвище / імʼя), номер рахунку, номер наряду або примітка",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: FAILED + без receiptId → update QUEUED + checkboxQueue.add",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: cross-org id → NotFound (tenant-scoped), БЕЗ enqueue/update",
@@ -3562,7 +3581,8 @@
    "StockDocumentsService.findAll — пошук за номером і приміткою порожній пошук (\"\") умови не додає",
    "StockDocumentsService.findAll — пошук за номером і приміткою порожній пошук (undefined) умови не додає",
    "StockDocumentsService.findAll — пошук за номером і приміткою пошук діє і на вибірку, і на лічильник — сторінок стільки, скільки знайдено",
-   "StockDocumentsService.findAll — пошук за номером і приміткою пробіли довкола запиту обрізаються"
+   "StockDocumentsService.findAll — пошук за номером і приміткою пробіли довкола запиту обрізаються",
+   "StockDocumentsService.findAll — пошук за номером і приміткою символи підстановки LIKE (% _ і зворотна коса) шукаються буквально"
   ],
   "apps/api/src/modules/stock-documents/stock-documents.type-labels.invariants.spec.ts": [
    "STOCK_DOC_TYPE_LABELS ↔ StockDocumentType (BR-SDOC-005) ключі мапи збігаються з Prisma-enum StockDocumentType — жодного пропущеного і жодного зайвого",

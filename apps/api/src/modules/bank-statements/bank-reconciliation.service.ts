@@ -9,6 +9,7 @@ import { Prisma, BankTransactionMatchType, BankTransactionSource } from '@prisma
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
+import { escapeLike } from '../../common/utils/like-pattern';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -442,12 +443,17 @@ export class BankReconciliationService {
     if (operationDate) where.operationDate = operationDate;
     const search = query.q?.trim();
     if (search) {
-      const contains = { contains: search, mode: 'insensitive' as const };
+      const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
       where.OR = [
         { payerName: contains },
         { purpose: contains },
         // IBAN зберігається нормалізованим (UPPERCASE, без пробілів — BR-BANK-006): шукаємо так само
-        { payerIban: { contains: search.replace(/\s+/g, ''), mode: 'insensitive' as const } },
+        {
+          payerIban: {
+            contains: escapeLike(search.replace(/\s+/g, '')),
+            mode: 'insensitive' as const,
+          },
+        },
         { payerEdrpou: contains },
       ];
     }
