@@ -73,6 +73,7 @@ python scripts/check-doc-links.py                      # посилання мі
 
 | Файл                                                                                     | Що                                                                                                                                                  |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/check-schema-drift.py`                                                          | сторож «міграції = schema.prisma» на чистій базі (CI `integration-tests`); `--self-test`                                                            |
 | `.claude/agents/sto-{backend,web,spec-tests}-agent.md`                                   | паралельна реалізація фічі за контрактом; пілот — історія пробігу авто (`docs/objects/vehicle.md`); виміри — `docs/PERFORMANCE-BASELINE.md`, етап 4 |
 | `apps/web/src/lib/download.ts`                                                           | `downloadBlob`/`downloadUrl` — SOT браузер-завантаження (attached anchor + deferred revoke)                                                         |
 | `apps/api/src/common/utils/pagination.ts`                                                | `calculatePagination` (NaN-guard + cap)                                                                                                             |
@@ -107,6 +108,11 @@ python scripts/check-doc-links.py                      # посилання мі
 
 ## Активні особливості поточного коду
 
+- **Сума наряду (BR-WO-007):** `totalAmount` — до сплати З ПДВ, `totalNet` — без; ПДВ показувати
+  як `totalAmount − totalNet`, НЕ `totalVat` (у нарядів, завершених до 2026-10-08, він застарілий).
+  Тотали пише лише `WorkOrderTotalsService.recalc`; рахунок із наряду — `work-order-invoice-lines.ts`
+- **CI падає, а локально зелено** → відтворювати кроки CI в чистому Linux-контейнері (`git archive`
+  - власні postgres/redis): dev-база й `.env` на диску ховають дефекти чистої інсталяції
 - `StockDocumentType.RECEIPT` — повністю додано: Prisma enum + DTO + service + frontend tabs
 - `deduplicateBy(plan, u => u.goodId)` — у PO/xlsx applyPricing ПЕРЕД `Promise.all`
 - Generic Excel-імпорт: `XlsxService.previewImport/applyImport` + `DocumentLineImportAdapterRegistry`
