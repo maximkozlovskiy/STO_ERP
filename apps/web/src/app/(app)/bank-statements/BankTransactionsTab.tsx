@@ -165,8 +165,16 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                   <TableCell colSpan={7} className="p-0">
                     <EmptyState
                       icon={Landmark}
-                      title={t('page.empty.title')}
-                      description={t('page.empty.description')}
+                      // «Вихідні»: імпорт поки кладе лише вхідні (BR-BANK-001) — заклик
+                      // «імпортуйте виписку» тут обіцяв би те, чого не станеться.
+                      title={t(
+                        direction === 'OUT' ? 'page.emptyOutgoing.title' : 'page.empty.title',
+                      )}
+                      description={t(
+                        direction === 'OUT'
+                          ? 'page.emptyOutgoing.description'
+                          : 'page.empty.description',
+                      )}
                     />
                   </TableCell>
                 </TableRow>

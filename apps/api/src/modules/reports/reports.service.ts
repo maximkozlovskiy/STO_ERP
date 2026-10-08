@@ -80,8 +80,10 @@ export class ReportsService {
           DATE_TRUNC('day', "completedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv') AS date,
           COALESCE(SUM("totalNet"),    0)::float AS revenue,
           COALESCE(SUM("totalAmount"), 0)::float AS "revenueWithVat",
-          COALESCE(SUM("totalLabor"),  0)::float AS labor,
-          COALESCE(SUM("totalParts"),  0)::float AS parts,
+          -- BR-RPT-023: роботи й запчастини теж БЕЗ ПДВ і від ФАКТУ: k = totalNet / сума рядків
+          -- (1 для «без ПДВ» і «ПДВ зверху», < 1 для «ПДВ у ціні») → Роботи + Запчастини = Сума.
+          COALESCE(SUM(ROUND("totalActualLabor" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)), 0)::float AS labor,
+          COALESCE(SUM(ROUND("totalParts" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)), 0)::float AS parts,
           COUNT(*)::int                          AS count
         FROM work_orders
         WHERE "orgId"       = ${orgId}::uuid
@@ -297,7 +299,9 @@ export class ReportsService {
         SELECT
           COALESCE(SUM("totalNet"),    0)::float AS "totalRevenue",
           COALESCE(SUM("totalAmount"), 0)::float AS "totalRevenueWithVat",
-          COALESCE(SUM("totalLabor"),  0)::float AS "totalLabor",
+          -- BR-RPT-023: база собівартості робіт — фактичні роботи БЕЗ ПДВ (та сама база, що й
+          -- виручка); інакше в режимі «ПДВ у ціні» маржа занижувалась на ПДВ робіт.
+          COALESCE(SUM(ROUND("totalActualLabor" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)), 0)::float AS "totalLabor",
           COUNT(*)                                AS "ordersCount"
         FROM work_orders
         WHERE "orgId"       = ${orgId}::uuid

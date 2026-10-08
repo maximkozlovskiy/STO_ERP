@@ -782,6 +782,11 @@ export class WorkOrdersService {
         }
 
         if (newStatus === 'COMPLETED') {
+          // BR-WO-008: борг нараховується за ЧИННИМИ режимом і ставкою ПДВ. Тотали наряду
+          // ліниві (пишуться при правці рядків), тож наряд, створений до зміни налаштувань і
+          // завершений без правок, ніс би стару суму. writeOffPartsAndCharge перечитує
+          // totalAmount у цій самій транзакції — тому перерахунок стоїть перед ним.
+          await this.totals.recalc(id, tx, orgId);
           await this.stockEffects.writeOffPartsAndCharge(orgId, wo, userId, tx);
         }
 

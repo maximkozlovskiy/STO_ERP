@@ -51,14 +51,17 @@ export class WorkOrderTotalsService {
     // sto-simplify: `Number(actualHours ?? normoHours ?? 0)` рівносильно verbose тернаркі
     // бо Prisma Decimal `?? null`-fallback працює на null/undefined (а 0-години у normoHours
     // зустрічається лише при ручному вводі і не змінює sum — 0 × price = 0).
-    // Акумулятори сирі (НЕ Money) свідомо: округлення РАЗ у кінці точніше за покрокове —
-    // виміряно у money.ts (на сирих значеннях покрокове накопичує помилку ~51%). Бренд
-    // ставиться на РЕЗУЛЬТАТ, не на проміжну суму.
+    // BR-WO-007: сума наряду — це сума ОКРУГЛЕНИХ рядків (рішення власника 2026-10-08). Кожен
+    // рядок роботи округлюється до копійки так само, як його друкують акт, PDF наряду й рахунок,
+    // і лише потім додається. Раніше сирі добутки сумувались і округлювались один раз — точніше
+    // арифметично, але рядки документа складались у 100,06 при підсумку 100,07.
     let totalLabor = 0;
     let totalActualLabor = 0;
     for (const l of lines) {
       totalLabor += moneyFromDecimal(l.amount);
-      totalActualLabor += Number(l.actualHours ?? l.normoHours ?? 0) * moneyFromDecimal(l.price);
+      totalActualLabor += money(
+        Number(l.actualHours ?? l.normoHours ?? 0) * moneyFromDecimal(l.price),
+      );
     }
     const totalParts = moneyFromDecimal(partsAgg._sum.amount);
     const totalBase = totalActualLabor + totalParts;

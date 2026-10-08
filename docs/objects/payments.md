@@ -190,7 +190,7 @@ create (метод без requiresFiscal) → null
   (гонка) → rollback. Повна механіка — [invoice.md](invoice.md#часткова-оплата-модель-грошей-фаза-1) («Часткова оплата»).
 - **BR-PAY-004**: **Settlement:** у тій самій `$transaction` → `SettlementsService.createTransaction(PAYMENT)`
   (борг клієнта ↓). Ніколи не змінює баланс напряму. Знак/семантика — [settlements.md](settlements.md).
-- **BR-PAY-005**: Якщо `workOrderId`: `workOrder.paidAmount += amount`; після tx — best-effort FSM `INVOICED → PAID`.
+- **BR-PAY-005**: Якщо `workOrderId`: `workOrder.paidAmount += amount` у транзакції платежу; після tx — best-effort FSM `INVOICED → PAID`, але лише при повній оплаті (BR-PAY-017).
 
 ### Side-effects після `create` (усі поза транзакцією, best-effort)
 
@@ -249,6 +249,12 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   наряду (`workOrderId` без `invoiceId`): контрагент платежу мусить бути замовником наряду, інакше
   400 «Наряд оформлено на іншого контрагента…» ДО транзакції. Якщо вказано і рахунок, і наряд —
   платника визначає рахунок (його можна виписати на іншого платника, напр. страхову).
+- **BR-PAY-017**: Наряд переходить у `PAID` лише коли оплачено всю суму до сплати
+  (`paidAmount ≥ totalAmount`). Часткова оплата з `workOrderId` збільшує `paidAmount` і лишає наряд
+  `INVOICED` — решту можна доплатити наступним платежем через наряд. Пряма оплата наряду (без
+  `invoiceId`) не може перевищити залишок `totalAmount − paidAmount` → 400. `paidAmount` наряду
+  пишеться в транзакції платежу умовно (CAS за прочитаним значенням): паралельний платіж → 400
+  «повторіть», а не втрачене оновлення
 
 ### Конкретні провайдери
 
@@ -299,13 +305,13 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | money model               | `payments.money-model.spec.ts`                    | 19     |
 | multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
 | query dto                 | `payments.query-dto.spec.ts`                      | 29     |
-| передумови + наряд        | `payments.work-order.spec.ts`                     | 15     |
+| передумови + наряд        | `payments.work-order.spec.ts`                     | 21     |
 | політика повторів черг    | `payments.queue-retry-policy.spec.ts`             | 6      |
 | сервісна логіка           | `provider-config.service.spec.ts`                 | 27     |
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts` | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **366** кейсів — 334 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **372** кейсів — 334 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

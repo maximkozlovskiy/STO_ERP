@@ -62,7 +62,11 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
           companyName: 'ТОВ',
         }),
       },
-      workOrder: { findFirst: vi.fn(), update: vi.fn() },
+      workOrder: {
+        findFirst: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       invoice: { findFirst: vi.fn(), updateMany: vi.fn() },
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'br-1' }) },
       payment: {
@@ -328,17 +332,16 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       status: 'INVOICED',
       currencyId: USD_ID,
       counterpartyId: CP_ID,
+      totalAmount: 100,
+      paidAmount: 0,
     });
-    prisma.workOrder.update.mockResolvedValue({});
     exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 41.5, amountBase: 4150 });
 
     await service.create(ORG, { ...usdCashDto, workOrderId: WO_ID }, 'user-1');
 
-    // WO.paidAmount у валюті наряду → інкремент dto.amount (100), не amountBase (4150).
-    expect(prisma.workOrder.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { paidAmount: { increment: 100 } },
-      }),
+    // WO.paidAmount у валюті наряду → додається dto.amount (100), не amountBase (4150).
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { paidAmount: 100 } }),
     );
   });
 
@@ -363,7 +366,7 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       service.create(ORG, { ...usdCashDto, workOrderId: WO_ID }, 'user-1'),
     ).rejects.toThrow(/Валюта оплати має збігатися з валютою наряду/);
     expect(prisma.payment.create).not.toHaveBeenCalled();
-    expect(prisma.workOrder.update).not.toHaveBeenCalled();
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
   });
 
   // ── Курсові різниці (Фаза 4): realized FX при повній оплаті іновалютного рахунку ──────────
@@ -491,8 +494,9 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
       status: 'INVOICED',
       currencyId: USD_ID,
       counterpartyId: CP_ID,
+      totalAmount: 100,
+      paidAmount: 0,
     });
-    prisma.workOrder.update.mockResolvedValue({});
     prisma.invoice.findFirst.mockResolvedValue({
       counterpartyId: CP_ID,
       id: INV_FX,

@@ -150,4 +150,20 @@ describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
     expect(importBtn.parentElement).toBe(allPill.parentElement);
     expect(importBtn.parentElement?.lastElementChild).toBe(importBtn);
   });
+
+  it('порожні «Вихідні» не закликають імпортувати виписку: імпорт вихідних ще не кладе', () => {
+    useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+    render(<BankTransactionsTab direction="OUT" />);
+    expect(screen.getByText('Немає вихідних платежів')).toBeInTheDocument();
+    expect(screen.queryByText(/Імпортуйте банківську виписку/)).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, 'IN'] as const)(
+    'порожній список (direction=%s) — звичайний заклик імпортувати',
+    direction => {
+      useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+      render(<BankTransactionsTab direction={direction} />);
+      expect(screen.getByText(/Імпортуйте банківську виписку/)).toBeInTheDocument();
+    },
+  );
 });

@@ -59,7 +59,6 @@ interface KPI {
   openOrders: number;
   inProgressOrders: number;
   completedToday: number;
-  revenueToday: number;
   revenueMonth: number;
   lowStockCount: number;
   unpaidInvoices: number;
@@ -217,7 +216,6 @@ export default function DashboardPage() {
       openOrders: allOrders.filter(o => WO_EDITABLE_STATUSES.includes(o.status)).length,
       inProgressOrders: allOrders.filter(o => o.status === 'IN_PROGRESS').length,
       completedToday: todayOrders.length,
-      revenueToday: todayOrders.reduce((s, o) => s + o.totalAmount, 0),
       revenueMonth: monthRevenue,
       lowStockCount: lowArr.length,
       unpaidInvoices: allInvoices.length,
@@ -330,7 +328,10 @@ export default function DashboardPage() {
             <Link href="/reports" className="flex">
               <KpiCard
                 label={t('kpi.revenueToday')}
-                value={fmt(streamData?.todayRevenue ?? kpi.revenueToday)}
+                // «Оплати сьогодні» — гроші, що надійшли за день (живий потік). Запасного
+                // значення немає свідомо: сума завершених нарядів — інша величина, і під
+                // цим підписом вона вводила б в оману.
+                value={streamData ? fmt(streamData.todayRevenue) : '—'}
                 icon={<TrendingUp />}
                 colorClass="kpi-card-green"
                 className="w-full"

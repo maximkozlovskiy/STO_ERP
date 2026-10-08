@@ -378,6 +378,8 @@ export const VALIDATION_KEYS = [
   'err.payment.workOrderNotForCounterparty',
   'err.payment.currencyMustMatchInvoice',
   'err.payment.amountExceedsInvoiceRemaining',
+  'err.payment.amountExceedsWorkOrderRemaining',
+  'err.payment.workOrderConcurrentChange',
   'err.payment.invoiceConcurrentChange',
   'err.payment.bankAccountNotSpecified',
   'err.payment.bankAccountNotFound',

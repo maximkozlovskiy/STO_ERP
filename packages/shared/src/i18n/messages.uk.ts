@@ -298,6 +298,9 @@ export const uk: Record<string, string> = {
     'Наряд оформлено на іншого контрагента — оплату наряду приймаємо лише від його замовника',
   'err.payment.currencyMustMatchInvoice': 'Валюта оплати має збігатися з валютою рахунку',
   'err.payment.amountExceedsInvoiceRemaining': 'Сума перевищує залишок за рахунком ({{remaining}})',
+  'err.payment.amountExceedsWorkOrderRemaining':
+    'Сума перевищує залишок до сплати за нарядом ({{remaining}})',
+  'err.payment.workOrderConcurrentChange': 'Наряд змінено паралельною операцією — повторіть',
   'err.payment.invoiceConcurrentChange': 'Рахунок змінено паралельною операцією — повторіть',
   'err.payment.bankAccountNotSpecified': 'Не вказано банківський рахунок',
   'err.payment.bankAccountNotFound': 'Банківський рахунок не знайдено',

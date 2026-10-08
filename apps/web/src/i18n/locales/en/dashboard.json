@@ -22,7 +22,7 @@
     "inProgress": "In progress",
     "completedToday": "{{n}} completed today",
     "open": "Pending",
-    "revenueToday": "Revenue today",
+    "revenueToday": "Payments today",
     "revenueMonth": "Revenue this month (excl. VAT)",
     "unpaidInvoices": "Unpaid invoices",
     "lowStock": "Low stock"

@@ -587,3 +587,60 @@ describe('WorkOrdersService.clone — тотали клона через recalc 
     expect(order).toEqual(['tx-begin', 'create', 'recalc']);
   });
 });
+
+describe('WorkOrderTotalsService.recalc — сума наряду = сума округлених рядків (BR-WO-007)', () => {
+  // Три роботи по 0,3 год × 111,11 = 33,333 кожна. Рядок у документі — 33,33, три рядки — 99,99.
+  // Раніше сирі добутки сумувались (99,999) і округлювались раз → 100,00: рядки акта давали
+  // 100,06 при підсумку 100,07.
+  const KOPECK_LINES: LineRow[] = [
+    { amount: 33.33, actualHours: 0.3, normoHours: 0.3, price: 111.11 },
+    { amount: 33.33, actualHours: 0.3, normoHours: 0.3, price: 111.11 },
+    { amount: 33.33, actualHours: 0.3, normoHours: 0.3, price: 111.11 },
+  ];
+
+  // guards: BR-WO-007
+  it('без ПДВ: 3 × (0,3 × 111,11) + запчастина 0,07 → 99,99 + 0,07 = 100,06, а не 100,07', async () => {
+    const { run } = makeTotals({
+      vat: { vatMode: 'NONE', vatRate: 0 },
+      lines: KOPECK_LINES,
+      partsSum: 0.07,
+    });
+
+    const { data } = await run();
+
+    expect(data.totalActualLabor).toBe(99.99);
+    expect(data.totalNet).toBe(100.06);
+    expect(data.totalAmount).toBe(100.06);
+  });
+
+  // guards: BR-WO-007
+  it('ПДВ зверху: ПДВ один раз від суми округлених рядків (100,06 → 20,01 → 120,07)', async () => {
+    const { run } = makeTotals({
+      vat: { vatMode: 'EXCLUSIVE', vatRate: 20 },
+      lines: KOPECK_LINES,
+      partsSum: 0.07,
+    });
+
+    const { data } = await run();
+
+    expect(data.totalNet).toBe(100.06);
+    expect(data.totalVat).toBe(20.01);
+    expect(data.totalAmount).toBe(120.07);
+  });
+
+  // guards: BR-WO-007
+  it('рядок, що округлюється вгору (0,7 × 199,99 = 139,993 → 139,99; 1,5 × 333,33 = 499,995 → 500,00)', async () => {
+    const { run } = makeTotals({
+      vat: { vatMode: 'NONE', vatRate: 0 },
+      lines: [
+        { amount: 500, actualHours: 1.5, normoHours: 1.5, price: 333.33 },
+        { amount: 139.99, actualHours: 0.7, normoHours: 0.7, price: 199.99 },
+      ],
+      partsSum: 0,
+    });
+
+    const { data } = await run();
+
+    expect(data.totalActualLabor).toBe(639.99);
+  });
+});

@@ -27,7 +27,11 @@ describe('PaymentsService.create — передумови і звʼязок з �
   let service: PaymentsService;
   let prisma: {
     counterparty: { findFirst: ReturnType<typeof vi.fn> };
-    workOrder: { findFirst: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    workOrder: {
+      findFirst: ReturnType<typeof vi.fn>;
+      update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
     invoice: { findFirst: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> };
     garageBranch: { findFirst: ReturnType<typeof vi.fn> };
     payment: { create: ReturnType<typeof vi.fn> };
@@ -73,6 +77,9 @@ describe('PaymentsService.create — передумови і звʼязок з �
     status: 'INVOICED',
     currencyId: null,
     counterpartyId: CP_ID,
+    // сума до сплати й уже оплачене — їх читає платіж у транзакції (BR-PAY-017)
+    totalAmount: 500,
+    paidAmount: 0,
   };
 
   beforeEach(async () => {
@@ -82,6 +89,7 @@ describe('PaymentsService.create — передумови і звʼязок з �
       workOrder: {
         findFirst: vi.fn().mockResolvedValue(invoicedWorkOrder),
         update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       invoice: { findFirst: vi.fn(), updateMany: vi.fn() },
       garageBranch: { findFirst: vi.fn().mockResolvedValue({ id: 'br-1' }) },
@@ -221,9 +229,9 @@ describe('PaymentsService.create — передумови і звʼязок з �
   it('наряд INVOICED → paidAmount += amount У транзакції, а transition(PAID) — ПІСЛЯ неї', async () => {
     let updateInTx: boolean | undefined;
     let transitionInTx: boolean | undefined;
-    prisma.workOrder.update.mockImplementation(() => {
+    prisma.workOrder.updateMany.mockImplementation(() => {
       updateInTx = inTx;
-      return Promise.resolve({});
+      return Promise.resolve({ count: 1 });
     });
     workOrders.transition.mockImplementation(() => {
       transitionInTx = inTx;
@@ -232,10 +240,11 @@ describe('PaymentsService.create — передумови і звʼязок з �
 
     await service.create(ORG, woDto, 'user-1');
 
-    expect(prisma.workOrder.update).toHaveBeenCalledTimes(1);
-    expect(prisma.workOrder.update).toHaveBeenCalledWith({
-      where: { id: WO_ID, orgId: ORG },
-      data: { paidAmount: { increment: 500 } },
+    // paidAmount пишеться умовно (CAS за прочитаним значенням), не сліпим increment.
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: WO_ID, orgId: ORG, paidAmount: 0 },
+      data: { paidAmount: 500 },
     });
     expect(updateInTx).toBe(true);
 
@@ -261,7 +270,98 @@ describe('PaymentsService.create — передумови і звʼязок з �
 
     expect(prisma.payment.create).toHaveBeenCalledTimes(1);
     expect(prisma.workOrder.findFirst).not.toHaveBeenCalled();
-    expect(prisma.workOrder.update).not.toHaveBeenCalled();
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
+  // ── BR-PAY-017: «Оплачено» лише при повній оплаті ────────────────────────
+
+  // guards: BR-PAY-017
+  it('часткова оплата (500 із 1200) → paidAmount 500, наряд лишається INVOICED: transition не кличеться', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue({ ...invoicedWorkOrder, totalAmount: 1200 });
+
+    await service.create(ORG, woDto, 'user-1');
+
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: WO_ID, orgId: ORG, paidAmount: 0 },
+      data: { paidAmount: 500 },
+    });
+    expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-017
+  it('доплата решти (700 + 500 = 1200) → наряд переходить у PAID', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue({
+      ...invoicedWorkOrder,
+      totalAmount: 1200,
+      paidAmount: 700,
+    });
+
+    await service.create(ORG, woDto, 'user-1');
+
+    expect(prisma.workOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: WO_ID, orgId: ORG, paidAmount: 700 },
+      data: { paidAmount: 1200 },
+    });
+    expect(workOrders.transition).toHaveBeenCalledWith(ORG, WO_ID, 'PAID', 'user-1');
+  });
+
+  // guards: BR-PAY-017
+  it('копійки: 0.1 + 0.2 із 0.3 — це повна оплата, а не «бракує 4e-17»', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue({
+      ...invoicedWorkOrder,
+      totalAmount: 0.3,
+      paidAmount: 0.1,
+    });
+
+    await service.create(ORG, { ...woDto, amount: 0.2 }, 'user-1');
+
+    expect(prisma.workOrder.updateMany.mock.calls[0]![0].data).toEqual({ paidAmount: 0.3 });
+    expect(workOrders.transition).toHaveBeenCalledTimes(1);
+  });
+
+  // guards: BR-PAY-017
+  it('пряма оплата понад залишок (500 при залишку 300) → 400, без Payment, settlement і зміни наряду', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue({
+      ...invoicedWorkOrder,
+      totalAmount: 1200,
+      paidAmount: 900,
+    });
+
+    await expect(service.create(ORG, woDto, 'user-1')).rejects.toThrow(BadRequestException);
+
+    expect(prisma.workOrder.updateMany).not.toHaveBeenCalled();
+    expect(settlements.createTransaction).not.toHaveBeenCalled();
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-017
+  it('паралельний платіж змінив paidAmount (CAS count=0) → 400 «повторіть», transition не кличеться', async () => {
+    prisma.workOrder.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.create(ORG, woDto, 'user-1')).rejects.toThrow(BadRequestException);
+
+    expect(workOrders.transition).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-017
+  it('оплата з рахунком: часткова оплата рахунку наряду теж лишає наряд INVOICED', async () => {
+    prisma.workOrder.findFirst.mockResolvedValue({ ...invoicedWorkOrder, totalAmount: 1200 });
+    prisma.invoice.findFirst.mockResolvedValue({
+      id: 'inv-1',
+      counterpartyId: CP_ID,
+      status: 'SENT',
+      workOrderId: WO_ID,
+      amount: 1200,
+      paidAmount: 0,
+      currencyId: null,
+    });
+    prisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.create(ORG, { ...woDto, invoiceId: 'inv-1' }, 'user-1');
+
+    expect(prisma.workOrder.updateMany.mock.calls[0]![0].data).toEqual({ paidAmount: 500 });
     expect(workOrders.transition).not.toHaveBeenCalled();
   });
 });

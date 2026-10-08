@@ -22,7 +22,7 @@
     "inProgress": "В роботі",
     "completedToday": "{{n}} завершено сьогодні",
     "open": "Очікують",
-    "revenueToday": "Виручка сьогодні",
+    "revenueToday": "Оплати сьогодні",
     "revenueMonth": "Виручка за місяць (без ПДВ)",
     "unpaidInvoices": "Несплачені рахунки",
     "lowStock": "Низький залишок"

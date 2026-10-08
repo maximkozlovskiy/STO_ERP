@@ -2660,7 +2660,9 @@
   ],
   "apps/api/src/modules/payments/payments.work-order.spec.ts": [
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) transition(PAID) кидає → create НЕ валиться: платіж і settlement уже закомічені (best-effort)",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) доплата решти (700 + 500 = 1200) → наряд переходить у PAID",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) контрагента не знайдено (чужа org / видалений) → NotFound, без транзакції/Payment/settlement",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) копійки: 0.1 + 0.2 із 0.3 — це повна оплата, а не «бракує 4e-17»",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд INVOICED → paidAmount += amount У транзакції, а transition(PAID) — ПІСЛЯ неї",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд оформлено на іншого контрагента (пряма оплата без рахунку) → 400 ДО транзакції, наряд не чіпається",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі APPROVED (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
@@ -2673,7 +2675,11 @@
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі ON_HOLD (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) наряд у статусі PAID (не INVOICED) → 400 ДО транзакції, без Payment/settlement/transition",
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата без workOrderId → наряд не чіпаємо: ні paidAmount, ні transition",
-   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата з рахунком і нарядом: платника визначає рахунок (його можна виписати на іншого платника), перевірка наряду мовчить"
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата з рахунком і нарядом: платника визначає рахунок (його можна виписати на іншого платника), перевірка наряду мовчить",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) оплата з рахунком: часткова оплата рахунку наряду теж лишає наряд INVOICED",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) паралельний платіж змінив paidAmount (CAS count=0) → 400 «повторіть», transition не кличеться",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) пряма оплата понад залишок (500 при залишку 300) → 400, без Payment, settlement і зміни наряду",
+   "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) часткова оплата (500 із 1200) → paidAmount 500, наряд лишається INVOICED: transition не кличеться"
   ],
   "apps/api/src/modules/payments/provider-config.service.spec.ts": [
    "ProviderConfigService activate (ексклюзивність) kind-незалежність: активація FISCAL-провайдера НЕ чіпає PAYMENT-конфіги (kind у обох where)",
@@ -3214,7 +3220,9 @@
    "ReportsService — Bug #629 квантування грошей у звітах revenue: totalRevenue = Σ рядків квантовано (JS-float Σ не дрейфує)",
    "ReportsService — Bug #629 квантування грошей у звітах settlements: totalDebit/totalCredit = Σ балансів квантовано",
    "ReportsService — Bug #629 квантування грошей у звітах vatReport: net = invoiced − purchases квантовано",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) profitability: база собівартості робіт — фактичні роботи без ПДВ, а не сума з ПДВ",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) profitability: прибуток і маржа — від суми без ПДВ; ПДВ і сума з ПДВ віддаються окремо",
+   "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: «Роботи» і «Запчастини» — від ФАКТУ і без ПДВ (частка totalNet / сума рядків)",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: день рахується за Києвом від UTC-мітки — AT TIME ZONE UTC, потім Europe/Kyiv (Bug #808)",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: наряд без ПДВ у сумі (totalNet = totalAmount) дає ПДВ 0, а не збережений totalVat",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: рядок дня несе суму без ПДВ, ПДВ як різницю і суму з ПДВ",
@@ -4006,6 +4014,12 @@
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) лише запчастини, без рядків робіт → totalAmount = totalParts",
    "EstimateExportService.getEstimateData — totalAmount semantics (Bug #508/#528) у звичайному кейсі (actualHours=null → totalActualLabor === totalLabor) export відповідає wo.totalAmount"
   ],
+  "apps/api/src/modules/work-orders/work-orders.complete-recalc.spec.ts": [
+   "WorkOrdersService.transition → COMPLETED: перерахунок тоталів (BR-WO-008) перераховує тотали ДО нарахування боргу",
+   "WorkOrdersService.transition → COMPLETED: перерахунок тоталів (BR-WO-008) перерахунок упав → борг не нараховується (помилка виходить із транзакції)",
+   "WorkOrdersService.transition → COMPLETED: перерахунок тоталів (BR-WO-008) перерахунок іде на клієнті ТІЄЇ САМОЇ транзакції, для цього наряду й організації",
+   "WorkOrdersService.transition → COMPLETED: перерахунок тоталів (BR-WO-008) інші переходи тотали не перераховують (ESTIMATE → APPROVED)"
+  ],
   "apps/api/src/modules/work-orders/work-orders.contract.spec.ts": [
    "WorkOrders — HTTP Contract Bug #521: PATCH /work-orders/:id/lines/:lineId — actualHours nullable відхиляє actualHours=-1 (@Min guard зберігається з ValidateIf пропуском null)",
    "WorkOrders — HTTP Contract Bug #521: PATCH /work-orders/:id/lines/:lineId — actualHours nullable приймає PATCH з actualHours=2.5 → 200",
@@ -4077,6 +4091,9 @@
    "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) базова валюта (без currencyId), ПДВ зверху: totalAmountBase = totalAmount з ПДВ, rate = 1",
    "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) без ПДВ: totalNet = totalAmount = сума рядків, totalVat = 0",
    "WorkOrderTotalsService.recalc — склад суми за режимом ПДВ (BR-WO-007) пише тотали одним update у переданій транзакції, у межах свого orgId",
+   "WorkOrderTotalsService.recalc — сума наряду = сума округлених рядків (BR-WO-007) ПДВ зверху: ПДВ один раз від суми округлених рядків (100,06 → 20,01 → 120,07)",
+   "WorkOrderTotalsService.recalc — сума наряду = сума округлених рядків (BR-WO-007) без ПДВ: 3 × (0,3 × 111,11) + запчастина 0,07 → 99,99 + 0,07 = 100,06, а не 100,07",
+   "WorkOrderTotalsService.recalc — сума наряду = сума округлених рядків (BR-WO-007) рядок, що округлюється вгору (0,7 × 199,99 = 139,993 → 139,99; 1,5 × 333,33 = 499,995 → 500,00)",
    "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) create клона не несе жодного поля total* / rateUsed — тотали оригіналу не копіюються",
    "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) recalc кличеться рівно раз — для КЛОНА, у тій самій транзакції, після create і до перечитування",
    "WorkOrdersService.clone — тотали клона через recalc у транзакції (BR-WO-007) recalc упав → помилка виходить із транзакції (клон без тоталів не лишається)",

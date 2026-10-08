@@ -352,5 +352,35 @@ describe('ReportsService — Bug #629 квантування грошей у з�
       const sql = sqlOf(prisma.$queryRaw.mock.calls[0]);
       expect(sql).toMatch(/SUM\("totalNet"\),\s*0\)::float\s+AS "totalRevenue"/);
     });
+    // guards: BR-RPT-023
+    it('revenue: «Роботи» і «Запчастини» — від ФАКТУ і без ПДВ (частка totalNet / сума рядків)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await service.revenue(orgId, from, to);
+
+      const sql = sqlOf(prisma.$queryRaw.mock.calls[0]);
+      const k = '"totalNet" / NULLIF("totalActualLabor" + "totalParts", 0)';
+      expect(sql).toContain(`ROUND("totalActualLabor" * COALESCE(${k}, 1), 2)`);
+      expect(sql).toContain(`ROUND("totalParts" * COALESCE(${k}, 1), 2)`);
+      // планові роботи (totalLabor) у звіт більше не йдуть: із ними «Роботи + Запчастини ≠ Сума»
+      expect(sql).not.toContain('"totalLabor"');
+    });
+
+    // guards: BR-RPT-023
+    it('profitability: база собівартості робіт — фактичні роботи без ПДВ, а не сума з ПДВ', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([
+          { totalRevenue: 1000, totalRevenueWithVat: 1000, totalLabor: 500, ordersCount: 1n },
+        ])
+        .mockResolvedValueOnce([{ costParts: 0, unknownCount: 0n }]);
+
+      await service.profitability(orgId, from, to);
+
+      const sql = sqlOf(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toContain(
+        'ROUND("totalActualLabor" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)',
+      );
+      expect(sql).not.toContain('SUM("totalLabor")');
+    });
   });
 });

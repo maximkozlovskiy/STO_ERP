@@ -301,6 +301,10 @@ export const en: Record<string, string> = {
   'err.payment.currencyMustMatchInvoice': 'The payment currency must match the invoice currency',
   'err.payment.amountExceedsInvoiceRemaining':
     'The amount exceeds the invoice balance ({{remaining}})',
+  'err.payment.amountExceedsWorkOrderRemaining':
+    'The amount exceeds the work order balance due ({{remaining}})',
+  'err.payment.workOrderConcurrentChange':
+    'The work order was changed by a concurrent operation — please retry',
   'err.payment.invoiceConcurrentChange':
     'The invoice was changed by a concurrent operation — try again',
   'err.payment.bankAccountNotSpecified': 'No bank account specified',
