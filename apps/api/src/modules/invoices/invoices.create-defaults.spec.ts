@@ -13,7 +13,7 @@
  * Сетап — `makeInvoicesHarness()` з `./invoices.spec-fixture`.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   makeInvoicesHarness,
   ORG,
@@ -77,9 +77,6 @@ describe('InvoicesService — create-defaults', () => {
     // pre-check і re-check всередині tx: активного рахунку на наряд немає.
     prisma.invoice.findFirst.mockResolvedValue(null);
     echoCreate({ counterpartyId: CP, workOrderId: WO_ID });
-    // Після запису рядків сервіс перечитує рахунок — віддаємо те, що «створив» create.
-    (prisma.invoice as unknown as { findFirstOrThrow: ReturnType<typeof vi.fn> }).findFirstOrThrow =
-      vi.fn(() => prisma.invoice.create.mock.results[0]?.value as Promise<unknown>);
   };
 
   beforeEach(async () => {

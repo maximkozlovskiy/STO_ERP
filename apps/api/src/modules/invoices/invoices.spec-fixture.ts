@@ -40,7 +40,7 @@ type Fn = ReturnType<typeof vi.fn>;
 export interface InvoicesHarness {
   service: InvoicesService;
   prisma: {
-    invoice: { findFirst: Fn; create: Fn; update: Fn; updateMany: Fn };
+    invoice: { findFirst: Fn; findFirstOrThrow: Fn; create: Fn; update: Fn; updateMany: Fn };
     invoiceLine: { deleteMany: Fn; createMany: Fn };
     workOrder: { findFirst: Fn };
     counterparty: { findFirst: Fn };
@@ -84,7 +84,17 @@ export const exchangeRatesMock = () => {
 
 export async function makeInvoicesHarness(): Promise<InvoicesHarness> {
   const prisma: InvoicesHarness['prisma'] = {
-    invoice: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    invoice: {
+      findFirst: vi.fn(),
+      // createFromWorkOrder re-reads the invoice after writing its lines (BR-INV-002): by default
+      // the re-read returns whatever `create` produced. Lazy lookup, so a spec may re-mock `create`.
+      findFirstOrThrow: vi.fn(
+        () => prisma.invoice.create.mock.results[0]?.value as Promise<unknown>,
+      ),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
     invoiceLine: { deleteMany: vi.fn(), createMany: vi.fn() },
     workOrder: { findFirst: vi.fn() },
     counterparty: { findFirst: vi.fn() },

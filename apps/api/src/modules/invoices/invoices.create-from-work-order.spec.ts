@@ -112,10 +112,6 @@ describe('InvoicesService — create-from-work-order', () => {
       });
       // pre-check + inner re-check обидва null (нема існуючого рахунку).
       prisma.invoice.findFirst.mockResolvedValue(null);
-      // Після запису рядків сервіс перечитує рахунок — віддаємо те, що «створив» create.
-      (prisma.invoice as unknown as { findFirstOrThrow: Fn }).findFirstOrThrow = vi.fn(
-        () => prisma.invoice.create.mock.results[0]?.value as Promise<unknown>,
-      );
       prisma.invoice.create.mockImplementation(
         async ({ data }: { data: Record<string, unknown> }) => ({
           id: INV_ID,

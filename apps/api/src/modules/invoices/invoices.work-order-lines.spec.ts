@@ -174,6 +174,60 @@ describe('buildInvoiceLinesFromWorkOrder — рядки рахунку з нар
       expect(lines.map(l => l.priceWithVat)).toEqual([200, 500.02]);
       expectLinesMatchWorkOrder(lines, source);
     });
+
+    // guards: BR-INV-002
+    it("останній рядок нульовий (робота з 0 фактичних годин) → копійку знімає попередній, від'ємних сум немає", () => {
+      // Ті самі 3 × 33.33 (Σ ПДВ рядків 20.01 проти 20.00 наряду), але останнім стоїть рядок на
+      // 0 годин. Раніше копійку знімали з нього: рядок рахунку виходив [0, -0.01, -0.01].
+      const source = wo(
+        [
+          [1, 33.33],
+          [1, 33.33],
+          [1, 33.33],
+          [0, 500],
+        ],
+        [],
+        { totalNet: 99.99, totalAmount: 119.99 },
+      );
+
+      const lines = buildInvoiceLinesFromWorkOrder(source, EXCL20);
+
+      expect(lines.map(l => [l.priceWithoutVat, l.vatAmount, l.priceWithVat])).toEqual([
+        [33.33, 6.67, 40],
+        [33.33, 6.67, 40],
+        [33.33, 6.66, 39.99],
+        [0, 0, 0],
+      ]);
+      expectLinesMatchWorkOrder(lines, source);
+    });
+
+    // guards: BR-INV-002
+    it("останній рядок замалий для різниці по ПДВ (його ПДВ округлився до 0) → ПДВ не стає від'ємним", () => {
+      // Запчастина 0.086 × 0.36 = 0.03, ПДВ 7% від неї = 0.00; наряд рахує ПДВ від суми і
+      // виходить на копійку менше за Σ ПДВ рядків. Раніше останній рядок отримував ПДВ -0.01.
+      const works: Row[] = [
+        [2.56, 2.78],
+        [2.78, 3.5],
+      ];
+      const parts: Row[] = [
+        [1.397, 3.38],
+        [0.497, 2.6],
+        [1.804, 2.18],
+        [0.725, 2.31],
+        [0.28, 1.28],
+        [0.086, 0.36],
+      ];
+      const source = wo(works, parts, totalsLikeRecalc(works, parts, 'EXCLUSIVE', 7));
+
+      const lines = buildInvoiceLinesFromWorkOrder(source, { vatMode: 'EXCLUSIVE', vatRate: 7 });
+
+      for (const l of lines) {
+        expect(l.priceWithoutVat).toBeGreaterThanOrEqual(0);
+        expect(l.vatAmount).toBeGreaterThanOrEqual(0);
+      }
+      expect(lines[lines.length - 1]).toMatchObject({ priceWithoutVat: 0.03, vatAmount: 0 });
+      expectLinesMatchWorkOrder(lines, source);
+    });
   });
 
   describe('режим і ставку ПДВ визначає наряд, а не поточні налаштування', () => {

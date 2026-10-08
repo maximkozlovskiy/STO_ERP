@@ -137,6 +137,29 @@ function gaps(wo: WorkOrderForInvoice, lines: InvoiceLineDraft[]) {
   };
 }
 
+/**
+ * Residual kopecks go to the last line, as BR-INV-002 says, unless that line cannot hold them:
+ * a zero line (work with 0 actual hours) or a line whose own VAT rounds to zero would come out
+ * negative on the invoice. Then the nearest earlier non-zero line that stays non-negative takes
+ * the residual. If no line qualifies, the last one keeps it (totals must match the work order).
+ */
+function residualTarget(
+  lines: InvoiceLineDraft[],
+  gap: { net: number; vat: number },
+): InvoiceLineDraft | undefined {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i];
+    if (
+      l &&
+      l.priceWithoutVat > 0 &&
+      money(l.priceWithoutVat + gap.net) >= 0 &&
+      money(l.vatAmount + gap.vat) >= 0
+    )
+      return l;
+  }
+  return lines[lines.length - 1];
+}
+
 export function buildInvoiceLinesFromWorkOrder(
   wo: WorkOrderForInvoice,
   settingsVat: { vatMode: VatMode; vatRate: number },
@@ -169,11 +192,13 @@ export function buildInvoiceLinesFromWorkOrder(
     lastGap = gap;
     if (Math.abs(gap.net) > tolerance || Math.abs(gap.vat) > tolerance) continue;
 
-    const last = lines[lines.length - 1];
-    if (last && (gap.net !== 0 || gap.vat !== 0)) {
-      last.priceWithoutVat = money(last.priceWithoutVat + gap.net);
-      last.vatAmount = money(last.vatAmount + gap.vat);
-      last.priceWithVat = money(last.priceWithoutVat + last.vatAmount);
+    if (gap.net !== 0 || gap.vat !== 0) {
+      const target = residualTarget(lines, gap);
+      if (target) {
+        target.priceWithoutVat = money(target.priceWithoutVat + gap.net);
+        target.vatAmount = money(target.vatAmount + gap.vat);
+        target.priceWithVat = money(target.priceWithoutVat + target.vatAmount);
+      }
     }
     return lines;
   }

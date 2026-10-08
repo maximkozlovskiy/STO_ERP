@@ -811,7 +811,9 @@ export class XlsxService {
     // BR-WO-007: імпорт змінив запчастини наряду — тотали перераховує єдиний власник. Раніше цей
     // шлях тоталів не оновлював узагалі: сума наряду лишалась старою до першої ручної правки рядка.
     if (result.created > 0 || result.updated > 0) {
-      await this.prisma.$transaction(tx => this.workOrderTotals.recalc(woId, tx, orgId));
+      await this.prisma.$transaction(tx => this.workOrderTotals.recalc(woId, tx, orgId), {
+        timeout: TRANSACTION_TIMEOUT_MS,
+      });
     }
 
     return result;

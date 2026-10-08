@@ -121,7 +121,8 @@ OVERDUE → PAID / CANCELLED
   (`amount = totalWithVat = wo.totalAmount`, `totalWithoutVat = wo.totalNet`): саме її вже
   нараховано клієнтові боргом. Режим ПДВ рядків визначає сам наряд, а не поточні налаштування:
   наряд без ПДВ у сумі дає рядки без ПДВ. Наряд рахує ПДВ від суми, рядки — кожен від себе, тож
-  різницю в копійки забирає останній рядок; різниця понад копійку на рядок — помилка 400
+  різницю в копійки забирає останній рядок (якщо він нульовий або від різниці став би від'ємним —
+  найближчий попередній ненульовий); різниця понад копійку на рядок — помилка 400
   (тотали наряду не відповідають рядкам), а не вирівнювання. «Оновити з наряду»
   (`POST /from-work-order/:id/refresh`, лише DRAFT) будує рядки тим самим кодом і оновлює також
   суму в базовій валюті та курс
@@ -212,9 +213,9 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 15     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)   | `invoices.update-counterparty.spec.ts`     | 5      |
-| рядки рахунку з наряду (чиста функція)  | `invoices.work-order-lines.spec.ts`        | 20     |
+| рядки рахунку з наряду (чиста функція)  | `invoices.work-order-lines.spec.ts`        | 22     |
 
-Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 
