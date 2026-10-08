@@ -374,12 +374,16 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
   it('q → клієнт (назва / прізвище / імʼя), номер рахунку, номер наряду або примітка', async () => {
     await service.findAll(ORG, { q: 'петренко' });
 
+    // Клієнт — одна умова на зв'язок із вкладеним OR: окремі `{ counterparty: … }` Prisma
+    // перетворює на окремі JOIN-и тієї самої таблиці (sto-optimize 2026-10-09).
     const contains = { contains: 'петренко', mode: 'insensitive' };
     expect(lastWhere().OR).toEqual([
       { notes: contains },
-      { counterparty: { companyName: contains } },
-      { counterparty: { lastName: contains } },
-      { counterparty: { firstName: contains } },
+      {
+        counterparty: {
+          OR: [{ companyName: contains }, { lastName: contains }, { firstName: contains }],
+        },
+      },
       { invoice: { number: contains } },
       { workOrder: { number: contains } },
     ]);
