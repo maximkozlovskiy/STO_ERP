@@ -91,6 +91,7 @@
       "labor": "Labor",
       "parts": "Parts",
       "total": "Total",
+      "vatIncluded": "Including VAT",
       "close": "Close",
       "openFull": "Open in full"
     },

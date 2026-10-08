@@ -15,9 +15,10 @@ import {
   Legend,
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
+import type { ApiSchema } from '@sto/shared';
 import { fmtMoney } from '@/lib/format';
 
-type RevenueRow = { date: string; revenue: number; labor: number; parts: number; count: number };
+type RevenueRow = ApiSchema<'RevenueRowDto'>;
 type SettlementRow = { counterpartyId: string; counterpartyName: string; balance: number };
 type LoadRow = {
   liftId: string;
@@ -27,15 +28,7 @@ type LoadRow = {
   totalHours: number;
   loadPercent: number;
 };
-type ProfitabilityData = {
-  totalRevenue: number;
-  totalCost: number;
-  totalCostParts: number;
-  totalCostLabor: number;
-  grossProfit: number;
-  margin: number;
-  ordersCount: number;
-};
+type ProfitabilityData = ApiSchema<'ProfitabilityReportDto'>;
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 

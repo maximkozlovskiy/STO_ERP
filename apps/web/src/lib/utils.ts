@@ -186,6 +186,33 @@ export function workOrderVatSplit(wo: { totalAmount: number; totalNet?: number |
 }
 
 /**
+ * Планова сума до сплати наряду (за нормо-годинами, без фактичних) — для закресленого рядка
+ * «було» у списку нарядів поруч із `totalAmount` (сума від факту, з ПДВ).
+ * Дзеркалить backend `common/utils/vat.ts:plannedWorkOrderTotals` (поле `totalAmount`):
+ *   • ПДВ у сумі немає → планова база;
+ *   • план = факту → `totalAmount` наряду як є;
+ *   • «ПДВ зверху» (`totalNet` = факт. база) → планова база + ПДВ з тієї ж частки;
+ *   • «ПДВ у ціні» → планова база (ПДВ уже в ній).
+ * Без цього закреслена сума «роботи + запчастини» була б без ПДВ і не порівнювалась з `totalAmount`.
+ */
+export function plannedWorkOrderAmount(wo: {
+  totalLabor: number;
+  totalActualLabor: number;
+  totalParts: number;
+  totalAmount: number;
+  totalNet?: number | null;
+}): number {
+  const parts = Number(wo.totalParts);
+  const plannedBase = roundMoney(Number(wo.totalLabor) + parts);
+  const actualBase = roundMoney(Number(wo.totalActualLabor) + parts);
+  const { net, vat, gross } = workOrderVatSplit(wo);
+  if (vat === 0 || actualBase === 0) return plannedBase;
+  if (plannedBase === actualBase) return gross;
+  if (net === actualBase) return roundMoney(plannedBase + roundMoney((plannedBase * vat) / net));
+  return plannedBase;
+}
+
+/**
  * Single-pass VAT + total computation for line/part rows.
  *
  * ЄДИНИЙ споживач — CreateWorkOrderModal (preview у tfoot). Тому квантування МУСИТЬ

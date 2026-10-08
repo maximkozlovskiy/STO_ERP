@@ -6,6 +6,7 @@ import {
   calcVatOnBase,
   splitVatTotals,
   workOrderVatSplit,
+  plannedWorkOrderAmount,
 } from './utils';
 
 // Regression-guard для клієнтського грошового квантування у модалках (WO-H2 / FIN-H1).
@@ -191,5 +192,65 @@ describe('calcVatTotals — дзеркало backend work-orders recalcTotals', 
     );
     // 300.99 + 99.98 = 400.97 — точно, без хвостів.
     expect(total).toBe(400.97);
+  });
+});
+
+// guards: BR-WO-007
+describe('plannedWorkOrderAmount — закреслена «планова» сума в списку нарядів', () => {
+  it('ПДВ зверху: план 1000 при факті 1200 → 1200 з ПДВ 20%, а не голі 1000', () => {
+    // база факту 1200 (без ПДВ) → до сплати 1440; план 1000 → 1000 + 200 = 1200
+    expect(
+      plannedWorkOrderAmount({
+        totalLabor: 800,
+        totalActualLabor: 1000,
+        totalParts: 200,
+        totalNet: 1200,
+        totalAmount: 1440,
+      }),
+    ).toBe(1200);
+  });
+
+  it('ПДВ у ціні: сума вже з ПДВ → план = планова база', () => {
+    expect(
+      plannedWorkOrderAmount({
+        totalLabor: 800,
+        totalActualLabor: 1000,
+        totalParts: 200,
+        totalNet: 1000,
+        totalAmount: 1200,
+      }),
+    ).toBe(1000);
+  });
+
+  it('без ПДВ (totalNet = totalAmount) → планова база', () => {
+    expect(
+      plannedWorkOrderAmount({
+        totalLabor: 800,
+        totalActualLabor: 1000,
+        totalParts: 200,
+        totalNet: 1200,
+        totalAmount: 1200,
+      }),
+    ).toBe(1000);
+  });
+
+  it('план = факту → totalAmount наряду як є; totalNet відсутній → планова база', () => {
+    expect(
+      plannedWorkOrderAmount({
+        totalLabor: 1000,
+        totalActualLabor: 1000,
+        totalParts: 200,
+        totalNet: 1200,
+        totalAmount: 1440,
+      }),
+    ).toBe(1440);
+    expect(
+      plannedWorkOrderAmount({
+        totalLabor: 800,
+        totalActualLabor: 1000,
+        totalParts: 200,
+        totalAmount: 1200,
+      }),
+    ).toBe(1000);
   });
 });

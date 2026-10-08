@@ -9,6 +9,7 @@ import { apiFetch } from '@/lib/api-client';
 import { WO_STATUS_BADGE } from '@sto/shared';
 import { woStatusLabel } from '@/i18n/enumLabel';
 import { fmtMoney, fmtDate, kyivDateTimeToISO } from '@/lib/format';
+import { workOrderVatSplit } from '@/lib/utils';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import {
   CounterpartyEditModal,
@@ -93,7 +94,10 @@ interface WOPreview {
   counterpartyName?: string;
   vehicleSummary?: string;
   description?: string | null;
+  /** BR-WO-007: сума до сплати, з ПДВ. */
   totalAmount: number;
+  /** Сума без ПДВ; ПДВ у сумі = totalAmount − totalNet. */
+  totalNet?: number;
   totalLabor: number;
   totalParts: number;
   plannedAt?: string | null;
@@ -127,6 +131,7 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
 
   const statusLabel = wo ? woStatusLabel(wo.status) : '';
   const statusVariant = wo ? (WO_STATUS_BADGE[wo.status] ?? 'secondary') : 'secondary';
+  const vatInTotal = wo ? workOrderVatSplit(wo).vat : 0;
 
   return (
     <Modal open onClose={onClose} title={t('slot.wo.title')} size="md">
@@ -193,6 +198,13 @@ function WorkOrderPreviewModal({ id, onClose }: { id: string; onClose: () => voi
               <div className="font-semibold text-primary">{fmtMoney(wo.totalAmount)} ₴</div>
             </div>
           </div>
+          {/* «Роботи + запчастини» ≠ «Разом», коли ПДВ зверху: пояснюємо різницю окремим рядком */}
+          {vatInTotal > 0 && (
+            <div className="flex justify-between text-[13px] text-muted-foreground">
+              <span>{t('slot.wo.vatIncluded')}</span>
+              <span className="tabular-nums">{fmtMoney(vatInTotal)} ₴</span>
+            </div>
+          )}
 
           <div className="flex justify-between items-center pt-1">
             <Button variant="outline" onClick={onClose}>

@@ -85,7 +85,7 @@ import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { rowStatusTone, rowStatusBorderClass, rowStatusLabel } from '@/lib/row-status';
-import { cn } from '@/lib/utils';
+import { cn, plannedWorkOrderAmount } from '@/lib/utils';
 import { fmtMoney, fmtDate, fmtShortDateTime, kyivToday } from '@/lib/format';
 
 // sto-optimize: CreateWorkOrderModal — 1823 LOC + EntityPickerField + усі form sub-components.
@@ -1018,7 +1018,8 @@ function WorkOrdersPageInner() {
                           // Plannedness check: actualHours рівні normoHours → suma нічого не «прокинула».
                           // totalParts однакові для actual та planned, тож порівнюємо лише labor-частку.
                           const hasActual = Math.abs(wo.totalActualLabor - wo.totalLabor) >= 0.01;
-                          const plannedAmount = wo.totalLabor + wo.totalParts;
+                          // BR-WO-007: totalAmount — з ПДВ, тож «було» теж рахуємо з ПДВ.
+                          const plannedAmount = plannedWorkOrderAmount(wo);
                           const isBase = !wo.currencyCode || wo.currencyCode === baseCode;
                           const sym = isBase ? baseSymbol : wo.currencyCode;
                           return (
