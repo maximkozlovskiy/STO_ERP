@@ -304,4 +304,96 @@ describe('report-query.builder', () => {
       ),
     ).toThrow(BadRequestException);
   });
+
+  // До 2026-10-08 друга умова на те саме поле перезаписувала першу: «сума від 100 до 500»
+  // мовчки показувала все до 500, а фільтр по даті документа замінював обраний період.
+  describe('кілька умов на одне поле діють разом (BR-RPT-022)', () => {
+    // guards: BR-RPT-022
+    it('«від 100 до 500»: перша умова лишається на полі, друга йде в AND — жодна не губиться', () => {
+      const q = buildQuery(
+        {
+          entity: 'invoice',
+          columns: ['number'],
+          groupBy: [],
+          filters: [
+            { field: 'amount', op: 'gte', value: 100 },
+            { field: 'amount', op: 'lte', value: 500 },
+          ],
+        },
+        ORG,
+      );
+      expect(q.args.where.amount).toEqual({ gte: 100 });
+      expect(q.args.where.AND).toEqual([{ amount: { lte: 500 } }]);
+    });
+
+    // guards: BR-RPT-022
+    it('три умови на одне поле → одна на полі й дві в AND, у порядку запиту', () => {
+      const q = buildQuery(
+        {
+          entity: 'invoice',
+          columns: ['number'],
+          groupBy: [],
+          filters: [
+            { field: 'amount', op: 'gte', value: 100 },
+            { field: 'amount', op: 'lte', value: 500 },
+            { field: 'amount', op: 'ne', value: 250 },
+          ],
+        },
+        ORG,
+      );
+      expect(q.args.where.amount).toEqual({ gte: 100 });
+      expect(q.args.where.AND).toEqual([{ amount: { lte: 500 } }, { amount: { not: 250 } }]);
+    });
+
+    // guards: BR-RPT-022, BR-RPT-009
+    it('фільтр по полю дати звужує обраний період, а не замінює його', () => {
+      const q = buildQuery(
+        {
+          entity: 'invoice',
+          columns: ['number'],
+          groupBy: [],
+          dateRange: { from: '2026-09-01', to: '2026-09-30' },
+          filters: [{ field: 'documentDate', op: 'gte', value: '2026-09-15' }],
+        },
+        ORG,
+      );
+      const period = q.args.where.documentDate as { gte: Date; lte: Date };
+      expect(period.gte).toBeInstanceOf(Date);
+      expect(period.lte).toBeInstanceOf(Date);
+      expect(q.args.where.AND).toHaveLength(1);
+      expect(Object.keys(q.args.where.AND[0] as object)).toEqual(['documentDate']);
+    });
+
+    // guards: BR-RPT-022, BR-RPT-006
+    it('умови в AND не чіпають orgId і deletedAt кореня', () => {
+      const q = buildQuery(
+        {
+          entity: 'invoice',
+          columns: ['number'],
+          groupBy: [],
+          filters: [
+            { field: 'amount', op: 'gte', value: 1 },
+            { field: 'amount', op: 'lte', value: 2 },
+          ],
+        },
+        ORG,
+      );
+      expect(q.args.where.orgId).toBe(ORG);
+      expect(q.args.where.deletedAt).toBeNull();
+    });
+
+    it('одна умова на поле — форма where як раніше, AND не з’являється', () => {
+      const q = buildQuery(
+        {
+          entity: 'invoice',
+          columns: ['number'],
+          groupBy: [],
+          filters: [{ field: 'amount', op: 'gte', value: 100 }],
+        },
+        ORG,
+      );
+      expect(q.args.where.amount).toEqual({ gte: 100 });
+      expect(q.args.where.AND).toBeUndefined();
+    });
+  });
 });

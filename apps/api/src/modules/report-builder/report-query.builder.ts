@@ -66,6 +66,16 @@ function setWherePath(
   node[segments[segments.length - 1]] = cond;
 }
 
+/** Чи вже стоїть умова на листку цього шляху (поле вже фільтрується або зайняте періодом). */
+function hasWherePath(where: Obj, prismaPath: string): boolean {
+  let node: Obj | undefined = where;
+  for (const seg of prismaPath.split('.')) {
+    if (node === undefined || node === null || typeof node !== 'object') return false;
+    node = node[seg] as Obj | undefined;
+  }
+  return node !== undefined;
+}
+
 /** Будує Prisma-умову з op + value + типу поля. op з фіксованого whitelist. */
 function buildCond(op: FilterOp, value: unknown, fieldType: string): unknown {
   switch (op) {
@@ -189,7 +199,18 @@ export function buildQuery(config: ReportConfigInput, orgId: string): BuiltQuery
       assertEnumValue(fld.enumName, f.value);
     }
     const cond = buildCond(f.op, f.value, fld.type);
-    setWherePath(where, entity, fld.prismaPath, cond);
+    // BR-RPT-022: друга умова на те саме поле (або фільтр по полю дати поверх dateRange) не
+    // перезаписує першу, а додається в AND. Раніше `node[leaf] = cond` губив попередню умову:
+    // «сума від 100 до 500» показувала все до 500, без жодної помилки.
+    if (hasWherePath(where, fld.prismaPath)) {
+      const extra: Obj = {};
+      setWherePath(extra, entity, fld.prismaPath, cond);
+      const and = (where.AND ?? []) as Obj[];
+      and.push(extra);
+      where.AND = and;
+    } else {
+      setWherePath(where, entity, fld.prismaPath, cond);
+    }
   }
 
   // include-дерево з relation-полів у columns ∪ groupBy
