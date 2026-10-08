@@ -583,6 +583,55 @@ async function main() {
   }
   console.warn(`  UnitsOfMeasure: ${units.length}`);
 
+  // ─── Початкові залишки (демо + E2E на чистій базі) ───────
+  // Без жодного руху на складі порожні і «Залишки», і журнал рухів, а звіт конструктора по
+  // рухах не має що групувати. Кладемо по 10 шт двох демо-товарів на головний склад трійкою
+  // «залишок + рух OPENING_BALANCE + партія» — тим самим складом даних, який дає
+  // InventoryService.createMovement (Σ remainingQty активних партій = quantity залишку).
+  // Лише якщо залишку цього товару на складі ще немає: повторний seed нічого не подвоює.
+  const openingStock = [
+    { n: 1, goodId: GOOD1_ID, cost: '180.00', sale: '250.00' },
+    { n: 2, goodId: GOOD2_ID, cost: '120.00', sale: '180.00' },
+  ];
+  for (const o of openingStock) {
+    const exists = await prisma.stockItem.findFirst({
+      where: { orgId: ORG_ID, goodId: o.goodId, warehouseId: WAREHOUSE_ID },
+      select: { id: true },
+    });
+    if (exists) continue;
+    const movementId = `a1000000-0000-4000-8000-00000000020${o.n}`;
+    await prisma.$transaction([
+      prisma.stockItem.create({
+        data: { orgId: ORG_ID, goodId: o.goodId, warehouseId: WAREHOUSE_ID, quantity: 10 },
+      }),
+      prisma.stockMovement.create({
+        data: {
+          id: movementId,
+          orgId: ORG_ID,
+          goodId: o.goodId,
+          warehouseId: WAREHOUSE_ID,
+          type: 'OPENING_BALANCE',
+          quantity: 10,
+          price: o.cost,
+          notes: 'Демо-залишок (seed)',
+        },
+      }),
+      prisma.stockBatch.create({
+        data: {
+          orgId: ORG_ID,
+          goodId: o.goodId,
+          warehouseId: WAREHOUSE_ID,
+          stockMovementId: movementId,
+          receivedQty: 10,
+          remainingQty: 10,
+          costPrice: o.cost,
+          salePrice: o.sale,
+        },
+      }),
+    ]);
+  }
+  console.warn(`  OpeningStock: ${openingStock.length} товари`);
+
   // ─── Work orders (демо + E2E на чистій базі) ─────────────
   // E2E-набір писався на dev-базі з накопиченими нарядами: спеки клонують наявну чернетку,
   // відкривають «будь-який наряд», шукають завершений для кнопки «Виставити рахунок», а

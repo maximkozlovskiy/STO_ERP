@@ -446,6 +446,10 @@ jobs:
       REDIS_PORT: '6379'
       NEXT_PUBLIC_API_URL: http://localhost:3000
       CI: 'true'
+      # Chromium без UTF-8-локалі не може подати кириличну назву файла завантаження
+      # (`invoice-РАХ-….pdf`) і підставляє «download» — тест PDF рахунку падав саме на цьому.
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     steps:
       - uses: actions/checkout@v4
 
