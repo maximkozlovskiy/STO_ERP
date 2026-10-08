@@ -207,8 +207,11 @@ create (метод без requiresFiscal) → null
 - **BR-PAY-006**: `createIntent()`: резолвить активний `PAYMENT`-провайдер (`resolveActive(orgId, branchId, 'PAYMENT')`);
   немає → 400. Створює `OnlinePaymentIntent` (`PENDING`, `expiresAt = now+15хв`) **першим** — його `id`
   = стабільний `reference`. Викликає `gateway.createInvoice()` → `gatewayInvoiceId`, `pageUrl` (QR).
-- **BR-PAY-007**: Enqueue у чергу `payment-polling` (`jobId=payment-poll-<intentId>`, single-flight). `PaymentPollingProcessor`
+- **BR-PAY-007**: Enqueue у чергу `payment-polling` (перша задача — `jobId=payment-poll-<intentId>`). `PaymentPollingProcessor`
   (concurrency 3, self-re-enqueue) опитує gateway: `paid` → **CAS** `PENDING→PAID` → `finalizePayment`.
+  **Кожен наступний крок — під новим `jobId`** (`payment-poll-<intentId>-p<крок>`, повтор finalize —
+  `-f<спроба>`): BullMQ мовчки відкидає `add` з id задачі, яка ще існує, а активна задача існує до
+  кінця `process` — зі спільним id ланцюг обривався після першого опитування (Bug #804).
   Збій самого опитування (шлюз недоступний, 5xx, таймаут) намір не кидає: ставиться наступне
   опитування з лічильником +1. **Намір закриває лише відповідь шлюзу або стеля опитувань, а не
   годинник:** після `expiresAt` шлюз питають ще раз — `paid` → Payment створюється, `pending` →
@@ -279,29 +282,30 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Маршрути UI:** `/payments`, `/cash`, `/invoices`
 
-| Аспект                   | Тест                                              | Кейсів |
-| ------------------------ | ------------------------------------------------- | ------ |
-| сервісна логіка          | `cash-shift.service.spec.ts`                      | 31     |
-| HTTP-клієнт              | `checkbox.client.spec.ts`                         | 31     |
-| BullMQ-processor         | `checkbox.processor.spec.ts`                      | 19     |
-| fiscal provider registry | `fiscal/fiscal-provider-registry.spec.ts`         | 16     |
-| провайдер                | `fiscal/vchasno.provider.spec.ts`                 | 29     |
-| payment gateway registry | `gateways/payment-gateway-registry.spec.ts`       | 12     |
-| HTTP-клієнт              | `monobank.client.spec.ts`                         | 26     |
-| сервісна логіка          | `online-payment.service.spec.ts`                  | 15     |
-| BullMQ-processor         | `payment-polling.processor.spec.ts`               | 26     |
-| fiscal gate              | `payments.fiscal-gate.spec.ts`                    | 8      |
-| idempotency              | `payments.idempotency.spec.ts`                    | 7      |
-| money model              | `payments.money-model.spec.ts`                    | 19     |
-| multicurrency            | `payments.multicurrency.spec.ts`                  | 17     |
-| query dto                | `payments.query-dto.spec.ts`                      | 29     |
-| передумови + наряд       | `payments.work-order.spec.ts`                     | 15     |
-| політика повторів черг   | `payments.queue-retry-policy.spec.ts`             | 6      |
-| сервісна логіка          | `provider-config.service.spec.ts`                 | 27     |
-| шифрування at-rest       | `../../prisma/field-encryption.extension.spec.ts` | 21     |
-| шифрування (сервіс)      | `../../common/crypto/encryption.service.spec.ts`  | 11     |
+| Аспект                    | Тест                                              | Кейсів |
+| ------------------------- | ------------------------------------------------- | ------ |
+| сервісна логіка           | `cash-shift.service.spec.ts`                      | 31     |
+| HTTP-клієнт               | `checkbox.client.spec.ts`                         | 31     |
+| BullMQ-processor          | `checkbox.processor.spec.ts`                      | 19     |
+| fiscal provider registry  | `fiscal/fiscal-provider-registry.spec.ts`         | 16     |
+| провайдер                 | `fiscal/vchasno.provider.spec.ts`                 | 29     |
+| payment gateway registry  | `gateways/payment-gateway-registry.spec.ts`       | 12     |
+| HTTP-клієнт               | `monobank.client.spec.ts`                         | 26     |
+| сервісна логіка           | `online-payment.service.spec.ts`                  | 15     |
+| BullMQ-processor          | `payment-polling.processor.spec.ts`               | 26     |
+| ланцюг опитування (Redis) | `payment-polling.queue.integration.spec.ts`       | 1      |
+| fiscal gate               | `payments.fiscal-gate.spec.ts`                    | 8      |
+| idempotency               | `payments.idempotency.spec.ts`                    | 7      |
+| money model               | `payments.money-model.spec.ts`                    | 19     |
+| multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
+| query dto                 | `payments.query-dto.spec.ts`                      | 29     |
+| передумови + наряд        | `payments.work-order.spec.ts`                     | 15     |
+| політика повторів черг    | `payments.queue-retry-policy.spec.ts`             | 6      |
+| сервісна логіка           | `provider-config.service.spec.ts`                 | 27     |
+| шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts` | 21     |
+| шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **365** кейсів — 333 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **366** кейсів — 334 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

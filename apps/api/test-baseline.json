@@ -2466,7 +2466,7 @@
    "PaymentPollingProcessor (QR monobank polling) monobank expired → CAS EXPIRED",
    "PaymentPollingProcessor (QR monobank polling) monobank failed → CAS FAILED",
    "PaymentPollingProcessor (QR monobank polling) paid + PENDING → CAS count=1 → payments.create РІВНО один раз + paymentId set",
-   "PaymentPollingProcessor (QR monobank polling) pending → re-enqueue poll (jobId-дедуп) + pollAttempts+1",
+   "PaymentPollingProcessor (QR monobank polling) pending → re-enqueue poll (новий jobId на крок) + pollAttempts+1",
    "PaymentPollingProcessor (QR monobank polling) workOrder-branch: провайдер резолвиться по branchId наряду + intent.gateway",
    "PaymentPollingProcessor (QR monobank polling) конкурентний 2-й poll: paid але CAS count=0 → payments.create НЕ викликається (no double)",
    "PaymentPollingProcessor (QR monobank polling) немає gatewayInvoiceId → стоп (нема що опитувати)",
@@ -2478,6 +2478,9 @@
    "PaymentPollingProcessor (QR monobank polling) шлюз недоступний на останній дозволеній спробі → наступний poll упреться у стелю й закриє намір (не вічний цикл)",
    "PaymentPollingProcessor — конфіг воркера (метадані @Processor) concurrency = 3 (значення з дос'є; обґрунтування в коді не записане)",
    "PaymentPollingProcessor — конфіг воркера (метадані @Processor) слухає чергу 'payment-polling'"
+  ],
+  "apps/api/src/modules/payments/payment-polling.queue.integration.spec.ts": [
+   "PaymentPollingProcessor — ланцюг опитування на живій черзі (Bug #804) після збою шлюзу й після «pending» наступне опитування СПРАВДІ виконується"
   ],
   "apps/api/src/modules/payments/payments.fiscal-gate.spec.ts": [
    "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() Bug #662: checkboxQueue.add reject (Redis лежить) → create() НЕ кидає (no 500) + payment QUEUED→FAILED",

@@ -261,6 +261,8 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       orgId: ORG,
       finalizeAttempts: 1,
     });
+    // Bug #804: і повтор finalize ставиться під новим id, а не під id активної задачі.
+    expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}-f1`);
   });
 
   // guards: BR-PAY-007
@@ -351,7 +353,8 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     });
     expect(pollQueue.add.mock.calls[0][2]).toMatchObject({
       delay: 60_000,
-      jobId: `payment-poll-${INTENT_ID}`,
+      // Bug #804: id наступного кроку ≠ id активної задачі, інакше BullMQ відкине add.
+      jobId: `payment-poll-${INTENT_ID}-p181`,
     });
   });
 
@@ -397,7 +400,7 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
       orgId: ORG,
       pollAttempts: 6, // збій теж рахується — стеля опитувань колись закриє намір
     });
-    expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}`);
+    expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}-p6`);
     // До expiresAt касир чекає біля QR — темп опитування звичайний.
     expect(pollQueue.add.mock.calls[0][2].delay).toBe(5_000);
     expect(prisma.onlinePaymentIntent.updateMany).not.toHaveBeenCalled();
@@ -421,13 +424,14 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
     );
   });
 
-  it('pending → re-enqueue poll (jobId-дедуп) + pollAttempts+1', async () => {
+  it('pending → re-enqueue poll (новий jobId на крок) + pollAttempts+1', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
     monobank.getStatus.mockResolvedValue({ status: 'pending', raw: 'processing' });
     await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: 5 }));
     expect(payments.create).not.toHaveBeenCalled();
     expect(pollQueue.add).toHaveBeenCalledTimes(1);
-    expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}`);
+    // Bug #804: з id активної задачі (`payment-poll-<намір>`) BullMQ мовчки відкидав add.
+    expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}-p6`);
     // F2: лічильник опитувань інкрементиться → стеля колись спрацює навіть без expiresAt.
     expect(pollQueue.add.mock.calls[0][1].pollAttempts).toBe(6);
   });

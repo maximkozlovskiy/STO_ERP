@@ -41,6 +41,15 @@ const MAX_FINALIZE_ATTEMPTS = 360;
 const MAX_POLL_ATTEMPTS = 1_440;
 
 /**
+ * jobId НАСТУПНОЇ задачі наміру: `payment-poll-<намір>-p<крок опитування>` або `…-f<спроба
+ * finalize>`. Першу задачу ставить OnlinePaymentService з id `payment-poll-<намір>`. Двокрапка в
+ * id заборонена BullMQ, тому дефіс.
+ */
+export function pollJobId(intentId: string, kind: 'p' | 'f', step: number): string {
+  return `payment-poll-${intentId}-${kind}${step}`;
+}
+
+/**
  * Опитує статус онлайн-наміру у gateway. Self-re-enqueue: поки pending — ставить себе знову з
  * delay; success → CAS (PENDING→PAID) → payments.create РІВНО один раз; failure/expired/timeout →
  * термінальний статус, стоп. Idempotency через CAS-guard (where status:PENDING) — конкурентні
@@ -210,24 +219,31 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
     });
   }
 
-  /** Наступне опитування наміру: той самий jobId (single-flight), лічильник +1 для стелі F2. */
+  /**
+   * Наступне опитування наміру; лічильник +1 для стелі F2.
+   * jobId — НОВИЙ на кожен крок (`…-p<N>`), а не той самий, що в поточної задачі: BullMQ мовчки
+   * відкидає `add` з id задачі, яка ще існує, а активна задача існує до завершення `process`.
+   * З однаковим id наступне опитування не ставилось НІКОЛИ — намір опитувався рівно раз
+   * (Bug #804). Номер кроку детермінований, тож дубль того самого кроку, як і раніше, зливається.
+   */
   private async enqueueNextPoll(
     intentId: string,
     orgId: string,
     pollAttempts: number,
     opts: { lastPollFailed?: boolean; delay?: number } = {},
   ): Promise<void> {
+    const next = pollAttempts + 1;
     await this.pollQueue.add(
       'poll',
       {
         intentId,
         orgId,
-        pollAttempts: pollAttempts + 1,
+        pollAttempts: next,
         ...(opts.lastPollFailed ? { lastPollFailed: true } : {}),
       },
       {
         delay: opts.delay ?? POLL_INTERVAL_MS,
-        jobId: `payment-poll-${intentId}`,
+        jobId: pollJobId(intentId, 'p', next),
         removeOnComplete: true,
         removeOnFail: 200,
       },
@@ -333,7 +349,8 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
           { intentId, orgId, finalizeAttempts: next },
           {
             delay: POLL_INTERVAL_MS,
-            jobId: `payment-poll-${intentId}`,
+            // Новий id на кожну спробу — з id активної задачі BullMQ відкинув би add (Bug #804).
+            jobId: pollJobId(intentId, 'f', next),
             removeOnComplete: true,
             removeOnFail: 200,
           },
