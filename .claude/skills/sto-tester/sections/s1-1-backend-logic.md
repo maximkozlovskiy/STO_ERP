@@ -371,4 +371,8 @@ done
 
 - [ ] Raw SQL: `<timestamp без зони> AT TIME ZONE 'Europe/Kyiv'` зсуває UTC-мітку НАЗАД — нічні події йдуть у попередній день (Bug #808). Правильно: `AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Kyiv'`. Grep: `grep -rn "AT TIME ZONE" apps/api/src --include=*.ts | grep -v "'UTC' AT TIME ZONE"`
 
+- [ ] Рядки документа (PDF, рахунок із наряду) читаються вкладеним `select` без `orderBy` — порядок рядків випадковий, «останній рядок» із копійкою округлення теж (Bug #814). Наживо: той самий документ надрукувати для 2–3 однакових нарядів і порівняти порядок. Звірити `orderBy` у ВСІХ читаннях рядків одного агрегату
+
+- [ ] Сирий добуток `кількість × ціна` пишеться в `Decimal(12,2)` без `money()` — округлює Postgres за рядком числа (30.014999… → 30,01), а сусідній код рахує `money()` = 30,02 (Bug #813). Grep: `grep -rnE "amount = [a-zA-Z]+ \* [a-zA-Z]+;" apps/api/src/modules --include=*.service.ts`
+
 ---
