@@ -125,21 +125,34 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
         return;
       }
 
-      const { status } = await this.integrationLog.wrap(
-        {
-          orgId,
-          branchId,
-          provider: intent.gateway,
-          operation: 'getStatus',
-          documentType: 'OnlinePaymentIntent',
-          documentId: intentId,
-        },
-        () =>
-          gateway.getStatus(
-            { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
-            intent.gatewayInvoiceId!,
-          ),
-      );
+      // BR-PAY-007: недоступний шлюз (мережа, 5xx, таймаут) — не привід кидати намір. У задачі
+      // одна спроба (ретраї тут — це self-re-enqueue), тож виняток обривав би ланцюг опитування,
+      // і намір лишався б PENDING, хоч клієнт міг уже заплатити. Збій = «ще не знаємо»: ставимо
+      // наступне опитування, як для pending. Лічильник росте, тож стеля MAX_POLL_ATTEMPTS і
+      // wall-clock expiresAt усе одно закриють намір. Сам збій уже записав integrationLog.wrap.
+      let status: Awaited<ReturnType<typeof gateway.getStatus>>['status'];
+      try {
+        ({ status } = await this.integrationLog.wrap(
+          {
+            orgId,
+            branchId,
+            provider: intent.gateway,
+            operation: 'getStatus',
+            documentType: 'OnlinePaymentIntent',
+            documentId: intentId,
+          },
+          () =>
+            gateway.getStatus(
+              { apiUrl: cfg.apiUrl, credentials: cfg.credentials },
+              intent.gatewayInvoiceId!,
+            ),
+        ));
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`getStatus failed for intent ${intentId}, will poll again: ${msg}`);
+        await this.enqueueNextPoll(intentId, orgId, pollAttempts);
+        return;
+      }
 
       if (status === 'paid') {
         // CAS PENDING→PAID: рівно один poll виграє → створює Payment. Конкурентні → count=0 → стоп.
@@ -168,17 +181,26 @@ export class PaymentPollingProcessor extends DeadLetterWorkerHost {
       }
 
       // pending → опитати знову (з інкрементом лічильника опитувань для F2-стелі).
-      await this.pollQueue.add(
-        'poll',
-        { intentId, orgId, pollAttempts: pollAttempts + 1 },
-        {
-          delay: POLL_INTERVAL_MS,
-          jobId: `payment-poll-${intentId}`,
-          removeOnComplete: true,
-          removeOnFail: 200,
-        },
-      );
+      await this.enqueueNextPoll(intentId, orgId, pollAttempts);
     });
+  }
+
+  /** Наступне опитування наміру: той самий jobId (single-flight), лічильник +1 для стелі F2. */
+  private async enqueueNextPoll(
+    intentId: string,
+    orgId: string,
+    pollAttempts: number,
+  ): Promise<void> {
+    await this.pollQueue.add(
+      'poll',
+      { intentId, orgId, pollAttempts: pollAttempts + 1 },
+      {
+        delay: POLL_INTERVAL_MS,
+        jobId: `payment-poll-${intentId}`,
+        removeOnComplete: true,
+        removeOnFail: 200,
+      },
+    );
   }
 
   /**

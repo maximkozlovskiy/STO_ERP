@@ -313,6 +313,45 @@ describe('PaymentPollingProcessor (QR monobank polling)', () => {
   });
 
   // guards: BR-PAY-007
+  // До 2026-10-08 помилка шлюзу (мережа, 5xx) валила задачу, а в неї одна спроба: ланцюг
+  // опитування обривався, намір лишався PENDING, хоча клієнт міг уже заплатити.
+  // guards: BR-PAY-007
+  it('шлюз недоступний (getStatus кинув) → задача НЕ падає, наступне опитування поставлено, намір лишається PENDING', async () => {
+    prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
+    monobank.getStatus.mockRejectedValue(new Error('connect ECONNREFUSED'));
+
+    await expect(
+      processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: 5 })),
+    ).resolves.toBeUndefined();
+
+    expect(pollQueue.add).toHaveBeenCalledTimes(1);
+    expect(pollQueue.add.mock.calls[0][1]).toMatchObject({
+      intentId: INTENT_ID,
+      orgId: ORG,
+      pollAttempts: 6, // збій теж рахується — стеля опитувань колись закриє намір
+    });
+    expect(pollQueue.add.mock.calls[0][2].jobId).toBe(`payment-poll-${INTENT_ID}`);
+    expect(prisma.onlinePaymentIntent.updateMany).not.toHaveBeenCalled();
+    expect(payments.create).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PAY-007
+  it('шлюз недоступний на останній дозволеній спробі → наступний poll упреться у стелю й закриє намір (не вічний цикл)', async () => {
+    prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot({ expiresAt: null }));
+    monobank.getStatus.mockRejectedValue(new Error('timeout'));
+
+    await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: 1_439 }));
+    expect(pollQueue.add.mock.calls[0][1].pollAttempts).toBe(1_440);
+
+    pollQueue.add.mockClear();
+    await processor.process(makeJob({ intentId: INTENT_ID, orgId: ORG, pollAttempts: 1_440 }));
+    expect(monobank.getStatus).toHaveBeenCalledTimes(1); // на стелі шлюз уже не питаємо
+    expect(pollQueue.add).not.toHaveBeenCalled();
+    expect(prisma.onlinePaymentIntent.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'EXPIRED' }) }),
+    );
+  });
+
   it('pending → re-enqueue poll (jobId-дедуп) + pollAttempts+1', async () => {
     prisma.onlinePaymentIntent.findFirst.mockResolvedValue(paidIntentSnapshot());
     monobank.getStatus.mockResolvedValue({ status: 'pending', raw: 'processing' });

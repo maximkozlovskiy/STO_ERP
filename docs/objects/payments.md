@@ -209,6 +209,8 @@ create (метод без requiresFiscal) → null
   = стабільний `reference`. Викликає `gateway.createInvoice()` → `gatewayInvoiceId`, `pageUrl` (QR).
 - **BR-PAY-007**: Enqueue у чергу `payment-polling` (`jobId=payment-poll-<intentId>`, single-flight). `PaymentPollingProcessor`
   (concurrency 3, self-re-enqueue) опитує gateway: `paid` → **CAS** `PENDING→PAID` → `finalizePayment`.
+  Збій самого опитування (шлюз недоступний, 5xx, таймаут) намір не кидає: ставиться наступне
+  опитування з лічильником +1, тож намір закриє або відповідь шлюзу, або стеля опитувань / `expiresAt`.
   Стелі: `MAX_POLL_ATTEMPTS=1440`, finalize `MAX_FINALIZE_ATTEMPTS=360`, `expiresAt` past → `EXPIRED`.
 - **BR-PAY-008**: **`finalizePayment` idempotency:** спершу шукає Payment по `onlinePaymentIntentId`; якщо є — лише
   релінкує. Інакше `payments.create({ method: '<gateway>_qr', onlinePaymentIntentId })`. `P2002` на

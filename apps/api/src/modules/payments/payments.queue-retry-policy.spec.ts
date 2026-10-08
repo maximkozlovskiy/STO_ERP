@@ -88,7 +88,10 @@ const KNOWN_VIOLATIONS: Record<string, RetryOpts> = {
   // відоме порушення, див. звіт: без attempts/backoff. Polling-черги побудовані як self-re-enqueue
   // (процесор сам ставить наступний job із delay), тож BullMQ-ретраїв не мають узагалі (attempts=1).
   'modules/payments/online-payment.service.ts#createIntent': { attempts: null, backoff: null },
-  'modules/payments/payment-polling.processor.ts#process': { attempts: null, backoff: null },
+  'modules/payments/payment-polling.processor.ts#enqueueNextPoll': {
+    attempts: null,
+    backoff: null,
+  },
   'modules/payments/payment-polling.processor.ts#finalizePayment': {
     attempts: null,
     backoff: null,
