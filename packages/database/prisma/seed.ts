@@ -10,6 +10,7 @@ import {
   NotificationChannel,
   UserRole,
   CounterpartyType,
+  WorkOrderStatus,
 } from '@prisma/client';
 import { createPgAdapter } from './pg-adapter';
 import * as bcrypt from 'bcrypt';
@@ -462,6 +463,13 @@ async function main() {
     }),
   ]);
   if (catEngine && catSus) {
+    // seed-catalog кладе системні категорії ВИМКНЕНИМИ (менеджер вмикає потрібні сам), а API
+    // робіт ховає роботи вимкнених категорій. Без цього на чистій базі довідник робіт порожній:
+    // у наряд нема чого додати, і демо-роботи нижче не видно. Вмикаємо дві демо-категорії.
+    await prisma.workCategory.updateMany({
+      where: { id: { in: [catEngine.id, catSus.id] }, orgId: ORG_ID },
+      data: { isActive: true },
+    });
     await prisma.work.upsert({
       where: { id: WORK1_ID },
       update: {},
@@ -574,6 +582,69 @@ async function main() {
     });
   }
   console.warn(`  UnitsOfMeasure: ${units.length}`);
+
+  // ─── Work orders (демо + E2E на чистій базі) ─────────────
+  // E2E-набір писався на dev-базі з накопиченими нарядами: спеки клонують наявну чернетку,
+  // відкривають «будь-який наряд», шукають завершений для кнопки «Виставити рахунок», а
+  // конструктор звітів групує наряди. На чистій базі (CI, свіжа інсталяція з демо-даними) нарядів
+  // не було взагалі — 2026-10-08 перший повний E2E у CI впав на цьому 13 разів.
+  // Наряди кладуться напряму, без FSM: борг за завершеними тут НЕ нараховано (це демо-дані, а не
+  // історія операцій). Суми — за BR-WO-007 для наряду без ПДВ: totalNet = totalAmount.
+  const seedWork = await prisma.work.findFirst({ where: { id: WORK1_ID }, select: { id: true } });
+  const uah = await prisma.currency.findFirst({
+    where: { orgId: ORG_ID, code: 'UAH' },
+    select: { id: true },
+  });
+  if (seedWork && uah) {
+    const now = new Date();
+    const demoOrders: { n: number; status: WorkOrderStatus; done?: boolean }[] = [
+      { n: 1, status: 'DRAFT' },
+      { n: 2, status: 'DRAFT' },
+      { n: 3, status: 'ESTIMATE' },
+      { n: 4, status: 'APPROVED' },
+      { n: 5, status: 'IN_PROGRESS' },
+      { n: 6, status: 'COMPLETED', done: true },
+      { n: 7, status: 'COMPLETED', done: true },
+    ];
+    for (const o of demoOrders) {
+      const id = `a1000000-0000-4000-8000-0000000001${String(o.n).padStart(2, '0')}`;
+      await prisma.workOrder.upsert({
+        where: { id },
+        update: {},
+        create: {
+          id,
+          orgId: ORG_ID,
+          branchId: BRANCH_ID,
+          vehicleId: VEHICLE_ID,
+          counterpartyId: CLIENT_ID,
+          currencyId: uah.id,
+          number: `НРД-ДЕМО-${String(o.n).padStart(4, '0')}`,
+          status: o.status,
+          description: 'Демо-наряд (seed)',
+          completedAt: o.done ? now : null,
+          totalLabor: '500.00',
+          totalActualLabor: '500.00',
+          totalParts: '0.00',
+          totalNet: '500.00',
+          totalAmount: '500.00',
+          totalVat: '0.00',
+          lines: {
+            create: [
+              {
+                orgId: ORG_ID,
+                workId: WORK1_ID,
+                employeeId: EMPLOYEE_ID,
+                normoHours: 1,
+                price: '500.00',
+                amount: '500.00',
+              },
+            ],
+          },
+        },
+      });
+    }
+    console.warn(`  WorkOrders: ${demoOrders.length}`);
+  }
 
   // ─── SystemTemplates ─────────────────────────────────────────────────────────
   const systemTemplates = [
