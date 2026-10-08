@@ -115,23 +115,30 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 
 **Маршрути UI:** `/settlements`, `/counterparties`
 
-| Аспект                                  | Тест                                     | Кейсів |
-| --------------------------------------- | ---------------------------------------- | ------ |
-| ролі доступу на маршрутах               | `settlements.access.spec.ts`             | 5      |
-| читання балансу і журналу               | `settlements.account-read.spec.ts`       | 7      |
-| інваріанти (property-based)             | `settlements.invariants.spec.ts`         | 18     |
-| акт звірки                              | `settlements.reconciliation-act.spec.ts` | 15     |
-| `createTransaction` (сервісна логіка)   | `settlements.service.spec.ts`            | 22     |
-| єдиний писар балансу (статичний сторож) | `settlements.single-writer.spec.ts`      | 3      |
+| Аспект                                                                          | Тест                                     | Кейсів |
+| ------------------------------------------------------------------------------- | ---------------------------------------- | ------ |
+| ролі доступу на маршрутах                                                       | `settlements.access.spec.ts`             | 5      |
+| читання балансу і журналу                                                       | `settlements.account-read.spec.ts`       | 7      |
+| інваріанти (property-based)                                                     | `settlements.invariants.spec.ts`         | 18     |
+| акт звірки                                                                      | `settlements.reconciliation-act.spec.ts` | 15     |
+| `createTransaction` (сервісна логіка)                                           | `settlements.service.spec.ts`            | 25     |
+| єдиний писар балансу (статичний сторож)                                         | `settlements.single-writer.spec.ts`      | 3      |
+| місця виклику `createTransaction` і їхній захист від повтору (статичний сторож) | `settlements.callers.spec.ts`            | 6      |
 
-Разом: **70** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **79** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Спільний сетап спеків `SettlementsAccountService` — `settlements.spec-fixture.ts` (factory).
 
 Правило → тест (мітки `// guards:`):
 
 - `settlements.single-writer.spec.ts` — BR-SETL-001, 009.
-- `settlements.service.spec.ts` — BR-SETL-002, 003, 004, 005 (і BR-CP-012), 006, 007, 008.
+- `settlements.service.spec.ts` — BR-SETL-002, 003, 004, 005 (і BR-CP-012), 006, 007, 008, 010
+  (контракт: два однакові виклики — два рядки журналу і дві зміни балансу; журнал перед записом не
+  читається).
+- `settlements.callers.spec.ts` — BR-SETL-010: перелік усіх місць виклику `createTransaction` у
+  `apps/api/src` (зараз 11) із механізмом захисту від повтору; нове місце без запису, зникле місце
+  або зниклий із коду захист (CAS статусу, перевірка наявної проводки) валять тест. Там само для
+  кожного місця названо тест гонки в модулі викликача.
 - `settlements.invariants.spec.ts` — BR-SETL-003 (лише два кейси, що читають справжній `BALANCE_SIGN`).
 - `settlements.reconciliation-act.spec.ts` — BR-SETL-006, 011, 012.
 - `settlements.account-read.spec.ts` — BR-SETL-006, 013.
@@ -139,12 +146,9 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
 
 **Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
 
-Правило без unit-тесту:
-
-- BR-SETL-010 — правило про ВІДСУТНІСТЬ захисту в `createTransaction`: «не нарахувати двічі» тримають викликачі (напр. умовна зміна статусу рахунку в `invoices.service.ts`, count-guard курсових різниць у `invoices`/`payments`/`supplier-payments`), кожен у своєму модулі й своїми тестами. У модулі `settlements` нема за що зачепити тест: закріплювати «другий виклик пише другий рядок» означало б стерегти відсутність захисту. Справжній сторож — унікальний індекс на документ у журналі або integration-спек двох одночасних проведень; ні того, ні того немає.
-
 Прогалини, що не є окремим правилом:
 
+- Подвійне нарахування: сторож місць виклику бачить, що захист СТОЇТЬ у коді перед викликом, але не доводить, що його досить. Двох справді одночасних проведень проти БД не ганяє ніхто (потрібен integration-спек), унікального індексу на документ у журналі немає. Окремого кейсу «CAS програв» немає для дзеркального PAYMENT рахунку (→PAID) і для CREDIT_NOTE наряду (COMPLETED→CANCELLED) — у обох спільний CAS перевірено лише на сусідньому переході. Послідовний повтор часткового прийому замовлення постачальнику від справжнього другого прийому не відрізняється.
 - 15 із 18 кейсів `settlements.invariants.spec.ts` перевіряють **локальну модель** (`applyTransactions` із власними списками `BALANCE_INCREASING`/`BALANCE_DECREASING`), а не код продукту: якщо в `BALANCE_SIGN` перевернути знак, вони лишаться зеленими. Справжній знак стережуть два кейси цього файла й знакові кейси `settlements.service.spec.ts`.
 - Атомарність пари «рядок журналу + зміна балансу» перевірено на моках: «обидва записи пішли в один tx-клієнт». Що відкат транзакції справді прибирає і рядок журналу, і зміну балансу, проти БД не ганяє ніхто — потрібен integration-спек.
 - Append-only: відсутність `deletedAt` у схемі й заборону UPDATE/DELETE на рівні БД (тригер, права) не стереже ніщо; статичний сторож бачить лише код `apps/api/src` (не `seed.ts`, не міграції) і не бачить вкладений запис через зв'язок, крім прямого `settlementAccount: { … }`.

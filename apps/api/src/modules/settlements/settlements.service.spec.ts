@@ -338,4 +338,127 @@ describe('SettlementsService.createTransaction', () => {
     expect(prisma.settlementTransaction.create).not.toHaveBeenCalled();
     expect(prisma.settlementAccount.update).not.toHaveBeenCalled();
   });
+
+  // ── BR-SETL-010: createTransaction НЕ ідемпотентна ─────────────────────────────────────
+  //
+  // Це контракт, на який спираються ВСІ викликачі (перелік — settlements.callers.spec.ts): кожен
+  // сам тримає «не нарахувати двічі» (CAS статусу документа, перевірка наявної проводки). Якби
+  // createTransaction тихо почала дедуплікувати за documentType/documentId/type, зламались би
+  // законні повтори: два часткові прийоми одного замовлення — це два SUPPLIER_CHARGE з тим самим
+  // documentId, CHARGE і сторно-CREDIT_NOTE наряду — той самий документ. Тому кейси нижче мусять
+  // упасти, якщо хтось додасть ідемпотентність чи дедуплікацію, не переглянувши викликачів.
+
+  /**
+   * «Жива» підміна клієнта БД: журнал — масив рядків, баланс — число. Має РІВНО три операції,
+   * які createTransaction робить сьогодні; читання журналу (count / findFirst заради
+   * дедуплікації) тут немає — такий виклик упаде TypeError-ом.
+   */
+  function fakeLedger() {
+    const journal: Record<string, unknown>[] = [];
+    const account = { balance: 0 };
+    const client = {
+      settlementAccount: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'acc-1' }),
+        update: vi
+          .fn()
+          .mockImplementation(async (args: { data: { balance: { increment: number } } }) => {
+            account.balance += args.data.balance.increment;
+            return {};
+          }),
+      },
+      settlementTransaction: {
+        create: vi.fn().mockImplementation(async (args: { data: Record<string, unknown> }) => {
+          journal.push(args.data);
+          return {};
+        }),
+      },
+    };
+    return { client, journal, account };
+  }
+
+  // guards: BR-SETL-010
+  it('два однакові виклики (той самий documentType / documentId / type) → ДВА рядки журналу і ДВІ зміни балансу', async () => {
+    const { client, journal, account } = fakeLedger();
+    prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn(client),
+    );
+    const same = dto({
+      type: 'CHARGE',
+      amount: 100,
+      documentType: 'WorkOrder',
+      documentId: 'wo-1',
+      createdBy: 'user-1',
+    });
+
+    await service.createTransaction('org-1', same);
+    await service.createTransaction('org-1', same);
+
+    expect(journal).toHaveLength(2);
+    for (const row of journal) {
+      expect(row).toMatchObject({
+        orgId: 'org-1',
+        settlementAccountId: 'acc-1',
+        type: 'CHARGE',
+        amount: 100,
+        amountBase: 100,
+        documentType: 'WorkOrder',
+        documentId: 'wo-1',
+      });
+    }
+    // Баланс змінено ДВІЧІ: +100 і ще +100. Другий виклик не «впізнає» перший.
+    expect(client.settlementAccount.update).toHaveBeenCalledTimes(2);
+    expect(account.balance).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  // guards: BR-SETL-010
+  it('повтор у тій самій tx викликача теж не дедуплікується: два рядки журналу, баланс змінено двічі', async () => {
+    const { client, journal, account } = fakeLedger();
+    const same = dto({
+      type: 'PAYMENT',
+      amount: 40,
+      documentType: 'Invoice',
+      documentId: 'inv-1',
+    });
+
+    await service.createTransaction('org-1', same, client as never);
+    await service.createTransaction('org-1', same, client as never);
+
+    expect(journal).toHaveLength(2);
+    expect(journal.map(r => [r.type, r.documentType, r.documentId, r.amount])).toEqual([
+      ['PAYMENT', 'Invoice', 'inv-1', 40],
+      ['PAYMENT', 'Invoice', 'inv-1', 40],
+    ]);
+    expect(account.balance).toBe(-80);
+  });
+
+  // guards: BR-SETL-010
+  it('createTransaction не читає журнал перед записом: єдине читання — пошук рахунку (перевірки «вже проведено» немає)', async () => {
+    const touched: string[] = [];
+    const { client } = fakeLedger();
+    // Будь-яке звернення до делегата записуємо; невідома операція (count, findFirst журналу…)
+    // віддає функцію, що відповідає «такий рядок уже є» — саме те, на що спирався б дедуп.
+    const recording = new Proxy(client as Record<string, Record<string, unknown>>, {
+      get: (target, model: string) =>
+        new Proxy(target[model] ?? {}, {
+          get: (delegate, op: string) => {
+            touched.push(`${model}.${op}`);
+            return delegate[op] ?? vi.fn().mockResolvedValue({ id: 'existing', _count: 1 });
+          },
+        }),
+    });
+    const same = dto({ type: 'CHARGE', amount: 100, documentType: 'Invoice', documentId: 'inv-9' });
+
+    await service.createTransaction('org-1', same, recording as never);
+    await service.createTransaction('org-1', same, recording as never);
+
+    expect([...touched].sort()).toEqual([
+      'settlementAccount.findFirst',
+      'settlementAccount.findFirst',
+      'settlementAccount.update',
+      'settlementAccount.update',
+      'settlementTransaction.create',
+      'settlementTransaction.create',
+    ]);
+  });
 });

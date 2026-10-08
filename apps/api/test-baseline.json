@@ -1869,6 +1869,15 @@
    "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант shared-batch: 2 частини з ОДНІЄЇ партії → RETURN відновлює РІВНО списане (агрегація)",
    "C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-інваріант shared-batch: якби агрегацію прибрали — недоповернення (сторож режекту без агрегації)"
   ],
+  "apps/api/src/modules/inventory/stock-items.access.spec.ts": [
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.byBatch — власник, адміністратор, комірник, приймальник і бухгалтер",
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.byDocument — ті самі ролі та механік",
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.findAll — власник, адміністратор, комірник, приймальник і бухгалтер",
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.findLow лишається за ролями складу — без бухгалтера і приймальника",
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.movements лишається за ролями складу — без бухгалтера і приймальника",
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») stock-items.updateMinStock лишається за ролями складу — без бухгалтера і приймальника",
+   "Залишки — ролі доступу (вкладка «Звіти → Залишки») перелік складів (фільтр вкладки) бачать ті самі ролі та механік"
+  ],
   "apps/api/src/modules/inventory/stock-items.contract.spec.ts": [
    "StockItems — HTTP Contract GET /stock-items/by-batch 200 без параметрів → service отримує undefined-и",
    "StockItems — HTTP Contract GET /stock-items/by-batch 200 з date range",
@@ -3245,6 +3254,14 @@
    "SettlementsAccountService — читання балансу і журналу рядок журналу: сума у валюті транзакції, код валюти, сума у базовій і курс — числами; порожні лишаються null",
    "SettlementsAccountService — читання балансу і журналу список актів звірки: лише своя організація і цей контрагент, від найновіших"
   ],
+  "apps/api/src/modules/settlements/settlements.callers.spec.ts": [
+   "Settlements — місця виклику createTransaction (статичний сторож) захист, названий у переліку, справді стоїть у коді ПЕРЕД викликом createTransaction",
+   "Settlements — місця виклику createTransaction (статичний сторож) кожен виклик createTransaction у apps/api/src записаний у переліку з механізмом захисту від повтору",
+   "Settlements — місця виклику createTransaction (статичний сторож) місця виклику без власного тесту гонки — явний перелік",
+   "Settlements — місця виклику createTransaction (статичний сторож) місця виклику, де захисту від повтору не знайдено, — явний перелік (зараз порожній)",
+   "Settlements — місця виклику createTransaction (статичний сторож) сторож справді обходить код: файлів сотні, викликів createTransaction — не нуль, визначення не рахується",
+   "Settlements — місця виклику createTransaction (статичний сторож) тести гонки / повтору, названі в переліку, справді існують у спеках викликачів"
+  ],
   "apps/api/src/modules/settlements/settlements.invariants.spec.ts": [
    "Settlements — balance invariants (property-based) BALANCE_SIGN покриває ВСІ SettlementTransactionType (exhaustive) і кожен ±1",
    "Settlements — balance invariants (property-based) CHARGE + PAYMENT де payment >= charge → balance ≤ 0 (overpaid)",
@@ -3291,9 +3308,11 @@
    "SettlementsService.createTransaction SUPPLIER_CHARGE декрементує balance на -amount (ми винні постачальнику)",
    "SettlementsService.createTransaction SUPPLIER_PAYMENT інкрементує balance на +amount (наш борг постачальнику меншає)",
    "SettlementsService.createTransaction SUPPLIER_REFUND інкрементує balance на +amount (наш борг постачальнику меншає)",
+   "SettlementsService.createTransaction createTransaction не читає журнал перед записом: єдине читання — пошук рахунку (перевірки «вже проведено» немає)",
    "SettlementsService.createTransaction без currencyId → base (rate=1, amountBase=amount), resolveBaseConversion не викликається",
    "SettlementsService.createTransaction без date → new Date(); без fallbackToLatest → false (BC для Фази 2)",
    "SettlementsService.createTransaction без tx відкриває власну $transaction: рядок журналу і зміна балансу — в ній обидва",
+   "SettlementsService.createTransaction два однакові виклики (той самий documentType / documentId / type) → ДВА рядки журналу і ДВІ зміни балансу",
    "SettlementsService.createTransaction з currencyId (USD) → balanceDelta від amountBase, не від amount",
    "SettlementsService.createTransaction з переданим tx пише журнал і баланс у транзакції викликача, власну не відкриває",
    "SettlementsService.createTransaction кидає BadRequestException при amount < 0",
@@ -3302,6 +3321,7 @@
    "SettlementsService.createTransaction кидає BadRequestException при amount = NaN",
    "SettlementsService.createTransaction кидає NotFoundException якщо немає SettlementAccount",
    "SettlementsService.createTransaction курсу немає (конвертація кидає) → помилка йде назовні, журнал і баланс не чіпаються",
+   "SettlementsService.createTransaction повтор у тій самій tx викликача теж не дедуплікується: два рядки журналу, баланс змінено двічі",
    "SettlementsService.createTransaction пробрасує date + fallbackToLatest у resolveBaseConversion (документний потік)",
    "SettlementsService.createTransaction рахунок шукається за організацією і контрагентом — чужа організація рахунку не бачить",
    "SettlementsService.createTransaction створює settlementTransaction з усіма полями"

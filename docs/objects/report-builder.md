@@ -82,10 +82,11 @@
 
 ## UI (Web)
 
-| Компонент             | Файл                                                           |
-| --------------------- | -------------------------------------------------------------- |
-| Вкладка «Конструктор» | `app/(app)/reports/ReportBuilder.tsx` (палітра+3 зони+таблиця) |
-| Хуки                  | `hooks/api/useReportBuilder.ts`                                |
+| Компонент             | Файл                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| Вкладка «Конструктор» | `app/(app)/reports/ReportBuilder.tsx` (палітра+3 зони+таблиця)                             |
+| Хуки                  | `hooks/api/useReportBuilder.ts`                                                            |
+| Експорт CSV / XLSX    | `lib/report-export.ts` (рядки, CSV-текст, SpreadsheetML; завантаження — `lib/download.ts`) |
 
 Native HTML5 drag (палітра→зона); ієрархічна таблиця з розгортанням + tfoot-підсумки; експорт
 CSV/XLSX клієнтський (SpreadsheetML).
@@ -200,11 +201,19 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 
 Разом: **93** кейсів — 76 конструктора і 12 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
+Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
+`apps/web/src/lib/__tests__/report-export.test.ts` — 23 кейси. Перевіряє чисту частину
+`apps/web/src/lib/report-export.ts` (винесена з `ReportBuilder.tsx`): дерево груп → плоскі рядки
+(відступ за рівнем, підсумки груп, рядок «Разом»), плоский звіт (нумерація, колонка «Склеєно»),
+значення клітинки (enum, дата, булеве), CSV (роздільник, лапки, захист від формул через
+`escapeCsvCell`, BOM), XLSX-XML (екранування, числа як `Number`, заголовок, каркас книги). Запуск:
+`cd apps/web && npx vitest run src/lib/__tests__/report-export.test.ts`.
+
 **Чого тут НЕМА.**
 
-- BR-RPT-021 — експорт CSV / XLSX живе у браузері (`exportReport` / `buildXlsxXml` у
-  `ReportBuilder.tsx`, функції не експортовані з модуля); unit-тесту немає, потрібен компонентний
-  тест `ReportBuilder` або винесення експорту в окремий модуль.
+- Експорт: саме завантаження файла (`exportReport` → `downloadBlob`, Blob і клік по посиланню) і
+  кнопки CSV / XLSX у `ReportBuilder.tsx` тестом не покриті — перевірено лише побудову вмісту файла.
+  Чи відкриває Excel отриманий SpreadsheetML, не перевіряє ніщо.
 - HTTP-контракту (`*.contract.spec.ts`) немає: статуси й повну валідацію DTO (крім межі `groupBy`)
   покриває лише E2E `apps/web/e2e/report-builder.spec.ts`.
 - Справжній SQL не виконується: unit-тести перевіряють форму аргументів Prisma, а не результат запиту.
