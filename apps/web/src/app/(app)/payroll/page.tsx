@@ -309,7 +309,11 @@ export default function PayrollPage() {
           )}
         </div>
 
-        {previewEnabled && datesValid && <ListLoadError error={preview.error} />}
+        {/* Bug #824: without retry the only way out of a failed calculation was to change a date -
+            the "calculate" button does nothing once the preview is already enabled. */}
+        {previewEnabled && datesValid && (
+          <ListLoadError error={preview.error} onRetry={() => void preview.refetch()} />
+        )}
 
         {previewEnabled && datesValid && preview.isLoading && (
           <div className="flex justify-center py-6">

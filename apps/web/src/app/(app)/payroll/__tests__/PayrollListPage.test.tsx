@@ -21,6 +21,8 @@ let lastFilters: PayrollPeriodsFilter | undefined;
 const listItems: PayrollPeriod[] = [];
 let listTotal = 0;
 let lastPreviewArgs: unknown[] = [];
+let previewError: Error | null = null;
+const previewRefetch = vi.fn();
 
 vi.mock('@/hooks/api/usePayroll', async orig => {
   const actual = await orig<typeof import('@/hooks/api/usePayroll')>();
@@ -29,7 +31,7 @@ vi.mock('@/hooks/api/usePayroll', async orig => {
     ...actual,
     usePayrollPreview: (...args: unknown[]) => {
       lastPreviewArgs = args;
-      return { data: undefined, isLoading: false, error: null };
+      return { data: undefined, isLoading: false, error: previewError, refetch: previewRefetch };
     },
     usePayrollPeriods: (filters: PayrollPeriodsFilter = {}) => {
       lastFilters = filters;
@@ -195,6 +197,23 @@ describe('Payroll — розрахунок за період шле лише к�
     fireEvent.change(from, { target: { value: '20261-10-01' } });
     expect(btn).toBeDisabled();
     expect(lastPreviewArgs[3]).toBe(false);
+  });
+
+  // Bug #824: смуга помилки розрахунку була без «Повторити». Кнопка «Розрахувати» після першого
+  // натискання нічого не робить (запит уже ввімкнено), тож повторити розрахунок із тими самими
+  // датами можна було лише змінивши дату туди й назад.
+  it('збій розрахунку: смуга з текстом і «Повторити», що перезапитує', () => {
+    previewError = new Error('Внутрішня помилка сервера');
+    previewRefetch.mockClear();
+    try {
+      render(<PayrollPage />);
+      fireEvent.click(screen.getByRole('button', { name: /Розрахувати/ }));
+      expect(screen.getByRole('alert')).toHaveTextContent('Внутрішня помилка сервера');
+      fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+      expect(previewRefetch).toHaveBeenCalledTimes(1);
+    } finally {
+      previewError = null;
+    }
   });
 
   it('порожня дата «по»: запит preview теж вимикається', () => {

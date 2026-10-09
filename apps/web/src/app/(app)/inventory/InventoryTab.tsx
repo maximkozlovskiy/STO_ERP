@@ -144,6 +144,7 @@ export function InventoryTab() {
     data: rawItems = [],
     isLoading: loadingGoods,
     error: queryError,
+    refetch: refetchItems,
   } = useStockItems({ warehouseId, q: debouncedQ });
 
   const items = useMemo(() => {
@@ -249,10 +250,14 @@ export function InventoryTab() {
 
   return (
     <>
-      {(error || queryError) && (
+      {error && (
         <div className="mb-4 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error || (queryError instanceof Error ? queryError.message : '')}
+          {error}
         </div>
+      )}
+      {/* Bug #823: the goods list failed to load - a strip with retry, not a bare banner next to an empty table. */}
+      {viewMode === 'goods' && (
+        <ListLoadError error={queryError} onRetry={() => void refetchItems()} className="mb-4" />
       )}
 
       {/* Розрізи: збій запиту — смуга з «Повторити», а не порожня таблиця. */}
@@ -404,7 +409,7 @@ export function InventoryTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayed.length === 0 && (
+                {displayed.length === 0 && !queryError && (
                   <TableRow>
                     <TableCell colSpan={9} className="p-0">
                       <EmptyState icon={Package} title={t('empty.noItems')} />

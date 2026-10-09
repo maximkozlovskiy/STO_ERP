@@ -18,11 +18,12 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: vi.fn(() => Promise.resolve([])),
 }));
 
+const useStockItemsMock = vi.fn();
 const useStockByDocumentMock = vi.fn();
 const useStockByBatchMock = vi.fn();
 vi.mock('@/hooks/api/useInventory', () => ({
   inventoryKeys: { all: ['inventory'] },
-  useStockItems: () => ({ data: [], isLoading: false, error: null }),
+  useStockItems: (...a: unknown[]) => useStockItemsMock(...a),
   useLowStockItems: () => ({ data: [], refetch: vi.fn() }),
   useStockByDocument: (...a: unknown[]) => useStockByDocumentMock(...a),
   useStockByBatch: (...a: unknown[]) => useStockByBatchMock(...a),
@@ -42,6 +43,7 @@ const distinct = (mock: typeof useStockByDocumentMock, key: keyof Filters) => [
 
 describe('InventoryTab — дати розрізів залишків', () => {
   beforeEach(() => {
+    useStockItemsMock.mockReset().mockReturnValue({ data: [], isLoading: false, error: null });
     useStockByDocumentMock.mockReset().mockReturnValue({ data: { goods: [] }, isLoading: false });
     useStockByBatchMock.mockReset().mockReturnValue({ data: { batches: [] }, isLoading: false });
   });
@@ -89,5 +91,29 @@ describe('InventoryTab — дати розрізів залишків', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Забагато запитів');
     fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Bug #823: у режимі «По товарах» збій списку показував банер без «Повторити» і поруч —
+  // порожній стан «нічого не знайдено», ніби товарів немає.
+  it('збій списку товарів — смуга з «Повторити» і без порожнього стану', () => {
+    const refetch = vi.fn();
+    useStockItemsMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Внутрішня помилка сервера'),
+      refetch,
+    });
+    const { container } = renderTab();
+    expect(screen.getByRole('alert')).toHaveTextContent('Внутрішня помилка сервера');
+    // Порожній стан сидить у єдиному рядку таблиці; під час помилки рядків немає взагалі.
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('порожній список товарів без помилки — порожній стан, смуги немає', () => {
+    const { container } = renderTab();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
   });
 });
