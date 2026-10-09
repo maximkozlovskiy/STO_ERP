@@ -247,7 +247,9 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                 <TableHead className="text-right">{t('page.columns.amount')}</TableHead>
                 <TableHead>{t('page.columns.status')}</TableHead>
                 <TableHead>{t('page.columns.matchedAs')}</TableHead>
-                <TableHead>
+                {/* Sticky: at 1280 the table is wider than its container, and the row actions
+                    («Рознести», «Зняти рознесення») would sit off-screen behind a sideways scroll. */}
+                <TableHead className="sticky right-0 bg-secondary">
                   <span className="sr-only">{t('page.columns.actions')}</span>
                 </TableHead>
               </TableRow>
@@ -340,7 +342,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="sticky right-0 bg-surface group-hover:bg-secondary text-right whitespace-nowrap">
                       {canUnreconcile(tx) && (
                         <Button
                           type="button"

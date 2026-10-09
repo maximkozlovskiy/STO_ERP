@@ -1312,7 +1312,13 @@ export default function CounterpartyCardPage() {
                     <p className="text-sm text-foreground">
                       {tx.notes ?? settlementTxTypeLabel(tx.type)}
                     </p>
-                    <p className="text-xs text-muted-foreground">{fmtDate(tx.createdAt)}</p>
+                    {/* A note replaces the type in the first line, so the type goes here: a
+                        reversal always carries a note (the reason), and without this its row
+                        would read «не той клієнт −1,07» with no hint of what it reverses. */}
+                    <p className="text-xs text-muted-foreground">
+                      {fmtDate(tx.createdAt)}
+                      {tx.notes ? ` · ${settlementTxTypeLabel(tx.type)}` : ''}
+                    </p>
                   </div>
                   <div className="text-right">
                     {(() => {
