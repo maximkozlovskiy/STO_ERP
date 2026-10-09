@@ -375,4 +375,8 @@ done
 
 - [ ] Сирий добуток `кількість × ціна` пишеться в `Decimal(12,2)` без `money()` — округлює Postgres за рядком числа (30.014999… → 30,01), а сусідній код рахує `money()` = 30,02 (Bug #813). Grep: `grep -rnE "amount = [a-zA-Z]+ \* [a-zA-Z]+;" apps/api/src/modules --include=*.service.ts`
 
+- [ ] Поділ інтервалу на межі (робочий день, доба, зміна) перевіряє лише КІНЕЦЬ (`end > межа`), а початок уже за межею → частина «до межі» від'ємна: запис із `endAt < startAt` (Bug #819). Наживо: створити інтервал, що ПОЧИНАЄТЬСЯ після межі (слот 23:30–23:50) і до неї (00:30), звірити збережені `startAt`/`endAt`. Grep: `grep -rnE "isSplit|> workDayEnd|> dayEnd" apps/api/src/modules --include=*.service.ts`
+
+- [ ] Період у ТІЛІ запиту (`periodFrom`/`periodTo`, `periodStart`/`periodEnd`) перевірено на форму дат, але не на порядок: перевернутий період створює документ (201) без рядків (Bug #822). Наживо на кожному POST із періодом: початок пізніше за кінець → 400. Grep: `grep -rnE "period(From|Start)" apps/api/src/modules --include=*.dto.ts`
+
 ---
