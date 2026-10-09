@@ -25,6 +25,8 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { UUID_REGEX, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { isCalendarDate } from '../../common/utils/kyiv-date';
+import { assertCalendarDateQuery } from '../../common/utils/date-query';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -38,8 +40,6 @@ import {
   BookingRequestListDto,
   PublicBookingBranchDto,
 } from './booking.dto';
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 @ApiTags('booking')
 @Controller('booking')
@@ -80,7 +80,9 @@ export class BookingController {
     if (!branchId || !UUID_REGEX.test(branchId)) {
       throw new BadRequestException(translateError('err.booking.invalidBranchId', getLocale()));
     }
-    if (!date || !DATE_RE.test(date)) {
+    // Bug #821: the shape alone let `0000-01-01` through (500 from Postgres) and `2026-02-31`
+    // (JS rolls it over - the widget showed the free time of 03.03).
+    if (!date || typeof date !== 'string' || !isCalendarDate(date)) {
       throw new BadRequestException(translateError('err.booking.dateFormatExpected', getLocale()));
     }
     // Soft-deleted branches must be invisible to public booking.
@@ -122,6 +124,8 @@ export class BookingController {
     @Query('date') date?: string,
     @Query('status') status?: string,
   ) {
+    // Bug #821: the date came unchecked - `abc` or `0000-01-01` reached Prisma and answered 500.
+    assertCalendarDateQuery(date);
     return this.service.findAll(user.orgId, { date, status });
   }
 

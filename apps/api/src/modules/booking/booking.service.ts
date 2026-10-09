@@ -3,7 +3,7 @@ import { Prisma, CalendarSlotStatus } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
-import { kyivOffsetMs } from '../../common/utils/kyiv-date';
+import { EARLIEST_DB_INSTANT_MS, kyivOffsetMs } from '../../common/utils/kyiv-date';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import {
@@ -139,7 +139,10 @@ export class BookingService {
     // Day boundaries must be Kyiv-local, not UTC, otherwise a slot
     // requested for "2026-05-27 in Kyiv" would search a misaligned UTC window.
     const offset = this.kyivOffsetForDate(date);
-    const dayStart = new Date(`${date}T00:00:00.000${offset}`);
+    // Bug #821: the start of Kyiv day 0001-01-01 is 31.12 of year 0 in UTC; Postgres has no year 0.
+    const dayStart = new Date(
+      Math.max(new Date(`${date}T00:00:00.000${offset}`).getTime(), EARLIEST_DB_INSTANT_MS),
+    );
     const dayEnd = new Date(`${date}T23:59:59.999${offset}`);
 
     // Parallel: lifts, busy slots, branch settings, booked requests, optional work durations.
@@ -424,7 +427,13 @@ export class BookingService {
     if (filters?.date) {
       const offset = this.kyivOffsetForDate(filters.date);
       where.requestedDate = {
-        gte: new Date(`${filters.date}T00:00:00.000${offset}`),
+        // Bug #821: same floor as in getAvailability - Postgres has no year 0.
+        gte: new Date(
+          Math.max(
+            new Date(`${filters.date}T00:00:00.000${offset}`).getTime(),
+            EARLIEST_DB_INSTANT_MS,
+          ),
+        ),
         lte: new Date(`${filters.date}T23:59:59.999${offset}`),
       };
     }

@@ -51,7 +51,7 @@ export const kyivOffsetMs = (d: Date): number => {
 };
 
 /** Earliest instant Postgres accepts in an ISO timestamp: 0001-01-01T00:00:00Z. */
-const EARLIEST_DB_INSTANT_MS = new Date('0001-01-01T00:00:00.000Z').getTime();
+export const EARLIEST_DB_INSTANT_MS = new Date('0001-01-01T00:00:00.000Z').getTime();
 
 /** Настінний час `YYYY-MM-DDTHH:mm:ss[.sss]` київського дня → мить UTC (DST-aware). */
 const kyivWallTimeToUtc = (wallTime: string): Date => {

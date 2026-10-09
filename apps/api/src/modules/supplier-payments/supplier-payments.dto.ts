@@ -185,13 +185,15 @@ export class SupplierPaymentQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateTo?: string;
 
   @ApiPropertyOptional()

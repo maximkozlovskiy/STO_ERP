@@ -596,6 +596,29 @@ describe('BookingService', () => {
       },
     );
 
+    // Bug #821: початок київської доби 0001-01-01 — це 31.12 року 0 за UTC, а року 0 в Postgres
+    // немає: запит падав із 500. Нижня межа притискається до 0001-01-01T00:00:00Z.
+    it('getAvailability і список заявок на 0001-01-01: нижня межа не раніше 0001-01-01T00:00:00Z', async () => {
+      prisma.lift.findMany.mockResolvedValue([]);
+      prisma.calendarSlot.findMany.mockResolvedValue([]);
+      prisma.branchSettings.findUnique.mockResolvedValue(null);
+      prisma.bookingRequest.findMany.mockResolvedValue([]);
+      prisma.bookingRequest.count = vi.fn().mockResolvedValue(0);
+      prisma.work.findMany.mockResolvedValue([]);
+
+      await service.getAvailability(orgId, branchId, '0001-01-01');
+      await service.findAll(orgId, { date: '0001-01-01' });
+
+      const slotWhere = prisma.calendarSlot.findMany.mock.calls[0][0].where;
+      expect(slotWhere.startAt.gte.toISOString()).toBe('0001-01-01T00:00:00.000Z');
+      for (const call of prisma.bookingRequest.findMany.mock.calls) {
+        expect(call[0].where.requestedDate.gte.toISOString()).toBe('0001-01-01T00:00:00.000Z');
+        expect(call[0].where.requestedDate.lte.getTime()).toBeGreaterThan(
+          call[0].where.requestedDate.gte.getTime(),
+        );
+      }
+    });
+
     it('список заявок без дати — умови на requestedDate немає', async () => {
       prisma.bookingRequest.findMany.mockResolvedValue([]);
       prisma.bookingRequest.count = vi.fn().mockResolvedValue(0);

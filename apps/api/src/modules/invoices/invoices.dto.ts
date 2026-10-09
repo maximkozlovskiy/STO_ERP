@@ -1,4 +1,5 @@
 import {
+  Matches,
   IsUUID,
   IsOptional,
   IsIn,
@@ -13,6 +14,7 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
 } from 'class-validator';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus, WorkOrderStatus } from '@prisma/client';
@@ -223,13 +225,15 @@ export class InvoiceQueryDto {
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateTo?: string;
 
   @ApiPropertyOptional({

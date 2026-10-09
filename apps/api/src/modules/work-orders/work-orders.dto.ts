@@ -1,4 +1,5 @@
 import {
+  Matches,
   IsString,
   IsUUID,
   IsOptional,
@@ -17,6 +18,7 @@ import {
   ArrayMaxSize,
   ValidateIf,
 } from 'class-validator';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import {
@@ -263,13 +265,15 @@ export class WorkOrderQueryDto {
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateTo?: string;
 
   @ApiPropertyOptional({

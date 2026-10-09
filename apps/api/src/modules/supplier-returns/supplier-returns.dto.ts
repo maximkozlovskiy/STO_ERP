@@ -1,4 +1,5 @@
 import {
+  Matches,
   IsUUID,
   IsString,
   IsOptional,
@@ -13,6 +14,7 @@ import {
   IsEnum,
   IsNumberString,
 } from 'class-validator';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SupplierReturnStatus } from '@prisma/client';
@@ -158,13 +160,15 @@ export class SupplierReturnQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   dateTo?: string;
 
   @ApiPropertyOptional()
