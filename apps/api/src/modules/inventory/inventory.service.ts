@@ -12,7 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BatchService, BatchConsumeResult } from './batch.service';
 import { SettingsService } from '../settings/settings.service';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
-import { escapeLike } from '../../common/utils/like-pattern';
+import { searchContains } from '../../common/utils/like-pattern';
 import { calculatePagination } from '../../common/utils/pagination';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -520,10 +520,6 @@ export class InventoryService {
     }));
   }
 
-  private normalizeDates(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
-    return kyivDayRangeFilter(from, to);
-  }
-
   private docLabel(documentType: string | null, documentId: string | null): string {
     const typePart = documentType ? (DOC_TYPE_LABELS[documentType] ?? documentType) : 'Документ';
     const idPart = documentId ? documentId.slice(0, 8) : '—';
@@ -537,7 +533,7 @@ export class InventoryService {
     from?: string,
     to?: string,
   ) {
-    const createdAt = this.normalizeDates(from, to);
+    const createdAt = kyivDayRangeFilter(from, to);
 
     const [stockItems, movements] = await Promise.all([
       this.prisma.stockItem.findMany({
@@ -638,7 +634,7 @@ export class InventoryService {
   }
 
   async byBatch(orgId: string, warehouseId?: string, goodId?: string, from?: string, to?: string) {
-    const createdAt = this.normalizeDates(from, to);
+    const createdAt = kyivDayRangeFilter(from, to);
 
     const batches = await this.prisma.stockBatch.findMany({
       where: {
@@ -789,11 +785,8 @@ export class InventoryService {
     page: number;
     limit: number;
   }> {
-    const createdAt = this.normalizeDates(filters.from, filters.to);
-    const search = filters.q?.trim().slice(0, 100);
-    const contains = search
-      ? { contains: escapeLike(search), mode: 'insensitive' as const }
-      : undefined;
+    const createdAt = kyivDayRangeFilter(filters.from, filters.to);
+    const contains = searchContains(filters.q);
     const { skip, take } = calculatePagination({ page: filters.page, limit: filters.limit });
     const where: Prisma.StockMovementWhereInput = {
       orgId,

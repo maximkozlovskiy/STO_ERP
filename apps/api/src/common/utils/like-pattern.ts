@@ -10,3 +10,15 @@
 export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
+
+/** Найбільша довжина тексту пошуку у списках документів: довше — обрізається (або 400 у DTO). */
+export const LIST_SEARCH_MAX_LENGTH = 100;
+
+/**
+ * Текст пошуку зі списку → умова Prisma «містить, без урахування регістру» з буквальними
+ * `%` / `_`. Порожній або з самих пробілів → `undefined` (умову в `where` не додають).
+ */
+export function searchContains(q?: string): { contains: string; mode: 'insensitive' } | undefined {
+  const search = q?.trim().slice(0, LIST_SEARCH_MAX_LENGTH);
+  return search ? { contains: escapeLike(search), mode: 'insensitive' as const } : undefined;
+}

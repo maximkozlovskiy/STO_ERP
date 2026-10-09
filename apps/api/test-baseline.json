@@ -390,7 +390,10 @@
    "escapeLike — символи підстановки LIKE у тексті пошуку _ екранується: артикул «AB_12» не збігається з «ABX12»",
    "escapeLike — символи підстановки LIKE у тексті пошуку звичайний текст (кирилиця, цифри, дефіс, пробіл) не змінюється",
    "escapeLike — символи підстановки LIKE у тексті пошуку зворотна коса подвоюється — інакше вона сама екранувала б наступний символ",
-   "escapeLike — символи підстановки LIKE у тексті пошуку кілька символів підряд екрануються всі"
+   "escapeLike — символи підстановки LIKE у тексті пошуку кілька символів підряд екрануються всі",
+   "searchContains — текст пошуку списку → умова Prisma довший за LIST_SEARCH_MAX_LENGTH текст обрізається ДО екранування",
+   "searchContains — текст пошуку списку → умова Prisma не задано, порожній рядок або самі пробіли → undefined (умову не додають)",
+   "searchContains — текст пошуку списку → умова Prisma обрізає пробіли з країв, екранує підстановки, шукає без урахування регістру"
   ],
   "apps/api/src/common/utils/linked-counts.spec.ts": [
    "initCountsMap дублікати id → одна спільна колонка (останній перезапис), без aliasing між різними id",
@@ -1041,6 +1044,7 @@
    "CashRegisters — HTTP Contract GET /cash-registers повертає 200 + { items, total } (не голий масив)",
    "CashRegisters — HTTP Contract GET /cash-registers повертає 403 коли guard не пропустив",
    "CashRegisters — HTTP Contract GET /cash-registers прокидає branchId-фільтр у сервіс",
+   "CashRegisters — HTTP Contract GET /cash-registers/:id/operations порожні dateFrom/dateTo → 200 (не 400); сервіс отримує їх як є, типовий limit лишає за собою",
    "CashRegisters — HTTP Contract POST /cash-registers — валідація обовʼязкових полів повертає 201 + DTO shape при валідному payload",
    "CashRegisters — HTTP Contract POST /cash-registers — валідація обовʼязкових полів повертає 400 коли currencyId не UUID",
    "CashRegisters — HTTP Contract POST /cash-registers — валідація обовʼязкових полів повертає 400 коли currencyId/branchId відсутні"
@@ -1100,6 +1104,7 @@
    "CashService.listOperations — історія операцій без фільтрів where — як раніше: лише організація і каса",
    "CashService.listOperations — історія операцій запит понад стелю (10000) обрізається до 500; менший ліміт (20) лишається",
    "CashService.listOperations — історія операцій найновіші першими, за замовчуванням не більше 100 рядків",
+   "CashService.listOperations — історія операцій порожні dateFrom/dateTo/q (очищене поле у query-рядку) — це «не задано», where без фільтрів",
    "CashService.listOperations — історія операцій рядок історії: числа — number, дата — ISO, назва статті — з довідника"
   ],
   "apps/api/src/modules/cash/cash.service.spec.ts": [

@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 
 import { kyivToday } from '../../common/utils/kyiv-date';
-import { money, moneyFromDecimal } from '../../common/utils/money';
+import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
@@ -907,7 +907,7 @@ export class WorkOrdersService {
 
     const normoHours = dto.normoHours ?? work.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(work.price);
-    const amount = money(normoHours * price);
+    const amount = lineAmount(normoHours, price);
 
     const line = await this.prisma.$transaction(
       async tx => {
@@ -980,7 +980,7 @@ export class WorkOrdersService {
 
     const normoHours = dto.normoHours ?? line.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(line.price);
-    const amount = money(normoHours * price);
+    const amount = lineAmount(normoHours, price);
 
     const updated = await this.prisma.$transaction(
       async tx => {
@@ -1320,7 +1320,7 @@ export class WorkOrdersService {
           name: l.work?.name ?? '',
           quantity,
           price,
-          total: money(quantity * price),
+          total: lineAmount(quantity, price),
         };
       }),
       parts: wo.parts.map(p => ({

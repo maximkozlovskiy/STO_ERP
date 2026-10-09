@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { operations } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
+import { buildParams } from './usePaginatedList';
 
 export interface CashRegister {
   id: string;
@@ -60,7 +61,7 @@ export type CashOperationsFilter = Pick<
 export const cashKeys = {
   all: ['cash'] as const,
   registers: () => [...cashKeys.all, 'registers'] as const,
-  operations: (id: string, filters: CashOperationsFilter = {}) =>
+  operations: (id: string, filters: CashOperationsFilter) =>
     [...cashKeys.all, 'operations', id, filters] as const,
 };
 
@@ -122,28 +123,19 @@ export function useCashRegisters() {
   });
 }
 
-export function useCashOperations(
-  cashRegisterId: string | null,
-  filters: CashOperationsFilter = {},
-) {
-  const params = new URLSearchParams();
-  if (filters.q) params.set('q', filters.q);
-  if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-  if (filters.dateTo) params.set('dateTo', filters.dateTo);
-  const qs = params.toString();
+export function useCashOperations(cashRegisterId: string | null, filters: CashOperationsFilter) {
+  const { q, dateFrom, dateTo } = filters;
+  const qs = buildParams({ q, dateFrom, dateTo });
 
   return useQuery({
     queryKey: cashKeys.operations(cashRegisterId ?? '', filters),
     queryFn: ({ signal }) =>
-      apiFetch<CashOperation[]>(
-        `/cash-registers/${cashRegisterId}/operations${qs ? `?${qs}` : ''}`,
-        { signal },
-      ),
+      apiFetch<CashOperation[]>(`/cash-registers/${cashRegisterId}/operations${qs}`, { signal }),
     enabled: !!cashRegisterId,
     // Зміна пошуку чи дати — це новий ключ: без цього таблиця на мить порожніла б.
     // Лише в межах тієї самої каси: рядки попередньої каси під назвою нової — неправда.
     placeholderData: (prev, prevQuery) =>
-      prevQuery?.queryKey[2] === cashRegisterId ? prev : undefined,
+      cashRegisterId && prevQuery?.queryKey.includes(cashRegisterId) ? prev : undefined,
   });
 }
 

@@ -18,7 +18,7 @@ export interface PaginatedResponse<T> {
 // → Bug #328 regression. Use `EMPTY_ITEMS as T[]` cast at call sites.
 export const EMPTY_ITEMS: readonly never[] = Object.freeze([]);
 
-function buildParams(filters: Record<string, unknown>): string {
+export function buildParams(filters: Record<string, unknown>): string {
   const p = new URLSearchParams();
   for (const [key, val] of Object.entries(filters)) {
     if (val === null || val === undefined || val === '' || val === false) continue;

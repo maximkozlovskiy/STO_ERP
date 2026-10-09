@@ -9,9 +9,9 @@ import {
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
-import { kyivToday } from '../../common/utils/kyiv-date';
+import { dateOnlyRangeFilter, kyivToday } from '../../common/utils/kyiv-date';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
-import { escapeLike } from '../../common/utils/like-pattern';
+import { searchContains } from '../../common/utils/like-pattern';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
@@ -90,17 +90,10 @@ export class StockDocumentsService {
     if (type) where.type = type as StockDocumentType;
     if (status) where.status = status as DocStatus;
     // Пошук — за номером документа або приміткою; orgId лишається на верхньому рівні where.
-    const search = q?.trim();
-    if (search) {
-      const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
-      where.OR = [{ number: contains }, { notes: contains }];
-    }
-    if (dateFrom || dateTo) {
-      where.documentDate = {
-        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
-      };
-    }
+    const contains = searchContains(q);
+    if (contains) where.OR = [{ number: contains }, { notes: contains }];
+    const documentDate = dateOnlyRangeFilter(dateFrom, dateTo);
+    if (documentDate) where.documentDate = documentDate;
 
     const { skip, take } = calculatePagination({ page, limit });
     const orderBy = buildSortOrderBy(SD_SORT_FIELDS, sortBy, sortDir);

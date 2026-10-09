@@ -123,10 +123,10 @@ export class CashRegistersController {
       if (value && !isCalendarDate(value))
         throw new BadRequestException(translateError('err.cash.invalidDateFilter', getLocale()));
     }
-    return this.cash.listOperations(orgId, id, limit ? Number(limit) : 100, {
+    return this.cash.listOperations(orgId, id, limit ? Number(limit) : undefined, {
       q,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
+      dateFrom,
+      dateTo,
     });
   }
 

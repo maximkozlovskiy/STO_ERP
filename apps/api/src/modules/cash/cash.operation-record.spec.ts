@@ -470,4 +470,15 @@ describe('CashService.listOperations — історія операцій', () =>
       cashRegisterId: REG,
     });
   });
+
+  it('порожні dateFrom/dateTo/q (очищене поле у query-рядку) — це «не задано», where без фільтрів', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.findMany.mockResolvedValueOnce([]);
+
+    await service.listOperations(ORG, REG, undefined, { q: '', dateFrom: '', dateTo: '' });
+
+    const args = m.prisma.cashOperation.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ orgId: ORG, cashRegisterId: REG });
+    expect(args.take).toBe(100);
+  });
 });

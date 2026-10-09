@@ -21,7 +21,6 @@ import {
   Pencil,
   ClipboardList,
   Warehouse,
-  Search,
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { StockMovementsTab } from './StockMovementsTab';
@@ -31,7 +30,6 @@ import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { stockDocumentLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   STOCK_DOC_TYPE_LABELS,
@@ -47,6 +45,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { ListSearchInput } from '@/components/ui/list-search-input';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -69,12 +68,8 @@ import { useListPage } from '@/hooks/useListPage';
 import { useBulkIndeterminate } from '@/hooks/useBulkIndeterminate';
 import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
-import { cn, UUID_RE, LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
-import {
-  PAGE_TAB_ACTIVE as TAB_ACTIVE,
-  PAGE_TAB_CLASS as TAB_CLASS,
-  PAGE_TAB_IDLE as TAB_IDLE,
-} from '@/lib/page-tabs';
+import { cn, UUID_RE } from '@/lib/utils';
+import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
 import { fmtDate, fmtDateTime, fmtMoney, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
@@ -267,6 +262,12 @@ function StockDocumentsPageClient() {
 
   const [saving, setSaving] = useState(false);
 
+  const changeFilter = (fn: () => void) => {
+    fn();
+    resetPage();
+    setActiveSavedFilterId(null);
+  };
+
   const applyFilter = useCallback(
     (preset: { id: string; filters: StockDocFilters }) => {
       setTypeFilter(preset.filters.typeFilter ?? '');
@@ -444,11 +445,7 @@ function StockDocumentsPageClient() {
       <StockTypeTabs
         activeType={typeFilter}
         movementsActive={false}
-        onSelectType={t2 => {
-          setTypeFilter(t2);
-          resetPage();
-          setActiveSavedFilterId(null);
-        }}
+        onSelectType={t2 => changeFilter(() => setTypeFilter(t2))}
         onSelectMovements={() =>
           router.replace('/stock-documents?tab=movements', { scroll: false })
         }
@@ -465,40 +462,20 @@ function StockDocumentsPageClient() {
               label={s ? stockDocStatusLabel(s) : t('filters.all')}
               active={statusFilter === s}
               description={s ? STOCK_DOC_STATUS_DESCRIPTIONS[s] : undefined}
-              onSelect={v => {
-                setStatusFilter(v);
-                resetPage();
-                setActiveSavedFilterId(null);
-              }}
+              onSelect={v => changeFilter(() => setStatusFilter(v))}
             />
           ))}
         </div>
-        <Input
+        <ListSearchInput
           value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          placeholder={t('filters.searchPlaceholder')}
-          aria-label={t('filters.searchPlaceholder')}
-          maxLength={LIST_SEARCH_MAX_LENGTH}
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
+          onChange={v => changeFilter(() => setSearch(v))}
+          label={t('filters.searchPlaceholder')}
         />
         <DateRangeFilter
           from={dateFrom}
           to={dateTo}
-          onFromChange={v => {
-            setDateFrom(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
-          onToChange={v => {
-            setDateTo(v);
-            resetPage();
-            setActiveSavedFilterId(null);
-          }}
+          onFromChange={v => changeFilter(() => setDateFrom(v))}
+          onToChange={v => changeFilter(() => setDateTo(v))}
           fromLabel={t('filters.dateFrom')}
           toLabel={t('filters.dateTo')}
         />
@@ -507,11 +484,7 @@ function StockDocumentsPageClient() {
             variant="outline"
             size="icon-sm"
             title={showDeleted ? t('filters.hideDeleted') : t('filters.showDeleted')}
-            onClick={() => {
-              setShowDeleted(v => !v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
+            onClick={() => changeFilter(() => setShowDeleted(v => !v))}
             className={cn(showDeleted && 'border-primary text-primary')}
           >
             {showDeleted ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -928,7 +901,10 @@ function StockTypeTabs({
           key={t2}
           type="button"
           onClick={() => onSelectType(t2)}
-          className={cn(TAB_CLASS, !movementsActive && activeType === t2 ? TAB_ACTIVE : TAB_IDLE)}
+          className={cn(
+            PAGE_TAB_CLASS,
+            !movementsActive && activeType === t2 ? PAGE_TAB_ACTIVE : PAGE_TAB_IDLE,
+          )}
         >
           {t2 ? stockDocTypeLabel(t2) : t('filters.all')}
         </button>
@@ -937,7 +913,7 @@ function StockTypeTabs({
         type="button"
         onClick={onSelectMovements}
         aria-current={movementsActive ? 'page' : undefined}
-        className={cn(TAB_CLASS, 'ml-auto', movementsActive ? TAB_ACTIVE : TAB_IDLE)}
+        className={cn(PAGE_TAB_CLASS, 'ml-auto', movementsActive ? PAGE_TAB_ACTIVE : PAGE_TAB_IDLE)}
       >
         {t('tabs.movements')}
       </button>

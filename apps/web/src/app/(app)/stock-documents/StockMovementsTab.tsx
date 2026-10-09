@@ -2,16 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PackageSearch, Search } from 'lucide-react';
+import { PackageSearch } from 'lucide-react';
 import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
 import { stockMovementTypeLabel } from '@/i18n/enumLabel';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { ListSearchInput } from '@/components/ui/list-search-input';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
-import { cn, LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { fmtMoney, fmtDateTime } from '@/lib/format';
 import {
   Table,
@@ -108,14 +109,10 @@ export function StockMovementsTab() {
             ))}
           </Select>
         </div>
-        <Input
+        <ListSearchInput
           value={search}
-          onChange={e => resetAnd(() => setSearch(e.target.value))}
-          placeholder={t('movements.searchPlaceholder')}
-          aria-label={t('movements.searchPlaceholder')}
-          maxLength={LIST_SEARCH_MAX_LENGTH}
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
+          onChange={v => resetAnd(() => setSearch(v))}
+          label={t('movements.searchPlaceholder')}
         />
         <div>
           <label className="block text-[12px] text-muted-foreground mb-1">

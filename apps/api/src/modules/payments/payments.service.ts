@@ -13,7 +13,7 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
-import { escapeLike } from '../../common/utils/like-pattern';
+import { searchContains } from '../../common/utils/like-pattern';
 import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
@@ -97,9 +97,8 @@ export class PaymentsService {
     // окрему умову `{ counterparty: … }`: три умови давали три з'єднання з тією самою таблицею
     // (5 JOIN замість 3), і планування запиту займало більше, ніж виконання. Виміряно на
     // dev-базі 2026-10-09 (список + count, медіана зі 150): 6,0–7,6 мс → 3,4–4,0 мс, рядки ті самі.
-    const search = opts.q?.trim().slice(0, 100);
-    if (search) {
-      const contains = { contains: escapeLike(search), mode: 'insensitive' as const };
+    const contains = searchContains(opts.q);
+    if (contains) {
       where.OR = [
         { notes: contains },
         {
@@ -276,7 +275,7 @@ export class PaymentsService {
 
     // Pre-validate work order status before opening transaction to avoid partial commit.
     // Status was fetched in the parallel batch above — no extra query needed.
-    if (dto.workOrderId && workOrder && workOrder.status !== 'INVOICED') {
+    if (workOrder && workOrder.status !== 'INVOICED') {
       throw new BadRequestException(
         translateError('err.payment.workOrderStatusNoPayment', getLocale(), {
           status: workOrder.status,
@@ -289,12 +288,7 @@ export class PaymentsService {
     // гроші лягали на баланс A — та сама діра, що її перевірка платника закриває для рахунку.
     // Якщо рахунок вказано, платника визначає РАХУНОК (його можна виписати на іншого платника,
     // напр. страхову) — тоді ця перевірка мовчить, діє перевірка рахунку нижче.
-    if (
-      dto.workOrderId &&
-      !dto.invoiceId &&
-      workOrder &&
-      workOrder.counterpartyId !== dto.counterpartyId
-    ) {
+    if (workOrder && !dto.invoiceId && workOrder.counterpartyId !== dto.counterpartyId) {
       throw new BadRequestException(
         translateError('err.payment.workOrderNotForCounterparty', getLocale()),
       );
@@ -339,7 +333,7 @@ export class PaymentsService {
     // іншій валюті змішала б одиниці у paidAmount (та сама вада, що invoice-guard нижче ловить для
     // рахунку). NULL currencyId (історичні/base) ≡ базова валюта. Дзеркалить invoice-перевірку;
     // для WO-with-invoice invoice-guard спрацьовує додатково (invoice успадковує валюту наряду).
-    if (dto.workOrderId && workOrder) {
+    if (workOrder) {
       if (
         !(await this.exchangeRates.sameCurrency(orgId, paymentCurrencyId, workOrder.currencyId))
       ) {
@@ -353,17 +347,8 @@ export class PaymentsService {
     // сплати (після перевірки валюти вище — суми порівнюються в одній валюті).
     // Це зручність (4xx без відкритої транзакції) — авторитетна перевірка з тим самим
     // правилом стоїть у транзакції нижче, на свіжо прочитаних сумах.
-    if (dto.workOrderId && !dto.invoiceId && workOrder) {
-      const remaining = money(
-        moneyFromDecimal(workOrder.totalAmount) - moneyFromDecimal(workOrder.paidAmount),
-      );
-      if (dto.amount > remaining + 1e-9) {
-        throw new BadRequestException(
-          translateError('err.payment.amountExceedsWorkOrderRemaining', getLocale(), {
-            remaining: remaining.toFixed(2),
-          }),
-        );
-      }
+    if (workOrder && !dto.invoiceId) {
+      this.assertWithinWorkOrderRemaining(workOrder.totalAmount, workOrder.paidAmount, dto.amount);
     }
 
     let workOrderFullyPaid = false;
@@ -579,13 +564,8 @@ export class PaymentsService {
             throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
           const woTotal = moneyFromDecimal(woInTx.totalAmount);
           const woPrevPaid = moneyFromDecimal(woInTx.paidAmount);
-          const woRemaining = money(woTotal - woPrevPaid);
-          if (!dto.invoiceId && dto.amount > woRemaining + 1e-9) {
-            throw new BadRequestException(
-              translateError('err.payment.amountExceedsWorkOrderRemaining', getLocale(), {
-                remaining: woRemaining.toFixed(2),
-              }),
-            );
+          if (!dto.invoiceId) {
+            this.assertWithinWorkOrderRemaining(woInTx.totalAmount, woInTx.paidAmount, dto.amount);
           }
           // Мультивалюта (Фаза 3): WorkOrder.paidAmount у ВАЛЮТІ наряду; оплата збігається з нею
           // (перевірено вище) → додаємо dto.amount, не conv.amountBase.
@@ -740,6 +720,22 @@ export class PaymentsService {
     }
 
     return this.toDto(payment);
+  }
+
+  /** BR-PAY-017: пряма оплата наряду не перевищує залишок до сплати (total − paid). */
+  private assertWithinWorkOrderRemaining(
+    totalAmount: Prisma.Decimal,
+    paidAmount: Prisma.Decimal,
+    amount: number,
+  ): void {
+    const remaining = money(moneyFromDecimal(totalAmount) - moneyFromDecimal(paidAmount));
+    if (amount > remaining + 1e-9) {
+      throw new BadRequestException(
+        translateError('err.payment.amountExceedsWorkOrderRemaining', getLocale(), {
+          remaining: remaining.toFixed(2),
+        }),
+      );
+    }
   }
 
   /**

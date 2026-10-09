@@ -24,6 +24,8 @@ import {
   BankTransactionStatus,
   Prisma,
 } from '@prisma/client';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
+import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
 
 // Допустимі значення enum-ів для валідації query/DTO без хардкоду рядків.
 export const BANK_TX_MATCH_TYPES = Object.values(
@@ -212,19 +214,19 @@ export class ListQueryDto {
   @ApiPropertyOptional({ description: 'Пошук: платник, призначення, IBAN або ЄДРПОУ платника' })
   @IsOptional()
   @IsString()
-  @MaxLength(100)
+  @MaxLength(LIST_SEARCH_MAX_LENGTH)
   q?: string;
 
   // Дата операції — `@db.Date` (дата без часу): межі порівнюються датами, без зсуву на пояс.
   @ApiPropertyOptional({ description: 'Дата операції від (YYYY-MM-DD), включно' })
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @Matches(CALENDAR_DATE_RE)
   @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата операції до (YYYY-MM-DD), включно' })
   @IsOptional()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @Matches(CALENDAR_DATE_RE)
   @IsDateString({ strict: true })
   dateTo?: string;
 

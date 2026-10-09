@@ -250,12 +250,17 @@ export function calcVatTotals(
   vatRate: number,
   vatMode: VatModeValue,
 ): { total: number } & VatSplit {
+  const base = sumLineAmounts(rows);
+  return { total: base, ...splitVatTotals(base, vatRate, vatMode) };
+}
+
+/** Σ округлених рядків (`lineAmount`); рядок без кількості або ціни в суму не входить. */
+export function sumLineAmounts(
+  rows: { qty: number | undefined; price: number | undefined }[],
+): number {
   let total = 0;
   for (const r of rows) {
-    if (r.qty != null && r.price != null) {
-      total += roundMoney(r.qty * r.price);
-    }
+    if (r.qty != null && r.price != null) total += lineAmount(r.qty, r.price);
   }
-  const base = roundMoney(total);
-  return { total: base, ...splitVatTotals(base, vatRate, vatMode) };
+  return roundMoney(total);
 }

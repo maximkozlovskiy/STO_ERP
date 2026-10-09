@@ -20,6 +20,8 @@ import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StockDocumentType, StockDocumentStatus } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
+import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
 
 export class StockDocumentLineDto {
   @ApiProperty()
@@ -151,8 +153,6 @@ export class PaginatedStockDocumentsDto {
   @ApiProperty() limit!: number;
 }
 
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 export class StockDocumentQueryDto {
   @ApiPropertyOptional({ enum: StockDocumentType })
   @IsOptional()
@@ -175,7 +175,7 @@ export class StockDocumentQueryDto {
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsString()
-  @MaxLength(100)
+  @MaxLength(LIST_SEARCH_MAX_LENGTH)
   q?: string;
 
   // Лише календарна дата: нестрогий `@IsDateString()` пропускав `2026-02-31` (JS перекочує в
@@ -184,14 +184,14 @@ export class StockDocumentQueryDto {
   @ApiPropertyOptional({ description: 'Дата документа від (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @Matches(YMD_RE)
+  @Matches(CALENDAR_DATE_RE)
   @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата документа до (YYYY-MM-DD)' })
   @IsOptional()
   @Transform(emptyToUndefined)
-  @Matches(YMD_RE)
+  @Matches(CALENDAR_DATE_RE)
   @IsDateString({ strict: true })
   dateTo?: string;
 

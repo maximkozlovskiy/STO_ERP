@@ -42,6 +42,15 @@ export function money(value: number): Money {
 export const ZERO_MONEY = money(0);
 
 /**
+ * Сума рядка документа: кількість × ціна, округлена до копійки (BR-WO-007: сума документа — це
+ * сума ОКРУГЛЕНИХ рядків). Одна формула для тоталів наряду, його PDF, акта, кошторису з огляду й
+ * рядків робіт; для роботи кількість — `actualHours ?? normoHours` (факт) або `normoHours` (план).
+ */
+export function lineAmount(quantity: number, price: number): Money {
+  return money(quantity * price);
+}
+
+/**
  * Сума ВЖЕ-ОКРУГЛЕНИХ грошових значень (рядки документа з БД, `Decimal(12,2)`).
  *
  * Округлює РАЗ у кінці — це точніше за покрокове округлення. Виміряно на 200 000

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { money, moneyFromDecimal } from '../../common/utils/money';
+import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
 import { calcVatOnBase, splitWorkOrderTotal } from '../../common/utils/vat';
 import { SettingsService } from '../settings/settings.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
@@ -59,8 +59,9 @@ export class WorkOrderTotalsService {
     let totalActualLabor = 0;
     for (const l of lines) {
       totalLabor += moneyFromDecimal(l.amount);
-      totalActualLabor += money(
-        Number(l.actualHours ?? l.normoHours ?? 0) * moneyFromDecimal(l.price),
+      totalActualLabor += lineAmount(
+        Number(l.actualHours ?? l.normoHours ?? 0),
+        moneyFromDecimal(l.price),
       );
     }
     const totalParts = moneyFromDecimal(partsAgg._sum.amount);

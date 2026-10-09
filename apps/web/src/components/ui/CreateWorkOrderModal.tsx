@@ -44,8 +44,7 @@ import {
   displayCounterpartyName,
   calcVatTotals,
   splitVatTotals,
-  lineAmount,
-  roundMoney,
+  sumLineAmounts,
 } from '@/lib/utils';
 import { VatTotalsSummary } from '@/components/ui/work-order/VatTotalsSummary';
 import {
@@ -1507,19 +1506,18 @@ export function CreateWorkOrderModal({
   // Використовуємо toNumberOrUndefined (а не parseFloat) щоб коректно обробити
   // ukr-коми (1,5 → 1.5); save() теж використовує toNumberOrUndefined → totals
   // у tfoot збігаються з тим, що піде у PATCH backend.
-  const actualTotals = useMemo(() => {
-    let total = 0;
-    let hasAnyActual = false;
-    for (const l of lines) {
-      const ah = toNumberOrUndefined(l.actualHours);
-      const nh = toNumberOrUndefined(l.normoHours);
-      const h = ah ?? nh;
-      const p = toNumberOrUndefined(l.price);
-      if (h != null && p != null) total += lineAmount(h, p);
-      if (ah != null) hasAnyActual = true;
-    }
-    return { total: roundMoney(total), hasAny: hasAnyActual };
-  }, [lines]);
+  const actualTotals = useMemo(
+    () => ({
+      total: sumLineAmounts(
+        lines.map(l => ({
+          qty: toNumberOrUndefined(l.actualHours) ?? toNumberOrUndefined(l.normoHours),
+          price: toNumberOrUndefined(l.price),
+        })),
+      ),
+      hasAny: lines.some(l => toNumberOrUndefined(l.actualHours) != null),
+    }),
+    [lines],
+  );
 
   // Live sum of (actualHours ?? normoHours) across lines — shown in "Фактичні показники → Нормогодин"
   // when recalcActualHoursEnabled so the user sees the computed value before saving.

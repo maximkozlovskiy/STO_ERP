@@ -8,7 +8,7 @@ import {
   translateError,
 } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
-import { money, sumMoney } from '../../common/utils/money';
+import { lineAmount, money, sumMoney } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -440,7 +440,7 @@ export class CompletionActsService {
         unitPrice,
         // money(): юридичний PDF-документ — рядок і сумарний total НЕ мають нести
         // float-дрейф (quantity×price = 60.0599…). Дзеркалить invoices/WO recalc-стандарт.
-        amount: money(quantity * unitPrice),
+        amount: lineAmount(quantity, unitPrice),
         workId: l.workId,
       });
     }

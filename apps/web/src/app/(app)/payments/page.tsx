@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { HandCoins, Search, RotateCw } from 'lucide-react';
+import { HandCoins, RotateCw } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { usePayments, useRetryFiscal, type PaymentsFilter } from '@/hooks/api/usePayments';
 import { useBaseCurrency } from '@/hooks/api/useCash';
@@ -11,9 +11,9 @@ import { FISCAL_STATUS_LABELS, FISCAL_STATUS_BADGE, FISCAL_STATUS_DESCRIPTIONS }
 import { fiscalStatusLabel, paymentSourceTypeLabel } from '@/i18n/enumLabel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { ListSearchInput } from '@/components/ui/list-search-input';
 import { Pagination } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -27,7 +27,6 @@ import {
 } from '@/components/ui/table';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate } from '@/lib/format';
-import { LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 
 const LIMIT = 20;
@@ -116,14 +115,10 @@ function PaymentsPageInner() {
 
       {/* Фільтри */}
       <div className="flex flex-wrap items-center gap-3 shrink-0 mb-4">
-        <Input
+        <ListSearchInput
           value={search}
-          onChange={e => resetPageAnd(() => setSearch(e.target.value))}
-          placeholder={t('page.filters.searchPlaceholder')}
-          aria-label={t('page.filters.searchPlaceholder')}
-          maxLength={LIST_SEARCH_MAX_LENGTH}
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
+          onChange={v => resetPageAnd(() => setSearch(v))}
+          label={t('page.filters.searchPlaceholder')}
         />
         <DateRangeFilter
           from={dateFrom}

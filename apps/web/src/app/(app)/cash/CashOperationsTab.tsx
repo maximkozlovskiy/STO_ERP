@@ -9,7 +9,6 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Wallet,
-  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
@@ -20,8 +19,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { ListSearchInput } from '@/components/ui/list-search-input';
 import { useDebounce } from '@/hooks/useDebounce';
-import { cn, LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableHeader,
@@ -74,14 +74,11 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
   const debouncedSearch = useDebounce(search);
   const [dateFrom, setDateFrom] = useState(() => kyivToday());
   const [dateTo, setDateTo] = useState(() => kyivToday());
-  const opsFilter = useMemo(
-    () => ({
-      q: debouncedSearch.trim() || undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-    }),
-    [debouncedSearch, dateFrom, dateTo],
-  );
+  const opsFilter = {
+    q: debouncedSearch.trim() || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  };
   const hasOpsFilter = !!(opsFilter.q || opsFilter.dateFrom || opsFilter.dateTo);
   const { data: operations, isLoading: opsLoading } = useCashOperations(
     selectedId || null,
@@ -275,14 +272,10 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
 
       {/* Пошук · З · По */}
       <div className="flex flex-wrap items-center gap-3 shrink-0">
-        <Input
+        <ListSearchInput
           value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={t('operations.searchPlaceholder')}
-          aria-label={t('operations.searchPlaceholder')}
-          maxLength={LIST_SEARCH_MAX_LENGTH}
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
+          onChange={setSearch}
+          label={t('operations.searchPlaceholder')}
         />
         <DateRangeFilter
           from={dateFrom}

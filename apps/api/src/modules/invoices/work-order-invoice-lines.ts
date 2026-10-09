@@ -1,6 +1,6 @@
 import type { VatMode } from '@prisma/client';
 import { calcLineVat } from '../../common/utils/vat';
-import { money } from '../../common/utils/money';
+import { lineAmount, money, sumMoney } from '../../common/utils/money';
 
 /**
  * BR-INV-002: рядки рахунку з наряду. Чиста функція — без БД, щоб правило «сума рахунку =
@@ -166,10 +166,7 @@ export function buildInvoiceLinesFromWorkOrder(
 ): InvoiceLineDraft[] {
   const count = wo.lines.length + wo.parts.length;
   const tolerance = count * KOPECK + EPS;
-  let rawBase = 0;
-  for (const l of wo.lines) rawBase += l.quantity * l.unitPrice;
-  for (const p of wo.parts) rawBase += p.quantity * p.unitPrice;
-  const base = money(rawBase);
+  const base = sumMoney([...wo.lines, ...wo.parts].map(l => lineAmount(l.quantity, l.unitPrice)));
 
   const vatMode = effectiveMode(wo, base, tolerance, settingsVat.vatMode);
   if (count === 0) return [];

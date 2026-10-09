@@ -40,6 +40,18 @@ export const kyivOffsetMs = (d: Date): number => {
   return kyivDate.getTime() - Math.floor(d.getTime() / 1000) * 1000;
 };
 
+/** Настінний час `YYYY-MM-DDTHH:mm:ss[.sss]` київського дня → мить UTC (DST-aware). */
+const kyivWallTimeToUtc = (wallTime: string): Date => {
+  const d = new Date(`${wallTime}Z`);
+  return new Date(d.getTime() - kyivOffsetMs(d));
+};
+
+/** Початок київського дня `YYYY-MM-DD` (00:00:00.000) як мить UTC. */
+export const kyivDayStart = (ymd: string): Date => kyivWallTimeToUtc(`${ymd}T00:00:00`);
+
+/** Кінець київського дня `YYYY-MM-DD` (23:59:59.999) як мить UTC. */
+export const kyivDayEnd = (ymd: string): Date => kyivWallTimeToUtc(`${ymd}T23:59:59.999`);
+
 /**
  * Фільтр «з дня / по день» для списків документів: кожна межа необов'язкова, обидві включні,
  * день — КИЇВСЬКИЙ (DST-aware). Повертає `undefined`, якщо жодної межі не задано — тоді умову
@@ -52,14 +64,8 @@ export function kyivDayRangeFilter(
 ): { gte?: Date; lte?: Date } | undefined {
   if (!from && !to) return undefined;
   const range: { gte?: Date; lte?: Date } = {};
-  if (from) {
-    const d = new Date(`${from}T00:00:00Z`);
-    range.gte = new Date(d.getTime() - kyivOffsetMs(d));
-  }
-  if (to) {
-    const d = new Date(`${to}T23:59:59.999Z`);
-    range.lte = new Date(d.getTime() - kyivOffsetMs(d));
-  }
+  if (from) range.gte = kyivDayStart(from);
+  if (to) range.lte = kyivDayEnd(to);
   return range;
 }
 
@@ -79,9 +85,12 @@ export function dateOnlyRangeFilter(
   };
 }
 
+/** Форма календарної дати `YYYY-MM-DD` (без часу). Існування дня перевіряє `isCalendarDate`. */
+export const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /** YYYY-MM-DD, що існує в календарі (31.02 → false): для query-параметрів без DTO. */
 export function isCalendarDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (!CALENDAR_DATE_RE.test(value)) return false;
   const d = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
@@ -92,9 +101,5 @@ export function isCalendarDate(value: string): boolean {
  * Спільне джерело для reports + report-builder (раніше дублювалось у reports.service).
  */
 export function normalizeKyivDateRange(from: string, to: string): { fromDate: Date; toDate: Date } {
-  const fromMidnight = new Date(`${from}T00:00:00Z`);
-  const toEndOfDay = new Date(`${to}T23:59:59.999Z`);
-  const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
-  const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
-  return { fromDate, toDate };
+  return { fromDate: kyivDayStart(from), toDate: kyivDayEnd(to) };
 }

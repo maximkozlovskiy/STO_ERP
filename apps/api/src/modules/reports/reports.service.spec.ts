@@ -252,8 +252,21 @@ describe('ReportsService — Bug #629 квантування грошей у з�
 
   // BR-RPT-023: виручка у звітах — три величини (сума без ПДВ, ПДВ, сума з ПДВ).
   describe('виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023)', () => {
-    // Текст сирого запиту: tagged template → перший аргумент — масив рядкових шматків.
-    const sqlOf = (call: unknown[]): string => (call[0] as string[]).join('?');
+    // Текст сирого запиту: tagged template → перший аргумент — масив рядкових шматків, далі
+    // значення. Вкладений фрагмент `Prisma.sql` розгортаємо в його текст (Prisma робить те саме),
+    // звичайний параметр лишається `?`.
+    const sqlOf = (call: unknown[]): string => {
+      const [strings, ...values] = call as [string[], ...unknown[]];
+      const isSqlFragment = (v: unknown): v is { sql: string } =>
+        typeof v === 'object' &&
+        v !== null &&
+        Array.isArray((v as { strings?: unknown }).strings) &&
+        typeof (v as { sql?: unknown }).sql === 'string';
+      return strings.reduce((acc, s, i) => {
+        const v = values[i - 1];
+        return acc + (isSqlFragment(v) ? v.sql : '?') + s;
+      });
+    };
 
     // guards: BR-RPT-023
     it('revenue: рядок дня несе суму без ПДВ, ПДВ як різницю і суму з ПДВ', async () => {

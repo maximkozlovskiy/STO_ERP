@@ -4,7 +4,7 @@
  * Mutation-verify: прибрати з класу символів `%`, `_` або `\\` → відповідний кейс падає.
  */
 import { describe, it, expect } from 'vitest';
-import { escapeLike } from './like-pattern';
+import { escapeLike, LIST_SEARCH_MAX_LENGTH, searchContains } from './like-pattern';
 
 describe('escapeLike — символи підстановки LIKE у тексті пошуку', () => {
   it('звичайний текст (кирилиця, цифри, дефіс, пробіл) не змінюється', () => {
@@ -26,5 +26,23 @@ describe('escapeLike — символи підстановки LIKE у текс�
 
   it('кілька символів підряд екрануються всі', () => {
     expect(escapeLike('%_%')).toBe('\\%\\_\\%');
+  });
+});
+
+describe('searchContains — текст пошуку списку → умова Prisma', () => {
+  it('обрізає пробіли з країв, екранує підстановки, шукає без урахування регістру', () => {
+    expect(searchContains('  5%_ ')).toEqual({ contains: '5\\%\\_', mode: 'insensitive' });
+  });
+
+  it('не задано, порожній рядок або самі пробіли → undefined (умову не додають)', () => {
+    expect(searchContains(undefined)).toBeUndefined();
+    expect(searchContains('')).toBeUndefined();
+    expect(searchContains('   ')).toBeUndefined();
+  });
+
+  it('довший за LIST_SEARCH_MAX_LENGTH текст обрізається ДО екранування', () => {
+    const long = '%'.repeat(LIST_SEARCH_MAX_LENGTH + 20);
+    expect(LIST_SEARCH_MAX_LENGTH).toBe(100);
+    expect(searchContains(long)?.contains).toBe('\\%'.repeat(LIST_SEARCH_MAX_LENGTH));
   });
 });

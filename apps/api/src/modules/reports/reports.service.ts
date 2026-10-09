@@ -6,6 +6,10 @@ import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { formatPersonName, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 
+// BR-RPT-023: частка «без ПДВ» наряду k = totalNet / сума рядків (1 для «без ПДВ» і «ПДВ зверху»,
+// < 1 для «ПДВ у ціні»; наряд без рядків → 1). Множник для робіт і запчастин у звітах.
+const NET_SHARE_SQL = Prisma.sql`COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1)`;
+
 // Module-level Intl singleton — locale-data init is the dominant cost; both
 // normalizeDateRange branches and report calls go through kyivOffsetMs.
 const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
@@ -82,8 +86,8 @@ export class ReportsService {
           COALESCE(SUM("totalAmount"), 0)::float AS "revenueWithVat",
           -- BR-RPT-023: роботи й запчастини теж БЕЗ ПДВ і від ФАКТУ: k = totalNet / сума рядків
           -- (1 для «без ПДВ» і «ПДВ зверху», < 1 для «ПДВ у ціні») → Роботи + Запчастини = Сума.
-          COALESCE(SUM(ROUND("totalActualLabor" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)), 0)::float AS labor,
-          COALESCE(SUM(ROUND("totalParts" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)), 0)::float AS parts,
+          COALESCE(SUM(ROUND("totalActualLabor" * ${NET_SHARE_SQL}, 2)), 0)::float AS labor,
+          COALESCE(SUM(ROUND("totalParts" * ${NET_SHARE_SQL}, 2)), 0)::float AS parts,
           COUNT(*)::int                          AS count
         FROM work_orders
         WHERE "orgId"       = ${orgId}::uuid
@@ -301,7 +305,7 @@ export class ReportsService {
           COALESCE(SUM("totalAmount"), 0)::float AS "totalRevenueWithVat",
           -- BR-RPT-023: база собівартості робіт — фактичні роботи БЕЗ ПДВ (та сама база, що й
           -- виручка); інакше в режимі «ПДВ у ціні» маржа занижувалась на ПДВ робіт.
-          COALESCE(SUM(ROUND("totalActualLabor" * COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1), 2)), 0)::float AS "totalLabor",
+          COALESCE(SUM(ROUND("totalActualLabor" * ${NET_SHARE_SQL}, 2)), 0)::float AS "totalLabor",
           COUNT(*)                                AS "ordersCount"
         FROM work_orders
         WHERE "orgId"       = ${orgId}::uuid

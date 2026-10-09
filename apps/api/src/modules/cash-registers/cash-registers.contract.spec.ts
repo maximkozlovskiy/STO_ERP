@@ -157,4 +157,19 @@ describe('CashRegisters — HTTP Contract', () => {
       );
     });
   });
+
+  describe('GET /cash-registers/:id/operations', () => {
+    it('порожні dateFrom/dateTo → 200 (не 400); сервіс отримує їх як є, типовий limit лишає за собою', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/cash-registers/${BRANCH_ID}/operations?dateFrom=&dateTo=`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(cashMock.listOperations).toHaveBeenCalledWith('org-1', BRANCH_ID, undefined, {
+        q: undefined,
+        dateFrom: '',
+        dateTo: '',
+      });
+    });
+  });
 });

@@ -7,7 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
-import { escapeLike } from '../../common/utils/like-pattern';
+import { searchContains } from '../../common/utils/like-pattern';
 import { CashOperationResponseDto, CashReasonDto, CreateCashOperationDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
@@ -289,20 +289,20 @@ export class CashService {
   async listOperations(
     orgId: string,
     cashRegisterId: string,
-    limit = 100,
+    limit?: number,
     filters: { q?: string; dateFrom?: string; dateTo?: string } = {},
   ): Promise<CashOperationResponseDto[]> {
     // Відбір за київським днем операції та пошук за приміткою або статтею витрат. Контрагент в
     // операції — лише id без зв'язку в схемі, тому за ним тут не шукаємо.
     const createdAt = kyivDayRangeFilter(filters.dateFrom, filters.dateTo);
-    const search = filters.q?.trim().slice(0, 100);
     // limit приходить із query-рядка без DTO: `?limit=abc` давав NaN, а `take: NaN` Prisma
     // відхиляє (безіменний 400 «Некоректний запит»); від'ємне число вона читає як «останні N».
     // Усе, що не є додатним числом, — типові 100; стеля 500 лишається.
-    const take = Number.isFinite(limit) && limit >= 1 ? Math.min(Math.trunc(limit), 500) : 100;
-    const contains = search
-      ? { contains: escapeLike(search), mode: 'insensitive' as const }
-      : undefined;
+    const take =
+      limit !== undefined && Number.isFinite(limit) && limit >= 1
+        ? Math.min(Math.trunc(limit), 500)
+        : 100;
+    const contains = searchContains(filters.q);
     const ops = await this.prisma.cashOperation.findMany({
       where: {
         orgId,

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Landmark, Plus, Ban, Search } from 'lucide-react';
+import { Landmark, Plus, Ban } from 'lucide-react';
 import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,7 @@ import { BankStatementImportModal } from '@/components/ui/BankStatementImportMod
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
-import { LIST_SEARCH_MAX_LENGTH } from '@/lib/utils';
+import { ListSearchInput } from '@/components/ui/list-search-input';
 import { useDebounce } from '@/hooks/useDebounce';
 
 const STATUS_OPTIONS: BankTxStatus[] = ['UNMATCHED', 'MATCHED', 'IGNORED'];
@@ -81,6 +81,11 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
+  const resetPageAnd = (fn: () => void) => {
+    fn();
+    setPage(1);
+  };
+
   const openIgnore = (tx: BankTransaction) => {
     setIgnoreReason('');
     setIgnoreTx(tx);
@@ -119,10 +124,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
           value=""
           label={t('page.pills.all')}
           active={status === ''}
-          onSelect={() => {
-            setStatus('');
-            setPage(1);
-          }}
+          onSelect={() => resetPageAnd(() => setStatus(''))}
         />
         {STATUS_OPTIONS.map(s => (
           <StatusPill
@@ -130,10 +132,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
             value={s}
             label={bankTxStatusLabel(s)}
             active={status === s}
-            onSelect={v => {
-              setStatus(v);
-              setPage(1);
-            }}
+            onSelect={v => resetPageAnd(() => setStatus(v))}
           />
         ))}
       </div>
@@ -141,29 +140,16 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
       {/* Пошук · З · По + дія сторінки праворуч. Дати за замовчуванням порожні: виписку
           імпортують за минулі дні, і нерознесені рядки мають бути на виду без вибору періоду. */}
       <div className="flex flex-wrap items-center gap-3 shrink-0">
-        <Input
+        <ListSearchInput
           value={search}
-          onChange={e => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          placeholder={t('page.filters.searchPlaceholder')}
-          aria-label={t('page.filters.searchPlaceholder')}
-          maxLength={LIST_SEARCH_MAX_LENGTH}
-          leftElement={<Search />}
-          className="w-64 h-8 text-[13px]"
+          onChange={v => resetPageAnd(() => setSearch(v))}
+          label={t('page.filters.searchPlaceholder')}
         />
         <DateRangeFilter
           from={dateFrom}
           to={dateTo}
-          onFromChange={v => {
-            setDateFrom(v);
-            setPage(1);
-          }}
-          onToChange={v => {
-            setDateTo(v);
-            setPage(1);
-          }}
+          onFromChange={v => resetPageAnd(() => setDateFrom(v))}
+          onToChange={v => resetPageAnd(() => setDateTo(v))}
           fromLabel={t('page.filters.dateFrom')}
           toLabel={t('page.filters.dateTo')}
         />
