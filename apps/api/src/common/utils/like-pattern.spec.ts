@@ -45,4 +45,13 @@ describe('searchContains — текст пошуку списку → умова
     expect(LIST_SEARCH_MAX_LENGTH).toBe(100);
     expect(searchContains(long)?.contains).toBe('\\%'.repeat(LIST_SEARCH_MAX_LENGTH));
   });
+
+  // code-review 2026-10-09: три списки беруть `q` з `@Query('q')` без DTO; повторений параметр
+  // (`?q=a&q=b`) приходить масивом, і `.trim()` на ньому давав TypeError → 500.
+  it.each([[['a', 'b']], [42], [{ q: 'x' }], [null]])(
+    'searchContains: не-рядок %j — «пошуку немає», без винятку',
+    value => {
+      expect(searchContains(value as never)).toBeUndefined();
+    },
+  );
 });

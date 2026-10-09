@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -22,9 +21,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CashRegistersService } from './cash-registers.service';
 import { CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-registers.dto';
 import { CashService } from '../cash/cash.service';
-import { translateError } from '@sto/shared';
-import { getLocale } from '../../common/tenant/tenant-context';
-import { isCalendarDate } from '../../common/utils/kyiv-date';
+import { assertCalendarDateQuery } from '../../common/utils/date-query';
 import { CreateCashOperationDto } from '../cash/cash.dto';
 
 @ApiTags('Каса')
@@ -119,10 +116,7 @@ export class CashRegistersController {
   ) {
     // Query-параметри без DTO → дату перевіряємо тут. Сміття дало б Invalid Date і безіменний
     // 400 від Prisma, а 31.02 `new Date` мовчки перекочує в березень — відбір за іншим днем.
-    for (const value of [dateFrom, dateTo]) {
-      if (value && !isCalendarDate(value))
-        throw new BadRequestException(translateError('err.cash.invalidDateFilter', getLocale()));
-    }
+    assertCalendarDateQuery(dateFrom, dateTo);
     return this.cash.listOperations(orgId, id, limit ? Number(limit) : undefined, {
       q,
       dateFrom,

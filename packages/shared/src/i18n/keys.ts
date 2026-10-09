@@ -561,7 +561,7 @@ export const VALIDATION_KEYS = [
   'err.calendar.slotNotFound',
   'err.calendar.invalidTimeInterval',
   'err.calendar.invalidDateFormat',
-  'err.cash.invalidDateFilter',
+  'err.list.invalidDateFilter',
   // Exception-повідомлення: xlsx-модуль
   'err.xlsx.purchaseOrderNotDraft',
   'err.xlsx.stockDocumentNotDraft',

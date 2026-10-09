@@ -268,6 +268,34 @@ describe('StockItems — HTTP Contract', () => {
       expect(inventoryMock.findMovements).not.toHaveBeenCalled();
     });
 
+    // code-review 2026-10-09: дати відбору перевіряються, як у касі — неіснуюча дата не
+    // «перекочується» на інший день, сміття не доходить до Prisma.
+    it.each(['from=2026-02-31', 'to=abc', 'from=2026-10-09T10:00:00Z'])(
+      '400 при невалідній даті відбору (%s), сервіс не викликається',
+      async query => {
+        const res = await (app as NestFastifyApplication).inject({
+          method: 'GET',
+          url: `/stock-items/movements?${query}`,
+        });
+        expect(res.statusCode).toBe(400);
+        expect(inventoryMock.findMovements).not.toHaveBeenCalled();
+      },
+    );
+
+    it('порожні from/to — не помилка: відбору за датою просто немає', async () => {
+      inventoryMock.findMovements.mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-items/movements?from=&to=',
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
     it('400 при type=constructor (прототипний ключ не проходить guard)', async () => {
       // `type in StockMovementType` резолвив би 'constructor'/'toString' у прототип →
       // долетіло б до Prisma enum-колонки → HTTP 500. hasOwnProperty-guard → чистий 400.

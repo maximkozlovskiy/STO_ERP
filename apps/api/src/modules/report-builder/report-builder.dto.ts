@@ -13,8 +13,8 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { REGISTRY, ALLOWED_OPS, ALLOWED_AGGS } from './report-registry';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ENTITY_KEYS = Object.keys(REGISTRY);
 
 export class ReportFilterDto {
@@ -34,8 +34,8 @@ export class ReportAggDto {
 }
 
 export class ReportDateRangeDto {
-  @ApiProperty() @IsDateString({ strict: true }) @Matches(YMD_RE) from!: string;
-  @ApiProperty() @IsDateString({ strict: true }) @Matches(YMD_RE) to!: string;
+  @ApiProperty() @IsDateString({ strict: true }) @Matches(CALENDAR_DATE_RE) from!: string;
+  @ApiProperty() @IsDateString({ strict: true }) @Matches(CALENDAR_DATE_RE) to!: string;
 }
 
 export class ReportSortByAggregateDto {

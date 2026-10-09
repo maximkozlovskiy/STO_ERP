@@ -41,6 +41,10 @@
     "emptyOutgoing": {
       "title": "No outgoing payments",
       "description": "Outgoing payments are not imported from statements yet — they will appear here once the import supports them."
+    },
+    "emptyFiltered": {
+      "title": "Nothing found",
+      "description": "No payments match the search, period and status — change the filters."
     }
   },
   "enum": {

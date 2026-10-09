@@ -17,6 +17,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { assertCalendarDateQuery } from '../../common/utils/date-query';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './payments.dto';
 
@@ -53,6 +54,7 @@ export class PaymentsController {
     @Query('fiscalStatus') fiscalStatus?: string,
     @Query('q') q?: string,
   ) {
+    assertCalendarDateQuery(dateFrom, dateTo);
     return this.service.findAll(orgId, {
       page: +page,
       limit: +limit,

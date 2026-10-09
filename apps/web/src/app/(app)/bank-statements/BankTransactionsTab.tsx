@@ -76,6 +76,8 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
     limit,
   });
   const ignoreMut = useIgnoreBankTransaction();
+  const isFiltered = !!(debouncedSearch.trim() || dateFrom || dateTo || status);
+  const emptyKind = isFiltered ? 'emptyFiltered' : direction === 'OUT' ? 'emptyOutgoing' : 'empty';
 
   const items = data?.items ?? (EMPTY_ITEMS as unknown as BankTransaction[]);
   const total = data?.total ?? 0;
@@ -193,14 +195,10 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                       icon={Landmark}
                       // «Вихідні»: імпорт поки кладе лише вхідні (BR-BANK-001) — заклик
                       // «імпортуйте виписку» тут обіцяв би те, чого не станеться.
-                      title={t(
-                        direction === 'OUT' ? 'page.emptyOutgoing.title' : 'page.empty.title',
-                      )}
-                      description={t(
-                        direction === 'OUT'
-                          ? 'page.emptyOutgoing.description'
-                          : 'page.empty.description',
-                      )}
+                      // Діє пошук, період чи статус → «нічого не знайдено»: заклик імпортувати
+                      // виписку тут брехав би, коли рядки є, але поза відбором.
+                      title={t(`page.${emptyKind}.title`)}
+                      description={t(`page.${emptyKind}.description`)}
                     />
                   </TableCell>
                 </TableRow>

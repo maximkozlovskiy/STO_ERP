@@ -118,9 +118,9 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 | сервісна логіка                                       | `pricing.service.spec.ts`             | 34     | —                               |
 | WRITEOFF→RETURN на справжніх сервісах, Σ-інваріант    | `return-roundtrip.invariants.spec.ts` | 5      | BR-INVT-013, 014                |
 | ролі доступу до залишків (метадані @Roles)            | `stock-items.access.spec.ts`          | 7      | —                               |
-| HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 20     | —                               |
+| HTTP-контракт (DTO, статуси, валідація)               | `stock-items.contract.spec.ts`        | 24     | —                               |
 
-Разом: **220** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **224** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Мітки `// guards: BR-INVT-…` стоять над конкретними `it(`; колонка «Правила» — лише покажчик файла.
 

@@ -1,3 +1,5 @@
+import { LIST_SEARCH_MAX_LENGTH } from '@sto/shared';
+
 /**
  * Текст пошуку → буквальний рядок для Prisma `contains` / `startsWith` / `endsWith`.
  *
@@ -12,13 +14,16 @@ export function escapeLike(value: string): string {
 }
 
 /** Найбільша довжина тексту пошуку у списках документів: довше — обрізається (або 400 у DTO). */
-export const LIST_SEARCH_MAX_LENGTH = 100;
+export { LIST_SEARCH_MAX_LENGTH };
 
 /**
  * Текст пошуку зі списку → умова Prisma «містить, без урахування регістру» з буквальними
  * `%` / `_`. Порожній або з самих пробілів → `undefined` (умову в `where` не додають).
  */
 export function searchContains(q?: string): { contains: string; mode: 'insensitive' } | undefined {
-  const search = q?.trim().slice(0, LIST_SEARCH_MAX_LENGTH);
+  // Три списки беруть `q` з `@Query('q')` без DTO: повторений параметр (`?q=a&q=b`) приходить
+  // масивом, і `.trim()` на ньому кидав TypeError → 500. Не-рядок — це «пошуку немає».
+  if (typeof q !== 'string') return undefined;
+  const search = q.trim().slice(0, LIST_SEARCH_MAX_LENGTH);
   return search ? { contains: escapeLike(search), mode: 'insensitive' as const } : undefined;
 }

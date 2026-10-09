@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import { assertCalendarDateQuery } from '../../common/utils/date-query';
 import { InventoryService } from './inventory.service';
 import {
   LowStockItemDto,
@@ -146,6 +147,7 @@ export class StockItemsController {
         translateError('err.inventory.unknownMovementType', getLocale()),
       );
     }
+    assertCalendarDateQuery(from, to);
     return this.inventory.findMovements(orgId, {
       goodId,
       warehouseId,

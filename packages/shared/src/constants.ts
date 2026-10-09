@@ -14,3 +14,9 @@ export const MAX_QUERY_LIMIT = 1000;
 
 // Default Prisma $transaction timeout in milliseconds
 export const TRANSACTION_TIMEOUT_MS = 5_000;
+
+/**
+ * Найбільша довжина рядка пошуку `q` у списках: поле вводу у web обмежене цим самим числом,
+ * API обрізає або відхиляє довший рядок. Одне джерело, щоб межі не розійшлись (Bug #816).
+ */
+export const LIST_SEARCH_MAX_LENGTH = 100;

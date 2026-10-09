@@ -18,6 +18,7 @@ import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SupplierPaymentStatus, PaymentSourceType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 
 export class CreateSupplierPaymentDto {
   @ApiProperty()
@@ -227,9 +228,7 @@ export class SupplierPaymentQueryDto {
   sortDir?: 'asc' | 'desc';
 }
 
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// Bug #595: `@Matches(YMD_RE)` accepts semantic-invalid strings like "2026-99-99"
+// Bug #595: `@Matches(CALENDAR_DATE_RE)` accepts semantic-invalid strings like "2026-99-99"
 // (regex тільки перевіряє shape). `new Date('2026-99-99T00:00:00Z')` → Invalid Date →
 // `windowDays = NaN` → `NaN > 100` false → passes cap → for-loop skipped → empty result.
 // User бачить "немає боргів" замість 400. Комбо `@IsDateString` (parseable) + `@Matches`
@@ -237,12 +236,12 @@ const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 export class SupplierPaymentScheduleQueryDto {
   @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD), зазвичай сьогодні' })
   @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.from.dateValid' })
-  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.from.dateFormat' })
+  @Matches(CALENDAR_DATE_RE, { message: 'err.dto.supplierPayment.from.dateFormat' })
   from!: string;
 
   @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD), зазвичай from + 19 днів' })
   @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.to.dateValid' })
-  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.to.dateFormat' })
+  @Matches(CALENDAR_DATE_RE, { message: 'err.dto.supplierPayment.to.dateFormat' })
   to!: string;
 }
 
@@ -280,24 +279,24 @@ export class SupplierPaymentScheduleDocumentsQueryDto {
 
   @ApiProperty({ description: 'Початок вікна (YYYY-MM-DD) — той самий що у /schedule' })
   @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.from.dateValid' })
-  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.from.dateFormat' })
+  @Matches(CALENDAR_DATE_RE, { message: 'err.dto.supplierPayment.from.dateFormat' })
   from!: string;
 
   @ApiProperty({ description: 'Кінець вікна (YYYY-MM-DD) — той самий що у /schedule' })
   @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.to.dateValid' })
-  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.to.dateFormat' })
+  @Matches(CALENDAR_DATE_RE, { message: 'err.dto.supplierPayment.to.dateFormat' })
   to!: string;
 
-  // Bug #616: тільки `@Matches(YMD_RE)` пропускає семантично-невалідні дати
+  // Bug #616: тільки `@Matches(CALENDAR_DATE_RE)` пропускає семантично-невалідні дати
   // (2026-99-99, 2026-13-01, 2026-02-31) — regex перевіряє лише shape. Далі
   // `wantBucket='2026-99-99'` не збігається з жодним allocation bucket → silent
   // порожня відповідь замість 400. Комбо `@IsDateString({strict})` (parseable) +
-  // `@Matches(YMD_RE)` (YMD-only, без ISO-часу) = strict validation, дзеркалить
+  // `@Matches(CALENDAR_DATE_RE)` (YMD-only, без ISO-часу) = strict validation, дзеркалить
   // `from`/`to` у цьому ж DTO (Bug #595).
   @ApiPropertyOptional({ description: 'Конкретна дата колонки byDate (YYYY-MM-DD)' })
   @IsOptional()
   @IsDateString({ strict: true }, { message: 'err.dto.supplierPayment.date.dateValid' })
-  @Matches(YMD_RE, { message: 'err.dto.supplierPayment.date.dateFormat' })
+  @Matches(CALENDAR_DATE_RE, { message: 'err.dto.supplierPayment.date.dateFormat' })
   date?: string;
 
   @ApiPropertyOptional({ description: 'Бакет: overdue (протерміновані) або planned (планові)' })

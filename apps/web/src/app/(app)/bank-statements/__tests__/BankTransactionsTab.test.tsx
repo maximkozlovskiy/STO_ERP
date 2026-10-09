@@ -1,7 +1,7 @@
 // Regression-guard для BankTransactionsTab — колонка «Рахунок» (UI-реорганізація навколо
 // банківських рахунків). Показує назву рахунку-отримувача, або скорочений IBAN, або «—».
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 vi.mock('@/lib/format', () => ({
@@ -166,4 +166,20 @@ describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
       expect(screen.getByText(/Імпортуйте банківську виписку/)).toBeInTheDocument();
     },
   );
+
+  it('порожньо через фільтр статусу → «Нічого не знайдено», а не заклик імпортувати виписку', async () => {
+    useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+    render(<BankTransactionsTab />);
+    fireEvent.click(screen.getByRole('button', { name: 'Рознесено' }));
+    expect(await screen.findByText('Нічого не знайдено')).toBeInTheDocument();
+    expect(screen.queryByText(/Імпортуйте банківську виписку/)).not.toBeInTheDocument();
+  });
+
+  it('порожні «Вихідні» з фільтром статусу теж показують «Нічого не знайдено»', async () => {
+    useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
+    render(<BankTransactionsTab direction="OUT" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Рознесено' }));
+    expect(await screen.findByText('Нічого не знайдено')).toBeInTheDocument();
+    expect(screen.queryByText('Немає вихідних платежів')).not.toBeInTheDocument();
+  });
 });

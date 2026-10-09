@@ -150,7 +150,7 @@ export function lineAmount(qty: number, price: number): number {
  * три — мовчки обрізають. Без обмеження в полі вставлений довгий рядок давав 400, а таблиця
  * лишалась із рядками попереднього пошуку (Bug #816).
  */
-export const LIST_SEARCH_MAX_LENGTH = 100;
+export { LIST_SEARCH_MAX_LENGTH } from '@sto/shared';
 
 /** Режим ПДВ організації (`OrganisationSettings.vatMode`). */
 export type VatModeValue = 'NONE' | 'EXCLUSIVE' | 'INCLUSIVE';
