@@ -69,6 +69,35 @@ describe('kyivDayRangeFilter — межі київської доби для Dat
   });
 });
 
+// Bug #818: рідне поле дати, поки користувач набирає рік, віддає `0002-10-09`, `0020-10-09`.
+// Зсув для років 0–99 рахувався через рядок «10/9/2», який `new Date` читає як 2002 рік: межа
+// виходила на ~2000 років раніше, і Postgres відповідав помилкою (500 на кожній набраній даті).
+// Mutation-verify: прибрати гілку `getUTCFullYear() < 100` у kyivOffsetMs → кейси років 0–99
+// падають; прибрати `Math.max(…, EARLIEST_DB_INSTANT_MS)` → падає третій.
+describe('kyivDayRangeFilter — роки з початку нашої ери (ввід року по одній цифрі)', () => {
+  it.each(['0002-10-09', '0020-10-09', '0099-12-31'])(
+    '%s: межі лежать у тій самій добі (місцевий середній час Києва, +02:02:04)',
+    day => {
+      const r = kyivDayRangeFilter(day, day)!;
+      const wallStart = new Date(`${day}T00:00:00.000Z`).getTime();
+      expect(wallStart - r.gte!.getTime()).toBe(7_324_000);
+      expect(r.lte!.getTime() - r.gte!.getTime() + 1).toBe(24 * 3_600_000);
+    },
+  );
+
+  it('рік 0100 і далі рахуються як раніше — та сама формула, той самий зсув', () => {
+    const r = kyivDayRangeFilter('0100-10-09', '0100-10-09')!;
+    expect(r.gte!.toISOString()).toBe('0100-10-08T21:57:56.000Z');
+    expect(r.lte!.toISOString()).toBe('0100-10-09T21:57:55.999Z');
+  });
+
+  it('початок 0001-01-01 не виходить у рік 0, якого Postgres не приймає', () => {
+    const r = kyivDayRangeFilter('0001-01-01', '0001-01-01')!;
+    expect(r.gte!.toISOString()).toBe('0001-01-01T00:00:00.000Z');
+    expect(r.lte!.toISOString()).toBe('0001-01-01T21:57:55.999Z');
+  });
+});
+
 describe('dateOnlyRangeFilter — межі для колонки @db.Date', () => {
   it('межі — самі календарні дати, без зсуву на пояс; обидві включні', () => {
     expect(dateOnlyRangeFilter('2026-10-08', '2026-10-09')).toEqual({
@@ -92,8 +121,16 @@ describe('dateOnlyRangeFilter — межі для колонки @db.Date', () =
 });
 
 describe('isCalendarDate', () => {
-  it.each(['2026-10-09', '2024-02-29', '2026-12-31'])('%s — існує', v => {
-    expect(isCalendarDate(v)).toBe(true);
+  it.each(['2026-10-09', '2024-02-29', '2026-12-31', '0001-01-01', '0002-10-09'])(
+    '%s — існує',
+    v => {
+      expect(isCalendarDate(v)).toBe(true);
+    },
+  );
+
+  // Bug #818: року 0000 в календарі немає — 400, а не 500 від бази.
+  it.each(['0000-01-01', '0000-12-31'])('%s — року 0000 не існує', v => {
+    expect(isCalendarDate(v)).toBe(false);
   });
 
   it.each(['2026-02-31', '2026-02-29', '2026-13-01', '09.10.2026', '2026-10-9', 'сьогодні', ''])(

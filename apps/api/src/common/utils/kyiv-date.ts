@@ -22,6 +22,9 @@ export const addDaysKyiv = (base: Date, days: number): Date => {
   return new Date(d.toISOString().slice(0, 10));
 };
 
+/** 400 Gregorian years are exactly 146 097 days. */
+const GREGORIAN_CYCLE_MS = 146_097 * 86_400_000;
+
 /**
  * DST-aware offset for Europe/Kyiv at the given UTC instant, in **milliseconds**.
  * Returns +7_200_000 (EET +02:00) у зимовий період, +10_800_000 (EEST +03:00) у літній.
@@ -32,6 +35,12 @@ export const addDaysKyiv = (base: Date, days: number): Date => {
  * обіцяла ms, що мало шанси на silent failure при першому ж новому імпорті.
  */
 export const kyivOffsetMs = (d: Date): number => {
+  // Bug #818: years 0-99 print without leading zeros ("10/9/2"), and `new Date` reads them back
+  // as 19xx/20xx - the "offset" came out ~2000 years and the day boundary went to Prisma as a
+  // date Postgres rejects (500). A native date input emits exactly such values while the year is
+  // being typed (0002-.., 0020-..). Probe the same instant one Gregorian cycle (400 years) later:
+  // same calendar, same local-mean-time offset.
+  if (d.getUTCFullYear() < 100) return kyivOffsetMs(new Date(d.getTime() + GREGORIAN_CYCLE_MS));
   const kyivStr = d.toLocaleString('en-US', { timeZone: 'Europe/Kyiv', hour12: false });
   const kyivDate = new Date(kyivStr + ' UTC');
   // toLocaleString віддає час до секунди, без мілісекунд. Для миті з мілісекундами (кінець
@@ -40,10 +49,15 @@ export const kyivOffsetMs = (d: Date): number => {
   return kyivDate.getTime() - Math.floor(d.getTime() / 1000) * 1000;
 };
 
+/** Earliest instant Postgres accepts in an ISO timestamp: 0001-01-01T00:00:00Z. */
+const EARLIEST_DB_INSTANT_MS = new Date('0001-01-01T00:00:00.000Z').getTime();
+
 /** Настінний час `YYYY-MM-DDTHH:mm:ss[.sss]` київського дня → мить UTC (DST-aware). */
 const kyivWallTimeToUtc = (wallTime: string): Date => {
   const d = new Date(`${wallTime}Z`);
-  return new Date(d.getTime() - kyivOffsetMs(d));
+  // Bug #818: the start of Kyiv day 0001-01-01 is 31.12 of year 0 in UTC, and Postgres has no
+  // year 0 - the query failed with 500. Nothing is stored that early, so the floor is harmless.
+  return new Date(Math.max(d.getTime() - kyivOffsetMs(d), EARLIEST_DB_INSTANT_MS));
 };
 
 /** Початок київського дня `YYYY-MM-DD` (00:00:00.000) як мить UTC. */
@@ -90,7 +104,8 @@ export const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** YYYY-MM-DD, що існує в календарі (31.02 → false): для query-параметрів без DTO. */
 export function isCalendarDate(value: string): boolean {
-  if (!CALENDAR_DATE_RE.test(value)) return false;
+  // Bug #818: the calendar has no year 0000 (JS reads it as 1 BC, Postgres rejects it).
+  if (!CALENDAR_DATE_RE.test(value) || value.startsWith('0000-')) return false;
   const d = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
