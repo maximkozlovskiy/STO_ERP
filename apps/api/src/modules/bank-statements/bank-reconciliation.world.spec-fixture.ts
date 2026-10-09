@@ -90,6 +90,7 @@ type Rec = Record<string, unknown>;
 type Where = Record<string, unknown>;
 type Args = {
   where?: Where;
+  orderBy?: Record<string, 'asc' | 'desc'>;
   data?: unknown;
   select?: Rec;
   include?: Rec;
@@ -396,7 +397,17 @@ function notFound(model: string): Error {
 }
 
 function makeModel(db: FakeDb, model: string, journaled: boolean) {
-  const find = (args?: Args): Rec[] => db.rows(model).filter(r => db.matches(r, args?.where));
+  const find = (args?: Args): Rec[] => {
+    const hit = db.rows(model).filter(r => db.matches(r, args?.where));
+    const [key, dir] = Object.entries(args?.orderBy ?? {})[0] ?? [];
+    if (!key) return hit;
+    // Рівні значення (два записи за одну мілісекунду) — за порядком вставки, як послідовність у БД.
+    const sign = dir === 'desc' ? -1 : 1;
+    return hit
+      .map((rec, at) => ({ rec, at }))
+      .sort((a, b) => sign * (ordinal(a.rec[key]) - ordinal(b.rec[key]) || a.at - b.at))
+      .map(x => x.rec);
+  };
   const first = (args?: Args) => db.project(find(args)[0] ?? null, args);
   const firstOrThrow = (args?: Args) => {
     const rec = find(args)[0];
@@ -759,13 +770,60 @@ function makeDeps(db: FakeDb, root: FakeClient) {
     }),
     cancel: asyncMock((_orgId: string, id: string, ..._rest: unknown[]) => {
       const rec = db.get('supplierPayment', id);
+      // Як справжній cancel: скасувати можна лише чернетку (проведена оплата сторно не має).
+      if (rec.status !== 'DRAFT') {
+        throw new BadRequestException(`Неможливо скасувати оплату у статусі ${String(rec.status)}`);
+      }
       rec.status = 'CANCELLED';
       return { ...rec, amount: Number(rec.amount) };
     }),
     findOne: asyncMock((_orgId: string, id: string) => db.get('supplierPayment', id)),
   };
 
-  const settlements = { createTransaction: vi.fn().mockResolvedValue(undefined) };
+  const exchange = {
+    resolveBaseConversion: vi.fn(
+      (_o: string, _c: string, _d: Date, amount: number, _fallback?: boolean) =>
+        Promise.resolve({ rateUsed: 1, amountBase: amount }),
+    ),
+    getBaseCurrency: vi.fn().mockResolvedValue({ id: ID.uah, code: 'UAH' }),
+    requireBaseCurrencyId: vi.fn().mockResolvedValue(ID.uah),
+    // Справжня логіка: null ≡ базова валюта.
+    sameCurrency: vi.fn((_o: string, a: string | null, b: string | null) =>
+      Promise.resolve((a ?? ID.uah) === (b ?? ID.uah)),
+    ),
+  };
+
+  // Проведення пишеться в журнал ЧЕРЕЗ ПЕРЕДАНИЙ клієнт (як касова операція нижче): сторно при
+  // скасуванні рознесення шукає початкове проведення рядка й копіює його суму в базовій валюті
+  // (BR-BANK-039). Конвертація — як у справжньому сервісі: явна `conversion` або курс на `date`.
+  const settlements = {
+    createTransaction: vi.fn(async (orgId: string, dto: Rec, tx?: FakeClient): Promise<void> => {
+      const explicit = dto.conversion as { rateUsed: number; amountBase: number } | undefined;
+      const conv =
+        explicit ??
+        (await exchange.resolveBaseConversion(
+          orgId,
+          String(dto.currencyId),
+          (dto.date as Date | undefined) ?? new Date(),
+          Number(dto.amount),
+          Boolean(dto.fallbackToLatest),
+        ));
+      await (tx ?? root).settlementTransaction.create({
+        data: {
+          orgId,
+          counterpartyId: dto.counterpartyId,
+          type: dto.type,
+          amount: dec(Number(dto.amount)),
+          currencyId: dto.currencyId ?? null,
+          amountBase: dec(conv.amountBase),
+          rateUsed: dec(conv.rateUsed),
+          documentType: dto.documentType ?? null,
+          documentId: dto.documentId ?? null,
+          notes: dto.notes ?? null,
+        },
+      });
+    }),
+  };
 
   // Касова операція пишеться ЧЕРЕЗ ПЕРЕДАНИЙ клієнт: якщо сервіс передав tx — запис відкотиться
   // разом із транзакцією; якщо не передав — лишиться (і тест на «одну транзакцію» це побачить).
@@ -780,19 +838,6 @@ function makeDeps(db: FakeDb, root: FakeClient) {
 
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
   const payments = { create: vi.fn().mockResolvedValue({ id: uuid(990) }) };
-
-  const exchange = {
-    resolveBaseConversion: vi.fn(
-      (_o: string, _c: string, _d: Date, amount: number, _fallback?: boolean) =>
-        Promise.resolve({ rateUsed: 1, amountBase: amount }),
-    ),
-    getBaseCurrency: vi.fn().mockResolvedValue({ id: ID.uah, code: 'UAH' }),
-    requireBaseCurrencyId: vi.fn().mockResolvedValue(ID.uah),
-    // Справжня логіка: null ≡ базова валюта.
-    sameCurrency: vi.fn((_o: string, a: string | null, b: string | null) =>
-      Promise.resolve((a ?? ID.uah) === (b ?? ID.uah)),
-    ),
-  };
 
   return { supplierPayments, settlements, cash, audit, payments, exchange };
 }

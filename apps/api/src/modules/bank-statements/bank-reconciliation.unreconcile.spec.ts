@@ -6,7 +6,6 @@ import {
   FREE_ROW,
   ID,
   NO_EFFECTS,
-  OP_DATE,
   ORG,
   OTHER_ORG,
   ROW_AMOUNT,
@@ -30,6 +29,10 @@ import {
 //  · не писати unmatchReason / unmatchedAt / unmatchedBy → той самий кейс;
 //  · дозволити рядок із paymentId → «рознесений через match → 400»;
 //  · CLIENT_REFUND: не робити REFUND_OUT_CANCEL / зробити REFUND_OUT → «одне сторно-проведення»;
+//  · CLIENT_REFUND: рахувати базову суму сторно заново (date + fallbackToLatest замість `conversion`)
+//    → «курс змінився після рознесення…»; прибрати `orderBy` у пошуку початкового → «…рознесено знову…»;
+//  · прибрати з where CAS `matchedAt` → «те саме посилання, але інше рознесення»; `counterpartyId` →
+//    «…на іншого клієнта в ту саму мить»; `cashOperationId` → «CASH_WITHDRAWAL в іншу касу»;
 //  · CASH_WITHDRAWAL: direction IN замість OUT або інша каса → «одна зворотна касова операція»;
 //  · CASH_WITHDRAWAL: CAS поза транзакцією касової операції → «готівки не вистачає → рядок лишається MATCHED»;
 //  · SUPPLIER_PAYMENT: покликати supplierPayments.cancel → «оплата лишається проведеною».
@@ -248,10 +251,97 @@ describe('BankReconciliationService.unreconcile — скасування роз�
     );
   });
 
+  // Між читанням рядка і CAS інший запит устиг скасувати рознесення й рознести рядок ЗНОВУ тим
+  // самим видом, але на іншого контрагента / в іншу касу. Статус і вид ті самі, тож CAS лише за
+  // ними захопив би чуже рознесення, а сторно пішло б на прочитані (старі) дані.
+  describe('гонка: рядок перерознесли між читанням і CAS', () => {
+    /** Після першого читання рядка сервісом — підмінити його стан «новим рознесенням». */
+    function reReconcileAfterRead(w: World, over: Record<string, unknown>): void {
+      const read = w.prisma.bankTransaction.findFirst.getMockImplementation()!;
+      w.prisma.bankTransaction.findFirst.mockImplementationOnce(async (...args) => {
+        const snapshot = await read(...args);
+        Object.assign(w.row(), { matchedAt: new Date('2026-10-04T12:00:00.000Z'), ...over });
+        return snapshot;
+      });
+    }
+
+    // guards: BR-BANK-039
+    it('CLIENT_REFUND на іншого клієнта → 409, сторно на старого клієнта не проводиться, нове рознесення ціле', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CLIENT_REFUND');
+      reReconcileAfterRead(w, { counterpartyId: ID.both });
+
+      await expect(unreconcile(w)).rejects.toMatchObject({ status: 409 });
+
+      expect(effectCalls(w)).toEqual(NO_EFFECTS);
+      expect(w.row()).toMatchObject({
+        status: 'MATCHED',
+        matchedType: 'CLIENT_REFUND',
+        counterpartyId: ID.both,
+        unmatchReason: null,
+      });
+    });
+
+    // Той самий клієнт, але це ВЖЕ інше рознесення (інша мить): мітка `matchedAt` їх розрізняє.
+    // guards: BR-BANK-039
+    it('те саме посилання, але інше рознесення (інший matchedAt) → 409 без зворотного запису', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CLIENT_REFUND');
+      reReconcileAfterRead(w, {});
+
+      await expect(unreconcile(w)).rejects.toMatchObject({ status: 409 });
+
+      expect(effectCalls(w)).toEqual(NO_EFFECTS);
+      expect(w.row()).toMatchObject({ status: 'MATCHED', unmatchReason: null });
+    });
+
+    // guards: BR-BANK-039
+    it('CASH_WITHDRAWAL в іншу касу → 409, зі старої каси готівка не списується', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CASH_WITHDRAWAL');
+      const otherOp = '00000000-0000-4000-8000-000000000096';
+      w.db.seed('cashOperation', {
+        id: otherOp,
+        orgId: ORG,
+        cashRegisterId: ID.cashUsd,
+        direction: 'IN',
+        amount: dec(ROW_AMOUNT),
+        reason: 'MANUAL_IN',
+        documentType: 'BankTransaction',
+        documentId: ID.tx,
+      });
+      // Мітка часу та сама (рознесли в ту саму мілісекунду) — рубежем лишається саме посилання.
+      reReconcileAfterRead(w, {
+        cashOperationId: otherOp,
+        matchedAt: new Date('2026-10-03T10:00:00.000Z'),
+      });
+
+      await expect(unreconcile(w)).rejects.toMatchObject({ status: 409 });
+
+      expect(effectCalls(w)).toEqual(NO_EFFECTS);
+      expect(w.row()).toMatchObject({ status: 'MATCHED', cashOperationId: otherOp });
+    });
+
+    // guards: BR-BANK-039
+    it('CLIENT_REFUND на іншого клієнта в ту саму мить → 409: посилання звіряється й без мітки часу', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CLIENT_REFUND');
+      reReconcileAfterRead(w, {
+        counterpartyId: ID.both,
+        matchedAt: new Date('2026-10-03T10:00:00.000Z'),
+      });
+
+      await expect(unreconcile(w)).rejects.toMatchObject({ status: 409 });
+
+      expect(effectCalls(w)).toEqual(NO_EFFECTS);
+      expect(w.row()).toMatchObject({ status: 'MATCHED', counterpartyId: ID.both });
+    });
+  });
+
   describe('наслідок залежить від виду', () => {
-    // «Та сама сума в базовій валюті, що й початкове» досягається одним із двох способів, і обидва
-    // правильні: (а) сума й валюта рядка з курсом на ту саму дату операції; (б) базова сума
-    // початкового проведення без валюти (курс 1). Рядок у доларах розрізняє їх: 200 USD = 8300 UAH.
+    // «Та сама сума в базовій валюті, що й початкове» (BR-BANK-039): сторно КОПІЮЄ суму, валюту,
+    // курс і базову суму початкового проведення, а не рахує їх заново. Рядок у доларах: початкове
+    // проведення 200 USD = 8300 UAH (курс 41.5).
     // guards: BR-BANK-039
     it('CLIENT_REFUND: одне сторно-проведення REFUND_OUT_CANCEL на ту саму базову суму, в транзакції рядка', async () => {
       const w = await makeWorld();
@@ -271,23 +361,86 @@ describe('BankReconciliationService.unreconcile — скасування роз�
       expect(posting).toMatchObject({
         counterpartyId: ID.client,
         type: 'REFUND_OUT_CANCEL',
+        amount: 200,
+        currencyId: ID.usd,
+        conversion: { rateUsed: 41.5, amountBase: 8300 },
         documentType: 'BankTransaction',
         documentId: ID.tx,
       });
-      const inRowCurrency =
-        posting.currencyId === ID.usd &&
-        Number(posting.amount) === 200 &&
-        posting.date instanceof Date &&
-        posting.date.getTime() === OP_DATE.getTime();
-      const inBaseCurrency =
-        (posting.currencyId == null || posting.currencyId === ID.uah) &&
-        Number(posting.amount) === 8300;
-      expect({ inRowCurrency, inBaseCurrency }).not.toEqual({
-        inRowCurrency: false,
-        inBaseCurrency: false,
-      });
       expect(txArg).toBe(w.tx);
       expect({ ...effectCalls(w), 'settlements.createTransaction': 0 }).toEqual(NO_EFFECTS);
+    });
+
+    // Курс на дату операції додали / виправили ПІСЛЯ рознесення: перерахунок дав би іншу базову
+    // суму, і в балансі клієнта лишилась би різниця. Сторно бере базову суму з журналу.
+    // guards: BR-BANK-039
+    it('CLIENT_REFUND: курс змінився після рознесення → сторно на базову суму ПОЧАТКОВОГО проведення, курс не перечитується', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CLIENT_REFUND', {
+        bankAccountId: ID.accountUsd,
+        currencyId: ID.usd,
+        amount: dec(200),
+        amountBase: dec(8300),
+        rateUsed: dec(41.5),
+      });
+      w.exchange.resolveBaseConversion.mockResolvedValue({ rateUsed: 42.1, amountBase: 8420 });
+
+      await unreconcile(w);
+
+      const journal = w.db
+        .rows('settlementTransaction')
+        .filter(r => r.documentId === ID.tx)
+        .map(r => [r.type, Number(r.amount), Number(r.amountBase), Number(r.rateUsed)]);
+      expect(journal).toEqual([
+        ['REFUND_OUT', 200, 8300, 41.5],
+        ['REFUND_OUT_CANCEL', 200, 8300, 41.5],
+      ]);
+      expect(w.exchange.resolveBaseConversion).not.toHaveBeenCalled();
+    });
+
+    // Рядок розносили двічі (між ними — скасування): у журналі два REFUND_OUT із різними курсами.
+    // Сторно дзеркалить ОСТАННЄ — перше вже має своє сторно.
+    // guards: BR-BANK-039
+    it('CLIENT_REFUND: рознесено → скасовано → рознесено знову за іншим курсом → друге сторно дзеркалить друге проведення', async () => {
+      const w = await makeWorld();
+      w.addRow({
+        bankAccountId: ID.accountUsd,
+        currencyId: ID.usd,
+        amount: dec(200),
+        amountBase: dec(8300),
+        rateUsed: dec(41.5),
+      });
+      const refund = { type: 'CLIENT_REFUND', counterpartyId: ID.client } as const;
+
+      w.exchange.resolveBaseConversion.mockResolvedValueOnce({ rateUsed: 41.5, amountBase: 8300 });
+      await w.service.reconcile(ORG, ID.tx, refund, USER);
+      await unreconcile(w);
+      w.exchange.resolveBaseConversion.mockResolvedValueOnce({ rateUsed: 42, amountBase: 8400 });
+      await w.service.reconcile(ORG, ID.tx, refund, USER);
+      await unreconcile(w);
+
+      const journal = w.db
+        .rows('settlementTransaction')
+        .map(r => [r.type, Number(r.amountBase), Number(r.rateUsed)]);
+      expect(journal).toEqual([
+        ['REFUND_OUT', 8300, 41.5],
+        ['REFUND_OUT_CANCEL', 8300, 41.5],
+        ['REFUND_OUT', 8400, 42],
+        ['REFUND_OUT_CANCEL', 8400, 42],
+      ]);
+    });
+
+    // Початкового проведення в журналі немає (зламаний інваріант): вигадувати суму сторно не можна.
+    // guards: BR-BANK-039
+    it('CLIENT_REFUND: початкового REFUND_OUT у журналі немає → 409, сторно не проводиться, рядок лишається MATCHED', async () => {
+      const w = await makeWorld();
+      arrangeMatched(w, 'CLIENT_REFUND');
+      w.db.rows('settlementTransaction').length = 0;
+
+      await expect(unreconcile(w)).rejects.toMatchObject({ status: 409 });
+
+      expect(effectCalls(w)).toEqual(NO_EFFECTS);
+      expect(w.row()).toMatchObject({ status: 'MATCHED', matchedType: 'CLIENT_REFUND' });
     });
 
     // guards: BR-BANK-039

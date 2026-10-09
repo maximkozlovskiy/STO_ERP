@@ -1023,10 +1023,18 @@ export class SupplierPaymentsService {
       );
     }
 
-    await this.prisma.supplierPayment.update({
-      where: { id, orgId },
+    // CAS зі статусу, який щойно прочитали (не stale-read): паралельний confirm() між читанням і
+    // записом інакше лишив би проведення у взаєморозрахунках при оплаті у статусі CANCELLED.
+    // Викликається і автоматично — відкатом рознесення банківського платежу (BR-BANK-029).
+    const cas = await this.prisma.supplierPayment.updateMany({
+      where: { id, orgId, deletedAt: null, status: sp.status },
       data: { status: SupplierPaymentStatus.CANCELLED },
     });
+    if (cas.count === 0) {
+      throw new BadRequestException(
+        translateError('err.supplierPayment.alreadyConfirmedOrChanged', getLocale()),
+      );
+    }
 
     return this.findOne(orgId, id);
   }

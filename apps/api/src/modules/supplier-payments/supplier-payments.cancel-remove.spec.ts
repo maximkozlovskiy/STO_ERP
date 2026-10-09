@@ -40,9 +40,29 @@ describe('SupplierPaymentsService — cancel-remove', () => {
     await service.cancel(ORG, SP_ID);
 
     expect(settlements.createTransaction).not.toHaveBeenCalled();
-    expect(prisma.supplierPayment.update).toHaveBeenCalledWith({
-      where: { id: SP_ID, orgId: ORG },
+    // CAS зі статусу DRAFT, а не безумовний update: див. кейс про паралельне проведення нижче.
+    expect(prisma.supplierPayment.updateMany).toHaveBeenCalledWith({
+      where: { id: SP_ID, orgId: ORG, deletedAt: null, status: SupplierPaymentStatus.DRAFT },
       data: { status: SupplierPaymentStatus.CANCELLED },
+    });
+  });
+
+  // Між читанням статусу і записом оплату встигли провести (паралельний confirm): безумовний
+  // update зробив би її CANCELLED при вже записаному проведенні у взаєморозрахунках.
+  // Mutation-verify: прибрати `status: sp.status` з where або не перевіряти `count === 0` → цей кейс.
+  it('cancel(): оплату провели між читанням і записом (CAS count=0) → 400, статус не переписано', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce({
+      id: SP_ID,
+      status: SupplierPaymentStatus.DRAFT,
+    });
+    prisma.supplierPayment.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.cancel(ORG, SP_ID)).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
+    expect(prisma.supplierPayment.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.supplierPayment.updateMany.mock.calls[0]![0].where).toMatchObject({
+      status: SupplierPaymentStatus.DRAFT,
     });
   });
 

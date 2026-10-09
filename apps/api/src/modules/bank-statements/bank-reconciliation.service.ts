@@ -1118,13 +1118,18 @@ export class BankReconciliationService {
     plan: Extract<OutgoingPlan, { kind: 'NEW_SUPPLIER_PAYMENT' }>,
     userId: string,
   ): Promise<void> {
+    // `matchedAt` of THIS capture doubles as its token: the steps below run outside one DB
+    // transaction, and in between the row can be released (unreconcile) and captured again by
+    // another request. Every later write is pinned to the token, so it never touches a capture
+    // that is no longer ours.
+    const capturedAt = new Date();
     const captured = await this.prisma.bankTransaction.updateMany({
       where: { id: row.id, orgId, deletedAt: null, status: 'UNMATCHED' },
       data: {
         status: 'MATCHED',
         matchedType: 'SUPPLIER_PAYMENT',
         counterpartyId: plan.supplierId,
-        matchedAt: new Date(),
+        matchedAt: capturedAt,
         matchedBy: userId,
       },
     });
@@ -1155,12 +1160,13 @@ export class BankReconciliationService {
           orgId,
           status: 'MATCHED',
           matchedType: 'SUPPLIER_PAYMENT',
+          matchedAt: capturedAt,
           supplierPaymentId: null,
         },
         data: { supplierPaymentId: draft.id },
       });
-      // Рядок встигли звільнити (скасування рознесення) між захопленням і цим кроком —
-      // проводити оплату для вже нічийного рядка не можна.
+      // Рядок встигли звільнити (скасування рознесення) між захопленням і цим кроком — а може, й
+      // захопити знову іншим запитом: проводити оплату для вже не нашого рядка не можна.
       if (linked.count === 0) {
         throw new ConflictException(
           translateError('err.bankStatement.alreadyMatched', getLocale()),
@@ -1170,7 +1176,7 @@ export class BankReconciliationService {
         rateDate: row.operationDate,
       });
     } catch (err: unknown) {
-      await this.rollbackNewSupplierPayment(orgId, row.id, draftId);
+      await this.rollbackNewSupplierPayment(orgId, row.id, draftId, capturedAt);
       throw err;
     }
   }
@@ -1188,6 +1194,7 @@ export class BankReconciliationService {
     orgId: string,
     txId: string,
     draftId: string | null,
+    capturedAt: Date,
   ): Promise<void> {
     if (draftId && !(await this.cancelDraftOrDetectPosted(orgId, txId, draftId))) return;
     await this.prisma.bankTransaction
@@ -1197,6 +1204,8 @@ export class BankReconciliationService {
           orgId,
           status: 'MATCHED',
           matchedType: 'SUPPLIER_PAYMENT',
+          // Лише НАШЕ захоплення: рядок, який тим часом звільнили й захопили знову, не чіпаємо.
+          matchedAt: capturedAt,
           supplierPaymentId: draftId,
         },
         data: UNMATCHED_STATE,
@@ -1274,6 +1283,7 @@ export class BankReconciliationService {
         employeeId: true,
         transferBankAccountId: true,
         cashOperationId: true,
+        matchedAt: true,
       },
     });
     if (!row) {
@@ -1304,6 +1314,14 @@ export class BankReconciliationService {
             status: 'MATCHED',
             paymentId: null,
             matchedType,
+            // Звільняємо саме ТЕ рознесення, яке прочитали вище: між читанням і цим записом рядок
+            // могли скасувати й рознести знову тим самим видом на іншого контрагента чи касу —
+            // тоді сторно пішло б на старі дані. `matchedAt` — мітка рознесення; посилання, що
+            // визначають зворотний запис, звіряються теж.
+            matchedAt: row.matchedAt,
+            counterpartyId: row.counterpartyId,
+            supplierPaymentId: row.supplierPaymentId,
+            cashOperationId: row.cashOperationId,
           },
           data: {
             ...UNMATCHED_STATE,
@@ -1318,17 +1336,34 @@ export class BankReconciliationService {
 
         if (matchedType === 'CLIENT_REFUND') {
           if (!row.counterpartyId) throw notMatched();
-          // Сторно REFUND_OUT: та сама сума й валюта рядка, той самий курс на `operationDate` —
-          // тож сума в базовій валюті дорівнює початковій.
+          // Сторно дзеркалить ПОЧАТКОВЕ проведення: його суму, валюту, курс і суму в базовій
+          // валюті. Перераховувати за курсом на `operationDate` не можна — курс на цю дату могли
+          // додати чи виправити вже після рознесення, і в балансі клієнта лишилась би різниця.
+          // Останнє REFUND_OUT цього рядка — саме те, що скасовуємо: кожне попереднє вже має сторно.
+          const original = await tx.settlementTransaction.findFirst({
+            where: {
+              orgId,
+              documentType: 'BankTransaction',
+              documentId: txId,
+              type: 'REFUND_OUT',
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
+          });
+          if (!original || original.amountBase == null || original.rateUsed == null) {
+            throw notMatched();
+          }
           await this.settlements.createTransaction(
             orgId,
             {
               counterpartyId: row.counterpartyId,
               type: 'REFUND_OUT_CANCEL',
-              amount,
-              currencyId: row.currencyId,
-              date: row.operationDate,
-              fallbackToLatest: true,
+              amount: Number(original.amount),
+              currencyId: original.currencyId ?? undefined,
+              conversion: {
+                rateUsed: Number(original.rateUsed),
+                amountBase: Number(original.amountBase),
+              },
               documentType: 'BankTransaction',
               documentId: txId,
               notes: reason,

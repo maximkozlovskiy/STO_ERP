@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BANK_TX_REASON_MAX_LENGTH, bankTransactionUnreconcileFormSchema } from '@sto/shared';
 import { toast } from '@/lib/toast';
@@ -28,11 +28,14 @@ export function UnreconcileBankTransactionModal({ open, onClose, transaction, on
 
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  // `mut.isPending` is a render-time snapshot: two clicks inside one frame both see `false`.
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
     setReason('');
     setError('');
+    submittingRef.current = false;
   }, [open, transaction?.id]);
 
   // Та сама схема, що й на бекенді: пробіли — не причина.
@@ -40,7 +43,8 @@ export function UnreconcileBankTransactionModal({ open, onClose, transaction, on
   const canSubmit = parsed.success && !mut.isPending;
 
   const handleSubmit = async () => {
-    if (!transaction || !parsed.success || mut.isPending) return;
+    if (!transaction || !parsed.success || mut.isPending || submittingRef.current) return;
+    submittingRef.current = true;
     setError('');
     try {
       await mut.mutateAsync({ id: transaction.id, reason: parsed.data.reason });
@@ -49,6 +53,8 @@ export function UnreconcileBankTransactionModal({ open, onClose, transaction, on
       onClose();
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : t('unreconcile.error'));
+    } finally {
+      submittingRef.current = false;
     }
   };
 

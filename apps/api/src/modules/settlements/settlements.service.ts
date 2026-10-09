@@ -16,6 +16,10 @@ export interface CreateTransactionDto {
   // Default new Date() (BC). fallbackToLatest — документні потоки беруть останній курс якщо немає на дату.
   date?: Date;
   fallbackToLatest?: boolean;
+  // Storno of an earlier posting: the exact conversion of the ORIGINAL transaction. When set, the
+  // rate is NOT looked up again (date / fallbackToLatest are ignored) - a rate added or corrected
+  // after the original posting must not leave a difference in the balance (BR-BANK-039).
+  conversion?: { rateUsed: number; amountBase: number };
   documentType?: string;
   documentId?: string;
   notes?: string;
@@ -68,15 +72,30 @@ export class SettlementsService {
     }
     // Мультивалюта (Фаза 2): баланс боргу зводиться у БАЗОВІЙ валюті → balanceDelta від amountBase.
     // Без currencyId → базова (rate=1, amountBase=amount) → 7 UAH-викликачів працюють без змін.
-    const conv = dto.currencyId
-      ? await this.exchangeRates.resolveBaseConversion(
-          orgId,
-          dto.currencyId,
-          dto.date ?? new Date(),
-          dto.amount,
-          dto.fallbackToLatest ?? false,
-        )
-      : { rateUsed: 1, amountBase: dto.amount };
+    if (
+      dto.conversion &&
+      !(
+        Number.isFinite(dto.conversion.amountBase) &&
+        dto.conversion.amountBase > 0 &&
+        Number.isFinite(dto.conversion.rateUsed) &&
+        dto.conversion.rateUsed > 0
+      )
+    ) {
+      throw new BadRequestException(
+        translateError('err.settlement.amountMustBePositive', getLocale()),
+      );
+    }
+    const conv = dto.conversion
+      ? { rateUsed: dto.conversion.rateUsed, amountBase: dto.conversion.amountBase }
+      : dto.currencyId
+        ? await this.exchangeRates.resolveBaseConversion(
+            orgId,
+            dto.currencyId,
+            dto.date ?? new Date(),
+            dto.amount,
+            dto.fallbackToLatest ?? false,
+          )
+        : { rateUsed: 1, amountBase: dto.amount };
     const balanceDelta = BALANCE_SIGN[dto.type] * conv.amountBase;
 
     const run = async (db: Prisma.TransactionClient | PrismaService) => {

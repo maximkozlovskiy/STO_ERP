@@ -9,7 +9,7 @@
 //   - `reason: parsed.data.reason` → `reason`                   → «payload обрізаний» падає;
 //   - `consequence.${matchedType}` → `consequence.EXPENSE`      → кейси наслідку падають.
 
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { UnreconcileBankTransactionModal } from '../UnreconcileBankTransactionModal';
@@ -92,6 +92,27 @@ describe('UnreconcileBankTransactionModal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(onDone).toHaveBeenCalled();
     expect(toastMock.success).toHaveBeenCalledWith('Рознесення знято');
+  });
+
+  // Два кліки в межах одного кадру: `isPending` — знімок на момент рендеру, обидва обробники
+  // бачать `false`. Бекенд другий запит відхилить (409), але користувач побачив би помилку
+  // поверх уже успішного скасування.
+  // Mutation-verify: прибрати `submittingRef` з handleSubmit → цей кейс (два запити).
+  it('подвійний клік в одному кадрі → один запит', async () => {
+    apiFetchMock.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(
+      <UnreconcileBankTransactionModal open onClose={() => {}} transaction={TX} />,
+    );
+    fireEvent.change(reasonField(), { target: { value: 'помилка' } });
+    const btn = submitBtn();
+
+    act(() => {
+      btn.click();
+      btn.click();
+    });
+
+    await waitFor(() => expect(unreconcileCalls().length).toBeGreaterThan(0));
+    expect(unreconcileCalls()).toHaveLength(1);
   });
 
   it('ліміт причини — 500 символів, лічильник показує довжину', () => {

@@ -130,7 +130,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 
 | Аспект                                   | Тест                                          | Кейсів |
 | ---------------------------------------- | --------------------------------------------- | ------ |
-| cancel remove                            | `supplier-payments.cancel-remove.spec.ts`     | 3      |
+| cancel remove                            | `supplier-payments.cancel-remove.spec.ts`     | 4      |
 | confirm                                  | `supplier-payments.confirm.spec.ts`           | 5      |
 | HTTP-контракт (DTO, статуси, валідація)  | `supplier-payments.contract.spec.ts`          | 18     |
 | create                                   | `supplier-payments.create.spec.ts`            | 6      |
@@ -141,7 +141,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | сортування (whitelist orderBy)           | `supplier-payments.sort.spec.ts`              | 9      |
 | update guards                            | `supplier-payments.update-guards.spec.ts`     | 12     |
 
-Разом: **111** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **112** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/supplier-payments/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:

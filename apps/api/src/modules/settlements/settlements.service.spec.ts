@@ -339,6 +339,55 @@ describe('SettlementsService.createTransaction', () => {
     expect(prisma.settlementAccount.update).not.toHaveBeenCalled();
   });
 
+  // Сторно копіює конвертацію ПОЧАТКОВОГО проведення (BR-BANK-039): курс на ту саму дату могли
+  // додати чи виправити пізніше, і перерахунок лишив би в балансі різницю.
+  // guards: BR-SETL-007
+  it('з явною conversion → баланс і журнал за нею; курс не шукається навіть із date і fallbackToLatest', async () => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    // Курс «зараз» дав би 4210 — сторно має лишитись на 4150, як початкове проведення.
+    exchangeRates.resolveBaseConversion.mockResolvedValue({ rateUsed: 42.1, amountBase: 4210 });
+    await service.createTransaction(
+      'org-1',
+      dto({
+        type: 'REFUND_OUT_CANCEL',
+        amount: 100,
+        currencyId: 'usd-1',
+        date: new Date('2026-01-01'),
+        fallbackToLatest: true,
+        conversion: { rateUsed: 41.5, amountBase: 4150 },
+      }),
+    );
+    expect(exchangeRates.resolveBaseConversion).not.toHaveBeenCalled();
+    expect(prisma.settlementAccount.update).toHaveBeenCalledWith({
+      where: { id: 'acc-1', orgId: 'org-1' },
+      data: { balance: { increment: -4150 } },
+    });
+    expect(prisma.settlementTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amount: 100,
+        currencyId: 'usd-1',
+        amountBase: 4150,
+        rateUsed: 41.5,
+      }),
+    });
+  });
+
+  // guards: BR-SETL-004, BR-SETL-007
+  it.each([
+    ['amountBase = 0', { rateUsed: 41.5, amountBase: 0 }],
+    ['amountBase < 0', { rateUsed: 41.5, amountBase: -4150 }],
+    ['amountBase = NaN', { rateUsed: 41.5, amountBase: Number.NaN }],
+    ['rateUsed = 0', { rateUsed: 0, amountBase: 4150 }],
+    ['rateUsed = Infinity', { rateUsed: Number.POSITIVE_INFINITY, amountBase: 4150 }],
+  ])('явна conversion з %s → 400, журнал і баланс не чіпаються', async (_name, conversion) => {
+    prisma.settlementAccount.findFirst.mockResolvedValue({ id: 'acc-1' });
+    await expect(
+      service.createTransaction('org-1', dto({ amount: 100, currencyId: 'usd-1', conversion })),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.settlementTransaction.create).not.toHaveBeenCalled();
+    expect(prisma.settlementAccount.update).not.toHaveBeenCalled();
+  });
+
   // ── BR-SETL-010: createTransaction НЕ ідемпотентна ─────────────────────────────────────
   //
   // Це контракт, на який спираються ВСІ викликачі (перелік — settlements.callers.spec.ts): кожен
