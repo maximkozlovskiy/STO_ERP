@@ -56,6 +56,11 @@ interface Warehouse {
 
 type ViewMode = 'goods' | 'documents' | 'batches';
 
+// Рідне поле дати без `max` дозволяє набрати рік із 5–6 цифр (`20261-10-09`). Таку межу хук
+// у запит не кладе (бекенд дав би 400), тож поле показувало б дату, якої вибірка не знає.
+// З `max` браузер обмежує рік чотирма цифрами — розбіжності не виникає.
+const MAX_CALENDAR_DATE = '9999-12-31';
+
 // label = i18n key (views.*), резолвиться у компоненті через t() — порядок ключів
 // зберігає порядок вкладок перемикача режиму.
 const VIEW_LABEL_KEYS: Record<ViewMode, string> = {
@@ -294,6 +299,7 @@ export function InventoryTab() {
           <>
             <Input
               type="date"
+              max={MAX_CALENDAR_DATE}
               value={from}
               onChange={e => setFrom(e.target.value)}
               className="h-8 text-[13px] w-36"
@@ -301,6 +307,7 @@ export function InventoryTab() {
             <span className="text-muted-foreground text-[13px]">—</span>
             <Input
               type="date"
+              max={MAX_CALENDAR_DATE}
               value={to}
               onChange={e => setTo(e.target.value)}
               className="h-8 text-[13px] w-36"
