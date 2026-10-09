@@ -150,7 +150,7 @@ model OnlinePaymentIntent {
 model BankTransaction {
   id             String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orgId          String                     @db.Uuid
-  bankAccountId  String                     @db.Uuid // наш рахунок-отримувач
+  bankAccountId  String                     @db.Uuid // наш рахунок (отримувач для IN, платник для OUT)
   direction      BankTransactionDirection   @default(IN)
   amount         Decimal                    @db.Decimal(12, 2) // у валюті транзакції (currencyId)
   // Мультивалюта: currencyId — валюта транзакції (= валюта bankAccount); amountBase — у БАЗОВІЙ
@@ -159,9 +159,10 @@ model BankTransaction {
   amountBase     Decimal?                   @db.Decimal(12, 2)
   rateUsed       Decimal?                   @db.Decimal(18, 6)
   operationDate  DateTime                   @db.Date
-  payerName      String? // назва платника з виписки
-  payerIban      String? // IBAN відправника (нормалізований UPPERCASE) — для авто-матчу
-  payerEdrpou    String? // ЄДРПОУ відправника — для авто-матчу
+  // Контрагент з виписки: для IN — платник, для OUT — ОТРИМУВАЧ (BR-BANK-020; назви колонок історичні).
+  payerName      String? // назва контрагента з виписки
+  payerIban      String? // IBAN контрагента (нормалізований UPPERCASE) — для авто-матчу
+  payerEdrpou    String? // ЄДРПОУ контрагента — для авто-матчу
   purpose        String? // призначення платежу (парсинг № Invoice/WO)
   externalId     String // унікальний ключ банк-транзакції (ідемпотентність)
   source         BankTransactionSource
@@ -174,15 +175,36 @@ model BankTransaction {
   matchConfidence Decimal?                  @db.Decimal(5, 2) // 0..1 — впевненість авто-матчу
   rawData        Json? // сирий рядок виписки/API (діагностика)
   ignoreReason   String?
+  // ── Рознесення ВИХІДНИХ (matchedType визначає, яке з посилань заповнене) ──
+  // Оплата постачальнику: 1 оплата ↔ 1 рядок (@unique — рубіж проти подвійної прив'язки).
+  supplierPaymentId     String? @unique @db.Uuid
+  expenseCategoryId     String? @db.Uuid // EXPENSE
+  payrollPeriodId       String? @db.Uuid // PAYROLL
+  employeeId            String? @db.Uuid // PAYROLL — кому саме (необов'язково)
+  transferBankAccountId String? @db.Uuid // TRANSFER — інший власний рахунок
+  cashOperationId       String? @unique @db.Uuid // CASH_WITHDRAWAL — надходження в касу
+  createdBy             String? @db.Uuid // хто вніс вручну (source = MANUAL)
+  matchedAt             DateTime?
+  matchedBy             String? @db.Uuid
+  // Останнє скасування рознесення (BR-BANK-039): причина обов'язкова; повна історія — у журналі аудиту.
+  unmatchReason         String?
+  unmatchedAt           DateTime?
+  unmatchedBy           String? @db.Uuid
   syncVersion    BigInt                     @default(0)
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
   deletedAt      DateTime?
 
-  bankAccount  BankAccount   @relation(fields: [bankAccountId], references: [id])
-  currency     Currency      @relation(fields: [currencyId], references: [id])
-  counterparty Counterparty? @relation(fields: [counterpartyId], references: [id])
-  payment      Payment?      @relation(fields: [paymentId], references: [id])
+  bankAccount         BankAccount      @relation(fields: [bankAccountId], references: [id])
+  currency            Currency         @relation(fields: [currencyId], references: [id])
+  counterparty        Counterparty?    @relation(fields: [counterpartyId], references: [id])
+  payment             Payment?         @relation(fields: [paymentId], references: [id])
+  supplierPayment     SupplierPayment? @relation(fields: [supplierPaymentId], references: [id])
+  expenseCategory     ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+  payrollPeriod       PayrollPeriod?   @relation(fields: [payrollPeriodId], references: [id])
+  employee            Employee?        @relation(fields: [employeeId], references: [id])
+  transferBankAccount BankAccount?     @relation("BankTransactionTransferAccount", fields: [transferBankAccountId], references: [id])
+  cashOperation       CashOperation?   @relation(fields: [cashOperationId], references: [id])
 
   // Ідемпотентність: один рядок на банк-транзакцію в межах нашого рахунку.
   @@unique([orgId, bankAccountId, externalId])
@@ -196,6 +218,8 @@ model BankTransaction {
   // operationDate): deletedAt-рівність (IS NULL) leftmost після orgId, operationDate у tail → index-range
   // scan з готовим DESC-порядком без sort-node. Домінантний вид (відкривається за замовчуванням).
   @@index([orgId, deletedAt, operationDate])
+  // Вкладки «Вхідні» / «Вихідні»: WHERE (orgId, direction, deletedAt IS NULL) ORDER BY operationDate DESC.
+  @@index([orgId, direction, deletedAt, operationDate])
   @@index([orgId, operationDate])
   @@index([orgId, syncVersion])
   @@map("bank_transactions")
@@ -298,8 +322,9 @@ model PayrollPeriod {
   updatedAt   DateTime            @updatedAt
   deletedAt   DateTime?
 
-  org   Organisation  @relation(fields: [orgId], references: [id])
-  lines PayrollLine[]
+  org              Organisation      @relation(fields: [orgId], references: [id])
+  lines            PayrollLine[]
+  bankTransactions BankTransaction[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, status])
@@ -510,6 +535,7 @@ model BankAccount {
   supplierPayments SupplierPayment[]
   payments         Payment[]
   bankTransactions BankTransaction[]
+  transfersIn      BankTransaction[] @relation("BankTransactionTransferAccount")
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])
@@ -574,6 +600,7 @@ model CashOperation {
 
   cashRegister    CashRegister     @relation(fields: [cashRegisterId], references: [id])
   expenseCategory ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+  bankTransaction BankTransaction?
 
   @@index([orgId, cashRegisterId, createdAt])
   @@index([orgId, cashShiftId])
@@ -598,8 +625,9 @@ model ExpenseCategory {
 
   org        Organisation      @relation(fields: [orgId], references: [id])
   parent     ExpenseCategory?  @relation("ExpenseCatHierarchy", fields: [parentId], references: [id])
-  children   ExpenseCategory[] @relation("ExpenseCatHierarchy")
-  operations CashOperation[]
+  children         ExpenseCategory[] @relation("ExpenseCatHierarchy")
+  operations       CashOperation[]
+  bankTransactions BankTransaction[]
 
   @@unique([orgId, name])
   @@index([orgId, deletedAt])

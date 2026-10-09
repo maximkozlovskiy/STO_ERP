@@ -104,7 +104,9 @@
     "SUPPLIER_PAYMENT": "Supplier payment",
     "SUPPLIER_REFUND": "Supplier refund",
     "FX_GAIN": "FX gain",
-    "FX_LOSS": "FX loss"
+    "FX_LOSS": "FX loss",
+    "REFUND_OUT": "Refund to client",
+    "REFUND_OUT_CANCEL": "Refund to client reversed"
   },
   "EMPLOYEE_STATUS": {
     "ACTIVE": "Active",

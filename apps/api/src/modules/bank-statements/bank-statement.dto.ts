@@ -32,6 +32,33 @@ import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
 export const BANK_TX_MATCH_TYPES = Object.values(
   BankTransactionMatchType,
 ) as BankTransactionMatchType[];
+
+// BR-BANK-025: тип рознесення залежить від напряму рядка. `match` (вхідні) приймає лише перший
+// список — інакше вихідний тип на старому endpoint-і мовчки став би оплатою клієнта.
+export const BANK_TX_IN_MATCH_TYPES = [
+  'PREPAYMENT',
+  'SERVICE',
+  'INVOICE',
+  'REFUND',
+  'OTHER',
+] as const satisfies readonly BankTransactionMatchType[];
+/** Типи для `reconcile`. TRANSFER — єдиний, що дозволений і для вхідного рядка. */
+export const BANK_TX_OUT_MATCH_TYPES = [
+  'SUPPLIER_PAYMENT',
+  'CLIENT_REFUND',
+  'EXPENSE',
+  'PAYROLL',
+  'TRANSFER',
+  'CASH_WITHDRAWAL',
+] as const satisfies readonly BankTransactionMatchType[];
+export type BankTxOutMatchType = (typeof BANK_TX_OUT_MATCH_TYPES)[number];
+
+/** Як файл виписки задає напрям рядка (BR-BANK-018). */
+export const BANK_IMPORT_DIRECTION_MODES = ['SIGN', 'IN', 'OUT'] as const;
+export type BankImportDirectionMode = (typeof BANK_IMPORT_DIRECTION_MODES)[number];
+
+/** Довжина причини скасування рознесення / приміток рознесення. */
+export const BANK_TX_REASON_MAX_LENGTH = 500;
 export const BANK_TX_STATUSES = Object.values(BankTransactionStatus) as BankTransactionStatus[];
 
 /** Причина невідповідності рядка прев'ю (авто-матч). */
@@ -109,13 +136,29 @@ export class PreviewImportColumnMapping {
   @IsInt({ message: 'err.dto.bankStatement.col.int' })
   @Min(1, { message: 'err.dto.bankStatement.col.min' })
   purposeCol?: number;
+
+  // BR-BANK-018: напрям рядка. SIGN (типово) — за знаком суми в `amountCol` (від'ємна = вихідний)
+  // або, якщо задано `debitCol`, за тим, у якій із двох колонок стоїть сума: `amountCol` —
+  // надходження, `debitCol` — списання. IN / OUT — увесь файл одного напряму, знак ігнорується.
+  @ApiPropertyOptional({ enum: BANK_IMPORT_DIRECTION_MODES, default: 'SIGN' })
+  @IsOptional()
+  @IsIn(BANK_IMPORT_DIRECTION_MODES)
+  directionMode?: BankImportDirectionMode;
+
+  @ApiPropertyOptional({ description: 'Окрема колонка суми списання (1-based)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'err.dto.bankStatement.col.int' })
+  @Min(1, { message: 'err.dto.bankStatement.col.min' })
+  debitCol?: number;
 }
 
 /** Один рядок прев'ю імпорту виписки з результатом авто-матчу. */
 export class PreviewRowDto {
   @ApiProperty() rowIndex!: number;
   @ApiProperty() operationDate!: string;
-  @ApiProperty() amount!: number;
+  @ApiProperty({ enum: BankTransactionDirection }) direction!: BankTransactionDirection;
+  @ApiProperty({ description: 'Завжди додатна; напрям — у `direction`' }) amount!: number;
   @ApiPropertyOptional() payerName?: string | null;
   @ApiPropertyOptional() payerIban?: string | null;
   @ApiPropertyOptional() payerEdrpou?: string | null;
@@ -133,6 +176,9 @@ export class PreviewRowDto {
   @ApiPropertyOptional() matchConfidence?: number | null;
   @ApiProperty({ type: [PreviewCandidateDto] })
   candidates!: PreviewCandidateDto[];
+  // Той самий рахунок, дата, сума й напрям уже є серед внесених ВРУЧНУ платежів — імовірний дубль
+  // (у ручного рядка інший externalId, тож ключ ідемпотентності його не зловить).
+  @ApiProperty() possibleManualDuplicate!: boolean;
 }
 
 export class PreviewImportResponseDto {
@@ -147,7 +193,12 @@ export class ApplyRowDto {
   @IsString()
   @IsNotEmpty()
   operationDate!: string;
+  // BR-BANK-017: сума завжди додатна, напрям — окремим полем (типово вхідний).
   @ApiProperty() @Type(() => Number) @IsNumber() @Min(0.01) amount!: number;
+  @ApiPropertyOptional({ enum: BankTransactionDirection, default: 'IN' })
+  @IsOptional()
+  @IsEnum(BankTransactionDirection)
+  direction?: BankTransactionDirection;
   @ApiPropertyOptional() @IsOptional() @IsString() payerName?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() payerIban?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() payerEdrpou?: string;
@@ -181,9 +232,9 @@ export class MatchTransactionDto {
   @IsUUID()
   counterpartyId!: string;
 
-  @ApiProperty({ enum: BANK_TX_MATCH_TYPES })
-  @IsIn(BANK_TX_MATCH_TYPES, { message: 'err.dto.bankStatement.type.invalid' })
-  type!: BankTransactionMatchType;
+  @ApiProperty({ enum: BANK_TX_IN_MATCH_TYPES })
+  @IsIn(BANK_TX_IN_MATCH_TYPES, { message: 'err.dto.bankStatement.type.invalid' })
+  type!: (typeof BANK_TX_IN_MATCH_TYPES)[number];
 
   @ApiPropertyOptional({ description: 'Обов’язковий для type=INVOICE' })
   @IsOptional()
@@ -196,6 +247,125 @@ export class IgnoreTransactionDto {
   @IsString()
   @IsNotEmpty({ message: 'err.dto.bankStatement.reason.required' })
   reason!: string;
+}
+
+// ─── Ручне внесення (BR-BANK-023) ─────────────────────────────────────────────
+
+const trimString = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
+export class CreateBankTransactionDto {
+  @ApiProperty()
+  @IsUUID('4', { message: 'err.dto.bankStatement.bankAccountId.uuid' })
+  bankAccountId!: string;
+
+  @ApiProperty({ enum: BankTransactionDirection })
+  @IsEnum(BankTransactionDirection)
+  direction!: BankTransactionDirection;
+
+  @ApiProperty({ description: 'Сума у валюті рахунку, завжди додатна' })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount!: number;
+
+  // Дата операції — календарна дата БЕЗ часу (BR-BANK-021).
+  @ApiProperty({ example: '2026-10-09' })
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
+  operationDate!: string;
+
+  // Контрагент з платіжки: платник для вхідного, отримувач для вихідного (BR-BANK-020).
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(200)
+  payerName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(34)
+  payerIban?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(12)
+  payerEdrpou?: string;
+
+  @ApiPropertyOptional({ description: 'Призначення платежу' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(BANK_TX_REASON_MAX_LENGTH)
+  purpose?: string;
+}
+
+// ─── Рознесення вихідного платежу (BR-BANK-025…034) ───────────────────────────
+
+/**
+ * Один DTO на всі види рознесення: які поля обов'язкові, визначає `type` — це перевіряє сервіс
+ * (400 до будь-якого запису). Суму, рахунок, валюту й дату сервіс бере З РЯДКА, не з запиту.
+ *
+ * | type             | обов'язкове                         | необов'язкове                     |
+ * | SUPPLIER_PAYMENT | supplierPaymentId АБО counterpartyId | purchaseOrderId (лише з новою)    |
+ * | CLIENT_REFUND    | counterpartyId                      |                                   |
+ * | EXPENSE          | expenseCategoryId                   | counterpartyId (довідково)        |
+ * | PAYROLL          | payrollPeriodId                     | employeeId                        |
+ * | TRANSFER         | transferBankAccountId               |                                   |
+ * | CASH_WITHDRAWAL  | cashRegisterId                      |                                   |
+ */
+export class ReconcileTransactionDto {
+  @ApiProperty({ enum: BANK_TX_OUT_MATCH_TYPES })
+  @IsIn(BANK_TX_OUT_MATCH_TYPES, { message: 'err.dto.bankStatement.type.invalid' })
+  type!: BankTxOutMatchType;
+
+  @ApiPropertyOptional({ description: 'Постачальник / клієнт / довідковий контрагент витрати' })
+  @IsOptional()
+  @IsUUID()
+  counterpartyId?: string;
+
+  @ApiPropertyOptional({ description: 'Наявна проведена оплата постачальнику — лише прив’язка' })
+  @IsOptional()
+  @IsUUID()
+  supplierPaymentId?: string;
+
+  @ApiPropertyOptional({ description: 'Замовлення постачальнику для НОВОЇ оплати' })
+  @IsOptional()
+  @IsUUID()
+  purchaseOrderId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID() expenseCategoryId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() payrollPeriodId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() employeeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() transferBankAccountId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() cashRegisterId?: string;
+}
+
+/** BR-BANK-039: скасування рознесення — причина обов'язкова. */
+export class UnreconcileTransactionDto {
+  @ApiProperty({ maxLength: BANK_TX_REASON_MAX_LENGTH })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty({ message: 'err.dto.bankStatement.unmatchReason.required' })
+  @MaxLength(BANK_TX_REASON_MAX_LENGTH)
+  reason!: string;
+}
+
+/** Проведена оплата постачальнику, до якої можна прив'язати вихідний рядок (BR-BANK-027). */
+export class SupplierPaymentCandidateDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() number!: string;
+  @ApiProperty({ description: 'YYYY-MM-DD' }) documentDate!: string;
+  @ApiProperty() amount!: number;
+  @ApiProperty() supplierId!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiPropertyOptional() purchaseOrderId?: string | null;
+  @ApiPropertyOptional() purchaseOrderNumber?: string | null;
 }
 
 // ─── List ─────────────────────────────────────────────────────────────────────
@@ -277,6 +447,24 @@ export class BankTransactionResponseDto {
   @ApiPropertyOptional() matchConfidence?: number | null;
   @ApiPropertyOptional() ignoreReason?: string | null;
   @ApiProperty() createdAt!: string;
+  // ── Рознесення: посилання й підписи для колонки «Рознесено як» (join-и list(); null без них) ──
+  @ApiPropertyOptional() counterpartyName?: string | null;
+  @ApiPropertyOptional() supplierPaymentId?: string | null;
+  @ApiPropertyOptional() supplierPaymentNumber?: string | null;
+  @ApiPropertyOptional() expenseCategoryId?: string | null;
+  @ApiPropertyOptional() expenseCategoryName?: string | null;
+  @ApiPropertyOptional() payrollPeriodId?: string | null;
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD' }) payrollPeriodStart?: string | null;
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD' }) payrollPeriodEnd?: string | null;
+  @ApiPropertyOptional() employeeId?: string | null;
+  @ApiPropertyOptional() employeeName?: string | null;
+  @ApiPropertyOptional() transferBankAccountId?: string | null;
+  @ApiPropertyOptional() transferBankAccountName?: string | null;
+  @ApiPropertyOptional() cashOperationId?: string | null;
+  @ApiPropertyOptional() matchedAt?: string | null;
+  // Останнє скасування рознесення (BR-BANK-039).
+  @ApiPropertyOptional() unmatchReason?: string | null;
+  @ApiPropertyOptional() unmatchedAt?: string | null;
   // Назва/IBAN нашого рахунку-отримувача (join, коли list() робить include bankAccount) — для колонки
   // «Рахунок» у списку платежів. null коли include не запитано.
   @ApiPropertyOptional() bankAccountName?: string | null;
@@ -317,9 +505,34 @@ interface BankTransactionRow {
   matchConfidence: Prisma.Decimal | null;
   ignoreReason: string | null;
   createdAt: Date;
+  supplierPaymentId?: string | null;
+  expenseCategoryId?: string | null;
+  payrollPeriodId?: string | null;
+  employeeId?: string | null;
+  transferBankAccountId?: string | null;
+  cashOperationId?: string | null;
+  matchedAt?: Date | null;
+  unmatchReason?: string | null;
+  unmatchedAt?: Date | null;
   // Опційний join рахунку-отримувача (коли list() робить include bankAccount).
   bankAccount?: { name: string; ibanUA: string; currency?: { code: string } | null } | null;
+  // Опційні join-и рознесення (list() / відповіді reconcile).
+  counterparty?: {
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+  supplierPayment?: { number: string } | null;
+  expenseCategory?: { name: string } | null;
+  payrollPeriod?: { periodStart: Date; periodEnd: Date } | null;
+  employee?: { firstName: string; lastName: string } | null;
+  transferBankAccount?: { name: string } | null;
 }
+
+const ymd = (d: Date | null | undefined): string | null =>
+  d instanceof Date ? d.toISOString().slice(0, 10) : null;
+const iso = (d: Date | null | undefined): string | null =>
+  d instanceof Date ? d.toISOString() : null;
 
 /** Mapper Prisma-рядка → response DTO. Decimal→number через Number(), Date→ISO. */
 export function toBankTransactionResponseDto(tx: BankTransactionRow): BankTransactionResponseDto {
@@ -347,6 +560,28 @@ export function toBankTransactionResponseDto(tx: BankTransactionRow): BankTransa
     matchConfidence: tx.matchConfidence != null ? Number(tx.matchConfidence) : null,
     ignoreReason: tx.ignoreReason ?? null,
     createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : tx.createdAt,
+    counterpartyName: tx.counterparty
+      ? tx.counterparty.companyName ||
+        [tx.counterparty.lastName, tx.counterparty.firstName].filter(Boolean).join(' ') ||
+        null
+      : null,
+    supplierPaymentId: tx.supplierPaymentId ?? null,
+    supplierPaymentNumber: tx.supplierPayment?.number ?? null,
+    expenseCategoryId: tx.expenseCategoryId ?? null,
+    expenseCategoryName: tx.expenseCategory?.name ?? null,
+    payrollPeriodId: tx.payrollPeriodId ?? null,
+    payrollPeriodStart: ymd(tx.payrollPeriod?.periodStart),
+    payrollPeriodEnd: ymd(tx.payrollPeriod?.periodEnd),
+    employeeId: tx.employeeId ?? null,
+    employeeName: tx.employee
+      ? [tx.employee.lastName, tx.employee.firstName].filter(Boolean).join(' ')
+      : null,
+    transferBankAccountId: tx.transferBankAccountId ?? null,
+    transferBankAccountName: tx.transferBankAccount?.name ?? null,
+    cashOperationId: tx.cashOperationId ?? null,
+    matchedAt: iso(tx.matchedAt),
+    unmatchReason: tx.unmatchReason ?? null,
+    unmatchedAt: iso(tx.unmatchedAt),
     bankAccountName: tx.bankAccount?.name ?? null,
     bankAccountIban: tx.bankAccount?.ibanUA ?? null,
     bankAccountCurrencyCode: tx.bankAccount?.currency?.code ?? null,

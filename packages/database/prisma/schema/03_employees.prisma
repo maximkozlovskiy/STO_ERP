@@ -32,6 +32,7 @@ model Employee {
   inspectionReports      InspectionReport[]
   preferences            UserPreference[]
   payrollLines           PayrollLine[]
+  bankTransactions       BankTransaction[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, syncVersion])

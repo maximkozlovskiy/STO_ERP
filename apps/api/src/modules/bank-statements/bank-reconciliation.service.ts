@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  NotImplementedException,
 } from '@nestjs/common';
 import { Prisma, BankTransactionMatchType, BankTransactionSource } from '@prisma/client';
 import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
@@ -18,6 +19,10 @@ import { parsePurpose } from './purpose-parser';
 import {
   ApplyImportDto,
   BankTransactionResponseDto,
+  CreateBankTransactionDto,
+  ReconcileTransactionDto,
+  SupplierPaymentCandidateDto,
+  UnreconcileTransactionDto,
   IgnoreTransactionDto,
   ListQueryDto,
   MatchTransactionDto,
@@ -306,6 +311,9 @@ export class BankReconciliationService {
       const matchStatus: PreviewMatchStatus = isDuplicate ? 'duplicate' : (m?.status ?? 'notFound');
       return {
         rowIndex: idx,
+        // CONTRACT PLACEHOLDER (BR-BANK-018): real direction and manual-duplicate flag come with the implementation.
+        direction: 'IN' as const,
+        possibleManualDuplicate: false,
         operationDate:
           r.operationDate instanceof Date ? r.operationDate.toISOString() : r.operationDate,
         amount: r.amount,
@@ -599,6 +607,50 @@ export class BankReconciliationService {
       where: { id: txId, orgId },
     });
     return toBankTransactionResponseDto(updated);
+  }
+
+  // ─── КОНТРАКТ вихідних платежів (сигнатури зафіксовані; тіла — у реалізації) ────────────
+
+  /** BR-BANK-023: ручне внесення платежу (обидва напрямки), `source=MANUAL`, `status=UNMATCHED`. */
+  createManual(
+    _orgId: string,
+    _dto: CreateBankTransactionDto,
+    _userId?: string,
+  ): Promise<BankTransactionResponseDto> {
+    return Promise.reject(new NotImplementedException());
+  }
+
+  /** BR-BANK-024: soft delete лише ручного нерознесеного рядка (CAS); інакше 404 / 409. */
+  removeManual(_orgId: string, _txId: string): Promise<void> {
+    return Promise.reject(new NotImplementedException());
+  }
+
+  /** BR-BANK-027: проведені оплати постачальнику, до яких можна прив'язати цей вихідний рядок. */
+  listSupplierPaymentCandidates(
+    _orgId: string,
+    _txId: string,
+  ): Promise<SupplierPaymentCandidateDto[]> {
+    return Promise.reject(new NotImplementedException());
+  }
+
+  /** BR-BANK-025…034: рознесення рядка за `dto.type` (CAS з UNMATCHED → дія → посилання). */
+  reconcile(
+    _orgId: string,
+    _txId: string,
+    _dto: ReconcileTransactionDto,
+    _userId: string,
+  ): Promise<BankTransactionResponseDto> {
+    return Promise.reject(new NotImplementedException());
+  }
+
+  /** BR-BANK-039…040: скасування рознесення з обов'язковою причиною. */
+  unreconcile(
+    _orgId: string,
+    _txId: string,
+    _dto: UnreconcileTransactionDto,
+    _userId: string,
+  ): Promise<BankTransactionResponseDto> {
+    return Promise.reject(new NotImplementedException());
   }
 
   /** Позначити транзакцію IGNORED (CAS UNMATCHED→IGNORED + причина). Payment НЕ створюється. */

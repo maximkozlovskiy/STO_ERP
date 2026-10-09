@@ -2,13 +2,16 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Request,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
@@ -21,6 +24,7 @@ import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import { BankStatementParserService, type ColumnMapping } from './bank-statement-parser.service';
 import {
@@ -33,6 +37,10 @@ import {
   ApplyImportResultDto,
   BankTransactionResponseDto,
   PaginatedBankTransactionsDto,
+  CreateBankTransactionDto,
+  ReconcileTransactionDto,
+  UnreconcileTransactionDto,
+  SupplierPaymentCandidateDto,
 } from './bank-statement.dto';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -110,6 +118,73 @@ export class BankStatementsController {
   @ApiOkResponse({ type: PaginatedBankTransactionsDto })
   async list(@OrgContext() orgId: string, @Query() query: ListQueryDto) {
     return this.reconciliation.list(orgId, query);
+  }
+
+  // ─── Ручне внесення (BR-BANK-023 / 024) ─────────────────────────────────────
+
+  @Post('transactions')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @UseInterceptors(IdempotencyInterceptor) // повтор запиту з тим самим ключем не створює другий платіж
+  @ApiOperation({ summary: 'Внести банківський платіж вручну (вхідний або вихідний)' })
+  @ApiOkResponse({ type: BankTransactionResponseDto })
+  async createManual(
+    @OrgContext() orgId: string,
+    @Body() dto: CreateBankTransactionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reconciliation.createManual(orgId, dto, user.id);
+  }
+
+  @Delete('transactions/:id')
+  @HttpCode(204)
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Видалити внесений вручну нерознесений платіж' })
+  async removeManual(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    await this.reconciliation.removeManual(orgId, id);
+  }
+
+  // ─── Рознесення вихідних (BR-BANK-025…039) ──────────────────────────────────
+
+  @Get('transactions/:id/supplier-payment-candidates')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({
+    summary: 'Проведені оплати постачальникам, до яких можна прив’язати вихідний платіж',
+  })
+  @ApiOkResponse({ type: [SupplierPaymentCandidateDto] })
+  async supplierPaymentCandidates(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.reconciliation.listSupplierPaymentCandidates(orgId, id);
+  }
+
+  @Post('transactions/:id/reconcile')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({
+    summary:
+      'Рознести платіж: оплата постачальнику, повернення клієнту, витрата, зарплата, переказ, зняття готівки',
+  })
+  @ApiOkResponse({ type: BankTransactionResponseDto })
+  async reconcile(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReconcileTransactionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reconciliation.reconcile(orgId, id, dto, user.id);
+  }
+
+  @Post('transactions/:id/unreconcile')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Скасувати рознесення платежу (причина обов’язкова)' })
+  @ApiOkResponse({ type: BankTransactionResponseDto })
+  async unreconcile(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UnreconcileTransactionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reconciliation.unreconcile(orgId, id, dto, user.id);
   }
 
   // ─── Match / Ignore ─────────────────────────────────────────────────────────

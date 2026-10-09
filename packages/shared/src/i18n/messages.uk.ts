@@ -103,6 +103,22 @@ export const uk: Record<string, string> = {
   'v.supplierPayment.cash.required': 'Для оплати з каси вкажіть касу',
   'v.supplierPayment.source.conflict': 'Не можна одночасно вказувати банк і касу',
 
+  // ── bank-transaction.schema.ts ──
+  'v.bankTransaction.bankAccount.required': 'Оберіть банківський рахунок',
+  'v.bankTransaction.direction.required': 'Оберіть напрям платежу',
+  'v.bankTransaction.amount.min': 'Сума платежу повинна бути більшою за нуль',
+  'v.bankTransaction.date.required': 'Вкажіть дату операції',
+  'v.bankTransaction.purpose.max': 'Призначення задовге (до 500 символів)',
+  'v.bankTransaction.type.required': 'Оберіть вид рознесення',
+  'v.bankTransaction.supplier.required': 'Оберіть постачальника або наявну оплату',
+  'v.bankTransaction.client.required': 'Оберіть клієнта',
+  'v.bankTransaction.expenseCategory.required': 'Оберіть статтю витрат',
+  'v.bankTransaction.payrollPeriod.required': 'Оберіть зарплатний період',
+  'v.bankTransaction.transferAccount.required': 'Оберіть рахунок, на який зроблено переказ',
+  'v.bankTransaction.cashRegister.required': 'Оберіть касу',
+  'v.bankTransaction.unmatchReason.required': 'Вкажіть причину скасування',
+  'v.bankTransaction.unmatchReason.max': 'Причина задовга (до 500 символів)',
+
   // ── work-order.schema.ts ──
   'v.workOrder.nonNegInt.int': 'Значення має бути цілим',
   'v.workOrder.nonNegInt.min': "Значення не може бути від'ємним",
@@ -600,6 +616,26 @@ export const uk: Record<string, string> = {
   'err.dto.bankStatement.rows.max': 'Забагато рядків для одного імпорту (максимум 1000)',
   'err.dto.bankStatement.reason.required': 'Вкажіть причину ігнорування',
   'err.dto.bankStatement.type.invalid': 'Невірний тип рознесення транзакції',
+  'err.bankStatement.wrongDirection': 'Цей вид рознесення не підходить для напряму платежу',
+  'err.bankStatement.notManual': 'Видалити можна лише платіж, внесений вручну',
+  'err.bankStatement.notMatched': 'Платіж не рознесено — скасовувати нічого',
+  'err.bankStatement.unmatchIncomingUnsupported':
+    'Скасування рознесення вхідного платежу не підтримується',
+  'err.bankStatement.fieldRequiredForType': 'Для цього виду рознесення не вказано обов’язкове поле',
+  'err.bankStatement.supplierPaymentNotFound': 'Оплату постачальнику не знайдено',
+  'err.bankStatement.supplierPaymentMismatch':
+    'Оплата постачальнику не відповідає платежу: потрібні проведена оплата з того самого рахунку на ту саму суму',
+  'err.bankStatement.supplierPaymentAlreadyLinked':
+    'Цю оплату постачальнику вже прив’язано до іншого платежу',
+  'err.bankStatement.purchaseOrderNotFound': 'Замовлення постачальнику не знайдено',
+  'err.bankStatement.expenseCategoryInvalid': 'Статтю витрат не знайдено або вона неактивна',
+  'err.bankStatement.payrollPeriodInvalid':
+    'Зарплатний період не знайдено або він ще не розрахований',
+  'err.bankStatement.employeeNotInPeriod': 'Працівника немає в цьому зарплатному періоді',
+  'err.bankStatement.transferAccountInvalid': 'Вкажіть інший власний банківський рахунок',
+  'err.bankStatement.cashRegisterNotFound': 'Касу не знайдено',
+  'err.bankStatement.cashRegisterCurrencyMismatch': 'Валюта каси відрізняється від валюти платежу',
+  'err.dto.bankStatement.unmatchReason.required': 'Вкажіть причину скасування рознесення',
 
   // ── Exception-повідомлення: counterparties-модуль ──
   'err.counterparty.notFound': 'Контрагента не знайдено',

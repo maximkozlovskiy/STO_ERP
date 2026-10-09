@@ -18,12 +18,21 @@ type TxType =
   | 'SUPPLIER_PAYMENT'
   | 'SUPPLIER_REFUND'
   | 'FX_GAIN'
-  | 'FX_LOSS';
+  | 'FX_LOSS'
+  | 'REFUND_OUT'
+  | 'REFUND_OUT_CANCEL';
 
 // Дзеркалить BALANCE_SIGN (settlements.service). Постачальницькі типи мають окрему семантику:
 // SUPPLIER_CHARGE −1 (ми винні), SUPPLIER_PAYMENT/SUPPLIER_REFUND +1 (наш борг ↓).
 // Курсові різниці (Фаза 4): FX_GAIN +1 (гасить від'ємний залишок), FX_LOSS −1 (гасить додатний).
-const BALANCE_INCREASING: TxType[] = ['CHARGE', 'SUPPLIER_PAYMENT', 'SUPPLIER_REFUND', 'FX_GAIN'];
+// Повернення коштів клієнту з банку: REFUND_OUT +1 (клієнт знову винен), його сторно −1.
+const BALANCE_INCREASING: TxType[] = [
+  'CHARGE',
+  'SUPPLIER_PAYMENT',
+  'SUPPLIER_REFUND',
+  'FX_GAIN',
+  'REFUND_OUT',
+];
 const BALANCE_DECREASING: TxType[] = [
   'PAYMENT',
   'PREPAYMENT',
@@ -31,6 +40,7 @@ const BALANCE_DECREASING: TxType[] = [
   'CREDIT_NOTE',
   'SUPPLIER_CHARGE',
   'FX_LOSS',
+  'REFUND_OUT_CANCEL',
 ];
 
 /** Кумулятивно застосовує транзакції до початкового балансу. */

@@ -4062,7 +4062,76 @@ export interface paths {
         /** Список банк-транзакцій (виписка) */
         get: operations["BankStatementsController_list_v1"];
         put?: never;
+        /** Внести банківський платіж вручну (вхідний або вихідний) */
+        post: operations["BankStatementsController_createManual_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-statements/transactions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         post?: never;
+        /** Видалити внесений вручну нерознесений платіж */
+        delete: operations["BankStatementsController_removeManual_v1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-statements/transactions/{id}/supplier-payment-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Проведені оплати постачальникам, до яких можна прив’язати вихідний платіж */
+        get: operations["BankStatementsController_supplierPaymentCandidates_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-statements/transactions/{id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Рознести платіж: оплата постачальнику, повернення клієнту, витрата, зарплата, переказ, зняття готівки */
+        post: operations["BankStatementsController_reconcile_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bank-statements/transactions/{id}/unreconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Скасувати рознесення платежу (причина обов’язкова) */
+        post: operations["BankStatementsController_unreconcile_v1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6596,7 +6665,7 @@ export interface components {
         SettlementTransactionDto: {
             id: string;
             /** @enum {string} */
-            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS";
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL";
             /** @description Сума у валюті транзакції */
             amount: number;
             currencyId: string | null;
@@ -6625,7 +6694,7 @@ export interface components {
             /** Format: date-time */
             date: string;
             /** @enum {string} */
-            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS";
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL";
             /** @description Сума у валюті транзакції */
             amount: number;
             /** @description Сума у базовій валюті (фолбек — amount) */
@@ -7605,6 +7674,9 @@ export interface components {
         PreviewRowDto: {
             rowIndex: number;
             operationDate: string;
+            /** @enum {string} */
+            direction: "IN" | "OUT";
+            /** @description Завжди додатна; напрям — у `direction` */
             amount: number;
             payerName?: string | null;
             payerIban?: string | null;
@@ -7616,12 +7688,13 @@ export interface components {
             suggestedCounterpartyId?: string | null;
             suggestedCounterpartyName?: string | null;
             /** @enum {string|null} */
-            suggestedMatchType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | null;
+            suggestedMatchType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | null;
             suggestedInvoiceId?: string | null;
             /** @enum {string|null} */
             matchReason?: "iban" | "edrpou" | "purpose" | null;
             matchConfidence?: number | null;
             candidates: components["schemas"]["PreviewCandidateDto"][];
+            possibleManualDuplicate: boolean;
         };
         PreviewImportResponseDto: {
             rows: components["schemas"]["PreviewRowDto"][];
@@ -7631,6 +7704,11 @@ export interface components {
             /** @description Дата операції (ISO або YYYY-MM-DD) */
             operationDate: string;
             amount: number;
+            /**
+             * @default IN
+             * @enum {string}
+             */
+            direction: "IN" | "OUT";
             payerName?: string;
             payerIban?: string;
             payerEdrpou?: string;
@@ -7658,16 +7736,34 @@ export interface components {
             purpose?: string | null;
             externalId: string;
             /** @enum {string} */
-            source: "FILE_IMPORT" | "PRIVAT24_API" | "MONOBANK_API";
+            source: "FILE_IMPORT" | "PRIVAT24_API" | "MONOBANK_API" | "MANUAL";
             /** @enum {string} */
             status: "UNMATCHED" | "MATCHED" | "IGNORED";
             /** @enum {string|null} */
-            matchedType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | null;
+            matchedType?: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL" | null;
             counterpartyId?: string | null;
             paymentId?: string | null;
             matchConfidence?: number | null;
             ignoreReason?: string | null;
             createdAt: string;
+            counterpartyName?: string | null;
+            supplierPaymentId?: string | null;
+            supplierPaymentNumber?: string | null;
+            expenseCategoryId?: string | null;
+            expenseCategoryName?: string | null;
+            payrollPeriodId?: string | null;
+            /** @description YYYY-MM-DD */
+            payrollPeriodStart?: string | null;
+            /** @description YYYY-MM-DD */
+            payrollPeriodEnd?: string | null;
+            employeeId?: string | null;
+            employeeName?: string | null;
+            transferBankAccountId?: string | null;
+            transferBankAccountName?: string | null;
+            cashOperationId?: string | null;
+            matchedAt?: string | null;
+            unmatchReason?: string | null;
+            unmatchedAt?: string | null;
             bankAccountName?: string | null;
             bankAccountIban?: string | null;
             bankAccountCurrencyCode?: string | null;
@@ -7677,6 +7773,64 @@ export interface components {
             total: number;
             page: number;
             limit: number;
+        };
+        CreateBankTransactionDto: {
+            /** Format: uuid */
+            bankAccountId: string;
+            /** @enum {string} */
+            direction: "IN" | "OUT";
+            /** @description Сума у валюті рахунку, завжди додатна */
+            amount: number;
+            /** @example 2026-10-09 */
+            operationDate: string;
+            payerName?: string;
+            payerIban?: string;
+            payerEdrpou?: string;
+            /** @description Призначення платежу */
+            purpose?: string;
+        };
+        SupplierPaymentCandidateDto: {
+            id: string;
+            number: string;
+            /** @description YYYY-MM-DD */
+            documentDate: string;
+            amount: number;
+            supplierId: string;
+            supplierName: string;
+            purchaseOrderId?: string | null;
+            purchaseOrderNumber?: string | null;
+        };
+        ReconcileTransactionDto: {
+            /** @enum {string} */
+            type: "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL";
+            /**
+             * Format: uuid
+             * @description Постачальник / клієнт / довідковий контрагент витрати
+             */
+            counterpartyId?: string;
+            /**
+             * Format: uuid
+             * @description Наявна проведена оплата постачальнику — лише прив’язка
+             */
+            supplierPaymentId?: string;
+            /**
+             * Format: uuid
+             * @description Замовлення постачальнику для НОВОЇ оплати
+             */
+            purchaseOrderId?: string;
+            /** Format: uuid */
+            expenseCategoryId?: string;
+            /** Format: uuid */
+            payrollPeriodId?: string;
+            /** Format: uuid */
+            employeeId?: string;
+            /** Format: uuid */
+            transferBankAccountId?: string;
+            /** Format: uuid */
+            cashRegisterId?: string;
+        };
+        UnreconcileTransactionDto: {
+            reason: string;
         };
         MatchTransactionDto: {
             /** Format: uuid */
@@ -16007,6 +16161,119 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaginatedBankTransactionsDto"];
+                };
+            };
+        };
+    };
+    BankStatementsController_createManual_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBankTransactionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankTransactionResponseDto"];
+                };
+            };
+        };
+    };
+    BankStatementsController_removeManual_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BankStatementsController_supplierPaymentCandidates_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupplierPaymentCandidateDto"][];
+                };
+            };
+        };
+    };
+    BankStatementsController_reconcile_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileTransactionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankTransactionResponseDto"];
+                };
+            };
+        };
+    };
+    BankStatementsController_unreconcile_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnreconcileTransactionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankTransactionResponseDto"];
                 };
             };
         };

@@ -355,6 +355,8 @@ model SupplierPayment {
   bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
   cashRegister  CashRegister?  @relation(fields: [cashRegisterId], references: [id])
   currency      Currency?      @relation("SupplierPaymentCurrency", fields: [currencyId], references: [id])
+  // Рядок банківської виписки, яким цю оплату підтверджено (BR-BANK-027/028); 1:1.
+  bankTransaction BankTransaction?
 
   // +createdAt: дефолтний unfiltered list сортує createdAt desc → covering (як решта документів)
   @@index([orgId, deletedAt, createdAt])

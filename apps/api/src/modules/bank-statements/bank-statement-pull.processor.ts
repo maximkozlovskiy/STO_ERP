@@ -1,3 +1,4 @@
+import type { MatchTransactionDto } from './bank-statement.dto';
 import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { BankTransactionSource } from '@prisma/client';
@@ -191,7 +192,8 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
             try {
               await this.reconciliation.matchTransaction(orgId, tx.id, {
                 counterpartyId: m.counterpartyId,
-                type: m.matchType ?? 'SERVICE',
+                // CONTRACT PLACEHOLDER (BR-BANK-022): auto-post must be limited to IN rows and IN types.
+                type: (m.matchType ?? 'SERVICE') as MatchTransactionDto['type'],
                 invoiceId: m.invoiceId,
               });
             } catch (e) {

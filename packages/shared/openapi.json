@@ -13350,6 +13350,201 @@
         "tags": [
           "Bank Statements"
         ]
+      },
+      "post": {
+        "operationId": "BankStatementsController_createManual_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBankTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankTransactionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Внести банківський платіж вручну (вхідний або вихідний)",
+        "tags": [
+          "Bank Statements"
+        ]
+      }
+    },
+    "/api/v1/bank-statements/transactions/{id}": {
+      "delete": {
+        "operationId": "BankStatementsController_removeManual_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Видалити внесений вручну нерознесений платіж",
+        "tags": [
+          "Bank Statements"
+        ]
+      }
+    },
+    "/api/v1/bank-statements/transactions/{id}/supplier-payment-candidates": {
+      "get": {
+        "operationId": "BankStatementsController_supplierPaymentCandidates_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SupplierPaymentCandidateDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Проведені оплати постачальникам, до яких можна прив’язати вихідний платіж",
+        "tags": [
+          "Bank Statements"
+        ]
+      }
+    },
+    "/api/v1/bank-statements/transactions/{id}/reconcile": {
+      "post": {
+        "operationId": "BankStatementsController_reconcile_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconcileTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankTransactionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Рознести платіж: оплата постачальнику, повернення клієнту, витрата, зарплата, переказ, зняття готівки",
+        "tags": [
+          "Bank Statements"
+        ]
+      }
+    },
+    "/api/v1/bank-statements/transactions/{id}/unreconcile": {
+      "post": {
+        "operationId": "BankStatementsController_unreconcile_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnreconcileTransactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankTransactionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Скасувати рознесення платежу (причина обов’язкова)",
+        "tags": [
+          "Bank Statements"
+        ]
       }
     },
     "/api/v1/bank-statements/transactions/{id}/match": {
@@ -21530,7 +21725,9 @@
               "SUPPLIER_PAYMENT",
               "SUPPLIER_REFUND",
               "FX_GAIN",
-              "FX_LOSS"
+              "FX_LOSS",
+              "REFUND_OUT",
+              "REFUND_OUT_CANCEL"
             ],
             "type": "string"
           },
@@ -21646,7 +21843,9 @@
               "SUPPLIER_PAYMENT",
               "SUPPLIER_REFUND",
               "FX_GAIN",
-              "FX_LOSS"
+              "FX_LOSS",
+              "REFUND_OUT",
+              "REFUND_OUT_CANCEL"
             ],
             "type": "string"
           },
@@ -25258,8 +25457,16 @@
           "operationDate": {
             "type": "string"
           },
+          "direction": {
+            "enum": [
+              "IN",
+              "OUT"
+            ],
+            "type": "string"
+          },
           "amount": {
-            "type": "number"
+            "type": "number",
+            "description": "Завжди додатна; напрям — у `direction`"
           },
           "payerName": {
             "type": "string",
@@ -25304,7 +25511,13 @@
               "SERVICE",
               "INVOICE",
               "REFUND",
-              "OTHER"
+              "OTHER",
+              "SUPPLIER_PAYMENT",
+              "CLIENT_REFUND",
+              "EXPENSE",
+              "PAYROLL",
+              "TRANSFER",
+              "CASH_WITHDRAWAL"
             ],
             "type": "string"
           },
@@ -25330,15 +25543,20 @@
             "items": {
               "$ref": "#/components/schemas/PreviewCandidateDto"
             }
+          },
+          "possibleManualDuplicate": {
+            "type": "boolean"
           }
         },
         "required": [
           "rowIndex",
           "operationDate",
+          "direction",
           "amount",
           "externalId",
           "matchStatus",
-          "candidates"
+          "candidates",
+          "possibleManualDuplicate"
         ]
       },
       "PreviewImportResponseDto": {
@@ -25368,6 +25586,14 @@
           "amount": {
             "type": "number",
             "minimum": 0.01
+          },
+          "direction": {
+            "enum": [
+              "IN",
+              "OUT"
+            ],
+            "type": "string",
+            "default": "IN"
           },
           "payerName": {
             "type": "string"
@@ -25465,7 +25691,8 @@
             "enum": [
               "FILE_IMPORT",
               "PRIVAT24_API",
-              "MONOBANK_API"
+              "MONOBANK_API",
+              "MANUAL"
             ],
             "type": "string"
           },
@@ -25484,7 +25711,13 @@
               "SERVICE",
               "INVOICE",
               "REFUND",
-              "OTHER"
+              "OTHER",
+              "SUPPLIER_PAYMENT",
+              "CLIENT_REFUND",
+              "EXPENSE",
+              "PAYROLL",
+              "TRANSFER",
+              "CASH_WITHDRAWAL"
             ],
             "type": "string"
           },
@@ -25506,6 +25739,72 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "counterpartyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierPaymentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierPaymentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "expenseCategoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "expenseCategoryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "payrollPeriodId": {
+            "type": "string",
+            "nullable": true
+          },
+          "payrollPeriodStart": {
+            "type": "string",
+            "nullable": true,
+            "description": "YYYY-MM-DD"
+          },
+          "payrollPeriodEnd": {
+            "type": "string",
+            "nullable": true,
+            "description": "YYYY-MM-DD"
+          },
+          "employeeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "employeeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "transferBankAccountId": {
+            "type": "string",
+            "nullable": true
+          },
+          "transferBankAccountName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cashOperationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "matchedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "unmatchReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "unmatchedAt": {
+            "type": "string",
+            "nullable": true
           },
           "bankAccountName": {
             "type": "string",
@@ -25558,6 +25857,160 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "CreateBankTransactionDto": {
+        "type": "object",
+        "properties": {
+          "bankAccountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "direction": {
+            "enum": [
+              "IN",
+              "OUT"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0.01,
+            "description": "Сума у валюті рахунку, завжди додатна"
+          },
+          "operationDate": {
+            "type": "string",
+            "example": "2026-10-09"
+          },
+          "payerName": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "payerIban": {
+            "type": "string",
+            "maxLength": 34
+          },
+          "payerEdrpou": {
+            "type": "string",
+            "maxLength": 12
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Призначення платежу"
+          }
+        },
+        "required": [
+          "bankAccountId",
+          "direction",
+          "amount",
+          "operationDate"
+        ]
+      },
+      "SupplierPaymentCandidateDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "documentDate": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "supplierId": {
+            "type": "string"
+          },
+          "supplierName": {
+            "type": "string"
+          },
+          "purchaseOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "purchaseOrderNumber": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "documentDate",
+          "amount",
+          "supplierId",
+          "supplierName"
+        ]
+      },
+      "ReconcileTransactionDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "SUPPLIER_PAYMENT",
+              "CLIENT_REFUND",
+              "EXPENSE",
+              "PAYROLL",
+              "TRANSFER",
+              "CASH_WITHDRAWAL"
+            ],
+            "type": "string"
+          },
+          "counterpartyId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Постачальник / клієнт / довідковий контрагент витрати"
+          },
+          "supplierPaymentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Наявна проведена оплата постачальнику — лише прив’язка"
+          },
+          "purchaseOrderId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Замовлення постачальнику для НОВОЇ оплати"
+          },
+          "expenseCategoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "payrollPeriodId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transferBankAccountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "UnreconcileTransactionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "MatchTransactionDto": {

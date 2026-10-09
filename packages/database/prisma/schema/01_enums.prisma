@@ -193,21 +193,29 @@ enum ProviderKind {
 }
 
 // Staging вхідних банк-транзакцій (BankTransaction). UNMATCHED — сира, не прив'язана до контрагента;
-// MATCHED — прив'язана, Payment створено (paymentId != null); IGNORED — оператор позначив нерелевантною
-// (комісія банку, внутрішній переказ) — Payment НЕ створюється.
+// MATCHED — рознесена (вхідна: Payment створено, paymentId != null; вихідна: за matchedType — оплата
+// постачальнику, повернення клієнту, витрата, зарплата, переказ, зняття готівки); IGNORED — оператор
+// позначив нерелевантною — нічого не створюється.
 enum BankTransactionStatus {
   UNMATCHED
   MATCHED
   IGNORED
 }
 
-// Тип рознесення вхідної банк-транзакції → визначає SettlementTransaction.type у Payment.
+// Тип рознесення банк-транзакції. Перші п'ять — лише для ВХІДНИХ (визначають
+// SettlementTransaction.type у Payment); решта — для ВИХІДНИХ (BR-BANK-025). TRANSFER — обидва напрямки.
 enum BankTransactionMatchType {
   PREPAYMENT // аванс/передоплата → SettlementTransaction PREPAYMENT
   SERVICE // оплата за послуги без наряду (прямий дохід) → PAYMENT
   INVOICE // прив'язка до наявного Invoice (purpose містив номер) → PAYMENT + invoiceId
   REFUND // повернення/помилковий → REFUND
   OTHER // інше (класифікація вручну)
+  SUPPLIER_PAYMENT // вихідний: оплата постачальнику (SupplierPayment — наявна або нова)
+  CLIENT_REFUND // вихідний: повернення коштів клієнту → SettlementTransaction REFUND_OUT
+  EXPENSE // вихідний: витрата за статтею (ExpenseCategory), без проведення
+  PAYROLL // вихідний: виплата зарплати (PayrollPeriod [+ Employee]), без зміни payroll
+  TRANSFER // переказ між власними рахунками (обидва напрямки), без проведення
+  CASH_WITHDRAWAL // вихідний: зняття готівки в касу → CashOperation IN
 }
 
 // Джерело завантаження банк-транзакції.
@@ -215,9 +223,10 @@ enum BankTransactionSource {
   FILE_IMPORT // CSV/XLSX/DBF виписка (offline)
   PRIVAT24_API // auto-pull Privat24 Merchant API
   MONOBANK_API // auto-pull monobank statement API
+  MANUAL // внесено вручну (BR-BANK-023)
 }
 
-// Напрям банк-транзакції. Фокус MVP — IN (вхідні надходження).
+// Напрям банк-транзакції: IN — надходження на наш рахунок, OUT — списання з нього.
 enum BankTransactionDirection {
   IN
   OUT
@@ -240,6 +249,11 @@ enum SettlementTransactionType {
   // (отримали менше base ніж нараховано). amount=amountBase=|fx| у БАЗОВІЙ валюті (currencyId=null).
   FX_GAIN
   FX_LOSS
+  // Повернення коштів клієнту з банківського рахунку (вихідний платіж): клієнт знову винен / аванс
+  // зменшився → balance↑ (+1). Наявний REFUND має знак −1 і зайнятий вхідними рядками.
+  // REFUND_OUT_CANCEL(−1) — сторно при скасуванні рознесення (ledger append-only).
+  REFUND_OUT
+  REFUND_OUT_CANCEL
 }
 
 // Зарплатний період (payroll). FSM: DRAFT → COMPUTED (нарахування зафіксовано) → PAID; або CANCELLED.

@@ -100,6 +100,22 @@ export const en: Record<string, string> = {
   'v.supplierPayment.cash.required': 'For a cash payment specify the cash register',
   'v.supplierPayment.source.conflict': 'Cannot specify both a bank and a cash register',
 
+  // ── bank-transaction.schema.ts ──
+  'v.bankTransaction.bankAccount.required': 'Select the bank account',
+  'v.bankTransaction.direction.required': 'Select the payment direction',
+  'v.bankTransaction.amount.min': 'Payment amount must be greater than zero',
+  'v.bankTransaction.date.required': 'Enter the operation date',
+  'v.bankTransaction.purpose.max': 'The purpose is too long (up to 500 characters)',
+  'v.bankTransaction.type.required': 'Select the match type',
+  'v.bankTransaction.supplier.required': 'Select the supplier or an existing payment',
+  'v.bankTransaction.client.required': 'Select the client',
+  'v.bankTransaction.expenseCategory.required': 'Select the expense category',
+  'v.bankTransaction.payrollPeriod.required': 'Select the payroll period',
+  'v.bankTransaction.transferAccount.required': 'Select the account the money went to',
+  'v.bankTransaction.cashRegister.required': 'Select the cash register',
+  'v.bankTransaction.unmatchReason.required': 'Enter the reason for cancelling',
+  'v.bankTransaction.unmatchReason.max': 'The reason is too long (up to 500 characters)',
+
   // ── work-order.schema.ts ──
   'v.workOrder.nonNegInt.int': 'Value must be an integer',
   'v.workOrder.nonNegInt.min': 'Value cannot be negative',
@@ -613,6 +629,27 @@ export const en: Record<string, string> = {
   'err.dto.bankStatement.rows.max': 'Too many rows for a single import (maximum 1000)',
   'err.dto.bankStatement.reason.required': 'Provide a reason for ignoring',
   'err.dto.bankStatement.type.invalid': 'Invalid transaction match type',
+  'err.bankStatement.wrongDirection': 'This match type does not fit the payment direction',
+  'err.bankStatement.notManual': 'Only a manually entered payment can be deleted',
+  'err.bankStatement.notMatched': 'The payment is not reconciled — nothing to cancel',
+  'err.bankStatement.unmatchIncomingUnsupported':
+    'Cancelling the reconciliation of an incoming payment is not supported',
+  'err.bankStatement.fieldRequiredForType': 'A required field for this match type is missing',
+  'err.bankStatement.supplierPaymentNotFound': 'Supplier payment not found',
+  'err.bankStatement.supplierPaymentMismatch':
+    'The supplier payment does not match: a confirmed payment from the same account for the same amount is required',
+  'err.bankStatement.supplierPaymentAlreadyLinked':
+    'This supplier payment is already linked to another bank payment',
+  'err.bankStatement.purchaseOrderNotFound': 'Purchase order not found',
+  'err.bankStatement.expenseCategoryInvalid': 'Expense category not found or inactive',
+  'err.bankStatement.payrollPeriodInvalid': 'Payroll period not found or not computed yet',
+  'err.bankStatement.employeeNotInPeriod': 'The employee is not in this payroll period',
+  'err.bankStatement.transferAccountInvalid': 'Choose another own bank account',
+  'err.bankStatement.cashRegisterNotFound': 'Cash register not found',
+  'err.bankStatement.cashRegisterCurrencyMismatch':
+    'The cash register currency differs from the payment currency',
+  'err.dto.bankStatement.unmatchReason.required':
+    'Enter the reason for cancelling the reconciliation',
 
   // ── Exception messages: counterparties module ──
   'err.counterparty.notFound': 'Counterparty not found',
