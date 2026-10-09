@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import { Button } from './button';
 
 interface ListLoadErrorProps {
@@ -25,7 +26,10 @@ export function ListLoadError({ error, onRetry, className }: ListLoadErrorProps)
   return (
     <div
       role="alert"
-      className={`flex items-center justify-between gap-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2 ${className ?? ''}`}
+      className={cn(
+        'flex items-center justify-between gap-3 text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2',
+        className,
+      )}
     >
       <span>{message}</span>
       {onRetry && (

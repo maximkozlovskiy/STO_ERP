@@ -437,7 +437,13 @@ export class ReportsService {
       byLift[liftId].totalHours += hours;
     }
 
-    const totalDays = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / 86_400_000));
+    // Календарні дні періоду, обидва включно. Рахуємо з дат, а не з різниці меж: доба 25.10
+    // (переведення годинника) триває 25 годин, і ceil(25 год / 24) давав зайвий день — відсоток
+    // завантаженості за цей день виходив удвічі меншим.
+    const totalDays =
+      Math.round(
+        (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000,
+      ) + 1;
 
     return {
       rows: Object.values(byLift).map(r => ({

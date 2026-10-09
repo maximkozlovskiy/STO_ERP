@@ -84,7 +84,7 @@ function kyivEndOfWorkDay(d: Date, endHour: number = DEFAULT_WORK_DAY_END_H): Da
   // Build "YYYY-MM-DDTHH:00:00" as a local Kyiv wall-clock time, then convert to UTC.
   // We use the same DST-aware approach: find the UTC offset at noon of that day.
   const noonUtc = new Date(`${kyivDate}T12:00:00Z`);
-  const offsetMs = kyivOffsetMsStatic(noonUtc);
+  const offsetMs = kyivOffsetMs(noonUtc);
   return new Date(
     new Date(`${kyivDate}T${String(endHour).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
   );
@@ -97,15 +97,10 @@ function kyivStartOfNextWorkDay(d: Date, startHour: number = DEFAULT_WORK_DAY_ST
   const nextDay = new Date(Date.UTC(y, m - 1, day + 1));
   const nextDateStr = KYIV_DATE_FMT.format(nextDay);
   const noonUtc = new Date(`${nextDateStr}T12:00:00Z`);
-  const offsetMs = kyivOffsetMsStatic(noonUtc);
+  const offsetMs = kyivOffsetMs(noonUtc);
   return new Date(
     new Date(`${nextDateStr}T${String(startHour).padStart(2, '0')}:00:00Z`).getTime() - offsetMs,
   );
-}
-
-/** Зсув Києва для миті `d` — спільна реалізація (раніше тут жила власна копія по годинах). */
-function kyivOffsetMsStatic(d: Date): number {
-  return kyivOffsetMs(d);
 }
 
 @Injectable()

@@ -28,7 +28,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useListPage } from '@/hooks/useListPage';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/lib/toast';
-import { fmtMoney, kyivToday } from '@/lib/format';
+import { CALENDAR_DATE_RE, fmtMoney, kyivToday } from '@/lib/format';
 import {
   usePayrollPreview,
   usePayrollPeriods,
@@ -42,8 +42,6 @@ import {
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { ListLoadError } from '@/components/ui/list-load-error';
 import { useCashRegisters } from '@/hooks/api/useCash';
-
-const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const STATUS_BADGE: Record<PayrollPeriod['status'], BadgeVariant> = {
   DRAFT: 'secondary',

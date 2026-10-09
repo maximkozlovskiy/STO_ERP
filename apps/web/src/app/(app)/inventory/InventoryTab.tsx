@@ -309,9 +309,11 @@ export function InventoryTab() {
 
         {/* Date range — only in documents/batches modes */}
         {viewMode !== 'goods' && (
-          <>
-            {/* Спільне поле дати віддає лише завершену дату — рідне `type="date"` під час набору
-                року слало запит на кожну проміжну дату (0002-.., 0020-.., 0202-..). */}
+          // Спільне поле дати віддає лише завершену дату — рідне `type="date"` під час набору року
+          // слало запит на кожну проміжну дату (0002-.., 0020-.., 0202-..).
+          // Обгортка тримає «З … По …» разом: на ширині 1280 рядок фільтрів не вміщає обидва поля
+          // поруч із пошуком і складом, і без неї «По» падало на другий рядок саме.
+          <div className="flex items-center gap-3 shrink-0">
             <DateRangeFilter
               from={from}
               to={to}
@@ -320,7 +322,7 @@ export function InventoryTab() {
               fromLabel={t('filters.dateFrom')}
               toLabel={t('filters.dateTo')}
             />
-          </>
+          </div>
         )}
 
         {/* Low stock filter — only in goods mode */}

@@ -174,6 +174,12 @@ export function kyivDateOf(d: string | Date | null | undefined): string {
   return Number.isNaN(date.getTime()) ? '' : KYIV_YMD_FMT.format(date);
 }
 
+/**
+ * Форма календарної дати `YYYY-MM-DD`, яку приймає API. Рідний `<input type="date">` дозволяє
+ * набрати рік із 5–6 цифр (`20261-10-09`) або лишити поле порожнім — таке значення у запит не йде.
+ */
+export const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Додає `days` днів до дати `YYYY-MM-DD` і повертає `YYYY-MM-DD` (UTC-арифметика, без DST-стрибків). */
 export function addDaysISO(ymd: string, days: number): string {
   const d = new Date(ymd + 'T00:00:00Z');

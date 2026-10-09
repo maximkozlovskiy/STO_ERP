@@ -1,6 +1,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
+import { CALENDAR_DATE_RE } from '@/lib/format';
 import type { ApiSchema, operations } from '@sto/shared';
 
 export interface StockByDocumentFilter {
@@ -82,10 +83,9 @@ export function useStockItems(filters: InventoryFilter = {}) {
 
 // Бекенд відхиляє з 400 усе, що не `YYYY-MM-DD`. Рідний `<input type="date">` дозволяє набрати
 // рік із 5–6 цифр (`20261-10-09`) — таку МЕЖУ в запит не кладемо: він іде без неї (з того боку
-// вибірка не обмежена), а не мовчки застигає на помилці 400 з попередніми даними. Щоб поле не
-// показувало дату, якої вибірка не знає, поля на вкладці залишків мають `max` (InventoryTab).
-const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
+// вибірка не обмежена), а не мовчки застигає на помилці 400 з попередніми даними. Вкладка
+// залишків таких значень уже не дає (спільне поле дати віддає лише завершену дату); перевірка
+// лишається для інших споживачів хуків.
 const calendarDateOrNone = (value?: string) =>
   value && CALENDAR_DATE_RE.test(value) ? value : undefined;
 

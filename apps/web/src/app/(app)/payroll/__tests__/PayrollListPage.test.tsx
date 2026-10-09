@@ -181,12 +181,28 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
 });
 
 describe('Payroll — розрахунок за період шле лише календарні дати', () => {
-  it('рік із 5 цифр: кнопка «Розрахувати» вимкнена, запит preview не вмикається', () => {
+  // Mutation-verify (2026-10-09): прибрати `&& datesValid` з виклику usePayrollPreview → падає
+  // останнє твердження; `disabled={!datesValid}` → падає твердження про кнопку. Запит спершу
+  // ВМИКАЄМО («Розрахувати» з коректними датами): без цього четвертий аргумент хука — false ще до
+  // зміни дати, і твердження про нього нічого не стерегло б.
+  it('рік із 5 цифр: кнопка «Розрахувати» вимкнена, увімкнений запит preview вимикається', () => {
     render(<PayrollPage />);
+    const btn = screen.getByRole('button', { name: /Розрахувати/ });
+    fireEvent.click(btn);
+    expect(lastPreviewArgs[3]).toBe(true);
+
     const from = document.querySelectorAll('input[type="date"]')[0] as HTMLInputElement;
     fireEvent.change(from, { target: { value: '20261-10-01' } });
-    const btn = screen.getByRole('button', { name: /Розрахувати/ });
     expect(btn).toBeDisabled();
+    expect(lastPreviewArgs[3]).toBe(false);
+  });
+
+  it('порожня дата «по»: запит preview теж вимикається', () => {
+    render(<PayrollPage />);
+    fireEvent.click(screen.getByRole('button', { name: /Розрахувати/ }));
+    const to = document.querySelectorAll('input[type="date"]')[1] as HTMLInputElement;
+    fireEvent.change(to, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: /Розрахувати/ })).toBeDisabled();
     expect(lastPreviewArgs[3]).toBe(false);
   });
 });

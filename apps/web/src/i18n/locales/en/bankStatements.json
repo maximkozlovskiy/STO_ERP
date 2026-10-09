@@ -35,9 +35,6 @@
       "title": "No transactions",
       "description": "Import a bank statement to see payments."
     },
-    "error": {
-      "load": "Failed to load transactions"
-    },
     "emptyOutgoing": {
       "title": "No outgoing payments",
       "description": "Outgoing payments are not imported from statements yet — they will appear here once the import supports them."

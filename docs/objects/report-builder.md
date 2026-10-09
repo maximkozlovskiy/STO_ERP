@@ -207,9 +207,9 @@ cd apps/api && npx vitest run src/modules/report-builder/<файл>.spec.ts
 | межі config (DTO)                                  | `report-builder.dto.spec.ts`           | 1      |
 | фіксовані звіти (сусідній модуль `reports`)        | `reports.service.spec.ts`              | 19     |
 | фіксовані звіти: дати періоду в запиті (400)       | `reports.contract.spec.ts`             | 74     |
-| фіксовані звіти: межі періоду за Києвом, ПДВ       | `reports.period-bounds.spec.ts`        | 35     |
+| фіксовані звіти: межі періоду за Києвом, ПДВ       | `reports.period-bounds.spec.ts`        | 42     |
 
-Разом: **209** кейсів — 81 конструктора і 128 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **216** кейсів — 81 конструктора і 135 фіксованих звітів (цифри з `vitest --reporter=json`, не з grep).
 
 Web-тест експорту (`BR-RPT-021`) лежить поза модулем:
 `apps/web/src/lib/__tests__/report-export.test.ts` — 23 кейси. Перевіряє чисту частину
