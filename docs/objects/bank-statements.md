@@ -155,7 +155,7 @@ Nav — «Банківські платежі» (Landmark, section settlements).
 - **BR-BANK-011**: Auto-pull сам розносить лише впевнений збіг — `matched` з confidence = 1 (IBAN) і відомим контрагентом; збіги за ЄДРПОУ чи призначенням, `ambiguous` і `notFound` лишаються `UNMATCHED` для ручного рознесення.
 - **BR-BANK-012**: Auto-pull обробляє лише рахунки з `autoPullEnabled`; збій одного рахунку (API банку, імпорт, матч) не зупиняє інші; курсор `lastPulledAt` рухається лише після успішного імпорту або порожнього вікна — після збою імпорту вікно буде повторене.
 - **BR-BANK-013**: З банківських API у staging потрапляють лише вхідні (credit) проводки з додатною сумою; monobank віддає суму в копійках — вона ділиться на 100.
-- **BR-BANK-014**: Межі запитів `import/apply`, `match`, `ignore` (DTO): не більше 1000 рядків за запит; сума рядка ≥ 0.01; `externalId` і дата операції обов'язкові; `bankAccountId` — UUID; тип рознесення — лише з переліку (`SERVICE` / `PREPAYMENT` / `INVOICE` / `REFUND` / `OTHER`); ігнорування — лише з непорожньою причиною.
+- **BR-BANK-014**: Межі запитів `import/apply`, `match`, `ignore` (DTO): не більше 1000 рядків за запит; сума рядка ≥ 0.01; `externalId` і дата операції обов'язкові; `bankAccountId` — UUID; тип рознесення — лише з переліку (`SERVICE` / `PREPAYMENT` / `INVOICE` / `REFUND` / `OTHER`); ігнорування — лише з непорожньою причиною; список транзакцій: `q` ≤ 100 символів, `dateFrom`/`dateTo` — існуюча календарна `YYYY-MM-DD`, `direction` — `IN`/`OUT`, порожнє значення = «без відбору».
 - **BR-BANK-015**: Доступ: імпорт, список, рознесення й ігнорування — лише `OWNER` / `ADMIN` / `ACCOUNTANT`; змінювати налаштування банк-провайдера (зберегти, активувати) — лише `OWNER` / `ADMIN`; бухгалтер може їх переглядати, перевіряти ключі й запускати «Підтягнути зараз».
 - **BR-BANK-016**: Tenant: кожен запит модуля фільтрується по `orgId`; банківський рахунок імпорту, контрагент, рахунок-фактура й рядок виписки шукаються лише у своїй організації й лише невидалені — чужий або видалений → 404.
 
@@ -181,7 +181,7 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 | контролер провайдерів          | `bank-statement-providers.controller.spec.ts`   | 7      |
 | BullMQ-processor               | `bank-statement-pull.processor.spec.ts`         | 20     |
 | scheduler                      | `bank-statement-pull.scheduler.spec.ts`         | 4      |
-| DTO-межі запитів               | `bank-statement.dto.spec.ts`                    | 9      |
+| DTO-межі запитів               | `bank-statement.dto.spec.ts`                    | 15     |
 | доступ (ролі)                  | `bank-statements.controller.spec.ts`            | 8      |
 | HTTP-клієнт                    | `providers/mono-statement.client.spec.ts`       | 13     |
 | провайдер                      | `providers/monobank-statement.provider.spec.ts` | 17     |

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -24,6 +24,7 @@ import {
   BankTransactionStatus,
   Prisma,
 } from '@prisma/client';
+import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 import { LIST_SEARCH_MAX_LENGTH } from '../../common/utils/like-pattern';
 
@@ -208,6 +209,7 @@ export class ListQueryDto {
   // Вкладки списку «Вхідні» / «Вихідні». Без параметра — обидва напрямки.
   @ApiPropertyOptional({ enum: BankTransactionDirection })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @IsEnum(BankTransactionDirection)
   direction?: BankTransactionDirection;
 
@@ -218,14 +220,17 @@ export class ListQueryDto {
   q?: string;
 
   // Дата операції — `@db.Date` (дата без часу): межі порівнюються датами, без зсуву на пояс.
+  // Порожній рядок = «межі немає» (як у складських документах, оплатах, рухах і касі).
   @ApiPropertyOptional({ description: 'Дата операції від (YYYY-MM-DD), включно' })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @Matches(CALENDAR_DATE_RE)
   @IsDateString({ strict: true })
   dateFrom?: string;
 
   @ApiPropertyOptional({ description: 'Дата операції до (YYYY-MM-DD), включно' })
   @IsOptional()
+  @Transform(emptyToUndefined)
   @Matches(CALENDAR_DATE_RE)
   @IsDateString({ strict: true })
   dateTo?: string;

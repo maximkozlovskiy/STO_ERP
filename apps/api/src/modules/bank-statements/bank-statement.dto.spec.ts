@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { plainToInstance } from 'class-transformer';
 import { validate, type ValidationError } from 'class-validator';
-import { ApplyImportDto, IgnoreTransactionDto, MatchTransactionDto } from './bank-statement.dto';
+import {
+  ApplyImportDto,
+  IgnoreTransactionDto,
+  ListQueryDto,
+  MatchTransactionDto,
+} from './bank-statement.dto';
 
 // Межі вхідних даних банк-виписки (BR-BANK-014). Перевіряємо САМІ декоратори DTO тим самим
 // шляхом, що й глобальний ValidationPipe: plainToInstance → validate.
@@ -87,5 +92,32 @@ describe('MatchTransactionDto / IgnoreTransactionDto', () => {
   it('ігнорування без причини → відхиляється', async () => {
     expect(await check(IgnoreTransactionDto, { reason: '' })).toEqual(['reason.isNotEmpty']);
     expect(await check(IgnoreTransactionDto, { reason: 'помилковий переказ' })).toEqual([]);
+  });
+});
+
+describe('ListQueryDto — відбір списку платежів', () => {
+  // guards: BR-BANK-014
+  it('порожні direction / dateFrom / dateTo означають «без відбору», а не 400', async () => {
+    expect(await check(ListQueryDto, { direction: '', dateFrom: '', dateTo: '' })).toEqual([]);
+  });
+
+  // guards: BR-BANK-014
+  it.each(['2026-02-31', '2026-03-09T10:00:00Z', '09.03.2026'])(
+    'дата %s → відхиляється (лише існуюча календарна YYYY-MM-DD)',
+    async dateFrom => {
+      expect((await check(ListQueryDto, { dateFrom })).length).toBeGreaterThan(0);
+    },
+  );
+
+  // guards: BR-BANK-014
+  it('q довший за ліміт пошуку → відхиляється; рівно ліміт проходить', async () => {
+    expect(await check(ListQueryDto, { q: 'а'.repeat(100) })).toEqual([]);
+    expect(await check(ListQueryDto, { q: 'а'.repeat(101) })).toEqual(['q.maxLength']);
+  });
+
+  // guards: BR-BANK-014
+  it('direction поза IN / OUT → відхиляється', async () => {
+    expect(await check(ListQueryDto, { direction: 'SIDEWAYS' })).toEqual(['direction.isEnum']);
+    expect(await check(ListQueryDto, { direction: 'OUT' })).toEqual([]);
   });
 });
