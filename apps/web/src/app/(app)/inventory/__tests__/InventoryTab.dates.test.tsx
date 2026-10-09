@@ -8,9 +8,9 @@
 // Mutation-verify: повернути `from` / `to` замість `debouncedFrom` / `debouncedTo` у
 // `viewFilters` → перші два кейси падають.
 
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { screen, fireEvent, act } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
+import { renderWithQueryClient } from '@/__tests__/query-utils';
 
 vi.mock('@/lib/api-client', () => ({
   apiFetch: vi.fn(() => Promise.resolve([])),
@@ -31,12 +31,7 @@ import { InventoryTab } from '../InventoryTab';
 type Filters = { from?: string; to?: string };
 const TYPED_YEAR = ['0002-10-09', '0020-10-09', '0202-10-09', '2026-10-09'];
 
-const renderTab = () =>
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <InventoryTab />
-    </QueryClientProvider>,
-  );
+const renderTab = () => renderWithQueryClient(<InventoryTab />);
 const dateInputs = () =>
   Array.from(document.querySelectorAll<HTMLInputElement>('input[type="date"]'));
 const tick = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
@@ -53,32 +48,26 @@ describe('InventoryTab — дати розрізів залишків ідуть
   });
   afterEach(() => vi.useRealTimers());
 
-  it('набір року з клавіатури дає один запит «з дня», а не чотири', () => {
-    renderTab();
-    fireEvent.click(screen.getByRole('button', { name: 'По документах' }));
-    const [from] = dateInputs();
-    for (const value of TYPED_YEAR) {
-      fireEvent.change(from!, { target: { value } });
-      tick(120);
-    }
-    // Поле показує набране одразу, запит ще чекає.
-    expect(from).toHaveValue('2026-10-09');
-    expect(distinct(useStockByDocumentMock, 'from')).toEqual([undefined]);
-    tick(300);
-    expect(distinct(useStockByDocumentMock, 'from')).toEqual([undefined, '2026-10-09']);
-  });
-
-  it('те саме для межі «по день» у розрізі за партіями', () => {
-    renderTab();
-    fireEvent.click(screen.getByRole('button', { name: 'По партіях' }));
-    const [, to] = dateInputs();
-    for (const value of TYPED_YEAR) {
-      fireEvent.change(to!, { target: { value } });
-      tick(120);
-    }
-    tick(300);
-    expect(distinct(useStockByBatchMock, 'to')).toEqual([undefined, '2026-10-09']);
-  });
+  it.each([
+    ['По документах', 0, useStockByDocumentMock, 'from'],
+    ['По партіях', 1, useStockByBatchMock, 'to'],
+  ] as const)(
+    '%s: набір року з клавіатури дає один запит із межею, а не чотири',
+    (mode, index, mock, key) => {
+      renderTab();
+      fireEvent.click(screen.getByRole('button', { name: mode }));
+      const input = dateInputs()[index]!;
+      for (const value of TYPED_YEAR) {
+        fireEvent.change(input, { target: { value } });
+        tick(120);
+      }
+      // Поле показує набране одразу, запит ще чекає.
+      expect(input).toHaveValue('2026-10-09');
+      expect(distinct(mock, key)).toEqual([undefined]);
+      tick(300);
+      expect(distinct(mock, key)).toEqual([undefined, '2026-10-09']);
+    },
+  );
 
   it('очищене поле знімає межу з запиту', () => {
     renderTab();

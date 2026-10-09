@@ -86,12 +86,24 @@ export function useStockItems(filters: InventoryFilter = {}) {
 // показувало дату, якої вибірка не знає, поля на вкладці залишків мають `max` (InventoryTab).
 const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+const calendarDateOrNone = (value?: string) =>
+  value && CALENDAR_DATE_RE.test(value) ? value : undefined;
+
+/** Той самий відбір іде і в ключ кешу, і в запит — інакше відкинута межа дає другий такий самий запит. */
+function cleanStockFilters(filters: StockByDocumentFilter): StockByDocumentFilter {
+  return {
+    ...filters,
+    from: calendarDateOrNone(filters.from),
+    to: calendarDateOrNone(filters.to),
+  };
+}
+
 function buildStockQuery(filters: StockByDocumentFilter): string {
   const params = new URLSearchParams();
   if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
   if (filters.goodId) params.set('goodId', filters.goodId);
-  if (filters.from && CALENDAR_DATE_RE.test(filters.from)) params.set('from', filters.from);
-  if (filters.to && CALENDAR_DATE_RE.test(filters.to)) params.set('to', filters.to);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -100,10 +112,11 @@ function buildStockQuery(filters: StockByDocumentFilter): string {
 // агрегуючи до 5000 рядків. Споживач передає `enabled: viewMode === 'documents'` (або 'batches').
 export function useStockByDocument(filters: StockByDocumentFilter, enabled: boolean = true) {
   const { employee } = useAuth();
+  const clean = cleanStockFilters(filters);
   return useQuery<{ goods: GoodWithDocuments[] }>({
-    queryKey: inventoryKeys.byDocument(filters),
+    queryKey: inventoryKeys.byDocument(clean),
     queryFn: ({ signal }) =>
-      apiFetch(`/stock-items/by-document${buildStockQuery(filters)}`, { signal }),
+      apiFetch(`/stock-items/by-document${buildStockQuery(clean)}`, { signal }),
     enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
@@ -112,10 +125,10 @@ export function useStockByDocument(filters: StockByDocumentFilter, enabled: bool
 
 export function useStockByBatch(filters: StockByDocumentFilter, enabled: boolean = true) {
   const { employee } = useAuth();
+  const clean = cleanStockFilters(filters);
   return useQuery<{ batches: BatchGroup[] }>({
-    queryKey: inventoryKeys.byBatch(filters),
-    queryFn: ({ signal }) =>
-      apiFetch(`/stock-items/by-batch${buildStockQuery(filters)}`, { signal }),
+    queryKey: inventoryKeys.byBatch(clean),
+    queryFn: ({ signal }) => apiFetch(`/stock-items/by-batch${buildStockQuery(clean)}`, { signal }),
     enabled: !!employee && enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,

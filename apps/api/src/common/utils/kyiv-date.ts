@@ -28,6 +28,7 @@ const GREGORIAN_CYCLE_MS = 146_097 * 86_400_000;
 /**
  * DST-aware offset for Europe/Kyiv at the given UTC instant, in **milliseconds**.
  * Returns +7_200_000 (EET +02:00) у зимовий період, +10_800_000 (EEST +03:00) у літній.
+ * Для дат до 1924 року — місцевий середній час Києва, +7_324_000 (+02:02:04).
  *
  * Logic-bug fix: попередня реалізація ділила різницю мілісекунд на 60_000 → результат у
  * хвилинах попри назву `…Ms`. Метод був мертвим кодом (жоден сервіс не імпортував його з
@@ -114,7 +115,8 @@ export function isCalendarDate(value: string): boolean {
  * Перетворює YYYY-MM-DD діапазон (from/to) у UTC-межі Kyiv-доби: `fromDate` = початок дня від,
  * `toDate` = кінець дня до. DST-aware через kyivDayStart / kyivDayEnd. Порядок меж (from ≤ to)
  * перевіряє викликач — сама функція нічого не кидає.
- * Спільне джерело для reports + report-builder (раніше дублювалось у reports.service).
+ * Використовує report-builder; reports.service, payroll.service і calendar.service досі мають
+ * власні копії меж доби (TECH-DEBT §8).
  */
 export function normalizeKyivDateRange(from: string, to: string): { fromDate: Date; toDate: Date } {
   return { fromDate: kyivDayStart(from), toDate: kyivDayEnd(to) };
