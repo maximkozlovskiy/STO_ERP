@@ -399,6 +399,42 @@ describe('CalendarService.syncWorkOrderSlots', () => {
       );
     });
 
+    // Bug #819: слот, що ПОЧИНАЄТЬСЯ після кінця робочого дня, ділити нічим — «сьогоднішня»
+    // частина закінчилась раніше, ніж почалась. Раніше батьківський слот зберігався з
+    // endAt < startAt (23:30 → 20:00), а продовження отримувало 3 год 50 хв замість 20 хв.
+    // guards: BR-CAL-007
+    it('слот 23:30–23:50 Kyiv (після кінця робочого дня) НЕ розбивається і зберігається як є', async () => {
+      const prisma = buildCreateMock('20:00');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      // Травень → +03:00: 23:30 Kyiv = 20:30Z, 23:50 Kyiv = 20:50Z.
+      const result = await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-05-22T20:30:00.000Z',
+        endAt: '2026-05-22T20:50:00.000Z',
+      } as never);
+      expect(prisma._create).toHaveBeenCalledTimes(1);
+      const data = prisma._create.mock.calls[0][0].data as { startAt: Date; endAt: Date };
+      expect(data.startAt.toISOString()).toBe('2026-05-22T20:30:00.000Z');
+      expect(data.endAt.toISOString()).toBe('2026-05-22T20:50:00.000Z');
+      expect(result.slots).toHaveLength(1);
+    });
+
+    // guards: BR-CAL-007
+    it('слот, що починається рівно о кінці робочого дня (20:00–21:00 Kyiv), теж не розбивається', async () => {
+      const prisma = buildCreateMock('20:00');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const service = new CalendarService(prisma as any);
+      await service.createSlot(orgId, {
+        liftId,
+        startAt: '2026-05-22T17:00:00.000Z',
+        endAt: '2026-05-22T18:00:00.000Z',
+      } as never);
+      expect(prisma._create).toHaveBeenCalledTimes(1);
+      const data = prisma._create.mock.calls[0][0].data as { startAt: Date; endAt: Date };
+      expect(data.endAt.getTime()).toBeGreaterThan(data.startAt.getTime());
+    });
+
     it('workEndTime="20:00" (дефолт) → той самий слот НЕ розбивається', async () => {
       const prisma = buildCreateMock('20:00');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

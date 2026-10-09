@@ -292,7 +292,11 @@ export class CalendarService {
 
     // Determine if slot overflows the working day end (endHour Kyiv, per-branch)
     const workDayEnd = kyivEndOfWorkDay(startAt, endHour);
-    const isSplit = endAt > workDayEnd;
+    // Bug #819: split only a slot that STARTS inside the working day. For a slot that starts at or
+    // after its end (23:30) the "today" part ended before it began: the parent was stored with
+    // endAt < startAt, and the continuation got the whole gap since the end of the working day.
+    // Such a slot is stored as requested - the same way as one that starts before opening (00:30).
+    const isSplit = startAt < workDayEnd && endAt > workDayEnd;
 
     const slot1End = isSplit ? workDayEnd : endAt;
     const slot2Start = isSplit ? kyivStartOfNextWorkDay(startAt, startHour) : null;
