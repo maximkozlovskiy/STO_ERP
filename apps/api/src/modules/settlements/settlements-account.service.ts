@@ -114,6 +114,11 @@ export class SettlementsAccountService {
     dto: CreateReconciliationActDto,
     userId?: string,
   ) {
+    // Bug #822: an inverted period used to be stored as an act (201) with no rows and
+    // periodFrom > periodTo. Both bounds are YYYY-MM-DD (DTO), so string order is date order.
+    if (dto.periodFrom > dto.periodTo)
+      throw new BadRequestException(translateError('err.report.startAfterEnd', getLocale()));
+
     // Parallel cross-tenant validation — counterparty existence + account lookup
     // are independent reads on different tables (no FK chain).
     // Narrow projections — counterparty потрібен лише для NotFoundException;

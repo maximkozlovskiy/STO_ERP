@@ -2,7 +2,7 @@
  * Акт звірки (SettlementsAccountService.createReconciliationAct / generateReconciliationPdf).
  * Правила BR-SETL-006, BR-SETL-011, BR-SETL-012 — docs/objects/settlements.md.
  */
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeAccountFixture, txRow } from './settlements.spec-fixture';
 
@@ -288,6 +288,29 @@ describe('SettlementsAccountService — акт звірки', () => {
       NotFoundException,
     );
     expect(prisma.reconciliationAct.create).not.toHaveBeenCalled();
+  });
+
+  // Bug #822: перевернутий період зберігався актом (201) без рядків, з periodFrom > periodTo.
+  it('початок періоду пізніше за кінець → BadRequest, акт не створюється і база не читається', async () => {
+    await expect(
+      service.createReconciliationAct('org-1', 'cp-1', {
+        periodFrom: '2026-07-31',
+        periodTo: '2026-07-01',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.settlementAccount.findFirst).not.toHaveBeenCalled();
+    expect(prisma.reconciliationAct.create).not.toHaveBeenCalled();
+  });
+
+  it('період з одного дня (початок = кінець) приймається', async () => {
+    prisma.settlementTransaction.findMany.mockResolvedValue([]);
+    await expect(
+      service.createReconciliationAct('org-1', 'cp-1', {
+        periodFrom: '2026-07-01',
+        periodTo: '2026-07-01',
+      }),
+    ).resolves.toBeDefined();
+    expect(prisma.reconciliationAct.create).toHaveBeenCalledTimes(1);
   });
 
   // guards: BR-SETL-012
