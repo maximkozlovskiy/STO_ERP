@@ -100,13 +100,17 @@ export function dateOnlyRangeFilter(
   };
 }
 
-/** Форма календарної дати `YYYY-MM-DD` (без часу). Існування дня перевіряє `isCalendarDate`. */
-export const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/**
+ * Форма календарної дати `YYYY-MM-DD` (без часу). Існування дня перевіряє `isCalendarDate`.
+ * Bug #818: the calendar has no year 0000 (JS reads it as 1 BC, Postgres rejects it). The year is
+ * refused here, in the shape itself, so DTOs with `@Matches(CALENDAR_DATE_RE)` answer 400 too -
+ * not only the query parameters that go through `isCalendarDate`.
+ */
+export const CALENDAR_DATE_RE = /^(?!0000)\d{4}-\d{2}-\d{2}$/;
 
 /** YYYY-MM-DD, що існує в календарі (31.02 → false): для query-параметрів без DTO. */
 export function isCalendarDate(value: string): boolean {
-  // Bug #818: the calendar has no year 0000 (JS reads it as 1 BC, Postgres rejects it).
-  if (!CALENDAR_DATE_RE.test(value) || value.startsWith('0000-')) return false;
+  if (!CALENDAR_DATE_RE.test(value)) return false;
   const d = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
