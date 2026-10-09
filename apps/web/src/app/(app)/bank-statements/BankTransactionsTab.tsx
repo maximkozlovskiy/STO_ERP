@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Landmark, Plus, Ban } from 'lucide-react';
+import { Landmark, Plus, Ban, ArrowLeftRight, Trash2 } from 'lucide-react';
+import { BANK_TX_OUT_MATCH_TYPE_VALUES, type BankTxOutMatchTypeValue } from '@sto/shared';
 import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -20,17 +22,22 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { bankTxStatusLabel } from '@/i18n/enumLabel';
+import { bankTxStatusLabel, bankTxMatchTypeLabel, bankTxSourceLabel } from '@/i18n/enumLabel';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import {
   useBankTransactions,
   useIgnoreBankTransaction,
+  useDeleteBankTransaction,
   type BankTransaction,
   type BankTxDirection,
   type BankTxStatus,
 } from '@/hooks/api/useBankStatements';
 import { MatchBankTransactionModal } from '@/components/ui/MatchBankTransactionModal';
 import { BankStatementImportModal } from '@/components/ui/BankStatementImportModal';
+import { MatchOutgoingBankTransactionModal } from '@/components/ui/MatchOutgoingBankTransactionModal';
+import { UnreconcileBankTransactionModal } from '@/components/ui/UnreconcileBankTransactionModal';
+import { BankTransactionCreateModal } from '@/components/ui/BankTransactionCreateModal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
@@ -50,6 +57,29 @@ function shortIban(iban: string): string {
   return iban.length > 8 ? `…${iban.slice(-4)}` : iban;
 }
 
+const TRANSFER_ONLY: readonly BankTxOutMatchTypeValue[] = ['TRANSFER'];
+const COLUMN_COUNT = 8;
+
+/**
+ * Зняти рознесення можна лише з рядка, рознесеного через `reconcile` (BR-BANK-039): вид — із
+ * «вихідних» і немає `paymentId`. Вхідний, рознесений через `match`, має платіж клієнта, а його
+ * сторно в системі немає (BR-BANK-040) — кнопка там обіцяла б відмову.
+ */
+function canUnreconcile(tx: BankTransaction): boolean {
+  return (
+    tx.status === 'MATCHED' &&
+    !tx.paymentId &&
+    !!tx.matchedType &&
+    (BANK_TX_OUT_MATCH_TYPE_VALUES as readonly string[]).includes(tx.matchedType)
+  );
+}
+
+/** Сума зі знаком і валютою рахунку: «+» надходження, «−» списання (у базі сума завжди > 0). */
+function signedAmount(tx: BankTransaction): string {
+  const sign = tx.direction === 'OUT' ? '−' : '+';
+  return `${sign}${fmtMoney(tx.amount)} ${fmtBankCurrencySuffix(tx.bankAccountCurrencyCode)}`;
+}
+
 export default function BankTransactionsTab({ direction }: { direction?: BankTxDirection }) {
   const { t } = useTranslation('bankStatements');
 
@@ -61,6 +91,14 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
   // Ігнорування з причиною — власна модалка (не window.prompt: стилізована, тестована, offline-safe).
   const [ignoreTx, setIgnoreTx] = useState<BankTransaction | null>(null);
   const [ignoreReason, setIgnoreReason] = useState('');
+  // Рознесення через `reconcile`: вихідний рядок — усі види, вхідний — лише переказ.
+  const [reconcile, setReconcile] = useState<{
+    tx: BankTransaction;
+    allowedTypes?: readonly BankTxOutMatchTypeValue[];
+  } | null>(null);
+  const [unreconcileTx, setUnreconcileTx] = useState<BankTransaction | null>(null);
+  const [deleteTx, setDeleteTx] = useState<BankTransaction | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
@@ -77,6 +115,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
     limit,
   });
   const ignoreMut = useIgnoreBankTransaction();
+  const deleteMut = useDeleteBankTransaction();
   const isFiltered = !!(debouncedSearch.trim() || dateFrom || dateTo || status);
   const emptyKind = isFiltered ? 'emptyFiltered' : direction === 'OUT' ? 'emptyOutgoing' : 'empty';
 
@@ -109,6 +148,35 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
       toast.error(e instanceof Error ? e.message : t('ignore.error'));
     }
   };
+
+  const submitDelete = async () => {
+    if (!deleteTx || deleteMut.isPending) return;
+    const id = deleteTx.id;
+    setDeleteTx(null);
+    try {
+      await deleteMut.mutateAsync(id);
+      toast.success(t('page.delete.success'));
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : t('page.delete.error'));
+    }
+  };
+
+  /** Деталь рознесення: з чим саме пов'язано рядок (поля приходять лише для свого виду). */
+  const matchedDetail = (tx: BankTransaction): string =>
+    [
+      tx.counterpartyName,
+      tx.supplierPaymentNumber
+        ? t('page.row.supplierPayment', { number: tx.supplierPaymentNumber })
+        : null,
+      tx.expenseCategoryName,
+      tx.payrollPeriodStart && tx.payrollPeriodEnd
+        ? `${fmtDate(tx.payrollPeriodStart)} – ${fmtDate(tx.payrollPeriodEnd)}`
+        : null,
+      tx.employeeName,
+      tx.transferBankAccountName,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   // Фрагмент, а не власний контейнер: рядки стають прямими дітьми `.page-fill` сторінки й
   // отримують її рівний відступ 8px — як на «Купівлі». Раніше вкладений `.page-fill` із
@@ -153,6 +221,13 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
           toLabel={t('page.filters.dateTo')}
         />
         <div className="flex items-center gap-2 ml-auto">
+          <Button
+            variant="outline"
+            onClick={() => setCreateOpen(true)}
+            leftIcon={<Plus className="h-4 w-4" />}
+          >
+            {t('page.newPayment')}
+          </Button>
           <Button onClick={() => setImportOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
             {t('page.import')}
           </Button>
@@ -166,18 +241,21 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
             <TableHeader>
               <TableRow>
                 <TableHead>{t('page.columns.date')}</TableHead>
-                <TableHead>{t('page.columns.payer')}</TableHead>
+                <TableHead>{t('page.columns.counterparty')}</TableHead>
                 <TableHead>{t('page.columns.account')}</TableHead>
                 <TableHead>{t('page.columns.purpose')}</TableHead>
                 <TableHead className="text-right">{t('page.columns.amount')}</TableHead>
                 <TableHead>{t('page.columns.status')}</TableHead>
-                <TableHead />
+                <TableHead>{t('page.columns.matchedAs')}</TableHead>
+                <TableHead>
+                  <span className="sr-only">{t('page.columns.actions')}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center">
+                  <TableCell colSpan={COLUMN_COUNT} className="py-12 text-center">
                     <div className="flex justify-center">
                       <Spinner size="md" />
                     </div>
@@ -187,11 +265,9 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
 
               {!isLoading && !error && items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="p-0">
+                  <TableCell colSpan={COLUMN_COUNT} className="p-0">
                     <EmptyState
                       icon={Landmark}
-                      // «Вихідні»: імпорт поки кладе лише вхідні (BR-BANK-001) — заклик
-                      // «імпортуйте виписку» тут обіцяв би те, чого не станеться.
                       // Діє пошук, період чи статус → «нічого не знайдено»: заклик імпортувати
                       // виписку тут брехав би, коли рядки є, але поза відбором.
                       title={t(`page.${emptyKind}.title`)}
@@ -207,35 +283,99 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                     <TableCell className="tabular-nums text-[13px] text-muted-foreground whitespace-nowrap">
                       {fmtDate(tx.operationDate)}
                     </TableCell>
-                    <TableCell className="text-[13px] max-w-55 truncate">
-                      {tx.payerName ?? '—'}
+                    {/* payerName — контрагент операції: платник для вхідного, отримувач для
+                        вихідного (BR-BANK-020). */}
+                    <TableCell className="text-[13px] max-w-44">
+                      <div className="truncate">{tx.payerName ?? '—'}</div>
+                      {tx.source === 'MANUAL' && (
+                        <div className="text-[11px] text-muted-foreground">
+                          {bankTxSourceLabel(tx.source)}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-[13px] text-muted-foreground whitespace-nowrap">
                       {tx.bankAccountName ??
                         (tx.bankAccountIban ? shortIban(tx.bankAccountIban) : '—')}
                     </TableCell>
-                    <TableCell className="text-[13px] text-muted-foreground max-w-80 truncate">
+                    <TableCell className="text-[13px] text-muted-foreground max-w-56 truncate">
                       {tx.purpose ?? '—'}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold text-[13px] whitespace-nowrap">
-                      {fmtMoney(tx.amount)} {fmtBankCurrencySuffix(tx.bankAccountCurrencyCode)}
+                    <TableCell
+                      className={cn(
+                        'text-right tabular-nums font-semibold text-[13px] whitespace-nowrap',
+                        tx.direction === 'OUT' ? 'text-destructive' : 'text-success',
+                      )}
+                    >
+                      {signedAmount(tx)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_BADGE[tx.status] ?? 'secondary'}>
                         {bankTxStatusLabel(tx.status)}
                       </Badge>
                     </TableCell>
+                    <TableCell className="text-[13px] max-w-52">
+                      {tx.status === 'MATCHED' && tx.matchedType && (
+                        <>
+                          <div className="truncate">{bankTxMatchTypeLabel(tx.matchedType)}</div>
+                          {matchedDetail(tx) && (
+                            <div
+                              className="text-[12px] text-muted-foreground truncate"
+                              title={matchedDetail(tx)}
+                            >
+                              {matchedDetail(tx)}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {tx.status === 'UNMATCHED' && tx.unmatchReason && (
+                        <div
+                          className="text-[12px] text-muted-foreground truncate"
+                          title={
+                            tx.unmatchedAt
+                              ? t('page.row.unmatchCancelledAt', { date: fmtDate(tx.unmatchedAt) })
+                              : undefined
+                          }
+                        >
+                          {t('page.row.unmatchCancelled', { reason: tx.unmatchReason })}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
+                      {canUnreconcile(tx) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setUnreconcileTx(tx)}
+                        >
+                          {t('page.row.unreconcile')}
+                        </Button>
+                      )}
                       {tx.status === 'UNMATCHED' && (
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setMatchTx(tx)}
+                            onClick={() =>
+                              tx.direction === 'OUT' ? setReconcile({ tx }) : setMatchTx(tx)
+                            }
                           >
                             {t('page.row.match')}
                           </Button>
+                          {tx.direction === 'IN' && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title={t('page.row.transfer')}
+                              aria-label={t('page.row.transfer')}
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => setReconcile({ tx, allowedTypes: TRANSFER_ONLY })}
+                            >
+                              <ArrowLeftRight className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="ghost"
@@ -247,6 +387,20 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                           >
                             <Ban className="h-3.5 w-3.5" />
                           </Button>
+                          {/* Видалити можна лише внесений вручну нерознесений рядок (BR-BANK-024). */}
+                          {tx.source === 'MANUAL' && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title={t('page.row.delete')}
+                              aria-label={t('page.row.delete')}
+                              className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => setDeleteTx(tx)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       )}
                     </TableCell>
@@ -305,6 +459,44 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
       </Modal>
 
       <BankStatementImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+
+      <MatchOutgoingBankTransactionModal
+        open={!!reconcile}
+        onClose={() => setReconcile(null)}
+        transaction={reconcile?.tx ?? null}
+        allowedTypes={reconcile?.allowedTypes}
+      />
+
+      <UnreconcileBankTransactionModal
+        open={!!unreconcileTx}
+        onClose={() => setUnreconcileTx(null)}
+        transaction={unreconcileTx}
+      />
+
+      {/* Напрям за замовчуванням — напрям вкладки; на «Всі» — вхідний. */}
+      <BankTransactionCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        defaultDirection={direction ?? 'IN'}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTx}
+        title={t('page.delete.title')}
+        message={
+          deleteTx
+            ? t('page.delete.message', {
+                date: fmtDate(deleteTx.operationDate),
+                amount: signedAmount(deleteTx),
+              })
+            : undefined
+        }
+        confirmLabel={t('page.delete.confirm')}
+        cancelLabel={t('ignore.cancel')}
+        variant="destructive"
+        onConfirm={() => void submitDelete()}
+        onCancel={() => setDeleteTx(null)}
+      />
     </>
   );
 }

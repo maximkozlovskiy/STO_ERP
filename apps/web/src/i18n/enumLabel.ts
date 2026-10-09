@@ -87,6 +87,23 @@ const BANK_TX_MATCH_TYPE_FALLBACK: LabelMap = {
   INVOICE: 'Оплата рахунку',
   REFUND: 'Повернення',
   OTHER: 'Інше',
+  // Види рознесення вихідного платежу (`reconcile`, BR-BANK-025).
+  SUPPLIER_PAYMENT: 'Оплата постачальнику',
+  CLIENT_REFUND: 'Повернення клієнту',
+  EXPENSE: 'Витрата',
+  PAYROLL: 'Зарплата',
+  TRANSFER: 'Переказ між рахунками',
+  CASH_WITHDRAWAL: 'Зняття готівки',
+};
+const BANK_TX_SOURCE_FALLBACK: LabelMap = {
+  FILE_IMPORT: 'Файл виписки',
+  PRIVAT24_API: 'Privat24',
+  MONOBANK_API: 'monobank',
+  MANUAL: 'Внесено вручну',
+};
+const BANK_TX_DIRECTION_FALLBACK: LabelMap = {
+  IN: 'Вхідний',
+  OUT: 'Вихідний',
 };
 const BANK_TX_STATUS_FALLBACK: LabelMap = {
   UNMATCHED: 'Не рознесено',
@@ -115,6 +132,10 @@ export const bankTxMatchTypeLabel = (c?: string | null) =>
   tBankEnum('matchType', BANK_TX_MATCH_TYPE_FALLBACK, c);
 export const bankTxStatusLabel = (c?: string | null) =>
   tBankEnum('status', BANK_TX_STATUS_FALLBACK, c);
+export const bankTxSourceLabel = (c?: string | null) =>
+  tBankEnum('source', BANK_TX_SOURCE_FALLBACK, c);
+export const bankTxDirectionLabel = (c?: string | null) =>
+  tBankEnum('direction', BANK_TX_DIRECTION_FALLBACK, c);
 export const previewMatchStatusLabel = (c?: string | null) =>
   tBankEnum('previewStatus', PREVIEW_MATCH_STATUS_FALLBACK, c);
 

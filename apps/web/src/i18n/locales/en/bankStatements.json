@@ -2,6 +2,7 @@
   "page": {
     "title": "Bank payments",
     "import": "Import statement",
+    "newPayment": "New payment",
     "filters": {
       "searchPlaceholder": "Search by payer, purpose, IBAN…",
       "dateFrom": "From",
@@ -14,12 +15,14 @@
       "accounts": "Bank accounts"
     },
     "columns": {
-      "payer": "Payer",
+      "counterparty": "Counterparty",
       "purpose": "Purpose",
       "amount": "Amount",
       "date": "Date",
       "status": "Status",
-      "account": "Account"
+      "account": "Account",
+      "matchedAs": "Reconciled as",
+      "actions": "Actions"
     },
     "pills": {
       "all": "All",
@@ -29,7 +32,20 @@
     },
     "row": {
       "match": "Reconcile",
-      "ignore": "Ignore"
+      "ignore": "Ignore",
+      "transfer": "Transfer between accounts",
+      "unreconcile": "Undo reconciliation",
+      "delete": "Delete payment",
+      "supplierPayment": "Payment No. {{number}}",
+      "unmatchCancelled": "Reconciliation undone: {{reason}}",
+      "unmatchCancelledAt": "Undone on {{date}}"
+    },
+    "delete": {
+      "title": "Delete payment?",
+      "message": "The payment of {{date}} for {{amount}} will be deleted.",
+      "confirm": "Delete",
+      "success": "Payment deleted",
+      "error": "Failed to delete payment"
     },
     "empty": {
       "title": "No transactions",
@@ -37,7 +53,7 @@
     },
     "emptyOutgoing": {
       "title": "No outgoing payments",
-      "description": "Outgoing payments are not imported from statements yet — they will appear here once the import supports them."
+      "description": "Import a statement or enter a payment manually"
     },
     "emptyFiltered": {
       "title": "Nothing found",
@@ -50,7 +66,13 @@
       "SERVICE": "Service payment",
       "INVOICE": "Invoice payment",
       "REFUND": "Refund",
-      "OTHER": "Other"
+      "OTHER": "Other",
+      "SUPPLIER_PAYMENT": "Supplier payment",
+      "CLIENT_REFUND": "Client refund",
+      "EXPENSE": "Expense",
+      "PAYROLL": "Payroll",
+      "TRANSFER": "Transfer between accounts",
+      "CASH_WITHDRAWAL": "Cash withdrawal"
     },
     "status": {
       "UNMATCHED": "Unmatched",
@@ -62,6 +84,16 @@
       "ambiguous": "Multiple matches",
       "notFound": "Not found",
       "duplicate": "Duplicate"
+    },
+    "source": {
+      "FILE_IMPORT": "Statement file",
+      "PRIVAT24_API": "Privat24",
+      "MONOBANK_API": "monobank",
+      "MANUAL": "Entered manually"
+    },
+    "direction": {
+      "IN": "Incoming",
+      "OUT": "Outgoing"
     }
   },
   "match": {
@@ -89,6 +121,106 @@
     "error": "Failed to ignore payment",
     "reasonRequired": "Provide a reason"
   },
+  "create": {
+    "title": "New bank payment",
+    "bankAccount": "Bank account",
+    "bankAccountPlaceholder": "— Select —",
+    "accountCurrency": "Account currency: {{code}}",
+    "noAccounts": "No bank accounts — add one on the \"Bank accounts\" tab.",
+    "accountsError": "Failed to load bank accounts",
+    "direction": "Direction",
+    "amount": "Amount",
+    "date": "Operation date",
+    "payerName": "Counterparty (name)",
+    "payerNameHintIn": "Payer — who the money came from",
+    "payerNameHintOut": "Recipient — who was paid",
+    "payerIban": "Counterparty IBAN",
+    "payerEdrpou": "Counterparty EDRPOU",
+    "purpose": "Payment purpose",
+    "submit": "Add payment",
+    "cancel": "Cancel",
+    "success": "Payment added",
+    "error": "Failed to add payment"
+  },
+  "reconcile": {
+    "title": "Reconcile outgoing payment",
+    "titleTransfer": "Transfer between accounts",
+    "statementCounterparty": "Counterparty from statement",
+    "statementPurpose": "Purpose",
+    "type": "Reconciliation type",
+    "supplierMode": {
+      "label": "Supplier payment",
+      "existing": "Link to an existing payment",
+      "new": "Create a new one"
+    },
+    "candidates": {
+      "label": "Confirmed payments for this amount",
+      "empty": "No confirmed payments for this amount from this account",
+      "error": "Failed to load supplier payments",
+      "required": "Select a payment or create a new one",
+      "order": "order {{number}}"
+    },
+    "supplier": "Supplier",
+    "supplierPlaceholder": "Search supplier…",
+    "pickSupplier": "Select supplier",
+    "purchaseOrder": "Purchase order (optional)",
+    "purchaseOrderPlaceholder": "Link a purchase order…",
+    "pickPurchaseOrder": "Select purchase order",
+    "client": "Client",
+    "clientPlaceholder": "Search client…",
+    "pickClient": "Select client",
+    "expenseCategory": "Expense category",
+    "counterpartyOptional": "Counterparty (optional)",
+    "counterpartyPlaceholder": "Search counterparty…",
+    "pickCounterparty": "Select counterparty",
+    "payrollPeriod": "Payroll period",
+    "payrollPeriodsEmpty": "No computed or paid payroll periods",
+    "payrollStatus": {
+      "COMPUTED": "Computed",
+      "PAID": "Paid"
+    },
+    "allBranches": "all branches",
+    "employee": "Employee (optional)",
+    "employeePlaceholder": "Search employee…",
+    "pickEmployee": "Select employee",
+    "transferAccount": "Other own account",
+    "transferAccountsEmpty": "No other own bank account",
+    "cashRegister": "Cash register",
+    "cashRegistersEmpty": "No cash register in the payment currency ({{currency}}): a cash withdrawal can only go to a register of the same currency.",
+    "selectPlaceholder": "— Select —",
+    "refDataError": "Failed to load reference data",
+    "submit": "Reconcile",
+    "cancel": "Cancel",
+    "back": "Back",
+    "confirmTitle": "Confirm reconciliation",
+    "confirmSubmit": "Confirm",
+    "confirm": {
+      "SUPPLIER_PAYMENT": "A supplier payment to \"{{name}}\" for {{amount}} will be created and confirmed — the debt will decrease.",
+      "CLIENT_REFUND": "A refund to client \"{{name}}\" for {{amount}} will be posted — their prepayment decreases or debt grows.",
+      "CASH_WITHDRAWAL": "{{amount}} will be deposited into cash register \"{{name}}\" — a cash-in operation will appear."
+    },
+    "success": "Payment reconciled",
+    "error": "Failed to reconcile payment"
+  },
+  "unreconcile": {
+    "title": "Undo reconciliation",
+    "matchedAs": "Reconciled as",
+    "reason": "Reason",
+    "reasonPlaceholder": "Why the reconciliation is undone…",
+    "counter": "{{count}} / {{max}}",
+    "consequence": {
+      "SUPPLIER_PAYMENT": "The supplier payment stays confirmed; the row becomes free.",
+      "CLIENT_REFUND": "A reversing posting for the same amount will be made.",
+      "CASH_WITHDRAWAL": "The same amount will be written off the cash register. If there is not enough cash, the reconciliation will not be undone.",
+      "EXPENSE": "Only the payment classification is removed — there were no postings or cash operations.",
+      "PAYROLL": "Only the payment classification is removed — the payroll period state does not change.",
+      "TRANSFER": "Only the transfer mark is removed — there were no postings or cash operations."
+    },
+    "submit": "Undo reconciliation",
+    "cancel": "Cancel",
+    "success": "Reconciliation undone",
+    "error": "Failed to undo reconciliation"
+  },
   "import": {
     "title": "Import bank statement",
     "step": "Step {{current}} of {{total}}",
@@ -106,28 +238,40 @@
       "dateCol": "Date column",
       "amountCol": "Amount column",
       "externalIdCol": "Identifier column",
-      "payerNameCol": "Payer column",
-      "payerIbanCol": "IBAN column",
-      "payerEdrpouCol": "EDRPOU column",
+      "payerNameCol": "Counterparty column",
+      "payerIbanCol": "Counterparty IBAN column",
+      "payerEdrpouCol": "Counterparty EDRPOU column",
       "purposeCol": "Purpose column",
       "optional": "(opt.)",
       "back": "Back",
       "preview": "Preview",
       "rawTitle": "First file rows",
-      "col": "C{{n}}"
+      "col": "C{{n}}",
+      "directionTitle": "Direction of payments in the file",
+      "directionMode": {
+        "SIGN": "By amount sign",
+        "IN": "All incoming",
+        "OUT": "All outgoing"
+      },
+      "debitCol": "Debit amount column",
+      "debitColHint": "If debits are in a separate column: \"Amount column\" holds credits, this one holds debits.",
+      "debitColDisabledHint": "Available only in the \"By amount sign\" mode."
     },
     "step3": {
       "title": "Preview",
       "row": "Row",
       "date": "Date",
+      "direction": "Direction",
       "amount": "Amount",
-      "payer": "Payer",
+      "counterparty": "Counterparty",
       "purpose": "Purpose",
       "match": "Match",
-      "suggested": "Counterparty",
+      "suggested": "Suggestion",
       "back": "Back",
       "apply": "Import ({{count}})",
-      "empty": "No rows to import"
+      "empty": "No rows to import",
+      "manualDuplicate": "Looks like a manually entered payment",
+      "manualDuplicateSummary": "Rows that look like manually entered payments: {{count}}. Check them to avoid duplicates."
     },
     "result": {
       "title": "Done",

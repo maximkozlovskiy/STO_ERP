@@ -19,11 +19,21 @@ vi.mock('@/components/ui/MatchBankTransactionModal', () => ({
 vi.mock('@/components/ui/BankStatementImportModal', () => ({
   BankStatementImportModal: () => null,
 }));
+vi.mock('@/components/ui/MatchOutgoingBankTransactionModal', () => ({
+  MatchOutgoingBankTransactionModal: () => null,
+}));
+vi.mock('@/components/ui/UnreconcileBankTransactionModal', () => ({
+  UnreconcileBankTransactionModal: () => null,
+}));
+vi.mock('@/components/ui/BankTransactionCreateModal', () => ({
+  BankTransactionCreateModal: () => null,
+}));
 
 const useBankTransactionsMock = vi.fn();
 vi.mock('@/hooks/api/useBankStatements', () => ({
   useBankTransactions: (...a: unknown[]) => useBankTransactionsMock(...a),
   useIgnoreBankTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteBankTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 import BankTransactionsTab from '../BankTransactionsTab';
@@ -93,7 +103,8 @@ describe('BankTransactionsTab — колонка «Рахунок»', () => {
 
 // Регресія-guard валютного фіксу (e4fc5e7c): сума показується у валюті рахунку-отримувача
 // (multi-bank: USD/EUR-рахунок), а не хардкод «₴». UAH/невідомий код → «₴», інші → код.
-// fmtMoney замокано на String(v), тож сума + суфікс рендеряться як один текстовий вузол.
+// fmtMoney замокано на String(v), тож знак + сума + суфікс рендеряться як один текстовий вузол.
+// Рядок фікстури вхідний → знак «+» (знак за напрямом стереже BankTransactionsTab.outgoing.test.tsx).
 describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
   beforeEach(() => useBankTransactionsMock.mockReset());
 
@@ -106,26 +117,26 @@ describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
   it('UAH-рахунок → суфікс «₴»', () => {
     oneTx({ amount: 1000, bankAccountCurrencyCode: 'UAH' });
     render(<BankTransactionsTab />);
-    expect(screen.getByText('1000 ₴')).toBeInTheDocument();
+    expect(screen.getByText('+1000 ₴')).toBeInTheDocument();
   });
 
   it('код валюти відсутній (null) → фолбек «₴»', () => {
     oneTx({ amount: 1000, bankAccountCurrencyCode: null });
     render(<BankTransactionsTab />);
-    expect(screen.getByText('1000 ₴')).toBeInTheDocument();
+    expect(screen.getByText('+1000 ₴')).toBeInTheDocument();
   });
 
   it('USD-рахунок → суфікс «USD» (не хардкод ₴)', () => {
     oneTx({ amount: 150, bankAccountCurrencyCode: 'USD' });
     render(<BankTransactionsTab />);
-    expect(screen.getByText('150 USD')).toBeInTheDocument();
-    expect(screen.queryByText('150 ₴')).not.toBeInTheDocument();
+    expect(screen.getByText('+150 USD')).toBeInTheDocument();
+    expect(screen.queryByText('+150 ₴')).not.toBeInTheDocument();
   });
 
   it('EUR-рахунок → суфікс «EUR»', () => {
     oneTx({ amount: 200, bankAccountCurrencyCode: 'EUR' });
     render(<BankTransactionsTab />);
-    expect(screen.getByText('200 EUR')).toBeInTheDocument();
+    expect(screen.getByText('+200 EUR')).toBeInTheDocument();
   });
 
   // Рішення власника 2026-10-08: напрямок задає вкладка сторінки. Кнопка імпорту з 2026-10-09
@@ -151,11 +162,14 @@ describe('BankTransactionsTab — валюта суми (multi-bank)', () => {
     expect(statusRow.querySelectorAll('button')).toHaveLength(4);
   });
 
-  it('порожні «Вихідні» не закликають імпортувати виписку: імпорт вихідних ще не кладе', () => {
+  // BR-BANK-017: імпорт кладе обидва напрямки, а платіж можна внести вручну — порожні
+  // «Вихідні» пропонують обидва шляхи й більше не кажуть «поки не імпортуються».
+  it('порожні «Вихідні»: «Немає вихідних платежів» і заклик імпортувати або внести вручну', () => {
     useBankTransactionsMock.mockReturnValue({ data: { items: [], total: 0 }, isLoading: false });
     render(<BankTransactionsTab direction="OUT" />);
     expect(screen.getByText('Немає вихідних платежів')).toBeInTheDocument();
-    expect(screen.queryByText(/Імпортуйте банківську виписку/)).not.toBeInTheDocument();
+    expect(screen.getByText('Імпортуйте виписку або внесіть платіж вручну')).toBeInTheDocument();
+    expect(screen.queryByText(/поки не імпортуються/)).not.toBeInTheDocument();
   });
 
   it.each([undefined, 'IN'] as const)(

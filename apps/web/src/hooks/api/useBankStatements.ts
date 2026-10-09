@@ -1,7 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiSchema, operations } from '@sto/shared';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
+import { supplierPaymentsKeys } from './useSupplierPayments';
+import { cashKeys } from './useCash';
 
 /**
  * Банк-транзакція (виписка) — ЗГЕНЕРОВАНИЙ тип із OpenAPI.
@@ -46,7 +48,13 @@ export interface ColumnMapping {
   payerIbanCol?: number;
   payerEdrpouCol?: number;
   purposeCol?: number;
+  /** BR-BANK-018: SIGN (типово) — за знаком суми / колонкою списання; IN / OUT — увесь файл. */
+  directionMode?: ImportDirectionMode;
+  /** Колонка суми списання — лише для режиму SIGN. */
+  debitCol?: number;
 }
+
+export type ImportDirectionMode = 'SIGN' | 'IN' | 'OUT';
 
 /**
  * Сира сітка перших рядків для column-mapping — зі згенерованого.
@@ -85,7 +93,26 @@ export interface BankTransactionsFilter
 
 export const bankTransactionsKeys = {
   all: ['bank-transactions'] as const,
+  supplierPaymentCandidates: (id: string) =>
+    [...bankTransactionsKeys.all, 'supplier-payment-candidates', id] as const,
+  /** Довідник рахунків для модалок платежу — окремий префікс, щоб мутації платежів його не збивали. */
+  bankAccountOptions: ['bank-accounts', 'options'] as const,
 };
+
+/** Тіло ручного внесення платежу (CreateBankTransactionDto). */
+export type CreateBankTransactionInput = ApiSchema<'CreateBankTransactionDto'>;
+/** Тіло рознесення вихідного платежу / переказу (ReconcileTransactionDto). */
+export type ReconcileTransactionInput = ApiSchema<'ReconcileTransactionDto'>;
+/** Вид рознесення через `reconcile`. */
+export type BankTxReconcileType = ReconcileTransactionInput['type'];
+/** Тіло скасування рознесення (UnreconcileTransactionDto). */
+export type UnreconcileTransactionInput = ApiSchema<'UnreconcileTransactionDto'>;
+/** Проведена оплата постачальнику, до якої можна прив'язати рядок. */
+export type SupplierPaymentCandidate = ApiSchema<'SupplierPaymentCandidateDto'>;
+/** Банківський рахунок (довідник для вибору в модалках). */
+export type BankAccountOption = ApiSchema<'BankAccountResponseDto'>;
+/** Джерело рядка (BankTransactionSource). */
+export type BankTxSource = BankTransaction['source'];
 
 export type PaginatedBankTransactions = PaginatedResponse<BankTransaction>;
 
@@ -121,6 +148,115 @@ export function useIgnoreBankTransaction() {
         body: JSON.stringify({ reason }),
       }),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+    },
+  });
+}
+
+/** Банківські рахунки для вибору в модалках платежу. Завжди свіжі: рахунки правляться поруч. */
+export function useBankAccountOptions(enabled = true) {
+  return useQuery({
+    queryKey: bankTransactionsKeys.bankAccountOptions,
+    queryFn: ({ signal }) =>
+      apiFetch<{ items: BankAccountOption[] }>('/bank-accounts', { signal }).then(
+        r => r.items ?? [],
+      ),
+    enabled,
+  });
+}
+
+/**
+ * Внести платіж вручну (POST /bank-statements/transactions, BR-BANK-023).
+ * `idempotencyKey` — один на відкриття форми: повтор запиту не створює другий рядок.
+ */
+export function useCreateBankTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      data,
+      idempotencyKey,
+    }: {
+      data: CreateBankTransactionInput;
+      idempotencyKey: string;
+    }) =>
+      apiFetch<BankTransaction>('/bank-statements/transactions', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+    },
+  });
+}
+
+/** Видалити ручний нерознесений платіж (DELETE …/:id, BR-BANK-024). */
+export function useDeleteBankTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/bank-statements/transactions/${id}`, { method: 'DELETE' }),
+    // onSettled: 409 «уже рознесено» теж означає, що список застарів.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+    },
+  });
+}
+
+/** Кандидати-оплати постачальнику для прив'язки рядка (GET …/:id/supplier-payment-candidates). */
+export function useSupplierPaymentCandidates(txId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: bankTransactionsKeys.supplierPaymentCandidates(txId ?? ''),
+    queryFn: ({ signal }) =>
+      apiFetch<SupplierPaymentCandidate[]>(
+        `/bank-statements/transactions/${txId}/supplier-payment-candidates`,
+        { signal },
+      ),
+    enabled: enabled && !!txId,
+  });
+}
+
+/**
+ * Рознести платіж за видом (POST …/:id/reconcile, BR-BANK-025…034).
+ * Оплата постачальнику й зняття готівки змінюють чужі списки — їх теж збиваємо.
+ */
+export function useReconcileBankTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ReconcileTransactionInput }) =>
+      apiFetch<BankTransaction>(`/bank-statements/transactions/${id}/reconcile`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_res, { data }) => {
+      if (data.type === 'SUPPLIER_PAYMENT')
+        void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+      if (data.type === 'CASH_WITHDRAWAL') void qc.invalidateQueries({ queryKey: cashKeys.all });
+    },
+    // onSettled, не onSuccess: відмова 409 «уже рознесено» означає, що рядок у списку застарів.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
+    },
+  });
+}
+
+/** Скасувати рознесення (POST …/:id/unreconcile, BR-BANK-039) — причина обов'язкова. */
+export function useUnreconcileBankTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => {
+      const data: UnreconcileTransactionInput = { reason };
+      return apiFetch<BankTransaction>(`/bank-statements/transactions/${id}/unreconcile`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: () => {
+      // Зворотна касова операція (зняття готівки) і відв'язана оплата постачальнику.
+      void qc.invalidateQueries({ queryKey: cashKeys.all });
+      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
     },
   });
@@ -162,6 +298,11 @@ export function useBankStatementImport() {
       if (mapping.payerIbanCol) fd.append('payerIbanCol', String(mapping.payerIbanCol));
       if (mapping.payerEdrpouCol) fd.append('payerEdrpouCol', String(mapping.payerEdrpouCol));
       if (mapping.purposeCol) fd.append('purposeCol', String(mapping.purposeCol));
+      const directionMode = mapping.directionMode ?? 'SIGN';
+      fd.append('directionMode', directionMode);
+      // Колонка списання має сенс лише «за знаком»: в інших режимах напрям задає сам режим.
+      if (directionMode === 'SIGN' && mapping.debitCol)
+        fd.append('debitCol', String(mapping.debitCol));
       return apiMultipartFetch<{ rows: PreviewRow[] }>('/bank-statements/import/preview', fd);
     },
   });

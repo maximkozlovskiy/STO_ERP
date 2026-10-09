@@ -4,14 +4,20 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
-import { fmtMoney, fmtDate } from '@/lib/format';
+import { TriangleAlert } from 'lucide-react';
+import { fmtMoney, fmtDate, fmtBankCurrencySuffix } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { previewMatchStatusLabel, bankTxMatchTypeLabel } from '@/i18n/enumLabel';
+import {
+  previewMatchStatusLabel,
+  bankTxMatchTypeLabel,
+  bankTxDirectionLabel,
+} from '@/i18n/enumLabel';
 import {
   useBankStatementImport,
   type ColumnMapping,
@@ -19,12 +25,14 @@ import {
   type ApplyRow,
   type PreviewMatchStatus,
   type ApplyImportResult,
+  type BankAccountOption,
+  type ImportDirectionMode,
 } from '@/hooks/api/useBankStatements';
 
-interface BankAccount {
-  id: string;
-  name: string;
-}
+/** Колонки розмітки, що задаються номером (усе, крім режиму напряму). */
+type NumericColumnKey = Exclude<keyof ColumnMapping, 'directionMode'>;
+
+const DIRECTION_MODES: ImportDirectionMode[] = ['SIGN', 'IN', 'OUT'];
 
 interface Props {
   open: boolean;
@@ -44,6 +52,9 @@ const DEFAULT_MAPPING: ColumnMapping = {
   payerIbanCol: undefined,
   payerEdrpouCol: undefined,
   purposeCol: undefined,
+  // BR-BANK-018: типово напрям рядка — за знаком суми.
+  directionMode: 'SIGN',
+  debitCol: undefined,
 };
 
 const PREVIEW_BADGE: Record<PreviewMatchStatus, BadgeVariant> = {
@@ -58,7 +69,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
   const { rawPreview, preview, apply } = useBankStatementImport();
 
   const [step, setStep] = useState<Step>(1);
-  const [banks, setBanks] = useState<BankAccount[]>([]);
+  const [banks, setBanks] = useState<BankAccountOption[]>([]);
   const [bankAccountId, setBankAccountId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>(DEFAULT_MAPPING);
@@ -78,7 +89,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
     setPreviewRows([]);
     setResult(null);
     setError('');
-    apiFetch<{ items: BankAccount[] }>('/bank-accounts')
+    apiFetch<{ items: BankAccountOption[] }>('/bank-accounts')
       .then(res => setBanks(res.items ?? []))
       .catch(() => {});
   }, [open]);
@@ -123,6 +134,8 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
         externalId: r.externalId,
         operationDate: r.operationDate,
         amount: r.amount,
+        // Сума в прев'ю завжди додатна — напрям іде окремим полем (BR-BANK-017).
+        direction: r.direction,
         payerName: r.payerName ?? undefined,
         payerIban: r.payerIban ?? undefined,
         payerEdrpou: r.payerEdrpou ?? undefined,
@@ -138,7 +151,7 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
     }
   }, [previewRows, bankAccountId, apply, onApplied, t]);
 
-  const setCol = (key: keyof ColumnMapping) => (e: ChangeEvent<HTMLInputElement>) => {
+  const setCol = (key: NumericColumnKey) => (e: ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.trim();
     const n = raw === '' ? undefined : Number(raw);
     setMapping(m => ({
@@ -148,6 +161,15 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
   };
 
   const importableCount = previewRows.filter(r => r.matchStatus !== 'duplicate').length;
+  const directionMode = mapping.directionMode ?? 'SIGN';
+  // Валюта рядків = валюта рахунку, на який імпортують (BR-BANK-001).
+  const currencySuffix = fmtBankCurrencySuffix(
+    banks.find(b => b.id === bankAccountId)?.currencyCode,
+  );
+  // BR-BANK-037: externalId не ловить дубль рядка, внесеного вручну, — лише попереджаємо.
+  const manualDuplicateCount = previewRows.filter(
+    r => r.possibleManualDuplicate && r.matchStatus !== 'duplicate',
+  ).length;
   const busy = rawPreview.isPending || preview.isPending || apply.isPending;
 
   return (
@@ -305,6 +327,45 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
               />
             </div>
 
+            <fieldset className="flex flex-col gap-2 rounded-lg border border-border px-3 py-2.5">
+              <legend className="px-1 text-[13px] font-medium text-foreground">
+                {t('import.step2.directionTitle')}
+              </legend>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {DIRECTION_MODES.map(mode => (
+                  <label
+                    key={mode}
+                    className="flex items-center gap-1.5 text-[13px] cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name="directionMode"
+                      value={mode}
+                      checked={directionMode === mode}
+                      onChange={() => setMapping(m => ({ ...m, directionMode: mode }))}
+                    />
+                    {t(`import.step2.directionMode.${mode}`)}
+                  </label>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label={`${t('import.step2.debitCol')} ${t('import.step2.optional')}`}
+                  type="number"
+                  min={1}
+                  value={directionMode === 'SIGN' ? (mapping.debitCol ?? '') : ''}
+                  onChange={setCol('debitCol')}
+                  disabled={directionMode !== 'SIGN'}
+                  hint={
+                    directionMode === 'SIGN'
+                      ? t('import.step2.debitColHint')
+                      : t('import.step2.debitColDisabledHint')
+                  }
+                  className="h-8 text-[13px]"
+                />
+              </div>
+            </fieldset>
+
             <div className="flex justify-between pt-2">
               <Button variant="outline" size="sm" onClick={() => setStep(1)} disabled={busy}>
                 {t('import.step2.back')}
@@ -328,53 +389,87 @@ export function BankStatementImportModal({ open, onClose, onApplied }: Props) {
                 {t('import.step3.empty')}
               </p>
             ) : (
-              <div className="overflow-auto border border-border rounded-lg max-h-80">
-                <table className="w-full text-[13px]">
-                  <thead className="sticky top-0 bg-secondary">
-                    <tr>
-                      <th className="px-2 py-1.5 text-left font-medium">
-                        {t('import.step3.date')}
-                      </th>
-                      <th className="px-2 py-1.5 text-right font-medium">
-                        {t('import.step3.amount')}
-                      </th>
-                      <th className="px-2 py-1.5 text-left font-medium">
-                        {t('import.step3.payer')}
-                      </th>
-                      <th className="px-2 py-1.5 text-left font-medium">
-                        {t('import.step3.match')}
-                      </th>
-                      <th className="px-2 py-1.5 text-left font-medium">
-                        {t('import.step3.suggested')}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map(r => (
-                      <tr key={`${r.rowIndex}-${r.externalId}`} className="border-t border-border">
-                        <td className="px-2 py-1.5 tabular-nums whitespace-nowrap text-muted-foreground">
-                          {fmtDate(r.operationDate)}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums font-medium whitespace-nowrap">
-                          {fmtMoney(r.amount)} ₴
-                        </td>
-                        <td className="px-2 py-1.5 max-w-[180px] truncate">{r.payerName ?? '—'}</td>
-                        <td className="px-2 py-1.5">
-                          <Badge variant={PREVIEW_BADGE[r.matchStatus]}>
-                            {previewMatchStatusLabel(r.matchStatus)}
-                          </Badge>
-                        </td>
-                        <td className="px-2 py-1.5 max-w-[200px] truncate text-muted-foreground">
-                          {r.suggestedCounterpartyName ?? '—'}
-                          {r.suggestedMatchType
-                            ? ` · ${bankTxMatchTypeLabel(r.suggestedMatchType)}`
-                            : ''}
-                        </td>
+              <>
+                {manualDuplicateCount > 0 && (
+                  <div
+                    role="status"
+                    className="flex items-start gap-2 text-[13px] text-warning bg-warning-subtle border border-warning/30 rounded-lg px-3 py-2"
+                  >
+                    <TriangleAlert className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
+                    {t('import.step3.manualDuplicateSummary', { count: manualDuplicateCount })}
+                  </div>
+                )}
+                <div className="overflow-auto border border-border rounded-lg max-h-80">
+                  <table className="w-full text-[13px]">
+                    <thead className="sticky top-0 bg-secondary">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left font-medium">
+                          {t('import.step3.date')}
+                        </th>
+                        <th className="px-2 py-1.5 text-left font-medium">
+                          {t('import.step3.direction')}
+                        </th>
+                        <th className="px-2 py-1.5 text-right font-medium">
+                          {t('import.step3.amount')}
+                        </th>
+                        <th className="px-2 py-1.5 text-left font-medium">
+                          {t('import.step3.counterparty')}
+                        </th>
+                        <th className="px-2 py-1.5 text-left font-medium">
+                          {t('import.step3.match')}
+                        </th>
+                        <th className="px-2 py-1.5 text-left font-medium">
+                          {t('import.step3.suggested')}
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {previewRows.map(r => (
+                        <tr
+                          key={`${r.rowIndex}-${r.externalId}`}
+                          className="border-t border-border"
+                        >
+                          <td className="px-2 py-1.5 tabular-nums whitespace-nowrap text-muted-foreground">
+                            {fmtDate(r.operationDate)}
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">
+                            {bankTxDirectionLabel(r.direction)}
+                          </td>
+                          <td
+                            className={cn(
+                              'px-2 py-1.5 text-right tabular-nums font-medium whitespace-nowrap',
+                              r.direction === 'OUT' ? 'text-destructive' : 'text-success',
+                            )}
+                          >
+                            {r.direction === 'OUT' ? '−' : '+'}
+                            {fmtMoney(r.amount)} {currencySuffix}
+                          </td>
+                          <td className="px-2 py-1.5 max-w-[180px]">
+                            <div className="truncate">{r.payerName ?? '—'}</div>
+                            {r.possibleManualDuplicate && r.matchStatus !== 'duplicate' && (
+                              <div className="flex items-center gap-1 text-[12px] text-warning">
+                                <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden />
+                                {t('import.step3.manualDuplicate')}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <Badge variant={PREVIEW_BADGE[r.matchStatus]}>
+                              {previewMatchStatusLabel(r.matchStatus)}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-1.5 max-w-[200px] truncate text-muted-foreground">
+                            {r.suggestedCounterpartyName ?? '—'}
+                            {r.suggestedMatchType
+                              ? ` · ${bankTxMatchTypeLabel(r.suggestedMatchType)}`
+                              : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
 
             <div className="flex justify-between pt-2">

@@ -25,6 +25,15 @@ vi.mock('@/components/ui/MatchBankTransactionModal', () => ({
 vi.mock('@/components/ui/BankStatementImportModal', () => ({
   BankStatementImportModal: () => null,
 }));
+vi.mock('@/components/ui/MatchOutgoingBankTransactionModal', () => ({
+  MatchOutgoingBankTransactionModal: () => null,
+}));
+vi.mock('@/components/ui/UnreconcileBankTransactionModal', () => ({
+  UnreconcileBankTransactionModal: () => null,
+}));
+vi.mock('@/components/ui/BankTransactionCreateModal', () => ({
+  BankTransactionCreateModal: () => null,
+}));
 // Календар — не мета тесту: поле дати як звичайний input зі значенням YYYY-MM-DD.
 vi.mock('@/components/ui/date-picker-input', () => ({
   DatePickerInput: (p: {
@@ -47,11 +56,12 @@ const useBankTransactionsMock = vi.fn();
 vi.mock('@/hooks/api/useBankStatements', () => ({
   useBankTransactions: (...a: unknown[]) => useBankTransactionsMock(...a),
   useIgnoreBankTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteBankTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 import BankTransactionsTab from '../BankTransactionsTab';
 
-const SEARCH = 'Пошук за платником, призначенням, IBAN…';
+const SEARCH = 'Пошук за контрагентом, призначенням, IBAN…';
 const lastFilter = () => useBankTransactionsMock.mock.lastCall![0] as Record<string, unknown>;
 const typeSearch = (value: string) =>
   fireEvent.change(screen.getByPlaceholderText(SEARCH), { target: { value } });

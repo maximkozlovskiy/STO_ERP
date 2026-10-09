@@ -65,7 +65,7 @@ test.describe('Пошук на сторінках документів', () => {
 
     await expectSearchReachesApi(
       page,
-      /Пошук за платником, призначенням, IBAN/,
+      /Пошук за контрагентом, призначенням, IBAN/,
       '/bank-statements/transactions?',
     );
   });
