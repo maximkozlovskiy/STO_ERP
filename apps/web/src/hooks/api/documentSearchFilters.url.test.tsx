@@ -145,4 +145,34 @@ describe('пошук і дати → рядок запиту', () => {
     expect(today.slice(0, 3)).toEqual(['cash', 'operations', 'reg-1']);
     expect(today[0]).toBe(cashKeys.all[0]);
   });
+
+  // Поки вантажиться новий відбір, таблиця тримає попередні рядки — але лише тієї самої каси:
+  // рядки каси A під назвою каси B були б неправдою.
+  // Mutation-verify: `placeholderData: prev => prev` → падає крок «інша каса»;
+  // прибрати placeholderData → падає крок «той самий реєстр, інший відбір».
+  it('операції каси: попередні рядки лишаються при зміні відбору і зникають при зміні каси', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const stableWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const rows = [{ id: 'op-1' }];
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValueOnce(rows);
+    // Наступні запити не завершуються: дивимось, що показано, ПОКИ вони йдуть.
+    apiFetchMock.mockReturnValue(new Promise(() => {}));
+
+    const { result, rerender } = renderHook(
+      ({ id, q }: { id: string; q?: string }) => useCashOperations(id, { q }),
+      { wrapper: stableWrapper, initialProps: { id: 'reg-1' } as { id: string; q?: string } },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(rows));
+
+    rerender({ id: 'reg-1', q: 'оренда' });
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data).toEqual(rows);
+
+    rerender({ id: 'reg-2', q: 'оренда' });
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isPlaceholderData).toBe(false);
+  });
 });
