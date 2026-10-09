@@ -80,12 +80,17 @@ export function useStockItems(filters: InventoryFilter = {}) {
   });
 }
 
+// Бекенд відхиляє з 400 усе, що не `YYYY-MM-DD`. Рідний `<input type="date">` дозволяє набрати
+// рік із 5–6 цифр (`20261-10-09`) — такий запит не йде: вибірка лишається за останньою коректною
+// датою, а не мовчки застигає на помилці (хук тримає попередні дані).
+const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 function buildStockQuery(filters: StockByDocumentFilter): string {
   const params = new URLSearchParams();
   if (filters.warehouseId) params.set('warehouseId', filters.warehouseId);
   if (filters.goodId) params.set('goodId', filters.goodId);
-  if (filters.from) params.set('from', filters.from);
-  if (filters.to) params.set('to', filters.to);
+  if (filters.from && CALENDAR_DATE_RE.test(filters.from)) params.set('from', filters.from);
+  if (filters.to && CALENDAR_DATE_RE.test(filters.to)) params.set('to', filters.to);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }

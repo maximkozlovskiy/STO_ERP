@@ -21,7 +21,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 import { useStockDocuments } from './useStockDocuments';
-import { useStockMovements } from './useInventory';
+import { useStockMovements, useStockByDocument, useStockByBatch } from './useInventory';
 import { usePayments } from './usePayments';
 import { useBankTransactions } from './useBankStatements';
 import { useCashOperations, cashKeys } from './useCash';
@@ -135,6 +135,24 @@ describe('пошук і дати → рядок запиту', () => {
     for (const key of ['q', 'dateFrom', 'dateTo', 'from', 'to']) {
       expect(url.searchParams.has(key)).toBe(false);
     }
+  });
+
+  // Розрізи залишків: бекенд відповідає 400 на все, що не календарна дата `YYYY-MM-DD`
+  // (code-review цикл 2). Нативне поле дати дозволяє рік із 5–6 цифр — такий запит не надсилаємо.
+  // Mutation-verify: прибрати CALENDAR_DATE_RE у buildStockQuery → кейс «рік із 5 цифр» падає.
+  it.each<[string, () => unknown]>([
+    [
+      '/stock-items/by-document',
+      () => useStockByDocument({ from: '2026-10-01', to: '20261-10-09' }),
+    ],
+    ['/stock-items/by-batch', () => useStockByBatch({ from: '20261-10-01', to: '2026-10-09' })],
+  ])('%s: дата з роком із 5 цифр не надсилається, коректна — надсилається', async (path, hook) => {
+    renderHook(hook, { wrapper });
+    const url = await requestedUrl();
+    expect(url.pathname).toBe(path);
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      path.endsWith('by-document') ? { from: '2026-10-01' } : { to: '2026-10-09' },
+    );
   });
 
   it('ключ кешу операцій каси розрізняє фільтри, але лишається під префіксом каси', () => {
