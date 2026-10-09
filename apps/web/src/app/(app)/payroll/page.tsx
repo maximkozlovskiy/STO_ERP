@@ -40,7 +40,10 @@ import {
   type PayrollPeriod,
 } from '@/hooks/api/usePayroll';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
+import { ListLoadError } from '@/components/ui/list-load-error';
 import { useCashRegisters } from '@/hooks/api/useCash';
+
+const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const STATUS_BADGE: Record<PayrollPeriod['status'], BadgeVariant> = {
   DRAFT: 'secondary',
@@ -138,7 +141,10 @@ export default function PayrollPage() {
   const [payCashRegisterId, setPayCashRegisterId] = useState('');
   const { data: cashRegisters } = useCashRegisters();
 
-  const preview = usePayrollPreview(from, to, '', previewEnabled);
+  // API приймає лише `YYYY-MM-DD`; рідний <input type="date"> дозволяє рік із 5–6 цифр або порожнє
+  // значення — таку межу не шлемо (інакше мовчазний 400 при кожному натисканні клавіші).
+  const datesValid = CALENDAR_DATE_RE.test(from) && CALENDAR_DATE_RE.test(to);
+  const preview = usePayrollPreview(from, to, '', previewEnabled && datesValid);
   const periodsQuery = usePayrollPeriods({ page, limit, status: statusFilter });
   // Розкритий період вантажиться детально (список не несе розшифровки по нарядах — важко).
   const expandedDetail = usePayrollPeriod(expanded);
@@ -198,6 +204,7 @@ export default function PayrollPage() {
   const runPreview = () => setPreviewEnabled(true);
 
   const createPeriod = async () => {
+    if (!datesValid) return;
     try {
       await createMut.mutateAsync({ periodStart: from, periodEnd: to });
       toast.success(t('toast.periodCreated'));
@@ -285,7 +292,11 @@ export default function PayrollPage() {
               className="h-9 w-40"
             />
           </div>
-          <Button leftIcon={<Calculator className="h-4 w-4" />} onClick={runPreview}>
+          <Button
+            leftIcon={<Calculator className="h-4 w-4" />}
+            onClick={runPreview}
+            disabled={!datesValid}
+          >
             {t('preview.calculate')}
           </Button>
           {previewEnabled && preview.data && preview.data.lines.length > 0 && (
@@ -300,12 +311,14 @@ export default function PayrollPage() {
           )}
         </div>
 
-        {previewEnabled && preview.isLoading && (
+        {previewEnabled && datesValid && <ListLoadError error={preview.error} />}
+
+        {previewEnabled && datesValid && preview.isLoading && (
           <div className="flex justify-center py-6">
             <Spinner size="md" />
           </div>
         )}
-        {previewEnabled && preview.data && (
+        {previewEnabled && datesValid && preview.data && (
           <div className="border border-border rounded-lg overflow-hidden">
             <Table>
               <TableHeader>

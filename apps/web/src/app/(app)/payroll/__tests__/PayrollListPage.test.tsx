@@ -20,13 +20,17 @@ vi.mock('@/lib/auth', () => ({
 let lastFilters: PayrollPeriodsFilter | undefined;
 const listItems: PayrollPeriod[] = [];
 let listTotal = 0;
+let lastPreviewArgs: unknown[] = [];
 
 vi.mock('@/hooks/api/usePayroll', async orig => {
   const actual = await orig<typeof import('@/hooks/api/usePayroll')>();
   const noopMut = () => ({ mutateAsync: vi.fn(), isPending: false, variables: undefined });
   return {
     ...actual,
-    usePayrollPreview: () => ({ data: undefined, isLoading: false }),
+    usePayrollPreview: (...args: unknown[]) => {
+      lastPreviewArgs = args;
+      return { data: undefined, isLoading: false, error: null };
+    },
     usePayrollPeriods: (filters: PayrollPeriodsFilter = {}) => {
       lastFilters = filters;
       return {
@@ -173,5 +177,16 @@ describe('Payroll — List Page pattern (пагінація + фільтри + �
     const amount = within(row).getByText(/1\s?250/);
     expect(amount.className).toContain('tabular-nums');
     expect(amount.className).toContain('text-right');
+  });
+});
+
+describe('Payroll — розрахунок за період шле лише календарні дати', () => {
+  it('рік із 5 цифр: кнопка «Розрахувати» вимкнена, запит preview не вмикається', () => {
+    render(<PayrollPage />);
+    const from = document.querySelectorAll('input[type="date"]')[0] as HTMLInputElement;
+    fireEvent.change(from, { target: { value: '20261-10-01' } });
+    const btn = screen.getByRole('button', { name: /Розрахувати/ });
+    expect(btn).toBeDisabled();
+    expect(lastPreviewArgs[3]).toBe(false);
   });
 });
