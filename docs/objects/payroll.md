@@ -243,13 +243,14 @@ cd apps/api && npx vitest run src/modules/payroll/<файл>.spec.ts
 | calculator (формули схем, округлення)        | `payroll.calculator.spec.ts`          | 16     |
 | сервісна логіка (розшифровка, список)        | `payroll.service.spec.ts`             | 33     |
 | межі періоду за Києвом, філія                | `payroll.period-bounds.spec.ts`       | 13     |
+| дати періоду у DTO (лише календарна дата)    | `payroll.dto.spec.ts`                 | 45     |
 | життєвий цикл: створення → розрахунок → каса | `payroll.fsm.spec.ts`                 | 24     |
 | ізоляція організацій                         | `payroll.tenant.spec.ts`              | 13     |
 | ролі доступу                                 | `payroll.access.spec.ts`              | 8      |
 | хто у відомості й частка окладу              | `payroll.accrual.spec.ts`             | 24     |
 | нарахування на живій БД (integration)        | `payroll.accrual.integration.spec.ts` | 7      |
 
-Разом: **138** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **183** кейси (цифри з `vitest --reporter=json`, не з grep).
 
 Спільна фікстура нових аспектних спеків — `payroll.spec-fixture.ts` (factory `makePayrollFixture()`);
 `payroll.service.spec.ts` лишився на власному `makeMocks()`.

@@ -138,10 +138,10 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | без ПРРО і лояльності (статичний сторож) | `supplier-payments.no-fiscal-loyalty.spec.ts` | 14     |
 | payables fx                              | `supplier-payments.payables-fx.spec.ts`       | 10     |
 | schedule                                 | `supplier-payments.schedule.spec.ts`          | 26     |
-| сортування (whitelist orderBy)           | `supplier-payments.sort.spec.ts`              | 6      |
+| сортування (whitelist orderBy)           | `supplier-payments.sort.spec.ts`              | 9      |
 | update guards                            | `supplier-payments.update-guards.spec.ts`     | 12     |
 
-Разом: **108** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **111** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/supplier-payments/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:

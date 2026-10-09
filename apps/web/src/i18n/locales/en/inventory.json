@@ -8,7 +8,9 @@
     "searchPlaceholder": "Search by name...",
     "allWarehouses": "All warehouses",
     "lowOnly": "Low stock only",
-    "belowMin": "Below minimum"
+    "belowMin": "Below minimum",
+    "dateFrom": "From",
+    "dateTo": "To"
   },
   "columns": {
     "good": "Good",

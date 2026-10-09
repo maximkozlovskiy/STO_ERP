@@ -90,6 +90,11 @@ OWNER/ADMIN/STOREKEEPER (документи й рухи містять ціни 
 `GET /stock-items`, `/stock-items/by-batch`, `/stock-items/by-document`, `/warehouses`).
 Старі адреси `/inventory` і `/stock-documents?tab=stock` — **redirect** на `/reports?tab=inventory`.
 
+Відбір за датою на «Рухах» і в розрізах «Залишків» — спільний `components/ui/date-range-filter.tsx`
+(як на списку документів): у запит іде лише завершена дата `ДД.ММ.РРРР`, рідного `type="date"`
+немає (рішення власника 2026-10-09). Збій запиту списку показує смугу
+`components/ui/list-load-error.tsx` з «Повторити» — не порожній стан.
+
 | Компонент / сторінка  | Файл                                                                    |
 | --------------------- | ----------------------------------------------------------------------- |
 | Сторінка «Склад»      | `app/(app)/stock-documents/page.tsx` (StockPageShell, StockTypeTabs)    |

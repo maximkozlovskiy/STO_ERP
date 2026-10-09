@@ -151,4 +151,21 @@ describe('PaymentsPage — пошук і дати', () => {
     render(<PaymentsPage />);
     expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
   });
+
+  // Рішення власника 2026-10-09: збій запиту списку раніше виглядав як «платежів не знайдено».
+  // Mutation-verify: прибрати гілку `error && items.length === 0` → кейс падає.
+  it('збій запиту — смуга з «Повторити», порожній стан не показується', () => {
+    const refetch = vi.fn();
+    usePaymentsMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Сервер недоступний'),
+      refetch,
+    });
+    render(<PaymentsPage />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Сервер недоступний');
+    expect(screen.queryByText('Платежів не знайдено')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
 });

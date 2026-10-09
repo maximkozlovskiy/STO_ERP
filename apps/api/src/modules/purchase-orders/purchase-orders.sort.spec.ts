@@ -124,6 +124,42 @@ describe('PurchaseOrdersService.findAll — sortBy=paymentDate nulls-last (Bug #
     await service.findAll(ORG, 1, 20);
     expect(findManyOrderBy()).toEqual({ createdAt: 'desc' });
   });
+
+  // Відбір списку за датою. documentDate — дата БЕЗ часу (@db.Date): межі — самі календарні
+  // дати, зсуву на київський пояс бути не повинно (він зачепив би попередній день).
+  // Mutation-verify: `dateOnlyRangeFilter` → `kyivDayRangeFilter` — обидва кейси з датами падають.
+  function findManyWhere() {
+    return (
+      prisma.purchaseOrder.findMany.mock.calls[0]![0] as {
+        where: Record<string, unknown>;
+      }
+    ).where;
+  }
+
+  // guards: BR-PAY-018
+  it('dateFrom + dateTo → documentDate від 09.10 до 10.10 календарними датами, без зсуву на пояс', async () => {
+    await service.findAll(ORG, 1, 20, undefined, undefined, false, '2026-10-09', '2026-10-10');
+    const where = findManyWhere();
+    expect(where.documentDate).toEqual({
+      gte: new Date('2026-10-09T00:00:00.000Z'),
+      lte: new Date('2026-10-10T00:00:00.000Z'),
+    });
+    expect(where.orgId).toBe(ORG);
+    expect((prisma.purchaseOrder.count.mock.calls[0]![0] as { where: unknown }).where).toEqual(
+      where,
+    );
+  });
+
+  // guards: BR-PAY-018
+  it('лише dateTo → у documentDate тільки верхня межа, сама дата', async () => {
+    await service.findAll(ORG, 1, 20, undefined, undefined, false, undefined, '2026-01-15');
+    expect(findManyWhere().documentDate).toEqual({ lte: new Date('2026-01-15T00:00:00.000Z') });
+  });
+
+  it('без дат — умови на documentDate немає', async () => {
+    await service.findAll(ORG, 1, 20);
+    expect(findManyWhere()).not.toHaveProperty('documentDate');
+  });
 });
 
 // ─── Bug #A + edge inputs: getLinkedCounts / getLinkedDocuments ──────────────

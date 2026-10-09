@@ -255,6 +255,13 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   `invoiceId`) не може перевищити залишок `totalAmount − paidAmount` → 400. `paidAmount` наряду
   пишеться в транзакції платежу умовно (CAS за прочитаним значенням): паралельний платіж → 400
   «повторіть», а не втрачене оновлення
+- **BR-PAY-018**: Відбір списку оплат за датою (`dateFrom` / `dateTo`) — це КИЇВСЬКА доба за
+  міткою часу `createdAt` (мить, не дата без часу): межі включні, `dateFrom` = 00:00:00.000 за
+  Києвом, `dateTo` = 23:59:59.999 за Києвом, з урахуванням переведення годинника. Оплата,
+  створена 10.10 о 00:30 за Києвом (09.10 21:30 UTC), входить у відбір «10.10» і не входить у
+  «09.10». Так само рахують добу каса й рухи складу. Списки документів із датою БЕЗ часу
+  (`documentDate` наряду, рахунку, замовлення, повернення й оплати постачальнику) порівнюють
+  календарні дати без зсуву на пояс
 
 ### Конкретні провайдери
 
@@ -304,7 +311,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | idempotency               | `payments.idempotency.spec.ts`                    | 7      |
 | money model               | `payments.money-model.spec.ts`                    | 19     |
 | multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
-| query dto                 | `payments.query-dto.spec.ts`                      | 35     |
+| query dto                 | `payments.query-dto.spec.ts`                      | 41     |
 | передумови + наряд        | `payments.work-order.spec.ts`                     | 23     |
 | політика повторів черг    | `payments.queue-retry-policy.spec.ts`             | 6      |
 | сервісна логіка           | `provider-config.service.spec.ts`                 | 27     |

@@ -210,6 +210,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | due date                                | `invoices.due-date.spec.ts`                | 7      |
 | find by work order                      | `invoices.find-by-work-order.spec.ts`      | 5      |
 | line totals (recalcTotals на бекенді)   | `invoices.line-totals.spec.ts`             | 12     |
+| список: відбір за датою документа       | `invoices.list-date-filter.spec.ts`        | 6      |
 | refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 15     |
 | transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)   | `invoices.update-counterparty.spec.ts`     | 5      |

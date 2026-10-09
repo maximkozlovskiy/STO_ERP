@@ -17,6 +17,7 @@ import { ListSearchInput } from '@/components/ui/list-search-input';
 import { Pagination } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ListLoadError } from '@/components/ui/list-load-error';
 import {
   Table,
   TableHeader,
@@ -70,7 +71,7 @@ function PaymentsPageInner() {
     method: method || undefined,
     fiscalStatus: fiscalStatus || undefined,
   };
-  const { data, isLoading } = usePayments(filters);
+  const { data, isLoading, error, refetch } = usePayments(filters);
   const retryFiscal = useRetryFiscal();
   // Мультивалюта: символ базової валюти для рядка «у базовій» (не-базові оплати).
   const { data: baseCurrency } = useBaseCurrency();
@@ -165,11 +166,13 @@ function PaymentsPageInner() {
         </div>
       </div>
 
+      <ListLoadError error={error} onRetry={() => void refetch()} />
+
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
-      ) : items.length === 0 ? (
+      ) : error && items.length === 0 ? null : items.length === 0 ? (
         <EmptyState icon={HandCoins} title={t('page.empty.notFound')} />
       ) : (
         <>

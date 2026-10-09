@@ -119,8 +119,7 @@ export function isCalendarDate(value: string): boolean {
  * Перетворює YYYY-MM-DD діапазон (from/to) у UTC-межі Kyiv-доби: `fromDate` = початок дня від,
  * `toDate` = кінець дня до. DST-aware через kyivDayStart / kyivDayEnd. Порядок меж (from ≤ to)
  * перевіряє викликач — сама функція нічого не кидає.
- * Використовує report-builder; reports.service, payroll.service і calendar.service досі мають
- * власні копії меж доби (TECH-DEBT §8).
+ * Єдине джерело меж періоду для звітів, конструктора звітів і зарплати.
  */
 export function normalizeKyivDateRange(from: string, to: string): { fromDate: Date; toDate: Date } {
   return { fromDate: kyivDayStart(from), toDate: kyivDayEnd(to) };

@@ -25,6 +25,8 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { ListLoadError } from '@/components/ui/list-load-error';
 import {
   Table,
   TableHeader,
@@ -55,11 +57,6 @@ interface Warehouse {
 }
 
 type ViewMode = 'goods' | 'documents' | 'batches';
-
-// Рідне поле дати без `max` дозволяє набрати рік із 5–6 цифр (`20261-10-09`). Таку межу хук
-// у запит не кладе (бекенд дав би 400), тож поле показувало б дату, якої вибірка не знає.
-// З `max` браузер обмежує рік чотирма цифрами — розбіжності не виникає.
-const MAX_CALENDAR_DATE = '9999-12-31';
 
 // label = i18n key (views.*), резолвиться у компоненті через t() — порядок ключів
 // зберігає порядок вкладок перемикача режиму.
@@ -103,11 +100,6 @@ export function InventoryTab() {
   const debouncedQ = useDebounce(q);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  // Рідне поле дати під час набору року з клавіатури віддає кожну проміжну дату
-  // (0002-.., 0020-.., 0202-.., 2026-..) — без затримки кожна йшла окремим запитом розрізу
-  // (3 зайві з 4, і кожен «з року 2» повертає всю історію). У запит іде лише усталене значення.
-  const debouncedFrom = useDebounce(from);
-  const debouncedTo = useDebounce(to);
   const [showLow, setShowLow] = useState(false);
   const [error, setError] = useState('');
 
@@ -167,20 +159,24 @@ export function InventoryTab() {
 
   const viewFilters = {
     warehouseId: warehouseId || undefined,
-    from: debouncedFrom || undefined,
-    to: debouncedTo || undefined,
+    from: from || undefined,
+    to: to || undefined,
   };
 
   // gate за viewMode — без enabled три hooks тригерили запити
   // одразу при mount, агрегуючи до 5500 рядків навіть коли user у режимі 'goods'.
-  const { data: byDocData, isLoading: loadingDoc } = useStockByDocument(
-    viewFilters,
-    viewMode === 'documents',
-  );
-  const { data: byBatchData, isLoading: loadingBatch } = useStockByBatch(
-    viewFilters,
-    viewMode === 'batches',
-  );
+  const {
+    data: byDocData,
+    isLoading: loadingDoc,
+    error: byDocError,
+    refetch: refetchByDoc,
+  } = useStockByDocument(viewFilters, viewMode === 'documents');
+  const {
+    data: byBatchData,
+    isLoading: loadingBatch,
+    error: byBatchError,
+    refetch: refetchByBatch,
+  } = useStockByBatch(viewFilters, viewMode === 'batches');
 
   const { data: lowItems = [], refetch: refetchLowItems } = useLowStockItems();
 
@@ -259,6 +255,18 @@ export function InventoryTab() {
         </div>
       )}
 
+      {/* Розрізи: збій запиту — смуга з «Повторити», а не порожня таблиця. */}
+      {viewMode === 'documents' && (
+        <ListLoadError error={byDocError} onRetry={() => void refetchByDoc()} className="mb-4" />
+      )}
+      {viewMode === 'batches' && (
+        <ListLoadError
+          error={byBatchError}
+          onRetry={() => void refetchByBatch()}
+          className="mb-4"
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 shrink-0 items-center">
         {/* View mode switcher */}
@@ -302,20 +310,15 @@ export function InventoryTab() {
         {/* Date range — only in documents/batches modes */}
         {viewMode !== 'goods' && (
           <>
-            <Input
-              type="date"
-              max={MAX_CALENDAR_DATE}
-              value={from}
-              onChange={e => setFrom(e.target.value)}
-              className="h-8 text-[13px] w-36"
-            />
-            <span className="text-muted-foreground text-[13px]">—</span>
-            <Input
-              type="date"
-              max={MAX_CALENDAR_DATE}
-              value={to}
-              onChange={e => setTo(e.target.value)}
-              className="h-8 text-[13px] w-36"
+            {/* Спільне поле дати віддає лише завершену дату — рідне `type="date"` під час набору
+                року слало запит на кожну проміжну дату (0002-.., 0020-.., 0202-..). */}
+            <DateRangeFilter
+              from={from}
+              to={to}
+              onFromChange={setFrom}
+              onToChange={setTo}
+              fromLabel={t('filters.dateFrom')}
+              toLabel={t('filters.dateTo')}
             />
           </>
         )}
@@ -463,7 +466,7 @@ export function InventoryTab() {
           )}
 
           {/* === MODE: BY DOCUMENTS === */}
-          {!loading && viewMode === 'documents' && (
+          {!loading && viewMode === 'documents' && !(byDocError && !byDocData) && (
             <ByDocumentsView
               goods={byDocData?.goods ?? []}
               expanded={expanded}
@@ -473,7 +476,7 @@ export function InventoryTab() {
           )}
 
           {/* === MODE: BY BATCHES === */}
-          {!loading && viewMode === 'batches' && (
+          {!loading && viewMode === 'batches' && !(byBatchError && !byBatchData) && (
             <ByBatchesView
               batches={byBatchData?.batches ?? []}
               expanded={expanded}

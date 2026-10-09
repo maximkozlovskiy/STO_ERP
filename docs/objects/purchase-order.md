@@ -211,7 +211,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `create`/`update` — tenant-guard goodId рядків | `purchase-orders.line-goods.spec.ts`                             | 3      |
 | `update()` — резолв контракту контрагента      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
 | `transition()` — карта `PO_TRANSITIONS`        | `purchase-orders.fsm.spec.ts`                                    | 15     |
-| `findAll` — `sortBy=paymentDate`, nulls-last   | `purchase-orders.sort.spec.ts`                                   | 4      |
+| `findAll` — `sortBy=paymentDate`, nulls-last   | `purchase-orders.sort.spec.ts`                                   | 7      |
 | linked-documents — межові випадки              | `purchase-orders.linked-docs.spec.ts`                            | 5      |
 | `create` — Σ(lines.amount) === totalAmount     | `purchase-orders.totals.spec.ts`                                 | 1      |
 | HTTP-контракт (DTO, статуси, валідація)        | `purchase-orders.contract.spec.ts`                               | 34     |

@@ -173,7 +173,7 @@ test.describe('Інвентар — 3-режимний перемикач вид
     });
 
     // У режимі goods date-input відсутні
-    await expect(page.locator('input[type="date"]')).toHaveCount(0);
+    await expect(page.locator('input[aria-label="З"], input[aria-label="По"]')).toHaveCount(0);
 
     // Перемикаємось на documents
     await page.getByRole('button', { name: 'По документах', exact: true }).click();
@@ -184,7 +184,9 @@ test.describe('Інвентар — 3-режимний перемикач вид
     );
 
     // З'являються 2 date-input (from/to)
-    await expect(page.locator('input[type="date"]')).toHaveCount(2, { timeout: 5_000 });
+    await expect(page.locator('input[aria-label="З"], input[aria-label="По"]')).toHaveCount(2, {
+      timeout: 5_000,
+    });
 
     // Колонка "Документ" характерна для documents режиму
     await page
@@ -256,7 +258,9 @@ test.describe('Інвентар — 3-режимний перемикач вид
     );
 
     // Date inputs також присутні в batches режимі
-    await expect(page.locator('input[type="date"]')).toHaveCount(2, { timeout: 5_000 });
+    await expect(page.locator('input[aria-label="З"], input[aria-label="По"]')).toHaveCount(2, {
+      timeout: 5_000,
+    });
 
     await page
       .locator('[role="status"]')
@@ -286,7 +290,7 @@ test.describe('Інвентар — 3-режимний перемикач вид
     await page.getByRole('button', { name: 'По документах', exact: true }).click();
 
     // Чекаємо появу date inputs
-    const dateInputs = page.locator('input[type="date"]');
+    const dateInputs = page.locator('input[aria-label="З"], input[aria-label="По"]');
     await expect(dateInputs).toHaveCount(2, { timeout: 5_000 });
 
     // Чекаємо завершення початкового запиту (без filters), щоб collect наступний
@@ -302,8 +306,9 @@ test.describe('Інвентар — 3-режимний перемикач вид
     );
 
     // Заповнюємо from + to
-    await dateInputs.nth(0).fill('2025-01-01');
-    await dateInputs.nth(1).fill('2025-12-31');
+    // Спільне поле дати: текст ДД.ММ.РРРР, у запит іде лише завершена дата (YYYY-MM-DD).
+    await dateInputs.nth(0).fill('01.01.2025');
+    await dateInputs.nth(1).fill('31.12.2025');
     // blur, щоб тригернути ефект (useMemo на docFilters реагує миттєво)
     await page.locator('h1').first().click({ force: true });
 

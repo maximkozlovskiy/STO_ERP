@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 
-import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
+import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { safeCoeff } from '../../common/utils/math';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
@@ -175,12 +175,9 @@ export class PurchaseOrdersService {
         ];
       }
     }
-    if (dateFrom || dateTo) {
-      where.documentDate = {
-        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
-      };
-    }
+    // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.
+    const documentDate = dateOnlyRangeFilter(dateFrom, dateTo);
+    if (documentDate) where.documentDate = documentDate;
 
     const { skip, take } = calculatePagination({ page, limit });
     const orderBy = buildSortOrderBy(

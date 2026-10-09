@@ -147,4 +147,21 @@ describe('CashOperationsTab — пошук і дати', () => {
     render(<CashOperationsTab />);
     expect(screen.getByPlaceholderText(SEARCH)).toHaveAttribute('maxlength', '100');
   });
+
+  // Рішення власника 2026-10-09: збій запиту операцій раніше виглядав як «операцій не знайдено».
+  // Mutation-verify: прибрати `!opsError` з умови порожнього стану → кейс падає.
+  it('збій запиту — смуга з «Повторити», порожній стан не показується', () => {
+    const refetch = vi.fn();
+    useCashOperationsMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Забагато запитів'),
+      refetch,
+    });
+    render(<CashOperationsTab />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Забагато запитів');
+    expect(screen.queryByText('Операцій немає')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
 });

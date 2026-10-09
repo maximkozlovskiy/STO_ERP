@@ -10,6 +10,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Pagination } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ListLoadError } from '@/components/ui/list-load-error';
 import { StatusPill } from '@/components/ui/status-pill';
 import {
   Table,
@@ -66,7 +67,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const { data, isLoading, error } = useBankTransactions({
+  const { data, isLoading, error, refetch } = useBankTransactions({
     status: status || undefined,
     direction,
     q: debouncedSearch.trim() || undefined,
@@ -114,11 +115,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
   // окремою смугою під одну кнопку давав порожнє місце між вкладками й фільтрами.
   return (
     <>
-      {error && (
-        <div className="text-sm text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-4 py-2.5">
-          {error instanceof Error ? error.message : t('page.error.load')}
-        </div>
-      )}
+      <ListLoadError error={error} onRetry={() => void refetch()} />
 
       {/* Status filter pills */}
       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -188,7 +185,7 @@ export default function BankTransactionsTab({ direction }: { direction?: BankTxD
                 </TableRow>
               )}
 
-              {!isLoading && items.length === 0 && (
+              {!isLoading && !error && items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="p-0">
                     <EmptyState

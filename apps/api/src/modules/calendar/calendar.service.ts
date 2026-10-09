@@ -5,6 +5,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { throwIfExclusionConflict } from '../../common/utils/prisma-errors';
 import {
+  isCalendarDate,
+  kyivDayEnd,
+  kyivDayStart,
+  kyivOffsetMs,
+} from '../../common/utils/kyiv-date';
+import {
   CreateCalendarSlotDto,
   UpdateCalendarSlotDto,
   CalendarSlotResponseDto,
@@ -13,14 +19,6 @@ import {
   CheckConflictsResponseDto,
   SyncWorkOrderSlotsDto,
 } from './calendar.dto';
-
-// Module-level Intl singleton — kyivOffsetMs is called on every findSlots/createSlot/updateSlot,
-// avoid re-allocating the DateTimeFormat on each request.
-const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  hour: '2-digit',
-  hour12: false,
-});
 
 const KYIV_DATE_FMT = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' });
 
@@ -105,10 +103,9 @@ function kyivStartOfNextWorkDay(d: Date, startHour: number = DEFAULT_WORK_DAY_ST
   );
 }
 
+/** Зсув Києва для миті `d` — спільна реалізація (раніше тут жила власна копія по годинах). */
 function kyivOffsetMsStatic(d: Date): number {
-  const utcHour = d.getUTCHours();
-  const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
-  return ((kyivHour - utcHour + 24) % 24) * 3600000;
+  return kyivOffsetMs(d);
 }
 
 @Injectable()
@@ -154,14 +151,14 @@ export class CalendarService {
     branchId?: string,
     employeeId?: string,
   ): Promise<CalendarSlotResponseDto[]> {
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    if (!date || !isCalendarDate(date))
       throw new BadRequestException(
         translateError('err.calendar.invalidDateFormatExpected', getLocale()),
       );
-    // Convert Kyiv calendar date to UTC range using Intl (handles DST correctly)
-    const kyivOffset = this.kyivOffsetMs(new Date(`${date}T12:00:00Z`));
-    const start = new Date(new Date(`${date}T00:00:00Z`).getTime() - kyivOffset);
-    const end = new Date(new Date(`${date}T23:59:59.999Z`).getTime() - kyivOffset);
+    // Межі київської доби. Раніше обидві рахувались зсувом ПОЛУДНЯ: у день переведення
+    // годинника (29.03, 25.10) північ мала інший зсув, і початок дня з'їжджав на годину.
+    const start = kyivDayStart(date);
+    const end = kyivDayEnd(date);
 
     // CAL-C2: half-open OVERLAP, not CONTAINMENT. Containment (`startAt>=start AND endAt<=end`)
     // silently DROPS slots that cross the day boundary: a split-day continuation that starts the
@@ -770,13 +767,6 @@ export class CalendarService {
     });
     if (result.count === 0)
       throw new NotFoundException(translateError('err.calendar.slotNotFound', getLocale()));
-  }
-
-  private kyivOffsetMs(d: Date): number {
-    // Thin wrapper around the module-level helper used by kyivEndOfWorkDay /
-    // kyivStartOfNextWorkDay — keeps `this.kyivOffsetMs(...)` call-sites readable
-    // without duplicating the Intl-based offset calculation.
-    return kyivOffsetMsStatic(d);
   }
 
   /** Minimal DTO for conflict-check response — no PII fields, no counterparty enumeration. */

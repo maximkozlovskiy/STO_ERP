@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
+  Matches,
   IsIn,
   IsNumber,
   IsOptional,
@@ -12,6 +13,7 @@ import {
   Min,
 } from 'class-validator';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 
 /** Статуси зарплатного періоду — єдине місце правди для валідації фільтра. */
 export const PAYROLL_PERIOD_STATUSES = ['DRAFT', 'COMPUTED', 'PAID', 'CANCELLED'] as const;
@@ -19,11 +21,13 @@ export type PayrollPeriodStatus = (typeof PAYROLL_PERIOD_STATUSES)[number];
 
 export class PayrollQueryDto {
   @ApiProperty({ example: '2026-09-01', description: 'Початок періоду (YYYY-MM-DD)' })
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   from!: string;
 
   @ApiProperty({ example: '2026-09-30', description: 'Кінець періоду (YYYY-MM-DD)' })
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   to!: string;
 
   @ApiPropertyOptional({ description: 'Фільтр по філії' })
@@ -66,11 +70,13 @@ export class PayPayrollDto {
 
 export class CreatePayrollPeriodDto {
   @ApiProperty({ example: '2026-09-01' })
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   periodStart!: string;
 
   @ApiProperty({ example: '2026-09-30' })
-  @IsDateString()
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
   periodEnd!: string;
 
   @ApiPropertyOptional({ description: 'Фільтр по філії (null = усі)' })

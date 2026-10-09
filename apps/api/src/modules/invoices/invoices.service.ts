@@ -3,7 +3,7 @@ import { InvoiceStatus, Prisma } from '@prisma/client';
 import { formatPersonName, translateError } from '@sto/shared';
 
 import { getLocale } from '../../common/tenant/tenant-context';
-import { kyivToday, addDaysKyiv } from '../../common/utils/kyiv-date';
+import { kyivToday, addDaysKyiv, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { safeCoeff } from '../../common/utils/math';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { sumLineTotals, calcLineVat } from '../../common/utils/vat';
@@ -130,12 +130,9 @@ export class InvoicesService {
         },
       ];
     }
-    if (dateFrom || dateTo) {
-      where.documentDate = {
-        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
-      };
-    }
+    // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.
+    const documentDate = dateOnlyRangeFilter(dateFrom, dateTo);
+    if (documentDate) where.documentDate = documentDate;
 
     const { skip, take } = calculatePagination({ page, limit });
     const orderBy = buildSortOrderBy(INV_SORT_FIELDS, sortBy, sortDir);

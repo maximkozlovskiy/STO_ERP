@@ -4,6 +4,10 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
+import {
+  assertCalendarDateQuery,
+  assertRequiredCalendarDateQuery,
+} from '../../common/utils/date-query';
 import { ReportsService } from './reports.service';
 import {
   LoadReportDto,
@@ -35,6 +39,7 @@ export class ReportsController {
     @Query('to') to: string,
     @Query('branchId', new ParseUUIDPipe({ optional: true })) branchId?: string,
   ): Promise<RevenueReportDto> {
+    assertRequiredCalendarDateQuery(from, to);
     return this.service.revenue(orgId, from, to, branchId);
   }
 
@@ -51,6 +56,7 @@ export class ReportsController {
     @Query('to') to: string,
     @Query('employeeId', new ParseUUIDPipe({ optional: true })) employeeId?: string,
   ): Promise<WorkOrdersReportDto> {
+    assertRequiredCalendarDateQuery(from, to);
     return this.service.workOrders(orgId, from, to, employeeId);
   }
 
@@ -67,6 +73,7 @@ export class ReportsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<StockReportDto> {
+    assertCalendarDateQuery(from, to);
     return this.service.stock(orgId, warehouseId, from, to);
   }
 
@@ -81,6 +88,7 @@ export class ReportsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ): Promise<ProfitabilityReportDto> {
+    assertRequiredCalendarDateQuery(from, to);
     return this.service.profitability(orgId, from, to);
   }
 
@@ -109,6 +117,7 @@ export class ReportsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ): Promise<LoadReportDto> {
+    assertRequiredCalendarDateQuery(from, to);
     return this.service.load(orgId, from, to, branchId);
   }
 
@@ -123,6 +132,7 @@ export class ReportsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ): Promise<VatReportDto> {
+    assertRequiredCalendarDateQuery(from, to);
     return this.service.vatReport(orgId, from, to);
   }
 }

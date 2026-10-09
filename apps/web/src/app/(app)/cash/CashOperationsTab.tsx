@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ListLoadError } from '@/components/ui/list-load-error';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDateTime, kyivToday } from '@/lib/format';
 import { DateRangeFilter } from '@/components/ui/date-range-filter';
@@ -80,10 +81,12 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     dateTo: dateTo || undefined,
   };
   const hasOpsFilter = !!(opsFilter.q || opsFilter.dateFrom || opsFilter.dateTo);
-  const { data: operations, isLoading: opsLoading } = useCashOperations(
-    selectedId || null,
-    opsFilter,
-  );
+  const {
+    data: operations,
+    isLoading: opsLoading,
+    error: opsError,
+    refetch: refetchOps,
+  } = useCashOperations(selectedId || null, opsFilter);
   // Статті витрат потрібні лише для модалки IN/OUT (привід EXPENSE), доступної тим, хто canOperate.
   // GET /expense-categories вимагає ACCOUNTANT+ — RECEPTIONIST (лише перегляд) інакше отримав би 403.
   const { data: expenseCats } = useExpenseCategories(false, canOperate);
@@ -287,6 +290,8 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         />
       </div>
 
+      <ListLoadError error={opsError} onRetry={() => void refetchOps()} className="shrink-0" />
+
       {/* Історія операцій */}
       <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">
         <Table>
@@ -313,7 +318,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                 </TableCell>
               </TableRow>
             )}
-            {!opsLoading && (operations?.length ?? 0) === 0 && (
+            {!opsLoading && !opsError && (operations?.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell colSpan={isBaseCurrency ? 4 : 5} className="p-0">
                   <EmptyState

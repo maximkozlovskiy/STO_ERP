@@ -111,34 +111,99 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
   const lastWhere = () =>
     (prisma.payment.findMany.mock.calls[0][0] as { where: Record<string, unknown> }).where;
 
-  // ── 1. Date-range INCLUSIVITY (review-fix 9710c556) ───────────────────────
+  // ── 1. Відбір за датою — КИЇВСЬКА доба за createdAt (BR-PAY-018) ───────────
+  //
+  // До 2026-10-09 межі були за UTC (`dateFrom + 'T00:00:00.000Z'` … `dateTo + 'T23:59:59.999Z'`),
+  // і три кейси цього блоку саме UTC-межі й закріплювали. Оплата, створена 10.10 о 00:30 за
+  // Києвом (09.10 21:30Z), потрапляла у відбір «09.10». Кейси переписано під правило.
+  //
+  // Mutation-verify: повернути UTC-межі замість `kyivDayRangeFilter` → падають усі кейси блоку,
+  // крім «без дат»; підставити `dateOnlyRangeFilter` → те саме.
 
-  it('dateTo → where.createdAt.lte = кінець доби 23:59:59.999Z (inclusive-of-full-day)', async () => {
-    await service.findAll(ORG, { dateTo: '2026-09-06' });
-    const createdAt = lastWhere().createdAt as { lte?: Date };
-    // МУТАЦІЯ-guard: якщо відкотити на `new Date(dateTo)` (midnight), lte був би
-    // 2026-09-06T00:00:00Z і платіж о 15:00 випав би. Перевіряємо саме кінець доби.
-    expect(createdAt.lte).toBeInstanceOf(Date);
-    expect((createdAt.lte as Date).toISOString()).toBe('2026-09-06T23:59:59.999Z');
-    // Платіж о 15:00 того ж дня МУСИТЬ проходити межу.
-    const paidAt = new Date('2026-09-06T15:00:00.000Z');
-    expect(paidAt.getTime()).toBeLessThanOrEqual((createdAt.lte as Date).getTime());
+  // guards: BR-PAY-018
+  it('один день 10.10 (літній час, UTC+3) → createdAt від 09.10 21:00:00.000Z до 10.10 20:59:59.999Z', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-10-10', dateTo: '2026-10-10' });
+    expect(lastWhere().createdAt).toEqual({
+      gte: new Date('2026-10-09T21:00:00.000Z'),
+      lte: new Date('2026-10-10T20:59:59.999Z'),
+    });
   });
 
-  it('dateFrom → where.createdAt.gte = початок доби 00:00:00.000Z (нижня межа)', async () => {
-    await service.findAll(ORG, { dateFrom: '2026-09-06' });
-    const createdAt = lastWhere().createdAt as { gte?: Date };
-    expect((createdAt.gte as Date).toISOString()).toBe('2026-09-06T00:00:00.000Z');
-    // Платіж о 15:00 того ж дня МУСИТЬ проходити нижню межу.
-    const paidAt = new Date('2026-09-06T15:00:00.000Z');
-    expect(paidAt.getTime()).toBeGreaterThanOrEqual((createdAt.gte as Date).getTime());
+  // guards: BR-PAY-018
+  it('зимова дата 15.01 (UTC+2) → createdAt від 14.01 22:00:00.000Z до 15.01 21:59:59.999Z', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-01-15', dateTo: '2026-01-15' });
+    expect(lastWhere().createdAt).toEqual({
+      gte: new Date('2026-01-14T22:00:00.000Z'),
+      lte: new Date('2026-01-15T21:59:59.999Z'),
+    });
   });
 
-  it('dateFrom+dateTo разом → повний закритий інтервал [00:00:00.000, 23:59:59.999]', async () => {
-    await service.findAll(ORG, { dateFrom: '2026-09-01', dateTo: '2026-09-06' });
-    const createdAt = lastWhere().createdAt as { gte?: Date; lte?: Date };
-    expect((createdAt.gte as Date).toISOString()).toBe('2026-09-01T00:00:00.000Z');
-    expect((createdAt.lte as Date).toISOString()).toBe('2026-09-06T23:59:59.999Z');
+  // guards: BR-PAY-018
+  it('оплата 10.10 о 00:30 за Києвом (09.10 21:30Z) входить у відбір «10.10» і не входить у «09.10»', async () => {
+    const createdAt = new Date('2026-10-09T21:30:00.000Z');
+    const inRange = (call: number) => {
+      const range = (
+        prisma.payment.findMany.mock.calls[call][0] as {
+          where: { createdAt: { gte: Date; lte: Date } };
+        }
+      ).where.createdAt;
+      return createdAt >= range.gte && createdAt <= range.lte;
+    };
+
+    await service.findAll(ORG, { dateFrom: '2026-10-10', dateTo: '2026-10-10' });
+    await service.findAll(ORG, { dateFrom: '2026-10-09', dateTo: '2026-10-09' });
+
+    expect(inRange(0)).toBe(true);
+    expect(inRange(1)).toBe(false);
+  });
+
+  // guards: BR-PAY-018
+  it('оплата 10.10 о 23:59:59.999 за Києвом ще входить у «10.10», наступна мілісекунда — вже ні (межі включні)', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-10-10', dateTo: '2026-10-10' });
+    const { gte, lte } = lastWhere().createdAt as { gte: Date; lte: Date };
+    expect(new Date('2026-10-09T21:00:00.000Z') >= gte).toBe(true);
+    expect(new Date('2026-10-09T20:59:59.999Z') >= gte).toBe(false);
+    expect(new Date('2026-10-10T20:59:59.999Z') <= lte).toBe(true);
+    expect(new Date('2026-10-10T21:00:00.000Z') <= lte).toBe(false);
+  });
+
+  // guards: BR-PAY-018
+  it('лише dateFrom → тільки нижня межа (київська північ), верхньої немає', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-10-10' });
+    expect(lastWhere().createdAt).toEqual({ gte: new Date('2026-10-09T21:00:00.000Z') });
+  });
+
+  // guards: BR-PAY-018
+  it('лише dateTo → тільки верхня межа (кінець київської доби), нижньої немає', async () => {
+    await service.findAll(ORG, { dateTo: '2026-10-10' });
+    expect(lastWhere().createdAt).toEqual({ lte: new Date('2026-10-10T20:59:59.999Z') });
+  });
+
+  // guards: BR-PAY-018
+  it('період через переведення годинника 25.10: початок за літнім зсувом, кінець за зимовим', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-10-25', dateTo: '2026-10-25' });
+    expect(lastWhere().createdAt).toEqual({
+      gte: new Date('2026-10-24T21:00:00.000Z'),
+      lte: new Date('2026-10-25T21:59:59.999Z'),
+    });
+  });
+
+  // guards: BR-PAY-018
+  it('день переходу на літній час 29.03: початок за зимовим зсувом, кінець за літнім', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-03-29', dateTo: '2026-03-29' });
+    expect(lastWhere().createdAt).toEqual({
+      gte: new Date('2026-03-28T22:00:00.000Z'),
+      lte: new Date('2026-03-29T20:59:59.999Z'),
+    });
+  });
+
+  // Без мітки guards: стереже tenant-фільтр поруч із відбором за датою, а не межі доби.
+  it('відбір за датою не чіпає tenant-фільтр: orgId лишається на верхньому рівні where, лічильник отримує той самий where', async () => {
+    await service.findAll(ORG, { dateFrom: '2026-10-10', dateTo: '2026-10-10' });
+    const where = lastWhere();
+    expect(where.orgId).toBe(ORG);
+    expect(where).not.toHaveProperty('OR');
+    expect((prisma.payment.count.mock.calls[0][0] as { where: unknown }).where).toEqual(where);
   });
 
   it('без дат → where.createdAt відсутній (немає фільтра діапазону)', async () => {

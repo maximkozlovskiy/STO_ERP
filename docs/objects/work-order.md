@@ -199,6 +199,7 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.contract.spec.ts`                 | 22     |
 | HTTP-контракт (DTO, статуси, валідація) | `work-orders.fsm.contract.spec.ts`             | 2      |
 | інваріанти (property-based)             | `work-orders.fsm.invariants.spec.ts`           | 16     |
+| список: відбір за датою документа       | `work-orders.list-date-filter.spec.ts`         | 4      |
 | нумерація (create/clone)                | `work-orders.numbering.spec.ts`                | 2      |
 | друкований наряд: підсумок із тоталів   | `work-orders.pdf-totals.spec.ts`               | 6      |
 | recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |

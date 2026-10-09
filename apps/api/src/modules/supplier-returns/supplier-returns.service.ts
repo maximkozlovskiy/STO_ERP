@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, SupplierReturnStatus } from '@prisma/client';
 
-import { kyivToday } from '../../common/utils/kyiv-date';
+import { kyivToday, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
 import { deduplicateBy } from '../../common/utils/array';
@@ -74,12 +74,9 @@ export class SupplierReturnsService {
         ];
       }
     }
-    if (dateFrom || dateTo) {
-      where.documentDate = {
-        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59.999Z') } : {}),
-      };
-    }
+    // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.
+    const documentDate = dateOnlyRangeFilter(dateFrom, dateTo);
+    if (documentDate) where.documentDate = documentDate;
 
     const { skip, take } = calculatePagination({ page, limit });
     const [items, total] = await Promise.all([

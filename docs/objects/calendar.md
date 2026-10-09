@@ -139,6 +139,7 @@ cd apps/api && npx vitest run src/modules/calendar/<файл>.spec.ts
 | сервісна логіка                                                                     | `calendar.service.spec.ts`    | 19     |
 | види слотів (без наряду / без механіка / службові / статус)                         | `calendar.slot-kinds.spec.ts` | 7      |
 | конфлікти слотів у `createSlot` / `updateSlot` (підйомник, механік, split-day, 409) | `calendar.conflicts.spec.ts`  | 27     |
+| межі дня у `findSlots` (київська доба, переведення годинника, перевірка дати)       | `calendar.day-bounds.spec.ts` | 18     |
 
 Разом: **84** кейси (цифри з `vitest --reporter=json`, не з grep).
 

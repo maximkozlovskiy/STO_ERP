@@ -6,7 +6,8 @@ import { PackageSearch } from 'lucide-react';
 import { STOCK_MOVEMENT_TYPE_LABELS } from '@sto/shared';
 import { stockMovementTypeLabel } from '@/i18n/enumLabel';
 import { Select } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { ListLoadError } from '@/components/ui/list-load-error';
 import { ListSearchInput } from '@/components/ui/list-search-input';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -60,7 +61,7 @@ export function StockMovementsTab() {
     [warehouseId, type, from, to, debouncedSearch, page],
   );
 
-  const { data, isLoading, isFetching } = useStockMovements(filters);
+  const { data, isLoading, isFetching, error, refetch } = useStockMovements(filters);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -114,28 +115,16 @@ export function StockMovementsTab() {
           onChange={v => resetAnd(() => setSearch(v))}
           label={t('movements.searchPlaceholder')}
         />
-        <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">
-            {t('movements.dateFrom')}
-          </label>
-          <Input
-            type="date"
-            value={from}
-            onChange={e => resetAnd(() => setFrom(e.target.value))}
-            className="w-36 h-8 text-[13px]"
-          />
-        </div>
-        <div>
-          <label className="block text-[12px] text-muted-foreground mb-1">
-            {t('movements.dateTo')}
-          </label>
-          <Input
-            type="date"
-            value={to}
-            onChange={e => resetAnd(() => setTo(e.target.value))}
-            className="w-36 h-8 text-[13px]"
-          />
-        </div>
+        {/* Спільне поле дати: віддає лише завершену дату — рідне `type="date"` під час набору
+            року слало запит на кожну проміжну дату, а рік із 5 цифр давав 400 зі старими даними. */}
+        <DateRangeFilter
+          from={from}
+          to={to}
+          onFromChange={v => resetAnd(() => setFrom(v))}
+          onToChange={v => resetAnd(() => setTo(v))}
+          fromLabel={t('movements.dateFrom')}
+          toLabel={t('movements.dateTo')}
+        />
         {(warehouseId || type || from || to || search) && (
           <Button
             variant="ghost"
@@ -154,6 +143,8 @@ export function StockMovementsTab() {
           </Button>
         )}
       </div>
+
+      <ListLoadError error={error} onRetry={() => void refetch()} className="shrink-0" />
 
       {/* Таблиця */}
       <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">
@@ -178,7 +169,7 @@ export function StockMovementsTab() {
                 </TableCell>
               </TableRow>
             )}
-            {!isLoading && items.length === 0 && (
+            {!isLoading && !error && items.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="p-0">
                   <EmptyState

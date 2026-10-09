@@ -80,13 +80,47 @@ describe('StockMovementsTab — пошук', () => {
   });
 
   it('поле пошуку стоїть перед датами, у тому самому рядку фільтрів', () => {
-    const { container } = render(<StockMovementsTab />);
+    render(<StockMovementsTab />);
     const search = screen.getByPlaceholderText(SEARCH);
-    const [from, to] = Array.from(container.querySelectorAll('input[type="date"]'));
-    expect(from && to).toBeTruthy();
-    expect(search.closest('div.flex-wrap')!.contains(from!)).toBe(true);
-    expect(search.compareDocumentPosition(from!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(from!.compareDocumentPosition(to!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const from = screen.getByLabelText('З');
+    const to = screen.getByLabelText('По');
+    expect(search.closest('div.flex-wrap')!.contains(from)).toBe(true);
+    expect(search.compareDocumentPosition(from) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(from.compareDocumentPosition(to) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // Рішення власника 2026-10-09: спільне поле дати замість рідного `type="date"` — у фільтр іде
+  // лише завершена дата (рідне поле слало запит на кожну проміжну дату під час набору року).
+  // Mutation-verify: повернути `<Input type="date">` → поля з назвою «З» немає, кейс падає.
+  it('недописана дата у фільтр не йде; завершена — йде і повертає на першу сторінку', () => {
+    render(<StockMovementsTab />);
+    fireEvent.click(screen.getByRole('button', { name: 'Далі' }));
+    const from = screen.getByLabelText('З');
+    for (const partial of ['0', '09.1', '09.10.202']) {
+      fireEvent.change(from, { target: { value: partial } });
+      expect(lastFilter().from).toBeUndefined();
+    }
+    expect(lastFilter().page).toBe(2);
+    fireEvent.change(from, { target: { value: '09.10.2026' } });
+    expect(lastFilter().from).toBe('2026-10-09');
+    expect(lastFilter().page).toBe(1);
+  });
+
+  // Збій запиту раніше виглядав як «рухів не знайдено».
+  it('збій запиту — смуга з «Повторити», порожній стан не показується', () => {
+    const refetch = vi.fn();
+    useStockMovementsMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+      error: new Error('Сервер недоступний'),
+      refetch,
+    });
+    render(<StockMovementsTab />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Сервер недоступний');
+    expect(screen.queryByText('Рухів немає')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   // Bug #816: довший за 100 символів `q` бекенд або відхиляє (400), або мовчки обрізає — поле

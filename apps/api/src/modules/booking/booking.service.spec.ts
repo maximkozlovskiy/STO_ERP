@@ -507,6 +507,107 @@ describe('BookingService', () => {
     });
   });
 
+  // Межі дня у запитах онлайн-запису. Зсув Києва береться ОДИН на день — на 12:00Z цієї дати
+  // (`kyivOffsetForDate`), з нього ж будується і сітка часу. Зимою це +02:00, влітку +03:00.
+  // У дні переведення годинника зсув полудня — вже НОВИЙ, тож початок дня у запиті на годину
+  // розходиться зі справжньою київською північчю: 29.03.2026 день починається о 21:00Z (це 23:00
+  // 28.03 за Києвом), 25.10.2026 — о 22:00Z (01:00 за Києвом). Це ЧИННА поведінка, зафіксована
+  // як є: робочі години запису (09:00–18:00) цієї години не зачіпають. Календар (`findSlots`)
+  // рахує межі інакше — справжньою північчю, див. `calendar.day-bounds.spec.ts`.
+  //
+  // Mutation-verify: зонд зсуву `T12:00:00.000Z` → `T00:00:00.000Z` — падають обидва дні
+  // переведення; повернути з `kyivOffsetForDate` сталий `+03:00` — падає зимова дата й 25.10;
+  // сталий `+02:00` — падає літня дата й 29.03.
+  describe('межі дня у запитах онлайн-запису (зсув Києва на полудень)', () => {
+    /** [назва, дата, початок дня у запиті, кінець дня у запиті] */
+    const DAYS = [
+      ['зима (+02:00)', '2026-01-15', '2026-01-14T22:00:00.000Z', '2026-01-15T21:59:59.999Z'],
+      ['літо (+03:00)', '2026-06-15', '2026-06-14T21:00:00.000Z', '2026-06-15T20:59:59.999Z'],
+      [
+        '29.03.2026, перехід на літній час (зсув полудня +03:00)',
+        '2026-03-29',
+        '2026-03-28T21:00:00.000Z',
+        '2026-03-29T20:59:59.999Z',
+      ],
+      [
+        '25.10.2026, перехід на зимовий час (зсув полудня +02:00)',
+        '2026-10-25',
+        '2026-10-24T22:00:00.000Z',
+        '2026-10-25T21:59:59.999Z',
+      ],
+    ] as const;
+
+    const iso = (range: { gte: Date; lte: Date }) => [
+      range.gte.toISOString(),
+      range.lte.toISOString(),
+    ];
+
+    it.each(DAYS)(
+      'getAvailability, %s: слоти календаря й заявки шукаються в одних межах дня',
+      async (_name, date, start, end) => {
+        prisma.lift.findMany.mockResolvedValue([{ id: 'lift-1', name: 'Підйомник 1' }]);
+        prisma.calendarSlot.findMany.mockResolvedValue([]);
+        prisma.branchSettings.findUnique.mockResolvedValue(null);
+        prisma.bookingRequest.findMany.mockResolvedValue([]);
+        prisma.work.findMany.mockResolvedValue([]);
+
+        await service.getAvailability(orgId, branchId, date);
+
+        const slotWhere = prisma.calendarSlot.findMany.mock.calls[0][0].where;
+        const requestWhere = prisma.bookingRequest.findMany.mock.calls[0][0].where;
+        expect(iso(slotWhere.startAt)).toEqual([start, end]);
+        expect(iso(requestWhere.requestedDate)).toEqual([start, end]);
+        expect(slotWhere.orgId).toBe(orgId);
+        expect(requestWhere.orgId).toBe(orgId);
+      },
+    );
+
+    it.each([
+      ['зима', '2026-01-15', '2026-01-15T07:00:00.000Z'],
+      ['літо', '2026-06-15', '2026-06-15T06:00:00.000Z'],
+    ] as const)(
+      'getAvailability, %s: перший вільний час — 09:00 за Києвом у тому ж зсуві',
+      async (_name, date, firstStart) => {
+        prisma.lift.findMany.mockResolvedValue([{ id: 'lift-1', name: 'Підйомник 1' }]);
+        prisma.calendarSlot.findMany.mockResolvedValue([]);
+        prisma.branchSettings.findUnique.mockResolvedValue(null);
+        prisma.bookingRequest.findMany.mockResolvedValue([]);
+        prisma.work.findMany.mockResolvedValue([]);
+
+        const slots = await service.getAvailability(orgId, branchId, date);
+
+        expect(slots[0]!.startAt).toBe(firstStart);
+      },
+    );
+
+    it.each(DAYS)(
+      'список заявок за датою, %s: requestedDate у межах дня',
+      async (_name, date, start, end) => {
+        prisma.bookingRequest.findMany.mockResolvedValue([]);
+        prisma.bookingRequest.count = vi.fn().mockResolvedValue(0);
+
+        await service.findAll(orgId, { date });
+
+        const where = prisma.bookingRequest.findMany.mock.calls[0][0].where;
+        expect(iso(where.requestedDate)).toEqual([start, end]);
+        expect(where.orgId).toBe(orgId);
+        // Лічильник отримує той самий відбір, що й сторінка.
+        expect(prisma.bookingRequest.count.mock.calls[0][0].where).toEqual(where);
+      },
+    );
+
+    it('список заявок без дати — умови на requestedDate немає', async () => {
+      prisma.bookingRequest.findMany.mockResolvedValue([]);
+      prisma.bookingRequest.count = vi.fn().mockResolvedValue(0);
+
+      await service.findAll(orgId, { status: 'PENDING' });
+
+      const where = prisma.bookingRequest.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('requestedDate');
+      expect(where).toMatchObject({ orgId, status: 'PENDING', deletedAt: null });
+    });
+  });
+
   describe('confirm', () => {
     it('Bug #249 pattern: updateMany з { id, orgId, deletedAt: null }, не голий update', async () => {
       prisma.bookingRequest.findFirst.mockResolvedValueOnce({

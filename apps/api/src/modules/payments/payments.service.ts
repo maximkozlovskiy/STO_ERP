@@ -4,6 +4,7 @@ import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/s
 import { Queue } from 'bullmq';
 import { Prisma, FiscalReceiptStatus } from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { CashService } from '../cash/cash.service';
@@ -80,16 +81,10 @@ export class PaymentsService {
         );
       where.counterpartyId = opts.counterpartyId;
     }
-    // Діапазон дат за createdAt (date-only рядки YYYY-MM-DD від фронту).
-    // dateTo МУСИТЬ бути inclusive-of-full-day: `new Date('2026-09-06')` = midnight UTC →
-    // голий lte виключив би всі платежі, зроблені пізніше того ж дня. Розширюємо до кінця доби
-    // (дзеркалить supplier-payments.service: `new Date(dateTo + 'T23:59:59.999Z')`).
-    if (opts.dateFrom || opts.dateTo) {
-      const createdAt: Prisma.DateTimeFilter = {};
-      if (opts.dateFrom) createdAt.gte = new Date(opts.dateFrom + 'T00:00:00.000Z');
-      if (opts.dateTo) createdAt.lte = new Date(opts.dateTo + 'T23:59:59.999Z');
-      where.createdAt = createdAt;
-    }
+    // BR-PAY-018: createdAt is a timestamp, so the day is the KYIV day (as in cash and stock
+    // movements). UTC bounds put a payment made at 00:30 Kyiv time into the previous day.
+    const createdAt = kyivDayRangeFilter(opts.dateFrom, opts.dateTo);
+    if (createdAt) where.createdAt = createdAt;
     if (opts.method) where.method = opts.method;
     // Пошук: клієнт (назва / прізвище / ім'я), номер рахунку, номер наряду, примітка. orgId
     // лишається на верхньому рівні where — OR його не послаблює.

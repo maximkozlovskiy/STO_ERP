@@ -7,6 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { CashService } from '../cash/cash.service';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
+import { normalizeKyivDateRange } from '../../common/utils/kyiv-date';
 import { computeAccrued, monthShareOfPeriod, parseRateScheme } from './payroll.calculator';
 import {
   CreatePayrollPeriodDto,
@@ -22,21 +23,9 @@ import {
 // спільних 5 с (TRANSACTION_TIMEOUT_MS) для цього замало.
 const COMPUTE_TX_TIMEOUT_MS = 30_000;
 
-// Kyiv-aware межі дат (дзеркалить reports.service.normalizeDateRange).
-const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  hour: '2-digit',
-  hour12: false,
-});
-function kyivOffsetMs(d: Date): number {
-  const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
-  return ((kyivHour - d.getUTCHours() + 24) % 24) * 3_600_000;
-}
+// Межі періоду — київська доба зі спільного kyiv-date (раніше тут жила власна копія зсуву).
 function normalizeDateRange(from: string, to: string) {
-  const fromMidnight = new Date(`${from}T00:00:00Z`);
-  const toEndOfDay = new Date(`${to}T23:59:59.999Z`);
-  const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
-  const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
+  const { fromDate, toDate } = normalizeKyivDateRange(from, to);
   if (fromDate > toDate)
     throw new BadRequestException(translateError('err.payroll.startAfterEnd', getLocale()));
   return { fromDate, toDate };

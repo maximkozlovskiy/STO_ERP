@@ -3,6 +3,7 @@ import { Prisma, CalendarSlotStatus } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale, runUnscoped } from '../../common/tenant/tenant-context';
+import { kyivOffsetMs } from '../../common/utils/kyiv-date';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CalendarService } from '../calendar/calendar.service';
 import {
@@ -121,9 +122,7 @@ export class BookingService {
     // Convert the date's noon-UTC moment to Kyiv local time and read the offset.
     // Using noon (not midnight) avoids issues with DST transition at 03:00 local.
     const probe = new Date(`${date}T12:00:00.000Z`);
-    const kyivStr = probe.toLocaleString('en-US', { timeZone: 'Europe/Kyiv', hour12: false });
-    const kyivDate = new Date(kyivStr + ' UTC');
-    const offsetMin = (kyivDate.getTime() - probe.getTime()) / 60_000;
+    const offsetMin = Math.round(kyivOffsetMs(probe) / 60_000);
     const sign = offsetMin >= 0 ? '+' : '-';
     const abs = Math.abs(offsetMin);
     const h = String(Math.floor(abs / 60)).padStart(2, '0');

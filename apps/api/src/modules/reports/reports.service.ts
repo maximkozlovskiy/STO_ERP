@@ -5,30 +5,19 @@ import { SettingsService } from '../settings/settings.service';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { formatPersonName, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import {
+  dateOnlyRangeFilter,
+  kyivDayRangeFilter,
+  normalizeKyivDateRange,
+} from '../../common/utils/kyiv-date';
 
 // BR-RPT-023: частка «без ПДВ» наряду k = totalNet / сума рядків (1 для «без ПДВ» і «ПДВ зверху»,
 // < 1 для «ПДВ у ціні»; наряд без рядків → 1). Множник для робіт і запчастин у звітах.
 const NET_SHARE_SQL = Prisma.sql`COALESCE("totalNet" / NULLIF("totalActualLabor" + "totalParts", 0), 1)`;
 
-// Module-level Intl singleton — locale-data init is the dominant cost; both
-// normalizeDateRange branches and report calls go through kyivOffsetMs.
-const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  hour: '2-digit',
-  hour12: false,
-});
-
-function kyivOffsetMs(d: Date): number {
-  const kyivHour = parseInt(KYIV_HOUR_FMT.format(d), 10);
-  const utcHour = d.getUTCHours();
-  return ((kyivHour - utcHour + 24) % 24) * 3_600_000;
-}
-
+// Межі періоду — київська доба зі спільного kyiv-date (раніше тут жила власна копія зсуву).
 function normalizeDateRange(from: string, to: string) {
-  const fromMidnight = new Date(`${from}T00:00:00Z`);
-  const toEndOfDay = new Date(`${to}T23:59:59.999Z`);
-  const fromDate = new Date(fromMidnight.getTime() - kyivOffsetMs(fromMidnight));
-  const toDate = new Date(toEndOfDay.getTime() - kyivOffsetMs(toEndOfDay));
+  const { fromDate, toDate } = normalizeKyivDateRange(from, to);
   if (fromDate > toDate)
     throw new BadRequestException(translateError('err.report.startAfterEnd', getLocale()));
   return { fromDate, toDate };
@@ -212,14 +201,8 @@ export class ReportsService {
       createdAt?: { gte?: Date; lte?: Date };
     } = { orgId };
     if (warehouseId) movWhere.warehouseId = warehouseId;
-    if (from) {
-      const d = new Date(`${from}T00:00:00Z`);
-      movWhere.createdAt = { gte: new Date(d.getTime() - kyivOffsetMs(d)) };
-    }
-    if (to) {
-      const d = new Date(`${to}T23:59:59.999Z`);
-      movWhere.createdAt = { ...movWhere.createdAt, lte: new Date(d.getTime() - kyivOffsetMs(d)) };
-    }
+    const createdAt = kyivDayRangeFilter(from, to);
+    if (createdAt) movWhere.createdAt = createdAt;
 
     // Parallel: warehouse guard (optional) + stockItems + stockMovements — три
     // незалежні reads. Warehouse guard йшов послідовно ДО Promise.all, тепер усе
@@ -468,7 +451,11 @@ export class ReportsService {
   }
 
   async vatReport(orgId: string, from: string, to: string) {
-    const { fromDate, toDate } = normalizeDateRange(from, to);
+    // Order check only; the bounds themselves are calendar dates (see documentDate below).
+    normalizeDateRange(from, to);
+    // documentDate is a date WITHOUT time (@db.Date): compare calendar dates. Kyiv-midnight
+    // bounds (21:00Z of the previous day) pulled the day before `from` into the period.
+    const documentDate = dateOnlyRangeFilter(from, to);
 
     // sto-review §5 Business Rules:
     // (1) Invoices: DRAFT не створює податкове зобов'язання (не виставлений клієнту),
@@ -481,7 +468,7 @@ export class ReportsService {
           orgId,
           deletedAt: null,
           status: { in: ['SENT', 'PAID', 'OVERDUE'] },
-          documentDate: { gte: fromDate, lte: toDate },
+          documentDate,
         },
         _sum: { totalVat: true },
       }),
@@ -490,7 +477,7 @@ export class ReportsService {
           orgId,
           deletedAt: null,
           status: { in: ['PARTIAL', 'RECEIVED'] },
-          documentDate: { gte: fromDate, lte: toDate },
+          documentDate,
         },
         _sum: { totalVat: true },
       }),

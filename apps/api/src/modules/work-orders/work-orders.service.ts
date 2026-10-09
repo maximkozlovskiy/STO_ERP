@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 
-import { kyivToday } from '../../common/utils/kyiv-date';
+import { kyivToday, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { lineAmount, money, moneyFromDecimal } from '../../common/utils/money';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
 import { assertFsmTransition } from '../../common/utils/fsm';
@@ -141,12 +141,9 @@ export class WorkOrdersService {
         { counterparty: { firstName: { contains: query.q, mode: 'insensitive' } } },
       ];
     }
-    if (query.dateFrom || query.dateTo) {
-      where.documentDate = {
-        ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
-        ...(query.dateTo ? { lte: new Date(query.dateTo + 'T23:59:59.999Z') } : {}),
-      };
-    }
+    // documentDate - date without time (@db.Date): bounds are calendar dates, no timezone shift.
+    const documentDate = dateOnlyRangeFilter(query.dateFrom, query.dateTo);
+    if (documentDate) where.documentDate = documentDate;
 
     const { skip, take } = calculatePagination({ page: query.page, limit: query.limit });
     const orderBy = buildSortOrderBy(WO_SORT_FIELDS, query.sortBy, query.sortDir);

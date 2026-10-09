@@ -8,7 +8,9 @@
     "searchPlaceholder": "Пошук по назві...",
     "allWarehouses": "Всі склади",
     "lowOnly": "Тільки з низьким залишком",
-    "belowMin": "Нижче мінімуму"
+    "belowMin": "Нижче мінімуму",
+    "dateFrom": "З",
+    "dateTo": "По"
   },
   "columns": {
     "good": "Товар",

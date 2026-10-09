@@ -18,3 +18,14 @@ export function assertCalendarDateQuery(...values: unknown[]): void {
       throw new BadRequestException(translateError('err.list.invalidDateFilter', getLocale()));
   }
 }
+
+/**
+ * Те саме для ОБОВ'ЯЗКОВИХ меж періоду (звіти): відсутня чи порожня дата — теж 400. Без цього
+ * `GET /reports/revenue` без `from` доходив до сервісу з `undefined` і падав на `Invalid Date`.
+ */
+export function assertRequiredCalendarDateQuery(...values: unknown[]): void {
+  for (const value of values) {
+    if (typeof value !== 'string' || !isCalendarDate(value))
+      throw new BadRequestException(translateError('err.list.invalidDateFilter', getLocale()));
+  }
+}
