@@ -103,6 +103,11 @@ export function InventoryTab() {
   const debouncedQ = useDebounce(q);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  // Рідне поле дати під час набору року з клавіатури віддає кожну проміжну дату
+  // (0002-.., 0020-.., 0202-.., 2026-..) — без затримки кожна йшла окремим запитом розрізу
+  // (3 зайві з 4, і кожен «з року 2» повертає всю історію). У запит іде лише усталене значення.
+  const debouncedFrom = useDebounce(from);
+  const debouncedTo = useDebounce(to);
   const [showLow, setShowLow] = useState(false);
   const [error, setError] = useState('');
 
@@ -162,8 +167,8 @@ export function InventoryTab() {
 
   const viewFilters = {
     warehouseId: warehouseId || undefined,
-    from: from || undefined,
-    to: to || undefined,
+    from: debouncedFrom || undefined,
+    to: debouncedTo || undefined,
   };
 
   // gate за viewMode — без enabled три hooks тригерили запити
