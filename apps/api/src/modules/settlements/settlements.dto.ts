@@ -1,10 +1,17 @@
-import { IsDateString } from 'class-validator';
+import { IsDateString, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { SettlementTransactionType } from '@prisma/client';
+import { CALENDAR_DATE_RE } from '../../common/utils/kyiv-date';
 
 export class CreateReconciliationActDto {
-  @ApiProperty({ example: '2026-01-01' }) @IsDateString() periodFrom!: string;
-  @ApiProperty({ example: '2026-12-31' }) @IsDateString() periodTo!: string;
+  @ApiProperty({ example: '2026-01-01' })
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
+  periodFrom!: string;
+  @ApiProperty({ example: '2026-12-31' })
+  @Matches(CALENDAR_DATE_RE)
+  @IsDateString({ strict: true })
+  periodTo!: string;
 }
 
 // ─── Response DTOs ─────────────────────────────────────────

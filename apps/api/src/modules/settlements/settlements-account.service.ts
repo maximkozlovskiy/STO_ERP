@@ -8,35 +8,10 @@ import { PdfService } from '../pdf/pdf.service';
 import { CreateReconciliationActDto } from './settlements.dto';
 import { BALANCE_SIGN } from './settlements.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
+import { kyivDayEnd, kyivDayStart } from '../../common/utils/kyiv-date';
 
 /** Max rows in one reconciliation act snapshot; a larger period is rejected, not truncated. */
 const ACT_MAX_TRANSACTIONS = 5000;
-
-// Module-level Intl singleton — DateTimeFormat constructor is the expensive part (locale-data init).
-// Both kyivStartOfDay/kyivEndOfDay used to allocate a new formatter per call; createReconciliationAct
-// invokes both per request → 2 allocations × every reconciliation.
-const KYIV_HOUR_FMT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Kyiv',
-  hour: '2-digit',
-  hour12: false,
-});
-
-/** Returns the UTC instant corresponding to 00:00:00 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
-function kyivStartOfDay(date: string): Date {
-  // Use noon in UTC to safely determine the Kyiv offset for that calendar date
-  const probe = new Date(`${date}T12:00:00Z`);
-  const kyivHour = parseInt(KYIV_HOUR_FMT.format(probe), 10);
-  const offsetMs = ((kyivHour - probe.getUTCHours() + 24) % 24) * 3_600_000;
-  return new Date(new Date(`${date}T00:00:00Z`).getTime() - offsetMs);
-}
-
-/** Returns the UTC instant corresponding to 23:59:59.999 Kyiv time on the given calendar date (YYYY-MM-DD). DST-safe. */
-function kyivEndOfDay(date: string): Date {
-  const probe = new Date(`${date}T12:00:00Z`);
-  const kyivHour = parseInt(KYIV_HOUR_FMT.format(probe), 10);
-  const offsetMs = ((kyivHour - probe.getUTCHours() + 24) % 24) * 3_600_000;
-  return new Date(new Date(`${date}T23:59:59.999Z`).getTime() - offsetMs);
-}
 
 @Injectable()
 export class SettlementsAccountService {
@@ -161,8 +136,8 @@ export class SettlementsAccountService {
       throw new NotFoundException(translateError('err.settlement.accountNotFound', getLocale()));
 
     // Convert Kyiv calendar boundaries to UTC using Intl (handles DST: UTC+2 winter / UTC+3 summer)
-    const from = kyivStartOfDay(dto.periodFrom);
-    const to = kyivEndOfDay(dto.periodTo);
+    const from = kyivDayStart(dto.periodFrom);
+    const to = kyivDayEnd(dto.periodTo);
 
     // Баланс, транзакції періоду й агрегат «після періоду» читаються з ОДНОГО знімка БД
     // (RepeatableRead). Три окремі читання давали акт, що не сходиться сам із собою: платіж,

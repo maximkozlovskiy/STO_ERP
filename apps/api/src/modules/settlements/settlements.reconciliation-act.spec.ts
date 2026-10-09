@@ -196,6 +196,23 @@ describe('SettlementsAccountService — акт звірки', () => {
   });
 
   // guards: BR-SETL-011
+  // Раніше обидві межі рахувались зсувом ПОЛУДНЯ: у день переведення годинника північ має інший
+  // зсув, тож 29.03 акт захоплював останню годину 28.03, а 25.10 губив першу годину доби.
+  // Mutation-verify: повернути зсув полудня на початок доби → обидва кейси падають.
+  it.each([
+    ['2026-03-29', '2026-03-28T22:00:00.000Z', '2026-03-29T20:59:59.999Z'],
+    ['2026-10-25', '2026-10-24T21:00:00.000Z', '2026-10-25T21:59:59.999Z'],
+  ])('день переведення годинника %s — межі справжньої київської доби', async (day, gte, lte) => {
+    await service.createReconciliationAct('org-1', 'cp-1', { periodFrom: day, periodTo: day });
+
+    expect(prisma.settlementTransaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ createdAt: { gte: new Date(gte), lte: new Date(lte) } }),
+      }),
+    );
+  });
+
+  // guards: BR-SETL-011
   it('знімок рядків зберігається в акті: дата, тип, сума, сума у базовій валюті, валюта, документ', async () => {
     const createdAt = new Date('2026-07-10T09:00:00.000Z');
     prisma.settlementTransaction.findMany.mockResolvedValue([
