@@ -498,8 +498,11 @@ jobs:
       - name: Install Playwright browser
         run: pnpm --filter @sto/web exec playwright install --with-deps chromium
 
+      # github reporter writes each failed test and its error into the job annotations: they are
+      # readable without downloading the artifact (2026-10-09: two red runs that no local or
+      # container run reproduced, and the log needed repository admin rights).
       - name: Run full E2E suite
-        run: pnpm --filter @sto/web exec playwright test --reporter=list
+        run: pnpm --filter @sto/web exec playwright test --reporter=list,github
 
       - name: Upload artifacts on failure
         if: failure()
