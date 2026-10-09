@@ -11,7 +11,7 @@ import {
 // Кожен кейс доведений мутацією продукт-коду (зламав правило → червоний → відкотив).
 
 describe('BankReconciliationService.applyImport — ідемпотентність запису і нормалізація IBAN', () => {
-  function setupApply() {
+  async function setupApply() {
     const prisma = makePrisma();
     prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'cur-1' });
     const createMany = vi
@@ -21,13 +21,13 @@ describe('BankReconciliationService.applyImport — ідемпотентніст
       fn({ bankTransaction: { createMany } }),
     );
     const payments = makePayments();
-    const service = build(prisma, makeExchange(), payments);
+    const service = await build(prisma, makeExchange(), payments);
     return { prisma, createMany, payments, service };
   }
 
   // guards: BR-BANK-002
   it('createMany викликається зі skipDuplicates: true — повторний імпорт не дублює рядок', async () => {
-    const { createMany, service } = setupApply();
+    const { createMany, service } = await setupApply();
     await service.applyImport(ORG, {
       bankAccountId: 'ba-1',
       rows: [{ externalId: 'e1', operationDate: '2026-09-01', amount: 100 }],
@@ -38,7 +38,7 @@ describe('BankReconciliationService.applyImport — ідемпотентніст
 
   // guards: BR-BANK-001
   it('імпорт лише кладе рядки у staging: Payment НЕ створюється', async () => {
-    const { payments, service } = setupApply();
+    const { payments, service } = await setupApply();
     await service.applyImport(ORG, {
       bankAccountId: 'ba-1',
       rows: [{ externalId: 'e1', operationDate: '2026-09-01', amount: 100 }],
@@ -48,7 +48,7 @@ describe('BankReconciliationService.applyImport — ідемпотентніст
 
   // guards: BR-BANK-006
   it('payerIban зберігається нормалізованим (UPPERCASE, без пробілів); порожній → null', async () => {
-    const { createMany, service } = setupApply();
+    const { createMany, service } = await setupApply();
     await service.applyImport(ORG, {
       bankAccountId: 'ba-1',
       rows: [
@@ -70,12 +70,17 @@ describe('BankReconciliationService.previewImport — межі дедуп-пер
     prisma.invoice.findMany.mockResolvedValue([]);
     prisma.workOrder.findMany.mockResolvedValue([]);
     prisma.bankTransaction.findMany.mockResolvedValue([]);
-    const service = build(prisma, makeExchange(), makePayments());
+    const service = await build(prisma, makeExchange(), makePayments());
     await service.previewImport(ORG, 'ba-1', [
       { externalId: 'e1', operationDate: new Date(), amount: 100 },
       { externalId: 'e2', operationDate: new Date(), amount: 200 },
     ]);
-    expect(prisma.bankTransaction.findMany.mock.calls[0]![0].where).toEqual({
+    // Прев'ю тепер робить ще й пошук ручних дублів (BR-BANK-037) — беремо саме запит дедупу
+    // за externalId, а не «перший findMany».
+    const dedup = prisma.bankTransaction.findMany.mock.calls
+      .map(c => (c[0] as { where: Record<string, unknown> }).where)
+      .find(where => where.externalId !== undefined);
+    expect(dedup).toMatchObject({
       orgId: ORG,
       bankAccountId: 'ba-1',
       externalId: { in: ['e1', 'e2'] },
@@ -88,7 +93,7 @@ describe('BankReconciliationService.applyImport — tenant-фільтр', () => 
   it('applyImport: банківський рахунок шукається у своїй orgId і лише невидалений', async () => {
     const prisma = makePrisma();
     prisma.bankAccount.findFirst.mockResolvedValue(null);
-    const service = build(prisma, makeExchange(), makePayments());
+    const service = await build(prisma, makeExchange(), makePayments());
     await expect(
       service.applyImport(ORG, { bankAccountId: 'ba-x', rows: [] }),
     ).rejects.toMatchObject({ status: 404 });

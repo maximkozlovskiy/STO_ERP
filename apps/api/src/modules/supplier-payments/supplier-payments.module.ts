@@ -9,5 +9,7 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
   imports: [SettlementsModule, CashModule, ExchangeRatesModule],
   controllers: [SupplierPaymentsController],
   providers: [SupplierPaymentsService],
+  // Bank reconciliation creates and confirms a supplier payment from an outgoing bank row (BR-BANK-028).
+  exports: [SupplierPaymentsService],
 })
 export class SupplierPaymentsModule {}

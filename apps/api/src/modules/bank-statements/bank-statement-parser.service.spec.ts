@@ -277,6 +277,176 @@ describe('BankStatementParserService.parseRows — DBF', () => {
   });
 });
 
+// ─── Напрям рядка (BR-BANK-017 / 018) ─────────────────────────────────────────
+// Написано ДО реалізації (2026-10-09). `directionMode` / `debitCol` є в контрактному
+// PreviewImportColumnMapping, але ще не в ColumnMapping парсера, а `direction` — не в RawTx:
+// тому мапінг і результат приводяться до розширених типів.
+//
+// Mutation-verify (кожна мутація мусить валити названі кейси):
+//  · не брати модуль суми / не ставити OUT для від'ємної → «SIGN: від'ємна сума → OUT…»;
+//  · ігнорувати debitCol → «debitCol: сума в колонці списання → OUT»;
+//  · не пропускати рядок із двома ненульовими або двома порожніми колонками → відповідний кейс;
+//  · у режимі IN / OUT зважати на знак → «режим IN / OUT: знак ігнорується»;
+//  · пропускати нульову суму далі → «нульова сума пропускається».
+
+type Direction = 'IN' | 'OUT';
+type DirectionMapping = ColumnMapping & {
+  directionMode?: 'SIGN' | 'IN' | 'OUT';
+  debitCol?: number;
+};
+/** [externalId, напрям, сума] кожного розібраного рядка. */
+const summary = (rows: unknown[]): Array<[string, Direction | undefined, number]> =>
+  (rows as Array<{ externalId: string; direction?: Direction; amount: number }>).map(r => [
+    r.externalId,
+    r.direction,
+    r.amount,
+  ]);
+
+const ONE_COLUMN: DirectionMapping = { startRow: 2, dateCol: 1, amountCol: 2, externalIdCol: 3 };
+// Дата | Надходження | Списання | ID
+const TWO_COLUMNS: DirectionMapping = {
+  startRow: 2,
+  dateCol: 1,
+  amountCol: 2,
+  debitCol: 3,
+  externalIdCol: 4,
+};
+
+describe('BankStatementParserService.parseRows — напрям рядка', () => {
+  let service: BankStatementParserService;
+  beforeEach(() => {
+    service = new BankStatementParserService();
+  });
+
+  const parse = (text: string, mapping: DirectionMapping) =>
+    service.parseRows(csvBuf(text), 'stmt.csv', mapping as ColumnMapping);
+
+  const SIGNED_CSV =
+    'Дата,Сума,ID\n' +
+    '01.03.2026,"1 250,00",in-1\n' +
+    '01.03.2026,"-250,50",out-1\n' +
+    '02.03.2026,-0.01,out-penny\n';
+
+  // guards: BR-BANK-017, BR-BANK-018
+  it.each([
+    ['типово (режим не задано)', ONE_COLUMN],
+    ['явний SIGN', { ...ONE_COLUMN, directionMode: 'SIGN' as const }],
+  ])('SIGN, %s: від’ємна сума → OUT, у рядок іде модуль; додатна → IN', async (_name, mapping) => {
+    expect(summary(await parse(SIGNED_CSV, mapping))).toEqual([
+      ['in-1', 'IN', 1250],
+      ['out-1', 'OUT', 250.5],
+      ['out-penny', 'OUT', 0.01],
+    ]);
+  });
+
+  // guards: BR-BANK-018
+  it('debitCol: сума в колонці надходження → IN, у колонці списання → OUT', async () => {
+    const csv =
+      'Дата,Надходження,Списання,ID\n' +
+      '01.03.2026,"1 250,00",,in-1\n' +
+      '01.03.2026,,"480,20",out-1\n' +
+      '02.03.2026,0,300,out-zero-credit\n' +
+      '02.03.2026,75,"0,00",in-zero-debit\n';
+
+    expect(summary(await parse(csv, TWO_COLUMNS))).toEqual([
+      ['in-1', 'IN', 1250],
+      ['out-1', 'OUT', 480.2],
+      ['out-zero-credit', 'OUT', 300],
+      ['in-zero-debit', 'IN', 75],
+    ]);
+  });
+
+  // guards: BR-BANK-018
+  it('debitCol: обидві колонки ненульові або обидві порожні → рядок пропускається', async () => {
+    const csv =
+      'Дата,Надходження,Списання,ID\n' +
+      '01.03.2026,100,200,both\n' +
+      '01.03.2026,,,none\n' +
+      '01.03.2026,0,0,zeros\n' +
+      '02.03.2026,,55,ok\n';
+
+    expect(summary(await parse(csv, TWO_COLUMNS))).toEqual([['ok', 'OUT', 55]]);
+  });
+
+  // guards: BR-BANK-018
+  it.each(['IN', 'OUT'] as const)(
+    'режим %s: увесь файл одного напряму, знак ігнорується (у рядок іде модуль)',
+    async mode => {
+      const rows = await parse(SIGNED_CSV, { ...ONE_COLUMN, directionMode: mode });
+
+      expect(summary(rows)).toEqual([
+        ['in-1', mode, 1250],
+        ['out-1', mode, 250.5],
+        ['out-penny', mode, 0.01],
+      ]);
+    },
+  );
+
+  // guards: BR-BANK-017
+  it.each([
+    ['SIGN', ONE_COLUMN],
+    ['IN', { ...ONE_COLUMN, directionMode: 'IN' as const }],
+    ['OUT', { ...ONE_COLUMN, directionMode: 'OUT' as const }],
+  ])('нульова сума пропускається — режим %s', async (_mode, mapping) => {
+    const csv = 'Дата,Сума,ID\n01.03.2026,0,zero\n01.03.2026,"0,00",zero-ua\n02.03.2026,10,ok\n';
+
+    expect(summary(await parse(csv, mapping)).map(r => r[0])).toEqual(['ok']);
+  });
+
+  // guards: BR-BANK-018
+  it('XLSX, SIGN: числова від’ємна комірка → OUT з модулем', async () => {
+    const buf = await xlsxBuf([
+      ['Дата', 'Сума', 'ID'],
+      ['01.03.2026', 1250.5, 'in-1'],
+      ['01.03.2026', -480.2, 'out-1'],
+      ['02.03.2026', 0, 'zero'],
+    ]);
+
+    const rows = await service.parseRows(buf, 'stmt.xlsx', ONE_COLUMN as ColumnMapping);
+
+    expect(summary(rows)).toEqual([
+      ['in-1', 'IN', 1250.5],
+      ['out-1', 'OUT', 480.2],
+    ]);
+  });
+
+  // guards: BR-BANK-018
+  it('XLSX, debitCol: порожня комірка однієї з колонок визначає напрям; обидві заповнені — пропуск', async () => {
+    const buf = await xlsxBuf([
+      ['Дата', 'Надходження', 'Списання', 'ID'],
+      ['01.03.2026', 900, '', 'in-1'],
+      ['01.03.2026', '', 310.75, 'out-1'],
+      ['02.03.2026', 5, 5, 'both'],
+    ]);
+
+    const rows = await service.parseRows(buf, 'stmt.xlsx', TWO_COLUMNS as ColumnMapping);
+
+    expect(summary(rows)).toEqual([
+      ['in-1', 'IN', 900],
+      ['out-1', 'OUT', 310.75],
+    ]);
+  });
+
+  // guards: BR-BANK-018
+  it('XLSX, режим OUT: додатні суми файлу списань стають вихідними', async () => {
+    const buf = await xlsxBuf([
+      ['Дата', 'Сума', 'ID'],
+      ['01.03.2026', 120, 'a'],
+      ['02.03.2026', -35.5, 'b'],
+    ]);
+
+    const rows = await service.parseRows(buf, 'stmt.xlsx', {
+      ...ONE_COLUMN,
+      directionMode: 'OUT',
+    } as ColumnMapping);
+
+    expect(summary(rows)).toEqual([
+      ['a', 'OUT', 120],
+      ['b', 'OUT', 35.5],
+    ]);
+  });
+});
+
 describe('BankStatementParserService.rawPreview', () => {
   let service: BankStatementParserService;
   beforeEach(() => {

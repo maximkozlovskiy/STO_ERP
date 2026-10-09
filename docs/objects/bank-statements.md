@@ -206,28 +206,39 @@ cd apps/api && npx vitest run src/modules/bank-statements/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/bank-statements/`
 
-| Аспект                         | Тест                                            | Кейсів |
-| ------------------------------ | ----------------------------------------------- | ------ |
-| авто-матч з контрагентом       | `bank-reconciliation.auto-match.spec.ts`        | 5      |
-| імпорт у staging               | `bank-reconciliation.import.spec.ts`            | 5      |
-| рознесення / ігнорування (FSM) | `bank-reconciliation.posting.spec.ts`           | 17     |
-| сервісна логіка                | `bank-reconciliation.service.spec.ts`           | 27     |
-| парсер файлу виписки           | `bank-statement-parser.service.spec.ts`         | 17     |
-| контролер провайдерів          | `bank-statement-providers.controller.spec.ts`   | 7      |
-| BullMQ-processor               | `bank-statement-pull.processor.spec.ts`         | 20     |
-| scheduler                      | `bank-statement-pull.scheduler.spec.ts`         | 4      |
-| DTO-межі запитів               | `bank-statement.dto.spec.ts`                    | 15     |
-| доступ (ролі)                  | `bank-statements.controller.spec.ts`            | 8      |
-| HTTP-клієнт                    | `providers/mono-statement.client.spec.ts`       | 13     |
-| провайдер                      | `providers/monobank-statement.provider.spec.ts` | 17     |
-| HTTP-клієнт                    | `providers/privat24.client.spec.ts`             | 10     |
-| провайдер                      | `providers/privat24.provider.spec.ts`           | 15     |
-| purpose parser                 | `purpose-parser.spec.ts`                        | 11     |
+| Аспект                                                | Тест                                                       | Кейсів |
+| ----------------------------------------------------- | ---------------------------------------------------------- | ------ |
+| авто-матч з контрагентом                              | `bank-reconciliation.auto-match.spec.ts`                   | 5      |
+| напрям в імпорті, ручні дублі, підказки вихідних      | `bank-reconciliation.direction.spec.ts`                    | 21     |
+| імпорт у staging                                      | `bank-reconciliation.import.spec.ts`                       | 5      |
+| ручне внесення і видалення ручного рядка              | `bank-reconciliation.manual.spec.ts`                       | 21     |
+| рознесення вихідних (напрям, CAS, види без оплати)    | `bank-reconciliation.outgoing.spec.ts`                     | 73     |
+| рознесення вхідних / ігнорування (FSM)                | `bank-reconciliation.posting.spec.ts`                      | 23     |
+| сервісна логіка                                       | `bank-reconciliation.service.spec.ts`                      | 27     |
+| вихідний як оплата постачальнику, кандидати           | `bank-reconciliation.supplier-payment.spec.ts`             | 27     |
+| скасування рознесення                                 | `bank-reconciliation.unreconcile.spec.ts`                  | 28     |
+| парсер файлу виписки (+ напрям рядка)                 | `bank-statement-parser.service.spec.ts`                    | 29     |
+| контролер провайдерів                                 | `bank-statement-providers.controller.spec.ts`              | 7      |
+| BullMQ-processor                                      | `bank-statement-pull.processor.spec.ts`                    | 24     |
+| scheduler                                             | `bank-statement-pull.scheduler.spec.ts`                    | 4      |
+| DTO-межі запитів                                      | `bank-statement.dto.spec.ts`                               | 74     |
+| доступ (ролі), маршрути                               | `bank-statements.controller.spec.ts`                       | 19     |
+| HTTP-клієнт                                           | `providers/mono-statement.client.spec.ts`                  | 13     |
+| провайдер                                             | `providers/monobank-statement.provider.spec.ts`            | 26     |
+| HTTP-клієнт                                           | `providers/privat24.client.spec.ts`                        | 10     |
+| провайдер                                             | `providers/privat24.provider.spec.ts`                      | 25     |
+| purpose parser                                        | `purpose-parser.spec.ts`                                   | 11     |
+| курс проведення оплати постачальнику на дату операції | `../supplier-payments/supplier-payments.rate-date.spec.ts` | 4      |
 
-Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків).
+Спільний сетап аспектних спеків `bank-reconciliation.*` — `bank-reconciliation.spec-fixture.ts` (фабрики моків) і
+`bank-reconciliation.world.spec-fixture.ts` («світ» вихідних платежів: Prisma-підробка з даними в пам'яті, що
+виконує `where`, справжній CAS в `updateMany`, відкат записів tx-клієнта в `$transaction`; сервіс збирається
+через DI за токенами класів).
 
-Разом: **185** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **476** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
-**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей.
-Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); гонка двох одночасних рознесень одного рядка (CAS перевірено за формою `where`, не конкурентно); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.
-Файловий парсер за знаком суми не фільтрує (від'ємні й нульові рядки доходять до прев'ю) — тесту на це свідомо немає: поведінка схожа на недогляд, а не на правило.
+**Чого тут НЕМА.** HTTP-контракту (`*.contract.spec.ts`) немає: що `ValidationPipe` і `RolesGuard` справді спрацьовують на маршрутах (статуси 400/403), покриває лише E2E — unit-спеки перевіряють самі декоратори DTO та metadata ролей. Те саме з ідемпотентністю ручного внесення: unit стереже лише наявність `IdempotencyInterceptor` на маршруті, а не те, що повтор із тим самим `Idempotency-Key` справді не створює другий рядок.
+Integration-спеку (`*.integration.spec.ts`) немає, тому лише на моках, без справжньої БД, лишаються: унікальний індекс `orgId + bankAccountId + externalId` і `paymentId @unique` (unit стереже прапорець `skipDuplicates`, а не сам індекс); унікальні індекси `supplierPaymentId` і `cashOperationId` (unit стереже лише переклад `P2002` у 409); гонка двох одночасних рознесень або скасувань одного рядка (CAS перевірено формою `where` і підробленим `count: 0`, не конкурентно); відкат транзакції БД при збої проведення чи каси (відкочує підробка, а не PostgreSQL); сирітський `Payment`, якщо платіж створено, а запис `paymentId` у рядок упав.
+Датування проведень перевірено наполовину: що курс і дата документа беруться з `operationDate` — стережуть спеки рознесення; що саме проведення й касова операція датуються моментом рознесення (`createdAt`) — ні: `createdAt` ставить БД у `SettlementsService` / `CashService`, їхні моки тут дати не мають.
+Передавання `directionMode` / `debitCol` з multipart-форми прев'ю в парсер (`BankStatementsController.preview` → `buildMapping`) unit-тестом не покрите: контролер розбирає поля форми вручну, і перевірити це можна лише запитом із файлом (E2E). Сам парсер із цими полями покритий.
+Назви полів контрагента Privat24 (`AUT_CNTR_*`) звірено лише з контрактом, не з живою відповіддю банку (MANUAL-VERIFY).

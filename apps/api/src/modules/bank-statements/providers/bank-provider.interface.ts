@@ -20,7 +20,7 @@ export interface BankStatementVerifyResult {
 }
 
 /**
- * Абстракція банку-провайдера виписки (pull вхідних платежів за період). Дозволяє додавати банки
+ * Абстракція банку-провайдера виписки (pull платежів ОБОХ напрямків за період). Дозволяє додавати банки
  * (Privat24 Merchant API, у майбутньому mono/Ощад) без зміни pull-процесора — той лише робить
  * `registry.get(code)`. Модель — polling за вікном дат (offline-first за NAT, без webhook).
  */
@@ -30,7 +30,13 @@ export interface BankStatementProvider {
   /** Людська назва для UI. */
   readonly name: string;
 
-  /** Витягти транзакції за вікно дат → нормалізовані RawTx (лише вхідні). */
+  /**
+   * Витягти транзакції за вікно дат → нормалізовані RawTx обох напрямків (BR-BANK-019).
+   * Контракт рядка: `direction` заданий явно; `amount` > 0 (знак банку — у `direction`);
+   * `payer*` — КОНТРАГЕНТ операції (платник для IN, отримувач для OUT), ніколи наш бік;
+   * `operationDate` — київський календарний день операції як UTC-північ (BR-BANK-021).
+   * Рядок із невідомим напрямом або нульовою сумою провайдер пропускає, а не вгадує.
+   */
   fetchStatements(cfg: BankStatementConfig, params: BankStatementFetchParams): Promise<RawTx[]>;
 
   /** Перевірити креди (валідність id/token) — БЕЗ побічних ефектів. */

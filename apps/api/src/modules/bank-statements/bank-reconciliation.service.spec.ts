@@ -1,10 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ConflictException } from '@nestjs/common';
-import { BankReconciliationService, type RawTx } from './bank-reconciliation.service';
+import type { BankReconciliationService, RawTx } from './bank-reconciliation.service';
 import { toBankTransactionResponseDto } from './bank-statement.dto';
-import type { PrismaService } from '../../prisma/prisma.service';
-import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import type { PaymentsService } from '../payments/payments.service';
+import { buildService } from './bank-reconciliation.world.spec-fixture';
 
 const ORG = 'org-1';
 
@@ -14,6 +12,7 @@ function makePrisma() {
     counterparty: { findMany: vi.fn(), findFirst: vi.fn() },
     invoice: { findMany: vi.fn(), findFirst: vi.fn() },
     workOrder: { findMany: vi.fn() },
+    purchaseOrder: { findMany: vi.fn().mockResolvedValue([]) },
     bankTransaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -41,16 +40,14 @@ function makePayments() {
   return { create: vi.fn() };
 }
 
+// Через DI за токенами класів, а не `new Service(a, b, c)`: конструктор росте разом із видами
+// рознесення (BR-BANK-025…040), і позиційні аргументи ламали б цей файл при кожній залежності.
 function build(
   prisma: ReturnType<typeof makePrisma>,
   exchange: ReturnType<typeof makeExchange>,
   payments: ReturnType<typeof makePayments>,
-) {
-  return new BankReconciliationService(
-    prisma as unknown as PrismaService,
-    exchange as unknown as ExchangeRatesService,
-    payments as unknown as PaymentsService,
-  );
+): Promise<BankReconciliationService> {
+  return buildService(prisma, { exchange, payments });
 }
 
 const CP = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -67,12 +64,12 @@ describe('BankReconciliationService.resolveBatch', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let service: BankReconciliationService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     prisma = makePrisma();
     prisma.counterparty.findMany.mockResolvedValue([]);
     prisma.invoice.findMany.mockResolvedValue([]);
     prisma.workOrder.findMany.mockResolvedValue([]);
-    service = build(prisma, makeExchange(), makePayments());
+    service = await build(prisma, makeExchange(), makePayments());
   });
 
   // guards: BR-BANK-004, BR-BANK-006
@@ -182,7 +179,7 @@ describe('BankReconciliationService.applyImport — дедуп', () => {
         bankTransaction: { createMany: vi.fn().mockResolvedValue({ count: 2 }) },
       }),
     );
-    const service = build(prisma, makeExchange(), makePayments());
+    const service = await build(prisma, makeExchange(), makePayments());
     const res = await service.applyImport(ORG, {
       bankAccountId: 'ba-1',
       rows: [
@@ -200,7 +197,7 @@ describe('BankReconciliationService.matchTransaction', () => {
   const CP_ID = '22222222-2222-4222-8222-222222222222';
   const TX_ID = '11111111-1111-4111-8111-111111111111';
 
-  function setupMatch() {
+  async function setupMatch() {
     const prisma = makePrisma();
     prisma.counterparty.findFirst.mockResolvedValue({ id: CP_ID });
     // CAS-mark успішний.
@@ -236,13 +233,13 @@ describe('BankReconciliationService.matchTransaction', () => {
     });
     const payments = makePayments();
     payments.create.mockResolvedValue({ id: 'pay-1' });
-    const service = build(prisma, makeExchange(), payments);
+    const service = await build(prisma, makeExchange(), payments);
     return { prisma, payments, service };
   }
 
   // guards: BR-BANK-008
   it('SERVICE → settlementType PAYMENT у payments.create', async () => {
-    const { payments, service } = setupMatch();
+    const { payments, service } = await setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' });
     expect(payments.create).toHaveBeenCalledTimes(1);
     const [, dto] = payments.create.mock.calls[0]!;
@@ -253,7 +250,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 
   // guards: BR-BANK-008
   it('PREPAYMENT → settlementType PREPAYMENT', async () => {
-    const { payments, service } = setupMatch();
+    const { payments, service } = await setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'PREPAYMENT' });
     const [, dto] = payments.create.mock.calls[0]!;
     expect(dto.settlementType).toBe('PREPAYMENT');
@@ -261,7 +258,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 
   // guards: BR-BANK-008
   it('REFUND → settlementType REFUND', async () => {
-    const { payments, service } = setupMatch();
+    const { payments, service } = await setupMatch();
     await service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'REFUND' });
     const [, dto] = payments.create.mock.calls[0]!;
     expect(dto.settlementType).toBe('REFUND');
@@ -269,7 +266,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 
   // guards: BR-BANK-007
   it('подвійний match → CAS count 0 → Conflict', async () => {
-    const { prisma, payments, service } = setupMatch();
+    const { prisma, payments, service } = await setupMatch();
     prisma.bankTransaction.updateMany.mockResolvedValueOnce({ count: 0 }); // CAS не захопив
     prisma.bankTransaction.findFirst.mockResolvedValueOnce({ id: TX_ID }); // існує, але вже MATCHED
     await expect(
@@ -280,7 +277,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 
   // guards: BR-BANK-009
   it('payments.create кинув → відкат status=UNMATCHED, помилка проброшена', async () => {
-    const { prisma, payments, service } = setupMatch();
+    const { prisma, payments, service } = await setupMatch();
     payments.create.mockRejectedValueOnce(new Error('currency mismatch'));
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
@@ -295,7 +292,7 @@ describe('BankReconciliationService.matchTransaction', () => {
   // guards: BR-BANK-008
   it('INVOICE → settlementType PAYMENT + invoiceId переданий у payments.create; сума=amount tx', async () => {
     const INV_ID = '33333333-3333-4333-8333-333333333333';
-    const { prisma, payments, service } = setupMatch();
+    const { prisma, payments, service } = await setupMatch();
     prisma.invoice.findFirst.mockResolvedValue({ id: INV_ID, counterpartyId: CP_ID }); // валідація рахунку у межах org
     await service.matchTransaction(ORG, TX_ID, {
       counterpartyId: CP_ID,
@@ -312,7 +309,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 
   // guards: BR-BANK-010
   it('INVOICE без invoiceId → BadRequest, payments.create НЕ викликаний, CAS не чіпається', async () => {
-    const { prisma, payments, service } = setupMatch();
+    const { prisma, payments, service } = await setupMatch();
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'INVOICE' }),
     ).rejects.toMatchObject({ status: 400 });
@@ -322,7 +319,7 @@ describe('BankReconciliationService.matchTransaction', () => {
 
   // guards: BR-BANK-010, BR-BANK-016
   it('невалідний контрагент (не в org) → NotFound, CAS не чіпається', async () => {
-    const { prisma, payments, service } = setupMatch();
+    const { prisma, payments, service } = await setupMatch();
     prisma.counterparty.findFirst.mockResolvedValueOnce(null);
     await expect(
       service.matchTransaction(ORG, TX_ID, { counterpartyId: CP_ID, type: 'SERVICE' }),
@@ -340,8 +337,13 @@ describe('BankReconciliationService.previewImport — дедуп по externalId
     prisma.invoice.findMany.mockResolvedValue([]);
     prisma.workOrder.findMany.mockResolvedValue([]);
     // e1 вже існує у цьому рахунку → duplicate; e2 — новий → notFound.
-    prisma.bankTransaction.findMany.mockResolvedValue([{ externalId: 'e1' }]);
-    const service = build(prisma, makeExchange(), makePayments());
+    // Відповідаємо лише на запит дедупу (where.externalId): прев'ю робить ще й пошук ручних
+    // дублів (BR-BANK-037), і той самий мок на обидва запити підсовував би йому рядок без дати.
+    prisma.bankTransaction.findMany.mockImplementation(
+      (args: { where: { externalId?: unknown } }) =>
+        Promise.resolve(args.where.externalId !== undefined ? [{ externalId: 'e1' }] : []),
+    );
+    const service = await build(prisma, makeExchange(), makePayments());
     const rows: RawTx[] = [
       { externalId: 'e1', operationDate: new Date(), amount: 100 },
       { externalId: 'e2', operationDate: new Date(), amount: 200 },
@@ -357,7 +359,7 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
   it('невідомий bankAccountId → NotFound (до транзакції)', async () => {
     const prisma = makePrisma();
     prisma.bankAccount.findFirst.mockResolvedValue(null);
-    const service = build(prisma, makeExchange(), makePayments());
+    const service = await build(prisma, makeExchange(), makePayments());
     await expect(
       service.applyImport(ORG, {
         bankAccountId: 'ba-x',
@@ -387,7 +389,7 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
         },
       }),
     );
-    const service = build(prisma, exchange, makePayments());
+    const service = await build(prisma, exchange, makePayments());
     await service.applyImport(ORG, {
       bankAccountId: 'ba-1',
       rows: [{ externalId: 'e1', operationDate: '2026-09-01', amount: 100 }],
@@ -409,7 +411,7 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
     async bad => {
       const prisma = makePrisma();
       prisma.bankAccount.findFirst.mockResolvedValue({ id: 'ba-1', currencyId: 'usd' });
-      const service = build(prisma, makeExchange(), makePayments());
+      const service = await build(prisma, makeExchange(), makePayments());
       await expect(
         service.applyImport(ORG, {
           bankAccountId: 'ba-1',
@@ -438,7 +440,7 @@ describe('BankReconciliationService.applyImport — amountBase + невалід�
         },
       }),
     );
-    const service = build(prisma, exchange, makePayments());
+    const service = await build(prisma, exchange, makePayments());
     await service.applyImport(ORG, {
       bankAccountId: 'ba-1',
       rows: [{ externalId: 'e1', operationDate: '2026-09-01T00:00:00.000Z', amount: 100 }],

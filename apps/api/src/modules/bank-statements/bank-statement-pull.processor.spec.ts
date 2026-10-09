@@ -28,6 +28,7 @@ describe('BankStatementPullProcessor', () => {
     applyImport: ReturnType<typeof vi.fn>;
     resolveBatch: ReturnType<typeof vi.fn>;
     matchTransaction: ReturnType<typeof vi.fn>;
+    reconcile: ReturnType<typeof vi.fn>;
   };
 
   const ORG = 'org-1';
@@ -57,7 +58,7 @@ describe('BankStatementPullProcessor', () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       bankTransaction: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'tx-1' }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'tx-1', direction: 'IN' }),
       },
     };
     providerConfig = {
@@ -78,6 +79,7 @@ describe('BankStatementPullProcessor', () => {
       applyImport: vi.fn().mockResolvedValue({ created: 1, skipped: 0 }),
       resolveBatch: vi.fn().mockResolvedValue(new Map()),
       matchTransaction: vi.fn().mockResolvedValue(undefined),
+      reconcile: vi.fn().mockResolvedValue(undefined),
     };
     processor = new BankStatementPullProcessor(
       prisma as never,
@@ -365,5 +367,106 @@ describe('BankStatementPullProcessor', () => {
     providerImpl.fetchStatements.mockResolvedValue([rawTx('m1')]);
     await processor.process(makeJob({ orgId: ORG }));
     expect(wrapSpy.mock.calls[0][0]).toMatchObject({ provider: 'monobank' });
+  });
+
+  // ─── Вихідні рядки (BR-BANK-017 / 022) ────────────────────────────────────────
+  // Написано ДО реалізації (2026-10-09). `direction` у RawTx контракт ще не називає: провайдери
+  // віддають його полем рядка (BR-BANK-019), процесор передає далі в ApplyRowDto.direction.
+  // Mutation-verify: (1) не передавати `direction` у rows applyImport → «напрям рядка передається»;
+  // (2) прибрати умову «лише IN» перед matchTransaction → обидва кейси «OUT … не розноситься».
+
+  /** Рядки, що вже лежать у staging: findFirst шукає за externalId (і за direction, якщо задано). */
+  function stage(rows: Array<{ id: string; externalId: string; direction: 'IN' | 'OUT' }>) {
+    prisma.bankTransaction.findFirst.mockImplementation(
+      (args: { where: { externalId?: string; direction?: string } }) =>
+        Promise.resolve(
+          rows.find(
+            r =>
+              r.externalId === args.where.externalId &&
+              (args.where.direction === undefined || args.where.direction === r.direction),
+          ) ?? null,
+        ),
+    );
+  }
+
+  const sure = (counterpartyId: string) => ({
+    status: 'matched',
+    confidence: 1,
+    counterpartyId,
+    matchType: 'SERVICE',
+  });
+
+  // guards: BR-BANK-017, BR-BANK-019
+  it('напрям рядка передається в applyImport: OUT як OUT, IN як IN', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([
+      rawTx('out-1', { direction: 'OUT', amount: 320.4 }),
+      rawTx('in-1', { direction: 'IN', amount: 150 }),
+    ]);
+    await processor.process(makeJob({ orgId: ORG }));
+    const rows = reconciliation.applyImport.mock.calls[0][1].rows as Array<{
+      externalId: string;
+      direction?: string;
+      amount: number;
+    }>;
+    expect(rows.map(r => [r.externalId, r.direction, r.amount])).toEqual([
+      ['out-1', 'OUT', 320.4],
+      ['in-1', 'IN', 150],
+    ]);
+  });
+
+  // guards: BR-BANK-022
+  it('OUT-рядок з упевненим збігом (confidence 1) сам НЕ розноситься — ні match, ні reconcile', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('out-sure', { direction: 'OUT' })]);
+    reconciliation.resolveBatch.mockResolvedValue(new Map([['out-sure', sure('cp-1')]]));
+    stage([{ id: 'tx-out', externalId: 'out-sure', direction: 'OUT' }]);
+
+    await processor.process(makeJob({ orgId: ORG }));
+
+    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+    expect(reconciliation.reconcile).not.toHaveBeenCalled();
+    // Рядок усе одно у staging, курсор рухається: людина рознесе вручну.
+    expect(reconciliation.applyImport).toHaveBeenCalledTimes(1);
+    expect(prisma.bankAccount.updateMany).toHaveBeenCalled();
+  });
+
+  // Підказка для вихідного рядка (BR-BANK-036) — теж лише підказка.
+  // guards: BR-BANK-022
+  it('OUT-рядок з підказкою SUPPLIER_PAYMENT і confidence 1 теж лишається нерознесеним', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([rawTx('out-sup', { direction: 'OUT' })]);
+    reconciliation.resolveBatch.mockResolvedValue(
+      new Map([['out-sup', { ...sure('cp-sup'), matchType: 'SUPPLIER_PAYMENT' }]]),
+    );
+    stage([{ id: 'tx-out', externalId: 'out-sup', direction: 'OUT' }]);
+
+    await processor.process(makeJob({ orgId: ORG }));
+
+    expect(reconciliation.matchTransaction).not.toHaveBeenCalled();
+    expect(reconciliation.reconcile).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-BANK-011, BR-BANK-022
+  it('змішаний батч: розноситься лише IN-рядок, OUT із тим самим збігом — ні', async () => {
+    providerImpl.fetchStatements.mockResolvedValue([
+      rawTx('out-sure', { direction: 'OUT' }),
+      rawTx('in-sure', { direction: 'IN' }),
+    ]);
+    reconciliation.resolveBatch.mockResolvedValue(
+      new Map([
+        ['out-sure', sure('cp-1')],
+        ['in-sure', sure('cp-1')],
+      ]),
+    );
+    stage([
+      { id: 'tx-out', externalId: 'out-sure', direction: 'OUT' },
+      { id: 'tx-in', externalId: 'in-sure', direction: 'IN' },
+    ]);
+
+    await processor.process(makeJob({ orgId: ORG }));
+
+    expect(reconciliation.matchTransaction).toHaveBeenCalledTimes(1);
+    const [orgArg, txIdArg, dtoArg] = reconciliation.matchTransaction.mock.calls[0];
+    expect([orgArg, txIdArg]).toEqual([ORG, 'tx-in']);
+    expect(dtoArg).toMatchObject({ counterpartyId: 'cp-1', type: 'SERVICE' });
+    expect(reconciliation.reconcile).not.toHaveBeenCalled();
   });
 });

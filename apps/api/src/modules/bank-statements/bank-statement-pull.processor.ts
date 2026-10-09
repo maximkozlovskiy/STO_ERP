@@ -1,4 +1,4 @@
-import type { MatchTransactionDto } from './bank-statement.dto';
+import { BANK_TX_IN_MATCH_TYPES, type MatchTransactionDto } from './bank-statement.dto';
 import { Processor, OnWorkerEvent } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { BankTransactionSource } from '@prisma/client';
@@ -11,10 +11,15 @@ import { ProviderConfigService } from '../payments/provider-config.service';
 import { IntegrationLogService } from '../integration-logs/integration-log.service';
 import { BankProviderRegistry } from './providers/bank-provider-registry';
 import { BankReconciliationService } from './bank-reconciliation.service';
-import type { RawTx } from './bank-reconciliation.service';
+import type { MatchResult, RawTx } from './bank-reconciliation.service';
 
 export interface BankStatementPullJob {
   orgId: string;
+}
+
+/** Вид рознесення, дозволений для вхідного рядка (`match`), — єдиний, який auto-pull може обрати. */
+function isInMatchType(type: string): type is MatchTransactionDto['type'] {
+  return (BANK_TX_IN_MATCH_TYPES as readonly string[]).includes(type);
 }
 
 /**
@@ -154,6 +159,7 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
               rows: rows.map(r => ({
                 externalId: r.externalId,
                 operationDate: r.operationDate.toISOString(),
+                direction: r.direction ?? 'IN',
                 amount: r.amount,
                 payerName: r.payerName ?? undefined,
                 payerIban: r.payerIban ?? undefined,
@@ -173,16 +179,25 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
 
         // АВТО-МАТЧ (лише confidence===1 — упевнений збіг за IBAN). Гроші вже у staging; помилка
         // матчу окремого рядка не має зривати pull — log-and-continue.
+        // BR-BANK-022: лише ВХІДНІ. Вихідний рядок авто-рознесення не бачить узагалі (фільтр до
+        // resolveBatch) — що з ним робити (оплата постачальнику, витрата, зарплата), вирішує людина.
+        const inRows = rows.filter(r => (r.direction ?? 'IN') === 'IN');
         try {
-          const matches = await this.reconciliation.resolveBatch(orgId, rows);
-          for (const row of rows) {
+          const matches =
+            inRows.length > 0
+              ? await this.reconciliation.resolveBatch(orgId, inRows)
+              : new Map<string, MatchResult>();
+          for (const row of inRows) {
             const m = matches.get(row.externalId);
             if (!m || m.status !== 'matched' || m.confidence !== 1 || !m.counterpartyId) continue;
+            const type = m.matchType ?? 'SERVICE';
+            if (!isInMatchType(type)) continue;
             const tx = await this.prisma.bankTransaction.findFirst({
               where: {
                 orgId,
                 bankAccountId: acc.id,
                 externalId: row.externalId,
+                direction: 'IN',
                 status: 'UNMATCHED',
                 deletedAt: null,
               },
@@ -192,8 +207,7 @@ export class BankStatementPullProcessor extends DeadLetterWorkerHost {
             try {
               await this.reconciliation.matchTransaction(orgId, tx.id, {
                 counterpartyId: m.counterpartyId,
-                // CONTRACT PLACEHOLDER (BR-BANK-022): auto-post must be limited to IN rows and IN types.
-                type: (m.matchType ?? 'SERVICE') as MatchTransactionDto['type'],
+                type,
                 invoiceId: m.invoiceId,
               });
             } catch (e) {

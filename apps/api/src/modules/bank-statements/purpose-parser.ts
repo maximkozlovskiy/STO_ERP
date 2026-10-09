@@ -23,6 +23,31 @@ const WORK_ORDER_LAT_RE = /\bWO[\s\-№#:]*([0-9][0-9\-/]*)/i;
 const PREPAYMENT_RE = /(аванс|передоплат|предоплат)/iu;
 const REFUND_RE = /(поверн|возврат)/iu;
 
+// Слово, схоже на номер документа: літери/цифри з дефісом чи слешем усередині, 3–40 символів.
+const DOC_NUMBER_TOKEN_RE =
+  /[A-Za-zА-Яа-яІіЇїЄєҐґ0-9][A-Za-zА-Яа-яІіЇїЄєҐґ0-9\-/]{1,38}[A-Za-zА-Яа-яІіЇїЄєҐґ0-9]/gu;
+const HAS_DIGIT_RE = /\d/;
+/** Стеля кандидатів з одного призначення — обмежує розмір `IN (...)` батчевого пошуку. */
+const MAX_DOC_NUMBER_CANDIDATES = 12;
+
+/**
+ * Кандидати в номер документа з призначення ВИХІДНОГО платежу (BR-BANK-036): усі слова з цифрою.
+ * Префікс замовлення постачальнику задає `DocumentNumberConfig` кожної організації, тож регекс
+ * під конкретний формат («ЗАМ-…») мовчки перестав би працювати після зміни налаштування —
+ * викликач звіряє кандидатів із `PurchaseOrder.number` точним збігом, одним запитом на батч.
+ * Порожній вхід → []. Ніколи не кидає.
+ */
+export function extractDocumentNumberCandidates(purpose: string | null | undefined): string[] {
+  if (!purpose || typeof purpose !== 'string') return [];
+  const found = new Set<string>();
+  for (const token of purpose.match(DOC_NUMBER_TOKEN_RE) ?? []) {
+    if (!HAS_DIGIT_RE.test(token)) continue;
+    found.add(token);
+    if (found.size >= MAX_DOC_NUMBER_CANDIDATES) break;
+  }
+  return Array.from(found);
+}
+
 /**
  * Розбирає призначення платежу на структуровані підказки для авто-матчу.
  * Порожній/невизначений вхід → порожній результат (усі поля undefined). Ніколи не кидає.

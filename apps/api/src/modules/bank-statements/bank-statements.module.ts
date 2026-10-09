@@ -3,6 +3,10 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
 import { ProviderConfigService } from '../payments/provider-config.service';
+import { SettlementsModule } from '../settlements/settlements.module';
+import { CashModule } from '../cash/cash.module';
+import { AuditModule } from '../audit/audit.module';
+import { SupplierPaymentsModule } from '../supplier-payments/supplier-payments.module';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import { BankStatementParserService } from './bank-statement-parser.service';
 import { BankStatementsController } from './bank-statements.controller';
@@ -20,8 +24,20 @@ import { BANK_STATEMENT_PROVIDERS } from './providers/bank-provider.interface';
 // PaymentsModule — інжектимо PaymentsService (створення Payment при рознесенні транзакції).
 // IntegrationLogsModule — логування зовнішніх обмінів Privat24 (pull/verify).
 // BankStatementPullModule (ЛЕАФ) — scheduler + черга 'bank-statement-polling' (processor тут-таки).
+// Рознесення вихідних (BR-BANK-025…040): SettlementsModule — проведення REFUND_OUT / REFUND_OUT_CANCEL;
+// CashModule — касова операція зняття готівки; AuditModule — журнал скасувань рознесення.
+// SupplierPaymentsModule — створення й проведення оплати постачальнику з вихідного рядка (BR-BANK-028).
 @Module({
-  imports: [ExchangeRatesModule, PaymentsModule, IntegrationLogsModule, BankStatementPullModule],
+  imports: [
+    ExchangeRatesModule,
+    PaymentsModule,
+    SettlementsModule,
+    CashModule,
+    SupplierPaymentsModule,
+    AuditModule,
+    IntegrationLogsModule,
+    BankStatementPullModule,
+  ],
   controllers: [BankStatementsController, BankStatementProvidersController],
   providers: [
     BankReconciliationService,

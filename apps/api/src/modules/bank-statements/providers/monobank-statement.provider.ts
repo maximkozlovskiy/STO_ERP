@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { kyivYmd } from '../../../common/utils/kyiv-date';
 import type { RawTx } from '../bank-reconciliation.service';
 import { MonoStatementClient, type StatementItem } from './mono-statement.client';
 import type {
@@ -14,7 +15,7 @@ import type {
  * BankStatementProvider (registry). Auth: персональний X-Token. account = mono account id (НЕ IBAN),
  * MVP бере credentials.accountId (дефолт '0'). params.iban НЕ використовується (mono ідентифікує
  * рахунок через accountId). mapTx — ЗАХИСНА нормалізація StatementItem → RawTx.
- * Фільтр напряму: лише ВХІДНІ (credit, amount>0 у мінор-одиницях).
+ * Напрям — за знаком суми в мінор-одиницях: додатна → IN, від'ємна → OUT (BR-BANK-019).
  */
 @Injectable()
 export class MonobankStatementProvider implements BankStatementProvider {
@@ -57,9 +58,11 @@ export class MonobankStatementProvider implements BankStatementProvider {
   /**
    * ЗАХИСНА нормалізація StatementItem → RawTx | null (null → skip).
    *
-   * MONEY-CRITICAL: item.amount — у МІНОР-одиницях (копійки), +credit/−debit. amount=minor/100
-   * (ЛЕГКО ЗАБУТИ — покрито тестом 15000→150.00). Фільтр credit-only: minor>0 = вхідні.
-   * time — Unix СЕКУНДИ → new Date(time*1000).
+   * MONEY-CRITICAL: item.amount — у МІНОР-одиницях (копійки), +credit/−debit. amount=|minor|/100
+   * (ЛЕГКО ЗАБУТИ — покрито тестом 15000→150.00); знак іде в `direction`, у RawTx сума завжди > 0.
+   * time — Unix СЕКУНДИ (мить). operationDate — КИЇВСЬКИЙ календарний день цієї миті як UTC-північ:
+   * колонка `@db.Date` зберігає лише дату, і UTC-зріз миті клав би операцію 10.10 о 01:30 за Києвом
+   * у 09.10 (BR-BANK-021).
    *
    * MANUAL-VERIFY (звірити назви полів на живих даних): counterName/counterIban/counterEdrpou —
    * реквізити контрагента; comment/description — призначення платежу.
@@ -75,25 +78,28 @@ export class MonobankStatementProvider implements BankStatementProvider {
     }
 
     const minor = Number(item?.amount);
-    // credit-only: додатні мінор-одиниці = вхідні. Debit (від'ємні) / нуль / NaN → skip.
-    if (!Number.isFinite(minor) || minor <= 0) return null;
-    // MONEY-CRITICAL: мінор-одиниці → гривні (÷100).
-    const amount = minor / 100;
+    // Нуль / NaN → skip: рядок без суми не імпортується (BR-BANK-017).
+    if (!Number.isFinite(minor) || minor === 0) return null;
+    const direction = minor < 0 ? 'OUT' : 'IN';
+    // MONEY-CRITICAL: мінор-одиниці → гривні (÷100); у базу йде модуль.
+    const amount = Math.abs(minor) / 100;
 
     const timeSec = Number(item?.time);
     if (!Number.isFinite(timeSec) || timeSec <= 0) {
       this.logger.warn(`monobank: пропущено проводку id=${externalId} з невалідним time`);
       return null;
     }
-    const operationDate = new Date(timeSec * 1000); // Unix sec → ms
-    if (Number.isNaN(operationDate.getTime())) {
+    const instant = new Date(timeSec * 1000); // Unix sec → ms
+    if (Number.isNaN(instant.getTime())) {
       this.logger.warn(`monobank: пропущено проводку id=${externalId} з невалідною датою`);
       return null;
     }
+    const operationDate = new Date(`${kyivYmd(instant)}T00:00:00.000Z`);
 
     return {
       externalId,
       operationDate,
+      direction,
       amount,
       payerName: str(item.counterName),
       payerIban: str(item.counterIban),

@@ -9,6 +9,7 @@ import { DBFFile } from 'dbffile';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import type { RawTx } from './bank-reconciliation.service';
+import { BANK_IMPORT_DIRECTION_MODES, type BankImportDirectionMode } from './bank-statement.dto';
 
 /** Мапінг колонок файлу виписки (1-based). Дзеркалить PreviewImportColumnMapping. */
 export interface ColumnMapping {
@@ -20,6 +21,24 @@ export interface ColumnMapping {
   payerIbanCol?: number;
   payerEdrpouCol?: number;
   purposeCol?: number;
+  /** BR-BANK-018: як файл задає напрям рядка; без значення — `SIGN`. */
+  directionMode?: BankImportDirectionMode;
+  /** Окрема колонка суми списання (лише для `SIGN`): `amountCol` — надходження, ця — списання. */
+  debitCol?: number;
+}
+
+/**
+ * Значення multipart-поля `directionMode` → режим напряму. Порожнє → `SIGN` (типове);
+ * невідоме → 400: мовчазний відступ до `SIGN` імпортував би файл списань як надходження.
+ */
+export function parseDirectionMode(value: unknown): BankImportDirectionMode {
+  const v = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!v) return 'SIGN';
+  const mode = BANK_IMPORT_DIRECTION_MODES.find(m => m === v);
+  if (!mode) {
+    throw new BadRequestException(translateError('err.bankStatement.invalidFile', getLocale()));
+  }
+  return mode;
 }
 
 /**
@@ -119,6 +138,9 @@ export class BankStatementParserService {
         : await this.parseXlsxGrid(buffer);
 
     const startRow = mapping.startRow && mapping.startRow >= 1 ? mapping.startRow : 1;
+    const mode = mapping.directionMode ?? 'SIGN';
+    // Дві колонки сум мають сенс лише в SIGN: IN / OUT оголошують увесь файл одним напрямом.
+    const splitColumns = mode === 'SIGN' && !!mapping.debitCol && mapping.debitCol >= 1;
     const rows: RawTx[] = [];
     // grid — 0-based масив; колонки мапінгу — 1-based. rowNo (1-based) для порівняння зі startRow.
     for (let i = 0; i < grid.length; i++) {
@@ -130,19 +152,21 @@ export class BankStatementParserService {
       const externalId = cell(mapping.externalIdCol);
       const rawDate = cell(mapping.dateCol);
       const rawAmount = cell(mapping.amountCol);
-      // Порожній рядок (усі три ключові поля порожні) — пропускаємо.
-      if (!externalId && !rawDate && !rawAmount) continue;
+      const rawDebit = splitColumns ? cell(mapping.debitCol) : '';
+      // Порожній рядок (усі ключові поля порожні) — пропускаємо.
+      if (!externalId && !rawDate && !rawAmount && !rawDebit) continue;
 
-      const amount = this.parseNumber(rawAmount);
+      const money = this.resolveAmount(mode, splitColumns, rawAmount, rawDebit);
       const operationDate = this.parseDate(rawDate);
       // Рядок без валідної суми/дати/id — пропускаємо (заголовок-повторення, підсумковий рядок).
-      if (amount == null || !operationDate || !externalId) continue;
+      if (!money || !operationDate || !externalId) continue;
 
       const iban = cell(mapping.payerIbanCol);
       rows.push({
         externalId,
         operationDate,
-        amount,
+        direction: money.direction,
+        amount: money.amount,
         payerName: cell(mapping.payerNameCol) || null,
         payerIban: iban ? iban.toUpperCase().replace(/\s+/g, '') : null,
         payerEdrpou: cell(mapping.payerEdrpouCol) || null,
@@ -158,6 +182,32 @@ export class BankStatementParserService {
   }
 
   // ─── Внутрішні хелпери ──────────────────────────────────────────────────────
+
+  /**
+   * BR-BANK-017 / 018: сума рядка (завжди > 0) і його напрям; `null` — рядок пропускається.
+   *  - SIGN, одна колонка: від'ємна сума → OUT, у базу йде модуль;
+   *  - SIGN, дві колонки: `amountCol` — надходження, `debitCol` — списання; сума рівно в одній
+   *    (обидві ненульові або обидві порожні → пропуск: напрям такого рядка невизначений);
+   *  - IN / OUT: увесь файл одного напряму, знак ігнорується.
+   * Нульова чи нерозбірна сума → пропуск.
+   */
+  private resolveAmount(
+    mode: BankImportDirectionMode,
+    splitColumns: boolean,
+    rawAmount: string,
+    rawDebit: string,
+  ): { amount: number; direction: 'IN' | 'OUT' } | null {
+    if (splitColumns) {
+      const credit = Math.abs(this.parseNumber(rawAmount) ?? 0);
+      const debit = Math.abs(this.parseNumber(rawDebit) ?? 0);
+      if (credit > 0 === debit > 0) return null;
+      return credit > 0 ? { amount: credit, direction: 'IN' } : { amount: debit, direction: 'OUT' };
+    }
+    const signed = this.parseNumber(rawAmount);
+    if (signed == null || signed === 0) return null;
+    const direction = mode === 'SIGN' ? (signed < 0 ? 'OUT' : 'IN') : mode;
+    return { amount: Math.abs(signed), direction };
+  }
 
   private parseCsvGrid(buffer: Buffer | Uint8Array): string[][] {
     const text = Buffer.from(buffer).toString('utf-8').replace(/^﻿/, ''); // strip BOM

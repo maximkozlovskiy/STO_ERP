@@ -5,10 +5,19 @@ import type { BankStatementConfig } from './bank-provider.interface';
 
 /**
  * MonobankStatementProvider.mapTx — ЗАХИСНА нормалізація StatementItem → RawTx.
- * MONEY-CRITICAL: amount у мінор-одиницях → ÷100 (15000→150.00). Доводимо: credit-фільтр
- * (amount≤0 → skip), мапінг counter*→payer*, time*1000→date, purpose=comment??description,
- * skip без id, verifyCredentials auth-помилка → invalid.
+ * MONEY-CRITICAL: amount у мінор-одиницях → ÷100 (15000→150.00). Доводимо: напрям за знаком суми
+ * (від'ємна → OUT з модулем, нуль / NaN → skip), мапінг counter*→payer*, time → київський
+ * календарний день, purpose=comment??description, skip без id, verifyCredentials auth-помилка → invalid.
+ *
+ * Кейси BR-BANK-019 / 020 / 021 написано ДО реалізації вихідних платежів (2026-10-09).
+ * Mutation-verify: (1) повернути `minor <= 0 → skip` → «напрям за знаком суми»; (2) не брати модуль →
+ * той самий кейс (сума −50); (3) `new Date(time * 1000)` без переведення в київський день →
+ * «київський день операції: … о 01:30»; (4) хардкод +03:00 → зимові рядки того самого кейсу.
  */
+
+/** Напрям рядка. У RawTx на момент написання тестів поля ще немає — його додає реалізація. */
+const directionOf = (row: unknown): unknown => (row as { direction?: unknown }).direction;
+
 describe('MonobankStatementProvider', () => {
   let provider: MonobankStatementProvider;
   let client: { fetchStatements: ReturnType<typeof vi.fn> };
@@ -61,16 +70,77 @@ describe('MonobankStatementProvider', () => {
     expect(rows.map(r => r.externalId)).toEqual(['ok']);
   });
 
-  // guards: BR-BANK-013
-  it('credit-фільтр: amount≤0 (debit від’ємний / нуль) → skip', async () => {
+  // Переписано 2026-10-09 (BR-BANK-019 уточнює BR-BANK-013): раніше кейс закріплював
+  // «amount ≤ 0 → skip». Тепер від'ємна сума — вихідний платіж (модуль / 100); нуль і далі пропускається.
+  // guards: BR-BANK-017, BR-BANK-019
+  it('напрям за знаком суми: додатна → IN, від’ємна → OUT з модулем / 100; нуль пропускається', async () => {
     client.fetchStatements.mockResolvedValue([
-      { id: 'in', time: 1757060000, amount: 5000 }, // ✓ вхідний
-      { id: 'out', time: 1757060000, amount: -5000 }, // ✗ debit
-      { id: 'zero', time: 1757060000, amount: 0 }, // ✗ нуль
+      { id: 'in', time: 1757060000, amount: 5000 }, // вхідний
+      { id: 'out', time: 1757060000, amount: -5000 }, // вихідний
+      { id: 'zero', time: 1757060000, amount: 0 }, // нуль — не платіж
+      { id: 'out-penny', time: 1757060000, amount: -1 }, // найменший вихідний: 1 копійка
     ]);
     const rows = await provider.fetchStatements(cfg, params);
-    expect(rows.map(r => r.externalId)).toEqual(['in']);
-    expect(rows[0].amount).toBe(50.0);
+    expect(rows.map(r => [r.externalId, directionOf(r), r.amount])).toEqual([
+      ['in', 'IN', 50],
+      ['out', 'OUT', 50],
+      ['out-penny', 'OUT', 0.01],
+    ]);
+  });
+
+  // guards: BR-BANK-017, BR-BANK-019
+  it('від’ємна сума рядком ("-15000") → OUT 150.00; нечислова й далі пропускається', async () => {
+    client.fetchStatements.mockResolvedValue([
+      { id: 'str-out', time: 1757060000, amount: '-15000' as unknown as number },
+      { id: 'nan', time: 1757060000, amount: '-abc' as unknown as number },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows.map(r => [r.externalId, directionOf(r), r.amount])).toEqual([
+      ['str-out', 'OUT', 150],
+    ]);
+  });
+
+  // guards: BR-BANK-020
+  it('для вихідного рядка counter* — це отримувач: він і лягає в поля контрагента', async () => {
+    client.fetchStatements.mockResolvedValue([
+      {
+        id: 'out',
+        time: 1757060000,
+        amount: -120000,
+        counterName: 'ТОВ Постачальник',
+        counterIban: 'UA903052992990004149123456789',
+        counterEdrpou: '30405060',
+      },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    expect(rows[0]).toMatchObject({
+      amount: 1200,
+      payerName: 'ТОВ Постачальник',
+      payerIban: 'UA903052992990004149123456789',
+      payerEdrpou: '30405060',
+    });
+    expect(directionOf(rows[0])).toBe('OUT');
+  });
+
+  // monobank віддає МИТЬ операції (Unix-секунди, UTC). Дата операції — київський календарний день
+  // цієї миті. 01:30 за Києвом — це ще попередня доба за UTC, тож наївне «дата з UTC» дає вчора.
+  // Літній час (UTC+3) і зимовий (UTC+2) перевіряються окремо — зсув не можна хардкодити.
+  // guards: BR-BANK-021
+  it.each([
+    ['літо, 10.10 о 01:30 за Києвом', '2026-10-09T22:30:00Z', '2026-10-10'],
+    ['літо, 10.10 о 23:30 за Києвом', '2026-10-10T20:30:00Z', '2026-10-10'],
+    ['літо, 10.10 о 02:59 за Києвом', '2026-10-09T23:59:00Z', '2026-10-10'],
+    ['зима, 15.01 о 01:30 за Києвом', '2026-01-14T23:30:00Z', '2026-01-15'],
+    ['зима, 14.01 о 23:59 за Києвом', '2026-01-14T21:59:00Z', '2026-01-14'],
+    ['зима, 15.01 о 00:00 за Києвом', '2026-01-14T22:00:00Z', '2026-01-15'],
+    ['опівдні', '2026-07-01T09:00:00Z', '2026-07-01'],
+  ])('київський день операції: %s → %s', async (_name, instant, day) => {
+    client.fetchStatements.mockResolvedValue([
+      { id: 'k', time: Date.parse(instant) / 1000, amount: 100 },
+    ]);
+    const rows = await provider.fetchStatements(cfg, params);
+    // У базу (`@db.Date`) йде дата-частина UTC цього значення — вона й мусить бути київським днем.
+    expect(rows[0].operationDate.toISOString().slice(0, 10)).toBe(day);
   });
 
   it('мапінг counterName→payerName, counterIban→payerIban, counterEdrpou→payerEdrpou', async () => {
@@ -90,10 +160,14 @@ describe('MonobankStatementProvider', () => {
     expect(rows[0].payerEdrpou).toBe('12345678');
   });
 
-  it('time (Unix секунди) * 1000 → коректний Date', async () => {
+  // Переписано 2026-10-09 (BR-BANK-021): раніше кейс вимагав точну мить (time * 1000). Дата операції —
+  // календарна дата без часу; від time лишається перевірка «секунди, а не мілісекунди»: 1757060000 —
+  // це 05.09.2025 (якби прочитали як мілісекунди, вийшов би січень 1970).
+  // guards: BR-BANK-021
+  it('time — Unix СЕКУНДИ: 1757060000 → 05.09.2025', async () => {
     client.fetchStatements.mockResolvedValue([{ id: 'm3', time: 1757060000, amount: 100 }]);
     const rows = await provider.fetchStatements(cfg, params);
-    expect(rows[0].operationDate.getTime()).toBe(1757060000 * 1000);
+    expect(rows[0].operationDate.toISOString().slice(0, 10)).toBe('2025-09-05');
   });
 
   it('purpose = comment ?? description (fallback на description)', async () => {

@@ -773,7 +773,17 @@ export class SupplierPaymentsService {
     return this.findOne(orgId, id);
   }
 
-  async confirm(orgId: string, id: string, userId: string): Promise<SupplierPaymentResponseDto> {
+  /**
+   * `opts.rateDate` — дата, на яку береться курс (і `date` проведення). Типово — мить проведення.
+   * Задає її рознесення вихідного банківського платежу: гроші пішли в день операції з виписки,
+   * а не в день, коли бухгалтер розніс рядок (BR-BANK-028).
+   */
+  async confirm(
+    orgId: string,
+    id: string,
+    userId: string,
+    opts?: { rateDate?: Date },
+  ): Promise<SupplierPaymentResponseDto> {
     const pre = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
       select: {
@@ -817,7 +827,7 @@ export class SupplierPaymentsService {
     }
 
     // Base-конвертація суми на дату проведення (fallbackToLatest — документний потік). Без валюти → base.
-    const confirmDate = new Date();
+    const confirmDate = opts?.rateDate ?? new Date();
     const conv = pre.currencyId
       ? await this.exchangeRates.resolveBaseConversion(
           orgId,

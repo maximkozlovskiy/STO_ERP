@@ -254,6 +254,41 @@ const CALL_SITES: Record<string, CallSite> = {
     ],
   },
 
+  // ── Банківські платежі (вихідні) ───────────────────────────────────────────────────────
+  'modules/bank-statements/bank-reconciliation.service.ts#reconcile:REFUND_OUT': {
+    guard:
+      'CAS статусу рядка першим записом у tx: bankTransaction.updateMany where status = UNMATCHED → MATCHED; ' +
+      'count=0 → 409/404 до проводки (BR-BANK-026, 030). Проводка — у тій самій tx, documentId = id рядка.',
+    anchors: [
+      /tx\.bankTransaction\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*'UNMATCHED'/,
+      /if\s*\(captured\.count === 0\)\s*\{\s*throw\b/,
+    ],
+    argAnchors: [/documentType:\s*'BankTransaction'/, /documentId:\s*txId/],
+    raceTests: [
+      {
+        spec: 'bank-statements/bank-reconciliation.outgoing.spec.ts',
+        title: 'CAS програв гонку, вид %s → 409, ефект не викликано',
+      },
+    ],
+  },
+  'modules/bank-statements/bank-reconciliation.service.ts#unreconcile:REFUND_OUT_CANCEL': {
+    guard:
+      'CAS статусу рядка першим записом у tx: bankTransaction.updateMany where status = MATCHED, paymentId = null, ' +
+      'matchedType = прочитаний → UNMATCHED; count=0 → 409 до сторно (BR-BANK-039, 040). Повторне скасування ' +
+      'не знаходить рядок у MATCHED, тож другого сторно немає.',
+    anchors: [
+      /tx\.bankTransaction\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*'MATCHED'/,
+      /if\s*\(released\.count === 0\)\s*\{\s*throw\b/,
+    ],
+    argAnchors: [/documentType:\s*'BankTransaction'/, /documentId:\s*txId/],
+    raceTests: [
+      {
+        spec: 'bank-statements/bank-reconciliation.unreconcile.spec.ts',
+        title: 'CAS програв гонку, вид %s → 409, зворотного запису немає',
+      },
+    ],
+  },
+
   // ── Наряди ─────────────────────────────────────────────────────────────────────────────
   'modules/work-orders/work-order-stock-effects.service.ts#writeOffPartsAndCharge:CHARGE': {
     guard:

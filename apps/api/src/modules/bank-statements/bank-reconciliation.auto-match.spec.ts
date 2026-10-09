@@ -24,12 +24,12 @@ describe('BankReconciliationService.resolveBatch — пріоритет каск
     );
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     prisma = makePrisma();
     prisma.counterparty.findMany.mockResolvedValue([]);
     prisma.invoice.findMany.mockResolvedValue([]);
     prisma.workOrder.findMany.mockResolvedValue([]);
-    service = build(prisma, makeExchange(), makePayments());
+    service = await build(prisma, makeExchange(), makePayments());
   });
 
   // guards: BR-BANK-004
@@ -115,7 +115,7 @@ describe('BankReconciliationService.resolveBatch — tenant-фільтр', () =>
     prisma.counterparty.findMany.mockResolvedValue([]);
     prisma.invoice.findMany.mockResolvedValue([]);
     prisma.workOrder.findMany.mockResolvedValue([]);
-    const service = build(prisma, makeExchange(), makePayments());
+    const service = await build(prisma, makeExchange(), makePayments());
     await service.resolveBatch(ORG, [
       {
         externalId: 'e1',

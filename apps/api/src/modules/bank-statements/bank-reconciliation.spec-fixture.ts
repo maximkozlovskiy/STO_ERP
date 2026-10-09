@@ -1,8 +1,6 @@
 import { vi } from 'vitest';
-import { BankReconciliationService } from './bank-reconciliation.service';
-import type { PrismaService } from '../../prisma/prisma.service';
-import type { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import type { PaymentsService } from '../payments/payments.service';
+import type { BankReconciliationService } from './bank-reconciliation.service';
+import { buildService } from './bank-reconciliation.world.spec-fixture';
 
 // Спільний сетап аспектних спеків BankReconciliationService (`bank-reconciliation.*.spec.ts`).
 // Фабрики, не const: кожен тест бере свіжі моки (isolate:false без clearMocks).
@@ -15,6 +13,7 @@ export function makePrisma() {
     counterparty: { findMany: vi.fn(), findFirst: vi.fn() },
     invoice: { findMany: vi.fn(), findFirst: vi.fn() },
     workOrder: { findMany: vi.fn() },
+    purchaseOrder: { findMany: vi.fn().mockResolvedValue([]) },
     bankTransaction: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -42,16 +41,18 @@ export function makePayments() {
   return { create: vi.fn() };
 }
 
+/**
+ * Сервіс збирається через DI за токенами класів (`buildService`), а не `new Service(a, b, c)`:
+ * конструктор росте (оплати постачальникам, взаєморозрахунки, каса, аудит — BR-BANK-025…040),
+ * і позиційні аргументи ламали б усі спеки модуля при кожній новій залежності. Тому `build`
+ * асинхронний. Залежності, яких цей набір моків не задає, отримують авто-мок.
+ */
 export function build(
   prisma: ReturnType<typeof makePrisma>,
   exchange: ReturnType<typeof makeExchange>,
   payments: ReturnType<typeof makePayments>,
-) {
-  return new BankReconciliationService(
-    prisma as unknown as PrismaService,
-    exchange as unknown as ExchangeRatesService,
-    payments as unknown as PaymentsService,
-  );
+): Promise<BankReconciliationService> {
+  return buildService(prisma, { exchange, payments });
 }
 
 /** Контрагент-рядок для моків counterparty.findMany. */

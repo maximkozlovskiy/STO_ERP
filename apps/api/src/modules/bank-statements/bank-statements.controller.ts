@@ -26,7 +26,11 @@ import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { BankReconciliationService } from './bank-reconciliation.service';
-import { BankStatementParserService, type ColumnMapping } from './bank-statement-parser.service';
+import {
+  BankStatementParserService,
+  parseDirectionMode,
+  type ColumnMapping,
+} from './bank-statement-parser.service';
 import {
   ApplyImportDto,
   IgnoreTransactionDto,
@@ -94,7 +98,7 @@ export class BankStatementsController {
         translateError('err.bankStatement.bankAccountNotFound', getLocale()),
       );
     }
-    const mapping = this.buildMapping(num);
+    const mapping = this.buildMapping(num, str);
     const rows = await this.parser.parseRows(buffer, file.filename ?? '', mapping);
     const previewRows = await this.reconciliation.previewImport(orgId, bankAccountId, rows);
     return { rows: previewRows };
@@ -216,7 +220,10 @@ export class BankStatementsController {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  private buildMapping(num: (k: string) => number | undefined): ColumnMapping {
+  private buildMapping(
+    num: (k: string) => number | undefined,
+    str: (k: string) => string,
+  ): ColumnMapping {
     const dateCol = num('dateCol');
     const amountCol = num('amountCol');
     const externalIdCol = num('externalIdCol');
@@ -232,6 +239,9 @@ export class BankStatementsController {
       payerIbanCol: num('payerIbanCol'),
       payerEdrpouCol: num('payerEdrpouCol'),
       purposeCol: num('purposeCol'),
+      // BR-BANK-018: empty value = SIGN; an unknown mode is a 400, not a silent default.
+      directionMode: parseDirectionMode(str('directionMode')),
+      debitCol: num('debitCol'),
     };
   }
 

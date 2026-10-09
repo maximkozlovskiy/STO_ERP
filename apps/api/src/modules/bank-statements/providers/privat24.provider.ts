@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { kyivYmd } from '../../../common/utils/kyiv-date';
 import type { RawTx } from '../bank-reconciliation.service';
 import { Privat24Client } from './privat24.client';
 import type {
@@ -13,7 +14,7 @@ import type {
  * Провайдер банк-виписки «Приват24» (Merchant/Autoclient). Обгортка Privat24Client під
  * BankStatementProvider (registry). Auth: заголовки id+token. mapTx — ЗАХИСНА нормалізація сирого
  * рядка Privat → RawTx (fallback-ключі на випадок розбіжності назв полів; невалідний → skip+warn).
- * Фільтр напряму: лише ВХІДНІ (credit) — MVP фокус на надходженнях.
+ * Напрям — за `TRANTYPE`: `C` → IN, `D` → OUT; невідомий маркер → skip+warn (BR-BANK-019).
  */
 @Injectable()
 export class Privat24Provider implements BankStatementProvider {
@@ -58,10 +59,13 @@ export class Privat24Provider implements BankStatementProvider {
    *
    * MANUAL-VERIFY (звірити назви полів на живих даних):
    *  - externalId: REF ?? ref ?? id — унікальний ідентифікатор проводки (немає → skip+warn);
-   *  - напрям: TRANTYPE ('C'=credit/вхідні, 'D'=debit) ?? direction ('in'/'out') — debit → skip;
-   *  - amount: SUM ?? amount ?? sum — сума проводки;
+   *  - напрям: TRANTYPE ('C'=credit/вхідні, 'D'=debit/вихідні) ?? direction ('in'/'out');
+   *    невідоме значення → skip+warn: вгаданий напрям провів би списання як надходження;
+   *  - amount: SUM ?? amount ?? sum — сума проводки, додатна (нульова / від'ємна → skip+warn);
    *  - operationDate: DATE_TIME_DAT_OD_TIM_P ?? DAT_OD ?? date — дата/час проводки;
-   *  - payer*: AUT_MY_CRF/AUT_MY_MFO/name/iban — реквізити контрагента-платника;
+   *  - payer*: AUT_CNTR_NAM / AUT_CNTR_ACC / AUT_CNTR_CRF — реквізити КОНТРАГЕНТА (платник для
+   *    вхідного, отримувач для вихідного). AUT_MY_* — НАШ бік проводки, у payer* не йде ніколи
+   *    (BR-BANK-020): до 2026-10-09 саме він лягав у payerIban, і авто-матч шукав нас самих;
    *  - purpose: OSND ?? purpose — призначення платежу.
    */
   private mapTx(raw: Record<string, unknown>): RawTx | null {
@@ -74,13 +78,16 @@ export class Privat24Provider implements BankStatementProvider {
       return null;
     }
 
-    // Напрям: лише ВХІДНІ (credit). TRANTYPE 'C' = кредит рахунку (надходження).
-    const trantype = str(raw.TRANTYPE) ?? str(raw.trantype);
-    const direction = str(raw.direction);
-    const isCredit =
-      trantype === 'C' || direction === 'in' || direction === 'credit' || direction === 'C';
-    if (!isCredit) return null; // debit / вихідні — skip (MVP фокус на надходженнях)
+    const direction = this.mapDirection(
+      str(raw.TRANTYPE) ?? str(raw.trantype) ?? str(raw.direction),
+    );
+    if (!direction) {
+      this.logger.warn(`Приват24: пропущено транзакцію REF=${externalId} з невідомим напрямом`);
+      return null;
+    }
 
+    // Напрям у Privat24 несе TRANTYPE, сума — додатна. Від'ємна сума суперечить маркеру напряму:
+    // такий рядок пропускаємо, а не вгадуємо, який із двох сигналів правдивий.
     const amount = Number(raw.SUM ?? raw.amount ?? raw.sum);
     if (!Number.isFinite(amount) || amount <= 0) {
       this.logger.warn(`Приват24: пропущено транзакцію REF=${externalId} з невалідною сумою`);
@@ -98,13 +105,30 @@ export class Privat24Provider implements BankStatementProvider {
     return {
       externalId,
       operationDate,
+      direction,
       amount,
-      payerName: str(raw.AUT_MY_NAM) ?? str(raw.payerName) ?? str(raw.name),
-      payerIban: str(raw.AUT_MY_ACC) ?? str(raw.payerIban) ?? str(raw.iban),
-      payerEdrpou: str(raw.AUT_MY_CRF) ?? str(raw.payerEdrpou) ?? str(raw.edrpou),
+      payerName: str(raw.AUT_CNTR_NAM) ?? str(raw.payerName) ?? str(raw.name),
+      payerIban: str(raw.AUT_CNTR_ACC) ?? str(raw.payerIban) ?? str(raw.iban),
+      payerEdrpou: str(raw.AUT_CNTR_CRF) ?? str(raw.payerEdrpou) ?? str(raw.edrpou),
       purpose: str(raw.OSND) ?? str(raw.purpose),
       rawData: raw as Prisma.InputJsonValue,
     };
+  }
+
+  /** Маркер напряму Privat24 → IN / OUT; невідомий або відсутній → null (рядок пропускається). */
+  private mapDirection(marker: string | null): 'IN' | 'OUT' | null {
+    switch (marker?.toUpperCase()) {
+      case 'C':
+      case 'IN':
+      case 'CREDIT':
+        return 'IN';
+      case 'D':
+      case 'OUT':
+      case 'DEBIT':
+        return 'OUT';
+      default:
+        return null;
+    }
   }
 
   /**
@@ -149,8 +173,9 @@ export class Privat24Provider implements BankStatementProvider {
       }
       return Number.isNaN(d.getTime()) ? null : d;
     }
-    const iso = new Date(s);
-    return Number.isNaN(iso.getTime()) ? null : iso;
+    // Повний ISO — це МИТЬ, а не настінний час: у `@db.Date` іде її київський день (BR-BANK-021).
+    const instant = new Date(s);
+    return Number.isNaN(instant.getTime()) ? null : new Date(`${kyivYmd(instant)}T00:00:00.000Z`);
   }
 
   async verifyCredentials(cfg: BankStatementConfig): Promise<BankStatementVerifyResult> {
