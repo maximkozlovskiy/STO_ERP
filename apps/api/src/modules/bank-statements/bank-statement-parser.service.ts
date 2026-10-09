@@ -8,6 +8,7 @@ import { parse as parseCSV } from 'csv-parse/sync';
 import { DBFFile } from 'dbffile';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { roundMoney } from '../../common/utils/math';
 import type { RawTx } from './bank-reconciliation.service';
 import { BANK_IMPORT_DIRECTION_MODES, type BankImportDirectionMode } from './bank-statement.dto';
 
@@ -197,16 +198,44 @@ export class BankStatementParserService {
     rawAmount: string,
     rawDebit: string,
   ): { amount: number; direction: 'IN' | 'OUT' } | null {
+    // Сума рядка — у копійках: колонка `Decimal(12,2)`, а `import/apply` відхиляє суму < 0.01
+    // (один рядок «-0,005» або float-хвіст Excel «0.30000000000000004» блокував увесь імпорт).
+    // Те, що округлюється до нуля, — нульовий рядок (BR-BANK-017).
+    const cents = (raw: string): number => roundMoney(Math.abs(this.parseNumber(raw) ?? 0));
     if (splitColumns) {
-      const credit = Math.abs(this.parseNumber(rawAmount) ?? 0);
-      const debit = Math.abs(this.parseNumber(rawDebit) ?? 0);
+      const credit = cents(rawAmount);
+      const debit = cents(rawDebit);
       if (credit > 0 === debit > 0) return null;
       return credit > 0 ? { amount: credit, direction: 'IN' } : { amount: debit, direction: 'OUT' };
     }
     const signed = this.parseNumber(rawAmount);
-    if (signed == null || signed === 0) return null;
+    const amount = cents(rawAmount);
+    if (signed == null || amount === 0) return null;
     const direction = mode === 'SIGN' ? (signed < 0 ? 'OUT' : 'IN') : mode;
-    return { amount: Math.abs(signed), direction };
+    return { amount, direction };
+  }
+
+  /**
+   * Роздільник колонок CSV: `,`, `;` або табуляція — той, якого більше поза лапками в перших
+   * рядках файла. Українські банки й Excel з українською локаллю розділяють колонки `;` (кома
+   * зайнята копійками); за рівності — `,` (типовий для csv-parse).
+   */
+  private detectCsvDelimiter(text: string): string {
+    const counts: Record<string, number> = { ',': 0, ';': 0, '\t': 0 };
+    const lines = text
+      .split(/\r?\n/)
+      .filter(l => l.trim().length > 0)
+      .slice(0, 20);
+    for (const line of lines) {
+      let inQuotes = false;
+      for (const ch of line) {
+        if (ch === '"') inQuotes = !inQuotes;
+        else if (!inQuotes && ch in counts) counts[ch]++;
+      }
+    }
+    if (counts[';'] > counts[','] && counts[';'] >= counts['\t']) return ';';
+    if (counts['\t'] > counts[','] && counts['\t'] > counts[';']) return '\t';
+    return ',';
   }
 
   private parseCsvGrid(buffer: Buffer | Uint8Array): string[][] {
@@ -215,6 +244,7 @@ export class BankStatementParserService {
       // relax_column_count — банки часто мають нерівні рядки; columns:false → сира сітка.
       const records = parseCSV(text, {
         columns: false,
+        delimiter: this.detectCsvDelimiter(text),
         skip_empty_lines: true,
         relax_column_count: true,
         trim: true,
@@ -322,17 +352,35 @@ export class BankStatementParserService {
   }
 
   /**
-   * Число з UA-локалі: кома як десятковий роздільник, пробіли-роздільники тисяч. Дзеркалить
-   * xlsx.service.parseNumber. Знак «+»/«-» зберігається. Порожнє/невалідне → null.
+   * Сума з виписки → число зі знаком. Порожнє / нерозбірне → null (рядок пропускається).
+   * Формати, які справді трапляються в експортах банків і Excel:
+   *  - «1 250,00» / «1250.00» — пробіли (звичайні й нерозривні) як роздільники тисяч;
+   *  - «(150,00)» — бухгалтерський запис від'ємної суми; «−200,00» — типографський мінус (U+2212);
+   *  - «150,00 грн» / «₴150» / «150.00 UAH» — позначка валюти до чи після числа;
+   *  - «1.234,56» / «1,234.56» — обидва роздільники: ОСТАННІЙ із них десятковий, інший — тисячі;
+   *    кілька однакових без іншого («1,234,567») — тисячі.
+   * Одна кома чи одна крапка — десятковий роздільник («1,234» = 1.234, а не 1234).
    */
   private parseNumber(value: string): number | null {
     if (!value) return null;
-    const trimmed = value.trim().replace(/\s+/g, '');
-    // Лише кома як десятковий («1250,00»→«1250.00»); mixed «1.234,56» — не вгадуємо → NaN → null.
-    const normalized =
-      trimmed.includes(',') && !trimmed.includes('.') ? trimmed.replace(',', '.') : trimmed;
-    const num = Number(normalized);
-    return Number.isFinite(num) ? num : null;
+    let s = value.replace(/\s+/g, '').replace(/[−‒–—]/g, '-');
+    const bracketed = /^\((.+)\)$/.exec(s);
+    if (bracketed) s = bracketed[1];
+    s = s.replace(/^[₴$€£]/, '').replace(/(?:грн\.?|[a-zа-яіїєґ]{3}|[₴$€£])$/i, '');
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma >= 0 && lastDot >= 0) {
+      const [decimal, thousands] = lastComma > lastDot ? [',', '.'] : ['.', ','];
+      s = s.split(thousands).join('').replace(decimal, '.');
+    } else if (lastComma >= 0) {
+      s = s.indexOf(',') === lastComma ? s.replace(',', '.') : s.split(',').join('');
+    } else if (lastDot >= 0 && s.indexOf('.') !== lastDot) {
+      s = s.split('.').join('');
+    }
+    if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(s)) return null;
+    const num = Number(s);
+    if (!Number.isFinite(num)) return null;
+    return bracketed ? -Math.abs(num) : num;
   }
 
   /**

@@ -13,6 +13,7 @@ import {
   IsNotEmpty,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -56,6 +57,12 @@ export type BankTxOutMatchType = (typeof BANK_TX_OUT_MATCH_TYPES)[number];
 /** Як файл виписки задає напрям рядка (BR-BANK-018). */
 export const BANK_IMPORT_DIRECTION_MODES = ['SIGN', 'IN', 'OUT'] as const;
 export type BankImportDirectionMode = (typeof BANK_IMPORT_DIRECTION_MODES)[number];
+
+/**
+ * Largest amount the `Decimal(12,2)` column holds. Anything above used to reach the database
+ * and come back as a 500 (`numeric field overflow`) instead of a 400 naming the field.
+ */
+export const BANK_TX_AMOUNT_MAX = 9_999_999_999.99;
 
 /** Довжина причини скасування рознесення / приміток рознесення. */
 export const BANK_TX_REASON_MAX_LENGTH = 500;
@@ -194,7 +201,12 @@ export class ApplyRowDto {
   @IsNotEmpty()
   operationDate!: string;
   // BR-BANK-017: сума завжди додатна, напрям — окремим полем (типово вхідний).
-  @ApiProperty() @Type(() => Number) @IsNumber() @Min(0.01) amount!: number;
+  @ApiProperty()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  @Max(BANK_TX_AMOUNT_MAX)
+  amount!: number;
   @ApiPropertyOptional({ enum: BankTransactionDirection, default: 'IN' })
   @IsOptional()
   @IsEnum(BankTransactionDirection)
@@ -254,6 +266,17 @@ export class IgnoreTransactionDto {
 const trimString = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
+/**
+ * BR-BANK-006: an IBAN is compared and stored without spaces, in upper case. Normalising it
+ * BEFORE `@MaxLength` lets an IBAN pasted in groups of four («UA90 3052 …», 36 characters with
+ * spaces) through; an empty result means «not given».
+ */
+const normalizeIbanInput = ({ value }: { value: unknown }): unknown => {
+  if (typeof value !== 'string') return value;
+  const iban = value.replace(/\s+/g, '').toUpperCase();
+  return iban === '' ? undefined : iban;
+};
+
 export class CreateBankTransactionDto {
   @ApiProperty()
   @IsUUID('4', { message: 'err.dto.bankStatement.bankAccountId.uuid' })
@@ -267,6 +290,7 @@ export class CreateBankTransactionDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
+  @Max(BANK_TX_AMOUNT_MAX)
   amount!: number;
 
   // Дата операції — календарна дата БЕЗ часу (BR-BANK-021).
@@ -285,7 +309,7 @@ export class CreateBankTransactionDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(normalizeIbanInput)
   @IsString()
   @MaxLength(34)
   payerIban?: string;

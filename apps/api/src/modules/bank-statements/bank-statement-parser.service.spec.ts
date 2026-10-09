@@ -447,6 +447,116 @@ describe('BankStatementParserService.parseRows — напрям рядка', () 
   });
 });
 
+// Формати, якими банки й Excel справді пишуть суми. Раніше парсер розумів лише «1 250,00» і
+// «-150.5», а все інше мовчки пропускав як «заголовок» — після появи вихідних платежів це
+// саме рядки списань (Bug #825, #826).
+describe('BankStatementParserService.parseRows — формати сум', () => {
+  let service: BankStatementParserService;
+  beforeEach(() => {
+    service = new BankStatementParserService();
+  });
+
+  /** Один рядок із заданим текстом суми (у лапках — кома не ділить колонки). */
+  const parseAmount = async (amount: string, mapping: DirectionMapping = ONE_COLUMN) =>
+    summary(
+      await service.parseRows(
+        csvBuf(`Дата,Сума,ID\n01.03.2026,"${amount}",row-1\n01.03.2026,"1,00",anchor\n`),
+        'stmt.csv',
+        mapping as ColumnMapping,
+      ),
+    ).filter(r => r[0] === 'row-1');
+
+  // guards: BR-BANK-017, BR-BANK-018
+  it.each([
+    ['бухгалтерські дужки', '(150,00)', 'OUT', 150],
+    ['дужки з валютою', '(12.50 UAH)', 'OUT', 12.5],
+    ['типографський мінус U+2212', '−200,00', 'OUT', 200],
+    ['коротке тире U+2013', '–200,00', 'OUT', 200],
+    ['від’ємна з тисячами', '-1 500,50', 'OUT', 1500.5],
+    ['нерозривний пробіл тисяч', '1 000,00', 'IN', 1000],
+    ['валюта після суми', '150,00 грн', 'IN', 150],
+    ['валюта з крапкою', '150,00 грн.', 'IN', 150],
+    ['знак валюти перед сумою', '₴99.90', 'IN', 99.9],
+    ['крапка — тисячі, кома — копійки', '1.234,56', 'IN', 1234.56],
+    ['кома — тисячі, крапка — копійки', '1,234.56', 'IN', 1234.56],
+    ['кілька ком — тисячі', '1,234,567', 'IN', 1234567],
+    ['кілька крапок — тисячі', '1.234.567', 'IN', 1234567],
+    ['плюс', '+45,10', 'IN', 45.1],
+  ] as const)('%s: «%s» → %s %s', async (_name, text, direction, amount) => {
+    expect(await parseAmount(text)).toEqual([['row-1', direction, amount]]);
+  });
+
+  // guards: BR-BANK-018
+  it.each(['Разом', '1e3', '0x10', '--5', '12 шт', '()', 'Infinity'])(
+    'нерозбірна сума «%s» → рядок пропускається, а не вгадується',
+    async text => {
+      expect(await parseAmount(text)).toEqual([]);
+    },
+  );
+
+  // guards: BR-BANK-017
+  it.each([
+    ['три знаки після коми', '-7,129', 'OUT', 7.13],
+    ['float-хвіст Excel', '0.30000000000000004', 'IN', 0.3],
+    ['пів копійки округлюється вгору', '-0,005', 'OUT', 0.01],
+  ] as const)('сума в копійках, %s: «%s» → %s %s', async (_name, text, direction, amount) => {
+    expect(await parseAmount(text)).toEqual([['row-1', direction, amount]]);
+  });
+
+  // guards: BR-BANK-017
+  it.each(['-0,004', '0,0049', '0.001'])(
+    'сума «%s» округлюється до нуля → нульовий рядок, не імпортується',
+    async text => {
+      expect(await parseAmount(text)).toEqual([]);
+    },
+  );
+
+  // guards: BR-BANK-017, BR-BANK-018
+  it('дві колонки: сума менше копійки в одній із них — це «порожньо», а не напрям', async () => {
+    const csv =
+      'Дата,Надходження,Списання,ID\n' +
+      '01.03.2026,"0,004","55,555",debit\n' +
+      '01.03.2026,"0,004","0,001",none\n';
+    expect(
+      summary(await service.parseRows(csvBuf(csv), 'stmt.csv', TWO_COLUMNS as ColumnMapping)),
+    ).toEqual([['debit', 'OUT', 55.56]]);
+  });
+});
+
+// Bug #827: CSV українських банків розділяє колонки «;» — кома зайнята копійками.
+describe('BankStatementParserService — роздільник колонок CSV', () => {
+  let service: BankStatementParserService;
+  beforeEach(() => {
+    service = new BankStatementParserService();
+  });
+
+  it.each([
+    ['«;», поля в лапках', '"Дата";"Сума";"ID"\n"01.03.2026";"-1 250,00";"out-1"\n'],
+    ['«;», без лапок — кома лишається в сумі', 'Дата;Сума;ID\n01.03.2026;-1 250,00;out-1\n'],
+    ['табуляція', 'Дата\tСума\tID\n01.03.2026\t-1 250,00\tout-1\n'],
+    ['«,», сума в лапках', 'Дата,Сума,ID\n01.03.2026,"-1 250,00",out-1\n'],
+  ])('%s → той самий рядок', async (_name, text) => {
+    expect(
+      summary(await service.parseRows(csvBuf(text), 'stmt.csv', ONE_COLUMN as ColumnMapping)),
+    ).toEqual([['out-1', 'OUT', 1250]]);
+  });
+
+  it('«;» у призначенні в лапках не перемикає роздільник із коми', async () => {
+    const csv = 'Дата,Сума,ID,Призначення\n01.03.2026,100,in-1,"оплата; рах. 5; без ПДВ"\n';
+    const rows = await service.parseRows(csvBuf(csv), 'stmt.csv', {
+      ...ONE_COLUMN,
+      purposeCol: 4,
+    } as ColumnMapping);
+    expect(rows[0].purpose).toBe('оплата; рах. 5; без ПДВ');
+  });
+
+  it('rawPreview показує колонки файла з «;», а не одну склеєну', async () => {
+    const res = await service.rawPreview(csvBuf('Дата;Сума;ID\n01.03.2026;1 250,00;x\n'), 's.csv');
+    expect(res.columnCount).toBe(3);
+    expect(res.rows[1]).toEqual(['01.03.2026', '1 250,00', 'x']);
+  });
+});
+
 describe('BankStatementParserService.rawPreview', () => {
   let service: BankStatementParserService;
   beforeEach(() => {

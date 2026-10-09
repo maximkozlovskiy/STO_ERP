@@ -4,6 +4,7 @@ import { validate, type ValidationError } from 'class-validator';
 import {
   ApplyImportDto,
   BANK_IMPORT_DIRECTION_MODES,
+  BANK_TX_AMOUNT_MAX,
   BANK_TX_IN_MATCH_TYPES,
   BANK_TX_MATCH_TYPES,
   BANK_TX_OUT_MATCH_TYPES,
@@ -254,6 +255,49 @@ describe('CreateBankTransactionDto — ручне внесення', () => {
     const plain = manual({ payerName: '', payerIban: '', payerEdrpou: '', purpose: '' });
     expect(await check(CreateBankTransactionDto, plain)).toEqual([]);
     expect(plainToInstance(CreateBankTransactionDto, plain).payerIban).toBeUndefined();
+  });
+
+  // guards: BR-BANK-017 — Bug #828: колонка Decimal(12,2); більша сума падала в базі з 500.
+  it('сума понад місткість колонки → відхиляється; найбільша допустима — проходить', async () => {
+    expect(await check(CreateBankTransactionDto, manual({ amount: 1e10 }))).toEqual(['amount.max']);
+    expect(await check(CreateBankTransactionDto, manual({ amount: BANK_TX_AMOUNT_MAX }))).toEqual(
+      [],
+    );
+    expect(BANK_TX_AMOUNT_MAX).toBe(9_999_999_999.99);
+  });
+
+  // guards: BR-BANK-006 — Bug #829: довжина IBAN перевірялась до нормалізації.
+  it('IBAN групами по чотири й малими літерами нормалізується ДО перевірки довжини', async () => {
+    const plain = manual({ payerIban: ' ua90 3052 9929 9000 4149 1234 5678 9 ' });
+    expect(await check(CreateBankTransactionDto, plain)).toEqual([]);
+    expect(plainToInstance(CreateBankTransactionDto, plain).payerIban).toBe(
+      'UA903052992990004149123456789',
+    );
+  });
+
+  // guards: BR-BANK-006
+  it('IBAN, довший за 34 символи БЕЗ пробілів, — відхиляється; самі пробіли — «не вказано»', async () => {
+    expect(
+      await check(CreateBankTransactionDto, manual({ payerIban: 'UA' + '1'.repeat(33) })),
+    ).toEqual(['payerIban.maxLength']);
+    const blank = manual({ payerIban: '   ' });
+    expect(await check(CreateBankTransactionDto, blank)).toEqual([]);
+    expect(plainToInstance(CreateBankTransactionDto, blank).payerIban).toBeUndefined();
+  });
+});
+
+describe('ApplyRowDto.amount — верхня межа', () => {
+  // guards: BR-BANK-014 — Bug #828
+  it('сума понад місткість колонки → відхиляється; найбільша допустима — проходить', async () => {
+    expect(
+      await check(ApplyImportDto, { bankAccountId: ACCOUNT_ID, rows: [row({ amount: 1e10 })] }),
+    ).toEqual(['rows.0.amount.max']);
+    expect(
+      await check(ApplyImportDto, {
+        bankAccountId: ACCOUNT_ID,
+        rows: [row({ amount: BANK_TX_AMOUNT_MAX })],
+      }),
+    ).toEqual([]);
   });
 });
 
