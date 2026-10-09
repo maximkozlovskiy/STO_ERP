@@ -40,7 +40,12 @@ import {
   SETTLEMENT_BALANCE_UP_TYPES,
   SETTLEMENT_TX_CHARGE_LIKE_TYPES,
 } from '@sto/shared';
-import { contractTypeLabel, woStatusLabel, counterpartyTypeLabel } from '@/i18n/enumLabel';
+import {
+  contractTypeLabel,
+  woStatusLabel,
+  counterpartyTypeLabel,
+  settlementTxTypeLabel,
+} from '@/i18n/enumLabel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1305,7 +1310,7 @@ export default function CounterpartyCardPage() {
                 <div key={tx.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="text-sm text-foreground">
-                      {tx.notes ?? tx.documentType ?? tx.type}
+                      {tx.notes ?? settlementTxTypeLabel(tx.type)}
                     </p>
                     <p className="text-xs text-muted-foreground">{fmtDate(tx.createdAt)}</p>
                   </div>

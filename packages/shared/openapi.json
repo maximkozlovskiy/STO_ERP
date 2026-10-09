@@ -9697,6 +9697,16 @@
             }
           },
           {
+            "name": "supplierId",
+            "required": false,
+            "in": "query",
+            "description": "Лише замовлення цього постачальника",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "showDeleted",
             "required": false,
             "in": "query",

@@ -186,6 +186,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     });
 
@@ -202,6 +203,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
         undefined,
         undefined,
         false,
+        undefined,
         undefined,
         undefined,
         undefined,
@@ -226,6 +228,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       );
     });
 
@@ -242,6 +245,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
         'RECEIVED',
         'test',
         true,
+        undefined,
         undefined,
         undefined,
         undefined,
@@ -264,6 +268,7 @@ describe('PurchaseOrders — HTTP Contract', () => {
         false,
         '2026-01-01',
         '2026-01-31',
+        undefined,
         undefined,
         undefined,
       );

@@ -53,7 +53,8 @@ export class PurchaseOrdersController {
   constructor(private readonly service: PurchaseOrdersService) {}
 
   @Get()
-  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  // ACCOUNTANT: пікер замовлення в модалці рознесення банківського платежу (BR-BANK-027).
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список замовлень постачальникам' })
   @ApiOkResponse({ type: PaginatedPurchaseOrdersDto })
   findAll(@OrgContext() orgId: string, @Query() query: PurchaseOrderQueryDto) {
@@ -68,6 +69,7 @@ export class PurchaseOrdersController {
       query.dateTo,
       query.sortBy,
       query.sortDir,
+      query.supplierId,
     );
   }
 

@@ -44,7 +44,9 @@ export class EmployeesController {
   constructor(private readonly service: EmployeesService) {}
 
   @Get()
-  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST')
+  // ACCOUNTANT: пікер працівника в модалці рознесення виплати зарплати (BR-BANK-030).
+  // Список не віддає rateScheme, тож розширення не відкриває ставок.
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список співробітників' })
   @ApiResponse({ status: 200, type: [EmployeeResponseDto] })
   findAll(@OrgContext() orgId: string, @Query() query: EmployeesQueryDto) {

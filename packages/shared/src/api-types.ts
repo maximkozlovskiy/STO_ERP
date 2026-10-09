@@ -14247,6 +14247,8 @@ export interface operations {
             query?: {
                 status?: "DRAFT" | "ORDERED" | "RECEIVED" | "PARTIAL" | "CANCELLED";
                 q?: string;
+                /** @description Лише замовлення цього постачальника */
+                supplierId?: string;
                 /** @description Показати видалені */
                 showDeleted?: string;
                 /** @description Дата документа від (YYYY-MM-DD) */

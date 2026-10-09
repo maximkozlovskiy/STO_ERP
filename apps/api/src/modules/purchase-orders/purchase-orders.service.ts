@@ -152,12 +152,14 @@ export class PurchaseOrdersService {
     dateTo?: string,
     sortBy?: string,
     sortDir?: 'asc' | 'desc',
+    supplierId?: string,
   ): Promise<PaginatedPurchaseOrdersDto> {
     const where: Prisma.PurchaseOrderWhereInput = {
       orgId,
       ...(showDeleted ? {} : { deletedAt: null }),
     };
     if (status) where.status = status as POStatus;
+    if (supplierId) where.supplierId = supplierId;
     if (q) {
       const like = q.trim();
       if (like.length > 0) {

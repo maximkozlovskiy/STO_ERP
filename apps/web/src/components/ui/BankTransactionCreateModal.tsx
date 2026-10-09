@@ -272,6 +272,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
         <Input
           label={t('create.payerName')}
           {...register('payerName')}
+          maxLength={200}
           hint={t(direction === 'OUT' ? 'create.payerNameHintOut' : 'create.payerNameHintIn')}
           className="h-8 text-[13px]"
         />
@@ -280,12 +281,14 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
           <Input
             label={t('create.payerIban')}
             {...register('payerIban')}
+            maxLength={34}
             errorMessage={errors.payerIban?.message}
             className="h-8 text-[13px]"
           />
           <Input
             label={t('create.payerEdrpou')}
             {...register('payerEdrpou')}
+            maxLength={12}
             inputMode="numeric"
             errorMessage={errors.payerEdrpou?.message}
             className="h-8 text-[13px] tabular-nums"

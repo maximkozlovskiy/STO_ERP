@@ -259,6 +259,12 @@ export class PurchaseOrderQueryDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
 
+  @ApiPropertyOptional({ description: 'Лише замовлення цього постачальника' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  supplierId?: string;
+
   @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @IsBooleanString()
