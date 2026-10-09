@@ -91,6 +91,7 @@ export class StockItemsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
+    assertCalendarDateQuery(from, to);
     return this.inventory.byDocument(orgId, warehouseId, goodId, from, to);
   }
 
@@ -112,6 +113,7 @@ export class StockItemsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
+    assertCalendarDateQuery(from, to);
     return this.inventory.byBatch(orgId, warehouseId, goodId, from, to);
   }
 

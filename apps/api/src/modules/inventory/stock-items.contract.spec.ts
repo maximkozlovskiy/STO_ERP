@@ -71,6 +71,38 @@ describe('StockItems — HTTP Contract', () => {
     inventoryMock.findMovements.mockResolvedValue({ items: [], total: 0, page: 1, limit: 50 });
   });
 
+  // code-review, цикл 2 (2026-10-09): дати відбору перевіряються і в розрізах залишків —
+  // раніше сміття давало Invalid Date і 500, а неіснуюча дата мовчки ставала іншим днем.
+  describe('розрізи залишків: дати відбору', () => {
+    it.each([
+      ['by-document', 'from=abc'],
+      ['by-document', 'to=2026-02-31'],
+      ['by-batch', 'from=2026-10-09T10:00:00Z'],
+      ['by-batch', 'to=abc'],
+    ])('GET /stock-items/%s?%s → 400, сервіс не викликається', async (path, query) => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/stock-items/${path}?${query}`,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(inventoryMock.byDocument).not.toHaveBeenCalled();
+      expect(inventoryMock.byBatch).not.toHaveBeenCalled();
+    });
+
+    it.each(['by-document', 'by-batch'])(
+      'GET /stock-items/%s з валідними й порожніми датами → 200',
+      async path => {
+        for (const query of ['from=2026-10-01&to=2026-10-09', 'from=&to=']) {
+          const res = await (app as NestFastifyApplication).inject({
+            method: 'GET',
+            url: `/stock-items/${path}?${query}`,
+          });
+          expect(res.statusCode).toBe(200);
+        }
+      },
+    );
+  });
+
   describe('GET /stock-items/by-document', () => {
     it('200 без параметрів → service отримує undefined-и', async () => {
       const res = await (app as NestFastifyApplication).inject({

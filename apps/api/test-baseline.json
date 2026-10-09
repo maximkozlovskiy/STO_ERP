@@ -1998,7 +1998,13 @@
    "StockItems — HTTP Contract GET /stock-items/movements 403 коли JWT-guard відмовляє",
    "StockItems — HTTP Contract GET /stock-items/movements порожні from/to — не помилка: відбору за датою просто немає",
    "StockItems — HTTP Contract route ordering: by-document/by-batch перед :id \"/stock-items/by-batch\" НЕ матчиться як :id (no 400 від ParseUUIDPipe)",
-   "StockItems — HTTP Contract route ordering: by-document/by-batch перед :id \"/stock-items/by-document\" НЕ матчиться як :id (no 400 від ParseUUIDPipe)"
+   "StockItems — HTTP Contract route ordering: by-document/by-batch перед :id \"/stock-items/by-document\" НЕ матчиться як :id (no 400 від ParseUUIDPipe)",
+   "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-batch з валідними й порожніми датами → 200",
+   "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-batch?from=2026-10-09T10:00:00Z → 400, сервіс не викликається",
+   "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-batch?to=abc → 400, сервіс не викликається",
+   "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-document з валідними й порожніми датами → 200",
+   "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-document?from=abc → 400, сервіс не викликається",
+   "StockItems — HTTP Contract розрізи залишків: дати відбору GET /stock-items/by-document?to=2026-02-31 → 400, сервіс не викликається"
   ],
   "apps/api/src/modules/invoices/invoice-overdue.processor.spec.ts": [
    "InvoiceOverdueProcessor null-dueDate виключено (рахунок без терміну не прострочується)",
