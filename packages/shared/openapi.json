@@ -25595,7 +25595,8 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 0.01
+            "minimum": 0.01,
+            "maximum": 9999999999.99
           },
           "direction": {
             "enum": [
@@ -25886,6 +25887,7 @@
           "amount": {
             "type": "number",
             "minimum": 0.01,
+            "maximum": 9999999999.99,
             "description": "Сума у валюті рахунку, завжди додатна"
           },
           "operationDate": {

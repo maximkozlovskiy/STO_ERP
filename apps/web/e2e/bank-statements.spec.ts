@@ -180,7 +180,8 @@ test.describe('Банківські платежі', () => {
         if (!bankAccountId) {
           const curRes = await fetch(`${API}/currencies`, { headers: auth });
           const curData = await curRes.json();
-          const currencyId = (curData.items ?? curData)?.[0]?.id;
+          const currencies = (curData.items ?? curData) as Array<{ id: string; code: string }>;
+          const currencyId = (currencies.find(c => c.code === 'UAH') ?? currencies[0])?.id;
           // Валідний UA IBAN: 2 літери + рівно 27 цифр (29 символів).
           const iban = `UA${String(Date.now()).slice(-9).padStart(27, '0')}`;
           const crRes = await fetch(`${API}/bank-accounts`, {

@@ -38,7 +38,9 @@ async function seedSupplierAndCash(page: import('@playwright/test').Page, token:
       const curData = await curRes.json();
       const brData = await brRes.json();
       const supplierId = cpData.items?.[0]?.id;
-      const currencyId = (curData.items ?? curData)?.[0]?.id;
+      const currencies = (curData.items ?? curData) as Array<{ id: string; code: string }>;
+      // Base currency, not just the first one: a second currency in the org silently changes base amounts.
+      const currencyId = (currencies.find(c => c.code === 'UAH') ?? currencies[0])?.id;
       const branchId = (brData.items ?? brData)?.[0]?.id;
 
       // create a cash register for this test run

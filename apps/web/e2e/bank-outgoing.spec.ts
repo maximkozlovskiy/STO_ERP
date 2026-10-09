@@ -44,7 +44,7 @@ async function ensureFixtures(page: Page): Promise<{ categoryId: string }> {
           body: JSON.stringify({
             name: `E2E Рахунок ${Date.now()}`,
             ibanUA: iban,
-            currencyId: currencies[0]?.id,
+            currencyId: (currencies.find(c => c.code === 'UAH') ?? currencies[0])?.id,
           }),
         });
         accounts = await list('/bank-accounts');

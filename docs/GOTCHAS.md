@@ -4,6 +4,26 @@
 
 ---
 
+## [2026-10-09] `beforeEach(() => mock.mockReset())` — vitest викликає повернуте значення як teardown
+
+Стрілка-вираз повертає сам мок (`mockReset()` повертає `this`), а vitest трактує значення, яке
+повернув `beforeEach`, як функцію прибирання й ВИКЛИКАЄ її після тесту. Якщо мок налаштовано на
+відмову (`mockRejectedValue`), тест «падає» вже після своїх перевірок — з unhandled rejection.
+
+```ts
+// ❌ повертає мок → його викличуть як teardown
+beforeEach(() => apiFetchMock.mockReset());
+// ✅ тіло-блок нічого не повертає
+beforeEach(() => {
+  apiFetchMock.mockReset();
+});
+```
+
+## [2026-10-09] DELETE без тіла із заголовком `Content-Type: application/json` → 400 від Fastify
+
+Fastify відхиляє порожнє тіло, якщо заявлено JSON. `apiFetch` ставить заголовок лише коли є `body`;
+у власних `fetch` (E2E, скрипти) для DELETE передавай тільки `Authorization`.
+
 ## [2026-10-09] Prisma `contains` не екранує `%` і `_` — пошук `q=%` повертає все
 
 Prisma на PostgreSQL перетворює `contains` на `ILIKE ('%' || $1 || '%')` і передає значення як є.
