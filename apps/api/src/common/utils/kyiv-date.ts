@@ -97,7 +97,8 @@ export function isCalendarDate(value: string): boolean {
 
 /**
  * Перетворює YYYY-MM-DD діапазон (from/to) у UTC-межі Kyiv-доби: `fromDate` = початок дня від,
- * `toDate` = кінець дня до. DST-aware через kyivOffsetMs. Кидає 400 якщо from > to.
+ * `toDate` = кінець дня до. DST-aware через kyivDayStart / kyivDayEnd. Порядок меж (from ≤ to)
+ * перевіряє викликач — сама функція нічого не кидає.
  * Спільне джерело для reports + report-builder (раніше дублювалось у reports.service).
  */
 export function normalizeKyivDateRange(from: string, to: string): { fromDate: Date; toDate: Date } {

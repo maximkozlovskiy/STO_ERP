@@ -1095,7 +1095,7 @@ export class WorkOrdersService {
     }
 
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(good.salePrice);
-    const amount = money(dto.quantity * price);
+    const amount = lineAmount(dto.quantity, price);
 
     const part = await this.prisma.$transaction(
       async tx => {
@@ -1154,7 +1154,7 @@ export class WorkOrdersService {
 
     const quantity = dto.quantity ?? part.quantity;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(part.price);
-    const amount = money(quantity * price);
+    const amount = lineAmount(quantity, price);
 
     // Validate new unitOfMeasureId if provided
     let uomJunction: UomJunction | null = null;

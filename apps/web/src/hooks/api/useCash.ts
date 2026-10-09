@@ -124,8 +124,7 @@ export function useCashRegisters() {
 }
 
 export function useCashOperations(cashRegisterId: string | null, filters: CashOperationsFilter) {
-  const { q, dateFrom, dateTo } = filters;
-  const qs = buildParams({ q, dateFrom, dateTo });
+  const qs = buildParams(filters);
 
   return useQuery({
     queryKey: cashKeys.operations(cashRegisterId ?? '', filters),

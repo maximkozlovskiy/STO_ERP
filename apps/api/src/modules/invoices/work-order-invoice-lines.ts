@@ -108,7 +108,7 @@ function draft(wo: WorkOrderForInvoice, vatRate: number, vatMode: VatMode): Invo
       quantity: l.quantity,
       unitPrice: l.unitPrice,
       vatRate: rate,
-      ...one(l.quantity * l.unitPrice),
+      ...one(lineAmount(l.quantity, l.unitPrice)),
       sortOrder: i,
     })),
     ...wo.parts.map((p, i) => ({
@@ -117,7 +117,7 @@ function draft(wo: WorkOrderForInvoice, vatRate: number, vatMode: VatMode): Invo
       quantity: p.quantity,
       unitPrice: p.unitPrice,
       vatRate: rate,
-      ...one(p.quantity * p.unitPrice),
+      ...one(lineAmount(p.quantity, p.unitPrice)),
       sortOrder: wo.lines.length + i,
     })),
   ];
