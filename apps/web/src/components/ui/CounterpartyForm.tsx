@@ -2,12 +2,15 @@
 
 import { COUNTERPARTY_TYPE_LABELS, hasCounterpartyName } from '@sto/shared';
 import { counterpartyTypeLabel } from '@/i18n/enumLabel';
+import { useId, useState, type ReactNode } from 'react';
+import { ChevronRight } from 'lucide-react';
 import type { UseFormRegister, FieldErrors, Control, UseFormWatch } from 'react-hook-form';
 import { Controller } from 'react-hook-form';
 import type { CounterpartyFormInput } from '@sto/shared';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { cn } from '@/lib/utils';
 import type { Counterparty, CpType } from '@/hooks/api/useCounterparties';
 
 export { hasCounterpartyName };
@@ -97,26 +100,96 @@ interface Props {
   errors: FieldErrors<CounterpartyFormInput>;
   control: Control<CounterpartyFormInput>;
   watch: UseFormWatch<CounterpartyFormInput>;
+  /**
+   * Вміст праворуч від поля «Тип», у тому самому рядку (модалка кладе сюди статуси-мітки).
+   * Без нього «Тип» займає всю ширину, як раніше.
+   */
+  typeAside?: ReactNode;
 }
+
+interface SectionProps {
+  title: string;
+  /** Є помилка валідації в секції — вона розкривається сама, інакше помилки не видно. */
+  hasError: boolean;
+  /** У секції є заповнені поля — згорнутий заголовок це показує, щоб дані не «зникали». */
+  filled: boolean;
+  children: ReactNode;
+}
+
+/**
+ * Згортувана секція форми. Згорнута за замовчуванням (рішення власника 2026-10-12): юридичні й
+ * банківські реквізити потрібні рідко, а форма без них уміщається на екран.
+ *
+ * Вміст НЕ розмонтовується, а ховається атрибутом `hidden`: поля лишаються зареєстрованими в
+ * react-hook-form, тож значення й валідація працюють і для згорнутої секції.
+ */
+function FormSection({ title, hasError, filled, children }: SectionProps) {
+  const [opened, setOpened] = useState(false);
+  const open = opened || hasError;
+  const contentId = useId();
+  return (
+    <div className="border-t border-border pt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpened(v => !v)}
+        className="flex w-full items-center gap-1.5 rounded-md py-1 text-left text-[13px] font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <ChevronRight
+          className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-90')}
+          aria-hidden
+        />
+        <span>{title}</span>
+        {!open && filled && (
+          <span className="ml-2 text-[12px] font-normal text-muted-foreground">заповнено</span>
+        )}
+      </button>
+      <div id={contentId} hidden={!open} className="space-y-3 pt-3">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const hasValue = (v: unknown): boolean => typeof v === 'string' && v.trim() !== '';
 
 /**
  * RHF-native форма контрагента (усі 15 полів + type). Керується батьком через
  * useForm(counterpartyFormSchema); тут лише register/Controller + per-field errors.
  * Секції: Основне / Юридичні / Банк. Ім'я/Прізвище приховані для SUPPLIER.
  */
-export function CounterpartyForm({ register, errors, control, watch }: Props) {
+export function CounterpartyForm({ register, errors, control, watch, typeAside }: Props) {
   const type = watch('type');
+  const legalFilled = watch([
+    'legalForm',
+    'edrpou',
+    'taxNumber',
+    'legalAddress',
+    'actualAddress',
+  ]).some(hasValue);
+  const bankFilled = watch(['bankAccount', 'bankName']).some(hasValue);
+  const typeSelect = (
+    <Select label="Тип" required {...register('type')} errorMessage={errors.type?.message}>
+      {Object.keys(COUNTERPARTY_TYPE_LABELS).map(k => (
+        <option key={k} value={k}>
+          {counterpartyTypeLabel(k)}
+        </option>
+      ))}
+    </Select>
+  );
   return (
     <div className="space-y-5">
       {/* ── Основне ─────────────────────────────────────────── */}
       <div className="space-y-3">
-        <Select label="Тип" required {...register('type')} errorMessage={errors.type?.message}>
-          {Object.keys(COUNTERPARTY_TYPE_LABELS).map(k => (
-            <option key={k} value={k}>
-              {counterpartyTypeLabel(k)}
-            </option>
-          ))}
-        </Select>
+        {typeAside ? (
+          <div className="grid grid-cols-2 items-start gap-3">
+            {typeSelect}
+            <div className="min-w-0">{typeAside}</div>
+          </div>
+        ) : (
+          typeSelect
+        )}
 
         {type !== 'SUPPLIER' && (
           <div className="grid grid-cols-2 gap-3">
@@ -177,8 +250,19 @@ export function CounterpartyForm({ register, errors, control, watch }: Props) {
       </div>
 
       {/* ── Юридичні реквізити ──────────────────────────────── */}
-      <div className="space-y-3 border-t border-border pt-4">
-        <p className="text-[13px] font-medium text-foreground">Юридичні реквізити</p>
+      <FormSection
+        title="Юридичні реквізити"
+        hasError={
+          !!(
+            errors.legalForm ||
+            errors.edrpou ||
+            errors.taxNumber ||
+            errors.legalAddress ||
+            errors.actualAddress
+          )
+        }
+        filled={legalFilled}
+      >
         <Select
           label="Форма власності"
           {...register('legalForm')}
@@ -205,16 +289,19 @@ export function CounterpartyForm({ register, errors, control, watch }: Props) {
           {...register('actualAddress')}
           placeholder="вул. Хрещатик 1, Київ"
         />
-      </div>
+      </FormSection>
 
       {/* ── Банк ────────────────────────────────────────────── */}
-      <div className="space-y-3 border-t border-border pt-4">
-        <p className="text-[13px] font-medium text-foreground">Банківські реквізити</p>
+      <FormSection
+        title="Банківські реквізити"
+        hasError={!!(errors.bankAccount || errors.bankName)}
+        filled={bankFilled}
+      >
         <div className="grid grid-cols-2 gap-3">
           <Input label="IBAN" {...register('bankAccount')} placeholder="UA12 3456 …" />
           <Input label="Банк" {...register('bankName')} placeholder="АТ КБ «ПриватБанк»" />
         </div>
-      </div>
+      </FormSection>
     </div>
   );
 }

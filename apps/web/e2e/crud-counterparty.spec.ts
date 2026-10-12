@@ -81,6 +81,8 @@ test.describe('CRM — CRUD контрагента', () => {
     // Вибрати тип Постачальник — перший combobox у діалозі
     await modal.getByRole('combobox').first().selectOption('Постачальник');
     await modal.getByRole('textbox', { name: 'Назва компанії' }).fill(companyName);
+    // «Юридичні реквізити» згорнуті за замовчуванням (рішення власника 2026-10-12).
+    await modal.getByRole('button', { name: /Юридичні реквізити/ }).click();
     await modal.getByRole('textbox', { name: 'ЄДРПОУ' }).fill('12345678');
 
     const saveBtn = modal.locator('button:has-text("Зберегти")');

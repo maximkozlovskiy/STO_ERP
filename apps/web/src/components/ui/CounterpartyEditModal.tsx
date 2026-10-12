@@ -806,18 +806,30 @@ export function CounterpartyEditModal({
                 {error}
               </div>
             )}
-            {/* Статуси-мітки (лише при редагуванні наявного контрагента) — угорі форми: унизу, під
-                банківськими реквізитами, їх доводилось шукати прокруткою (рішення власника 2026-10-12). */}
-            {isEdit && counterparty && (
-              <div className="mb-5 pb-4 border-b border-border">
-                <label className="block text-[13px] font-medium text-foreground mb-2">
-                  Статуси
-                </label>
-                <StatusManager counterpartyId={counterparty.id} canManage={canManageStatuses} />
-              </div>
-            )}
-
-            <CounterpartyForm register={register} errors={errors} control={control} watch={watch} />
+            {/* Статуси-мітки стоять у рядку з «Типом» (рішення власника 2026-10-12); лише при
+                редагуванні наявного контрагента — у нового ще немає id, до якого їх призначати. */}
+            <CounterpartyForm
+              register={register}
+              errors={errors}
+              control={control}
+              watch={watch}
+              typeAside={
+                isEdit && counterparty ? (
+                  // Same label metrics as <Select label>: the two captions sit on one baseline.
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[13px] font-medium leading-none text-foreground">
+                      Статуси
+                    </span>
+                    <div className="flex min-h-9 items-center">
+                      <StatusManager
+                        counterpartyId={counterparty.id}
+                        canManage={canManageStatuses}
+                      />
+                    </div>
+                  </div>
+                ) : undefined
+              }
+            />
           </div>
         )}
 
