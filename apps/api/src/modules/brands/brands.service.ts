@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Brand } from '@prisma/client';
+import type { Brand, Prisma } from '@prisma/client';
 import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -16,7 +16,22 @@ const cacheKey = (orgId: string) => `ref:brands:${orgId}`;
  */
 const synonymKey = (s: string): string => s.trim().toLocaleLowerCase('uk');
 
+/**
+ * Prisma `equals` + `mode: 'insensitive'` іде в Postgres як `ILIKE` БЕЗ екранування: `_` і `%`
+ * у значенні працюють як шаблон. Синонім «A_C» «збігався» з чужим «AXC», а «%» — з будь-яким
+ * (перевірено через API 2026-10-12). Екрануємо самі; остаточне рішення — за `synonymKey` у JS.
+ */
+const insensitive = (value: string) => ({
+  equals: value.replace(/[\\%_]/g, '\\$&'),
+  mode: 'insensitive' as const,
+});
+
+/** Стеля для вибірки кандидатів: до 21 написання в запиті, збігів на кожне — одиниці. */
+const CANDIDATES = 200;
+
 const SYNONYMS_INCLUDE = { synonyms: { where: { deletedAt: null }, select: { synonym: true } } };
+
+type Db = Prisma.TransactionClient;
 
 @Injectable()
 export class BrandsService {
@@ -54,32 +69,44 @@ export class BrandsService {
   }
 
   async restore(orgId: string, id: string): Promise<BrandResponseDto> {
-    // MD-C1 parity guard: `@@unique([orgId, name])` НЕ має partial `WHERE deletedAt
-    // IS NULL`, тож активний бренд із такою ж назвою зробив би restore() джерелом
-    // P2002 → 500 замість охайного 409. Через API це майже недосяжно (create()
-    // воскрешає soft-deleted рядок замість створення дубля), але захищає від
-    // ручних SQL/сідів і тримає паритет із units.restore().
-    const deleted = await this.prisma.brand.findFirst({
-      where: { id, orgId, NOT: { deletedAt: null } },
-      select: { name: true },
+    await this.underWritingsLock(orgId, async tx => {
+      // MD-C1 parity guard: `@@unique([orgId, name])` НЕ має partial `WHERE deletedAt
+      // IS NULL`, тож активний бренд із такою ж назвою зробив би restore() джерелом
+      // P2002 → 500 замість охайного 409. Через API це майже недосяжно (create()
+      // воскрешає soft-deleted рядок замість створення дубля), але захищає від
+      // ручних SQL/сідів і тримає паритет із units.restore().
+      const deleted = await tx.brand.findFirst({
+        where: { id, orgId, NOT: { deletedAt: null } },
+        select: { name: true, synonyms: SYNONYMS_INCLUDE.synonyms },
+      });
+      if (!deleted)
+        throw new NotFoundException(translateError('err.brand.deletedNotFound', getLocale()));
+      const activeDuplicate = await tx.brand.findFirst({
+        where: { orgId, name: deleted.name, deletedAt: null, NOT: { id } },
+        select: { id: true },
+      });
+      if (activeDuplicate)
+        throw new ConflictException(translateError('err.brand.activeNameExists', getLocale()));
+      // BR-GOOD-007: поки бренд був видалений, його назву могли додати синонімом іншому бренду.
+      // Синоніми remove() знімає разом із брендом, тож зазвичай їх тут немає; якщо ж лишились
+      // активними (старі дані) — вони повертаються разом із брендом і теж мають бути вільні.
+      await this.assertWritingsFree(
+        tx,
+        orgId,
+        id,
+        deleted.name,
+        (deleted.synonyms ?? []).map(s => s.synonym),
+      );
+      // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
+      // 2026-05-30). One statement asserts (id, orgId, currently-deleted) — eliminates
+      // the race window between separate findFirst + update().
+      const result = await tx.brand.updateMany({
+        where: { id, orgId, NOT: { deletedAt: null } },
+        data: { deletedAt: null },
+      });
+      if (result.count === 0)
+        throw new NotFoundException(translateError('err.brand.deletedNotFound', getLocale()));
     });
-    if (!deleted)
-      throw new NotFoundException(translateError('err.brand.deletedNotFound', getLocale()));
-    const activeDuplicate = await this.prisma.brand.findFirst({
-      where: { orgId, name: deleted.name, deletedAt: null, NOT: { id } },
-      select: { id: true },
-    });
-    if (activeDuplicate)
-      throw new ConflictException(translateError('err.brand.activeNameExists', getLocale()));
-    // Defense-in-depth: atomic updateMany with full compound where (sto-review pattern
-    // 2026-05-30). One statement asserts (id, orgId, currently-deleted) — eliminates
-    // the race window between separate findFirst + update().
-    const result = await this.prisma.brand.updateMany({
-      where: { id, orgId, NOT: { deletedAt: null } },
-      data: { deletedAt: null },
-    });
-    if (result.count === 0)
-      throw new NotFoundException(translateError('err.brand.deletedNotFound', getLocale()));
     const item = await this.prisma.brand.findFirstOrThrow({
       where: { id, orgId },
       include: SYNONYMS_INCLUDE,
@@ -101,15 +128,21 @@ export class BrandsService {
    * Резолвить бренд за сирою назвою АБО синонімом (для Excel-імпорту товарів).
    * norm = normalizeArticle(raw). Пріоритет:
    *  1) Brand, у якого normalizeArticle(name) === norm (порівняння у JS — список брендів org малий);
-   *  2) BrandSynonym.normalizedSynonym === norm (findFirst orgId+deletedAt:null).
-   * Повертає Brand або null. Порожній/некоректний raw (norm === '') → null (не матчимо все підряд).
+   *  2) BrandSynonym.normalizedSynonym === norm (findFirst orgId+deletedAt:null);
+   *  3) точне написання без урахування регістру (ключ BR-GOOD-007) — назва, потім синонім.
+   * Повертає Brand або null. Порожній raw → null (не матчимо все підряд).
+   *
+   * Крок 3 потрібен кирилиці: `normalizeArticle` лишає тільки A-Z0-9, тож «БОШ» дає norm === ''
+   * і кроки 1–2 його не бачать. Без кроку 3 імпорт ішов створювати бренд «БОШ» і падав цілим
+   * файлом на 409 (назва зайнята / назва є синонімом іншого бренду, BR-GOOD-007).
    */
   async resolveByNameOrSynonym(
     orgId: string,
     raw: string | null | undefined,
   ): Promise<Brand | null> {
+    const key = synonymKey(raw ?? '');
+    if (!key) return null;
     const norm = normalizeArticle(raw);
-    if (!norm) return null;
 
     // Список активних брендів org (обмежений take: 1000, як у findAll) — нормалізуємо name у JS,
     // бо normalizeArticle не виражається у SQL. Для типового СТО брендів десятки-сотні.
@@ -117,63 +150,74 @@ export class BrandsService {
       where: { orgId, deletedAt: null },
       take: 1000,
     });
-    const byName = brands.find(b => normalizeArticle(b.name) === norm);
-    if (byName) return byName;
 
-    const synonym = await this.prisma.brandSynonym.findFirst({
-      where: { orgId, normalizedSynonym: norm, deletedAt: null },
-      select: { brandId: true },
+    if (norm) {
+      const byName = brands.find(b => normalizeArticle(b.name) === norm);
+      if (byName) return byName;
+
+      const synonym = await this.prisma.brandSynonym.findFirst({
+        where: { orgId, normalizedSynonym: norm, deletedAt: null },
+        select: { brandId: true },
+      });
+      if (synonym) {
+        const bySynonym = await this.prisma.brand.findFirst({
+          where: { id: synonym.brandId, orgId, deletedAt: null },
+        });
+        if (bySynonym) return bySynonym;
+      }
+    }
+
+    const byWriting = brands.find(b => synonymKey(b.name) === key);
+    if (byWriting) return byWriting;
+    const candidates = await this.prisma.brandSynonym.findMany({
+      where: {
+        orgId,
+        deletedAt: null,
+        brand: { deletedAt: null },
+        synonym: insensitive((raw ?? '').trim()),
+      },
+      select: { synonym: true, brandId: true },
+      take: CANDIDATES,
     });
-    if (!synonym) return null;
-    return this.prisma.brand.findFirst({
-      where: { id: synonym.brandId, orgId, deletedAt: null },
-    });
+    const hit = candidates.find(c => synonymKey(c.synonym) === key);
+    return hit ? (brands.find(b => b.id === hit.brandId) ?? null) : null;
   }
 
   async create(orgId: string, dto: CreateBrandDto): Promise<BrandResponseDto> {
-    const synonyms = this.cleanSynonyms(dto.synonyms, dto.name);
+    const name = dto.name.trim();
+    const synonyms = this.cleanSynonyms(dto.synonyms, name);
 
-    // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
-    const anyExisting = await this.prisma.brand.findFirst({
-      where: { orgId, name: dto.name },
-      select: { id: true, deletedAt: true },
+    const id = await this.underWritingsLock(orgId, async tx => {
+      // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
+      const anyExisting = await tx.brand.findFirst({
+        where: { orgId, name },
+        select: { id: true, deletedAt: true },
+      });
+      if (anyExisting && !anyExisting.deletedAt)
+        throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
+      await this.assertWritingsFree(tx, orgId, anyExisting?.id ?? null, name, synonyms);
+
+      let brandId: string;
+      if (anyExisting) {
+        // Resurrect soft-deleted brand.
+        await tx.brand.update({
+          where: { id: anyExisting.id, orgId },
+          data: { name, deletedAt: null },
+        });
+        brandId = anyExisting.id;
+      } else {
+        const created = await tx.brand.create({ data: { name, orgId }, select: { id: true } });
+        brandId = created.id;
+      }
+      // Новий бренд теж іде через syncSynonyms, а не через вкладений `createMany skipDuplicates`:
+      // той мовчки пропускав синонім, чий знятий рядок (tombstone) уже займає унікальний слот, —
+      // бренд створювався «успішно», але без синоніма.
+      await this.syncSynonyms(tx, orgId, brandId, synonyms);
+      return brandId;
     });
-    if (anyExisting && !anyExisting.deletedAt)
-      throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
-    await this.assertWritingsFree(orgId, anyExisting?.id ?? null, dto.name, synonyms);
-    if (anyExisting) {
-      // Resurrect soft-deleted brand. Include is omitted: we re-fetch after
-      // syncSynonyms() below, so the returned row would be stale anyway.
-      await this.prisma.brand.update({
-        where: { id: anyExisting.id, orgId },
-        data: { name: dto.name, deletedAt: null },
-      });
-      await this.syncSynonyms(orgId, anyExisting.id, synonyms);
-      const item = await this.prisma.brand.findFirstOrThrow({
-        where: { id: anyExisting.id, orgId },
-        include: SYNONYMS_INCLUDE,
-      });
-      await this.cache.del(cacheKey(orgId));
-      return this.toDto(item);
-    }
 
-    const item = await this.prisma.brand.create({
-      data: {
-        name: dto.name,
-        orgId,
-        synonyms: synonyms.length
-          ? {
-              createMany: {
-                data: synonyms.map(s => ({
-                  orgId,
-                  synonym: s,
-                  normalizedSynonym: normalizeArticle(s),
-                })),
-                skipDuplicates: true,
-              },
-            }
-          : undefined,
-      },
+    const item = await this.prisma.brand.findFirstOrThrow({
+      where: { id, orgId },
       include: SYNONYMS_INCLUDE,
     });
     await this.cache.del(cacheKey(orgId));
@@ -181,26 +225,26 @@ export class BrandsService {
   }
 
   async update(orgId: string, id: string, dto: UpdateBrandDto): Promise<BrandResponseDto> {
-    const synonyms = this.cleanSynonyms(dto.synonyms, dto.name);
+    const name = dto.name.trim();
+    const synonyms = this.cleanSynonyms(dto.synonyms, name);
 
-    // Perf: tenant guard + duplicate-name check паралелизуються — обидва тенант-ізольовані,
-    // duplicate-check читає по dto.name (не по existing) → немає залежності.
-    const [existing, duplicate] = await Promise.all([
-      this.prisma.brand.findFirst({
+    await this.underWritingsLock(orgId, async tx => {
+      const existing = await tx.brand.findFirst({
         where: { id, orgId, deletedAt: null },
         select: { id: true },
-      }),
-      this.prisma.brand.findFirst({
-        where: { orgId, name: dto.name, NOT: { id }, deletedAt: null },
+      });
+      if (!existing) throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
+      const duplicate = await tx.brand.findFirst({
+        where: { orgId, name, NOT: { id }, deletedAt: null },
         select: { id: true },
-      }),
-    ]);
-    if (!existing) throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
-    if (duplicate) throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
-    await this.assertWritingsFree(orgId, id, dto.name, synonyms);
+      });
+      if (duplicate)
+        throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
+      await this.assertWritingsFree(tx, orgId, id, name, synonyms);
 
-    await this.prisma.brand.update({ where: { id, orgId }, data: { name: dto.name } });
-    await this.syncSynonyms(orgId, id, synonyms);
+      await tx.brand.update({ where: { id, orgId }, data: { name } });
+      await this.syncSynonyms(tx, orgId, id, synonyms);
+    });
 
     const item = await this.prisma.brand.findFirstOrThrow({
       where: { id, orgId },
@@ -228,6 +272,20 @@ export class BrandsService {
     await this.cache.del(cacheKey(orgId));
   }
 
+  /**
+   * BR-GOOD-007: перевірка написань і запис ідуть однією транзакцією під блокуванням організації.
+   * Без цього два одночасні збереження різних брендів з тим самим новим синонімом обидва
+   * проходили перевірку (кожне читало до запису іншого): однакове написання другий запис мовчки
+   * пропускав на унікальному індексі, різний регістр («Bosch»/«bosch») — зберігалися обидва.
+   * Блокування транзакційне — знімається разом із commit/rollback; помилка відкочує все.
+   */
+  private underWritingsLock<T>(orgId: string, work: (tx: Db) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`brands:${orgId}`}))`;
+      return work(tx);
+    });
+  }
+
   // Diff synonyms: soft-delete removed, create new (resurrection-aware).
   //
   // §5.2 — BrandSynonym has @@unique([orgId, synonym]) WITHOUT deletedAt.
@@ -237,23 +295,36 @@ export class BrandsService {
   // We split the incoming list into (a) resurrect — flip deletedAt=null AND
   // re-bind to this brandId for existing soft-deleted rows (org-scoped because
   // the unique is org-scoped), (b) create — only truly new synonyms.
-  private async syncSynonyms(orgId: string, brandId: string, incoming: string[]): Promise<void> {
-    // Read active rows for THIS brand + any soft-deleted rows ACROSS the org
+  //
+  // BR-GOOD-007: «вільний» рядок — це знятий синонім АБО синонім видаленого бренду (так само
+  // рахує assertWritingsFree). Обидва переїжджають до поточного бренду: правило каже, що таке
+  // написання нікому не належить, а унікальний слот інакше не дав би його створити.
+  private async syncSynonyms(
+    db: Db,
+    orgId: string,
+    brandId: string,
+    incoming: string[],
+  ): Promise<void> {
+    // Read active rows for THIS brand + any free rows ACROSS the org
     // (unique is per-org, so resurrection must consider other brands' tombstones).
-    const [activeOfBrand, deletedInOrg] = await Promise.all([
-      this.prisma.brandSynonym.findMany({
+    const [activeOfBrand, freeInOrg] = await Promise.all([
+      db.brandSynonym.findMany({
         where: { brandId, orgId, deletedAt: null },
         select: { id: true, synonym: true },
       }),
       incoming.length
-        ? this.prisma.brandSynonym.findMany({
-            where: { orgId, synonym: { in: incoming }, deletedAt: { not: null } },
+        ? db.brandSynonym.findMany({
+            where: {
+              orgId,
+              synonym: { in: incoming },
+              OR: [{ deletedAt: { not: null } }, { brand: { deletedAt: { not: null } } }],
+            },
             select: { id: true, synonym: true },
           })
         : Promise.resolve([] as { id: string; synonym: string }[]),
     ]);
     const activeBySyn = new Map(activeOfBrand.map(s => [s.synonym, s.id]));
-    const deletedBySyn = new Map(deletedInOrg.map(s => [s.synonym, s.id]));
+    const deletedBySyn = new Map(freeInOrg.map(s => [s.synonym, s.id]));
     const incomingSet = new Set(incoming);
 
     // Active rows of THIS brand that are no longer in incoming → soft-delete.
@@ -262,7 +333,7 @@ export class BrandsService {
       .map(([, id]) => id);
     // Incoming entries not yet active for this brand.
     const notActive = incoming.filter(s => !activeBySyn.has(s));
-    // Among those, ones whose soft-deleted row exists somewhere in the org → resurrect+rebind.
+    // Among those, ones whose free row exists somewhere in the org → resurrect+rebind.
     const toResurrect = notActive
       .filter(s => deletedBySyn.has(s))
       .map(s => ({ id: deletedBySyn.get(s)!, synonym: s }));
@@ -271,7 +342,7 @@ export class BrandsService {
 
     await Promise.all([
       toRemove.length
-        ? this.prisma.brandSynonym.updateMany({
+        ? db.brandSynonym.updateMany({
             where: { id: { in: toRemove }, orgId },
             data: { deletedAt: new Date() },
           })
@@ -279,13 +350,13 @@ export class BrandsService {
       // Resurrect: воскрешаємо по одному updateMany на synonym, щоб заповнити normalizedSynonym
       // (старі tombstone-рядки могли мати null) — набір малий (≤20 синонімів на бренд).
       ...toResurrect.map(({ id, synonym }) =>
-        this.prisma.brandSynonym.updateMany({
+        db.brandSynonym.updateMany({
           where: { id, orgId },
           data: { deletedAt: null, brandId, normalizedSynonym: normalizeArticle(synonym) },
         }),
       ),
       toCreate.length
-        ? this.prisma.brandSynonym.createMany({
+        ? db.brandSynonym.createMany({
             data: toCreate.map(s => ({
               orgId,
               brandId,
@@ -323,11 +394,15 @@ export class BrandsService {
    *  - назва бренду не є синонімом іншого бренду.
    * Порівняння без урахування регістру; у повідомленні — що саме і з яким брендом збіглось.
    *
+   * База лише звужує вибірку (ILIKE з екранованими `_`/`%`); збіг вирішує `synonymKey` — той самий
+   * ключ, яким `cleanSynonyms` зводить повтори, тож два шляхи порівняння не можуть розійтись.
+   *
    * Раніше дубль не відхилявся, а мовчки пропускався (`createMany skipDuplicates` на унікальному
    * індексі) — користувач бачив «збережено», а синоніма не було; при імпорті прайсу написання
    * тоді належало тому бренду, який додав його першим.
    */
   private async assertWritingsFree(
+    db: Db,
     orgId: string,
     brandId: string | null,
     name: string,
@@ -335,23 +410,23 @@ export class BrandsService {
   ): Promise<void> {
     const otherBrand = brandId ? { NOT: { id: brandId } } : {};
     const otherBrandSynonym = brandId ? { NOT: { brandId } } : {};
-    const insensitive = (value: string) => ({ equals: value, mode: 'insensitive' as const });
+    const nameKey = synonymKey(name);
+    const wanted = new Set(synonyms.map(synonymKey));
 
-    const [takenSynonym, brandNamedLikeSynonym, synonymLikeName] = await Promise.all([
+    const [synonymRows, brandRows] = await Promise.all([
+      db.brandSynonym.findMany({
+        where: {
+          orgId,
+          deletedAt: null,
+          brand: { deletedAt: null },
+          ...otherBrandSynonym,
+          OR: [...synonyms, name.trim()].map(s => ({ synonym: insensitive(s) })),
+        },
+        select: { synonym: true, brand: { select: { name: true } } },
+        take: CANDIDATES,
+      }),
       synonyms.length
-        ? this.prisma.brandSynonym.findFirst({
-            where: {
-              orgId,
-              deletedAt: null,
-              brand: { deletedAt: null },
-              ...otherBrandSynonym,
-              OR: synonyms.map(s => ({ synonym: insensitive(s) })),
-            },
-            select: { synonym: true, brand: { select: { name: true } } },
-          })
-        : Promise.resolve(null),
-      synonyms.length
-        ? this.prisma.brand.findFirst({
+        ? db.brand.findMany({
             where: {
               orgId,
               deletedAt: null,
@@ -359,20 +434,12 @@ export class BrandsService {
               OR: synonyms.map(s => ({ name: insensitive(s) })),
             },
             select: { name: true },
+            take: CANDIDATES,
           })
-        : Promise.resolve(null),
-      this.prisma.brandSynonym.findFirst({
-        where: {
-          orgId,
-          deletedAt: null,
-          brand: { deletedAt: null },
-          ...otherBrandSynonym,
-          synonym: insensitive(name.trim()),
-        },
-        select: { brand: { select: { name: true } } },
-      }),
+        : Promise.resolve([] as { name: string }[]),
     ]);
 
+    const takenSynonym = synonymRows.find(r => wanted.has(synonymKey(r.synonym)));
     if (takenSynonym)
       throw new ConflictException(
         translateError('err.brand.synonymTaken', getLocale(), {
@@ -380,6 +447,7 @@ export class BrandsService {
           brand: takenSynonym.brand.name,
         }),
       );
+    const brandNamedLikeSynonym = brandRows.find(b => wanted.has(synonymKey(b.name)));
     if (brandNamedLikeSynonym)
       throw new ConflictException(
         translateError('err.brand.synonymIsBrandName', getLocale(), {
@@ -389,6 +457,7 @@ export class BrandsService {
           brand: brandNamedLikeSynonym.name,
         }),
       );
+    const synonymLikeName = synonymRows.find(r => synonymKey(r.synonym) === nameKey);
     if (synonymLikeName)
       throw new ConflictException(
         translateError('err.brand.nameIsSynonym', getLocale(), {

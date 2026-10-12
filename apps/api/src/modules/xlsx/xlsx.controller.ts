@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   UseGuards,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
@@ -161,12 +162,16 @@ export class XlsxController {
         await this.brandsService.create(orgId, { name: row.name });
         result.created++;
       } catch (e: unknown) {
-        // Assume conflict = already exists
-        if (e instanceof Error && e.message.includes('уже')) {
-          result.updated++;
-        } else {
-          result.errors.push(`${row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
-        }
+        // Бренд із такою назвою вже є — рядок пропущено без помилки. Раніше це впізнавалось за
+        // словом «уже» в тексті: «…вже існує» його не містить, тож наявні бренди йшли в помилки,
+        // а відмова BR-GOOD-007 («Назва … уже є синонімом бренду …») рахувалась як «оновлено».
+        // Тепер відмова правила — рядок у `errors` із назвою й поясненням; решта файла імпортується.
+        const message = e instanceof Error ? e.message : 'помилка';
+        const alreadyExists =
+          e instanceof ConflictException &&
+          message === translateError('err.brand.nameExists', getLocale());
+        if (alreadyExists) result.updated++;
+        else result.errors.push(`${row.name}: ${message}`);
       }
     }
 

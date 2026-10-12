@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { ValidationPipe } from '@nestjs/common';
+import { ConflictException, ValidationPipe } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -25,6 +25,7 @@ const xlsxServiceMock = {
   generateSDLinesTemplate: vi.fn(),
   generateWOPartsTemplate: vi.fn(),
   applyPricingFromList: vi.fn(),
+  parseBrands: vi.fn(),
 };
 
 const goodsServiceMock = { findAll: vi.fn(), create: vi.fn() };
@@ -131,6 +132,49 @@ describe('Xlsx — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(400);
       expect(xlsxServiceMock.applyPricingFromList).not.toHaveBeenCalled();
+    });
+  });
+
+  // guards: BR-GOOD-007
+  describe('POST /xlsx/import/brands', () => {
+    const BOUNDARY = 'reviewbrboundary';
+    const upload = () =>
+      (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/xlsx/import/brands',
+        headers: { 'content-type': `multipart/form-data; boundary=${BOUNDARY}` },
+        payload:
+          `--${BOUNDARY}\r\n` +
+          'Content-Disposition: form-data; name="file"; filename="brands.xlsx"\r\n' +
+          'Content-Type: application/octet-stream\r\n\r\n' +
+          'x\r\n' +
+          `--${BOUNDARY}--\r\n`,
+      });
+
+    // Масовий імпорт не падає цілим файлом на 409: рядок, якому відмовило правило, пропускається
+    // з поясненням, решта імпортується. Раніше наявний бренд («…вже існує») ішов у помилки, а
+    // відмова правила («…уже є синонімом…») рахувалась як «оновлено» — розпізнавання було за
+    // словом «уже» в тексті.
+    it('наявний бренд — пропуск без помилки; відмова BR-GOOD-007 — рядок у errors; решта створюється', async () => {
+      xlsxServiceMock.parseBrands.mockResolvedValueOnce([
+        { name: 'Новий' },
+        { name: 'Bosch' },
+        { name: 'БОШ' },
+      ]);
+      brandsServiceMock.create
+        .mockResolvedValueOnce({ id: 'b-new' })
+        .mockRejectedValueOnce(new ConflictException('Бренд з такою назвою вже існує'))
+        .mockRejectedValueOnce(new ConflictException('Назва «БОШ» уже є синонімом бренду «Bosch»'));
+
+      const res = await upload();
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toEqual({
+        created: 1,
+        updated: 1,
+        errors: ['БОШ: Назва «БОШ» уже є синонімом бренду «Bosch»'],
+      });
+      expect(brandsServiceMock.create).toHaveBeenCalledTimes(3);
     });
   });
 });

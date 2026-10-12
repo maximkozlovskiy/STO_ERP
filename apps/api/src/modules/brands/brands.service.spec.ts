@@ -51,6 +51,9 @@ function makeService(mocks: ReturnType<typeof makeMocks>): BrandsService {
 
 // `syncSynonyms` is private — invoke via [reflection] for focused regression
 // without dragging in the full create()/update() Brand path.
+const prismaOf = (service: BrandsService): unknown =>
+  (service as unknown as { prisma: unknown }).prisma;
+
 async function callSyncSynonyms(
   service: BrandsService,
   orgId: string,
@@ -59,9 +62,9 @@ async function callSyncSynonyms(
 ): Promise<void> {
   await (
     service as unknown as {
-      syncSynonyms(o: string, b: string, i: string[]): Promise<void>;
+      syncSynonyms(db: unknown, o: string, b: string, i: string[]): Promise<void>;
     }
-  ).syncSynonyms(orgId, brandId, incoming);
+  ).syncSynonyms(prismaOf(service), orgId, brandId, incoming);
 }
 
 describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
@@ -185,14 +188,19 @@ describe('BrandsService.syncSynonyms — resurrection (Bug §5.2)', () => {
 // бренд із такою ж назвою зробив би restore() джерелом P2002 → 500. Guard читає
 // name видаленого рядка та відхиляє restore охайним 409, якщо активний дубль існує.
 function makeRestoreMocks() {
-  return {
-    prisma: {
-      brand: {
-        findFirst: vi.fn(),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-        findFirstOrThrow: vi.fn(),
-      },
+  const prisma = {
+    // restore() runs inside a transaction under the org lock (BR-GOOD-007).
+    $transaction: vi.fn((fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => fn(prisma)),
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    brand: {
+      findFirst: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirstOrThrow: vi.fn(),
     },
+    brandSynonym: { findMany: vi.fn().mockResolvedValue([]) },
+  };
+  return {
+    prisma,
     cache: { get: vi.fn().mockResolvedValue(null), set: vi.fn(), del: vi.fn() },
   };
 }
@@ -258,7 +266,10 @@ function makeResolveMocks() {
         findMany: vi.fn().mockResolvedValue([]),
         findFirst: vi.fn().mockResolvedValue(null),
       },
-      brandSynonym: { findFirst: vi.fn().mockResolvedValue(null) },
+      brandSynonym: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     },
     cache: { get: vi.fn().mockResolvedValue(null), set: vi.fn(), del: vi.fn() },
   };
@@ -276,8 +287,41 @@ describe('BrandsService.resolveByNameOrSynonym', () => {
     );
   });
 
-  it('порожній/некоректний raw (norm==="") → null, без запитів', async () => {
-    expect(await service.resolveByNameOrSynonym(ORG, '  ---  ')).toBeNull();
+  // Кирилиця: normalizeArticle лишає тільки A-Z0-9 → norm === ''. До кроку «точне написання»
+  // такий бренд не резолвився взагалі, імпорт ішов його створювати й падав на 409 цілим файлом.
+  it('кирилична назва резолвиться за точним написанням без урахування регістру', async () => {
+    mocks.prisma.brand.findMany.mockResolvedValueOnce([
+      { id: 'b-1', name: 'Bosch' },
+      { id: 'b-2', name: 'Дорожня Карта' },
+    ]);
+    expect(await service.resolveByNameOrSynonym(ORG, ' дорожня карта ')).toMatchObject({
+      id: 'b-2',
+    });
+    expect(mocks.prisma.brandSynonym.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('кириличний синонім резолвиться за точним написанням; `_`/`%` у запиті екрануються', async () => {
+    mocks.prisma.brand.findMany.mockResolvedValue([{ id: 'b-1', name: 'Bosch' }]);
+    mocks.prisma.brandSynonym.findMany.mockResolvedValueOnce([{ synonym: 'БОШ', brandId: 'b-1' }]);
+    expect(await service.resolveByNameOrSynonym(ORG, 'бош')).toMatchObject({ id: 'b-1' });
+
+    // База могла повернути й «схожий» рядок — рішення за ключем написання, не за ILIKE.
+    mocks.prisma.brandSynonym.findMany.mockResolvedValueOnce([{ synonym: 'боXш', brandId: 'b-1' }]);
+    expect(await service.resolveByNameOrSynonym(ORG, 'бо_ш')).toBeNull();
+    expect(mocks.prisma.brandSynonym.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          orgId: ORG,
+          deletedAt: null,
+          brand: { deletedAt: null },
+          synonym: { equals: 'бо\\_ш', mode: 'insensitive' },
+        }),
+      }),
+    );
+  });
+
+  it('порожній raw → null, без запитів', async () => {
+    expect(await service.resolveByNameOrSynonym(ORG, '     ')).toBeNull();
     expect(await service.resolveByNameOrSynonym(ORG, null)).toBeNull();
     expect(mocks.prisma.brand.findMany).not.toHaveBeenCalled();
   });
