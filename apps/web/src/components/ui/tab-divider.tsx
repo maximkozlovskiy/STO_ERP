@@ -1,0 +1,13 @@
+/**
+ * Вертикальна риска у смузі вкладок сторінки: відділяє основні списки від довідників до них
+ * (Каталог: роботи/товари/послуги | одиниці/бренди/статуси; Контрагенти | статуси).
+ */
+export function TabDivider() {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="tabs-divider"
+      className="mx-2 my-2.5 w-px shrink-0 self-stretch bg-border"
+    />
+  );
+}

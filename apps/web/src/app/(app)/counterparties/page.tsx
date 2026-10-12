@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
+import { Fragment, useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
+import { TabDivider } from '@/components/ui/tab-divider';
 import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
@@ -117,21 +118,23 @@ function CrmTabsShell() {
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {CRM_TABS.map(tabItem => (
-          <button
-            key={tabItem.key}
-            onMouseEnter={() => {
-              if (tabItem.key === 'statuses') void import('./CounterpartyStatusesTab');
-            }}
-            onClick={() => setTab(tabItem.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === tabItem.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t(tabItem.labelKey)}
-          </button>
+          <Fragment key={tabItem.key}>
+            {tabItem.key === 'statuses' && <TabDivider />}
+            <button
+              onMouseEnter={() => {
+                if (tabItem.key === 'statuses') void import('./CounterpartyStatusesTab');
+              }}
+              onClick={() => setTab(tabItem.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+                tab === tabItem.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t(tabItem.labelKey)}
+            </button>
+          </Fragment>
         ))}
       </div>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, Suspense, useMemo } from 'react';
+import { TabDivider } from '@/components/ui/tab-divider';
 import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -68,13 +69,7 @@ function CatalogPageClient() {
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {TABS.map(tabDef => (
           <Fragment key={tabDef.key}>
-            {tabDef.dividerBefore && (
-              <span
-                aria-hidden="true"
-                data-testid="catalog-tabs-divider"
-                className="mx-2 my-2.5 w-px shrink-0 self-stretch bg-border"
-              />
-            )}
+            {tabDef.dividerBefore && <TabDivider />}
             <button
               onMouseEnter={() => PRELOAD_MAP[tabDef.key]?.()}
               onClick={() => setTab(tabDef.key)}
