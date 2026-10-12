@@ -254,6 +254,36 @@ describe('Modal', () => {
     expect(getPanel().style.maxWidth).toBe('672px');
   });
 
+  // Рішення власника 2026-10-12: картки редагування елементів довідників (контрагент, товар,
+  // співробітник) трохи ширші за lg і НЕ міняють розмір вікна при переході між вкладками.
+  // Mutation-verify: прибрати `fixedHeight && FIXED_HEIGHT_CLASS` → кейс зі сталою висотою падає.
+  it('size="wide" виставляє max-width: 768px (картки контрагента, товару, співробітника)', () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Wide" size="wide">
+        Вміст
+      </Modal>,
+    );
+    expect(getPanel().style.maxWidth).toBe('768px');
+  });
+
+  it('fixedHeight — вікно сталої висоти (760px, не вище 90% екрана); без нього висота за вмістом', () => {
+    const { unmount } = render(
+      <Modal open onClose={vi.fn()} title="Fixed" fixedHeight>
+        Вміст
+      </Modal>,
+    );
+    expect(getPanel().className).toContain('h-[min(90dvh,760px)]');
+    // тіло лишається прокручуваним і займає решту вікна
+    expect(getPanel().querySelector('.flex-1.min-h-0.overflow-y-auto')).not.toBeNull();
+    unmount();
+    render(
+      <Modal open onClose={vi.fn()} title="Auto">
+        Вміст
+      </Modal>,
+    );
+    expect(getPanel().className).not.toContain('h-[min(');
+  });
+
   it('size="xl" виставляє max-width: 896px (work-orders/catalog goods/purchase-orders/pricing-rules)', () => {
     render(
       <Modal open onClose={vi.fn()} title="Extra large" size="xl">

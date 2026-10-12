@@ -296,7 +296,9 @@ export function GoodEditModal({
         open={open}
         onClose={() => void handleClose()}
         title={isEdit ? 'Редагування товару' : 'Новий товар / запчастина'}
-        size={isEdit ? 'lg' : 'xl'}
+        size={isEdit ? 'wide' : 'xl'}
+        // Картка з вкладками тримає сталий розмір: вкладки різної довжини не «смикають» вікно.
+        fixedHeight={isEdit}
         footer={
           <Button onClick={() => void onValid()} loading={saving}>
             {isEdit ? 'Зберегти' : 'Зберегти та продовжити'}

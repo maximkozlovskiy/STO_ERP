@@ -17,7 +17,7 @@ import { useAnimatedPresence } from '@/hooks/useAnimatedPresence';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
-type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'content';
+type ModalSize = 'sm' | 'md' | 'lg' | 'wide' | 'xl' | 'full' | 'content';
 
 interface ModalProps {
   open: boolean;
@@ -29,6 +29,12 @@ interface ModalProps {
   size?: ModalSize;
   minHeight?: number | string;
   bodyMinHeight?: number | string;
+  /**
+   * Стала висота вікна (до 90% екрана): тіло прокручується всередині, а саме вікно не «стрибає»,
+   * коли змінюється обсяг вмісту. Для карток елементів із вкладками — перехід між вкладками не
+   * має міняти розмір вікна (рішення власника 2026-10-12).
+   */
+  fixedHeight?: boolean;
   className?: string;
   hideClose?: boolean;
   /** Extra action buttons rendered to the left of the × close button */
@@ -48,12 +54,17 @@ const sizeWidths: Record<ModalSize, string> = {
   sm: '384px',
   md: '512px',
   lg: '672px',
+  // Картки редагування елементів довідників (контрагент, товар, співробітник) — трохи ширші за lg.
+  wide: '768px',
   xl: '896px',
   full: '95vw',
   content: 'calc(100vw - 216px)',
 };
 
 const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
+
+/** Висота вікна з `fixedHeight`: 760px, але не вище за 90% екрана. */
+const FIXED_HEIGHT_CLASS = 'h-[min(90dvh,760px)]';
 
 // Animates its height to match content via ResizeObserver.
 // outer: overflow:hidden — clips during transition, no scrollbar flash.
@@ -185,6 +196,7 @@ export function Modal({
   size = 'md',
   minHeight,
   bodyMinHeight,
+  fixedHeight,
   className,
   hideClose,
   extraHeaderActions,
@@ -251,6 +263,8 @@ export function Modal({
           'relative z-10 w-full rounded-xl bg-surface',
           'shadow-xl border border-border',
           'flex flex-col max-h-[90dvh]',
+          // Стала висота: тіло (flex-1) забирає решту і прокручується, вікно розмір не міняє.
+          fixedHeight && FIXED_HEIGHT_CLASS,
           className,
         )}
         style={{

@@ -407,7 +407,9 @@ export function EmployeeEditModal({ open, employee, onClose, onSaved }: Employee
         title={
           isEdit && employee ? `${employee.lastName} ${employee.firstName}` : 'Новий співробітник'
         }
-        size="lg"
+        size={isEdit ? 'wide' : 'lg'}
+        // A card with tabs keeps a stable size: tabs of different length must not resize the window.
+        fixedHeight={isEdit}
         footer={
           <>
             {/* (А) save — це handleSubmit() з try/catch + setError, handleClose лише

@@ -756,8 +756,9 @@ export function CounterpartyEditModal({
         open={open}
         onClose={() => void handleClose()}
         title={isEdit ? 'Редагування контрагента' : 'Новий контрагент'}
-        size={isEdit ? 'lg' : 'md'}
-        bodyMinHeight={isEdit ? 340 : undefined}
+        size={isEdit ? 'wide' : 'md'}
+        // Картка з вкладками тримає сталий розмір: вкладки різної довжини не «смикають» вікно.
+        fixedHeight={isEdit}
         footer={
           editTab === 'main' ? (
             <Button onClick={() => void (isEdit ? update() : create())} loading={saving}>
