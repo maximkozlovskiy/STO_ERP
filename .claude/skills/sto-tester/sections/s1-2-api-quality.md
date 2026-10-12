@@ -103,3 +103,6 @@ done
 - [ ] Виправлення класу «дата у відборі» (Bug #817/#818) зроблено в ЧАСТИНІ місць: після нього пройти наживо ВСІ endpoint-и з датою одним циклом (`0000-01-01`, `0001-01-01`, `2026-02-31`, `9999-12-31`, порожнє, повторений параметр) і шукати 500 — а не лише ті, що в diff-і (Bug #820: п'ять списків, Bug #821: онлайн-запис). Grep залишків: `grep -rn "@IsDateString()" apps/api/src/modules --include=*.dto.ts`; `grep -rnE "DATE_RE|\\d\{4\}-\\d\{2\}-\\d\{2\}" apps/api/src/modules --include=*.controller.ts --include=*.service.ts`
 
 ---
+
+- [ ] Кожен endpoint із завантаженням файла отримує наживо: текст із розширенням .xlsx, порожній файл, PNG, xlsx-вміст із розширенням .csv → 400 з поясненням, не 500 (Bug #833, клас #751). `grep -n "xlsx.load(" apps/api/src --include=*.ts -r | grep -v spec` — кожен виклик у try/catch або через `loadXlsxWorkbook`.
+- [ ] Тіло запиту без DTO-класу (`@Body() body: { … }`) не валідується: рядок іде у `where: { id }` → помилка Prisma → 500 (Bug #835). `grep -rn "@Body() [a-z]*: {" apps/api/src --include=*.controller.ts`.
