@@ -114,7 +114,7 @@ cd apps/api && npx vitest run src/modules/inventory/<файл>.spec.ts
 | find movements                                        | `inventory.find-movements.spec.ts`    | 10     | —                               |
 | інваріанти балансу на моделі у спеку (property-based) | `inventory.invariants.spec.ts`        | 8      | —                               |
 | єдина точка запису залишків (статичний сторож коду)   | `inventory.single-writer.spec.ts`     | 4      | BR-INVT-001, 016                |
-| HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 43     | BR-GOOD-009, 010                |
+| HTTP-контракт (DTO, статуси, валідація)               | `pricing-rules.contract.spec.ts`      | 45     | BR-GOOD-009, 010                |
 | вибір правила для товару і формула ціни               | `pricing.service.spec.ts`             | 39     | BR-GOOD-009, 010                |
 | WRITEOFF→RETURN на справжніх сервісах, Σ-інваріант    | `return-roundtrip.invariants.spec.ts` | 5      | BR-INVT-013, 014                |
 | ролі доступу до залишків (метадані @Roles)            | `stock-items.access.spec.ts`          | 7      | —                               |

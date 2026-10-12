@@ -33,6 +33,7 @@ const prismaMock = {
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     createMany: vi.fn().mockResolvedValue({ count: 0 }),
     findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
   },
   goodCategory: {
     findFirst: vi.fn(),
@@ -842,6 +843,7 @@ describe('PricingRules — HTTP Contract', () => {
       prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
         existingRule({ _count: { goods: 3 } }),
       );
+      prismaMock.pricingRuleGood.count.mockResolvedValueOnce(3);
       prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
         savedRow({
           category: null,
@@ -859,6 +861,69 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
       expect(prismaMock.pricingRuleGood.deleteMany).not.toHaveBeenCalled();
       expect(updateData()).toMatchObject({ name: 'Нова назва', brandId: null });
+    });
+
+    // Bug #834. guards: BR-GOOD-009
+    it('PATCH: у списку лишились тільки видалені товари, запит обирає бренд → правило стає правилом бренду', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ _count: { goods: 2 } }),
+      );
+      // Живих товарів у списку немає: форма показує його порожнім і goodIds не надсилає.
+      prismaMock.pricingRuleGood.count.mockResolvedValueOnce(0);
+      prismaMock.brand.findFirst.mockResolvedValueOnce({ id: BRAND });
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          brandId: BRAND,
+          category: null,
+          brand: { id: BRAND, name: 'Bosch' },
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, {
+        name: 'Список',
+        brandId: BRAND,
+        goodCategoryId: null,
+        goodType: null,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.pricingRuleGood.count).toHaveBeenCalledWith({
+        where: { orgId: 'org-1', pricingRuleId: RULE_ID, good: { deletedAt: null } },
+      });
+      expect(updateData()).toMatchObject({ brandId: BRAND });
+      // Зв'язки з видаленими товарами знято: відновлений товар не поверне правилу список.
+      expect(prismaMock.pricingRuleGood.deleteMany).toHaveBeenCalledWith({
+        where: { orgId: 'org-1', pricingRuleId: RULE_ID },
+      });
+    });
+
+    // Bug #834: правка, яка вимір не обирає, список із видаленими товарами не чіпає.
+    it('PATCH без вибору виміру: список із самих видалених товарів лишається (правило не стає загальним)', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ _count: { goods: 2 } }),
+      );
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, {
+        name: 'Перейменоване',
+        brandId: null,
+        goodCategoryId: null,
+        goodType: null,
+        isActive: false,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.pricingRuleGood.count).not.toHaveBeenCalled();
+      expect(prismaMock.pricingRuleGood.deleteMany).not.toHaveBeenCalled();
     });
 
     // guards: BR-GOOD-010

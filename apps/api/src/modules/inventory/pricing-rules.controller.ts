@@ -280,9 +280,24 @@ export class PricingRulesController {
         // бренд, а правило мало список товарів, область має лишитись несуперечливою (один вимір).
         // undefined — поле не чіпали; null (для списку — []) — зняти значення.
         const supplierId = dto.supplierId !== undefined ? dto.supplierId : existing.supplierId;
+        // Bug #834: у списку можуть лишитись самі видалені товари. Форма таких не показує —
+        // список у ній порожній і його нічим очистити, а бренд, категорія й тип доступні. Якщо
+        // запит явно обирає вимір і живих товарів у списку немає — це вже не правило зі списком:
+        // інакше обране мовчки відкидалось би, і перетворити таке правило було б неможливо.
+        let listStands = existing._count.goods > 0;
+        if (
+          listStands &&
+          goodIds === undefined &&
+          (dto.brandId || dto.goodCategoryId || dto.goodType)
+        ) {
+          const liveGoods = await tx.pricingRuleGood.count({
+            where: { orgId, pricingRuleId: id, good: { deletedAt: null } },
+          });
+          listStands = liveGoods > 0;
+        }
         const scope = this.normalizeScope({
           goodIds,
-          hasGoods: goodIds !== undefined ? goodIds.length > 0 : existing._count.goods > 0,
+          hasGoods: goodIds !== undefined ? goodIds.length > 0 : listStands,
           brandId: dto.brandId !== undefined ? dto.brandId : existing.brandId,
           goodCategoryId: categoryTouched ? (dto.goodCategoryId ?? null) : existing.goodCategoryId,
           // Стара текстова категорія живе, доки категорію не чіпали; вибір (або зняття) прибирає.
