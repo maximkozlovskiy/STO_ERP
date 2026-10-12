@@ -135,3 +135,16 @@ grep -rn "toCamel\|snakeToCamel\|snake_to_camel" apps/api/src/ --include="*.ts" 
 - [ ] Polymorphic `entityType` → `IsIn([...ENTITY_TYPES])` + фронт використовує ті самі константи
 
 ---
+
+## Спеки: підміна спільного модуля цілком (повний прогін, 2026-10-12)
+
+```bash
+# vi.mock спільного модуля фабрикою БЕЗ importOriginal — підозра на витік у чужі спеки
+grep -rn "vi.mock('\.\./\.\./common/" apps/api/src --include="*.spec.ts" | grep -v importOriginal
+```
+
+- [ ] `vi.mock` модуля з `common/` (особливо `tenant/tenant-context`) — лише частковий
+      (`async importOriginal => ({ ...(await importOriginal()), … })`) або відсутній, якщо типова
+      поведінка годиться. Проєкт `shared` у vitest не ізолює модулі між файлами: мок без
+      `runUnscoped` / `isTenantBypassed` валить `field-encryption.extension.spec.ts` і
+      `for-each-active-org.spec.ts` — і лише в ПОВНОМУ прогоні (деталі — `docs/GOTCHAS.md`).
