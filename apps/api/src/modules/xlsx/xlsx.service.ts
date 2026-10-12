@@ -27,6 +27,7 @@ import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { GoodMatcherService } from '../goods/good-matcher.service';
 import { parseGoodRefRows } from './good-ref-rows.parser';
+import { loadXlsxWorkbook } from './load-workbook';
 import { deduplicateBy } from '../../common/utils/array';
 import { money } from '../../common/utils/money';
 import { normalizeArticle } from '../../common/utils/normalize-article';
@@ -135,17 +136,6 @@ export class XlsxService {
     // TTL 300 с — із запасом покриває крок ручного мапінгу колонок між двома запитами.
     await this.cache.set(key, grid, 300);
     return grid;
-  }
-
-  /**
-   * Перетворити Buffer/Uint8Array у незалежний ArrayBuffer для ExcelJS.
-   * Buffer.allocUnsafe використовує спільний пул → buffer.buffer може бути
-   * більший за фактичні дані, з byteOffset > 0. Прямий cast (buffer.buffer
-   * as ArrayBuffer) → ExcelJS читає чужі дані з пулу. slice(byteOffset, +length)
-   * гарантує копію саме нашого зрізу.
-   */
-  private toArrayBuffer(buf: Buffer | Uint8Array): ArrayBuffer {
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   }
 
   async generateGoodsTemplate(): Promise<Buffer> {
@@ -282,8 +272,7 @@ export class XlsxService {
   }
 
   async parseGoods(buffer: Buffer | Uint8Array): Promise<GoodRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const workbook = await loadXlsxWorkbook(buffer);
     const sheet = workbook.getWorksheet('Товари') || workbook.worksheets[0];
 
     if (!sheet)
@@ -326,8 +315,7 @@ export class XlsxService {
   }
 
   async parseWorks(buffer: Buffer | Uint8Array): Promise<WorkRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const workbook = await loadXlsxWorkbook(buffer);
     const sheet = workbook.getWorksheet('Роботи') || workbook.worksheets[0];
 
     if (!sheet)
@@ -369,8 +357,7 @@ export class XlsxService {
   }
 
   async parseBrands(buffer: Buffer | Uint8Array): Promise<BrandRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const workbook = await loadXlsxWorkbook(buffer);
     const sheet = workbook.getWorksheet('Бренди') || workbook.worksheets[0];
 
     if (!sheet)
@@ -405,8 +392,7 @@ export class XlsxService {
   }
 
   async parseUnits(buffer: Buffer | Uint8Array): Promise<UnitRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const workbook = await loadXlsxWorkbook(buffer);
     const sheet = workbook.getWorksheet('Одиниці') || workbook.worksheets[0];
 
     if (!sheet)
@@ -910,8 +896,7 @@ export class XlsxService {
   }
 
   async parsePOLines(buffer: Buffer | Uint8Array): Promise<POLineRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(this.toArrayBuffer(buffer));
+    const workbook = await loadXlsxWorkbook(buffer);
     const sheet = workbook.worksheets[0];
 
     if (!sheet)

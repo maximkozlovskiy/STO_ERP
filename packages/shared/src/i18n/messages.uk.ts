@@ -562,6 +562,8 @@ export const uk: Record<string, string> = {
   'err.xlsx.workOrderNotDraftOrEstimate': 'Наряд не в статусі DRAFT або ESTIMATE',
   'err.xlsx.tableNotFound': 'Таблиця не знайдена',
   'err.xlsx.fileNoDataRows': 'Файл не містить жодного рядка даних',
+  'err.xlsx.tableFileUnreadable':
+    'Не вдалося прочитати файл: він пошкоджений або це не Excel (.xlsx) чи CSV (.csv)',
   'err.xlsx.documentNotFound': 'Документ не знайдено',
   'err.xlsx.rowGoodMissing': 'Рядок {{row}}: не вказано товар',
   'err.xlsx.rowGoodNotFound': 'Рядок {{row}}: товар не знайдено',

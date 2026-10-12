@@ -11,7 +11,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import ExcelJS from 'exceljs';
+import { BadRequestException } from '@nestjs/common';
 import { parseGoodRefRows } from './good-ref-rows.parser';
+import { XlsxService } from './xlsx.service';
 
 async function xlsx(rows: unknown[][]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -159,5 +161,35 @@ describe('parseGoodRefRows — перелік товарів із файла', (
   it('файл лише із заголовком або порожній → жодного рядка', async () => {
     expect(await parseGoodRefRows(await xlsx([['Артикул']]), 'xlsx')).toEqual([]);
     expect(await parseGoodRefRows(csv(''), 'csv')).toEqual([]);
+  });
+
+  // Bug #833: файл не того формату — помилка файла користувача (400 з поясненням), а не 500.
+  it('не-Excel із розширенням .xlsx (текст, картинка, порожній) → 400 «не вдалося прочитати»', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    for (const buf of [csv('це не excel\n1,2,3\n'), png, csv('')]) {
+      const err = await parseGoodRefRows(buf, 'xlsx').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as BadRequestException).message).toContain('Не вдалося прочитати файл');
+    }
+  });
+
+  it('Bug #833: xlsx-вміст із розширенням .csv → 400, а не виняток розбору CSV', async () => {
+    const buf = await xlsx([['Артикул'], ['A1']]);
+    await expect(parseGoodRefRows(buf, 'csv')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('Bug #833: решта завантажень XLSX (товари, роботи, бренди, одиниці, рядки документа) → 400', async () => {
+    const bad = csv('це не excel');
+    const svc = XlsxService.prototype;
+    for (const parse of [
+      svc.parseGoods,
+      svc.parseWorks,
+      svc.parseBrands,
+      svc.parseUnits,
+      svc.parsePOLines,
+    ]) {
+      // Файл відкривається першим рядком методу, до будь-якого звертання до `this`.
+      await expect(parse.call({} as XlsxService, bad)).rejects.toBeInstanceOf(BadRequestException);
+    }
   });
 });

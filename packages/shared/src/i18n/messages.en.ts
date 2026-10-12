@@ -575,6 +575,8 @@ export const en: Record<string, string> = {
   'err.xlsx.workOrderNotDraftOrEstimate': 'The work order is not in DRAFT or ESTIMATE status',
   'err.xlsx.tableNotFound': 'Table not found',
   'err.xlsx.fileNoDataRows': 'The file contains no data rows',
+  'err.xlsx.tableFileUnreadable':
+    'Could not read the file: it is damaged or is not an Excel (.xlsx) or CSV (.csv) file',
   'err.xlsx.documentNotFound': 'Document not found',
   'err.xlsx.rowGoodMissing': 'Row {{row}}: good is not specified',
   'err.xlsx.rowGoodNotFound': 'Row {{row}}: good not found',

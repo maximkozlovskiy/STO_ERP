@@ -1,5 +1,5 @@
-import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
+import { loadXlsxWorkbook, tableFileUnreadable } from './load-workbook';
 
 /** Рядок файла-переліку товарів: усе, за чим товар можна впізнати (BR-GOOD-008). */
 export interface GoodRefRow {
@@ -110,22 +110,24 @@ export async function parseGoodRefRows(
 ): Promise<GoodRefRow[]> {
   if (fileType === 'csv') {
     const text = Buffer.from(buffer).toString('utf-8').replace(/^﻿/, '');
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- parseCSV повертає unknown[]; каст потрібен tsc
-    const grid = parseCSV(text, {
-      skip_empty_lines: true,
-      relax_column_count: true,
-      trim: true,
-      // Excel в українській локалі зберігає CSV через «;».
-      delimiter: detectDelimiter(text),
-    }) as string[][];
+    let grid: string[][];
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- parseCSV повертає unknown[]; каст потрібен tsc
+      grid = parseCSV(text, {
+        skip_empty_lines: true,
+        relax_column_count: true,
+        trim: true,
+        // Excel в українській локалі зберігає CSV через «;».
+        delimiter: detectDelimiter(text),
+      }) as string[][];
+    } catch {
+      // Не CSV (наприклад, xlsx із розширенням .csv): csv-parse кидає на «лапках» у двійковому вмісті.
+      throw tableFileUnreadable();
+    }
     return toRows(grid.map(r => r.map(c => String(c ?? ''))));
   }
 
-  const workbook = new ExcelJS.Workbook();
-  // Buffer зі спільного пулу: передаємо копію саме нашого зрізу (див. XlsxService.toArrayBuffer).
-  await workbook.xlsx.load(
-    buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
-  );
+  const workbook = await loadXlsxWorkbook(buffer);
   const sheet = workbook.worksheets[0];
   if (!sheet) return [];
   const grid: string[][] = [];

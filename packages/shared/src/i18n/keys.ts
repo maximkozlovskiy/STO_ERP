@@ -618,6 +618,7 @@ export const VALIDATION_KEYS = [
   'err.xlsx.workOrderNotDraftOrEstimate',
   'err.xlsx.tableNotFound',
   'err.xlsx.fileNoDataRows',
+  'err.xlsx.tableFileUnreadable',
   'err.xlsx.unsupportedFormat',
   'err.xlsx.pdfNoTextLayer',
   'err.xlsx.pdfUnreadable',
