@@ -244,6 +244,35 @@ describe('ExcelImportWizard — крок 2: масовий вибір рядкі
     expect(vars.rows[0]).toMatchObject({ action: 'create', rowIndex: 3 });
   });
 
+  it('рядок, знайдений лише за штрихкодом, показує його в комірці; з артикулом — окремим рядком', async () => {
+    previewOverride.current = {
+      rows: [
+        {
+          rowIndex: 2,
+          rawBarcode: '4820000000015',
+          quantity: 1,
+          price: 10,
+          status: 'matched',
+          matchedGoodId: 'g1',
+          candidates: [{ id: 'g1', sku: 'A1', name: 'Фільтр', brandName: null }],
+        },
+        {
+          rowIndex: 3,
+          rawArticle: 'XY-9',
+          rawBarcode: '4820000000022',
+          quantity: 1,
+          price: 10,
+          status: 'notFound',
+          candidates: [],
+        },
+      ],
+    };
+    await gotoStep2();
+    expect(screen.getByText('4820000000015')).toBeInTheDocument();
+    expect(screen.getByText('Штрихкод: 4820000000022')).toBeInTheDocument();
+    expect(screen.queryByText('Штрихкод: 4820000000015')).not.toBeInTheDocument();
+  });
+
   it('кнопка «Заповнити товарами» вимкнена коли нічого не обрано', async () => {
     await gotoStep2();
     fireEvent.click(screen.getByRole('button', { name: /Забрати всі/ }));

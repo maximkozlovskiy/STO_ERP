@@ -172,7 +172,10 @@ const ImportRow = memo(function ImportRow({ row, res, onToggle, onSelectGood }: 
         />
       </td>
       <td className="px-3 py-2 align-top text-foreground">
-        {row.rawArticle || row.rawCode || '—'}
+        {row.rawArticle || row.rawCode || row.rawBarcode || '—'}
+        {row.rawBarcode && (row.rawArticle || row.rawCode) && (
+          <div className="text-[11px] text-foreground-muted">Штрихкод: {row.rawBarcode}</div>
+        )}
       </td>
       <td className="px-3 py-2 align-top text-foreground">{row.rawBrand || '—'}</td>
       <td className="px-3 py-2 align-top text-foreground">{row.rawName || '—'}</td>
@@ -860,7 +863,7 @@ export function ExcelImportWizard({
                     />
                   </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
-                    Артикул
+                    Код / артикул
                   </th>
                   <th className="text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-foreground-muted">
                     Бренд

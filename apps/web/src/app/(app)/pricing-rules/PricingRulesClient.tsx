@@ -324,8 +324,10 @@ export default function PricingRulesClient() {
             </button>
           </div>
           <p className="text-[12px] text-muted-foreground">
-            {t('import.hint')} <code>sku</code>, <code>barcode</code>, <code>name</code>
+            {t('import.hint')} <code>code</code>, <code>sku</code>, <code>brand</code>,{' '}
+            <code>barcode</code>, <code>name</code>
           </p>
+          <p className="text-[12px] text-muted-foreground">{t('import.hintLookup')}</p>
           <div className="flex items-center gap-3">
             <input
               type="file"

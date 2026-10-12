@@ -21,6 +21,7 @@ export interface PreviewRow {
   rawCode?: string | null;
   rawArticle?: string | null;
   rawBrand?: string | null;
+  rawBarcode?: string | null;
   rawName?: string | null;
   quantity: number;
   price: number;

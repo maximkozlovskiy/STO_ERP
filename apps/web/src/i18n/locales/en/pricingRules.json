@@ -10,6 +10,7 @@
     "heading": "Price goods from a list",
     "downloadTemplate": "Download CSV template",
     "hint": "Upload an XLSX or CSV file with columns:",
+    "hintLookup": "A product is looked up by code, then by SKU together with brand, then by barcode. The name is for reference only: a row with just a name is not priced.",
     "run": "Apply pricing",
     "found": "Found:",
     "updated": "Updated:",
