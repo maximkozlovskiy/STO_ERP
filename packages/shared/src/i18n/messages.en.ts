@@ -715,6 +715,9 @@ export const en: Record<string, string> = {
   'err.brand.nameExists': 'A brand with this name already exists',
   'err.brand.activeNameExists':
     'An active brand with this name already exists — restore is not possible',
+  'err.brand.synonymTaken': 'Synonym "{{synonym}}" already belongs to the brand "{{brand}}"',
+  'err.brand.synonymIsBrandName': 'Synonym "{{synonym}}" is the name of the brand "{{brand}}"',
+  'err.brand.nameIsSynonym': 'The name "{{name}}" is already a synonym of the brand "{{brand}}"',
 
   // ── Exception messages: cash module ──
   'err.cash.amountMustBePositive': 'Amount must be positive',

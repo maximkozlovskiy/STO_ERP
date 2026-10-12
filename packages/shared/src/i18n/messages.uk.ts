@@ -700,6 +700,9 @@ export const uk: Record<string, string> = {
   'err.brand.notFound': 'Бренд не знайдено',
   'err.brand.nameExists': 'Бренд з такою назвою вже існує',
   'err.brand.activeNameExists': 'Активний бренд з такою назвою вже існує — відновлення неможливе',
+  'err.brand.synonymTaken': 'Синонім «{{synonym}}» уже належить бренду «{{brand}}»',
+  'err.brand.synonymIsBrandName': 'Синонім «{{synonym}}» збігається з назвою бренду «{{brand}}»',
+  'err.brand.nameIsSynonym': 'Назва «{{name}}» уже є синонімом бренду «{{brand}}»',
 
   // ── Exception-повідомлення: cash-модуль ──
   'err.cash.amountMustBePositive': 'Сума має бути додатною',

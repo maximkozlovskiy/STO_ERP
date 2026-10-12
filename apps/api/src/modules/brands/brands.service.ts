@@ -10,6 +10,12 @@ import { BrandResponseDto, CreateBrandDto, UpdateBrandDto } from './brands.dto';
 const TTL = 300;
 const cacheKey = (orgId: string) => `ref:brands:${orgId}`;
 
+/**
+ * BR-GOOD-007: один запис написання — один бренд. Ключ порівняння синонімів і назв:
+ * без пробілів по краях і без урахування регістру («Bosch» і «BOSCH» — те саме написання).
+ */
+const synonymKey = (s: string): string => s.trim().toLocaleLowerCase('uk');
+
 const SYNONYMS_INCLUDE = { synonyms: { where: { deletedAt: null }, select: { synonym: true } } };
 
 @Injectable()
@@ -125,16 +131,17 @@ export class BrandsService {
   }
 
   async create(orgId: string, dto: CreateBrandDto): Promise<BrandResponseDto> {
-    const synonyms = this.cleanSynonyms(dto.synonyms);
+    const synonyms = this.cleanSynonyms(dto.synonyms, dto.name);
 
     // sto-optimize: only id + deletedAt consumed (resurrect-vs-conflict branch).
     const anyExisting = await this.prisma.brand.findFirst({
       where: { orgId, name: dto.name },
       select: { id: true, deletedAt: true },
     });
+    if (anyExisting && !anyExisting.deletedAt)
+      throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
+    await this.assertWritingsFree(orgId, anyExisting?.id ?? null, dto.name, synonyms);
     if (anyExisting) {
-      if (!anyExisting.deletedAt)
-        throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
       // Resurrect soft-deleted brand. Include is omitted: we re-fetch after
       // syncSynonyms() below, so the returned row would be stale anyway.
       await this.prisma.brand.update({
@@ -174,7 +181,7 @@ export class BrandsService {
   }
 
   async update(orgId: string, id: string, dto: UpdateBrandDto): Promise<BrandResponseDto> {
-    const synonyms = this.cleanSynonyms(dto.synonyms);
+    const synonyms = this.cleanSynonyms(dto.synonyms, dto.name);
 
     // Perf: tenant guard + duplicate-name check паралелизуються — обидва тенант-ізольовані,
     // duplicate-check читає по dto.name (не по existing) → немає залежності.
@@ -190,6 +197,7 @@ export class BrandsService {
     ]);
     if (!existing) throw new NotFoundException(translateError('err.brand.notFound', getLocale()));
     if (duplicate) throw new ConflictException(translateError('err.brand.nameExists', getLocale()));
+    await this.assertWritingsFree(orgId, id, dto.name, synonyms);
 
     await this.prisma.brand.update({ where: { id, orgId }, data: { name: dto.name } });
     await this.syncSynonyms(orgId, id, synonyms);
@@ -290,9 +298,104 @@ export class BrandsService {
     ]);
   }
 
-  private cleanSynonyms(raw?: string[]): string[] {
+  /**
+   * Обрізає, прибирає порожні й повтори (без урахування регістру — лишається перше написання)
+   * і синонім, що збігається з назвою самого бренду: він нічого не додає до пошуку.
+   */
+  private cleanSynonyms(raw: string[] | undefined, ownName: string): string[] {
     if (!raw) return [];
-    return [...new Set(raw.map(s => s.trim()).filter(s => s.length > 0))];
+    const seen = new Set<string>([synonymKey(ownName)]);
+    const out: string[] = [];
+    for (const item of raw) {
+      const value = item.trim();
+      const key = synonymKey(value);
+      if (!value || seen.has(key)) continue;
+      seen.add(key);
+      out.push(value);
+    }
+    return out;
+  }
+
+  /**
+   * BR-GOOD-007: одне написання — один бренд. До будь-якого запису перевіряє, що:
+   *  - жоден із синонімів не є активним синонімом ІНШОГО бренду;
+   *  - жоден із синонімів не збігається з назвою іншого бренду;
+   *  - назва бренду не є синонімом іншого бренду.
+   * Порівняння без урахування регістру; у повідомленні — що саме і з яким брендом збіглось.
+   *
+   * Раніше дубль не відхилявся, а мовчки пропускався (`createMany skipDuplicates` на унікальному
+   * індексі) — користувач бачив «збережено», а синоніма не було; при імпорті прайсу написання
+   * тоді належало тому бренду, який додав його першим.
+   */
+  private async assertWritingsFree(
+    orgId: string,
+    brandId: string | null,
+    name: string,
+    synonyms: string[],
+  ): Promise<void> {
+    const otherBrand = brandId ? { NOT: { id: brandId } } : {};
+    const otherBrandSynonym = brandId ? { NOT: { brandId } } : {};
+    const insensitive = (value: string) => ({ equals: value, mode: 'insensitive' as const });
+
+    const [takenSynonym, brandNamedLikeSynonym, synonymLikeName] = await Promise.all([
+      synonyms.length
+        ? this.prisma.brandSynonym.findFirst({
+            where: {
+              orgId,
+              deletedAt: null,
+              brand: { deletedAt: null },
+              ...otherBrandSynonym,
+              OR: synonyms.map(s => ({ synonym: insensitive(s) })),
+            },
+            select: { synonym: true, brand: { select: { name: true } } },
+          })
+        : Promise.resolve(null),
+      synonyms.length
+        ? this.prisma.brand.findFirst({
+            where: {
+              orgId,
+              deletedAt: null,
+              ...otherBrand,
+              OR: synonyms.map(s => ({ name: insensitive(s) })),
+            },
+            select: { name: true },
+          })
+        : Promise.resolve(null),
+      this.prisma.brandSynonym.findFirst({
+        where: {
+          orgId,
+          deletedAt: null,
+          brand: { deletedAt: null },
+          ...otherBrandSynonym,
+          synonym: insensitive(name.trim()),
+        },
+        select: { brand: { select: { name: true } } },
+      }),
+    ]);
+
+    if (takenSynonym)
+      throw new ConflictException(
+        translateError('err.brand.synonymTaken', getLocale(), {
+          synonym: takenSynonym.synonym,
+          brand: takenSynonym.brand.name,
+        }),
+      );
+    if (brandNamedLikeSynonym)
+      throw new ConflictException(
+        translateError('err.brand.synonymIsBrandName', getLocale(), {
+          synonym:
+            synonyms.find(s => synonymKey(s) === synonymKey(brandNamedLikeSynonym.name)) ??
+            brandNamedLikeSynonym.name,
+          brand: brandNamedLikeSynonym.name,
+        }),
+      );
+    if (synonymLikeName)
+      throw new ConflictException(
+        translateError('err.brand.nameIsSynonym', getLocale(), {
+          name: name.trim(),
+          brand: synonymLikeName.brand.name,
+        }),
+      );
   }
 
   private toDto(item: {

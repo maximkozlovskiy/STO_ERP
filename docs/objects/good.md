@@ -163,6 +163,7 @@ model GoodStatusLink {   // junction M:N, без syncVersion/deletedAt
 - **BR-GOOD-004**: `preferredSupplierId` — підказка для PO, не обов'язковий
 - **BR-GOOD-005**: Партії `StockBatch` — FIFO за замовчуванням (найстаріша `createdAt` першою)
 - **BR-GOOD-006**: **Статуси-мітки (кастомні, M:N):** per-org довідник `GoodStatus` (name+color, configuration-over-hardcode — не enum), M:N через `GoodStatusLink`. Assign/unassign валідують good+status належать org (tenant-isolation); assign ідемпотентний (`@@unique[goodId,statusId]`, P2002→no-op); unassign неіснуючого → 404. Soft-delete статусу лишає links — `toDto` фільтрує `status.deletedAt:null`, restore відновлює призначення. Кеш довідника (`ref:good-statuses`, TTL 300с) скидається на assign/unassign І на soft-delete/restore товару з міткою (Bug #725). Права: assign/unassign — OWNER/ADMIN/STOREKEEPER; CRUD довідника — OWNER/ADMIN.
+- **BR-GOOD-007**: **Бренди — одне написання належить одному бренду** (рішення власника 2026-10-12). Синонім бренду не може бути активним синонімом іншого бренду тієї самої організації, не може збігатися з назвою іншого бренду, а назва бренду — із синонімом іншого бренду. Порівняння без урахування регістру й пробілів по краях («Bosch» = «BOSCH»). Порушення → 409 до будь-якого запису, у тексті названо написання і бренд, з яким воно збіглось. Не вважаються зайнятими: знятий (soft-deleted) синонім, синонім видаленого бренду, дані іншої організації. У межах одного бренду повтори зводяться до першого написання; синонім, що збігається з назвою самого бренду, відкидається. Модуль `brands` (`BrandsService.assertWritingsFree`)
 
 → [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md) (ціноутворення, deduplicateBy)
 → [docs/objects/inventory.md](inventory.md) (StockItem, StockMovement)
@@ -181,15 +182,16 @@ cd apps/api && npx vitest run src/modules/goods/<файл>.spec.ts
 
 **Маршрути UI:** `/catalog`, `/inventory`, `/pricing-rules`
 
-| Аспект                                  | Тест                                  | Кейсів |
-| --------------------------------------- | ------------------------------------- | ------ |
-| dto                                     | `goods-query.dto.spec.ts`             | 6      |
-| HTTP-контракт (DTO, статуси, валідація) | `goods-stock-totals.contract.spec.ts` | 12     |
-| рольовий доступ                         | `goods.role-gate.spec.ts`             | 14     |
-| сервісна логіка                         | `goods.service.spec.ts`               | 58     |
-| статуси-мітки (assign / unassign, ролі) | `goods.statuses.spec.ts`              | 11     |
+| Аспект                                  | Тест                                      | Кейсів |
+| --------------------------------------- | ----------------------------------------- | ------ |
+| dto                                     | `goods-query.dto.spec.ts`                 | 6      |
+| HTTP-контракт (DTO, статуси, валідація) | `goods-stock-totals.contract.spec.ts`     | 12     |
+| рольовий доступ                         | `goods.role-gate.spec.ts`                 | 14     |
+| сервісна логіка                         | `goods.service.spec.ts`                   | 58     |
+| статуси-мітки (assign / unassign, ролі) | `goods.statuses.spec.ts`                  | 11     |
+| бренди: одне написання — один бренд     | `../brands/brands.synonym-unique.spec.ts` | 12     |
 
-Разом: **101** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **113** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Мітки `guards:` стоять, але unit-тести стережуть не все, що сказано у правилах:
 

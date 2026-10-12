@@ -732,6 +732,9 @@ export const VALIDATION_KEYS = [
   'err.brand.notFound',
   'err.brand.nameExists',
   'err.brand.activeNameExists',
+  'err.brand.synonymTaken',
+  'err.brand.synonymIsBrandName',
+  'err.brand.nameIsSynonym',
   // Exception-повідомлення: cash-модуль
   'err.cash.amountMustBePositive',
   'err.cash.categoryNotFound',

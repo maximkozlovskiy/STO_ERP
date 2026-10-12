@@ -1371,6 +1371,20 @@
    "BrandsService.syncSynonyms — resurrection (Bug §5.2) resurrect: soft-deleted synonym у іншого бренду → updateMany із deletedAt=null + новий brandId",
    "BrandsService.syncSynonyms — resurrection (Bug §5.2) soft-delete: активний синонім, якого більше немає у incoming → updateMany deletedAt=now()"
   ],
+  "apps/api/src/modules/brands/brands.synonym-unique.spec.ts": [
+   "BrandsService — синонім не може належати двом брендам create вільні синоніми → бренд створюється",
+   "BrandsService — синонім не може належати двом брендам create назва нового бренду, що вже є чиїмось синонімом → 409",
+   "BrandsService — синонім не може належати двом брендам create синонім іншого бренду → 409, бренд не створюється",
+   "BrandsService — синонім не може належати двом брендам update власний синонім не конфліктує сам із собою — повторне збереження проходить",
+   "BrandsService — синонім не може належати двом брендам update збіг без урахування регістру — теж дубль («бош» проти «БОШ»)",
+   "BrandsService — синонім не може належати двом брендам update знятий синонім іншого бренду — не дубль, збереження проходить",
+   "BrandsService — синонім не може належати двом брендам update нова НАЗВА бренду, що вже є синонімом іншого бренду → 409",
+   "BrandsService — синонім не може належати двом брендам update повтори в одному списку зводяться до першого написання; назва самого бренду не синонім",
+   "BrandsService — синонім не може належати двом брендам update синонім бренду іншої організації — не дубль, збереження проходить",
+   "BrandsService — синонім не може належати двом брендам update синонім видаленого бренду — не дубль, збереження проходить",
+   "BrandsService — синонім не може належати двом брендам update синонім іншого бренду → 409 з назвами синоніма й бренду, жодного запису",
+   "BrandsService — синонім не може належати двом брендам update синонім, що збігається з НАЗВОЮ іншого бренду → 409"
+  ],
   "apps/api/src/modules/bull-board/bull-board.guard.spec.ts": [
    "registerBullBoardGuard fail-closed: відсутність/форма токена без Authorization-хедера → 401 і prisma НЕ опитується",
    "registerBullBoardGuard fail-closed: відсутність/форма токена порожній Bearer (`Bearer `) → 401, verify не викликається",
