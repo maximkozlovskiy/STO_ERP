@@ -648,3 +648,24 @@ describe('CounterpartyEditModal — група «Статуси» поруч і�
     expect(screen.queryByRole('group', { name: 'Статуси' })).toBeNull();
   });
 });
+
+// Sticky tab strip (owner decision 2026-10-12): the tabs stay at the top of the scrolling body.
+// Mutation-verify: drop `sticky top-0` from the strip -> the case fails.
+describe('CounterpartyEditModal - tab strip', () => {
+  it('edit mode: the tab strip is sticky at the top of the scrolling body and opaque', async () => {
+    mountApi({});
+    renderModal(cp('CLIENT'));
+    const strip = await screen.findByTestId('counterparty-tabs');
+    expect(strip).toHaveClass('sticky', 'top-0', 'bg-surface');
+    // the strip sits inside the scroll container, otherwise `sticky` has nothing to stick to
+    expect(strip.closest('.overflow-y-auto')).not.toBeNull();
+  });
+
+  it('create mode: there are no tabs', () => {
+    mountApi({});
+    render(
+      <CounterpartyEditModal open counterparty={null} onClose={() => {}} onSaved={() => {}} />,
+    );
+    expect(screen.queryByTestId('counterparty-tabs')).toBeNull();
+  });
+});

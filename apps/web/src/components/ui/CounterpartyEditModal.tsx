@@ -767,9 +767,14 @@ export function CounterpartyEditModal({
           ) : null
         }
       >
-        {/* Tabs — only in edit mode */}
+        {/* Tabs — only in edit mode. Sticky: the strip stays at the top of the scrolling body, so the
+            tabs are always reachable while the form scrolls underneath (owner decision 2026-10-12).
+            -mt-5 pulls it over the body's top padding; bg-surface hides the content passing under it. */}
         {isEdit && (
-          <div className="flex gap-0 border-b border-border -mx-6 px-6 mb-5 overflow-x-auto">
+          <div
+            data-testid="counterparty-tabs"
+            className="sticky top-0 z-10 -mx-6 -mt-5 mb-5 flex gap-0 overflow-x-auto border-b border-border bg-surface px-6 pt-1"
+          >
             {(
               [
                 { key: 'main', label: 'Основне' },

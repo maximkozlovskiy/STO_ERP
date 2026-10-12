@@ -197,6 +197,9 @@ test.describe('Банківські платежі', () => {
         }
         if (!bankAccountId) return { bankAccountId: null };
         const externalId = `E2E-${Date.now()}`;
+        // Унікальний платник на прогін: у базі накопичуються рядки попередніх прогонів, і «перший
+        // рядок E2E Платник» виявлявся чужим — тест ігнорував не свій платіж і падав.
+        const payerName = `E2E Платник ${externalId}`;
         const applyRes = await fetch(`${API}/bank-statements/import/apply`, {
           method: 'POST',
           headers: auth,
@@ -207,14 +210,14 @@ test.describe('Банківські платежі', () => {
                 externalId,
                 operationDate: '2026-09-01',
                 amount: 999.99,
-                payerName: 'E2E Платник',
+                payerName,
                 purpose: 'E2E smoke transaction',
               },
             ],
           }),
         });
         const applyBody = applyRes.ok ? await applyRes.json() : { error: await applyRes.text() };
-        return { bankAccountId, externalId, applyBody, applyStatus: applyRes.status };
+        return { bankAccountId, externalId, payerName, applyBody, applyStatus: applyRes.status };
       },
       { token, API },
     );
@@ -236,7 +239,10 @@ test.describe('Банківські платежі', () => {
     // Фільтруємо на UNMATCHED, щоб рядок гарантовано був у списку.
     await page.getByRole('button', { name: 'Не рознесено' }).first().click();
 
-    const row = page.locator('table tbody tr:has-text("E2E Платник")').first();
+    // Відбір за своїм платником: рядок гарантовано свій і на першій сторінці.
+    await page.getByPlaceholder(/Пошук за контрагентом/).fill(seed.payerName as string);
+    const row = page.locator('table tbody tr').filter({ hasText: seed.payerName as string });
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
     await expect(row).toBeVisible({ timeout: 15_000 });
 
     // Клік кнопки «Ігнорувати» (icon-button з aria-label).
@@ -256,7 +262,7 @@ test.describe('Банківські платежі', () => {
           return page.evaluate(
             async ({ token, API, externalId }) => {
               const r = await fetch(
-                `${API}/bank-statements/transactions?status=IGNORED&limit=100`,
+                `${API}/bank-statements/transactions?status=IGNORED&limit=100&q=${encodeURIComponent(externalId ?? '')}`,
                 {
                   headers: { Authorization: `Bearer ${token}` },
                 },
