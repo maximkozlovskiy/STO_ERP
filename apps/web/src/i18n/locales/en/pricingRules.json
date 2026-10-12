@@ -1,7 +1,7 @@
 {
   "title": "Pricing rules",
   "subtitle": "Automatic sale price calculation when goods are received into stock",
-  "searchPlaceholder": "Search by name, supplier, brand…",
+  "searchPlaceholder": "Search by name, supplier, brand, category, product…",
   "actions": {
     "priceList": "Price a list",
     "rule": "Rule"
@@ -41,10 +41,11 @@
   "row": {
     "roundTo": "Round to {{value}} ₴",
     "allAssortment": "Entire assortment",
-    "good": "Good: {{name}}",
     "category": "Category: {{name}}",
     "active": "Active",
-    "inactive": "Disabled"
+    "inactive": "Disabled",
+    "goods": "Products: {{n}}",
+    "categoryLegacy": "Category: {{name}} (text)"
   },
   "rowActions": {
     "apply": "Recalculate prices of all matching goods now",
@@ -106,21 +107,26 @@
     "roundToHint": "E.g. 0.5 → to 50 kop, 1 → to hryvnia",
     "roundToPlaceholder": "0.5",
     "scopeTitle": "Application scope",
-    "scopeOrder": "Supplier {{gt}} Good {{gt}} Brand {{gt}} Category {{gt}} Type {{gt}} Entire assortment",
+    "scopeOrder": "Supplier {{gt}} Products {{gt}} Brand {{gt}} Category {{gt}} Type {{gt}} Entire range",
     "supplier": "Supplier (optional)",
     "supplierSearchPlaceholder": "Search supplier…",
     "supplierScopeHint": "The rule will apply only when pricing orders from this supplier",
-    "good": "Specific good (optional)",
-    "goodNotSpecified": "— Not specified —",
     "brand": "Brand (optional)",
     "brandAny": "— Any brand —",
     "goodType": "Good type (optional)",
     "category": "Category (optional)",
-    "categoryPlaceholder": "Brake system",
-    "categoryHint": "Text category from the good card",
+    "categoryHint": "The rule applies to the category and all its subcategories",
     "priority": "Priority",
     "priorityHint": "Lower number = higher priority",
-    "isActive": "Active rule"
+    "isActive": "Active rule",
+    "scopeGoodsOnly": "The rule applies only to the listed products — brand, category and product type are ignored",
+    "categoryAny": "— Any —",
+    "categoryLegacy": "Legacy text category “{{name}}”: pick a category from the list so the rule applies to the category with its subcategories",
+    "categoriesLoading": "Loading categories…",
+    "categoriesError": "Failed to load the category directory.",
+    "retry": "Retry",
+    "overriddenByBrand": "Ignored: the rule applies by brand",
+    "overriddenByCategory": "Ignored: the rule applies by category"
   },
   "formErrors": {
     "name": "Enter the rule name",
@@ -137,5 +143,70 @@
     "title": "Select a supplier",
     "searchPlaceholder": "Name, phone, company...",
     "empty": "No suppliers found"
+  },
+  "goods": {
+    "title": "Products ({{n}})",
+    "add": "Add product",
+    "upload": "Upload from Excel",
+    "template": "Template",
+    "clear": "Clear",
+    "clearConfirmTitle": "Clear the rule’s product list?",
+    "clearConfirmMessage": "Products to be removed from the list: {{n}}. The stored list changes once the rule is saved.",
+    "clearConfirmLabel": "Clear",
+    "empty": "No products specified — the rule applies by brand, category, type or to the entire range",
+    "searchLabel": "Search within the rule’s product list",
+    "searchPlaceholder": "Search the list: name or SKU",
+    "tableCaption": "Rule products",
+    "columns": {
+      "name": "Name",
+      "sku": "SKU",
+      "brand": "Brand",
+      "actions": "Actions"
+    },
+    "remove": "Remove “{{name}}” from the list",
+    "shownOf": "Showing {{shown}} of {{total}} — refine the search",
+    "nothingFound": "Nothing matches the search",
+    "loading": "Loading the product list…",
+    "loadError": "Failed to load the rule’s product list",
+    "retry": "Retry",
+    "limitReached": "The list already has {{max}} products — the maximum for one rule",
+    "fileLabel": "File with the product list (.xlsx or .csv)",
+    "templateError": "Failed to download the template",
+    "added": "Products added: {{n}}",
+    "replaced": "List replaced, products: {{n}}",
+    "pickerDone": "Done",
+    "pickerAdded": "added"
+  },
+  "goodsImport": {
+    "heading": "File recognition result",
+    "error": "Failed to recognise the file",
+    "summaryTotal": "Rows in file:",
+    "summaryFound": "Found:",
+    "summaryAlready": "already in the list:",
+    "summaryNotFound": "Not found:",
+    "summaryAmbiguous": "Need a choice:",
+    "modeLegend": "What to do with the rule’s product list",
+    "modeAdd": "Add to the list",
+    "modeReplace": "Replace the list",
+    "resultPreview": "Products in the list after applying:",
+    "nothingToApply": "The file has no recognised products — nothing to apply",
+    "ambiguousHeading": "Several products found — pick the right one",
+    "ambiguousShown": "Showing {{shown}} of {{total}} rows that need a choice",
+    "chooseFor": "Product for row {{row}}",
+    "skip": "— skip —",
+    "rowLine": "row {{row}}: {{raw}}",
+    "rawEmpty": "empty row",
+    "raw": {
+      "code": "code",
+      "article": "SKU",
+      "brand": "brand",
+      "barcode": "barcode",
+      "name": "name"
+    },
+    "notFoundHeading": "Not found in the product directory",
+    "notFoundToggle": "Not found in the product directory ({{n}}) — show rows",
+    "limitExceeded": "After applying the list would have {{total}} products, while the maximum is {{max}}. The list was not changed.",
+    "apply": "Apply",
+    "cancel": "Cancel"
   }
 }

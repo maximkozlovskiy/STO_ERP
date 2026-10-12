@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,12 +13,19 @@ import {
   CounterpartyEditModal,
   type CounterpartyForModal,
 } from '@/components/ui/CounterpartyEditModal';
+import { flattenCategoryTree, type CategoryNode } from '@/components/ui/category-tree';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { displayCounterpartyName } from '@/lib/utils';
 import { fmtDate, kyivToday } from '@/lib/format';
-import type { Good, Brand, PricingRule, PricingRuleTier, RuleForm } from './types';
-import { TYPE_LABELS, GOOD_TYPE_OPTIONS } from './types';
+import { getCached, setCache } from '@/lib/ref-cache';
+import { usePricingRuleGoods } from '@/hooks/api/usePricingRules';
+import RuleGoodsField, { type RuleGoodsLoad } from './RuleGoodsField';
+import type { Brand, PricingRule, PricingRuleTier, RuleForm } from './types';
+import { TYPE_LABELS, GOOD_TYPE_OPTIONS, scopeDimension } from './types';
+
+const GOODS_READY: RuleGoodsLoad = { status: 'ready' };
+const NBSP = String.fromCharCode(160);
 
 export default function RuleFormModal({
   open,
@@ -26,7 +33,8 @@ export default function RuleFormModal({
   onSave,
   initial,
   initialCreatedAt,
-  goods,
+  ruleId,
+  goodsCount = 0,
   brands,
 }: {
   open: boolean;
@@ -34,7 +42,10 @@ export default function RuleFormModal({
   onSave: (form: RuleForm) => Promise<void>;
   initial: RuleForm;
   initialCreatedAt?: string | null;
-  goods: Good[];
+  /** Редагування: id правила — щоб довантажити повний список його товарів. */
+  ruleId?: string | null;
+  /** Редагування: `goodsCount` правила; 0 — список порожній, довантажувати нічого. */
+  goodsCount?: number;
   brands: Brand[];
 }) {
   const { t } = useTranslation('pricingRules');
@@ -64,6 +75,87 @@ export default function RuleFormModal({
       setError('');
     }
   }, [open, initial]);
+
+  // ─── Список товарів правила (довантаження при редагуванні) ─────────────────
+  // У списку правил приходять лише `goodsCount` і перші 3 товари — повний список тягнемо
+  // окремо. Поки він не завантажений, «Зберегти» вимкнено: інакше порожній локальний
+  // список затер би справжній на сервері.
+  const { state: goodsState, retry: retryGoods } = usePricingRuleGoods(
+    open && ruleId && goodsCount > 0 ? ruleId : null,
+  );
+  const goodsLoad: RuleGoodsLoad =
+    !ruleId || goodsCount === 0
+      ? GOODS_READY
+      : goodsState.status === 'ready'
+        ? GOODS_READY
+        : goodsState.status === 'error'
+          ? goodsState
+          : { status: 'loading' };
+  const goodsReady = goodsLoad.status === 'ready';
+
+  // Оголошено ПІСЛЯ ефекту скидання форми: якщо `initial` зміниться при відкритій формі,
+  // скидання і повторне підставлення завантаженого списку відбудуться в одному проході.
+  useEffect(() => {
+    if (open && goodsState.status === 'ready') {
+      const items = goodsState.items;
+      setForm(f => ({ ...f, goods: items }));
+    }
+  }, [open, initial, goodsState]);
+
+  // ─── Довідник категорій товарів ────────────────────────────────────────────
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState(false);
+  const [categoriesAttempt, setCategoriesAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    // Миттєво з ref-кешу (той самий ключ, що в каталозі товарів), далі — свіже дерево.
+    const cached = getCached<CategoryNode[]>('cache:good-categories');
+    if (Array.isArray(cached)) setCategoryTree(cached);
+    const ac = new AbortController();
+    setCategoriesLoading(true);
+    setCategoriesError(false);
+    apiFetch<CategoryNode[]>('/good-categories', { signal: ac.signal })
+      .then(tree => {
+        if (ac.signal.aborted) return;
+        const list = Array.isArray(tree) ? tree : [];
+        setCategoryTree(list);
+        setCache('cache:good-categories', list);
+        setCategoriesLoading(false);
+      })
+      .catch(() => {
+        if (ac.signal.aborted) return;
+        setCategoriesError(true);
+        setCategoriesLoading(false);
+      });
+    return () => ac.abort();
+  }, [open, categoriesAttempt]);
+
+  // Вимкнені категорії не пропонуємо — окрім тієї, що вже стоїть у правилі.
+  const categoryOptions = useMemo(
+    () =>
+      flattenCategoryTree(categoryTree).filter(
+        c => c.isActive !== false || c.id === form.goodCategoryId,
+      ),
+    [categoryTree, form.goodCategoryId],
+  );
+  const categoryMissing =
+    !!form.goodCategoryId && !categoryOptions.some(c => c.id === form.goodCategoryId);
+
+  // Область має один вимір: товари > бренд > категорія > тип.
+  const dimension = scopeDimension(form);
+  const categoryOverridden = dimension === 'brand';
+  const typeOverridden = dimension === 'brand' || dimension === 'category';
+
+  // Escape закриває КОЖНУ відкриту модалку (слухач на document у кожної). Поки над формою
+  // відкрито вибір товару чи підтвердження, саму форму не закриваємо — інакше Escape у
+  // модалці вибору забрав би разом із собою незбережений список товарів.
+  const overlayOpenRef = useRef(false);
+  const closeForm = () => {
+    if (overlayOpenRef.current) return;
+    onClose();
+  };
 
   const set = (patch: Partial<RuleForm>) => setForm(f => ({ ...f, ...patch }));
 
@@ -175,13 +267,17 @@ export default function RuleFormModal({
     <>
       <Modal
         open={open}
-        onClose={onClose}
+        onClose={closeForm}
         title={initial.name ? t('form.editTitle') : t('form.createTitle')}
         size="xl"
         footer={
           <>
             {/* (А) submit має власний try/catch із setError — проміс нікому не потрібен. */}
-            <Button onClick={() => void submit()} loading={saving} disabled={!form.name}>
+            <Button
+              onClick={() => void submit()}
+              loading={saving}
+              disabled={!form.name || !goodsReady}
+            >
               {t('form.save')}
             </Button>
             <Button variant="outline" onClick={onClose}>
@@ -378,58 +474,108 @@ export default function RuleFormModal({
               )}
             </div>
 
-            <Select
-              label={t('form.good')}
-              value={form.goodId}
-              onChange={e => set({ goodId: e.target.value })}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              <option value="">{t('form.goodNotSpecified')}</option>
-              {goods.map(g => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                  {g.sku ? ` (${g.sku})` : ''}
-                </option>
-              ))}
-            </Select>
-
-            {!form.goodId && (
-              <Select
-                label={t('form.brand')}
-                value={form.brandId}
-                onChange={e => set({ brandId: e.target.value })}
-                className="h-8 text-[13px] py-0.5 px-2 pr-7"
-              >
-                <option value="">{t('form.brandAny')}</option>
-                {brands.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-
-            <Select
-              label={t('form.goodType')}
-              value={form.goodType}
-              onChange={e => set({ goodType: e.target.value })}
-              className="h-8 text-[13px] py-0.5 px-2 pr-7"
-            >
-              {GOOD_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
-                  {t(o.labelKey)}
-                </option>
-              ))}
-            </Select>
-
-            <Input
-              label={t('form.category')}
-              value={form.goodCategory}
-              onChange={e => set({ goodCategory: e.target.value })}
-              placeholder={t('form.categoryPlaceholder')}
-              hint={t('form.categoryHint')}
-              className="h-8 text-[13px]"
+            <RuleGoodsField
+              goods={form.goods}
+              onChange={goods => set({ goods })}
+              load={goodsLoad}
+              onRetry={retryGoods}
+              onOverlayOpenChange={isOpen => {
+                overlayOpenRef.current = isOpen;
+              }}
             />
+
+            {dimension === 'goods' ? (
+              <p className="text-[12px] text-muted-foreground">{t('form.scopeGoodsOnly')}</p>
+            ) : (
+              <>
+                <Select
+                  label={t('form.brand')}
+                  value={form.brandId}
+                  onChange={e => set({ brandId: e.target.value })}
+                  className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                >
+                  <option value="">{t('form.brandAny')}</option>
+                  {brands.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </Select>
+
+                <div className="space-y-1">
+                  <Select
+                    label={t('form.category')}
+                    value={form.goodCategoryId}
+                    onChange={e => {
+                      const id = e.target.value;
+                      set({
+                        goodCategoryId: id,
+                        goodCategoryName: categoryOptions.find(c => c.id === id)?.name ?? '',
+                        categoryTouched: true,
+                      });
+                    }}
+                    disabled={categoryOverridden}
+                    hint={categoryOverridden ? t('form.overriddenByBrand') : t('form.categoryHint')}
+                    className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                  >
+                    <option value="">{t('form.categoryAny')}</option>
+                    {categoryMissing && (
+                      <option value={form.goodCategoryId}>
+                        {form.goodCategoryName || form.goodCategoryId}
+                      </option>
+                    )}
+                    {categoryOptions.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {NBSP.repeat(c.depth * 2) + c.name}
+                      </option>
+                    ))}
+                  </Select>
+                  {form.legacyGoodCategory && !form.categoryTouched && (
+                    <p className="text-[12px] text-muted-foreground">
+                      {t('form.categoryLegacy', { name: form.legacyGoodCategory })}
+                    </p>
+                  )}
+                  {categoriesLoading && categoryTree.length === 0 && (
+                    <p role="status" className="text-[12px] text-muted-foreground">
+                      {t('form.categoriesLoading')}
+                    </p>
+                  )}
+                  {categoriesError && (
+                    <p role="alert" className="text-[12px] text-destructive-text">
+                      {t('form.categoriesError')}{' '}
+                      <button
+                        type="button"
+                        className="underline hover:no-underline"
+                        onClick={() => setCategoriesAttempt(n => n + 1)}
+                      >
+                        {t('form.retry')}
+                      </button>
+                    </p>
+                  )}
+                </div>
+
+                <Select
+                  label={t('form.goodType')}
+                  value={form.goodType}
+                  onChange={e => set({ goodType: e.target.value })}
+                  disabled={typeOverridden}
+                  hint={
+                    dimension === 'brand'
+                      ? t('form.overriddenByBrand')
+                      : dimension === 'category'
+                        ? t('form.overriddenByCategory')
+                        : undefined
+                  }
+                  className="h-8 text-[13px] py-0.5 px-2 pr-7"
+                >
+                  {GOOD_TYPE_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>
+                      {t(o.labelKey)}
+                    </option>
+                  ))}
+                </Select>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

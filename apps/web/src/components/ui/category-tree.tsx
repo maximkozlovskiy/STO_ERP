@@ -187,6 +187,18 @@ export function collectDescendantIds(tree: CategoryNode[], id: string): string[]
   return ids;
 }
 
+// ─── Helper: дерево → плаский список із глибиною (для <select> з відступами) ──
+
+export type FlatCategoryNode = CategoryNode & { depth: number };
+
+/**
+ * Розгортає дерево категорій у плаский список у порядку обходу «батько, потім діти».
+ * `depth` — рівень вкладеності (0 для кореня): ним малюють відступ в опціях `<select>`.
+ */
+export function flattenCategoryTree(nodes: CategoryNode[], depth = 0): FlatCategoryNode[] {
+  return nodes.flatMap(n => [{ ...n, depth }, ...flattenCategoryTree(n.children, depth + 1)]);
+}
+
 // ─── Helper: рекурсивно видаляє вимкнені вузли ────────────────────────────────
 
 function filterActiveNodes(nodes: CategoryNode[]): CategoryNode[] {

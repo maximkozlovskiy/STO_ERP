@@ -33,13 +33,15 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
-  type Good,
   type Brand,
   type PricingRule,
   type RuleForm,
   EMPTY_FORM,
   TYPE_LABELS,
   GOOD_TYPE_OPTIONS,
+  buildCreatePayload,
+  buildUpdatePayload,
+  ruleToForm,
 } from './types';
 
 // Heavy form modal — лише при першому відкритті (Створити/Редагувати правило).
@@ -63,6 +65,24 @@ function valueLabel(rule: PricingRule, t: TFunction): string {
     default:
       return '—';
   }
+}
+
+/** Колонка «Область»: список товарів > категорія (нова / стара текстова) > тип > усе. */
+function scopeLabel(rule: PricingRule, t: TFunction): string {
+  if (rule.goodsCount > 0) return t('row.goods', { n: rule.goodsCount });
+  if (rule.goodCategoryId) return t('row.category', { name: rule.goodCategoryName ?? '—' });
+  if (rule.goodCategory) return t('row.categoryLegacy', { name: rule.goodCategory });
+  if (rule.goodType) {
+    const opt = GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType);
+    return opt ? t(opt.labelKey) : rule.goodType;
+  }
+  return t('row.allAssortment');
+}
+
+/** Підказка до «Товари: N»: назви, якщо всі вони вмістились у `goodsPreview` (N ≤ 3). */
+function scopeTitle(rule: PricingRule): string | undefined {
+  if (rule.goodsCount === 0 || rule.goodsCount > rule.goodsPreview.length) return undefined;
+  return rule.goodsPreview.map(g => g.name).join(', ');
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -89,7 +109,6 @@ export default function PricingRulesClient() {
   const invalidateRules = (): void => void qc.invalidateQueries({ queryKey: pricingRulesKeys.all });
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
-  const [goods, setGoods] = useState<Good[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(false);
@@ -139,8 +158,9 @@ export default function PricingRulesClient() {
         r.name.toLowerCase().includes(q) ||
         (r.supplierName ?? '').toLowerCase().includes(q) ||
         (r.brandName ?? '').toLowerCase().includes(q) ||
+        (r.goodCategoryName ?? '').toLowerCase().includes(q) ||
         (r.goodCategory ?? '').toLowerCase().includes(q) ||
-        (r.good?.name ?? '').toLowerCase().includes(q),
+        r.goodsPreview.some(g => g.name.toLowerCase().includes(q)),
     );
   }, [rules, debouncedSearch]);
 
@@ -148,26 +168,21 @@ export default function PricingRulesClient() {
     let cancelled = false;
     // sto-optimize: seed brands from ref-cache (used by catalog/BrandsTab + goods).
     // Brand modal opens instantly if cache hot from prior session navigation.
-    // goods is not in ref-cache — too high cardinality (could be 1000+).
+    // Товари сюди НЕ вантажимо: список товарів правила форма тягне сама
+    // (GET /pricing-rules/:id/goods), а нові обираються через GoodPickerModal.
     const cachedBrands = getCached<Brand[]>('cache:brands');
     if (cachedBrands?.length) setBrands(cachedBrands);
 
-    // `/goods?limit=500` валиться на ValidationPipe (GoodQueryDto.@Max(200)).
-    // Узгоджуємо з рештою сторінок (dashboard, work-orders, invoices використовують limit=200).
-    Promise.all([
-      apiFetch<{ items: Good[] }>('/goods?limit=200'),
-      apiFetch<{ items: Brand[]; total: number }>('/brands'),
-    ])
-      .then(([goodsRes, brandsRes]) => {
+    apiFetch<{ items: Brand[]; total: number }>('/brands')
+      .then(brandsRes => {
         if (!cancelled) {
-          setGoods(goodsRes.items);
           setBrands(brandsRes.items);
           setCache('cache:brands', brandsRes.items);
         }
       })
       .catch((e: unknown) => {
         // не ковтаємо помилку мовчки. Логуємо для діагностики,
-        // але не блокуємо UI (правила можна редагувати без списку товарів/брендів).
+        // але не блокуємо UI (правила можна редагувати без списку брендів).
         console.warn(t('errors.refDataLoad'), e);
       });
     return () => {
@@ -175,34 +190,10 @@ export default function PricingRulesClient() {
     };
   }, [t]);
 
-  // надсилаємо лише значення, релевантне для обраного type, щоб не зберігати
-  // "сміттєві" поля з минулої редакції форми.
-  const buildPayload = (form: RuleForm) => {
-    const isPercent = form.type === 'PERCENT' || form.type === 'COMPETITOR_PLUS';
-    const isFixedAmount = form.type === 'FIXED_AMOUNT';
-    const isFixedPrice = form.type === 'FIXED_PRICE';
-    const isCostTier = form.type === 'COST_TIER';
-    return {
-      name: form.name,
-      type: form.type,
-      priority: Number(form.priority) || 10,
-      goodId: form.goodId || undefined,
-      goodCategory: form.goodId ? undefined : form.goodCategory || undefined,
-      goodType: form.goodId || form.goodCategory ? undefined : form.goodType || undefined,
-      brandId: form.brandId || undefined,
-      supplierId: form.supplierId || undefined,
-      percentValue: isPercent && form.percentValue ? Number(form.percentValue) : undefined,
-      fixedAmount: isFixedAmount && form.fixedAmount ? Number(form.fixedAmount) : undefined,
-      fixedPrice: isFixedPrice && form.fixedPrice ? Number(form.fixedPrice) : undefined,
-      roundTo: form.roundTo ? Number(form.roundTo) : undefined,
-      tiers: isCostTier ? form.tiers.map((t, i) => ({ ...t, sortOrder: i })) : undefined,
-    };
-  };
-
   const createRule = async (form: RuleForm) => {
     await apiFetch<PricingRule>('/pricing-rules', {
       method: 'POST',
-      body: JSON.stringify(buildPayload(form)),
+      body: JSON.stringify(buildCreatePayload(form)),
     });
     load();
   };
@@ -211,7 +202,8 @@ export default function PricingRulesClient() {
     if (!editRule) return;
     await apiFetch<PricingRule>(`/pricing-rules/${editRule.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ ...buildPayload(form), isActive: form.isActive }),
+      // Область іде ЯВНО І ЦІЛКОМ (null / [] для знятого) — див. buildUpdatePayload.
+      body: JSON.stringify(buildUpdatePayload(form)),
     });
     if (mountedRef.current) setEditRule(null);
     load();
@@ -255,25 +247,13 @@ export default function PricingRulesClient() {
     }
   };
 
-  const editFormInitial: RuleForm = editRule
-    ? {
-        name: editRule.name,
-        type: editRule.type,
-        priority: String(editRule.priority),
-        goodId: editRule.goodId ?? '',
-        goodCategory: editRule.goodCategory ?? '',
-        goodType: editRule.goodType ?? '',
-        percentValue: editRule.percentValue != null ? String(editRule.percentValue) : '',
-        fixedAmount: editRule.fixedAmount != null ? String(editRule.fixedAmount) : '',
-        fixedPrice: editRule.fixedPrice != null ? String(editRule.fixedPrice) : '',
-        roundTo: editRule.roundTo != null ? String(editRule.roundTo) : '',
-        isActive: editRule.isActive,
-        brandId: editRule.brandId ?? '',
-        supplierId: editRule.supplierId ?? '',
-        supplierName: editRule.supplierName ?? '',
-        tiers: editRule.tiers ?? [],
-      }
-    : EMPTY_FORM;
+  // useMemo — НЕ оптимізація: форма скидає свій стан щоразу, коли змінюється `initial`
+  // (useEffect([open, initial])). Новий об'єкт на кожен рендер сторінки (наприклад, після
+  // фонового refetch правил) стирав би незбережені правки форми разом зі списком товарів.
+  const editFormInitial = useMemo<RuleForm>(
+    () => (editRule ? ruleToForm(editRule) : EMPTY_FORM),
+    [editRule],
+  );
 
   return (
     <div className="page-fill p-4 md:p-6">
@@ -541,17 +521,11 @@ export default function PricingRulesClient() {
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-[13px] text-muted-foreground">
-                    {rule.goodId && rule.good
-                      ? t('row.good', { name: rule.good.name })
-                      : rule.goodType
-                        ? (() => {
-                            const opt = GOOD_TYPE_OPTIONS.find(o => o.value === rule.goodType);
-                            return opt ? t(opt.labelKey) : rule.goodType;
-                          })()
-                        : rule.goodCategory
-                          ? t('row.category', { name: rule.goodCategory })
-                          : t('row.allAssortment')}
+                  <TableCell
+                    className="text-[13px] text-muted-foreground tabular-nums"
+                    title={scopeTitle(rule)}
+                  >
+                    {scopeLabel(rule, t)}
                   </TableCell>
                   <TableCell className="text-[13px] font-medium text-foreground">
                     {rule.type === 'COST_TIER' && rule.tiers && rule.tiers.length > 0 ? (
@@ -621,7 +595,6 @@ export default function PricingRulesClient() {
         onClose={() => setModal(false)}
         onSave={createRule}
         initial={EMPTY_FORM}
-        goods={goods}
         brands={brands}
       />
 
@@ -632,7 +605,8 @@ export default function PricingRulesClient() {
         onSave={updateRule}
         initial={editFormInitial}
         initialCreatedAt={editRule?.createdAt ?? null}
-        goods={goods}
+        ruleId={editRule?.id ?? null}
+        goodsCount={editRule?.goodsCount ?? 0}
         brands={brands}
       />
       <ConfirmDialog {...dialogProps} />

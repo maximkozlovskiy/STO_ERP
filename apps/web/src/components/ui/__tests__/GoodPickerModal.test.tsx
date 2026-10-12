@@ -196,3 +196,124 @@ describe('GoodPickerModal — regression guards (Bugs #387, #388, #389)', () => 
     expect(first).toContain('limit=50');
   });
 });
+
+// ─── Множинний вибір (список товарів правила ціноутворення) ───────────────────
+//
+// Режим вмикається ЛИШЕ пропом `multiple`. Модалку вживають наряди, закупівлі й складські
+// документи — без пропа вона мусить поводитись як раніше: вибір → onSelect → закриття.
+
+describe('GoodPickerModal — множинний вибір', () => {
+  const twoGoods = [
+    ...mockGoods,
+    {
+      id: 'g2',
+      primary: 'Castrol 5W-40',
+      name: 'Castrol 5W-40',
+      sku: 'CAS-5W40',
+      salePrice: 520,
+      category: 'Моторні мастила',
+      unit: 'л',
+    },
+  ];
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/good-categories') return Promise.resolve(mockCategories);
+      if (path.startsWith('/goods/stock-totals')) return Promise.resolve([]);
+      if (path.startsWith('/goods')) return Promise.resolve({ items: twoGoods });
+      return Promise.resolve({ items: [] });
+    });
+  });
+
+  it('без `multiple`: вибір викликає onSelect і ЗАКРИВАЄ модалку; «Готово» й позначок немає', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    render(<GoodPickerModal open onClose={onClose} onSelect={onSelect} selectedId="g2" />);
+
+    const row = await screen.findByRole('button', { name: /Mobil 5W-30/ });
+    expect(row).not.toHaveAttribute('aria-pressed');
+    expect(screen.queryByRole('button', { name: 'Готово' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/додано/)).not.toBeInTheDocument();
+
+    await user.click(row);
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'g1', primary: 'Mobil 5W-30', secondary: 'MOB-5W30 · 450 ₴' }),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('без `multiple`: `selectedIds` ігнорується — рядок можна вибрати, як і раніше', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    render(<GoodPickerModal open onClose={onClose} onSelect={onSelect} selectedIds={['g1']} />);
+
+    await user.click(await screen.findByRole('button', { name: /Mobil 5W-30/ }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('`multiple`: вибір НЕ закриває модалку, можна обрати кілька товарів поспіль', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <GoodPickerModal open onClose={onClose} onSelect={onSelect} multiple selectedIds={[]} />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Mobil 5W-30/ }));
+    await user.click(screen.getByRole('button', { name: /Castrol 5W-40/ }));
+
+    expect(onSelect.mock.calls.map(c => (c[0] as { id: string }).id)).toEqual(['g1', 'g2']);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Castrol 5W-40/ })).toBeInTheDocument();
+  });
+
+  it('`multiple`: уже додані позначено, повторний клік по них нічого не дублює', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <GoodPickerModal open onClose={vi.fn()} onSelect={onSelect} multiple selectedIds={['g1']} />,
+    );
+
+    const added = await screen.findByRole('button', { name: /Mobil 5W-30/ });
+    expect(added).toHaveAttribute('aria-pressed', 'true');
+    expect(added).toHaveTextContent('додано');
+    const free = screen.getByRole('button', { name: /Castrol 5W-40/ });
+    expect(free).toHaveAttribute('aria-pressed', 'false');
+    expect(free).not.toHaveTextContent('додано');
+
+    await user.click(added);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await user.click(free);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'g2' }));
+  });
+
+  it('`multiple`: кнопка «Готово» закриває модалку; підписи можна передати пропами', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <GoodPickerModal
+        open
+        onClose={onClose}
+        onSelect={vi.fn()}
+        multiple
+        selectedIds={['g1']}
+        doneLabel="Done"
+        addedLabel="added"
+      />,
+    );
+
+    expect(await screen.findByRole('button', { name: /Mobil 5W-30/ })).toHaveTextContent('added');
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});

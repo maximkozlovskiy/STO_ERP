@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { Modal } from './modal';
+import { Button } from './button';
 import { Input } from './input';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
@@ -41,9 +42,30 @@ interface Props {
   onClose: () => void;
   selectedId?: string | null;
   onSelect: (item: GoodPickerItem) => void;
+  /**
+   * Множинний вибір (список товарів правила ціноутворення): модалка НЕ закривається після
+   * вибору, уже додані товари (`selectedIds`) позначені, повторний клік по них нічого не
+   * робить, внизу є кнопка «Готово». Без цього пропа поведінка модалки не змінюється.
+   */
+  multiple?: boolean;
+  /** Лише для `multiple`: id товарів, які вже у списку. */
+  selectedIds?: readonly string[];
+  /** Лише для `multiple`: підпис кнопки закриття. */
+  doneLabel?: string;
+  /** Лише для `multiple`: позначка вже доданого товару. */
+  addedLabel?: string;
 }
 
-export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) {
+export function GoodPickerModal({
+  open,
+  onClose,
+  selectedId,
+  onSelect,
+  multiple = false,
+  selectedIds,
+  doneLabel = 'Готово',
+  addedLabel = 'додано',
+}: Props) {
   const [query, setQuery] = useState('');
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
@@ -176,17 +198,25 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
   // secondary дзеркалить sub-line у списку (internalCode + sku + ціна), щоб споживачі,
   // що читають лише secondary, бачили консистентну метадату.
   const selectGood = (item: GoodPickerItem) => {
+    // Множинний режим: уже доданий товар удруге не віддаємо — список без дублів.
+    if (multiple && selectedIds?.includes(item.id)) return;
     const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');
     onSelect({
       ...item,
       primary: item.name,
       secondary: meta ? `${meta} · ${item.salePrice} ₴` : `${item.salePrice} ₴`,
     });
-    onClose();
+    if (!multiple) onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Оберіть товар" size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Оберіть товар"
+      size="lg"
+      footer={multiple ? <Button onClick={onClose}>{doneLabel}</Button> : undefined}
+    >
       <div className="flex flex-col gap-3">
         <Input
           placeholder="Пошук товару / штрих-код..."
@@ -258,7 +288,8 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
             ) : (
               <div className="space-y-1">
                 {items.map(item => {
-                  const selected = item.id === selectedId;
+                  const added = multiple && (selectedIds?.includes(item.id) ?? false);
+                  const selected = multiple ? added : item.id === selectedId;
                   // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
                   // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
                   // створював нову arrow на кожен render для КОЖНОГО row.
@@ -268,6 +299,7 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                       key={item.id}
                       type="button"
                       onClick={() => selectGood(item)}
+                      aria-pressed={multiple ? added : undefined}
                       className={cn(
                         'w-full text-left px-3 py-2 rounded-lg border transition-colors',
                         selected
@@ -275,7 +307,14 @@ export function GoodPickerModal({ open, onClose, selectedId, onSelect }: Props) 
                           : 'border-border bg-surface hover:border-primary hover:bg-primary/5',
                       )}
                     >
-                      <div className="text-sm font-medium text-foreground">{item.name}</div>
+                      <div className="text-sm font-medium text-foreground">
+                        {item.name}
+                        {added && (
+                          <span className="ml-2 text-[11px] font-normal text-success">
+                            ✓ {addedLabel}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
                         {(item.internalCode || item.sku || item.brandName) && (
                           <span className="text-[11px] text-muted-foreground/80">
