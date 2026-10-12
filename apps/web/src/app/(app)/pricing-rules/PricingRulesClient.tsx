@@ -608,7 +608,6 @@ export default function PricingRulesClient() {
         initial={editFormInitial}
         initialCreatedAt={editRule?.createdAt ?? null}
         ruleId={editRule?.id ?? null}
-        goodsCount={editRule?.goodsCount ?? 0}
         brands={brands}
       />
       <ConfirmDialog {...dialogProps} />

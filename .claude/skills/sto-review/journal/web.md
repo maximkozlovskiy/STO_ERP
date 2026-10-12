@@ -264,3 +264,10 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Grep:** `grep -rn "<DatePickerInput" -A6 apps/web/src/app --include="*.tsx"` → кожне поле має `label=` або `ariaLabel=`.
 **Фікс:** проп `ariaLabel` у `DatePickerInput`; спільний `<DateRangeFilter from to onFromChange onToChange fromLabel toLabel>` замість чотирьох копій блоку; тест `DateRangeFilter.test.tsx` шукає поля через `getByLabelText`.
 **Severity:** SUGGESTION (a11y) — для оплат це регресія: до фічі поля мали `label`.
+
+### 2026-10-12 — Прапорець «вкладене відкрито», знятий в ефекті, пропускає Escape до батьківської модалки — §3.1
+
+**Сигнал:** форма правила ціноутворення: «Додати товар» → клік по товару → Escape закривав і вибір, і форму (у браузері; у jsdom не відтворюється). Поруч: форма слала `goodIds` при кожному збереженні й не читала список, коли `goodsCount` у рядку таблиці 0.
+**Grep:** `grep -rn "OverlayOpenChange\|overlayOpenRef" apps/web/src --include="*.tsx"` → прапорець знімається через `setTimeout`, не синхронно.
+**Фікс:** зняття прапорця після події; регресія — лише E2E. Дочірній список у PATCH — тільки після зміни користувачем; повний список читати при кожному відкритті форми.
+**Severity:** IMPORTANT (втрата незбереженого списку)

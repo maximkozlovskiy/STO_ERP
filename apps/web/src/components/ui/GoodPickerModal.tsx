@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { apiFetch } from '@/lib/api-client';
 import { Modal } from './modal';
 import { Button } from './button';
@@ -66,6 +66,8 @@ export function GoodPickerModal({
   doneLabel = 'Готово',
   addedLabel = 'додано',
 }: Props) {
+  // Множина, а не `includes` на кожен рядок і кожен рендер: у списку правила до 5000 товарів.
+  const selectedSet = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
   const [query, setQuery] = useState('');
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
@@ -199,7 +201,7 @@ export function GoodPickerModal({
   // що читають лише secondary, бачили консистентну метадату.
   const selectGood = (item: GoodPickerItem) => {
     // Множинний режим: уже доданий товар удруге не віддаємо — список без дублів.
-    if (multiple && selectedIds?.includes(item.id)) return;
+    if (multiple && selectedSet.has(item.id)) return;
     const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');
     onSelect({
       ...item,
@@ -288,7 +290,7 @@ export function GoodPickerModal({
             ) : (
               <div className="space-y-1">
                 {items.map(item => {
-                  const added = multiple && (selectedIds?.includes(item.id) ?? false);
+                  const added = multiple && selectedSet.has(item.id);
                   const selected = multiple ? added : item.id === selectedId;
                   // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
                   // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`

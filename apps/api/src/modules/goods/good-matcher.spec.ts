@@ -9,7 +9,10 @@
  *  · прибрати `deletedAt: null` / `orgId` з `findGoods` → кейси про видалений товар і чужу
  *    організацію падають;
  *  · прибрати фільтр `g.brandId === null` → кейс «товар іншого бренду не підставляється» падає;
- *  · прибрати умову `hasOnlyName` → кейс «назва не шукається, коли є артикул» падає.
+ *  · прибрати умову `hasOnlyName` → кейс «назва не шукається, коли є артикул» падає;
+ *  · прибрати `mode: 'insensitive'` з пошуку коду → кейс про змішаний регістр падає;
+ *  · `findGoods` читає одну сторінку (`return page`) → кейс «збігів більше, ніж сторінка» падає;
+ *  · ключ мапи назв знову `lower(g.name)` → кейс про назви з різним регістром падає.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GoodMatcherService, type GoodMatchRow } from './good-matcher.service';
@@ -42,7 +45,7 @@ type InFilter = { in: string[] };
 interface GoodWhere {
   orgId: string;
   deletedAt: null;
-  internalCode?: InFilter;
+  internalCode?: InFilter & { mode?: 'insensitive' };
   skuNormalized?: InFilter;
   barcode?: InFilter;
   name?: InFilter;
@@ -77,14 +80,18 @@ describe('GoodMatcherService — пошук товару за рядком фа�
   beforeEach(() => {
     goods = [];
     barcodes = [];
-    goodFindMany = vi.fn(({ where }: { where: GoodWhere }) => {
+    goodFindMany = vi.fn((args: { where: GoodWhere; take?: number; cursor?: { id: string } }) => {
+      const { where } = args;
       // Сервіс зобов'язаний обмежити вибірку організацією і живими товарами.
       expect(where.orgId).toBeTruthy();
       expect(where.deletedAt).toBeNull();
-      const rows = goods.filter(g => {
+      const all = goods.filter(g => {
         if (g.orgId !== where.orgId || g.deletedAt) return false;
-        if (where.internalCode && !where.internalCode.in.includes(g.internalCode ?? ''))
-          return false;
+        if (where.internalCode) {
+          // Як у базі: без `mode: 'insensitive'` збіг точний, з ним — LOWER(col) IN (LOWER(…)).
+          const fold = (v: string) => (where.internalCode?.mode ? v.toLowerCase() : v);
+          if (!where.internalCode.in.map(fold).includes(fold(g.internalCode ?? ''))) return false;
+        }
         if (where.skuNormalized && !where.skuNormalized.in.includes(normalizeArticle(g.sku)))
           return false;
         if (where.barcode && !where.barcode.in.includes(g.barcode ?? '')) return false;
@@ -92,6 +99,10 @@ describe('GoodMatcherService — пошук товару за рядком фа�
         if (where.id && !where.id.in.includes(g.id)) return false;
         return true;
       });
+      // Як у базі: порядок за id, курсор пропускає все до себе включно, `take` обрізає.
+      all.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+      const from = args.cursor ? all.findIndex(g => g.id === args.cursor?.id) + 1 : 0;
+      const rows = all.slice(from, args.take ? from + args.take : undefined);
       return Promise.resolve(
         rows.map(g => ({
           id: g.id,
@@ -134,6 +145,42 @@ describe('GoodMatcherService — пошук товару за рядком фа�
     goods.push(good('g1', { internalCode: 'ТВ-000123' }));
     const res = await match({ code: '  тв-000123 ' });
     expect(res).toMatchObject({ status: 'matched', matchedBy: 'code', good: { id: 'g1' } });
+  });
+
+  // guards: BR-GOOD-008
+  it('код зі змішаним регістром у базі («Тов-0001») знаходиться за будь-яким написанням у файлі', async () => {
+    goods.push(good('g1', { internalCode: 'Тов-0001' }));
+    for (const code of ['ТОВ-0001', 'тов-0001', 'Тов-0001', 'тОВ-0001']) {
+      expect(await match({ code })).toMatchObject({ status: 'matched', good: { id: 'g1' } });
+    }
+    // Порівняння без регістру — не шаблон: «%» і «_» у коді з файла нічого не «знаходять».
+    expect((await match({ code: '%' })).status).toBe('notFound');
+    expect((await match({ code: 'тов_0001' })).status).toBe('notFound');
+  });
+
+  // guards: BR-GOOD-008
+  it('збігів більше, ніж сторінка читання: дочитує до кінця, а не обрізає вибірку', async () => {
+    // 5001 товар з одним артикулом — більше за сторінку.
+    for (let i = 0; i <= 5000; i++)
+      goods.push(good(`g${String(i).padStart(5, '0')}`, { sku: 'A1' }));
+    // Другий артикул має два товари, і другий із них лежить ЗА межею першої сторінки: обрізана
+    // вибірка лишила б один товар, і рядок став би «знайдено» замість «вибрати з кількох».
+    goods.push(good('a-first', { sku: 'B2' }), good('z-last', { sku: 'B2' }));
+    const [many, pair] = await service.matchMany(ORG, [{ article: 'A1' }, { article: 'B2' }]);
+    expect(many.status).toBe('ambiguous');
+    expect(many.candidates).toHaveLength(5001);
+    expect(pair.status).toBe('ambiguous');
+    expect(pair.candidates.map(c => c.id).sort()).toEqual(['a-first', 'z-last']);
+  });
+
+  // guards: BR-GOOD-008
+  it('назви, що різняться лише регістром, — різні товари: кожен рядок знаходить свій', async () => {
+    goods.push(good('g1', { name: 'Фільтр' }), good('g2', { name: 'фільтр' }));
+    const res = await service.matchMany(ORG, [{ name: 'Фільтр' }, { name: 'фільтр' }]);
+    expect(res.map(r => [r.status, r.good?.id])).toEqual([
+      ['matched', 'g1'],
+      ['matched', 'g2'],
+    ]);
   });
 
   // guards: BR-GOOD-008

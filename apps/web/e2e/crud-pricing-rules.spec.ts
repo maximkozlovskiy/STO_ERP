@@ -222,6 +222,33 @@ test.describe('Правила ціноутворення — категорія 
     await deleteRuleViaUi(page, row);
   });
 
+  test('Escape у виборі товару закриває лише його: форма й доданий товар лишаються', async ({
+    page,
+  }) => {
+    expect(goodIds, 'beforeAll має створити два товари').toHaveLength(2);
+    await gotoRules(page);
+    const modal = await openCreateForm(page);
+
+    await modal.getByRole('button', { name: 'Додати товар' }).click();
+    const picker = page.getByRole('dialog', { name: 'Оберіть товар' });
+    await expect(picker).toBeVisible({ timeout: 8_000 });
+    await picker.getByPlaceholder('Пошук товару / штрих-код...').fill(goodA);
+    const item = picker.getByRole('button', { name: new RegExp(goodA) });
+    await expect(item).toBeVisible({ timeout: 10_000 });
+    // Саме ПІСЛЯ вибору товару Escape раніше закривав і вибір, і форму з незбереженим списком.
+    await item.click();
+    await expect(item).toHaveAttribute('aria-pressed', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(picker).not.toBeVisible({ timeout: 5_000 });
+    await expect(modal).toBeVisible();
+    await expect(modal.getByText('Товари (1)')).toBeVisible();
+
+    // Другий Escape — уже до форми; нічого не збережено.
+    await page.keyboard.press('Escape');
+    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+  });
+
   test('правило зі списком товарів: 2 товари → прибрати один → 1 → видалити', async ({
     page,
   }, testInfo) => {

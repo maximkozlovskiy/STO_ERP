@@ -34,7 +34,6 @@ export default function RuleFormModal({
   initial,
   initialCreatedAt,
   ruleId,
-  goodsCount = 0,
   brands,
 }: {
   open: boolean;
@@ -44,8 +43,6 @@ export default function RuleFormModal({
   initialCreatedAt?: string | null;
   /** Редагування: id правила — щоб довантажити повний список його товарів. */
   ruleId?: string | null;
-  /** Редагування: `goodsCount` правила; 0 — список порожній, довантажувати нічого. */
-  goodsCount?: number;
   brands: Brand[];
 }) {
   const { t } = useTranslation('pricingRules');
@@ -80,17 +77,19 @@ export default function RuleFormModal({
   // У списку правил приходять лише `goodsCount` і перші 3 товари — повний список тягнемо
   // окремо. Поки він не завантажений, «Зберегти» вимкнено: інакше порожній локальний
   // список затер би справжній на сервері.
+  // Запитуємо й тоді, коли `goodsCount` у рядку таблиці 0: рядок — знімок, який міг застаріти
+  // (щойно збережене правило, інша вкладка, невдалий refetch), а форма з хибно порожнім
+  // списком після «додати товар» замінила б ним справжній.
   const { state: goodsState, retry: retryGoods } = usePricingRuleGoods(
-    open && ruleId && goodsCount > 0 ? ruleId : null,
+    open && ruleId ? ruleId : null,
   );
-  const goodsLoad: RuleGoodsLoad =
-    !ruleId || goodsCount === 0
+  const goodsLoad: RuleGoodsLoad = !ruleId
+    ? GOODS_READY
+    : goodsState.status === 'ready'
       ? GOODS_READY
-      : goodsState.status === 'ready'
-        ? GOODS_READY
-        : goodsState.status === 'error'
-          ? goodsState
-          : { status: 'loading' };
+      : goodsState.status === 'error'
+        ? goodsState
+        : { status: 'loading' };
   const goodsReady = goodsLoad.status === 'ready';
 
   // Оголошено ПІСЛЯ ефекту скидання форми: якщо `initial` зміниться при відкритій формі,
@@ -149,9 +148,30 @@ export default function RuleFormModal({
   const typeOverridden = dimension === 'brand' || dimension === 'category';
 
   // Escape закриває КОЖНУ відкриту модалку (слухач на document у кожної). Поки над формою
-  // відкрито вибір товару чи підтвердження, саму форму не закриваємо — інакше Escape у
-  // модалці вибору забрав би разом із собою незбережений список товарів.
+  // відкрито вибір товару, підтвердження чи картку постачальника, саму форму не закриваємо —
+  // інакше Escape у вкладеній модалці забрав би разом із собою незбережений список товарів.
+  // Прапорець знімається ПІСЛЯ поточної події (setTimeout): якщо слухач вкладеної модалки
+  // спрацьовує першим, React встигає перерендерити форму ще до її слухача, і синхронно знятий
+  // прапорець пропускав той самий Escape до форми (у браузері: додати товар → Escape).
   const overlayOpenRef = useRef(false);
+  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const goodsOverlayRef = useRef(false);
+  const supplierOverlayRef = useRef(false);
+  const syncOverlay = useCallback(() => {
+    clearTimeout(overlayTimerRef.current);
+    if (goodsOverlayRef.current || supplierOverlayRef.current) {
+      overlayOpenRef.current = true;
+      return;
+    }
+    overlayTimerRef.current = setTimeout(() => {
+      overlayOpenRef.current = false;
+    }, 0);
+  }, []);
+  useEffect(() => {
+    supplierOverlayRef.current = supplierPickerOpen || supplierDetailOpen;
+    syncOverlay();
+  }, [supplierPickerOpen, supplierDetailOpen, syncOverlay]);
+  useEffect(() => () => clearTimeout(overlayTimerRef.current), []);
   const closeForm = () => {
     if (overlayOpenRef.current) return;
     onClose();
@@ -476,11 +496,12 @@ export default function RuleFormModal({
 
             <RuleGoodsField
               goods={form.goods}
-              onChange={goods => set({ goods })}
+              onChange={goods => set({ goods, goodsTouched: true })}
               load={goodsLoad}
               onRetry={retryGoods}
               onOverlayOpenChange={isOpen => {
-                overlayOpenRef.current = isOpen;
+                goodsOverlayRef.current = isOpen;
+                syncOverlay();
               }}
             />
 

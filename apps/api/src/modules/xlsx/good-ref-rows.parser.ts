@@ -48,7 +48,10 @@ const headerKey = (s: string): string => s.toLocaleLowerCase('uk').replace(/[^\p
 function mapColumns(headers: string[]): Map<number, Field> {
   const map = new Map<number, Field>();
   headers.forEach((h, i) => {
-    const field = HEADER_ALIASES[headerKey(h)];
+    const key = headerKey(h);
+    // Лише власні ключі: заголовок «constructor» чи «toString» інакше дав би «поле»-функцію
+    // з прототипа, порядок шаблону не ввімкнувся б і файл читався б як порожній.
+    const field = Object.hasOwn(HEADER_ALIASES, key) ? HEADER_ALIASES[key] : undefined;
     if (field && !Array.from(map.values()).includes(field)) map.set(i, field);
   });
   if (map.size === 0) DEFAULT_ORDER.forEach((field, i) => map.set(i, field));
@@ -78,6 +81,25 @@ function toRows(grid: string[][]): GoodRefRow[] {
 }
 
 /**
+ * Роздільник CSV — ОДИН на файл, за рядком заголовків: якого знака поза лапками більше.
+ * Обидва одразу (`[',', ';']`) різали значення: Excel в українській локалі пише через «;» і
+ * коми в назві («Фільтр, масляний») у лапки не бере — колонки з'їжджали, і в поле артикула чи
+ * штрихкоду потрапляв шматок назви.
+ */
+function detectDelimiter(text: string): ',' | ';' {
+  const header = text.split(/\r?\n/, 1)[0];
+  let commas = 0;
+  let semicolons = 0;
+  let quoted = false;
+  for (const ch of header) {
+    if (ch === '"') quoted = !quoted;
+    else if (!quoted && ch === ',') commas++;
+    else if (!quoted && ch === ';') semicolons++;
+  }
+  return semicolons > commas ? ';' : ',';
+}
+
+/**
  * Читає перелік товарів із XLSX або CSV. Перший рядок — заголовки; колонки впізнаються за назвою
  * («Код», «Артикул», «Бренд», «Штрихкод», «Назва» та їхні англійські відповідники) у будь-якому
  * порядку. Рядки без жодного ключа товару пропускаються.
@@ -94,7 +116,7 @@ export async function parseGoodRefRows(
       relax_column_count: true,
       trim: true,
       // Excel в українській локалі зберігає CSV через «;».
-      delimiter: [',', ';'],
+      delimiter: detectDelimiter(text),
     }) as string[][];
     return toRows(grid.map(r => r.map(c => String(c ?? ''))));
   }

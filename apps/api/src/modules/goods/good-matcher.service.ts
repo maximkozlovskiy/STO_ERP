@@ -50,6 +50,8 @@ type GoodRow = Prisma.GoodGetPayload<{ select: typeof GOOD_SELECT }>;
 
 /** Postgres приймає до 32767 параметрів на запит; списки `IN` ріжемо із запасом. */
 const IN_CHUNK = 5000;
+/** Розмір сторінки читання збігів (див. `findGoods`). */
+const PAGE = 5000;
 
 const clean = (s: string | null | undefined): string => (s ?? '').trim();
 const lower = (s: string): string => s.toLocaleLowerCase('uk');
@@ -138,7 +140,7 @@ export class GoodMatcherService {
       }
 
       if (this.hasOnlyName(row)) {
-        const res = this.decide(byName.get(lower(clean(row.name))) ?? [], 'name');
+        const res = this.decide(byName.get(clean(row.name)) ?? [], 'name');
         if (res) return res;
       }
 
@@ -183,12 +185,25 @@ export class GoodMatcherService {
     };
   }
 
+  /**
+   * Сторінками до кінця, а не одним `take`: артикул не унікальний (той самий номер у кількох
+   * брендів), і обрізана вибірка лишила б від двох товарів один — рядок став би «знайдено»
+   * замість «вибрати з кількох».
+   */
   private async findGoods(orgId: string, where: Prisma.GoodWhereInput): Promise<GoodRow[]> {
-    return this.prisma.good.findMany({
-      where: { orgId, deletedAt: null, ...where },
-      select: GOOD_SELECT,
-      take: IN_CHUNK * 2,
-    });
+    const out: GoodRow[] = [];
+    for (let cursor: string | undefined; ;) {
+      const page = await this.prisma.good.findMany({
+        where: { orgId, deletedAt: null, ...where },
+        select: GOOD_SELECT,
+        orderBy: { id: 'asc' },
+        take: PAGE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      out.push(...page);
+      if (page.length < PAGE) return out;
+      cursor = page[page.length - 1].id;
+    }
   }
 
   private async inChunks<T>(values: string[], load: (chunk: string[]) => Promise<T[]>) {
@@ -199,20 +214,18 @@ export class GoodMatcherService {
     return out;
   }
 
-  /** Код порівнюється без регістру: у базу йдуть три написання, рішення — за ключем у JS. */
+  /**
+   * Код порівнюється без регістру в самій базі (`LOWER(col) IN (LOWER($1), …)` — не `LIKE`,
+   * тож `%` і `_` лишаються звичайними символами). Три написання з JS (як є / верхній / нижній)
+   * не знаходили код зі змішаним регістром: префікс нумерації «Тов-» проти «ТОВ-0001» у файлі.
+   */
   private async loadByCode(orgId: string, codes: string[]): Promise<Map<string, GoodRow[]>> {
     const map = new Map<string, GoodRow[]>();
     if (codes.length === 0) return map;
-    const variants = unique(codes.flatMap(c => [c, c.toUpperCase(), c.toLowerCase()]));
-    const goods = await this.inChunks(variants, chunk =>
-      this.findGoods(orgId, { internalCode: { in: chunk } }),
+    const goods = await this.inChunks(unique(codes.map(lower)), chunk =>
+      this.findGoods(orgId, { internalCode: { in: chunk, mode: 'insensitive' } }),
     );
-    const seen = new Set<string>();
-    for (const g of goods) {
-      if (!g.internalCode || seen.has(g.id)) continue;
-      seen.add(g.id);
-      push(map, lower(g.internalCode), g);
-    }
+    for (const g of goods) if (g.internalCode) push(map, lower(g.internalCode), g);
     return map;
   }
 
@@ -232,13 +245,7 @@ export class GoodMatcherService {
     if (barcodes.length === 0) return map;
     const wanted = new Set(barcodes);
     const [links, direct] = await Promise.all([
-      this.inChunks(barcodes, chunk =>
-        this.prisma.goodBarcode.findMany({
-          where: { orgId, barcode: { in: chunk } },
-          select: { barcode: true, goodId: true },
-          take: IN_CHUNK * 2,
-        }),
-      ),
+      this.inChunks(barcodes, chunk => this.findBarcodeLinks(orgId, chunk)),
       this.inChunks(barcodes, chunk => this.findGoods(orgId, { barcode: { in: chunk } })),
     ]);
     const linkedIds = unique(links.map(l => l.goodId));
@@ -258,13 +265,31 @@ export class GoodMatcherService {
     return map;
   }
 
+  /** Штрихкод не унікальний у базі — читаємо всі зв'язки сторінками, як і товари. */
+  private async findBarcodeLinks(orgId: string, barcodes: string[]) {
+    const out: Array<{ id: string; barcode: string; goodId: string }> = [];
+    for (let cursor: string | undefined; ;) {
+      const page = await this.prisma.goodBarcode.findMany({
+        where: { orgId, barcode: { in: barcodes } },
+        select: { id: true, barcode: true, goodId: true },
+        orderBy: { id: 'asc' },
+        take: PAGE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      out.push(...page);
+      if (page.length < PAGE) return out;
+      cursor = page[page.length - 1].id;
+    }
+  }
+
   private async loadByName(orgId: string, names: string[]): Promise<Map<string, GoodRow[]>> {
     const map = new Map<string, GoodRow[]>();
     if (names.length === 0) return map;
     const goods = await this.inChunks(names, chunk =>
       this.findGoods(orgId, { name: { in: chunk } }),
     );
-    for (const g of goods) push(map, lower(g.name), g);
+    // Ключ — назва як є: пошук точний, і «Фільтр» з «фільтр» лишаються різними товарами.
+    for (const g of goods) push(map, g.name, g);
     return map;
   }
 

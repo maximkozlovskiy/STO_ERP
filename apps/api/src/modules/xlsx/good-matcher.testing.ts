@@ -50,6 +50,22 @@ export function matchInCatalog(catalog: CatalogGood[], row: GoodMatchRow): GoodM
   const barcode = (row.barcode ?? '').trim();
   const sameArticle = article ? catalog.filter(g => normalizeArticle(g.sku) === article) : [];
 
+  // Бренд «розпізнано», якщо його носить хоч один товар переліку (довідника брендів двійник не має).
+  const brandKnown = !!brand && catalog.some(g => lower(g.brand?.name) === brand);
+
+  const byArticle = (): GoodMatchResult | null => {
+    if (sameArticle.length === 0) return null;
+    // Як у справжньому каскаді: товар ІНШОГО бренду сам не підставляється, товар без бренду — так.
+    const compatible = brandKnown ? sameArticle.filter(g => !g.brandId && !g.brand) : sameArticle;
+    if (compatible.length === 1) return decide(compatible, 'article');
+    return {
+      status: 'ambiguous',
+      good: null,
+      matchedBy: 'article',
+      candidates: sameArticle.map(toCandidate),
+    };
+  };
+
   const res =
     (code
       ? decide(
@@ -57,7 +73,7 @@ export function matchInCatalog(catalog: CatalogGood[], row: GoodMatchRow): GoodM
           'code',
         )
       : null) ??
-    (brand && sameArticle.length
+    (brandKnown && sameArticle.length
       ? decide(
           sameArticle.filter(g => lower(g.brand?.name) === brand),
           'articleBrand',
@@ -71,10 +87,11 @@ export function matchInCatalog(catalog: CatalogGood[], row: GoodMatchRow): GoodM
           'barcode',
         )
       : null) ??
-    decide(sameArticle, 'article') ??
+    byArticle() ??
     (!code && !article && !barcode && row.name
       ? decide(
-          catalog.filter(g => lower(g.name) === lower(row.name)),
+          // Назва — точний збіг (без зведення регістру), як `name IN (…)` у базі.
+          catalog.filter(g => g.name === (row.name ?? '').trim()),
           'name',
         )
       : null);

@@ -5,7 +5,9 @@
  *  · `mapColumns` завжди повертає порядок шаблону → кейси про заголовки в довільному порядку падають;
  *  · прибрати фільтр «рядок без жодного ключа» → кейс про порожні рядки падає;
  *  · `rowIndex: i + 2` → `i + 1` → кейс про номер рядка падає;
- *  · прибрати `;` з роздільників CSV → кейс про «;» падає.
+ *  · прибрати `;` з роздільників CSV → кейс про «;» падає;
+ *  · повернути `delimiter: [',', ';']` → кейс «коми в назві без лапок» падає;
+ *  · `HEADER_ALIASES[key]` без `Object.hasOwn` → кейс про «constructor» падає.
  */
 import { describe, it, expect } from 'vitest';
 import ExcelJS from 'exceljs';
@@ -114,6 +116,42 @@ describe('parseGoodRefRows — перелік товарів із файла', (
     const rows = await parseGoodRefRows(csv('Артикул;Бренд\nA1;Бош\n'), 'csv');
     expect(rows).toEqual([
       { rowIndex: 2, code: null, article: 'A1', brand: 'Бош', barcode: null, name: null },
+    ]);
+  });
+
+  // guards: BR-GOOD-008
+  it('CSV через «;» з комами в назві без лапок: колонки не з’їжджають', async () => {
+    const rows = await parseGoodRefRows(
+      csv('Назва;Артикул;Штрихкод\nФільтр, масляний, MANN;W 712/75;4011558729707\n'),
+      'csv',
+    );
+    expect(rows).toEqual([
+      {
+        rowIndex: 2,
+        code: null,
+        article: 'W 712/75',
+        brand: null,
+        barcode: '4011558729707',
+        name: 'Фільтр, масляний, MANN',
+      },
+    ]);
+  });
+
+  // guards: BR-GOOD-008
+  it('CSV через «,» з «;» у значенні й лапками навколо коми', async () => {
+    const rows = await parseGoodRefRows(csv('sku,name\nA1,"Олива 5W-40, 4 л; синтетика"\n'), 'csv');
+    expect(rows).toMatchObject([{ article: 'A1', name: 'Олива 5W-40, 4 л; синтетика' }]);
+  });
+
+  // guards: BR-GOOD-008
+  it('заголовок, що збігається з назвою властивості об’єкта («constructor»), — не поле', async () => {
+    const buf = await xlsx([
+      ['constructor', 'toString', 'valueOf'],
+      ['K1', 'A1', 'Febi'],
+    ]);
+    // Жодного впізнаного заголовка → порядок шаблону, рядок прочитано.
+    expect(await parseGoodRefRows(buf, 'xlsx')).toEqual([
+      { rowIndex: 2, code: 'K1', article: 'A1', brand: 'Febi', barcode: null, name: null },
     ]);
   });
 

@@ -47,6 +47,8 @@ const prismaMock = {
   counterparty: {
     findFirst: vi.fn(),
   },
+  // Блокування правила на час PATCH (pg_advisory_xact_lock).
+  $executeRaw: vi.fn().mockResolvedValue(1),
   $transaction: vi.fn().mockImplementation((arg: unknown) => {
     if (typeof arg === 'function') {
       return (arg as (tx: unknown) => Promise<unknown>)(prismaMock);
@@ -919,6 +921,67 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
       expect(updateData()).toMatchObject({ goodCategoryId: null, goodCategory: null });
       expect(prismaMock.goodCategory.findFirst).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-010
+    it('PATCH правила, чию категорію видалили пізніше: правка без категорії проходить', async () => {
+      // Видалення категорії правило не чіпає: воно лишається з її id. Таке правило мусить
+      // лишатись редагованим — раніше будь-який PATCH давав 404 «Категорію не знайдено».
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ goodCategoryId: CATEGORY }),
+      );
+      prismaMock.goodCategory.findFirst.mockResolvedValue(null);
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { isActive: false });
+      prismaMock.goodCategory.findFirst.mockReset();
+      expect(res.statusCode).toBe(200);
+      expect(updateData()).toMatchObject({ isActive: false, goodCategoryId: CATEGORY });
+    });
+
+    // guards: BR-GOOD-010
+    it('PATCH, що САМ надсилає видалену категорію → 404, правило не записано', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(existingRule());
+      prismaMock.goodCategory.findFirst.mockResolvedValueOnce(null);
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { goodCategoryId: CATEGORY });
+      expect(res.statusCode).toBe(404);
+      expect(prismaMock.pricingRule.updateMany).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-009
+    it('PATCH: стан правила читається під блокуванням, у тій самій транзакції, що й запис', async () => {
+      // Два одночасні PATCH інакше зливали б списки в об'єднання й лишали правило зі списком
+      // і брендом водночас: кожен читав стан ДО запису сусіда.
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(existingRule());
+      prismaMock.good.count.mockResolvedValueOnce(1);
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 1 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { goodIds: [GOOD_1] });
+      expect(res.statusCode).toBe(200);
+      const order = (fn: { mock: { invocationCallOrder: number[] } }) =>
+        fn.mock.invocationCallOrder[0];
+      expect(prismaMock.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(order(prismaMock.$transaction)).toBeLessThan(order(prismaMock.$executeRaw));
+      expect(order(prismaMock.$executeRaw)).toBeLessThan(order(prismaMock.pricingRule.findFirst));
+      expect(order(prismaMock.pricingRule.findFirst)).toBeLessThan(
+        order(prismaMock.pricingRuleGood.deleteMany),
+      );
     });
 
     // guards: BR-GOOD-009

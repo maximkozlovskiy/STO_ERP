@@ -198,7 +198,7 @@ export class PricingRulesController {
       goodCategory: null,
       goodType: dto.goodType ?? null,
     });
-    await this.assertRefs(orgId, scope, dto.supplierId ?? null);
+    await this.assertRefs(this.prisma, orgId, scope, dto.supplierId ?? null);
 
     const { tiers, ...values } = this.cleanValuesForType(dto);
     const rule = await this.prisma.$transaction(
@@ -259,59 +259,76 @@ export class PricingRulesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePricingRuleDto,
   ) {
-    const existing = await this.prisma.pricingRule.findFirst({
-      where: { id, orgId, deletedAt: null },
-      include: { _count: { select: { goods: true } } },
-    });
-    if (!existing)
-      throw new NotFoundException(translateError('err.pricingRule.notFound', getLocale()));
-
-    // PATCH зливає надіслане з наявним станом ПЕРЕД нормалізацією: якщо клієнт шле лише бренд,
-    // а правило мало список товарів, область має лишитись несуперечливою (один вимір).
-    // undefined — поле не чіпали; null (для списку — []) — зняти значення.
     const goodIds = dto.goodIds !== undefined ? Array.from(new Set(dto.goodIds)) : undefined;
     const categoryTouched = dto.goodCategoryId !== undefined;
-    const supplierId = dto.supplierId !== undefined ? dto.supplierId : existing.supplierId;
-    const scope = this.normalizeScope({
-      goodIds,
-      hasGoods: goodIds !== undefined ? goodIds.length > 0 : existing._count.goods > 0,
-      brandId: dto.brandId !== undefined ? dto.brandId : existing.brandId,
-      goodCategoryId: categoryTouched ? (dto.goodCategoryId ?? null) : existing.goodCategoryId,
-      // Стара текстова категорія живе, доки категорію не чіпали; вибір (або зняття) її прибирає.
-      goodCategory: categoryTouched ? null : existing.goodCategory,
-      goodType: dto.goodType !== undefined ? dto.goodType : existing.goodType,
-    });
-    await this.assertRefs(orgId, scope, dto.supplierId ?? null);
-
     const { tiers, ...values } = this.cleanValuesForType(dto);
-    // Область пишемо ЯВНО цілком (зокрема null): інакше «понижене» нормалізацією поле лишиться
-    // в базі зі старим значенням і правило матиме два виміри водночас.
-    const updateData: Prisma.PricingRuleUncheckedUpdateInput = {
-      name: values.name,
-      type: values.type,
-      priority: values.priority,
-      percentValue: values.percentValue,
-      fixedAmount: values.fixedAmount,
-      fixedPrice: values.fixedPrice,
-      roundTo: values.roundTo,
-      isActive: values.isActive,
-      goodId: null,
-      brandId: scope.brandId,
-      goodCategoryId: scope.goodCategoryId,
-      goodCategory: scope.goodCategory,
-      goodType: scope.goodType,
-      supplierId: supplierId ?? null,
-    };
-
-    // Якщо тип змінено НЕ на COST_TIER — старі тіри стають мертвим вантажем (не використовуються,
-    // але «відроджуються», якщо користувач перемкнеться назад) → прибираємо їх явно.
-    const switchedAwayFromCostTier =
-      values.type !== undefined && values.type !== 'COST_TIER' && existing.type === 'COST_TIER';
-    // Список товарів чистимо і тоді, коли його не надсилали, але область перейшла на інший вимір.
-    const dropGoods = !scope.hasGoods && existing._count.goods > 0;
 
     const rule = await this.prisma.$transaction(
       async tx => {
+        // Два одночасні PATCH одного правила читали той самий стан і писали кожен своє: списки
+        // зливались у об'єднання, а правило лишалось і зі списком, і з брендом. Блокування на
+        // правило робить «прочитав стан → злив → записав» послідовним; стан читаємо ВЖЕ під ним.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pricing-rule:${id}`}))`;
+        const existing = await tx.pricingRule.findFirst({
+          where: { id, orgId, deletedAt: null },
+          include: { _count: { select: { goods: true } } },
+        });
+        if (!existing)
+          throw new NotFoundException(translateError('err.pricingRule.notFound', getLocale()));
+
+        // PATCH зливає надіслане з наявним станом ПЕРЕД нормалізацією: якщо клієнт шле лише
+        // бренд, а правило мало список товарів, область має лишитись несуперечливою (один вимір).
+        // undefined — поле не чіпали; null (для списку — []) — зняти значення.
+        const supplierId = dto.supplierId !== undefined ? dto.supplierId : existing.supplierId;
+        const scope = this.normalizeScope({
+          goodIds,
+          hasGoods: goodIds !== undefined ? goodIds.length > 0 : existing._count.goods > 0,
+          brandId: dto.brandId !== undefined ? dto.brandId : existing.brandId,
+          goodCategoryId: categoryTouched ? (dto.goodCategoryId ?? null) : existing.goodCategoryId,
+          // Стара текстова категорія живе, доки категорію не чіпали; вибір (або зняття) прибирає.
+          goodCategory: categoryTouched ? null : existing.goodCategory,
+          goodType: dto.goodType !== undefined ? dto.goodType : existing.goodType,
+        });
+        // Перевіряємо лише посилання, які прийшли в ЦЬОМУ запиті. Категорію чи бренд, що вже
+        // стояли на правилі, могли видалити пізніше — таке правило мусить лишатись редагованим
+        // (вимкнути, перейменувати, обрати іншу категорію), а не віддавати 404 на будь-яку правку.
+        await this.assertRefs(
+          tx,
+          orgId,
+          {
+            ...scope,
+            goodCategoryId: categoryTouched ? scope.goodCategoryId : null,
+            brandId: dto.brandId !== undefined ? scope.brandId : null,
+          },
+          dto.supplierId ?? null,
+        );
+
+        // Область пишемо ЯВНО цілком (зокрема null): інакше «понижене» нормалізацією поле
+        // лишиться в базі зі старим значенням і правило матиме два виміри водночас.
+        const updateData: Prisma.PricingRuleUncheckedUpdateInput = {
+          name: values.name,
+          type: values.type,
+          priority: values.priority,
+          percentValue: values.percentValue,
+          fixedAmount: values.fixedAmount,
+          fixedPrice: values.fixedPrice,
+          roundTo: values.roundTo,
+          isActive: values.isActive,
+          goodId: null,
+          brandId: scope.brandId,
+          goodCategoryId: scope.goodCategoryId,
+          goodCategory: scope.goodCategory,
+          goodType: scope.goodType,
+          supplierId: supplierId ?? null,
+        };
+
+        // Якщо тип змінено НЕ на COST_TIER — старі тіри стають мертвим вантажем (не
+        // використовуються, але «відроджуються», якщо користувач перемкнеться назад).
+        const switchedAwayFromCostTier =
+          values.type !== undefined && values.type !== 'COST_TIER' && existing.type === 'COST_TIER';
+        // Список чистимо і тоді, коли його не надсилали, але область перейшла на інший вимір.
+        const dropGoods = !scope.hasGoods && existing._count.goods > 0;
+
         if (tiers !== undefined || switchedAwayFromCostTier) {
           // Тіри не мають власного orgId; правило перевірене вище, фільтр по pricingRuleId безпечний.
           await tx.pricingRuleTier.deleteMany({ where: { pricingRuleId: id } });
@@ -331,8 +348,6 @@ export class PricingRulesController {
           await tx.pricingRuleGood.deleteMany({ where: { orgId, pricingRuleId: id } });
           await this.writeGoods(tx, orgId, id, scope.goodIds ?? []);
         }
-        // updateMany з orgId — defense-in-depth: інший запит міг soft-delete-нути правило
-        // між findFirst і записом.
         await tx.pricingRule.updateMany({
           where: { id, orgId, deletedAt: null },
           data: updateData,
@@ -405,27 +420,28 @@ export class PricingRulesController {
 
   /** Товари, категорія, бренд і постачальник мусять бути живими записами ЦІЄЇ організації. */
   private async assertRefs(
+    db: Prisma.TransactionClient,
     orgId: string,
     scope: RuleScope,
     supplierId: string | null,
   ): Promise<void> {
     const goodIds = scope.goodIds ?? [];
     const [foundGoods, category, brand, supplier] = await Promise.all([
-      this.countGoods(orgId, goodIds),
+      this.countGoods(db, orgId, goodIds),
       scope.goodCategoryId
-        ? this.prisma.goodCategory.findFirst({
+        ? db.goodCategory.findFirst({
             where: { id: scope.goodCategoryId, orgId, deletedAt: null },
             select: { id: true },
           })
         : Promise.resolve(null),
       scope.brandId
-        ? this.prisma.brand.findFirst({
+        ? db.brand.findFirst({
             where: { id: scope.brandId, orgId, deletedAt: null },
             select: { id: true },
           })
         : Promise.resolve(null),
       supplierId
-        ? this.prisma.counterparty.findFirst({
+        ? db.counterparty.findFirst({
             where: { id: supplierId, orgId, deletedAt: null },
             select: { id: true },
           })
@@ -448,10 +464,14 @@ export class PricingRulesController {
       throw new NotFoundException(translateError('err.pricingRule.supplierNotFound', locale));
   }
 
-  private async countGoods(orgId: string, goodIds: string[]): Promise<number> {
+  private async countGoods(
+    db: Prisma.TransactionClient,
+    orgId: string,
+    goodIds: string[],
+  ): Promise<number> {
     let found = 0;
     for (let i = 0; i < goodIds.length; i += IN_CHUNK) {
-      found += await this.prisma.good.count({
+      found += await db.good.count({
         where: { orgId, deletedAt: null, id: { in: goodIds.slice(i, i + IN_CHUNK) } },
       });
     }

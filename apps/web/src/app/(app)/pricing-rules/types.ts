@@ -34,6 +34,12 @@ export type RuleForm = {
   priority: string;
   /** Список товарів правила (локальний; у базу йде кнопкою «Зберегти»). */
   goods: RuleGood[];
+  /**
+   * Чи користувач змінював список (додав, прибрав, очистив, завантажив із файла). Доки ні —
+   * PATCH список не надсилає: у формі видно лише живі товари, і «той самий список назад»
+   * стер би зв'язки з видаленими товарами (правило стало б загальним) та чужі свіжі зміни.
+   */
+  goodsTouched: boolean;
   /** Категорія з довідника; '' — будь-яка. */
   goodCategoryId: string;
   /** Назва обраної категорії — запасна опція, якщо довідник не завантажився. */
@@ -62,6 +68,7 @@ export const EMPTY_FORM: RuleForm = {
   type: 'PERCENT',
   priority: '10',
   goods: [],
+  goodsTouched: false,
   goodCategoryId: '',
   goodCategoryName: '',
   legacyGoodCategory: '',
@@ -126,6 +133,7 @@ export function ruleToForm(rule: PricingRule): RuleForm {
     type: rule.type,
     priority: String(rule.priority),
     goods: [],
+    goodsTouched: false,
     goodCategoryId: rule.goodCategoryId ?? '',
     goodCategoryName: rule.goodCategoryName ?? '',
     legacyGoodCategory: rule.goodCategoryId ? '' : (rule.goodCategory ?? ''),
@@ -200,15 +208,19 @@ export function buildCreatePayload(form: RuleForm): CreatePricingRulePayload {
  * І ЦІЛКОМ: зняте у формі значення йде як `null` (список — як `[]`), інакше воно лишилось би
  * на сервері.
  *
+ * Виняток — список товарів, якого користувач не чіпав: `goodIds` не надсилається взагалі.
+ * Сервер тоді лишає список як є (разом зі зв'язками на видалені товари, яких форма не бачить).
+ *
  * Виняток — старе правило з ТЕКСТОВОЮ категорією: доки користувач категорію не чіпав,
  * `goodCategoryId` не надсилається взагалі (`null` стер би текстову категорію).
  */
 export function buildUpdatePayload(form: RuleForm): UpdatePricingRulePayload {
-  const { goodCategoryId, ...scope } = scopeValues(form);
+  const { goodCategoryId, goodIds, ...scope } = scopeValues(form);
   const keepLegacyCategory = !!form.legacyGoodCategory && !form.categoryTouched;
   return {
     ...valuePart(form),
     ...scope,
+    ...(form.goodsTouched ? { goodIds } : {}),
     ...(keepLegacyCategory ? {} : { goodCategoryId }),
     isActive: form.isActive,
   };

@@ -71,13 +71,21 @@ export class PricingService {
     goodIds: string[],
     opts: { onlyRuleId?: string } = {},
   ): Promise<PricingContext> {
-    const all = await this.prisma.pricingRule.findMany({
-      where: { orgId, isActive: true, deletedAt: null },
+    const rules = await this.prisma.pricingRule.findMany({
+      // Одне правило шукаємо за id, а не серед перших 200: інакше правило за межею `take`
+      // мовчки «не знайшлося б» і закупівля розцінилась би без націнки.
+      where: {
+        orgId,
+        isActive: true,
+        deletedAt: null,
+        ...(opts.onlyRuleId ? { id: opts.onlyRuleId } : {}),
+      },
       include: RULE_INCLUDE,
-      orderBy: { priority: 'asc' },
+      // Рівний `priority` розсуджує старше правило, далі id: без другого ключа порядок рядків
+      // з однаковим пріоритетом визначав би план запиту, і та сама розцінка давала б різні ціни.
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       take: 200,
     });
-    const rules = opts.onlyRuleId ? all.filter(r => r.id === opts.onlyRuleId) : all;
     const [ruleIdsByGood, categoryParent] = await Promise.all([
       this.loadGoodLinks(orgId, rules, goodIds),
       this.loadCategoryParents(

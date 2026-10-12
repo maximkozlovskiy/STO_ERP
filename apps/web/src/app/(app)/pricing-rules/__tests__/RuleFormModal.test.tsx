@@ -121,7 +121,9 @@ const RULE: PricingRule = {
 function mockApi(ruleGoods?: () => Promise<{ items: RuleGood[]; total: number }>) {
   apiFetchMock.mockImplementation((path: string) => {
     if (path === '/good-categories') return Promise.resolve(TREE);
-    if (path === '/pricing-rules/r-1/goods' && ruleGoods) return ruleGoods();
+    // Список товарів форма читає при КОЖНОМУ відкритті редагування; типово він порожній.
+    if (path === '/pricing-rules/r-1/goods')
+      return ruleGoods ? ruleGoods() : Promise.resolve({ items: [], total: 0 });
     return Promise.reject(new Error(`unexpected ${path}`));
   });
 }
@@ -144,7 +146,6 @@ function renderEdit(rule: PricingRule) {
       initial={ruleToForm(rule)}
       initialCreatedAt={rule.createdAt}
       ruleId={rule.id}
-      goodsCount={rule.goodsCount}
       brands={BRANDS}
     />,
   );
@@ -293,7 +294,7 @@ describe('RuleFormModal — payload створення', () => {
 });
 
 describe('RuleFormModal — payload редагування', () => {
-  it('зняті у формі поля йдуть ЯВНО: brandId null, goodType null, goodIds [], supplierId null', async () => {
+  it('зняті у формі поля йдуть ЯВНО: brandId null, goodType null, supplierId null; список не чіпали — goodIds немає', async () => {
     const onSave = renderEdit({ ...RULE, brandId: 'b-1', brandName: 'Bosch' });
     await waitFor(() => expect(categorySelect().options.length).toBe(4));
     expect(brandSelect().value).toBe('b-1');
@@ -308,13 +309,30 @@ describe('RuleFormModal — payload редагування', () => {
       type: 'PERCENT',
       priority: 10,
       percentValue: 30,
-      goodIds: [],
       brandId: null,
       goodCategoryId: null,
       goodType: null,
       supplierId: null,
       isActive: true,
     });
+  });
+
+  it('список не чіпали → goodIds у PATCH немає; додали або очистили → іде цілий список', async () => {
+    mockApi(() => Promise.resolve({ items: [good(1)], total: 1 }));
+    const onSave = renderEdit({ ...RULE, goodsCount: 1, goodsPreview: [good(1)] });
+    expect(await screen.findByText('Товар 1')).toBeInTheDocument();
+
+    // Лише перейменували: «той самий список назад» стер би зв'язки з видаленими товарами,
+    // яких форма не показує, і правило стало б загальним.
+    const untouched = buildUpdatePayload(await saveAndGetForm(onSave));
+    expect(Object.keys(untouched)).not.toContain('goodIds');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Додати товар' }));
+    fireEvent.click(screen.getByText('pick g-2'));
+    fireEvent.click(screen.getByText('picker-done'));
+    onSave.mockClear();
+    const touched = buildUpdatePayload(await saveAndGetForm(onSave));
+    expect(touched.goodIds).toEqual(['g-1', 'g-2']);
   });
 
   it('обрана категорія йде як id, а тип під нею — null (один вимір області)', async () => {
@@ -361,8 +379,7 @@ describe('RuleFormModal — старе правило з текстовою ка
 
     const payload = buildUpdatePayload(await saveAndGetForm(onSave));
     expect(Object.keys(payload)).not.toContain('goodCategoryId');
-    // Решта області однаково йде явно.
-    expect(payload.goodIds).toEqual([]);
+    // Решта області однаково йде явно (список не чіпали — його в запиті немає).
     expect(payload.brandId).toBeNull();
   });
 
@@ -436,16 +453,30 @@ describe('RuleFormModal — список товарів правила', () => {
     expect(saveButton()).toBeEnabled();
   });
 
-  it('правило без товарів: список не запитується, показано порожній стан', async () => {
+  it('goodsCount у рядку таблиці 0, а на сервері товари є (знімок застарів) → список запитано й показано', async () => {
+    // Рядок таблиці — знімок: щойно збережене правило, інша вкладка, невдалий refetch.
+    // Форма з хибно порожнім списком після «Додати товар» замінила б ним справжній.
+    mockApi(() => Promise.resolve({ items: [good(1), good(2)], total: 2 }));
+    renderEdit(RULE);
+
+    expect(saveButton()).toBeDisabled();
+    expect(await screen.findByText('Товари (2)')).toBeInTheDocument();
+    expect(screen.getByText('Товар 2')).toBeInTheDocument();
+    expect(saveButton()).toBeEnabled();
+  });
+
+  it('правило без товарів: після відповіді сервера показано порожній стан', async () => {
     renderEdit(RULE);
     await waitFor(() => expect(categorySelect().options.length).toBe(4));
 
     expect(
-      screen.getByText(
+      await screen.findByText(
         'Товари не вказано — правило діє за брендом, категорією, типом або на весь асортимент',
       ),
     ).toBeInTheDocument();
-    expect(apiFetchMock.mock.calls.some(c => String(c[0]).includes('/goods'))).toBe(false);
+    expect(apiFetchMock.mock.calls.some(c => String(c[0]) === '/pricing-rules/r-1/goods')).toBe(
+      true,
+    );
     expect(saveButton()).toBeEnabled();
   });
 

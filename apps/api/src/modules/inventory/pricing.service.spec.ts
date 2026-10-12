@@ -304,7 +304,8 @@ describe('PricingService.getPricingContext', () => {
         tiers: { orderBy: { sortOrder: 'asc' } },
         _count: { select: { goods: true } },
       },
-      orderBy: { priority: 'asc' },
+      // Рівний пріоритет розсуджує старше правило, далі id — порядок не залежить від плану запиту.
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       take: 200,
     });
   });
@@ -353,9 +354,14 @@ describe('PricingService.getPricingContext', () => {
     expect(ctx.categoryParent.get('c1')).toBeNull();
   });
 
-  it('onlyRuleId лишає в контексті одне правило (розцінка закупівлі обраним правилом)', async () => {
-    prisma.pricingRule.findMany.mockResolvedValueOnce([dbRule({ id: 'a' }), dbRule({ id: 'b' })]);
+  it('onlyRuleId: правило шукається за id у базі, а не серед перших 200 за пріоритетом', async () => {
+    prisma.pricingRule.findMany.mockResolvedValueOnce([dbRule({ id: 'b' })]);
     const ctx = await service.getPricingContext('org-X', [], { onlyRuleId: 'b' });
+    expect(prisma.pricingRule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orgId: 'org-X', isActive: true, deletedAt: null, id: 'b' },
+      }),
+    );
     expect(ctx.rules.map(r => r.id)).toEqual(['b']);
   });
 });
