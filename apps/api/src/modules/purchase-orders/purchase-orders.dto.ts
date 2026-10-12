@@ -328,6 +328,15 @@ export class LinkedCountsDto {
 // Метод повертав inline-форму → у Swagger її не було зовсім. Виносимо в DTO,
 // щоб web брав тип зі згенерованого (патерн InvoiceByWorkOrderResponseDto).
 
+/** Тіло `POST :id/apply-pricing`. Без `ruleId` — розцінка за загальною ієрархією правил. */
+export class ApplyPricingDto {
+  @ApiPropertyOptional({ description: 'Розцінити лише цим правилом (тільки рядки його області)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  ruleId?: string;
+}
+
 export class ApplyPricingDetailDto {
   @ApiProperty() goodId!: string;
   @ApiProperty() goodName!: string;

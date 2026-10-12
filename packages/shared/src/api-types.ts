@@ -7345,6 +7345,13 @@ export interface components {
         ReceivePurchaseOrderDto: {
             lines: components["schemas"]["ReceiveLineDto"][];
         };
+        ApplyPricingDto: {
+            /**
+             * Format: uuid
+             * @description Розцінити лише цим правилом (тільки рядки його області)
+             */
+            ruleId?: string;
+        };
         ApplyPricingDetailDto: {
             goodId: string;
             goodName: string;
@@ -14586,7 +14593,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyPricingDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {

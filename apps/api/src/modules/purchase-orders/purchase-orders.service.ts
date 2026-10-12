@@ -957,6 +957,10 @@ export class PurchaseOrdersService {
         costPrice,
         po.supplierId ?? undefined,
       );
+      // Bug #832: обране правило розцінює лише СВОЇ рядки. Рядок поза його областю (товар не у
+      // списку правила, інший бренд чи категорія; правило вимкнене) лишається як був — інакше
+      // «немає правила → ціна = собівартість» мовчки знімало б націнку з решти товарів закупівлі.
+      if (ruleId && ruleName === null) continue;
       plan.push({
         lineId: line.id,
         goodId: line.goodId,

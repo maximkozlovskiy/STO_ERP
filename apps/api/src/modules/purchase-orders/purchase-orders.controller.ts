@@ -42,6 +42,7 @@ import {
   LinkedCountsDto,
   PurchaseOrderResponseDto,
   PaginatedPurchaseOrdersDto,
+  ApplyPricingDto,
   ApplyPricingResponseDto,
 } from './purchase-orders.dto';
 
@@ -165,7 +166,7 @@ export class PurchaseOrdersController {
   applyPricing(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { ruleId?: string },
+    @Body() body: ApplyPricingDto,
   ) {
     return this.service.applyPricing(orgId, id, body?.ruleId);
   }

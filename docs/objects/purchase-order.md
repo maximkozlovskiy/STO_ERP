@@ -173,6 +173,13 @@ receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `co
    - **КРОК 2** (після CAS усіх рядків): `InventoryService.createMovement(RECEIPT)` (Promise.all) +
      один `SettlementsService.createTransaction(SUPPLIER_CHARGE)` — борг перед постачальником.
 
+6. **BR-PO-006**: **«Розцінити правилом» (`applyPricing` з `ruleId`) змінює лише рядки, які обране
+   правило покриває.** Рядок поза областю правила (товар не у списку правила, інший бренд чи
+   категорія; правило вимкнене, видалене або чуже) не потрапляє ні в `Good.salePrice`, ні в
+   `PriceHistory`, ні в `pricedSalePrice` рядка, і його немає в `details` відповіді. Без `ruleId`
+   поведінка стара: рядок без жодного правила отримує ціну = собівартість. `ruleId` — UUID
+   (`ApplyPricingDto`), інакше 400 (Bug #832, #835).
+
 > Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
 > (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
 
@@ -205,7 +212,7 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 
 | Аспект                                         | Тест                                                             | Кейсів |
 | ---------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| `applyPricing` — правила ціноутворення         | `purchase-orders.pricing.spec.ts`                                | 9      |
+| `applyPricing` — правила ціноутворення         | `purchase-orders.pricing.spec.ts`                                | 13     |
 | `receive()` — UoM-override + tenant-валідація  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
 | `receive()` — activeLines, CAS → RECEIPT, борг | `purchase-orders.receive-ledger.spec.ts`                         | 5      |
 | `create`/`update` — tenant-guard goodId рядків | `purchase-orders.line-goods.spec.ts`                             | 3      |

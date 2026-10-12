@@ -10162,6 +10162,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyPricingDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "",
@@ -24208,6 +24218,16 @@
         "required": [
           "lines"
         ]
+      },
+      "ApplyPricingDto": {
+        "type": "object",
+        "properties": {
+          "ruleId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Розцінити лише цим правилом (тільки рядки його області)"
+          }
+        }
       },
       "ApplyPricingDetailDto": {
         "type": "object",

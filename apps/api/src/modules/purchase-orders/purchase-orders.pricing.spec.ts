@@ -21,6 +21,9 @@ import { PricingService } from '../inventory/pricing.service';
 import { SettingsService } from '../settings/settings.service';
 import { DeliveryTrackingService } from './delivery/delivery-tracking.service';
 import { exchangeRatesProvider } from './purchase-orders.spec-fixture';
+import { validate } from 'class-validator';
+import { plainToInstance } from 'class-transformer';
+import { ApplyPricingDto } from './purchase-orders.dto';
 
 describe('PurchaseOrdersService.applyPricing', () => {
   let service: PurchaseOrdersService;
@@ -305,6 +308,107 @@ describe('PurchaseOrdersService.applyPricing', () => {
     expect(result.updated).toBe(0);
     expect(pricingService.resolveRule).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-PO-006
+  // Bug #832: «розцінити правилом» — обране правило стосується лише частини рядків (правило зі
+  // списком товарів, BR-GOOD-009). Для решти resolveRule віддає { price: собівартість, ruleName: null },
+  // і раніше це писалось у Good.salePrice: націнка товарів поза правилом мовчки зникала.
+  it('Bug #832: з ruleId рядок поза областю правила не чіпається — ні товар, ні історія, ні рядок', async () => {
+    const RULE = '22222222-2222-4222-8222-222222222222';
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-832',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: null,
+      lines: [
+        {
+          id: 'line-in',
+          goodId: 'good-in',
+          price: 300,
+          good: { name: 'У списку', salePrice: 345 },
+        },
+        { id: 'line-out', goodId: 'good-out', price: 300, good: { name: 'Поза', salePrice: 345 } },
+      ],
+    });
+    pricingService.resolveRule
+      .mockReturnValueOnce({ price: 399, ruleName: 'Список' })
+      .mockReturnValueOnce({ price: 300, ruleName: null });
+
+    const result = await service.applyPricing(ORG, PO_ID, RULE);
+
+    expect(pricingService.getPricingContext).toHaveBeenCalledWith(ORG, ['good-in', 'good-out'], {
+      onlyRuleId: RULE,
+    });
+    expect(result.updated).toBe(1);
+    expect(result.details.map(d => d.goodId)).toEqual(['good-in']);
+    expect(prisma.good.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.good.updateMany).toHaveBeenCalledWith({
+      where: { id: 'good-in', orgId: ORG, deletedAt: null },
+      data: { salePrice: 399 },
+    });
+    const history = prisma.priceHistory.createMany.mock.calls.flatMap(
+      c => (c[0] as { data: { goodId: string }[] }).data,
+    );
+    expect(history.map(h => h.goodId)).toEqual(['good-in']);
+    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledTimes(1);
+    expect(prisma.purchaseOrderLine.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'line-in', orgId: ORG } }),
+    );
+  });
+
+  it('Bug #832: з ruleId, яке не покрило жоден рядок (вимкнене / чуже) → нічого не пишеться', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-832b',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: null,
+      lines: [{ id: 'l1', goodId: 'g1', price: 300, good: { name: 'Товар', salePrice: 345 } }],
+    });
+
+    pricingService.resolveRule.mockReturnValueOnce({ price: 300, ruleName: null });
+
+    const result = await service.applyPricing(ORG, PO_ID, '33333333-3333-4333-8333-333333333333');
+
+    expect(result).toEqual({ updated: 0, details: [] });
+    expect(prisma.good.updateMany).not.toHaveBeenCalled();
+    expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
+    expect(prisma.purchaseOrderLine.update).not.toHaveBeenCalled();
+  });
+
+  // Без ruleId поведінка стара: рядок без правила лишається в плані з ціною = собівартість.
+  it('Bug #832: без ruleId рядок без правила розцінюється як раніше (ціна = собівартість)', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValueOnce({
+      id: PO_ID,
+      orgId: ORG,
+      number: 'PO-832c',
+      status: PurchaseOrderStatus.RECEIVED,
+      supplierId: null,
+      lines: [{ id: 'l1', goodId: 'g1', price: 300, good: { name: 'Товар', salePrice: 345 } }],
+    });
+
+    pricingService.resolveRule.mockReturnValueOnce({ price: 300, ruleName: null });
+
+    const result = await service.applyPricing(ORG, PO_ID);
+
+    expect(result.details).toHaveLength(1);
+    expect(prisma.good.updateMany).toHaveBeenCalledWith({
+      where: { id: 'g1', orgId: ORG, deletedAt: null },
+      data: { salePrice: 300 },
+    });
+  });
+
+  // Bug #835: ruleId іде у `where: { id }` — не-UUID без DTO давав помилку Prisma і 500.
+  it('Bug #835: ApplyPricingDto відхиляє ruleId, що не є UUID; порожній рядок — «без правила»', async () => {
+    const check = (body: unknown) => validate(plainToInstance(ApplyPricingDto, body));
+    expect((await check({ ruleId: 'abc' })).map(e => e.property)).toEqual(['ruleId']);
+    expect(await check({ ruleId: '22222222-2222-4222-8222-222222222222' })).toEqual([]);
+    expect(await check({})).toEqual([]);
+    const empty = plainToInstance(ApplyPricingDto, { ruleId: '' });
+    expect(await validate(empty)).toEqual([]);
+    expect(empty.ruleId).toBeUndefined();
   });
 
   // Bug #489: regression-guard для deduplicateBy(plan, u => u.goodId).
