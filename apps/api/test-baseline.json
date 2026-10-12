@@ -2423,6 +2423,7 @@
    "PricingRules — HTTP Contract список товарів і категорія правила GET :id/goods для чужого правила → 404, список не читається",
    "PricingRules — HTTP Contract список товарів і категорія правила GET :id/goods — повний список товарів правила, лише живі товари",
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH goodCategoryId: null знімає категорію (і стару текстову теж)",
+   "PricingRules — HTTP Contract список товарів і категорія правила PATCH без вибору виміру: список із самих видалених товарів лишається (правило не стає загальним)",
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH без поля goodIds не чіпає список; бренд, надісланий до правила зі списком, очищено",
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH з новим списком: старий список заміщується цілком у тій самій транзакції",
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH правила, чию категорію видалили пізніше: правка без категорії проходить",
@@ -2431,6 +2432,7 @@
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH: вибір категорії з довідника прибирає стару текстову категорію",
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH: порожній список і бренд — список знято, правило стає правилом бренду",
    "PricingRules — HTTP Contract список товарів і категорія правила PATCH: стан правила читається під блокуванням, у тій самій транзакції, що й запис",
+   "PricingRules — HTTP Contract список товарів і категорія правила PATCH: у списку лишились тільки видалені товари, запит обирає бренд → правило стає правилом бренду",
    "PricingRules — HTTP Contract список товарів і категорія правила POST з категорією своєї організації → 201, назва категорії у відповіді",
    "PricingRules — HTTP Contract список товарів і категорія правила POST з категорією: перевіряється в межах організації, чужа → 404",
    "PricingRules — HTTP Contract список товарів і категорія правила POST зі списком: рядки списку несуть orgId, повтори зведено, у відповіді — лічильник",
@@ -3738,6 +3740,10 @@
    "PurchaseOrdersService.applyPricing Bug #200 status guard: DRAFT → BadRequestException + не пише ні good ні priceHistory",
    "PurchaseOrdersService.applyPricing Bug #200 status guard: PARTIAL → дозволено, applyPricing виконується",
    "PurchaseOrdersService.applyPricing Bug #489: дублікати по goodId у lines → updateMany викликається ОДИН раз (last-wins у БД)",
+   "PurchaseOrdersService.applyPricing Bug #832: без ruleId рядок без правила розцінюється як раніше (ціна = собівартість)",
+   "PurchaseOrdersService.applyPricing Bug #832: з ruleId рядок поза областю правила не чіпається — ні товар, ні історія, ні рядок",
+   "PurchaseOrdersService.applyPricing Bug #832: з ruleId, яке не покрило жоден рядок (вимкнене / чуже) → нічого не пишеться",
+   "PurchaseOrdersService.applyPricing Bug #835: ApplyPricingDto відхиляє ruleId, що не є UUID; порожній рядок — «без правила»",
    "PurchaseOrdersService.applyPricing PO без lines → { updated: 0, details: [] } без жодного writeу",
    "PurchaseOrdersService.applyPricing mixed lines (одна змінилась, інша ні) → updated=1, тільки один write",
    "PurchaseOrdersService.applyPricing кидає NotFoundException коли PO не знайдено",
@@ -5090,6 +5096,8 @@
    "StockDocumentImportAdapter.appendLines новий goodId → createMany, наявні не чіпаються"
   ],
   "apps/api/src/modules/xlsx/good-ref-rows.parser.spec.ts": [
+   "parseGoodRefRows — перелік товарів із файла Bug #833: xlsx-вміст із розширенням .csv → 400, а не виняток розбору CSV",
+   "parseGoodRefRows — перелік товарів із файла Bug #833: решта завантажень XLSX (товари, роботи, бренди, одиниці, рядки документа) → 400",
    "parseGoodRefRows — перелік товарів із файла CSV з BOM і англійськими заголовками (старий шаблон «Розцінити список»)",
    "parseGoodRefRows — перелік товарів із файла CSV з роздільником «;» (так зберігає Excel в українській локалі)",
    "parseGoodRefRows — перелік товарів із файла CSV через «,» з «;» у значенні й лапками навколо коми",
@@ -5098,6 +5106,7 @@
    "parseGoodRefRows — перелік товарів із файла заголовки не впізнано → колонки читаються в порядку шаблону",
    "parseGoodRefRows — перелік товарів із файла заголовок, що збігається з назвою властивості об’єкта («constructor»), — не поле",
    "parseGoodRefRows — перелік товарів із файла колонки впізнаються за заголовком у будь-якому порядку, зайві ігноруються",
+   "parseGoodRefRows — перелік товарів із файла не-Excel із розширенням .xlsx (текст, картинка, порожній) → 400 «не вдалося прочитати»",
    "parseGoodRefRows — перелік товарів із файла порожні рядки й рядки без ключа товару пропускаються, номер рядка — як у файлі",
    "parseGoodRefRows — перелік товарів із файла файл лише із заголовком або порожній → жодного рядка",
    "parseGoodRefRows — перелік товарів із файла штрихкод, який Excel зберіг числом, читається повністю, без експоненти"
