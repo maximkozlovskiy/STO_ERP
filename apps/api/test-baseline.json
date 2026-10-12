@@ -1358,9 +1358,11 @@
   ],
   "apps/api/src/modules/brands/brands.service.spec.ts": [
    "BrandsService.resolveByNameOrSynonym ані назва, ані синонім не збіглись → null",
+   "BrandsService.resolveByNameOrSynonym кирилична назва резолвиться за точним написанням без урахування регістру",
+   "BrandsService.resolveByNameOrSynonym кириличний синонім резолвиться за точним написанням; `_`/`%` у запиті екрануються",
    "BrandsService.resolveByNameOrSynonym матч за нормалізованим синонімом коли назва не збіглась",
    "BrandsService.resolveByNameOrSynonym матч за нормалізованою назвою (case/роздільники ігноруються)",
-   "BrandsService.resolveByNameOrSynonym порожній/некоректний raw (norm===\"\") → null, без запитів",
+   "BrandsService.resolveByNameOrSynonym порожній raw → null, без запитів",
    "BrandsService.restore — active-name-duplicate guard (MD-C1 parity) активний дубль назви → ConflictException, updateMany НЕ викликається",
    "BrandsService.restore — active-name-duplicate guard (MD-C1 parity) видаленого рядка немає → NotFoundException",
    "BrandsService.restore — active-name-duplicate guard (MD-C1 parity) немає активного дубля → restore проходить (updateMany викликається)",
@@ -1373,15 +1375,22 @@
   ],
   "apps/api/src/modules/brands/brands.synonym-unique.spec.ts": [
    "BrandsService — синонім не може належати двом брендам create вільні синоніми → бренд створюється",
+   "BrandsService — синонім не може належати двом брендам create знятий синонім іншого бренду переїжджає до нового бренду, а не губиться мовчки",
    "BrandsService — синонім не може належати двом брендам create назва нового бренду, що вже є чиїмось синонімом → 409",
+   "BrandsService — синонім не може належати двом брендам create синонім видаленого бренду переїжджає до нового бренду, а не губиться мовчки",
    "BrandsService — синонім не може належати двом брендам create синонім іншого бренду → 409, бренд не створюється",
+   "BrandsService — синонім не може належати двом брендам restore назва вільна → бренд відновлюється",
+   "BrandsService — синонім не може належати двом брендам restore назву зайняли синонімом, поки бренд був видалений → 409, бренд не відновлюється",
+   "BrandsService — синонім не може належати двом брендам update «_» і «%» у синонімі — звичайні символи, а не шаблон: «a_c» не дубль чужого «aXc»",
    "BrandsService — синонім не може належати двом брендам update власний синонім не конфліктує сам із собою — повторне збереження проходить",
    "BrandsService — синонім не може належати двом брендам update збіг без урахування регістру — теж дубль («бош» проти «БОШ»)",
    "BrandsService — синонім не може належати двом брендам update знятий синонім іншого бренду — не дубль, збереження проходить",
    "BrandsService — синонім не може належати двом брендам update нова НАЗВА бренду, що вже є синонімом іншого бренду → 409",
+   "BrandsService — синонім не може належати двом брендам update перевірка і запис ідуть однією транзакцією під блокуванням організації",
    "BrandsService — синонім не може належати двом брендам update повтори в одному списку зводяться до першого написання; назва самого бренду не синонім",
    "BrandsService — синонім не може належати двом брендам update синонім бренду іншої організації — не дубль, збереження проходить",
    "BrandsService — синонім не може належати двом брендам update синонім видаленого бренду — не дубль, збереження проходить",
+   "BrandsService — синонім не може належати двом брендам update синонім із «_» усе ще впізнається як дубль такого самого чужого («Q_R» проти «q_r»)",
    "BrandsService — синонім не може належати двом брендам update синонім іншого бренду → 409 з назвами синоніма й бренду, жодного запису",
    "BrandsService — синонім не може належати двом брендам update синонім, що збігається з НАЗВОЮ іншого бренду → 409"
   ],
@@ -5111,7 +5120,8 @@
    "Xlsx — HTTP Contract GET /xlsx/templates/pricing-list Bug #190: 200 + { file, filename: .csv } для pricing-list типу",
    "Xlsx — HTTP Contract GET /xlsx/templates/pricing-list Bug #190: 400 для невідомого типу",
    "Xlsx — HTTP Contract GET /xlsx/templates/pricing-list Bug #190: 403 без JWT",
-   "Xlsx — HTTP Contract POST /xlsx/apply-pricing-from-list Bug #190: 400 коли файл не завантажено"
+   "Xlsx — HTTP Contract POST /xlsx/apply-pricing-from-list Bug #190: 400 коли файл не завантажено",
+   "Xlsx — HTTP Contract POST /xlsx/import/brands наявний бренд — пропуск без помилки; відмова BR-GOOD-007 — рядок у errors; решта створюється"
   ],
   "apps/api/src/modules/xlsx/xlsx.service.spec.ts": [
    "XlsxService OCR-grid кеш за хешем вмісту (усунення подвійного OCR) OCR-канал (image): rawPreview кешує сітку → наступний previewImport читає з кешу, без OCR",
