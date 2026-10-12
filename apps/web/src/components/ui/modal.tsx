@@ -33,8 +33,10 @@ interface ModalProps {
    * Стала висота вікна (до 90% екрана): тіло прокручується всередині, а саме вікно не «стрибає»,
    * коли змінюється обсяг вмісту. Для карток елементів із вкладками — перехід між вкладками не
    * має міняти розмір вікна (рішення власника 2026-10-12).
+   * `'full'` — те саме для карток документів на весь екран (наряд): завжди 90% екрана, без
+   * стелі 760px.
    */
-  fixedHeight?: boolean;
+  fixedHeight?: boolean | 'full';
   className?: string;
   hideClose?: boolean;
   /** Extra action buttons rendered to the left of the × close button */
@@ -65,6 +67,8 @@ const TRANSITION = 'cubic-bezier(0.4,0,0.2,1)';
 
 /** Висота вікна з `fixedHeight`: 760px, але не вище за 90% екрана. */
 const FIXED_HEIGHT_CLASS = 'h-[min(90dvh,760px)]';
+/** `fixedHeight="full"`: full-height document cards (work order) always take 90% of the screen. */
+const FIXED_HEIGHT_FULL_CLASS = 'h-[90dvh]';
 
 // Animates its height to match content via ResizeObserver.
 // outer: overflow:hidden — clips during transition, no scrollbar flash.
@@ -264,7 +268,7 @@ export function Modal({
           'shadow-xl border border-border',
           'flex flex-col max-h-[90dvh]',
           // Стала висота: тіло (flex-1) забирає решту і прокручується, вікно розмір не міняє.
-          fixedHeight && FIXED_HEIGHT_CLASS,
+          fixedHeight === 'full' ? FIXED_HEIGHT_FULL_CLASS : fixedHeight && FIXED_HEIGHT_CLASS,
           className,
         )}
         style={{

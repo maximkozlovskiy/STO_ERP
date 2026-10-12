@@ -1628,6 +1628,8 @@ export function CreateWorkOrderModal({
         onSubmit={() => void (isEditMode ? save() : create())}
         title={isEditMode ? 'Наряд на роботу' : 'Новий наряд'}
         size="content"
+        // A card with tabs keeps a stable size: the short "documents" tab must not shrink the window.
+        fixedHeight={isEditMode ? 'full' : false}
         hideClose
         headerContent={
           <div className="flex items-center gap-6">

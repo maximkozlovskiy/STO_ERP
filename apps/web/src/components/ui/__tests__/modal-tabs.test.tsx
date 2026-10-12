@@ -73,4 +73,39 @@ describe('ModalTabs', () => {
     expect(screen.getByText('Список авто')).toBeInTheDocument();
     expect(screen.queryByText('Історія візитів')).not.toBeInTheDocument();
   });
+
+  // Картка сталої висоти (Modal fixedHeight): вкладки стоять унизу прокручуваного тіла. Якщо
+  // область вмісту стискається під коротшу вкладку, браузер підтягує scrollTop і смуга вкладок
+  // «стрибає» під курсором (заміряно: 498 → 526 → 580px у картці співробітника).
+  // Mutation-verify: прибрати `style={minHeight ? …}` у modal-tabs.tsx → кейс падає.
+  it('перемикання вкладки зберігає видиму частину висоти вмісту, але не більше', async () => {
+    const rect = (top: number, height: number) =>
+      ({ top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top }) as DOMRect;
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      // тіло модалки: видима область закінчується на 600px
+      if (this.dataset.scroller) return rect(100, 500);
+      // область вмісту вкладки: починається на 400px; «Авто» — довга (900px), решта — короткі
+      if (this.classList.contains('pt-4'))
+        return rect(400, this.textContent === 'Список авто' ? 900 : 120);
+      return rect(0, 0);
+    };
+    try {
+      render(
+        <div data-scroller="1" style={{ overflowY: 'auto' }}>
+          <ModalTabs tabs={tabs} />
+        </div>,
+      );
+      const content = () => screen.getByText(/Список авто|Історія візитів/).parentElement!;
+      expect(content().style.minHeight).toBe('');
+      // з довгої вкладки: тримаємо лише видимі 600 − 400 = 200px, а не всі 900
+      await userEvent.click(screen.getByRole('button', { name: /Історія/ }));
+      expect(content().style.minHeight).toBe('200px');
+      // з короткої (120px, уся видима): більше за її власну висоту не тримаємо
+      await userEvent.click(screen.getByRole('button', { name: /Авто/ }));
+      expect(content().style.minHeight).toBe('120px');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = original;
+    }
+  });
 });

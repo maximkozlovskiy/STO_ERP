@@ -284,6 +284,18 @@ describe('Modal', () => {
     expect(getPanel().className).not.toContain('h-[min(');
   });
 
+  // The work order card is full-height: its tabs must not resize the window either, but a 760px
+  // cap would shrink the main tab on tall screens. Mutation-verify: drop the 'full' branch → fails.
+  it('fixedHeight="full" keeps the panel at 90dvh, without the 760px cap', () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Full" fixedHeight="full">
+        Body
+      </Modal>,
+    );
+    expect(getPanel().className).toContain('h-[90dvh]');
+    expect(getPanel().className).not.toContain('h-[min(');
+  });
+
   it('size="xl" виставляє max-width: 896px (work-orders/catalog goods/purchase-orders/pricing-rules)', () => {
     render(
       <Modal open onClose={vi.fn()} title="Extra large" size="xl">

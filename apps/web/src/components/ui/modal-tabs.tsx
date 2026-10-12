@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface ModalTab {
@@ -16,6 +16,15 @@ interface ModalTabsProps {
   tabs: ModalTab[];
   defaultTab?: string;
   className?: string;
+}
+
+/** Bottom edge (viewport px) of the nearest scrollable ancestor; the window when there is none. */
+function scrollBottom(el: HTMLElement): number {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') return node.getBoundingClientRect().bottom;
+  }
+  return window.innerHeight;
 }
 
 /**
@@ -41,6 +50,21 @@ interface ModalTabsProps {
  */
 export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
   const [active, setActive] = useState(defaultTab ?? tabs[0]?.key ?? '');
+  // On a tab switch the content area keeps the part of its height that is visible right now.
+  // Otherwise, in a scrolled modal body, a shorter tab makes the browser clamp scrollTop and the
+  // tab strip jumps down under the cursor. Only the visible part is kept: a very long tab must
+  // not leave a screen-high blank area behind it.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [minHeight, setMinHeight] = useState(0);
+
+  const selectTab = (key: string) => {
+    const el = contentRef.current;
+    if (el && key !== active) {
+      const rect = el.getBoundingClientRect();
+      setMinHeight(Math.round(Math.min(rect.height, Math.max(0, scrollBottom(el) - rect.top))));
+    }
+    setActive(key);
+  };
 
   if (tabs.length === 0) return null;
 
@@ -54,7 +78,7 @@ export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
           <button
             key={tab.key}
             type="button"
-            onClick={() => setActive(tab.key)}
+            onClick={() => selectTab(tab.key)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
               active === tab.key
@@ -81,7 +105,9 @@ export function ModalTabs({ tabs, defaultTab, className }: ModalTabsProps) {
       </div>
 
       {/* Tab content */}
-      <div className="pt-4">{activeTab.content}</div>
+      <div ref={contentRef} className="pt-4" style={minHeight ? { minHeight } : undefined}>
+        {activeTab.content}
+      </div>
     </div>
   );
 }
