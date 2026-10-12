@@ -667,39 +667,18 @@ test.describe('Рахунки — soft delete', () => {
     const deleteIcon = row
       .locator('button[title*="видал"], button[title*="Видал"], button[aria-label*="видал"]')
       .first();
-    const hasHoverIcon = await deleteIcon.isVisible({ timeout: 2_000 }).catch(() => false);
+    await expect(deleteIcon).toBeVisible({ timeout: 8_000 });
+    await deleteIcon.click();
 
-    if (hasHoverIcon) {
-      await deleteIcon.click();
-    } else {
-      // Альтернатива: через Detail Panel → кнопку «Помітити на видалення»
-      await row.click();
-      const markBtn = page
-        .locator('button:has-text("Помітити"), button:has-text("Видалити")')
-        .first();
-      await expect(markBtn).toBeVisible({ timeout: 8_000 });
-      await markBtn.click();
-    }
+    // Підтвердження показується завжди. `isVisible()` не чекає: миттєва перевірка пропускала
+    // діалог, який ще не намалювався, і рахунок лишався невидаленим (CI, 2026-10-12).
+    const confirmBtn = page.locator('[role="dialog"] button:has-text("Так")').first();
+    await expect(confirmBtn).toBeVisible({ timeout: 8_000 });
+    await confirmBtn.click();
 
-    // Confirm dialog
-    const confirmBtn = page
-      .locator(
-        '[role="dialog"] button:has-text("Видалити"), [role="dialog"] button:has-text("Так"), [role="dialog"] button:has-text("Підтвердити")',
-      )
-      .first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
-
-    // Рядок зникає (або отримує opacity-60)
-    await page.waitForTimeout(800);
-    const deletedRow = page.locator(`table tbody tr.opacity-60:has-text("${invNumber}")`);
-    const gone = !(await page
-      .locator(`table tbody tr:not(.opacity-60):has-text("${invNumber}")`)
-      .isVisible({ timeout: 3_000 })
-      .catch(() => false));
-    const markedDeleted = await deletedRow.isVisible({ timeout: 2_000 }).catch(() => false);
-    expect(gone || markedDeleted).toBeTruthy();
+    // Активного рядка більше немає: він зник або лишився позначеним (opacity-60)
+    const activeRow = page.locator(`table tbody tr:not(.opacity-60):has-text("${invNumber}")`);
+    await expect(activeRow).toHaveCount(0, { timeout: 10_000 });
   });
 
   test('toggle «Показати видалені» → кількість рядків зростає', async ({ page }) => {

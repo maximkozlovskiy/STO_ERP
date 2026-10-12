@@ -678,38 +678,18 @@ test.describe('Складські документи — soft delete', () => {
     const trashBtn = row
       .locator('button[title*="видал"], button[aria-label*="видал"], button:has(svg.lucide-trash2)')
       .first();
-    const hasTrash = await trashBtn.isVisible({ timeout: 2_000 }).catch(() => false);
+    await expect(trashBtn).toBeVisible({ timeout: 8_000 });
+    await trashBtn.click();
 
-    if (hasTrash) {
-      await trashBtn.click();
-    } else {
-      // Альтернатива: через Detail Panel
-      await row.click();
-      const markBtn = page
-        .locator('button:has-text("Помітити"), button:has-text("Видалити")')
-        .first();
-      await expect(markBtn).toBeVisible({ timeout: 8_000 });
-      await markBtn.click();
-    }
+    // Підтвердження показується завжди. `isVisible()` не чекає: миттєва перевірка пропускала
+    // діалог, який ще не намалювався, і документ лишався невидаленим (CI, 2026-10-12).
+    const confirmBtn = page.locator('[role="dialog"] button:has-text("Так")').first();
+    await expect(confirmBtn).toBeVisible({ timeout: 8_000 });
+    await confirmBtn.click();
 
-    const confirmBtn = page
-      .locator(
-        '[role="dialog"] button:has-text("Видалити"), [role="dialog"] button:has-text("Помітити"), [role="dialog"] button:has-text("Так")',
-      )
-      .first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
-
-    await page.waitForTimeout(800);
-    // Рядок зникає або набуває opacity-60
+    // Активного рядка більше немає: він зник або лишився позначеним (opacity-60)
     const activeRow = page.locator(`table tbody tr:not(.opacity-60):has-text("${docNumber}")`);
-    const gone = !(await activeRow.isVisible({ timeout: 3_000 }).catch(() => false));
-    const marked = await page
-      .locator(`table tbody tr.opacity-60:has-text("${docNumber}")`)
-      .isVisible({ timeout: 2_000 })
-      .catch(() => false);
-    expect(gone || marked).toBeTruthy();
+    await expect(activeRow).toHaveCount(0, { timeout: 10_000 });
   });
 
   test('toggle «Показати видалені» — кнопка присутня', async ({ page }) => {
