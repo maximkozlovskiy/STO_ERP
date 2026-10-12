@@ -8,6 +8,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { GoodMatcherService } from '../goods/good-matcher.service';
+import { catalogMatcher, type CatalogGood } from './good-matcher.testing';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
@@ -15,6 +16,10 @@ import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service
 
 const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
 const goodMatcher = { matchMany: vi.fn().mockResolvedValue([]) };
+/** Єдиний пошук товару (BR-GOOD-008) у тестах шукає в переліку, який задає сам тест. */
+const seedCatalog = (goods: CatalogGood[]): void => {
+  goodMatcher.matchMany.mockImplementation(catalogMatcher(goods));
+};
 
 const ORG = 'org-1';
 const MAPPING: ImportMapping = {
@@ -58,6 +63,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
   let registry: { get: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
+    seedCatalog([]);
     prisma = {
       good: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -130,9 +136,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
 
     it('matched: exact skuNormalized (1 кандидат) → matched + matchedGoodId', async () => {
       // Артикул '04E-129-620' нормалізується у '04E129620' — те саме, що збережений SKU.
-      prisma.good.findMany.mockResolvedValueOnce([
-        { id: 'g-1', sku: '04E 129 620', name: 'Насос', brandId: null, brand: null },
-      ]);
+      seedCatalog([{ id: 'g-1', sku: '04E 129 620', name: 'Насос', brandId: null, brand: null }]);
       const buf = await buildXlsx([['C1', '04E-129-620', '', 'Насос', 2, 100]]);
 
       const rows = await service.previewImport(
@@ -154,11 +158,10 @@ describe('XlsxService — generic import (preview/apply)', () => {
     });
 
     it('matched: exact + бренд резолвиться → звужує до 1', async () => {
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedCatalog([
         { id: 'g-a', sku: 'ART1', name: 'A', brandId: 'brand-a', brand: { name: 'Bosch' } },
         { id: 'g-b', sku: 'ART1', name: 'B', brandId: 'brand-b', brand: { name: 'Mann' } },
       ]);
-      brandsService.resolveByNameOrSynonym.mockResolvedValueOnce({ id: 'brand-a' });
       const buf = await buildXlsx([['', 'ART1', 'Bosch', 'A', 1, 50]]);
 
       const rows = await service.previewImport(
@@ -174,7 +177,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
     });
 
     it('ambiguous: exact skuNormalized кілька кандидатів без бренду → ambiguous + candidates', async () => {
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedCatalog([
         { id: 'g-a', sku: 'ART1', name: 'A', brandId: 'brand-a', brand: { name: 'Bosch' } },
         { id: 'g-b', sku: 'ART1', name: 'B', brandId: 'brand-b', brand: { name: 'Mann' } },
       ]);
@@ -194,11 +197,10 @@ describe('XlsxService — generic import (preview/apply)', () => {
     });
 
     it('substring fallback: немає exact, але name ILIKE → ambiguous з кандидатами', async () => {
-      prisma.good.findMany
-        .mockResolvedValueOnce([]) // exact bulk lookup — нічого
-        .mockResolvedValueOnce([
-          { id: 'g-sub', sku: 'XYZ', name: 'Масло 5W40', brandId: null, brand: null },
-        ]); // substring
+      // Точного збігу немає; підказки дає окремий запит за частиною артикула / назви.
+      prisma.good.findMany.mockResolvedValueOnce([
+        { id: 'g-sub', sku: 'XYZ', name: 'Масло 5W40', brandId: null, brand: null },
+      ]);
       const buf = await buildXlsx([['', 'NOEXACT', '', 'Масло', 1, 10]]);
 
       const rows = await service.previewImport(
@@ -230,8 +232,8 @@ describe('XlsxService — generic import (preview/apply)', () => {
       expect(rows[0]!.candidates).toEqual([]);
     });
 
-    it('bulk-no-N+1: exact lookup один findMany на всі артикули', async () => {
-      prisma.good.findMany.mockResolvedValueOnce([
+    it('bulk-no-N+1: один виклик єдиного пошуку на весь файл, без запитів на рядок', async () => {
+      seedCatalog([
         { id: 'g-1', sku: 'A1', name: 'A', brandId: null, brand: null },
         { id: 'g-2', sku: 'A2', name: 'B', brandId: null, brand: null },
       ]);
@@ -248,16 +250,14 @@ describe('XlsxService — generic import (preview/apply)', () => {
         'f.xlsx',
         MAPPING,
       );
-      expect(rows).toHaveLength(2);
-      // Рівно 1 findMany (exact bulk), бо обидва рядки matched → substring не викликається.
-      expect(prisma.good.findMany).toHaveBeenCalledTimes(1);
-      expect(prisma.good.findMany.mock.calls[0]![0]).toMatchObject({
-        where: expect.objectContaining({
-          orgId: ORG,
-          deletedAt: null,
-          skuNormalized: { in: ['A1', 'A2'] },
-        }),
-      });
+      expect(rows.map(r => r.matchedGoodId)).toEqual(['g-1', 'g-2']);
+      expect(goodMatcher.matchMany).toHaveBeenCalledTimes(1);
+      expect(goodMatcher.matchMany).toHaveBeenCalledWith(ORG, [
+        { code: null, article: 'A1', brand: null, barcode: null },
+        { code: null, article: 'A2', brand: null, barcode: null },
+      ]);
+      // Обидва рядки розв'язано → запит підказок (підрядок) не робиться.
+      expect(prisma.good.findMany).not.toHaveBeenCalled();
     });
   });
 

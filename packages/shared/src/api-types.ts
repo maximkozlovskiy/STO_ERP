@@ -8707,6 +8707,7 @@ export interface components {
             codeCol?: number | null;
             articleCol?: number | null;
             brandCol?: number | null;
+            barcodeCol?: number | null;
             nameCol?: number | null;
             quantityCol?: number | null;
             priceCol?: number | null;
@@ -8723,6 +8724,8 @@ export interface components {
             articleCol?: number;
             /** @description Колонка бренду (1-based) */
             brandCol?: number;
+            /** @description Колонка штрихкоду (1-based) */
+            barcodeCol?: number;
             /** @description Колонка найменування (1-based) */
             nameCol?: number;
             /** @description Колонка кількості (1-based) */

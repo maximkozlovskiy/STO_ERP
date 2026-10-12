@@ -6,7 +6,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import ExcelJS from 'exceljs';
-import { parse as parseCSV } from 'csv-parse/sync';
 import {
   TRANSACTION_TIMEOUT_MS,
   MAX_QUERY_LIMIT,
@@ -31,6 +30,7 @@ import { parseGoodRefRows } from './good-ref-rows.parser';
 import { deduplicateBy } from '../../common/utils/array';
 import { money } from '../../common/utils/money';
 import { normalizeArticle } from '../../common/utils/normalize-article';
+import { escapeLike } from '../../common/utils/like-pattern';
 import {
   DocumentLineImportAdapterRegistry,
   type ImportDocType,
@@ -77,6 +77,9 @@ export interface POLineRow {
   name: string;
   quantity: number;
   price: number;
+  code?: string;
+  brand?: string;
+  barcode?: string;
 }
 
 export interface ImportResult {
@@ -246,6 +249,9 @@ export class XlsxService {
       { header: 'Назва товару', key: 'name', width: 30 },
       { header: 'К-ть', key: 'quantity', width: 10 },
       { header: 'Ціна, ₴', key: 'price', width: 12 },
+      { header: "Код (необов'язково)", key: 'code', width: 16 },
+      { header: "Бренд (необов'язково)", key: 'brand', width: 18 },
+      { header: "Штрихкод (необов'язково)", key: 'barcode', width: 20 },
     ];
 
     sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -260,6 +266,19 @@ export class XlsxService {
 
     const buf = await workbook.xlsx.writeBuffer();
     return buf as unknown as Buffer;
+  }
+
+  /**
+   * Для кожного рядка імпорту каталогу: чи є вже товар із таким артикулом (BR-GOOD-008 —
+   * артикул порівнюється нормалізовано: «04E-129-620» і «04E 129 620» — той самий товар).
+   * Кілька товарів з одним артикулом — теж «є»: створювати ще один дубль не можна.
+   */
+  async findExistingGoodRows(orgId: string, rows: GoodRow[]): Promise<boolean[]> {
+    const matches = await this.goodMatcher.matchMany(
+      orgId,
+      rows.map(r => ({ article: r.sku })),
+    );
+    return matches.map(m => m.status !== 'notFound');
   }
 
   async parseGoods(buffer: Buffer | Uint8Array): Promise<GoodRow[]> {
@@ -490,49 +509,51 @@ export class XlsxService {
 
   generatePricingListTemplate(): Buffer {
     const bom = '﻿';
-    const csv = `${bom}sku,barcode,name\nOIL-5W40,,Масло моторне 5W-40\n,4820123456789,Фільтр оливи\n`;
+    const csv = `${bom}code,sku,brand,barcode,name\n,OIL-5W40,,,Масло моторне 5W-40\n,,,4820123456789,Фільтр оливи\n`;
     return Buffer.from(csv, 'utf-8');
   }
 
   // ─── Document line imports ────────────────────────────────────────────────────
 
   /**
-   * Bulk lookup goods by SKU OR name in a single query — уникає N+1 у line importers.
-   * Повертає Map<key, good> де key = `sku:lower` або `name:lower`. Резолвер resolveGood
-   * має той самий пріоритет що й оригінальний findFirst (SKU > name).
+   * Товар для кожного рядка файла — через єдиний пошук (BR-GOOD-008): код → артикул + бренд →
+   * штрихкод → артикул → назва (лише коли в рядку немає жодного точнішого ключа).
+   * Не знайдений і неоднозначний рядки стають помилкою рядка: раніше з двох товарів з однаковим
+   * артикулом мовчки брався останній, а невідомий артикул підмінявся товаром з такою самою назвою.
    */
-  private async lookupGoodsBulk(
+  private async matchLineGoods(
     orgId: string,
-    rows: Array<{ sku?: string; name: string }>,
-  ): Promise<Map<string, { id: string }>> {
-    const skus = Array.from(new Set(rows.map(r => r.sku).filter((s): s is string => !!s)));
-    const names = Array.from(new Set(rows.map(r => r.name).filter(Boolean)));
-    if (skus.length === 0 && names.length === 0) return new Map();
-
-    const orConditions: Array<Record<string, unknown>> = [];
-    if (skus.length) orConditions.push({ sku: { in: skus } });
-    if (names.length) orConditions.push({ name: { in: names } });
-
-    const goods = await this.prisma.good.findMany({
-      where: { orgId, deletedAt: null, OR: orConditions },
-      select: { id: true, sku: true, name: true },
-      take: 10000,
+    rows: POLineRow[],
+  ): Promise<Array<{ goodId: string | null; error: string | null }>> {
+    const results = await this.goodMatcher.matchMany(
+      orgId,
+      rows.map(r => ({
+        code: r.code,
+        article: r.sku,
+        brand: r.brand,
+        barcode: r.barcode,
+        name: r.name,
+      })),
+    );
+    return results.map((res, i) => {
+      const label = this.lineLabel(rows[i]);
+      if (res.status === 'matched' && res.good) return { goodId: res.good.id, error: null };
+      if (res.status === 'ambiguous') {
+        const names = res.candidates
+          .slice(0, 3)
+          .map(c => [c.brandName, c.name].filter(Boolean).join(' '))
+          .join('; ');
+        return {
+          goodId: null,
+          error: `Знайдено кілька товарів (${res.candidates.length}) для «${label}»: ${names}. Вкажіть код або бренд`,
+        };
+      }
+      return { goodId: null, error: `Товар не знайдено: ${label}` };
     });
-
-    const byKey = new Map<string, { id: string }>();
-    for (const g of goods) {
-      if (g.sku) byKey.set(`sku:${g.sku.toLowerCase()}`, { id: g.id });
-      byKey.set(`name:${g.name.toLowerCase()}`, { id: g.id });
-    }
-    return byKey;
   }
 
-  private resolveGood(byKey: Map<string, { id: string }>, row: { sku?: string; name: string }) {
-    if (row.sku) {
-      const bySku = byKey.get(`sku:${row.sku.toLowerCase()}`);
-      if (bySku) return bySku;
-    }
-    return byKey.get(`name:${row.name.toLowerCase()}`) ?? null;
+  private lineLabel(row: POLineRow): string {
+    return row.sku ?? row.code ?? row.barcode ?? row.name;
   }
 
   async importPOLines(
@@ -553,11 +574,9 @@ export class XlsxService {
 
     // Bulk prefetch goods + existing lines — раніше N rows × 2 queries (3000 RTT на 1000 рядків).
     // Тепер 2 батч-запити + N локальних lookup у Map.
-    const goodsByKey = await this.lookupGoodsBulk(orgId, rows);
+    const matches = await this.matchLineGoods(orgId, rows);
     const goodIds = Array.from(
-      new Set(
-        rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
-      ),
+      new Set(matches.map(m => m.goodId).filter((id): id is string => !!id)),
     );
     const existingLines = goodIds.length
       ? await this.prisma.purchaseOrderLine.findMany({
@@ -578,15 +597,17 @@ export class XlsxService {
     const updatesPlan: { id: string; quantity: number; price: number; label: string }[] = [];
     const createsPlan: Prisma.PurchaseOrderLineCreateManyInput[] = [];
     const seenGoodIds = new Set<string>();
-    for (const row of rows) {
+    for (const [i, row] of rows.entries()) {
+      const label = this.lineLabel(row);
       try {
-        const good = this.resolveGood(goodsByKey, row);
-        if (!good) {
-          result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
+        const match = matches[i];
+        if (!match?.goodId) {
+          result.errors.push(match?.error ?? `Товар не знайдено: ${label}`);
           continue;
         }
+        const good = { id: match.goodId };
         if (seenGoodIds.has(good.id)) {
-          result.errors.push(`Дублікат товару у файлі: ${row.sku ?? row.name}`);
+          result.errors.push(`Дублікат товару у файлі: ${label}`);
           continue;
         }
         seenGoodIds.add(good.id);
@@ -597,7 +618,7 @@ export class XlsxService {
             id: existingId,
             quantity: row.quantity,
             price: row.price,
-            label: row.sku ?? row.name,
+            label,
           });
         } else {
           createsPlan.push({
@@ -609,7 +630,7 @@ export class XlsxService {
           });
         }
       } catch (e: unknown) {
-        result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+        result.errors.push(`${label}: ${e instanceof Error ? e.message : 'помилка'}`);
       }
     }
 
@@ -666,11 +687,9 @@ export class XlsxService {
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
 
     // Bulk prefetch — уникає N+1 (раніше 2 RTT × N rows).
-    const goodsByKey = await this.lookupGoodsBulk(orgId, rows);
+    const matches = await this.matchLineGoods(orgId, rows);
     const goodIds = Array.from(
-      new Set(
-        rows.map(r => this.resolveGood(goodsByKey, r)?.id).filter((id): id is string => !!id),
-      ),
+      new Set(matches.map(m => m.goodId).filter((id): id is string => !!id)),
     );
     const existingLines = goodIds.length
       ? await this.prisma.stockDocumentLine.findMany({
@@ -686,15 +705,17 @@ export class XlsxService {
     const updatesPlan: { id: string; quantity: number; price: number; label: string }[] = [];
     const createsPlan: Prisma.StockDocumentLineCreateManyInput[] = [];
     const seenGoodIds = new Set<string>();
-    for (const row of rows) {
+    for (const [i, row] of rows.entries()) {
+      const label = this.lineLabel(row);
       try {
-        const good = this.resolveGood(goodsByKey, row);
-        if (!good) {
-          result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
+        const match = matches[i];
+        if (!match?.goodId) {
+          result.errors.push(match?.error ?? `Товар не знайдено: ${label}`);
           continue;
         }
+        const good = { id: match.goodId };
         if (seenGoodIds.has(good.id)) {
-          result.errors.push(`Дублікат товару у файлі: ${row.sku ?? row.name}`);
+          result.errors.push(`Дублікат товару у файлі: ${label}`);
           continue;
         }
         seenGoodIds.add(good.id);
@@ -705,7 +726,7 @@ export class XlsxService {
             id: existingId,
             quantity: row.quantity,
             price: row.price,
-            label: row.sku ?? row.name,
+            label,
           });
         } else {
           createsPlan.push({
@@ -717,7 +738,7 @@ export class XlsxService {
           });
         }
       } catch (e: unknown) {
-        result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+        result.errors.push(`${label}: ${e instanceof Error ? e.message : 'помилка'}`);
       }
     }
 
@@ -774,8 +795,8 @@ export class XlsxService {
 
     // Bulk prefetch — уникає N+1 (раніше 2 RTT × N rows + 1 warehouse find per insert).
     // Default warehouse теж prefetch-имо один раз (для нових WorkOrderPart).
-    const [goodsByKey, existingParts, defaultWarehouse] = await Promise.all([
-      this.lookupGoodsBulk(orgId, rows),
+    const [matches, existingParts, defaultWarehouse] = await Promise.all([
+      this.matchLineGoods(orgId, rows),
       this.prisma.workOrderPart.findMany({
         where: { workOrderId: woId, orgId, deletedAt: null },
         select: { id: true, goodId: true },
@@ -800,15 +821,17 @@ export class XlsxService {
     }[] = [];
     const createsPlan: Prisma.WorkOrderPartCreateManyInput[] = [];
     const seenGoodIds = new Set<string>();
-    for (const row of rows) {
+    for (const [i, row] of rows.entries()) {
+      const label = this.lineLabel(row);
       try {
-        const good = this.resolveGood(goodsByKey, row);
-        if (!good) {
-          result.errors.push(`Товар не знайдено: ${row.sku ?? row.name}`);
+        const match = matches[i];
+        if (!match?.goodId) {
+          result.errors.push(match?.error ?? `Товар не знайдено: ${label}`);
           continue;
         }
+        const good = { id: match.goodId };
         if (seenGoodIds.has(good.id)) {
-          result.errors.push(`Дублікат товару у файлі: ${row.sku ?? row.name}`);
+          result.errors.push(`Дублікат товару у файлі: ${label}`);
           continue;
         }
         seenGoodIds.add(good.id);
@@ -822,11 +845,11 @@ export class XlsxService {
             quantity: row.quantity,
             price: row.price,
             amount,
-            label: row.sku ?? row.name,
+            label,
           });
         } else {
           if (!defaultWarehouse) {
-            result.errors.push(`${row.sku ?? row.name}: склад не знайдено для організації`);
+            result.errors.push(`${label}: склад не знайдено для організації`);
             continue;
           }
           createsPlan.push({
@@ -840,7 +863,7 @@ export class XlsxService {
           });
         }
       } catch (e: unknown) {
-        result.errors.push(`${row.sku ?? row.name}: ${e instanceof Error ? e.message : 'помилка'}`);
+        result.errors.push(`${label}: ${e instanceof Error ? e.message : 'помилка'}`);
       }
     }
 
@@ -910,6 +933,10 @@ export class XlsxService {
           name: String(values[2] || '').trim(),
           quantity: qty,
           price,
+          // Необов'язкові колонки єдиного пошуку — у КІНЦІ, щоб старі файли читались як раніше.
+          code: String(values[5] || '').trim() || undefined,
+          brand: String(values[6] || '').trim() || undefined,
+          barcode: String(values[7] || '').trim() || undefined,
         });
       } catch (e: unknown) {
         throw new BadRequestException(
@@ -946,38 +973,12 @@ export class XlsxService {
       newSalePrice: number;
     }[];
   }> {
-    let items: Array<{ sku?: string; barcode?: string }>;
-
-    if (fileType === 'csv') {
-      const text = buffer.toString('utf-8').replace(/^﻿/, ''); // strip BOM
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- parseCSV повертає unknown[]; каст потрібен tsc (ESLint хибно вважає зайвим)
-      const records = parseCSV(text, {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      }) as Record<string, string>[];
-      items = records
-        .map(r => ({
-          sku: r['sku'] || r['SKU'] || r['Артикул'] || undefined,
-          barcode: r['barcode'] || r['Штрихкод'] || undefined,
-        }))
-        .filter(r => r.sku || r.barcode);
-    } else {
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(this.toArrayBuffer(buffer));
-      const sheet = workbook.worksheets[0];
-      if (!sheet)
-        throw new BadRequestException(translateError('err.xlsx.tableNotFound', getLocale()));
-      items = [];
-      sheet.eachRow((row, idx) => {
-        if (idx === 1) return; // skip header
-        const values = row.values as unknown[];
-        const sku = String(values[1] ?? '').trim() || undefined;
-        const barcode = String(values[2] ?? '').trim() || undefined;
-        if (sku || barcode) items.push({ sku, barcode });
-      });
-    }
-
+    // Читання файла й пошук товару — спільні з рештою завантажень (BR-GOOD-008): колонки
+    // впізнаються за заголовком («Код», «Артикул»/sku, «Бренд», «Штрихкод»/barcode).
+    // Назва тут довідкова: рядок лише з назвою не є рядком даних.
+    const items = (await parseGoodRefRows(buffer, fileType)).filter(
+      r => r.code || r.article || r.barcode,
+    );
     if (items.length === 0)
       throw new BadRequestException(translateError('err.xlsx.fileNoDataRows', getLocale()));
 
@@ -991,21 +992,18 @@ export class XlsxService {
       newSalePrice: number;
     }[] = [];
 
-    // Bulk prefetch: усі goods за всіма SKU + barcodes ОДНИМ запитом + усі правила org один раз.
-    // Раніше: per-item good.findFirst + per-item calculateSalePrice (який сам фетчить правила) → 2N+ RTT.
-    // Тепер: 2 RTT (goods + rules) + N локальних lookup + 1 транзакція per actual price change.
-    const skus = Array.from(new Set(items.map(i => i.sku).filter((s): s is string => !!s)));
-    const barcodes = Array.from(new Set(items.map(i => i.barcode).filter((b): b is string => !!b)));
-    const orConditions: Array<Record<string, unknown>> = [];
-    if (skus.length) orConditions.push({ sku: { in: skus } });
-    if (barcodes.length) orConditions.push({ barcodes: { some: { barcode: { in: barcodes } } } });
-
-    // Perf: select narrow projection for pricing — Brand record entirely unused
-    // (computePriceFromRules reads only good.brandId scalar), Good's heavy columns
-    // (description, customFields, photoUrl) likewise unused.
-    const goods = orConditions.length
+    // Назва в цьому файлі довідкова: розцінка за збігом назви була б надто небезпечною.
+    const matches = await this.goodMatcher.matchMany(
+      orgId,
+      items.map(({ code, article, brand, barcode }) => ({ code, article, brand, barcode })),
+    );
+    const matchedIds = Array.from(
+      new Set(matches.map(m => m.good?.id).filter((id): id is string => !!id)),
+    );
+    // Perf: вузька проєкція для розцінки; товари — одним запитом за знайденими id.
+    const goods = matchedIds.length
       ? await this.prisma.good.findMany({
-          where: { orgId, deletedAt: null, OR: orConditions },
+          where: { orgId, deletedAt: null, id: { in: matchedIds } },
           select: {
             id: true,
             name: true,
@@ -1016,32 +1014,16 @@ export class XlsxService {
             goodCategoryId: true,
             goodType: true,
             brandId: true,
-            barcodes: { select: { barcode: true } },
           },
           take: 10000,
         })
       : [];
+    const goodById = new Map(goods.map(g => [g.id, g]));
     // Контекст розцінки — після товарів: списки товарів правил тягнемо лише для знайдених.
-    const pricingCtx = await this.pricingService.getPricingContext(
-      orgId,
-      goods.map(g => g.id),
-    );
+    const pricingCtx = await this.pricingService.getPricingContext(orgId, matchedIds);
 
-    // Build lookup maps: SKU → good (case-insensitive) + barcode → good
-    const goodBySku = new Map<string, (typeof goods)[number]>();
-    const goodByBarcode = new Map<string, (typeof goods)[number]>();
-    for (const g of goods) {
-      if (g.sku) goodBySku.set(g.sku.toLowerCase(), g);
-      for (const bc of g.barcodes ?? []) {
-        goodByBarcode.set(bc.barcode, g);
-      }
-    }
-
-    // sto-optimize: batch плани змін у пам'яті, потім chunk'ами по 100
-    // у $transaction. Раніше — per-item $transaction (1000 items × BEGIN/COMMIT
-    // sequentially). Тепер: 1000 items → 10 transactions × 100 ops; -90% RTT і
-    // суттєво швидше через amortized tx overhead. Pattern узгоджений з
-    // pricing.applyRuleToGoods + purchase-orders.applyPricing.
+    // sto-optimize: плани змін у пам'яті, потім chunk'ами по 100 у $transaction (узгоджено з
+    // pricing.applyRuleToGoods і purchase-orders.applyPricing).
     type Plan = {
       goodId: string;
       goodName: string;
@@ -1052,13 +1034,16 @@ export class XlsxService {
     };
     const plan: Plan[] = [];
 
-    for (const item of items) {
-      let good: (typeof goods)[number] | undefined;
-      if (item.sku) good = goodBySku.get(item.sku.toLowerCase());
-      if (!good && item.barcode) good = goodByBarcode.get(item.barcode);
-
+    for (const [i, item] of items.entries()) {
+      const label = item.article ?? item.code ?? item.barcode ?? '?';
+      const match = matches[i];
+      if (match?.status === 'ambiguous') {
+        notFound.push(`${label} (знайдено кілька товарів — вкажіть код або бренд)`);
+        continue;
+      }
+      const good = match?.good ? goodById.get(match.good.id) : undefined;
       if (!good) {
-        notFound.push(item.sku ?? item.barcode ?? '?');
+        notFound.push(label);
         continue;
       }
 
@@ -1066,7 +1051,7 @@ export class XlsxService {
       // PERCENT/COMPETITOR_PLUS/COST_TIER rules return newSalePrice=0 → salePrice wiped.
       // Skip such goods and report them to the user via notFound.
       if (good.purchasePrice == null || Number(good.purchasePrice) <= 0) {
-        notFound.push(`${good.sku ?? item.sku ?? item.barcode ?? good.name} (без собівартості)`);
+        notFound.push(`${good.sku ?? label} (без собівартості)`);
         continue;
       }
 
@@ -1146,12 +1131,10 @@ export class XlsxService {
 
   /**
    * Прев'ю generic-імпорту товарів у документ (PO/StockDocument). НІЧОГО не пише.
-   * Читає файл за мапінгом колонок, для кожного рядка резолвить Good:
-   *  1) exact skuNormalized (+ бренд якщо задано і резолвиться) → matched;
-   *  2) exact skuNormalized без бренду → 1 кандидат=matched, кілька=ambiguous;
-   *  3) substring (skuNormalized contains norm АБО name ILIKE) → candidates (take 10);
-   *  4) нічого → notFound.
-   * Bulk: один findMany по всіх normArticles уникає N+1; substring — лише для нерозвʼязаних.
+   * Читає файл за мапінгом колонок; товар рядка шукає єдиний пошук (BR-GOOD-008):
+   * код → артикул + бренд → штрихкод → артикул без бренду. Один товар → matched, кілька →
+   * ambiguous із кандидатами. Назва в точному пошуку участі не бере: для нерозв'язаних рядків
+   * вона (і частина артикула) дає лише ПІДКАЗКИ-кандидати, які користувач обирає сам.
    */
   async previewImport(
     orgId: string,
@@ -1168,75 +1151,35 @@ export class XlsxService {
 
     const parsed = await this.parseMappedRows(buffer, filename, mapping);
 
-    // Bulk-резолв брендів (за rawBrand) — зберемо унікальні непорожні бренди й резолвимо кожен раз.
-    const brandCache = new Map<string, string | null>(); // normBrand → brandId|null
-    const resolveBrandId = async (rawBrand?: string | null): Promise<string | null> => {
-      const norm = normalizeArticle(rawBrand);
-      if (!norm) return null;
-      if (brandCache.has(norm)) return brandCache.get(norm) ?? null;
-      const brand = await this.brandsService.resolveByNameOrSynonym(orgId, rawBrand);
-      brandCache.set(norm, brand?.id ?? null);
-      return brand?.id ?? null;
-    };
-
-    // Bulk exact-lookup: усі непорожні normArticles одним findMany (уникнення N+1).
-    const normArticles = Array.from(
-      new Set(parsed.map(r => normalizeArticle(r.rawArticle)).filter(n => n.length > 0)),
+    const matches = await this.goodMatcher.matchMany(
+      orgId,
+      parsed.map(r => ({
+        code: r.rawCode,
+        article: r.rawArticle,
+        brand: r.rawBrand,
+        barcode: r.rawBarcode,
+      })),
     );
-    const exactGoods = normArticles.length
-      ? await this.prisma.good.findMany({
-          where: { orgId, deletedAt: null, skuNormalized: { in: normArticles } },
-          select: {
-            id: true,
-            sku: true,
-            name: true,
-            brandId: true,
-            brand: { select: { name: true } },
-          },
-          take: MAX_QUERY_LIMIT,
-        })
-      : [];
-    const exactByNorm = new Map<string, typeof exactGoods>();
-    for (const g of exactGoods) {
-      const key = normalizeArticle(g.sku);
-      if (!key) continue;
-      const arr = exactByNorm.get(key);
-      if (arr) arr.push(g);
-      else exactByNorm.set(key, [g]);
-    }
 
     const rows: PreviewRowDto[] = [];
-    for (const r of parsed) {
-      const norm = normalizeArticle(r.rawArticle);
-      const brandId = await resolveBrandId(r.rawBrand);
+    for (const [i, r] of parsed.entries()) {
+      const match = matches[i];
+      let status: PreviewRowStatus = match?.status ?? 'notFound';
+      const matchedGoodId = match?.good?.id ?? null;
+      let candidates: PreviewCandidate[] = (match?.candidates ?? []).map(c => ({
+        id: c.id,
+        sku: c.sku,
+        name: c.name,
+        brandName: c.brandName,
+      }));
 
-      let status: PreviewRowStatus = 'notFound';
-      let matchedGoodId: string | null = null;
-      let candidates: PreviewCandidate[] = [];
-
-      const exact = norm ? (exactByNorm.get(norm) ?? []) : [];
-      if (exact.length > 0) {
-        // Якщо бренд задано і резолвиться — намагаємось звузити до нього.
-        const byBrand = brandId ? exact.filter(g => g.brandId === brandId) : [];
-        if (byBrand.length === 1) {
-          status = 'matched';
-          matchedGoodId = byBrand[0].id;
-        } else if (byBrand.length > 1) {
-          status = 'ambiguous';
-          candidates = byBrand.map(g => this.toCandidate(g));
-        } else if (exact.length === 1) {
-          status = 'matched';
-          matchedGoodId = exact[0].id;
-        } else {
-          status = 'ambiguous';
-          candidates = exact.map(g => this.toCandidate(g));
-        }
-      } else {
-        // Substring/ILIKE fallback — лише для нерозвʼязаних (не в bulk, кількість notFound мала).
+      if (status === 'notFound') {
+        // Підказки для нерозв'язаного рядка — не в bulk: таких рядків мало.
+        const norm = normalizeArticle(r.rawArticle);
         const or: Prisma.GoodWhereInput[] = [];
         if (norm) or.push({ skuNormalized: { contains: norm } });
         if (r.rawName && r.rawName.trim())
-          or.push({ name: { contains: r.rawName.trim(), mode: 'insensitive' } });
+          or.push({ name: { contains: escapeLike(r.rawName.trim()), mode: 'insensitive' } });
         if (or.length) {
           const found = await this.prisma.good.findMany({
             where: { orgId, deletedAt: null, OR: or },
@@ -1261,6 +1204,7 @@ export class XlsxService {
         rawCode: r.rawCode ?? null,
         rawArticle: r.rawArticle ?? null,
         rawBrand: r.rawBrand ?? null,
+        rawBarcode: r.rawBarcode ?? null,
         rawName: r.rawName ?? null,
         quantity: r.quantity,
         price: r.price,
@@ -1425,13 +1369,15 @@ export class XlsxService {
       const rawCode = cell(cells, mapping.codeCol);
       const rawArticle = cell(cells, mapping.articleCol);
       const rawBrand = cell(cells, mapping.brandCol);
+      const rawBarcode = cell(cells, mapping.barcodeCol);
       const rawName = cell(cells, mapping.nameCol);
-      if (!rawCode && !rawArticle && !rawName) return; // порожній рядок / підсумки
+      if (!rawCode && !rawArticle && !rawBarcode && !rawName) return; // порожній рядок / підсумки
       rows.push({
         rowIndex: rowNo,
         rawCode,
         rawArticle,
         rawBrand,
+        rawBarcode,
         rawName,
         quantity:
           this.parseNumber(mapping.quantityCol ? cells[mapping.quantityCol - 1] : undefined) ?? 0,
@@ -1470,6 +1416,7 @@ export interface ImportMapping {
   codeCol?: number;
   articleCol?: number;
   brandCol?: number;
+  barcodeCol?: number;
   nameCol?: number;
   quantityCol?: number;
   priceCol?: number;
@@ -1480,6 +1427,7 @@ interface MappedRow {
   rawCode: string | null;
   rawArticle: string | null;
   rawBrand: string | null;
+  rawBarcode: string | null;
   rawName: string | null;
   quantity: number;
   price: number;

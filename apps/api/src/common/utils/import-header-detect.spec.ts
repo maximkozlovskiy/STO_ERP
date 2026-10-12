@@ -156,4 +156,13 @@ describe('detectMappingFromGrid', () => {
     const r = detectMappingFromGrid([['Артикул', 'Найменування', 'Ціна продажу']]);
     expect(r.cols.priceCol).toBeUndefined();
   });
+
+  // guards: BR-GOOD-008
+  it.each([['Штрихкод'], ['Штрих-код'], ['Штрих код'], ['EAN'], ['Barcode'], ['ШК']])(
+    'колонка «%s» розпізнається як штрихкод і не забирає роль коду чи артикула',
+    header => {
+      const r = detectMappingFromGrid([['Код', 'Артикул', 'Бренд', header, 'Найменування']]);
+      expect(r.cols).toMatchObject({ codeCol: 1, articleCol: 2, brandCol: 3, barcodeCol: 4 });
+    },
+  );
 });

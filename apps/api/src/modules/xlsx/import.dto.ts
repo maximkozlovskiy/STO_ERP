@@ -71,6 +71,13 @@ export class PreviewImportDto {
   @Min(1)
   brandCol?: number;
 
+  @ApiPropertyOptional({ description: 'Колонка штрихкоду (1-based)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  barcodeCol?: number;
+
   @ApiPropertyOptional({ description: 'Колонка найменування (1-based)' })
   @IsOptional()
   @Type(() => Number)
@@ -107,6 +114,7 @@ export class PreviewRowDto {
   @ApiPropertyOptional() rawCode?: string | null;
   @ApiPropertyOptional() rawArticle?: string | null;
   @ApiPropertyOptional() rawBrand?: string | null;
+  @ApiPropertyOptional() rawBarcode?: string | null;
   @ApiPropertyOptional() rawName?: string | null;
   @ApiProperty() quantity!: number;
   @ApiProperty() price!: number;

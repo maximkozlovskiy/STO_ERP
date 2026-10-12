@@ -44,6 +44,7 @@ describe('CounterpartyImportMappingsService', () => {
         codeCol: null,
         articleCol: null,
         brandCol: null,
+        barcodeCol: null,
         nameCol: null,
         quantityCol: null,
         priceCol: null,
@@ -57,6 +58,7 @@ describe('CounterpartyImportMappingsService', () => {
         codeCol: 1,
         articleCol: 2,
         brandCol: null,
+        barcodeCol: null,
         nameCol: 3,
         quantityCol: 4,
         priceCol: 5,
@@ -106,6 +108,29 @@ describe('CounterpartyImportMappingsService', () => {
       expect(res).toMatchObject({ counterpartyId: CP, articleCol: 2 });
     });
 
+    // guards: BR-GOOD-008
+    it('колонка штрихкоду зберігається й повертається разом із рештою мапінгу', async () => {
+      mocks.counterpartyImportMapping.upsert.mockResolvedValueOnce({
+        counterpartyId: CP,
+        startRow: 2,
+        codeCol: null,
+        articleCol: 2,
+        brandCol: null,
+        barcodeCol: 7,
+        nameCol: null,
+        quantityCol: null,
+        priceCol: null,
+      });
+      const res = await service.upsert(ORG, CP, { articleCol: 2, barcodeCol: 7 });
+      expect(mocks.counterpartyImportMapping.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ barcodeCol: 7 }),
+          update: expect.objectContaining({ barcodeCol: 7 }),
+        }),
+      );
+      expect(res).toMatchObject({ barcodeCol: 7 });
+    });
+
     it('відсутні колонки → null у data, startRow дефолт 2', async () => {
       mocks.counterpartyImportMapping.upsert.mockResolvedValueOnce({
         counterpartyId: CP,
@@ -113,6 +138,7 @@ describe('CounterpartyImportMappingsService', () => {
         codeCol: null,
         articleCol: 7,
         brandCol: null,
+        barcodeCol: null,
         nameCol: null,
         quantityCol: null,
         priceCol: null,

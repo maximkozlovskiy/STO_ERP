@@ -26,8 +26,6 @@ import { BrandsService } from './brands.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { CacheService } from '../../redis/cache.service';
 
-vi.mock('../../common/tenant/tenant-context', () => ({ getLocale: () => 'uk' }));
-
 const ORG = '11111111-1111-4111-8111-111111111111';
 const BRAND_A = '22222222-2222-4222-8222-222222222222';
 const NOW = new Date('2026-10-12T10:00:00.000Z');

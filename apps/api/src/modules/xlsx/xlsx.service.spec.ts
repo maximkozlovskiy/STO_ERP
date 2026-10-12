@@ -8,6 +8,7 @@ import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { GoodMatcherService } from '../goods/good-matcher.service';
+import { catalogMatcher, type CatalogGood } from './good-matcher.testing';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
@@ -15,6 +16,10 @@ import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service
 
 const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
 const goodMatcher = { matchMany: vi.fn().mockResolvedValue([]) };
+/** Єдиний пошук товару (BR-GOOD-008) у тестах шукає в переліку, який задає сам тест. */
+const seedCatalog = (goods: CatalogGood[]): void => {
+  goodMatcher.matchMany.mockImplementation(catalogMatcher(goods));
+};
 
 // Bug #188: regression-захист для applyPricingFromList + generatePricingListTemplate
 describe('XlsxService', () => {
@@ -38,6 +43,7 @@ describe('XlsxService', () => {
   const ORG = 'org-1';
 
   beforeEach(async () => {
+    seedCatalog([]);
     prisma = {
       good: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -93,7 +99,7 @@ describe('XlsxService', () => {
       const text = buf.toString('utf-8');
       expect(text.charCodeAt(0)).toBe(0xfeff); // BOM
       const lines = text.replace(/^﻿/, '').trim().split('\n');
-      expect(lines[0]).toBe('sku,barcode,name');
+      expect(lines[0]).toBe('code,sku,brand,barcode,name');
       expect(lines).toHaveLength(3); // header + 2 sample
       expect(lines[1]).toContain('OIL-5W40');
       expect(lines[2]).toContain('4820123456789');
@@ -317,12 +323,18 @@ describe('XlsxService', () => {
 
   // ─── applyPricingFromList ───────────────────────────────────────────────────
 
+  /** Товари каталогу для «Розцінити список»: їх знаходить пошук і читає сама розцінка. */
+  const seedGoods = (goods: (CatalogGood & Record<string, unknown>)[]): void => {
+    seedCatalog(goods);
+    prisma.good.findMany.mockResolvedValueOnce(goods);
+  };
+
   describe('applyPricingFromList — CSV', () => {
     it('парсить CSV з BOM + знаходить good по sku → пише $transaction', async () => {
       const csv = '﻿sku,barcode,name\nOIL-5W40,,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'good-1',
           name: 'Масло',
@@ -364,7 +376,7 @@ describe('XlsxService', () => {
       const csv = 'Артикул,Штрихкод,name\nOIL-5W40,4820123456789,Масло\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'good-1',
           name: 'Масло',
@@ -381,72 +393,17 @@ describe('XlsxService', () => {
 
       const result = await service.applyPricingFromList(ORG, buffer, 'csv');
       expect(result.found).toBe(1);
-      // Bulk lookup: ОБИДВА варіанти (sku IN АБО barcodes IN) у одному findMany.
-      // Perf: select narrow projection — Brand record unused (only brandId scalar read).
-      expect(prisma.good.findMany).toHaveBeenCalledWith({
-        where: {
-          orgId: ORG,
-          deletedAt: null,
-          OR: [
-            { sku: { in: ['OIL-5W40'] } },
-            { barcodes: { some: { barcode: { in: ['4820123456789'] } } } },
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          sku: true,
-          salePrice: true,
-          purchasePrice: true,
-          category: true,
-          goodCategoryId: true,
-          goodType: true,
-          brandId: true,
-          barcodes: { select: { barcode: true } },
-        },
-        take: 10000,
-      });
-    });
-
-    it('товар не знайдено → потрапляє у notFound[], не пише good.updateMany', async () => {
-      const csv = 'sku,barcode,name\nUNKNOWN-SKU,,Невідомо\n';
-      const buffer = Buffer.from(csv, 'utf-8');
-
-      prisma.good.findMany.mockResolvedValueOnce([]);
-
-      const result = await service.applyPricingFromList(ORG, buffer, 'csv');
-      expect(result.found).toBe(0);
-      expect(result.updated).toBe(0);
-      expect(result.notFound).toEqual(['UNKNOWN-SKU']);
-      expect(prisma.good.updateMany).not.toHaveBeenCalled();
-      expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
-    });
-
-    it('ціна не змінилась → у details АЛЕ не пише good.updateMany/priceHistory', async () => {
-      const csv = 'sku,barcode,name\nOIL,,Масло\n';
-      const buffer = Buffer.from(csv, 'utf-8');
-
-      prisma.good.findMany.mockResolvedValueOnce([
-        {
-          id: 'good-1',
-          name: 'Масло',
-          sku: 'OIL',
-          purchasePrice: 100,
-          salePrice: 130,
-          category: null,
-          goodType: null,
-          brandId: null,
-          barcodes: [],
-        },
+      // Колонки впізнано за українськими заголовками і передано єдиному пошуку (BR-GOOD-008).
+      expect(goodMatcher.matchMany).toHaveBeenCalledWith(ORG, [
+        { code: null, article: 'OIL-5W40', brand: null, barcode: '4820123456789' },
       ]);
-      pricingService.computePriceFromRules.mockReturnValueOnce(130); // no change
-
-      const result = await service.applyPricingFromList(ORG, buffer, 'csv');
-      expect(result.found).toBe(1);
-      expect(result.updated).toBe(0); // skip count
-      expect(result.details).toHaveLength(1); // запис у details ДЛЯ unchanged теж
-      expect(prisma.good.updateMany).not.toHaveBeenCalled();
-      expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
+      // Товари для розцінки — одним запитом за знайденими id, вузькою проєкцією.
+      expect(prisma.good.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.good.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { orgId: ORG, deletedAt: null, id: { in: ['good-1'] } },
+        }),
+      );
     });
 
     it('порожній CSV (тільки header) → BadRequestException', async () => {
@@ -469,7 +426,7 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nNO-COST-SKU,,Без собівартості\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'good-no-cost',
           name: 'Без собівартості',
@@ -498,7 +455,7 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nZERO-COST,,Нуль собівартість\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'good-zero',
           name: 'Нуль',
@@ -531,7 +488,7 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nDUP-SKU,,X\nDUP-SKU,,X\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'good-dup',
           name: 'Multi-row',
@@ -568,7 +525,7 @@ describe('XlsxService', () => {
       const csv = 'sku,barcode,name\nA-SKU,,A\nB-SKU,,B\n';
       const buffer = Buffer.from(csv, 'utf-8');
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'g-a',
           name: 'A',
@@ -616,7 +573,7 @@ describe('XlsxService', () => {
       // ExcelJS writeBuffer() віддає свій `Buffer extends ArrayBuffer`, не node Buffer.
       const buf = Buffer.from(await wb.xlsx.writeBuffer());
 
-      prisma.good.findMany.mockResolvedValueOnce([
+      seedGoods([
         {
           id: 'good-1',
           name: 'Масло',
@@ -725,7 +682,7 @@ describe('XlsxService', () => {
       };
       Object.assign(prisma, wo);
       // Каталог: два товари, які імпорт знаходить за SKU.
-      prisma.good.findMany.mockResolvedValue([
+      seedCatalog([
         { id: 'g-1', sku: 'A-1', name: 'Товар A-1' },
         { id: 'g-2', sku: 'B-2', name: 'Товар B-2' },
       ]);

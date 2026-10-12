@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-10-12] `vi.mock` цілого `tenant-context` в одному api-спеку валить ІНШІ спеки повного прогону
+
+Проєкт `shared` у vitest не ізолює модулі між файлами. Спек із
+`vi.mock('../../common/tenant/tenant-context', () => ({ getLocale: () => 'uk' }))` підміняє модуль
+цілком, і спеки, що йдуть за ним у тому самому воркері, отримують мок без `runUnscoped` /
+`isTenantBypassed`: 26 падінь у `field-encryption.extension.spec.ts` і `for-each-active-org.spec.ts`,
+хоча сам спек із моком і будь-який прогін «лише зачеплених» файлів зелені. Видно тільки в повному
+прогоні, і лише за певного порядку файлів (той самий мок у `brands.synonym-unique.spec.ts` тиждень
+проходив випадково).
+
+```ts
+// ❌ підміна модуля цілком
+vi.mock('../../common/tenant/tenant-context', () => ({ getLocale: () => 'uk' }));
+
+// ✅ мок не потрібен: без контексту запиту getLocale() і так повертає 'uk'
+// ✅ якщо підміна справді потрібна — часткова
+vi.mock('../../common/tenant/tenant-context', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../common/tenant/tenant-context')>()),
+  getLocale: () => 'en',
+}));
+```
+
 ## [2026-10-12] Prisma `equals` + `mode: 'insensitive'` — це `ILIKE`, і `_` / `%` у значенні працюють як шаблон
 
 Prisma не екранує значення: «A_C» збігається з «AXC», «%» — з будь-яким рядком. Для перевірки

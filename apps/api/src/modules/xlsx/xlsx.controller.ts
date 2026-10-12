@@ -27,6 +27,7 @@ import type { AuthenticatedUser } from '../../auth/strategies/jwt.strategy';
 import { Request } from '@nestjs/common';
 import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { normalizeArticle } from '../../common/utils/normalize-article';
 import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
 import { ApplyImportDto, ResolveGoodsFileResponseDto } from './import.dto';
@@ -123,18 +124,18 @@ export class XlsxController {
 
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
 
-    for (const row of rows) {
+    // Один пакетний пошук на файл замість запиту на рядок; артикул порівнюється нормалізовано.
+    const exists = await this.xlsxService.findExistingGoodRows(orgId, rows);
+    const seenArticles = new Set<string>();
+    for (const [i, row] of rows.entries()) {
       try {
-        if (row.sku) {
-          // Check if exists
-          const existing = (
-            await this.goodsService.findAll(orgId, { page: 1, limit: 10, q: row.sku })
-          ).items.find(g => g.sku === row.sku);
-          if (existing) {
-            result.updated++;
-            continue;
-          }
+        const article = normalizeArticle(row.sku);
+        // Наявний у каталозі або вже створений із цього ж файла — пропускаємо, дубль не робимо.
+        if (article && (exists[i] || seenArticles.has(article))) {
+          result.updated++;
+          continue;
         }
+        if (article) seenArticles.add(article);
         if (row.salePrice) {
           await this.goodsService.create(orgId, {
             sku: row.sku,
@@ -365,6 +366,7 @@ export class XlsxController {
       codeCol: num('codeCol'),
       articleCol: num('articleCol'),
       brandCol: num('brandCol'),
+      barcodeCol: num('barcodeCol'),
       nameCol: num('nameCol'),
       quantityCol: num('quantityCol'),
       priceCol: num('priceCol'),

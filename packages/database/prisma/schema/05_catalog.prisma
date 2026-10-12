@@ -136,6 +136,7 @@ model CounterpartyImportMapping {
   codeCol        Int? // номер колонки коду (1-based)
   articleCol     Int? // номер колонки артикулу
   brandCol       Int? // номер колонки бренду
+  barcodeCol       Int? // номер колонки штрихкоду
   nameCol        Int? // номер колонки найменування
   quantityCol    Int? // номер колонки кількості
   priceCol       Int? // номер колонки ціни

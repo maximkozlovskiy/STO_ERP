@@ -7,7 +7,7 @@
 
 /** Ролі колонок імпорту — дзеркалять ImportMapping (apps/api xlsx.service) і COL_ROLE_LABELS (web). */
 export type ImportColRole =
-  'codeCol' | 'articleCol' | 'brandCol' | 'nameCol' | 'quantityCol' | 'priceCol';
+  'codeCol' | 'articleCol' | 'brandCol' | 'barcodeCol' | 'nameCol' | 'quantityCol' | 'priceCol';
 
 /**
  * Нормалізація ЗАГОЛОВКА колонки для зіставлення з алиасами.
@@ -86,6 +86,16 @@ export const IMPORT_HEADER_ALIASES: Record<ImportColRole, readonly string[]> = {
     'manufacturer',
     'brand',
   ],
+  barcodeCol: [
+    'штрихкод',
+    'штрих-код',
+    'штрих код',
+    'шк',
+    'ean',
+    'ean13',
+    'barcode',
+    'штрихкод товару',
+  ],
   nameCol: [
     'назва',
     'найменування',
@@ -150,6 +160,7 @@ const ROLES: readonly ImportColRole[] = [
   'codeCol',
   'articleCol',
   'brandCol',
+  'barcodeCol',
   'nameCol',
   'quantityCol',
   'priceCol',

@@ -14,8 +14,6 @@ import { PRICING_RULE_MAX_GOODS } from '@sto/shared';
 import { XlsxService } from './xlsx.service';
 import type { GoodMatchResult, GoodMatcherService } from '../goods/good-matcher.service';
 
-vi.mock('../../common/tenant/tenant-context', () => ({ getLocale: () => 'uk' }));
-
 const ORG = '11111111-1111-4111-8111-111111111111';
 
 async function xlsx(rows: unknown[][]): Promise<Buffer> {

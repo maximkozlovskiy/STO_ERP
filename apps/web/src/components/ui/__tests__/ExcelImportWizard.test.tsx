@@ -453,6 +453,25 @@ describe('ExcelImportWizard — автодетект колонок, PDF-ска�
     expect(screen.getByText(/Колонки визначено автоматично/)).toBeInTheDocument();
   });
 
+  // BR-GOOD-008: штрихкод — один із ключів єдиного пошуку товару.
+  it('колонка штрихкоду визначається автоматично й лишається порожньою, якщо її немає у файлі', () => {
+    renderWizard();
+    selectFile();
+    expect(colInput('Колонка штрихкоду').value).toBe('');
+
+    rawPreviewData.current = {
+      totalRows: 2,
+      columnCount: 4,
+      rows: [
+        ['Артикул', 'Штрих-код', 'Найменування', 'К-сть'],
+        ['ABC-12', '4820000000015', 'Фільтр', '4'],
+      ],
+    };
+    selectFile();
+    expect(colInput('Колонка штрихкоду').value).toBe('2');
+    expect(colInput('Колонка артикулу').value).toBe('1');
+  });
+
   it('поля лишаються редагованими після автодетекту', () => {
     renderWizard();
     selectFile();

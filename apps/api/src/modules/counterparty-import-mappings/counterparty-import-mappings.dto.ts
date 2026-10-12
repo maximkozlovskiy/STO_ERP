@@ -32,6 +32,13 @@ export class UpsertImportMappingDto {
   @Min(1)
   brandCol?: number;
 
+  @ApiPropertyOptional({ description: 'Колонка штрихкоду (1-based)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  barcodeCol?: number;
+
   @ApiPropertyOptional({ description: 'Колонка найменування (1-based)' })
   @IsOptional()
   @Type(() => Number)
@@ -60,6 +67,7 @@ export class ImportMappingResponseDto {
   @ApiPropertyOptional() codeCol!: number | null;
   @ApiPropertyOptional() articleCol!: number | null;
   @ApiPropertyOptional() brandCol!: number | null;
+  @ApiPropertyOptional() barcodeCol!: number | null;
   @ApiPropertyOptional() nameCol!: number | null;
   @ApiPropertyOptional() quantityCol!: number | null;
   @ApiPropertyOptional() priceCol!: number | null;

@@ -9,7 +9,7 @@
 ## Поточний стан
 
 ```
-Дата:       2026-10-09
+Дата:       2026-10-12
 HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюється — старіє щокоміту)
 Фаза:       PHASES.md 229/231 закрито. Хвости: EAS Build (mobile) + smoke на чистій
             Windows VM — обидва потребують фізичного оточення, не коду.
@@ -73,6 +73,8 @@ python scripts/check-doc-links.py                      # посилання мі
 
 | Файл                                                                                     | Що                                                                                                                                                  |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/modules/goods/good-matcher.service.ts`                                     | єдиний пошук товару за рядком файла (BR-GOOD-008): код → артикул+бренд → штрихкод → артикул → назва; усі завантаження ходять сюди                   |
+| `apps/api/src/modules/xlsx/good-ref-rows.parser.ts`                                      | читає перелік товарів з XLSX/CSV, колонки впізнає за заголовком; `good-matcher.testing.ts` — двійник пошуку для спеків імпорту                      |
 | `scripts/check-schema-drift.py`                                                          | сторож «міграції = schema.prisma» на чистій базі (CI `integration-tests`); `--self-test`                                                            |
 | `.claude/agents/sto-{backend,web,spec-tests}-agent.md`                                   | паралельна реалізація фічі за контрактом; пілот — історія пробігу авто (`docs/objects/vehicle.md`); виміри — `docs/PERFORMANCE-BASELINE.md`, етап 4 |
 | `apps/web/src/components/ui/list-load-error.tsx`                                         | смуга «список не завантажився» з «Повторити» — збій запиту списку не має виглядати порожнім станом                                                  |
@@ -118,6 +120,9 @@ python scripts/check-doc-links.py                      # посилання мі
   - власні postgres/redis): dev-база й `.env` на диску ховають дефекти чистої інсталяції
 - `StockDocumentType.RECEIPT` — повністю додано: Prisma enum + DTO + service + frontend tabs
 - `deduplicateBy(plan, u => u.goodId)` — у PO/xlsx applyPricing ПЕРЕД `Promise.all`
+- **Ціноутворення:** `PricingService.getPricingContext(orgId, goodIds)` → `resolveRule(ctx, good, cost)`;
+  правило зі списком товарів (`PricingRuleGood`) діє лише на список; категорія — з підкатегоріями
+  (BR-GOOD-009/010). Пошук товару у файлі — лише через `GoodMatcherService` (BR-GOOD-008)
 - Generic Excel-імпорт: `XlsxService.previewImport/applyImport` + `DocumentLineImportAdapterRegistry`
   (docType→adapter). skuNormalized/normalizedSynonym пишуться ЛИШЕ у Goods/BrandsService (SOT).
   XlsxService конструктор: Prisma+Pricing+**Goods+Brands+registry** (DI-drift #724 — оновлювати всі специ)

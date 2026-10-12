@@ -28951,6 +28951,10 @@
             "type": "number",
             "nullable": true
           },
+          "barcodeCol": {
+            "type": "number",
+            "nullable": true
+          },
           "nameCol": {
             "type": "number",
             "nullable": true
@@ -28992,6 +28996,11 @@
             "type": "number",
             "minimum": 1,
             "description": "Колонка бренду (1-based)"
+          },
+          "barcodeCol": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Колонка штрихкоду (1-based)"
           },
           "nameCol": {
             "type": "number",

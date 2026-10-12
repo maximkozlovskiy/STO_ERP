@@ -42,6 +42,7 @@ export interface ImportMapping {
   codeCol: number | null;
   articleCol: number | null;
   brandCol: number | null;
+  barcodeCol: number | null;
   nameCol: number | null;
   quantityCol: number | null;
   priceCol: number | null;
@@ -127,6 +128,7 @@ export function usePreviewImport() {
         ['codeCol', mapping.codeCol],
         ['articleCol', mapping.articleCol],
         ['brandCol', mapping.brandCol],
+        ['barcodeCol', mapping.barcodeCol],
         ['nameCol', mapping.nameCol],
         ['quantityCol', mapping.quantityCol],
         ['priceCol', mapping.priceCol],
@@ -192,6 +194,7 @@ export function useUpsertImportMapping() {
           codeCol: mapping.codeCol,
           articleCol: mapping.articleCol,
           brandCol: mapping.brandCol,
+          barcodeCol: mapping.barcodeCol,
           nameCol: mapping.nameCol,
           quantityCol: mapping.quantityCol,
           priceCol: mapping.priceCol,

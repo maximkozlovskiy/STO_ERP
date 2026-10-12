@@ -29,6 +29,7 @@ export class CounterpartyImportMappingsService {
         codeCol: null,
         articleCol: null,
         brandCol: null,
+        barcodeCol: null,
         nameCol: null,
         quantityCol: null,
         priceCol: null,
@@ -48,6 +49,7 @@ export class CounterpartyImportMappingsService {
       codeCol: dto.codeCol ?? null,
       articleCol: dto.articleCol ?? null,
       brandCol: dto.brandCol ?? null,
+      barcodeCol: dto.barcodeCol ?? null,
       nameCol: dto.nameCol ?? null,
       quantityCol: dto.quantityCol ?? null,
       priceCol: dto.priceCol ?? null,
@@ -78,6 +80,7 @@ export class CounterpartyImportMappingsService {
     codeCol: number | null;
     articleCol: number | null;
     brandCol: number | null;
+    barcodeCol: number | null;
     nameCol: number | null;
     quantityCol: number | null;
     priceCol: number | null;
@@ -88,6 +91,7 @@ export class CounterpartyImportMappingsService {
       codeCol: m.codeCol,
       articleCol: m.articleCol,
       brandCol: m.brandCol,
+      barcodeCol: m.barcodeCol,
       nameCol: m.nameCol,
       quantityCol: m.quantityCol,
       priceCol: m.priceCol,

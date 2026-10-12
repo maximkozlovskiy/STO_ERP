@@ -52,7 +52,13 @@ type MappingSource = 'default' | 'detected' | 'saved' | 'manual';
 function isMeaningfulMapping(m: ImportMapping | undefined): m is ImportMapping {
   if (!m) return false;
   return (
-    (m.codeCol ?? m.articleCol ?? m.brandCol ?? m.nameCol ?? m.quantityCol ?? m.priceCol) != null
+    (m.codeCol ??
+      m.articleCol ??
+      m.brandCol ??
+      m.barcodeCol ??
+      m.nameCol ??
+      m.quantityCol ??
+      m.priceCol) != null
   );
 }
 
@@ -82,6 +88,7 @@ const DEFAULT_MAPPING: ImportMapping = {
   codeCol: null,
   articleCol: null,
   brandCol: null,
+  barcodeCol: null,
   nameCol: null,
   quantityCol: null,
   priceCol: null,
@@ -119,6 +126,7 @@ const COL_ROLE_LABELS: [keyof ImportMapping, string][] = [
   ['codeCol', 'Код'],
   ['articleCol', 'Артикул'],
   ['brandCol', 'Бренд'],
+  ['barcodeCol', 'Штрихкод'],
   ['nameCol', 'Назва'],
   ['quantityCol', 'К-сть'],
   ['priceCol', 'Ціна'],
@@ -283,6 +291,7 @@ export function ExcelImportWizard({
         codeCol: savedMapping.codeCol,
         articleCol: savedMapping.articleCol,
         brandCol: savedMapping.brandCol,
+        barcodeCol: savedMapping.barcodeCol,
         nameCol: savedMapping.nameCol,
         quantityCol: savedMapping.quantityCol,
         priceCol: savedMapping.priceCol,
@@ -335,6 +344,7 @@ export function ExcelImportWizard({
           codeCol: det.cols.codeCol ?? null,
           articleCol: det.cols.articleCol ?? null,
           brandCol: det.cols.brandCol ?? null,
+          barcodeCol: det.cols.barcodeCol ?? null,
           nameCol: det.cols.nameCol ?? null,
           quantityCol: det.cols.quantityCol ?? null,
           priceCol: det.cols.priceCol ?? null,
@@ -584,6 +594,13 @@ export function ExcelImportWizard({
               min={1}
               value={numToStr(mapping.brandCol)}
               onChange={e => setCol('brandCol', e.target.value)}
+            />
+            <Input
+              label="Колонка штрихкоду"
+              type="number"
+              min={1}
+              value={numToStr(mapping.barcodeCol)}
+              onChange={e => setCol('barcodeCol', e.target.value)}
             />
             <Input
               label="Колонка найменування"

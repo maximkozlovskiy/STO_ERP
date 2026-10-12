@@ -26,6 +26,10 @@ const xlsxServiceMock = {
   generateWOPartsTemplate: vi.fn(),
   applyPricingFromList: vi.fn(),
   parseBrands: vi.fn(),
+  parseGoods: vi.fn(),
+  findExistingGoodRows: vi.fn(),
+  resolvePricingRuleGoods: vi.fn(),
+  generatePricingRuleGoodsTemplate: vi.fn(),
 };
 
 const goodsServiceMock = { findAll: vi.fn(), create: vi.fn() };
@@ -175,6 +179,100 @@ describe('Xlsx — HTTP Contract', () => {
         errors: ['БОШ: Назва «БОШ» уже є синонімом бренду «Bosch»'],
       });
       expect(brandsServiceMock.create).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  // guards: BR-GOOD-008
+  describe('POST /xlsx/import/goods', () => {
+    const BOUNDARY = 'goodsimportboundary';
+    const upload = () =>
+      (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/xlsx/import/goods',
+        headers: { 'content-type': `multipart/form-data; boundary=${BOUNDARY}` },
+        payload:
+          `--${BOUNDARY}\r\n` +
+          'Content-Disposition: form-data; name="file"; filename="goods.xlsx"\r\n' +
+          'Content-Type: application/octet-stream\r\n\r\n' +
+          'x\r\n' +
+          `--${BOUNDARY}--\r\n`,
+      });
+
+    // Mutation-verify: прибрати `exists[i]` → наявний товар створюється вдруге; прибрати
+    // `seenArticles` → той самий артикул двічі у файлі створює два товари.
+    it('наявний товар і повтор артикула у файлі не створюють дубль; пошук — один на файл', async () => {
+      xlsxServiceMock.parseGoods.mockResolvedValueOnce([
+        { sku: '04E-129-620', name: 'Є в каталозі', salePrice: 10 },
+        { sku: 'NEW-1', name: 'Новий', salePrice: 20 },
+        { sku: 'new 1', name: 'Той самий артикул, інше написання', salePrice: 20 },
+        { name: 'Без артикула', salePrice: 30 },
+      ]);
+      xlsxServiceMock.findExistingGoodRows.mockResolvedValueOnce([true, false, false, false]);
+      goodsServiceMock.create.mockResolvedValue({ id: 'g' });
+
+      const res = await upload();
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toEqual({ created: 2, updated: 2, errors: [] });
+      expect(xlsxServiceMock.findExistingGoodRows).toHaveBeenCalledTimes(1);
+      expect(goodsServiceMock.create.mock.calls.map(c => (c[1] as { name: string }).name)).toEqual([
+        'Новий',
+        'Без артикула',
+      ]);
+      // Запиту на кожен рядок (N+1) більше немає.
+      expect(goodsServiceMock.findAll).not.toHaveBeenCalled();
+    });
+  });
+
+  // guards: BR-GOOD-009
+  describe('перелік товарів для правила ціноутворення', () => {
+    it('GET /xlsx/templates/pricing-rule-goods → 200 + { file, filename: .xlsx }', async () => {
+      xlsxServiceMock.generatePricingRuleGoodsTemplate.mockResolvedValueOnce(Buffer.from('xlsx'));
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/xlsx/templates/pricing-rule-goods',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        file: Buffer.from('xlsx').toString('base64'),
+        filename: 'pricing_rule_goods_template.xlsx',
+      });
+    });
+
+    it('POST /xlsx/pricing-rule-goods/resolve без файла → 400, розбір не запускається', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/xlsx/pricing-rule-goods/resolve',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(xlsxServiceMock.resolvePricingRuleGoods).not.toHaveBeenCalled();
+    });
+
+    it('POST /xlsx/pricing-rule-goods/resolve: тип файла — за розширенням (.csv / решта xlsx)', async () => {
+      const BOUNDARY = 'rulegoodsboundary';
+      xlsxServiceMock.resolvePricingRuleGoods.mockResolvedValueOnce({
+        total: 0,
+        matched: [],
+        ambiguous: [],
+        notFound: [],
+      });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/xlsx/pricing-rule-goods/resolve',
+        headers: { 'content-type': `multipart/form-data; boundary=${BOUNDARY}` },
+        payload:
+          `--${BOUNDARY}\r\n` +
+          'Content-Disposition: form-data; name="file"; filename="Список.CSV"\r\n' +
+          'Content-Type: text/csv\r\n\r\n' +
+          'sku\r\n' +
+          `--${BOUNDARY}--\r\n`,
+      });
+      expect(res.statusCode).toBe(201);
+      expect(xlsxServiceMock.resolvePricingRuleGoods).toHaveBeenCalledWith(
+        'org-1',
+        expect.any(Buffer),
+        'csv',
+      );
     });
   });
 });
