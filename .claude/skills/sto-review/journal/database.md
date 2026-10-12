@@ -26,3 +26,10 @@
 **Grep:** `grep -rnE "orderBy: (\[\{ createdAt: 'asc' \}, \{ id: 'asc' \}\]|\{ createdAt: 'asc' \})" apps/api/src/modules/work-orders apps/api/src/modules/invoices --include="*.service.ts"`; перевірка даних: `select "workOrderId" from work_order_lines group by "workOrderId", "createdAt" having count(*) > 1`.
 **Фікс:** не зроблено — потрібне рішення власника: колонка позиції рядка (міграція) або один `orderBy` на всі читання. Детермінованість «останнього рядка», що забирає копійку округлення (BR-INV-002), Bug #814 уже дав.
 **Severity:** IMPORTANT — документ друкується не в тому порядку, що на екрані; на суми не впливає.
+
+### 2026-10-12 — `equals` + `insensitive` = ILIKE без екранування; унікальність без блокування — §6
+
+**Сигнал:** BR-GOOD-007 (одне написання — один бренд) перевіряв зайнятість через `{ equals: s, mode: 'insensitive' }`. Через API: синонім «REVIEWBRa_c» дістав 409 «уже належить бренду» проти чужого «REVIEWBRaXc», а «REVIEWBR%» — проти будь-якого синоніма з таким початком. Там само: перевірка читала до запису без транзакції, тож два одночасні збереження проходили обидва; `restore` і вкладений `createMany skipDuplicates` у `create` правило оминали; імпорт брендів розпізнавав «уже існує» за словом у тексті помилки й рахував відмову правила як «оновлено».
+**Grep:** `grep -rn -B3 "mode: 'insensitive'" apps/api/src --include="*.ts" | grep -v spec | grep "equals"`; для правила унікальності — `grep -rn "<model>\.\(create\|update\|upsert\|createMany\|updateMany\)" apps/api/src --include="*.ts" | grep -v spec` і пройти КОЖЕН писач.
+**Фікс:** екранування `\`, `%`, `_` + рішення за ключем у JS; перевірка й запис в одній `$transaction` під `pg_advisory_xact_lock`; виняток у масовому імпорті розпізнається за класом і ключем перекладу, не за підрядком. Лишилось: `works.service.ts` `findCategoryByName` має той самий `equals` + `insensitive` без екранування.
+**Severity:** IMPORTANT — хибна відмова у збереженні та мовчазна втрата синоніма.
