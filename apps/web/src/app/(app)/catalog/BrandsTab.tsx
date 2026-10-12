@@ -36,6 +36,17 @@ interface Brand {
 
 // ─── Brands Tab ───────────────────────────────────────────────────────────────
 
+/**
+ * Adds `raw` to the synonym list: trimmed, skipped when empty or already present
+ * (case-insensitive). Shared by the "+" button, Enter and Save.
+ */
+export function withSynonym(list: string[], raw: string): string[] {
+  const value = raw.trim();
+  if (!value) return list;
+  const lower = value.toLowerCase();
+  return list.some(s => s.toLowerCase() === lower) ? list : [...list, value];
+}
+
 export default function BrandsTab() {
   const { t } = useTranslation('catalog');
   const { confirm, dialogProps } = useConfirm();
@@ -101,14 +112,7 @@ export default function BrandsTab() {
   };
 
   const addSynonym = () => {
-    const val = synonymInput.trim();
-    if (!val) return;
-    const lower = val.toLowerCase();
-    if (form.synonyms.some(s => s.toLowerCase() === lower)) {
-      setSynonymInput('');
-      return;
-    }
-    setForm(f => ({ ...f, synonyms: [...f.synonyms, val] }));
+    setForm(f => ({ ...f, synonyms: withSynonym(f.synonyms, synonymInput) }));
     setSynonymInput('');
   };
 
@@ -126,7 +130,12 @@ export default function BrandsTab() {
     setSaving(true);
     setError('');
     try {
-      const payload = { name: form.name.trim(), synonyms: form.synonyms };
+      // The text still sitting in the input counts too: saving right after typing, without
+      // pressing "+" or Enter, used to drop it silently (owner report 2026-10-12).
+      const payload = {
+        name: form.name.trim(),
+        synonyms: withSynonym(form.synonyms, synonymInput),
+      };
       if (editBrand) {
         await apiFetch<Brand>(`/brands/${editBrand.id}`, {
           method: 'PATCH',
@@ -138,6 +147,7 @@ export default function BrandsTab() {
           body: JSON.stringify(payload),
         });
       }
+      setSynonymInput('');
       setModal(false);
       load();
     } catch (e: unknown) {
