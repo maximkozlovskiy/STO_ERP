@@ -66,6 +66,11 @@
    "HttpExceptionFilter code — машинний код помилки throw-сайт МОЖЕ передати власний code — він перемагає дефолт",
    "HttpExceptionFilter code — машинний код помилки невідома помилка → err.internal (не протікає деталь)"
   ],
+  "apps/api/src/common/http-cache.static.spec.ts": [
+   "HTTP-кеш списків: браузер не тримає копію редагованих даних жоден контролер поза переліком винятків не ставить max-age",
+   "HTTP-кеш списків: браузер не тримає копію редагованих даних кожен виняток досі існує й досі має max-age (перелік не застарів)",
+   "HTTP-кеш списків: браузер не тримає копію редагованих даних сторож справді обходить контролери і бачить декоратор Cache-Control"
+  ],
   "apps/api/src/common/interceptors/idempotency-purge.processor.spec.ts": [
    "IdempotencyPurgeProcessor видаляє ЛИШЕ протерміновані (expiresAt < now)"
   ],

@@ -32,7 +32,10 @@ import { CounterpartyStatusesService } from './counterparty-statuses.service';
 export class CounterpartyStatusesController {
   constructor(private readonly service: CounterpartyStatusesService) {}
 
-  @Header('Cache-Control', 'private, max-age=300, stale-while-revalidate=60')
+  // `private, no-cache`: the list is editable, and with `max-age=300` the browser kept serving the
+  // pre-edit copy for up to 5 minutes after a save (Bug #299 class; brands - owner report 2026-10-12).
+  // The server-side Redis cache, invalidated on every write, keeps the response fast.
+  @Header('Cache-Control', 'private, no-cache')
   @Get()
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Список статусів контрагентів' })
