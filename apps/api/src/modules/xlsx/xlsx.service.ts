@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { parse as parseCSV } from 'csv-parse/sync';
-import { TRANSACTION_TIMEOUT_MS, MAX_QUERY_LIMIT, translateError } from '@sto/shared';
+import {
+  TRANSACTION_TIMEOUT_MS,
+  MAX_QUERY_LIMIT,
+  PRICING_RULE_MAX_GOODS,
+  translateError,
+} from '@sto/shared';
 import { Prisma } from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -21,6 +26,8 @@ import {
 import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
+import { GoodMatcherService } from '../goods/good-matcher.service';
+import { parseGoodRefRows } from './good-ref-rows.parser';
 import { deduplicateBy } from '../../common/utils/array';
 import { money } from '../../common/utils/money';
 import { normalizeArticle } from '../../common/utils/normalize-article';
@@ -35,6 +42,7 @@ import type {
   PreviewCandidate,
   PreviewRowDto,
   PreviewRowStatus,
+  ResolveGoodsFileResponseDto,
 } from './import.dto';
 
 export interface GoodRow {
@@ -88,6 +96,7 @@ export class XlsxService {
     private readonly gridParser: DocumentGridParserService,
     private readonly cache: CacheService,
     private readonly workOrderTotals: WorkOrderTotalsService,
+    private readonly goodMatcher: GoodMatcherService,
   ) {}
 
   /**
@@ -419,6 +428,64 @@ export class XlsxService {
 
   async generateWOPartsTemplate(): Promise<Buffer> {
     return this.generatePOLinesTemplate();
+  }
+
+  /** Шаблон переліку товарів для правила ціноутворення: будь-якої з колонок досить (BR-GOOD-008). */
+  async generatePricingRuleGoodsTemplate(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Товари');
+    sheet.columns = [
+      { header: 'Код', key: 'code', width: 14 },
+      { header: 'Артикул', key: 'article', width: 18 },
+      { header: 'Бренд', key: 'brand', width: 16 },
+      { header: 'Штрихкод', key: 'barcode', width: 18 },
+      { header: 'Назва', key: 'name', width: 36 },
+    ];
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563eb' } };
+    sheet.addRow({ article: 'OC 90', brand: 'Knecht', name: 'Фільтр оливи (артикул + бренд)' });
+    sheet.addRow({ barcode: '4820123456789', name: 'Олива моторна 5W-40 (штрихкод)' });
+    const buf = await workbook.xlsx.writeBuffer();
+    return buf as unknown as Buffer;
+  }
+
+  /**
+   * Перелік товарів із файла → товари каталогу для списку правила ціноутворення (BR-GOOD-009).
+   * НІЧОГО не пише: форма правила сама вирішує, додати знайдене до списку чи замінити його,
+   * а в базу список іде збереженням правила.
+   */
+  async resolvePricingRuleGoods(
+    orgId: string,
+    buffer: Buffer | Uint8Array,
+    fileType: 'xlsx' | 'csv',
+  ): Promise<ResolveGoodsFileResponseDto> {
+    const rows = await parseGoodRefRows(buffer, fileType);
+    if (rows.length === 0)
+      throw new BadRequestException(translateError('err.xlsx.fileNoDataRows', getLocale()));
+    if (rows.length > PRICING_RULE_MAX_GOODS)
+      throw new BadRequestException(
+        translateError('err.pricingRule.goodsFileTooLong', getLocale(), {
+          count: rows.length,
+          max: PRICING_RULE_MAX_GOODS,
+        }),
+      );
+
+    const results = await this.goodMatcher.matchMany(orgId, rows);
+    const out: ResolveGoodsFileResponseDto = {
+      total: rows.length,
+      matched: [],
+      ambiguous: [],
+      notFound: [],
+    };
+    results.forEach((res, i) => {
+      const { rowIndex, ...raw } = rows[i];
+      if (res.status === 'matched' && res.good)
+        out.matched.push({ rowIndex, matchedBy: res.matchedBy, good: res.good });
+      else if (res.status === 'ambiguous')
+        out.ambiguous.push({ rowIndex, raw, candidates: res.candidates });
+      else out.notFound.push({ rowIndex, raw });
+    });
+    return out;
   }
 
   generatePricingListTemplate(): Buffer {
@@ -936,26 +1003,29 @@ export class XlsxService {
     // Perf: select narrow projection for pricing — Brand record entirely unused
     // (computePriceFromRules reads only good.brandId scalar), Good's heavy columns
     // (description, customFields, photoUrl) likewise unused.
-    const [goods, rules] = await Promise.all([
-      orConditions.length
-        ? this.prisma.good.findMany({
-            where: { orgId, deletedAt: null, OR: orConditions },
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              salePrice: true,
-              purchasePrice: true,
-              category: true,
-              goodType: true,
-              brandId: true,
-              barcodes: { select: { barcode: true } },
-            },
-            take: 10000,
-          })
-        : Promise.resolve([]),
-      this.pricingService.getActiveRulesForOrg(orgId),
-    ]);
+    const goods = orConditions.length
+      ? await this.prisma.good.findMany({
+          where: { orgId, deletedAt: null, OR: orConditions },
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            salePrice: true,
+            purchasePrice: true,
+            category: true,
+            goodCategoryId: true,
+            goodType: true,
+            brandId: true,
+            barcodes: { select: { barcode: true } },
+          },
+          take: 10000,
+        })
+      : [];
+    // Контекст розцінки — після товарів: списки товарів правил тягнемо лише для знайдених.
+    const pricingCtx = await this.pricingService.getPricingContext(
+      orgId,
+      goods.map(g => g.id),
+    );
 
     // Build lookup maps: SKU → good (case-insensitive) + barcode → good
     const goodBySku = new Map<string, (typeof goods)[number]>();
@@ -1002,14 +1072,7 @@ export class XlsxService {
 
       const costPrice = Number(good.purchasePrice);
       const oldSalePrice = Number(good.salePrice);
-      const newSalePrice = this.pricingService.computePriceFromRules(
-        rules,
-        good.id,
-        good.category ?? undefined,
-        good.goodType ?? undefined,
-        good.brandId ?? undefined,
-        costPrice,
-      );
+      const newSalePrice = this.pricingService.computePriceFromRules(pricingCtx, good, costPrice);
 
       details.push({
         goodId: good.id,

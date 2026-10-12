@@ -555,6 +555,9 @@ export const VALIDATION_KEYS = [
   'err.pricingRule.brandNotFound',
   'err.pricingRule.supplierNotFound',
   'err.pricingRule.notFound',
+  'err.pricingRule.categoryNotFound',
+  'err.pricingRule.goodsNotFound',
+  'err.pricingRule.goodsFileTooLong',
   // Exception-повідомлення: work-orders-модуль
   'err.workOrder.notFound',
   'err.workOrder.generateTokenFailed',
@@ -908,6 +911,7 @@ export const VALIDATION_KEYS = [
   'err.dto.good.categories.max',
   'err.dto.inspection.points.max',
   'err.dto.pricingRule.tiers.max',
+  'err.dto.pricingRule.goodIds.max',
   'err.dto.purchaseOrder.lines.max',
   'err.dto.purchaseOrder.receiveLines.max',
   'err.dto.reportBuilder.groupBy.max',

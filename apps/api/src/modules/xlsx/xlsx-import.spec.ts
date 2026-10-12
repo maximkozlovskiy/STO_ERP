@@ -7,12 +7,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
+import { GoodMatcherService } from '../goods/good-matcher.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
 
 const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
+const goodMatcher = { matchMany: vi.fn().mockResolvedValue([]) };
 
 const ORG = 'org-1';
 const MAPPING: ImportMapping = {
@@ -85,7 +87,7 @@ describe('XlsxService — generic import (preview/apply)', () => {
         { provide: PrismaService, useValue: prisma },
         {
           provide: PricingService,
-          useValue: { getActiveRulesForOrg: vi.fn(), computePriceFromRules: vi.fn() },
+          useValue: { getPricingContext: vi.fn(), computePriceFromRules: vi.fn() },
         },
         { provide: GoodsService, useValue: goodsService },
         { provide: BrandsService, useValue: brandsService },
@@ -96,6 +98,8 @@ describe('XlsxService — generic import (preview/apply)', () => {
         { provide: CacheService, useValue: { get: vi.fn().mockResolvedValue(null), set: vi.fn() } },
         // BR-WO-007: імпорт запчастин у наряд перераховує тотали через єдиного власника.
         { provide: WorkOrderTotalsService, useValue: workOrderTotals },
+        // BR-GOOD-008: єдиний пошук товару.
+        { provide: GoodMatcherService, useValue: goodMatcher },
       ],
     }).compile();
     service = module.get(XlsxService);

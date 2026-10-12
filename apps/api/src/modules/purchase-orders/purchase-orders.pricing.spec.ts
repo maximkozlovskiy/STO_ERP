@@ -32,7 +32,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
     $transaction: ReturnType<typeof vi.fn>;
   };
   let pricingService: {
-    getActiveRulesForOrg: ReturnType<typeof vi.fn>;
+    getPricingContext: ReturnType<typeof vi.fn>;
     computePriceFromRules: ReturnType<typeof vi.fn>;
     resolveRule: ReturnType<typeof vi.fn>;
   };
@@ -59,7 +59,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
       }),
     };
     pricingService = {
-      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      getPricingContext: vi.fn().mockResolvedValue([]),
       computePriceFromRules: vi.fn(),
       // Bug #536: рефактор перенесений на resolveRule (повертає {price, ruleName}).
       // Тести нижче по дефолту чекають "no rule matched" — fallback {price: oldSalePrice, ruleName: null}.
@@ -122,7 +122,7 @@ describe('PurchaseOrdersService.applyPricing', () => {
       lines: [],
     });
     await expect(service.applyPricing(ORG, PO_ID)).rejects.toThrow(BadRequestException);
-    expect(pricingService.getActiveRulesForOrg).not.toHaveBeenCalled();
+    expect(pricingService.getPricingContext).not.toHaveBeenCalled();
     expect(prisma.good.updateMany).not.toHaveBeenCalled();
     expect(prisma.priceHistory.createMany).not.toHaveBeenCalled();
   });
@@ -256,8 +256,8 @@ describe('PurchaseOrdersService.applyPricing', () => {
       ]),
     });
     // Bug #194: prefetch rules одним запитом
-    expect(pricingService.getActiveRulesForOrg).toHaveBeenCalledTimes(1);
-    expect(pricingService.getActiveRulesForOrg).toHaveBeenCalledWith(ORG);
+    expect(pricingService.getPricingContext).toHaveBeenCalledTimes(1);
+    expect(pricingService.getPricingContext).toHaveBeenCalledWith(ORG, expect.any(Array), {});
   });
 
   it('mixed lines (одна змінилась, інша ні) → updated=1, тільки один write', async () => {

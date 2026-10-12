@@ -128,8 +128,9 @@ model PricingRule {
   name         String
   type         PricingRuleType
   priority     Int             @default(10)
-  goodId       String?         @db.Uuid
-  goodCategory String?
+  goodId       String?         @db.Uuid // застаріле: список товарів — у PricingRuleGood (BR-GOOD-009)
+  goodCategory String? // застаріле: текстова категорія старих правил; нові — goodCategoryId
+  goodCategoryId String?       @db.Uuid
   goodType     String?
   brandId      String?         @db.Uuid
   supplierId   String?         @db.Uuid
@@ -144,9 +145,11 @@ model PricingRule {
   deletedAt    DateTime?
 
   good         Good?             @relation(fields: [goodId], references: [id])
+  category     GoodCategory?     @relation(fields: [goodCategoryId], references: [id])
   brand        Brand?            @relation(fields: [brandId], references: [id])
   supplier     Counterparty?     @relation("PricingRuleSupplier", fields: [supplierId], references: [id])
   tiers        PricingRuleTier[]
+  goods        PricingRuleGood[]
   priceHistory PriceHistory[]
 
   @@index([orgId, isActive, priority])
@@ -154,7 +157,25 @@ model PricingRule {
   @@index([orgId, syncVersion])
   @@index([orgId, brandId])
   @@index([orgId, supplierId])
+  @@index([orgId, goodCategoryId])
   @@map("pricing_rules")
+}
+
+// Список товарів правила (BR-GOOD-009). Рядки-зв'язки: заміщуються цілком разом із правилом,
+// як PricingRuleTier і GoodBarcode, тому без deletedAt / syncVersion.
+model PricingRuleGood {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId         String   @db.Uuid
+  pricingRuleId String   @db.Uuid
+  goodId        String   @db.Uuid
+  createdAt     DateTime @default(now())
+
+  pricingRule PricingRule @relation(fields: [pricingRuleId], references: [id], onDelete: Cascade)
+  good        Good        @relation(fields: [goodId], references: [id], onDelete: Cascade)
+
+  @@unique([pricingRuleId, goodId])
+  @@index([orgId, goodId])
+  @@map("pricing_rule_goods")
 }
 
 model PricingRuleTier {

@@ -500,6 +500,11 @@ export const en: Record<string, string> = {
   'err.pricingRule.brandNotFound': 'Brand not found',
   'err.pricingRule.supplierNotFound': 'Supplier not found',
   'err.pricingRule.notFound': 'Rule not found',
+  'err.pricingRule.categoryNotFound': 'Goods category not found',
+  'err.pricingRule.goodsNotFound':
+    'Some goods of the list were not found ({{count}}): refresh the list and save again',
+  'err.pricingRule.goodsFileTooLong':
+    'The file has {{count}} rows, a rule list holds at most {{max}} goods',
 
   // ── Exception messages: work-orders module ──
   'err.workOrder.notFound': 'Work order not found',
@@ -934,6 +939,7 @@ export const en: Record<string, string> = {
   'err.dto.good.categories.max': 'No more than 100 categories in the filter',
   'err.dto.inspection.points.max': 'No more than 50 inspection points',
   'err.dto.pricingRule.tiers.max': 'No more than 50 tiers in the pricing rule',
+  'err.dto.pricingRule.goodIds.max': 'No more than 5000 goods in a rule list',
   'err.dto.purchaseOrder.lines.max': 'No more than 500 lines in the purchase order',
   'err.dto.purchaseOrder.receiveLines.max': 'No more than 500 lines in the partial receipt',
   'err.dto.reportBuilder.groupBy.max': 'No more than 5 grouping levels',

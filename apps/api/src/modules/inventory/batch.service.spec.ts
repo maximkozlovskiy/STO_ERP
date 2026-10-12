@@ -26,7 +26,7 @@ describe('BatchService', () => {
   };
   let pricing: {
     calculateSalePrice: ReturnType<typeof vi.fn>;
-    getActiveRulesForOrg: ReturnType<typeof vi.fn>;
+    getPricingContext: ReturnType<typeof vi.fn>;
     computePriceFromRules: ReturnType<typeof vi.fn>;
   };
 
@@ -64,7 +64,7 @@ describe('BatchService', () => {
     // і використовує sync `computePriceFromRules` замість async `calculateSalePrice`.
     pricing = {
       calculateSalePrice: vi.fn().mockResolvedValue(150),
-      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      getPricingContext: vi.fn().mockResolvedValue([]),
       computePriceFromRules: vi.fn().mockReturnValue(150),
     };
 

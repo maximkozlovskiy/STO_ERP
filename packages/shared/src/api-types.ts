@@ -1576,6 +1576,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pricing-rules/{id}/goods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Повний список товарів правила */
+        get: operations["PricingRulesController_findGoods_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pricing-rules/{id}": {
         parameters: {
             query?: never;
@@ -2198,6 +2215,23 @@ export interface paths {
         put?: never;
         /** Розцінити товари за списком XLSX/CSV */
         post: operations["XlsxController_applyPricingFromList_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/xlsx/pricing-rule-goods/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Розпізнати товари з файла для списку правила ціноутворення (нічого не пише) */
+        post: operations["XlsxController_resolvePricingRuleGoods_v1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6225,8 +6259,10 @@ export interface components {
         };
         PricingRuleGoodRefDto: {
             id: string;
+            internalCode: string | null;
             name: string;
             sku: string | null;
+            brandName: string | null;
         };
         PricingRuleTierResponseDto: {
             id: string;
@@ -6241,8 +6277,13 @@ export interface components {
             /** @enum {string} */
             type: "PERCENT" | "FIXED_AMOUNT" | "FIXED_PRICE" | "COMPETITOR_PLUS" | "COST_TIER";
             priority: number;
-            goodId: string | null;
-            good: components["schemas"]["PricingRuleGoodRefDto"] | null;
+            /** @description Скільки (невидалених) товарів у списку правила */
+            goodsCount: number;
+            /** @description Перші товари списку — для показу в таблиці; повний список — GET :id/goods */
+            goodsPreview: components["schemas"]["PricingRuleGoodRefDto"][];
+            goodCategoryId: string | null;
+            goodCategoryName: string | null;
+            /** @description Застаріла текстова категорія: лише в правил, яким міграція не знайшла категорію в довіднику */
             goodCategory: string | null;
             /** @description Очікувані значення — GoodType, але колонка у БД String? */
             goodType: string | null;
@@ -6265,6 +6306,10 @@ export interface components {
             page: number;
             limit: number;
         };
+        PricingRuleGoodsDto: {
+            items: components["schemas"]["PricingRuleGoodRefDto"][];
+            total: number;
+        };
         CreatePricingRuleTierDto: {
             costMin: number;
             costMax?: number;
@@ -6278,15 +6323,16 @@ export interface components {
             type: "PERCENT" | "FIXED_AMOUNT" | "FIXED_PRICE" | "COMPETITOR_PLUS" | "COST_TIER";
             /** @default 10 */
             priority: number;
+            /** @description Список товарів правила (до 5000) */
+            goodIds?: string[];
             /** Format: uuid */
-            goodId?: string;
-            goodCategory?: string;
-            /** @enum {string} */
-            goodType?: "SPARE_PART" | "CONSUMABLE" | "MATERIAL" | "TOOL";
+            goodCategoryId?: string | null;
+            /** @enum {string|null} */
+            goodType?: "SPARE_PART" | "CONSUMABLE" | "MATERIAL" | "TOOL" | null;
             /** Format: uuid */
-            brandId?: string;
+            brandId?: string | null;
             /** Format: uuid */
-            supplierId?: string;
+            supplierId?: string | null;
             tiers?: components["schemas"]["CreatePricingRuleTierDto"][];
             percentValue?: number;
             fixedAmount?: number;
@@ -6298,15 +6344,16 @@ export interface components {
             /** @enum {string} */
             type?: "PERCENT" | "FIXED_AMOUNT" | "FIXED_PRICE" | "COMPETITOR_PLUS" | "COST_TIER";
             priority?: number;
+            /** @description Список товарів правила (до 5000) */
+            goodIds?: string[];
             /** Format: uuid */
-            goodId?: string;
-            goodCategory?: string;
-            /** @enum {string} */
-            goodType?: "SPARE_PART" | "CONSUMABLE" | "MATERIAL" | "TOOL";
+            goodCategoryId?: string | null;
+            /** @enum {string|null} */
+            goodType?: "SPARE_PART" | "CONSUMABLE" | "MATERIAL" | "TOOL" | null;
             /** Format: uuid */
-            brandId?: string;
+            brandId?: string | null;
             /** Format: uuid */
-            supplierId?: string;
+            supplierId?: string | null;
             tiers?: components["schemas"]["CreatePricingRuleTierDto"][];
             percentValue?: number;
             fixedAmount?: number;
@@ -6632,6 +6679,43 @@ export interface components {
             depth?: number;
             volume?: number;
             weight?: number;
+        };
+        GoodRefDto: {
+            id: string;
+            internalCode: string | null;
+            sku: string | null;
+            name: string;
+            brandId: string | null;
+            brandName: string | null;
+        };
+        ResolvedGoodRowDto: {
+            rowIndex: number;
+            /** @enum {string|null} */
+            matchedBy: "code" | "articleBrand" | "barcode" | "article" | "name" | null;
+            good: components["schemas"]["GoodRefDto"];
+        };
+        GoodRefRawDto: {
+            code: string | null;
+            article: string | null;
+            brand: string | null;
+            barcode: string | null;
+            name: string | null;
+        };
+        AmbiguousGoodRowDto: {
+            rowIndex: number;
+            raw: components["schemas"]["GoodRefRawDto"];
+            candidates: components["schemas"]["GoodRefDto"][];
+        };
+        NotFoundGoodRowDto: {
+            rowIndex: number;
+            raw: components["schemas"]["GoodRefRawDto"];
+        };
+        ResolveGoodsFileResponseDto: {
+            /** @description Рядків із даними у файлі */
+            total: number;
+            matched: components["schemas"]["ResolvedGoodRowDto"][];
+            ambiguous: components["schemas"]["AmbiguousGoodRowDto"][];
+            notFound: components["schemas"]["NotFoundGoodRowDto"][];
         };
         ApplyImportRowCreateDto: {
             name: string;
@@ -11834,6 +11918,27 @@ export interface operations {
             };
         };
     };
+    PricingRulesController_findGoods_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRuleGoodsDto"];
+                };
+            };
+        };
+    };
     PricingRulesController_remove_v1: {
         parameters: {
             query?: never;
@@ -13058,6 +13163,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    XlsxController_resolvePricingRuleGoods_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveGoodsFileResponseDto"];
+                };
             };
         };
     };

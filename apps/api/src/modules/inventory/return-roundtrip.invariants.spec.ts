@@ -217,7 +217,7 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     };
     const pricing = {
       computePriceFromRules: vi.fn().mockReturnValue(0),
-      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      getPricingContext: vi.fn().mockResolvedValue([]),
       calculateSalePrice: vi.fn().mockResolvedValue(0),
     };
     const module = await Test.createTestingModule({
@@ -367,7 +367,7 @@ describe('C2 round-trip WRITEOFF→RETURN — реальний BatchService, Σ-
     };
     const pricing = {
       computePriceFromRules: vi.fn().mockReturnValue(0),
-      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      getPricingContext: vi.fn().mockResolvedValue([]),
       calculateSalePrice: vi.fn().mockResolvedValue(0),
     };
     const module = await Test.createTestingModule({
@@ -423,7 +423,7 @@ class BatchServiceProbe {
       db as unknown as PrismaService,
       {
         computePriceFromRules: () => 0,
-        getActiveRulesForOrg: async () => [],
+        getPricingContext: async () => [],
         calculateSalePrice: async () => 0,
       } as unknown as PricingService,
     );

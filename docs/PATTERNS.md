@@ -400,13 +400,11 @@ features.notificationCenterEnabled;
 
 ---
 
-## Pricing Hierarchy (calculateSalePrice)
+## Pricing Hierarchy (PricingService.resolveRule)
 
-1. `goodId` — конкретний товар
-2. `brandId` — бренд
-3. `goodCategory` — категорія
-4. `goodType` — тип (SPARE_PART/CONSUMABLE/...)
-5. all (null scope) — загальне правило
+Список товарів правила > бренд > категорія з довідника (з підкатегоріями, ближча перемагає) >
+тип > весь асортимент. Одне місце правди — [docs/objects/good.md](objects/good.md), розділ
+«Ціноутворення».
 
 COST_TIER: знайти тір де `costMin <= costPrice < costMax`; `costMax IS NULL` = останній тір.
 

@@ -208,7 +208,9 @@ const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
 
 ---
 
-## Ціноутворення — calculateSalePrice
+## Ціноутворення — PricingService.resolveRule
+
+Ієрархія й правила області (список товарів, категорія з підкатегоріями) — [docs/objects/good.md](objects/good.md), BR-GOOD-009 / BR-GOOD-010.
 
 **Guard перед викликом:** `if (!costPrice || costPrice <= 0) skip`.  
 Без guard: `0 * (1 + p/100) = 0` → silent data corruption `Good.salePrice` (Bug #198).

@@ -5489,6 +5489,42 @@
         ]
       }
     },
+    "/api/v1/pricing-rules/{id}/goods": {
+      "get": {
+        "operationId": "PricingRulesController_findGoods_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingRuleGoodsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Повний список товарів правила",
+        "tags": [
+          "Pricing Rules"
+        ]
+      }
+    },
     "/api/v1/pricing-rules/{id}": {
       "patch": {
         "operationId": "PricingRulesController_update_v1",
@@ -7560,6 +7596,33 @@
           }
         ],
         "summary": "Розцінити товари за списком XLSX/CSV",
+        "tags": [
+          "XLSX Import"
+        ]
+      }
+    },
+    "/api/v1/xlsx/pricing-rule-goods/resolve": {
+      "post": {
+        "operationId": "XlsxController_resolvePricingRuleGoods_v1",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveGoodsFileResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Розпізнати товари з файла для списку правила ціноутворення (нічого не пише)",
         "tags": [
           "XLSX Import"
         ]
@@ -20304,18 +20367,28 @@
           "id": {
             "type": "string"
           },
+          "internalCode": {
+            "type": "string",
+            "nullable": true
+          },
           "name": {
             "type": "string"
           },
           "sku": {
             "type": "string",
             "nullable": true
+          },
+          "brandName": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
           "id",
+          "internalCode",
           "name",
-          "sku"
+          "sku",
+          "brandName"
         ]
       },
       "PricingRuleTierResponseDto": {
@@ -20368,22 +20441,29 @@
           "priority": {
             "type": "number"
           },
-          "goodId": {
+          "goodsCount": {
+            "type": "number",
+            "description": "Скільки (невидалених) товарів у списку правила"
+          },
+          "goodsPreview": {
+            "description": "Перші товари списку — для показу в таблиці; повний список — GET :id/goods",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRuleGoodRefDto"
+            }
+          },
+          "goodCategoryId": {
             "type": "string",
             "nullable": true
           },
-          "good": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PricingRuleGoodRefDto"
-              }
-            ]
+          "goodCategoryName": {
+            "type": "string",
+            "nullable": true
           },
           "goodCategory": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Застаріла текстова категорія: лише в правил, яким міграція не знайшла категорію в довіднику"
           },
           "goodType": {
             "type": "string",
@@ -20441,8 +20521,10 @@
           "name",
           "type",
           "priority",
-          "goodId",
-          "good",
+          "goodsCount",
+          "goodsPreview",
+          "goodCategoryId",
+          "goodCategoryName",
           "goodCategory",
           "goodType",
           "brandId",
@@ -20482,6 +20564,24 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "PricingRuleGoodsDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PricingRuleGoodRefDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total"
         ]
       },
       "CreatePricingRuleTierDto": {
@@ -20531,14 +20631,21 @@
             "minimum": 1,
             "default": 10
           },
-          "goodId": {
+          "goodIds": {
+            "description": "Список товарів правила (до 5000)",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "goodCategoryId": {
             "type": "string",
+            "nullable": true,
             "format": "uuid"
           },
-          "goodCategory": {
-            "type": "string"
-          },
           "goodType": {
+            "nullable": true,
             "enum": [
               "SPARE_PART",
               "CONSUMABLE",
@@ -20549,10 +20656,12 @@
           },
           "brandId": {
             "type": "string",
+            "nullable": true,
             "format": "uuid"
           },
           "supplierId": {
             "type": "string",
+            "nullable": true,
             "format": "uuid"
           },
           "tiers": {
@@ -20605,14 +20714,21 @@
             "type": "number",
             "minimum": 1
           },
-          "goodId": {
+          "goodIds": {
+            "description": "Список товарів правила (до 5000)",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "goodCategoryId": {
             "type": "string",
+            "nullable": true,
             "format": "uuid"
           },
-          "goodCategory": {
-            "type": "string"
-          },
           "goodType": {
+            "nullable": true,
             "enum": [
               "SPARE_PART",
               "CONSUMABLE",
@@ -20623,10 +20739,12 @@
           },
           "brandId": {
             "type": "string",
+            "nullable": true,
             "format": "uuid"
           },
           "supplierId": {
             "type": "string",
+            "nullable": true,
             "format": "uuid"
           },
           "tiers": {
@@ -21622,6 +21740,170 @@
             "minimum": 0
           }
         }
+      },
+      "GoodRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "internalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "sku": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "brandId": {
+            "type": "string",
+            "nullable": true
+          },
+          "brandName": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "internalCode",
+          "sku",
+          "name",
+          "brandId",
+          "brandName"
+        ]
+      },
+      "ResolvedGoodRowDto": {
+        "type": "object",
+        "properties": {
+          "rowIndex": {
+            "type": "number"
+          },
+          "matchedBy": {
+            "nullable": true,
+            "enum": [
+              "code",
+              "articleBrand",
+              "barcode",
+              "article",
+              "name"
+            ],
+            "type": "string"
+          },
+          "good": {
+            "$ref": "#/components/schemas/GoodRefDto"
+          }
+        },
+        "required": [
+          "rowIndex",
+          "matchedBy",
+          "good"
+        ]
+      },
+      "GoodRefRawDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "article": {
+            "type": "string",
+            "nullable": true
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true
+          },
+          "barcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "code",
+          "article",
+          "brand",
+          "barcode",
+          "name"
+        ]
+      },
+      "AmbiguousGoodRowDto": {
+        "type": "object",
+        "properties": {
+          "rowIndex": {
+            "type": "number"
+          },
+          "raw": {
+            "$ref": "#/components/schemas/GoodRefRawDto"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoodRefDto"
+            }
+          }
+        },
+        "required": [
+          "rowIndex",
+          "raw",
+          "candidates"
+        ]
+      },
+      "NotFoundGoodRowDto": {
+        "type": "object",
+        "properties": {
+          "rowIndex": {
+            "type": "number"
+          },
+          "raw": {
+            "$ref": "#/components/schemas/GoodRefRawDto"
+          }
+        },
+        "required": [
+          "rowIndex",
+          "raw"
+        ]
+      },
+      "ResolveGoodsFileResponseDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "description": "Рядків із даними у файлі"
+          },
+          "matched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedGoodRowDto"
+            }
+          },
+          "ambiguous": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmbiguousGoodRowDto"
+            }
+          },
+          "notFound": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotFoundGoodRowDto"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "matched",
+          "ambiguous",
+          "notFound"
+        ]
       },
       "ApplyImportRowCreateDto": {
         "type": "object",

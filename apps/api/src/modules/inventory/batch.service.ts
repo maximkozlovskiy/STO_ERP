@@ -73,22 +73,22 @@ export class BatchService {
   ): Promise<StockBatch> {
     const db = tx ?? this.prisma;
 
-    // Parallel: good fetch + pricing rules — обидва не залежать одне від одного.
-    // Раніше було послідовно: good.findFirst → calculateSalePrice (який внутрішньо тягнув rules).
-    // Тепер один RTT на обидва. computePriceFromRules — синхронний компуть.
-    const [good, allRules] = await Promise.all([
+    // Parallel: товар і контекст розцінки не залежать одне від одного (id товару відомий із dto).
+    // computePriceFromRules — синхронний, без запитів.
+    const [good, pricingCtx] = await Promise.all([
       db.good.findFirst({
         where: { id: dto.goodId, orgId, deletedAt: null },
         select: {
           id: true,
           category: true,
+          goodCategoryId: true,
           goodType: true,
           salePrice: true,
           brandId: true,
           unitId: true,
         },
       }),
-      this.pricing.getActiveRulesForOrg(orgId),
+      this.pricing.getPricingContext(orgId, [dto.goodId]),
     ]);
     if (!good)
       throw new BadRequestException(translateError('err.inventory.goodNotFound', getLocale()));
@@ -96,14 +96,7 @@ export class BatchService {
     const resolvedUnitOfMeasureId = dto.unitOfMeasureId ?? good.unitId ?? null;
 
     const currentSalePriceForBatch = Number(good.salePrice);
-    const computedSalePrice = this.pricing.computePriceFromRules(
-      allRules,
-      dto.goodId,
-      good.category ?? undefined,
-      good.goodType ?? undefined,
-      good.brandId ?? undefined,
-      dto.costPrice,
-    );
+    const computedSalePrice = this.pricing.computePriceFromRules(pricingCtx, good, dto.costPrice);
     // Free receipt (costPrice=0): use current good price to avoid recording a batch with salePrice=0
     // which would break subsequent sales.
     const salePrice =

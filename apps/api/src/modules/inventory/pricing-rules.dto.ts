@@ -12,6 +12,7 @@ import {
   ValidateNested,
   ArrayMaxSize,
 } from 'class-validator';
+import { PRICING_RULE_MAX_GOODS } from '@sto/shared';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PricingRuleType, GoodType } from '@prisma/client';
@@ -61,16 +62,20 @@ export class CreatePricingRuleDto {
   @Min(1)
   priority?: number;
 
-  @ApiPropertyOptional()
+  // BR-GOOD-009: список товарів правила. undefined — не чіпати, [] — очистити список.
+  @ApiPropertyOptional({ type: [String], description: 'Список товарів правила (до 5000)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(PRICING_RULE_MAX_GOODS, { message: 'err.dto.pricingRule.goodIds.max' })
+  @IsUUID(undefined, { each: true })
+  goodIds?: string[];
+
+  // BR-GOOD-010: категорія з довідника категорій товарів. null — зняти категорію.
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
-  goodId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  goodCategory?: string;
+  goodCategoryId?: string | null;
 
   // Колонка у БД — String? (не enum), але @IsEnum тримає запис у межах GoodType:
   // без нього у scope-поле потрапив би довільний рядок і правило не матчило б жоден товар.
@@ -78,19 +83,19 @@ export class CreatePricingRuleDto {
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsEnum(GoodType)
-  goodType?: GoodType;
+  goodType?: GoodType | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
-  brandId?: string;
+  brandId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
-  supplierId?: string;
+  supplierId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -151,35 +156,39 @@ export class UpdatePricingRuleDto {
   @Min(1)
   priority?: number;
 
-  @ApiPropertyOptional()
+  // BR-GOOD-009: список товарів правила. undefined — не чіпати, [] — очистити список.
+  @ApiPropertyOptional({ type: [String], description: 'Список товарів правила (до 5000)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(PRICING_RULE_MAX_GOODS, { message: 'err.dto.pricingRule.goodIds.max' })
+  @IsUUID(undefined, { each: true })
+  goodIds?: string[];
+
+  // BR-GOOD-010: категорія з довідника категорій товарів. null — зняти категорію.
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
-  goodId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  goodCategory?: string;
+  goodCategoryId?: string | null;
 
   // Див. CreatePricingRuleDto: колонка String?, @IsEnum — вхідна оборона.
   @ApiPropertyOptional({ enum: GoodType })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsEnum(GoodType)
-  goodType?: GoodType;
+  goodType?: GoodType | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
-  brandId?: string;
+  brandId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsUUID()
-  supplierId?: string;
+  supplierId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -233,8 +242,16 @@ export class UpdatePricingRuleDto {
 
 export class PricingRuleGoodRefDto {
   @ApiProperty() id!: string;
+  @ApiProperty({ type: String, nullable: true }) internalCode!: string | null;
   @ApiProperty() name!: string;
   @ApiProperty({ type: String, nullable: true }) sku!: string | null;
+  @ApiProperty({ type: String, nullable: true }) brandName!: string | null;
+}
+
+/** GET /pricing-rules/:id/goods — повний список товарів правила. */
+export class PricingRuleGoodsDto {
+  @ApiProperty({ type: [PricingRuleGoodRefDto] }) items!: PricingRuleGoodRefDto[];
+  @ApiProperty() total!: number;
 }
 
 export class PricingRuleTierResponseDto {
@@ -251,12 +268,23 @@ export class PricingRuleResponseDto {
   @ApiProperty() name!: string;
   @ApiProperty({ enum: PricingRuleType }) type!: PricingRuleType;
   @ApiProperty() priority!: number;
-  // Scope-поля взаємовиключні (ієрархія goodId > brandId > goodCategory > goodType);
-  // заповнене максимум одне, решта — null.
-  @ApiProperty({ type: String, nullable: true }) goodId!: string | null;
-  @ApiProperty({ type: PricingRuleGoodRefDto, nullable: true })
-  good!: PricingRuleGoodRefDto | null;
-  @ApiProperty({ type: String, nullable: true }) goodCategory!: string | null;
+  // Область правила — один вимір: список товарів > бренд > категорія > тип; решта порожні.
+  @ApiProperty({ description: 'Скільки (невидалених) товарів у списку правила' })
+  goodsCount!: number;
+  @ApiProperty({
+    type: [PricingRuleGoodRefDto],
+    description: 'Перші товари списку — для показу в таблиці; повний список — GET :id/goods',
+  })
+  goodsPreview!: PricingRuleGoodRefDto[];
+  @ApiProperty({ type: String, nullable: true }) goodCategoryId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) goodCategoryName!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Застаріла текстова категорія: лише в правил, яким міграція не знайшла категорію в довіднику',
+  })
+  goodCategory!: string | null;
   // ВАЖЛИВО: у схемі `PricingRule.goodType` — `String?`, НЕ enum-колонка.
   // Вхідні DTO валідують його через @IsEnum(GoodType) (правильна оборона), але
   // відповідь не може обіцяти enum: у колонці можуть лежати значення поза

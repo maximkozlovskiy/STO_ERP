@@ -4,6 +4,7 @@ import { XlsxService } from './xlsx.service';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { OcrWorkerLifecycle } from './ocr-text-layer.provider';
 import { GoodsModule } from '../goods/goods.module';
+import { GoodMatcherModule } from '../goods/good-matcher.module';
 import { BrandsModule } from '../brands/brands.module';
 import { UnitsModule } from '../units/units.module';
 import { WorksModule } from '../works/works.module';
@@ -20,6 +21,7 @@ import {
 @Module({
   imports: [
     GoodsModule,
+    GoodMatcherModule,
     BrandsModule,
     UnitsModule,
     WorksModule,

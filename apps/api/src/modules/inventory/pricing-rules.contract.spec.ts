@@ -29,8 +29,17 @@ const prismaMock = {
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     createMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
+  pricingRuleGood: {
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    findMany: vi.fn().mockResolvedValue([]),
+  },
+  goodCategory: {
+    findFirst: vi.fn(),
+  },
   good: {
     findFirst: vi.fn(),
+    count: vi.fn().mockResolvedValue(0),
   },
   brand: {
     findFirst: vi.fn(),
@@ -46,8 +55,52 @@ const prismaMock = {
   }),
 };
 
+/**
+ * Запис правила = `create` (повертає id) + перечитування з повним include. Тест задає рядок раз:
+ * хелпер розкладає його на обидва виклики й доповнює полями, які include додає завжди.
+ */
+function mockSavedRule(row: Record<string, unknown>): void {
+  const full: Record<string, unknown> = {
+    goodCategoryId: null,
+    supplierId: null,
+    category: null,
+    brand: null,
+    supplier: null,
+    tiers: [],
+    goods: [],
+    _count: { goods: 0 },
+    ...row,
+  };
+  prismaMock.pricingRule.create.mockResolvedValueOnce({ id: full.id });
+  prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(full);
+}
+
+const RULE_ID = '00000000-0000-4000-8000-000000000001';
+const GOOD_1 = '22222222-2222-4222-8222-222222222201';
+const GOOD_2 = '22222222-2222-4222-8222-222222222202';
+const CATEGORY = '33333333-3333-4333-8333-333333333301';
+const BRAND = '11111111-1111-4111-8111-111111111199';
+
+/** Наявне правило, як його читає PATCH (з лічильником товарів списку). */
+function existingRule(patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: RULE_ID,
+    orgId: 'org-1',
+    name: 'r',
+    type: 'PERCENT',
+    brandId: null,
+    goodId: null,
+    goodCategoryId: null,
+    goodCategory: null,
+    goodType: null,
+    supplierId: null,
+    percentValue: 30,
+    _count: { goods: 0 },
+    ...patch,
+  };
+}
+
 const pricingServiceMock = {
-  calculateSalePrice: vi.fn(),
   applyRuleToGoods: vi.fn().mockResolvedValue(42),
 };
 
@@ -171,18 +224,30 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(400);
     });
 
-    it('повертає 400 коли goodId не UUID', async () => {
+    it('повертає 400 коли у goodIds є не UUID', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'POST',
         url: '/pricing-rules',
         payload: {
           name: 'Test',
           type: 'PERCENT',
-          goodId: 'not-a-uuid',
+          goodIds: [GOOD_1, 'not-a-uuid'],
           percentValue: 30,
         },
       });
       expect(res.statusCode).toBe(400);
+    });
+
+    // Старе поле `goodId` прибрано з контракту: мовчки проігнорувати його означало б створити
+    // правило «на весь асортимент» замість правила на товар.
+    it('повертає 400 на застаріле поле goodId (його замінив список goodIds)', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: '/pricing-rules',
+        payload: { name: 'Test', type: 'PERCENT', goodId: GOOD_1, percentValue: 30 },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
     });
 
     it('повертає 400 коли type не з enum', async () => {
@@ -201,7 +266,7 @@ describe('PricingRules — HTTP Contract', () => {
     // Bug #265 (regression-guard): POST з порожнім рядком у optional goodType-enum
     // → 201 (не 400). @Transform(emptyToUndefined) перетворює '' на undefined ДО валідатора.
     it('повертає 201 коли goodType="" → undefined у service (Bug #264)', async () => {
-      prismaMock.pricingRule.create.mockResolvedValueOnce({
+      mockSavedRule({
         id: 'rule-uuid',
         orgId: 'org-1',
         name: 'Universal +20%',
@@ -232,15 +297,15 @@ describe('PricingRules — HTTP Contract', () => {
         },
       });
       expect(res.statusCode).toBe(201);
-      // Перевіряємо що prisma.create отримав goodType undefined (а не '')
+      // Перевіряємо, що prisma.create отримав «типу немає» (null), а не порожній рядок
       const createCall = prismaMock.pricingRule.create.mock.calls[0]?.[0] as {
         data?: Record<string, unknown>;
       };
-      expect(createCall?.data?.goodType).toBeUndefined();
+      expect(createCall?.data?.goodType).toBeNull();
     });
 
     it('повертає 201 + dto shape для валідного PERCENT правила', async () => {
-      prismaMock.pricingRule.create.mockResolvedValueOnce({
+      mockSavedRule({
         id: 'rule-uuid',
         orgId: 'org-1',
         name: 'Запчастини +35%',
@@ -284,7 +349,7 @@ describe('PricingRules — HTTP Contract', () => {
     // ── Bug #186: brandId cross-tenant FK validation ───────────────────────
     it('Bug #186: POST з brandId з ЦІЄЇ org → 201 (brand знайдено)', async () => {
       prismaMock.brand.findFirst.mockResolvedValueOnce({ id: 'brand-uuid' });
-      prismaMock.pricingRule.create.mockResolvedValueOnce({
+      mockSavedRule({
         id: 'rule-uuid',
         orgId: 'org-1',
         name: 'Bosch +25%',
@@ -435,16 +500,7 @@ describe('PricingRules — HTTP Contract', () => {
     // ── Bug #186: PATCH brandId cross-tenant ───────────────────────────────
     it('Bug #186: PATCH з brandId з ЧУЖОЇ org → 404 «Бренд не знайдено»', async () => {
       // existing rule знайдено
-      prismaMock.pricingRule.findFirst.mockResolvedValueOnce({
-        id: 'rule-uuid',
-        orgId: 'org-1',
-        brandId: null,
-        goodId: null,
-        goodCategory: null,
-        goodType: null,
-        percentValue: 30,
-        name: 'r',
-      });
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(existingRule());
       // brand для ЧУЖОЇ org → null
       prismaMock.brand.findFirst.mockResolvedValueOnce(null);
       const res = await (app as NestFastifyApplication).inject({
@@ -455,8 +511,8 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(404);
       const body = res.json<{ message: string }>();
       expect(body.message).toMatch(/Бренд не знайдено/);
-      // pricingRule.update НЕ викликаний
-      expect(prismaMock.pricingRule.update).not.toHaveBeenCalled();
+      // правило НЕ записане
+      expect(prismaMock.pricingRule.updateMany).not.toHaveBeenCalled();
     });
   });
 
@@ -492,7 +548,7 @@ describe('PricingRules — HTTP Contract', () => {
   // фінансовий compliance-слід), тому фіксуємо контракт.
   describe('C1b audit: record() аргументи', () => {
     it('CREATE → record(orgId, PricingRule, id, CREATE, userId) ПІСЛЯ inline-write', async () => {
-      prismaMock.pricingRule.create.mockResolvedValueOnce({
+      mockSavedRule({
         id: 'rule-created',
         orgId: 'org-1',
         name: 'Ауд-правило',
@@ -556,6 +612,348 @@ describe('PricingRules — HTTP Contract', () => {
       expect(res.statusCode).toBe(404);
       await Promise.resolve();
       expect(auditMock.record).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── BR-GOOD-009 / BR-GOOD-010: список товарів і категорія з довідника ──────────
+  //
+  // Mutation-verify:
+  //  · прибрати `hasGoods`-гілку з normalizeScope → кейс «список товарів очищає бренд…» падає;
+  //  · прибрати порівняння `foundGoods !== goodIds.length` → кейс про чужий товар падає;
+  //  · прибрати `orgId` з рядків createMany → кейс «рядки списку несуть orgId» падає;
+  //  · прибрати `dropGoods` → кейс «бренд замість списку» падає;
+  //  · `goodCategory: categoryTouched ? null : existing.goodCategory` → завжди existing →
+  //    кейс «вибір категорії прибирає стару текстову» падає; → завжди null → кейс «не чіпали» падає.
+  describe('список товарів і категорія правила', () => {
+    const inject = (method: 'POST' | 'PATCH' | 'GET', url: string, payload?: unknown) =>
+      (app as NestFastifyApplication).inject({ method, url, ...(payload ? { payload } : {}) });
+    const base = { name: 'Список', type: 'PERCENT', percentValue: 10 };
+    const savedRow = (patch: Record<string, unknown> = {}) => ({
+      id: RULE_ID,
+      orgId: 'org-1',
+      name: 'Список',
+      type: 'PERCENT',
+      priority: 10,
+      goodId: null,
+      goodCategory: null,
+      goodType: null,
+      brandId: null,
+      percentValue: 10,
+      fixedAmount: null,
+      fixedPrice: null,
+      roundTo: null,
+      isActive: true,
+      createdAt: new Date(),
+      ...patch,
+    });
+    const updateData = () =>
+      (prismaMock.pricingRule.updateMany.mock.calls[0]?.[0] as { data: Record<string, unknown> })
+        .data;
+
+    beforeEach(() => {
+      prismaMock.pricingRule.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    // guards: BR-GOOD-009
+    it('POST зі списком: рядки списку несуть orgId, повтори зведено, у відповіді — лічильник', async () => {
+      prismaMock.good.count.mockResolvedValueOnce(2);
+      mockSavedRule(
+        savedRow({
+          _count: { goods: 2 },
+          goods: [
+            { good: { id: GOOD_1, internalCode: 'K1', name: 'Фільтр', sku: 'A1', brand: null } },
+            {
+              good: {
+                id: GOOD_2,
+                internalCode: null,
+                name: 'Колодки',
+                sku: null,
+                brand: { name: 'Bosch' },
+              },
+            },
+          ],
+        }),
+      );
+      const res = await inject('POST', '/pricing-rules', {
+        ...base,
+        goodIds: [GOOD_1, GOOD_2, GOOD_1],
+      });
+      expect(res.statusCode).toBe(201);
+      expect(prismaMock.pricingRuleGood.createMany).toHaveBeenCalledWith({
+        data: [
+          { orgId: 'org-1', pricingRuleId: RULE_ID, goodId: GOOD_1 },
+          { orgId: 'org-1', pricingRuleId: RULE_ID, goodId: GOOD_2 },
+        ],
+        skipDuplicates: true,
+      });
+      expect(res.json()).toMatchObject({
+        goodsCount: 2,
+        goodsPreview: [
+          { id: GOOD_1, internalCode: 'K1', name: 'Фільтр', sku: 'A1', brandName: null },
+          { id: GOOD_2, name: 'Колодки', brandName: 'Bosch' },
+        ],
+      });
+    });
+
+    // guards: BR-GOOD-009
+    it('POST: список товарів очищає бренд, категорію й тип — область має один вимір', async () => {
+      prismaMock.good.count.mockResolvedValueOnce(1);
+      mockSavedRule(savedRow({ _count: { goods: 1 } }));
+      const res = await inject('POST', '/pricing-rules', {
+        ...base,
+        goodIds: [GOOD_1],
+        brandId: BRAND,
+        goodCategoryId: CATEGORY,
+        goodType: 'SPARE_PART',
+      });
+      expect(res.statusCode).toBe(201);
+      const data = (
+        prismaMock.pricingRule.create.mock.calls[0]?.[0] as { data: Record<string, unknown> }
+      ).data;
+      expect(data).toMatchObject({ brandId: null, goodCategoryId: null, goodType: null });
+      // Очищений вимір не перевіряється: чужий бренд не має валити збереження списку.
+      expect(prismaMock.brand.findFirst).not.toHaveBeenCalled();
+      expect(prismaMock.goodCategory.findFirst).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-009
+    it('POST: товар чужої організації або видалений у списку → 404, правило не створено', async () => {
+      prismaMock.good.count.mockResolvedValueOnce(1); // знайдено 1 із 2
+      const res = await inject('POST', '/pricing-rules', { ...base, goodIds: [GOOD_1, GOOD_2] });
+      expect(res.statusCode).toBe(404);
+      expect(res.json<{ message: string }>().message).toMatch(
+        /Частину товарів списку не знайдено \(1\)/,
+      );
+      expect(prismaMock.good.count).toHaveBeenCalledWith({
+        where: { orgId: 'org-1', deletedAt: null, id: { in: [GOOD_1, GOOD_2] } },
+      });
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-009
+    it('POST: понад 5000 товарів у списку → 400', async () => {
+      const ids = Array.from(
+        { length: 5001 },
+        (_, i) => `22222222-2222-4222-8222-${String(i).padStart(12, '0')}`,
+      );
+      const res = await inject('POST', '/pricing-rules', { ...base, goodIds: ids });
+      expect(res.statusCode).toBe(400);
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-010
+    it('POST з категорією: перевіряється в межах організації, чужа → 404', async () => {
+      prismaMock.goodCategory.findFirst.mockResolvedValueOnce(null);
+      const res = await inject('POST', '/pricing-rules', { ...base, goodCategoryId: CATEGORY });
+      expect(res.statusCode).toBe(404);
+      expect(res.json<{ message: string }>().message).toMatch(/Категорію товарів не знайдено/);
+      expect(prismaMock.goodCategory.findFirst).toHaveBeenCalledWith({
+        where: { id: CATEGORY, orgId: 'org-1', deletedAt: null },
+        select: { id: true },
+      });
+      expect(prismaMock.pricingRule.create).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-010
+    it('POST з категорією своєї організації → 201, назва категорії у відповіді', async () => {
+      prismaMock.goodCategory.findFirst.mockResolvedValueOnce({ id: CATEGORY });
+      mockSavedRule(
+        savedRow({
+          goodCategoryId: CATEGORY,
+          category: { id: CATEGORY, name: 'Гальмівна система' },
+        }),
+      );
+      const res = await inject('POST', '/pricing-rules', {
+        ...base,
+        goodCategoryId: CATEGORY,
+        goodType: 'SPARE_PART',
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({
+        goodCategoryId: CATEGORY,
+        goodCategoryName: 'Гальмівна система',
+        goodsCount: 0,
+      });
+      const data = (
+        prismaMock.pricingRule.create.mock.calls[0]?.[0] as { data: Record<string, unknown> }
+      ).data;
+      // Категорія точніша за тип — тип очищено.
+      expect(data).toMatchObject({ goodCategoryId: CATEGORY, goodType: null });
+    });
+
+    // guards: BR-GOOD-009
+    it('PATCH з новим списком: старий список заміщується цілком у тій самій транзакції', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ _count: { goods: 3 } }),
+      );
+      prismaMock.good.count.mockResolvedValueOnce(1);
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 1 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { goodIds: [GOOD_2] });
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.pricingRuleGood.deleteMany).toHaveBeenCalledWith({
+        where: { orgId: 'org-1', pricingRuleId: RULE_ID },
+      });
+      expect(prismaMock.pricingRuleGood.createMany).toHaveBeenCalledWith({
+        data: [{ orgId: 'org-1', pricingRuleId: RULE_ID, goodId: GOOD_2 }],
+        skipDuplicates: true,
+      });
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-GOOD-009
+    it('PATCH: порожній список і бренд — список знято, правило стає правилом бренду', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ _count: { goods: 3 } }),
+      );
+      prismaMock.brand.findFirst.mockResolvedValueOnce({ id: BRAND });
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, {
+        goodIds: [],
+        brandId: BRAND,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.pricingRuleGood.deleteMany).toHaveBeenCalledTimes(1);
+      expect(prismaMock.pricingRuleGood.createMany).not.toHaveBeenCalled();
+      expect(updateData()).toMatchObject({ brandId: BRAND, goodId: null });
+    });
+
+    // guards: BR-GOOD-009
+    it('PATCH без поля goodIds не чіпає список; бренд, надісланий до правила зі списком, очищено', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ _count: { goods: 3 } }),
+      );
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 3 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, {
+        name: 'Нова назва',
+        brandId: BRAND,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(prismaMock.pricingRuleGood.deleteMany).not.toHaveBeenCalled();
+      expect(updateData()).toMatchObject({ name: 'Нова назва', brandId: null });
+    });
+
+    // guards: BR-GOOD-010
+    it('PATCH: вибір категорії з довідника прибирає стару текстову категорію', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ goodCategory: 'Мастила' }),
+      );
+      prismaMock.goodCategory.findFirst.mockResolvedValueOnce({ id: CATEGORY });
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { goodCategoryId: CATEGORY });
+      expect(res.statusCode).toBe(200);
+      expect(updateData()).toMatchObject({ goodCategoryId: CATEGORY, goodCategory: null });
+    });
+
+    // guards: BR-GOOD-010
+    it('PATCH, що категорію не чіпає, лишає стару текстову категорію працювати', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ goodCategory: 'Мастила' }),
+      );
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { priority: 5 });
+      expect(res.statusCode).toBe(200);
+      expect(updateData()).toMatchObject({ goodCategoryId: null, goodCategory: 'Мастила' });
+    });
+
+    // guards: BR-GOOD-010
+    it('PATCH goodCategoryId: null знімає категорію (і стару текстову теж)', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(
+        existingRule({ goodCategory: 'Мастила' }),
+      );
+      prismaMock.pricingRule.findFirstOrThrow.mockResolvedValueOnce(
+        savedRow({
+          category: null,
+          brand: null,
+          supplier: null,
+          tiers: [],
+          goods: [],
+          _count: { goods: 0 },
+        }),
+      );
+      const res = await inject('PATCH', `/pricing-rules/${RULE_ID}`, { goodCategoryId: null });
+      expect(res.statusCode).toBe(200);
+      expect(updateData()).toMatchObject({ goodCategoryId: null, goodCategory: null });
+      expect(prismaMock.goodCategory.findFirst).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-GOOD-009
+    it('GET :id/goods — повний список товарів правила, лише живі товари', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce({ id: RULE_ID });
+      prismaMock.pricingRuleGood.findMany.mockResolvedValueOnce([
+        {
+          good: {
+            id: GOOD_1,
+            internalCode: 'K1',
+            name: 'Фільтр',
+            sku: 'A1',
+            brand: { name: 'Mann' },
+          },
+        },
+      ]);
+      const res = await inject('GET', `/pricing-rules/${RULE_ID}/goods`);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        items: [{ id: GOOD_1, internalCode: 'K1', name: 'Фільтр', sku: 'A1', brandName: 'Mann' }],
+        total: 1,
+      });
+      expect(prismaMock.pricingRuleGood.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { orgId: 'org-1', pricingRuleId: RULE_ID, good: { deletedAt: null } },
+        }),
+      );
+    });
+
+    // guards: BR-GOOD-009
+    it('GET :id/goods для чужого правила → 404, список не читається', async () => {
+      prismaMock.pricingRule.findFirst.mockResolvedValueOnce(null);
+      const res = await inject('GET', `/pricing-rules/${RULE_ID}/goods`);
+      expect(res.statusCode).toBe(404);
+      expect(prismaMock.pricingRuleGood.findMany).not.toHaveBeenCalled();
     });
   });
 });

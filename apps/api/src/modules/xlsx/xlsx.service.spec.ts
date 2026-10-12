@@ -7,12 +7,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PricingService } from '../inventory/pricing.service';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
+import { GoodMatcherService } from '../goods/good-matcher.service';
 import { DocumentLineImportAdapterRegistry } from './document-line-import.adapter';
 import { DocumentGridParserService } from './document-grid-parser.service';
 import { CacheService } from '../../redis/cache.service';
 import { WorkOrderTotalsService } from '../work-orders/work-order-totals.service';
 
 const workOrderTotals = { recalc: vi.fn().mockResolvedValue(undefined) };
+const goodMatcher = { matchMany: vi.fn().mockResolvedValue([]) };
 
 // Bug #188: regression-захист для applyPricingFromList + generatePricingListTemplate
 describe('XlsxService', () => {
@@ -28,7 +30,7 @@ describe('XlsxService', () => {
   // Bulk-перехід: applyPricingFromList тепер prefetch-ить goods batch-ом і правила один раз
   // (computePriceFromRules — pure синхронний). У тестах мокаємо обидві операції.
   let pricingService: {
-    getActiveRulesForOrg: ReturnType<typeof vi.fn>;
+    getPricingContext: ReturnType<typeof vi.fn>;
     computePriceFromRules: ReturnType<typeof vi.fn>;
     calculateSalePrice: ReturnType<typeof vi.fn>;
   };
@@ -54,7 +56,7 @@ describe('XlsxService', () => {
       }),
     };
     pricingService = {
-      getActiveRulesForOrg: vi.fn().mockResolvedValue([]),
+      getPricingContext: vi.fn().mockResolvedValue([]),
       computePriceFromRules: vi.fn(),
       calculateSalePrice: vi.fn(),
     };
@@ -75,6 +77,8 @@ describe('XlsxService', () => {
         { provide: CacheService, useValue: { get: vi.fn().mockResolvedValue(null), set: vi.fn() } },
         // BR-WO-007: імпорт запчастин у наряд перераховує тотали через єдиного власника.
         { provide: WorkOrderTotalsService, useValue: workOrderTotals },
+        // BR-GOOD-008: єдиний пошук товару.
+        { provide: GoodMatcherService, useValue: goodMatcher },
       ],
     }).compile();
     service = module.get(XlsxService);
@@ -395,6 +399,7 @@ describe('XlsxService', () => {
           salePrice: true,
           purchasePrice: true,
           category: true,
+          goodCategoryId: true,
           goodType: true,
           brandId: true,
           barcodes: { select: { barcode: true } },

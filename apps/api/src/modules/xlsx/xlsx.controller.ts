@@ -9,7 +9,13 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiTags,
+  ApiConsumes,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
 import { FastifyRequest } from 'fastify';
 import { MultipartFile } from '@fastify/multipart';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -23,7 +29,7 @@ import { translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { XlsxService, ImportResult, type ImportMapping } from './xlsx.service';
 import type { ImportDocType } from './document-line-import.adapter';
-import { ApplyImportDto } from './import.dto';
+import { ApplyImportDto, ResolveGoodsFileResponseDto } from './import.dto';
 import { GoodsService } from '../goods/goods.service';
 import { BrandsService } from '../brands/brands.service';
 import { UnitsService } from '../units/units.service';
@@ -82,6 +88,10 @@ export class XlsxController {
       case 'wo-parts':
         buffer = await this.xlsxService.generateWOPartsTemplate();
         filename = 'wo_parts_template.xlsx';
+        break;
+      case 'pricing-rule-goods':
+        buffer = await this.xlsxService.generatePricingRuleGoodsTemplate();
+        filename = 'pricing_rule_goods_template.xlsx';
         break;
       case 'pricing-list':
         buffer = this.xlsxService.generatePricingListTemplate();
@@ -301,6 +311,25 @@ export class XlsxController {
       ? 'csv'
       : 'xlsx';
     return this.xlsxService.applyPricingFromList(orgId, buffer, fileType);
+  }
+
+  @Post('pricing-rule-goods/resolve')
+  @Roles('OWNER', 'ADMIN', 'XLSX_MANAGER')
+  @ApiOperation({
+    summary: 'Розпізнати товари з файла для списку правила ціноутворення (нічого не пише)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiCreatedResponse({ type: ResolveGoodsFileResponseDto })
+  async resolvePricingRuleGoods(
+    @OrgContext() orgId: string,
+    @Request() req: FastifyRequest,
+  ): Promise<ResolveGoodsFileResponseDto> {
+    const file = await this.getUploadedFile(req);
+    const buffer = await file.toBuffer();
+    const fileType: 'xlsx' | 'csv' = (file.filename ?? '').toLowerCase().endsWith('.csv')
+      ? 'csv'
+      : 'xlsx';
+    return this.xlsxService.resolvePricingRuleGoods(orgId, buffer, fileType);
   }
 
   // ─── Generic document import (preview + apply) ──────────────────────────────────

@@ -910,6 +910,7 @@ export class PurchaseOrdersService {
                 name: true,
                 salePrice: true,
                 category: true,
+                goodCategoryId: true,
                 goodType: true,
                 brandId: true,
               },
@@ -929,11 +930,11 @@ export class PurchaseOrdersService {
 
     // Prefetch active rules once to avoid N+1 (each line previously fetched rules in a loop
     // and called a separate $transaction without timeout).
-    const rules = ruleId
-      ? await this.pricingService
-          .getActiveRulesForOrg(orgId)
-          .then(all => all.filter(r => r.id === ruleId))
-      : await this.pricingService.getActiveRulesForOrg(orgId);
+    const pricingCtx = await this.pricingService.getPricingContext(
+      orgId,
+      po.lines.map(l => l.goodId),
+      ruleId ? { onlyRuleId: ruleId } : {},
+    );
 
     type Plan = {
       lineId: string;
@@ -951,11 +952,8 @@ export class PurchaseOrdersService {
       const costPrice = Number(line.price);
       const oldSalePrice = Number(line.good.salePrice);
       const { price: newSalePrice, ruleName } = this.pricingService.resolveRule(
-        rules,
-        line.goodId,
-        line.good.category ?? undefined,
-        line.good.goodType ?? undefined,
-        line.good.brandId ?? undefined,
+        pricingCtx,
+        line.good,
         costPrice,
         po.supplierId ?? undefined,
       );

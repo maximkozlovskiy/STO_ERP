@@ -489,6 +489,11 @@ export const uk: Record<string, string> = {
   'err.pricingRule.brandNotFound': 'Бренд не знайдено',
   'err.pricingRule.supplierNotFound': 'Постачальника не знайдено',
   'err.pricingRule.notFound': 'Правило не знайдено',
+  'err.pricingRule.categoryNotFound': 'Категорію товарів не знайдено',
+  'err.pricingRule.goodsNotFound':
+    'Частину товарів списку не знайдено ({{count}}): оновіть список і збережіть ще раз',
+  'err.pricingRule.goodsFileTooLong':
+    'У файлі {{count}} рядків, а список правила вміщує не більше {{max}} товарів',
 
   // ── Exception-повідомлення: work-orders-модуль ──
   'err.workOrder.notFound': 'Наряд не знайдено',
@@ -917,6 +922,7 @@ export const uk: Record<string, string> = {
   'err.dto.good.categories.max': 'Не більше 100 категорій у фільтрі',
   'err.dto.inspection.points.max': 'Не більше 50 точок огляду',
   'err.dto.pricingRule.tiers.max': 'Не більше 50 рівнів у правилі ціноутворення',
+  'err.dto.pricingRule.goodIds.max': 'Не більше 5000 товарів у списку правила',
   'err.dto.purchaseOrder.lines.max': 'Не більше 500 рядків у покупковому ордері',
   'err.dto.purchaseOrder.receiveLines.max': 'Не більше 500 рядків у частковому прийнятті',
   'err.dto.reportBuilder.groupBy.max': 'Не більше 5 рівнів групування',

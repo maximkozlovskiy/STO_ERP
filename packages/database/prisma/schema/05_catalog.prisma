@@ -42,6 +42,7 @@ model GoodCategory {
   children  GoodCategory[]         @relation("GoodCatHierarchy")
   goods     Good[]
   workLinks WorkGoodCategoryLink[]
+  pricingRules PricingRule[]
 
   @@index([orgId, deletedAt])
   @@index([orgId, parentId])
@@ -189,6 +190,7 @@ model Good {
   invoiceLines        InvoiceLine[]
   stockBatches        StockBatch[]
   pricingRules        PricingRule[]
+  pricingRuleLinks    PricingRuleGood[]
   priceHistory        PriceHistory[]
   statusLinks         GoodStatusLink[]
 

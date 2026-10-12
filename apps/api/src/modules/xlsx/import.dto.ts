@@ -120,6 +120,55 @@ export class PreviewImportResponseDto {
   @ApiProperty({ type: [PreviewRowDto] }) rows!: PreviewRowDto[];
 }
 
+// ─── Перелік товарів із файла (список правила ціноутворення) ────────────────────
+
+export class GoodRefDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ type: String, nullable: true }) internalCode!: string | null;
+  @ApiProperty({ type: String, nullable: true }) sku!: string | null;
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) brandId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) brandName!: string | null;
+}
+
+/** Що стояло в рядку файла — щоб користувач упізнав нерозв'язаний рядок. */
+export class GoodRefRawDto {
+  @ApiProperty({ type: String, nullable: true }) code!: string | null;
+  @ApiProperty({ type: String, nullable: true }) article!: string | null;
+  @ApiProperty({ type: String, nullable: true }) brand!: string | null;
+  @ApiProperty({ type: String, nullable: true }) barcode!: string | null;
+  @ApiProperty({ type: String, nullable: true }) name!: string | null;
+}
+
+export class ResolvedGoodRowDto {
+  @ApiProperty() rowIndex!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['code', 'articleBrand', 'barcode', 'article', 'name'],
+  })
+  matchedBy!: 'code' | 'articleBrand' | 'barcode' | 'article' | 'name' | null;
+  @ApiProperty({ type: GoodRefDto }) good!: GoodRefDto;
+}
+
+export class AmbiguousGoodRowDto {
+  @ApiProperty() rowIndex!: number;
+  @ApiProperty({ type: GoodRefRawDto }) raw!: GoodRefRawDto;
+  @ApiProperty({ type: [GoodRefDto] }) candidates!: GoodRefDto[];
+}
+
+export class NotFoundGoodRowDto {
+  @ApiProperty() rowIndex!: number;
+  @ApiProperty({ type: GoodRefRawDto }) raw!: GoodRefRawDto;
+}
+
+export class ResolveGoodsFileResponseDto {
+  @ApiProperty({ description: 'Рядків із даними у файлі' }) total!: number;
+  @ApiProperty({ type: [ResolvedGoodRowDto] }) matched!: ResolvedGoodRowDto[];
+  @ApiProperty({ type: [AmbiguousGoodRowDto] }) ambiguous!: AmbiguousGoodRowDto[];
+  @ApiProperty({ type: [NotFoundGoodRowDto] }) notFound!: NotFoundGoodRowDto[];
+}
+
 // ─── Apply ────────────────────────────────────────────────────────────────────
 
 export class ApplyImportRowCreateDto {
