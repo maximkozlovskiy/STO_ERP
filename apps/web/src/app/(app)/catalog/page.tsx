@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useMemo } from 'react';
+import { Fragment, Suspense, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -17,11 +17,12 @@ const GoodStatusesTab = dynamic(() => import('./GoodStatusesTab'), { ssr: false 
 
 type Tab = 'works' | 'goods' | 'services' | 'units' | 'brands' | 'good-statuses';
 
-const TAB_DEFS: { key: Tab; labelKey: string }[] = [
+// dividerBefore: межа між каталогом (роботи, товари, послуги) і довідниками до нього
+const TAB_DEFS: { key: Tab; labelKey: string; dividerBefore?: boolean }[] = [
   { key: 'works', labelKey: 'tabs.works' },
   { key: 'goods', labelKey: 'tabs.goods' },
   { key: 'services', labelKey: 'tabs.services' },
-  { key: 'units', labelKey: 'tabs.units' },
+  { key: 'units', labelKey: 'tabs.units', dividerBefore: true },
   { key: 'brands', labelKey: 'tabs.brands' },
   { key: 'good-statuses', labelKey: 'tabs.goodStatuses' },
 ];
@@ -66,19 +67,27 @@ function CatalogPageClient() {
 
       <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
         {TABS.map(tabDef => (
-          <button
-            key={tabDef.key}
-            onMouseEnter={() => PRELOAD_MAP[tabDef.key]?.()}
-            onClick={() => setTab(tabDef.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
-              tab === tabDef.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+          <Fragment key={tabDef.key}>
+            {tabDef.dividerBefore && (
+              <span
+                aria-hidden="true"
+                data-testid="catalog-tabs-divider"
+                className="mx-2 my-2.5 w-px shrink-0 self-stretch bg-border"
+              />
             )}
-          >
-            {tabDef.label}
-          </button>
+            <button
+              onMouseEnter={() => PRELOAD_MAP[tabDef.key]?.()}
+              onClick={() => setTab(tabDef.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0',
+                tab === tabDef.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tabDef.label}
+            </button>
+          </Fragment>
         ))}
       </div>
 
