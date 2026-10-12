@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
@@ -166,6 +166,7 @@ export function CounterpartyEditModal({
   const canManageStatuses = ['OWNER', 'ADMIN', 'RECEPTIONIST'].includes(employee?.role ?? '');
 
   const isEdit = !!counterparty;
+  const statusesLabelId = useId();
 
   // ── Form ─────────────────────────────────────────────────────────────────────
   const [editTab, setEditTab] = useState<'main' | 'vehicles' | 'contracts' | 'work-orders'>('main');
@@ -816,8 +817,16 @@ export function CounterpartyEditModal({
               typeAside={
                 isEdit && counterparty ? (
                   // Same label metrics as <Select label>: the two captions sit on one baseline.
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[13px] font-medium leading-none text-foreground">
+                  // Група, а не <label>: у StatusManager немає одного поля, до якого його прив'язати.
+                  <div
+                    role="group"
+                    aria-labelledby={statusesLabelId}
+                    className="flex flex-col gap-1"
+                  >
+                    <span
+                      id={statusesLabelId}
+                      className="text-[13px] font-medium leading-none text-foreground"
+                    >
                       Статуси
                     </span>
                     <div className="flex min-h-9 items-center">

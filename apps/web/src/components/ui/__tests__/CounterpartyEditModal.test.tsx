@@ -624,3 +624,27 @@ describe('CounterpartyEditModal — CRUD авто (BR-CP-007)', () => {
     expect(screen.getByText('Honda Civic')).toBeInTheDocument();
   });
 });
+
+// ─── Статуси в рядку з «Типом» (рішення власника 2026-10-12) ──────────────────
+
+describe('CounterpartyEditModal — група «Статуси» поруч із «Типом»', () => {
+  // Mutation-verify: прибрати role="group"/aria-labelledby з обгортки typeAside → перший кейс
+  // падає; передавати typeAside без умови `isEdit && counterparty` → падає другий.
+  it('редагування: статуси — названа група в одному рядку з полем «Тип»', async () => {
+    mountApi({});
+    renderModal(cp('CLIENT'));
+    const group = await screen.findByRole('group', { name: 'Статуси' });
+    const rowEl = group.closest('.grid-cols-2');
+    expect(rowEl).not.toBeNull();
+    expect(rowEl!.contains(screen.getByLabelText(/Тип/))).toBe(true);
+  });
+
+  it('створення: групи статусів немає (у нового контрагента ще немає id)', () => {
+    mountApi({});
+    render(
+      <CounterpartyEditModal open counterparty={null} onClose={() => {}} onSaved={() => {}} />,
+    );
+    expect(screen.getByLabelText(/Тип/)).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Статуси' })).toBeNull();
+  });
+});

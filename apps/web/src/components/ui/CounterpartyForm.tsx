@@ -125,7 +125,11 @@ interface SectionProps {
  */
 function FormSection({ title, hasError, filled, children }: SectionProps) {
   const [opened, setOpened] = useState(false);
-  const open = opened || hasError;
+  // Помилка розкриває секцію НАЗАВЖДИ (до ручного згортання), а не лише поки вона є: інакше
+  // секція згорталась би під курсором у ту мить, коли користувач виправив поле (після невдалого
+  // сабміту react-hook-form перевіряє на кожну зміну) — фокус лишився б у прихованому полі.
+  if (hasError && !opened) setOpened(true);
+  const open = opened;
   const contentId = useId();
   return (
     <div className="border-t border-border pt-3">

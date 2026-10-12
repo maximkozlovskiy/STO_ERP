@@ -96,6 +96,7 @@ function Harness({
     control,
     watch,
     setError,
+    clearErrors,
     formState: { errors },
   } = useForm<CounterpartyFormInput>({
     resolver: zodResolver(counterpartyFormSchema),
@@ -111,9 +112,14 @@ function Harness({
         typeAside={typeAside}
       />
       {fail && (
-        <button type="button" onClick={() => setError(fail, { message: 'помилка поля' })}>
-          fail
-        </button>
+        <>
+          <button type="button" onClick={() => setError(fail, { message: 'помилка поля' })}>
+            fail
+          </button>
+          <button type="button" onClick={() => clearErrors(fail)}>
+            fix
+          </button>
+        </>
       )}
     </>
   );
@@ -187,6 +193,22 @@ describe('CounterpartyForm — згортувані секції і рядок �
     expect(section('Юридичні реквізити')).toHaveAttribute('aria-expanded', 'true');
     expect(content('Юридичні реквізити').hidden).toBe(false);
     expect(content('Банківські реквізити').hidden).toBe(true);
+  });
+
+  // Mutation-verify: повернути `open = opened || hasError` (без фіксації у стані) → кейс падає.
+  it('виправлена помилка не згортає секцію під курсором; згорнути можна лише вручну', () => {
+    render(<Harness type="CLIENT" fail="legalForm" />);
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'fail' }));
+    });
+    expect(content('Юридичні реквізити').hidden).toBe(false);
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'fix' }));
+    });
+    expect(section('Юридичні реквізити')).toHaveAttribute('aria-expanded', 'true');
+    expect(content('Юридичні реквізити').hidden).toBe(false);
+    fireEvent.click(section('Юридичні реквізити'));
+    expect(content('Юридичні реквізити').hidden).toBe(true);
   });
 
   it('статуси в рядку з типом: typeAside стоїть поруч із полем «Тип», в одній сітці', () => {
