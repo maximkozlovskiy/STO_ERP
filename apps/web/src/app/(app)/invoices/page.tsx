@@ -25,6 +25,7 @@ import { invoiceLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch, apiBlobFetch } from '@/lib/api-client';
+import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { getCached, setCache } from '@/lib/ref-cache';
 import {
   useInvoices,
@@ -528,6 +529,9 @@ function InvoicesPageInner() {
       // keep basic inv data if detail fetch fails
     }
   }, []);
+  // Рахунок змінили не з цієї сторінки (картка, відновлена з вкладки): список перечитався, а
+  // копія в панелі показувала б старий статус і старі дії («Надіслати» для вже надісланого).
+  useSelectedRowRefresh(invoices, selectedInv?.id, row => void selectInvoice(row));
 
   const [cloning, setCloning] = useState(false);
 

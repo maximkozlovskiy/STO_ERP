@@ -11,14 +11,30 @@ interface DocLinesHeaderProps {
 }
 
 /**
+ * Рядок-підказка порожньої табличної частини — той самий текст у всіх картках документів.
+ * `canEdit: false` (проведений, видалений) → «Рядки відсутні»: кнопки «Додати» там немає.
+ */
+export function DocLinesEmptyRow({ colSpan, canEdit }: { colSpan: number; canEdit: boolean }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-3 py-8 text-center text-[12px] text-muted-foreground">
+        {canEdit ? 'Натисніть «Додати» для початку' : 'Рядки відсутні'}
+      </td>
+    </tr>
+  );
+}
+
+/**
  * Стандарт шапки табличної частини документа (еталон — «Товари / Запчастини» в картці наряду):
  * назва ліворуч, «+ Додати» праворуч НАД таблицею. Кнопка під таблицею — відхилення від стандарту.
  */
 export function DocLinesHeader({ title, onAdd, children }: DocLinesHeaderProps) {
   return (
-    <div className="flex items-center justify-between mb-2">
+    // flex-wrap: на вузькому екрані дії (імпорт, Excel) переносяться під назву, а не виїжджають
+    // за край картки разом із «Додати» (перевірено на 390 px).
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-2">
       <p className="text-xs font-medium text-muted-foreground">{title}</p>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
         {children}
         {onAdd && (
           <button

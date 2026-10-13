@@ -41,6 +41,7 @@ import { pickScannedGood } from '@/lib/barcode';
 import { PO_STATUS_TRANSITIONS, PO_STATUS_ACTION_LABELS } from '@sto/shared';
 import { poStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
+import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -1155,6 +1156,7 @@ export function PurchaseOrderCreateModal({
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
                 title="Згорнути у вкладку"
+                aria-label="Згорнути у вкладку"
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -1435,129 +1437,120 @@ export function PurchaseOrderCreateModal({
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground">Товари</p>
-              <div className="flex items-center gap-2">
-                {isEditMode &&
-                  !viewOnly &&
-                  (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void openRulePricer()}
-                        loading={applyingPricing}
-                        disabled={applyingPricing || saving || transitioning}
-                        title="Розцінити за обраним правилом"
-                      >
-                        <Zap size={13} className="mr-1" />
-                        За правилом
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleApplyPricing()}
-                        loading={applyingPricing}
-                        disabled={applyingPricing || saving || transitioning}
-                        title="Розцінити товари за правилами автоматично"
-                      >
-                        <Zap size={13} className="mr-1" />
-                        Розцінити
-                      </Button>
-                    </>
-                  )}
-                {isEditMode &&
-                  !viewOnly &&
-                  (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
-                  (receiveMode ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReceiveMode(false);
-                          setReceiveQtys({});
-                          setError('');
-                        }}
-                        disabled={receiving}
-                        className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Скасувати
-                      </button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={receiving}
-                        onClick={() => {
-                          // receiveQtys кейситься по RHF field.id (той самий ключ, що й input
-                          // рендериться нижче: value={receiveQtys[field.id]}). Кількість/залишок
-                          // читаємо з даних поля (field як LocalLine). Раніше ключем був l.id з
-                          // getValues (реальний db-id) → не збігався з field.id input-а → «все»
-                          // не заповнювало жодного видимого поля.
-                          const all: Record<string, string> = {};
-                          fields.forEach(field => {
-                            const l = field as unknown as LocalLine;
-                            const max =
-                              (parseFloat(String(l.quantity)) || 0) - (l.receivedQty ?? 0);
-                            if (max > 0) all[field.id] = String(max);
-                          });
-                          setReceiveQtys(all);
-                        }}
-                      >
-                        Оприбуткувати все
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => void handleReceive()}
-                        loading={receiving}
-                        disabled={receiving}
-                      >
-                        <PackageCheck size={13} className="mr-1" />
-                        Підтвердити прийом
-                      </Button>
-                    </>
-                  ) : (
+            <DocLinesHeader
+              title="Товари"
+              onAdd={
+                canEdit && !showLineInput && !receiveMode ? () => setShowLineInput(true) : undefined
+              }
+            >
+              {isEditMode &&
+                !viewOnly &&
+                (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
+                  <>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setReceiveMode(true)}
-                      disabled={saving || transitioning}
+                      onClick={() => void openRulePricer()}
+                      loading={applyingPricing}
+                      disabled={applyingPricing || saving || transitioning}
+                      title="Розцінити за обраним правилом"
+                    >
+                      <Zap size={13} className="mr-1" />
+                      За правилом
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleApplyPricing()}
+                      loading={applyingPricing}
+                      disabled={applyingPricing || saving || transitioning}
+                      title="Розцінити товари за правилами автоматично"
+                    >
+                      <Zap size={13} className="mr-1" />
+                      Розцінити
+                    </Button>
+                  </>
+                )}
+              {isEditMode &&
+                !viewOnly &&
+                (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
+                (receiveMode ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReceiveMode(false);
+                        setReceiveQtys({});
+                        setError('');
+                      }}
+                      disabled={receiving}
+                      className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Скасувати
+                    </button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={receiving}
+                      onClick={() => {
+                        // receiveQtys кейситься по RHF field.id (той самий ключ, що й input
+                        // рендериться нижче: value={receiveQtys[field.id]}). Кількість/залишок
+                        // читаємо з даних поля (field як LocalLine). Раніше ключем був l.id з
+                        // getValues (реальний db-id) → не збігався з field.id input-а → «все»
+                        // не заповнювало жодного видимого поля.
+                        const all: Record<string, string> = {};
+                        fields.forEach(field => {
+                          const l = field as unknown as LocalLine;
+                          const max = (parseFloat(String(l.quantity)) || 0) - (l.receivedQty ?? 0);
+                          if (max > 0) all[field.id] = String(max);
+                        });
+                        setReceiveQtys(all);
+                      }}
+                    >
+                      Оприбуткувати все
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => void handleReceive()}
+                      loading={receiving}
+                      disabled={receiving}
                     >
                       <PackageCheck size={13} className="mr-1" />
-                      Оприбуткувати
+                      Підтвердити прийом
                     </Button>
-                  ))}
-                {canEdit && isEditMode && activePOId && !receiveMode && (
-                  <XlsxImportButton
-                    templateType="po-lines"
-                    importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
-                    onImportComplete={() => handleLinesImported(activePOId)}
-                  />
-                )}
-                {/* Майстер Excel-імпорту доступний і на створенні: у create-mode спершу створює
-                    чернетку PO (потрібен docId), тоді відкриває майстер. */}
-                {canEdit && !receiveMode && (
-                  <button
-                    type="button"
-                    onClick={() => void openExcelImport()}
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setReceiveMode(true)}
                     disabled={saving || transitioning}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
                   >
-                    <Upload className="h-3.5 w-3.5" />
-                    Завантажити з Excel
-                  </button>
-                )}
-                {canEdit && !showLineInput && !receiveMode && (
-                  <button
-                    type="button"
-                    onClick={() => setShowLineInput(true)}
-                    className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Додати
-                  </button>
-                )}
-              </div>
-            </div>
+                    <PackageCheck size={13} className="mr-1" />
+                    Оприбуткувати
+                  </Button>
+                ))}
+              {canEdit && isEditMode && activePOId && !receiveMode && (
+                <XlsxImportButton
+                  templateType="po-lines"
+                  importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
+                  onImportComplete={() => handleLinesImported(activePOId)}
+                />
+              )}
+              {/* Майстер Excel-імпорту доступний і на створенні: у create-mode спершу створює
+                    чернетку PO (потрібен docId), тоді відкриває майстер. */}
+              {canEdit && !receiveMode && (
+                <button
+                  type="button"
+                  onClick={() => void openExcelImport()}
+                  disabled={saving || transitioning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Завантажити з Excel
+                </button>
+              )}
+            </DocLinesHeader>
             <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full table-fixed text-[12px]">
                 <colgroup>
@@ -1618,6 +1611,15 @@ export function PurchaseOrderCreateModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
+                  {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
+                  {fields.length === 0 && !showLineInput && !notLoaded && (
+                    <DocLinesEmptyRow
+                      colSpan={
+                        6 + (isEditMode ? 1 : 0) + (vatMode !== 'NONE' ? 1 : 0) + (canPrice ? 2 : 0)
+                      }
+                      canEdit={canEdit}
+                    />
+                  )}
                   {fields.map((field, index) => {
                     // Display/persist-поля (goodName/goodSku/unit/receivedQty/pricedSalePrice/
                     // pricingRuleName…) живуть у field-об'єкті поза zod-схемою — читаємо через cast.

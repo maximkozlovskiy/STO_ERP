@@ -90,7 +90,9 @@ const { saved, save, remove } = useSavedFilters<Filters>('page-key');
   НАД таблицею, як «Товари / Запчастини» в наряді — компонент `DocLinesHeader`
   (`components/ui/doc-lines-header.tsx`); імпорт та інші дії таблиці — його `children`.
   Кнопка додавання під таблицею або з іншим підписом («Додати товар», «Додати позицію») —
-  відхилення від стандарту.
+  відхилення від стандарту. Порожня таблиця показує `DocLinesEmptyRow` з того самого файла
+  («Натисніть «Додати» для початку»; на перегляд — «Рядки відсутні»); у незавантаженій картці
+  (`notLoaded`) підказки немає. Місце кнопки тримає `DocumentCards.lines-header.test.tsx`.
 
 ---
 
@@ -397,7 +399,13 @@ const bulkActions: BulkAction[] = [
 
 Без п. 2 вкладка з'являється, але клік по ній нічого не відкриває — так було з рахунком,
 замовленням і складським документом, доки відновлювався лише наряд. Тести:
-`components/__tests__/RestoredDocumentModal.test.tsx`.
+`components/__tests__/RestoredDocumentModal.test.tsx` (заглушки карток + звірка реєстру із
+сирцями карток) і E2E `e2e/document-tab-restore.spec.ts` (справжні картки).
+
+Відновлена картка змінює документ на БУДЬ-ЯКІЙ сторінці, тому сторінка не може покладатись на
+власний `onSaved`: список оновлює `invalidate` з реєстру, а копію документа в боковій панелі —
+`useSelectedRowRefresh(rows, selectedId, onChanged)` (`hooks/useSelectedRowRefresh.ts`). Панель,
+що бере рядок зі списку за `selectedId` (склад), цього не потребує.
 
 ---
 

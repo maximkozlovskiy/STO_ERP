@@ -27,6 +27,7 @@ import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth, useAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import {
   useWorkOrders,
   useDeleteWorkOrder,
@@ -299,6 +300,9 @@ function WorkOrdersPageInner() {
   useEffect(() => {
     if (selectedWO && !loading && !orders.some(o => o.id === selectedWO.id)) setSelectedWO(null);
   }, [selectedWO, orders, loading]);
+  // Панель тримає копію рядка: після зміни наряду в картці (зокрема відновленій із вкладки)
+  // список перечитується, а копія лишалась би зі старим статусом і старими діями.
+  useSelectedRowRefresh(orders, selectedWO?.id, setSelectedWO);
   const { data: baseCurrency } = useBaseCurrency();
   const baseCode = baseCurrency?.code ?? 'UAH';
   const baseSymbol = baseCurrency?.symbol ?? '₴';

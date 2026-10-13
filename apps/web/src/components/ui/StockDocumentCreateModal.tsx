@@ -44,7 +44,7 @@ import {
 } from '@sto/shared';
 import { stockDocStatusLabel, stockDocTypeLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
-import { DocLinesHeader } from '@/components/ui/doc-lines-header';
+import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -750,6 +750,7 @@ export function StockDocumentCreateModal({
                 }}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150"
                 title="Згорнути у вкладку"
+                aria-label="Згорнути у вкладку"
                 disabled={saving || transitioning}
               >
                 <Minus className="h-4 w-4" />
@@ -1128,6 +1129,10 @@ export function StockDocumentCreateModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
+                {/* Незавантажений документ (notLoaded) підказки не має: рядків ми ще не знаємо. */}
+                {fields.length === 0 && !showLineInput && !notLoaded && (
+                  <DocLinesEmptyRow colSpan={6} canEdit={canEdit} />
+                )}
                 {fields.map((line, index) => {
                   const qtyRaw = watchedLines?.[index]?.quantity;
                   const priceRaw = watchedLines?.[index]?.price;

@@ -323,3 +323,21 @@ resolve A. **Severity:** IMPORTANT
 **Grep:** `grep -rnE "[a-zA-Z.]+ in [A-Z][A-Z_]+\b" apps/web/src | grep -v "for (const"`
 **Фікс:** `Object.keys(MAP).includes(v)` (або `Set` на рівні модуля); тест із `'toString'`.
 **Severity:** SUGGESTION
+
+### 2026-10-14 — Модалка, змонтована відкритою, не тримає фокус; панель-копія відстає — §8.5
+
+**Сигнал:** картка документа, відновлена з вкладки (`RestoredDocumentModal`), монтується одразу
+з `open`. `Modal` на першому рендері повертає `null` (чекає `mounted`), тож `useFocusTrap`
+запускався з порожнім `panelRef` і більше не перезапускався (`[active, containerRef]` не
+міняються): фокус лишався на сторінці, Tab ішов по ній 45 разів із 45. Те саме в будь-якому
+`{x && <Modal open />}`. Компонентний тест на заглушках цього не бачить — лише браузер.
+Друге: сторінка тримала копію вибраного документа в стані панелі й оновлювала її лише у
+власному `onSaved`; картка з вкладки змінила статус — рядок «Надіслано», панель «Чернетка» з
+дією «Надіслати».
+**Grep:** `grep -rn "useFocusTrap(" apps/web/src` → умова містить `mounted`;
+`grep -rn "const \[selected[A-Za-z]*, setSelected" apps/web/src/app`.
+**Фікс:** `useFocusTrap(panelRef, visible && mounted)`; `useSelectedRowRefresh` на сторінках
+рахунків, закупівель, нарядів. **Severity:** IMPORTANT
+
+Третє: `DocLinesHeader` без `flex-wrap` на 390 px виносив «Додати» складського документа за край
+картки (x 509–570 при ширині 390) — раніше кнопка стояла під таблицею ліворуч і була досяжна.

@@ -155,7 +155,7 @@ const CASES: CardCase[] = [
         <PurchaseOrderCreateModal open purchaseOrderId="po-1" onClose={vi.fn()} />,
       );
     },
-    actions: ['Зберегти зміни', 'Скасувати', /Оплатити/, 'тест-імпорт-xlsx'],
+    actions: ['Зберегти зміни', 'Скасувати', /Оплатити/, 'Додати', 'тест-імпорт-xlsx'],
     doc: {
       id: 'po-1',
       number: 'ЗАМ-000001',

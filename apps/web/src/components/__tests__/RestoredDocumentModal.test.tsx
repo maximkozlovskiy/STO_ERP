@@ -63,7 +63,15 @@ vi.mock('@/components/ui/StockDocumentCreateModal', () => ({
 }));
 
 import { TabBarProvider, useTabBarContext } from '@/contexts/TabBarContext';
-import { RestoredDocumentModal } from '../RestoredDocumentModal';
+import { RestoredDocumentModal, RESTORABLE_MODALS } from '../RestoredDocumentModal';
+
+// Сирці всіх компонентів `components/ui` — щоб знайти кожну картку, яка згортається у вкладку.
+// (Типи `import.meta.glob` тут не знають про `eager` + `?raw`, тому приведення.)
+const UI_SOURCES = import.meta.glob('/src/components/ui/**/*.tsx', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as unknown as Record<string, string>;
 
 // Замість справжньої панелі вкладок: кнопка «згорнути» кладе вкладку, клік по вкладці
 // ставить pendingRestore — те саме, що робить useTabBar.activateTab.
@@ -173,6 +181,31 @@ describe('Згорнута у вкладку картка документа в�
       expect(tabs()).toHaveLength(1);
     },
   );
+
+  // Стандарт: картка з кнопкою «Згорнути у вкладку» без запису в RESTORABLE_MODALS лишає
+  // вкладку, клік по якій нічого не відкриває. Тести вище ходять по списку CARDS і нової
+  // картки не побачать — цей читає самі картки.
+  // Мутація: прибрати 'stock-document' з RESTORABLE_MODALS → падає з назвою файла картки.
+  it('кожен modalKey, який картка передає в minimizeModal, є в RESTORABLE_MODALS', () => {
+    const found: { file: string; key: string; idProp: string | undefined }[] = [];
+    for (const [file, source] of Object.entries(UI_SOURCES)) {
+      if (file.includes('__tests__')) continue;
+      for (const m of source.matchAll(
+        /minimizeModal\(\{[\s\S]*?modalKey:\s*'([^']+)'[\s\S]*?restoreProps:\s*\{\s*(\w+)/g,
+      )) {
+        found.push({ file, key: m[1]!, idProp: m[2] });
+      }
+    }
+
+    // Контроль: пошук справді бачить чотири наявні картки (інакше цикл нижче зелений завжди).
+    expect(found.map(f => f.key).sort()).toEqual(
+      ['invoice', 'purchase-order', 'stock-document', 'work-order'].sort(),
+    );
+    for (const { file, key, idProp } of found) {
+      expect(Object.hasOwn(RESTORABLE_MODALS, key), `${file}: modalKey '${key}'`).toBe(true);
+      expect(RESTORABLE_MODALS[key as keyof typeof RESTORABLE_MODALS].idProp, file).toBe(idProp);
+    }
+  });
 
   it('вкладка невідомого типу нічого не відкриває і не блокує наступні відкриття', async () => {
     renderHarness('no-such-card', 'someId');

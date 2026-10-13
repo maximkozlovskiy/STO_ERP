@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
+import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
@@ -531,6 +532,18 @@ function PurchaseOrdersPageClient() {
         /* лишаємо базові дані зі списку, якщо детальний запит впав */
       });
   }, []);
+  // Замовлення змінили в картці (своїй або відновленій із вкладки): список перечитався, а копія
+  // в панелі лишалась би зі старим статусом. Довантажуємо повне замовлення ще раз — без
+  // selectPO, бо той на вже вибраному рядку ховає панель.
+  useSelectedRowRefresh(orders, selectedPO?.id, row => {
+    apiFetch<PurchaseOrder>(
+      row.deletedAt ? `/purchase-orders/${row.id}?withDeleted=true` : `/purchase-orders/${row.id}`,
+    )
+      .then(full => setSelectedPO(cur => (cur?.id === row.id ? full : cur)))
+      .catch(() => {
+        /* панель лишається з попередніми даними, якщо детальний запит впав */
+      });
+  });
 
   // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
   // (напр. з /supplier-payments/[id] «покажи замовлення»). Читаємо ОДНОРАЗОВО з URL,

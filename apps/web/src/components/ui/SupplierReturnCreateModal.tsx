@@ -22,7 +22,7 @@ import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { supplierReturnStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
-import { DocLinesHeader } from '@/components/ui/doc-lines-header';
+import { DocLinesHeader, DocLinesEmptyRow } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -749,14 +749,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                 </thead>
                 <tbody className="divide-y divide-border">
                   {fields.length === 0 && !showLineInput && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-3 py-8 text-center text-[12px] text-muted-foreground"
-                      >
-                        {isReadOnly ? 'Рядки відсутні' : 'Натисніть «Додати» для початку'}
-                      </td>
-                    </tr>
+                    <DocLinesEmptyRow colSpan={6} canEdit={canEdit} />
                   )}
 
                   {fields.map((line, index) => {
