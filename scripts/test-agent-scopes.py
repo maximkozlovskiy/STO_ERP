@@ -89,14 +89,14 @@ def _():
         assert not any("/catalog/" in w for w in s["write"]), (s["name"], s["write"])
 
 
-@case("модуль без дос'є — сам собі агрегат і володіє однойменною сторінкою (employees)")
+@case("модуль без дос'є — сам собі агрегат і володіє однойменною сторінкою (dashboard)")
 def _():
-    code, p, _ = plan("--mode", "impl", "employees", "invoice")
+    code, p, _ = plan("--mode", "impl", "dashboard", "invoice")
     assert code == 0, p["overlaps"]
     by = {s["name"]: s["write"] for s in p["shards"]}
-    assert any("modules/employees/" in w for w in by["employees"]), by
-    assert any("(app)/employees/" in w for w in by["employees"]), by
-    assert not any("employees" in w for w in by["invoice"]), by["invoice"]
+    assert any("modules/dashboard/" in w for w in by["dashboard"]), by
+    assert any("(app)/dashboard/" in w for w in by["dashboard"]), by
+    assert not any("dashboard" in w for w in by["invoice"]), by["invoice"]
 
 
 @case("impl: модуль і власна сторінка цілком; чужа сторінка — ні")
