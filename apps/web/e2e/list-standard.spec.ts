@@ -303,3 +303,82 @@ test.describe('Складський документ, позначений на 
     ).toBeVisible();
   });
 });
+
+// ─── 4. Сторінка наряду: «PDF» для звичайного є, для видаленого немає ─────────
+//
+// PDF будує сервер, а видаленого наряду він не знаходить (404), тому на сторінці видаленого
+// наряду кнопку сховано; «Друк» (window.print) лишається. Компонентного тесту сторінка не має —
+// правило тримає цей сценарій (без `!isDeleted &&` біля кнопки падає другий крок).
+
+test.describe('Сторінка наряду, позначеного на видалення, — без «PDF»', () => {
+  let wo: { id: string; number: string } | null = null;
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await openForApi(p, '/work-orders', 'Наряди');
+    const branches = await api<{ id: string }[]>(p, 'GET', '/branches');
+    const cps = await api<{ items: { id: string }[] }>(
+      p,
+      'GET',
+      '/counterparties?type=CLIENT&limit=20',
+    );
+    // Наряд потребує авто клієнта: беремо першого клієнта, у якого воно є.
+    for (const cp of cps.items) {
+      const garages = await api<{ id: string }[]>(p, 'GET', `/counterparties/${cp.id}/garages`);
+      if (!garages[0]) continue;
+      const vehicles = await api<{ id: string }[] | { items: { id: string }[] }>(
+        p,
+        'GET',
+        `/vehicles?customerGarageId=${garages[0].id}&limit=1`,
+      );
+      const vehicleId = (Array.isArray(vehicles) ? vehicles : vehicles.items)[0]?.id;
+      if (!vehicleId) continue;
+      wo = await api(p, 'POST', '/work-orders', {
+        counterpartyId: cp.id,
+        branchId: branches[0]!.id,
+        vehicleId,
+        description: 'E2E — сторінка видаленого наряду без PDF',
+      });
+      break;
+    }
+    await ctx.close();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (!wo) return;
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await openForApi(p, '/work-orders', 'Наряди');
+    // Якщо тест упав до видалення — прибираємо; уже видалений дає 404, і це не помилка.
+    await api(p, 'DELETE', `/work-orders/${wo.id}`).catch(() => undefined);
+    await ctx.close();
+  });
+
+  test('звичайний наряд має «PDF» і «Друк»; після видалення — смуга, «PDF» немає, «Друк» є', async ({
+    page,
+  }) => {
+    expect(wo, 'beforeAll має створити наряд (у seed є клієнт з авто)').toBeTruthy();
+    const pdf = page.getByRole('button', { name: 'PDF', exact: true });
+    const print = page.getByRole('button', { name: 'Друк', exact: true });
+    const banner = page.getByTestId('deleted-document-banner');
+
+    await page.goto(`/work-orders/${wo!.id}`);
+    await expect(page.locator(`h1:has-text("${wo!.number}")`)).toBeVisible({ timeout: 30_000 });
+    await expect(pdf).toBeVisible();
+    await expect(print).toBeVisible();
+    await expect(banner).toHaveCount(0);
+
+    await api(page, 'DELETE', `/work-orders/${wo!.id}`);
+    await page.reload();
+
+    await expect(page.locator(`h1:has-text("${wo!.number}")`)).toBeVisible({ timeout: 30_000 });
+    await expect(banner).toHaveText('Документ позначено на видалення — лише перегляд');
+    await expect(print).toBeVisible();
+    await expect(pdf).toHaveCount(0);
+    // Разом із PDF зникають усі дії, що змінюють наряд.
+    for (const name of ['Редагувати', 'Дублювати', 'Скасувати', '+ Робота', '+ Запчастина']) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    }
+  });
+});

@@ -10,11 +10,11 @@
 //     сервер видаленого наряду не знаходить — тому в картці перегляду їх немає);
 //   - без `deletedAt` — картка як раніше (збереження й переходи на місці, смуги немає).
 //
-// Що ловить (мутацію не проганяв): прибрати `&& !isDeleted` з `canEdit` будь-якої картки → падає її
-// кейс «лише перегляд» (з'являється «Зберегти зміни»); прибрати `!isDeleted` з allowedTransitions →
-// падає перевірка кнопок переходу.
+// Що ловить: прибрати `&& !viewOnly` з `canEdit` картки → падає її кейс «лише перегляд»
+// (з'являється «Зберегти зміни»); прибрати `!viewOnly` з allowedTransitions → падає перевірка
+// кнопок переходу. Мутацію прогнано для складського документа (tester 2026-10-13).
 
-import { render, screen, waitFor, within, act } from '@testing-library/react';
+import { render, screen, waitFor, within, act, fireEvent } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
@@ -488,5 +488,224 @@ describe('CreateWorkOrderModal — наряд, позначений на вид�
     await open(DELETED_AT);
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByTestId('deleted-document-banner')).toHaveTextContent(BANNER);
+  });
+});
+
+// ── Ctrl+Enter ───────────────────────────────────────────────────────────────
+// Кнопки «Зберегти зміни» у картці перегляду немає, але Ctrl+Enter у модалці кличе той самий
+// обробник збереження напряму. Без запобіжника `isDeleted` на початку обробника картка слала б
+// PATCH на видалений документ (сервер відповів би 404, користувач побачив би «не знайдено»).
+// Мутація: прибрати `if (isDeleted) return;` / `|| isDeleted` з обробника збереження картки →
+// падає її кейс тут (перевірено для всіх п'яти карток).
+describe('Ctrl+Enter у картці документа, позначеного на видалення', () => {
+  const writes = () =>
+    apiFetchMock.mock.calls.filter(([, init]) => {
+      const method = (init as { method?: string } | undefined)?.method;
+      return method !== undefined && method !== 'GET';
+    });
+
+  // Модалка приймає Ctrl+Enter лише від елемента всередині своєї панелі, тому подію шлемо з
+  // елемента картки: зі смуги «лише перегляд» (видалений) або з рядка документа (контроль).
+  const pressCtrlEnter = async (inside: HTMLElement) => {
+    await act(async () => {
+      fireEvent.keyDown(inside, { key: 'Enter', ctrlKey: true });
+      // Обробники збереження асинхронні (RHF handleSubmit) — даємо їм дійти до запиту.
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+  };
+
+  // Справжні UUID: схема форми відкидає філію, склад і товар з іншими id, і тоді збереження
+  // зупиняє валідація, а не запобіжник — контрольний кейс нижче це й показує.
+  const sdDoc = (deletedAt: string | null): Doc => ({
+    id: 'sd-1',
+    number: 'ПРХ-000001',
+    status: 'DRAFT',
+    type: 'RECEIPT',
+    branchId: 'a1000000-0000-4000-8000-0000000000b1',
+    warehouseId: 'a1000000-0000-4000-8000-0000000000c1',
+    documentDate: '2026-10-13',
+    deletedAt,
+    lines: [
+      {
+        id: 'l1',
+        goodId: 'a1000000-0000-4000-8000-0000000000d1',
+        goodName: 'Фільтр',
+        quantity: 1,
+        price: 10,
+      },
+    ],
+  });
+
+  it('складський документ: видалений — запиту на зміну немає', async () => {
+    mockApi({ '/stock-documents/sd-1?withDeleted=true': sdDoc(DELETED_AT) });
+    render(<StockDocumentCreateModal open stockDocumentId="sd-1" onClose={vi.fn()} />);
+    await screen.findByText('Фільтр');
+    expect(banner()).toBeInTheDocument();
+
+    await pressCtrlEnter(banner()!);
+    expect(writes()).toEqual([]);
+  });
+
+  // Контроль: той самий жест у живій чернетці зберігає — інакше кейси вище були б зеленими завжди.
+  it('контроль: жива чернетка складського документа за Ctrl+Enter зберігається', async () => {
+    mockApi({ '/stock-documents/sd-1?withDeleted=true': sdDoc(null) });
+    render(<StockDocumentCreateModal open stockDocumentId="sd-1" onClose={vi.fn()} />);
+    await screen.findByText('Фільтр');
+
+    await pressCtrlEnter(screen.getByText('Фільтр'));
+    await waitFor(() =>
+      expect(writes().map(([p, init]) => [p, (init as { method: string }).method])).toEqual([
+        ['/stock-documents/sd-1', 'PATCH'],
+      ]),
+    );
+  });
+
+  it('замовлення постачальнику: видалене — запиту на зміну немає', async () => {
+    mockApi({
+      '/purchase-orders/po-1?withDeleted=true': {
+        id: 'po-1',
+        number: 'ЗАМ-000001',
+        status: 'DRAFT',
+        supplierId: 'a1000000-0000-4000-8000-000000000001',
+        supplierName: 'Постачальник',
+        warehouseId: 'a1000000-0000-4000-8000-000000000002',
+        documentDate: '2026-10-13',
+        totalAmount: 10,
+        deletedAt: DELETED_AT,
+        lines: [
+          {
+            id: 'l1',
+            goodId: 'a1000000-0000-4000-8000-000000000003',
+            goodName: 'Фільтр',
+            quantity: 1,
+            price: 10,
+            receivedQty: 0,
+          },
+        ],
+      },
+    });
+    renderWithQueryClient(
+      <PurchaseOrderCreateModal open purchaseOrderId="po-1" onClose={vi.fn()} />,
+    );
+    await screen.findByText('Фільтр');
+    expect(banner()).toBeInTheDocument();
+
+    await pressCtrlEnter(banner()!);
+    expect(writes()).toEqual([]);
+  });
+
+  it('рахунок: видалений — запиту на зміну немає', async () => {
+    mockApi({
+      '/invoices/inv-1?withDeleted=true': {
+        id: 'inv-1',
+        number: 'РАХ-0001',
+        status: 'DRAFT',
+        invoiceType: 'STANDARD',
+        counterpartyId: 'a1000000-0000-4000-8000-000000000004',
+        counterpartyName: 'Клієнт',
+        amount: 100,
+        paidAmount: 0,
+        dueDate: null,
+        documentDate: '2026-10-13T00:00:00.000Z',
+        notes: null,
+        deletedAt: DELETED_AT,
+        lines: [
+          {
+            id: 'line-A',
+            description: 'Робота 1',
+            quantity: 1,
+            unitPrice: 100,
+            vatRate: 0,
+            priceWithVat: 100,
+          },
+        ],
+      },
+    });
+    render(<InvoiceCreateModal open invoiceId="inv-1" onClose={vi.fn()} />);
+    await screen.findByText('Робота 1', undefined, { timeout: 2000 });
+    expect(banner()).toBeInTheDocument();
+
+    await pressCtrlEnter(banner()!);
+    expect(writes()).toEqual([]);
+  });
+
+  it('повернення постачальнику: видалене — запиту на зміну немає', async () => {
+    mockApi({
+      '/supplier-returns/sr-1?withDeleted=true': {
+        id: 'sr-1',
+        number: 'ПОВ-1',
+        status: 'DRAFT',
+        supplierId: 'a1000000-0000-4000-8000-000000000001',
+        supplierName: 'ТОВ Постач',
+        warehouseId: 'a1000000-0000-4000-8000-000000000002',
+        notes: '',
+        documentDate: '2026-10-13',
+        deletedAt: DELETED_AT,
+        lines: [
+          {
+            id: 'l1',
+            goodId: 'a1000000-0000-4000-8000-000000000003',
+            goodName: 'Фільтр',
+            unit: 'шт',
+            quantity: 2,
+            price: 100,
+          },
+        ],
+      },
+    });
+    render(<SupplierReturnCreateModal open editId="sr-1" onClose={vi.fn()} onSaved={vi.fn()} />);
+    await screen.findByText('Фільтр');
+    expect(banner()).toBeInTheDocument();
+
+    await pressCtrlEnter(banner()!);
+    expect(writes()).toEqual([]);
+  });
+
+  // У наряді запитів не було б і без запобіжника (canEdit уже false), але обробник дійшов би до
+  // кінця: «збережено» і закриття картки, наче щось записалось. Тому звіряємо ще й onClose.
+  it('наряд: видалений — запиту на зміну немає, картка не закривається', async () => {
+    mockApi({
+      '/work-orders/wo-1?withDeleted=true': {
+        id: 'wo-1',
+        number: 'WO-001',
+        status: 'DRAFT',
+        branchId: 'a1000000-0000-4000-8000-000000000005',
+        vehicleId: 'a1000000-0000-4000-8000-000000000006',
+        counterpartyId: 'a1000000-0000-4000-8000-000000000004',
+        counterpartyName: 'Тест',
+        contractId: null,
+        liftId: null,
+        description: '',
+        priority: 'NORMAL',
+        repairCategory: '',
+        documentDate: '2026-10-08',
+        plannedAt: null,
+        dueDate: null,
+        plannedHours: 2,
+        actualHours: null,
+        deletedAt: DELETED_AT,
+        lines: [
+          {
+            id: 'l1',
+            workId: 'a1000000-0000-4000-8000-000000000007',
+            workName: 'Заміна колодок',
+            employeeId: 'a1000000-0000-4000-8000-000000000008',
+            normoHours: 2,
+            actualHours: null,
+            price: 500,
+          },
+        ],
+        parts: [],
+      },
+    });
+    const onClose = vi.fn();
+    render(<CreateWorkOrderModal open onClose={onClose} workOrderId="wo-1" />);
+    await screen.findByText('Заміна колодок');
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/settings/organisation'));
+    expect(banner()).toBeInTheDocument();
+
+    await pressCtrlEnter(banner()!);
+    expect(writes()).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
