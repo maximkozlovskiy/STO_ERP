@@ -44,10 +44,20 @@ interface Props {
   onSelect: (item: GoodPickerItem) => void;
   /**
    * Множинний вибір (список товарів правила ціноутворення): модалка НЕ закривається після
-   * вибору, уже додані товари (`selectedIds`) позначені, повторний клік по них нічого не
-   * робить, внизу є кнопка «Готово». Без цього пропа поведінка модалки не змінюється.
+   * вибору, уже додані товари (`selectedIds`) позначені, внизу є кнопка «Готово». Повторний клік
+   * по доданому товару знімає його, якщо передано `onDeselect`; без нього — нічого не робить.
+   * Без пропа `multiple` поведінка модалки не змінюється.
    */
   multiple?: boolean;
+  /** Лише для `multiple`: зняти позначку з уже доданого товару (клік по ньому). */
+  onDeselect?: (id: string) => void;
+  /** Лише для `multiple`: «Відмітити всі» — додати всі показані товари, яких ще немає у списку. */
+  onSelectMany?: (items: GoodPickerItem[]) => void;
+  /** Лише для `multiple`: «Зняти всі» — прибрати зі списку всі показані товари. */
+  onDeselectMany?: (ids: string[]) => void;
+  /** Лише для `multiple`: підписи кнопок «відмітити / зняти всі показані». */
+  selectAllLabel?: string;
+  deselectAllLabel?: string;
   /** Лише для `multiple`: id товарів, які вже у списку. */
   selectedIds?: readonly string[];
   /** Лише для `multiple`: підпис кнопки закриття. */
@@ -65,6 +75,11 @@ export function GoodPickerModal({
   selectedIds,
   doneLabel = 'Готово',
   addedLabel = 'додано',
+  onDeselect,
+  onSelectMany,
+  onDeselectMany,
+  selectAllLabel = 'Відмітити всі',
+  deselectAllLabel = 'Зняти всі',
 }: Props) {
   // Множина, а не `includes` на кожен рядок і кожен рендер: у списку правила до 5000 товарів.
   const selectedSet = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
@@ -199,17 +214,37 @@ export function GoodPickerModal({
   // Єдина точка вибору товару — і для кліку по рядку, і для Enter зі сканера.
   // secondary дзеркалить sub-line у списку (internalCode + sku + ціна), щоб споживачі,
   // що читають лише secondary, бачили консистентну метадату.
-  const selectGood = (item: GoodPickerItem) => {
-    // Множинний режим: уже доданий товар удруге не віддаємо — список без дублів.
-    if (multiple && selectedSet.has(item.id)) return;
+  const toPicked = (item: GoodPickerItem): GoodPickerItem => {
     const meta = [item.internalCode, item.sku].filter(Boolean).join(' · ');
-    onSelect({
+    return {
       ...item,
       primary: item.name,
       secondary: meta ? `${meta} · ${item.salePrice} ₴` : `${item.salePrice} ₴`,
-    });
+    };
+  };
+
+  const selectGood = (item: GoodPickerItem) => {
+    // Множинний режим: уже доданий товар удруге не віддаємо — список без дублів.
+    if (multiple && selectedSet.has(item.id)) return;
+    onSelect(toPicked(item));
     if (!multiple) onClose();
   };
+
+  // Клік по рядку. У множинному режимі доданий товар знімається — але лише кліком: сканер
+  // (Enter у полі пошуку) іде через selectGood і вже доданий товар не чіпає, щоб повторне
+  // сканування тієї самої упаковки не прибирало її зі списку.
+  const clickGood = (item: GoodPickerItem) => {
+    if (multiple && selectedSet.has(item.id)) {
+      onDeselect?.(item.id);
+      return;
+    }
+    selectGood(item);
+  };
+
+  // «Усі» — це показані зараз товари (результат пошуку й категорії), а не весь каталог.
+  const shownAdded = multiple ? items.filter(i => selectedSet.has(i.id)) : [];
+  const shownFree = multiple ? items.filter(i => !selectedSet.has(i.id)) : [];
+  const showBulk = multiple && !loading && items.length > 0 && !!(onSelectMany || onDeselectMany);
 
   return (
     <Modal
@@ -273,6 +308,36 @@ export function GoodPickerModal({
           }}
         />
 
+        {showBulk && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {onSelectMany && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={shownFree.length === 0}
+                onClick={() => onSelectMany(shownFree.map(toPicked))}
+              >
+                {selectAllLabel}
+              </Button>
+            )}
+            {onDeselectMany && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={shownAdded.length === 0}
+                onClick={() => onDeselectMany(shownAdded.map(i => i.id))}
+              >
+                {deselectAllLabel}
+              </Button>
+            )}
+            <span className="tabular-nums" aria-live="polite">
+              {shownAdded.length} / {items.length}
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-0 min-h-0" style={{ height: '420px' }}>
           {/* Results */}
           <div className="flex-1 overflow-y-auto pr-3">
@@ -295,12 +360,12 @@ export function GoodPickerModal({
                   // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
                   // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
                   // створював нову arrow на кожен render для КОЖНОГО row.
-                  const qty = stockMap.get(item.id) ?? 0;
+                  const qty = Number((stockMap.get(item.id) ?? 0).toFixed(3));
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => selectGood(item)}
+                      onClick={() => clickGood(item)}
                       aria-pressed={multiple ? added : undefined}
                       className={cn(
                         'w-full text-left px-3 py-2 rounded-lg border transition-colors',

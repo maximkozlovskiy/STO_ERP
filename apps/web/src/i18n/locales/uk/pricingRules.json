@@ -176,7 +176,9 @@
     "added": "Додано товарів: {{n}}",
     "replaced": "Список замінено, товарів: {{n}}",
     "pickerDone": "Готово",
-    "pickerAdded": "додано"
+    "pickerAdded": "додано",
+    "pickerSelectAll": "Відмітити всі показані",
+    "pickerDeselectAll": "Зняти всі показані"
   },
   "goodsImport": {
     "heading": "Результат розпізнавання файла",

@@ -101,16 +101,33 @@ export default function RuleGoodsField({
       toast.error(limitMessage());
       return;
     }
-    onChange([
-      ...goods,
-      {
-        id: item.id,
-        internalCode: item.internalCode ?? null,
-        name: item.name,
-        sku: item.sku ?? null,
-        brandName: item.brandName ?? null,
-      },
-    ]);
+    onChange([...goods, toRuleGood(item)]);
+  };
+
+  const toRuleGood = (item: GoodPickerItem): RuleGood => ({
+    id: item.id,
+    internalCode: item.internalCode ?? null,
+    name: item.name,
+    sku: item.sku ?? null,
+    brandName: item.brandName ?? null,
+  });
+
+  // «Відмітити всі» у вікні вибору: додаємо, скільки вміщує список, решту — пояснюємо.
+  const addGoods = (items: GoodPickerItem[]) => {
+    const have = new Set(goods.map(g => g.id));
+    const fresh = items.filter(i => !have.has(i.id));
+    const room = PRICING_RULE_MAX_GOODS - goods.length;
+    if (fresh.length > room) {
+      setNotice({ kind: 'error', text: limitMessage() });
+      toast.error(limitMessage());
+    }
+    const accepted = fresh.slice(0, Math.max(room, 0));
+    if (accepted.length > 0) onChange([...goods, ...accepted.map(toRuleGood)]);
+  };
+
+  const removeGoods = (ids: string[]) => {
+    const drop = new Set(ids);
+    if (goods.some(g => drop.has(g.id))) onChange(goods.filter(g => !drop.has(g.id)));
   };
 
   const clearAll = async () => {
@@ -369,8 +386,13 @@ export default function RuleGoodsField({
         onSelect={addGood}
         multiple
         selectedIds={selectedIds}
+        onDeselect={id => removeGoods([id])}
+        onSelectMany={addGoods}
+        onDeselectMany={removeGoods}
         doneLabel={t('goods.pickerDone')}
         addedLabel={t('goods.pickerAdded')}
+        selectAllLabel={t('goods.pickerSelectAll')}
+        deselectAllLabel={t('goods.pickerDeselectAll')}
       />
       <ConfirmDialog {...dialogProps} />
     </div>

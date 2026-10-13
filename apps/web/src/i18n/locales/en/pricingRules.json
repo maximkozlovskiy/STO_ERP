@@ -176,7 +176,9 @@
     "added": "Products added: {{n}}",
     "replaced": "List replaced, products: {{n}}",
     "pickerDone": "Done",
-    "pickerAdded": "added"
+    "pickerAdded": "added",
+    "pickerSelectAll": "Select all shown",
+    "pickerDeselectAll": "Deselect all shown"
   },
   "goodsImport": {
     "heading": "File recognition result",

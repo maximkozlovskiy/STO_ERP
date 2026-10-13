@@ -316,4 +316,136 @@ describe('GoodPickerModal — множинний вибір', () => {
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // ─── Зняти вибір, «Відмітити всі», «Зняти всі» (запит власника 2026-10-13) ───
+
+  it('`multiple` + onDeselect: клік по доданому товару знімає його, модалка лишається відкритою', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onDeselect = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <GoodPickerModal
+        open
+        onClose={onClose}
+        onSelect={onSelect}
+        onDeselect={onDeselect}
+        multiple
+        selectedIds={['g1']}
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Mobil 5W-30/ }));
+    expect(onDeselect).toHaveBeenCalledTimes(1);
+    expect(onDeselect).toHaveBeenCalledWith('g1');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('«Відмітити всі» віддає лише показані товари, яких ще немає у списку', async () => {
+    const user = userEvent.setup();
+    const onSelectMany = vi.fn();
+    render(
+      <GoodPickerModal
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectMany={onSelectMany}
+        onDeselectMany={vi.fn()}
+        multiple
+        selectedIds={['g1']}
+      />,
+    );
+
+    await screen.findByRole('button', { name: /Castrol 5W-40/ });
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Відмітити всі' }));
+    expect(onSelectMany).toHaveBeenCalledTimes(1);
+    const picked = onSelectMany.mock.calls[0]![0] as { id: string; primary: string }[];
+    expect(picked.map(p => p.id)).toEqual(['g2']);
+    expect(picked[0]!.primary).toBe('Castrol 5W-40');
+  });
+
+  it('«Зняти всі» віддає id показаних доданих товарів; товари поза показаним списком не чіпає', async () => {
+    const user = userEvent.setup();
+    const onDeselectMany = vi.fn();
+    render(
+      <GoodPickerModal
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
+        onDeselectMany={onDeselectMany}
+        multiple
+        selectedIds={['g1', 'g2', 'not-shown']}
+      />,
+    );
+
+    await screen.findByRole('button', { name: /Castrol 5W-40/ });
+    // Усе показане вже додано → відмічати нічого.
+    expect(screen.getByRole('button', { name: 'Відмітити всі' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Зняти всі' }));
+    expect(onDeselectMany).toHaveBeenCalledWith(['g1', 'g2']);
+  });
+
+  it('«Зняти всі» вимкнено, коли серед показаних немає доданих; підписи можна передати пропами', async () => {
+    render(
+      <GoodPickerModal
+        open
+        onClose={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectMany={vi.fn()}
+        onDeselectMany={vi.fn()}
+        selectAllLabel="Select all shown"
+        deselectAllLabel="Deselect all shown"
+        multiple
+        selectedIds={[]}
+      />,
+    );
+
+    await screen.findByRole('button', { name: /Castrol 5W-40/ });
+    expect(screen.getByRole('button', { name: 'Select all shown' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Deselect all shown' })).toBeDisabled();
+  });
+
+  it('кнопок масового вибору немає без `multiple` і без обробників', async () => {
+    const { unmount } = render(
+      <GoodPickerModal open onClose={vi.fn()} onSelect={vi.fn()} onSelectMany={vi.fn()} />,
+    );
+    await screen.findByRole('button', { name: /Castrol 5W-40/ });
+    expect(screen.queryByRole('button', { name: 'Відмітити всі' })).not.toBeInTheDocument();
+    unmount();
+
+    render(<GoodPickerModal open onClose={vi.fn()} onSelect={vi.fn()} multiple selectedIds={[]} />);
+    await screen.findByRole('button', { name: /Castrol 5W-40/ });
+    expect(screen.queryByRole('button', { name: 'Відмітити всі' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Зняти всі' })).not.toBeInTheDocument();
+  });
+
+  it('сканер (Enter) уже доданий товар не знімає — повторне сканування списку не псує', async () => {
+    const user = userEvent.setup();
+    const onDeselect = vi.fn();
+    const onSelect = vi.fn();
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/good-categories') return Promise.resolve(mockCategories);
+      if (path.startsWith('/goods/stock-totals')) return Promise.resolve([]);
+      if (path.startsWith('/goods')) return Promise.resolve({ items: [twoGoods[0]] });
+      return Promise.resolve({ items: [] });
+    });
+    render(
+      <GoodPickerModal
+        open
+        onClose={vi.fn()}
+        onSelect={onSelect}
+        onDeselect={onDeselect}
+        multiple
+        selectedIds={['g1']}
+      />,
+    );
+
+    await screen.findByRole('button', { name: /Mobil 5W-30/ });
+    await user.type(screen.getByPlaceholderText(/Пошук товару/), '{Enter}');
+    expect(onDeselect).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });
