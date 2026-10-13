@@ -237,6 +237,13 @@ export function StockDocumentCreateModal({
   const [error, setError] = useState('');
   // Документ позначено на видалення → картка лише на перегляд (вантажиться з withDeleted).
   const [isDeleted, setIsDeleted] = useState(false);
+  // Id документа, який справді завантажено у форму (Bug #844).
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
+  // Документ ще не завантажено (або завантаження не вдалось): у формі стоять типові значення
+  // «чернетки», а не цей документ. Жодних дій — інакше «Підтвердити» провело б документ, якого
+  // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
+  const notLoaded = !!stockDocumentId && loadedDocId !== stockDocumentId;
+  const viewOnly = isDeleted || notLoaded;
   const { confirm, dialogProps: confirmDialogProps } = useConfirm();
 
   const savingRef = useRef(false);
@@ -339,7 +346,10 @@ export function StockDocumentCreateModal({
     (docId: string, silent = false) => {
       const reqId = ++loadReqRef.current;
       const isStale = () => reqId !== loadReqRef.current;
-      if (!silent) setLoading(true);
+      if (!silent) {
+        setLoading(true);
+        setLoadedDocId(null);
+      }
       setError('');
       return apiFetch<StockDocDetail>(`/stock-documents/${docId}?withDeleted=true`)
         .then(doc => {
@@ -347,6 +357,7 @@ export function StockDocumentCreateModal({
           setDocNumber(doc.number);
           setCurrentStatus(doc.status);
           setIsDeleted(!!doc.deletedAt);
+          setLoadedDocId(docId);
           reset({
             type: (doc.type ?? 'WRITEOFF') as StockDocumentFormInput['type'],
             branchId: doc.branchId ?? '',
@@ -451,10 +462,10 @@ export function StockDocumentCreateModal({
   const allowedTransitions = useMemo<readonly string[]>(
     () =>
       // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
-      isEditMode && !isDeleted
+      isEditMode && !viewOnly
         ? (STOCK_DOC_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
         : EMPTY_TRANSITIONS,
-    [currentStatus, isEditMode, isDeleted],
+    [currentStatus, isEditMode, viewOnly],
   );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
@@ -474,7 +485,7 @@ export function StockDocumentCreateModal({
   }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
-    if (!stockDocumentId || isDeleted) return;
+    if (!stockDocumentId || viewOnly) return;
     if (transitioningRef.current) return;
     // Проведення незворотне (рухи складу), скасування — теж: питаємо перед запитом.
     const action =
@@ -521,7 +532,7 @@ export function StockDocumentCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !isDeleted : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !viewOnly : true;
 
   // Спільний submit-handler: валідація зі схеми, потім гілка create/update.
   // Рядки йдуть У ТІЛІ (атомарний $transaction на беку) — без окремого /lines-endpoint.
@@ -533,7 +544,7 @@ export function StockDocumentCreateModal({
     // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit.
     if (savingRef.current || transitioningRef.current) return;
     // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
-    if (isDeleted) return;
+    if (viewOnly) return;
     setSavingBoth(true);
     setError('');
     // Рядки з форми + staging-рядок (newLine) якщо користувач ще не натиснув «+».
@@ -663,7 +674,7 @@ export function StockDocumentCreateModal({
                 </button>
                 <button
                   type="button"
-                  disabled={transitioning || !isEditMode || isDeleted}
+                  disabled={transitioning || !isEditMode || viewOnly}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                   title={STATUS_DESCRIPTIONS[currentStatus]}
                   className={cn(
@@ -800,7 +811,7 @@ export function StockDocumentCreateModal({
                       </>
                     )}
                   </div>
-                  {!isDeleted && (
+                  {!viewOnly && (
                     <>
                       <Button
                         variant="outline"

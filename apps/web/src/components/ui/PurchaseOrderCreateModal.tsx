@@ -205,6 +205,8 @@ export function PurchaseOrderCreateModal({
   // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
   // завантаженого документа, тож інший документ у тій самій модалці його не успадковує.
   const [deletedDocId, setDeletedDocId] = useState<string | null>(null);
+  // Id документа, який справді завантажено у форму (Bug #844).
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentPrefill, setPaymentPrefill] = useState<SupplierPaymentPrefill | null>(null);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
@@ -392,11 +394,13 @@ export function PurchaseOrderCreateModal({
       if (!silent) {
         setLoading(true);
         setError('');
+        setLoadedDocId(null);
       }
       return apiFetch<PODetail>(`/purchase-orders/${id}?withDeleted=true`)
         .then(po => {
           if (isStale()) return;
           setDeletedDocId(po.deletedAt ? id : null);
+          setLoadedDocId(id);
           setPoNumber(po.number);
           setCurrentStatus(po.status);
           // reset() ставить нову «чисту» базу із завантаженого запису → rhfDirty=false.
@@ -574,13 +578,18 @@ export function PurchaseOrderCreateModal({
   // would otherwise produce a fresh fallback array). This also lets the prev/next
   // useMemo below depend on `allowedTransitions` directly without thrashing.
   const isDeleted = isEditMode && !!purchaseOrderId && deletedDocId === purchaseOrderId;
+  // Документ ще не завантажено (або завантаження не вдалось): у формі стоять типові значення
+  // «чернетки», а не цей документ. Жодних дій — інакше «Підтвердити» провело б документ, якого
+  // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
+  const notLoaded = isEditMode && loadedDocId !== purchaseOrderId;
+  const viewOnly = isDeleted || notLoaded;
   const allowedTransitions = useMemo<readonly string[]>(
     () =>
       // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
-      isEditMode && !isDeleted
+      isEditMode && !viewOnly
         ? (PO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
         : EMPTY_TRANSITIONS,
-    [currentStatus, isEditMode, isDeleted],
+    [currentStatus, isEditMode, viewOnly],
   );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
@@ -605,7 +614,7 @@ export function PurchaseOrderCreateModal({
   // resolve-иться. Тому в JSX вони викликаються через `void` — чекати проміс нема кому.
   const doTransition = useCallback(
     async (newStatus: string) => {
-      if (!purchaseOrderId || isDeleted) return;
+      if (!purchaseOrderId || viewOnly) return;
       setTransitioningBoth(true);
       setError('');
       try {
@@ -621,7 +630,7 @@ export function PurchaseOrderCreateModal({
         setTransitioningBoth(false);
       }
     },
-    [purchaseOrderId, isDeleted, onSaved],
+    [purchaseOrderId, viewOnly, onSaved],
   );
 
   // ── Lines ─────────────────────────────────────────────────────────────────
@@ -732,7 +741,7 @@ export function PurchaseOrderCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !isDeleted : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !viewOnly : true;
 
   // Повертає id створеного PO (для create-then-open-wizard) або null при помилці/дублі-сабміті.
   // Читаємо валідовані значення вручну через getValues()+safeParse (замість handleSubmit),
@@ -817,7 +826,7 @@ export function PurchaseOrderCreateModal({
 
   const handleSave = async () => {
     // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
-    if (!purchaseOrderId || isDeleted) return;
+    if (!purchaseOrderId || viewOnly) return;
     if (savingRef.current || transitioningRef.current) return;
     const parsed = purchaseOrderFormSchema.safeParse(getValues());
     if (!parsed.success) {
@@ -1085,7 +1094,7 @@ export function PurchaseOrderCreateModal({
                 </button>
                 <button
                   type="button"
-                  disabled={transitioning || !isEditMode || isDeleted}
+                  disabled={transitioning || !isEditMode || viewOnly}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                   title={STATUS_DESCRIPTIONS[currentStatus]}
                   className={cn(
@@ -1177,7 +1186,7 @@ export function PurchaseOrderCreateModal({
               )}
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              {isEditMode && currentStatus !== 'CANCELLED' && !isDeleted && (
+              {isEditMode && currentStatus !== 'CANCELLED' && !viewOnly && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1234,7 +1243,7 @@ export function PurchaseOrderCreateModal({
                       </>
                     )}
                   </div>
-                  {!isDeleted && (
+                  {!viewOnly && (
                     <>
                       <Button
                         variant="outline"
@@ -1430,7 +1439,7 @@ export function PurchaseOrderCreateModal({
               <p className="text-xs font-medium text-muted-foreground">Товари</p>
               <div className="flex items-center gap-2">
                 {isEditMode &&
-                  !isDeleted &&
+                  !viewOnly &&
                   (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
                     <>
                       <Button
@@ -1458,7 +1467,7 @@ export function PurchaseOrderCreateModal({
                     </>
                   )}
                 {isEditMode &&
-                  !isDeleted &&
+                  !viewOnly &&
                   (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
                   (receiveMode ? (
                     <>
@@ -1812,7 +1821,7 @@ export function PurchaseOrderCreateModal({
                               min="0"
                               step="0.01"
                               value={line.pricedSalePrice ?? ''}
-                              disabled={isDeleted}
+                              disabled={viewOnly}
                               onChange={e => {
                                 const val =
                                   e.target.value === '' ? undefined : parseFloat(e.target.value);

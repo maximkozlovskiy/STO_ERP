@@ -196,6 +196,8 @@ export function InvoiceCreateModal({
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [error, setError] = useState('');
   const [deletedDocId, setDeletedDocId] = useState<string | null>(null);
+  // Id документа, який справді завантажено у форму (Bug #844).
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
 
   const savingRef = useRef(false);
@@ -302,10 +304,12 @@ export function InvoiceCreateModal({
     let cancelled = false;
     setLoading(true);
     setError('');
+    setLoadedDocId(null);
     apiFetch<InvoiceDetail>(`/invoices/${invoiceId}?withDeleted=true`)
       .then(inv => {
         if (cancelled) return;
         setDeletedDocId(inv.deletedAt ? invoiceId : null);
+        setLoadedDocId(invoiceId);
         setInvoiceNumber(inv.number);
         setCurrentStatus(inv.status);
         setWorkOrderNumber(inv.workOrderNumber ?? null);
@@ -374,10 +378,15 @@ export function InvoiceCreateModal({
   // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
   // завантаженого документа, тож інший документ у тій самій модалці його не успадковує.
   const isDeleted = isEditMode && !!invoiceId && deletedDocId === invoiceId;
+  // Документ ще не завантажено (або завантаження не вдалось): у формі стоять типові значення
+  // «чернетки», а не цей документ. Жодних дій — інакше «Підтвердити» провело б документ, якого
+  // користувач не бачить (Bug #844). Разом із «видалено» це дає картку лише на перегляд.
+  const notLoaded = isEditMode && loadedDocId !== invoiceId;
+  const viewOnly = isDeleted || notLoaded;
 
   // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
   const allowedTransitions =
-    isEditMode && !isDeleted
+    isEditMode && !viewOnly
       ? (INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
       : EMPTY_TRANSITIONS;
 
@@ -395,10 +404,10 @@ export function InvoiceCreateModal({
       (s: string) => INVOICE_STATUS_ORDER.indexOf(s) > curIdx,
     );
     return { statusPrevStep, statusNextStep };
-  }, [currentStatus, isEditMode, isDeleted]);
+  }, [currentStatus, isEditMode, viewOnly]);
 
   const doTransition = async (newStatus: string) => {
-    if (!invoiceId || isDeleted) return;
+    if (!invoiceId || viewOnly) return;
     setTransitioningBoth(true);
     setError('');
     try {
@@ -443,7 +452,7 @@ export function InvoiceCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !isDeleted : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !viewOnly : true;
 
   // Тип рядка у field-array (форм-схема + локальні _key/id/lineTotalWithVat).
   type FormLine = {
@@ -532,7 +541,7 @@ export function InvoiceCreateModal({
 
   const handleSave = handleSubmit(async (values: InvoiceFormValues) => {
     // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
-    if (!invoiceId || isDeleted) return;
+    if (!invoiceId || viewOnly) return;
     if (savingRef.current || transitioningRef.current) return;
     setSavingBoth(true);
     setError('');
@@ -661,7 +670,7 @@ export function InvoiceCreateModal({
                 </button>
                 <button
                   type="button"
-                  disabled={transitioning || !isEditMode || isDeleted}
+                  disabled={transitioning || !isEditMode || viewOnly}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                   title={INVOICE_STATUS_DESCRIPTIONS[currentStatus]}
                   className={cn(
@@ -799,7 +808,7 @@ export function InvoiceCreateModal({
                       </>
                     )}
                   </div>
-                  {!isDeleted && (
+                  {!viewOnly && (
                     <>
                       <Button
                         variant="outline"
