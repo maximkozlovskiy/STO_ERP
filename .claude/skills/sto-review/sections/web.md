@@ -298,3 +298,20 @@ grep -rn "type=\"date\"\|<DatePickerInput" apps/web/src/app --include="*.tsx" | 
       (токен запиту або `cancelled`) і до відповіді не показувати дій попереднього документа.
       Grep: `grep -rn "withDeleted=true" apps/web/src/components/ui --include="*.tsx"` → біля
       кожного є `isStale` / `cancelled`.
+
+## Картки документів: згортання у вкладку і шапка таблиці (2026-10-14)
+
+```bash
+# modalKey, який картка згортає, але RestoredDocumentModal не відновлює
+grep -rhn "modalKey: '" apps/web/src/components --include="*.tsx" | grep -v __tests__
+grep -n "idProp" apps/web/src/components/RestoredDocumentModal.tsx
+# Кнопка додавання рядка поза стандартною шапкою таблиці
+grep -rn "Додати товар\|Додати позицію" apps/web/src/components/ui --include="*.tsx" | grep -v __tests__
+```
+
+- [ ] Кожен `modalKey` із `minimizeModal` має запис у `RESTORABLE_MODALS` і свій `idProp` у
+      `IDENTITY_KEYS`. До 2026-10-14 рахунок, замовлення й складський документ згортались у
+      вкладку, клік по якій нічого не відкривав.
+- [ ] Таблична частина картки документа — `DocLinesHeader`: «+ Додати» праворуч над таблицею.
+- [ ] E2E не ховає відсутню кнопку за `if (await btn.isVisible())`: у `crud-purchase-order`
+      така гілка зі старими підписами роками мовчки пропускала додавання рядка.

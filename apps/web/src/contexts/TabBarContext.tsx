@@ -99,7 +99,13 @@ function genId(): string {
 
 // Identifying keys that uniquely tie a modal tab to an entity. Two tabs with the same
 // modalKey AND the same value on ALL identity keys are considered the same tab.
-const IDENTITY_KEYS = ['workOrderId', 'invoiceId', 'id'] as const;
+const IDENTITY_KEYS = [
+  'workOrderId',
+  'invoiceId',
+  'purchaseOrderId',
+  'stockDocumentId',
+  'id',
+] as const;
 
 function sameIdentity(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   for (const key of IDENTITY_KEYS) {

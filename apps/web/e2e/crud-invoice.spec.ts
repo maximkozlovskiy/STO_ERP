@@ -54,8 +54,8 @@ test.describe('Рахунки — CRUD', () => {
     await expect(picker).not.toBeVisible({ timeout: 5_000 });
 
     // Modal redesign (commit e6d2e148): немає окремого поля "Сума" — amount
-    // обчислюється з рядків (line items). Додаємо одну позицію через "Додати позицію".
-    const addLineBtn = modal.locator('button:has-text("Додати позицію")').first();
+    // обчислюється з рядків (line items). Додаємо одну позицію через «Додати» над таблицею.
+    const addLineBtn = modal.getByRole('button', { name: 'Додати', exact: true });
     if (await addLineBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await addLineBtn.click();
       // Поля рядка: опис (placeholder "Опис позиції…"), кіл-сть (input number), ціна (placeholder "0.00").

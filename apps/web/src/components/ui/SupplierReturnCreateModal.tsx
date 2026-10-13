@@ -22,6 +22,7 @@ import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { supplierReturnStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
+import { DocLinesHeader } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -711,21 +712,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
 
           {/* ── Lines table ─────────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-muted-foreground">Товари</p>
-              <div className="flex items-center gap-2">
-                {canEdit && !showLineInput && (
-                  <button
-                    type="button"
-                    onClick={() => setShowLineInput(true)}
-                    className="flex items-center gap-1 text-[12px] text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Додати
-                  </button>
-                )}
-              </div>
-            </div>
+            <DocLinesHeader
+              title="Товари"
+              onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
+            />
 
             <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full table-fixed text-[12px]">

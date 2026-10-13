@@ -137,12 +137,12 @@ test.describe('Рахунки — створення через UI', () => {
     await expect(modal).toBeVisible({ timeout: 20_000 });
     await expect(modal.locator('h2:has-text("Новий рахунок")')).toBeVisible();
     // Modal redesign (commit e6d2e148): окремого поля "Сума" немає — amount обчислюється
-    // з рядків (line items). Перевіряємо наявність полів шапки + кнопки "Додати позицію".
+    // з рядків (line items). Перевіряємо наявність полів шапки + кнопки «Додати».
     // Контрагент — EntityPickerField (input у searchMode з placeholder "Пошук контрагента…").
     await expect(modal.getByPlaceholder(/Пошук контрагента/)).toBeVisible();
-    // Таблиця позицій + кнопка "Додати позицію"
+    // Таблиця позицій + кнопка «Додати»
     await expect(modal.locator('th:has-text("ОПИС")').first()).toBeVisible();
-    await expect(modal.locator('button:has-text("Додати позицію")').first()).toBeVisible();
+    await expect(modal.getByRole('button', { name: 'Додати', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
   });
@@ -193,7 +193,7 @@ test.describe('Рахунки — створення через UI', () => {
     await expect(picker).not.toBeVisible({ timeout: 5_000 });
 
     // Modal redesign (commit e6d2e148): немає окремої "Сума" — додаємо одну позицію.
-    await modal.locator('button:has-text("Додати позицію")').first().click();
+    await modal.getByRole('button', { name: 'Додати', exact: true }).click();
     await modal.getByPlaceholder('Опис позиції…').fill('Тест E2E');
     await modal.getByPlaceholder('0.00').first().fill('500');
     // Натиснути "+" щоб додати рядок до lines.

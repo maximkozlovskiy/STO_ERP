@@ -44,6 +44,7 @@ import {
 } from '@sto/shared';
 import { stockDocStatusLabel, stockDocTypeLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
+import { DocLinesHeader } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -1081,6 +1082,28 @@ export function StockDocumentCreateModal({
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
+            <DocLinesHeader
+              title="Товари"
+              onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
+            >
+              {canEdit && isEditMode && stockDocumentId && (
+                <>
+                  <XlsxImportButton
+                    templateType="sd-lines"
+                    importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
+                    onImportComplete={() => handleLinesImported(stockDocumentId)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setExcelWizardOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Завантажити з Excel
+                  </button>
+                </>
+              )}
+            </DocLinesHeader>
             <table className="w-full table-fixed text-[12px]">
               <colgroup>
                 <col className="w-[42%]" />
@@ -1222,36 +1245,6 @@ export function StockDocumentCreateModal({
                 </tr>
               </tfoot>
             </table>
-
-            {canEdit && !showLineInput && (
-              <div className="flex items-center gap-3 mt-2 ml-3">
-                <button
-                  type="button"
-                  onClick={() => setShowLineInput(true)}
-                  className="flex items-center gap-1.5 text-[12px] text-primary hover:text-primary/80 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Додати товар
-                </button>
-                {isEditMode && stockDocumentId && (
-                  <>
-                    <XlsxImportButton
-                      templateType="sd-lines"
-                      importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
-                      onImportComplete={() => handleLinesImported(stockDocumentId)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setExcelWizardOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-border bg-surface text-foreground hover:bg-secondary transition-colors"
-                    >
-                      <Upload className="h-3.5 w-3.5" />
-                      Завантажити з Excel
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </Modal>

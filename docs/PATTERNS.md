@@ -86,6 +86,11 @@ const { saved, save, remove } = useSavedFilters<Filters>('page-key');
 - **close-guard**: `onClose={saving ? () => {} : onClose}`
 - **Retry-safety**: `createdRefId` зберігає id після POST, до рядків
 - **disabled**: умовний (`saving || !required || (TRANSFER && !targetWarehouseId)`)
+- **Шапка табличної частини (рішення власника 2026-10-14):** назва ліворуч, «+ Додати» праворуч
+  НАД таблицею, як «Товари / Запчастини» в наряді — компонент `DocLinesHeader`
+  (`components/ui/doc-lines-header.tsx`); імпорт та інші дії таблиці — його `children`.
+  Кнопка додавання під таблицею або з іншим підписом («Додати товар», «Додати позицію») —
+  відхилення від стандарту.
 
 ---
 
@@ -378,8 +383,21 @@ const bulkActions: BulkAction[] = [
 
 - `TabBarContext` + `useTabBar` → `activateTab/closeTab`
 - `minimizeModal(modalKey, label, restoreProps)` — dedupe по (modalKey + identity-keys)
-- `setPendingRestore(tab)` → TopShell useEffect → `setRestoredWoOpen(true)`
+- `setPendingRestore(tab)` → `RestoredDocumentModal` (у `TopShell`) відкриває картку документа
 - `dynamic(() => import(...), { ssr: false })` — запобігає circular module init
+
+**Стандарт (рішення власника 2026-10-14): картка, що згортається у вкладку, відновлюється кліком
+по вкладці.** Нова картка з кнопкою «Згорнути у вкладку» потребує трьох речей разом:
+
+1. `minimizeModal({ modalKey, restoreProps: { <idProp>: id } })` у картці;
+2. запис `modalKey → { idProp, invalidate }` у `RESTORABLE_MODALS`
+   (`apps/web/src/components/RestoredDocumentModal.tsx`) і гілка `switch` там само;
+3. `<idProp>` у `IDENTITY_KEYS` (`contexts/TabBarContext.tsx`) — інакше той самий документ,
+   згорнутий двічі, дає дві вкладки.
+
+Без п. 2 вкладка з'являється, але клік по ній нічого не відкриває — так було з рахунком,
+замовленням і складським документом, доки відновлювався лише наряд. Тести:
+`components/__tests__/RestoredDocumentModal.test.tsx`.
 
 ---
 

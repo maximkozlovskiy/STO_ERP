@@ -689,7 +689,7 @@ test.describe('Складські документи — позиції (lines)'
   test('форма створення — кнопка «+ Додати» позицію присутня', async ({ page }) => {
     // Modal redesign (commit e6d2e148): таблиця позицій з колонками ТОВАР/К-СТЬ/ЦІНА/СУМА
     // у самій формі створення документа, без окремої секції "Позиції" — кнопка
-    // "Додати товар" (+) знаходиться під tfoot таблиці.
+    // «Додати» (+) стоїть над таблицею праворуч (стандарт картки наряду).
     await gotoStockDocs(page);
     await page
       .getByRole('button', { name: /^Документ$/ })
@@ -700,8 +700,8 @@ test.describe('Складські документи — позиції (lines)'
 
     // Таблиця позицій рендериться завжди — мінімум колонка "ТОВАР" як ready-signal.
     await expect(modal.locator('th:has-text("ТОВАР")').first()).toBeVisible({ timeout: 5_000 });
-    // Кнопка "Додати товар" (з іконкою Plus) під таблицею.
-    await expect(modal.locator('button:has-text("Додати товар")').first()).toBeVisible({
+    // Кнопка «Додати» (з іконкою Plus) над таблицею.
+    await expect(modal.getByRole('button', { name: 'Додати', exact: true })).toBeVisible({
       timeout: 5_000,
     });
     await page.keyboard.press('Escape');

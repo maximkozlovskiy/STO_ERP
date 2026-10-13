@@ -269,7 +269,7 @@ test.describe('Складський документ, позначений на 
     await expect(card.getByRole('button', { name: 'Зберегти зміни' })).toHaveCount(0);
     await expect(card.getByRole('button', { name: 'Підтвердити', exact: true })).toHaveCount(0);
     await expect(card.getByRole('button', { name: 'Скасувати', exact: true })).toHaveCount(0);
-    await expect(card.getByRole('button', { name: 'Додати товар' })).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Додати', exact: true })).toHaveCount(0);
     await expect(card.getByRole('button', { name: 'Імпорт XLSX' })).toHaveCount(0);
     await expect(card.getByPlaceholder('Додаткова інформація…')).toBeDisabled();
     // Друк і закриття лишаються.

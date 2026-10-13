@@ -1,17 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, type ReactNode, type MouseEvent } from 'react';
+import { useState, useEffect, useCallback, type ReactNode, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { TabBar } from '@/components/TabBar';
-import { useTabBarContext } from '@/contexts/TabBarContext';
+import { RestoredDocumentModal } from '@/components/RestoredDocumentModal';
 
-const CreateWorkOrderModal = dynamic(
-  () => import('@/components/ui/CreateWorkOrderModal').then(m => m.CreateWorkOrderModal),
-  { ssr: false },
-);
 import {
   Wrench,
   LogOut,
@@ -39,7 +35,6 @@ import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api-client';
 import { kyivToday } from '@/lib/format';
 import { workOrdersKeys } from '@/hooks/api/useWorkOrders';
-import { invalidateWorkOrderSideEffects } from '@/lib/cache-invalidation';
 import { counterpartiesKeys } from '@/hooks/api/useCounterparties';
 import { invoicesKeys } from '@/hooks/api/useInvoices';
 import { purchaseOrdersKeys } from '@/hooks/api/usePurchaseOrders';
@@ -416,33 +411,6 @@ export function TopShell({ children }: { children: ReactNode }) {
 
   const uiFeatures = useUiFeatures();
   const queryClient = useQueryClient();
-
-  // Modal restore from TabBar modal tabs
-  const { pendingRestore, setPendingRestore, closeTab } = useTabBarContext();
-  const [restoredWoId, setRestoredWoId] = useState<string | undefined>(undefined);
-  // Track the tab UUID (not the WO ID) so closeTab removes the correct tab entry
-  const [restoredTabId, setRestoredTabId] = useState<string | undefined>(undefined);
-  const [restoredWoOpen, setRestoredWoOpen] = useState(false);
-  // Set to true when user clicks "−" to minimize — onClose must NOT remove the tab
-  const minimizingRestoredRef = useRef(false);
-
-  useEffect(() => {
-    if (!pendingRestore) return;
-    // setPendingRestore(null) ВИНЕСЕНО за межі if-блоку. Без цього невідомий
-    // modalKey (deprecated tab з localStorage старої версії або майбутні modalKey-и які
-    // забули обробити тут) лишається у state навіки → блокує наступні валідні відкриття
-    // того ж tab-у (`setPendingRestore(sameRef)` бейлається у React).
-    if (pendingRestore.modalKey === 'work-order') {
-      const raw = pendingRestore.restoreProps.workOrderId;
-      const woId = typeof raw === 'string' && raw.length > 0 ? raw : undefined;
-      if (woId) {
-        setRestoredWoId(woId);
-        setRestoredTabId(pendingRestore.id);
-        setRestoredWoOpen(true);
-      }
-    }
-    setPendingRestore(null);
-  }, [pendingRestore, setPendingRestore]);
 
   useKeyboardShortcut(
     'ctrl+k',
@@ -842,31 +810,7 @@ export function TopShell({ children }: { children: ReactNode }) {
       {employee && uiFeatures.commandPaletteEnabled && (
         <CommandPalette open={paletteOpen} role={role} onClose={() => setPaletteOpen(false)} />
       )}
-      {restoredWoOpen && restoredWoId && (
-        <CreateWorkOrderModal
-          open={restoredWoOpen}
-          workOrderId={restoredWoId}
-          onClose={() => {
-            // tab-close при закритті, але НЕ при мінімізації.
-            // minimizingRestoredRef=true коли юзер натиснув "−" — в цьому випадку
-            // minimizeModal вже оновив/додав вкладку, closeTab не потрібен.
-            if (!minimizingRestoredRef.current && restoredTabId) closeTab(restoredTabId);
-            minimizingRestoredRef.current = false;
-            setRestoredWoOpen(false);
-            setRestoredWoId(undefined);
-            setRestoredTabId(undefined);
-          }}
-          onMinimize={() => {
-            minimizingRestoredRef.current = true;
-          }}
-          onUpdated={() => {
-            // Restored-модалка вміє FSM-перехід (→COMPLETED списує склад + CHARGE-баланс), тож
-            // інвалідуємо ВСІ side-effect-кеші (склад/баланс/звіти/dashboard), не лише work-orders —
-            // інакше після завершення наряду з модалки Залишки/Взаєморозрахунки лишались би stale.
-            invalidateWorkOrderSideEffects(queryClient);
-          }}
-        />
-      )}
+      <RestoredDocumentModal />
       {/* Desktop sidebar */}
       <aside
         className={cn(

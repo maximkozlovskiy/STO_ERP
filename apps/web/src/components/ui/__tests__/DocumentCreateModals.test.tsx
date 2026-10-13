@@ -425,11 +425,7 @@ describe('InvoiceCreateModal — regression', () => {
     const addTwoLines = async (desc: string) => {
       // timeout:2000 — під повним паралельним suite async-flush голодує (heavy RHF
       // modal); дефолтні 1000ms дають false-negative лише під навантаженням.
-      const addBtn = await screen.findByRole(
-        'button',
-        { name: /Додати позицію/ },
-        { timeout: 2000 },
-      );
+      const addBtn = await screen.findByRole('button', { name: 'Додати' }, { timeout: 2000 });
       await act(async () => {
         await userEvent.click(addBtn);
       });
@@ -506,7 +502,7 @@ describe('InvoiceCreateModal — regression', () => {
   }, 15_000);
 
   // Фаза 3: RHF+useFieldArray + zod-валідація шапки.
-  it('Invoice line через useFieldArray рендериться у таблиці після «Додати позицію»', async () => {
+  it('Invoice line через useFieldArray рендериться у таблиці після «Додати»', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path.startsWith('/counterparties'))
         return Promise.resolve({
@@ -518,7 +514,7 @@ describe('InvoiceCreateModal — regression', () => {
 
     // Відкрити inline-рядок і додати позицію. timeout:2000 — heavy RHF modal під
     // паралельним suite; дефолт 1000ms дає flaky false-negative під навантаженням.
-    const addBtn = await screen.findByRole('button', { name: /Додати позицію/ }, { timeout: 2000 });
+    const addBtn = await screen.findByRole('button', { name: 'Додати' }, { timeout: 2000 });
     await act(async () => {
       await userEvent.click(addBtn);
     });

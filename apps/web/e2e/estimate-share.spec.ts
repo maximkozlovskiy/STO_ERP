@@ -1,4 +1,5 @@
 import { test, expect, request, type APIRequestContext } from '@playwright/test';
+import { clearDateFilter } from './fixtures';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -261,16 +262,9 @@ test.describe('Estimate share', () => {
     await page.goto('/work-orders');
     await page.getByRole('button', { name: /^Кошторис$/ }).click();
 
-    // Clear "З" (dateFrom) and "По" (dateTo) — empty string triggers onChange('')
-    // in DatePickerInput which removes the filter.
-    const dateInputs = page.getByRole('textbox', { name: /ДД\.ММ\.РРРР/ });
-    const dateCount = await dateInputs.count();
-    for (let i = 0; i < dateCount; i++) {
-      await dateInputs.nth(i).fill('');
-      await dateInputs.nth(i).press('Escape');
-    }
-    // Close any open date picker popover.
-    await page.locator('h1:has-text("Наряди")').click({ force: true });
+    // Обидві межі знімає спільний помічник (кнопка «Очистити дату»): fill('') у полі дати
+    // фільтра не скидав, і після півночі за Києвом рядок сьогоднішнього за UTC наряду не знаходився.
+    await clearDateFilter(page);
 
     // Search by our seeded WO's exact number — narrows the table to a single row.
     expect(seededEstimateWoNumber, 'seed must expose WO number').toBeTruthy();

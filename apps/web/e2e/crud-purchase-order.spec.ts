@@ -63,49 +63,41 @@ test.describe('Замовлення постачальнику — CRUD', () => 
       if (opts > 1) await warehouseSelect.selectOption({ index: 1 });
     }
 
-    // Додати позицію: кнопка "Додати товар" (modal redesign e6d2e148 — "Додати товар", не "Додати позицію")
-    const addLineBtn = modal
-      .locator('button:has-text("Додати товар"), button:has-text("Додати позицію")')
+    // Додати позицію: стандартна кнопка «Додати» над таблицею (як у картці наряду). Без гілки
+    // «якщо видно»: зі старими підписами локатор нічого не знаходив, і рядок мовчки не додавався.
+    const addLineBtn = modal.getByRole('button', { name: 'Додати', exact: true });
+    await expect(addLineBtn).toBeVisible({ timeout: 5_000 });
+    await addLineBtn.click();
+
+    // Рядок введення: поле «Пошук товару…» з кнопкою «Обрати» відкриває підбір товару.
+    // Рядок шукаємо за кнопкою «Зберегти рядок»: поле пошуку після вибору товару міняє вигляд.
+    const inputRow = modal
+      .locator('tr')
+      .filter({ has: page.getByTitle('Зберегти рядок') })
       .first();
-    if (await addLineBtn.isVisible({ timeout: 3_000 })) {
-      await addLineBtn.click();
-      // У PO modal line input — окрема кнопка з текстом "Оберіть товар…" відкриває SearchPickerModal.
-      // Це НЕ EntityPickerField з aria-label="Обрати", а звичайна <button> у комірці.
-      const goodPickBtn = modal.locator('button:has-text("Оберіть товар")').first();
-      if (await goodPickBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await goodPickBtn.click();
-        // SearchPickerModal має унікальний search input з placeholder "Назва, артикул…".
-        // Через ID collision у aria-labelledby="modal-title" обидві модалки мають однаковий
-        // accessible name — фільтруємо за наявністю search-input.
-        const goodPicker = page
-          .locator('[role="dialog"]')
-          .filter({ has: page.locator('input[placeholder="Назва, артикул…"]') })
-          .first();
-        await expect(goodPicker).toBeVisible({ timeout: 5_000 });
-        const firstGood = goodPicker.locator('button.w-full.text-left').first();
-        await expect(firstGood).toBeVisible({ timeout: 5_000 });
-        await firstGood.click();
-        await expect(goodPicker).not.toBeVisible({ timeout: 5_000 });
-      }
-      // К-сть і ціна — spinbutton/input number; placeholder для price = "0.00".
-      const qtyInput = modal.locator('input[type="number"]').first();
-      if (await qtyInput.isVisible({ timeout: 2_000 })) await qtyInput.fill('1');
-      const priceInput = modal.getByPlaceholder('0.00').first();
-      if (await priceInput.isVisible({ timeout: 2_000 })) await priceInput.fill('100');
-      // Натиснути "+" щоб додати рядок до lines.
-      const plusBtn = modal.locator('button:has(svg.lucide-plus)').last();
-      if (await plusBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await plusBtn.click();
-      }
-    }
+    await expect(inputRow).toBeVisible({ timeout: 5_000 });
+    await inputRow.locator('button[aria-label="Обрати"]').click();
+    const goodPicker = page
+      .locator('[role="dialog"]')
+      .filter({ has: page.getByPlaceholder('Назва, артикул / штрих-код…') })
+      .first();
+    await expect(goodPicker).toBeVisible({ timeout: 5_000 });
+    const firstGood = goodPicker.locator('button.w-full.text-left').first();
+    await expect(firstGood).toBeVisible({ timeout: 5_000 });
+    await firstGood.click();
+    await expect(goodPicker).not.toBeVisible({ timeout: 5_000 });
+
+    // К-сть і ціна — два числові поля рядка; «Зберегти рядок» активна лише з обраним товаром.
+    const numbers = inputRow.locator('input[type="number"]');
+    await numbers.nth(0).fill('1');
+    await numbers.nth(1).fill('100');
+    const saveLine = inputRow.getByTitle('Зберегти рядок');
+    await expect(saveLine).toBeEnabled({ timeout: 5_000 });
+    await saveLine.click();
+    await expect(modal.getByTitle('Зберегти рядок')).toHaveCount(0);
 
     const saveBtn = modal.locator('button:has-text("Створити замовлення")');
-    const isEnabled = await saveBtn.isEnabled({ timeout: 5_000 }).catch(() => false);
-    if (!isEnabled) {
-      await expect(saveBtn).toBeDisabled();
-      await page.keyboard.press('Escape');
-      return;
-    }
+    await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
     await saveBtn.click();
     await expect(modal).not.toBeVisible({ timeout: 10_000 });
 

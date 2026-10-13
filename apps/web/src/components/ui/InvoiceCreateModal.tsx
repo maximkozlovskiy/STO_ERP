@@ -41,6 +41,7 @@ import {
 } from '@sto/shared';
 import { invoiceStatusLabel, invoiceTypeLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
+import { DocLinesHeader } from '@/components/ui/doc-lines-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -1010,6 +1011,10 @@ export function InvoiceCreateModal({
 
           {/* ── Lines table ──────────────────────────────────────────────── */}
           <div className="flex-1 overflow-auto">
+            <DocLinesHeader
+              title="Позиції"
+              onAdd={canEdit && !showLineInput ? () => setShowLineInput(true) : undefined}
+            />
             <table className="w-full table-fixed text-[12px]">
               <colgroup>
                 <col className="w-[50%]" />
@@ -1165,18 +1170,6 @@ export function InvoiceCreateModal({
                 )}
               </tfoot>
             </table>
-
-            {/* Add line button */}
-            {canEdit && !showLineInput && (
-              <button
-                type="button"
-                onClick={() => setShowLineInput(true)}
-                className="flex items-center gap-1.5 mt-2 ml-3 text-[12px] text-primary hover:text-primary/80 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Додати позицію
-              </button>
-            )}
           </div>
         </div>
       </Modal>

@@ -133,7 +133,7 @@ const CASES: CardCase[] = [
     render: () => {
       render(<StockDocumentCreateModal open stockDocumentId="sd-1" onClose={vi.fn()} />);
     },
-    actions: ['Зберегти зміни', 'Підтвердити', 'Скасувати', 'Додати товар', 'тест-імпорт-xlsx'],
+    actions: ['Зберегти зміни', 'Підтвердити', 'Скасувати', 'Додати', 'тест-імпорт-xlsx'],
     doc: {
       id: 'sd-1',
       number: 'ПРХ-000001',
