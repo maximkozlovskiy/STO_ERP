@@ -264,6 +264,25 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       `grep -rnE "disabled=\{[a-zA-Z]+\.length === 0\}" apps/web/src --include="*.tsx"` → для
       кожної: чи її ж клік робить умову істинною
 - [ ] **Тест «X не відбувається» має контроль, що шлях узагалі пройдено.** `expect(fn).not
-  .toHaveBeenCalled()` після дії, яка за цих вхідних нічого не робить (Enter із порожнім
+.toHaveBeenCalled()` після дії, яка за цих вхідних нічого не робить (Enter із порожнім
       запитом → `pickScannedGood` дає `null`), зелений завжди. Поруч потрібен позитивний кейс тим
       самим шляхом і мутація, що валить негативний (`journal/web.md`, 2026-10-13)
+
+## Стандарт списку з боковою панеллю (2026-10-13)
+
+```bash
+# Рядок таблиці з власним onClick замість спільного activateRow
+grep -rn "<TableRow" -A12 apps/web/src/app --include="*.tsx" | grep "onClick" | grep -v "activateRow\|stopPropagation"
+# Фільтр дат списку поза спільним компонентом
+grep -rn "type=\"date\"\|<DatePickerInput" apps/web/src/app --include="*.tsx" | grep -v "DateRangeFilter\|reports/\|calendar/"
+```
+
+- [ ] Список із `DetailPanel`: клік по рядку — через `activateRow` (`lib/row-activation.ts`):
+      панель увімкнена → лише панель (повторний клік ховає); вимкнена → документ. Олівець завжди
+      відкриває документ; у панелі є кнопка «Відкрити …». До 2026-10-13 сім списків поводились
+      по-різному (рахунок відкривався кліком, а олівець показував панель).
+- [ ] Картка документа вантажить його з `?withDeleted=true` і для `deletedAt` показує
+      `DeletedDocumentBanner` без збереження й переходів (BR-WO-012).
+- [ ] Фільтр дат списку — `DateRangeFilter`, не власні поля: інакше немає кнопки очищення.
+- [ ] E2E не відкриває картку кліком по рядку: олівець або вимкнена панель
+      (`sto_detail_panel_<ключ>` у localStorage).
