@@ -4,6 +4,7 @@ import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { type GoodPickerItem } from '@/components/ui/GoodPickerModal';
 import { calcVatOnBase, lineAmount } from '@/lib/utils';
+import { fmtQty } from '@/lib/format';
 import type { LocalPart, Warehouse, Unit } from './types';
 
 export interface PartsTableProps {
@@ -74,6 +75,12 @@ export function PartsTable(props: PartsTableProps) {
     setGoodPickerOpen,
     setEditGoodPickerOpen,
   } = props;
+
+  // Залишок — сума Float по рухах: без округлення в комірці стояло «294.96500000000003» і число
+  // заходило на сусідні колонки (Bug #841). fmtQty округлює до 3 знаків, як у вікні вибору товару.
+  const warehouseStock = (goodId: string, warehouseId: string): string =>
+    fmtQty(stockWarehouseMap.get(`${goodId}:${warehouseId}`) ?? 0);
+  const totalStock = (goodId: string): string => fmtQty(stockTotalsMap.get(goodId) ?? 0);
 
   return (
     <div className="pt-4 pb-2">
@@ -223,15 +230,11 @@ export function PartsTable(props: PartsTableProps) {
                           <>
                             <span>
                               {editingPart.warehouseId
-                                ? (stockWarehouseMap.get(
-                                    `${editingPart.goodId}:${editingPart.warehouseId}`,
-                                  ) ?? 0)
+                                ? warehouseStock(editingPart.goodId, editingPart.warehouseId)
                                 : '—'}
                             </span>
                             <span className="opacity-40">/</span>
-                            <span className="opacity-60">
-                              {stockTotalsMap.get(editingPart.goodId) ?? 0}
-                            </span>
+                            <span className="opacity-60">{totalStock(editingPart.goodId)}</span>
                           </>
                         ) : (
                           '—'
@@ -308,12 +311,35 @@ export function PartsTable(props: PartsTableProps) {
                               // Same merge bug as for lines — editingPart never carries `id`,
                               // тому без `...pt` save() filter не побачив би existing part
                               // → POST дублікат + duplicate-key fail.
+                              // Bug #837: збережений рядок (є `id`) після правки треба донести
+                              // до сервера — save() шле POST лише рядкам без `id`. Змінили товар
+                              // або склад → рядок замінюється (старий у deletedPartIds, новий без
+                              // `id` піде POST-ом: PATCH товар і склад не міняє). Змінили лише
+                              // кількість / ціну / одиницю → `_dirty`, save() надішле PATCH.
+                              const replaced =
+                                !!part.id &&
+                                (part.goodId !== editingPart.goodId ||
+                                  part.warehouseId !== editingPart.warehouseId);
+                              if (replaced && part.id) deletedPartIds.current.push(part.id);
                               setParts(prev =>
-                                prev.map(pt =>
-                                  pt._key === part._key
-                                    ? { ...pt, ...editingPart, _key: pt._key }
-                                    : pt,
-                                ),
+                                prev.map(pt => {
+                                  if (pt._key !== part._key) return pt;
+                                  if (replaced) {
+                                    return {
+                                      ...pt,
+                                      ...editingPart,
+                                      id: undefined,
+                                      _dirty: undefined,
+                                      _key: `${pt._key}-r`,
+                                    };
+                                  }
+                                  return {
+                                    ...pt,
+                                    ...editingPart,
+                                    _key: pt._key,
+                                    _dirty: pt.id ? true : undefined,
+                                  };
+                                }),
                               );
                               setEditingPartKey(null);
                             }}
@@ -352,13 +378,9 @@ export function PartsTable(props: PartsTableProps) {
                       <td className="px-2 py-1.5 text-left tabular-nums text-muted-foreground">
                         {part.goodId ? (
                           <>
-                            <span>
-                              {stockWarehouseMap.get(`${part.goodId}:${part.warehouseId}`) ?? 0}
-                            </span>
+                            <span>{warehouseStock(part.goodId, part.warehouseId)}</span>
                             <span className="opacity-40">/</span>
-                            <span className="opacity-60">
-                              {stockTotalsMap.get(part.goodId) ?? 0}
-                            </span>
+                            <span className="opacity-60">{totalStock(part.goodId)}</span>
                           </>
                         ) : (
                           '—'
@@ -471,11 +493,11 @@ export function PartsTable(props: PartsTableProps) {
                     <>
                       <span>
                         {newPart.warehouseId
-                          ? (stockWarehouseMap.get(`${newPart.goodId}:${newPart.warehouseId}`) ?? 0)
+                          ? warehouseStock(newPart.goodId, newPart.warehouseId)
                           : '—'}
                       </span>
                       <span className="opacity-40">/</span>
-                      <span className="opacity-60">{stockTotalsMap.get(newPart.goodId) ?? 0}</span>
+                      <span className="opacity-60">{totalStock(newPart.goodId)}</span>
                     </>
                   ) : (
                     '—'

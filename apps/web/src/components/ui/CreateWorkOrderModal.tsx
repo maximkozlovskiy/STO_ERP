@@ -1346,6 +1346,22 @@ export function CreateWorkOrderModal({
           });
           if (part._key) postedPartKeysRef.current.add(part._key);
         }
+        // Bug #837: PATCH збережених рядків товарів, змінених у картці (кількість, ціна, одиниця).
+        // Раніше тут був лише POST нових: правка наявного рядка мовчки губилась — картка показувала
+        // нову кількість, а в базі (і у «Зведенні» панелі списку) лишалась стара.
+        // Послідовно, як рядки робіт: кожен PATCH перераховує тотали наряду. Після успіху картка
+        // закривається, тож прапорець `_dirty` знімати нема кому; після помилки він лишається,
+        // і повторне «Зберегти» шле ті самі значення ще раз (PATCH ідемпотентний).
+        for (const part of parts.filter(p => !!p.id && p._dirty)) {
+          await apiFetch(`/work-orders/${workOrderId}/parts/${part.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              quantity: toNumberOrUndefined(part.quantity),
+              price: toNumberOrUndefined(part.price),
+              unitOfMeasureId: part.unitOfMeasureId || undefined,
+            }),
+          });
+        }
       } else if (canEditActual) {
         // у IN_PROGRESS/ON_HOLD PATCH лише actualHours для існуючих рядків.
         // Жодних DELETE/POST/PATCH інших полів — бекенд відхилить як non-actual-only.

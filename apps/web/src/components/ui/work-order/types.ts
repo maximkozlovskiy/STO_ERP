@@ -27,6 +27,8 @@ export interface LocalPart {
   price: string;
   unitOfMeasureId: string;
   unitShortName: string;
+  /** Збережений рядок (є `id`) змінено в картці — save() має надіслати PATCH (Bug #837). */
+  _dirty?: boolean;
 }
 
 // Форма-стан модалки наряду. Єдине джерело правди для CreateWorkOrderModal.useState<WorkOrderFormState>
