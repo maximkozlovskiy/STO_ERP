@@ -132,6 +132,88 @@ describe('Modal', () => {
     expect(parentSubmit).not.toHaveBeenCalled();
   });
 
+  // Review 2026-10-13: пастки фокуса обох модалок слухають document, нижня чує Tab першою.
+  // Вона вважала фокус у верхній модалці «втечею» і тягла його на свій край, верхня — на свій:
+  // Tab у вкладеній модалці завжди стрибав на її першу кнопку, решта була недосяжна.
+  describe('Tab у вкладеній модалці', () => {
+    // jsdom не рахує розмітку: offsetParent завжди null, і пастка вважала б усе невидимим.
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent');
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.parentNode;
+        },
+      });
+    });
+    afterEach(() => {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'offsetParent', original);
+    });
+
+    // Пастка вмикається на ВІДКРИТТІ вже змонтованої модалки (як у застосунку), тому спершу
+    // рендер закритих, потім відкриття: нижня, за нею верхня.
+    const nested = (parentOpen: boolean, childOpen: boolean) => (
+      <>
+        <Modal open={parentOpen} onClose={vi.fn()} title="Батьківська">
+          <input aria-label="поле-батька" />
+        </Modal>
+        <Modal open={childOpen} onClose={vi.fn()} title="Дитяча">
+          <input aria-label="перше" />
+          <input aria-label="друге" />
+          <input aria-label="останнє" />
+        </Modal>
+      </>
+    );
+    const renderNested = () => {
+      const { rerender } = render(nested(false, false));
+      rerender(nested(true, false));
+      rerender(nested(true, true));
+    };
+
+    it('Tab іде до наступного поля верхньої модалки, а не стрибає на її першу кнопку', async () => {
+      const user = userEvent.setup();
+      renderNested();
+      screen.getByLabelText('перше').focus();
+
+      await user.tab();
+      expect(screen.getByLabelText('друге')).toHaveFocus();
+      await user.tab({ shift: true });
+      expect(screen.getByLabelText('перше')).toHaveFocus();
+    });
+
+    it('з останнього елемента верхньої модалки Tab повертає на її перший, не в нижню', async () => {
+      const user = userEvent.setup();
+      renderNested();
+      const child = screen.getByRole('dialog', { name: 'Дитяча' });
+      screen.getByLabelText('останнє').focus();
+
+      await user.tab();
+      expect(child).toContainElement(document.activeElement as HTMLElement);
+      expect(screen.getByLabelText('останнє')).not.toHaveFocus();
+      expect(screen.getByLabelText('поле-батька')).not.toHaveFocus();
+    });
+
+    it('одна модалка: фокус, що опинився поза панеллю, Tab повертає всередину', async () => {
+      const user = userEvent.setup();
+      const single = (open: boolean) => (
+        <>
+          <button type="button">фон</button>
+          <Modal open={open} onClose={vi.fn()} title="Одна">
+            <input aria-label="поле" />
+          </Modal>
+        </>
+      );
+      const { rerender } = render(single(false));
+      rerender(single(true));
+      screen.getByRole('button', { name: 'фон' }).focus();
+
+      await user.tab();
+      expect(screen.getByRole('dialog', { name: 'Одна' })).toContainElement(
+        document.activeElement as HTMLElement,
+      );
+    });
+  });
+
   it('Ctrl+Enter із фокусом у батьківській панелі не чіпає дитячу', async () => {
     const parentSubmit = vi.fn();
     const childSubmit = vi.fn();

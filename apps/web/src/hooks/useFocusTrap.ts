@@ -5,21 +5,29 @@ import { useEffect, type RefObject } from 'react';
 const FOCUSABLE =
   'a[href],area[href],input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),button:not([disabled]),iframe,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
 
+const TRAP_ATTR = 'data-focus-trap';
+
 /**
  * E2 — focus-trap для модалок (a11y WCAG 2.4.3 / 2.1.2). Поки модалка відкрита:
  *  1. фокус переміщується всередину панелі (перший фокусований елемент, або сама панель);
  *  2. Tab/Shift+Tab циклять У МЕЖАХ панелі (фокус не «тікає» на фон);
  *  3. при закритті фокус повертається на елемент, що був активним до відкриття.
  *
- * Вкладені модалки: кожен екземпляр трапить ВЛАСНУ панель. Оскільки фокус тримається у панелі
- * верхньої (останньо відкритої) модалки, а нижня прихована під backdrop — конфлікту немає.
+ * Вкладені модалки: кожен екземпляр трапить ВЛАСНУ панель і позначає її `data-focus-trap`.
+ * Слухачі обох висять на document, і нижня модалка чує Tab першою: якщо фокус у панелі ІНШОЇ
+ * пастки, нижня мусить відступити. Без цього вона «повертала втікача» на свій край, верхня —
+ * на свій, і Tab у вкладеній модалці завжди стрибав на її першу кнопку («Закрити»), а решта
+ * елементів була недосяжна з клавіатури.
  * Скоуп через containerRef (як існуючі keydown-хендлери Modal).
  */
+
 export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active: boolean): void {
   useEffect(() => {
     if (!active || typeof document === 'undefined') return;
     const container = containerRef.current;
     if (!container) return;
+
+    container.setAttribute(TRAP_ATTR, '');
 
     // Запам'ятовуємо елемент, що мав фокус до відкриття — щоб повернути на закритті.
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -40,6 +48,9 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
+      // Фокус у панелі іншої (верхньої) пастки — це її Tab, не наш.
+      const owner = document.activeElement?.closest(`[${TRAP_ATTR}]`);
+      if (owner && owner !== container && !container.contains(owner)) return;
       const items = focusables();
       if (items.length === 0) {
         // Немає фокусованих — тримаємо фокус на панелі.
@@ -68,6 +79,7 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
     document.addEventListener('keydown', handleKey);
     return () => {
       document.removeEventListener('keydown', handleKey);
+      container.removeAttribute(TRAP_ATTR);
       // Повертаємо фокус лише якщо він досі всередині нашої панелі (інакше не відбираємо
       // фокус у того, хто його вже легітимно отримав, напр. вкладена модалка).
       if (previouslyFocused && container.contains(document.activeElement)) {
