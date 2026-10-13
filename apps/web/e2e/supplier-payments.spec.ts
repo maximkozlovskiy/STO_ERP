@@ -94,6 +94,19 @@ async function scheduleHasDebts(page: Page, token: string): Promise<boolean> {
 }
 
 test.describe('Оплати постачальникам', () => {
+  // Каси, засіяні FSM-тестами нижче: без прибирання кожен прогін лишав у базі по «E2E Каса N»,
+  // а список кас віддає лише 200 штук — після ~200 прогонів картка каси не знаходила нову касу.
+  const seededRegisterIds: string[] = [];
+
+  test.afterAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await p.goto('/cash');
+    const token = await getToken(p);
+    for (const id of seededRegisterIds) await deleteRegister(p, token, id);
+    await ctx.close();
+  });
+
   // ─── Сторінки більше немає ──────────────────────────────────────────────────
   test('стара адреса /supplier-payments веде на «Графік оплат» у «Купівлі»', async ({ page }) => {
     await page.goto('/supplier-payments');
@@ -168,6 +181,7 @@ test.describe('Оплати постачальникам', () => {
     await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
     const seed = await seedSupplierAndCash(page, token);
+    if (seed.cashRegisterId) seededRegisterIds.push(seed.cashRegisterId);
     expect(seed.supplierId).toBeTruthy();
     expect(seed.cashRegisterId).toBeTruthy();
 
@@ -259,6 +273,7 @@ test.describe('Оплати постачальникам', () => {
     await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
     const seed = await seedSupplierAndCash(page, token);
+    if (seed.cashRegisterId) seededRegisterIds.push(seed.cashRegisterId);
     expect(seed.supplierId).toBeTruthy();
 
     const status = await page.evaluate(
@@ -285,6 +300,7 @@ test.describe('Оплати постачальникам', () => {
     await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
     const seed = await seedSupplierAndCash(page, token);
+    if (seed.cashRegisterId) seededRegisterIds.push(seed.cashRegisterId);
     expect(seed.supplierId).toBeTruthy();
     expect(seed.cashRegisterId).toBeTruthy();
 
