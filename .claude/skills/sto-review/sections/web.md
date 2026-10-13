@@ -203,6 +203,7 @@ done
 ```
 
 - [ ] Список із `<DetailPanel>` → має `<DetailPanelToggle>` (enabled/toggle з `useListPage().detailPanel` або `useDetailPanel(key)`); row onClick і панель гейтяться `detailPanel.enabled`
+- [ ] **Панель тримає лише `selectedId`, а рядок бере зі списку (`items.find`) → коли рядок зник із ЗАВАНТАЖЕНОГО списку, id скидається ефектом** (`if (id && !loading && !selected) setId(null)`). Інакше вибір «прихований»: повернувся на сторінку чи зняв фільтр — панель відкривається сама. Grep: `grep -rnE "\.find\([a-z]+ => [a-z]+\.id === selected[A-Za-z]*Id\)" apps/web/src/app` (`journal/web.md`, 2026-10-13)
 - [ ] `toast.X(...)` → `if (features.toastEnabled)`; fallback: `setError(msg)`
 - [ ] Bulk-мутації → `Promise.allSettled` + `bulkSelect.clear()` + `load()` у finally
 - [ ] `indeterminate` → `useRef` + `useEffect([dep])`, не inline `ref={el => el.indeterminate = x}`
@@ -263,6 +264,6 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       `grep -rnE "disabled=\{[a-zA-Z]+\.length === 0\}" apps/web/src --include="*.tsx"` → для
       кожної: чи її ж клік робить умову істинною
 - [ ] **Тест «X не відбувається» має контроль, що шлях узагалі пройдено.** `expect(fn).not
-    .toHaveBeenCalled()` після дії, яка за цих вхідних нічого не робить (Enter із порожнім
+  .toHaveBeenCalled()` після дії, яка за цих вхідних нічого не робить (Enter із порожнім
       запитом → `pickScannedGood` дає `null`), зелений завжди. Поруч потрібен позитивний кейс тим
       самим шляхом і мутація, що валить негативний (`journal/web.md`, 2026-10-13)
