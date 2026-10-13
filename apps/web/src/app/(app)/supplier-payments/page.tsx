@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useCallback, useMemo } from 'react';
+import { Suspense, useState, useCallback, useMemo, useEffect } from 'react';
 import type { ElementType } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
@@ -40,7 +40,8 @@ import { supplierPaymentStatusLabel, paymentSourceTypeLabel } from '@/i18n/enumL
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { activateRow } from '@/lib/row-activation';
 import { Pagination } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -207,6 +208,25 @@ function SupplierPaymentsPageInner() {
   });
 
   const items = data?.items ?? (EMPTY_ITEMS as unknown as SupplierPayment[]);
+
+  // Чернетка редагується у модалці; проведена, скасована чи позначена на видалення оплата
+  // відкривається карткою-сторінкою (для видаленої — лише на перегляд).
+  const opensDraftEditor = (sp: SupplierPayment) => sp.status === 'DRAFT' && !sp.deletedAt;
+  const openPayment = (sp: SupplierPayment) => {
+    if (opensDraftEditor(sp)) setEditingId(sp.id);
+    else router.push(`/supplier-payments/${sp.id}`);
+  };
+
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelected(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selected && !isLoading && !items.some(i => i.id === selected.id)) setSelected(null);
+  }, [selected, items, isLoading]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -586,36 +606,22 @@ function SupplierPaymentsPageInner() {
               leftElement={<Search />}
               className="w-64 h-8 text-[13px]"
             />
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">
-                {t('page.filters.dateFrom')}
-              </span>
-              <DatePickerInput
-                value={dateFrom}
-                onChange={v => {
-                  setDateFrom(v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
-                max={dateTo || undefined}
-                className="w-36"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">
-                {t('page.filters.dateTo')}
-              </span>
-              <DatePickerInput
-                value={dateTo}
-                onChange={v => {
-                  setDateTo(v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
-                min={dateFrom || undefined}
-                className="w-36"
-              />
-            </div>
+            <DateRangeFilter
+              from={dateFrom}
+              to={dateTo}
+              onFromChange={v => {
+                setDateFrom(v);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              onToChange={v => {
+                setDateTo(v);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              fromLabel={t('page.filters.dateFrom')}
+              toLabel={t('page.filters.dateTo')}
+            />
 
             <div className="flex items-center gap-2 ml-auto">
               <Button
@@ -733,13 +739,19 @@ function SupplierPaymentsPageInner() {
                     items.map(sp => (
                       <TableRow
                         key={sp.id}
+                        // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                        // вимкнена → клік відкриває документ (те саме, що олівець).
                         onClick={() =>
-                          detailPanel.enabled &&
-                          setSelected(prev => (prev?.id === sp.id ? null : sp))
+                          activateRow({
+                            panelEnabled: detailPanel.enabled,
+                            isSelected: selected?.id === sp.id,
+                            select: () => setSelected(sp),
+                            deselect: () => setSelected(null),
+                            open: () => openPayment(sp),
+                          })
                         }
                         className={cn(
-                          'group transition-colors',
-                          detailPanel.enabled && 'cursor-pointer',
+                          'group transition-colors cursor-pointer',
                           sp.deletedAt && 'opacity-60',
                           selected?.id === sp.id && detailPanel.enabled && 'bg-primary/5',
                           bulkSelect.isSelected(sp.id) && 'bg-primary/5',
@@ -759,32 +771,25 @@ function SupplierPaymentsPageInner() {
                         {visibleColumns.map(col => renderCell(sp, col.key))}
                         <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
-                            {!sp.deletedAt && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                title={
-                                  sp.status === 'DRAFT'
-                                    ? t('page.row.edit')
-                                    : t('page.row.openCard')
-                                }
-                                aria-label={
-                                  sp.status === 'DRAFT'
-                                    ? t('page.aria.editPayment', { number: sp.number })
-                                    : t('page.aria.openPayment', { number: sp.number })
-                                }
-                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                                onClick={() =>
-                                  // DRAFT → одразу редагування у модалці; інші статуси → картка (перегляд).
-                                  sp.status === 'DRAFT'
-                                    ? setEditingId(sp.id)
-                                    : router.push(`/supplier-payments/${sp.id}`)
-                                }
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
+                            {/* Олівець є і в рядка, позначеного на видалення: він відкриває
+                                картку лише на перегляд. */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              title={
+                                opensDraftEditor(sp) ? t('page.row.edit') : t('page.row.openCard')
+                              }
+                              aria-label={
+                                opensDraftEditor(sp)
+                                  ? t('page.aria.editPayment', { number: sp.number })
+                                  : t('page.aria.openPayment', { number: sp.number })
+                              }
+                              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                              onClick={() => openPayment(sp)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
                             {!sp.deletedAt && sp.status !== 'CONFIRMED' && (
                               <Button
                                 type="button"
@@ -828,6 +833,17 @@ function SupplierPaymentsPageInner() {
                       hidden={f.hidden}
                     />
                   ))}
+
+                  <div className="pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => openPayment(selected)}
+                    >
+                      {t('page.actions.openDocument')}
+                    </Button>
+                  </div>
 
                   {!selected.deletedAt && (
                     <PanelSection title={t('page.actions.title')}>

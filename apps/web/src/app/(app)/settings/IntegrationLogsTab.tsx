@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { Button } from '@/components/ui/button';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { useIntegrationLogs, type IntegrationLogsFilter } from '@/hooks/api/useIntegrationLogs';
 import { type OrgSettings } from './shared';
 
@@ -159,19 +160,13 @@ export default function IntegrationLogsTab() {
           <option value="true">{t('integrationLogs.statusSuccess')}</option>
           <option value="false">{t('integrationLogs.statusErrors')}</option>
         </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => resetTo(setDateFrom)(e.target.value)}
-          className={inputCls}
-          aria-label={t('integrationLogs.dateFromAria')}
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => resetTo(setDateTo)(e.target.value)}
-          className={inputCls}
-          aria-label={t('integrationLogs.dateToAria')}
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={resetTo(setDateFrom)}
+          onToChange={resetTo(setDateTo)}
+          fromLabel={t('integrationLogs.dateFromAria')}
+          toLabel={t('integrationLogs.dateToAria')}
         />
       </div>
 

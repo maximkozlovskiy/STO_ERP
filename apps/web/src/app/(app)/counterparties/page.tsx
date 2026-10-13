@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState, useCallback, useMemo, useRef, Suspense } from 'react';
 import { TabDivider } from '@/components/ui/tab-divider';
 import { useTranslation } from 'react-i18next';
+import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -218,6 +219,18 @@ function CrmPageInner() {
   const [editingCp, setEditingCp] = useState<Counterparty | null>(null);
   const [selectedCp, setSelectedCp] = useState<Counterparty | null>(null);
 
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedCp(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedCp && !loading && !counterparties.some(i => i.id === selectedCp.id))
+      setSelectedCp(null);
+  }, [selectedCp, counterparties, loading]);
+
   // підтримка `?action=new` query: Command Palette + N shortcut
   // навігують сюди замість неіснуючого /counterparties/new маршруту.
   useEffect(() => {
@@ -405,6 +418,13 @@ function CrmPageInner() {
               hidden={f.hidden}
             />
           ))}
+          {!cp.deletedAt && (
+            <div className="pt-1">
+              <Button variant="outline" size="sm" className="w-full" onClick={() => openEdit(cp)}>
+                {t('common:openCard')}
+              </Button>
+            </div>
+          )}
         </div>
       ),
     },
@@ -627,15 +647,23 @@ function CrmPageInner() {
                       key={cp.id}
                       className={cn(
                         'group transition-colors',
-                        detailPanel.enabled && 'cursor-pointer',
+                        // Видалений контрагент картки не має — з вимкненою панеллю клік нічого не робить.
+                        (detailPanel.enabled || !isDeleted) && 'cursor-pointer',
                         isDeleted && 'opacity-60',
                         selectedCp?.id === cp.id && detailPanel.enabled && 'bg-secondary',
                         bulkSelect.isSelected(cp.id) && 'bg-primary/5',
                       )}
-                      onClick={() => {
-                        if (detailPanel.enabled)
-                          setSelectedCp(prev => (prev?.id === cp.id ? null : cp));
-                      }}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                      // вимкнена → клік відкриває картку (те саме, що олівець).
+                      onClick={() =>
+                        activateRow({
+                          panelEnabled: detailPanel.enabled,
+                          isSelected: selectedCp?.id === cp.id,
+                          select: () => setSelectedCp(cp),
+                          deselect: () => setSelectedCp(null),
+                          open: isDeleted ? undefined : () => openEdit(cp),
+                        })
+                      }
                     >
                       {features.bulkActionsEnabled && (
                         <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, memo, useEffect, useState, useCallback, useMemo } from 'react';
+import { activateRow } from '@/lib/row-activation';
 import { useTranslation } from 'react-i18next';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useQueryClient } from '@tanstack/react-query';
@@ -248,6 +249,18 @@ export function InventoryTab() {
   const loading =
     viewMode === 'goods' ? loadingGoods : viewMode === 'documents' ? loadingDoc : loadingBatch;
 
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedItem(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов зі списку (фільтр, «нижче мінімуму», інший склад) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedItem && !loadingGoods && !displayed.some(i => i.id === selectedItem.id))
+      setSelectedItem(null);
+  }, [selectedItem, displayed, loadingGoods]);
+
   return (
     <>
       {error && (
@@ -419,7 +432,16 @@ export function InventoryTab() {
                 {displayed.map(item => (
                   <TableRow
                     key={item.id}
-                    onClick={() => detailPanel.enabled && setSelectedItem(item)}
+                    // Стандарт списків: клік показує панель, повторний клік по тому самому рядку
+                    // її ховає. Картки залишку немає — з вимкненою панеллю клік нічого не робить.
+                    onClick={() =>
+                      activateRow({
+                        panelEnabled: detailPanel.enabled,
+                        isSelected: selectedItem?.id === item.id,
+                        select: () => setSelectedItem(item),
+                        deselect: () => setSelectedItem(null),
+                      })
+                    }
                     className={cn(
                       'group transition-colors',
                       detailPanel.enabled && 'cursor-pointer',

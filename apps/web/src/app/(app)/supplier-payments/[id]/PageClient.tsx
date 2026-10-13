@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
+import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
 import { fmtMoney, fmtDate, fmtShortDateTime } from '@/lib/format';
 
@@ -48,7 +49,7 @@ export default function SupplierPaymentCardPage() {
   const router = useRouter();
   const { confirm, dialogProps } = useConfirm();
 
-  const { data: sp, isLoading, error } = useSupplierPayment(id ?? null);
+  const { data: sp, isLoading, error } = useSupplierPayment(id ?? null, { withDeleted: true });
   const confirmMut = useConfirmSupplierPayment();
   const cancelMut = useCancelSupplierPayment();
   const deleteMut = useDeleteSupplierPayment();
@@ -128,6 +129,7 @@ export default function SupplierPaymentCardPage() {
 
   return (
     <div className="page-container max-w-4xl space-y-6">
+      {sp.deletedAt && <DeletedDocumentBanner />}
       {/* Header */}
       <div className="flex items-start gap-4">
         <button

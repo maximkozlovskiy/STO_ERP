@@ -265,7 +265,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
         if (path.startsWith('/vehicles')) return Promise.resolve([]);
         if (path.includes('/contracts')) return Promise.resolve({ items: [] });
-        if (path === '/work-orders/wo-1') {
+        if (path === '/work-orders/wo-1?withDeleted=true') {
           return Promise.resolve({
             id: 'wo-1',
             number: 'WO-001',
@@ -348,7 +348,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
         if (path.startsWith('/vehicles')) return Promise.resolve([]);
         if (path.includes('/contracts')) return Promise.resolve({ items: [] });
-        if (path === '/work-orders/wo-2') {
+        if (path === '/work-orders/wo-2?withDeleted=true') {
           return Promise.resolve({
             id: 'wo-2',
             number: 'WO-002',
@@ -424,7 +424,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
         if (path.startsWith('/vehicles')) return Promise.resolve([]);
         if (path.includes('/contracts')) return Promise.resolve({ items: [] });
-        if (path === '/work-orders/wo-sort') {
+        if (path === '/work-orders/wo-sort?withDeleted=true') {
           return Promise.resolve({
             id: 'wo-sort',
             number: 'WO-S',
@@ -506,7 +506,7 @@ describe('CreateWorkOrderModal — regression guards', () => {
         if (path.startsWith('/employees')) return Promise.resolve({ items: mockEmployees });
         if (path.startsWith('/vehicles')) return Promise.resolve([]);
         if (path.includes('/contracts')) return Promise.resolve({ items: [] });
-        if (path === '/work-orders/wo-3') {
+        if (path === '/work-orders/wo-3?withDeleted=true') {
           return Promise.resolve({
             id: 'wo-3',
             number: 'WO-003',

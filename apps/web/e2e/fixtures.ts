@@ -13,22 +13,26 @@ export async function clearAuthState(page: Page): Promise<void> {
 
 // ─── Shared date-filter helpers ───────────────────────────────────────────
 
+/**
+ * Знімає обидві межі фільтра дат списку (кнопка «×» «Очистити дату» в кожному полі).
+ *
+ * До 2026-10-13 помічник шукав поля за placeholder «Від» / «До», яких у застосунку немає, тобто
+ * НІЧОГО не робив: специ, що його кликали, насправді працювали під типовим фільтром «сьогодні».
+ * Тепер фільтр справді знімається: після виклику жодне поле дати на сторінці не заповнене.
+ */
 export async function clearDateFilter(page: Page): Promise<void> {
-  const dateInputs = page.locator('input[placeholder="Від"], input[placeholder="До"]');
-  const count = await dateInputs.count();
-  await Promise.all(
-    Array.from({ length: count }, (_, i) =>
-      dateInputs
-        .nth(i)
-        .fill('')
-        .then(() => dateInputs.nth(i).press('Escape')),
-    ),
-  );
-  await page.locator('h1').first().click({ force: true });
-  await page
-    .locator('.rdp-month')
-    .waitFor({ state: 'hidden', timeout: 2_000 })
-    .catch(() => {});
+  // Фільтр змонтований: поля дат видно (типові значення стоять одразу з першого рендера).
+  await expect(page.getByPlaceholder('ДД.ММ.РРРР').first()).toBeVisible();
+  const clear = page.getByRole('button', { name: 'Очистити дату' });
+  // Кнопка є лише біля заповненої межі й зникає після натискання — тиснемо першу, доки є.
+  // Межа запасу: у списку дві межі; чотири — на випадок двох фільтрів на сторінці.
+  for (let i = 0; i < 4; i++) {
+    if ((await clear.count()) === 0) break;
+    await clear.first().click();
+  }
+  await expect(clear).toHaveCount(0);
+  // Очищення календар не відкриває (фокус повертається в поле без попапа).
+  await expect(page.locator('.rdp-root')).toHaveCount(0);
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────

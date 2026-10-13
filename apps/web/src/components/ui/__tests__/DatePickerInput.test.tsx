@@ -113,3 +113,81 @@ describe('DatePickerInput — поле показує лише застосов�
     expect(input).toHaveValue('');
   });
 });
+
+// Кнопка «×» у фільтрах дат списків (рішення власника 2026-10-13): порожня дата = «без межі»,
+// а зняти її можна було лише стерши текст у полі вручну.
+//
+// Що ловить (мутацію не проганяв): прибрати `&& value` з `showClear` → кейс «без значення кнопки немає» падає;
+// прибрати `onChange('')` з handleClear → кейс «очищає» падає.
+describe('DatePickerInput — кнопка очищення (clearable)', () => {
+  const calendar = () => document.querySelector('.rdp-root');
+  const clearBtn = () => screen.queryByRole('button', { name: 'Очистити дату' });
+
+  it('без пропа clearable кнопки немає — поле у формах документів не змінилось', () => {
+    render(<DatePickerInput value="2026-10-13" onChange={vi.fn()} />);
+    expect(clearBtn()).not.toBeInTheDocument();
+  });
+
+  it('clearable без значення — кнопки немає; зі значенням — є, з підказкою', () => {
+    const { rerender } = render(<DatePickerInput value="" onChange={vi.fn()} clearable />);
+    expect(clearBtn()).not.toBeInTheDocument();
+
+    rerender(<DatePickerInput value="2026-10-13" onChange={vi.fn()} clearable />);
+    expect(clearBtn()).toBeInTheDocument();
+    expect(clearBtn()).toHaveAttribute('title', 'Очистити дату');
+    expect(clearBtn()).toHaveAttribute('type', 'button');
+    // Іконка календаря лишається поруч.
+    expect(screen.getByRole('button', { name: 'Відкрити календар' })).toBeInTheDocument();
+  });
+
+  it('disabled — кнопки немає навіть зі значенням', () => {
+    render(<DatePickerInput value="2026-10-13" onChange={vi.fn()} clearable disabled />);
+    expect(clearBtn()).not.toBeInTheDocument();
+  });
+
+  it('натискання очищає значення, закриває календар і повертає фокус у поле', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const Harness = () => {
+      const [value, setValue] = useState('2026-10-13');
+      return (
+        <DatePickerInput
+          value={value}
+          onChange={v => {
+            onChange(v);
+            setValue(v);
+          }}
+          ariaLabel="З"
+          clearable
+        />
+      );
+    };
+    render(<Harness />);
+    const input = screen.getByLabelText('З');
+    await user.click(input);
+    expect(calendar()).not.toBeNull();
+
+    await user.click(clearBtn()!);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('');
+    expect(input).toHaveValue('');
+    expect(calendar()).toBeNull();
+    expect(input).toHaveFocus();
+    // Значення немає → кнопка зникла.
+    expect(clearBtn()).not.toBeInTheDocument();
+  });
+
+  it('кнопка досяжна з клавіатури: Tab із поля → «Очистити дату», Enter очищає', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<DatePickerInput value="2026-10-13" onChange={onChange} ariaLabel="З" clearable />);
+    screen.getByLabelText('З').focus();
+
+    await user.tab();
+    expect(clearBtn()).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    expect(onChange).toHaveBeenCalledWith('');
+  });
+});

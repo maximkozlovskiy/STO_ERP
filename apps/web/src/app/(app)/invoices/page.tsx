@@ -49,7 +49,8 @@ import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { activateRow } from '@/lib/row-activation';
 import { InvoiceCreateModal } from '@/components/ui/InvoiceCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -257,6 +258,17 @@ function InvoicesPageInner() {
   const { selectAllRef, ...bulkSelect } = useBulkIndeterminate(invoices);
 
   const [selectedInv, setSelectedInv] = useState<InvoiceWithOptionals | null>(null);
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedInv(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedInv && !loading && !invoices.some(i => i.id === selectedInv.id))
+      setSelectedInv(null);
+  }, [selectedInv, invoices, loading]);
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
@@ -504,7 +516,10 @@ function InvoicesPageInner() {
   const selectInvoice = useCallback(async (inv: InvoiceWithOptionals) => {
     setSelectedInv(inv);
     try {
-      const detail = await apiFetch<InvoiceWithOptionals>(`/invoices/${inv.id}`);
+      // Рядок, позначений на видалення, сервер віддає лише з прапорцем withDeleted.
+      const detail = await apiFetch<InvoiceWithOptionals>(
+        inv.deletedAt ? `/invoices/${inv.id}?withDeleted=true` : `/invoices/${inv.id}`,
+      );
       // Bug #840: доки йшов запит, могли вибрати ІНШИЙ рахунок або закрити панель. Без перевірки
       // пізня відповідь повертала в панель попередній рахунок (шапка, «Зведення», дії — усе
       // чуже) і відкривала закриту панель. Той самий сторож, що в selectPO закупівель.
@@ -637,6 +652,14 @@ function InvoicesPageInner() {
             <LinesSummarySection entity="invoices" id={inv.id} enabled={detailPanel.enabled} />
             <PanelSection title={t('panel.sectionActions')}>
               <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setEditingInvoiceId(inv.id)}
+                >
+                  {t('actions.openDocument')}
+                </Button>
                 {(STATUS_TRANSITIONS[inv.status] as InvoiceStatusValue[] | undefined)?.map(s => (
                   <Button
                     key={s}
@@ -785,34 +808,22 @@ function InvoicesPageInner() {
           leftElement={<Search />}
           className="w-72 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">
-            {t('filters.dateFrom')}
-          </span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => {
-              setDateFrom(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">{t('filters.dateTo')}</span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => {
-              setDateTo(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={v => {
+            setDateFrom(v);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          onToChange={v => {
+            setDateTo(v);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          fromLabel={t('filters.dateFrom')}
+          toLabel={t('filters.dateTo')}
+        />
         <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="outline"
@@ -937,9 +948,17 @@ function InvoicesPageInner() {
                     <TableRow
                       key={inv.id}
                       title={toneTitle}
-                      onClick={() => {
-                        setEditingInvoiceId(inv.id);
-                      }}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                      // вимкнена → клік відкриває картку (те саме, що олівець).
+                      onClick={() =>
+                        activateRow({
+                          panelEnabled: detailPanel.enabled,
+                          isSelected: selectedInv?.id === inv.id,
+                          select: () => void selectInvoice(inv),
+                          deselect: () => setSelectedInv(null),
+                          open: () => setEditingInvoiceId(inv.id),
+                        })
+                      }
                       className={cn(
                         'group transition-colors cursor-pointer',
                         rowStatusBorderClass(rowTone),
@@ -1057,9 +1076,9 @@ function InvoicesPageInner() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            title={t('actions.openDetails')}
+                            title={t('actions.openDocument')}
                             className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            onClick={() => void selectInvoice(inv)}
+                            onClick={() => setEditingInvoiceId(inv.id)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>

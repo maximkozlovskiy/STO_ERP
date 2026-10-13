@@ -30,9 +30,9 @@
   },
   "actions": {
     "addDocument": "Document",
-    "openDetails": "Open details",
     "markForDeletion": "Mark for deletion",
-    "bulkDelete": "Delete selected"
+    "bulkDelete": "Delete selected",
+    "openDocument": "Open document"
   },
   "confirm": {
     "bulkDeleteTitle": "Delete {{count}} document(s)?",
@@ -47,17 +47,6 @@
   },
   "badges": {
     "deleted": "deleted"
-  },
-  "detail": {
-    "confirmButton": "Confirm document",
-    "cancelButton": "Cancel",
-    "colGood": "Item",
-    "colSku": "SKU",
-    "colQuantity": "Quantity",
-    "colPrice": "Price",
-    "loading": "Loading…",
-    "confirmedAt": "Confirmed: {{date}}",
-    "linkedDocuments": "Related documents"
   },
   "toast": {
     "bulkDeletedAll": "Deleted {{count}} document(s)",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   Plus,
@@ -183,6 +184,18 @@ export default function GoodsTab() {
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [selectedGood, setSelectedGood] = useState<Good | null>(null);
+
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedGood(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedGood && !loading && !(goods?.items ?? []).some(i => i.id === selectedGood.id))
+      setSelectedGood(null);
+  }, [selectedGood, goods?.items, loading]);
   const [goodDetailTab, setGoodDetailTab] = useState<GoodDetailTab>('info');
   const [barcodes, setBarcodes] = useState<GoodBarcode[]>([]);
   const [barcodesLoading, setBarcodesLoading] = useState(false);
@@ -663,11 +676,20 @@ export default function GoodsTab() {
                   return (
                     <TableRow
                       key={g.id}
-                      className={`group ${detailPanel.enabled && !isDeleted ? 'cursor-pointer' : ''} ${isDeleted ? 'opacity-60 bg-secondary/30' : selectedGood?.id === g.id && detailPanel.enabled ? 'bg-secondary' : ''}`}
+                      className={`group ${!isDeleted ? 'cursor-pointer' : ''} ${isDeleted ? 'opacity-60 bg-secondary/30' : selectedGood?.id === g.id && detailPanel.enabled ? 'bg-secondary' : ''}`}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель; вимкнена →
+                      // клік відкриває картку (те саме, що олівець). Видалений рядок не клікабельний.
                       onClick={
-                        detailPanel.enabled && !isDeleted
-                          ? () => selectGood(selectedGood?.id === g.id ? null : g)
-                          : undefined
+                        isDeleted
+                          ? undefined
+                          : () =>
+                              activateRow({
+                                panelEnabled: detailPanel.enabled,
+                                isSelected: selectedGood?.id === g.id,
+                                select: () => selectGood(g),
+                                deselect: () => selectGood(null),
+                                open: () => setEditGood(g),
+                              })
                       }
                     >
                       {features.bulkActionsEnabled && (
@@ -945,6 +967,16 @@ export default function GoodsTab() {
                     value={selectedGood.notes}
                     hidden={panelConfig.isFieldHidden('notes')}
                   />
+                  <div className="pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setEditGood(selectedGood)}
+                    >
+                      {t('common:openCard')}
+                    </Button>
+                  </div>
                 </div>
               )}
 

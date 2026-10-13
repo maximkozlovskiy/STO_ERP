@@ -7,7 +7,8 @@
 //   disabled → 2 POST /supplier-returns або подвійний confirm. Тепер ref фліпається
 //   синхронно у setSavingBoth/setTransitioningBoth → другий вхід одразу повертається.
 
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { SupplierReturnCreateModal } from '../SupplierReturnCreateModal';
@@ -65,7 +66,10 @@ describe('SupplierReturnCreateModal — double-submit guard (Bug #630 / WEB-H3)'
     let resolveConfirm: (v: unknown) => void = () => {};
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
       if (path === '/warehouses') return Promise.resolve(mockWarehouses);
-      if (path === '/supplier-returns/sr1' && (!init || init.method === undefined)) {
+      if (
+        path === '/supplier-returns/sr1?withDeleted=true' &&
+        (!init || init.method === undefined)
+      ) {
         return Promise.resolve(mockReturn);
       }
       if (path === '/supplier-returns/sr1/confirm' && init?.method === 'POST') {
@@ -103,5 +107,81 @@ describe('SupplierReturnCreateModal — double-submit guard (Bug #630 / WEB-H3)'
     await act(async () => {
       resolveConfirm({});
     });
+  });
+});
+
+// BR-PO-008 (рішення власника 2026-10-13): той самий товар можна повернути кількома рядками.
+// Раніше addLine мовчки відкидав повтор («+» нічого не робив), а сервер зливав рядки з однаковим
+// товаром — перший зникав разом зі своєю кількістю.
+//
+// Що ловить (мутацію не проганяв): повернути `if (existing.some(l => l.goodId === newLine.goodId)) return;`
+// у addLine → кейс падає (рядок лишається один, у PATCH іде один рядок).
+describe('SupplierReturnCreateModal — повтор товару окремим рядком', () => {
+  // Збереження проходить zod-схему форми — ідентифікатори мають бути справжніми UUID.
+  const G1 = '30000000-0000-4000-8000-000000000001';
+  const W1 = '30000000-0000-4000-8000-000000000002';
+  const SUP = '30000000-0000-4000-8000-000000000003';
+  const U1 = '30000000-0000-4000-8000-000000000004';
+  const draft = {
+    ...mockReturn,
+    supplierId: SUP,
+    warehouseId: W1,
+    lines: [{ ...mockReturn.lines[0], goodId: G1, unitOfMeasureId: U1 }],
+  };
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it('той самий товар додається другим рядком і йде у збереження двома рядками, у тому ж порядку', async () => {
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/warehouses') return Promise.resolve([{ id: W1, name: 'Склад №1' }]);
+      if (path === '/supplier-returns/sr1?withDeleted=true') return Promise.resolve(draft);
+      if (path.startsWith('/goods?')) {
+        return Promise.resolve({
+          items: [{ id: G1, name: 'Фільтр', sku: 'F-1', unit: 'шт', purchasePrice: 90 }],
+        });
+      }
+      if (path === '/supplier-returns/sr1' && init?.method === 'PATCH') return Promise.resolve({});
+      return Promise.resolve({ items: [] });
+    });
+    const user = userEvent.setup();
+    render(<SupplierReturnCreateModal open onClose={() => {}} onSaved={() => {}} editId="sr1" />);
+    await screen.findByText('Фільтр');
+
+    // Відкриваємо рядок введення і вибираємо ТОЙ САМИЙ товар, що вже є в документі.
+    await user.click(screen.getByRole('button', { name: 'Додати' }));
+    const table = screen.getByRole('table');
+    await user.click(within(table).getByRole('button', { name: 'Обрати' }));
+    await screen.findByText('Оберіть товар');
+    // У списку підбору той самий товар: у таблиці він уже є, тож шукаємо другий напис.
+    await waitFor(() => expect(screen.getAllByText('Фільтр').length).toBeGreaterThan(1));
+    const inPicker = screen.getAllByText('Фільтр').find(el => !table.contains(el))!;
+    await user.click(inPicker);
+    await user.click(screen.getByTitle('Додати рядок'));
+
+    // У таблиці два рядки одного товару; сума — обох: 2 × 100 + 1 × 90.
+    await waitFor(() => expect(within(table).getAllByText('Фільтр')).toHaveLength(2));
+    expect(table).toHaveTextContent('290.00');
+
+    await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
+
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(
+          ([p, init]) => p === '/supplier-returns/sr1' && init?.method === 'PATCH',
+        ),
+      ).toBe(true),
+    );
+    const patch = apiFetchMock.mock.calls.find(
+      ([p, init]) => p === '/supplier-returns/sr1' && init?.method === 'PATCH',
+    )!;
+    const body = JSON.parse((patch[1] as RequestInit).body as string) as {
+      lines: { goodId: string; quantity: number; price: number }[];
+    };
+    expect(body.lines.map(l => [l.goodId, Number(l.quantity), Number(l.price)])).toEqual([
+      [G1, 2, 100],
+      [G1, 1, 90],
+    ]);
   });
 });

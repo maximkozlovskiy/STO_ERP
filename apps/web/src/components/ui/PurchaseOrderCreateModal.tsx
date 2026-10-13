@@ -63,6 +63,7 @@ import {
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
 import { RulePricerModal } from '@/components/ui/purchase-order/RulePricerModal';
 import { XlsxImportButton } from '@/components/ui/xlsx-import-button';
+import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { ExcelImportWizard } from '@/components/ui/ExcelImportWizard';
 import {
   type Warehouse,
@@ -201,6 +202,9 @@ export function PurchaseOrderCreateModal({
   const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
   const [ruleFilterBySupplier, setRuleFilterBySupplier] = useState(true);
   const [error, setError] = useState('');
+  // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
+  // завантаженого документа, тож інший документ у тій самій модалці його не успадковує.
+  const [deletedDocId, setDeletedDocId] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentPrefill, setPaymentPrefill] = useState<SupplierPaymentPrefill | null>(null);
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false);
@@ -379,8 +383,9 @@ export function PurchaseOrderCreateModal({
         setLoading(true);
         setError('');
       }
-      return apiFetch<PODetail>(`/purchase-orders/${id}`)
+      return apiFetch<PODetail>(`/purchase-orders/${id}?withDeleted=true`)
         .then(po => {
+          setDeletedDocId((po as { deletedAt?: string | null }).deletedAt ? id : null);
           setPoNumber(po.number);
           setCurrentStatus(po.status);
           // reset() ставить нову «чисту» базу із завантаженого запису → rhfDirty=false.
@@ -555,10 +560,14 @@ export function PurchaseOrderCreateModal({
   // Memoize allowedTransitions itself to keep referential stability (each render
   // would otherwise produce a fresh fallback array). This also lets the prev/next
   // useMemo below depend on `allowedTransitions` directly without thrashing.
+  const isDeleted = isEditMode && !!purchaseOrderId && deletedDocId === purchaseOrderId;
   const allowedTransitions = useMemo<readonly string[]>(
     () =>
-      isEditMode ? (PO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS) : EMPTY_TRANSITIONS,
-    [currentStatus, isEditMode],
+      // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
+      isEditMode && !isDeleted
+        ? (PO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
+        : EMPTY_TRANSITIONS,
+    [currentStatus, isEditMode, isDeleted],
   );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
@@ -583,7 +592,7 @@ export function PurchaseOrderCreateModal({
   // resolve-иться. Тому в JSX вони викликаються через `void` — чекати проміс нема кому.
   const doTransition = useCallback(
     async (newStatus: string) => {
-      if (!purchaseOrderId) return;
+      if (!purchaseOrderId || isDeleted) return;
       setTransitioningBoth(true);
       setError('');
       try {
@@ -599,7 +608,7 @@ export function PurchaseOrderCreateModal({
         setTransitioningBoth(false);
       }
     },
-    [purchaseOrderId, onSaved],
+    [purchaseOrderId, isDeleted, onSaved],
   );
 
   // ── Lines ─────────────────────────────────────────────────────────────────
@@ -710,7 +719,7 @@ export function PurchaseOrderCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !isDeleted : true;
 
   // Повертає id створеного PO (для create-then-open-wizard) або null при помилці/дублі-сабміті.
   // Читаємо валідовані значення вручну через getValues()+safeParse (замість handleSubmit),
@@ -794,7 +803,8 @@ export function PurchaseOrderCreateModal({
   };
 
   const handleSave = async () => {
-    if (!purchaseOrderId) return;
+    // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
+    if (!purchaseOrderId || isDeleted) return;
     if (savingRef.current || transitioningRef.current) return;
     const parsed = purchaseOrderFormSchema.safeParse(getValues());
     if (!parsed.success) {
@@ -1154,7 +1164,7 @@ export function PurchaseOrderCreateModal({
               )}
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              {isEditMode && currentStatus !== 'CANCELLED' && (
+              {isEditMode && currentStatus !== 'CANCELLED' && !isDeleted && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1211,24 +1221,28 @@ export function PurchaseOrderCreateModal({
                       </>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={saving || transitioning}
-                    title="Поділитись"
-                  >
-                    <Share2 size={15} className="mr-1" />
-                    Поділитись
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={saving || transitioning}
-                    title="Відправити SMS"
-                  >
-                    <MessageSquare size={15} className="mr-1" />
-                    SMS
-                  </Button>
+                  {!isDeleted && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving || transitioning}
+                        title="Поділитись"
+                      >
+                        <Share2 size={15} className="mr-1" />
+                        Поділитись
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving || transitioning}
+                        title="Відправити SMS"
+                      >
+                        <MessageSquare size={15} className="mr-1" />
+                        SMS
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
               {isEditMode ? (
@@ -1265,6 +1279,7 @@ export function PurchaseOrderCreateModal({
         }
       >
         <div className="flex flex-col min-h-[70dvh]">
+          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
           {/* ── Collapsible header ─────────────────────────────────────── */}
           <div
             className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
@@ -1401,33 +1416,36 @@ export function PurchaseOrderCreateModal({
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">Товари</p>
               <div className="flex items-center gap-2">
-                {isEditMode && (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void openRulePricer()}
-                      loading={applyingPricing}
-                      disabled={applyingPricing || saving || transitioning}
-                      title="Розцінити за обраним правилом"
-                    >
-                      <Zap size={13} className="mr-1" />
-                      За правилом
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleApplyPricing()}
-                      loading={applyingPricing}
-                      disabled={applyingPricing || saving || transitioning}
-                      title="Розцінити товари за правилами автоматично"
-                    >
-                      <Zap size={13} className="mr-1" />
-                      Розцінити
-                    </Button>
-                  </>
-                )}
                 {isEditMode &&
+                  !isDeleted &&
+                  (currentStatus === 'RECEIVED' || currentStatus === 'PARTIAL') && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void openRulePricer()}
+                        loading={applyingPricing}
+                        disabled={applyingPricing || saving || transitioning}
+                        title="Розцінити за обраним правилом"
+                      >
+                        <Zap size={13} className="mr-1" />
+                        За правилом
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleApplyPricing()}
+                        loading={applyingPricing}
+                        disabled={applyingPricing || saving || transitioning}
+                        title="Розцінити товари за правилами автоматично"
+                      >
+                        <Zap size={13} className="mr-1" />
+                        Розцінити
+                      </Button>
+                    </>
+                  )}
+                {isEditMode &&
+                  !isDeleted &&
                   (currentStatus === 'ORDERED' || currentStatus === 'PARTIAL') &&
                   (receiveMode ? (
                     <>
@@ -1781,6 +1799,7 @@ export function PurchaseOrderCreateModal({
                               min="0"
                               step="0.01"
                               value={line.pricedSalePrice ?? ''}
+                              disabled={isDeleted}
                               onChange={e => {
                                 const val =
                                   e.target.value === '' ? undefined : parseFloat(e.target.value);

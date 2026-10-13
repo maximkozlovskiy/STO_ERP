@@ -127,16 +127,20 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
 
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
-    if (await row.isVisible({ timeout: 10_000 })) {
-      await row.click();
-      // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal, у якому
-      // для TRANSFER показується лейбл "Склад призначення" (без дефіса) + Select зі складами.
+    // Раніше тут стояло `if (await row.isVisible())`: isVisible не чекає, тож перевірка картки
+    // могла мовчки не виконатись. Документ створено сьогодні — типовий фільтр дат його показує.
+    try {
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await row.locator('td').nth(1).click();
+      // Панель вимкнена → клік по рядку відкриває картку, у якій для TRANSFER показується
+      // лейбл "Склад призначення" (без дефіса) + Select зі складами.
       const modal = page.locator('[role="dialog"]').first();
       await expect(modal).toBeVisible({ timeout: 8_000 });
+      await expect(modal).toContainText(doc.number);
       await expect(modal.locator('text=Склад призначення').first()).toBeVisible({ timeout: 8_000 });
+    } finally {
+      await apiCall(page, 'DELETE', `/stock-documents/${doc.id}`);
     }
-
-    await apiCall(page, 'DELETE', `/stock-documents/${doc.id}`);
   });
 });
 

@@ -76,7 +76,7 @@ describe('StockDocumentCreateModal — імпорт рядків з XLSX', () =>
       if (path === '/warehouses') {
         return Promise.resolve([{ id: 'w1', name: 'Склад №1', deletedAt: null }]);
       }
-      if (path === `/stock-documents/${DOC}`) {
+      if (path === `/stock-documents/${DOC}?withDeleted=true`) {
         return Promise.resolve({
           id: DOC,
           number: 'ПРХ-000001',
@@ -99,12 +99,12 @@ describe('StockDocumentCreateModal — імпорт рядків з XLSX', () =>
       <StockDocumentCreateModal open stockDocumentId={DOC} onClose={onClose} onSaved={onSaved} />,
     );
     await screen.findByText('Фільтр');
-    expect(docLoads(`/stock-documents/${DOC}`)).toBe(1);
+    expect(docLoads(`/stock-documents/${DOC}?withDeleted=true`)).toBe(1);
 
     await userEvent.click(screen.getByRole('button', { name: 'тест-імпорт-xlsx' }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(docLoads(`/stock-documents/${DOC}`)).toBe(2));
+    await waitFor(() => expect(docLoads(`/stock-documents/${DOC}?withDeleted=true`)).toBe(2));
     expect(onClose).not.toHaveBeenCalled();
   });
 });
@@ -115,7 +115,7 @@ describe('PurchaseOrderCreateModal — імпорт рядків з XLSX', () =>
       if (path === '/warehouses') {
         return Promise.resolve([{ id: 'w1', name: 'Склад №1', deletedAt: null }]);
       }
-      if (path === `/purchase-orders/${PO}`) {
+      if (path === `/purchase-orders/${PO}?withDeleted=true`) {
         return Promise.resolve({
           id: PO,
           number: 'ЗАМ-000001',
@@ -141,12 +141,14 @@ describe('PurchaseOrderCreateModal — імпорт рядків з XLSX', () =>
       <PurchaseOrderCreateModal open purchaseOrderId={PO} onClose={onClose} onSaved={onSaved} />,
     );
     await screen.findByText('Фільтр');
-    const before = docLoads(`/purchase-orders/${PO}`);
+    const before = docLoads(`/purchase-orders/${PO}?withDeleted=true`);
 
     await userEvent.click(await screen.findByRole('button', { name: 'тест-імпорт-xlsx' }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(docLoads(`/purchase-orders/${PO}`)).toBe(before + 1));
+    await waitFor(() =>
+      expect(docLoads(`/purchase-orders/${PO}?withDeleted=true`)).toBe(before + 1),
+    );
     expect(onClose).not.toHaveBeenCalled();
   });
 });

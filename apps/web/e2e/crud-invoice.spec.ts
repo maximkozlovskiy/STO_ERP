@@ -168,8 +168,8 @@ test.describe('Рахунки — CRUD', () => {
 
     const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal з FSM steper.
+    await row.getByTitle('Відкрити документ').click();
+    // Modal redesign (commit e6d2e148): олівець відкриває edit modal з FSM steper.
     // Next-step кнопка показує label цільового статусу (INVOICE_STATUS_LABELS),
     // для DRAFT → next = SENT = "Надіслано". Транзиція виконується через цю кнопку.
     const modal = page.locator('[role="dialog"]').first();

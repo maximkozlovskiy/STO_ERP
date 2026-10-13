@@ -251,13 +251,13 @@ test.describe('Рахунки — Detail Panel', () => {
     await ctx.close();
   });
 
-  test('клік на рядок → Edit Modal відкривається', async ({ page }) => {
+  test('олівець у рядку → Edit Modal відкривається', async ({ page }) => {
     expect(invId, 'beforeAll має створити рахунок (seed має CLIENT)').toBeTruthy();
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    // Modal redesign (a14931b0): клік на рядок відкриває edit modal у форматі WO/StockDoc — title="Рахунок-фактура",
+    await row.getByTitle('Відкрити документ').click();
+    // Modal redesign (a14931b0): олівець відкриває edit modal у форматі WO/StockDoc — title="Рахунок-фактура",
     // номер у headerContent поряд із "Номер:".
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
@@ -270,7 +270,7 @@ test.describe('Рахунки — Detail Panel', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
+    await row.getByTitle('Відкрити документ').click();
     // Modal redesign (commit e6d2e148): badge «Чернетка» — у status steper модалки.
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
@@ -282,8 +282,8 @@ test.describe('Рахунки — Detail Panel', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal з FSM steper.
+    await row.getByTitle('Відкрити документ').click();
+    // Modal redesign (commit e6d2e148): олівець відкриває edit modal з FSM steper.
     // Next-step кнопка показує label статусу-цілі (INVOICE_STATUS_LABELS) — для DRAFT це "Надіслано".
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
@@ -297,7 +297,7 @@ test.describe('Рахунки — Detail Panel', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
+    await row.getByTitle('Відкрити документ').click();
     // Modal redesign (commit e6d2e148): немає окремої вкладки «Позиції» —
     // таблиця рядків (ОПИС / К-СТЬ / ЦІНА / СУМА) рендериться інлайн у модалці.
     const modal = page.locator('[role="dialog"]').first();
@@ -345,8 +345,8 @@ test.describe('Рахунки — FSM переходи', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    // Modal redesign (commit e6d2e148): клік на рядок відкриває edit modal.
+    await row.getByTitle('Відкрити документ').click();
+    // Modal redesign (commit e6d2e148): олівець відкриває edit modal.
     // FSM-steper: next-step кнопка показує label цільового статусу. DRAFT → SENT = "Надіслано".
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
@@ -367,8 +367,8 @@ test.describe('Рахунки — FSM переходи', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal.
+    await row.getByTitle('Відкрити документ').click();
+    // Modal redesign (commit e6d2e148): олівець відкриває edit modal.
     // Кнопка "Скасувати" — у footer модалки (destructive variant), доступна якщо CANCELLED у allowedTransitions.
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
@@ -432,12 +432,9 @@ test.describe('Рахунки — реєстрація оплати', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal без кнопки "Оплатити".
-    // Кнопка "Оплатити" живе у detail panel — відкривається через hover + icon "Відкрити деталі".
-    await row.hover();
-    const detailsBtn = row.locator('button[title="Відкрити деталі"]').first();
-    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
-    await detailsBtn.click();
+    // Кнопка "Оплатити" живе у боковій панелі; панель показує клік по рядку
+    // (стандарт списків 2026-10-13: клік → панель, олівець → картка).
+    await row.getByText(invNumber).first().click();
 
     const payBtn = page.locator('button:has-text("Оплатити")').first();
     await expect(payBtn).toBeVisible({ timeout: 8_000 });
@@ -509,12 +506,9 @@ test.describe('Рахунки — клонування', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal без кнопки "Дублювати".
-    // Кнопка "Дублювати" живе у detail panel — відкривається через hover + icon "Відкрити деталі".
-    await row.hover();
-    const detailsBtn = row.locator('button[title="Відкрити деталі"]').first();
-    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
-    await detailsBtn.click();
+    // Кнопка "Дублювати" живе у боковій панелі; панель показує клік по рядку
+    // (стандарт списків 2026-10-13: клік → панель, олівець → картка).
+    await row.getByText(invNumber).first().click();
 
     const cloneBtn = page.locator('button:has-text("Дублювати")').first();
     await expect(cloneBtn).toBeVisible({ timeout: 8_000 });
@@ -755,12 +749,9 @@ test.describe('Рахунки — PDF', () => {
     await gotoInvoices(page, true);
     const row = page.locator(`table tbody tr:has-text("${invNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    // Modal redesign (commit e6d2e148): row.click() відкриває edit modal без кнопки PDF.
-    // Кнопка "Завантажити PDF" живе у detail panel — відкривається через icon "Відкрити деталі".
-    await row.hover();
-    const detailsBtn = row.locator('button[title="Відкрити деталі"]').first();
-    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
-    await detailsBtn.click();
+    // Кнопка "Завантажити PDF" живе у боковій панелі; панель показує клік по рядку
+    // (стандарт списків 2026-10-13: клік → панель, олівець → картка).
+    await row.getByText(invNumber).first().click();
 
     const pdfBtn = page.locator('button:has-text("Завантажити PDF")').first();
     await expect(pdfBtn).toBeVisible({ timeout: 8_000 });

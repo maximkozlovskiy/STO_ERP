@@ -85,7 +85,7 @@ function mockApi() {
     if (path === `/work-orders/${WO}/linked-documents`) {
       return Promise.resolve({ invoices: [], payments: [], calendarSlots: [], warranties: [] });
     }
-    if (path === `/work-orders/${WO}`) {
+    if (path === `/work-orders/${WO}?withDeleted=true`) {
       return Promise.resolve({
         id: WO,
         number: 'WO-001',

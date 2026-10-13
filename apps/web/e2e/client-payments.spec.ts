@@ -228,10 +228,9 @@ test.describe('Оплати клієнтів (money-flow)', () => {
     }
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    // Клік по рядку відкриває edit-модалку; «Оплатити» живе у DetailPanel (олівець «Відкрити
-    // деталі»). Наводимо hover → клік олівця → DetailPanel з кнопкою «Оплатити».
-    await row.hover();
-    await row.getByRole('button', { name: 'Відкрити деталі' }).click();
+    // «Оплатити» живе у боковій панелі; панель показує клік по рядку (стандарт списків
+    // 2026-10-13: клік → панель, олівець → картка).
+    await row.getByText(inv.number).first().click();
 
     // DetailPanel відкрився (заголовок = номер рахунку). SENT → transition PAID → кнопка «Оплатити».
     const payBtn = page.getByRole('button', { name: 'Оплатити' }).first();
@@ -279,8 +278,7 @@ test.describe('Оплати клієнтів (money-flow)', () => {
     await searchInput.fill(inv.number);
     const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.hover();
-    await row.getByRole('button', { name: 'Відкрити деталі' }).click();
+    await row.getByText(inv.number).first().click();
 
     const payBtn = page.getByRole('button', { name: 'Оплатити' }).first();
     await expect(payBtn).toBeVisible({ timeout: 15_000 });
@@ -342,8 +340,7 @@ test.describe('Оплати клієнтів (money-flow)', () => {
     await page.locator('input[placeholder*="Пошук"]').first().fill(inv.number);
     const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.hover();
-    await row.getByRole('button', { name: 'Відкрити деталі' }).click();
+    await row.getByText(inv.number).first().click();
     await page.getByRole('button', { name: 'Оплатити' }).first().click();
 
     const modal = page

@@ -124,10 +124,24 @@ export function useSupplierPayments(filters: SupplierPaymentsFilter = {}) {
   });
 }
 
-export function useSupplierPayment(id: string | null) {
+/**
+ * `withDeleted` — картка-сторінка показує й оплату, позначену на видалення (лише перегляд).
+ * Окремий ключ кешу: модалка редагування чернетки вантажить без прапорця і видалену не бачить.
+ * Обидва ключі починаються з `detail(id)`, тож інвалідація по ньому оновлює обидва.
+ */
+export function useSupplierPayment(id: string | null, opts: { withDeleted?: boolean } = {}) {
+  const withDeleted = opts.withDeleted === true;
   return useQuery({
-    queryKey: id ? supplierPaymentsKeys.detail(id) : ['supplier-payments', 'detail', null],
-    queryFn: () => apiFetch<SupplierPayment>(`/supplier-payments/${id}`),
+    queryKey: id
+      ? withDeleted
+        ? [...supplierPaymentsKeys.detail(id), 'withDeleted']
+        : supplierPaymentsKeys.detail(id)
+      : ['supplier-payments', 'detail', null],
+    queryFn: ({ signal }) =>
+      apiFetch<SupplierPayment>(
+        withDeleted ? `/supplier-payments/${id}?withDeleted=true` : `/supplier-payments/${id}`,
+        { signal },
+      ),
     enabled: !!id,
     staleTime: 30_000,
   });

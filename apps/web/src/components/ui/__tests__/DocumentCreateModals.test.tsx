@@ -299,7 +299,7 @@ describe('InvoiceCreateModal — regression', () => {
       ],
     };
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/invoices/inv-1' && (!init || init.method === undefined))
+      if (path === '/invoices/inv-1?withDeleted=true' && (!init || init.method === undefined))
         return Promise.resolve(initialInvoice);
       if (path === '/invoices/inv-1' && init?.method === 'PATCH')
         return Promise.resolve({ ...initialInvoice });
@@ -319,7 +319,9 @@ describe('InvoiceCreateModal — regression', () => {
     render(<InvoiceCreateModal open invoiceId="inv-1" onClose={onClose} onSaved={onSaved} />);
 
     // Wait for invoice detail load.
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/invoices/inv-1'));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/invoices/inv-1?withDeleted=true'),
+    );
     // Wait for the rows to appear. timeout:2000 — під повним паралельним suite
     // async-flush голодує (edit-mode load + RHF reset); дефолт 1000ms flaky.
     await screen.findByText('Робота 1', undefined, { timeout: 2000 });

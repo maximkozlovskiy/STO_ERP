@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -89,35 +89,73 @@ test.describe('CRM — пошук', () => {
 // ─── Картка контрагента ─────────────────────────────────────────────────────
 
 test.describe('CRM — картка контрагента', () => {
-  test('картка відкривається та має таби', async ({ page }) => {
+  // Стандарт списків (2026-10-13): клік по рядку показує бокову панель, повторний клік ховає;
+  // у картку — олівцем або кнопкою «Відкрити картку» в панелі; з вимкненою панеллю клік
+  // одразу відкриває картку.
+  //
+  // До цього обидва тести клікали по рядку й чекали переходу на `/counterparties/<id>`, якого
+  // список ніколи не робив, і проходили лише завдяки `if (!(await firstRow.isVisible())) return`
+  // (isVisible не чекає — тест виходив до завантаження таблиці).
+  async function gotoList(page: Page, panelEnabled: boolean) {
+    await page.addInitScript(enabled => {
+      localStorage.setItem('sto_detail_panel_crm', String(enabled));
+    }, panelEnabled);
     await page.goto('/counterparties');
-    await page.waitForLoadState('domcontentloaded');
+    // Рядок контрагента — той, що має олівець (порожній стан і видалені рядки його не мають).
+    const firstRow = page
+      .locator('table tbody tr')
+      .filter({ has: page.getByTitle('Редагувати') })
+      .first();
+    await expect(firstRow, 'seed має містити контрагентів').toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByRole('button', {
+        name: panelEnabled ? 'Сховати бокову панель' : 'Показати бокову панель',
+      }),
+    ).toBeVisible();
+    return firstRow;
+  }
+  const openCardBtn = (page: Page) => page.getByRole('button', { name: 'Відкрити картку' });
 
-    const firstRow = page.locator('table tbody tr').first();
-    if (!(await firstRow.isVisible({ timeout: 5_000 }))) return;
+  test('клік по рядку показує панель із балансом, повторний клік ховає; картка не відкривається', async ({
+    page,
+  }) => {
+    const firstRow = await gotoList(page, true);
 
-    await firstRow.click();
-    await page.waitForLoadState('domcontentloaded');
+    await firstRow.locator('td').nth(1).click();
+    // Панель показує рядок: кнопка «Відкрити картку» і поле «Баланс» зі схеми панелі.
+    await expect(openCardBtn(page)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Баланс', { exact: true }).first()).toBeVisible();
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/counterparties\/?(\?.*)?$/);
 
-    await expect(page).toHaveURL(/\/counterparties\/[a-z0-9-]+/, { timeout: 10_000 });
-
-    // Таби: Загальна інформація, Гаражі та авто, Взаєморозрахунки, Наряди
-    const tabs = page.locator('[role="tab"], button[data-state]');
-    await expect(tabs.first()).toBeVisible({ timeout: 10_000 });
+    await firstRow.locator('td').nth(1).click();
+    await expect(openCardBtn(page)).toHaveCount(0, { timeout: 5_000 });
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
   });
 
-  test('картка показує баланс контрагента', async ({ page }) => {
-    await page.goto('/counterparties');
-    await page.waitForLoadState('domcontentloaded');
+  test('картка відкривається олівцем і кнопкою панелі', async ({ page }) => {
+    const firstRow = await gotoList(page, true);
 
-    const firstRow = page.locator('table tbody tr').first();
-    if (!(await firstRow.isVisible({ timeout: 5_000 }))) return;
+    // Олівець: картка одразу, рядок у панель не вибирається.
+    await firstRow.hover();
+    await firstRow.getByTitle('Редагувати').click();
+    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10_000 });
+    await expect(openCardBtn(page)).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0, { timeout: 5_000 });
 
-    await firstRow.click();
-    await page.waitForLoadState('domcontentloaded');
+    // Кнопка панелі: клік по рядку → панель → «Відкрити картку».
+    await firstRow.locator('td').nth(1).click();
+    await openCardBtn(page).click();
+    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10_000 });
+  });
 
-    // Баланс у картці (може бути в DetailPanel або окремій секції)
-    const balanceEl = page.locator('text=/баланс|Balance|грн|₴/i').first();
-    await expect(balanceEl).toBeVisible({ timeout: 10_000 });
+  test('панель вимкнена: клік по рядку одразу відкриває картку', async ({ page }) => {
+    const firstRow = await gotoList(page, false);
+
+    await firstRow.locator('td').nth(1).click();
+
+    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 10_000 });
+    await expect(openCardBtn(page)).toHaveCount(0);
   });
 });

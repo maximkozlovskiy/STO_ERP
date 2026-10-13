@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { clearDateFilter } from './fixtures';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 
@@ -97,14 +98,66 @@ test.describe('Наряди — форма створення', () => {
 // ─── Картка наряду ───────────────────────────────────────────────────────────
 
 test.describe('Наряди — картка', () => {
-  test('картка наряду відкривається з правильним URL', async ({ page }) => {
+  // Стандарт списків (2026-10-13): клік по рядку показує бокову панель, у наряд — олівцем або
+  // кнопкою панелі; з вимкненою панеллю клік одразу відкриває наряд.
+  //
+  // До цього тест клікав по рядку й чекав переходу на `/work-orders/<id>`, якого список ніколи
+  // не робив, і проходив лише тому, що `isVisible()` не чекає: перевірка в `if` не виконувалась.
+  async function gotoWorkOrders(page: Page, panelEnabled: boolean) {
+    await page.addInitScript(enabled => {
+      localStorage.setItem('sto_detail_panel_work-orders', String(enabled));
+    }, panelEnabled);
     await page.goto('/work-orders');
-    await expect(page).toHaveURL(/\/work-orders/, { timeout: 15_000 });
-    const firstRow = page.locator('table tbody tr').first();
-    if (await firstRow.isVisible({ timeout: 10_000 })) {
-      await firstRow.click();
-      await expect(page).toHaveURL(/\/work-orders\/[a-z0-9-]+/, { timeout: 10_000 });
-    }
+    await expect(page.locator('h1:has-text("Наряди")')).toBeVisible({ timeout: 20_000 });
+    await clearDateFilter(page);
+    // Рядок наряду — той, що має олівець (порожній стан і скелетон його не мають).
+    const firstRow = page
+      .locator('table tbody tr')
+      .filter({ has: page.getByTitle('Відкрити наряд') })
+      .first();
+    await expect(firstRow, 'seed має містити наряди').toBeVisible({ timeout: 20_000 });
+    return firstRow;
+  }
+  // Кнопка панелі має видимий текст; олівець у рядку — лише title, тому за текстом вона одна.
+  const panelOpenBtn = (page: Page) => page.getByText('Відкрити наряд', { exact: true });
+
+  test('клік по рядку показує панель, повторний ховає; у наряд — кнопкою панелі', async ({
+    page,
+  }) => {
+    const firstRow = await gotoWorkOrders(page, true);
+    await expect(page.getByRole('button', { name: 'Сховати бокову панель' })).toBeVisible();
+
+    await firstRow.locator('td').nth(1).click();
+    await expect(panelOpenBtn(page)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/work-orders\/?(\?.*)?$/);
+
+    await firstRow.locator('td').nth(1).click();
+    await expect(panelOpenBtn(page)).toHaveCount(0, { timeout: 5_000 });
+
+    await firstRow.locator('td').nth(1).click();
+    await panelOpenBtn(page).click();
+    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('олівець відкриває наряд і з увімкненою панеллю, рядок не вибирає', async ({ page }) => {
+    const firstRow = await gotoWorkOrders(page, true);
+
+    await firstRow.hover();
+    await firstRow.getByTitle('Відкрити наряд').click();
+
+    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(panelOpenBtn(page)).toHaveCount(0);
+  });
+
+  test('панель вимкнена: клік по рядку одразу відкриває наряд', async ({ page }) => {
+    const firstRow = await gotoWorkOrders(page, false);
+    await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
+
+    await firstRow.locator('td').nth(1).click();
+
+    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(panelOpenBtn(page)).toHaveCount(0);
   });
 
   test('неіснуючий ID → показує повідомлення "не знайдено"', async ({ page }) => {

@@ -29,6 +29,8 @@
   },
   "retry": "Retry",
   "listLoadError": "Failed to load the list",
+  "clearDate": "Clear date",
+  "deletedDocumentReadOnly": "The document is marked for deletion — view only",
   "linesSummary": {
     "title": "Summary",
     "executorsTitle": "Assignees",
@@ -61,5 +63,6 @@
     "empty": "No lines",
     "loadError": "Failed to load the summary",
     "executorNotFound": "Employee not found"
-  }
+  },
+  "openCard": "Open card"
 }

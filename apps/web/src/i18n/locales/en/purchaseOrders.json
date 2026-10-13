@@ -101,6 +101,7 @@
     "returnDeleteFailed": "Failed to delete",
     "loadLines": "Failed to load line items",
     "receiveNoQty": "Enter a quantity for at least one line item",
-    "receiveFailed": "Goods receipt error"
+    "receiveFailed": "Goods receipt error",
+    "returnLoadFailed": "Failed to load the return"
   }
 }

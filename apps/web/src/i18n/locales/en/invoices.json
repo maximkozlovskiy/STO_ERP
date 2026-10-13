@@ -31,9 +31,9 @@
     "downloadPdf": "Download PDF",
     "print": "Print",
     "clone": "Duplicate",
-    "openDetails": "Open details",
     "markForDeletion": "Mark for deletion",
-    "bulkCancel": "Cancel selected"
+    "bulkCancel": "Cancel selected",
+    "openDocument": "Open document"
   },
   "confirm": {
     "transition": "Move invoice {{number}} → {{status}}?",

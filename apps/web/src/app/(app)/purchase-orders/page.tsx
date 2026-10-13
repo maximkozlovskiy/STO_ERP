@@ -50,7 +50,8 @@ import { Pagination } from '@/components/ui/pagination';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { activateRow } from '@/lib/row-activation';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SavedFiltersBar, SaveFilterButton } from '@/components/ui/saved-filters-bar';
@@ -511,7 +512,10 @@ function PurchaseOrdersPageClient() {
     selectedPOIdRef.current = po.id;
     setSelectedPO(po);
     // Довантаження повного PO поза updater-ом — оновлює рядок, якщо він ще вибраний.
-    apiFetch<PurchaseOrder>(`/purchase-orders/${po.id}`)
+    // Рядок, позначений на видалення, сервер віддає лише з прапорцем withDeleted.
+    apiFetch<PurchaseOrder>(
+      po.deletedAt ? `/purchase-orders/${po.id}?withDeleted=true` : `/purchase-orders/${po.id}`,
+    )
       .then(full => setSelectedPO(cur => (cur?.id === po.id ? full : cur)))
       .catch(() => {
         /* лишаємо базові дані зі списку, якщо детальний запит впав */
@@ -896,36 +900,22 @@ function PurchaseOrdersPageClient() {
               leftElement={<Search />}
               className="w-64 h-8 text-[13px]"
             />
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">
-                {t('filters.dateFrom')}
-              </span>
-              <DatePickerInput
-                value={srDateFrom}
-                onChange={v => {
-                  setSrDateFrom(v);
-                  resetSrPage();
-                  setSrActiveSavedFilterId(null);
-                }}
-                max={srDateTo || undefined}
-                className="w-36"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">
-                {t('filters.dateTo')}
-              </span>
-              <DatePickerInput
-                value={srDateTo}
-                onChange={v => {
-                  setSrDateTo(v);
-                  resetSrPage();
-                  setSrActiveSavedFilterId(null);
-                }}
-                min={srDateFrom || undefined}
-                className="w-36"
-              />
-            </div>
+            <DateRangeFilter
+              from={srDateFrom}
+              to={srDateTo}
+              onFromChange={v => {
+                setSrDateFrom(v);
+                resetSrPage();
+                setSrActiveSavedFilterId(null);
+              }}
+              onToChange={v => {
+                setSrDateTo(v);
+                resetSrPage();
+                setSrActiveSavedFilterId(null);
+              }}
+              fromLabel={t('filters.dateFrom')}
+              toLabel={t('filters.dateTo')}
+            />
             <div className="flex items-center gap-2 ml-auto">
               <Button
                 variant="outline"
@@ -1027,13 +1017,15 @@ function PurchaseOrdersPageClient() {
                           'group transition-colors cursor-pointer',
                           selectedSr?.id === sr.id && srDetailPanel.enabled && 'bg-primary/5',
                         )}
-                        onClick={() => {
-                          if (srDetailPanel.enabled) {
-                            setSelectedSrId(cur => (cur === sr.id ? null : sr.id));
-                          } else {
-                            openSr(sr.id);
-                          }
-                        }}
+                        onClick={() =>
+                          activateRow({
+                            panelEnabled: srDetailPanel.enabled,
+                            isSelected: selectedSrId === sr.id,
+                            select: () => setSelectedSrId(sr.id),
+                            deselect: () => setSelectedSrId(null),
+                            open: () => openSr(sr.id),
+                          })
+                        }
                       >
                         {srVisibleColumns.map(col => {
                           if (col.key === 'number')
@@ -1263,36 +1255,22 @@ function PurchaseOrdersPageClient() {
               leftElement={<Search />}
               className="w-64 h-8 text-[13px]"
             />
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">
-                {t('filters.dateFrom')}
-              </span>
-              <DatePickerInput
-                value={dateFrom}
-                onChange={v => {
-                  setDateFrom(v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
-                max={dateTo || undefined}
-                className="w-36"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-muted-foreground shrink-0">
-                {t('filters.dateTo')}
-              </span>
-              <DatePickerInput
-                value={dateTo}
-                onChange={v => {
-                  setDateTo(v);
-                  resetPage();
-                  setActiveSavedFilterId(null);
-                }}
-                min={dateFrom || undefined}
-                className="w-36"
-              />
-            </div>
+            <DateRangeFilter
+              from={dateFrom}
+              to={dateTo}
+              onFromChange={v => {
+                setDateFrom(v);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              onToChange={v => {
+                setDateTo(v);
+                resetPage();
+                setActiveSavedFilterId(null);
+              }}
+              fromLabel={t('filters.dateFrom')}
+              toLabel={t('filters.dateTo')}
+            />
 
             <div className="flex items-center gap-2 ml-auto">
               <Button
@@ -1431,13 +1409,17 @@ function PurchaseOrdersPageClient() {
                             bulkSelect.isSelected(po.id) && 'bg-primary/5',
                             po.deletedAt && 'opacity-60',
                           )}
-                          onClick={() => {
-                            if (detailPanel.enabled) {
-                              selectPO(po);
-                            } else {
-                              setEditingPOId(po.id);
-                            }
-                          }}
+                          onClick={() =>
+                            activateRow({
+                              panelEnabled: detailPanel.enabled,
+                              isSelected: selectedPO?.id === po.id,
+                              // selectPO сам знімає вибір з уже вибраного рядка (звіряє id через
+                              // ref, а не зі стану, що міг застаріти) — тому обидві гілки його.
+                              select: () => selectPO(po),
+                              deselect: () => selectPO(po),
+                              open: () => setEditingPOId(po.id),
+                            })
+                          }
                         >
                           {features.bulkActionsEnabled && (
                             <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>

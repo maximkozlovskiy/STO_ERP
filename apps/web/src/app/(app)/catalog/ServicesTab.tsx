@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { activateRow } from '@/lib/row-activation';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Plus, Pencil, Search, Trash2, Layers, Eye, EyeOff, RotateCcw, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -151,6 +152,22 @@ export default function ServicesTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedService(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (
+      selectedService &&
+      !loading &&
+      !(services?.items ?? []).some(i => i.id === selectedService.id)
+    )
+      setSelectedService(null);
+  }, [selectedService, services?.items, loading]);
   // in-flight set для restore — блокує дублюючі POST.
   const [restoringIds, setRestoringIds] = useState<Set<string>>(new Set());
 
@@ -566,17 +583,27 @@ export default function ServicesTab() {
                       key={s.id}
                       className={cn(
                         'group',
-                        detailPanel.enabled && !isDeleted && 'cursor-pointer',
+                        !isDeleted && 'cursor-pointer',
                         isDeleted
                           ? 'opacity-60 bg-secondary/30'
                           : selectedService?.id === s.id && detailPanel.enabled
                             ? 'bg-secondary'
                             : '',
                       )}
-                      onClick={() => {
-                        if (detailPanel.enabled && !isDeleted)
-                          setSelectedService(prev => (prev?.id === s.id ? null : s));
-                      }}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель; вимкнена →
+                      // клік відкриває картку (те саме, що олівець). Видалений рядок не клікабельний.
+                      onClick={
+                        isDeleted
+                          ? undefined
+                          : () =>
+                              activateRow({
+                                panelEnabled: detailPanel.enabled,
+                                isSelected: selectedService?.id === s.id,
+                                select: () => setSelectedService(s),
+                                deselect: () => setSelectedService(null),
+                                open: () => openEdit(s),
+                              })
+                      }
                     >
                       {features.bulkActionsEnabled && (
                         <TableCell onClick={e => e.stopPropagation()}>
@@ -688,6 +715,16 @@ export default function ServicesTab() {
                       hidden={f.hidden}
                     />
                   ))}
+                  <div className="pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => openEdit(s)}
+                    >
+                      {t('common:openCard')}
+                    </Button>
+                  </div>
                 </div>
               ),
             },

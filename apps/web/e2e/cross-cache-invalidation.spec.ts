@@ -119,21 +119,24 @@ test.describe('Cross-cache invalidation (WEB-H1/H2) — рух складу он
         timeout: 20_000,
       });
 
-      // 3) Відкриваємо створений DRAFT-документ → тиснемо «Підтвердити документ» у UI.
+      // 3) Відкриваємо створений DRAFT-документ → тиснемо «Підтвердити» у картці.
       //    Саме цей клік викликає invalidateStockDocumentSideEffects(qc).
       const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
       await expect(row).toBeVisible({ timeout: 15_000 });
-      // Detail-модалка (з FSM-кнопкою «Підтвердити») відкривається icon-кнопкою
-      // «Відкрити деталі» (Pencil), яка з'являється на hover рядка.
+      // Картка документа (з FSM-кнопкою «Підтвердити») відкривається олівцем
+      // «Відкрити документ», який з'являється на hover рядка.
       await row.hover();
-      await row.getByRole('button', { name: 'Відкрити деталі' }).click();
-      const confirmBtn = page.getByRole('button', { name: 'Підтвердити документ' });
+      await row.getByRole('button', { name: 'Відкрити документ' }).click();
+      const card = page.getByRole('dialog').filter({ hasText: doc.number });
+      const confirmBtn = card.getByRole('button', { name: 'Підтвердити', exact: true });
       await expect(confirmBtn).toBeVisible({ timeout: 10_000 });
       await confirmBtn.click();
-      // handleTransition показує ConfirmDialog («Бажаєте підтвердити…») — підтверджуємо «Так».
-      await page.getByRole('button', { name: /^Так$/ }).click();
-      // Модалка закривається після успішного transition (setShowDetail(null) → load()).
-      await expect(confirmBtn).toBeHidden({ timeout: 15_000 });
+      // Картка питає підтвердження («Бажаєте підтвердити…») — відповідаємо «Так».
+      const question = page.getByRole('dialog').filter({ hasText: 'Бажаєте підтвердити документ' });
+      await expect(question).toBeVisible({ timeout: 5_000 });
+      await question.getByRole('button', { name: 'Так', exact: true }).click();
+      // Після успішного переходу документ проведено: кнопки «Підтвердити» в картці вже немає.
+      await expect(confirmBtn).toHaveCount(0, { timeout: 15_000 });
 
       // 4) Навігація назад на «Залишки». Query була інвалідована → рефетч.
       await page.goto('/reports?tab=inventory');

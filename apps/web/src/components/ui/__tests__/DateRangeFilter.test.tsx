@@ -89,4 +89,47 @@ describe('DateRangeFilter', () => {
     expect(fromInput).toHaveValue('09.03.2026');
     expect(toInput).toHaveValue('11.03.2026');
   });
+
+  // Рішення власника 2026-10-13: у фільтрі дат кожного списку — кнопка очищення межі.
+  it('обидві межі мають кнопку «Очистити дату»; кожна знімає лише свою межу', () => {
+    const { onFromChange, onToChange } = setup();
+    const buttons = screen.getAllByRole('button', { name: 'Очистити дату' });
+    expect(buttons).toHaveLength(2);
+
+    fireEvent.click(buttons[0]);
+    expect(onFromChange).toHaveBeenCalledWith('');
+    expect(onToChange).not.toHaveBeenCalled();
+
+    fireEvent.click(buttons[1]);
+    expect(onToChange).toHaveBeenCalledWith('');
+  });
+
+  it('порожня межа кнопки очищення не має', () => {
+    setup('2026-10-01', '');
+    expect(screen.getAllByRole('button', { name: 'Очистити дату' })).toHaveLength(1);
+  });
+
+  it('після очищення «З» поле порожнє, а «По» більше нічим не обмежене знизу', () => {
+    const Harness = () => {
+      const [from, setFrom] = useState('2026-10-05');
+      const [to, setTo] = useState('2026-10-09');
+      return (
+        <DateRangeFilter
+          from={from}
+          to={to}
+          onFromChange={setFrom}
+          onToChange={setTo}
+          fromLabel="З"
+          toLabel="По"
+        />
+      );
+    };
+    render(<Harness />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Очистити дату' })[0]);
+    expect(screen.getByLabelText('З')).toHaveValue('');
+
+    // 01.10 раніше за колишню межу «З 05.10» — тепер приймається.
+    fireEvent.change(screen.getByLabelText('По'), { target: { value: '01.10.2026' } });
+    expect(screen.getByLabelText('По')).toHaveValue('01.10.2026');
+  });
 });

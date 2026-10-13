@@ -17,6 +17,7 @@ interface DateRangeFilterProps {
  * Відбір «З … По …» у рядку фільтрів списку документів (складські документи, оплати, банк, каса).
  *
  * Одна розмітка на всі списки: підпис ліворуч від поля, межі обмежують одна одну (`max`/`min`),
+ * кожну межу можна зняти кнопкою «×» (порожня межа = «без обмеження»),
  * і кожне поле має доступну назву. Підпис-`span` сам із полем не пов'язаний, тож без `ariaLabel`
  * читач екрана називав обидва поля однаково — «ДД.ММ.РРРР».
  *
@@ -39,7 +40,8 @@ export function DateRangeFilter({
           onChange={onFromChange}
           max={to || undefined}
           ariaLabel={fromLabel}
-          className="w-36"
+          clearable
+          className="w-40"
         />
       </div>
       <div className="flex items-center gap-2">
@@ -49,7 +51,8 @@ export function DateRangeFilter({
           onChange={onToChange}
           min={from || undefined}
           ariaLabel={toLabel}
-          className="w-36"
+          clearable
+          className="w-40"
         />
       </div>
     </>

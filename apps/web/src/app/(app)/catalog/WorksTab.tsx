@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { activateRow } from '@/lib/row-activation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorks, worksKeys } from '@/hooks/api/useWorks';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -122,6 +123,18 @@ export default function WorksTab() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedWork, setSelectedWork] = useState<Work | null>(null);
+
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedWork(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedWork && !loading && !(works?.items ?? []).some(i => i.id === selectedWork.id))
+      setSelectedWork(null);
+  }, [selectedWork, works?.items, loading]);
   const [editWork, setEditWork] = useState<Work | null>(null);
   const [editForm, setEditForm] = useState({
     categoryId: '',
@@ -622,17 +635,27 @@ export default function WorksTab() {
                       key={w.id}
                       className={cn(
                         'group',
-                        detailPanel.enabled && !isDeleted && 'cursor-pointer',
+                        !isDeleted && 'cursor-pointer',
                         isDeleted
                           ? 'opacity-60 bg-secondary/30'
                           : selectedWork?.id === w.id && detailPanel.enabled
                             ? 'bg-secondary'
                             : '',
                       )}
-                      onClick={() => {
-                        if (detailPanel.enabled && !isDeleted)
-                          setSelectedWork(prev => (prev?.id === w.id ? null : w));
-                      }}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель; вимкнена →
+                      // клік відкриває картку (те саме, що олівець). Видалений рядок не клікабельний.
+                      onClick={
+                        isDeleted
+                          ? undefined
+                          : () =>
+                              activateRow({
+                                panelEnabled: detailPanel.enabled,
+                                isSelected: selectedWork?.id === w.id,
+                                select: () => setSelectedWork(w),
+                                deselect: () => setSelectedWork(null),
+                                open: () => openEditWork(w),
+                              })
+                      }
                     >
                       {features.bulkActionsEnabled && (
                         <TableCell onClick={e => e.stopPropagation()}>
@@ -769,6 +792,16 @@ export default function WorksTab() {
                       hidden={f.hidden}
                     />
                   ))}
+                  <div className="pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => openEditWork(w)}
+                    >
+                      {t('common:openCard')}
+                    </Button>
+                  </div>
                 </div>
               ),
             },

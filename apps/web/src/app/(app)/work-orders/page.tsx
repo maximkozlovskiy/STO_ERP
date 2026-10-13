@@ -50,7 +50,8 @@ import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { DatePickerInput } from '@/components/ui/date-picker-input';
+import { DateRangeFilter } from '@/components/ui/date-range-filter';
+import { activateRow } from '@/lib/row-activation';
 import dynamic from 'next/dynamic';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -287,6 +288,17 @@ function WorkOrdersPageInner() {
   const orders = queryData?.items ?? (EMPTY_ITEMS as unknown as WorkOrder[]);
   const total = queryData?.total ?? 0;
   const deleteWorkOrder = useDeleteWorkOrder();
+
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedWO(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedWO && !loading && !orders.some(o => o.id === selectedWO.id)) setSelectedWO(null);
+  }, [selectedWO, orders, loading]);
   const { data: baseCurrency } = useBaseCurrency();
   const baseCode = baseCurrency?.code ?? 'UAH';
   const baseSymbol = baseCurrency?.symbol ?? '₴';
@@ -718,32 +730,22 @@ function WorkOrdersPageInner() {
           leftElement={<Search />}
           className="w-72 h-8 text-[13px]"
         />
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">{t('list.dateFrom')}</span>
-          <DatePickerInput
-            value={dateFrom}
-            onChange={v => {
-              setDateFrom(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            max={dateTo || undefined}
-            className="w-36"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-muted-foreground shrink-0">{t('list.dateTo')}</span>
-          <DatePickerInput
-            value={dateTo}
-            onChange={v => {
-              setDateTo(v);
-              resetPage();
-              setActiveSavedFilterId(null);
-            }}
-            min={dateFrom || undefined}
-            className="w-36"
-          />
-        </div>
+        <DateRangeFilter
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={v => {
+            setDateFrom(v);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          onToChange={v => {
+            setDateTo(v);
+            resetPage();
+            setActiveSavedFilterId(null);
+          }}
+          fromLabel={t('list.dateFrom')}
+          toLabel={t('list.dateTo')}
+        />
 
         <Select
           value={categoryFilter}
@@ -904,14 +906,20 @@ function WorkOrdersPageInner() {
                     <TableRow
                       key={wo.id}
                       title={toneTitle}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                      // вимкнена → клік відкриває наряд (те саме, що олівець).
                       onClick={() =>
-                        detailPanel.enabled &&
-                        setSelectedWO(prev => (prev?.id === wo.id ? null : wo))
+                        activateRow({
+                          panelEnabled: detailPanel.enabled,
+                          isSelected: selectedWO?.id === wo.id,
+                          select: () => setSelectedWO(wo),
+                          deselect: () => setSelectedWO(null),
+                          open: () => setEditWoId(wo.id),
+                        })
                       }
                       className={cn(
-                        'group transition-colors',
+                        'group transition-colors cursor-pointer',
                         rowStatusBorderClass(rowTone),
-                        detailPanel.enabled && 'cursor-pointer',
                         wo.deletedAt && 'opacity-60',
                         selectedWO?.id === wo.id && detailPanel.enabled && 'bg-primary/5',
                         bulkSelect.isSelected(wo.id) && 'bg-primary/5',

@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useMemo, type ChangeEvent } from 'react';
 import { DayPicker, type Matcher } from 'react-day-picker';
 import { uk } from 'date-fns/locale';
 import { format, parse, isValid } from 'date-fns';
-import { Calendar } from 'lucide-react';
+import { Calendar, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 
@@ -43,6 +44,12 @@ interface DatePickerInputProps {
   className?: string;
   min?: string; // YYYY-MM-DD
   max?: string; // YYYY-MM-DD
+  /**
+   * Кнопка «×» у полі, коли дата застосована: очищає значення одним натисканням.
+   * Для фільтрів списків, де порожня дата означає «без межі». У формах документів
+   * не вмикається — там дата зазвичай обов'язкова.
+   */
+  clearable?: boolean;
 }
 
 function parseApiDate(value: string): Date | undefined {
@@ -69,10 +76,15 @@ export function DatePickerInput({
   className,
   min,
   max,
+  clearable,
 }: DatePickerInputProps) {
+  const { t } = useTranslation('common');
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState(displayDate(value));
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Фокус, який повертає в поле кнопка очищення, не має знову відкривати календар.
+  const skipOpenOnFocusRef = useRef(false);
 
   // Sync external value → display text
   useEffect(() => {
@@ -142,6 +154,17 @@ export function DatePickerInput({
 
   const selected = useMemo(() => parseApiDate(value), [value]);
 
+  const showClear = Boolean(clearable && value && !disabled);
+
+  const handleClear = () => {
+    onChange('');
+    setInputText('');
+    setOpen(false);
+    skipOpenOnFocusRef.current = true;
+    inputRef.current?.focus();
+    skipOpenOnFocusRef.current = false;
+  };
+
   // react-day-picker `disabled` accepts an array of matchers.
   // Memoize: масив-літерал перебудовується на кожен ререндер. DayPicker всередині диф-ить
   // disabled по reference — без useMemo втрачається mеmoization матриці днів.
@@ -162,6 +185,7 @@ export function DatePickerInput({
       )}
       <div className="relative">
         <input
+          ref={inputRef}
           type="text"
           value={inputText}
           onChange={handleInputChange}
@@ -170,7 +194,9 @@ export function DatePickerInput({
           // «З 09.03 По 09.03» ввід «З 11.03» відхилявся мовчки, далі «По 11.03» — і на екрані
           // стояло «11.03 – 11.03», а список показував 09.03 – 11.03 (Bug #815).
           onBlur={() => setInputText(displayDate(value))}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (!skipOpenOnFocusRef.current) setOpen(true);
+          }}
           // Після Enter/Escape фокус лишається в полі, а календар закритий. Без onClick
           // повторний клік по полю нічого не робив (focus не спрацьовує вдруге) — календар
           // відкривався лише кнопкою-іконкою.
@@ -185,12 +211,25 @@ export function DatePickerInput({
           disabled={disabled}
           maxLength={10}
           className={cn(
-            'w-full h-9 rounded-lg border bg-input px-3 pr-9 text-sm text-foreground placeholder:text-muted-foreground',
+            'w-full h-9 rounded-lg border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground',
+            // Місце під іконку календаря; з кнопкою очищення — під обидві.
+            showClear ? 'pr-14' : 'pr-9',
             'focus:outline-none focus:ring-2 focus:ring-ring transition-colors',
             errorMessage ? 'border-destructive-border focus:ring-destructive/20' : 'border-border',
             disabled && 'opacity-50 cursor-not-allowed',
           )}
         />
+        {showClear && (
+          <button
+            type="button"
+            aria-label={t('clearDate')}
+            title={t('clearDate')}
+            onClick={handleClear}
+            className="absolute right-8 top-1/2 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           aria-label="Відкрити календар"

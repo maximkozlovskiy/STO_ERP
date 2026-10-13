@@ -368,31 +368,32 @@ test.describe('Складські документи — Detail Panel', () => {
     await expect(page.getByTestId('lines-summary')).toHaveCount(0);
   });
 
-  test('Detail Modal — кнопка «Підтвердити документ» присутня для DRAFT', async ({ page }) => {
+  test('Картка (олівець) — кнопка «Підтвердити» присутня для DRAFT', async ({ page }) => {
     expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    // Відкрити Detail Modal через hover → кнопку «Відкрити деталі»
+    // Олівець у рядку відкриває картку документа (окремого вікна перегляду більше немає)
     await row.hover();
-    const openBtn = row.locator('button[title="Відкрити деталі"]').first();
+    const openBtn = row.locator('button[title="Відкрити документ"]').first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await openBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
-    await expect(modal.locator('button:has-text("Підтвердити документ")').first()).toBeVisible({
+    await expect(modal).toContainText(docNumber);
+    await expect(modal.getByRole('button', { name: 'Підтвердити', exact: true })).toBeVisible({
       timeout: 5_000,
     });
     await page.keyboard.press('Escape');
   });
 
-  test('Detail Modal — кнопка «Скасувати» присутня для DRAFT', async ({ page }) => {
+  test('Картка (олівець) — кнопка «Скасувати» присутня для DRAFT', async ({ page }) => {
     expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.hover();
-    const openBtn = row.locator('button[title="Відкрити деталі"]').first();
+    const openBtn = row.locator('button[title="Відкрити документ"]').first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await openBtn.click();
     const modal = page.locator('[role="dialog"]').first();
@@ -442,29 +443,31 @@ test.describe('Складські документи — FSM', () => {
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    // Відкрити Detail Modal через «Відкрити деталі»
+    // Олівець у рядку відкриває картку документа
     await row.hover();
-    const openBtn = row.locator('button[title="Відкрити деталі"]').first();
+    const openBtn = row.locator('button[title="Відкрити документ"]').first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await openBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    const cancelBtn = modal.locator('button:has-text("Скасувати")').first();
+    const cancelBtn = modal.getByRole('button', { name: 'Скасувати', exact: true });
     await expect(cancelBtn).toBeVisible({ timeout: 5_000 });
     await cancelBtn.click();
 
-    // Confirm dialog (useConfirm)
-    const confirmBtn = page
-      .locator(
-        '[role="dialog"]:not(:has(button:has-text("Скасувати"))) button:has-text("Так"), [role="alertdialog"] button:has-text("Так")',
-      )
-      .first();
-    if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await confirmBtn.click();
-    }
+    // Картка питає підтвердження (перехід незворотний) — без згоди запит не йде.
+    const confirmDialog = page
+      .getByRole('dialog')
+      .filter({ hasText: `Бажаєте скасувати документ ${docNumber}?` });
+    await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+    await confirmDialog.getByRole('button', { name: 'Так', exact: true }).click();
 
-    await expect(page.locator('text=Скасовано').first()).toBeVisible({ timeout: 10_000 });
+    // Статус у картці й у рядку списку — «Скасовано».
+    await expect(modal.getByRole('button', { name: 'Скасовано', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.keyboard.press('Escape');
+    await expect(row).toContainText('Скасовано', { timeout: 10_000 });
   });
 });
 
@@ -500,33 +503,59 @@ test.describe('Складські документи — FSM CONFIRMED', () => {
     await ctx.close();
   });
 
-  test('DRAFT → CONFIRMED: «Підтвердити документ» → badge «Підтверджено»', async ({ page }) => {
+  // Документ цього блоку створено БЕЗ рядків, а сервер такий не проводить («Документ не може бути
+  // підтверджено без позицій»). Попередня версія тесту цього не помічала: кнопку «Так» вона
+  // шукала в `[role="alertdialog"]`, якого немає, пропускала її через `if (isVisible)`, а
+  // «Підтверджено» знаходила у фільтрі статусів сторінки — тобто проходила, нічого не провівши.
+  // Справжнє проведення (з рядком і зміною залишку) перевіряє cross-cache-invalidation.spec.ts.
+  test('«Підтвердити» питає підтвердження; відмова — запиту немає; документ без рядків сервер не проводить', async ({
+    page,
+  }) => {
     expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    // Відкрити Detail Modal через «Відкрити деталі»
+    // Олівець у рядку відкриває картку документа
     await row.hover();
-    const openBtn = row.locator('button[title="Відкрити деталі"]').first();
+    const openBtn = row.locator('button[title="Відкрити документ"]').first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await openBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
 
-    const confirmDocBtn = modal.locator('button:has-text("Підтвердити документ")').first();
+    const transitions: string[] = [];
+    page.on('request', r => {
+      if (r.url().includes(`/stock-documents/${docId}/transition`)) transitions.push(r.method());
+    });
+
+    const confirmDocBtn = modal.getByRole('button', { name: 'Підтвердити', exact: true });
     await expect(confirmDocBtn).toBeVisible({ timeout: 5_000 });
     await confirmDocBtn.click();
 
-    // Confirm dialog від useConfirm
-    const yesBtn = page
-      .locator(
-        '[role="alertdialog"] button:has-text("Так"), [role="alertdialog"] button:has-text("Підтвердити")',
-      )
-      .first();
-    if (await yesBtn.isVisible({ timeout: 3_000 }).catch(() => false)) await yesBtn.click();
+    // Проведення незворотне (рухи складу) — картка питає підтвердження.
+    const confirmDialog = page
+      .getByRole('dialog')
+      .filter({ hasText: `Бажаєте підтвердити документ ${docNumber}?` });
+    await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+    // Відмова: запит не йде, документ лишається чернеткою.
+    await confirmDialog.getByRole('button', { name: 'Скасувати', exact: true }).click();
+    await expect(confirmDialog).toHaveCount(0, { timeout: 5_000 });
+    await expect(modal.getByRole('button', { name: 'Зберегти зміни' })).toBeVisible();
+    expect(transitions).toEqual([]);
 
-    await expect(page.locator('text=Підтверджено').first()).toBeVisible({ timeout: 10_000 });
+    // Згода: запит іде; сервер відмовляє (рядків немає) — відмову видно в картці, статус не змінився.
+    await confirmDocBtn.click();
+    await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+    await confirmDialog.getByRole('button', { name: 'Так', exact: true }).click();
+    await expect(modal).toContainText('Документ не може бути підтверджено без позицій', {
+      timeout: 10_000,
+    });
+    expect(transitions).toEqual(['POST']);
+    await expect(confirmDocBtn).toBeVisible();
+    await expect(modal.getByRole('button', { name: 'Зберегти зміни' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(row).toContainText('Чернетка');
   });
 });
 
@@ -640,14 +669,14 @@ test.describe('Складські документи — позиції (lines)'
     await ctx.close();
   });
 
-  test('Detail Modal — показує таблицю позицій з колонкою «Товар»', async ({ page }) => {
+  test('Картка (олівець) — показує таблицю позицій з колонкою «Товар»', async ({ page }) => {
     expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    // Відкрити Detail Modal
+    // Олівець у рядку відкриває картку документа
     await row.hover();
-    const openBtn = row.locator('button[title="Відкрити деталі"]').first();
+    const openBtn = row.locator('button[title="Відкрити документ"]').first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await openBtn.click();
     const modal = page.locator('[role="dialog"]').first();
@@ -791,38 +820,26 @@ test.describe('Складські документи — XLSX', () => {
     await ctx.close();
   });
 
-  // TODO(coverage gap): XLSX-імпорт позицій у Detail Modal stock-documents не реалізовано
-  // у UI (тільки експорт PDF/XLSX/DOCX через DocumentExportToolbar). Тест залишається
-  // як placeholder для майбутньої фічі — якщо її реалізують, тест почне проходити автоматично.
-  // Зараз skip спрацьовує на line 804 (kнопка не знайдена).
-  test('в Detail Modal DRAFT документа є кнопка XLSX-імпорту позицій', async ({ page }) => {
+  // Картка чернетки має імпорт позицій з XLSX. Раніше олівець відкривав окреме вікно перегляду,
+  // де імпорту не було, і тест проходив за будь-якого результату («є кнопка — добре, нема — теж»).
+  test('у картці DRAFT документа є кнопка XLSX-імпорту позицій', async ({ page }) => {
     expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    // Відкрити Detail Modal
+    // Олівець у рядку відкриває картку документа
     await row.hover();
-    const openBtn = row.locator('button[title="Відкрити деталі"]').first();
+    const openBtn = row.locator('button[title="Відкрити документ"]').first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await openBtn.click();
     const modal = page.locator('[role="dialog"]').first();
     await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toContainText(docNumber);
 
-    // Шукаємо кнопку «Імпорт xlsx», «XLSX», «Завантажити шаблон»
-    // XLSX-import кнопка — feature з conditional рендерингу залежно від типу документа.
-    // Тест перевіряє "якщо є — видима, якщо нема — модалка все одно стабільна".
-    const xlsxBtn = modal
-      .locator(
-        'button:has-text("xlsx"), button:has-text("XLSX"), button:has-text("Імпорт"), button[title*="xlsx"]',
-      )
-      .first();
-    const hasXlsx = await xlsxBtn.isVisible({ timeout: 5_000 }).catch(() => false);
-    if (hasXlsx) {
-      await expect(xlsxBtn).toBeVisible();
-    } else {
-      // Модалка все одно має бути open і responsive (не падає без XLSX-кнопки)
-      await expect(modal).toBeVisible();
-    }
+    await expect(modal.getByRole('button', { name: 'Імпорт XLSX' })).toBeVisible({
+      timeout: 8_000,
+    });
+    await expect(modal.getByRole('button', { name: 'Шаблон XLSX' })).toBeVisible();
     await page.keyboard.press('Escape');
   });
 });

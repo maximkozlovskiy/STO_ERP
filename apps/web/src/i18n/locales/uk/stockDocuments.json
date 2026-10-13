@@ -30,9 +30,9 @@
   },
   "actions": {
     "addDocument": "Документ",
-    "openDetails": "Відкрити деталі",
     "markForDeletion": "Позначити на видалення",
-    "bulkDelete": "Видалити вибрані"
+    "bulkDelete": "Видалити вибрані",
+    "openDocument": "Відкрити документ"
   },
   "confirm": {
     "bulkDeleteTitle": "Видалити {{count}} документ(ів)?",
@@ -47,17 +47,6 @@
   },
   "badges": {
     "deleted": "видалено"
-  },
-  "detail": {
-    "confirmButton": "Підтвердити документ",
-    "cancelButton": "Скасувати",
-    "colGood": "Товар",
-    "colSku": "Артикул",
-    "colQuantity": "Кількість",
-    "colPrice": "Ціна",
-    "loading": "Завантаження…",
-    "confirmedAt": "Підтверджено: {{date}}",
-    "linkedDocuments": "Пов'язані документи"
   },
   "toast": {
     "bulkDeletedAll": "Видалено {{count}} документ(ів)",

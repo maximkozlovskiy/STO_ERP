@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { apiFetch } from '@/lib/api-client';
+import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -99,6 +100,8 @@ interface Counterparty {
 // WorkOrderDetail for edit mode load
 interface WorkOrderDetail {
   id: string;
+  /** Заповнене — наряд позначено на видалення (приходить лише з `?withDeleted=true`). */
+  deletedAt?: string | null;
   number: string;
   status: string;
   branchId: string;
@@ -528,6 +531,10 @@ export function CreateWorkOrderModal({
     setTransitioning(v);
   };
   const [error, setError] = useState('');
+  // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
+  // завантаженого документа, тож інший наряд у тій самій модалці його не успадковує.
+  const [deletedDocId, setDeletedDocId] = useState<string | null>(null);
+  const isDeleted = isEditMode && deletedDocId === workOrderId;
   // A3-modal: vatMode/vatRate/recalc*/syncCalendar перенесено у useReferenceData (див. вище).
   const [currentStatus, setCurrentStatus] = useState('DRAFT');
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -709,9 +716,10 @@ export function CreateWorkOrderModal({
     deletedPartIds.current = [];
     setEditModeLoading(true);
     setError('');
-    apiFetch<WorkOrderDetail>(`/work-orders/${workOrderId}`)
+    apiFetch<WorkOrderDetail>(`/work-orders/${workOrderId}?withDeleted=true`)
       .then(wo => {
         if (cancelled) return;
+        setDeletedDocId(wo.deletedAt ? workOrderId : null);
         setWoNumber(wo.number);
         setCurrentStatus(wo.status);
         const loadedLines: LocalLine[] = wo.lines.map(l => ({
@@ -1192,7 +1200,8 @@ export function CreateWorkOrderModal({
   };
 
   const save = async () => {
-    if (!workOrderId) return;
+    // Ctrl+Enter у модалці кличе цей самий обробник — видалений наряд не зберігаємо.
+    if (!workOrderId || isDeleted) return;
     // WEB-H3: синхронний guard проти concurrent double-submit (savingRef фліпається до re-render).
     if (savingRef.current || transitioningRef.current) return;
     // Commit any open inline-edit row synchronously so save() reads the latest actualHours.
@@ -1442,7 +1451,7 @@ export function CreateWorkOrderModal({
   };
 
   const doTransition = async (newStatus: string) => {
-    if (!workOrderId) return;
+    if (!workOrderId || isDeleted) return;
     // При переході COMPLETED→INVOICED пропонуємо створити рахунок якщо його ще немає.
     if (
       newStatus === 'INVOICED' &&
@@ -1488,9 +1497,11 @@ export function CreateWorkOrderModal({
     }
   };
 
-  const allowedTransitions = isEditMode
-    ? (WO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
-    : EMPTY_TRANSITIONS;
+  // Видалений наряд переходів не має: сервер відповість 404 на будь-яку зміну.
+  const allowedTransitions =
+    isEditMode && !isDeleted
+      ? (WO_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
+      : EMPTY_TRANSITIONS;
 
   const { prevStatus: statusPrevStep, nextStatus: statusNextStep } = useMemo(() => {
     const curIdx = WO_STATUS_ORDER.indexOf(currentStatus);
@@ -1505,14 +1516,14 @@ export function CreateWorkOrderModal({
     }
     const nextStatus = arrowTransitions.find((s: string) => WO_STATUS_ORDER.indexOf(s) > curIdx);
     return { prevStatus, nextStatus };
-  }, [currentStatus, isEditMode]);
+  }, [currentStatus, isEditMode, isDeleted]);
 
   // O(N×M) → O(N+M): Map.get instead of .find() per rendered row/onChange.
   // A3-modal: *ById-мапи перенесено у useReferenceData (див. destructure вгорі).
 
   // Фактичні години редагуються тільки у статусах В роботі / Призупинено.
   const canEditActual =
-    isEditMode && (currentStatus === 'IN_PROGRESS' || currentStatus === 'ON_HOLD');
+    isEditMode && !isDeleted && (currentStatus === 'IN_PROGRESS' || currentStatus === 'ON_HOLD');
 
   // Підсумки фактичних сум: actualHours ?? normoHours для кожного рядка (бо save()
   // надсилає на бекенд саме такий фолбек коли recalcActualHoursFromLines=true).
@@ -1580,7 +1591,7 @@ export function CreateWorkOrderModal({
     () => splitVatTotals(actualTotals.total + partsTotals.total, vatRate, vatMode),
     [actualTotals.total, partsTotals.total, vatRate, vatMode],
   );
-  const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) : true;
+  const canEdit = isEditMode ? WO_EDITABLE_STATUSES.includes(currentStatus) && !isDeleted : true;
   // Share/print/SMS allowed in DRAFT/ESTIMATE/APPROVED; after IN_PROGRESS the public link is inactive.
   // A3-modal: action-handlers (print/saveAs/share/sms/invoice+rollback) + loading + invoiceConflict
   // винесено у useWorkOrderActions. Footer-JSX споживає повернені handlers/флаги.
@@ -1830,31 +1841,35 @@ export function CreateWorkOrderModal({
                         </>
                       )}
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleShare()}
-                      loading={shareLoading}
-                      disabled={shareLoading || smsLoading || saving || transitioning}
-                      title="Скопіювати посилання"
-                    >
-                      <Share2 size={15} className="mr-1" />
-                      Поділитись
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleSendSms()}
-                      loading={smsLoading}
-                      disabled={shareLoading || smsLoading || saving || transitioning}
-                      title="Відправити SMS клієнту"
-                    >
-                      <MessageSquare size={15} className="mr-1" />
-                      SMS
-                    </Button>
+                    {!isDeleted && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleShare()}
+                          loading={shareLoading}
+                          disabled={shareLoading || smsLoading || saving || transitioning}
+                          title="Скопіювати посилання"
+                        >
+                          <Share2 size={15} className="mr-1" />
+                          Поділитись
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleSendSms()}
+                          loading={smsLoading}
+                          disabled={shareLoading || smsLoading || saving || transitioning}
+                          title="Відправити SMS клієнту"
+                        >
+                          <MessageSquare size={15} className="mr-1" />
+                          SMS
+                        </Button>
+                      </>
+                    )}
                   </>
                 )}
-                {canInvoice && (
+                {canInvoice && !isDeleted && (
                   <Button
                     variant="default"
                     size="sm"
@@ -1976,7 +1991,8 @@ export function CreateWorkOrderModal({
                 {error}
               </div>
             )}
-            {!editModeLoading && isEditMode && !canEdit && (
+            {isDeleted && <DeletedDocumentBanner className="mb-4" />}
+            {!editModeLoading && isEditMode && !canEdit && !isDeleted && (
               <div className="mb-4 text-[13px] text-warning bg-warning-subtle border border-warning/20 rounded-lg px-3 py-2">
                 Наряд у статусі «{woStatusLabel(currentStatus)}» — редагування недоступне
               </div>

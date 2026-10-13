@@ -248,7 +248,7 @@ test.describe('Зведення в боковій панелі — складс�
     const row = await gotoDocs(page, true);
 
     await row.hover();
-    await row.locator('button[title="Відкрити деталі"]').click();
+    await row.locator('button[title="Відкрити документ"]').click();
 
     await expect(dialog(page).first()).toBeVisible({ timeout: 10_000 });
     await expect(dialog(page).first()).toContainText(doc!.number);

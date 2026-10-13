@@ -31,9 +31,9 @@
     "downloadPdf": "Завантажити PDF",
     "print": "Друк",
     "clone": "Дублювати",
-    "openDetails": "Відкрити деталі",
     "markForDeletion": "Позначити на видалення",
-    "bulkCancel": "Скасувати вибрані"
+    "bulkCancel": "Скасувати вибрані",
+    "openDocument": "Відкрити документ"
   },
   "confirm": {
     "transition": "Перевести рахунок {{number}} → {{status}}?",

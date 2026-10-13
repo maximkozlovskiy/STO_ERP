@@ -63,7 +63,7 @@ function mockApi(opts: { plannedHours: number | null; lines: LineFixture[]; reca
     if (path === '/work-orders/wo-1/linked-documents') {
       return Promise.resolve({ invoices: [], payments: [], calendarSlots: [], warranties: [] });
     }
-    if (path === '/work-orders/wo-1') {
+    if (path === '/work-orders/wo-1?withDeleted=true') {
       return Promise.resolve({
         id: 'wo-1',
         number: 'WO-001',

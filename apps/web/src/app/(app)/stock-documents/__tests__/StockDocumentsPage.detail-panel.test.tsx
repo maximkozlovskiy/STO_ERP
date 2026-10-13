@@ -3,7 +3,8 @@
 //   - панель УВІМКНЕНА → клік по рядку вибирає рядок і показує панель (поля шапки зі схеми,
 //     «Зведення», кнопка «Відкрити документ»), картка редагування НЕ відкривається;
 //   - панель ВИМКНЕНА → клік по рядку одразу відкриває картку редагування, як було;
-//   - олівець у рядку в обох режимах відкриває те саме, що й до панелі, — вікно перегляду;
+//   - олівець у рядку в обох режимах відкриває картку документа — те саме, що «Відкрити
+//     документ» (окремого вікна перегляду більше немає, рішення власника 2026-10-13);
 //   - «Відкрити документ» у панелі відкриває картку редагування;
 //   - вимкнули панель → вибір скидається (після повторного вмикання клік знову ВІДКРИВАЄ панель).
 //
@@ -150,7 +151,7 @@ describe('Складські документи — бокова панель', 
     // Блок зведення стоїть нижче полів шапки і вище кнопки «Відкрити документ».
     const notes = within(panel).getByText('Нотатки');
     const summary = screen.getByTestId('lines-summary');
-    const open = within(panel).getByRole('button', { name: 'Відкрити документ' });
+    const open = within(panel).getByText('Відкрити документ');
     expect(notes.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(summary.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -182,7 +183,8 @@ describe('Складські документи — бокова панель', 
     fireEvent.click(row('СП-0001'));
     await screen.findByTestId('lines-summary');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Відкрити документ' }));
+    // Та сама назва в олівця рядка (title) — беремо кнопку з текстом, вона в панелі.
+    fireEvent.click(screen.getByText('Відкрити документ'));
     expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
   });
 
@@ -204,18 +206,30 @@ describe('Складські документи — бокова панель', 
   it.each([
     ['увімкнена', null],
     ['вимкнена', 'false'],
-  ])('олівець (панель %s) відкриває вікно перегляду, а не панель і не картку', async (_n, ls) => {
+  ])('олівець (панель %s) відкриває картку документа, а не панель', async (_n, ls) => {
     if (ls) localStorage.setItem(PANEL_KEY, ls);
     renderPage();
     await screen.findByText('СП-0001');
     if (ls) await screen.findByRole('button', { name: 'Показати бокову панель' });
 
-    fireEvent.click(within(row('СП-0001')).getByTitle('Відкрити деталі'));
+    fireEvent.click(within(row('СП-0001')).getByTitle('Відкрити документ'));
 
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('СП-0001');
-    expect(screen.queryByTestId('edit-card')).not.toBeInTheDocument();
+    expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
+    // Окремого вікна перегляду більше немає: олівець не вантажить документ сам і не вибирає рядок.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(apiFetchMock.mock.calls.map(c => c[0])).not.toContain('/stock-documents/doc-1');
     expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument();
+    expect(row('СП-0001')).not.toHaveClass('bg-primary/5');
+  });
+
+  it('олівець є і в рядка, позначеного на видалення, і відкриває його картку', async () => {
+    listItems = [{ ...DOC, deletedAt: '2026-10-13T09:00:00.000Z' }, DOC_2];
+    renderPage();
+    await screen.findByText('СП-0001');
+
+    fireEvent.click(within(row('СП-0001')).getByTitle('Відкрити документ'));
+
+    expect(screen.getByTestId('edit-card')).toHaveTextContent('doc-1');
   });
 
   it('вимкнули панель тоглом → вибір скинуто: після вмикання клік по тому ж рядку ВІДКРИВАЄ панель', async () => {

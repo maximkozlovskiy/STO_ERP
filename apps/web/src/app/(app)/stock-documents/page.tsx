@@ -5,12 +5,7 @@ import type { ElementType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import {
-  useStockDocuments,
-  stockDocsKeys,
-  type StockDoc,
-  type StockDocStatusValue,
-} from '@/hooks/api/useStockDocuments';
+import { useStockDocuments, stockDocsKeys, type StockDoc } from '@/hooks/api/useStockDocuments';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import {
   Plus,
@@ -25,7 +20,7 @@ import {
 import { useRequireAuth } from '@/lib/auth';
 import { StockMovementsTab } from './StockMovementsTab';
 import { apiFetch } from '@/lib/api-client';
-import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
+import { activateRow } from '@/lib/row-activation';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
 import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { stockDocumentLinkedConfig } from '@/lib/linked-configs';
@@ -41,7 +36,6 @@ import {
   STOCK_DOC_STATUS_DESCRIPTIONS,
 } from '@sto/shared';
 import { stockDocTypeLabel, stockDocStatusLabel } from '@/i18n/enumLabel';
-import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -79,7 +73,7 @@ import { toast } from '@/lib/toast';
 import { invalidateStockDocumentSideEffects } from '@/lib/cache-invalidation';
 import { cn, UUID_RE } from '@/lib/utils';
 import { PAGE_TAB_ACTIVE, PAGE_TAB_CLASS, PAGE_TAB_IDLE } from '@/lib/page-tabs';
-import { fmtDate, fmtDateTime, fmtMoney, kyivToday } from '@/lib/format';
+import { fmtDate, kyivToday } from '@/lib/format';
 import { StatusPill } from '@/components/ui/status-pill';
 
 // Module-level formatter — produces YYYY-MM-DD in Kyiv local time (DST-aware).
@@ -242,7 +236,6 @@ function StockDocumentsPageClient() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
-  const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
 
   // Бокова панель. Зберігаємо лише id: рядок беремо зі свіжого списку, тож після
   // збереження / проведення документа панель не показує застарілу шапку, а рядок, що зник зі
@@ -282,21 +275,6 @@ function StockDocumentsPageClient() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Open the standalone detail Modal (FSM buttons, full table).
-  // List endpoint omits `lines` (perf: -20K line rows per page) — fetch full doc
-  // via GET /stock-documents/:id and upgrade once it arrives.
-  const openDetailModal = useCallback(async (doc: StockDoc) => {
-    setShowDetail(doc);
-    try {
-      const detail = await apiFetch<StockDoc>(`/stock-documents/${doc.id}`);
-      setShowDetail(prev => (prev?.id === doc.id ? detail : prev));
-    } catch {
-      // keep basic doc data if detail fetch fails — table renders empty body
-    }
-  }, []);
-
-  const [saving, setSaving] = useState(false);
 
   const changeFilter = (fn: () => void) => {
     fn();
@@ -402,39 +380,6 @@ function StockDocumentsPageClient() {
   );
 
   const totalPages = Math.ceil(total / limit) || 1;
-
-  // sto-optimize: stable refs — handlers used у inline row onClick wrappers; useCallback
-  // дозволяє в майбутньому пройти React.memo на TableRow без identity-thrashing.
-  // `load` ref recreates on each invalidation, але семантика та сама — deps eslint-disable.
-  // `void` перед `handleTransition()` / `handleBulkDelete()` у JSX: обидва мають власний
-  // try/catch (або Promise.allSettled), що показує текст відмови користувачу — у `error`
-  // (баннер над таблицею) та/або `toast`, плюс `finally { setSaving(false) }`. Відмова вже
-  // на екрані, тож чекати проміс обробника нікому не потрібно.
-  const handleTransition = useCallback(
-    // newStatus був `string` — у кеш/тіло запиту міг піти будь-який рядок.
-    async (doc: StockDoc, newStatus: StockDocStatusValue) => {
-      const action =
-        newStatus === 'CONFIRMED' ? t('confirm.transitionConfirm') : t('confirm.transitionCancel');
-      if (!(await confirm({ title: t('confirm.transition', { action, number: doc.number }) })))
-        return;
-      setSaving(true);
-      setError('');
-      try {
-        await apiFetch<StockDoc>(`/stock-documents/${doc.id}/transition`, {
-          method: 'POST',
-          body: JSON.stringify({ status: newStatus }),
-        });
-        setShowDetail(null);
-        load();
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : t('errors.transitionFailed'));
-      } finally {
-        setSaving(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [confirm, t],
-  );
 
   const markDeleted = useCallback(
     async (doc: StockDoc) => {
@@ -633,13 +578,15 @@ function StockDocumentsPageClient() {
                       bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                       doc.deletedAt && 'opacity-60',
                     )}
-                    onClick={() => {
-                      if (detailPanel.enabled) {
-                        setSelectedDocId(cur => (cur === doc.id ? null : doc.id));
-                      } else {
-                        setEditingDocId(doc.id);
-                      }
-                    }}
+                    onClick={() =>
+                      activateRow({
+                        panelEnabled: detailPanel.enabled,
+                        isSelected: selectedDocId === doc.id,
+                        select: () => setSelectedDocId(doc.id),
+                        deselect: () => setSelectedDocId(null),
+                        open: () => setEditingDocId(doc.id),
+                      })
+                    }
                   >
                     {features.bulkActionsEnabled && (
                       <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>
@@ -738,9 +685,9 @@ function StockDocumentsPageClient() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          title={t('actions.openDetails')}
+                          title={t('actions.openDocument')}
                           className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          onClick={() => void openDetailModal(doc)}
+                          onClick={() => setEditingDocId(doc.id)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -844,120 +791,6 @@ function StockDocumentsPageClient() {
         }}
       />
 
-      {/* Detail modal */}
-      <Modal
-        open={!!showDetail}
-        onClose={() => setShowDetail(null)}
-        title={showDetail ? `${stockDocTypeLabel(showDetail.type)} ${showDetail.number}` : ''}
-        size="lg"
-        footer={
-          showDetail?.status === 'DRAFT' ? (
-            <div className="flex gap-2 w-full">
-              <Button
-                onClick={() => void handleTransition(showDetail, 'CONFIRMED')}
-                loading={saving}
-                className="flex-1"
-              >
-                {t('detail.confirmButton')}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => void handleTransition(showDetail, 'CANCELLED')}
-                loading={saving}
-              >
-                {t('detail.cancelButton')}
-              </Button>
-            </div>
-          ) : undefined
-        }
-      >
-        {showDetail && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge
-                variant={STOCK_DOC_TYPE_BADGE[showDetail.type] ?? 'secondary'}
-                tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[showDetail.type]}
-              >
-                {stockDocTypeLabel(showDetail.type)}
-              </Badge>
-              <Badge
-                variant={STOCK_DOC_STATUS_BADGE[showDetail.status] ?? 'secondary'}
-                tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[showDetail.status]}
-              >
-                {stockDocStatusLabel(showDetail.status)}
-              </Badge>
-              <span className="text-muted-foreground text-sm">{showDetail.warehouseName}</span>
-              {showDetail.targetWarehouseName && (
-                <span className="text-foreground-faint text-sm">
-                  → {showDetail.targetWarehouseName}
-                </span>
-              )}
-            </div>
-
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-xs">
-                <thead className="bg-secondary">
-                  <tr>
-                    <th className="text-left px-3 py-2 text-muted-foreground">
-                      {t('detail.colGood')}
-                    </th>
-                    <th className="text-left px-3 py-2 text-muted-foreground">
-                      {t('detail.colSku')}
-                    </th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">
-                      {t('detail.colQuantity')}
-                    </th>
-                    <th className="text-right px-3 py-2 text-muted-foreground">
-                      {t('detail.colPrice')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {showDetail.lines === undefined ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-2 text-center text-muted-foreground">
-                        {t('detail.loading')}
-                      </td>
-                    </tr>
-                  ) : (
-                    showDetail.lines.map((l, i) => (
-                      <tr key={l.id ?? i}>
-                        <td className="px-3 py-2 text-foreground">{l.goodName}</td>
-                        <td className="px-3 py-2 text-foreground-faint font-mono">
-                          {l.goodSku ?? '—'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium">
-                          {l.quantity} {l.unitShortName ?? l.unit}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {l.price != null ? `${fmtMoney(l.price)} ₴` : '—'}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {showDetail.notes && (
-              <p className="text-sm text-muted-foreground italic">{showDetail.notes}</p>
-            )}
-
-            {showDetail.confirmedAt && (
-              <p className="text-xs text-foreground-faint">
-                {t('detail.confirmedAt', { date: fmtDateTime(showDetail.confirmedAt) })}
-              </p>
-            )}
-
-            <div>
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                {t('detail.linkedDocuments')}
-              </h3>
-              <LinkedDocumentsPanel config={linkedConfig} entityId={showDetail.id} />
-            </div>
-          </div>
-        )}
-      </Modal>
       <ConfirmDialog {...dialogProps} />
 
       {linkedDocPopupId && (

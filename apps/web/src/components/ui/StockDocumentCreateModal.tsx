@@ -29,6 +29,9 @@ import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
+import { useConfirm } from '@/hooks/useConfirm';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { useTabBarContext } from '@/contexts/TabBarContext';
 import { getCached, setCache } from '@/lib/ref-cache';
 import { cn } from '@/lib/utils';
@@ -91,6 +94,8 @@ interface StockDocDetail {
   purchaseOrderNumber?: string | null;
   notes?: string | null;
   documentDate?: string | null;
+  /** Заповнене — документ позначено на видалення (приходить лише з `?withDeleted=true`). */
+  deletedAt?: string | null;
   lines?: StockDocLine[];
 }
 
@@ -230,6 +235,9 @@ export function StockDocumentCreateModal({
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [error, setError] = useState('');
+  // Документ позначено на видалення → картка лише на перегляд (вантажиться з withDeleted).
+  const [isDeleted, setIsDeleted] = useState(false);
+  const { confirm, dialogProps: confirmDialogProps } = useConfirm();
 
   const savingRef = useRef(false);
   const transitioningRef = useRef(false);
@@ -303,6 +311,7 @@ export function StockDocumentCreateModal({
     setHeaderCollapsed(false);
     setDocNumber('');
     setCurrentStatus('DRAFT');
+    setIsDeleted(false);
     setNewLine(EMPTY_LINE);
     setShowLineInput(false);
     setPurchaseOrderNumber('');
@@ -332,11 +341,12 @@ export function StockDocumentCreateModal({
       const isStale = () => reqId !== loadReqRef.current;
       if (!silent) setLoading(true);
       setError('');
-      return apiFetch<StockDocDetail>(`/stock-documents/${docId}`)
+      return apiFetch<StockDocDetail>(`/stock-documents/${docId}?withDeleted=true`)
         .then(doc => {
           if (isStale()) return;
           setDocNumber(doc.number);
           setCurrentStatus(doc.status);
+          setIsDeleted(!!doc.deletedAt);
           reset({
             type: (doc.type ?? 'WRITEOFF') as StockDocumentFormInput['type'],
             branchId: doc.branchId ?? '',
@@ -440,10 +450,11 @@ export function StockDocumentCreateModal({
   // array щорендеру) — тоді prev/next useMemo коректно залежить від нього (дзеркалить PO).
   const allowedTransitions = useMemo<readonly string[]>(
     () =>
-      isEditMode
+      // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
+      isEditMode && !isDeleted
         ? (STOCK_DOC_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
         : EMPTY_TRANSITIONS,
-    [currentStatus, isEditMode],
+    [currentStatus, isEditMode, isDeleted],
   );
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
@@ -463,7 +474,16 @@ export function StockDocumentCreateModal({
   }, [currentStatus, allowedTransitions]);
 
   const doTransition = async (newStatus: string) => {
-    if (!stockDocumentId) return;
+    if (!stockDocumentId || isDeleted) return;
+    if (transitioningRef.current) return;
+    // Проведення незворотне (рухи складу), скасування — теж: питаємо перед запитом.
+    const action =
+      newStatus === 'CONFIRMED'
+        ? t('confirm.transitionConfirm')
+        : newStatus === 'CANCELLED'
+          ? t('confirm.transitionCancel')
+          : stockDocStatusLabel(newStatus);
+    if (!(await confirm({ title: t('confirm.transition', { action, number: docNumber }) }))) return;
     setTransitioningBoth(true);
     setError('');
     try {
@@ -501,7 +521,7 @@ export function StockDocumentCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !isDeleted : true;
 
   // Спільний submit-handler: валідація зі схеми, потім гілка create/update.
   // Рядки йдуть У ТІЛІ (атомарний $transaction на беку) — без окремого /lines-endpoint.
@@ -512,6 +532,8 @@ export function StockDocumentCreateModal({
   const onValid = handleSubmit(async (values: StockDocumentFormValues) => {
     // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit.
     if (savingRef.current || transitioningRef.current) return;
+    // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
+    if (isDeleted) return;
     setSavingBoth(true);
     setError('');
     // Рядки з форми + staging-рядок (newLine) якщо користувач ще не натиснув «+».
@@ -778,24 +800,28 @@ export function StockDocumentCreateModal({
                       </>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={saving || transitioning}
-                    title="Поділитись"
-                  >
-                    <Share2 size={15} className="mr-1" />
-                    Поділитись
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={saving || transitioning}
-                    title="Відправити SMS"
-                  >
-                    <MessageSquare size={15} className="mr-1" />
-                    SMS
-                  </Button>
+                  {!isDeleted && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving || transitioning}
+                        title="Поділитись"
+                      >
+                        <Share2 size={15} className="mr-1" />
+                        Поділитись
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving || transitioning}
+                        title="Відправити SMS"
+                      >
+                        <MessageSquare size={15} className="mr-1" />
+                        SMS
+                      </Button>
+                    </>
+                  )}
                   {/* FSM "Підтвердити" shortcut */}
                   {allowedTransitions.includes('CONFIRMED') && (
                     <Button
@@ -850,6 +876,7 @@ export function StockDocumentCreateModal({
         }
       >
         <div className="flex flex-col min-h-[70dvh]">
+          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
           {/* ── Collapsible header ─────────────────────────────────────── */}
           <div
             className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"
@@ -1265,6 +1292,7 @@ export function StockDocumentCreateModal({
       )}
 
       <DirtyConfirmDialog {...dirty.dialogProps} />
+      <ConfirmDialog {...confirmDialogProps} />
     </>
   );
 }

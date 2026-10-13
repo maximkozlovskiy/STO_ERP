@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -194,6 +195,7 @@ export function InvoiceCreateModal({
   const [loading, setLoading] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [error, setError] = useState('');
+  const [deletedDocId, setDeletedDocId] = useState<string | null>(null);
   const [cpPickerOpen, setCpPickerOpen] = useState(false);
 
   const savingRef = useRef(false);
@@ -300,9 +302,10 @@ export function InvoiceCreateModal({
     let cancelled = false;
     setLoading(true);
     setError('');
-    apiFetch<InvoiceDetail>(`/invoices/${invoiceId}`)
+    apiFetch<InvoiceDetail>(`/invoices/${invoiceId}?withDeleted=true`)
       .then(inv => {
         if (cancelled) return;
+        setDeletedDocId(inv.deletedAt ? invoiceId : null);
         setInvoiceNumber(inv.number);
         setCurrentStatus(inv.status);
         setWorkOrderNumber(inv.workOrderNumber ?? null);
@@ -368,9 +371,15 @@ export function InvoiceCreateModal({
 
   // ── FSM ───────────────────────────────────────────────────────────────────
 
-  const allowedTransitions = isEditMode
-    ? (INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
-    : EMPTY_TRANSITIONS;
+  // Документ позначено на видалення → картка лише на перегляд. Прапорець прив'язано до id
+  // завантаженого документа, тож інший документ у тій самій модалці його не успадковує.
+  const isDeleted = isEditMode && !!invoiceId && deletedDocId === invoiceId;
+
+  // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
+  const allowedTransitions =
+    isEditMode && !isDeleted
+      ? (INVOICE_STATUS_TRANSITIONS[currentStatus] ?? EMPTY_TRANSITIONS)
+      : EMPTY_TRANSITIONS;
 
   const { statusPrevStep, statusNextStep } = useMemo(() => {
     const curIdx = INVOICE_STATUS_ORDER.indexOf(currentStatus);
@@ -386,10 +395,10 @@ export function InvoiceCreateModal({
       (s: string) => INVOICE_STATUS_ORDER.indexOf(s) > curIdx,
     );
     return { statusPrevStep, statusNextStep };
-  }, [currentStatus, isEditMode]);
+  }, [currentStatus, isEditMode, isDeleted]);
 
   const doTransition = async (newStatus: string) => {
-    if (!invoiceId) return;
+    if (!invoiceId || isDeleted) return;
     setTransitioningBoth(true);
     setError('');
     try {
@@ -434,7 +443,7 @@ export function InvoiceCreateModal({
 
   // ── Save / Create ─────────────────────────────────────────────────────────
 
-  const canEdit = isEditMode ? currentStatus === 'DRAFT' : true;
+  const canEdit = isEditMode ? currentStatus === 'DRAFT' && !isDeleted : true;
 
   // Тип рядка у field-array (форм-схема + локальні _key/id/lineTotalWithVat).
   type FormLine = {
@@ -522,7 +531,8 @@ export function InvoiceCreateModal({
   });
 
   const handleSave = handleSubmit(async (values: InvoiceFormValues) => {
-    if (!invoiceId) return;
+    // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
+    if (!invoiceId || isDeleted) return;
     if (savingRef.current || transitioningRef.current) return;
     setSavingBoth(true);
     setError('');
@@ -789,24 +799,28 @@ export function InvoiceCreateModal({
                       </>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={saving || transitioning}
-                    title="Скопіювати посилання"
-                  >
-                    <Share2 size={15} className="mr-1" />
-                    Поділитись
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={saving || transitioning}
-                    title="Відправити SMS"
-                  >
-                    <MessageSquare size={15} className="mr-1" />
-                    SMS
-                  </Button>
+                  {!isDeleted && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving || transitioning}
+                        title="Скопіювати посилання"
+                      >
+                        <Share2 size={15} className="mr-1" />
+                        Поділитись
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving || transitioning}
+                        title="Відправити SMS"
+                      >
+                        <MessageSquare size={15} className="mr-1" />
+                        SMS
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
               {isEditMode ? (
@@ -843,6 +857,7 @@ export function InvoiceCreateModal({
         }
       >
         <div className="flex flex-col min-h-[70dvh]">
+          {isDeleted && <DeletedDocumentBanner className="mb-3 shrink-0" />}
           {/* ── Collapsible header ─────────────────────────────────────── */}
           <div
             className="grid transition-[grid-template-rows] duration-300 ease-in-out shrink-0"

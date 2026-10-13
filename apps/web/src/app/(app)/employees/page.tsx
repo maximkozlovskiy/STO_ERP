@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { activateRow } from '@/lib/row-activation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEmployees, employeesKeys } from '@/hooks/api/useEmployees';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
@@ -268,6 +269,18 @@ export default function EmployeesPage() {
   });
   const employees = data?.items ?? (EMPTY_ITEMS as unknown as Employee[]);
   const totalPages = Math.ceil((data?.total ?? 0) / LIMIT);
+
+  // Вимкнули панель → вибір скидаємо: інакше після повторного вмикання клік по тому самому
+  // рядку сховав би панель замість показати (Bug #624, як у закупівель і складу).
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedEmp(null);
+  }, [detailPanel.enabled]);
+  // Рядок пішов із завантаженої сторінки (фільтр, інша сторінка, видалення) → вибір забуваємо,
+  // щоб панель не відкрилась сама, коли рядок повернеться.
+  useEffect(() => {
+    if (selectedEmp && !loading && !employees.some(i => i.id === selectedEmp.id))
+      setSelectedEmp(null);
+  }, [selectedEmp, employees, loading]);
   const qc = useQueryClient();
 
   const applyFilter = useCallback(
@@ -466,6 +479,16 @@ export default function EmployeesPage() {
             hidden={panelConfig.isFieldHidden('rateScheme')}
             value={emp.rateScheme ? RATE_LABELS[emp.rateScheme.type] : undefined}
           />
+          <div className="pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => void openEditModal(emp)}
+            >
+              {t('common:openCard')}
+            </Button>
+          </div>
         </div>
       ),
     },
@@ -674,14 +697,21 @@ export default function EmployeesPage() {
                       className={cn(
                         'group transition-colors',
                         isDeleted && 'opacity-60',
-                        detailPanel.enabled && 'cursor-pointer',
+                        'cursor-pointer',
                         selectedEmp?.id === emp.id && detailPanel.enabled && 'bg-secondary',
                         bulkSelect.isSelected(emp.id) && 'bg-primary/5',
                       )}
-                      onClick={() => {
-                        if (detailPanel.enabled)
-                          setSelectedEmp(prev => (prev?.id === emp.id ? null : emp));
-                      }}
+                      // Стандарт списків: панель увімкнена → клік показує/ховає панель;
+                      // вимкнена → клік відкриває картку (те саме, що олівець).
+                      onClick={() =>
+                        activateRow({
+                          panelEnabled: detailPanel.enabled,
+                          isSelected: selectedEmp?.id === emp.id,
+                          select: () => setSelectedEmp(emp),
+                          deselect: () => setSelectedEmp(null),
+                          open: () => void openEditModal(emp),
+                        })
+                      }
                     >
                       {features.bulkActionsEnabled && (
                         <TableCell className="w-9 pr-0" onClick={e => e.stopPropagation()}>

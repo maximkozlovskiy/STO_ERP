@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select';
 import { Modal, AnimatedBody } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useConfirm } from '@/hooks/useConfirm';
+import { DeletedDocumentBanner } from '@/components/ui/DeletedDocumentBanner';
 import { Spinner } from '@/components/ui/spinner';
 import { Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -95,6 +96,8 @@ interface WorkOrderPart {
   createdAt?: string;
 }
 interface WorkOrderDetail {
+  /** Заповнене — наряд позначено на видалення (приходить лише з `?withDeleted=true`). */
+  deletedAt?: string | null;
   id: string;
   orgId?: string;
   number: string;
@@ -317,7 +320,7 @@ export default function WorkOrderCardPage() {
     // void: кожна вітка має власний обробник відмови (setError / fallback-значення),
     // тому Promise.all тут не може реджектитись і чекати його нема кому.
     void Promise.all([
-      apiFetch<WorkOrderDetail>(`/work-orders/${id}`).then(
+      apiFetch<WorkOrderDetail>(`/work-orders/${id}?withDeleted=true`).then(
         data => ({ kind: 'wo' as const, data }),
         (e: unknown) => ({ kind: 'wo-error' as const, error: e }),
       ),
@@ -739,8 +742,11 @@ export default function WorkOrderCardPage() {
       </div>
     );
 
-  const canEdit = WO_EDITABLE_STATUSES.includes(wo.status);
-  const allowedTransitions = TRANSITIONS[wo.status] ?? [];
+  // Наряд, позначений на видалення, відкрито лише на перегляд: сервер відповість 404 на будь-яку
+  // зміну, тож редагування, переходи статусу і дії, що створюють документи, сховані.
+  const isDeleted = !!wo.deletedAt;
+  const canEdit = !isDeleted && WO_EDITABLE_STATUSES.includes(wo.status);
+  const allowedTransitions = isDeleted ? [] : (TRANSITIONS[wo.status] ?? []);
 
   // Мультивалюта (Фаза 3): валюта документа + сума у базовій валюті.
   const baseCode = baseCurrency?.code ?? 'UAH';
@@ -760,6 +766,8 @@ export default function WorkOrderCardPage() {
           {t('detail.refsPrefix', { error: refsError })}
         </p>
       )}
+
+      {isDeleted && <DeletedDocumentBanner />}
 
       {/* Header */}
       <div className="flex items-start gap-4">
@@ -805,15 +813,17 @@ export default function WorkOrderCardPage() {
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
             {t('detail.requisites')}
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openEditModal}
-            className="h-7 text-[12px] gap-1.5"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            {t('detail.edit')}
-          </Button>
+          {!isDeleted && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openEditModal}
+              className="h-7 text-[12px] gap-1.5"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {t('detail.edit')}
+            </Button>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           {wo.documentDate && (
@@ -916,24 +926,28 @@ export default function WorkOrderCardPage() {
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           {t('detail.print')}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void handleClone()}
-          loading={cloning}
-          disabled={cloning}
-        >
-          {t('detail.clone')}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void saveAsTemplate()}
-          loading={savingTemplate}
-          disabled={savingTemplate || (!wo?.lines.length && !wo?.parts.length)}
-        >
-          {t('detail.template')}
-        </Button>
+        {!isDeleted && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleClone()}
+              loading={cloning}
+              disabled={cloning}
+            >
+              {t('detail.clone')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void saveAsTemplate()}
+              loading={savingTemplate}
+              disabled={savingTemplate || (!wo?.lines.length && !wo?.parts.length)}
+            >
+              {t('detail.template')}
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Totals */}
@@ -952,7 +966,7 @@ export default function WorkOrderCardPage() {
         <div className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-foreground">{t('detail.act.title')}</h2>
-            {WO_INVOICEABLE_STATUSES.includes(wo.status) && !completionAct && (
+            {!isDeleted && WO_INVOICEABLE_STATUSES.includes(wo.status) && !completionAct && (
               <Button
                 variant="outline"
                 size="sm"
@@ -987,7 +1001,7 @@ export default function WorkOrderCardPage() {
                   {fmtDateTime(completionAct.signedAt)}
                 </p>
               )}
-              {completionAct.status === 'DRAFT' && (
+              {!isDeleted && completionAct.status === 'DRAFT' && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1005,7 +1019,7 @@ export default function WorkOrderCardPage() {
               >
                 {t('detail.act.pdf')}
               </Button>
-              {completionAct.status === 'DRAFT' && (
+              {!isDeleted && completionAct.status === 'DRAFT' && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -1068,7 +1082,7 @@ export default function WorkOrderCardPage() {
       <div className="bg-surface rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
           <h3 className="font-semibold text-foreground text-sm">{t('detail.inspection.title')}</h3>
-          {!inspection && (
+          {!inspection && !isDeleted && (
             <Button variant="outline" size="sm" onClick={() => setShowInspection(v => !v)}>
               {showInspection ? t('detail.inspection.collapse') : t('detail.inspection.start')}
             </Button>
@@ -1201,7 +1215,7 @@ export default function WorkOrderCardPage() {
         {comments.length === 0 && (
           <p className="text-sm text-muted-foreground mb-4">{t('detail.comments.empty')}</p>
         )}
-        {employee && (
+        {employee && !isDeleted && (
           <div className="flex gap-2">
             <textarea
               value={commentBody}
