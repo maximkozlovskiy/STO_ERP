@@ -347,6 +347,7 @@ export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
   FX_LOSS: 'Курсовий збиток',
   REFUND_OUT: 'Повернення коштів клієнту',
   REFUND_OUT_CANCEL: 'Сторно повернення коштів',
+  SUPPLIER_PAYMENT_RETURN: 'Повернення коштів від постачальника',
 };
 
 /**
@@ -379,6 +380,7 @@ export const SETTLEMENT_BALANCE_SIGN: Record<string, 1 | -1> = {
   // Повернення коштів клієнту з банківського рахунку і його сторно (BR-BANK-030 / 039).
   REFUND_OUT: 1,
   REFUND_OUT_CANCEL: -1,
+  SUPPLIER_PAYMENT_RETURN: -1,
 };
 
 /** Похідне: типи, що ЗБІЛЬШУЮТЬ баланс (sign=+1) — знак «+» у рядку транзакції. */

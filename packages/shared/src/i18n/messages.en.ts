@@ -116,6 +116,20 @@ export const en: Record<string, string> = {
   'v.bankTransaction.unmatchReason.required': 'Enter the reason for cancelling',
   'v.bankTransaction.unmatchReason.max': 'The reason is too long (up to 500 characters)',
 
+  // ── cash-operation.schema.ts ──
+  'v.cashOperation.direction.required': 'Select the operation direction',
+  'v.cashOperation.reason.required': 'Select the reason',
+  'v.cashOperation.reason.autoOnly':
+    'This reason is set by the system only and cannot be chosen manually',
+  'v.cashOperation.reason.direction': 'The reason does not match the operation direction',
+  'v.cashOperation.amount.min': 'Amount must be greater than zero',
+  'v.cashOperation.counterparty.required': 'Specify the counterparty for this reason',
+  'v.cashOperation.employee.required': 'Specify the employee for this reason',
+  'v.cashOperation.category.required': 'For an expense, specify an expense category',
+  'v.cashOperation.baseDocument.incomplete': 'The base document is specified incompletely',
+  'v.cashOperation.baseDocument.notAllowed': 'This document cannot be the base for this reason',
+  'v.cashOperation.notes.max': 'The note is too long (up to 500 characters)',
+
   // ── work-order.schema.ts ──
   'v.workOrder.nonNegInt.int': 'Value must be an integer',
   'v.workOrder.nonNegInt.min': 'Value cannot be negative',
@@ -266,6 +280,10 @@ export const en: Record<string, string> = {
   'err.expenseCategory.ownParent': 'A category cannot be its own parent',
   'err.expenseCategory.parentTypeMismatch': 'The parent category must be of the same type',
   'err.expenseCategory.moveIntoDescendant': 'A category cannot be moved into its own descendant',
+  'err.expenseCategory.defaultReasonTaken':
+    'The reason «{{reason}}» is already assigned to the category «{{name}}»',
+  'err.expenseCategory.defaultReasonDirection':
+    'The reason «{{reason}}» does not match the category type',
 
   // ── Exception messages: invoices module ──
   'err.invoice.notFound': 'Invoice not found',
@@ -738,6 +756,18 @@ export const en: Record<string, string> = {
   'err.cash.expenseRequiresCategory': 'For an expense, specify an expense category',
   'err.cash.insufficientCash':
     'Insufficient cash in the register: available {{available}}, required {{required}}',
+  'err.cash.reasonAutoOnly':
+    'The reason «{{reason}}» is set by the system only and cannot be posted manually',
+  'err.cash.reasonDirectionMismatch':
+    'The reason «{{reason}}» does not match the operation direction',
+  'err.cash.reasonForbiddenForRole': 'Your role does not allow a cash operation with this reason',
+  'err.cash.counterpartyRequired': 'Specify the counterparty for this reason',
+  'err.cash.counterpartyNotFound': 'Counterparty not found',
+  'err.cash.employeeRequired': 'Specify the employee for this reason',
+  'err.cash.employeeNotFound': 'Employee not found',
+  'err.cash.baseDocumentNotAllowed': 'This document cannot be the base for this reason',
+  'err.cash.baseDocumentNotFound': 'Base document not found',
+  'err.cash.baseDocumentForeign': 'The base document belongs to another counterparty',
 
   // ── Exception messages: comments module ──
   'err.comment.unknownEntityType': 'Unknown entity type for comments: {{entityType}}',

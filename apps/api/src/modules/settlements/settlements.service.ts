@@ -51,6 +51,9 @@ export const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
   // його аванс зменшився. REFUND_OUT_CANCEL — сторно при скасуванні рознесення (BR-BANK-039).
   REFUND_OUT: 1,
   REFUND_OUT_CANCEL: -1,
+  // Постачальник повернув нам гроші готівкою (каса, BR-CASH-019): його борг перед нами /
+  // наша передоплата меншає. SUPPLIER_REFUND (+1) — повернення ТОВАРУ, знак протилежний.
+  SUPPLIER_PAYMENT_RETURN: -1,
 };
 
 @Injectable()

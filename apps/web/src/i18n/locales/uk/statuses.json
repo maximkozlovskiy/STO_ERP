@@ -106,7 +106,8 @@
     "FX_GAIN": "Курсовий прибуток",
     "FX_LOSS": "Курсовий збиток",
     "REFUND_OUT": "Повернення коштів клієнту",
-    "REFUND_OUT_CANCEL": "Сторно повернення коштів"
+    "REFUND_OUT_CANCEL": "Сторно повернення коштів",
+    "SUPPLIER_PAYMENT_RETURN": "Повернення коштів від постачальника"
   },
   "EMPLOYEE_STATUS": {
     "ACTIVE": "Активний",

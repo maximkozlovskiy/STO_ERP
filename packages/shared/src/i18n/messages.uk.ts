@@ -119,6 +119,21 @@ export const uk: Record<string, string> = {
   'v.bankTransaction.unmatchReason.required': 'Вкажіть причину скасування',
   'v.bankTransaction.unmatchReason.max': 'Причина задовга (до 500 символів)',
 
+  // ── cash-operation.schema.ts ──
+  'v.cashOperation.direction.required': 'Оберіть напрям операції',
+  'v.cashOperation.reason.required': 'Оберіть привід',
+  'v.cashOperation.reason.autoOnly':
+    'Цей привід ставить лише система — вручну його обрати не можна',
+  'v.cashOperation.reason.direction': 'Привід не відповідає напряму операції',
+  'v.cashOperation.amount.min': 'Сума повинна бути більшою за нуль',
+  'v.cashOperation.counterparty.required': 'Для цього приводу вкажіть контрагента',
+  'v.cashOperation.employee.required': 'Для цього приводу вкажіть працівника',
+  'v.cashOperation.category.required': 'Для витрати вкажіть статтю витрат',
+  'v.cashOperation.baseDocument.incomplete': 'Документ-підставу вказано неповністю',
+  'v.cashOperation.baseDocument.notAllowed':
+    'Такий документ не може бути підставою для цього приводу',
+  'v.cashOperation.notes.max': 'Примітка задовга (до 500 символів)',
+
   // ── work-order.schema.ts ──
   'v.workOrder.nonNegInt.int': 'Значення має бути цілим',
   'v.workOrder.nonNegInt.min': "Значення не може бути від'ємним",
@@ -269,6 +284,9 @@ export const uk: Record<string, string> = {
   'err.expenseCategory.ownParent': 'Стаття не може бути власним батьком',
   'err.expenseCategory.parentTypeMismatch': 'Батьківська стаття має бути того ж типу',
   'err.expenseCategory.moveIntoDescendant': 'Не можна перенести статтю у власного нащадка',
+  'err.expenseCategory.defaultReasonTaken':
+    'Привід «{{reason}}» уже закріплено за статтею «{{name}}»',
+  'err.expenseCategory.defaultReasonDirection': 'Привід «{{reason}}» не відповідає типу статті',
 
   // ── Exception-повідомлення: invoices-модуль ──
   'err.invoice.notFound': 'Рахунок не знайдено',
@@ -724,6 +742,17 @@ export const uk: Record<string, string> = {
   'err.cash.expenseRequiresCategory': 'Для витрати вкажіть статтю витрат',
   'err.cash.insufficientCash':
     'Недостатньо готівки в касі: доступно {{available}}, потрібно {{required}}',
+  'err.cash.reasonAutoOnly':
+    'Привід «{{reason}}» ставить лише система — вручну провести його не можна',
+  'err.cash.reasonDirectionMismatch': 'Привід «{{reason}}» не відповідає напряму операції',
+  'err.cash.reasonForbiddenForRole': 'Ваша роль не дозволяє касову операцію з таким приводом',
+  'err.cash.counterpartyRequired': 'Для цього приводу вкажіть контрагента',
+  'err.cash.counterpartyNotFound': 'Контрагента не знайдено',
+  'err.cash.employeeRequired': 'Для цього приводу вкажіть працівника',
+  'err.cash.employeeNotFound': 'Працівника не знайдено',
+  'err.cash.baseDocumentNotAllowed': 'Такий документ не може бути підставою для цього приводу',
+  'err.cash.baseDocumentNotFound': 'Документ-підставу не знайдено',
+  'err.cash.baseDocumentForeign': 'Документ-підстава належить іншому контрагентові',
 
   // ── Exception-повідомлення: comments-модуль ──
   'err.comment.unknownEntityType': 'Невідомий тип сутності для коментарів: {{entityType}}',

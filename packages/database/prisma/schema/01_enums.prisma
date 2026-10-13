@@ -170,6 +170,13 @@ enum CashOperationReason {
   COLLECTION // інкасація / виїмка готівки
   MANUAL_IN // ручне внесення
   MANUAL_OUT // ручна видача
+  SUPPLIER_REFUND_IN // постачальник повернув гроші готівкою
+  ADVANCE_ISSUE // видача працівникові під звіт
+  ADVANCE_RETURN // повернення підзвітних коштів
+  BANK_DEPOSIT // здача готівки в банк
+  BANK_WITHDRAWAL // отримання готівки з банку
+  OWNER_IN // внесок власника
+  OWNER_OUT // вилучення коштів власником
 }
 
 enum ShiftMode {
@@ -254,6 +261,8 @@ enum SettlementTransactionType {
   // REFUND_OUT_CANCEL(−1) — сторно при скасуванні рознесення (ledger append-only).
   REFUND_OUT
   REFUND_OUT_CANCEL
+  // Постачальник повернув нам гроші (каса): його борг перед нами меншає → balance↓ (−1).
+  SUPPLIER_PAYMENT_RETURN
 }
 
 // Зарплатний період (payroll). FSM: DRAFT → COMPUTED (нарахування зафіксовано) → PAID; або CANCELLED.

@@ -594,6 +594,10 @@ model CashOperation {
   employeeId        String?             @db.Uuid // співробітник (для PAYROLL)
   documentType      String? // 'Payment' | 'PayrollPeriod' | ...
   documentId        String?             @db.Uuid
+  // Документ-ПІДСТАВА (наряд / замовлення постачальнику), за який внесено чи видано готівку.
+  // Не плутати з documentType/documentId — то платіжний документ, що породив рядок.
+  baseDocumentType  String? // 'WorkOrder' | 'PurchaseOrder'
+  baseDocumentId    String?             @db.Uuid
   notes             String?
   createdBy         String?             @db.Uuid
   createdAt         DateTime            @default(now())
@@ -616,6 +620,10 @@ model ExpenseCategory {
   parentId    String?             @db.Uuid // null = корінь дерева
   name        String
   type        ExpenseCategoryType @default(EXPENSE) // напрям (EXPENSE=OUT, INCOME=IN); гілка дерева одного типу
+  // «Привід за замовчуванням»: касова операція з цим приводом отримує цю статтю, якщо іншу не
+  // вказано. Один привід — одна стаття в організації: частковий unique-індекс живе в міграції
+  // ("expense_categories_default_reason_uq" WHERE deletedAt IS NULL AND defaultReason IS NOT NULL).
+  defaultReason CashOperationReason?
   sortOrder   Int                 @default(0)
   isActive    Boolean             @default(true)
   syncVersion BigInt              @default(0)
