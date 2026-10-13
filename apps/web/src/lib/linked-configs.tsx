@@ -232,6 +232,7 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],
           },
+          navigate: () => nav.toCalendarDay(row.startAt),
         }),
       },
       {

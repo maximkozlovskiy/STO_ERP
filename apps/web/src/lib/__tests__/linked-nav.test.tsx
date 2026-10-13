@@ -44,6 +44,16 @@ describe('useLinkedNav — URL-контракт deep-link навігації', (
     expect(push).not.toHaveBeenCalledWith(`/purchase-orders?open=${ID}`);
   });
 
+  it('запис календаря → календар у режимі дня на КИЇВСЬКОМУ дні запису', () => {
+    const { result } = renderHook(() => useLinkedNav());
+    // 10.06 о 19:00 за Києвом = 16:00 UTC.
+    result.current.toCalendarDay('2026-06-10T16:00:00.000Z');
+    expect(push).toHaveBeenNthCalledWith(1, '/calendar?view=day&date=2026-06-10');
+    // 22:30 UTC 10.06 — у Києві вже 11.06, 01:30: день береться київський, не UTC.
+    result.current.toCalendarDay('2026-06-10T22:30:00.000Z');
+    expect(push).toHaveBeenNthCalledWith(2, '/calendar?view=day&date=2026-06-11');
+  });
+
   it('LinkedNav стабільний між рендерами (useMemo по router)', () => {
     const { result, rerender } = renderHook(() => useLinkedNav());
     const first = result.current;

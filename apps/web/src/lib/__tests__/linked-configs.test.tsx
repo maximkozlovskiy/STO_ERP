@@ -21,6 +21,7 @@ function makeNav(): LinkedNav & Record<string, ReturnType<typeof vi.fn>> {
     toPurchaseOrder: vi.fn(),
     toStockDocument: vi.fn(),
     toSupplierReturn: vi.fn(),
+    toCalendarDay: vi.fn(),
   } as LinkedNav & Record<string, ReturnType<typeof vi.fn>>;
 }
 
@@ -42,6 +43,42 @@ const PO_ROW = { id: 'po1', number: 'PO-1', status: 'CONFIRMED', totalAmount: '5
 const WH_ROW = { id: 'wh1', name: 'Головний склад' };
 
 describe('linked-configs — behaviour parity of parametrized builders', () => {
+  // Запит власника 2026-10-13: «не бачу кнопки переходу» на записі календаря.
+  it('work-order → запис календаря має перехід: календар на дні запису', () => {
+    const nav = makeNav();
+    const s = section(workOrderLinkedConfig(nav), 'calendarSlots');
+    const mapped = s.mapRow({
+      id: 'slot1',
+      startAt: '2026-06-10T16:00:00.000Z',
+      endAt: '2026-06-10T17:00:00.000Z',
+      status: 'BOOKED',
+      lift: { name: 'Пост 1' },
+      notes: null,
+    } as never);
+    expect(mapped.navigate).toBeTypeOf('function');
+    mapped.navigate?.();
+    expect(nav.toCalendarDay).toHaveBeenCalledWith('2026-06-10T16:00:00.000Z');
+  });
+
+  it('work-order → оплата й гарантія лишаються без переходу (власної сторінки немає)', () => {
+    const config = workOrderLinkedConfig(makeNav());
+    const payment = section(config, 'payments').mapRow({
+      id: 'p1',
+      amount: 100,
+      method: 'CASH',
+      createdAt: '2026-06-10T10:00:00.000Z',
+    } as never);
+    const warranty = section(config, 'warranties').mapRow({
+      id: 'w1',
+      description: 'Гарантія',
+      expiresAt: '2026-11-08T00:00:00.000Z',
+      createdAt: '2026-10-09T00:00:00.000Z',
+      claimedAt: null,
+    } as never);
+    expect(payment.navigate).toBeUndefined();
+    expect(warranty.navigate).toBeUndefined();
+  });
+
   describe('invoiceSection: secondary — DATE у наряді, AMOUNT у картці контрагента', () => {
     it('work-order → invoices secondary = дата документа (fmtDate)', () => {
       const s = section(workOrderLinkedConfig(makeNav()), 'invoices');
