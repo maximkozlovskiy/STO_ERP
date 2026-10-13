@@ -233,7 +233,10 @@ body {
 }
 
 /* ─── Column drag-and-drop ─── */
-th[draggable="true"] { cursor: grab; user-select: none; }
+/* Hover shows what a CLICK does: pointer on a sortable header, plain arrow otherwise.
+   The grab hand appears only while the button is held down (the drag itself). */
+th[draggable="true"] { cursor: default; user-select: none; }
+th[draggable="true"][data-sortable="true"] { cursor: pointer; }
 th[draggable="true"]:active { cursor: grabbing; }
 th[data-dragover="true"] {
   background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);

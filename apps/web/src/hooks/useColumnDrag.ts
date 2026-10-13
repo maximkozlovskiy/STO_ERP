@@ -80,7 +80,7 @@ export function useColumnDrag(
         dragOverKey.current = null;
       },
       // cursor is handled entirely by CSS:
-      //   th[draggable="true"]        { cursor: grab }
+      //   th[draggable="true"]        { cursor: default; sortable header: pointer }
       //   th[draggable="true"]:active { cursor: grabbing }
       // No inline style — inline specificity would prevent :active from applying.
     }),

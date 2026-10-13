@@ -100,6 +100,7 @@ function SortableHead({
         isActive && 'text-foreground',
         className,
       )}
+      data-sortable="true"
       onClick={() => onSort(sortKey)}
       {...props}
     >
