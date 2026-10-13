@@ -89,8 +89,10 @@ export class EmployeesController {
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(employeeUpdateSchema)) dto: EmployeeUpdateValues,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.update(orgId, id, dto);
+    // BR-EMP-001: id поточного користувача — для запобіжника «не можна звільнити самого себе».
+    return this.service.update(orgId, id, dto, user.id);
   }
 
   @Delete(':id')

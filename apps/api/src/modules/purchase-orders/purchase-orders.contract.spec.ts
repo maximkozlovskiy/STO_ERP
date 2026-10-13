@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { PrismaService } from '../../prisma/prisma.service';
+import { describeWithDeletedRoute } from '../../common/testing/deleted-document';
 
 // Bug #189: regression-захист для POST /:id/apply-pricing HTTP-contract
 const serviceMock = {
@@ -643,5 +644,13 @@ describe('PurchaseOrders — HTTP Contract', () => {
       expect(roles('getLinesSummary').length).toBeGreaterThan(0);
       expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
+  });
+
+  // guards: BR-WO-012
+  describeWithDeletedRoute({
+    path: '/purchase-orders',
+    app: () => app,
+    findOne: serviceMock.findOne,
+    callerOrgId: 'org-1',
   });
 });

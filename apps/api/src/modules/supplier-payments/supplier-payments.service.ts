@@ -521,9 +521,18 @@ export class SupplierPaymentsService {
     return { allocations };
   }
 
-  async findOne(orgId: string, id: string): Promise<SupplierPaymentResponseDto> {
+  /**
+   * BR-WO-012: `withDeleted` знімає фільтр `deletedAt: null` (orgId лишається) — лише для
+   * перегляду документа, позначеного на видалення. Прапорець передає ТІЛЬКИ маршрут `GET :id`;
+   * усі внутрішні виклики йдуть без нього й бачать лише невидалені.
+   */
+  async findOne(
+    orgId: string,
+    id: string,
+    opts: { withDeleted?: boolean } = {},
+  ): Promise<SupplierPaymentResponseDto> {
     const sp = await this.prisma.supplierPayment.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         bankAccount: { select: { name: true } },

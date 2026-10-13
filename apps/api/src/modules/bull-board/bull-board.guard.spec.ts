@@ -221,6 +221,33 @@ describe('registerBullBoardGuard', () => {
       expect(state.status).toBe(401);
     });
 
+    // guards: BR-EMP-001
+    it('звільнений (FIRED) OWNER із чинним токеном → 401, а не доступ до черг', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        role: 'OWNER',
+        status: 'FIRED',
+        authAccount: { tokenVersion: 0 },
+      });
+      const hook = await getHook();
+      const { reply, state } = makeReply();
+      await hook(makeReq({ auth: 'Bearer good' }), reply);
+      expect(state.status).toBe(401);
+      expect(prisma.employee.findFirst.mock.calls[0][0].select).toMatchObject({ status: true });
+    });
+
+    // guards: BR-EMP-001
+    it('ON_LEAVE OWNER проходить — відпустка доступ не закриває', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        role: 'OWNER',
+        status: 'ON_LEAVE',
+        authAccount: { tokenVersion: 0 },
+      });
+      const hook = await getHook();
+      const { reply, state } = makeReply();
+      await hook(makeReq({ auth: 'Bearer good' }), reply);
+      expect(state.status).toBeUndefined();
+    });
+
     it('відсутній tokenVersion у токені трактується як 0 і збігається з 0 у БД', async () => {
       jwt.verify.mockReturnValue({ sub: SUB, orgId: ORG, role: 'OWNER' }); // без tokenVersion
       prisma.employee.findFirst.mockResolvedValue({ role: 'OWNER', authAccount: null });

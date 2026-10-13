@@ -25,7 +25,7 @@ import { DocumentNumberService } from '../document-number/document-number.servic
 //   4. confirm() з non-DRAFT статусу → BadRequestException.
 //   5. documentType передається як 'SupplierReturn' (PascalCase model-name convention),
 //      НЕ як enum value 'SUPPLIER_RETURN'.
-//   6. Duplicate goodId дедуплікується через deduplicateBy → 1 запис у БД, не 2.
+//   6. Повтори товару НЕ зливаються (BR-PO-008): два рядки одного товару → 2 записи, сума обох.
 //   7. cancel() з DRAFT → CANCELLED; cancel() з CONFIRMED → BadRequestException.
 //   8. Cross-tenant FK guard (Bug #495): goodId з чужої org → NotFoundException.
 //
@@ -355,10 +355,11 @@ describe('SupplierReturnsService — regression guards', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────
-  // create() — deduplication + cross-tenant FK guards
+  // create() — повтори товару окремими рядками + cross-tenant FK guards
   // ──────────────────────────────────────────────────────────────────────
 
-  it('create() з дублікатним goodId у lines → дедуплікація через deduplicateBy (1 рядок створено)', async () => {
+  // guards: BR-PO-008
+  it('create() з двома рядками одного товару → два рядки в надісланому порядку, сума обох', async () => {
     prisma.counterparty.findFirst.mockResolvedValueOnce({ id: SUPPLIER_ID });
     prisma.warehouse.findFirst.mockResolvedValueOnce({ id: WAREHOUSE_ID });
     prisma.good.findMany.mockResolvedValueOnce([{ id: GOOD_ID }]);
@@ -369,7 +370,7 @@ describe('SupplierReturnsService — regression guards', () => {
       status: SupplierReturnStatus.DRAFT,
       supplierId: SUPPLIER_ID,
       warehouseId: WAREHOUSE_ID,
-      totalAmount: 50, // last-write-wins: qty=2, price=25 → 50
+      totalAmount: 60,
       notes: null,
       documentDate: new Date(),
       createdAt: new Date(),
@@ -384,20 +385,31 @@ describe('SupplierReturnsService — regression guards', () => {
       warehouseId: WAREHOUSE_ID,
       lines: [
         { goodId: GOOD_ID, quantity: 1, price: 10 },
-        { goodId: GOOD_ID, quantity: 2, price: 25 }, // дубль → last-write-wins
+        { goodId: GOOD_ID, quantity: 2, price: 25 }, // той самий товар, інша ціна — окремий рядок
       ],
     });
 
-    // Перевірка дедуплікації: у Prisma create.data.lines.create має бути лише 1 запис
-    // з останніми значеннями (qty=2, price=25 → totalAmount=50).
     const callArg = prisma.supplierReturn.create.mock.calls[0]![0] as {
-      data: { lines: { create: Array<{ goodId: string; quantity: number; price: number }> } };
+      data: {
+        totalAmount: number;
+        lines: {
+          create: Array<{ goodId: string; quantity: number; price: number; createdAt: Date }>;
+        };
+      };
     };
     const createdLines = callArg.data.lines.create;
-    expect(createdLines).toHaveLength(1);
-    expect(createdLines[0]).toMatchObject({ goodId: GOOD_ID, quantity: 2, price: 25 });
-    // totalAmount теж порахований на дедуплікованому списку → 2 * 25 = 50, НЕ 1*10+2*25=60.
-    expect(callArg.data).toMatchObject({ totalAmount: 50 });
+    // Раніше рядки зливались за товаром: лишався один (останній), перший зникав разом із кількістю.
+    expect(createdLines).toHaveLength(2);
+    expect(createdLines[0]).toMatchObject({ goodId: GOOD_ID, quantity: 1, price: 10 });
+    expect(createdLines[1]).toMatchObject({ goodId: GOOD_ID, quantity: 2, price: 25 });
+    // Сума документа — сума ВСІХ рядків: 1×10 + 2×25 = 60, а не 50 від одного рядка.
+    expect(callArg.data.totalAmount).toBe(60);
+    // Порядок рядків тримається на createdAt: другий рядок строго пізніший за перший.
+    expect(createdLines[1]!.createdAt.getTime()).toBeGreaterThan(
+      createdLines[0]!.createdAt.getTime(),
+    );
+    // Існування товару перевіряється один раз на товар, а не на рядок.
+    expect(prisma.good.findMany.mock.calls[0]![0].where.id).toEqual({ in: [GOOD_ID] });
   });
 
   it('create(): cross-tenant goodId → NotFoundException (Bug #495 guard)', async () => {

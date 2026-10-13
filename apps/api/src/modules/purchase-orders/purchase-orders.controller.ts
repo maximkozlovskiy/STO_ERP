@@ -16,6 +16,7 @@ import {
 import {
   ApiTags,
   ApiOperation,
+  ApiQuery,
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
@@ -37,6 +38,11 @@ import {
   type PurchaseOrderUpdateValues,
 } from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  WithDeletedQueryPipe,
+  WITH_DELETED_API_QUERY,
+  type WithDeletedOption,
+} from '../../common/pipes/with-deleted-query.pipe';
 import {
   ReceivePurchaseOrderDto,
   TransitionPurchaseOrderDto,
@@ -113,8 +119,14 @@ export class PurchaseOrdersController {
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: 'Замовлення постачальнику по ID' })
   @ApiOkResponse({ type: PurchaseOrderResponseDto })
-  findOne(@OrgContext() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(orgId, id);
+  @ApiQuery(WITH_DELETED_API_QUERY)
+  findOne(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('withDeleted', WithDeletedQueryPipe) opts: WithDeletedOption,
+  ) {
+    // BR-WO-012: прапорець приймає лише цей маршрут — решта викликів findOne бачить невидалені.
+    return this.service.findOne(orgId, id, opts);
   }
 
   @Post()

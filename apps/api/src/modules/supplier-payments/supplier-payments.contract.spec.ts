@@ -14,6 +14,7 @@ import {
   SupplierPaymentScheduleDocumentsQueryDto,
   SupplierPaymentScheduleQueryDto,
 } from './supplier-payments.dto';
+import { describeWithDeletedRoute } from '../../common/testing/deleted-document';
 
 /**
  * Contract-тест drill-down endpoint GET schedule/documents.
@@ -268,5 +269,13 @@ describe('SupplierPayments — linked-documents HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
       expect(linkedServiceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
     });
+  });
+
+  // guards: BR-WO-012
+  describeWithDeletedRoute({
+    path: '/supplier-payments',
+    app: () => app,
+    findOne: linkedServiceMock.findOne,
+    callerOrgId: 'org-1',
   });
 });

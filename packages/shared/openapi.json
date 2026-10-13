@@ -8260,6 +8260,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "withDeleted",
+            "required": false,
+            "in": "query",
+            "description": "true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -10043,6 +10052,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "withDeleted",
+            "required": false,
+            "in": "query",
+            "description": "true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -10843,6 +10861,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "withDeleted",
+            "required": false,
+            "in": "query",
+            "description": "true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -11366,6 +11393,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "withDeleted",
+            "required": false,
+            "in": "query",
+            "description": "true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false.",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -11728,6 +11764,15 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "withDeleted",
+            "required": false,
+            "in": "query",
+            "description": "true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false.",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -12136,6 +12181,15 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "withDeleted",
+            "required": false,
+            "in": "query",
+            "description": "true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false.",
+            "schema": {
+              "type": "boolean"
             }
           }
         ],

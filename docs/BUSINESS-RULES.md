@@ -208,6 +208,14 @@ const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
 
 ---
 
+## Доступ працівника і перегляд видалених документів
+
+- Звільнений працівник не входить у систему, його сесії гаснуть — [docs/objects/employee.md](objects/employee.md), BR-EMP-001.
+- Документ, позначений на видалення, відкривається лише на перегляд — [docs/objects/work-order.md](objects/work-order.md), BR-WO-012.
+- Повернення постачальнику зберігає повтори товару окремими рядками — [docs/objects/purchase-order.md](objects/purchase-order.md), BR-PO-008.
+
+---
+
 ## Зведення по табличних частинах документа
 
 Рядків, найменувань і суми по таблицях документа та виконавці наряду — для бокової панелі списків. Одне місце правди — [docs/objects/work-order.md](objects/work-order.md), BR-WO-009 / BR-WO-010.

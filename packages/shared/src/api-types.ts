@@ -13612,7 +13612,10 @@ export interface operations {
     };
     WorkOrdersController_findOne_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false. */
+                withDeleted?: boolean;
+            };
             header?: never;
             path: {
                 id: string;
@@ -14635,7 +14638,10 @@ export interface operations {
     };
     PurchaseOrdersController_findOne_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false. */
+                withDeleted?: boolean;
+            };
             header?: never;
             path: {
                 id: string;
@@ -15062,7 +15068,10 @@ export interface operations {
     };
     SupplierReturnsController_findOne_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false. */
+                withDeleted?: boolean;
+            };
             header?: never;
             path: {
                 id: string;
@@ -15314,7 +15323,10 @@ export interface operations {
     };
     SupplierPaymentsController_findOne_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false. */
+                withDeleted?: boolean;
+            };
             header?: never;
             path: {
                 id: string;
@@ -15493,7 +15505,10 @@ export interface operations {
     };
     StockDocumentsController_findOne_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false. */
+                withDeleted?: boolean;
+            };
             header?: never;
             path: {
                 id: string;
@@ -15699,7 +15714,10 @@ export interface operations {
     };
     InvoicesController_findOne_v1: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true — повернути документ, навіть якщо він позначений на видалення (лише перегляд). Приймає тільки true або false. */
+                withDeleted?: boolean;
+            };
             header?: never;
             path: {
                 id: string;

@@ -201,23 +201,24 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/invoices/`
 
-| Аспект                                  | Тест                                       | Кейсів |
-| --------------------------------------- | ------------------------------------------ | ------ |
-| BullMQ-processor                        | `invoice-overdue.processor.spec.ts`        | 4      |
-| HTTP-контракт (DTO, статуси, валідація) | `invoices.contract.spec.ts`                | 30     |
-| create defaults (номер, invoiceType)    | `invoices.create-defaults.spec.ts`         | 5      |
-| create from work order                  | `invoices.create-from-work-order.spec.ts`  | 14     |
-| dto and linked docs                     | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
-| due date                                | `invoices.due-date.spec.ts`                | 7      |
-| find by work order                      | `invoices.find-by-work-order.spec.ts`      | 5      |
-| line totals (recalcTotals на бекенді)   | `invoices.line-totals.spec.ts`             | 12     |
-| список: відбір за датою документа       | `invoices.list-date-filter.spec.ts`        | 6      |
-| refresh from work order                 | `invoices.refresh-from-work-order.spec.ts` | 15     |
-| transition settlements                  | `invoices.transition-settlements.spec.ts`  | 10     |
-| update: зміна контрагента (org, роль)   | `invoices.update-counterparty.spec.ts`     | 5      |
-| рядки рахунку з наряду (чиста функція)  | `invoices.work-order-lines.spec.ts`        | 23     |
+| Аспект                                                         | Тест                                       | Кейсів |
+| -------------------------------------------------------------- | ------------------------------------------ | ------ |
+| BullMQ-processor                                               | `invoice-overdue.processor.spec.ts`        | 4      |
+| HTTP-контракт (DTO, статуси, валідація)                        | `invoices.contract.spec.ts`                | 40     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012) | `invoices.with-deleted.spec.ts`            | 13     |
+| create defaults (номер, invoiceType)                           | `invoices.create-defaults.spec.ts`         | 5      |
+| create from work order                                         | `invoices.create-from-work-order.spec.ts`  | 14     |
+| dto and linked docs                                            | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
+| due date                                                       | `invoices.due-date.spec.ts`                | 7      |
+| find by work order                                             | `invoices.find-by-work-order.spec.ts`      | 5      |
+| line totals (recalcTotals на бекенді)                          | `invoices.line-totals.spec.ts`             | 12     |
+| список: відбір за датою документа                              | `invoices.list-date-filter.spec.ts`        | 6      |
+| refresh from work order                                        | `invoices.refresh-from-work-order.spec.ts` | 15     |
+| transition settlements                                         | `invoices.transition-settlements.spec.ts`  | 10     |
+| update: зміна контрагента (org, роль)                          | `invoices.update-counterparty.spec.ts`     | 5      |
+| рядки рахунку з наряду (чиста функція)                         | `invoices.work-order-lines.spec.ts`        | 23     |
 
-Разом: **138** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **161** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { DocumentNumberService } from '../document-number/document-number.service';
+import { describeWithDeletedRoute } from '../../common/testing/deleted-document';
 
 // ─── Mocks ────────────────────────────────────────────────
 
@@ -297,5 +298,13 @@ describe('SupplierReturns — HTTP Contract', () => {
       expect(roles('getLinesSummary').length).toBeGreaterThan(0);
       expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
+  });
+
+  // guards: BR-WO-012
+  describeWithDeletedRoute({
+    path: '/supplier-returns',
+    app: () => app,
+    findOne: serviceMock.findOne,
+    callerOrgId: 'org-1',
   });
 });

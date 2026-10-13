@@ -768,6 +768,7 @@ export const VALIDATION_KEYS = [
   'err.employee.liftsNotFound',
   'err.employee.categoriesNotFound',
   'err.employee.branchesNotFound',
+  'err.employee.cannotFireSelf',
   'err.employee.assignedToActiveOrders',
   'err.employee.invalidRateScheme',
   // Exception-повідомлення: good-statuses-модуль

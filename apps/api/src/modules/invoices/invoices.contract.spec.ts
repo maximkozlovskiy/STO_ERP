@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { PdfService } from '../pdf/pdf.service';
+import { describeWithDeletedRoute } from '../../common/testing/deleted-document';
 
 // ─── Mocks ────────────────────────────────────────────────
 
@@ -554,5 +555,13 @@ describe('Invoices — HTTP Contract', () => {
       expect(roles('getLinesSummary').length).toBeGreaterThan(0);
       expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
+  });
+
+  // guards: BR-WO-012
+  describeWithDeletedRoute({
+    path: '/invoices',
+    app: () => app,
+    findOne: serviceMock.findOne,
+    callerOrgId: 'org-1',
   });
 });

@@ -760,6 +760,7 @@ export const en: Record<string, string> = {
   'err.employee.liftsNotFound': 'One or more lifts not found',
   'err.employee.categoriesNotFound': 'One or more categories not found',
   'err.employee.branchesNotFound': 'One or more branches not found',
+  'err.employee.cannotFireSelf': 'You cannot dismiss yourself: it would lock you out of the system',
   'err.employee.assignedToActiveOrders':
     'Cannot delete: the employee is assigned to active work orders',
   'err.employee.invalidRateScheme': 'Invalid rate scheme: {{details}}',

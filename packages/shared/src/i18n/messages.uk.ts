@@ -746,6 +746,7 @@ export const uk: Record<string, string> = {
   'err.employee.liftsNotFound': 'Один або кілька підйомників не знайдено',
   'err.employee.categoriesNotFound': 'Одну або кілька категорій не знайдено',
   'err.employee.branchesNotFound': 'Одну або кілька філій не знайдено',
+  'err.employee.cannotFireSelf': 'Не можна звільнити самого себе: це закрило б вам вхід у систему',
   'err.employee.assignedToActiveOrders':
     'Неможливо видалити: співробітник призначений на активні наряди',
   'err.employee.invalidRateScheme': 'Невірна схема нарахування: {{details}}',

@@ -186,18 +186,54 @@ export class EmployeesService {
     return this.toDto(item);
   }
 
-  async update(orgId: string, id: string, dto: UpdateEmployeeDto): Promise<EmployeeResponseDto> {
+  async update(
+    orgId: string,
+    id: string,
+    dto: UpdateEmployeeDto,
+    currentUserId?: string,
+  ): Promise<EmployeeResponseDto> {
     // sto-optimize: replace findOne (full DTO + 4 join tables) with narrow
-    // existence check — лише id потрібен для 404 guard. Update нижче все одно
+    // existence check — для 404 guard і переходу статусу. Update нижче все одно
     // тягне всі relations. -1 over-fetch per call.
     const existing = await this.prisma.employee.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!existing)
       throw new NotFoundException(translateError('err.employee.notFound', getLocale()));
+    // BR-EMP-001: запобіжник від самоблокування — «звільнено» самому собі поставити не можна.
+    if (dto.status === 'FIRED' && currentUserId !== undefined && currentUserId === id) {
+      throw new BadRequestException(translateError('err.employee.cannotFireSelf', getLocale()));
+    }
     if (dto.rateScheme) this.validateRateScheme(dto.rateScheme);
-    const item = await this.prisma.employee.update({
+    // BR-EMP-001: саме ПЕРЕХІД у FIRED (було не FIRED → стало FIRED) відкликає всі видані токени.
+    // Повторний PATCH уже звільненого версію не чіпає.
+    const becomesFired = dto.status === 'FIRED' && existing.status !== 'FIRED';
+    const item = await this.prisma.$transaction(
+      async tx => {
+        const updated = await this.applyUpdate(tx, orgId, id, dto);
+        if (becomesFired) {
+          // Як AuthService.logoutAll: старі access/refresh-токени не оживуть і після повернення
+          // статусу. У тій самій транзакції, що й зміна статусу, — без вікна «звільнений, а токен дійсний».
+          await tx.authAccount.updateMany({
+            where: { employeeId: id, orgId, deletedAt: null },
+            data: { tokenVersion: { increment: 1 } },
+          });
+        }
+        return updated;
+      },
+      { timeout: TRANSACTION_TIMEOUT_MS },
+    );
+    return this.toDto(item);
+  }
+
+  private applyUpdate(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    id: string,
+    dto: UpdateEmployeeDto,
+  ) {
+    return tx.employee.update({
       where: { id, orgId },
       data: {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
@@ -221,7 +257,6 @@ export class EmployeesService {
         employeeBranches: { select: { branchId: true } },
       },
     });
-    return this.toDto(item);
   }
 
   async remove(orgId: string, id: string): Promise<void> {

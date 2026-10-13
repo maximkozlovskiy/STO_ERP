@@ -188,6 +188,7 @@ receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `co
    рядка за чинним режимом організації і тотали замовлення (`totalAmount`, `totalVat`,
    `totalAmountBase`) по всіх активних рядках: `PurchaseOrderImportAdapter.syncAfterDirectLineWrite`.
    Сума документа після імпорту дорівнює сумі рядків без натискання «Зберегти» (Bug #843).
+8. **BR-PO-008**: **У поверненні постачальнику той самий товар може стояти кількома рядками** (рішення власника 2026-10-13; наприклад, із різною ціною). Створення й оновлення зберігають усі надіслані рядки без злиття за товаром, у надісланому порядку; сума документа — сума всіх рядків, кожен округлений окремо. Проведення створює окремий рух списання на кожен рядок, послідовно, тому достатність залишку перевіряється за сумою по товару: якщо разом рядки перевищують доступний залишок, проведення відхиляється цілком («Недостатньо товару на складі») і нічого не списано. Розрахунок із постачальником один, на суму документа. Раніше повтори мовчки зливались (`deduplicateBy`), і перший рядок зникав разом із кількістю. Модуль `supplier-returns` (`create`, `update`, `confirm`)
 
 > Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
 > (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
@@ -219,21 +220,22 @@ else → newContractId = po.contractId                         // unchanged
 cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.spec.ts
 ```
 
-| Аспект                                         | Тест                                                             | Кейсів |
-| ---------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| `applyPricing` — правила ціноутворення         | `purchase-orders.pricing.spec.ts`                                | 13     |
-| `receive()` — UoM-override + tenant-валідація  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
-| `receive()` — activeLines, CAS → RECEIPT, борг | `purchase-orders.receive-ledger.spec.ts`                         | 5      |
-| `create`/`update` — tenant-guard goodId рядків | `purchase-orders.line-goods.spec.ts`                             | 3      |
-| `update()` — резолв контракту контрагента      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
-| `transition()` — карта `PO_TRANSITIONS`        | `purchase-orders.fsm.spec.ts`                                    | 15     |
-| `findAll` — `sortBy=paymentDate`, nulls-last   | `purchase-orders.sort.spec.ts`                                   | 7      |
-| linked-documents — межові випадки              | `purchase-orders.linked-docs.spec.ts`                            | 5      |
-| `create` — Σ(lines.amount) === totalAmount     | `purchase-orders.totals.spec.ts`                                 | 1      |
-| швидкий імпорт рядків XLSX: виклик перерахунку | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
-| імпорт рядків: ПДВ рядків і тотали (адаптер)   | `../xlsx/document-line-import.adapter.spec.ts`                   | 12     |
-| HTTP-контракт (DTO, статуси, валідація)        | `purchase-orders.contract.spec.ts`                               | 37     |
-| Доставка (Нова Пошта)                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
+| Аспект                                                         | Тест                                                             | Кейсів |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| `applyPricing` — правила ціноутворення                         | `purchase-orders.pricing.spec.ts`                                | 13     |
+| `receive()` — UoM-override + tenant-валідація                  | `purchase-orders.receive-uom.spec.ts`                            | 13     |
+| `receive()` — activeLines, CAS → RECEIPT, борг                 | `purchase-orders.receive-ledger.spec.ts`                         | 5      |
+| `create`/`update` — tenant-guard goodId рядків                 | `purchase-orders.line-goods.spec.ts`                             | 3      |
+| `update()` — резолв контракту контрагента                      | `purchase-orders.contract-resolution.spec.ts`                    | 9      |
+| `transition()` — карта `PO_TRANSITIONS`                        | `purchase-orders.fsm.spec.ts`                                    | 15     |
+| `findAll` — `sortBy=paymentDate`, nulls-last                   | `purchase-orders.sort.spec.ts`                                   | 7      |
+| linked-documents — межові випадки                              | `purchase-orders.linked-docs.spec.ts`                            | 5      |
+| `create` — Σ(lines.amount) === totalAmount                     | `purchase-orders.totals.spec.ts`                                 | 1      |
+| швидкий імпорт рядків XLSX: виклик перерахунку                 | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
+| імпорт рядків: ПДВ рядків і тотали (адаптер)                   | `../xlsx/document-line-import.adapter.spec.ts`                   | 12     |
+| HTTP-контракт (DTO, статуси, валідація)                        | `purchase-orders.contract.spec.ts`                               | 47     |
+| документ, позначений на видалення, — лише перегляд (BR-WO-012) | `purchase-orders.with-deleted.spec.ts`                           | 11     |
+| Доставка (Нова Пошта)                                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
 
 Спільні DI-провайдери — `purchase-orders.spec-fixture.ts`. Якщо у конструктор
 `PurchaseOrdersService` додається сервіс, усі спеки впадуть із «Nest can't resolve

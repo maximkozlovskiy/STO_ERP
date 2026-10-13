@@ -154,9 +154,18 @@ export class InvoicesService {
     return { items: items.map(item => this.toDto(item)), total, page, limit: take };
   }
 
-  async findOne(orgId: string, id: string): Promise<InvoiceResponseDto> {
+  /**
+   * BR-WO-012: `withDeleted` знімає фільтр `deletedAt: null` (orgId лишається) — лише для
+   * перегляду документа, позначеного на видалення. Прапорець передає ТІЛЬКИ маршрут `GET :id`;
+   * усі внутрішні виклики йдуть без нього й бачать лише невидалені.
+   */
+  async findOne(
+    orgId: string,
+    id: string,
+    opts: { withDeleted?: boolean } = {},
+  ): Promise<InvoiceResponseDto> {
     const inv = await this.prisma.invoice.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
       include: {
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },
         workOrder: { select: { number: true } },

@@ -122,9 +122,18 @@ export class StockDocumentsService {
     return { items: items.map(d => this.toDto(d)), total, page, limit: take };
   }
 
-  async findOne(orgId: string, id: string): Promise<StockDocumentResponseDto> {
+  /**
+   * BR-WO-012: `withDeleted` знімає фільтр `deletedAt: null` (orgId лишається) — лише для
+   * перегляду документа, позначеного на видалення. Прапорець передає ТІЛЬКИ маршрут `GET :id`;
+   * усі внутрішні виклики йдуть без нього й бачать лише невидалені.
+   */
+  async findOne(
+    orgId: string,
+    id: string,
+    opts: { withDeleted?: boolean } = {},
+  ): Promise<StockDocumentResponseDto> {
     const doc = await this.prisma.stockDocument.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
       include: {
         branch: { select: { name: true } },
         warehouse: { select: { name: true } },

@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { describeWithDeletedRoute } from '../../common/testing/deleted-document';
 
 // УВАГА: усі UUID у фікстурах цього файлу мусять бути валідним v4
 // (13-й символ «4», 17-й з {8,9,a,b}) — ParseUUIDPipe у NestJS 12 перевіряє
@@ -629,5 +630,13 @@ describe('WorkOrders — HTTP Contract', () => {
       expect(roles('getLinesSummary').length).toBeGreaterThan(0);
       expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
+  });
+
+  // guards: BR-WO-012
+  describeWithDeletedRoute({
+    path: '/work-orders',
+    app: () => app,
+    findOne: serviceMock.findOne,
+    callerOrgId: 'org-1',
   });
 });

@@ -40,11 +40,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         id: true,
         orgId: true,
         role: true,
+        status: true,
         authAccount: { select: { tokenVersion: true } },
       },
     });
 
-    if (!employee) {
+    // BR-EMP-001: чинна сесія звільненого гасне на наступному ж запиті — статус читається тим
+    // самим запитом, що й tokenVersion.
+    if (!employee || employee.status === 'FIRED') {
       throw new UnauthorizedException(translateError('err.auth.sessionInvalid', getLocale()));
     }
 

@@ -13,6 +13,7 @@ const mockEmployee = {
   firstName: 'Іван',
   lastName: 'Петренко',
   role: 'ADMIN',
+  status: 'ACTIVE',
   deletedAt: null,
 };
 
@@ -227,6 +228,70 @@ describe('AuthService', () => {
         expect.objectContaining({ data: { failedAttempts: 0, lockedUntil: null } }),
       );
     });
+
+    // guards: BR-EMP-001
+    describe('звільнений працівник (status = FIRED)', () => {
+      const account = async (over: Record<string, unknown>, status: string) => ({
+        id: 'auth-1',
+        email: 'fired@sto.local',
+        passwordHash: await bcrypt.hash('secret', 10),
+        orgId: 'org-1',
+        tokenVersion: 0,
+        failedAttempts: 0,
+        lockedUntil: null,
+        employee: { ...mockEmployee, status },
+        ...over,
+      });
+
+      it('правильний пароль → 403, токени не видаються, лічильник невдач не змінено', async () => {
+        // failedAttempts = 3: успішний вхід скинув би його в 0, невдалий — підняв би до 4.
+        // Відмова через статус не робить ні того, ні іншого.
+        prisma.authAccount.findFirst.mockResolvedValue(
+          await account({ failedAttempts: 3 }, 'FIRED'),
+        );
+
+        await expect(
+          service.login({ email: 'fired@sto.local', password: 'secret' }, mockRes),
+        ).rejects.toThrow(new ForbiddenException('Обліковий запис заблоковано'));
+
+        expect(prisma.authAccount.update).not.toHaveBeenCalled();
+        expect(jwtService.sign).not.toHaveBeenCalled();
+        expect(resMock.cookie).not.toHaveBeenCalled();
+      });
+
+      it('неправильний пароль → звичайна 401: статус без пароля не розкривається', async () => {
+        prisma.authAccount.findFirst.mockResolvedValue(await account({}, 'FIRED'));
+
+        const err = await service
+          .login({ email: 'fired@sto.local', password: 'wrong' }, mockRes)
+          .catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(UnauthorizedException);
+        // Та сама відповідь, що й для чинного працівника з неправильним паролем.
+        const active = await account({}, 'ACTIVE');
+        prisma.authAccount.findFirst.mockResolvedValue(active);
+        const errActive = await service
+          .login({ email: 'fired@sto.local', password: 'wrong' }, mockRes)
+          .catch((e: unknown) => e);
+        expect((err as Error).message).toBe((errActive as Error).message);
+        // Невдала спроба пароля рахується як завжди.
+        expect(prisma.authAccount.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: { failedAttempts: 1 } }),
+        );
+      });
+
+      it('ON_LEAVE входить: відпустка вхід не блокує', async () => {
+        prisma.authAccount.findFirst.mockResolvedValue(await account({}, 'ON_LEAVE'));
+
+        const result = await service.login(
+          { email: 'fired@sto.local', password: 'secret' },
+          mockRes,
+        );
+
+        expect(result.accessToken).toBe('mock.jwt.token');
+        expect(resMock.cookie).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('refresh', () => {
@@ -283,6 +348,48 @@ describe('AuthService', () => {
 
       await expect(service.refresh('stale.token', mockRes)).rejects.toThrow(UnauthorizedException);
       // MUTATION-VERIFY: прибрати tokenVersion-guard у refresh → цей assert впаде (сесія продовжилась би).
+    });
+
+    // guards: BR-EMP-001
+    it('звільнений (FIRED) → 401 «сесія застаріла», нова refresh-cookie не видається', async () => {
+      jwtService.verify.mockReturnValue({
+        sub: 'emp-1',
+        orgId: 'org-1',
+        role: 'ADMIN',
+        tokenVersion: 2,
+      });
+      // Версія токена збігається: відмова саме через статус, а не через відкликання.
+      prisma.employee.findFirst.mockResolvedValue({
+        ...mockEmployee,
+        status: 'FIRED',
+        authAccount: { tokenVersion: 2 },
+      });
+
+      await expect(service.refresh('valid.token', mockRes)).rejects.toThrow(
+        new UnauthorizedException('Сесія застаріла, увійдіть знову'),
+      );
+      expect(jwtService.sign).not.toHaveBeenCalled();
+      expect(resMock.cookie).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-EMP-001
+    it('ON_LEAVE продовжує сесію', async () => {
+      jwtService.verify.mockReturnValue({
+        sub: 'emp-1',
+        orgId: 'org-1',
+        role: 'ADMIN',
+        tokenVersion: 0,
+      });
+      prisma.employee.findFirst.mockResolvedValue({
+        ...mockEmployee,
+        status: 'ON_LEAVE',
+        authAccount: { tokenVersion: 0 },
+      });
+
+      const result = await service.refresh('valid.token', mockRes);
+
+      expect(result.accessToken).toBe('mock.jwt.token');
+      expect(resMock.cookie).toHaveBeenCalled();
     });
   });
 

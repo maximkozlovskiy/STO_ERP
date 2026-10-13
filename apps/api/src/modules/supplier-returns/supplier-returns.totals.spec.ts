@@ -34,7 +34,8 @@ describe('SupplierReturnsService.create — Bug #778: Σ(lines.amount) === total
   const ORG = '00000000-0000-4000-8000-0000000007aa';
   const SUPPLIER_ID = '22222222-2222-4222-8222-222222222222';
   const WAREHOUSE_ID = '33333333-3333-4333-8333-333333333333';
-  // РІЗНІ goodId — SR дедуплікує рядки за goodId (deduplicateBy), однакові збились би в один.
+  // Три різні товари. Повтори товару теж лишаються окремими рядками (BR-PO-008) — їх перевіряє
+  // supplier-returns.duplicate-lines.spec.ts.
   const GOOD_A = '44444444-4444-4444-8444-44444444444a';
   const GOOD_B = '44444444-4444-4444-8444-44444444444b';
   const GOOD_C = '44444444-4444-4444-8444-44444444444c';

@@ -190,9 +190,19 @@ export class WorkOrdersService {
     };
   }
 
-  async findOne(orgId: string, id: string, userRole?: string): Promise<WorkOrderDetailDto> {
+  /**
+   * BR-WO-012: `withDeleted` знімає фільтр `deletedAt: null` (orgId лишається) — лише для
+   * перегляду документа, позначеного на видалення. Прапорець передає ТІЛЬКИ маршрут `GET :id`;
+   * усі внутрішні виклики йдуть без нього й бачать лише невидалені.
+   */
+  async findOne(
+    orgId: string,
+    id: string,
+    userRole?: string,
+    opts: { withDeleted?: boolean } = {},
+  ): Promise<WorkOrderDetailDto> {
     const wo = await this.prisma.workOrder.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
       include: {
         vehicle: { select: { make: true, model: true, licensePlate: true } },
         counterparty: { select: { firstName: true, lastName: true, companyName: true } },

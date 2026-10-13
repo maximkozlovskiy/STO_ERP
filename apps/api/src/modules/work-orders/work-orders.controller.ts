@@ -19,6 +19,7 @@ import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.in
 import {
   ApiTags,
   ApiOperation,
+  ApiQuery,
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
@@ -51,6 +52,11 @@ import {
   type WorkOrderPartUpdateValues,
 } from '@sto/shared';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import {
+  WithDeletedQueryPipe,
+  WITH_DELETED_API_QUERY,
+  type WithDeletedOption,
+} from '../../common/pipes/with-deleted-query.pipe';
 import {
   TransitionWorkOrderDto,
   WorkOrderQueryDto,
@@ -129,13 +135,16 @@ export class WorkOrdersController {
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Деталі наряду' })
   @ApiOkResponse({ type: WorkOrderDetailDto })
+  @ApiQuery(WITH_DELETED_API_QUERY)
   findOne(
     @OrgContext() orgId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: { role: string },
+    @Query('withDeleted', WithDeletedQueryPipe) opts: WithDeletedOption,
   ) {
     // §2.1 Auth: pass role → service маскує part.costPrice для MECHANIC/RECEPTIONIST
-    return this.service.findOne(orgId, id, user.role);
+    // BR-WO-012: прапорець приймає лише цей маршрут — решта викликів findOne бачить невидалені.
+    return this.service.findOne(orgId, id, user.role, opts);
   }
 
   @Post()

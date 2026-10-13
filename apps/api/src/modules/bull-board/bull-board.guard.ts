@@ -67,10 +67,11 @@ export async function registerBullBoardGuard(app: NestFastifyApplication): Promi
 
     const employee = await prisma.employee.findFirst({
       where: { id: payload.sub, orgId: payload.orgId, deletedAt: null },
-      select: { role: true, authAccount: { select: { tokenVersion: true } } },
+      select: { role: true, status: true, authAccount: { select: { tokenVersion: true } } },
     });
 
-    if (!employee) {
+    // BR-EMP-001: звільнений працівник не проходить (власна копія логіки JwtStrategy).
+    if (!employee || employee.status === 'FIRED') {
       return deny(401, 'Сесія недійсна');
     }
 

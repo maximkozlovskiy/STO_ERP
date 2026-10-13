@@ -4,7 +4,6 @@ import { Prisma, SupplierReturnStatus } from '@prisma/client';
 import { kyivToday, dateOnlyRangeFilter } from '../../common/utils/kyiv-date';
 import { money, moneyFromDecimal, sumMoney } from '../../common/utils/money';
 import { calculatePagination } from '../../common/utils/pagination';
-import { deduplicateBy } from '../../common/utils/array';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { uniqueDefinedIds, initCountsMap } from '../../common/utils/linked-counts';
 import { getLocale } from '../../common/tenant/tenant-context';
@@ -26,6 +25,20 @@ import {
 } from './supplier-returns.dto';
 
 type SRStatus = SupplierReturnStatus;
+
+// BR-PO-008: рядки повернення віддаються в тому порядку, в якому їх надіслали. Окремої колонки
+// порядку в таблиці немає, а `createdAt` за замовчуванням — час початку транзакції, тобто
+// однаковий для всіх рядків одного запису. Тому сервіс сам проставляє `createdAt` зі зсувом
+// 1 мс на рядок (`orderedLineStamps`), а читання сортує за ним.
+const SR_LINE_ORDER: Prisma.SupplierReturnLineOrderByWithRelationInput[] = [
+  { createdAt: 'asc' },
+  { id: 'asc' },
+];
+
+function orderedLineStamps(count: number): Date[] {
+  const base = Date.now();
+  return Array.from({ length: count }, (_, i) => new Date(base + i));
+}
 
 const SR_TRANSITIONS: Record<SRStatus, SRStatus[]> = {
   DRAFT: [SupplierReturnStatus.CONFIRMED, SupplierReturnStatus.CANCELLED],
@@ -103,15 +116,25 @@ export class SupplierReturnsService {
     };
   }
 
-  async findOne(orgId: string, id: string): Promise<SupplierReturnResponseDto> {
+  /**
+   * BR-WO-012: `withDeleted` знімає фільтр `deletedAt: null` (orgId лишається) — лише для
+   * перегляду документа, позначеного на видалення. Прапорець передає ТІЛЬКИ маршрут `GET :id`;
+   * усі внутрішні виклики йдуть без нього й бачать лише невидалені.
+   */
+  async findOne(
+    orgId: string,
+    id: string,
+    opts: { withDeleted?: boolean } = {},
+  ): Promise<SupplierReturnResponseDto> {
     const sr = await this.prisma.supplierReturn.findFirst({
-      where: { id, orgId, deletedAt: null },
+      where: { id, orgId, ...(opts.withDeleted === true ? {} : { deletedAt: null }) },
       include: {
         supplier: { select: { firstName: true, lastName: true, companyName: true } },
         warehouse: { select: { name: true } },
         purchaseOrder: { select: { number: true } },
         lines: {
           where: { deletedAt: null },
+          orderBy: SR_LINE_ORDER,
           include: {
             good: {
               select: {
@@ -165,18 +188,20 @@ export class SupplierReturnsService {
       );
     }
 
+    // BR-PO-008: повтори товару — окремі рядки. Усі надіслані рядки зберігаються як є, у
+    // надісланому порядку (той самий товар може повертатись двома рядками з різною ціною).
     const lines = dto.lines ?? [];
-    const dedupedLines = deduplicateBy(lines, l => l.goodId);
+    const lineStamps = orderedLineStamps(lines.length);
 
     // cross-tenant FK guard: кожен goodId/unitOfMeasureId з DTO має існувати
     // у цій організації. Сирий Prisma write валідує лише глобальне існування FK,
     // НЕ orgId → FK з чужої org проходить → cross-tenant linkage.
-    await this.validateLineRefs(orgId, dedupedLines);
+    await this.validateLineRefs(orgId, lines);
 
     const number = await this.docNumbers.next(orgId, 'SUPPLIER_RETURN');
     // Bug #777: Σ(per-line money(q×price)) — toDto показує per-line amount = money(q×price),
     // round-once суми розходиться з ними на дробових кількостях → рядки не б'ються з total.
-    const totalAmount = sumMoney(dedupedLines.map(l => money(l.quantity * l.price)));
+    const totalAmount = sumMoney(lines.map(l => money(l.quantity * l.price)));
 
     const sr = await this.prisma.supplierReturn.create({
       data: {
@@ -189,12 +214,13 @@ export class SupplierReturnsService {
         notes: dto.notes,
         documentDate: dto.documentDate ? new Date(dto.documentDate) : kyivToday(),
         lines: {
-          create: dedupedLines.map(l => ({
+          create: lines.map((l, i) => ({
             orgId,
             goodId: l.goodId,
             quantity: l.quantity,
             price: l.price,
             unitOfMeasureId: l.unitOfMeasureId ?? null,
+            createdAt: lineStamps[i],
           })),
         },
       },
@@ -204,6 +230,7 @@ export class SupplierReturnsService {
         purchaseOrder: { select: { number: true } },
         lines: {
           where: { deletedAt: null },
+          orderBy: SR_LINE_ORDER,
           include: {
             good: {
               select: {
@@ -268,8 +295,7 @@ export class SupplierReturnsService {
     // cross-tenant FK guard for update() — кожен новий goodId/unitOfMeasureId
     // має існувати у цій організації. Валідація ПЕРЕД $transaction (read-only).
     if (dto.lines !== undefined && dto.lines.length > 0) {
-      const dedupedForCheck = deduplicateBy(dto.lines, l => l.goodId);
-      await this.validateLineRefs(orgId, dedupedForCheck);
+      await this.validateLineRefs(orgId, dto.lines);
     }
 
     await this.prisma.$transaction(
@@ -279,16 +305,19 @@ export class SupplierReturnsService {
             where: { supplierReturnId: id, orgId },
             data: { deletedAt: new Date() },
           });
-          const dedupedLines = deduplicateBy(dto.lines, l => l.goodId);
-          if (dedupedLines.length > 0) {
+          // BR-PO-008: повтори товару не зливаються — кожен надісланий рядок стає рядком документа.
+          const newLines = dto.lines;
+          if (newLines.length > 0) {
+            const lineStamps = orderedLineStamps(newLines.length);
             await tx.supplierReturnLine.createMany({
-              data: dedupedLines.map(l => ({
+              data: newLines.map((l, i) => ({
                 orgId,
                 supplierReturnId: id,
                 goodId: l.goodId,
                 quantity: l.quantity,
                 price: l.price,
                 unitOfMeasureId: l.unitOfMeasureId ?? null,
+                createdAt: lineStamps[i],
               })),
             });
           }
@@ -369,6 +398,7 @@ export class SupplierReturnsService {
             totalAmount: true,
             lines: {
               where: { deletedAt: null },
+              orderBy: SR_LINE_ORDER,
               select: {
                 goodId: true,
                 quantity: true,
@@ -380,28 +410,34 @@ export class SupplierReturnsService {
           },
         });
 
-        await Promise.all(
-          sr.lines.map(line =>
-            this.inventory.createMovement(
-              orgId,
-              {
-                goodId: line.goodId,
-                warehouseId: sr.warehouseId,
-                type: 'WRITEOFF',
-                // WRITEOFF потребує від'ємну кількість — InventoryService виконує
-                // `quantity: { increment: quantityDelta }` (work-orders + stock-documents
-                // мають таку саму конвенцію).
-                quantity: -line.quantity,
-                price: Number(line.price),
-                documentType: 'SupplierReturn',
-                documentId: id,
-                createdBy: userId,
-                unitOfMeasureId: line.unitOfMeasureId ?? null,
-              },
-              tx,
-            ),
-          ),
-        );
+        // BR-PO-008: рядки проводяться ПОСЛІДОВНО. Той самий товар може стояти кількома рядками,
+        // а такі рядки ділять один StockItem і ті самі партії: createMovement спершу читає
+        // залишок, потім пише. Через Promise.all обидва рухи одного товару прочитали б той самий
+        // «старий» залишок (кожен окремо «вистачає»), а нестачу ловив би вже запобіжник після
+        // запису — з текстом про одночасне списання або помилкою CHECK у базі замість звичайного
+        // «Недостатньо товару». Послідовно другий рядок бачить залишок уже без першого, тобто
+        // достатність перевіряється за СУМОЮ по товару. Виграшу паралельність не давала: у межах
+        // однієї транзакції Prisma виконує запити по черзі (той самий підхід — BR-SDOC-003/004).
+        for (const line of sr.lines) {
+          await this.inventory.createMovement(
+            orgId,
+            {
+              goodId: line.goodId,
+              warehouseId: sr.warehouseId,
+              type: 'WRITEOFF',
+              // WRITEOFF потребує від'ємну кількість — InventoryService виконує
+              // `quantity: { increment: quantityDelta }` (work-orders + stock-documents
+              // мають таку саму конвенцію).
+              quantity: -line.quantity,
+              price: Number(line.price),
+              documentType: 'SupplierReturn',
+              documentId: id,
+              createdBy: userId,
+              unitOfMeasureId: line.unitOfMeasureId ?? null,
+            },
+            tx,
+          );
+        }
 
         const returnAmount = Number(sr.totalAmount);
         if (returnAmount > 0) {

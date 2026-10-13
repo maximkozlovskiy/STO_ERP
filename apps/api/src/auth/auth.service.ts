@@ -87,6 +87,13 @@ export class AuthService {
         throw new ForbiddenException(translateError('err.auth.accountBlocked', getLocale()));
       }
 
+      // BR-EMP-001: звільнений працівник не входить. Перевірка стоїть ПІСЛЯ пароля (без правильного
+      // пароля статус не розкривається — там звичайна 401) і ПЕРЕД скиданням лічильника невдач:
+      // відмова через статус лічильник не збільшує й не обнуляє. ON_LEAVE вхід не блокує.
+      if (emp.status === 'FIRED') {
+        throw new ForbiddenException(translateError('err.auth.accountBlocked', getLocale()));
+      }
+
       // B2: успішний вхід скидає лічильник невдач (якщо він був ненульовий).
       if (authRecord.failedAttempts !== 0 || authRecord.lockedUntil !== null) {
         await this.prisma.authAccount
@@ -134,7 +141,9 @@ export class AuthService {
       where: { id: payload.sub, orgId: payload.orgId, deletedAt: null },
       include: { authAccount: { select: { tokenVersion: true } } },
     });
-    if (!employee) {
+    // BR-EMP-001: звільнений не продовжує сесію — та сама 401, що й для видаленого; нова
+    // refresh-cookie не видається.
+    if (!employee || employee.status === 'FIRED') {
       throw new UnauthorizedException(translateError('err.auth.sessionExpired', getLocale()));
     }
 
