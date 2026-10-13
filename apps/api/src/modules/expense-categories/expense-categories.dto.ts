@@ -10,8 +10,9 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { ExpenseCategoryType } from '@prisma/client';
+import { CashOperationReason, ExpenseCategoryType } from '@prisma/client';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
+import { emptyToNull } from '../../common/transforms/empty-to-null';
 
 const TYPE_VALUES = Object.values(ExpenseCategoryType); // ['EXPENSE','INCOME']
 
@@ -40,6 +41,17 @@ export class CreateExpenseCategoryDto {
   @IsOptional()
   @IsInt()
   sortOrder?: number;
+
+  @ApiPropertyOptional({
+    enum: CashOperationReason,
+    nullable: true,
+    description:
+      'Привід за замовчуванням: касова операція з цим приводом без указаної статті отримує цю статтю. null (або порожній рядок) знімає привід',
+  })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsEnum(CashOperationReason)
+  defaultReason?: CashOperationReason | null;
 }
 
 // Тип НЕ приймається в update (immutable після створення — інакше операції-витрати опинилися б зі
@@ -67,6 +79,17 @@ export class UpdateExpenseCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    enum: CashOperationReason,
+    nullable: true,
+    description:
+      'Привід за замовчуванням: касова операція з цим приводом без указаної статті отримує цю статтю. null (або порожній рядок) знімає привід',
+  })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsEnum(CashOperationReason)
+  defaultReason?: CashOperationReason | null;
 }
 
 export { TYPE_VALUES as EXPENSE_CATEGORY_TYPES };
@@ -77,6 +100,12 @@ export class ExpenseCategoryResponseDto {
   @ApiPropertyOptional({ type: String, nullable: true }) parentId?: string | null;
   @ApiProperty() name!: string;
   @ApiProperty({ enum: ExpenseCategoryType }) type!: ExpenseCategoryType;
+  @ApiProperty({
+    enum: CashOperationReason,
+    nullable: true,
+    description: 'Привід за замовчуванням (один привід — одна стаття в організації)',
+  })
+  defaultReason!: CashOperationReason | null;
   @ApiProperty() sortOrder!: number;
   @ApiProperty() isActive!: boolean;
   @ApiProperty({ type: () => [ExpenseCategoryResponseDto], description: 'Дочірні статті (дерево)' })

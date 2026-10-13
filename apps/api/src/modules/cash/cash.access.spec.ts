@@ -16,9 +16,11 @@ const rolesOf = (method: keyof CashRegistersController): string[] =>
   ].sort();
 
 describe('CashRegistersController — ролі доступу до каси', () => {
-  // guards: BR-CASH-014
-  it('ручну операцію (внести/видати) проводять лише OWNER, ADMIN, ACCOUNTANT — без приймальника', () => {
-    expect(rolesOf('createOperation')).toEqual(['ACCOUNTANT', 'ADMIN', 'OWNER']);
+  // BR-CASH-021 замінив обмеження BR-CASH-014 щодо ручної операції: маршрут пускає й приймальню,
+  // а привід, дозволений їй, перевіряє CashDeskService (`cash-registers/cash-desk.roles.spec.ts`).
+  // guards: BR-CASH-021
+  it('ручну операцію (внести/видати) маршрут пускає для OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST', () => {
+    expect(rolesOf('createOperation')).toEqual(['ACCOUNTANT', 'ADMIN', 'OWNER', 'RECEPTIONIST']);
   });
 
   // guards: BR-CASH-014

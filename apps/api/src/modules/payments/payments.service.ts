@@ -7,7 +7,7 @@ import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettlementsService } from '../settlements/settlements.service';
-import { CashService } from '../cash/cash.service';
+import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -213,7 +213,18 @@ export class PaymentsService {
     return this.findOne(orgId, id);
   }
 
-  async create(orgId: string, dto: CreatePaymentDto, userId?: string): Promise<PaymentResponseDto> {
+  /**
+   * `cashRow` — додатки касового рядка (стаття, документ-підстава, примітка). Внутрішній
+   * параметр, НЕ поле DTO: його задає лише каса (`CashDeskService`, BR-CASH-017), коли оплату
+   * вносять із картки касової операції. Діє лише для оплати в касу; без нього рядок каси той самий,
+   * що й раніше.
+   */
+  async create(
+    orgId: string,
+    dto: CreatePaymentDto,
+    userId?: string,
+    cashRow?: CashOperationExtras,
+  ): Promise<PaymentResponseDto> {
     // Single parallel batch — counterparty + workOrder (with both branchId + status
     // selected in one query, replacing the prior duplicate findFirst calls).
     const [counterparty, workOrder, methodConfig] = await Promise.all([
@@ -591,6 +602,7 @@ export class PaymentsService {
               documentType: 'Payment',
               documentId: created.id,
               createdBy: userId,
+              ...cashRow,
             },
             tx,
           );

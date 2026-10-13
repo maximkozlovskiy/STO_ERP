@@ -117,16 +117,20 @@ describe('CashService — стаття руху коштів', () => {
     expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
   });
 
+  // До BR-CASH-022 кейс ще й вимагав «статтю не шукаємо»: тепер без указаної статті сервіс
+  // шукає статтю, за якою закріплено привід (`cash.default-category.spec.ts`), тож лишається
+  // тільки суть BR-CASH-007 — стаття необов'язкова.
   // guards: BR-CASH-007
-  it('без статті операція проходить, статтю не шукаємо, expenseCategoryId = null', async () => {
+  it('без статті й без статті за замовчуванням операція проходить, expenseCategoryId = null', async () => {
     const { m, service } = setup();
+    m.prisma.expenseCategory.findFirst.mockResolvedValue(null);
     await service.createOperation(ORG, {
       cashRegisterId: REG,
       direction: 'OUT',
       amount: 100,
       reason: 'MANUAL_OUT',
     });
-    expect(m.prisma.expenseCategory.findFirst).not.toHaveBeenCalled();
+    expect(m.prisma.cashOperation.create).toHaveBeenCalledTimes(1);
     expect(m.prisma.cashOperation.create.mock.calls[0][0].data.expenseCategoryId).toBeNull();
   });
 

@@ -11,8 +11,20 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import { cashOperationSchema, type CashOperationFormValues } from '@sto/shared';
+import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -21,8 +33,9 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CashRegistersService } from './cash-registers.service';
 import { CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-registers.dto';
 import { CashService } from '../cash/cash.service';
+import { CashDeskService, type CashDeskActor } from './cash-desk.service';
 import { assertCalendarDateQuery } from '../../common/utils/date-query';
-import { CreateCashOperationDto } from '../cash/cash.dto';
+import { CashOperationResponseDto, CreateCashOperationDto } from '../cash/cash.dto';
 
 @ApiTags('Каса')
 @Controller('cash-registers')
@@ -32,6 +45,7 @@ export class CashRegistersController {
   constructor(
     private readonly service: CashRegistersService,
     private readonly cash: CashService,
+    private readonly desk: CashDeskService,
   ) {}
 
   @Get()
@@ -95,7 +109,12 @@ export class CashRegistersController {
     required: false,
     description: 'Максимум рядків (за замовчуванням 100)',
   })
-  @ApiQuery({ name: 'q', required: false, description: 'Примітка або стаття витрат' })
+  @ApiOkResponse({ type: [CashOperationResponseDto] })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'Примітка, стаття руху коштів або назва контрагента',
+  })
   @ApiQuery({
     name: 'dateFrom',
     required: false,
@@ -124,15 +143,23 @@ export class CashRegistersController {
     });
   }
 
+  // BR-CASH-021: приймальня допущена до маршруту, але лише з приводами зі свого переліку
+  // (`RECEPTIONIST_CASH_REASONS`) — решту відсікає CashDeskService (403).
   @Post(':id/operations')
-  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Ручна операція: внести (IN) / видати (OUT) готівку' })
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @UseInterceptors(IdempotencyInterceptor) // подвійний клік / повтор після обриву не дає двох оплат
+  @ApiOperation({
+    summary:
+      'Касова операція: внести (IN) / видати (OUT) готівку; оплати й повернення змінюють борг контрагента',
+  })
+  @ApiBody({ type: CreateCashOperationDto })
+  @ApiCreatedResponse({ type: CashOperationResponseDto })
   createOperation(
     @OrgContext() orgId: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: CashDeskActor,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CreateCashOperationDto,
+    @Body(new ZodValidationPipe(cashOperationSchema)) dto: CashOperationFormValues,
   ) {
-    return this.cash.createManual(orgId, id, dto, user?.id);
+    return this.desk.create(orgId, id, dto, user);
   }
 }

@@ -16658,7 +16658,7 @@
             "name": "q",
             "required": false,
             "in": "query",
-            "description": "Примітка або стаття витрат",
+            "description": "Примітка, стаття руху коштів або назва контрагента",
             "schema": {
               "type": "string"
             }
@@ -16746,7 +16746,7 @@
             "bearer": []
           }
         ],
-        "summary": "Ручна операція: внести (IN) / видати (OUT) готівку",
+        "summary": "Касова операція: внести (IN) / видати (OUT) готівку; оплати й повернення змінюють борг контрагента",
         "tags": [
           "Каса"
         ]
@@ -21647,6 +21647,28 @@
             ],
             "type": "string"
           },
+          "defaultReason": {
+            "nullable": true,
+            "enum": [
+              "SALE_PAYMENT",
+              "REFUND",
+              "PAYROLL",
+              "SUPPLIER_PAYMENT",
+              "EXPENSE",
+              "COLLECTION",
+              "MANUAL_IN",
+              "MANUAL_OUT",
+              "SUPPLIER_REFUND_IN",
+              "ADVANCE_ISSUE",
+              "ADVANCE_RETURN",
+              "BANK_DEPOSIT",
+              "BANK_WITHDRAWAL",
+              "OWNER_IN",
+              "OWNER_OUT"
+            ],
+            "type": "string",
+            "description": "Привід за замовчуванням (один привід — одна стаття в організації)"
+          },
           "sortOrder": {
             "type": "number"
           },
@@ -21676,6 +21698,7 @@
           "orgId",
           "name",
           "type",
+          "defaultReason",
           "sortOrder",
           "isActive",
           "children",
@@ -21706,6 +21729,28 @@
           },
           "sortOrder": {
             "type": "number"
+          },
+          "defaultReason": {
+            "nullable": true,
+            "enum": [
+              "SALE_PAYMENT",
+              "REFUND",
+              "PAYROLL",
+              "SUPPLIER_PAYMENT",
+              "EXPENSE",
+              "COLLECTION",
+              "MANUAL_IN",
+              "MANUAL_OUT",
+              "SUPPLIER_REFUND_IN",
+              "ADVANCE_ISSUE",
+              "ADVANCE_RETURN",
+              "BANK_DEPOSIT",
+              "BANK_WITHDRAWAL",
+              "OWNER_IN",
+              "OWNER_OUT"
+            ],
+            "type": "string",
+            "description": "Привід за замовчуванням: касова операція з цим приводом без указаної статті отримує цю статтю. null (або порожній рядок) знімає привід"
           }
         },
         "required": [
@@ -21730,6 +21775,28 @@
           },
           "isActive": {
             "type": "boolean"
+          },
+          "defaultReason": {
+            "nullable": true,
+            "enum": [
+              "SALE_PAYMENT",
+              "REFUND",
+              "PAYROLL",
+              "SUPPLIER_PAYMENT",
+              "EXPENSE",
+              "COLLECTION",
+              "MANUAL_IN",
+              "MANUAL_OUT",
+              "SUPPLIER_REFUND_IN",
+              "ADVANCE_ISSUE",
+              "ADVANCE_RETURN",
+              "BANK_DEPOSIT",
+              "BANK_WITHDRAWAL",
+              "OWNER_IN",
+              "OWNER_OUT"
+            ],
+            "type": "string",
+            "description": "Привід за замовчуванням: касова операція з цим приводом без указаної статті отримує цю статтю. null (або порожній рядок) знімає привід"
           }
         }
       },
@@ -22263,7 +22330,8 @@
               "FX_GAIN",
               "FX_LOSS",
               "REFUND_OUT",
-              "REFUND_OUT_CANCEL"
+              "REFUND_OUT_CANCEL",
+              "SUPPLIER_PAYMENT_RETURN"
             ],
             "type": "string"
           },
@@ -22381,7 +22449,8 @@
               "FX_GAIN",
               "FX_LOSS",
               "REFUND_OUT",
-              "REFUND_OUT_CANCEL"
+              "REFUND_OUT_CANCEL",
+              "SUPPLIER_PAYMENT_RETURN"
             ],
             "type": "string"
           },
@@ -29131,7 +29200,11 @@
             "nullable": true
           },
           "direction": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "IN",
+              "OUT"
+            ]
           },
           "amount": {
             "type": "number",
@@ -29148,7 +29221,24 @@
             "description": "Застосований курс (base за 1 од. валюти каси)"
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "SALE_PAYMENT",
+              "SUPPLIER_REFUND_IN",
+              "ADVANCE_RETURN",
+              "BANK_WITHDRAWAL",
+              "OWNER_IN",
+              "COLLECTION",
+              "MANUAL_IN",
+              "REFUND",
+              "SUPPLIER_PAYMENT",
+              "ADVANCE_ISSUE",
+              "BANK_DEPOSIT",
+              "OWNER_OUT",
+              "EXPENSE",
+              "PAYROLL",
+              "MANUAL_OUT"
+            ]
           },
           "expenseCategoryId": {
             "type": "string",
@@ -29162,17 +29252,54 @@
             "type": "string",
             "nullable": true
           },
+          "counterpartyName": {
+            "type": "string",
+            "nullable": true
+          },
           "employeeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "employeeName": {
             "type": "string",
             "nullable": true
           },
           "documentType": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Платіжний документ рядка: 'Payment' | 'SupplierPayment' | 'PayrollPeriod' | …"
           },
           "documentId": {
             "type": "string",
             "nullable": true
+          },
+          "documentNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "Номер платіжного документа (оплата постачальнику)"
+          },
+          "baseDocumentType": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "WorkOrder",
+              "PurchaseOrder"
+            ],
+            "description": "Документ-підстава: тип"
+          },
+          "baseDocumentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "baseDocumentNumber": {
+            "type": "string",
+            "nullable": true,
+            "description": "Номер наряду / замовлення"
+          },
+          "fiscalStatus": {
+            "type": "string",
+            "nullable": true,
+            "description": "Статус фіскального чека оплати (лише для documentType = 'Payment')"
           },
           "notes": {
             "type": "string",
@@ -29209,12 +29336,19 @@
           "reason": {
             "enum": [
               "SALE_PAYMENT",
-              "REFUND",
-              "PAYROLL",
-              "SUPPLIER_PAYMENT",
-              "EXPENSE",
+              "SUPPLIER_REFUND_IN",
+              "ADVANCE_RETURN",
+              "BANK_WITHDRAWAL",
+              "OWNER_IN",
               "COLLECTION",
               "MANUAL_IN",
+              "REFUND",
+              "SUPPLIER_PAYMENT",
+              "ADVANCE_ISSUE",
+              "BANK_DEPOSIT",
+              "OWNER_OUT",
+              "EXPENSE",
+              "PAYROLL",
               "MANUAL_OUT"
             ],
             "type": "string"
@@ -29222,11 +29356,30 @@
           "expenseCategoryId": {
             "type": "string",
             "format": "uuid",
-            "description": "Стаття витрат (для reason=EXPENSE)"
+            "description": "Стаття руху коштів. Обовʼязкова для reason=EXPENSE; не задана — береться стаття, за якою закріплено привід"
           },
           "counterpartyId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Контрагент — обовʼязковий для приводів оплат і повернень"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Працівник — обовʼязковий для «під звіт» і повернення"
+          },
+          "baseDocumentType": {
+            "enum": [
+              "WorkOrder",
+              "PurchaseOrder"
+            ],
+            "type": "string",
+            "description": "Тип документа-підстави (разом із baseDocumentId)"
+          },
+          "baseDocumentId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Документ-підстава: наряд або замовлення постачальнику"
           },
           "notes": {
             "type": "string",

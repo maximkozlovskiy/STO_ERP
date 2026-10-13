@@ -17,7 +17,7 @@ import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/s
 import { DocumentNumberService } from '../document-number/document-number.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
-import { CashService } from '../cash/cash.service';
+import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import {
   CreateSupplierPaymentDto,
   UpdateSupplierPaymentDto,
@@ -786,12 +786,17 @@ export class SupplierPaymentsService {
    * `opts.rateDate` — дата, на яку береться курс (і `date` проведення). Типово — мить проведення.
    * Задає її рознесення вихідного банківського платежу: гроші пішли в день операції з виписки,
    * а не в день, коли бухгалтер розніс рядок (BR-BANK-028).
+   *
+   * `cashRow` — додатки касового рядка (стаття, документ-підстава, примітка). Внутрішній
+   * параметр, не поле DTO: його задає лише каса (`CashDeskService`, BR-CASH-019). Діє лише для
+   * оплати з каси; без нього рядок каси той самий, що й раніше.
    */
   async confirm(
     orgId: string,
     id: string,
     userId: string,
     opts?: { rateDate?: Date },
+    cashRow?: CashOperationExtras,
   ): Promise<SupplierPaymentResponseDto> {
     const pre = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -914,6 +919,7 @@ export class SupplierPaymentsService {
               documentType: 'SupplierPayment',
               documentId: id,
               createdBy: userId,
+              ...cashRow,
             },
             tx,
           );

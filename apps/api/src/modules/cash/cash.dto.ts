@@ -16,16 +16,32 @@ export enum CashDirectionDto {
 }
 export enum CashReasonDto {
   SALE_PAYMENT = 'SALE_PAYMENT',
-  REFUND = 'REFUND',
-  PAYROLL = 'PAYROLL',
-  SUPPLIER_PAYMENT = 'SUPPLIER_PAYMENT',
-  EXPENSE = 'EXPENSE',
+  SUPPLIER_REFUND_IN = 'SUPPLIER_REFUND_IN',
+  ADVANCE_RETURN = 'ADVANCE_RETURN',
+  BANK_WITHDRAWAL = 'BANK_WITHDRAWAL',
+  OWNER_IN = 'OWNER_IN',
   COLLECTION = 'COLLECTION',
   MANUAL_IN = 'MANUAL_IN',
+  REFUND = 'REFUND',
+  SUPPLIER_PAYMENT = 'SUPPLIER_PAYMENT',
+  ADVANCE_ISSUE = 'ADVANCE_ISSUE',
+  BANK_DEPOSIT = 'BANK_DEPOSIT',
+  OWNER_OUT = 'OWNER_OUT',
+  EXPENSE = 'EXPENSE',
+  PAYROLL = 'PAYROLL',
   MANUAL_OUT = 'MANUAL_OUT',
 }
+/** Документ-підстава касової операції (`CASH_BASE_DOCUMENT_VALUES` у @sto/shared). */
+export enum CashBaseDocumentDto {
+  WorkOrder = 'WorkOrder',
+  PurchaseOrder = 'PurchaseOrder',
+}
 
-/** Ручна касова операція (внести/видати). Авто-операції (SALE_PAYMENT/PAYROLL) — з інших сервісів. */
+/**
+ * Ручна касова операція — опис тіла `POST /cash-registers/:id/operations` для Swagger і
+ * `gen:api-types`. Саме тіло запиту валідує спільна zod-схема `cashOperationSchema`
+ * (@sto/shared, BR-CASH-016…021); поля тут мусять їй відповідати.
+ */
 export class CreateCashOperationDto {
   @ApiProperty({ enum: CashDirectionDto })
   @IsEnum(CashDirectionDto)
@@ -40,12 +56,37 @@ export class CreateCashOperationDto {
   @IsEnum(CashReasonDto)
   reason!: CashReasonDto;
 
-  @ApiPropertyOptional({ description: 'Стаття витрат (для reason=EXPENSE)' })
+  @ApiPropertyOptional({
+    description:
+      'Стаття руху коштів. Обовʼязкова для reason=EXPENSE; не задана — береться стаття, за якою закріплено привід',
+  })
   @IsOptional()
   @IsUUID()
   expenseCategoryId?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsUUID() counterpartyId?: string;
+  @ApiPropertyOptional({ description: 'Контрагент — обовʼязковий для приводів оплат і повернень' })
+  @IsOptional()
+  @IsUUID()
+  counterpartyId?: string;
+
+  @ApiPropertyOptional({ description: 'Працівник — обовʼязковий для «під звіт» і повернення' })
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  @ApiPropertyOptional({
+    enum: CashBaseDocumentDto,
+    description: 'Тип документа-підстави (разом із baseDocumentId)',
+  })
+  @IsOptional()
+  @IsEnum(CashBaseDocumentDto)
+  baseDocumentType?: CashBaseDocumentDto;
+
+  @ApiPropertyOptional({ description: 'Документ-підстава: наряд або замовлення постачальнику' })
+  @IsOptional()
+  @IsUUID()
+  baseDocumentId?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;
 }
 
@@ -53,19 +94,47 @@ export class CashOperationResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() cashRegisterId!: string;
   @ApiPropertyOptional({ type: String, nullable: true }) cashShiftId?: string | null;
-  @ApiProperty() direction!: string;
+  @ApiProperty({ enum: CashDirectionDto }) direction!: string;
   @ApiProperty({ description: 'Сума у валюті каси' }) amount!: number;
   @ApiPropertyOptional({ description: 'Сума у базовій валюті (UAH) по курсу на дату операції' })
   amountBase?: number | null;
   @ApiPropertyOptional({ description: 'Застосований курс (base за 1 од. валюти каси)' })
   rateUsed?: number | null;
-  @ApiProperty() reason!: string;
+  @ApiProperty({ enum: CashReasonDto }) reason!: string;
   @ApiPropertyOptional({ type: String, nullable: true }) expenseCategoryId?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) expenseCategoryName?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) counterpartyId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) counterpartyName?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) employeeId?: string | null;
-  @ApiPropertyOptional({ type: String, nullable: true }) documentType?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) employeeName?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: "Платіжний документ рядка: 'Payment' | 'SupplierPayment' | 'PayrollPeriod' | …",
+  })
+  documentType?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) documentId?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Номер платіжного документа (оплата постачальнику)',
+  })
+  documentNumber?: string | null;
+  @ApiPropertyOptional({
+    enum: CashBaseDocumentDto,
+    nullable: true,
+    description: 'Документ-підстава: тип',
+  })
+  baseDocumentType?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) baseDocumentId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Номер наряду / замовлення' })
+  baseDocumentNumber?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: "Статус фіскального чека оплати (лише для documentType = 'Payment')",
+  })
+  fiscalStatus?: string | null;
   @ApiPropertyOptional({ type: String, nullable: true }) notes?: string | null;
   @ApiProperty() createdAt!: string;
 }

@@ -5222,7 +5222,7 @@ export interface paths {
         /** Історія касових операцій */
         get: operations["CashRegistersController_operations_v1"];
         put?: never;
-        /** Ручна операція: внести (IN) / видати (OUT) готівку */
+        /** Касова операція: внести (IN) / видати (OUT) готівку; оплати й повернення змінюють борг контрагента */
         post: operations["CashRegistersController_createOperation_v1"];
         delete?: never;
         options?: never;
@@ -6648,6 +6648,11 @@ export interface components {
             name: string;
             /** @enum {string} */
             type: "EXPENSE" | "INCOME";
+            /**
+             * @description Привід за замовчуванням (один привід — одна стаття в організації)
+             * @enum {string|null}
+             */
+            defaultReason: "SALE_PAYMENT" | "REFUND" | "PAYROLL" | "SUPPLIER_PAYMENT" | "EXPENSE" | "COLLECTION" | "MANUAL_IN" | "MANUAL_OUT" | "SUPPLIER_REFUND_IN" | "ADVANCE_ISSUE" | "ADVANCE_RETURN" | "BANK_DEPOSIT" | "BANK_WITHDRAWAL" | "OWNER_IN" | "OWNER_OUT" | null;
             sortOrder: number;
             isActive: boolean;
             /** @description Дочірні статті (дерево) */
@@ -6670,6 +6675,11 @@ export interface components {
              */
             parentId?: string;
             sortOrder?: number;
+            /**
+             * @description Привід за замовчуванням: касова операція з цим приводом без указаної статті отримує цю статтю. null (або порожній рядок) знімає привід
+             * @enum {string|null}
+             */
+            defaultReason?: "SALE_PAYMENT" | "REFUND" | "PAYROLL" | "SUPPLIER_PAYMENT" | "EXPENSE" | "COLLECTION" | "MANUAL_IN" | "MANUAL_OUT" | "SUPPLIER_REFUND_IN" | "ADVANCE_ISSUE" | "ADVANCE_RETURN" | "BANK_DEPOSIT" | "BANK_WITHDRAWAL" | "OWNER_IN" | "OWNER_OUT" | null;
         };
         UpdateExpenseCategoryDto: {
             /** @example Оренда */
@@ -6681,6 +6691,11 @@ export interface components {
             parentId?: string;
             sortOrder?: number;
             isActive?: boolean;
+            /**
+             * @description Привід за замовчуванням: касова операція з цим приводом без указаної статті отримує цю статтю. null (або порожній рядок) знімає привід
+             * @enum {string|null}
+             */
+            defaultReason?: "SALE_PAYMENT" | "REFUND" | "PAYROLL" | "SUPPLIER_PAYMENT" | "EXPENSE" | "COLLECTION" | "MANUAL_IN" | "MANUAL_OUT" | "SUPPLIER_REFUND_IN" | "ADVANCE_ISSUE" | "ADVANCE_RETURN" | "BANK_DEPOSIT" | "BANK_WITHDRAWAL" | "OWNER_IN" | "OWNER_OUT" | null;
         };
         GoodCategoryResponseDto: {
             id: string;
@@ -6834,7 +6849,7 @@ export interface components {
         SettlementTransactionDto: {
             id: string;
             /** @enum {string} */
-            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL";
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL" | "SUPPLIER_PAYMENT_RETURN";
             /** @description Сума у валюті транзакції */
             amount: number;
             currencyId: string | null;
@@ -6863,7 +6878,7 @@ export interface components {
             /** Format: date-time */
             date: string;
             /** @enum {string} */
-            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL";
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL" | "SUPPLIER_PAYMENT_RETURN";
             /** @description Сума у валюті транзакції */
             amount: number;
             /** @description Сума у базовій валюті (фолбек — amount) */
@@ -8779,20 +8794,37 @@ export interface components {
             id: string;
             cashRegisterId: string;
             cashShiftId?: string | null;
-            direction: string;
+            /** @enum {string} */
+            direction: "IN" | "OUT";
             /** @description Сума у валюті каси */
             amount: number;
             /** @description Сума у базовій валюті (UAH) по курсу на дату операції */
             amountBase?: number | null;
             /** @description Застосований курс (base за 1 од. валюти каси) */
             rateUsed?: number | null;
-            reason: string;
+            /** @enum {string} */
+            reason: "SALE_PAYMENT" | "SUPPLIER_REFUND_IN" | "ADVANCE_RETURN" | "BANK_WITHDRAWAL" | "OWNER_IN" | "COLLECTION" | "MANUAL_IN" | "REFUND" | "SUPPLIER_PAYMENT" | "ADVANCE_ISSUE" | "BANK_DEPOSIT" | "OWNER_OUT" | "EXPENSE" | "PAYROLL" | "MANUAL_OUT";
             expenseCategoryId?: string | null;
             expenseCategoryName?: string | null;
             counterpartyId?: string | null;
+            counterpartyName?: string | null;
             employeeId?: string | null;
+            employeeName?: string | null;
+            /** @description Платіжний документ рядка: 'Payment' | 'SupplierPayment' | 'PayrollPeriod' | … */
             documentType?: string | null;
             documentId?: string | null;
+            /** @description Номер платіжного документа (оплата постачальнику) */
+            documentNumber?: string | null;
+            /**
+             * @description Документ-підстава: тип
+             * @enum {string|null}
+             */
+            baseDocumentType?: "WorkOrder" | "PurchaseOrder" | null;
+            baseDocumentId?: string | null;
+            /** @description Номер наряду / замовлення */
+            baseDocumentNumber?: string | null;
+            /** @description Статус фіскального чека оплати (лише для documentType = 'Payment') */
+            fiscalStatus?: string | null;
             notes?: string | null;
             createdAt: string;
         };
@@ -8802,14 +8834,32 @@ export interface components {
             /** @example 500 */
             amount: number;
             /** @enum {string} */
-            reason: "SALE_PAYMENT" | "REFUND" | "PAYROLL" | "SUPPLIER_PAYMENT" | "EXPENSE" | "COLLECTION" | "MANUAL_IN" | "MANUAL_OUT";
+            reason: "SALE_PAYMENT" | "SUPPLIER_REFUND_IN" | "ADVANCE_RETURN" | "BANK_WITHDRAWAL" | "OWNER_IN" | "COLLECTION" | "MANUAL_IN" | "REFUND" | "SUPPLIER_PAYMENT" | "ADVANCE_ISSUE" | "BANK_DEPOSIT" | "OWNER_OUT" | "EXPENSE" | "PAYROLL" | "MANUAL_OUT";
             /**
              * Format: uuid
-             * @description Стаття витрат (для reason=EXPENSE)
+             * @description Стаття руху коштів. Обовʼязкова для reason=EXPENSE; не задана — береться стаття, за якою закріплено привід
              */
             expenseCategoryId?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Контрагент — обовʼязковий для приводів оплат і повернень
+             */
             counterpartyId?: string;
+            /**
+             * Format: uuid
+             * @description Працівник — обовʼязковий для «під звіт» і повернення
+             */
+            employeeId?: string;
+            /**
+             * @description Тип документа-підстави (разом із baseDocumentId)
+             * @enum {string}
+             */
+            baseDocumentType?: "WorkOrder" | "PurchaseOrder";
+            /**
+             * Format: uuid
+             * @description Документ-підстава: наряд або замовлення постачальнику
+             */
+            baseDocumentId?: string;
             notes?: string;
         };
         UserPreferenceResponseDto: {
@@ -18308,7 +18358,7 @@ export interface operations {
             query?: {
                 /** @description Максимум рядків (за замовчуванням 100) */
                 limit?: string;
-                /** @description Примітка або стаття витрат */
+                /** @description Примітка, стаття руху коштів або назва контрагента */
                 q?: string;
                 /** @description Київський день операції від (YYYY-MM-DD), включно */
                 dateFrom?: string;

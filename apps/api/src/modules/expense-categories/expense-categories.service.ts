@@ -4,11 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ExpenseCategoryType } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { CashOperationReason, ExpenseCategoryType, Prisma } from '@prisma/client';
+import { CASH_REASON_RULES, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { cashReasonLabel } from '../cash/cash-reason-labels';
 import {
   CreateExpenseCategoryDto,
   ExpenseCategoryResponseDto,
@@ -20,6 +21,9 @@ const cacheKey = (orgId: string) => `ref:expense-categories:${orgId}`;
 // Bug #736: макс. глибина дерева — 3 рівні (0..2), як UI (MAX_DEPTH=2). Backend теж мусить
 // обмежувати, бо пряме API інакше будує необмежену вкладеність (розходження UI↔API).
 const MAX_DEPTH = 2;
+// Частковий unique-індекс «один привід — одна стаття в організації» (рукописна міграція
+// 20261014100000): Prisma про нього не знає, тож P2002 впізнаємо за назвою індексу або полем.
+const DEFAULT_REASON_INDEX = 'expense_categories_default_reason_uq';
 
 interface Row {
   id: string;
@@ -27,6 +31,7 @@ interface Row {
   parentId: string | null;
   name: string;
   type: ExpenseCategoryType;
+  defaultReason?: CashOperationReason | null;
   sortOrder: number;
   isActive: boolean;
   deletedAt: Date | null;
@@ -114,31 +119,46 @@ export class ExpenseCategoriesService {
       where: { orgId, name: dto.name },
       select: { id: true, deletedAt: true },
     });
+    if (anyExisting && !anyExisting.deletedAt)
+      throw new ConflictException(translateError('err.expenseCategory.nameExists', getLocale()));
+
+    const defaultReason = dto.defaultReason ?? null;
+    if (defaultReason) {
+      this.assertReasonMatchesType(defaultReason, type);
+      await this.assertReasonFree(orgId, defaultReason, anyExisting?.id);
+    }
+
     if (anyExisting) {
-      if (!anyExisting.deletedAt)
-        throw new ConflictException(translateError('err.expenseCategory.nameExists', getLocale()));
-      await this.prisma.expenseCategory.update({
-        where: { id: anyExisting.id, orgId },
+      // Відновлення через створення: привід пишемо явно (заданий або null) — старий привід
+      // видаленого рядка за цей час міг дістатись іншій статті.
+      await this.writeDefaultReason(orgId, defaultReason, anyExisting.id, () =>
+        this.prisma.expenseCategory.update({
+          where: { id: anyExisting.id, orgId },
+          data: {
+            name: dto.name,
+            type,
+            parentId: dto.parentId ?? null,
+            sortOrder: dto.sortOrder ?? 0,
+            isActive: true,
+            deletedAt: null,
+            defaultReason,
+          },
+        }),
+      );
+      return this.finish(orgId, anyExisting.id);
+    }
+    const item = await this.writeDefaultReason(orgId, defaultReason, undefined, () =>
+      this.prisma.expenseCategory.create({
         data: {
+          orgId,
           name: dto.name,
           type,
           parentId: dto.parentId ?? null,
           sortOrder: dto.sortOrder ?? 0,
-          isActive: true,
-          deletedAt: null,
+          ...(defaultReason ? { defaultReason } : {}),
         },
-      });
-      return this.finish(orgId, anyExisting.id);
-    }
-    const item = await this.prisma.expenseCategory.create({
-      data: {
-        orgId,
-        name: dto.name,
-        type,
-        parentId: dto.parentId ?? null,
-        sortOrder: dto.sortOrder ?? 0,
-      },
-    });
+      }),
+    );
     return this.finish(orgId, item.id);
   }
 
@@ -196,15 +216,24 @@ export class ExpenseCategoriesService {
         throw new BadRequestException(translateError('err.expenseCategory.maxDepth', getLocale()));
     }
 
-    await this.prisma.expenseCategory.update({
-      where: { id, orgId },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.parentId !== undefined ? { parentId: dto.parentId ?? null } : {}),
-        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-      },
-    });
+    // Привід за замовчуванням (BR-CASH-022): `null` знімає, значення — закріплює за цією статтею.
+    if (dto.defaultReason) {
+      this.assertReasonMatchesType(dto.defaultReason, existing.type);
+      await this.assertReasonFree(orgId, dto.defaultReason, id);
+    }
+
+    await this.writeDefaultReason(orgId, dto.defaultReason ?? null, id, () =>
+      this.prisma.expenseCategory.update({
+        where: { id, orgId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.parentId !== undefined ? { parentId: dto.parentId ?? null } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+          ...(dto.defaultReason !== undefined ? { defaultReason: dto.defaultReason } : {}),
+        },
+      }),
+    );
     return this.finish(orgId, id);
   }
 
@@ -231,7 +260,7 @@ export class ExpenseCategoriesService {
   async restore(orgId: string, id: string): Promise<ExpenseCategoryResponseDto> {
     const deleted = await this.prisma.expenseCategory.findFirst({
       where: { id, orgId, NOT: { deletedAt: null } },
-      select: { name: true, parentId: true },
+      select: { name: true, parentId: true, defaultReason: true },
     });
     if (!deleted)
       throw new NotFoundException(
@@ -258,10 +287,28 @@ export class ExpenseCategoriesService {
       });
       if (!parentAlive) reparentToRoot = true;
     }
-    const result = await this.prisma.expenseCategory.updateMany({
-      where: { id, orgId, NOT: { deletedAt: null } },
-      data: { deletedAt: null, ...(reparentToRoot ? { parentId: null } : {}) },
-    });
+    // BR-CASH-022: поки стаття була видалена, її привід міг дістатись іншій (частковий індекс
+    // видалених не тримає). Тоді відновлюємо БЕЗ приводу — він лишається за теперішнім власником.
+    const reasonTaken = deleted.defaultReason
+      ? await this.findReasonOwner(orgId, deleted.defaultReason, id)
+      : null;
+    const restoreRow = (dropReason: boolean) =>
+      this.prisma.expenseCategory.updateMany({
+        where: { id, orgId, NOT: { deletedAt: null } },
+        data: {
+          deletedAt: null,
+          ...(reparentToRoot ? { parentId: null } : {}),
+          ...(dropReason ? { defaultReason: null } : {}),
+        },
+      });
+    let result: Prisma.BatchPayload;
+    try {
+      result = await restoreRow(!!reasonTaken);
+    } catch (e: unknown) {
+      // Гонка: привід закріпили за іншою статтею між перевіркою і записом — індекс відмовив.
+      if (!this.isDefaultReasonConflict(e)) throw e;
+      result = await restoreRow(true);
+    }
     if (result.count === 0)
       throw new NotFoundException(
         translateError('err.expenseCategory.deletedNotFound', getLocale()),
@@ -283,6 +330,90 @@ export class ExpenseCategoriesService {
       data: { deletedAt: new Date() },
     });
     await this.cache.del(cacheKey(orgId));
+  }
+
+  // ── Привід за замовчуванням (BR-CASH-022) ───────────────────────────────────────────────
+
+  /** Напрям приводу ↔ тип статті: внесення — стаття оприбуткування, видача — стаття витрат. */
+  private assertReasonMatchesType(reason: CashOperationReason, type: ExpenseCategoryType): void {
+    const expected: ExpenseCategoryType =
+      CASH_REASON_RULES[reason].direction === 'IN' ? 'INCOME' : 'EXPENSE';
+    if (type !== expected) {
+      const locale = getLocale();
+      throw new BadRequestException(
+        translateError('err.expenseCategory.defaultReasonDirection', locale, {
+          reason: cashReasonLabel(reason, locale),
+        }),
+      );
+    }
+  }
+
+  /** Невидалена стаття організації (крім `exceptId`), за якою вже закріплено привід. */
+  private findReasonOwner(
+    orgId: string,
+    reason: CashOperationReason,
+    exceptId?: string,
+  ): Promise<{ id: string; name: string } | null> {
+    return this.prisma.expenseCategory.findFirst({
+      where: {
+        orgId,
+        defaultReason: reason,
+        deletedAt: null,
+        ...(exceptId ? { NOT: { id: exceptId } } : {}),
+      },
+      select: { id: true, name: true },
+    });
+  }
+
+  private reasonTakenError(reason: CashOperationReason, ownerName: string): ConflictException {
+    const locale = getLocale();
+    return new ConflictException(
+      translateError('err.expenseCategory.defaultReasonTaken', locale, {
+        reason: cashReasonLabel(reason, locale),
+        name: ownerName,
+      }),
+    );
+  }
+
+  /** Привід закріплений щонайбільше за однією невидаленою статтею: зайнятий → 409 з її назвою. */
+  private async assertReasonFree(
+    orgId: string,
+    reason: CashOperationReason,
+    exceptId?: string,
+  ): Promise<void> {
+    const owner = await this.findReasonOwner(orgId, reason, exceptId);
+    if (owner) throw this.reasonTakenError(reason, owner.name);
+  }
+
+  private isDefaultReasonConflict(e: unknown): boolean {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2002') return false;
+    const target: unknown = e.meta?.target;
+    const text = Array.isArray(target)
+      ? target.join(',')
+      : typeof target === 'string'
+        ? target
+        : '';
+    return text.includes(DEFAULT_REASON_INDEX) || text.includes('defaultReason');
+  }
+
+  /**
+   * Запис, що може закріпити привід. Перевірка «привід вільний» стоїть перед записом, але між нею
+   * і записом привід може зайняти паралельний запит — тоді відмовляє частковий індекс (P2002), і
+   * відповідь та сама: 409 із назвою статті-власника, а не безіменна 500.
+   */
+  private async writeDefaultReason<T>(
+    orgId: string,
+    reason: CashOperationReason | null,
+    selfId: string | undefined,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await write();
+    } catch (e: unknown) {
+      if (!reason || !this.isDefaultReasonConflict(e)) throw e;
+      const owner = await this.findReasonOwner(orgId, reason, selfId);
+      throw this.reasonTakenError(reason, owner?.name ?? '');
+    }
   }
 
   /** Завантажити рядок після мутації, скинути кеш, повернути DTO (children=[] — окремий вузол). */
@@ -382,6 +513,7 @@ export class ExpenseCategoriesService {
       parentId: item.parentId ?? null,
       name: item.name,
       type: item.type,
+      defaultReason: item.defaultReason ?? null,
       sortOrder: item.sortOrder,
       isActive: item.isActive,
       deletedAt:

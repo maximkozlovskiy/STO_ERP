@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CashDirection, CashOperationReason, Prisma } from '@prisma/client';
-import { TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -8,6 +8,7 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
+import { uniqueDefinedIds } from '../../common/utils/linked-counts';
 import { CashOperationResponseDto, CashReasonDto, CreateCashOperationDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
@@ -24,9 +25,34 @@ export interface CreateCashOperationInput {
   employeeId?: string | null;
   documentType?: string | null;
   documentId?: string | null;
+  /** Документ-підстава (наряд / замовлення постачальнику) — не платіжний документ рядка. */
+  baseDocumentType?: string | null;
+  baseDocumentId?: string | null;
   notes?: string | null;
   createdBy?: string | null;
 }
+
+/**
+ * «Додатки касового рядка»: те, що каса (`CashDeskService`) знає про операцію, а сервіс оплат —
+ * ні. Передаються ВНУТРІШНІМ параметром у `PaymentsService.create` і
+ * `SupplierPaymentsService.confirm`, щоб єдиний рядок каси ніс їх одразу: журнал лише
+ * дописується (BR-CASH-002), дописати статтю чи підставу пізніше нічим.
+ */
+export interface CashOperationExtras {
+  expenseCategoryId?: string | null;
+  baseDocumentType?: string | null;
+  baseDocumentId?: string | null;
+  notes?: string | null;
+}
+
+// Пошук історії за назвою контрагента: у CashOperation контрагент — лише id без зв'язку в схемі,
+// тому спершу шукаємо контрагентів за назвою, потім рядки за їхніми id. Стеля — щоб запит
+// «а» не розгорнувся у список id на всю базу контрагентів.
+const COUNTERPARTY_SEARCH_LIMIT = 500;
+
+type CashOperationRow = Prisma.CashOperationGetPayload<{
+  include: { expenseCategory: { select: { name: true } } };
+}>;
 
 /**
  * Каса — рух готівки. CashService.createOperation — ЄДИНА точка руху (аналог
@@ -73,29 +99,7 @@ export class CashService {
       amount,
     );
 
-    // Стаття руху коштів (валідація належності org + тип↔напрям): OUT лише EXPENSE-стаття,
-    // IN лише INCOME-стаття — гарантує коректність звітності по статтях.
-    if (input.expenseCategoryId) {
-      const cat = await db.expenseCategory.findFirst({
-        where: { id: input.expenseCategoryId, orgId, deletedAt: null },
-        select: { type: true, isActive: true },
-      });
-      if (!cat)
-        throw new NotFoundException(translateError('err.cash.categoryNotFound', getLocale()));
-      // Bug #735: вимкнена стаття (isActive=false, напр. після toggleActive гілки) не має
-      // приймати НОВІ операції — інакше вона «архівована» лише в UI, а пряме API її пропускає,
-      // спотворюючи звітність по активних статтях. Історичні операції лишаються недоторканими.
-      if (!cat.isActive)
-        throw new BadRequestException(translateError('err.cash.categoryInactive', getLocale()));
-      const expected = input.direction === 'IN' ? 'INCOME' : 'EXPENSE';
-      if (cat.type !== expected) {
-        throw new BadRequestException(
-          input.direction === 'IN'
-            ? translateError('err.cash.categoryTypeIncome', getLocale())
-            : translateError('err.cash.categoryTypeExpense', getLocale()),
-        );
-      }
-    }
+    const expenseCategoryId = await this.resolveCategoryId(orgId, input, db);
 
     // Фіскальна каса → потрібна відкрита зміна цієї каси.
     let cashShiftId: string | null = null;
@@ -139,11 +143,13 @@ export class CashService {
           amountBase: conv.amountBase,
           rateUsed: conv.rateUsed,
           reason: input.reason,
-          expenseCategoryId: input.expenseCategoryId ?? null,
+          expenseCategoryId,
           counterpartyId: input.counterpartyId ?? null,
           employeeId: input.employeeId ?? null,
           documentType: input.documentType ?? null,
           documentId: input.documentId ?? null,
+          baseDocumentType: input.baseDocumentType ?? null,
+          baseDocumentId: input.baseDocumentId ?? null,
           notes: input.notes ?? null,
           createdBy: input.createdBy ?? null,
         },
@@ -180,10 +186,59 @@ export class CashService {
         })
         .catch(() => undefined);
     }
-    return this.opToDto(op);
+    return toCashOperationDto(op);
   }
 
-  /** Ручна операція з контролера. */
+  /**
+   * Стаття руху коштів рядка. Задана — мусить існувати в org, бути активною й відповідати напряму
+   * (OUT лише EXPENSE, IN лише INCOME — інакше звітність по статтях бреше). Не задана — береться
+   * активна стаття, за якою закріплено привід операції (BR-CASH-022); такої немає — без статті.
+   */
+  private async resolveCategoryId(
+    orgId: string,
+    input: Pick<CreateCashOperationInput, 'expenseCategoryId' | 'direction' | 'reason'>,
+    db: Prisma.TransactionClient | PrismaService,
+  ): Promise<string | null> {
+    const expected = input.direction === 'IN' ? 'INCOME' : 'EXPENSE';
+    if (!input.expenseCategoryId) {
+      // `type` у where — запобіжник: привід закріплюють лише за статтею свого напряму, але авто-
+      // викликач може передати привід з іншим напрямом, і тоді стаття не підходить.
+      const byReason = await db.expenseCategory.findFirst({
+        where: {
+          orgId,
+          defaultReason: input.reason,
+          type: expected,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      return byReason?.id ?? null;
+    }
+    const cat = await db.expenseCategory.findFirst({
+      where: { id: input.expenseCategoryId, orgId, deletedAt: null },
+      select: { type: true, isActive: true },
+    });
+    if (!cat) throw new NotFoundException(translateError('err.cash.categoryNotFound', getLocale()));
+    // Bug #735: вимкнена стаття (isActive=false, напр. після toggleActive гілки) не має
+    // приймати НОВІ операції — інакше вона «архівована» лише в UI, а пряме API її пропускає,
+    // спотворюючи звітність по активних статтях. Історичні операції лишаються недоторканими.
+    if (!cat.isActive)
+      throw new BadRequestException(translateError('err.cash.categoryInactive', getLocale()));
+    if (cat.type !== expected) {
+      throw new BadRequestException(
+        input.direction === 'IN'
+          ? translateError('err.cash.categoryTypeIncome', getLocale())
+          : translateError('err.cash.categoryTypeExpense', getLocale()),
+      );
+    }
+    return input.expenseCategoryId;
+  }
+
+  /**
+   * Ручна операція БЕЗ правил приводів. Маршрут `POST /cash-registers/:id/operations` сюди більше
+   * не ходить — він іде в `CashDeskService.create` (BR-CASH-016…021).
+   */
   async createManual(
     orgId: string,
     cashRegisterId: string,
@@ -292,8 +347,7 @@ export class CashService {
     limit?: number,
     filters: { q?: string; dateFrom?: string; dateTo?: string } = {},
   ): Promise<CashOperationResponseDto[]> {
-    // Відбір за київським днем операції та пошук за приміткою або статтею витрат. Контрагент в
-    // операції — лише id без зв'язку в схемі, тому за ним тут не шукаємо.
+    // Відбір за київським днем операції; пошук — за приміткою, статтею або назвою контрагента.
     const createdAt = kyivDayRangeFilter(filters.dateFrom, filters.dateTo);
     // limit приходить із query-рядка без DTO: `?limit=abc` давав NaN, а `take: NaN` Prisma
     // відхиляє (безіменний 400 «Некоректний запит»); від'ємне число вона читає як «останні N».
@@ -303,57 +357,174 @@ export class CashService {
         ? Math.min(Math.trunc(limit), 500)
         : 100;
     const contains = searchContains(filters.q);
+    const counterpartyIds = contains ? await this.findCounterpartyIdsByName(orgId, contains) : [];
     const ops = await this.prisma.cashOperation.findMany({
       where: {
         orgId,
         cashRegisterId,
         ...(createdAt && { createdAt }),
         ...(contains && {
-          OR: [{ notes: contains }, { expenseCategory: { name: contains } }],
+          OR: [
+            { notes: contains },
+            { expenseCategory: { name: contains } },
+            ...(counterpartyIds.length ? [{ counterpartyId: { in: counterpartyIds } }] : []),
+          ],
         }),
       },
       orderBy: { createdAt: 'desc' },
       take,
       include: { expenseCategory: { select: { name: true } } },
     });
-    return ops.map(o => this.opToDto(o));
+    return this.toHistoryDtos(orgId, ops);
   }
 
-  private opToDto(o: {
-    id: string;
-    cashRegisterId: string;
-    cashShiftId: string | null;
-    direction: CashDirection;
-    amount: Prisma.Decimal;
-    amountBase?: Prisma.Decimal | null;
-    rateUsed?: Prisma.Decimal | null;
-    reason: CashOperationReason;
-    expenseCategoryId: string | null;
-    counterpartyId: string | null;
-    employeeId: string | null;
-    documentType: string | null;
-    documentId: string | null;
-    notes: string | null;
-    createdAt: Date;
-    expenseCategory?: { name: string } | null;
-  }): CashOperationResponseDto {
-    return {
-      id: o.id,
-      cashRegisterId: o.cashRegisterId,
-      cashShiftId: o.cashShiftId,
-      direction: o.direction,
-      amount: Number(o.amount),
-      amountBase: o.amountBase != null ? Number(o.amountBase) : null,
-      rateUsed: o.rateUsed != null ? Number(o.rateUsed) : null,
-      reason: o.reason,
-      expenseCategoryId: o.expenseCategoryId,
-      expenseCategoryName: o.expenseCategory?.name ?? null,
-      counterpartyId: o.counterpartyId,
-      employeeId: o.employeeId,
-      documentType: o.documentType,
-      documentId: o.documentId,
-      notes: o.notes,
-      createdAt: o.createdAt.toISOString(),
-    };
+  private async findCounterpartyIdsByName(
+    orgId: string,
+    contains: { contains: string; mode: 'insensitive' },
+  ): Promise<string[]> {
+    // Без `deletedAt: null` свідомо: історія каси показує й операції з видаленим контрагентом.
+    const found = await this.prisma.counterparty.findMany({
+      where: {
+        orgId,
+        OR: [{ companyName: contains }, { lastName: contains }, { firstName: contains }],
+      },
+      select: { id: true },
+      take: COUNTERPARTY_SEARCH_LIMIT,
+    });
+    return found.map(c => c.id);
   }
+
+  /**
+   * Рядки журналу → рядки історії: назви контрагента й працівника, номер підстави, номер оплати
+   * постачальнику, фіскальний статус оплати клієнта. Пакетно — по одному запиту на вид довідки
+   * для всієї сторінки (без N+1); вид без жодного id на сторінці не запитується взагалі.
+   * Назви беремо й у видалених: історія не має втрачати підпис через пізніше видалення картки.
+   */
+  private async toHistoryDtos(
+    orgId: string,
+    ops: CashOperationRow[],
+  ): Promise<CashOperationResponseDto[]> {
+    const idsOf = (pick: (o: CashOperationRow) => string | null) => uniqueDefinedIds(ops.map(pick));
+    const documentIds = (type: string) =>
+      idsOf(o => (o.documentType === type ? o.documentId : null));
+    const baseIds = (type: string) =>
+      idsOf(o => (o.baseDocumentType === type ? o.baseDocumentId : null));
+
+    const counterpartyIds = idsOf(o => o.counterpartyId);
+    const employeeIds = idsOf(o => o.employeeId);
+    const workOrderIds = baseIds('WorkOrder');
+    const purchaseOrderIds = baseIds('PurchaseOrder');
+    const paymentIds = documentIds('Payment');
+    const supplierPaymentIds = documentIds('SupplierPayment');
+
+    const [counterparties, employees, workOrders, purchaseOrders, payments, supplierPayments] =
+      await Promise.all([
+        counterpartyIds.length
+          ? this.prisma.counterparty.findMany({
+              where: { id: { in: counterpartyIds }, orgId },
+              select: { id: true, firstName: true, lastName: true, companyName: true },
+            })
+          : [],
+        employeeIds.length
+          ? this.prisma.employee.findMany({
+              where: { id: { in: employeeIds }, orgId },
+              select: { id: true, firstName: true, lastName: true },
+            })
+          : [],
+        workOrderIds.length
+          ? this.prisma.workOrder.findMany({
+              where: { id: { in: workOrderIds }, orgId },
+              select: { id: true, number: true },
+            })
+          : [],
+        purchaseOrderIds.length
+          ? this.prisma.purchaseOrder.findMany({
+              where: { id: { in: purchaseOrderIds }, orgId },
+              select: { id: true, number: true },
+            })
+          : [],
+        paymentIds.length
+          ? this.prisma.payment.findMany({
+              where: { id: { in: paymentIds }, orgId },
+              select: { id: true, fiscalStatus: true },
+            })
+          : [],
+        supplierPaymentIds.length
+          ? this.prisma.supplierPayment.findMany({
+              where: { id: { in: supplierPaymentIds }, orgId },
+              select: { id: true, number: true },
+            })
+          : [],
+      ]);
+
+    const counterpartyName = new Map(
+      counterparties.map(c => [c.id, formatPersonName(c.lastName, c.firstName, c.companyName)]),
+    );
+    const employeeName = new Map(
+      employees.map(e => [e.id, formatPersonName(e.lastName, e.firstName)]),
+    );
+    const baseNumber = new Map([...workOrders, ...purchaseOrders].map(d => [d.id, d.number]));
+    const fiscalStatus = new Map(payments.map(p => [p.id, p.fiscalStatus]));
+    const supplierPaymentNumber = new Map(supplierPayments.map(p => [p.id, p.number]));
+
+    return ops.map(o => ({
+      ...toCashOperationDto(o),
+      counterpartyName: (o.counterpartyId && counterpartyName.get(o.counterpartyId)) || null,
+      employeeName: (o.employeeId && employeeName.get(o.employeeId)) || null,
+      baseDocumentNumber: (o.baseDocumentId && baseNumber.get(o.baseDocumentId)) || null,
+      documentNumber:
+        (o.documentType === 'SupplierPayment' &&
+          o.documentId &&
+          supplierPaymentNumber.get(o.documentId)) ||
+        null,
+      fiscalStatus:
+        (o.documentType === 'Payment' && o.documentId && fiscalStatus.get(o.documentId)) || null,
+    }));
+  }
+}
+
+/**
+ * Рядок журналу каси → DTO: суми числами, дата в ISO, назва статті з довідника. Чиста функція —
+ * нею користується й каса-диригент (`CashDeskService`) для рядка, який написав сервіс оплат.
+ */
+export function toCashOperationDto(o: {
+  id: string;
+  cashRegisterId: string;
+  cashShiftId: string | null;
+  direction: CashDirection;
+  amount: Prisma.Decimal;
+  amountBase?: Prisma.Decimal | null;
+  rateUsed?: Prisma.Decimal | null;
+  reason: CashOperationReason;
+  expenseCategoryId: string | null;
+  counterpartyId: string | null;
+  employeeId: string | null;
+  documentType: string | null;
+  documentId: string | null;
+  baseDocumentType?: string | null;
+  baseDocumentId?: string | null;
+  notes: string | null;
+  createdAt: Date;
+  expenseCategory?: { name: string } | null;
+}): CashOperationResponseDto {
+  return {
+    id: o.id,
+    cashRegisterId: o.cashRegisterId,
+    cashShiftId: o.cashShiftId,
+    direction: o.direction,
+    amount: Number(o.amount),
+    amountBase: o.amountBase != null ? Number(o.amountBase) : null,
+    rateUsed: o.rateUsed != null ? Number(o.rateUsed) : null,
+    reason: o.reason,
+    expenseCategoryId: o.expenseCategoryId,
+    expenseCategoryName: o.expenseCategory?.name ?? null,
+    counterpartyId: o.counterpartyId,
+    employeeId: o.employeeId,
+    documentType: o.documentType,
+    documentId: o.documentId,
+    baseDocumentType: o.baseDocumentType ?? null,
+    baseDocumentId: o.baseDocumentId ?? null,
+    notes: o.notes,
+    createdAt: o.createdAt.toISOString(),
+  };
 }
