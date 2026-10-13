@@ -168,13 +168,16 @@ create (метод без requiresFiscal) → null
 
 ## UI (Web)
 
-| Компонент / сторінка           | Файл                                                                |
-| ------------------------------ | ------------------------------------------------------------------- |
-| Список платежів + retry-fiscal | `app/(app)/payments/page.tsx`, `[id]/PageClient.tsx`                |
-| Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`              |
-| QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts` |
-| ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`     |
-| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`)           |
+| Компонент / сторінка           | Файл                                                                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Платежі (сторінки немає)       | `/payments` → редирект у `/cash`; `/payments/<id>` без редиректу                                                                                                          |
+| Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`) |
+| Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                       |
+| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`                                                                                                        |
+| Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                    |
+| QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                       |
+| ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                           |
+| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`)                                                                                                                 |
 
 ---
 
@@ -293,7 +296,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/payments/`
 
-**Маршрути UI:** `/payments`, `/cash`, `/invoices`
+**Маршрути UI:** `/cash`, `/invoices` (`/payments` — лише редирект)
 
 | Аспект                    | Тест                                              | Кейсів |
 | ------------------------- | ------------------------------------------------- | ------ |

@@ -1,6 +1,6 @@
 # SupplierPayment — Dossier
 
-> Документ оплати постачальнику. Закриває борг перед постачальником: при проведенні пише `SettlementTransaction(PAYMENT)` зі списанням з банківського рахунку або каси.
+> Документ оплати постачальнику. Закриває борг перед постачальником: при проведенні пише `SettlementTransaction(SUPPLIER_PAYMENT)` зі списанням з банківського рахунку або каси.
 >
 > **Зв'язок із банківськими платежами (2026-10-09):** вихідний рядок виписки можна прив'язати до
 > проведеної оплати з банку (без нового проведення) або створити й провести оплату з рядка —
@@ -60,17 +60,17 @@ model SupplierPayment {
 ## FSM
 
 ```
-DRAFT → CONFIRMED   (пише settlement PAYMENT)
+DRAFT → CONFIRMED   (пише settlement SUPPLIER_PAYMENT)
       ↘ CANCELLED
 ```
 
-| Статус      | Значення                                               |
-| ----------- | ------------------------------------------------------ |
-| `DRAFT`     | Чернетка — settlement ще не пишеться, можна редагувати |
-| `CONFIRMED` | Проведено — settlement PAYMENT записано, борг зменшено |
-| `CANCELLED` | Скасовано — settlement не пишеться                     |
+| Статус      | Значення                                                        |
+| ----------- | --------------------------------------------------------------- |
+| `DRAFT`     | Чернетка — settlement ще не пишеться, можна редагувати          |
+| `CONFIRMED` | Проведено — settlement SUPPLIER_PAYMENT записано, борг зменшено |
+| `CANCELLED` | Скасовано — settlement не пишеться                              |
 
-Проведення (`confirm`) виконується у `$transaction` з re-read статусу всередині (race-safe проти подвійного PAYMENT).
+Проведення (`confirm`) виконується у `$transaction` з re-read статусу всередині (race-safe проти подвійного SUPPLIER_PAYMENT).
 
 **Service:** `apps/api/src/modules/supplier-payments/supplier-payments.service.ts`
 
@@ -84,9 +84,9 @@ DRAFT → CONFIRMED   (пише settlement PAYMENT)
 | GET    | `/supplier-payments/schedule`           | Графік оплат (шахматка боргів по датах, FIFO) — BR-SUPPAY-009 |
 | GET    | `/supplier-payments/schedule/documents` | Drill-down: документи (PO) клітинки графіка — BR-SUPPAY-010   |
 | GET    | `/supplier-payments/:id`                | Деталь                                                        |
-| POST   | `/supplier-payments`                    | Створити (DRAFT)                                              |
+| POST   | `/supplier-payments`                    | Створити (DRAFT); web одразу викликає `confirm`               |
 | PATCH  | `/supplier-payments/:id`                | Оновити (тільки DRAFT)                                        |
-| POST   | `/supplier-payments/:id/confirm`        | DRAFT→CONFIRMED (+ settlement PAYMENT)                        |
+| POST   | `/supplier-payments/:id/confirm`        | DRAFT→CONFIRMED (+ settlement SUPPLIER_PAYMENT)               |
 | POST   | `/supplier-payments/:id/cancel`         | DRAFT→CANCELLED                                               |
 | DELETE | `/supplier-payments/:id`                | Soft-delete (крім CONFIRMED)                                  |
 
@@ -96,27 +96,41 @@ DRAFT → CONFIRMED   (пише settlement PAYMENT)
 
 ## UI (Web)
 
-| Компонент / сторінка  | Файл                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| Список                | `app/(app)/supplier-payments/page.tsx`                                                   |
-| Графік + drill-down   | `app/(app)/supplier-payments/SupplierPaymentScheduleTab.tsx` (клік клітинки → панель PO) |
-| Модалка створення     | `components/ui/SupplierPaymentCreateModal.tsx`                                           |
-| Detail Panel schema   | `lib/panel-schema.ts` → `SUPPLIER_PAYMENT_PANEL_SCHEMA`                                  |
-| Hook (TanStack Query) | `hooks/api/useSupplierPayments.ts`                                                       |
-| Навігація             | `lib/nav.ts` → «Оплати постачальникам» (Документи)                                       |
+**Сторінок оплат постачальнику немає** (2026-10-14): `/supplier-payments` і `/supplier-payments/<id>` лише
+перенаправляють (`LegacyRouteRedirect`) на графік оплат. Оплату постачальнику вносять двома шляхами:
+з каси (привід `SUPPLIER_PAYMENT`, BR-CASH-019 — `CashDeskService` створює й одразу проводить) і кнопкою
+«Оплатити» в картці замовлення постачальнику (`SupplierPaymentCreateModal`: `POST /supplier-payments`, одразу
+`…/confirm`; не вдалося провести — `…/cancel` і текст відмови в картці, чернетка не лишається).
+
+| Компонент / сторінка  | Файл                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| Графік + drill-down   | `app/(app)/purchase-orders/SupplierPaymentScheduleTab.tsx` (вкладка «Графік оплат») |
+| Модалка «Оплатити»    | `components/ui/SupplierPaymentCreateModal.tsx`                                      |
+| Hook (TanStack Query) | `hooks/api/useSupplierPayments.ts`                                                  |
+| Старі адреси          | `app/(app)/supplier-payments/page.tsx`, `[id]/page.tsx` → редирект                  |
+
+Підсвічування в «Пов'язаних документах» замовлення — рядки без переходу (картки оплати немає).
+
+--------------------- | ---------------------------------------------------------------------------------------- |
+| Список | `app/(app)/supplier-payments/page.tsx` |
+| Графік + drill-down | `app/(app)/supplier-payments/SupplierPaymentScheduleTab.tsx` (клік клітинки → панель PO) |
+| Модалка створення | `components/ui/SupplierPaymentCreateModal.tsx` |
+| Detail Panel schema | `lib/panel-schema.ts` → `SUPPLIER_PAYMENT_PANEL_SCHEMA` |
+| Hook (TanStack Query) | `hooks/api/useSupplierPayments.ts` |
+| Навігація | `lib/nav.ts` → «Оплати постачальникам» (Документи) |
 
 ---
 
 ## Бізнес-правила (BR-SUPPAY)
 
-- **BR-SUPPAY-001**: Settlement PAYMENT пишеться ТІЛЬКИ через `SettlementsService.createTransaction()` при `confirm()`, ніколи при `create()`.
+- **BR-SUPPAY-001**: Settlement SUPPLIER_PAYMENT пишеться ТІЛЬКИ через `SettlementsService.createTransaction()` при `confirm()`, ніколи при `create()`.
 - **BR-SUPPAY-002**: Джерело коштів обов'язкове й ексклюзивне: `BANK_ACCOUNT` ⇒ `bankAccountId` (без `cashRegisterId`); `CASH_REGISTER` ⇒ `cashRegisterId` (без `bankAccountId`).
 - **BR-SUPPAY-003**: Контрагент має бути постачальником (`type` ≠ `CLIENT`).
 - **BR-SUPPAY-004**: Опціональний `purchaseOrderId` має належати вказаному постачальнику; при зміні `supplierId` через `update()` orphan-PO авто-очищується (Bug #588).
 - **BR-SUPPAY-005**: `documentType` у settlement = `'SupplierPayment'` (PascalCase).
 - **BR-SUPPAY-006**: Проведену (`CONFIRMED`) оплату не можна редагувати (`update`) чи видаляти (`remove`) — settlement append-only.
 - **BR-SUPPAY-007**: Без Checkbox (ПРРО) і без лояльності — це supplier-side, не клієнтський продаж.
-- **BR-SUPPAY-008**: `confirm()` race-safe — re-read статусу всередині `$transaction`, подвійний confirm не подвоює PAYMENT.
+- **BR-SUPPAY-008**: `confirm()` race-safe — re-read статусу всередині `$transaction`, подвійний confirm не подвоює SUPPLIER_PAYMENT.
 - **BR-SUPPAY-009** (Графік оплат — `getSchedule`): АВТОРИТЕТНЕ джерело суми боргу — `SettlementAccount.balance` (`payable = |−balance|` для `balance<0`), а НЕ `Σ PurchaseOrder.totalAmount` — баланс враховує ВСІ рухи (повернення, unlinked-платежі, коригування). Фільтр: `counterparty.deletedAt IS NULL` + `type IN (SUPPLIER, BOTH)` (Bug #599 — не показувати клієнтів з prepayment-refund). **FIFO-розподіл**: `payable` наливається на непогашені RECEIVED/PARTIAL PO по черзі від найстарішого (`orderBy paymentDate asc nulls first`), `take = min(po.outstanding, remaining)`; кожен PO лягає у колонку за `paymentDate` (null/<from → overdue; from..to → byDate[дата]; >to → planned) з РЕАЛЬНИМ залишком. PO, до яких борг не дійшов = оплачені (не показуються); надлишок понад ΣPO → overdue. Кредит-ліміт (макс по PURCHASE-договорах) віднімається з найпізніших. **Trade-off (Bug #600)**: `schedule.totals.total ≤ reports.settlements.totalCredit` — звіт НЕ фільтрує deleted/CLIENT, тож розбіжність = борги видалених + CLIENT-типу counterparty.
 - **BR-SUPPAY-010** (Drill-down — `getScheduleDocuments`): документи (PO) конкретної клітинки/бакета шахматки. Спільний private `computeScheduleAllocations` — ЄДИНЕ джерело FIFO-наливу + кредит-ліміту зі збереженням per-PO алокацій; `getSchedule` сумує їх у бакети, `getScheduleDocuments` фільтрує по цільовому бакету. **Інваріант консистентності**: `Σ allocated документів у бакеті == значення клітинки getSchedule` (за конструкцією — один helper, немає sibling-drift). Кредит-ліміт зменшує `allocated` з найпізніших PO (planned → byDate спадно → overdue), дзеркалить порядок getSchedule. Синтетичний рядок «борг без документа» (`poId=''`, коли balance > ΣPO) → overdue, некликабельний у UI. Query: `date` XOR `target` (overdue/planned), обидва з `@IsDateString({strict})+@Matches(YMD_RE)` (Bug #616); `supplierId` опційний (без нього — усі постачальники, клік по рядку «Разом»).
 
@@ -151,10 +165,10 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
-`apps/web/src/app/(app)/supplier-payments/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:
+`apps/web/src/app/(app)/purchase-orders/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:
 клік клітинки запитує документи саме цього бакета; синтетичний рядок «борг без документа»
 (`poId=''`) не є кнопкою (UI-половина BR-SUPPAY-010); рядок справжнього PO відкриває саме його.
-Запуск: `cd apps/web && npx vitest run "src/app/(app)/supplier-payments"`.
+Запуск: `cd apps/web && npx vitest run "src/app/(app)/purchase-orders"`.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

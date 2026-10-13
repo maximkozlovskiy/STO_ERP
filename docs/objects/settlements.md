@@ -24,20 +24,21 @@ _Stub — заповнити при роботі з settlements модулем._
 - **Клієнтські vs постачальницькі типи РОЗДІЛЕНІ** (знак протилежний для того самого руху,
   тому НЕ можна переюзати CHARGE/PAYMENT для постачальника):
 
-| Тип                 | Знак   | Хто пише                                                                                 | Семантика                                                          |
-| ------------------- | ------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `CHARGE`            | +1     | `WorkOrder` COMPLETED                                                                    | клієнт винен нам                                                   |
-| `PAYMENT`           | −1     | `Payment` (клієнт заплатив нам)                                                          | борг клієнта ↓                                                     |
-| `PREPAYMENT`        | −1     | (клієнтський, наразі без writer'а)                                                       | —                                                                  |
-| `REFUND`            | −1     | рознесення ВХІДНОГО банківського платежу з видом «повернення» (`PaymentsService.create`) | гроші прийшли до нас                                               |
-| `REFUND_OUT`        | **+1** | `BankReconciliationService.reconcile` (BR-BANK-030)                                      | повернули гроші клієнту з рахунку → він знову винен / аванс ↓      |
-| `REFUND_OUT_CANCEL` | −1     | `BankReconciliationService.unreconcile` (BR-BANK-039)                                    | сторно `REFUND_OUT`: копіює суму, валюту й курс початкового запису |
-| `CREDIT_NOTE`       | −1     | (клієнтський, наразі без writer'а)                                                       | —                                                                  |
-| `SUPPLIER_CHARGE`   | **−1** | `PurchaseOrder.receive`                                                                  | отримали товар → МИ винні постачальнику                            |
-| `SUPPLIER_PAYMENT`  | **+1** | `SupplierPayment.confirm`                                                                | заплатили постачальнику → наш борг ↓                               |
-| `SUPPLIER_REFUND`   | **+1** | `SupplierReturn.confirm`                                                                 | повернули товар → наш борг ↓                                       |
-| `FX_GAIN`           | **+1** | `PaymentsService` (invoice→PAID)                                                         | курсовий прибуток → гасить від'ємний base-залишок                  |
-| `FX_LOSS`           | **−1** | `PaymentsService` (invoice→PAID)                                                         | курсовий збиток → гасить додатний base-залишок                     |
+| Тип                       | Знак   | Хто пише                                                                                  | Семантика                                                                                                                |
+| ------------------------- | ------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `CHARGE`                  | +1     | `WorkOrder` COMPLETED                                                                     | клієнт винен нам                                                                                                         |
+| `PAYMENT`                 | −1     | `Payment` (клієнт заплатив нам)                                                           | борг клієнта ↓                                                                                                           |
+| `PREPAYMENT`              | −1     | (клієнтський, наразі без writer'а)                                                        | —                                                                                                                        |
+| `REFUND`                  | −1     | рознесення ВХІДНОГО банківського платежу з видом «повернення» (`PaymentsService.create`)  | гроші прийшли до нас                                                                                                     |
+| `REFUND_OUT`              | **+1** | `BankReconciliationService.reconcile` (BR-BANK-030); каса, привід `REFUND` (BR-CASH-018)  | повернули гроші клієнту → він знову винен / аванс ↓                                                                      |
+| `REFUND_OUT_CANCEL`       | −1     | `BankReconciliationService.unreconcile` (BR-BANK-039)                                     | сторно `REFUND_OUT`: копіює суму, валюту й курс початкового запису                                                       |
+| `CREDIT_NOTE`             | −1     | (клієнтський, наразі без writer'а)                                                        | —                                                                                                                        |
+| `SUPPLIER_CHARGE`         | **−1** | `PurchaseOrder.receive`                                                                   | отримали товар → МИ винні постачальнику                                                                                  |
+| `SUPPLIER_PAYMENT`        | **+1** | `SupplierPayment.confirm`                                                                 | заплатили постачальнику → наш борг ↓                                                                                     |
+| `SUPPLIER_REFUND`         | **+1** | `SupplierReturn.confirm`                                                                  | повернули товар → наш борг ↓                                                                                             |
+| `SUPPLIER_PAYMENT_RETURN` | **−1** | каса, привід `SUPPLIER_REFUND_IN` (`CashDeskService.moveCashWithSettlement`, BR-CASH-019) | постачальник повернув ГРОШІ готівкою → його борг перед нами / наша передоплата ↓ (протилежний знак до `SUPPLIER_REFUND`) |
+| `FX_GAIN`                 | **+1** | `PaymentsService` (invoice→PAID)                                                          | курсовий прибуток → гасить від'ємний base-залишок                                                                        |
+| `FX_LOSS`                 | **−1** | `PaymentsService` (invoice→PAID)                                                          | курсовий збиток → гасить додатний base-залишок                                                                           |
 
 > **Курсові різниці (Фаза 4, 2026-09-14, realized FX):** повна оплата іновалютного рахунку у своїй
 > валюті лишає ненульовий base-залишок (CHARGE за курсом дати документа, PAYMENT — дати оплати).
@@ -82,7 +83,7 @@ _Stub — заповнити при роботі з settlements модулем._
 
 - **BR-SETL-001**: Єдиний писар. Баланс контрагента і журнал транзакцій змінює лише `SettlementsService.createTransaction()`. Ніде більше в `apps/api/src` немає запису в `SettlementAccount` чи `SettlementTransaction` — ні через Prisma-делегат, ні вкладеним записом через `settlementAccount: { … }`, ні сирим SQL. Єдиний виняток — створення рахунку з нульовим балансом у `CounterpartiesService.create` (BR-CP-012)
 - **BR-SETL-002**: Одна транзакція — це рівно один рядок журналу (`SettlementTransaction`) і рівно одна зміна балансу (`SettlementAccount.balance += знак × amountBase`), обидва записи в одній транзакції БД. Якщо викликач передав свою транзакцію (`tx`) — обидва записи йдуть у ній і власна не відкривається (відкат документа відкочує і борг); якщо не передав — `createTransaction` відкриває власну `$transaction`
-- **BR-SETL-003**: Знак впливу на баланс визначає лише тип транзакції (`BALANCE_SIGN`), сума завжди додатна. Баланс росте (+1): `CHARGE`, `SUPPLIER_PAYMENT`, `SUPPLIER_REFUND`, `FX_GAIN`, `REFUND_OUT`. Баланс падає (−1): `PAYMENT`, `PREPAYMENT`, `REFUND`, `CREDIT_NOTE`, `SUPPLIER_CHARGE`, `FX_LOSS`, `REFUND_OUT_CANCEL`. Вісь одна: `balance > 0` — контрагент винен нам, `balance < 0` — ми винні контрагенту. Кожен тип enum-а має знак ±1; копія таблиці для фронту (`SETTLEMENT_BALANCE_SIGN` у `@sto/shared`) збігається з бековою тип у тип
+- **BR-SETL-003**: Знак впливу на баланс визначає лише тип транзакції (`BALANCE_SIGN`), сума завжди додатна. Баланс росте (+1): `CHARGE`, `SUPPLIER_PAYMENT`, `SUPPLIER_REFUND`, `FX_GAIN`, `REFUND_OUT`. Баланс падає (−1): `PAYMENT`, `PREPAYMENT`, `REFUND`, `CREDIT_NOTE`, `SUPPLIER_CHARGE`, `FX_LOSS`, `REFUND_OUT_CANCEL`, `SUPPLIER_PAYMENT_RETURN`. Вісь одна: `balance > 0` — контрагент винен нам, `balance < 0` — ми винні контрагенту. Кожен тип enum-а має знак ±1; копія таблиці для фронту (`SETTLEMENT_BALANCE_SIGN` у `@sto/shared`) збігається з бековою тип у тип
 - **BR-SETL-004**: Сума транзакції — скінченне число, більше за нуль. `0`, від'ємне, `NaN`, `Infinity` → 400 «Сума транзакції повинна бути більшою за нуль», нічого не пишеться
 - **BR-SETL-005**: Рахунок обов'язковий. Якщо в контрагента в цій організації немає `SettlementAccount`, `createTransaction` кидає NotFound «Розрахунковий рахунок контрагента не знайдено»; рахунок не дотворюється (парне правило — BR-CP-012)
 - **BR-SETL-006**: Ізоляція організацій. Рахунок шукається за `orgId` + `counterpartyId`; зміна балансу несе `orgId` у `where`; рядок журналу пишеться з `orgId` викликача. Усі читання — баланс, журнал, транзакції періоду акта, список актів, акт для PDF — фільтруються за `orgId`
@@ -140,7 +141,7 @@ cd apps/api && npx vitest run src/modules/settlements/<файл>.spec.ts
   (контракт: два однакові виклики — два рядки журналу і дві зміни балансу; журнал перед записом не
   читається).
 - `settlements.callers.spec.ts` — BR-SETL-010: перелік усіх місць виклику `createTransaction` у
-  `apps/api/src` (зараз 11) із механізмом захисту від повтору; нове місце без запису, зникле місце
+  `apps/api/src` (зараз 14, серед них каса: `cash-desk.service.ts#moveCashWithSettlement`) із механізмом захисту від повтору; нове місце без запису, зникле місце
   або зниклий із коду захист (CAS статусу, перевірка наявної проводки) валять тест. Там само для
   кожного місця названо тест гонки в модулі викликача.
 - `settlements.invariants.spec.ts` — BR-SETL-003 (лише два кейси, що читають справжній `BALANCE_SIGN`).

@@ -10,13 +10,23 @@
 ```prisma
 enum CashDirection { IN OUT }
 enum CashOperationReason {
-  SALE_PAYMENT    // оплата клієнта готівкою (авто з payments)
-  REFUND          // повернення клієнту
-  PAYROLL         // виплата ЗП (авто з payroll)
-  SUPPLIER_PAYMENT // оплата постачальнику
-  EXPENSE         // витрата (стаття витрат)
-  COLLECTION      // інкасація / виїмка
-  MANUAL_IN MANUAL_OUT
+  // внесення
+  SALE_PAYMENT        // оплата контрагента (клієнт; створює Payment)
+  SUPPLIER_REFUND_IN  // повернення від постачальника
+  ADVANCE_RETURN      // повернення підзвітних коштів (працівник)
+  BANK_WITHDRAWAL     // отримання готівки з банку
+  OWNER_IN            // внесок власника
+  COLLECTION          // інкасація / виїмка
+  MANUAL_IN           // довільне внесення
+  // видача
+  REFUND              // повернення клієнту
+  SUPPLIER_PAYMENT    // оплата постачальнику (створює і проводить SupplierPayment)
+  ADVANCE_ISSUE       // видача під звіт (працівник)
+  BANK_DEPOSIT        // здача в банк
+  OWNER_OUT           // вилучення власником
+  EXPENSE             // витрата (стаття обов'язкова)
+  PAYROLL             // виплата ЗП (лише авто з відомості, вручну заборонено)
+  MANUAL_OUT          // довільна видача
 }
 
 model CashRegister {           // + до наявних полів:
@@ -28,18 +38,23 @@ model CashRegister {           // + до наявних полів:
 // Append-only (шаблон SettlementTransaction: без deletedAt/updatedAt/syncVersion).
 model CashOperation {
   id, orgId, cashRegisterId, cashShiftId?  // cashShiftId — для фіскальної каси
-  direction CashDirection, amount Decimal(12,2)   // amount>0, знак з direction
+  direction CashDirection, amount Decimal(12,2)   // amount>0, знак з direction (валюта каси)
+  amountBase?, rateUsed?                          // у базовій валюті по курсу на дату
   reason CashOperationReason
-  expenseCategoryId?  // стаття (для EXPENSE)
-  counterpartyId?, employeeId?  // клієнт/постачальник | співробітник (PAYROLL)
-  documentType?, documentId?    // 'Payment' | 'PayrollPeriod'
+  expenseCategoryId?  // стаття руху коштів
+  counterpartyId?, employeeId?   // контрагент | працівник (залежно від приводу)
+  documentType?, documentId?     // ПЛАТІЖНИЙ документ рядка: 'Payment' | 'SupplierPayment' | 'PayrollPeriod'
+  baseDocumentType?, baseDocumentId?  // ПІДСТАВА: 'WorkOrder' | 'PurchaseOrder' (BR-CASH-020)
   notes?, createdBy?, createdAt
   // @@index([orgId,cashRegisterId,createdAt]) [orgId,cashShiftId] [orgId,reason,createdAt]
 }
 
-model ExpenseCategory {        // довідник статей витрат (per-org, дзеркалить GoodStatus)
-  id, orgId, name, syncVersion, createdAt, updatedAt, deletedAt?
-  // @@unique([orgId,name])
+model ExpenseCategory {        // дерево статей руху коштів (per-org)
+  id, orgId, parentId?, name, sortOrder, isActive, syncVersion, createdAt, updatedAt, deletedAt?
+  type ExpenseCategoryType     // EXPENSE (видача) | INCOME (внесення); гілка дерева одного типу
+  defaultReason CashOperationReason?  // привід за замовчуванням (BR-CASH-022)
+  // @@unique([orgId,name]); частковий unique-індекс "expense_categories_default_reason_uq"
+  // (orgId, defaultReason) WHERE deletedAt IS NULL AND defaultReason IS NOT NULL — у міграції
 }
 ```
 
@@ -64,18 +79,25 @@ model ExpenseCategory {        // довідник статей витрат (pe
 
 ## API Endpoints
 
-**Каси** (`/api/cash-registers`) — OWNER/ADMIN CRUD; список/баланс/операції — +ACCOUNTANT/RECEPTIONIST:
+**Каси** (`/api/cash-registers`) — OWNER/ADMIN CRUD; список/баланс/історія — +ACCOUNTANT/RECEPTIONIST:
 
-| Метод             | URL                              | Дія                                            |
-| ----------------- | -------------------------------- | ---------------------------------------------- |
-| GET               | `/cash-registers`                | Список кас (+ isFiscal/initialBalance/balance) |
-| POST/PATCH/DELETE | `/cash-registers[/:id]`          | CRUD (OWNER/ADMIN)                             |
-| GET               | `/cash-registers/:id/balance`    | Поточний залишок                               |
-| GET               | `/cash-registers/:id/operations` | Історія операцій (limit, q, dateFrom, dateTo)  |
-| POST              | `/cash-registers/:id/operations` | Ручна IN/OUT (OWNER/ADMIN/ACCOUNTANT)          |
+| Метод             | URL                              | Дія                                                                                                  |
+| ----------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| GET               | `/cash-registers`                | Список кас (+ isFiscal/initialBalance/balance)                                                       |
+| GET               | `/cash-registers/:id`            | Картка каси (OWNER/ADMIN/ACCOUNTANT)                                                                 |
+| POST/PATCH/DELETE | `/cash-registers[/:id]`          | CRUD (OWNER/ADMIN)                                                                                   |
+| GET               | `/cash-registers/:id/balance`    | Поточний залишок                                                                                     |
+| GET               | `/cash-registers/:id/operations` | Історія (limit, q, dateFrom, dateTo): контрагент / працівник, підстава, номер документа, чек         |
+| POST              | `/cash-registers/:id/operations` | Ручна операція за приводом → `CashDeskService.create` (BR-CASH-016…021); `Idempotency-Key` дозволено |
 
-**Статті витрат** (`/api/expense-categories`) — GET OWNER/ADMIN/ACCOUNTANT; CRUD OWNER/ADMIN
-(GET/POST/PATCH/DELETE/`:id/restore`).
+Роль на `POST …/operations`: OWNER/ADMIN/ACCOUNTANT/RECEPTIONIST на рівні маршруту, далі привід звужує
+ролі (BR-CASH-021: приймальня — лише «оплата контрагента»).
+
+**Статті руху коштів** (`/api/expense-categories`) — GET OWNER/ADMIN/ACCOUNTANT; CRUD OWNER/ADMIN
+(GET/POST/PATCH/DELETE/`:id/restore`/`:id/toggle-active`); `defaultReason` у create/update (409 — привід зайнятий).
+
+Оплати клієнтів і постачальників окремих сторінок не мають: проводяться з каси, з рахунку («Оплатити»
+→ `POST /payments`) та із замовлення постачальнику («Оплатити» → `POST /supplier-payments` + `…/confirm`).
 
 ---
 
@@ -91,14 +113,21 @@ model ExpenseCategory {        // довідник статей витрат (pe
 
 ## UI (Web)
 
-Сторінка «Каса» (`/cash`) — вкладки: **Операції** (перемикач кас + баланс + внести/видати + історія +
-зміна для фіскальної) · **Каси** (CRUD) · **Статті витрат** (CRUD). Вкладки/кнопки гейтуються за роллю
-(RECEPTIONIST — лише перегляд «Операції»). Payroll pay-модалка — вибір каси для видачі ЗП готівкою.
+Сторінка «Каса» (`/cash`) — вкладки: **Операції** (перемикач кас + баланс + «Внести» / «Видати» + історія +
+зміна для фіскальної) · **Каси** (CRUD) · **Статті руху коштів** (CRUD + привід за замовчуванням). Вкладки й
+кнопки гейтуються за роллю (RECEPTIONIST — «Операції», внести лише оплату контрагента). Форма операції
+(`CashOperationModal`) за приводом показує потрібні поля (контрагент / працівник / підстава / стаття) і сама
+підставляє статтю, закріплену за приводом. Історія показує контрагента чи працівника, підставу (клік відкриває
+наряд / замовлення), номер документа й чек із «Повторити» для FAILED. Payroll pay-модалка — вибір каси для ЗП.
+Старі адреси сторінок оплат (`/payments`, `/supplier-payments`) перенаправляються (`LegacyRouteRedirect`) у касу;
+`/payments/<id>` без перенаправлення — відома прогалина (TECH-DEBT).
 
 | Компонент        | Файл                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------- |
 | Сторінка/вкладки | `app/(app)/cash/page.tsx` + `CashOperationsTab`/`CashRegistersTab`/`ExpenseCategoriesTab.tsx` |
-| Hooks            | `hooks/api/useCash.ts`, `hooks/api/useExpenseCategories.ts`                                   |
+| Форма операції   | `app/(app)/cash/CashOperationModal.tsx`                                                       |
+| Hooks            | `hooks/api/useCash.ts`, `hooks/api/useExpenseCategories.ts` (типи — згенеровані `ApiSchema`)  |
+| Підписи приводів | `i18n/locales/{uk,en}/cash.json` `reasons.*` ≡ `CASH_REASON_LABELS` (`@sto/shared`)           |
 
 ---
 
@@ -130,13 +159,13 @@ model ExpenseCategory {        // довідник статей витрат (pe
 - **BR-CASH-005**: Фіскальна каса (`isFiscal = true`) — операція лише у відкриту зміну. `createOperation` шукає невидалену зміну саме цієї каси зі статусом `OPEN`: немає → 400 «Для фіскальної каси відкрийте зміну перед операціями з готівкою», нічого не пишеться; є → її id пишеться в `cashShiftId`. Нефіскальна каса: зміну не шукають, `cashShiftId = null`. Правило діє і на авто-операції (оплата клієнта, оплата постачальнику, зарплата): відмова відкочує всю транзакцію викликача
 - **BR-CASH-006**: Каса не йде в мінус. Перед видачею (`OUT`) читається поточний залишок; якщо `залишок − сума` менше нуля (порівняння з допуском −0,001, тож нестача в одну копійку вже блокує) → 400 «Недостатньо готівки в касі: доступно X, потрібно Y», нічого не пишеться. Видати рівно весь залишок можна. Внесення (`IN`) залишком не обмежується. Залишок читається тим самим клієнтом БД, яким пишеться операція, тож кілька видач в одній транзакції (зарплата по співробітниках) бачать уже списане попередніми
 - **BR-CASH-007**: Стаття руху коштів на операції необов'язкова. Якщо задана — мусить існувати в цій організації (інакше 404 «Статтю не знайдено»), бути активною (вимкнена, `isActive = false` → 400 «Стаття вимкнена — оберіть активну») і відповідати напряму: `OUT` — лише стаття типу `EXPENSE` (інакше 400 «Для видачі оберіть статтю витрат»), `IN` — лише `INCOME` (інакше 400 «Для внесення оберіть статтю оприбуткування»)
-- **BR-CASH-008**: Ручна операція з причиною `EXPENSE` вимагає статтю: без `expenseCategoryId` → 400 «Для витрати вкажіть статтю витрат», до каси не доходить. Для інших причин стаття необов'язкова. Перевірка є лише на ручному шляху (`createManual`)
+- **BR-CASH-008**: Ручна операція з причиною `EXPENSE` вимагає статтю: без `expenseCategoryId` → 400 «Для витрати вкажіть статтю витрат», до каси не доходить. Для інших причин стаття необов'язкова. Перевіряє `CashDeskService.create` (`categoryRequired` у `CASH_REASON_RULES`, BR-CASH-016); окремого «ручного» шляху в `CashService` немає — метод `createManual` видалено 2026-10-14, бо обходив правила приводів
 - **BR-CASH-009**: Залишок каси = `initialBalance + Σ(IN.amount) − Σ(OUT.amount)` у валюті каси, округлений до копійки. Він щоразу рахується з журналу й окремо ніде не зберігається. Пакетний розрахунок для списку кас (`getBalances`) дає те саме одним запитом; каса без операцій має залишок `initialBalance`. `getBalance` для неіснуючої каси → 404 «Касу не знайдено»
 - **BR-CASH-010**: Мультивалюта. Валюта операції — валюта каси (`CashRegister.currencyId`), викликач її не передає. Сума перераховується в базову валюту організації через `ExchangeRatesService.resolveBaseConversion(orgId, валюта каси, зараз, amount)`; у журнал пишуться `amount` (у валюті каси), `amountBase` і `rateUsed`. Якщо конвертація кидає помилку (немає курсу на дату) — вона йде викликачу, нічого не пишеться; тихого відкату на курс 1 немає. Залишок і перевірка «не в мінус» рахуються у валюті каси (`amount`), не в базовій
 - **BR-CASH-011**: Атомарність. Якщо викликач передав свою транзакцію (`tx`) — пошук каси, статті, зміни, читання залишку й запис операції йдуть у ній, власна не відкривається (відкат оплати відкочує і рух готівки). Якщо не передав — читання залишку й запис ідуть у власній транзакції рівня `Serializable`; конфлікт серіалізації (`P2034`) повертається як 400 «Каса зайнята паралельною операцією — повторіть», інші помилки БД не перекладаються
-- **BR-CASH-012**: Прив'язка до документа. `reason`, `counterpartyId`, `employeeId`, `documentType`, `documentId`, `notes`, `createdBy` пишуться в рядок журналу як передані, непередані — `null`. `documentType` — довільний рядок (`Payment`, `SupplierPayment`, `PayrollPeriod`), не enum; існування документа, контрагента і співробітника `createOperation` не перевіряє, причину з напрямом не звіряє. Ручна операція: автор — користувач запиту, документ і співробітник не задаються
+- **BR-CASH-012**: Прив'язка до документа. `reason`, `counterpartyId`, `employeeId`, `documentType`, `documentId`, `notes`, `createdBy` пишуться в рядок журналу як передані, непередані — `null`. `documentType` — довільний рядок (`Payment`, `SupplierPayment`, `PayrollPeriod`), не enum; існування документа, контрагента і співробітника `createOperation` не перевіряє, причину з напрямом не звіряє. Ручна операція: автор — користувач запиту (`CashDeskService` передає `createdBy`)
 - **BR-CASH-013**: Аудит. Операція з автором (`createdBy`) залишає в журналі аудиту запис `CREATE` (`CashOperation`, id операції, напрям, сума, причина); без автора — не залишає. Аудит пишеться після запису операції й поза транзакцією: його збій операцію не скасовує і помилки не дає
-- **BR-CASH-014**: Ролі. Ручну операцію (`POST /cash-registers/:id/operations`) проводять OWNER, ADMIN, ACCOUNTANT. Список кас, залишок та історію операцій бачить ще й RECEPTIONIST. Картку однієї каси (`GET /cash-registers/:id`) — OWNER, ADMIN, ACCOUNTANT. Створювати, змінювати й видаляти касу можуть лише OWNER і ADMIN
+- **BR-CASH-014**: Ролі. Маршрут ручної операції (`POST /cash-registers/:id/operations`) пускає OWNER, ADMIN, ACCOUNTANT і RECEPTIONIST; які саме приводи кому — уточнює BR-CASH-021 (спершу це були лише OWNER, ADMIN, ACCOUNTANT). Список кас, залишок та історію операцій бачить ще й RECEPTIONIST. Картку однієї каси (`GET /cash-registers/:id`) — OWNER, ADMIN, ACCOUNTANT. Створювати, змінювати й видаляти касу можуть лише OWNER і ADMIN
 - **BR-CASH-015**: Історія операцій каси віддається від найновіших до найстаріших, за замовчуванням 100 рядків, не більше 500 за запит (не число, нуль чи від'ємне в `limit` — ті самі 100); зсуву (пагінації) немає. У рядку: суми числами, дата в ISO, назва статті з довідника
 
 > Правила BR-CASH-016…021 — рішення власника 2026-10-14 («каса як місце готівкових оплат»).
@@ -195,8 +224,8 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 
 | Аспект                                                                                                    | Тест                                                                             | Кейсів |
 | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------ |
-| сервісна логіка: гілки createOperation, overdraft, залишок                                                | `cash.service.spec.ts`                                                           | 28     |
-| рядок журналу: сума, зміна, стаття, конфлікт, документ, аудит, історія                                    | `cash.operation-record.spec.ts`                                                  | 35     |
+| сервісна логіка: гілки createOperation, overdraft, залишок                                                | `cash.service.spec.ts`                                                           | 27     |
+| рядок журналу: сума, зміна, стаття, конфлікт, документ, аудит, історія                                    | `cash.operation-record.spec.ts`                                                  | 32     |
 | підстава в рядку каси і стаття за замовчуванням для приводу (BR-CASH-020, 022)                            | `cash.default-category.spec.ts`                                                  | 14     |
 | ізоляція організацій (умови запитів)                                                                      | `cash.tenant.spec.ts`                                                            | 5      |
 | єдиний писар і append-only (статичний сторож по вихідному коду)                                           | `cash.single-writer.spec.ts`                                                     | 3      |
@@ -210,7 +239,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | привід за замовчуванням у статті: закріплення, конфлікт, напрям, відновлення (BR-CASH-022)                | `../expense-categories/expense-categories.default-reason.spec.ts`                | 48     |
 | таблиця приводів `CASH_REASON_RULES` і zod-схема ручної операції                                          | `../../../../../packages/shared/src/schemas/forms/cash-operation.schema.spec.ts` | 101    |
 
-Разом: **472** кейси (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
+Разом: **468** кейси (цифри з `vitest --reporter=json`, не з grep). Спільний harness спеків `CashService` — `cash.spec-fixture.ts` (у ньому ж таблиця в пам'яті `memoryTable` для спеків, написаних до коду); harness каси-диригента — `../cash-registers/cash-desk.spec-fixture.ts`.
 
 **Межі сторожів.** Мітка `// guards:` означає «порушення правила в коді валить цей тест» (кожну перевірено мутацією 2026-10-08), але не «правило стережеться повністю»:
 
