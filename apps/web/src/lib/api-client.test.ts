@@ -6,7 +6,7 @@
 // routing-404 «Cannot GET /api/v1/public/work-orders/...» → публічний кошторис не відкривався.
 // Ці тести пінять точний URL-префікс кожного хелпера, щоб регрес не повторився без запуску E2E.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { publicFetch, publicNeutralFetch } from './api-client';
+import { apiFetch, publicFetch, publicNeutralFetch } from './api-client';
 
 const fetchMock = vi.fn();
 
@@ -54,5 +54,52 @@ describe('api-client public fetch — versioning URL contract (Bug #761)', () =>
     await expect(publicNeutralFetch('/public/work-orders/bad')).rejects.toThrow(
       'Посилання не дійсне',
     );
+  });
+});
+
+// Bug #839: індикатор «Офлайн — збереження недоступне» слухає подію `sto:sync-status`, яку
+// apiFetch шле, коли fetch кидає. Скасований запит (AbortController) теж кидає — і до виправлення
+// перемикав індикатор в «Офлайн», доки не прийде наступна успішна відповідь. Наживо 2026-10-13:
+// закрили бокову панель списку, поки вантажилось «Зведення», — індикатор лишився «Офлайн».
+describe('apiFetch — статус зв’язку для індикатора (Bug #839)', () => {
+  const statuses: string[] = [];
+  const onSync = (e: Event) => statuses.push((e as CustomEvent<{ status: string }>).detail.status);
+
+  beforeEach(() => {
+    statuses.length = 0;
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    window.addEventListener('sto:sync-status', onSync);
+  });
+
+  afterEach(() => {
+    window.removeEventListener('sto:sync-status', onSync);
+    vi.unstubAllGlobals();
+  });
+
+  it('скасований запит (AbortError) НЕ перемикає індикатор в «офлайн»', async () => {
+    const ac = new AbortController();
+    fetchMock.mockImplementation(() => {
+      ac.abort();
+      return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+    });
+    await expect(
+      apiFetch('/work-orders/1/lines-summary', { signal: ac.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(statuses).toEqual([]);
+  });
+
+  it('справжній обрив мережі перемикає індикатор в «офлайн», успішна відповідь — назад', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(apiFetch('/work-orders')).rejects.toThrow('Failed to fetch');
+    expect(statuses).toEqual(['offline']);
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    } as unknown as Response);
+    await apiFetch('/work-orders');
+    expect(statuses).toEqual(['offline', 'idle']);
   });
 });

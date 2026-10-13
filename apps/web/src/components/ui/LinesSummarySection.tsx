@@ -31,6 +31,13 @@ export function LinesSummarySection({ entity, id, enabled = true }: LinesSummary
 
   if (!id || !enabled) return null;
 
+  // Текст сервера (він український) показуємо як є. Обрив мережі — це TypeError браузера з
+  // англійським текстом («Failed to fetch», «Load failed»): замість нього — загальне повідомлення.
+  const errorText =
+    error instanceof Error && !(error instanceof TypeError) && error.message
+      ? error.message
+      : t('linesSummary.loadError');
+
   /** «5 позицій · 7,5 н-год» — текст одного рядка зведення. */
   const describe = (table: LinesSummaryTable): string => {
     const quantity = t(
@@ -61,11 +68,7 @@ export function LinesSummarySection({ entity, id, enabled = true }: LinesSummary
       <PanelSection title={t('linesSummary.title')} className="space-y-1.5">
         {error ? (
           <div role="alert" className="space-y-1.5">
-            <p className="text-[13px] text-destructive-text">
-              {error instanceof Error && error.message
-                ? error.message
-                : t('linesSummary.loadError')}
-            </p>
+            <p className="text-[13px] text-destructive-text">{errorText}</p>
             <button
               type="button"
               onClick={() => void refetch()}

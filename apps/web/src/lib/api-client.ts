@@ -38,6 +38,14 @@ function emitSyncStatus(status: 'idle' | 'offline'): void {
   window.dispatchEvent(new CustomEvent('sto:sync-status', { detail: { status } }));
 }
 
+/** Запит скасував сам клієнт (AbortController), а не обірвала мережа. */
+function isAbortError(err: unknown, signal?: AbortSignal | null): boolean {
+  if (signal?.aborted) return true;
+  return (
+    typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError'
+  );
+}
+
 function setToken(token: string): void {
   if (typeof window !== 'undefined') sessionStorage.setItem(TOKEN_KEY, token);
 }
@@ -121,7 +129,11 @@ async function _apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     // працює в LAN, але не накопичує мутації для подальшої синхронізації) — просто прокидаємо помилку,
     // а SyncIndicator показує «Офлайн — збереження недоступне». Fake pending-ops лічильник прибрано.
     // R3: сигналимо indicator, що локальний API недосяжний (навіть якщо navigator.onLine=true).
-    emitSyncStatus('offline');
+    // Bug #839: скасований запит (AbortController — TanStack Query скасовує запит, коли його
+    // споживач зник: закрили бокову панель, вибрали інший рядок) — це НЕ втрата зв'язку. Без цієї
+    // перевірки індикатор показував «Офлайн — збереження недоступне» і лишався таким до наступної
+    // успішної відповіді, хоча сервер був на місці.
+    if (!isAbortError(networkErr, init?.signal)) emitSyncStatus('offline');
     throw networkErr;
   }
   // R3: успішна відповідь від локального API → відновлення зв'язку (скидає 'offline' у indicator).

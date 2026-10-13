@@ -81,6 +81,15 @@ describe('LinesSummarySection', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent('Не вдалося завантажити зведення');
     });
 
+    it('обрив мережі (TypeError «Failed to fetch») → українське повідомлення, не текст браузера', async () => {
+      apiFetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+      renderSection();
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Не вдалося завантажити зведення');
+      expect(alert).not.toHaveTextContent('Failed to fetch');
+      expect(screen.getByRole('button', { name: 'Повторити' })).toBeInTheDocument();
+    });
+
     it('«Повторити» перезапитує сервер і показує дані', async () => {
       apiFetchMock.mockRejectedValueOnce(new Error('Збій мережі'));
       renderSection();
