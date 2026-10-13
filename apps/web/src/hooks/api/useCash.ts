@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { operations, CashBaseDocumentValue, CashOperationFormValues } from '@sto/shared';
+import type { ApiSchema, operations, CashOperationFormValues } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import {
   invalidatePaymentSideEffects,
@@ -7,58 +7,12 @@ import {
 } from '@/lib/cache-invalidation';
 import { buildParams } from './usePaginatedList';
 
-export interface CashRegister {
-  id: string;
-  orgId: string;
-  name: string;
-  currencyId: string;
-  currencyCode: string;
-  currencySymbol?: string | null;
-  branchId: string;
-  branchName: string;
-  isFiscal: boolean;
-  /** Код ПРРО-провайдера цієї каси (checkbox|vchasno) або null. */
-  fiscalProvider?: string | null;
-  /** ID каси на боці провайдера (Checkbox cashRegisterId). */
-  providerCashRegisterId?: string | null;
-  initialBalance: number;
-  balance: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CashOperation {
-  id: string;
-  cashRegisterId: string;
-  cashShiftId?: string | null;
-  direction: 'IN' | 'OUT';
-  amount: number;
-  /** Сума у базовій валюті (UAH) по курсу на дату операції (мультивалюта Фаза 1). */
-  amountBase?: number | null;
-  /** Застосований курс (base за 1 од. валюти каси). */
-  rateUsed?: number | null;
-  reason: string;
-  expenseCategoryId?: string | null;
-  expenseCategoryName?: string | null;
-  counterpartyId?: string | null;
-  employeeId?: string | null;
-  /** Платіжний документ рядка: `Payment`, `SupplierPayment`, `PayrollPeriod`, `BankTransaction`. */
-  documentType?: string | null;
-  documentId?: string | null;
-  notes?: string | null;
-  createdAt: string;
-  // Поля касової операції з контрагентом / працівником / підставою (BR-CASH-016…022). Тип
-  // відповіді розширено тут тимчасово: згенерований `api-types` їх ще не знає.
-  counterpartyName?: string | null;
-  employeeName?: string | null;
-  /** Документ-підстава (не плутати з платіжним документом `documentType`). */
-  baseDocumentType?: CashBaseDocumentValue | null;
-  baseDocumentId?: string | null;
-  baseDocumentNumber?: string | null;
-  documentNumber?: string | null;
-  /** Стан фіскального чека оплати: QUEUED / DONE / FAILED / SKIPPED; null — чек не потрібен. */
-  fiscalStatus?: string | null;
-}
+/**
+ * Каса й рядок історії — ЗГЕНЕРОВАНІ типи із OpenAPI (`pnpm run gen:api-types`); поля звірені
+ * з реальною відповіддю dev-API. Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване».
+ */
+export type CashRegister = ApiSchema<'CashRegisterResponseDto'>;
+export type CashOperation = ApiSchema<'CashOperationResponseDto'>;
 
 /** Тіло POST /cash-registers/:id/operations — рівно вихід спільної `cashOperationSchema`. */
 export type CreateCashOperationBody = CashOperationFormValues;

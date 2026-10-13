@@ -1,24 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CashReasonValue } from '@sto/shared';
+import type { ApiSchema, CashReasonValue } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 
-export type ExpenseCategoryType = 'EXPENSE' | 'INCOME';
-
-export interface ExpenseCategory {
-  id: string;
-  orgId: string;
-  parentId?: string | null;
-  name: string;
-  type: ExpenseCategoryType;
-  sortOrder: number;
-  isActive: boolean;
-  /** Привід касової операції, для якого статтю підставляють самі; один привід — одна стаття. */
-  defaultReason?: CashReasonValue | null;
-  children: ExpenseCategory[];
-  deletedAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+/** Стаття — ЗГЕНЕРОВАНИЙ тип із OpenAPI (`pnpm run gen:api-types`), поля звірені з dev-API. */
+export type ExpenseCategory = ApiSchema<'ExpenseCategoryResponseDto'>;
+export type ExpenseCategoryType = ExpenseCategory['type'];
 
 export const expenseCategoriesKeys = {
   all: ['expense-categories'] as const,

@@ -11,6 +11,7 @@ import type {
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 // ─── Generic config-driven API ────────────────────────────
@@ -31,6 +32,11 @@ export interface LinkedSectionItem {
   preview: { title: string; rows: Array<{ label: string; value: ReactNode }> };
   /** Перехід до документа (deep-link). undefined → кнопки «Відкрити» немає. */
   navigate?: () => void;
+  /**
+   * Дія над рядком (напр. «Повторити» чек). Після успіху панель сама перезавантажується;
+   * відмову показує toast. Немає дії → кнопки немає (права вирішує той, хто будує конфіг).
+   */
+  action?: { label: string; run: () => Promise<unknown> };
 }
 
 /** Опис однієї секції: як її назвати, якою іконкою і як мапити рядки відповіді. */
@@ -188,6 +194,9 @@ function SectionRow({
   badge,
   onClick,
   onOpen,
+  action,
+  actionBusy,
+  onAction,
 }: {
   icon: ElementType;
   primary: string;
@@ -196,6 +205,9 @@ function SectionRow({
   onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
   /** Перехід до документа одним кліком — без проміжного прев'ю. Немає сторінки → немає кнопки. */
   onOpen?: () => void;
+  action?: { label: string };
+  actionBusy?: boolean;
+  onAction?: () => void;
 }) {
   return (
     <div className="flex items-stretch hover:bg-secondary/60 transition-colors">
@@ -219,6 +231,16 @@ function SectionRow({
           </span>
         )}
       </button>
+      {action && (
+        <button
+          type="button"
+          onClick={onAction}
+          disabled={actionBusy}
+          className="shrink-0 self-center mr-3 px-2 py-0.5 rounded-md border border-border text-[11px] font-medium text-foreground hover:bg-secondary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {action.label}
+        </button>
+      )}
       {onOpen && (
         <button
           type="button"
@@ -263,6 +285,8 @@ export function LinkedDocumentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [preview, setPreview] = useState<LinkedSectionItem | null>(null);
+  // Рядок, над яким виконується дія — одна дія за раз, щоб не слати подвійний запит.
+  const [busyActionId, setBusyActionId] = useState<string | null>(null);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
 
   // config зазвичай module-level constant (стабільний), але тримаємо у ref, щоб
@@ -312,6 +336,19 @@ export function LinkedDocumentsPanel({
   const openPreview = (e: ReactMouseEvent<HTMLButtonElement>, item: LinkedSectionItem) => {
     anchorRef.current = e.currentTarget;
     setPreview(item);
+  };
+
+  const runAction = async (item: LinkedSectionItem) => {
+    if (!item.action || busyActionId) return;
+    setBusyActionId(item.id);
+    try {
+      await item.action.run();
+      setRetryKey(k => k + 1);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Не вдалось виконати дію');
+    } finally {
+      setBusyActionId(null);
+    }
   };
 
   if (loading) {
@@ -376,6 +413,9 @@ export function LinkedDocumentsPanel({
                 badge={item.badge}
                 onClick={e => openPreview(e, item)}
                 onOpen={item.navigate}
+                action={item.action}
+                actionBusy={busyActionId !== null}
+                onAction={() => void runAction(item)}
               />
             ))}
           </DocSection>

@@ -289,3 +289,46 @@ describe('LinkedDocumentsPanel — config-driven + navigation (Bugs #409, #414, 
     expect(onLoad).toHaveBeenCalledWith({ invoices: 0, payments: 0 });
   });
 });
+
+describe('LinkedDocumentsPanel — дія над рядком', () => {
+  beforeEach(() => apiFetchMock.mockReset());
+
+  const run = vi.fn();
+  const actionConfig: LinkedEntityConfig = {
+    fetchPath: id => `/invoices/${id}/linked-documents`,
+    sections: [
+      {
+        key: 'payments',
+        title: 'Оплати',
+        icon: CreditCard,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mapRow: (row: any) => ({
+          id: row.id,
+          primary: `${row.amount} ₴`,
+          preview: { title: 'Оплата', rows: [] },
+          action: { label: 'Повторити', run: () => run(row.id) },
+        }),
+      },
+    ],
+  };
+
+  it('клік «Повторити» викликає дію й перезавантажує секцію', async () => {
+    run.mockReset().mockResolvedValue({});
+    apiFetchMock.mockResolvedValue({ payments: [{ id: 'p1', amount: 100 }] });
+    render(<LinkedDocumentsPanel config={actionConfig} entityId={WO_ID} />);
+    const btn = await screen.findByRole('button', { name: 'Повторити' });
+    await userEvent.click(btn);
+    await waitFor(() => expect(run).toHaveBeenCalledWith('p1'));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('дія впала — панель не перезавантажується, рядок лишається', async () => {
+    run.mockReset().mockRejectedValue(new Error('Черга недоступна'));
+    apiFetchMock.mockResolvedValue({ payments: [{ id: 'p1', amount: 100 }] });
+    render(<LinkedDocumentsPanel config={actionConfig} entityId={WO_ID} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Повторити' }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Повторити' })).toBeInTheDocument();
+  });
+});

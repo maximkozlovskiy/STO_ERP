@@ -33,7 +33,8 @@ import {
   type Invoice,
   type InvoiceStatusValue,
 } from '@/hooks/api/useInvoices';
-import { useBaseCurrency } from '@/hooks/api/useCash';
+import { useBaseCurrency, useRetryCashFiscal } from '@/hooks/api/useCash';
+import { useAuth } from '@/lib/auth';
 import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -212,8 +213,16 @@ function InvoicesPageInner() {
   }, []);
   const { sort: invSort, toggle: toggleInvSort } = useSortState('createdAt', 'desc');
 
+  const { employee } = useAuth();
   const linkedNav = useLinkedNav();
-  const linkedConfig = useMemo(() => invoiceLinkedConfig(linkedNav), [linkedNav]);
+  // «Повторити» чек — лише ролям, яким дозволяє POST /payments/:id/retry-fiscal.
+  const retryCashFiscal = useRetryCashFiscal();
+  const canRetryFiscal = ['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(employee?.role ?? '');
+  const retryFiscalMutate = retryCashFiscal.mutateAsync;
+  const linkedConfig = useMemo(
+    () => invoiceLinkedConfig(linkedNav, canRetryFiscal ? { retryFiscal: retryFiscalMutate } : {}),
+    [linkedNav, canRetryFiscal, retryFiscalMutate],
+  );
   const [linkedDocPopupId, setLinkedDocPopupId] = useState<string | null>(null);
 
   // React Query — main data

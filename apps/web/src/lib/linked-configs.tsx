@@ -18,6 +18,7 @@ import {
   poStatusLabel,
   supplierPaymentStatusLabel,
   supplierReturnStatusLabel,
+  fiscalStatusLabel,
 } from '@/i18n/enumLabel';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
@@ -262,7 +263,30 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
 
 // ─── Invoice config ────────────────────────────────────────
 
-export function invoiceLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
+/** Позначка фіскального чека в рядку оплати (null → чек не застосовний). */
+function fiscalBadge(status: string | null | undefined) {
+  if (!status) return undefined;
+  const className =
+    status === 'DONE'
+      ? 'bg-success-subtle text-success'
+      : status === 'FAILED'
+        ? 'bg-destructive-subtle text-destructive'
+        : 'bg-secondary text-muted-foreground';
+  return { label: `Чек: ${fiscalStatusLabel(status)}`, className };
+}
+
+export interface InvoiceLinkedOptions {
+  /**
+   * POST /payments/:id/retry-fiscal. Передавати лише ролям, яким це дозволяє контролер
+   * (OWNER/ADMIN/ACCOUNTANT) — без нього «Повторити» у рядку не показується.
+   */
+  retryFiscal?: (paymentId: string) => Promise<unknown>;
+}
+
+export function invoiceLinkedConfig(
+  nav: LinkedNav,
+  opts: InvoiceLinkedOptions = {},
+): LinkedEntityConfig {
   return {
     fetchPath: id => `/invoices/${id}/linked-documents`,
     sections: [
@@ -275,12 +299,20 @@ export function invoiceLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           id: row.id,
           primary: `${fmt(row.amount)} ₴`,
           secondary: fmtDateTime(row.createdAt),
+          badge: fiscalBadge(row.fiscalStatus),
+          action:
+            opts.retryFiscal && row.fiscalStatus === 'FAILED'
+              ? { label: 'Повторити', run: () => opts.retryFiscal!(row.id) }
+              : undefined,
           preview: {
             title: 'Оплата',
             rows: [
               { label: 'Сума', value: `${fmt(row.amount)} ₴` },
               { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
               { label: 'Дата', value: fmtDateTime(row.createdAt) },
+              ...(row.fiscalStatus
+                ? [{ label: 'Чек', value: fiscalStatusLabel(row.fiscalStatus) }]
+                : []),
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],
           },

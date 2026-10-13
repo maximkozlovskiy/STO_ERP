@@ -224,6 +224,42 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
       });
       expect(mapped.navigate).toBeUndefined();
     });
+
+    const failedRow = {
+      id: 'p9',
+      amount: 800,
+      method: 'CASH',
+      createdAt: '2026-10-14T09:00:00.000Z',
+      notes: null,
+      fiscalStatus: 'FAILED',
+    };
+
+    it('оплата рахунку: позначка чека; FAILED + дозволена роль → дія «Повторити» на цей платіж', async () => {
+      const retryFiscal = vi.fn().mockResolvedValue({});
+      const mapped = section(invoiceLinkedConfig(makeNav(), { retryFiscal }), 'payments').mapRow(
+        failedRow,
+      );
+      expect(mapped.badge?.label).toContain('Чек');
+      expect(mapped.action?.label).toBe('Повторити');
+      await mapped.action!.run();
+      expect(retryFiscal).toHaveBeenCalledWith('p9');
+    });
+
+    it('без дозволеної ролі (retryFiscal не передано) або не FAILED — кнопки немає', () => {
+      const noRole = section(invoiceLinkedConfig(makeNav()), 'payments').mapRow(failedRow);
+      expect(noRole.action).toBeUndefined();
+      expect(noRole.badge).toBeDefined();
+      const done = section(
+        invoiceLinkedConfig(makeNav(), { retryFiscal: vi.fn() }),
+        'payments',
+      ).mapRow({ ...failedRow, fiscalStatus: 'DONE' });
+      expect(done.action).toBeUndefined();
+      const none = section(
+        invoiceLinkedConfig(makeNav(), { retryFiscal: vi.fn() }),
+        'payments',
+      ).mapRow({ ...failedRow, fiscalStatus: null });
+      expect(none.badge).toBeUndefined();
+    });
   });
 
   describe('fetchPath кожного конфіга — правильний endpoint', () => {

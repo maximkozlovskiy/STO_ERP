@@ -24,15 +24,19 @@ import { Select } from '@/components/ui/select';
 import { DatePickerInput } from '@/components/ui/date-picker-input';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidatePurchaseSideEffects } from '@/lib/cache-invalidation';
 import {
   useSupplierPayment,
   useUpdateSupplierPayment,
   useCreateSupplierPayment,
+  useConfirmSupplierPayment,
+  useCancelSupplierPayment,
   type PaymentSourceType,
 } from '@/hooks/api/useSupplierPayments';
 
 /**
- * Оплата постачальнику (створення + редагування чернетки).
+ * Оплата постачальнику (створення з негайним проведенням; редагування чернетки).
  *
  * `void` перед `handleSave()` / `handleModalClose()` у JSX: `handleSave` (RHF handleSubmit
  * над `onValid`) має try/catch, що пише текст відмови у `error` (баннер у модалці) і в
@@ -168,6 +172,11 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
   // інвалідував supplierPaymentsKeys.all — інакше нова оплата не з'являється
   // у списку до staleTime=30s (usePaginatedList кешує на 30 секунд).
   const createMut = useCreateSupplierPayment();
+  // Сторінки оплат постачальнику немає — документ, створений звідси, проводиться одразу
+  // (create → confirm); якщо проведення не вдалось — скасовуємо, щоб не лишати чернетку.
+  const confirmMut = useConfirmSupplierPayment();
+  const cancelMut = useCancelSupplierPayment();
+  const queryClient = useQueryClient();
 
   // Режим редагування — тягнемо наявну оплату для заповнення форми.
   const { data: existing } = useSupplierPayment(isEdit && open ? paymentId : null);
@@ -324,10 +333,23 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         } else {
           // Bug #594: через хук — щоб onSuccess інвалідував supplierPaymentsKeys.all.
           const created = await createMut.mutateAsync(payload);
+          try {
+            await confirmMut.mutateAsync(created.id);
+          } catch (confirmError) {
+            // Той самий порядок, що CashDeskService.payToSupplier: не вдалось провести —
+            // скасувати створений документ і показати відмову сервера в картці.
+            try {
+              await cancelMut.mutateAsync(created.id);
+            } catch {
+              /* скасування — best effort; помилка проведення важливіша */
+            }
+            throw confirmError;
+          }
           createdIdRef.current = created.id;
           if (features.toastEnabled) toast.success(t('toast.paymentCreated'));
         }
         dirty.resetDirty();
+        invalidatePurchaseSideEffects(queryClient);
         onSaved();
         onClose();
       } catch (e) {
@@ -339,7 +361,20 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         setSaving(false);
       }
     },
-    [isEdit, paymentId, updateMut, createMut, features.toastEnabled, onSaved, onClose, dirty, t],
+    [
+      isEdit,
+      paymentId,
+      updateMut,
+      createMut,
+      confirmMut,
+      cancelMut,
+      queryClient,
+      features.toastEnabled,
+      onSaved,
+      onClose,
+      dirty,
+      t,
+    ],
   );
 
   const handleSave = handleSubmit(onValid);
@@ -357,7 +392,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
         open={open}
         onClose={() => void handleModalClose()}
         onSubmit={() => void handleSave()}
-        title={isEdit ? 'Редагувати оплату' : 'Нова оплата постачальнику'}
+        title={isEdit ? 'Редагувати оплату' : 'Оплата постачальнику'}
         size="lg"
         footer={
           <div className="flex gap-2 items-center justify-end w-full">
@@ -375,7 +410,7 @@ export function SupplierPaymentCreateModal({ open, onClose, onSaved, paymentId, 
               disabled={saving || !supplierId || editNonDraft}
               size="sm"
             >
-              {isEdit ? 'Зберегти' : 'Створити оплату'}
+              {isEdit ? 'Зберегти' : 'Оплатити'}
             </Button>
           </div>
         }
