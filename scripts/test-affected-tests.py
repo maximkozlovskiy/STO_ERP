@@ -128,6 +128,21 @@ def _():
     assert r["routes"] == ["invoices"], r["routes"]
 
 
+@case("картка, яку оболонка вантажить ліниво заради відновлення з вкладки, — не залежність оболонки")
+def _():
+    # RestoredDocumentModal (у TopShell) має import() карток рахунку, замовлення і складу.
+    for card, route in (
+        ("PurchaseOrderCreateModal", "purchase-orders"),
+        ("StockDocumentCreateModal", "stock-documents"),
+    ):
+        r = run("apps/web/src/components/ui/%s.tsx" % card)
+        assert not r["e2e_full"], (card, r["reasons"])
+        assert route in r["routes"], (card, r["routes"])
+    # Сам господар змонтований в оболонці — його правка зачіпає всі сторінки.
+    r = run("apps/web/src/components/RestoredDocumentModal.tsx")
+    assert r["e2e_full"], r["reasons"]
+
+
 @case("**Маршрути UI:** у дос'є задає маршрут api-модуля без однойменної сторінки")
 def _():
     r = run("apps/api/src/modules/goods/goods.service.ts")

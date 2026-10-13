@@ -156,6 +156,19 @@ IMPORT_RE = re.compile(
 # IMPORT_RE такого ребра не бачить і не скаржиться — тож воно ловиться окремо як сліпа зона.
 OPAQUE_IMPORT_RE = re.compile(r"""\b(?:import|require)\s*\(\s*(?!['"\s)])""")
 OPAQUE = "<нелітеральний import()>"
+# Ліниві import('…'), які НЕ є залежністю оболонки. RestoredDocumentModal змонтований у TopShell і
+# вантажить картку документа лише коли клікнули по її вкладці; якби ці ребра рахувались, картки
+# рахунку, замовлення й складського документа ставали б «імпортується оболонкою», і правка однієї
+# картки тягнула б увесь E2E. Сам файл-господар лишається оболонкою.
+# Картки наряду тут свідомо НЕМАЄ: оболонка вантажила її так само й до появи цього файла, і
+# решта вибору (маршрути api-модулів, які кличе картка наряду) відкалібрована під це.
+LAZY_EDGES = {
+    "apps/web/src/components/RestoredDocumentModal.tsx": {
+        "@/components/ui/InvoiceCreateModal",
+        "@/components/ui/PurchaseOrderCreateModal",
+        "@/components/ui/StockDocumentCreateModal",
+    },
+}
 # І `@Controller('x')`, і `@Controller({ path: 'x', version: … })`.
 CONTROLLER_RE = re.compile(r"""@Controller\(\s*(?:\{[^}]*?\bpath:\s*)?['"]([^'"]+)['"]""")
 GOTO_RE = re.compile(r"""goto\(\s*[`'"](/[a-z0-9-]*)""")
@@ -364,7 +377,10 @@ def web_reverse_graph():
     known = set(texts)
     reverse, unresolved = {}, []
     for f, text in texts.items():
+        lazy = LAZY_EDGES.get(f, ())
         for m in IMPORT_RE.finditer(text):
+            if m.group(1) in lazy:
+                continue
             target = resolve_import(m.group(1), f, known)
             if target is False:
                 unresolved.append((f, m.group(1)))
