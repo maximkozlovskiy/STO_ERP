@@ -505,7 +505,10 @@ function InvoicesPageInner() {
     setSelectedInv(inv);
     try {
       const detail = await apiFetch<InvoiceWithOptionals>(`/invoices/${inv.id}`);
-      setSelectedInv(detail);
+      // Bug #840: доки йшов запит, могли вибрати ІНШИЙ рахунок або закрити панель. Без перевірки
+      // пізня відповідь повертала в панель попередній рахунок (шапка, «Зведення», дії — усе
+      // чуже) і відкривала закриту панель. Той самий сторож, що в selectPO закупівель.
+      setSelectedInv(cur => (cur?.id === inv.id ? detail : cur));
     } catch {
       // keep basic inv data if detail fetch fails
     }
