@@ -43,7 +43,7 @@ export function LinkedDocumentsPopup({
   return (
     <div className="fixed inset-0 z-50 bg-black/30" onClick={onClose} role="presentation">
       <div
-        className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto bg-background rounded-xl shadow-2xl border border-border p-4"
+        className="absolute right-4 top-1/2 -translate-y-1/2 w-90 max-h-[80vh] overflow-y-auto overflow-x-hidden bg-background rounded-xl shadow-2xl border border-border p-4"
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

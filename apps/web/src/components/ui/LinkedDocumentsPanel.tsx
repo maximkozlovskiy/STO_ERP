@@ -8,6 +8,7 @@ import type {
   ReactNode,
   RefObject,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -97,11 +98,16 @@ function PreviewPopup({
     return () => document.removeEventListener('keydown', handler, true);
   }, [onClose]);
 
-  return (
+  // Portal to <body>: the preview is `position: fixed`, but it is rendered inside containers that
+  // carry a CSS transform (the linked-documents popup is centred with translate) and scroll. Inside
+  // a transformed ancestor "fixed" is positioned against THAT ancestor and counts towards its
+  // scrollable overflow: the popup grew both scrollbars and the preview landed off its anchor.
+  return createPortal(
     <>
       <div className="fixed inset-0 z-69" onClick={onClose} />
       <div
         ref={popupRef}
+        data-testid="linked-preview"
         style={{ ...style, position: 'fixed', width: 300, zIndex: 70 }}
         className="bg-surface border border-border rounded-xl shadow-xl p-4 text-[13px]"
         role="dialog"
@@ -134,7 +140,8 @@ function PreviewPopup({
           </button>
         )}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

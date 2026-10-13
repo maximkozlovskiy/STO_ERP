@@ -129,6 +129,26 @@ describe('LinkedDocumentsPanel — config-driven + navigation (Bugs #409, #414, 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
+  // Запит власника 2026-10-13: клік по рядку давав у вікні «Пов'язані документи» обидві смуги
+  // прокрутки. Прев'ю — `position: fixed`, а вікно зсунуте трансформацією: усередині такого
+  // предка «fixed» рахується в його прокручувану область. Тому прев'ю живе в <body>.
+  it("прев'ю рядка малюється в <body>, а не всередині контейнера панелі", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValueOnce({
+      ...EMPTY,
+      invoices: [{ id: 'inv-1', number: 'INV-1', status: 'DRAFT', amount: 10 }],
+    });
+    const { container } = render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} />);
+    await waitFor(() => expect(screen.getByText(/INV-1/)).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /^Рахунок INV-1/ }));
+
+    const preview = screen.getByTestId('linked-preview');
+    expect(preview.parentElement).toBe(document.body);
+    expect(container.contains(preview)).toBe(false);
+    // Фон-перехоплювач кліку теж поза контейнером: саме він розтягував вікно на весь екран.
+    expect(container.querySelector('.fixed')).toBeNull();
+  });
+
   // Запит власника 2026-10-13: перехід до документа прямо з рядка, без проміжного прев'ю.
   it("перехід з рядка: кнопка «Перейти до документа» викликає navigate одразу, прев'ю не відкривається", async () => {
     const user = userEvent.setup();
