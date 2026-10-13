@@ -240,7 +240,7 @@ export function Modal({
 
   // E2: focus-trap — фокус тримається у панелі поки модалка видима; повертається на закритті.
   // `visible` (не `open`) — щоб трап жив під час exit-анімації теж; panelRef прикріплений на рендері.
-  useFocusTrap(panelRef, visible);
+  useFocusTrap(panelRef, visible && mounted);
 
   if (!visible || !mounted) return null;
 

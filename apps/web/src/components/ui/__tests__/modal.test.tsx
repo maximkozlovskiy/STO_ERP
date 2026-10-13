@@ -24,6 +24,30 @@ describe('Modal', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  // Модалка, яку монтують ОДРАЗУ відкритою (`{x && <Modal open />}`, картка, відновлена з
+  // вкладки), на першому рендері ще не має панелі: портал з'являється лише після `mounted`.
+  // Пастка фокуса вмикалась до появи панелі й більше не перезапускалась — фокус лишався на
+  // сторінці під модалкою, і Tab ходив по ній (перевірено наживо 2026-10-14).
+  // Мутація: `useFocusTrap(panelRef, visible)` без `&& mounted` → обидві перевірки падають.
+  it('змонтована одразу відкритою — забирає фокус у панель і тримає Tab у ній', async () => {
+    render(
+      <>
+        <button type="button">Кнопка сторінки</button>
+        <Modal open onClose={vi.fn()} title="Тест">
+          <button type="button">Дія в модалці</button>
+        </Modal>
+      </>,
+    );
+    const dialog = screen.getByRole('dialog');
+
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    for (let i = 0; i < 4; i++) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+  });
+
   it('рендерить title у заголовку', () => {
     render(
       <Modal open onClose={vi.fn()} title="Підтвердження">
