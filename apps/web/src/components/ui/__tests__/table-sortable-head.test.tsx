@@ -51,7 +51,9 @@ describe('заголовок колонки: курсор сортування �
   });
 
   it('стилі: наведення — стрілка або вказівник, захват — лише в :active', () => {
-    const css = readFileSync(join(__dirname, '..', '..', '..', 'app', 'globals.css'), 'utf8');
+    // Шлях від кореня пакета (cwd vitest), а не через відносні сегменти: селектор зачеплених тестів читає
+    // такий рядок як імпорт теки компонентів і прив'язує цей тест до кожного компонента в ній.
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8');
     const rule = (selector: string): string => {
       const i = css.indexOf(`${selector} {`);
       expect(i, `немає правила ${selector}`).toBeGreaterThanOrEqual(0);

@@ -103,7 +103,14 @@ def _():
 def _():
     r = run("apps/web/src/components/ui/date-picker-input.tsx")
     assert r["e2e_full"] and not r["full"], r
-    assert r["web"] == ["apps/web/src/components/ui/date-picker-input.tsx"]
+    # Сам файл — для `vitest related`; решта — лише спеки, що читають код web з диска
+    # (scanning_specs: ідуть у вибір при будь-якій зміні пакета, напр. сторож стилів заголовка
+    # таблиці). Жодного іншого вихідного файла у виборі бути не має — інакше вибір не локальний.
+    changed = "apps/web/src/components/ui/date-picker-input.tsx"
+    assert r["web"][0] == changed, r["web"]
+    extra = r["web"][1:]
+    assert all(".test." in f or ".spec." in f for f in extra), extra
+    assert not r["web_all"], r
 
 
 @case("сторінка маршруту → лише її E2E + наскрізні")
