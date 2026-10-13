@@ -1725,6 +1725,10 @@ function PurchaseOrdersPageClient() {
         onSaved={() => {
           setSrCreateOpen(false);
           setSrEditId(null);
+          // Модалка пише через apiFetch, а не мутації хука: без цього список повернень, їх
+          // панель і «Зведення» (ключ усередині supplierReturnsKeys.all) лишаються застарілими.
+          void queryClient.invalidateQueries({ queryKey: supplierReturnsKeys.all });
+          invalidatePurchaseSideEffects(queryClient);
         }}
         editId={srEditId}
       />
