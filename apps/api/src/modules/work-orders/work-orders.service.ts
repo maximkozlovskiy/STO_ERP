@@ -943,7 +943,8 @@ export class WorkOrdersService {
   ): Promise<WorkOrderLineResponseDto> {
     // Parallel same-aggregate parent (editable WO) + child line fetch — both
     // tenant-safe (orgId+workOrderId у where кожного запиту). -1 RTT per edit.
-    // sto-optimize: wo narrow {status}, line narrow {normoHours, price} (для defaults).
+    // sto-optimize: wo narrow {status}; line narrow — defaults (normoHours, price) і чинні
+    // workId / employeeId, щоб відрізнити зміну від повторної відправки того самого значення.
     const [wo, line] = await Promise.all([
       this.prisma.workOrder.findFirst({
         where: { id: workOrderId, orgId, deletedAt: null },
@@ -951,7 +952,7 @@ export class WorkOrdersService {
       }),
       this.prisma.workOrderLine.findFirst({
         where: { id: lineId, workOrderId, orgId, deletedAt: null },
-        select: { normoHours: true, price: true },
+        select: { normoHours: true, price: true, workId: true, employeeId: true },
       }),
     ]);
     if (!wo) throw new NotFoundException(translateError('err.workOrder.notFound', getLocale()));
@@ -975,6 +976,33 @@ export class WorkOrdersService {
     if (!line)
       throw new NotFoundException(translateError('err.workOrder.lineNotFound', getLocale()));
 
+    // BR-WO-011: нова робота / новий виконавець рядка мають існувати в організації (як у addLine).
+    // Раніше workId / employeeId приймались у DTO, але не писались: картка наряду показувала
+    // нового виконавця, відповідь була 200, а в базі лишався старий (Bug #836).
+    // Перевіряємо лише ЗМІНЕНЕ значення: картка шле роботу й виконавця кожного рядка при кожному
+    // збереженні, і рядок із уже видаленою роботою чи звільненим виконавцем має зберігатись далі.
+    const newWorkId = dto.workId && dto.workId !== line.workId ? dto.workId : undefined;
+    const newEmployeeId =
+      dto.employeeId && dto.employeeId !== line.employeeId ? dto.employeeId : undefined;
+    const [work, employee] = await Promise.all([
+      newWorkId
+        ? this.prisma.work.findFirst({
+            where: { id: newWorkId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : null,
+      newEmployeeId
+        ? this.prisma.employee.findFirst({
+            where: { id: newEmployeeId, orgId, deletedAt: null },
+            select: { id: true },
+          })
+        : null,
+    ]);
+    if (newWorkId && !work)
+      throw new NotFoundException(translateError('err.workOrder.workNotFound', getLocale()));
+    if (newEmployeeId && !employee)
+      throw new NotFoundException(translateError('err.workOrder.employeeNotFound', getLocale()));
+
     const normoHours = dto.normoHours ?? line.normoHours;
     const price = dto.price !== undefined ? money(dto.price) : moneyFromDecimal(line.price);
     const amount = lineAmount(normoHours, price);
@@ -984,6 +1012,9 @@ export class WorkOrdersService {
         const result = await tx.workOrderLine.update({
           where: { id: lineId, orgId },
           data: {
+            // undefined → Prisma поле не чіпає (часткова правка лишає роботу й виконавця як були).
+            workId: newWorkId,
+            employeeId: newEmployeeId,
             normoHours,
             price,
             amount,

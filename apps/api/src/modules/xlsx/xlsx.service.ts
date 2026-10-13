@@ -653,6 +653,19 @@ export class XlsxService {
       }
     }
 
+    // Bug #843: рядки записано напряму (частковий успіх допускається), тому ПДВ рядків і тотали
+    // замовлення перераховуються окремою транзакцією одразу після запису — і лише якщо щось
+    // записано. Без цього сума замовлення і залишок до сплати лишались такими, як до імпорту.
+    if (result.created > 0 || result.updated > 0) {
+      const adapter = this.importAdapters.get('PURCHASE_ORDER');
+      const sync = adapter.syncAfterDirectLineWrite?.bind(adapter);
+      if (sync) {
+        await this.prisma.$transaction(tx => sync(tx, orgId, poId), {
+          timeout: TRANSACTION_TIMEOUT_MS,
+        });
+      }
+    }
+
     return result;
   }
 

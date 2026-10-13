@@ -181,6 +181,13 @@ receivedQty:<очікуване>}, data:{increment}})` ПОСЛІДОВНО; `co
    `PriceHistory`, ні в `pricedSalePrice` рядка, і його немає в `details` відповіді. Без `ruleId`
    поведінка стара: рядок без жодного правила отримує ціну = собівартість. `ruleId` — UUID
    (`ApplyPricingDto`), інакше 400 (Bug #832, #835).
+7. **BR-PO-007**: **Швидкий імпорт рядків із шаблону XLSX (`POST /xlsx/import/purchase-order-lines/:id`,
+   кнопка «Імпорт XLSX» у картці) лишає документ узгодженим.** Імпорт пише рядки напряму
+   (оновлює кількість і ціну наявних, додає нові; частковий успіх допускається), тому одразу після
+   запису — окремою транзакцією і лише якщо щось записано — перераховуються ПДВ кожного активного
+   рядка за чинним режимом організації і тотали замовлення (`totalAmount`, `totalVat`,
+   `totalAmountBase`) по всіх активних рядках: `PurchaseOrderImportAdapter.syncAfterDirectLineWrite`.
+   Сума документа після імпорту дорівнює сумі рядків без натискання «Зберегти» (Bug #843).
 
 > Борг, створений `receive()`, закривається документом [SupplierPayment](supplier-payment.md)
 > (`SettlementTransaction(PAYMENT)`). PO можна опціонально прив'язати до оплати для аналітики.
@@ -223,6 +230,8 @@ cd apps/api && npx vitest run src/modules/purchase-orders/purchase-orders.fsm.sp
 | `findAll` — `sortBy=paymentDate`, nulls-last   | `purchase-orders.sort.spec.ts`                                   | 7      |
 | linked-documents — межові випадки              | `purchase-orders.linked-docs.spec.ts`                            | 5      |
 | `create` — Σ(lines.amount) === totalAmount     | `purchase-orders.totals.spec.ts`                                 | 1      |
+| швидкий імпорт рядків XLSX: виклик перерахунку | `../xlsx/xlsx.po-lines-import-totals.spec.ts`                    | 3      |
+| імпорт рядків: ПДВ рядків і тотали (адаптер)   | `../xlsx/document-line-import.adapter.spec.ts`                   | 12     |
 | HTTP-контракт (DTO, статуси, валідація)        | `purchase-orders.contract.spec.ts`                               | 37     |
 | Доставка (Нова Пошта)                          | `delivery/*.spec.ts`, `purchase-orders.delivery.service.spec.ts` | —      |
 

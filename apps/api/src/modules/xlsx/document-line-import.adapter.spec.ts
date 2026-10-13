@@ -150,6 +150,121 @@ describe('PurchaseOrderImportAdapter.appendLines', () => {
   });
 });
 
+/**
+ * BR-PO-007 — після швидкого імпорту («Імпорт XLSX» у картці замовлення) рядки записано напряму:
+ * ПДВ рядка і сума документа лишались такими, як до імпорту (Bug #843, наживо 2026-10-13: у базі
+ * totalAmount 103,00 при рядках на 118,00; у зміненого рядка ПДВ від старої кількості).
+ *
+ * Mutation-verify (2026-10-13): прибрати оновлення ПДВ рядка → падає кейс 1; прибрати виклик
+ * recalcTotals → падає кейс 2; прибрати курсор → падає кейс 3.
+ */
+describe('PurchaseOrderImportAdapter.syncAfterDirectLineWrite', () => {
+  let tx: {
+    purchaseOrderLine: {
+      findMany: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
+    purchaseOrder: {
+      findFirstOrThrow: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
+    $queryRaw: ReturnType<typeof vi.fn>;
+  };
+  let adapter: PurchaseOrderImportAdapter;
+
+  beforeEach(() => {
+    tx = {
+      purchaseOrderLine: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      purchaseOrder: {
+        findFirstOrThrow: vi
+          .fn()
+          .mockResolvedValue({ currencyId: 'cur-1', documentDate: new Date('2026-01-15') }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $queryRaw: vi.fn().mockResolvedValue([{ total: 0, vat: 0 }]),
+    };
+    adapter = new PurchaseOrderImportAdapter(
+      {} as PrismaService,
+      {
+        getDefaultVatRate: vi.fn().mockResolvedValue({ vatMode: 'EXCLUSIVE', vatRate: 20 }),
+      } as unknown as SettingsService,
+      {
+        resolveBaseConversion: vi.fn().mockResolvedValue({ amountBase: 4720, rateUsed: 40 }),
+      } as unknown as ExchangeRatesService,
+    );
+  });
+
+  // guards: BR-PO-007
+  it('ПДВ рядка перераховується від чинних кількості й ціни; рядок із правильним ПДВ не чіпається', async () => {
+    tx.purchaseOrderLine.findMany.mockResolvedValueOnce([
+      // імпорт змінив 5 × 20 на 11 × 10, ПДВ лишився від старих значень
+      { id: 'l-stale', quantity: 11, price: 10, vatRate: 20, vatAmount: 20 },
+      // новий рядок імпорту — без ПДВ узагалі
+      { id: 'l-new', quantity: 0.5, price: 10, vatRate: 0, vatAmount: 0 },
+      // рядок, якого імпорт не торкався: 2 × 100, ПДВ 40 — правильний
+      { id: 'l-ok', quantity: 2, price: 100, vatRate: 20, vatAmount: 40 },
+    ]);
+
+    await adapter.syncAfterDirectLineWrite(tx as never, ORG, DOC);
+
+    const updates = tx.purchaseOrderLine.updateMany.mock.calls.map(c => {
+      const arg = c[0] as { where: { id: string }; data: { vatRate: number; vatAmount: unknown } };
+      return [arg.where.id, arg.data.vatRate, Number(arg.data.vatAmount)];
+    });
+    expect(updates).toEqual([
+      ['l-stale', 20, 22],
+      ['l-new', 20, 1],
+    ]);
+  });
+
+  // guards: BR-PO-007
+  it('тотали замовлення пишуться з агрегації по всіх активних рядках, з сумою в базовій валюті', async () => {
+    tx.$queryRaw.mockResolvedValueOnce([{ total: 118, vat: 23.6 }]);
+
+    await adapter.syncAfterDirectLineWrite(tx as never, ORG, DOC);
+
+    expect(tx.purchaseOrder.updateMany).toHaveBeenCalledTimes(1);
+    const upd = tx.purchaseOrder.updateMany.mock.calls[0]![0] as {
+      where: Record<string, unknown>;
+      data: Record<string, unknown>;
+    };
+    expect(upd.where).toEqual({ id: DOC, orgId: ORG, deletedAt: null });
+    expect(Number(upd.data.totalAmount)).toBe(118);
+    expect(Number(upd.data.totalVat)).toBe(23.6);
+    expect(upd.data).toMatchObject({ totalAmountBase: 4720, rateUsed: 40 });
+  });
+
+  // guards: BR-PO-007
+  it('рядків більше за пачку → читає далі за курсором, а не зрізає на першій пачці', async () => {
+    const full = Array.from({ length: 500 }, (_, i) => ({
+      id: `l-${String(i).padStart(3, '0')}`,
+      quantity: 1,
+      price: 10,
+      vatRate: 20,
+      vatAmount: 2,
+    }));
+    tx.purchaseOrderLine.findMany
+      .mockResolvedValueOnce(full)
+      .mockResolvedValueOnce([{ id: 'l-last', quantity: 3, price: 10, vatRate: 0, vatAmount: 0 }]);
+
+    await adapter.syncAfterDirectLineWrite(tx as never, ORG, DOC);
+
+    expect(tx.purchaseOrderLine.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.purchaseOrderLine.findMany.mock.calls[1]![0]).toMatchObject({
+      cursor: { id: 'l-499' },
+      skip: 1,
+      where: { purchaseOrderId: DOC, orgId: ORG, deletedAt: null },
+    });
+    expect(tx.purchaseOrderLine.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.purchaseOrderLine.updateMany.mock.calls[0]![0]).toMatchObject({
+      where: { id: 'l-last', orgId: ORG },
+    });
+  });
+});
+
 describe('StockDocumentImportAdapter.appendLines', () => {
   let tx: {
     stockDocumentLine: {

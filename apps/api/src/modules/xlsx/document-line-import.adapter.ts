@@ -10,6 +10,9 @@ import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 export type ImportDocType = 'PURCHASE_ORDER' | 'STOCK_DOCUMENT';
 
+/** Розмір пачки рядків у syncAfterDirectLineWrite. */
+const SYNC_BATCH = 500;
+
 /** Рядок для запису у документ (у ВАЛЮТІ документа — мультивалюта). */
 export interface ImportLineInput {
   goodId: string;
@@ -55,6 +58,15 @@ export interface DocumentLineImportAdapter {
     docId: string,
     lines: ImportLineInput[],
     createdBy?: string,
+  ): Promise<void>;
+  /**
+   * Довести документ до ладу після запису рядків ПОЗА replace / append (швидкий імпорт рядків
+   * із шаблону XLSX): ПДВ рядків і тотали. Документ без тоталів (складський) методу не має.
+   */
+  syncAfterDirectLineWrite?(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
   ): Promise<void>;
 }
 
@@ -193,7 +205,51 @@ export class PurchaseOrderImportAdapter implements DocumentLineImportAdapter {
 
     // Тотали — по ВСІХ активних рядках ПІСЛЯ вставки (не лише по нових), інакше наявні позиції
     // зникли б із суми документа.
-    //
+    await this.recalcTotals(tx, orgId, docId);
+  }
+
+  /**
+   * Швидкий імпорт («Імпорт XLSX» у картці) пише рядки напряму — оновлює кількість і ціну наявних,
+   * додає нові — і ні ПДВ рядка, ні суми документа не чіпає. Тут це доводиться до ладу: ПДВ кожного
+   * активного рядка за чинним режимом організації і тотали замовлення по всіх рядках (Bug #843:
+   * після імпорту в базі лишалась сума до імпорту — 103,00 при рядках на 118,00).
+   */
+  async syncAfterDirectLineWrite(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
+  ): Promise<void> {
+    const { vatMode, vatRate } = await this.settings.getDefaultVatRate(orgId);
+    // Пачками за курсором: зріз на одному take тихо лишив би решту рядків зі старим ПДВ.
+    let cursor: string | undefined;
+    for (;;) {
+      const batch = await tx.purchaseOrderLine.findMany({
+        where: { purchaseOrderId: docId, orgId, deletedAt: null },
+        select: { id: true, quantity: true, price: true, vatRate: true, vatAmount: true },
+        orderBy: { id: 'asc' },
+        take: SYNC_BATCH,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      for (const l of batch) {
+        const { vatAmount } = calcLineVat(Number(l.price), Number(l.quantity), vatRate, vatMode);
+        if (Number(l.vatRate) === vatRate && Number(l.vatAmount) === Number(vatAmount)) continue;
+        await tx.purchaseOrderLine.updateMany({
+          where: { id: l.id, orgId },
+          data: { vatRate, vatAmount },
+        });
+      }
+      if (batch.length < SYNC_BATCH) break;
+      cursor = batch[batch.length - 1].id;
+    }
+    await this.recalcTotals(tx, orgId, docId);
+  }
+
+  /** Сума й ПДВ замовлення по всіх активних рядках + сума в базовій валюті. */
+  private async recalcTotals(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    docId: string,
+  ): Promise<void> {
     // Рахуємо АГРЕГАЦІЄЮ в БД, а не findMany+reduce: сюди не можна ставити take-ліміт (на відміну
     // від запитів для відображення), бо зріз на MAX_QUERY_LIMIT=1000 тихо ЗАНИЗИВ би суму
     // документа — а один імпорт сам по собі допускає до 1000 рядків (ApplyImportDto.ArrayMaxSize),

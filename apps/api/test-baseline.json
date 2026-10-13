@@ -4948,6 +4948,15 @@
    "WORK_ORDER_TRANSITIONS — property-based invariants перехід у PAID можливий тільки з INVOICED",
    "WORK_ORDER_TRANSITIONS — property-based invariants самоперехід (from === to) ніколи не дозволений"
   ],
+  "apps/api/src/modules/work-orders/work-orders.line-update.spec.ts": [
+   "WorkOrdersService.updateLine — робота й виконавець рядка виконавець чужої організації або видалений → 404, рядок не змінено",
+   "WorkOrdersService.updateLine — робота й виконавець рядка зміна виконавця в наряді «В роботі» → 400: там правляться лише фактичні години",
+   "WorkOrdersService.updateLine — робота й виконавець рядка нова робота пишеться в рядок; години й ціна беруться з запиту, а не з роботи",
+   "WorkOrdersService.updateLine — робота й виконавець рядка новий виконавець пишеться в рядок і повертається у відповіді",
+   "WorkOrdersService.updateLine — робота й виконавець рядка правка без роботи й виконавця (лише фактичні години) їх не чіпає",
+   "WorkOrdersService.updateLine — робота й виконавець рядка робота чужої організації або видалена → 404, рядок не змінено",
+   "WorkOrdersService.updateLine — робота й виконавець рядка ті самі робота й виконавець (картка шле їх щоразу) → без перевірки існування, поля не чіпаються"
+  ],
   "apps/api/src/modules/work-orders/work-orders.list-date-filter.spec.ts": [
    "WorkOrdersService.findAll — відбір за датою документа dateFrom + dateTo → documentDate від 09.10 до 10.10 календарними датами, без зсуву на пояс",
    "WorkOrdersService.findAll — відбір за датою документа без дат — умови на documentDate немає",
@@ -5128,6 +5137,9 @@
    "PurchaseOrderImportAdapter.appendLines порожній список рядків не ламає перерахунок",
    "PurchaseOrderImportAdapter.appendLines тотали беруться з агрегації БД (без take-ліміту), а не з findMany рядків",
    "PurchaseOrderImportAdapter.appendLines тотали рахуються по ВСІХ активних рядках ПІСЛЯ вставки, не лише по нових",
+   "PurchaseOrderImportAdapter.syncAfterDirectLineWrite ПДВ рядка перераховується від чинних кількості й ціни; рядок із правильним ПДВ не чіпається",
+   "PurchaseOrderImportAdapter.syncAfterDirectLineWrite рядків більше за пачку → читає далі за курсором, а не зрізає на першій пачці",
+   "PurchaseOrderImportAdapter.syncAfterDirectLineWrite тотали замовлення пишуться з агрегації по всіх активних рядках, з сумою в базовій валюті",
    "StockDocumentImportAdapter.appendLines дублікат goodId → доливає кількість (склад не задвоюється)",
    "StockDocumentImportAdapter.appendLines новий goodId → createMany, наявні не чіпаються"
   ],
@@ -5249,6 +5261,11 @@
    "XlsxService — єдиний пошук товару в завантаженнях (BR-GOOD-008) рядки документа (закупівля / складський документ / запчастини наряду) старий файл на чотири колонки читається як раніше",
    "XlsxService — єдиний пошук товару в завантаженнях (BR-GOOD-008) рядки документа (закупівля / складський документ / запчастини наряду) шаблон рядків: нові колонки стоять у кінці, перші чотири — без змін",
    "XlsxService — єдиний пошук товару в завантаженнях (BR-GOOD-008) імпорт товарів каталогу «товар уже є» — і коли знайдено один, і коли з таким артикулом їх кілька"
+  ],
+  "apps/api/src/modules/xlsx/xlsx.po-lines-import-totals.spec.ts": [
+   "XlsxService.importPOLines — ПДВ рядків і тотали після запису жодного рядка не записано (товар не знайдено) → документ не чіпається",
+   "XlsxService.importPOLines — ПДВ рядків і тотали після запису наявний рядок оновлено (кількість і ціна) → перерахунок теж іде",
+   "XlsxService.importPOLines — ПДВ рядків і тотали після запису новий рядок записано → перерахунок один раз, ПІСЛЯ запису, у транзакції, для цього замовлення"
   ],
   "apps/api/src/modules/xlsx/xlsx.pricing-rule-goods.spec.ts": [
    "XlsxService — перелік товарів для правила ціноутворення розкладає рядки на знайдені, неоднозначні й не знайдені; у базу нічого не пише",
