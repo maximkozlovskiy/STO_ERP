@@ -59,7 +59,14 @@ vi.mock('@/hooks/api/useStockDocuments', async importOriginal => {
 vi.mock('../../inventory/InventoryTab', () => ({ InventoryTab: () => null }));
 vi.mock('../StockMovementsTab', () => ({ StockMovementsTab: () => null }));
 vi.mock('@/components/ui/StockDocumentCreateModal', () => ({
-  StockDocumentCreateModal: () => null,
+  StockDocumentCreateModal: (p: {
+    open: boolean;
+    stockDocumentId?: string;
+    defaultType?: string;
+  }) =>
+    p.open && !p.stockDocumentId ? (
+      <div data-testid="create-modal" data-default-type={p.defaultType ?? ''} />
+    ) : null,
 }));
 
 import StockDocumentsPage from '../page';
@@ -151,6 +158,16 @@ describe('Таб-бар типів складського документа (BR
     expect(replaceMock).toHaveBeenCalledWith('/reports?tab=inventory');
     expect(screen.queryByRole('button', { name: 'Переміщення' })).not.toBeInTheDocument();
     expect(useStockDocumentsMock).not.toHaveBeenCalled();
+  });
+
+  it('кнопка створення на вкладці типу відкриває картку з цим типом', async () => {
+    currentSearch = 'type=RECEIPT';
+    renderPage();
+
+    const buttons = await screen.findAllByRole('button', { name: 'Оприбуткування' });
+    fireEvent.click(buttons.at(-1)!);
+
+    expect(screen.getByTestId('create-modal')).toHaveAttribute('data-default-type', 'RECEIPT');
   });
 
   it('невідомий ?type= відкидається — список запитується без фільтра типу', async () => {

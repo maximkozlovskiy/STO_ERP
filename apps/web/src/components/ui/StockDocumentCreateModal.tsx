@@ -157,8 +157,10 @@ const EMPTY_LINE: LocalLine = {
 
 // «Чиста» база форми — reset() до неї на open дає rhfDirty=false (Bug #639: авто-вибір
 // branch/warehouse через setValue({shouldDirty:false}), тому не вмикає dirty-guard).
-const emptyDefaults = (): StockDocumentFormInput => ({
-  type: 'WRITEOFF',
+const emptyDefaults = (
+  type: StockDocumentFormInput['type'] = 'WRITEOFF',
+): StockDocumentFormInput => ({
+  type,
   branchId: '',
   warehouseId: '',
   targetWarehouseId: '',
@@ -175,6 +177,8 @@ export interface StockDocumentCreateModalProps {
   onClose: () => void;
   onSaved?: (doc?: StockDocResponse) => void;
   stockDocumentId?: string;
+  /** Type preselected for a NEW document (the list's active type tab). */
+  defaultType?: string;
   onMinimize?: () => void;
 }
 
@@ -185,6 +189,7 @@ export function StockDocumentCreateModal({
   onClose,
   onSaved,
   stockDocumentId,
+  defaultType,
   onMinimize,
 }: StockDocumentCreateModalProps) {
   const { t } = useTranslation('stockDocuments');
@@ -324,7 +329,13 @@ export function StockDocumentCreateModal({
     setPurchaseOrderNumber('');
     if (!isEditMode) {
       // reset() ставить чисту базу → rhfDirty=false (edit заповнюється load-ефектом).
-      reset(emptyDefaults());
+      reset(
+        emptyDefaults(
+          defaultType && defaultType in STOCK_DOC_TYPE_LABELS
+            ? (defaultType as StockDocumentFormInput['type'])
+            : undefined,
+        ),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stockDocumentId]);

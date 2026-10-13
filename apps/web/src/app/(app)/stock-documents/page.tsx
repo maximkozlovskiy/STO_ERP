@@ -774,6 +774,7 @@ function StockDocumentsPageClient() {
       {/* Create modal */}
       <StockDocumentCreateModal
         open={showCreate}
+        defaultType={typeFilter || undefined}
         onClose={() => setShowCreate(false)}
         onSaved={() => {
           setShowCreate(false);

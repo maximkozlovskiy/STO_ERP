@@ -152,6 +152,27 @@ describe('PurchaseOrderCreateModal — regression', () => {
 // ─── Bug #462 ─────────────────────────────────────────────────────────────────
 
 describe('StockDocumentCreateModal — regression', () => {
+  it.each([
+    ['RECEIPT', 'RECEIPT'],
+    ['TRANSFER', 'TRANSFER'],
+    [undefined, 'WRITEOFF'],
+    ['NO_SUCH_TYPE', 'WRITEOFF'],
+  ])(
+    'новий документ: defaultType=%s → у полі «Тип документа» стоїть %s',
+    async (defaultType, expected) => {
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/branches') return Promise.resolve(mockBranches);
+        if (path === '/warehouses') return Promise.resolve(mockWarehouses);
+        return Promise.resolve({ items: [] });
+      });
+
+      render(<StockDocumentCreateModal open defaultType={defaultType} onClose={vi.fn()} />);
+
+      const typeSelect = (await screen.findByLabelText(/Тип документа/)) as HTMLSelectElement;
+      await waitFor(() => expect(typeSelect.value).toBe(expected));
+    },
+  );
+
   it('Bug #462: TRANSFER без targetWarehouseId не пускає POST + показує помилку', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/branches') return Promise.resolve(mockBranches);
