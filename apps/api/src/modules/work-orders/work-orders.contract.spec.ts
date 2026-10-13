@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WorkOrdersController } from './work-orders.controller';
 import { WorkOrdersService } from './work-orders.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
 import { WorkOrderShareService } from './work-order-share.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
@@ -74,6 +75,8 @@ const mockJwtGuard = {
 
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
+const linesSummaryMock = { forWorkOrder: vi.fn() };
+
 describe('WorkOrders — HTTP Contract', () => {
   let app: INestApplication;
 
@@ -81,6 +84,8 @@ describe('WorkOrders — HTTP Contract', () => {
     const module = await Test.createTestingModule({
       controllers: [WorkOrdersController],
       providers: [
+        // BR-WO-009: зведення по табличних частинах — спільний сервіс.
+        { provide: LinesSummaryService, useValue: linesSummaryMock },
         { provide: WorkOrdersService, useValue: serviceMock },
         { provide: WorkOrderShareService, useValue: shareServiceMock },
         { provide: PrismaService, useValue: prismaMock },
@@ -579,6 +584,50 @@ describe('WorkOrders — HTTP Contract', () => {
         payload: { workOrderIds: ids },
       });
       expect(res.statusCode).toBe(400);
+    });
+  });
+
+  // guards: BR-WO-009
+  describe('GET /work-orders/:id/lines-summary', () => {
+    const ID = '0b8f1a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b';
+    const summary = {
+      tables: [{ key: 'goods', positions: 2, distinct: 1, quantity: 5, quantityUnit: 'units' }],
+      executors: [],
+    };
+
+    it('200: віддає зведення сервісу для документа своєї організації', async () => {
+      linesSummaryMock.forWorkOrder.mockResolvedValueOnce(summary);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/work-orders/${ID}/lines-summary`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(summary);
+      expect(linesSummaryMock.forWorkOrder).toHaveBeenCalledWith(expect.any(String), ID);
+    });
+
+    // Суброут оголошено ПЕРЕД `:id`: інакше Fastify віддав би «lines-summary» як id документа.
+    it('не-UUID у шляху → 400, сервіс не викликається', async () => {
+      linesSummaryMock.forWorkOrder.mockClear();
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/work-orders/not-a-uuid/lines-summary',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(linesSummaryMock.forWorkOrder).not.toHaveBeenCalled();
+    });
+
+    // Панель списку показує зведення кожному, хто бачить список: ролі мусять збігатися.
+    it('ролі endpoint-а = ролі списку', () => {
+      const roles = (handler: string): string[] =>
+        [
+          ...((Reflect.getMetadata(
+            'roles',
+            WorkOrdersController.prototype[handler as keyof WorkOrdersController],
+          ) as string[] | undefined) ?? []),
+        ].sort();
+      expect(roles('getLinesSummary').length).toBeGreaterThan(0);
+      expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
   });
 });

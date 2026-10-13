@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { StockDocumentsController } from './stock-documents.controller';
 import { StockDocumentsService } from './stock-documents.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -38,6 +39,8 @@ const mockJwtGuard = {
 const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
 // Bug #339: stock-documents module had no contract spec at all — dateFrom/dateTo forwarding was untested.
+const linesSummaryMock = { forStockDocument: vi.fn() };
+
 describe('StockDocuments — HTTP Contract', () => {
   let app: INestApplication;
 
@@ -45,6 +48,8 @@ describe('StockDocuments — HTTP Contract', () => {
     const module = await Test.createTestingModule({
       controllers: [StockDocumentsController],
       providers: [
+        // BR-WO-009: зведення по табличних частинах — спільний сервіс.
+        { provide: LinesSummaryService, useValue: linesSummaryMock },
         { provide: StockDocumentsService, useValue: serviceMock },
         { provide: PrismaService, useValue: {} },
         { provide: InventoryService, useValue: {} },
@@ -475,6 +480,50 @@ describe('StockDocuments — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(200);
       expect(serviceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // guards: BR-WO-009
+  describe('GET /stock-documents/:id/lines-summary', () => {
+    const ID = '0b8f1a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b';
+    const summary = {
+      tables: [{ key: 'goods', positions: 2, distinct: 1, quantity: 5, quantityUnit: 'units' }],
+      executors: [],
+    };
+
+    it('200: віддає зведення сервісу для документа своєї організації', async () => {
+      linesSummaryMock.forStockDocument.mockResolvedValueOnce(summary);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/stock-documents/${ID}/lines-summary`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(summary);
+      expect(linesSummaryMock.forStockDocument).toHaveBeenCalledWith(expect.any(String), ID);
+    });
+
+    // Суброут оголошено ПЕРЕД `:id`: інакше Fastify віддав би «lines-summary» як id документа.
+    it('не-UUID у шляху → 400, сервіс не викликається', async () => {
+      linesSummaryMock.forStockDocument.mockClear();
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/stock-documents/not-a-uuid/lines-summary',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(linesSummaryMock.forStockDocument).not.toHaveBeenCalled();
+    });
+
+    // Панель списку показує зведення кожному, хто бачить список: ролі мусять збігатися.
+    it('ролі endpoint-а = ролі списку', () => {
+      const roles = (handler: string): string[] =>
+        [
+          ...((Reflect.getMetadata(
+            'roles',
+            StockDocumentsController.prototype[handler as keyof StockDocumentsController],
+          ) as string[] | undefined) ?? []),
+        ].sort();
+      expect(roles('getLinesSummary').length).toBeGreaterThan(0);
+      expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
   });
 });

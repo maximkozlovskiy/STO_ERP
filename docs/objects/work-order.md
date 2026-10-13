@@ -172,6 +172,8 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
   у тій самій транзакції, ДО нарахування боргу: наряд, створений до зміни налаштувань ПДВ і
   завершений без правки рядків, боргує клієнта за новим режимом. До завершення відкритий наряд
   може показувати суму, пораховану при останній правці рядків
+- **BR-WO-009**: **Зведення по табличних частинах документа** (рішення власника 2026-10-13; спільне для наряду, рахунку, закупівлі, складського документа й повернення постачальнику — показується в боковій панелі списку). Для кожної непорожньої таблиці: рядків; найменувань — скільки РІЗНИХ товарів / робіт (два рядки одного товару — одне найменування); сума по рядках — кількість, а для робіт наряду нормо-години (у рядка роботи наряду кількості немає). У рахунку рядок із роботою — «роботи», із товаром — «товари», без обох — «інше» (у «іншого» найменувань стільки ж, скільки рядків). Видалені рядки не рахуються; сума кількості — проста сума чисел, одиниці виміру не зводяться. Рахує сервер агрегатами бази (не клієнт із довантаженого документа, який обрізає рядки). Доступ — ролі списку відповідного документа; документ чужої організації → 404; документ, позначений на видалення, зведення має. Модуль `lines-summary` (`LinesSummaryService`), endpoint `GET /<документ>/:id/lines-summary`
+- **BR-WO-010**: **Виконавці наряду у зведенні** — беруться з рядків робіт (`employeeId`): на кожного виконавця число його рядків робіт і сума нормо-годин. Порядок: більше нормо-годин — вище, далі більше робіт, далі за іменем. Звільнений (видалений) працівник лишається у переліку зі своїм іменем. В інших документах рядки виконавця не мають — перелік порожній. Модуль `lines-summary` (`LinesSummaryService.forWorkOrder`)
 
 → Детально у [docs/BUSINESS-RULES.md](../BUSINESS-RULES.md)
 
@@ -187,28 +189,29 @@ cd apps/api && npx vitest run src/modules/work-orders/<файл>.spec.ts
 
 **Модуль:** `apps/api/src/modules/work-orders/`
 
-| Аспект                                  | Тест                                           | Кейсів |
-| --------------------------------------- | ---------------------------------------------- | ------ |
-| handlers                                | `events/work-order.handlers.spec.ts`           | 10     |
-| fsm parity                              | `fsm-parity.spec.ts`                           | 12     |
-| статус у чужій транзакції + сторож FSM  | `work-order-status.spec.ts`                    | 19     |
-| integration на живій БД                 | `work-order-stock-effects.integration.spec.ts` | 4      |
-| сервісна логіка                         | `work-order-stock-effects.service.spec.ts`     | 19     |
-| сервісна логіка                         | `work-orders-export.service.spec.ts`           | 11     |
-| завершення: перерахунок тоталів         | `work-orders.complete-recalc.spec.ts`          | 4      |
-| HTTP-контракт (DTO, статуси, валідація) | `work-orders.contract.spec.ts`                 | 22     |
-| HTTP-контракт (DTO, статуси, валідація) | `work-orders.fsm.contract.spec.ts`             | 2      |
-| інваріанти (property-based)             | `work-orders.fsm.invariants.spec.ts`           | 16     |
-| список: відбір за датою документа       | `work-orders.list-date-filter.spec.ts`         | 4      |
-| нумерація (create/clone)                | `work-orders.numbering.spec.ts`                | 2      |
-| друкований наряд: підсумок із тоталів   | `work-orders.pdf-totals.spec.ts`               | 6      |
-| recalc cap                              | `work-orders.recalc-cap.spec.ts`               | 5      |
-| recalc totals                           | `work-orders.recalc-totals.spec.ts`            | 21     |
-| рольовий доступ                         | `work-orders.role-gate.spec.ts`                | 24     |
-| сервісна логіка                         | `work-orders.service.spec.ts`                  | 25     |
-| share public                            | `work-orders.share-public.spec.ts`             | 14     |
+| Аспект                                     | Тест                                             | Кейсів |
+| ------------------------------------------ | ------------------------------------------------ | ------ |
+| handlers                                   | `events/work-order.handlers.spec.ts`             | 10     |
+| fsm parity                                 | `fsm-parity.spec.ts`                             | 12     |
+| статус у чужій транзакції + сторож FSM     | `work-order-status.spec.ts`                      | 19     |
+| integration на живій БД                    | `work-order-stock-effects.integration.spec.ts`   | 4      |
+| сервісна логіка                            | `work-order-stock-effects.service.spec.ts`       | 19     |
+| сервісна логіка                            | `work-orders-export.service.spec.ts`             | 11     |
+| завершення: перерахунок тоталів            | `work-orders.complete-recalc.spec.ts`            | 4      |
+| HTTP-контракт (DTO, статуси, валідація)    | `work-orders.contract.spec.ts`                   | 25     |
+| HTTP-контракт (DTO, статуси, валідація)    | `work-orders.fsm.contract.spec.ts`               | 2      |
+| інваріанти (property-based)                | `work-orders.fsm.invariants.spec.ts`             | 16     |
+| список: відбір за датою документа          | `work-orders.list-date-filter.spec.ts`           | 4      |
+| нумерація (create/clone)                   | `work-orders.numbering.spec.ts`                  | 2      |
+| друкований наряд: підсумок із тоталів      | `work-orders.pdf-totals.spec.ts`                 | 6      |
+| recalc cap                                 | `work-orders.recalc-cap.spec.ts`                 | 5      |
+| recalc totals                              | `work-orders.recalc-totals.spec.ts`              | 21     |
+| рольовий доступ                            | `work-orders.role-gate.spec.ts`                  | 24     |
+| сервісна логіка                            | `work-orders.service.spec.ts`                    | 25     |
+| share public                               | `work-orders.share-public.spec.ts`               | 14     |
+| зведення по табличних частинах і виконавці | `../lines-summary/lines-summary.service.spec.ts` | 19     |
 
-Разом: **216** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **238** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для BR-WO-007 — сума наряду з ПДВ:
 

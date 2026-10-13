@@ -488,6 +488,7 @@ export const uk: Record<string, string> = {
   'err.pricingRule.goodNotFound': 'Товар не знайдено',
   'err.pricingRule.brandNotFound': 'Бренд не знайдено',
   'err.pricingRule.supplierNotFound': 'Постачальника не знайдено',
+  'err.linesSummary.documentNotFound': 'Документ не знайдено',
   'err.pricingRule.notFound': 'Правило не знайдено',
   'err.pricingRule.categoryNotFound': 'Категорію товарів не знайдено',
   'err.pricingRule.goodsNotFound':

@@ -28,6 +28,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { StockDocumentsService } from './stock-documents.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
+import { LinesSummaryDto } from '../lines-summary/lines-summary.dto';
 import {
   stockDocumentCreateSchema,
   stockDocumentUpdateSchema,
@@ -48,7 +50,10 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class StockDocumentsController {
-  constructor(private readonly service: StockDocumentsService) {}
+  constructor(
+    private readonly service: StockDocumentsService,
+    private readonly linesSummary: LinesSummaryService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
@@ -71,6 +76,18 @@ export class StockDocumentsController {
   }
 
   // Оголошено ПЕРЕД @Get(':id') — інакше Fastify матчить 'linked-documents' як :id.
+  // BR-WO-009: ролі — як у СПИСКУ (панель списку показує зведення кожному, хто бачить список).
+  @Get(':id/lines-summary')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
+  @ApiOperation({ summary: 'Зведення по табличних частинах складського документа' })
+  @ApiOkResponse({ type: LinesSummaryDto })
+  getLinesSummary(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LinesSummaryDto> {
+    return this.linesSummary.forStockDocument(orgId, id);
+  }
+
   @Get(':id/linked-documents')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')
   @ApiOperation({ summary: "Пов'язані документи складського документа (замовлення, склади)" })

@@ -11,9 +11,11 @@ import { SettingsModule } from '../settings/settings.module';
 import { AuditModule } from '../audit/audit.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
+import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
 
 @Module({
   imports: [
+    LinesSummaryModule,
     PdfModule,
     DocumentNumberModule,
     SettlementsModule,

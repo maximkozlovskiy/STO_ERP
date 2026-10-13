@@ -208,6 +208,12 @@ const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
 
 ---
 
+## Зведення по табличних частинах документа
+
+Рядків, найменувань і суми по таблицях документа та виконавці наряду — для бокової панелі списків. Одне місце правди — [docs/objects/work-order.md](objects/work-order.md), BR-WO-009 / BR-WO-010.
+
+---
+
 ## Ціноутворення — PricingService.resolveRule
 
 Ієрархія й правила області (список товарів, категорія з підкатегоріями) — [docs/objects/good.md](objects/good.md), BR-GOOD-009 / BR-GOOD-010.

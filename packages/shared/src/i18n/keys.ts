@@ -554,6 +554,7 @@ export const VALIDATION_KEYS = [
   'err.pricingRule.goodNotFound',
   'err.pricingRule.brandNotFound',
   'err.pricingRule.supplierNotFound',
+  'err.linesSummary.documentNotFound',
   'err.pricingRule.notFound',
   'err.pricingRule.categoryNotFound',
   'err.pricingRule.goodsNotFound',

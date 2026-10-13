@@ -28,6 +28,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PurchaseOrdersService } from './purchase-orders.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
+import { LinesSummaryDto } from '../lines-summary/lines-summary.dto';
 import {
   purchaseOrderCreateSchema,
   purchaseOrderUpdateSchema,
@@ -51,7 +53,10 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class PurchaseOrdersController {
-  constructor(private readonly service: PurchaseOrdersService) {}
+  constructor(
+    private readonly service: PurchaseOrdersService,
+    private readonly linesSummary: LinesSummaryService,
+  ) {}
 
   @Get()
   // ACCOUNTANT: пікер замовлення в модалці рознесення банківського платежу (BR-BANK-027).
@@ -76,6 +81,18 @@ export class PurchaseOrdersController {
 
   // ─── Linked Documents ─────────────────────────────────
   // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  // BR-WO-009: ролі — як у СПИСКУ (панель списку показує зведення кожному, хто бачить список).
+  @Get(':id/lines-summary')
+  @Roles('OWNER', 'ADMIN', 'STOREKEEPER', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Зведення по табличних частинах замовлення постачальнику' })
+  @ApiOkResponse({ type: LinesSummaryDto })
+  getLinesSummary(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LinesSummaryDto> {
+    return this.linesSummary.forPurchaseOrder(orgId, id);
+  }
 
   @Get(':id/linked-documents')
   @Roles('OWNER', 'ADMIN', 'STOREKEEPER')

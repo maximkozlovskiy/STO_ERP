@@ -17,9 +17,11 @@ import { WarrantiesModule } from '../warranties/warranties.module';
 import { SettingsModule } from '../settings/settings.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { WorkOrderTotalsModule } from './work-order-totals.module';
+import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
 
 @Module({
   imports: [
+    LinesSummaryModule,
     InventoryModule,
     SettlementsModule,
     NotificationsModule,

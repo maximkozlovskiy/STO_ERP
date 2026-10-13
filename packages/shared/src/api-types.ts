@@ -2376,6 +2376,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-orders/{id}/lines-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Зведення по табличних частинах наряду */
+        get: operations["WorkOrdersController_getLinesSummary_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/work-orders/{id}/linked-documents": {
         parameters: {
             query?: never;
@@ -2979,6 +2996,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchase-orders/{id}/lines-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Зведення по табличних частинах замовлення постачальнику */
+        get: operations["PurchaseOrdersController_getLinesSummary_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/purchase-orders/{id}/linked-documents": {
         parameters: {
             query?: never;
@@ -3238,6 +3272,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplier-returns/{id}/lines-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Зведення по табличних частинах повернення постачальнику */
+        get: operations["SupplierReturnsController_getLinesSummary_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplier-returns/{id}/linked-documents": {
         parameters: {
             query?: never;
@@ -3431,6 +3482,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stock-documents/{id}/lines-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Зведення по табличних частинах складського документа */
+        get: operations["StockDocumentsController_getLinesSummary_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stock-documents/{id}/linked-documents": {
         parameters: {
             query?: never;
@@ -3513,6 +3581,23 @@ export interface paths {
         put?: never;
         /** Створити рахунок вручну */
         post: operations["InvoicesController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/lines-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Зведення по табличних частинах рахунку */
+        get: operations["InvoicesController_getLinesSummary_v1"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6881,6 +6966,39 @@ export interface components {
             total: number;
             page: number;
             limit: number;
+        };
+        LinesSummaryTableDto: {
+            /**
+             * @description Яка таблиця: роботи, товари, інше
+             * @enum {string}
+             */
+            key: "works" | "goods" | "other";
+            /** @description Кількість рядків таблиці */
+            positions: number;
+            /** @description Кількість РІЗНИХ найменувань (товарів / робіт); для «іншого» — те саме, що рядків */
+            distinct: number;
+            /** @description Сума по рядках: кількість або нормо-години (див. quantityUnit) */
+            quantity: number;
+            /**
+             * @description hours — нормо-години (роботи наряду); units — кількість у рядках
+             * @enum {string}
+             */
+            quantityUnit: "hours" | "units";
+        };
+        LinesSummaryExecutorDto: {
+            employeeId: string;
+            /** @description Прізвище Ім’я; порожній рядок, якщо картку працівника не знайдено */
+            name: string;
+            /** @description Скільки рядків робіт на цьому виконавцеві */
+            works: number;
+            /** @description Сума нормо-годин його рядків */
+            normoHours: number;
+        };
+        LinesSummaryDto: {
+            /** @description Лише непорожні таблиці */
+            tables: components["schemas"]["LinesSummaryTableDto"][];
+            /** @description Виконавці з рядків робіт; порожньо для документів без виконавців у рядках */
+            executors: components["schemas"]["LinesSummaryExecutorDto"][];
         };
         LinkedInvoiceRowDto: {
             id: string;
@@ -13425,6 +13543,27 @@ export interface operations {
             };
         };
     };
+    WorkOrdersController_getLinesSummary_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinesSummaryDto"];
+                };
+            };
+        };
+    };
     WorkOrdersController_getLinkedDocuments_v1: {
         parameters: {
             query?: never;
@@ -14431,6 +14570,27 @@ export interface operations {
             };
         };
     };
+    PurchaseOrdersController_getLinesSummary_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinesSummaryDto"];
+                };
+            };
+        };
+    };
     PurchaseOrdersController_getLinkedDocuments_v1: {
         parameters: {
             query?: never;
@@ -14860,6 +15020,27 @@ export interface operations {
             };
         };
     };
+    SupplierReturnsController_getLinesSummary_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinesSummaryDto"];
+                };
+            };
+        };
+    };
     SupplierReturnsController_getLinkedDocuments_v1: {
         parameters: {
             query?: never;
@@ -15247,6 +15428,27 @@ export interface operations {
             };
         };
     };
+    StockDocumentsController_getLinesSummary_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinesSummaryDto"];
+                };
+            };
+        };
+    };
     StockDocumentsController_getLinkedDocuments_v1: {
         parameters: {
             query?: never;
@@ -15424,6 +15626,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoiceResponseDto"];
+                };
+            };
+        };
+    };
+    InvoicesController_getLinesSummary_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinesSummaryDto"];
                 };
             };
         };

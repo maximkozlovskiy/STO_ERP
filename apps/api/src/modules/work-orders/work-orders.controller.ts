@@ -33,6 +33,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { WorkOrdersService } from './work-orders.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
+import { LinesSummaryDto } from '../lines-summary/lines-summary.dto';
 import { WorkOrderShareService } from './work-order-share.service';
 import {
   workOrderCreateSchema,
@@ -73,6 +75,7 @@ export class WorkOrdersController {
   constructor(
     private readonly service: WorkOrdersService,
     private readonly shareService: WorkOrderShareService,
+    private readonly linesSummary: LinesSummaryService,
   ) {}
 
   @Get()
@@ -85,6 +88,18 @@ export class WorkOrdersController {
 
   // ─── Linked Documents ─────────────────────────────────
   // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  // BR-WO-009: ролі — як у СПИСКУ (панель списку показує зведення кожному, хто бачить список).
+  @Get(':id/lines-summary')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Зведення по табличних частинах наряду' })
+  @ApiOkResponse({ type: LinesSummaryDto })
+  getLinesSummary(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LinesSummaryDto> {
+    return this.linesSummary.forWorkOrder(orgId, id);
+  }
 
   @Get(':id/linked-documents')
   @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'ACCOUNTANT')

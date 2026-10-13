@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { SupplierReturnsController } from './supplier-returns.controller';
 import { SupplierReturnsService } from './supplier-returns.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -40,6 +41,8 @@ const mockRolesGuard = { canActivate: vi.fn().mockReturnValue(true) };
 
 // supplier-returns module had no contract spec at all (Phase D3) — route ordering
 // (linked-documents / linked-counts vs :id) was untested. Mirrors invoices.contract.spec.ts.
+const linesSummaryMock = { forSupplierReturn: vi.fn() };
+
 describe('SupplierReturns — HTTP Contract', () => {
   let app: INestApplication;
 
@@ -47,6 +50,8 @@ describe('SupplierReturns — HTTP Contract', () => {
     const module = await Test.createTestingModule({
       controllers: [SupplierReturnsController],
       providers: [
+        // BR-WO-009: зведення по табличних частинах — спільний сервіс.
+        { provide: LinesSummaryService, useValue: linesSummaryMock },
         { provide: SupplierReturnsService, useValue: serviceMock },
         { provide: PrismaService, useValue: {} },
         { provide: InventoryService, useValue: {} },
@@ -247,6 +252,50 @@ describe('SupplierReturns — HTTP Contract', () => {
       expect(res.statusCode).toBe(200);
       expect(serviceMock.getLinkedCounts).toHaveBeenCalledTimes(1);
       expect(serviceMock.confirm).not.toHaveBeenCalled();
+    });
+  });
+
+  // guards: BR-WO-009
+  describe('GET /supplier-returns/:id/lines-summary', () => {
+    const ID = '0b8f1a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b';
+    const summary = {
+      tables: [{ key: 'goods', positions: 2, distinct: 1, quantity: 5, quantityUnit: 'units' }],
+      executors: [],
+    };
+
+    it('200: віддає зведення сервісу для документа своєї організації', async () => {
+      linesSummaryMock.forSupplierReturn.mockResolvedValueOnce(summary);
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/supplier-returns/${ID}/lines-summary`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(summary);
+      expect(linesSummaryMock.forSupplierReturn).toHaveBeenCalledWith(expect.any(String), ID);
+    });
+
+    // Суброут оголошено ПЕРЕД `:id`: інакше Fastify віддав би «lines-summary» як id документа.
+    it('не-UUID у шляху → 400, сервіс не викликається', async () => {
+      linesSummaryMock.forSupplierReturn.mockClear();
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/supplier-returns/not-a-uuid/lines-summary',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(linesSummaryMock.forSupplierReturn).not.toHaveBeenCalled();
+    });
+
+    // Панель списку показує зведення кожному, хто бачить список: ролі мусять збігатися.
+    it('ролі endpoint-а = ролі списку', () => {
+      const roles = (handler: string): string[] =>
+        [
+          ...((Reflect.getMetadata(
+            'roles',
+            SupplierReturnsController.prototype[handler as keyof SupplierReturnsController],
+          ) as string[] | undefined) ?? []),
+        ].sort();
+      expect(roles('getLinesSummary').length).toBeGreaterThan(0);
+      expect(roles('getLinesSummary')).toEqual(roles('findAll'));
     });
   });
 });

@@ -16,9 +16,11 @@ import { DeliveryProvidersController } from './delivery/delivery-providers.contr
 import { IntegrationLogsModule } from '../integration-logs/integration-logs.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { DEFAULT_JOB_OPTS } from '../../common/scheduler/job-opts';
+import { LinesSummaryModule } from '../lines-summary/lines-summary.module';
 
 @Module({
   imports: [
+    LinesSummaryModule,
     InventoryModule,
     SettlementsModule,
     SettingsModule,

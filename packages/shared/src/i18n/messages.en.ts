@@ -499,6 +499,7 @@ export const en: Record<string, string> = {
   'err.pricingRule.goodNotFound': 'Good not found',
   'err.pricingRule.brandNotFound': 'Brand not found',
   'err.pricingRule.supplierNotFound': 'Supplier not found',
+  'err.linesSummary.documentNotFound': 'Document not found',
   'err.pricingRule.notFound': 'Rule not found',
   'err.pricingRule.categoryNotFound': 'Goods category not found',
   'err.pricingRule.goodsNotFound':

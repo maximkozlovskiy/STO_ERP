@@ -8137,6 +8137,42 @@
         ]
       }
     },
+    "/api/v1/work-orders/{id}/lines-summary": {
+      "get": {
+        "operationId": "WorkOrdersController_getLinesSummary_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinesSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зведення по табличних частинах наряду",
+        "tags": [
+          "Work Orders"
+        ]
+      }
+    },
     "/api/v1/work-orders/{id}/linked-documents": {
       "get": {
         "operationId": "WorkOrdersController_getLinkedDocuments_v1",
@@ -9894,6 +9930,42 @@
         ]
       }
     },
+    "/api/v1/purchase-orders/{id}/lines-summary": {
+      "get": {
+        "operationId": "PurchaseOrdersController_getLinesSummary_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinesSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зведення по табличних частинах замовлення постачальнику",
+        "tags": [
+          "Purchase Orders"
+        ]
+      }
+    },
     "/api/v1/purchase-orders/{id}/linked-documents": {
       "get": {
         "operationId": "PurchaseOrdersController_getLinkedDocuments_v1",
@@ -10690,6 +10762,42 @@
           }
         ],
         "summary": "Скасувати повернення",
+        "tags": [
+          "Supplier Returns"
+        ]
+      }
+    },
+    "/api/v1/supplier-returns/{id}/lines-summary": {
+      "get": {
+        "operationId": "SupplierReturnsController_getLinesSummary_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinesSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зведення по табличних частинах повернення постачальнику",
         "tags": [
           "Supplier Returns"
         ]
@@ -11508,6 +11616,42 @@
         ]
       }
     },
+    "/api/v1/stock-documents/{id}/lines-summary": {
+      "get": {
+        "operationId": "StockDocumentsController_getLinesSummary_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinesSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зведення по табличних частинах складського документа",
+        "tags": [
+          "Stock Documents"
+        ]
+      }
+    },
     "/api/v1/stock-documents/{id}/linked-documents": {
       "get": {
         "operationId": "StockDocumentsController_getLinkedDocuments_v1",
@@ -11865,6 +12009,42 @@
           }
         ],
         "summary": "Створити рахунок вручну",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/api/v1/invoices/{id}/lines-summary": {
+      "get": {
+        "operationId": "InvoicesController_getLinesSummary_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinesSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Зведення по табличних частинах рахунку",
         "tags": [
           "Invoices"
         ]
@@ -22527,6 +22707,96 @@
           "total",
           "page",
           "limit"
+        ]
+      },
+      "LinesSummaryTableDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "enum": [
+              "works",
+              "goods",
+              "other"
+            ],
+            "type": "string",
+            "description": "Яка таблиця: роботи, товари, інше"
+          },
+          "positions": {
+            "type": "number",
+            "description": "Кількість рядків таблиці"
+          },
+          "distinct": {
+            "type": "number",
+            "description": "Кількість РІЗНИХ найменувань (товарів / робіт); для «іншого» — те саме, що рядків"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Сума по рядках: кількість або нормо-години (див. quantityUnit)"
+          },
+          "quantityUnit": {
+            "enum": [
+              "hours",
+              "units"
+            ],
+            "type": "string",
+            "description": "hours — нормо-години (роботи наряду); units — кількість у рядках"
+          }
+        },
+        "required": [
+          "key",
+          "positions",
+          "distinct",
+          "quantity",
+          "quantityUnit"
+        ]
+      },
+      "LinesSummaryExecutorDto": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Прізвище Ім’я; порожній рядок, якщо картку працівника не знайдено"
+          },
+          "works": {
+            "type": "number",
+            "description": "Скільки рядків робіт на цьому виконавцеві"
+          },
+          "normoHours": {
+            "type": "number",
+            "description": "Сума нормо-годин його рядків"
+          }
+        },
+        "required": [
+          "employeeId",
+          "name",
+          "works",
+          "normoHours"
+        ]
+      },
+      "LinesSummaryDto": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "description": "Лише непорожні таблиці",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinesSummaryTableDto"
+            }
+          },
+          "executors": {
+            "description": "Виконавці з рядків робіт; порожньо для документів без виконавців у рядках",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinesSummaryExecutorDto"
+            }
+          }
+        },
+        "required": [
+          "tables",
+          "executors"
         ]
       },
       "LinkedInvoiceRowDto": {

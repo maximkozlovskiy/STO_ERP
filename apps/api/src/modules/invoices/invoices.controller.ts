@@ -33,6 +33,8 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { InvoicesService } from './invoices.service';
+import { LinesSummaryService } from '../lines-summary/lines-summary.service';
+import { LinesSummaryDto } from '../lines-summary/lines-summary.dto';
 import {
   invoiceHeaderSchema,
   invoiceUpdateSchema,
@@ -62,7 +64,10 @@ import {
 @ApiBearerAuth()
 @ApiExtraModels(InvoiceLinkedCountsEntryDto)
 export class InvoicesController {
-  constructor(private readonly service: InvoicesService) {}
+  constructor(
+    private readonly service: InvoicesService,
+    private readonly linesSummary: LinesSummaryService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
@@ -85,6 +90,18 @@ export class InvoicesController {
 
   // ─── Linked Documents ─────────────────────────────────
   // Специфічні маршрути ПЕРЕД @Get(':id') — Fastify route ordering
+
+  // BR-WO-009: ролі — як у СПИСКУ (панель списку показує зведення кожному, хто бачить список).
+  @Get(':id/lines-summary')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
+  @ApiOperation({ summary: 'Зведення по табличних частинах рахунку' })
+  @ApiOkResponse({ type: LinesSummaryDto })
+  getLinesSummary(
+    @OrgContext() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LinesSummaryDto> {
+    return this.linesSummary.forInvoice(orgId, id);
+  }
 
   @Get(':id/linked-documents')
   @Roles('OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST')
