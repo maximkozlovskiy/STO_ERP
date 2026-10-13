@@ -312,3 +312,14 @@ grep -rnE "= [a-zA-Z]+\.find\(c? => c?\.(enabled|isDefault|active)\)\??\.[a-zA-Z
 **Фікс:** `loadReqRef` + `isStale()` (взірець — `StockDocumentCreateModal`), прапорець
 `notLoaded = isEdit && loadedId !== editId`. Тест: відкладений проміс A, `rerender` з B, потім
 resolve A. **Severity:** IMPORTANT
+
+### 2026-10-13 — «in на мапі»: перевірка рядка ззовні оператором `in` — §8.2
+
+**Сигнал:** `defaultType && defaultType in STOCK_DOC_TYPE_LABELS ? (defaultType as T) : undefined`
+у `StockDocumentCreateModal` (989040af). `in` бачить успадковані ключі (`toString`,
+`constructor`), тож рядок проходить перевірку, приводиться до типу форми і стає значенням
+`<select>`, якого немає серед варіантів. Зі сторінки складу недосяжно (там `Set` власних
+ключів), але картка — спільний компонент.
+**Grep:** `grep -rnE "[a-zA-Z.]+ in [A-Z][A-Z_]+\b" apps/web/src | grep -v "for (const"`
+**Фікс:** `Object.keys(MAP).includes(v)` (або `Set` на рівні модуля); тест із `'toString'`.
+**Severity:** SUGGESTION

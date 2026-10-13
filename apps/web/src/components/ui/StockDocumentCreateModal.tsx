@@ -329,9 +329,12 @@ export function StockDocumentCreateModal({
     setPurchaseOrderNumber('');
     if (!isEditMode) {
       // reset() ставить чисту базу → rhfDirty=false (edit заповнюється load-ефектом).
+      // Тип звіряємо з ВЛАСНИМИ ключами мапи (ті самі, що дають варіанти поля), не через
+      // `in`: той пропускає успадковані ключі об'єкта («toString»), і в полі опинявся б
+      // тип, якого немає серед варіантів.
       reset(
         emptyDefaults(
-          defaultType && defaultType in STOCK_DOC_TYPE_LABELS
+          defaultType && Object.keys(STOCK_DOC_TYPE_LABELS).includes(defaultType)
             ? (defaultType as StockDocumentFormInput['type'])
             : undefined,
         ),

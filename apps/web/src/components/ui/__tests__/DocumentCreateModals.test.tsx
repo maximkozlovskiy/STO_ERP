@@ -157,6 +157,8 @@ describe('StockDocumentCreateModal — regression', () => {
     ['TRANSFER', 'TRANSFER'],
     [undefined, 'WRITEOFF'],
     ['NO_SUCH_TYPE', 'WRITEOFF'],
+    // Успадкований ключ об'єкта: `in` його пропускав, і в полі опинявся не той тип.
+    ['toString', 'WRITEOFF'],
   ])(
     'новий документ: defaultType=%s → у полі «Тип документа» стоїть %s',
     async (defaultType, expected) => {

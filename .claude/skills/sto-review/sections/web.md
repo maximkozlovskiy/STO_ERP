@@ -263,6 +263,10 @@ grep -rn "<DatePickerInput" apps/web/src/app --include="*.tsx" | wc -l
       елементі у фокусі скидає фокус на `<body>` (перевірено в Chromium). Grep:
       `grep -rnE "disabled=\{[a-zA-Z]+\.length === 0\}" apps/web/src --include="*.tsx"` → для
       кожної: чи її ж клік робить умову істинною
+- [ ] **Рядок ззовні (проп, `?type=`) звіряється з мапою через власні ключі, не через `in`.**
+      `'toString' in LABELS` — істина. Grep:
+      `grep -rnE "[a-zA-Z.]+ in [A-Z][A-Z_]+\b" apps/web/src | grep -v "for (const"`
+      (`journal/web.md`, 2026-10-13, «in на мапі»)
 - [ ] **Тест «X не відбувається» має контроль, що шлях узагалі пройдено.** `expect(fn).not
 .toHaveBeenCalled()` після дії, яка за цих вхідних нічого не робить (Enter із порожнім
       запитом → `pickScannedGood` дає `null`), зелений завжди. Поруч потрібен позитивний кейс тим
