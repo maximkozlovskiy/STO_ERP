@@ -23,7 +23,6 @@ const serviceMock = {
 const cashMock = {
   getBalance: vi.fn().mockResolvedValue(0),
   listOperations: vi.fn().mockResolvedValue([]),
-  createManual: vi.fn().mockResolvedValue({}),
   // Понад контракт: після CashDeskService.create контролер перечитує рядок журналу для відповіді.
   getOperation: vi.fn().mockResolvedValue({ id: 'op-1' }),
 };
@@ -209,7 +208,6 @@ describe('CashRegisters — HTTP Contract', () => {
         expect.objectContaining({ direction: 'IN', reason: 'OWNER_IN', amount: 1250.75 }),
         expect.objectContaining({ role: 'ADMIN' }),
       );
-      expect(cashMock.createManual).not.toHaveBeenCalled();
     });
 
     // guards: BR-CASH-016

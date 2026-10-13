@@ -51,6 +51,50 @@ export interface CashReasonRule {
   categoryRequired?: true;
 }
 
+/**
+ * Назви приводів — єдине джерело для ТЕКСТІВ ПОМИЛОК api (`{{reason}}` у `err.cash.reason*` та
+ * `err.expenseCategory.defaultReason*`). Підписи інтерфейсу живуть у каталозі web
+ * (`i18n/locales/<мова>/cash.json`, ключі `reasons.*`) і мають збігатися з цими — це стереже
+ * тест-інваріант `apps/web/src/i18n/cashReasonLabels.parity.test.ts`. `Record<CashReasonValue, …>` не дасть
+ * додати привід і забути назву.
+ */
+export const CASH_REASON_LABELS: Record<'uk' | 'en', Record<CashReasonValue, string>> = {
+  uk: {
+    SALE_PAYMENT: 'Оплата контрагента',
+    SUPPLIER_REFUND_IN: 'Повернення від постачальника',
+    ADVANCE_RETURN: 'Повернення підзвіту',
+    BANK_WITHDRAWAL: 'Отримання з банку',
+    OWNER_IN: 'Внесок власника',
+    COLLECTION: 'Інкасація',
+    MANUAL_IN: 'Внесення',
+    REFUND: 'Повернення клієнту',
+    SUPPLIER_PAYMENT: 'Оплата постачальнику',
+    ADVANCE_ISSUE: 'Під звіт',
+    BANK_DEPOSIT: 'Здача в банк',
+    OWNER_OUT: 'Вилучення власником',
+    EXPENSE: 'Витрата',
+    PAYROLL: 'Виплата ЗП',
+    MANUAL_OUT: 'Видача',
+  },
+  en: {
+    SALE_PAYMENT: 'Counterparty payment',
+    SUPPLIER_REFUND_IN: 'Refund from supplier',
+    ADVANCE_RETURN: 'Advance return',
+    BANK_WITHDRAWAL: 'Withdrawal from bank',
+    OWNER_IN: 'Owner contribution',
+    COLLECTION: 'Collection',
+    MANUAL_IN: 'Cash in',
+    REFUND: 'Customer refund',
+    SUPPLIER_PAYMENT: 'Supplier payment',
+    ADVANCE_ISSUE: 'Advance to employee',
+    BANK_DEPOSIT: 'Deposit to bank',
+    OWNER_OUT: 'Owner withdrawal',
+    EXPENSE: 'Expense',
+    PAYROLL: 'Payroll payout',
+    MANUAL_OUT: 'Cash out',
+  },
+};
+
 export const CASH_REASON_RULES: Record<CashReasonValue, CashReasonRule> = {
   // ── Внесення ──
   SALE_PAYMENT: {

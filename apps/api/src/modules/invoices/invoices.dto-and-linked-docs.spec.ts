@@ -222,4 +222,25 @@ describe('InvoicesService — linked-documents edge cases', () => {
     expect(res).toEqual({ workOrder: [], payments: [], counterparty: [] });
     expect(prisma.payment.findMany).not.toHaveBeenCalled();
   });
+
+  it('getLinkedDocuments: рядок оплати віддає fiscalStatus (select + мапінг), Decimal → number', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ workOrderId: null, counterpartyId: CP });
+    prisma.payment.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        amount: '250.50',
+        method: 'CASH',
+        createdAt: new Date('2026-10-01T10:00:00Z'),
+        notes: null,
+        fiscalStatus: 'FAILED',
+      },
+    ]);
+    prisma.counterparty.findFirst.mockResolvedValue(null);
+
+    const res = await service.getLinkedDocuments(ORG, A);
+
+    // Контракт для кнопки «Повторити»: без fiscalStatus у select web не знає про FAILED.
+    expect(prisma.payment.findMany.mock.calls[0][0].select).toMatchObject({ fiscalStatus: true });
+    expect(res.payments[0]).toMatchObject({ id: 'p1', amount: 250.5, fiscalStatus: 'FAILED' });
+  });
 });

@@ -22979,6 +22979,10 @@
           "notes": {
             "type": "string",
             "nullable": true
+          },
+          "fiscalStatus": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -25688,6 +25692,10 @@
             "format": "date-time"
           },
           "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "fiscalStatus": {
             "type": "string",
             "nullable": true
           }

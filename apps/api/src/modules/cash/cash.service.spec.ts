@@ -369,17 +369,6 @@ describe('CashService.createOperation — єдина точка руху', () =>
   });
 });
 
-describe('CashService.createManual — EXPENSE вимагає статтю', () => {
-  // guards: BR-CASH-008
-  it('EXPENSE без expenseCategoryId → BadRequest', async () => {
-    const m = makeMocks();
-    const service = makeService(m);
-    await expect(
-      service.createManual(ORG, REG, { direction: 'OUT', amount: 100, reason: 'EXPENSE' } as never),
-    ).rejects.toThrow(BadRequestException);
-  });
-});
-
 describe('CashService.createOperation — overdraft-guard (OUT не нижче 0)', () => {
   // Каса з залишком = initialBalance + Σ(IN) − Σ(OUT). Хелпер стаббить register (двічі: guard + getBalance)
   // + агрегати IN/OUT так, щоб поточний баланс = `balance`.

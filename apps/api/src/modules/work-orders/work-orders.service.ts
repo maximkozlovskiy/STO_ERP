@@ -1413,7 +1413,14 @@ export class WorkOrdersService {
       }),
       this.prisma.payment.findMany({
         where: { workOrderId, orgId },
-        select: { id: true, amount: true, method: true, createdAt: true, notes: true },
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          createdAt: true,
+          notes: true,
+          fiscalStatus: true,
+        },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),

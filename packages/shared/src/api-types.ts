@@ -7032,6 +7032,7 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             notes: string | null;
+            fiscalStatus?: string | null;
         };
         LinkedSlotLiftDto: {
             name: string;
@@ -7769,6 +7770,7 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             notes: string | null;
+            fiscalStatus?: string | null;
         };
         InvoiceLinkedCounterpartyRowDto: {
             id: string;

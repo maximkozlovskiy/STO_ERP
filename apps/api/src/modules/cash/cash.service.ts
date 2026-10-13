@@ -9,7 +9,7 @@ import { type Money, money, moneyFromDecimal } from '../../common/utils/money';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { uniqueDefinedIds } from '../../common/utils/linked-counts';
-import { CashOperationResponseDto, CashReasonDto, CreateCashOperationDto } from './cash.dto';
+import { CashOperationResponseDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
 // SQL-агрегатами (Σ IN − Σ OUT) у computeBalance для ефективності — ця мапа документує конвенцію.
@@ -233,34 +233,6 @@ export class CashService {
       );
     }
     return input.expenseCategoryId;
-  }
-
-  /**
-   * Ручна операція БЕЗ правил приводів. Маршрут `POST /cash-registers/:id/operations` сюди більше
-   * не ходить — він іде в `CashDeskService.create` (BR-CASH-016…021).
-   */
-  async createManual(
-    orgId: string,
-    cashRegisterId: string,
-    dto: CreateCashOperationDto,
-    userId?: string,
-  ): Promise<CashOperationResponseDto> {
-    // CashReasonDto — власний TS-enum DTO-шару; рівність із рядковим літералом вірна
-    // за значенням, але для типів це різні enum-и. Звіряємося з членом enum.
-    if (dto.reason === CashReasonDto.EXPENSE && !dto.expenseCategoryId)
-      throw new BadRequestException(
-        translateError('err.cash.expenseRequiresCategory', getLocale()),
-      );
-    return this.createOperation(orgId, {
-      cashRegisterId,
-      direction: dto.direction,
-      amount: dto.amount,
-      reason: dto.reason,
-      expenseCategoryId: dto.expenseCategoryId ?? null,
-      counterpartyId: dto.counterpartyId ?? null,
-      notes: dto.notes ?? null,
-      createdBy: userId ?? null,
-    });
   }
 
   /**

@@ -208,7 +208,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `invoices.with-deleted.spec.ts`            | 13     |
 | create defaults (номер, invoiceType)                           | `invoices.create-defaults.spec.ts`         | 5      |
 | create from work order                                         | `invoices.create-from-work-order.spec.ts`  | 14     |
-| dto and linked docs                                            | `invoices.dto-and-linked-docs.spec.ts`     | 8      |
+| dto and linked docs                                            | `invoices.dto-and-linked-docs.spec.ts`     | 9      |
 | due date                                                       | `invoices.due-date.spec.ts`                | 7      |
 | find by work order                                             | `invoices.find-by-work-order.spec.ts`      | 5      |
 | line totals (recalcTotals на бекенді)                          | `invoices.line-totals.spec.ts`             | 12     |
@@ -218,7 +218,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | update: зміна контрагента (org, роль)                          | `invoices.update-counterparty.spec.ts`     | 5      |
 | рядки рахунку з наряду (чиста функція)                         | `invoices.work-order-lines.spec.ts`        | 23     |
 
-Разом: **161** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **162** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 Правило → тест (мітки `// guards:`) для правил про суму з наряду і ПДВ рядка:
 

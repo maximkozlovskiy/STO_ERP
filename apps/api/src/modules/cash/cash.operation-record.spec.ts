@@ -133,27 +133,6 @@ describe('CashService — стаття руху коштів', () => {
     expect(m.prisma.cashOperation.create).toHaveBeenCalledTimes(1);
     expect(m.prisma.cashOperation.create.mock.calls[0][0].data.expenseCategoryId).toBeNull();
   });
-
-  // guards: BR-CASH-008
-  it('createManual: EXPENSE без статті → 400 «Для витрати вкажіть статтю витрат», касу не читаємо', async () => {
-    const { m, service } = setup();
-    await expect(
-      service.createManual(ORG, REG, { direction: 'OUT', amount: 100, reason: 'EXPENSE' } as never),
-    ).rejects.toThrow(/Для витрати вкажіть статтю витрат/);
-    expect(m.prisma.cashRegister.findFirst).not.toHaveBeenCalled();
-    expect(m.prisma.cashOperation.create).not.toHaveBeenCalled();
-  });
-
-  // guards: BR-CASH-008
-  it('createManual: інша причина (MANUAL_OUT) без статті → проходить', async () => {
-    const { m, service } = setup();
-    await service.createManual(ORG, REG, {
-      direction: 'OUT',
-      amount: 100,
-      reason: 'MANUAL_OUT',
-    } as never);
-    expect(m.prisma.cashOperation.create).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe('CashService.createOperation — конкурентний конфлікт', () => {
@@ -254,32 +233,6 @@ describe('CashService — прив’язка операції до докуме
       documentId: null,
       notes: null,
       createdBy: null,
-    });
-  });
-
-  // guards: BR-CASH-012
-  it('createManual: автор = користувач запиту; документ і співробітник не задаються', async () => {
-    const { m, service } = setup();
-    await service.createManual(
-      ORG,
-      REG,
-      {
-        direction: 'IN',
-        amount: 100,
-        reason: 'MANUAL_IN',
-        counterpartyId: 'cp-1',
-        notes: 'здача',
-      } as never,
-      USER,
-    );
-    expect(m.prisma.cashOperation.create.mock.calls[0][0].data).toMatchObject({
-      cashRegisterId: REG,
-      createdBy: USER,
-      counterpartyId: 'cp-1',
-      notes: 'здача',
-      employeeId: null,
-      documentType: null,
-      documentId: null,
     });
   });
 });

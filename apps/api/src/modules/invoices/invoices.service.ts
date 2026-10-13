@@ -1414,7 +1414,14 @@ export class InvoicesService {
       // Payment — append-only модель без deletedAt (schema.prisma: model Payment).
       this.prisma.payment.findMany({
         where: { invoiceId, orgId },
-        select: { id: true, amount: true, method: true, createdAt: true, notes: true },
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          createdAt: true,
+          notes: true,
+          fiscalStatus: true,
+        },
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),
