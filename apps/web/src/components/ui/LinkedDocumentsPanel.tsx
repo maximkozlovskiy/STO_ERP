@@ -180,31 +180,50 @@ function SectionRow({
   secondary,
   badge,
   onClick,
+  onOpen,
 }: {
   icon: ElementType;
   primary: string;
   secondary?: string;
   badge?: { label: string; className: string };
   onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+  /** Перехід до документа одним кліком — без проміжного прев'ю. Немає сторінки → немає кнопки. */
+  onOpen?: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-3 px-5 py-2.5 hover:bg-secondary/60 transition-colors text-left text-[13px]"
-    >
-      <Icon size={15} className="text-muted-foreground shrink-0" />
-      <span className="flex-1 min-w-0">
-        <span className="font-medium text-foreground">{primary}</span>
-        {secondary && (
-          <span className="block text-[11px] text-muted-foreground truncate">{secondary}</span>
+    <div className="flex items-stretch hover:bg-secondary/60 transition-colors">
+      <button
+        onClick={onClick}
+        className={cn(
+          'flex-1 min-w-0 flex items-center gap-3 pl-5 py-2.5 text-left text-[13px]',
+          onOpen ? 'pr-2' : 'pr-5',
         )}
-      </span>
-      {badge && (
-        <span className={cn('px-2 py-0.5 rounded-full text-[11px] shrink-0', badge.className)}>
-          {badge.label}
+      >
+        <Icon size={15} className="text-muted-foreground shrink-0" />
+        <span className="flex-1 min-w-0">
+          <span className="font-medium text-foreground">{primary}</span>
+          {secondary && (
+            <span className="block text-[11px] text-muted-foreground truncate">{secondary}</span>
+          )}
         </span>
+        {badge && (
+          <span className={cn('px-2 py-0.5 rounded-full text-[11px] shrink-0', badge.className)}>
+            {badge.label}
+          </span>
+        )}
+      </button>
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          title={`Перейти до документа: ${primary}`}
+          aria-label={`Перейти до документа: ${primary}`}
+          className="shrink-0 flex items-center px-3 text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+        >
+          <ExternalLink size={14} aria-hidden="true" />
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -349,6 +368,7 @@ export function LinkedDocumentsPanel({
                 secondary={item.secondary}
                 badge={item.badge}
                 onClick={e => openPreview(e, item)}
+                onOpen={item.navigate}
               />
             ))}
           </DocSection>

@@ -108,7 +108,7 @@ describe('LinkedDocumentsPanel — config-driven + navigation (Bugs #409, #414, 
     await waitFor(() => expect(screen.getByText(/INV-2026-0001/)).toBeInTheDocument());
     expect(screen.getByText(/Рахунки/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Рахунок INV-2026-0001/ }));
+    await user.click(screen.getByRole('button', { name: /^Рахунок INV-2026-0001/ }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
@@ -121,12 +121,34 @@ describe('LinkedDocumentsPanel — config-driven + navigation (Bugs #409, #414, 
     render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} />);
     await waitFor(() => expect(screen.getByText(/INV-42/)).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: /Рахунок INV-42/ }));
+    await user.click(screen.getByRole('button', { name: /^Рахунок INV-42/ }));
     // Кнопка «Відкрити» у прев'ю
     await user.click(screen.getByRole('button', { name: /Відкрити/ }));
     expect(navigateInvoice).toHaveBeenCalledWith('inv-42');
     // preview закривається після переходу
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  // Запит власника 2026-10-13: перехід до документа прямо з рядка, без проміжного прев'ю.
+  it("перехід з рядка: кнопка «Перейти до документа» викликає navigate одразу, прев'ю не відкривається", async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValueOnce({
+      ...EMPTY,
+      invoices: [{ id: 'inv-42', number: 'INV-42', status: 'PAID', amount: 500 }],
+      payments: [{ id: 'pay-1', amount: 300 }],
+    });
+    render(<LinkedDocumentsPanel config={testConfig} entityId={WO_ID} />);
+    await waitFor(() => expect(screen.getByText(/INV-42/)).toBeInTheDocument());
+
+    // Кнопка є лише в рядка, що має сторінку: рахунок — так, оплата — ні.
+    const open = screen.getAllByRole('button', { name: /^Перейти до документа/ });
+    expect(open).toHaveLength(1);
+    expect(open[0]).toHaveAccessibleName('Перейти до документа: Рахунок INV-42');
+
+    await user.click(open[0]!);
+    expect(navigateInvoice).toHaveBeenCalledTimes(1);
+    expect(navigateInvoice).toHaveBeenCalledWith('inv-42');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('секція без navigate → кнопки «Відкрити» немає (оплата read-only)', async () => {
@@ -180,7 +202,7 @@ describe('LinkedDocumentsPanel — config-driven + navigation (Bugs #409, #414, 
     );
     await waitFor(() => expect(screen.getByText(/INV-1/)).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: /Рахунок INV-1/ }));
+    await user.click(screen.getByRole('button', { name: /^Рахунок INV-1/ }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     apiFetchMock.mockResolvedValueOnce({
