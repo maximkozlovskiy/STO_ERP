@@ -184,6 +184,58 @@ describe('SupplierReturnCreateModal — повтор товару окремим
       [G1, 1, 90],
     ]);
   });
+  // Bug #845: кнопка видалення рядка була іконкою без назви. З повторами товару (BR-PO-008) у
+  // документі кілька однакових на вигляд рядків — читач екрана називав усі кнопки просто «кнопка».
+  // Тут же: видалення ОДНОГО з повторів прибирає саме його, решта йде у збереження в тому ж порядку.
+  it('у кожного рядка кнопка видалення має назву; видалення одного з повторів прибирає саме його', async () => {
+    const threeLines = {
+      ...draft,
+      lines: [
+        { ...draft.lines[0], id: 'l1', quantity: 2, price: 100 },
+        { ...draft.lines[0], id: 'l2', quantity: 3, price: 90 },
+        { ...draft.lines[0], id: 'l3', quantity: 4, price: 80 },
+      ],
+    };
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/warehouses') return Promise.resolve([{ id: W1, name: 'Склад №1' }]);
+      if (path === '/supplier-returns/sr1?withDeleted=true') return Promise.resolve(threeLines);
+      if (path === '/supplier-returns/sr1' && init?.method === 'PATCH') return Promise.resolve({});
+      return Promise.resolve({ items: [] });
+    });
+    const user = userEvent.setup();
+    render(<SupplierReturnCreateModal open onClose={() => {}} onSaved={() => {}} editId="sr1" />);
+    const table = await screen.findByRole('table');
+    await waitFor(() => expect(within(table).getAllByText('Фільтр')).toHaveLength(3));
+
+    expect(
+      within(table)
+        .getAllByRole('button', { name: /^Видалити рядок \d+$/ })
+        .map(b => b.getAttribute('aria-label')),
+    ).toEqual(['Видалити рядок 1', 'Видалити рядок 2', 'Видалити рядок 3']);
+
+    await user.click(within(table).getByRole('button', { name: 'Видалити рядок 2' }));
+    await waitFor(() => expect(within(table).getAllByText('Фільтр')).toHaveLength(2));
+    await user.click(screen.getByRole('button', { name: 'Зберегти зміни' }));
+
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(
+          ([p, init]) => p === '/supplier-returns/sr1' && init?.method === 'PATCH',
+        ),
+      ).toBe(true),
+    );
+    const patch = apiFetchMock.mock.calls.find(
+      ([p, init]) => p === '/supplier-returns/sr1' && init?.method === 'PATCH',
+    )!;
+    const body = JSON.parse((patch[1] as RequestInit).body as string) as {
+      lines: { goodId: string; quantity: number; price: number }[];
+    };
+    expect(body.lines.map(l => [l.goodId, Number(l.quantity), Number(l.price)])).toEqual([
+      [G1, 2, 100],
+      [G1, 4, 80],
+    ]);
+  });
+
   // Сума рядка = round(кількість × ціна), підсумок = Σ округлених рядків - як на сервері
   // (`money(quantity * price)`). Сирий добуток показував 30.01 там, де збережено 30.02.
   // Мутація (не проганяв): lineSubtotal без lineAmount -> кейс падає (рядок "30.01").

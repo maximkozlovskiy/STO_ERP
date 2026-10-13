@@ -828,6 +828,10 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
                           {canEdit && (
                             <button
                               type="button"
+                              // Назва з номером рядка: той самий товар може стояти кількома
+                              // рядками (BR-PO-008), і за назвою товару їх не розрізнити.
+                              aria-label={`Видалити рядок ${index + 1}`}
+                              title="Видалити рядок"
                               onClick={() => remove(index)}
                               className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             >
