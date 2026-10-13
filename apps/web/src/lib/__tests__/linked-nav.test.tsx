@@ -16,14 +16,23 @@ const ID = '11111111-1111-4111-8111-111111111111';
 describe('useLinkedNav — URL-контракт deep-link навігації', () => {
   beforeEach(() => push.mockReset());
 
-  it('routed detail-сторінки: work-order / supplier-payment / counterparty', () => {
+  it('routed detail-сторінки: work-order / counterparty', () => {
     const { result } = renderHook(() => useLinkedNav());
     result.current.toWorkOrder(ID);
-    result.current.toSupplierPayment(ID);
     result.current.toCounterparty(ID);
     expect(push).toHaveBeenNthCalledWith(1, `/work-orders/${ID}`);
-    expect(push).toHaveBeenNthCalledWith(2, `/supplier-payments/${ID}`);
-    expect(push).toHaveBeenNthCalledWith(3, `/counterparties/${ID}`);
+    expect(push).toHaveBeenNthCalledWith(2, `/counterparties/${ID}`);
+  });
+
+  // Сторінок оплат немає: перехід до оплати вів би на адресу-перенаправлення, а не на документ.
+  it('переходу до оплати постачальнику немає — жоден метод не веде на сторінки оплат', () => {
+    const { result } = renderHook(() => useLinkedNav());
+    expect(Object.keys(result.current)).not.toContain('toSupplierPayment');
+    for (const [name, go] of Object.entries(result.current)) {
+      if (name !== 'toCalendarDay') go(ID);
+    }
+    const targets = push.mock.calls.map(c => String(c[0]));
+    expect(targets.filter(u => /^\/(supplier-)?payments(\/|\?|$)/.test(u))).toEqual([]);
   });
 
   it('modal-списки через ?open= : invoice / purchase-order / stock-document', () => {

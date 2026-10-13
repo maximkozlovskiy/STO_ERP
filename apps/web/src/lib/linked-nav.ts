@@ -15,7 +15,6 @@ import { isoToKyivLocalDateTime } from '@/lib/format';
  */
 export interface LinkedNav {
   toWorkOrder: (id: string) => void;
-  toSupplierPayment: (id: string) => void;
   toCounterparty: (id: string) => void;
   toInvoice: (id: string) => void;
   toPurchaseOrder: (id: string) => void;
@@ -67,7 +66,6 @@ export function useLinkedNav(): LinkedNav {
     () => ({
       // Routed detail pages
       toWorkOrder: id => router.push(`/work-orders/${id}`),
-      toSupplierPayment: id => router.push(`/supplier-payments/${id}`),
       toCounterparty: id => router.push(`/counterparties/${id}`),
       // Modal-based lists via ?open= deep-link
       toInvoice: id => router.push(`/invoices?open=${id}`),

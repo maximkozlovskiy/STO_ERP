@@ -40,7 +40,6 @@ if (!i18n.isInitialized) {
       'employees',
       'invoices',
       'purchaseOrders',
-      'payments',
       'supplierPayments',
       'stockDocuments',
       'counterparties',

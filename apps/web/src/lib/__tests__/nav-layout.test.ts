@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Wrench, Receipt, DoorOpen, Users } from 'lucide-react';
 import { resolveNav, normalizeNavLayout, EMPTY_NAV_LAYOUT, type NavLayout } from '../nav-layout';
-import type { NavItem } from '../nav';
+import { MASTER_NAV_ITEMS, type NavItem } from '../nav';
 
 // Мінімальний master для детермінованих тестів (3 секції).
 const MASTER: NavItem[] = [
@@ -142,6 +142,41 @@ describe('resolveNav — кастомні розділи + перенесенн�
     // але у режимі рендера (includeHidden=false) порожній — не показується
     const render = resolveNav(MASTER, layout({ customSections: [cs] }), 'OWNER');
     expect(render.find(s => s.id === 'custom:empty')).toBeUndefined();
+  });
+});
+
+// Пункти «Оплати клієнтів» і «Оплати постачальникам» прибрано з меню, але в збережених
+// розкладках користувачів (localStorage / user-preferences) їхні адреси лишились. Меню
+// будується від master-списку, тож застарілий href не має ні повернути пункт, ні зламати порядок.
+describe('розкладка з адресами прибраних сторінок', () => {
+  const stale = layout({
+    hiddenItems: ['/supplier-payments'],
+    itemSection: { '/payments': 'documents', '/supplier-payments': 'custom:gone' },
+    itemOrder: { settlements: ['/supplier-payments', '/payments', '/invoices'] },
+  });
+
+  it('master-меню не містить прибраних пунктів', () => {
+    const hrefs = MASTER_NAV_ITEMS.map(i => i.href);
+    expect(hrefs).not.toContain('/payments');
+    expect(hrefs).not.toContain('/supplier-payments');
+    expect(hrefs).toContain('/cash');
+  });
+
+  it.each([false, true])("includeHidden=%s: прибрані адреси не з'являються в меню", inc => {
+    const res = resolveNav(MASTER_NAV_ITEMS, stale, 'OWNER', inc);
+    const hrefs = res.flatMap(s => [...s.items, ...s.hiddenItems].map(i => i.href));
+    expect(hrefs).not.toContain('/payments');
+    expect(hrefs).not.toContain('/supplier-payments');
+  });
+
+  it('решта пунктів розділу на місці й у збереженому порядку', () => {
+    const all = resolveNav(MASTER_NAV_ITEMS, stale, 'OWNER').flatMap(s => s.items);
+    const fresh = resolveNav(MASTER_NAV_ITEMS, EMPTY_NAV_LAYOUT, 'OWNER').flatMap(s => s.items);
+    expect(all.map(i => i.href).sort()).toEqual(fresh.map(i => i.href).sort());
+    const settlements = resolveNav(MASTER_NAV_ITEMS, stale, 'OWNER').find(
+      s => s.id === 'settlements',
+    );
+    expect(settlements?.items[0]?.href).toBe('/invoices');
   });
 });
 

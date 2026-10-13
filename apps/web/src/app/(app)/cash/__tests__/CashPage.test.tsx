@@ -19,6 +19,10 @@ vi.mock('@/lib/format', () => ({
   kyivToday: () => '2026-09-06',
 }));
 
+// Історія каси відкриває документ-підставу через useLinkedNav (useRouter) — тут не потрібен.
+vi.mock('@/lib/linked-nav', () => ({
+  useLinkedNav: () => ({ toWorkOrder: vi.fn(), toPurchaseOrder: vi.fn() }),
+}));
 // Одна фіскальна каса — щоб рендерився блок зміни.
 vi.mock('@/hooks/api/useCash', () => ({
   useCashRegisters: () => ({
@@ -40,9 +44,7 @@ vi.mock('@/hooks/api/useCash', () => ({
   useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   // Базова валюта org (UAH) — вкладка порівнює код каси з базовим замість хардкоду 'UAH'.
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
-  CASH_REASON_LABELS: {},
-  MANUAL_IN_REASONS: ['MANUAL_IN'],
-  MANUAL_OUT_REASONS: ['MANUAL_OUT'],
+  useRetryCashFiscal: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 const useExpenseCategoriesMock = vi.fn((_showDeleted?: boolean, _enabled?: boolean) => ({
   data: [] as unknown[],

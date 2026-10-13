@@ -1,31 +1,37 @@
-import { test, expect } from '@playwright/test';
-import { clearDateFilter } from './fixtures';
+import { test, expect, type Page } from '@playwright/test';
+import {
+  API,
+  apiCall,
+  createCounterparty,
+  createPlainRegister,
+  deleteRegister,
+  getBalance,
+  getToken,
+  historyRow,
+  openCashCard,
+  pickInCard,
+} from './cash-desk.helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const API = 'http://localhost:3000/api/v1';
-
 /**
- * Supplier Payments — сторінка /supplier-payments + SupplierPaymentCreateModal.
- * FSM: DRAFT → CONFIRMED (пише settlement PAYMENT) | DRAFT → CANCELLED.
- * Перевіряємо: рендер сторінки, модалку, FSM через API, вплив на баланс постачальника,
- * бізнес-guards (джерело коштів, CONFIRMED не редагується/видаляється).
+ * Оплати постачальникам — після рішення власника 2026-10-14 окремої сторінки немає:
+ *   - «Графік оплат» — вкладка сторінки «Купівля» (/purchase-orders?tab=schedule);
+ *   - оплату постачальнику вносять у касі (/cash → «Видати» → «Оплата постачальнику») або з
+ *     картки замовлення («Оплатити»);
+ *   - старі адреси /supplier-payments і /supplier-payments/<id> ведуть на графік оплат.
+ * Документ SupplierPayment і його API лишились: FSM DRAFT → CONFIRMED | CANCELLED перевіряємо
+ * через API, як і раніше.
  *
- * Тест сам сідить cash register (currencyId + branchId), бо seed його не містить.
+ * Тести з міткою [контракт] спираються на нову поведінку бекенда (BR-CASH-016…022): каса сама
+ * створює й проводить оплату постачальнику. До злиття з бекендом вони можуть бути червоними.
+ *
+ * Тест сам сідить касу (currencyId + branchId), бо seed її не містить.
  */
 
-async function getToken(page: import('@playwright/test').Page): Promise<string> {
-  const token = await page.evaluate(
-    () =>
-      sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
-  );
-  expect(token, 'access token має бути у storage').toBeTruthy();
-  return token as string;
-}
-
 /** Сідить постачальника + касу (currency+branch). Повертає { supplierId, cashRegisterId }. */
-async function seedSupplierAndCash(page: import('@playwright/test').Page, token: string) {
+async function seedSupplierAndCash(page: Page, token: string) {
   return page.evaluate(
     async ({ token, API }) => {
       const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -72,137 +78,94 @@ async function seedSupplierAndCash(page: import('@playwright/test').Page, token:
   );
 }
 
-async function getBalance(
-  page: import('@playwright/test').Page,
-  token: string,
-  counterpartyId: string,
-): Promise<number> {
-  return page.evaluate(
-    async ({ token, API, counterpartyId }) => {
-      const r = await fetch(`${API}/counterparties/${counterpartyId}/balance`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const d = await r.json();
-      return Number(d.balance ?? 0);
-    },
-    { token, API, counterpartyId },
+/** Чи є в графіку оплат хоч один борг — за даними API, не за тим, що встигло намалюватись. */
+async function scheduleHasDebts(page: Page, token: string): Promise<boolean> {
+  const day = (offset: number) =>
+    new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Kyiv' }).format(
+      new Date(Date.now() + offset * 86_400_000),
+    );
+  const res = await apiCall<{ suppliers?: unknown[] }>(
+    page,
+    token,
+    'GET',
+    `/supplier-payments/schedule?from=${day(0)}&to=${day(19)}`,
   );
+  return (res.body.suppliers ?? []).length > 0;
 }
 
 test.describe('Оплати постачальникам', () => {
-  test('сторінка /supplier-payments рендериться з заголовком і кнопкою', async ({ page }) => {
+  // ─── Сторінки більше немає ──────────────────────────────────────────────────
+  test('стара адреса /supplier-payments веде на «Графік оплат» у «Купівлі»', async ({ page }) => {
     await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-
-    // Кнопка створення
-    await expect(page.locator('button:has-text("Нова оплата")').first()).toBeVisible({
-      timeout: 10_000,
-    });
-
-    // Таблиця або empty state
-    await expect(
-      page
-        .locator('table')
-        .or(page.getByText(/Оплат ще немає|Нічого не знайдено|Немає/i))
-        .first(),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/purchase-orders\/?\?tab=schedule$/, { timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'Графік оплат' })).toBeVisible();
   });
 
-  test('фільтри статусів (Усі/Чернетка/Проведено/Скасовано) присутні', async ({ page }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    for (const label of ['Усі', 'Чернетка', 'Проведено', 'Скасовано']) {
-      await expect(page.locator(`button:has-text("${label}")`).first()).toBeVisible({
-        timeout: 10_000,
-      });
-    }
+  test('стара адреса картки оплати веде туди ж', async ({ page }) => {
+    await page.goto('/supplier-payments/11111111-1111-4111-8111-111111111111');
+    await expect(page).toHaveURL(/\/purchase-orders\/?\?tab=schedule$/, { timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
   });
 
-  test('модалка "Нова оплата" відкривається з полями постачальник/джерело/сума', async ({
+  // ─── Графік оплат у «Купівлі» ───────────────────────────────────────────────
+  test('«Купівля» → вкладка «Графік оплат»: шахматка або порожній стан', async ({ page }) => {
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
+    await page.getByRole('button', { name: 'Графік оплат' }).click();
+    await expect(page).toHaveURL(/tab=schedule/);
+
+    // Після завантаження — або шахматка з колонками, або порожній стан (боргів немає).
+    const table = page.locator('th:has-text("Протерміновані")');
+    const empty = page.getByText('Немає запланованих оплат');
+    await expect(table.or(empty)).toBeVisible({ timeout: 30_000 });
+
+    // Повернення на список замовлень: графік зникає, вкладка в адресі міняється.
+    await page.getByRole('button', { name: 'Замовлення постачальникам' }).click();
+    await expect(page).toHaveURL(/tab=orders/);
+    await expect(table.or(empty)).toHaveCount(0);
+  });
+
+  test('графік: шахматка має колонки й рядок «Разом»', async ({ page }) => {
+    await page.goto('/purchase-orders?tab=schedule');
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    test.skip(!(await scheduleHasDebts(page, token)), 'Немає боргів — шахматка порожня');
+
+    await expect(page.locator('th:has-text("Протерміновані")')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('th:has-text("Планові")')).toBeVisible();
+    await expect(page.locator('td:has-text("Разом:")')).toBeVisible();
+  });
+
+  test('графік: клік по клітинці → панель документів, рядок відкриває картку замовлення', async ({
     page,
   }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    await page.locator('button:has-text("Нова оплата")').first().click();
-
-    await expect(page.getByText('Нова оплата постачальнику')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Постачальник', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('Джерело коштів', { exact: false }).first()).toBeVisible();
-    await expect(page.locator('button:has-text("Створити оплату")').first()).toBeVisible();
-  });
-
-  test("створити оплату через API → з'являється у таблиці → cleanup", async ({ page }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
+    await page.goto('/purchase-orders?tab=schedule');
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
-    const seed = await seedSupplierAndCash(page, token);
-    expect(seed.supplierId, 'seed постачальник').toBeTruthy();
-    expect(seed.cashRegisterOk, 'каса має створитись').toBeTruthy();
-    expect(seed.cashRegisterId, 'seed каса').toBeTruthy();
+    test.skip(!(await scheduleHasDebts(page, token)), 'Немає боргів для drill-down');
 
-    const sp = await page.evaluate(
-      async ({ token, API, supplierId, cashRegisterId }) => {
-        const r = await fetch(`${API}/supplier-payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            supplierId,
-            sourceType: 'CASH_REGISTER',
-            cashRegisterId,
-            amount: 123.45,
-            method: 'cash',
-          }),
-        });
-        if (!r.ok) return { error: r.status, body: await r.text().catch(() => '') };
-        return r.json();
-      },
-      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
-    );
-    expect(
-      sp && !('error' in sp),
-      `POST /supplier-payments має створити запис, отримано: ${JSON.stringify(sp)}`,
-    ).toBeTruthy();
-    expect(sp.status).toBe('DRAFT');
+    // Клікабельні лише клітинки із сумою (role=button).
+    const cell = page.locator('td[role="button"]').first();
+    await expect(cell).toBeVisible({ timeout: 30_000 });
+    await cell.click();
+    await expect(page.getByText(/^Документи:/)).toBeVisible({ timeout: 10_000 });
+    const docsHeader = page.locator('th:has-text("№")');
+    const noDocs = page.getByText('Немає документів');
+    await expect(docsHeader.or(noDocs)).toBeVisible({ timeout: 10_000 });
 
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    await clearDateFilter(page);
-
-    const row = page.locator(`table tbody tr:has-text("${sp.number}")`).first();
-    const visible = await row.isVisible({ timeout: 8_000 }).catch(() => false);
-    if (!visible) {
-      await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 10_000 });
-    }
-
-    // cleanup: delete draft
-    await page.evaluate(
-      async ({ token, API, id }) => {
-        await fetch(`${API}/supplier-payments/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => {});
-      },
-      { token, API, id: sp.id },
-    );
+    // Перехід із графіка до документа не веде на прибрані сторінки оплат.
+    await expect(page).toHaveURL(/\/purchase-orders\/?\?tab=schedule/);
+    await page.getByLabel('Закрити').click();
+    await expect(page.getByText(/^Документи:/)).toBeHidden();
   });
 
+  // ─── Документ «Оплата постачальнику»: FSM через API ─────────────────────────
   test('FSM DRAFT→CONFIRMED пише settlement SUPPLIER_PAYMENT → борг постачальнику підіймається до 0', async ({
     page,
   }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
     const seed = await seedSupplierAndCash(page, token);
     expect(seed.supplierId).toBeTruthy();
@@ -292,10 +255,8 @@ test.describe('Оплати постачальникам', () => {
   });
 
   test('guard: BANK_ACCOUNT без bankAccountId → 400', async ({ page }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
     const seed = await seedSupplierAndCash(page, token);
     expect(seed.supplierId).toBeTruthy();
@@ -320,10 +281,8 @@ test.describe('Оплати постачальникам', () => {
   });
 
   test('FSM DRAFT→CANCELLED через API не пише settlement + cleanup', async ({ page }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
+    await page.goto('/purchase-orders');
+    await expect(page.locator('h1:has-text("Купівля")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
     const seed = await seedSupplierAndCash(page, token);
     expect(seed.supplierId).toBeTruthy();
@@ -379,246 +338,156 @@ test.describe('Оплати постачальникам', () => {
     );
   });
 
-  test('картка /supplier-payments/[id] рендерить усі поля', async ({ page }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    const token = await getToken(page);
-    const seed = await seedSupplierAndCash(page, token);
-    expect(seed.supplierId).toBeTruthy();
-    expect(seed.cashRegisterId).toBeTruthy();
+  // ─── Оплата постачальнику в касі ────────────────────────────────────────────
+  test.describe('каса: оплата постачальнику й повернення від нього', () => {
+    const stamp = Date.now();
+    const registerName = `E2E Каса постач ${stamp}`;
+    const supplierName = `E2E Постачальник каси ${stamp}`;
+    let registerId = '';
+    let supplierId = '';
 
-    const sp = await page.evaluate(
-      async ({ token, API, supplierId, cashRegisterId }) => {
-        const r = await fetch(`${API}/supplier-payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            supplierId,
-            sourceType: 'CASH_REGISTER',
-            cashRegisterId,
-            amount: 333,
-            method: 'cash',
-            notes: 'E2E card notes',
-          }),
-        });
-        return r.json();
-      },
-      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
-    );
-    expect(sp.id).toBeTruthy();
-
-    // Відкриваємо картку напряму за URL
-    await page.goto(`/supplier-payments/${sp.id}`);
-
-    // Заголовок = номер оплати
-    await expect(page.locator(`h1:has-text("${sp.number}")`)).toBeVisible({ timeout: 15_000 });
-    // Секція реквізитів + ключові поля
-    await expect(page.getByText('Реквізити')).toBeVisible();
-    await expect(page.getByText('Метод оплати', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('Джерело коштів', { exact: false }).first()).toBeVisible();
-    await expect(page.getByText('E2E card notes')).toBeVisible();
-    // DRAFT → кнопка "Провести" присутня
-    await expect(page.locator('button:has-text("Провести")').first()).toBeVisible();
-
-    // cleanup
-    await page.evaluate(
-      async ({ token, API, id }) => {
-        await fetch(`${API}/supplier-payments/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => {});
-      },
-      { token, API, id: sp.id },
-    );
-  });
-
-  test('редагування DRAFT-оплати з картки → PATCH змінює суму', async ({ page }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    const token = await getToken(page);
-    const seed = await seedSupplierAndCash(page, token);
-    expect(seed.cashRegisterId).toBeTruthy();
-
-    const sp = await page.evaluate(
-      async ({ token, API, supplierId, cashRegisterId }) => {
-        const r = await fetch(`${API}/supplier-payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            supplierId,
-            sourceType: 'CASH_REGISTER',
-            cashRegisterId,
-            amount: 111,
-            method: 'cash',
-          }),
-        });
-        return r.json();
-      },
-      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
-    );
-    expect(sp.id).toBeTruthy();
-
-    await page.goto(`/supplier-payments/${sp.id}`);
-    await expect(page.locator(`h1:has-text("${sp.number}")`)).toBeVisible({ timeout: 15_000 });
-
-    // Клік "Редагувати" → модалка edit-mode
-    await page.locator('button:has-text("Редагувати")').first().click();
-    await expect(page.getByText('Редагувати оплату')).toBeVisible({ timeout: 10_000 });
-
-    // Змінити суму → Зберегти (PATCH). Поле суми — text+inputMode=decimal (UA-кома),
-    // не type="number"; шукаємо за міткою «Сума, ₴».
-    const amountInput = page.getByLabel('Сума, ₴');
-    await expect(amountInput).toHaveValue('111', { timeout: 10_000 });
-    await amountInput.fill('222');
-    await page.locator('button:has-text("Зберегти")').first().click();
-
-    // Перевірка через API: сума оновилась, статус лишився DRAFT
-    await expect
-      .poll(
-        async () => {
-          const updated = await page.evaluate(
-            async ({ token, API, id }) => {
-              const r = await fetch(`${API}/supplier-payments/${id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              return r.json();
-            },
-            { token, API, id: sp.id },
-          );
-          return `${updated.amount}:${updated.status}`;
-        },
-        { timeout: 10_000, message: 'PATCH має оновити суму до 222, статус DRAFT' },
-      )
-      .toBe('222:DRAFT');
-
-    await page.evaluate(
-      async ({ token, API, id }) => {
-        await fetch(`${API}/supplier-payments/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => {});
-      },
-      { token, API, id: sp.id },
-    );
-  });
-
-  test('олівець у рядку DRAFT → одразу модалка редагування (без переходу на картку)', async ({
-    page,
-  }) => {
-    await page.goto('/supplier-payments');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    const token = await getToken(page);
-    const seed = await seedSupplierAndCash(page, token);
-    expect(seed.cashRegisterId).toBeTruthy();
-
-    const sp = await page.evaluate(
-      async ({ token, API, supplierId, cashRegisterId }) => {
-        const r = await fetch(`${API}/supplier-payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            supplierId,
-            sourceType: 'CASH_REGISTER',
-            cashRegisterId,
-            amount: 111,
-            method: 'cash',
-          }),
-        });
-        return r.json();
-      },
-      { token, API, supplierId: seed.supplierId, cashRegisterId: seed.cashRegisterId },
-    );
-    expect(sp.id).toBeTruthy();
-
-    await page.goto('/supplier-payments');
-    await clearDateFilter(page);
-    const row = page.locator(`table tbody tr:has-text("${sp.number}")`).first();
-    await expect(row).toBeVisible({ timeout: 15_000 });
-
-    // Клік олівця у рядку DRAFT → модалка редагування (URL лишається на списку)
-    await row.hover();
-    await row.getByRole('button', { name: `Редагувати оплату ${sp.number}` }).click();
-    await expect(page.getByText('Редагувати оплату')).toBeVisible({ timeout: 10_000 });
-    // Не перейшли на картку — URL усе ще список (Next.js static export додає trailing slash;
-    // картка була б /supplier-payments/<uuid>).
-    await expect(page).toHaveURL(/\/supplier-payments\/?(\?.*)?$/);
-    // Поле суми передзаповнене
-    await expect(page.getByLabel('Сума, ₴')).toHaveValue('111');
-
-    await page.evaluate(
-      async ({ token, API, id }) => {
-        await fetch(`${API}/supplier-payments/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => {});
-      },
-      { token, API, id: sp.id },
-    );
-  });
-
-  test('вкладка «Графік оплат» рендерить шахматку (Протерміновані/Планові/Разом)', async ({
-    page,
-  }) => {
-    await page.goto('/supplier-payments?tab=schedule');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
-    });
-    // Вкладка активна
-    await expect(page.locator('button:has-text("Графік оплат")')).toBeVisible();
-
-    // Дочекатись поки завершиться завантаження (зникне спінер), потім
-    // або шахматка з колонками, або empty-state (якщо немає боргів).
-    const table = page.locator('th:has-text("Протерміновані")');
-    const empty = page.getByText('Немає запланованих оплат');
-    await expect(table.or(empty)).toBeVisible({ timeout: 30_000 });
-
-    if (await table.isVisible().catch(() => false)) {
-      await expect(page.locator('th:has-text("Планові")')).toBeVisible();
-      await expect(page.locator('td:has-text("Разом:")')).toBeVisible();
-    }
-
-    // Перемикання назад на «Список»
-    await page.locator('button:has-text("Список")').first().click();
-    await expect(page).toHaveURL(/tab=list/);
-    await expect(page.locator('button:has-text("Нова оплата")')).toBeVisible();
-  });
-
-  test('клік по клітинці графіка → панель зі списком документів', async ({ page }) => {
-    await page.goto('/supplier-payments?tab=schedule');
-    await expect(page.locator('h1:has-text("Оплати постачальникам")')).toBeVisible({
-      timeout: 20_000,
+    test.beforeAll(async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+      const p = await ctx.newPage();
+      await p.goto('/cash');
+      const token = await getToken(p);
+      // Видача більша за залишок відхиляється («Недостатньо готівки в касі») — касу поповнюємо.
+      registerId = await createPlainRegister(p, token, registerName, 50_000);
+      supplierId = await createCounterparty(p, token, 'SUPPLIER', supplierName);
+      await ctx.close();
     });
 
-    const table = page.locator('th:has-text("Протерміновані")');
-    const empty = page.getByText('Немає запланованих оплат');
-    await expect(table.or(empty)).toBeVisible({ timeout: 30_000 });
+    test.afterAll(async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+      const p = await ctx.newPage();
+      await p.goto('/cash');
+      const token = await getToken(p);
+      if (registerId) await deleteRegister(p, token, registerId);
+      // Контрагент із рухом по розрахунках може не видалятись — відмову ігноруємо.
+      if (supplierId) await apiCall(p, token, 'DELETE', `/counterparties/${supplierId}`);
+      await ctx.close();
+    });
 
-    // Якщо немає боргів — drill-down нічого показувати, тест не застосовний.
-    if (!(await table.isVisible().catch(() => false))) {
-      test.skip(true, 'Немає боргів для drill-down у цьому середовищі');
-      return;
-    }
+    test('«Видати» → «Оплата постачальнику»: контрагент обов’язковий, клієнтів у переліку немає', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const dialog = await openCashCard(page, registerId, 'Видати');
+      await dialog.getByLabel('Привід').selectOption('SUPPLIER_PAYMENT');
+      await dialog.getByLabel(/^Сума/).fill('100');
+      await dialog.getByRole('button', { name: 'Видати', exact: true }).click();
+      await expect(dialog.getByText('Для цього приводу вкажіть контрагента')).toBeVisible();
 
-    // Знайти першу клікабельну клітинку (role=button — лише клітинки з сумою).
-    const clickableCell = page.locator('td[role="button"]').first();
-    await expect(clickableCell).toBeVisible({ timeout: 10_000 });
-    await clickableCell.click();
+      // Пікер просить лише постачальників (SUPPLIER, BOTH).
+      const list = page.waitForRequest(
+        r => r.url().includes('/counterparties?') && r.url().includes('types=SUPPLIER'),
+      );
+      await dialog
+        .locator('label')
+        .filter({ hasText: /^Контрагент/ })
+        .locator('..')
+        .getByRole('button', { name: 'Обрати' })
+        .click();
+      const url = new URL((await list).url());
+      expect(url.searchParams.getAll('types')).toEqual(['SUPPLIER', 'BOTH']);
+    });
 
-    // Панель документів під таблицею.
-    await expect(page.getByText(/^Документи:/)).toBeVisible({ timeout: 10_000 });
-    // Або список PO (заголовок «№»), або «Немає документів».
-    const docsHeader = page.locator('th:has-text("№")');
-    const noDocs = page.getByText('Немає документів');
-    await expect(docsHeader.or(noDocs)).toBeVisible({ timeout: 10_000 });
+    // [контракт] каса створює й одразу проводить оплату постачальнику.
+    test('[контракт] оплата постачальнику з каси: борг меншає, оплата проведена', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const token = await getToken(page);
+      const before = await getBalance(page, token, supplierId);
 
-    // Закрити панель.
-    await page.getByLabel('Закрити').click();
-    await expect(page.getByText(/^Документи:/)).toBeHidden();
+      const dialog = await openCashCard(page, registerId, 'Видати');
+      await dialog.getByLabel('Привід').selectOption('SUPPLIER_PAYMENT');
+      await dialog.getByLabel(/^Сума/).fill('1200');
+      await pickInCard(page, dialog, /^Контрагент/, 'Оберіть постачальника', supplierName);
+      const created = page.waitForResponse(
+        r => r.request().method() === 'POST' && r.url().includes(`/${registerId}/operations`),
+      );
+      await dialog.getByRole('button', { name: 'Видати', exact: true }).click();
+      expect((await created).status(), 'операцію прийнято').toBe(201);
+      await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+      const row = historyRow(page, supplierName);
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await expect(row).toContainText('Оплата постачальнику');
+
+      // SUPPLIER_PAYMENT підіймає баланс постачальника на суму (оплата зменшує наш борг).
+      await expect
+        .poll(async () => (await getBalance(page, token, supplierId)) - before, {
+          timeout: 10_000,
+          message: 'оплата постачальнику має підняти його баланс на 1200',
+        })
+        .toBeCloseTo(1200, 2);
+
+      // Оплата — проведений документ, а не чернетка, яку нема де провести.
+      const payments = await apiCall<{ items: { amount: number; status: string }[] }>(
+        page,
+        token,
+        'GET',
+        `/supplier-payments?supplierId=${supplierId}&limit=10`,
+      );
+      expect(payments.body.items.map(p => `${p.status}:${Number(p.amount)}`)).toContain(
+        'CONFIRMED:1200',
+      );
+    });
+
+    // [контракт] гроші, які постачальник повернув нам: баланс рухається у зворотний бік.
+    test('[контракт] повернення від постачальника: внесення зменшує його баланс', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const token = await getToken(page);
+      const before = await getBalance(page, token, supplierId);
+
+      const dialog = await openCashCard(page, registerId, 'Внести');
+      await dialog.getByLabel('Привід').selectOption('SUPPLIER_REFUND_IN');
+      await dialog.getByLabel(/^Сума/).fill('200');
+      await pickInCard(page, dialog, /^Контрагент/, 'Оберіть постачальника', supplierName);
+      const created = page.waitForResponse(
+        r => r.request().method() === 'POST' && r.url().includes(`/${registerId}/operations`),
+      );
+      await dialog.getByRole('button', { name: 'Внести', exact: true }).click();
+      expect((await created).status(), 'операцію прийнято').toBe(201);
+      await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+      await expect(
+        page.locator('table tbody tr').filter({ hasText: 'Повернення від постачальника' }).first(),
+      ).toContainText(supplierName, { timeout: 15_000 });
+      await expect
+        .poll(async () => (await getBalance(page, token, supplierId)) - before, {
+          timeout: 10_000,
+          message: 'повернення від постачальника має зменшити його баланс на 200',
+        })
+        .toBeCloseTo(-200, 2);
+    });
+
+    // [контракт] приводи звіряються з напрямом на сервері, а не лише в картці.
+    test('[контракт] привід видачі в запиті на внесення → 400', async ({ page }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const token = await getToken(page);
+      const res = await apiCall(page, token, 'POST', `/cash-registers/${registerId}/operations`, {
+        direction: 'IN',
+        reason: 'SUPPLIER_PAYMENT',
+        amount: 10,
+        counterpartyId: supplierId,
+      });
+      expect(res.status).toBe(400);
+      const noCounterparty = await apiCall(
+        page,
+        token,
+        'POST',
+        `/cash-registers/${registerId}/operations`,
+        { direction: 'OUT', reason: 'SUPPLIER_PAYMENT', amount: 10 },
+      );
+      expect(noCounterparty.status, 'контрагент обов’язковий і на сервері').toBe(400);
+    });
   });
 });

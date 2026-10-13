@@ -17,7 +17,6 @@ vi.mock('@/lib/auth', () => ({
 
 import {
   supplierPaymentsKeys,
-  useSupplierPayments,
   useCreateSupplierPayment,
   useConfirmSupplierPayment,
   useCancelSupplierPayment,
@@ -47,54 +46,8 @@ describe('useSupplierPayments', () => {
     it('all → ["supplier-payments"]', () => {
       expect(supplierPaymentsKeys.all).toEqual(['supplier-payments']);
     });
-    it('lists() → ["supplier-payments", "list"]', () => {
-      expect(supplierPaymentsKeys.lists()).toEqual(['supplier-payments', 'list']);
-    });
-    it('list(filters) інкапсулює фільтри у ключ — різні фільтри = різні ключі', () => {
-      const k1 = supplierPaymentsKeys.list({ status: 'DRAFT' });
-      const k2 = supplierPaymentsKeys.list({ status: 'CONFIRMED' });
-      expect(JSON.stringify(k1)).not.toEqual(JSON.stringify(k2));
-    });
     it('detail(id) → ["supplier-payments", "detail", id]', () => {
       expect(supplierPaymentsKeys.detail('abc')).toEqual(['supplier-payments', 'detail', 'abc']);
-    });
-  });
-
-  describe('useSupplierPayments (list)', () => {
-    it('gated by employee (enabled=false без employee)', async () => {
-      useAuthMock.mockReturnValue({ employee: null });
-      const { wrapper } = createWrapper();
-      renderHook(() => useSupplierPayments(), { wrapper });
-      // Без employee useAuth → enabled=false → apiFetch НЕ викликається
-      await new Promise(r => setTimeout(r, 20));
-      expect(apiFetchMock).not.toHaveBeenCalled();
-    });
-
-    it('передає фільтри у URL query string', async () => {
-      useAuthMock.mockReturnValue({ employee: { id: '1' } });
-      const { wrapper } = createWrapper();
-      renderHook(
-        () =>
-          useSupplierPayments({
-            page: 2,
-            limit: 20,
-            status: 'DRAFT',
-            supplierId: '11111111-1111-4111-8111-111111111111',
-            q: 'ОПП',
-            dateFrom: '2026-07-01',
-            dateTo: '2026-07-31',
-          }),
-        { wrapper },
-      );
-      await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
-      const url = apiFetchMock.mock.calls[0]![0] as string;
-      expect(url).toContain('/supplier-payments');
-      expect(url).toContain('page=2');
-      expect(url).toContain('status=DRAFT');
-      expect(url).toContain('supplierId=11111111-1111-4111-8111-111111111111');
-      expect(url).toContain('q=%D0%9E%D0%9F%D0%9F');
-      expect(url).toContain('dateFrom=2026-07-01');
-      expect(url).toContain('dateTo=2026-07-31');
     });
   });
 

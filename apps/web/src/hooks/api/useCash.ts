@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { operations } from '@sto/shared';
+import type { operations, CashBaseDocumentValue, CashOperationFormValues } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
+import {
+  invalidatePaymentSideEffects,
+  invalidatePurchaseSideEffects,
+} from '@/lib/cache-invalidation';
 import { buildParams } from './usePaginatedList';
 
 export interface CashRegister {
@@ -38,20 +42,26 @@ export interface CashOperation {
   expenseCategoryName?: string | null;
   counterpartyId?: string | null;
   employeeId?: string | null;
+  /** Платіжний документ рядка: `Payment`, `SupplierPayment`, `PayrollPeriod`, `BankTransaction`. */
   documentType?: string | null;
   documentId?: string | null;
   notes?: string | null;
   createdAt: string;
+  // Поля касової операції з контрагентом / працівником / підставою (BR-CASH-016…022). Тип
+  // відповіді розширено тут тимчасово: згенерований `api-types` їх ще не знає.
+  counterpartyName?: string | null;
+  employeeName?: string | null;
+  /** Документ-підстава (не плутати з платіжним документом `documentType`). */
+  baseDocumentType?: CashBaseDocumentValue | null;
+  baseDocumentId?: string | null;
+  baseDocumentNumber?: string | null;
+  documentNumber?: string | null;
+  /** Стан фіскального чека оплати: QUEUED / DONE / FAILED / SKIPPED; null — чек не потрібен. */
+  fiscalStatus?: string | null;
 }
 
-export interface CreateCashOperationBody {
-  direction: 'IN' | 'OUT';
-  amount: number;
-  reason: string;
-  expenseCategoryId?: string;
-  counterpartyId?: string;
-  notes?: string;
-}
+/** Тіло POST /cash-registers/:id/operations — рівно вихід спільної `cashOperationSchema`. */
+export type CreateCashOperationBody = CashOperationFormValues;
 
 export type CashOperationsFilter = Pick<
   NonNullable<operations['CashRegistersController_operations_v1']['parameters']['query']>,
@@ -65,21 +75,8 @@ export const cashKeys = {
     [...cashKeys.all, 'operations', id, filters] as const,
 };
 
-export const CASH_REASON_LABELS: Record<string, string> = {
-  SALE_PAYMENT: 'Оплата клієнта',
-  REFUND: 'Повернення клієнту',
-  PAYROLL: 'Виплата ЗП',
-  SUPPLIER_PAYMENT: 'Оплата постачальнику',
-  EXPENSE: 'Витрата',
-  COLLECTION: 'Інкасація',
-  MANUAL_IN: 'Внесення',
-  MANUAL_OUT: 'Видача',
-};
-
-/** Приводи, доступні для ручного внесення (IN). */
-export const MANUAL_IN_REASONS = ['MANUAL_IN', 'COLLECTION'] as const;
-/** Приводи, доступні для ручної видачі (OUT). */
-export const MANUAL_OUT_REASONS = ['MANUAL_OUT', 'EXPENSE', 'SUPPLIER_PAYMENT', 'REFUND'] as const;
+// Підписи приводів живуть в одному місці — каталозі `cash:reasons.*` (uk + en); перелік
+// приводів і правила полів — у `CASH_REASON_RULES` / `manualCashReasons` з `@sto/shared`.
 
 /**
  * Базова валюта org (OrganisationSettings.currency) — код + символ.
@@ -189,17 +186,44 @@ export function useDeleteCashRegister() {
   });
 }
 
+/**
+ * Ручна касова операція. `idempotencyKey` — один на відкриття картки: повтор запиту після
+ * обриву на відповіді не створює другої оплати.
+ *
+ * Операція з контрагентом рухає не лише касу: оплата контрагента закриває рахунок і наряд,
+ * оплата постачальнику — замовлення, обидві міняють борг. Тому після успіху скидаємо й кеші
+ * оплат та закупівель, а не лише касу.
+ */
 export function useCreateCashOperation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({
       cashRegisterId,
+      idempotencyKey,
       ...body
-    }: { cashRegisterId: string } & CreateCashOperationBody) =>
+    }: { cashRegisterId: string; idempotencyKey?: string } & CreateCashOperationBody) =>
       apiFetch<CashOperation>(`/cash-registers/${cashRegisterId}/operations`, {
         method: 'POST',
+        ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cashKeys.all }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: cashKeys.all });
+      invalidatePaymentSideEffects(qc);
+      invalidatePurchaseSideEffects(qc);
+    },
+  });
+}
+
+/** Повтор фіскального чека оплати з рядка каси (POST /payments/:id/retry-fiscal). */
+export function useRetryCashFiscal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (paymentId: string) =>
+      apiFetch<unknown>(`/payments/${paymentId}/retry-fiscal`, { method: 'POST' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: cashKeys.all });
+      invalidatePaymentSideEffects(qc);
+    },
   });
 }

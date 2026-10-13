@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tansta
 import type { ApiSchema } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth';
-import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { counterpartiesKeys } from './useCounterparties';
 import { purchaseOrdersKeys } from './usePurchaseOrders';
 
@@ -17,20 +16,6 @@ export type SupplierPaymentStatusValue = SupplierPayment['status'];
 /** Джерело коштів — теж зі згенерованого, щоб не розходилось із DTO. */
 export type PaymentSourceType = SupplierPayment['sourceType'];
 
-export interface SupplierPaymentsFilter extends Record<string, unknown> {
-  page?: number;
-  limit?: number;
-  status?: string;
-  supplierId?: string;
-  purchaseOrderId?: string;
-  q?: string;
-  showDeleted?: boolean;
-  dateFrom?: string;
-  dateTo?: string;
-  sortBy?: string;
-  sortDir?: 'asc' | 'desc';
-}
-
 export interface CreateSupplierPaymentInput {
   supplierId: string;
   sourceType: PaymentSourceType;
@@ -43,13 +28,8 @@ export interface CreateSupplierPaymentInput {
   documentDate?: string;
 }
 
-/** @deprecated Use PaginatedResponse<SupplierPayment> from usePaginatedList */
-export type PaginatedSupplierPayments = PaginatedResponse<SupplierPayment>;
-
 export const supplierPaymentsKeys = {
   all: ['supplier-payments'] as const,
-  lists: () => [...supplierPaymentsKeys.all, 'list'] as const,
-  list: (filters: SupplierPaymentsFilter) => [...supplierPaymentsKeys.lists(), filters] as const,
   detail: (id: string) => [...supplierPaymentsKeys.all, 'detail', id] as const,
   schedule: (from: string, to: string) =>
     [...supplierPaymentsKeys.all, 'schedule', from, to] as const,
@@ -118,17 +98,6 @@ export function useSupplierPaymentDocuments(params: SupplierPaymentDocumentsPara
   });
 }
 
-export function useSupplierPayments(filters: SupplierPaymentsFilter = {}) {
-  return usePaginatedList<SupplierPayment>('/supplier-payments', filters, {
-    queryKey: 'supplier-payments',
-  });
-}
-
-/**
- * `withDeleted` — картка-сторінка показує й оплату, позначену на видалення (лише перегляд).
- * Окремий ключ кешу: модалка редагування чернетки вантажить без прапорця і видалену не бачить.
- * Обидва ключі починаються з `detail(id)`, тож інвалідація по ньому оновлює обидва.
- */
 export function useSupplierPayment(id: string | null, opts: { withDeleted?: boolean } = {}) {
   const withDeleted = opts.withDeleted === true;
   return useQuery({

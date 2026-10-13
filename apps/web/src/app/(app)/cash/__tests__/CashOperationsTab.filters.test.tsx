@@ -37,6 +37,10 @@ vi.mock('@/components/ui/date-picker-input', () => ({
   ),
 }));
 
+// Історія каси відкриває документ-підставу через useLinkedNav (useRouter) — тут не потрібен.
+vi.mock('@/lib/linked-nav', () => ({
+  useLinkedNav: () => ({ toWorkOrder: vi.fn(), toPurchaseOrder: vi.fn() }),
+}));
 const useCashOperationsMock = vi.fn();
 vi.mock('@/hooks/api/useCash', () => ({
   useCashRegisters: () => ({
@@ -57,9 +61,7 @@ vi.mock('@/hooks/api/useCash', () => ({
   useCashOperations: (...a: unknown[]) => useCashOperationsMock(...a),
   useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
-  CASH_REASON_LABELS: {},
-  MANUAL_IN_REASONS: ['MANUAL_IN'],
-  MANUAL_OUT_REASONS: ['MANUAL_OUT'],
+  useRetryCashFiscal: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/hooks/api/useExpenseCategories', () => ({
   useExpenseCategories: () => ({ data: [] }),

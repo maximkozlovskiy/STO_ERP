@@ -22,7 +22,6 @@ vi.mock('@/lib/auth', () => ({
 
 import { useStockDocuments } from './useStockDocuments';
 import { useStockMovements, useStockByDocument, useStockByBatch } from './useInventory';
-import { usePayments } from './usePayments';
 import { useBankTransactions } from './useBankStatements';
 import { useCashOperations, cashKeys } from './useCash';
 
@@ -63,13 +62,6 @@ describe('пошук і дати → рядок запиту', () => {
     expect(url.searchParams.get('q')).toBe('OIL-1');
     expect(url.searchParams.get('from')).toBe('2026-10-01');
     expect(url.searchParams.get('to')).toBe('2026-10-09');
-  });
-
-  it('GET /payments: q іде в запит', async () => {
-    renderHook(() => usePayments({ q: 'Петренко', page: 1, limit: 20 }), { wrapper });
-    const url = await requestedUrl();
-    expect(url.pathname).toBe('/payments');
-    expect(url.searchParams.get('q')).toBe('Петренко');
   });
 
   it('GET /bank-statements/transactions: q, dateFrom, dateTo ідуть разом зі status і direction', async () => {
@@ -119,7 +111,6 @@ describe('пошук і дати → рядок запиту', () => {
       () => useStockDocuments({ q: undefined, dateFrom: '', dateTo: undefined }),
     ],
     ['/stock-items/movements', () => useStockMovements({ q: undefined, from: '', to: '' })],
-    ['/payments', () => usePayments({ q: undefined, dateFrom: undefined, dateTo: '' })],
     [
       '/bank-statements/transactions',
       () => useBankTransactions({ q: undefined, dateFrom: undefined, dateTo: undefined }),

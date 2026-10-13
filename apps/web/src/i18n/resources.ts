@@ -8,7 +8,6 @@ import ukFormat from './locales/uk/format.json';
 import ukEmployees from './locales/uk/employees.json';
 import ukInvoices from './locales/uk/invoices.json';
 import ukPurchaseOrders from './locales/uk/purchaseOrders.json';
-import ukPayments from './locales/uk/payments.json';
 import ukSupplierPayments from './locales/uk/supplierPayments.json';
 import ukStockDocuments from './locales/uk/stockDocuments.json';
 import ukCounterparties from './locales/uk/counterparties.json';
@@ -38,7 +37,6 @@ import enFormat from './locales/en/format.json';
 import enEmployees from './locales/en/employees.json';
 import enInvoices from './locales/en/invoices.json';
 import enPurchaseOrders from './locales/en/purchaseOrders.json';
-import enPayments from './locales/en/payments.json';
 import enSupplierPayments from './locales/en/supplierPayments.json';
 import enStockDocuments from './locales/en/stockDocuments.json';
 import enCounterparties from './locales/en/counterparties.json';
@@ -70,7 +68,6 @@ export const resources = {
     employees: ukEmployees,
     invoices: ukInvoices,
     purchaseOrders: ukPurchaseOrders,
-    payments: ukPayments,
     supplierPayments: ukSupplierPayments,
     stockDocuments: ukStockDocuments,
     counterparties: ukCounterparties,
@@ -101,7 +98,6 @@ export const resources = {
     employees: enEmployees,
     invoices: enInvoices,
     purchaseOrders: enPurchaseOrders,
-    payments: enPayments,
     supplierPayments: enSupplierPayments,
     stockDocuments: enStockDocuments,
     counterparties: enCounterparties,

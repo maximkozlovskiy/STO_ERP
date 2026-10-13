@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CASH_REASON_RULES, CASH_REASON_VALUES, type CashReasonValue } from '@sto/shared';
 import {
   Plus,
   Pencil,
@@ -16,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +37,28 @@ import {
 } from '@/hooks/api/useExpenseCategories';
 
 const MAX_DEPTH = 2; // 3 рівні (0..2), як category-manager-modal
+
+/**
+ * Приводи того самого напряму, що й тип статті: оприбуткування → внесення, витрата → видача.
+ * Усі з таблиці приводів, разом із тими, що ставить лише система (зарплата з відомості).
+ */
+function reasonsForType(type: ExpenseCategoryType): CashReasonValue[] {
+  const direction = type === 'INCOME' ? 'IN' : 'OUT';
+  return CASH_REASON_VALUES.filter(r => CASH_REASON_RULES[r].direction === direction);
+}
+
+/** Хто тримає який привід: привід → стаття. Видалені статті привід не тримають. */
+function collectReasonOwners(tree: ExpenseCategory[]): Map<CashReasonValue, ExpenseCategory> {
+  const owners = new Map<CashReasonValue, ExpenseCategory>();
+  const walk = (nodes: ExpenseCategory[]) => {
+    for (const n of nodes) {
+      if (n.defaultReason && !n.deletedAt) owners.set(n.defaultReason, n);
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(tree);
+  return owners;
+}
 
 function CategoryNode({
   node,
@@ -89,6 +113,16 @@ function CategoryNode({
         >
           {node.name}
         </span>
+        {node.defaultReason && !isDeleted && (
+          <Badge
+            variant="info"
+            tooltip={t('expenses.defaultReasonBadge', {
+              reason: t(`reasons.${node.defaultReason}`, { defaultValue: node.defaultReason }),
+            })}
+          >
+            {t(`reasons.${node.defaultReason}`, { defaultValue: node.defaultReason })}
+          </Badge>
+        )}
         {isDeleted && <Badge variant="secondary">{t('expenses.deletedBadge')}</Badge>}
         {canManage && (
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 shrink-0">
@@ -196,9 +230,13 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
   const [newType, setNewType] = useState<ExpenseCategoryType>('EXPENSE');
   const [parent, setParent] = useState<ExpenseCategory | null>(null);
   const [name, setName] = useState('');
+  const [defaultReason, setDefaultReason] = useState<CashReasonValue | ''>('');
   const [error, setError] = useState('');
 
-  const roots = categories ?? [];
+  const roots = useMemo(() => categories ?? [], [categories]);
+  const reasonOwners = useMemo(() => collectReasonOwners(roots), [roots]);
+  // Тип статті в картці: у редагуванні — її власний, у створенні — тип розділу або батька.
+  const modalType = editing?.type ?? newType;
   const expenseRoots = roots.filter(c => c.type === 'EXPENSE');
   const incomeRoots = roots.filter(c => c.type === 'INCOME');
 
@@ -207,6 +245,7 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
     setParent(null);
     setNewType(type);
     setName('');
+    setDefaultReason('');
     setError('');
     setModal(true);
   };
@@ -215,6 +254,7 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
     setParent(p);
     setNewType(p.type); // дитина успадковує тип
     setName('');
+    setDefaultReason('');
     setError('');
     setModal(true);
   };
@@ -222,6 +262,7 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
     setEditing(c);
     setParent(null);
     setName(c.name);
+    setDefaultReason(c.defaultReason ?? '');
     setError('');
     setModal(true);
   };
@@ -233,12 +274,19 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
     }
     try {
       if (editing) {
-        await updateMut.mutateAsync({ id: editing.id, name: name.trim() });
+        // Привід шлемо лише коли його змінили; `null` знімає привід зі статті.
+        const reasonChanged = (editing.defaultReason ?? '') !== defaultReason;
+        await updateMut.mutateAsync({
+          id: editing.id,
+          name: name.trim(),
+          ...(reasonChanged ? { defaultReason: defaultReason || null } : {}),
+        });
       } else {
         await createMut.mutateAsync({
           name: name.trim(),
           type: newType,
           parentId: parent?.id,
+          ...(defaultReason ? { defaultReason } : {}),
         });
       }
       setModal(false);
@@ -412,6 +460,27 @@ export default function ExpenseCategoriesTab({ canManage = false }: { canManage?
             autoFocus
             className="h-8 text-[13px]"
           />
+          <Select
+            label={t('expenses.fieldDefaultReason')}
+            value={defaultReason}
+            onChange={e => setDefaultReason(e.target.value as CashReasonValue | '')}
+            hint={t('expenses.defaultReasonHint')}
+          >
+            <option value="">{t('expenses.defaultReasonNone')}</option>
+            {reasonsForType(modalType).map(r => {
+              const label = t(`reasons.${r}`, { defaultValue: r });
+              const owner = reasonOwners.get(r);
+              // Один привід — одна стаття: зайнятий іншою статтею обрати не можна.
+              const taken = !!owner && owner.id !== editing?.id;
+              return (
+                <option key={r} value={r} disabled={taken}>
+                  {taken
+                    ? t('expenses.defaultReasonTaken', { reason: label, name: owner.name })
+                    : label}
+                </option>
+              );
+            })}
+          </Select>
         </div>
       </Modal>
       <ConfirmDialog {...dialogProps} />

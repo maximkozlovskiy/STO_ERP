@@ -46,11 +46,6 @@ test.describe('Пошук на сторінках документів', () => {
     await expectSearchReachesApi(page, /Пошук за товаром або артикулом/, '/stock-items/movements?');
   });
 
-  test('Оплати клієнтів: пошук за клієнтом, рахунком, нарядом іде в запит', async ({ page }) => {
-    await page.goto('/payments');
-    await expectSearchReachesApi(page, /Пошук за клієнтом, рахунком, нарядом/, '/payments?');
-  });
-
   test('Банківські платежі: пошук є, дати за замовчуванням порожні — видно всі платежі', async ({
     page,
   }) => {

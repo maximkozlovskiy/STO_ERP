@@ -1,302 +1,159 @@
-import { test, expect } from '@playwright/test';
-import { clearDateFilter } from './fixtures';
+import { test, expect, type Page } from '@playwright/test';
+import {
+  API,
+  apiCall,
+  cardField,
+  createCounterparty,
+  createPlainRegister,
+  deleteRegister,
+  getBalance,
+  getToken,
+  historyRow,
+  openCashCard,
+  pickInCard,
+} from './cash-desk.helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
 
-const API = 'http://localhost:3000/api/v1';
-
 /**
- * Client Payments — UI money-flow клієнтських платежів (T17 pre-prod).
+ * Оплати клієнтів — money-flow після рішення власника 2026-10-14: окремої сторінки
+ * «Оплати клієнтів» немає. Оплату реєструють:
+ *   - у рахунку — /invoices → бокова панель «Оплатити» → POST /payments (як і раніше);
+ *   - у касі — /cash → «Внести» → привід «Оплата контрагента» з обов'язковим контрагентом
+ *     (POST /cash-registers/:id/operations; каса сама створює оплату клієнта).
+ * Стара адреса /payments веде в касу.
  *
- * Backend вже покрито unit/contract-тестами. Цей spec покриває UI-рівень:
- *   - /payments — read-only список (append-only), фіскальні бейджі, фільтри;
- *   - /invoices → DetailPanel «Оплатити» → модалка «Реєстрація оплати» → POST /payments
- *     (реальний money-flow: рахунок SENT → оплата → PAID);
- *   - /payments/[id] — картка платежу + секція фіскального чека;
- *   - /cash — касова зміна (open/close), офлайн-first guard.
+ * ── Сценарії «за контрактом» ──
+ * Тести з міткою [контракт] спираються на нову поведінку бекенда (BR-CASH-016…022): каса
+ * створює оплату клієнта, рядок історії несе контрагента й фіскальний стан. До злиття з
+ * бекендом вони можуть бути червоними — це очікувано.
  *
- * ── Свідомо НЕ покрито (потребує зовнішнього гейтвею, недоступного E2E) ──
- *   - QR-оплата (monobank/LiqPay) повний roundtrip: клієнт сканує QR і платить на
- *     сторінці шлюзу — інтеракція поза межами термінала. Покрито ДЕТЕРМІНОВАНУ частину:
+ * ── Свідомо НЕ покрито (потребує зовнішнього шлюзу) ──
+ *   - QR-оплата (monobank/LiqPay) повний roundtrip — покрито детерміновану частину:
  *     перемикання методу на monobank_qr → футер модалки міняється на «Показати QR».
- *   - Фіскальний чек до статусу DONE: Checkbox (ПРРО) — зовнішній сервіс. Cash-платіж
- *     ВХОДИТЬ у фіскальну чергу зі статусом QUEUED (перевіряємо на response POST /payments —
- *     офлайн-first: черга є, повтори до 24 год), але без налаштованого Checkbox воркер одразу
- *     переводить його у SKIPPED («Пропущено») — це й перевіряємо в UI як settled-стан.
- *     DONE недосяжний без реального Checkbox.
- *   - Успішне відкриття касової зміни: /cash-shifts/open робить Checkbox-виклик і без
- *     налаштованих кредів віддає «Фіскалізацію не налаштовано». Це і перевіряємо як
- *     детерміновану офлайн-first поведінку (не обхід — реальний guard).
+ *   - Фіскальний чек до DONE: без налаштованого Checkbox воркер переводить QUEUED у SKIPPED.
+ *   - Успішне відкриття касової зміни: без ПРРО — «Фіскалізацію не налаштовано».
  *
- * Payments є APPEND-ONLY (немає DELETE /payments — фінансовий audit trail), тож
- * створені платежі лишаються в БД навмисно (як і supplier-payments CONFIRMED-записи).
- * Рахунки-чернетки чистимо; оплачені лишаються (PAID видалити не можна — by design).
+ * Оплати й касові операції — append-only (фінансовий слід), тож лишаються в БД навмисно.
+ * Каси й контрагентів, створених тестом, прибираємо.
  */
 
-async function getToken(page: import('@playwright/test').Page): Promise<string> {
-  const token = await page.evaluate(
-    () =>
-      sessionStorage.getItem('sto_access_token') ?? localStorage.getItem('sto_e2e_access_token'),
+/** Клієнт для оплати рахунку. */
+async function getClientId(page: Page, token: string): Promise<string> {
+  const res = await apiCall<{ items?: { id: string }[] }>(
+    page,
+    token,
+    'GET',
+    '/counterparties?types=CLIENT,BOTH&limit=1',
   );
-  expect(token, 'access token має бути у storage').toBeTruthy();
-  return token as string;
-}
-
-/**
- * Гарантує наявність фіскальної каси й повертає її id.
- * /cash → вкладка «Операції» показує блок зміни (open/close) ЛИШЕ для обраної ФІСКАЛЬНОЇ каси
- * (CashOperationsTab: `selected?.isFiscal`). Автовибір бере registers[0], який може бути
- * нефіскальним — тож тест мусить створити детерміновану фіскальну касу й обрати саме її.
- */
-async function ensureFiscalRegister(
-  page: import('@playwright/test').Page,
-  token: string,
-): Promise<{ id: string; name: string; created: boolean }> {
-  return page.evaluate(
-    async ({ token, API }) => {
-      const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-      // Спершу шукаємо ГОТОВУ фіскальну касу у списку, який САМЕ рендерить UI
-      // (useCashRegisters → GET /cash-registers → .items). Так гарантуємо, що обрана каса
-      // присутня у <select> (список у dev-БД може бути «роздутий» тестовими записами й
-      // capped, тож щойно створена каса могла б не потрапити у видиму сторінку).
-      const listRes = await fetch(`${API}/cash-registers`, { headers: H });
-      const listData = await listRes.json();
-      const items: { id: string; name: string; isFiscal: boolean }[] = listData.items ?? listData;
-      const existing = items.find(r => r.isFiscal);
-      if (existing) return { id: existing.id, name: existing.name, created: false };
-
-      // Немає жодної фіскальної — створюємо детерміновану.
-      const [cData, bData] = await Promise.all([
-        fetch(`${API}/currencies`, { headers: H }).then(r => r.json()),
-        fetch(`${API}/branches`, { headers: H }).then(r => r.json()),
-      ]);
-      const currency = (cData.items ?? cData)?.[0];
-      const branch = (bData.items ?? bData)?.[0];
-      const name = `E2E Фіскальна ${Date.now()}`;
-      const r = await fetch(`${API}/cash-registers`, {
-        method: 'POST',
-        headers: H,
-        body: JSON.stringify({
-          name,
-          currencyId: currency.id,
-          branchId: branch.id,
-          isFiscal: true,
-        }),
-      });
-      const reg = await r.json();
-      return { id: reg.id, name, created: true };
-    },
-    { token, API },
-  );
-}
-
-/** Обирає касу за id у нативному <Select> вкладки «Операції» та чекає рендер блока зміни. */
-async function selectRegister(page: import('@playwright/test').Page, id: string) {
-  const select = page.locator('select').first();
-  await expect(select).toBeVisible({ timeout: 15_000 });
-  await select.selectOption(id);
-}
-
-/** Клієнт для оплати. */
-async function getClientId(page: import('@playwright/test').Page, token: string): Promise<string> {
-  const id = await page.evaluate(
-    async ({ token, API }) => {
-      const r = await fetch(`${API}/counterparties?types=CLIENT,BOTH&limit=1`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const d = await r.json();
-      return (d.items ?? d)?.[0]?.id ?? null;
-    },
-    { token, API },
-  );
+  const id = res.body.items?.[0]?.id ?? null;
   expect(id, 'seed має містити клієнта (CLIENT/BOTH)').toBeTruthy();
   return id as string;
 }
 
-/** Створює рахунок і транзитить у SENT (готовий до оплати). Повертає {id, number, amount}. */
+/** Створює рахунок і транзитить у SENT (готовий до оплати). */
 async function createSentInvoice(
-  page: import('@playwright/test').Page,
+  page: Page,
   token: string,
   counterpartyId: string,
   amount: number,
-): Promise<{ id: string; number: string; amount: number }> {
-  return page.evaluate(
-    async ({ token, API, counterpartyId, amount }) => {
-      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-      const cr = await fetch(`${API}/invoices`, {
-        method: 'POST',
-        headers: auth,
-        body: JSON.stringify({ counterpartyId, amount }),
-      });
-      const inv = await cr.json();
-      await fetch(`${API}/invoices/${inv.id}/transition`, {
-        method: 'POST',
-        headers: auth,
-        body: JSON.stringify({ status: 'SENT' }),
-      });
-      return { id: inv.id, number: inv.number, amount };
-    },
-    { token, API, counterpartyId, amount },
-  );
+): Promise<{ id: string; number: string }> {
+  const created = await apiCall<{ id: string; number: string }>(page, token, 'POST', '/invoices', {
+    counterpartyId,
+    amount,
+  });
+  expect(created.status, `створення рахунку: ${JSON.stringify(created.body)}`).toBe(201);
+  await apiCall(page, token, 'POST', `/invoices/${created.body.id}/transition`, {
+    status: 'SENT',
+  });
+  return { id: created.body.id, number: created.body.number };
 }
 
-async function deleteInvoiceIfDraft(
-  page: import('@playwright/test').Page,
-  token: string,
-  id: string,
-) {
-  await page.evaluate(
-    async ({ token, API, id }) => {
-      await fetch(`${API}/invoices/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-    },
-    { token, API, id },
+async function getInvoice(page: Page, token: string, id: string) {
+  const res = await apiCall<{ status: string; paidAmount: number }>(
+    page,
+    token,
+    'GET',
+    `/invoices/${id}`,
   );
+  return res.body;
 }
 
-async function getInvoice(page: import('@playwright/test').Page, token: string, id: string) {
-  return page.evaluate(
-    async ({ token, API, id }) => {
-      const r = await fetch(`${API}/invoices/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return r.json();
-    },
-    { token, API, id },
-  );
+/** Відкриває модалку оплати рахунку з бокової панелі списку. */
+async function openInvoicePayModal(page: Page, invoiceNumber: string) {
+  await page.goto('/invoices');
+  await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+  // Свіжий рахунок має сьогоднішню дату — типовий фільтр «сьогодні» його показує.
+  await page.locator('input[placeholder*="Пошук"]').first().fill(invoiceNumber);
+  const row = page.locator(`table tbody tr:has-text("${invoiceNumber}")`).first();
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  // «Оплатити» живе у боковій панелі; панель показує клік по рядку.
+  await row.getByText(invoiceNumber).first().click();
+  const payBtn = page.getByRole('button', { name: 'Оплатити' }).first();
+  await expect(payBtn).toBeVisible({ timeout: 15_000 });
+  await payBtn.click();
+  const modal = page
+    .locator('[role="dialog"]')
+    .filter({ hasText: `Реєстрація оплати по рахунку ${invoiceNumber}` })
+    .first();
+  await expect(modal).toBeVisible({ timeout: 10_000 });
+  return modal;
 }
 
 test.describe('Оплати клієнтів (money-flow)', () => {
-  // ─── Список ────────────────────────────────────────────────────────────────
-  test('сторінка /payments рендериться: заголовок + таблиця/empty + фіскальна колонка', async ({
-    page,
-  }) => {
+  // ─── Сторінки більше немає ──────────────────────────────────────────────────
+  test('стара адреса /payments веде в касу', async ({ page }) => {
     await page.goto('/payments');
-    await expect(page.locator('h1:has-text("Оплати клієнтів")')).toBeVisible({ timeout: 20_000 });
-
-    // Або таблиця з колонкою «Чек (ПРРО)», або коректний empty-state.
-    const table = page.locator('table');
-    const empty = page.getByText('Платежів не знайдено');
-    await expect(table.or(empty).first()).toBeVisible({ timeout: 20_000 });
-
-    if (await table.isVisible().catch(() => false)) {
-      // Колонки money-flow таблиці.
-      await expect(page.locator('th:has-text("Контрагент")')).toBeVisible();
-      await expect(page.locator('th:has-text("Сума")')).toBeVisible();
-      await expect(page.locator('th:has-text("Чек (ПРРО)")')).toBeVisible();
-    }
+    await expect(page).toHaveURL(/\/cash\/?$/, { timeout: 20_000 });
+    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
   });
 
-  test('фільтри «Метод» і «Фіскальний статус» присутні з коректними опціями', async ({ page }) => {
-    await page.goto('/payments');
-    await expect(page.locator('h1:has-text("Оплати клієнтів")')).toBeVisible({ timeout: 20_000 });
-
-    // Фільтр фіскального статусу має 4 enum-опції + «Без фіскалізації».
-    const fiscalSelect = page.getByLabel('Фіскальний статус');
-    await expect(fiscalSelect).toBeVisible({ timeout: 10_000 });
-    for (const label of ['У черзі', 'Пробито', 'Помилка', 'Пропущено', 'Без фіскалізації']) {
-      await expect(fiscalSelect.locator(`option:has-text("${label}")`)).toHaveCount(1);
-    }
-    await expect(page.getByLabel('Метод')).toBeVisible();
+  test('у меню немає пунктів оплат, каса на місці', async ({ page }) => {
+    await page.goto('/cash');
+    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('a[href^="/cash"]').first()).toBeAttached();
+    await expect(page.locator('a[href^="/payments"]')).toHaveCount(0);
+    await expect(page.locator('a[href^="/supplier-payments"]')).toHaveCount(0);
   });
 
-  // ─── ГОЛОВНИЙ money-flow: оплата рахунку через UI ───────────────────────────
-  test('оплата рахунку через UI: SENT → DetailPanel «Оплатити» → cash → рахунок PAID', async ({
-    page,
-  }) => {
+  // ─── Оплата рахунку через UI ────────────────────────────────────────────────
+  test('оплата рахунку через UI: SENT → «Оплатити» → cash → рахунок PAID', async ({ page }) => {
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
-    const clientId = await getClientId(page, token);
-    const inv = await createSentInvoice(page, token, clientId, 100);
-    expect(inv.id).toBeTruthy();
+    const inv = await createSentInvoice(page, token, await getClientId(page, token), 100);
 
-    // Відкрити список, знайти рахунок (invoices за замовч. фільтрує по kyivToday → чистимо дату
-    // тільки якщо не знайшли одразу; свіжий рахунок має сьогоднішню дату, тож має бути видимим).
-    await page.goto('/invoices');
-    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-    const searchInput = page.locator('input[placeholder*="Пошук"]').first();
-    await searchInput.fill(inv.number);
-    let row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
-    if (!(await row.isVisible({ timeout: 5_000 }).catch(() => false))) {
-      await clearDateFilter(page);
-      await searchInput.fill(inv.number);
-      row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
-    }
-    await expect(row).toBeVisible({ timeout: 15_000 });
-
-    // «Оплатити» живе у боковій панелі; панель показує клік по рядку (стандарт списків
-    // 2026-10-13: клік → панель, олівець → картка).
-    await row.getByText(inv.number).first().click();
-
-    // DetailPanel відкрився (заголовок = номер рахунку). SENT → transition PAID → кнопка «Оплатити».
-    const payBtn = page.getByRole('button', { name: 'Оплатити' }).first();
-    await expect(payBtn).toBeVisible({ timeout: 15_000 });
-    await payBtn.click();
-
-    // Модалка реєстрації оплати.
-    const modal = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: `Реєстрація оплати по рахунку ${inv.number}` })
-      .first();
-    await expect(modal).toBeVisible({ timeout: 10_000 });
+    const modal = await openInvoicePayModal(page, inv.number);
     await expect(modal.getByText('Залишок до сплати:')).toBeVisible();
-
-    // Метод «Готівка» (cash → requiresFiscal). Порожня сума = оплата залишку повністю.
+    // Метод «Готівка». Порожня сума = оплата залишку повністю.
     await modal.getByLabel('Метод оплати').selectOption('cash');
     await modal.getByRole('button', { name: 'Підтвердити оплату' }).click();
-    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    await expect(modal).toBeHidden({ timeout: 10_000 });
 
-    // Реальний money-flow: POST /payments провів рахунок у PAID (повна оплата).
     await expect
       .poll(async () => (await getInvoice(page, token, inv.id)).status, {
         timeout: 10_000,
         message: 'повна оплата має провести рахунок у PAID',
       })
       .toBe('PAID');
-
-    const paid = await getInvoice(page, token, inv.id);
-    expect(paid.paidAmount, 'paidAmount = сума рахунку').toBeCloseTo(100, 2);
-    // PAID рахунок видалити не можна (audit trail) — лишаємо навмисно.
+    expect((await getInvoice(page, token, inv.id)).paidAmount).toBeCloseTo(100, 2);
   });
 
-  test('часткова оплата через UI → рахунок PARTIALLY_PAID, «Оплатити» лишається доступним', async ({
+  test('часткова оплата через UI → PARTIALLY_PAID, «Оплатити» лишається доступним', async ({
     page,
   }) => {
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
-    const clientId = await getClientId(page, token);
-    const inv = await createSentInvoice(page, token, clientId, 200);
+    const inv = await createSentInvoice(page, token, await getClientId(page, token), 200);
 
-    await page.goto('/invoices');
-    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-    const searchInput = page.locator('input[placeholder*="Пошук"]').first();
-    await searchInput.fill(inv.number);
-    const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
-    await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.getByText(inv.number).first().click();
-
-    const payBtn = page.getByRole('button', { name: 'Оплатити' }).first();
-    await expect(payBtn).toBeVisible({ timeout: 15_000 });
-    await payBtn.click();
-
-    const modal = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: `Реєстрація оплати по рахунку ${inv.number}` })
-      .first();
-    await expect(modal).toBeVisible({ timeout: 10_000 });
-
-    // Часткова оплата: 50 з 200.
+    const modal = await openInvoicePayModal(page, inv.number);
     await modal.getByLabel('Метод оплати').selectOption('cash');
     await modal.getByLabel('Сума, ₴').fill('50');
     await modal.getByRole('button', { name: 'Підтвердити оплату' }).click();
-    await expect(modal).not.toBeVisible({ timeout: 10_000 });
+    await expect(modal).toBeHidden({ timeout: 10_000 });
 
-    // Backend CAS: часткова оплата → PARTIALLY_PAID (paid < amount).
     await expect
       .poll(
         async () => {
@@ -306,243 +163,290 @@ test.describe('Оплати клієнтів (money-flow)', () => {
         { timeout: 10_000, message: 'часткова оплата → PARTIALLY_PAID, paid=50' },
       )
       .toBe('PARTIALLY_PAID:50');
-
-    // DetailPanel лишається на PARTIALLY_PAID → кнопка «Оплатити» доступна для дозакриття.
     await expect(page.getByRole('button', { name: 'Оплатити' }).first()).toBeVisible({
       timeout: 10_000,
     });
-    // PARTIALLY_PAID рахунок видалити не можна — лишаємо.
   });
 
-  // ─── QR-гілка (детермінована частина) ───────────────────────────────────────
   test('вибір методу monobank_qr → футер модалки міняється на «Показати QR»', async ({ page }) => {
     await page.goto('/invoices');
     await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
     const token = await getToken(page);
-    const clientId = await getClientId(page, token);
-
-    // Переконатись що метод monobank_qr узагалі активний у цій орг — інакше option немає.
-    const hasQr = await page.evaluate(
-      async ({ token, API }) => {
-        const r = await fetch(`${API}/payment-methods`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const d: Array<{ code: string; isActive: boolean }> = await r.json();
-        return d.some(m => m.code === 'monobank_qr' && m.isActive);
-      },
-      { token, API },
+    const methods = await apiCall<Array<{ code: string; isActive: boolean }>>(
+      page,
+      token,
+      'GET',
+      '/payment-methods',
     );
+    const hasQr = methods.body.some(m => m.code === 'monobank_qr' && m.isActive);
     test.skip(!hasQr, 'Метод monobank_qr не активований у цій організації — QR-гілка недоступна');
 
-    const inv = await createSentInvoice(page, token, clientId, 100);
-    await page.goto('/invoices');
-    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
-    await page.locator('input[placeholder*="Пошук"]').first().fill(inv.number);
-    const row = page.locator(`table tbody tr:has-text("${inv.number}")`).first();
-    await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.getByText(inv.number).first().click();
-    await page.getByRole('button', { name: 'Оплатити' }).first().click();
-
-    const modal = page
-      .locator('[role="dialog"]')
-      .filter({ hasText: `Реєстрація оплати по рахунку ${inv.number}` })
-      .first();
-    await expect(modal).toBeVisible({ timeout: 10_000 });
-
-    // Дефолт — «Підтвердити оплату». Перемикання на QR → футер стає «Показати QR».
+    const inv = await createSentInvoice(page, token, await getClientId(page, token), 100);
+    const modal = await openInvoicePayModal(page, inv.number);
     await expect(modal.getByRole('button', { name: 'Підтвердити оплату' })).toBeVisible();
     await modal.getByLabel('Метод оплати').selectOption('monobank_qr');
     await expect(modal.getByRole('button', { name: 'Показати QR' })).toBeVisible({
       timeout: 5_000,
     });
     await expect(modal.getByRole('button', { name: 'Підтвердити оплату' })).toHaveCount(0);
-
-    // Далі — реальний QR-шлюз (клієнт сканує й платить на стороні монобанку): поза E2E.
     await page.keyboard.press('Escape');
-    await deleteInvoiceIfDraft(page, token, inv.id); // рахунок лишився SENT/DRAFT → якщо DRAFT приберемо
   });
 
-  // ─── Фіскальний бейдж у списку ──────────────────────────────────────────────
-  test('cash-платіж входить у фіскальну чергу (QUEUED) і у /payments показує бейдж settled-стану', async ({
-    page,
-  }) => {
-    await page.goto('/payments');
-    await expect(page.locator('h1:has-text("Оплати клієнтів")')).toBeVisible({ timeout: 20_000 });
-    const token = await getToken(page);
-    const clientId = await getClientId(page, token);
-    const inv = await createSentInvoice(page, token, clientId, 100);
+  // ─── Оплата контрагента в касі ──────────────────────────────────────────────
+  test.describe('каса: «Оплата контрагента»', () => {
+    const stamp = Date.now();
+    const registerName = `E2E Каса оплат ${stamp}`;
+    const clientName = `E2E Клієнт каси ${stamp}`;
+    let registerId = '';
+    let clientId = '';
 
-    // Оплата cash напряму через API (money-flow вже покрито UI-тестом вище; тут фокус на бейджі).
-    const pay = await page.evaluate(
-      async ({ token, API, clientId, invId }) => {
-        const r = await fetch(`${API}/payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            counterpartyId: clientId,
-            invoiceId: invId,
-            amount: 100,
-            method: 'cash',
-          }),
-        });
-        return r.json();
-      },
-      { token, API, clientId, invId: inv.id },
-    );
-    // Офлайн-first інваріант: cash (requiresFiscal) ВХОДИТЬ у фіскальну чергу зі статусом QUEUED.
-    // Це assert на самому response POST /payments — гонки з воркером тут немає.
-    expect(pay.fiscalStatus, 'cash-платіж ставиться у фіскальну чергу').toBe('QUEUED');
-
-    // Воркер без налаштованого Checkbox переводить QUEUED → SKIPPED («Пропущено»). Це settled-стан
-    // офлайн-first середовища. Дочекатись його через API (детерміновано), потім перевірити бейдж у UI.
-    await expect
-      .poll(
-        async () => {
-          const p = await page.evaluate(
-            async ({ token, API, id }) => {
-              const r = await fetch(`${API}/payments/${id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              return (await r.json()).fiscalStatus;
-            },
-            { token, API, id: pay.id },
-          );
-          return p;
-        },
-        { timeout: 15_000, message: 'без Checkbox воркер має перевести чек у SKIPPED' },
-      )
-      .toBe('SKIPPED');
-
-    // Фільтр «Пропущено» → у таблиці рендериться бейдж «Пропущено».
-    await page.goto('/payments');
-    await expect(page.locator('h1:has-text("Оплати клієнтів")')).toBeVisible({ timeout: 20_000 });
-    await page.getByLabel('Фіскальний статус').selectOption('SKIPPED');
-    await expect(page.locator('table')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('td:has-text("Пропущено")').first()).toBeVisible({ timeout: 15_000 });
-    // PAID рахунок і платіж лишаються (audit trail).
-  });
-
-  // ─── Картка платежу ─────────────────────────────────────────────────────────
-  test('картка /payments/[id] рендерить реквізити + секцію фіскального чека', async ({ page }) => {
-    await page.goto('/payments');
-    await expect(page.locator('h1:has-text("Оплати клієнтів")')).toBeVisible({ timeout: 20_000 });
-    const token = await getToken(page);
-    const clientId = await getClientId(page, token);
-    const inv = await createSentInvoice(page, token, clientId, 100);
-
-    const pay = await page.evaluate(
-      async ({ token, API, clientId, invId }) => {
-        const r = await fetch(`${API}/payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            counterpartyId: clientId,
-            invoiceId: invId,
-            amount: 100,
-            method: 'cash',
-            notes: 'E2E платіж-картка',
-          }),
-        });
-        return r.json();
-      },
-      { token, API, clientId, invId: inv.id },
-    );
-    expect(pay.id).toBeTruthy();
-
-    // Дочекатись settled-стану чека (SKIPPED) через API — QUEUED транзитний.
-    await expect
-      .poll(
-        async () =>
-          page.evaluate(
-            async ({ token, API, id }) => {
-              const r = await fetch(`${API}/payments/${id}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              return (await r.json()).fiscalStatus;
-            },
-            { token, API, id: pay.id },
-          ),
-        { timeout: 15_000, message: 'чек має осісти у SKIPPED' },
-      )
-      .toBe('SKIPPED');
-
-    await page.goto(`/payments/${pay.id}`);
-    // Заголовок картки, реквізити, секція фіскального чека.
-    await expect(page.getByText('До списку оплат')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Метод оплати').first()).toBeVisible();
-    await expect(page.getByText('E2E платіж-картка')).toBeVisible();
-    await expect(page.getByText('Фіскальний чек (ПРРО)')).toBeVisible();
-    // Settled-бейдж «Пропущено» у секції чека (офлайн-first без Checkbox).
-    await expect(page.getByText('Пропущено').first()).toBeVisible({ timeout: 10_000 });
-  });
-
-  // ─── Каса (offline-first guard) ─────────────────────────────────────────────
-  // /cash переписано на таб-обгортку (Операції/Каси/Статті витрат). Блок зміни
-  // (open/close, «Відкрити зміну») тепер у вкладці «Операції» і показується ЛИШЕ для
-  // обраної ФІСКАЛЬНОЇ каси. Тож створюємо детерміновану фіскальну касу і обираємо її.
-  let fiscalRegisterId = '';
-  let fiscalRegisterCreated = false;
-
-  test.beforeAll(async ({ browser }) => {
-    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
-    const p = await ctx.newPage();
-    await p.goto('/cash');
-    const token = await getToken(p);
-    const reg = await ensureFiscalRegister(p, token);
-    fiscalRegisterId = reg.id;
-    fiscalRegisterCreated = reg.created;
-    await ctx.close();
-  });
-
-  test.afterAll(async ({ browser }) => {
-    // Прибираємо лише те, що самі створили (наявну seed/leftover касу не чіпаємо).
-    if (!fiscalRegisterId || !fiscalRegisterCreated) return;
-    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
-    const p = await ctx.newPage();
-    await p.goto('/cash');
-    const token = await getToken(p);
-    await p
-      .evaluate(
-        async ({ token, API, id }) => {
-          await fetch(`${API}/cash-registers/${id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          }).catch(() => {});
-        },
-        { token, API, id: fiscalRegisterId },
-      )
-      .catch(() => {});
-    await ctx.close();
-  });
-
-  test('/cash «Операції»: фіскальна каса без зміни → «Зміну закрито» + «Відкрити зміну»', async ({
-    page,
-  }) => {
-    await page.goto('/cash');
-    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
-    // Вкладка «Операції» активна за замовчуванням. Обираємо фіскальну касу.
-    await selectRegister(page, fiscalRegisterId);
-
-    // Нова каса → немає відкритої зміни → стан «Зміну закрито».
-    await expect(page.getByText('Зміну закрито')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: /Відкрити зміну/ })).toBeVisible();
-  });
-
-  test('«Відкрити зміну» без налаштованого ПРРО → детермінований guard-error', async ({ page }) => {
-    await page.goto('/cash');
-    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
-    await selectRegister(page, fiscalRegisterId);
-
-    const openBtn = page.getByRole('button', { name: /Відкрити зміну/ });
-    await expect(openBtn).toBeEnabled({ timeout: 15_000 });
-    await openBtn.click();
-
-    // Офлайн-first: без налаштованого Checkbox відкриття зміни неможливе — це РЕАЛЬНИЙ
-    // бізнес-guard, а не обхід. Помилка має з'явитись (inline-банер або toast).
-    await expect(page.getByText(/Фіскалізацію не налаштовано/).first()).toBeVisible({
-      timeout: 15_000,
+    test.beforeAll(async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+      const p = await ctx.newPage();
+      await p.goto('/cash');
+      const token = await getToken(p);
+      registerId = await createPlainRegister(p, token, registerName);
+      clientId = await createCounterparty(p, token, 'CLIENT', clientName);
+      await ctx.close();
     });
-    // Зміна лишається закритою (guard спрацював, стан не змінився).
-    await expect(page.getByText('Зміну закрито')).toBeVisible();
+
+    test.afterAll(async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+      const p = await ctx.newPage();
+      await p.goto('/cash');
+      const token = await getToken(p);
+      if (registerId) await deleteRegister(p, token, registerId);
+      // Контрагент з оплатою може не видалятись (є рух по розрахунках) — відмову ігноруємо.
+      if (clientId) await apiCall(p, token, 'DELETE', `/counterparties/${clientId}`);
+      await ctx.close();
+    });
+
+    test('привід показує поле контрагента; без контрагента запит не йде', async ({ page }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const dialog = await openCashCard(page, registerId, 'Внести');
+
+      // Загальне внесення контрагента не має.
+      await expect(dialog.locator('label').filter({ hasText: /^Контрагент/ })).toHaveCount(0);
+
+      await dialog.getByLabel('Привід').selectOption('SALE_PAYMENT');
+      await expect(cardField(dialog, /^Контрагент/)).toBeVisible();
+      // Підстава з'являється лише після вибору контрагента.
+      await expect(dialog.locator('label').filter({ hasText: /підстава/ })).toHaveCount(0);
+
+      let posted = false;
+      page.on('request', r => {
+        if (r.method() === 'POST' && r.url().includes('/operations')) posted = true;
+      });
+      await dialog.getByLabel(/^Сума/).fill('150');
+      await dialog.getByRole('button', { name: 'Внести', exact: true }).click();
+      await expect(dialog.getByText('Для цього приводу вкажіть контрагента')).toBeVisible();
+      expect(posted, 'без контрагента запит не має піти').toBe(false);
+
+      // Escape у пікері закриває лише пікер: картка з введеною сумою лишається (у jsdom не
+      // відтворюється — слухачі Escape обох модалок стоять на document).
+      await cardField(dialog, /^Контрагент/)
+        .getByRole('button', { name: 'Обрати' })
+        .click();
+      const picker = page.getByRole('dialog', { name: 'Оберіть клієнта', exact: true });
+      await expect(picker).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press('Escape');
+      await expect(picker).toBeHidden({ timeout: 10_000 });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel(/^Сума/)).toHaveValue('150');
+
+      await pickInCard(page, dialog, /^Контрагент/, 'Оберіть клієнта', clientName);
+      await expect(dialog.getByText('Для цього приводу вкажіть контрагента')).toHaveCount(0);
+      await expect(cardField(dialog, /Наряд-підстава/)).toBeVisible();
+    });
+
+    test('поля картки йдуть за приводом: працівник для підзвіту, нічого зайвого для банку', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const dialog = await openCashCard(page, registerId, 'Внести');
+      const reason = dialog.getByLabel('Привід');
+      const labels = (re: RegExp) => dialog.locator('label').filter({ hasText: re });
+
+      await reason.selectOption('ADVANCE_RETURN');
+      await expect(labels(/^Працівник/)).toHaveCount(1);
+      await expect(labels(/^Контрагент/)).toHaveCount(0);
+
+      await reason.selectOption('BANK_WITHDRAWAL');
+      await expect(labels(/^Працівник/)).toHaveCount(0);
+      await expect(labels(/^Контрагент/)).toHaveCount(0);
+
+      await reason.selectOption('SUPPLIER_REFUND_IN');
+      await expect(labels(/^Контрагент/)).toHaveCount(1);
+      // «Зарплату» вручну обрати не можна — її ставить лише відомість.
+      await expect(reason.locator('option[value="PAYROLL"]')).toHaveCount(0);
+    });
+
+    // [контракт] каса створює оплату клієнта: борг контрагента змінюється, рядок історії несе
+    // контрагента й стан фіскального чека.
+    test('[контракт] оплата контрагента з каси: рух у розрахунках і рядок історії', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const token = await getToken(page);
+      const before = await getBalance(page, token, clientId);
+
+      const dialog = await openCashCard(page, registerId, 'Внести');
+      await dialog.getByLabel('Привід').selectOption('SALE_PAYMENT');
+      await dialog.getByLabel(/^Сума/).fill('350,50');
+      await pickInCard(page, dialog, /^Контрагент/, 'Оберіть клієнта', clientName);
+
+      const created = page.waitForResponse(
+        r => r.request().method() === 'POST' && r.url().includes(`/${registerId}/operations`),
+      );
+      await dialog.getByRole('button', { name: 'Внести', exact: true }).click();
+      expect((await created).status(), 'операцію прийнято').toBe(201);
+      await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+      // Рядок історії: привід, контрагент, позначка чека.
+      const row = historyRow(page, clientName);
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await expect(row).toContainText('Оплата контрагента');
+      await expect(row).toContainText('350,50');
+      await expect(row.getByText(/^Чек:/)).toBeVisible();
+
+      // Оплата клієнта рухає розрахунки рівно на суму операції.
+      await expect
+        .poll(async () => Math.abs((await getBalance(page, token, clientId)) - before), {
+          timeout: 10_000,
+          message: 'баланс клієнта має змінитись на суму оплати',
+        })
+        .toBeCloseTo(350.5, 2);
+
+      // Каса створила саме оплату клієнта (а не «голий» рух готівки).
+      const payments = await apiCall<{ items: { amount: number; method: string }[] }>(
+        page,
+        token,
+        'GET',
+        `/payments?counterpartyId=${clientId}&limit=10`,
+      );
+      expect(payments.body.items.map(p => Number(p.amount))).toContain(350.5);
+    });
+
+    // [контракт] подвійне підтвердження не створює двох оплат (Idempotency-Key картки).
+    test('[контракт] повтор того самого запиту каси не створює другої оплати', async ({ page }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const token = await getToken(page);
+      const key = `e2e-${Date.now()}`;
+      const send = () =>
+        page.evaluate(
+          async ({ token, API, registerId, clientId, key }) => {
+            const r = await fetch(`${API}/cash-registers/${registerId}/operations`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': key,
+              },
+              body: JSON.stringify({
+                direction: 'IN',
+                reason: 'SALE_PAYMENT',
+                amount: 77.77,
+                counterpartyId: clientId,
+              }),
+            });
+            return r.status;
+          },
+          { token, API, registerId, clientId, key },
+        );
+      expect(await send()).toBe(201);
+      expect(await send(), 'повтор віддає ту саму відповідь').toBe(201);
+      const payments = await apiCall<{ items: { amount: number }[] }>(
+        page,
+        token,
+        'GET',
+        `/payments?counterpartyId=${clientId}&limit=50`,
+      );
+      expect(payments.body.items.filter(p => Number(p.amount) === 77.77)).toHaveLength(1);
+    });
+  });
+
+  // ─── Каса: зміна на фіскальній касі (offline-first guard) ────────────────────
+  test.describe('каса: фіскальна зміна', () => {
+    let fiscalRegisterId = '';
+    let fiscalRegisterCreated = false;
+
+    test.beforeAll(async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+      const p = await ctx.newPage();
+      await p.goto('/cash');
+      const token = await getToken(p);
+      // Спершу шукаємо готову фіскальну касу у списку, який рендерить UI.
+      const list = await apiCall<{ items: { id: string; isFiscal: boolean }[] }>(
+        p,
+        token,
+        'GET',
+        '/cash-registers',
+      );
+      const existing = list.body.items.find(r => r.isFiscal);
+      if (existing) {
+        fiscalRegisterId = existing.id;
+      } else {
+        const [cur, br] = await Promise.all([
+          apiCall<{ items: { id: string }[] }>(p, token, 'GET', '/currencies'),
+          apiCall<{ items: { id: string }[] }>(p, token, 'GET', '/branches'),
+        ]);
+        const created = await apiCall<{ id: string }>(p, token, 'POST', '/cash-registers', {
+          name: `E2E Фіскальна ${Date.now()}`,
+          currencyId: (cur.body.items ?? (cur.body as unknown as { id: string }[]))[0]?.id,
+          branchId: (br.body.items ?? (br.body as unknown as { id: string }[]))[0]?.id,
+          isFiscal: true,
+        });
+        fiscalRegisterId = created.body.id;
+        fiscalRegisterCreated = true;
+      }
+      await ctx.close();
+    });
+
+    test.afterAll(async ({ browser }) => {
+      // Прибираємо лише те, що самі створили (наявну касу не чіпаємо).
+      if (!fiscalRegisterId || !fiscalRegisterCreated) return;
+      const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+      const p = await ctx.newPage();
+      await p.goto('/cash');
+      await deleteRegister(p, await getToken(p), fiscalRegisterId);
+      await ctx.close();
+    });
+
+    test('фіскальна каса без зміни → «Зміну закрито» + «Відкрити зміну», операції заблоковані', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const select = page.locator('select').first();
+      await expect(select).toBeVisible({ timeout: 15_000 });
+      await select.selectOption(fiscalRegisterId);
+
+      await expect(page.getByText('Зміну закрито')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('button', { name: /Відкрити зміну/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Внести', exact: true })).toBeDisabled();
+    });
+
+    test('«Відкрити зміну» без налаштованого ПРРО → детермінований guard-error', async ({
+      page,
+    }) => {
+      await page.goto('/cash');
+      await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+      const select = page.locator('select').first();
+      await expect(select).toBeVisible({ timeout: 15_000 });
+      await select.selectOption(fiscalRegisterId);
+
+      const openBtn = page.getByRole('button', { name: /Відкрити зміну/ });
+      await expect(openBtn).toBeEnabled({ timeout: 15_000 });
+      await openBtn.click();
+      // Без налаштованого Checkbox відкриття зміни неможливе — реальний бізнес-guard.
+      await expect(page.getByText(/Фіскалізацію не налаштовано/).first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByText('Зміну закрито')).toBeVisible();
+    });
   });
 });

@@ -8,7 +8,6 @@ import {
   ClipboardList,
   User,
   Wallet,
-  Landmark,
   ShoppingCart,
   RotateCcw,
   Warehouse,
@@ -97,12 +96,6 @@ interface LinkedPurchaseOrderRow {
   status: string;
   totalAmount: string | number;
 }
-interface LinkedAccountRow {
-  id: string;
-  name: string;
-  kind: 'bank' | 'cash';
-}
-
 // ─── Спільні section-builders (переюз між конфігами) ───────
 
 /** Секція «Контрагент» — однаковий рядок скрізь, навігація до картки контрагента. */
@@ -291,7 +284,7 @@ export function invoiceLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],
           },
-          // Оплата не має власної сторінки → read-only (без navigate).
+          // Оплата — рядок без переходу: окремих сторінок оплат немає, готівкові видно в касі.
         }),
       },
       counterpartySection(nav),
@@ -301,7 +294,11 @@ export function invoiceLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
 
 // ─── PurchaseOrder config ──────────────────────────────────
 
-function supplierPaymentSection(nav: LinkedNav) {
+/**
+ * Секція «Оплати постачальнику» — рядки без переходу: сторінки оплат постачальникам немає,
+ * проведені готівкові оплати видно в касі, а саму оплату — у прев'ю рядка.
+ */
+function supplierPaymentSection({ withDate = true }: { withDate?: boolean } = {}) {
   return {
     key: 'supplierPayments',
     title: 'Оплати постачальнику',
@@ -320,10 +317,11 @@ function supplierPaymentSection(nav: LinkedNav) {
           { label: 'Статус', value: supplierPaymentStatusLabel(row.status) },
           { label: 'Сума', value: `${fmt(row.amount)} ₴` },
           { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
-          ...(row.documentDate ? [{ label: 'Дата', value: fmtDate(row.documentDate) }] : []),
+          ...(withDate && row.documentDate
+            ? [{ label: 'Дата', value: fmtDate(row.documentDate) }]
+            : []),
         ],
       },
-      navigate: () => nav.toSupplierPayment(row.id),
     }),
   };
 }
@@ -331,55 +329,7 @@ function supplierPaymentSection(nav: LinkedNav) {
 export function purchaseOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
   return {
     fetchPath: id => `/purchase-orders/${id}/linked-documents`,
-    sections: [supplierPaymentSection(nav), counterpartySection(nav)],
-  };
-}
-
-// ─── SupplierPayment config ────────────────────────────────
-
-export function supplierPaymentLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
-  return {
-    fetchPath: id => `/supplier-payments/${id}/linked-documents`,
-    sections: [
-      {
-        key: 'purchaseOrder',
-        title: 'Замовлення постачальнику',
-        icon: ClipboardList,
-        mapRow: (row: LinkedPurchaseOrderRow) => ({
-          id: row.id,
-          primary: `Замовлення ${row.number}`,
-          secondary: `${fmt(row.totalAmount)} ₴`,
-          badge: {
-            label: poStatusLabel(row.status),
-            className: 'bg-secondary text-muted-foreground',
-          },
-          preview: {
-            title: `Замовлення ${row.number}`,
-            rows: [
-              { label: 'Статус', value: poStatusLabel(row.status) },
-              { label: 'Сума', value: `${fmt(row.totalAmount)} ₴` },
-            ],
-          },
-          navigate: () => nav.toPurchaseOrder(row.id),
-        }),
-      },
-      counterpartySection(nav),
-      {
-        key: 'account',
-        title: 'Рахунок оплати',
-        icon: Landmark,
-        mapRow: (row: LinkedAccountRow) => ({
-          id: row.id,
-          primary: row.name,
-          secondary: row.kind === 'bank' ? 'Банківський рахунок' : 'Каса',
-          preview: {
-            title: row.name,
-            rows: [{ label: 'Тип', value: row.kind === 'bank' ? 'Банківський рахунок' : 'Каса' }],
-          },
-          // Рахунок/каса — довідник, окремої навігації немає.
-        }),
-      },
-    ],
+    sections: [supplierPaymentSection(), counterpartySection(nav)],
   };
 }
 
@@ -482,29 +432,7 @@ export function counterpartyLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
     sections: [
       invoiceSection(nav, { secondaryField: 'amount' }),
       purchaseOrderSourceSection(nav, { key: 'purchaseOrders', icon: ShoppingCart }),
-      {
-        key: 'supplierPayments',
-        title: 'Оплати постачальнику',
-        icon: Wallet,
-        mapRow: (row: LinkedSupplierPaymentRow) => ({
-          id: row.id,
-          primary: `${row.number} — ${fmt(row.amount)} ₴`,
-          secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
-          badge: {
-            label: supplierPaymentStatusLabel(row.status),
-            className: 'bg-secondary text-muted-foreground',
-          },
-          preview: {
-            title: `Оплата ${row.number}`,
-            rows: [
-              { label: 'Статус', value: supplierPaymentStatusLabel(row.status) },
-              { label: 'Сума', value: `${fmt(row.amount)} ₴` },
-              { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
-            ],
-          },
-          navigate: () => nav.toSupplierPayment(row.id),
-        }),
-      },
+      supplierPaymentSection({ withDate: false }),
       {
         key: 'supplierReturns',
         title: 'Повернення постачальнику',

@@ -8,12 +8,18 @@ import {
   AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
+  RotateCw,
   Wallet,
 } from 'lucide-react';
+import {
+  FISCAL_STATUS_BADGE,
+  FISCAL_STATUS_DESCRIPTIONS,
+  RECEPTIONIST_CASH_REASONS,
+  type CashDirectionValue,
+} from '@sto/shared';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
+import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ListLoadError } from '@/components/ui/list-load-error';
@@ -23,6 +29,8 @@ import { DateRangeFilter } from '@/components/ui/date-range-filter';
 import { ListSearchInput } from '@/components/ui/list-search-input';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
+import { useLinkedNav } from '@/lib/linked-nav';
+import { fiscalStatusLabel } from '@/i18n/enumLabel';
 import {
   Table,
   TableHeader,
@@ -35,15 +43,22 @@ import { useCurrentShift, useOpenShift, useCloseShift } from '@/hooks/api/useCas
 import {
   useCashRegisters,
   useCashOperations,
-  useCreateCashOperation,
+  useRetryCashFiscal,
   useBaseCurrency,
-  MANUAL_IN_REASONS,
-  MANUAL_OUT_REASONS,
+  type CashOperation,
 } from '@/hooks/api/useCash';
-import { useExpenseCategories, flattenActiveByType } from '@/hooks/api/useExpenseCategories';
+import { CashOperationModal } from './CashOperationModal';
 
-export default function CashOperationsTab({ canOperate = false }: { canOperate?: boolean }) {
+interface Props {
+  /** Усі ручні операції — власник, адміністратор, бухгалтер. */
+  canOperate?: boolean;
+  /** Приймальня: лише внесення з приводами `RECEPTIONIST_CASH_REASONS`, без видачі й статей. */
+  receptionist?: boolean;
+}
+
+export default function CashOperationsTab({ canOperate = false, receptionist = false }: Props) {
   const { t } = useTranslation('cash');
+  const nav = useLinkedNav();
   const { data: registers, isLoading: regLoading } = useCashRegisters();
   const [selectedId, setSelectedId] = useState('');
   const selected = useMemo(
@@ -87,58 +102,36 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     error: opsError,
     refetch: refetchOps,
   } = useCashOperations(selectedId || null, opsFilter);
-  // Статті витрат потрібні лише для модалки IN/OUT (привід EXPENSE), доступної тим, хто canOperate.
-  // GET /expense-categories вимагає ACCOUNTANT+ — RECEPTIONIST (лише перегляд) інакше отримав би 403.
-  const { data: expenseCats } = useExpenseCategories(false, canOperate);
-  const createOp = useCreateCashOperation();
-
-  const [opModal, setOpModal] = useState<null | 'IN' | 'OUT'>(null);
-  const [opForm, setOpForm] = useState({
-    amount: '',
-    reason: '',
-    expenseCategoryId: '',
-    notes: '',
-  });
-  const [opError, setOpError] = useState('');
-
-  const openOpModal = (dir: 'IN' | 'OUT') => {
-    setOpForm({
-      amount: '',
-      reason: dir === 'IN' ? 'MANUAL_IN' : 'MANUAL_OUT',
-      expenseCategoryId: '',
-      notes: '',
-    });
-    setOpError('');
-    setOpModal(dir);
+  const [opOpen, setOpOpen] = useState(false);
+  // Напрям лишається в стані й після закриття — щоб заголовок не мигав під час анімації виходу.
+  const [opDirection, setOpDirection] = useState<CashDirectionValue>('IN');
+  const openOpModal = (dir: CashDirectionValue) => {
+    setOpDirection(dir);
+    setOpOpen(true);
   };
 
-  // `void` в onClick: обробник сам ловить помилку у catch і показує її користувачу
-  // (банер setError / toast.error) — проміс більше нікому не потрібен.
-  const submitOp = async () => {
-    if (!opModal || !selected) return;
-    const amount = Number(opForm.amount);
-    if (!(amount > 0)) {
-      setOpError(t('operations.amountRequired'));
-      return;
-    }
-    if (opForm.reason === 'EXPENSE' && !opForm.expenseCategoryId) {
-      setOpError(t('operations.categoryRequired'));
-      return;
-    }
+  // Повтор фіскального чека — ролі POST /payments/:id/retry-fiscal (без приймальні).
+  const retryFiscal = useRetryCashFiscal();
+  // Стан на рядок: спільний isPending крутив би спінер на всіх рядках одразу.
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  // `void` в onClick: відмова вже на екрані (toast.error), проміс нікому не потрібен.
+  const onRetryFiscal = async (op: CashOperation) => {
+    if (!op.documentId || retryingId) return;
+    setRetryingId(op.id);
     try {
-      await createOp.mutateAsync({
-        cashRegisterId: selected.id,
-        direction: opModal,
-        amount,
-        reason: opForm.reason,
-        expenseCategoryId: opForm.expenseCategoryId || undefined,
-        notes: opForm.notes || undefined,
-      });
-      setOpModal(null);
-      toast.success(opModal === 'IN' ? t('operations.deposited') : t('operations.withdrawn'));
+      await retryFiscal.mutateAsync(op.documentId);
+      toast.success(t('operations.fiscalRetryQueued'));
     } catch (e) {
-      setOpError(e instanceof Error ? e.message : t('operations.opError'));
+      toast.error(e instanceof Error ? e.message : t('operations.fiscalRetryError'));
+    } finally {
+      setRetryingId(null);
     }
+  };
+
+  const openBaseDocument = (op: CashOperation) => {
+    if (!op.baseDocumentId) return;
+    if (op.baseDocumentType === 'WorkOrder') nav.toWorkOrder(op.baseDocumentId);
+    else if (op.baseDocumentType === 'PurchaseOrder') nav.toPurchaseOrder(op.baseDocumentId);
   };
 
   const onOpenShift = async () => {
@@ -180,10 +173,8 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
     );
   }
 
-  const reasonOptions = opModal === 'IN' ? MANUAL_IN_REASONS : MANUAL_OUT_REASONS;
-  // Статті відповідного напряму: IN → оприбуткування (INCOME), OUT → витрати (EXPENSE). Сплощене
-  // дерево з відступами для читабельності ієрархії у Select.
-  const categoryOptions = flattenActiveByType(expenseCats, opModal === 'IN' ? 'INCOME' : 'EXPENSE');
+  const canDeposit = canOperate || receptionist;
+  const colCount = isBaseCurrency ? 6 : 7;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3">
@@ -206,7 +197,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             </span>
           </div>
         )}
-        {canOperate && (
+        {canDeposit && (
           <div className="ml-auto flex items-center gap-2">
             <Button
               leftIcon={<ArrowDownCircle className="h-4 w-4" />}
@@ -215,14 +206,16 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             >
               {t('operations.deposit')}
             </Button>
-            <Button
-              variant="outline"
-              leftIcon={<ArrowUpCircle className="h-4 w-4" />}
-              onClick={() => openOpModal('OUT')}
-              disabled={fiscalBlocked}
-            >
-              {t('operations.withdraw')}
-            </Button>
+            {canOperate && (
+              <Button
+                variant="outline"
+                leftIcon={<ArrowUpCircle className="h-4 w-4" />}
+                onClick={() => openOpModal('OUT')}
+                disabled={fiscalBlocked}
+              >
+                {t('operations.withdraw')}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -300,6 +293,8 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
               <TableHead>{t('operations.colDate')}</TableHead>
               <TableHead>{t('operations.colOperation')}</TableHead>
               <TableHead>{t('operations.colReason')}</TableHead>
+              <TableHead>{t('operations.colParty')}</TableHead>
+              <TableHead>{t('operations.colBase')}</TableHead>
               <TableHead className="text-right">{t('operations.colAmount')}</TableHead>
               {!isBaseCurrency && (
                 <TableHead className="text-right">
@@ -311,7 +306,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
           <TableBody>
             {opsLoading && (
               <TableRow>
-                <TableCell colSpan={isBaseCurrency ? 4 : 5} className="py-10 text-center">
+                <TableCell colSpan={colCount} className="py-10 text-center">
                   <div className="flex justify-center">
                     <Spinner size="md" />
                   </div>
@@ -320,7 +315,7 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
             )}
             {!opsLoading && !opsError && (operations?.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={isBaseCurrency ? 4 : 5} className="p-0">
+                <TableCell colSpan={colCount} className="p-0">
                   <EmptyState
                     icon={Wallet}
                     title={t('operations.empty')}
@@ -359,6 +354,57 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
                   {t(`reasons.${op.reason}`, { defaultValue: op.reason })}
                   {op.expenseCategoryName ? ` · ${op.expenseCategoryName}` : ''}
                   {op.notes ? ` · ${op.notes}` : ''}
+                  {op.documentNumber ? ` · ${op.documentNumber}` : ''}
+                  {op.fiscalStatus && (
+                    <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
+                      <Badge
+                        variant={FISCAL_STATUS_BADGE[op.fiscalStatus] ?? 'secondary'}
+                        tooltip={FISCAL_STATUS_DESCRIPTIONS[op.fiscalStatus]}
+                      >
+                        {t('operations.fiscalBadge', {
+                          status: fiscalStatusLabel(op.fiscalStatus),
+                        })}
+                      </Badge>
+                      {canOperate && op.fiscalStatus === 'FAILED' && op.documentId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={e => {
+                            e.stopPropagation();
+                            void onRetryFiscal(op);
+                          }}
+                          loading={retryingId === op.id}
+                          disabled={retryingId !== null}
+                        >
+                          <RotateCw className="h-3.5 w-3.5 mr-1" />
+                          {t('operations.fiscalRetry')}
+                        </Button>
+                      )}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="text-[13px]">
+                  {op.counterpartyName || op.employeeName || (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-[13px] whitespace-nowrap">
+                  {op.baseDocumentId && op.baseDocumentNumber ? (
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        openBaseDocument(op);
+                      }}
+                      title={t('operations.openBaseAria', { number: op.baseDocumentNumber })}
+                      aria-label={t('operations.openBaseAria', { number: op.baseDocumentNumber })}
+                      className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+                    >
+                      {op.baseDocumentNumber}
+                    </button>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -380,77 +426,14 @@ export default function CashOperationsTab({ canOperate = false }: { canOperate?:
         </Table>
       </div>
 
-      {/* Модалка внести/видати */}
-      <Modal
-        open={!!opModal}
-        onClose={() => setOpModal(null)}
-        title={opModal === 'IN' ? t('operations.modalTitleIn') : t('operations.modalTitleOut')}
-        footer={
-          <Button
-            onClick={() => void submitOp()}
-            loading={createOp.isPending}
-            disabled={!(Number(opForm.amount) > 0)}
-            className="w-full"
-          >
-            {opModal === 'IN' ? t('operations.deposit') : t('operations.withdraw')}
-          </Button>
-        }
-      >
-        {opError && (
-          <div className="mb-4 text-[13px] text-destructive-text bg-destructive-subtle border border-destructive-border rounded-lg px-3 py-2">
-            {opError}
-          </div>
-        )}
-        <div className="space-y-4">
-          <Input
-            label={t('operations.fieldAmount')}
-            type="number"
-            required
-            value={opForm.amount}
-            onChange={e => setOpForm(f => ({ ...f, amount: e.target.value }))}
-            placeholder="0"
-            autoFocus
-            className="h-8 text-[13px]"
-          />
-          <Select
-            label={t('operations.fieldReason')}
-            value={opForm.reason}
-            onChange={e => setOpForm(f => ({ ...f, reason: e.target.value }))}
-          >
-            {reasonOptions.map(r => (
-              <option key={r} value={r}>
-                {t(`reasons.${r}`, { defaultValue: r })}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label={
-              opForm.reason === 'EXPENSE'
-                ? t('operations.fieldCategoryExpense')
-                : opModal === 'IN'
-                  ? t('operations.fieldCategoryIncomeOptional')
-                  : t('operations.fieldCategoryExpenseOptional')
-            }
-            value={opForm.expenseCategoryId}
-            onChange={e => setOpForm(f => ({ ...f, expenseCategoryId: e.target.value }))}
-          >
-            <option value="">{t('operations.categoryNone')}</option>
-            {categoryOptions.map(c => (
-              <option key={c.id} value={c.id}>
-                {'  '.repeat(c.depth)}
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label={t('operations.fieldNotes')}
-            value={opForm.notes}
-            onChange={e => setOpForm(f => ({ ...f, notes: e.target.value }))}
-            placeholder={t('operations.notesPlaceholder')}
-            className="h-8 text-[13px]"
-          />
-        </div>
-      </Modal>
+      <CashOperationModal
+        open={opOpen}
+        onClose={() => setOpOpen(false)}
+        direction={opDirection}
+        register={selected}
+        allowedReasons={canOperate ? undefined : RECEPTIONIST_CASH_REASONS}
+        categoriesEnabled={canOperate}
+      />
     </div>
   );
 }

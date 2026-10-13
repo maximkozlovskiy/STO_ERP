@@ -4,7 +4,6 @@ import {
   workOrderLinkedConfig,
   invoiceLinkedConfig,
   purchaseOrderLinkedConfig,
-  supplierPaymentLinkedConfig,
   stockDocumentLinkedConfig,
   supplierReturnLinkedConfig,
   counterpartyLinkedConfig,
@@ -15,7 +14,6 @@ import type { LinkedNav } from '../linked-nav';
 function makeNav(): LinkedNav & Record<string, ReturnType<typeof vi.fn>> {
   return {
     toWorkOrder: vi.fn(),
-    toSupplierPayment: vi.fn(),
     toCounterparty: vi.fn(),
     toInvoice: vi.fn(),
     toPurchaseOrder: vi.fn(),
@@ -188,12 +186,51 @@ describe('linked-configs — behaviour parity of parametrized builders', () => {
     });
   });
 
+  // Сторінок оплат постачальникам немає: рядок оплати показує прев'ю, але нікуди не веде —
+  // і в замовленні, і в картці контрагента. З `navigate` панель малювала б кнопку «Відкрити»
+  // на адресу-перенаправлення.
+  describe('оплати постачальнику — рядки без переходу', () => {
+    const row = {
+      id: 'sp1',
+      number: 'ОПП-000007',
+      amount: 1500,
+      method: 'CASH',
+      status: 'CONFIRMED',
+      documentDate: '2026-10-14',
+    };
+
+    it.each([
+      ['замовлення постачальнику', purchaseOrderLinkedConfig],
+      ['картка контрагента', counterpartyLinkedConfig],
+    ] as const)("%s: є прев'ю, немає navigate", (_name, factory) => {
+      const nav = makeNav();
+      const mapped = section(factory(nav), 'supplierPayments').mapRow(row);
+      expect(mapped.navigate).toBeUndefined();
+      expect(mapped.primary).toContain('ОПП-000007');
+      expect(mapped.preview.title).toBe('Оплата ОПП-000007');
+      expect(mapped.preview.rows.map(r => r.label)).toEqual(
+        expect.arrayContaining(['Статус', 'Сума', 'Метод']),
+      );
+      for (const spy of Object.values(nav)) expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('оплата клієнта в рахунку — теж рядок без переходу', () => {
+      const mapped = section(invoiceLinkedConfig(makeNav()), 'payments').mapRow({
+        id: 'p1',
+        amount: 800,
+        method: 'CASH',
+        createdAt: '2026-10-14T09:00:00.000Z',
+        notes: null,
+      });
+      expect(mapped.navigate).toBeUndefined();
+    });
+  });
+
   describe('fetchPath кожного конфіга — правильний endpoint', () => {
     it.each([
       [workOrderLinkedConfig, 'x', '/work-orders/x/linked-documents'],
       [invoiceLinkedConfig, 'x', '/invoices/x/linked-documents'],
       [purchaseOrderLinkedConfig, 'x', '/purchase-orders/x/linked-documents'],
-      [supplierPaymentLinkedConfig, 'x', '/supplier-payments/x/linked-documents'],
       [stockDocumentLinkedConfig, 'x', '/stock-documents/x/linked-documents'],
       [supplierReturnLinkedConfig, 'x', '/supplier-returns/x/linked-documents'],
       [counterpartyLinkedConfig, 'x', '/counterparties/x/linked-documents'],

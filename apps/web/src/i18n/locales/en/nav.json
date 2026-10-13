@@ -10,8 +10,6 @@
   "purchaseOrders": "Purchases",
   "stockDocuments": "Inventory",
   "invoices": "Customer invoices",
-  "payments": "Customer payments",
-  "supplierPayments": "Supplier payments",
   "bankStatements": "Bank payments",
   "cash": "Cash register",
   "bookings": "Online booking",

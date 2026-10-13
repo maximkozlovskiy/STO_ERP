@@ -21,7 +21,8 @@ import {
   ClipboardList,
   Warehouse,
 } from 'lucide-react';
-import { useRequireAuth } from '@/lib/auth';
+import { useAuth, useRequireAuth } from '@/lib/auth';
+import { SupplierPaymentScheduleTab } from './SupplierPaymentScheduleTab';
 import { apiFetch } from '@/lib/api-client';
 import { useSelectedRowRefresh } from '@/hooks/useSelectedRowRefresh';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
@@ -204,10 +205,19 @@ interface SrFilters extends Record<string, unknown> {
   dateTo: string;
 }
 
-type PurchaseTab = 'orders' | 'returns';
+type PurchaseTab = 'orders' | 'returns' | 'schedule';
+
+// «Графік оплат» читає GET /supplier-payments/schedule — ролі цього endpoint-а (без комірника).
+const SCHEDULE_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
+// Замовлення й повернення — ролі сторінки закупівель (картки документів бухгалтеру недоступні).
+const DOCUMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'STOREKEEPER'];
+
+const TAB_BUTTON =
+  'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm';
 
 function PurchaseOrdersPageClient() {
-  useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
+  const { employee } = useRequireAuth(['OWNER', 'ADMIN', 'STOREKEEPER']);
+  const canSeeSchedule = SCHEDULE_ROLES.includes(employee?.role ?? '');
   const { t } = useTranslation('purchaseOrders');
 
   // Колонки з перекладеними мітками (label = i18n, резолвиться у компоненті).
@@ -222,7 +232,14 @@ function PurchaseOrdersPageClient() {
 
   const searchParams = useSearchParams();
   const router = useRouter();
-  const activeTab: PurchaseTab = searchParams.get('tab') === 'returns' ? 'returns' : 'orders';
+  const requestedTab = searchParams.get('tab');
+  // Вкладка, якої роль не має (комірник → графік), відкривається як «Замовлення».
+  const activeTab: PurchaseTab =
+    requestedTab === 'returns'
+      ? 'returns'
+      : requestedTab === 'schedule' && canSeeSchedule
+        ? 'schedule'
+        : 'orders';
   const setActiveTab = useCallback(
     (tab: PurchaseTab) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -238,7 +255,7 @@ function PurchaseOrdersPageClient() {
   const { confirm, dialogProps } = useConfirm();
 
   // Прийом PO (receive) має побічні ефекти на кількох агрегатах: RECEIPT-рух →
-  // inventory (залишки); settlement CHARGE + авто paymentDate → supplier-payments
+  // inventory (залишки); settlement CHARGE + авто paymentDate → графік оплат
   // (шахматка) і counterparties (баланс). Інвалідуємо всі одразу, щоб не чекати 30s
   // staleTime. Єдине місце правди — викликається з receive-handler і edit-modal onSaved.
   const invalidatePoReceiptCaches = useCallback(() => {
@@ -546,7 +563,7 @@ function PurchaseOrdersPageClient() {
   });
 
   // Bug #596: deep-link `?open=<poId>` — відкриває edit-modal для конкретного PO
-  // (напр. з /supplier-payments/[id] «покажи замовлення»). Читаємо ОДНОРАЗОВО з URL,
+  // (напр. з «Пов'язаних документів» чи з каси). Читаємо ОДНОРАЗОВО з URL,
   // очищуємо параметр щоб refresh не спамив модалку, і на mount якщо UUID валідний —
   // виставляємо editingPOId. Дзеркалить URL-driven pattern активної вкладки (line 134).
   useEffect(() => {
@@ -852,6 +869,7 @@ function PurchaseOrdersPageClient() {
           [
             { key: 'orders', label: t('tabs.orders') },
             { key: 'returns', label: t('tabs.returns') },
+            ...(canSeeSchedule ? [{ key: 'schedule', label: t('tabs.schedule') } as const] : []),
           ] as const
         ).map(tab => (
           <button
@@ -859,7 +877,7 @@ function PurchaseOrdersPageClient() {
             type="button"
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap border-b-2 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:rounded-sm',
+              TAB_BUTTON,
               activeTab === tab.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -869,6 +887,12 @@ function PurchaseOrdersPageClient() {
           </button>
         ))}
       </div>
+
+      {activeTab === 'schedule' && (
+        <div className="flex flex-col flex-1 min-h-0 pt-4">
+          <SupplierPaymentScheduleTab />
+        </div>
+      )}
 
       {activeTab === 'returns' && (
         <div className="flex flex-col gap-3 flex-1">
@@ -1766,10 +1790,44 @@ function PurchaseOrdersPageClient() {
   );
 }
 
+/**
+ * Бухгалтер у «Купівлі» бачить лише «Графік оплат»: списки й картки замовлень йому закриті
+ * (ролі сторінки — власник, адміністратор, комірник), а графік оплат — його робочий інструмент.
+ * Окрема легка оболонка — щоб не монтувати сторінку замовлень із її запитами.
+ */
+function PurchaseSchedulePage() {
+  useRequireAuth(['ACCOUNTANT']);
+  const { t } = useTranslation('purchaseOrders');
+  return (
+    <div className="page-fill p-4 md:p-6">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">{t('title')}</h1>
+        </div>
+      </div>
+      <div className="shrink-0 flex gap-0 border-b border-border -mx-6 px-6 overflow-x-auto">
+        <span className={cn(TAB_BUTTON, 'border-primary text-primary')}>{t('tabs.schedule')}</span>
+      </div>
+      <div className="flex flex-col flex-1 min-h-0 pt-4">
+        <SupplierPaymentScheduleTab />
+      </div>
+    </div>
+  );
+}
+
+function PurchaseOrdersRoute() {
+  const { employee } = useAuth();
+  const role = employee?.role ?? '';
+  if (SCHEDULE_ROLES.includes(role) && !DOCUMENT_ROLES.includes(role)) {
+    return <PurchaseSchedulePage />;
+  }
+  return <PurchaseOrdersPageClient />;
+}
+
 export default function PurchaseOrdersPage() {
   return (
     <Suspense fallback={null}>
-      <PurchaseOrdersPageClient />
+      <PurchaseOrdersRoute />
     </Suspense>
   );
 }

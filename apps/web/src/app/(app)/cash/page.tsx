@@ -73,9 +73,13 @@ function CashPageShell() {
         ))}
       </div>
 
-      {/* canOperate: ручні операції IN/OUT — OWNER/ADMIN/ACCOUNTANT (RECEPTIONIST лише перегляд). */}
+      {/* Усі ручні операції — OWNER/ADMIN/ACCOUNTANT; приймальня вносить лише оплату контрагента
+          (RECEPTIONIST_CASH_REASONS), видачі не має — як ролі POST /cash-registers/:id/operations. */}
       {tab === 'operations' && (
-        <CashOperationsTab canOperate={['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(role)} />
+        <CashOperationsTab
+          canOperate={['OWNER', 'ADMIN', 'ACCOUNTANT'].includes(role)}
+          receptionist={role === 'RECEPTIONIST'}
+        />
       )}
       {tab === 'registers' && <CashRegistersTab canManage={['OWNER', 'ADMIN'].includes(role)} />}
       {tab === 'expenses' && <ExpenseCategoriesTab canManage={['OWNER', 'ADMIN'].includes(role)} />}

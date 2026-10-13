@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CashReasonValue } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 
 export type ExpenseCategoryType = 'EXPENSE' | 'INCOME';
@@ -11,16 +12,13 @@ export interface ExpenseCategory {
   type: ExpenseCategoryType;
   sortOrder: number;
   isActive: boolean;
+  /** Привід касової операції, для якого статтю підставляють самі; один привід — одна стаття. */
+  defaultReason?: CashReasonValue | null;
   children: ExpenseCategory[];
   deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
-
-export const EXPENSE_CATEGORY_TYPE_LABELS: Record<ExpenseCategoryType, string> = {
-  EXPENSE: 'Витрата',
-  INCOME: 'Оприбуткування',
-};
 
 export const expenseCategoriesKeys = {
   all: ['expense-categories'] as const,
@@ -46,15 +44,24 @@ export function useExpenseCategories(showDeleted = false, enabled = true) {
   });
 }
 
+export interface FlatExpenseCategory {
+  id: string;
+  name: string;
+  depth: number;
+  defaultReason: CashReasonValue | null;
+}
+
 /** Сплощує дерево у плаский список активних статей заданого типу (для Select у модалці операції). */
 export function flattenActiveByType(
   tree: ExpenseCategory[] | undefined,
   type: ExpenseCategoryType,
-): { id: string; name: string; depth: number }[] {
-  const out: { id: string; name: string; depth: number }[] = [];
+): FlatExpenseCategory[] {
+  const out: FlatExpenseCategory[] = [];
   const walk = (nodes: ExpenseCategory[], depth: number) => {
     for (const n of nodes) {
-      if (n.type === type && n.isActive) out.push({ id: n.id, name: n.name, depth });
+      if (n.type === type && n.isActive) {
+        out.push({ id: n.id, name: n.name, depth, defaultReason: n.defaultReason ?? null });
+      }
       if (n.children?.length) walk(n.children, depth + 1);
     }
   };
@@ -66,6 +73,7 @@ export interface CreateExpenseCategoryBody {
   name: string;
   type?: ExpenseCategoryType;
   parentId?: string;
+  defaultReason?: CashReasonValue | null;
 }
 
 export function useCreateExpenseCategory() {
@@ -83,7 +91,16 @@ export function useCreateExpenseCategory() {
 export function useUpdateExpenseCategory() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; parentId?: string }) =>
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      name?: string;
+      parentId?: string;
+      /** `null` знімає привід зі статті. */
+      defaultReason?: CashReasonValue | null;
+    }) =>
       apiFetch<ExpenseCategory>(`/expense-categories/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),

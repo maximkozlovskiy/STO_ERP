@@ -2,7 +2,8 @@
   "title": "Purchasing",
   "tabs": {
     "orders": "Purchase orders",
-    "returns": "Supplier returns"
+    "returns": "Supplier returns",
+    "schedule": "Payment schedule"
   },
   "columns": {
     "number": "Number",
