@@ -243,13 +243,18 @@ export default function EmployeesPage() {
   // (percent_normo/40%) і зберігає її, перезаписуючи реальну зарплатну схему
   // співробітника. Тому перед редагуванням довантажуємо картку через
   // GET /employees/:id, де rateScheme присутній для OWNER/ADMIN.
+  // Токен останнього відкриття: картку тепер відкриває ще й клік по рядку (панель вимкнена), і
+  // два швидкі кліки по різних рядках інакше показали б того, чия відповідь прийшла останньою.
+  const openEditReqRef = useRef(0);
   const openEditModal = useCallback(async (emp: Employee) => {
+    const reqId = ++openEditReqRef.current;
+    let full = emp;
     try {
-      const full = await apiFetch<Employee>(`/employees/${emp.id}`);
-      setModalEmp(full);
+      full = await apiFetch<Employee>(`/employees/${emp.id}`);
     } catch {
-      setModalEmp(emp);
+      /* лишаємо рядок зі списку */
     }
+    if (reqId === openEditReqRef.current) setModalEmp(full);
   }, []);
 
   // Filters (specific to employees)

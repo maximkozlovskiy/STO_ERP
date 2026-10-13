@@ -91,12 +91,14 @@ vi.mock('@/hooks/api/useSupplierReturns', async importOriginal => {
     }),
   };
 });
+// Що зараз віддає список замовлень: тест «рядок зник зі списку» міняє його через цю змінну.
+let poListItems: PurchaseOrder[] = [PO];
 vi.mock('@/hooks/api/usePurchaseOrders', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/api/usePurchaseOrders')>();
   return {
     ...actual,
     usePurchaseOrders: () => ({
-      data: { items: [PO], total: 1, page: 1, limit: 20 },
+      data: { items: poListItems, total: poListItems.length, page: 1, limit: 20 },
       isLoading: false,
       error: null,
     }),
@@ -149,6 +151,7 @@ describe('Закупівлі — бокова панель повернень і
     localStorage.clear();
     search = 'tab=returns';
     srListItems = [SR, SR_2];
+    poListItems = [PO];
     replaceMock.mockClear();
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
@@ -324,5 +327,70 @@ describe('Закупівлі — бокова панель повернень і
     // Контроль: вибір справді скинуто — клік ВІДКРИВАЄ панель, а не закриває.
     fireEvent.click(row('ПП-0001'));
     expect(await screen.findByTestId('lines-summary')).toBeInTheDocument();
+  });
+
+  // ── Список замовлень: той самий стандарт кліку (друга панель сторінки) ──────────────────────
+  // Mutation-verify (review 2026-10-13): інвертована умова `panelEnabled` в activateRow валить
+  // перші два кейси; олівець, що вибирає рядок замість картки, — третій; без ефекту «рядок зник
+  // зі списку → setSelectedPO(null)» падає останній.
+  const poPanelOpen = () => screen.queryByRole('button', { name: 'Відкрити замовлення' }) !== null;
+
+  it('замовлення, панель увімкнена: клік показує панель, повторний клік ховає; картка не відкривається', async () => {
+    search = 'tab=orders';
+    renderPage();
+    await screen.findByText('ЗП-0001');
+
+    fireEvent.click(row('ЗП-0001'));
+    await waitFor(() => expect(poPanelOpen()).toBe(true));
+    expect(screen.queryByTestId('po-card')).not.toBeInTheDocument();
+
+    fireEvent.click(row('ЗП-0001'));
+    await waitFor(() => expect(poPanelOpen()).toBe(false));
+    expect(screen.queryByTestId('po-card')).not.toBeInTheDocument();
+  });
+
+  it('замовлення, панель вимкнена: клік по рядку відкриває картку', async () => {
+    search = 'tab=orders';
+    localStorage.setItem(PO_PANEL_KEY, 'false');
+    renderPage();
+    await screen.findByText('ЗП-0001');
+    await screen.findByRole('button', { name: 'Показати бокову панель' });
+
+    fireEvent.click(row('ЗП-0001'));
+
+    expect(await screen.findByTestId('po-card')).toHaveTextContent('po-1');
+    expect(poPanelOpen()).toBe(false);
+  });
+
+  it('замовлення: олівець відкриває картку і рядок не вибирає; так само для позначеного на видалення', async () => {
+    search = 'tab=orders';
+    poListItems = [{ ...PO, deletedAt: '2026-10-13T09:00:00.000Z' }];
+    renderPage();
+    await screen.findByText('ЗП-0001');
+
+    fireEvent.click(within(row('ЗП-0001')).getByTitle('Редагувати'));
+
+    expect(await screen.findByTestId('po-card')).toHaveTextContent('po-1');
+    expect(poPanelOpen()).toBe(false);
+  });
+
+  it('замовлення зникло зі списку (сторінка / фільтр) → панель закрита й сама не відкривається', async () => {
+    search = 'tab=orders';
+    const { rerenderPage } = renderPage();
+    await screen.findByText('ЗП-0001');
+    fireEvent.click(row('ЗП-0001'));
+    await waitFor(() => expect(poPanelOpen()).toBe(true));
+
+    poListItems = [];
+    rerenderPage();
+    await waitFor(() => expect(poPanelOpen()).toBe(false));
+
+    poListItems = [PO];
+    rerenderPage();
+    await screen.findByText('ЗП-0001');
+    expect(poPanelOpen()).toBe(false);
+    // Контроль: вибір справді скинуто — клік ВІДКРИВАЄ панель, а не закриває.
+    fireEvent.click(row('ЗП-0001'));
+    await waitFor(() => expect(poPanelOpen()).toBe(true));
   });
 });

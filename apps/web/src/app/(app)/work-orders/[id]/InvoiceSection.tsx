@@ -62,6 +62,12 @@ interface InvoiceSectionProps {
   invoiceRef: InvoiceRef | null | undefined;
   /** Викликається після успішного create / refresh — батьківський компонент оновлює state. */
   onChange: (next: InvoiceRef) => void;
+  /**
+   * BR-WO-012: наряд позначено на видалення — лише перегляд. Сховано «Виставити рахунок» і
+   * «Оновити» (сервер видаленого наряду не знаходить); PDF самого рахунку і перехід до списку
+   * лишаються — рахунок окремий документ.
+   */
+  readOnly?: boolean;
 }
 
 export function InvoiceSection({
@@ -69,6 +75,7 @@ export function InvoiceSection({
   workOrderStatus,
   invoiceRef,
   onChange,
+  readOnly = false,
 }: InvoiceSectionProps) {
   const { t } = useTranslation('workOrders');
   const router = useRouter();
@@ -148,7 +155,7 @@ export function InvoiceSection({
     <div className="bg-surface rounded-xl border border-border p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold text-foreground">{t('invoice.title')}</h2>
-        {!invoiceRef && (
+        {!invoiceRef && !readOnly && (
           <Button
             variant="outline"
             size="sm"
@@ -194,7 +201,7 @@ export function InvoiceSection({
           {invoiceRef.documentDate && (
             <p className="text-xs text-muted-foreground">{fmtDate(invoiceRef.documentDate)}</p>
           )}
-          {invoiceRef.status === 'DRAFT' && (
+          {invoiceRef.status === 'DRAFT' && !readOnly && (
             <Button
               variant="outline"
               size="sm"

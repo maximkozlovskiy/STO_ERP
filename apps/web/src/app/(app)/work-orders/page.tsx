@@ -1009,7 +1009,7 @@ function WorkOrdersPageInner() {
                               ) : (
                                 <InlineViewCell
                                   value={wo.priority ?? ''}
-                                  enabled={features.inlineEditEnabled}
+                                  enabled={features.inlineEditEnabled && !wo.deletedAt}
                                   onClick={() =>
                                     wo.priority &&
                                     inlineEdit.startEdit(wo.id, 'priority', wo.priority)
@@ -1089,7 +1089,7 @@ function WorkOrdersPageInner() {
                               ) : (
                                 <InlineViewCell
                                   value={wo.dueDate ?? ''}
-                                  enabled={features.inlineEditEnabled}
+                                  enabled={features.inlineEditEnabled && !wo.deletedAt}
                                   onClick={() =>
                                     inlineEdit.startEdit(
                                       wo.id,

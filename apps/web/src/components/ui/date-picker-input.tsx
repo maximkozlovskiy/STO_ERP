@@ -222,10 +222,13 @@ export function DatePickerInput({
         {showClear && (
           <button
             type="button"
-            aria-label={t('clearDate')}
+            // Назва містить назву поля: у відборі «З … По …» дві кнопки, і читач екрана має їх
+            // розрізняти («Очистити дату: З» / «Очистити дату: По»).
+            aria-label={ariaLabel ? `${t('clearDate')}: ${ariaLabel}` : t('clearDate')}
             title={t('clearDate')}
             onClick={handleClear}
-            className="absolute right-8 top-1/2 -translate-y-1/2 rounded text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            // p-1 збільшує ціль натискання (іконка 14 px); right-7 лишає іконку на тому ж місці.
+            className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-3.5 w-3.5" />
           </button>

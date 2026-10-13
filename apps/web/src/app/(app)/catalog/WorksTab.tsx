@@ -745,6 +745,8 @@ export default function WorksTab() {
                                   e.stopPropagation();
                                   openEditWork(w);
                                 }}
+                                title={t('common.edit')}
+                                aria-label={t('common.edit')}
                                 className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                               >
                                 <Pencil className="h-3.5 w-3.5" />

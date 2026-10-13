@@ -500,6 +500,16 @@ function PurchaseOrdersPageClient() {
     }
   }, [detailPanel.enabled]);
 
+  // Рядок зник із завантаженого списку (інша сторінка, фільтр, видалення) → вибір забуваємо,
+  // як у поверненнях нижче й у решті списків: інакше панель лишається відкритою на замовленні,
+  // якого в таблиці вже немає.
+  useEffect(() => {
+    if (selectedPO && !loading && !orders.some(o => o.id === selectedPO.id)) {
+      selectedPOIdRef.current = null;
+      setSelectedPO(null);
+    }
+  }, [selectedPO, orders, loading]);
+
   // Вибір PO у панель: одразу показуємо дані зі списку, потім довантажуємо
   // повний PO (з позиціями — lines відсутні у list-відповіді). Дзеркалить
   // selectInvoice: toggle якщо клікнули по вже вибраному рядку.
@@ -1016,6 +1026,7 @@ function PurchaseOrdersPageClient() {
                         className={cn(
                           'group transition-colors cursor-pointer',
                           selectedSr?.id === sr.id && srDetailPanel.enabled && 'bg-primary/5',
+                          sr.deletedAt && 'opacity-60',
                         )}
                         onClick={() =>
                           activateRow({
@@ -1112,7 +1123,7 @@ function PurchaseOrdersPageClient() {
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
-                            {sr.status === 'DRAFT' && (
+                            {sr.status === 'DRAFT' && !sr.deletedAt && (
                               <button
                                 type="button"
                                 className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"

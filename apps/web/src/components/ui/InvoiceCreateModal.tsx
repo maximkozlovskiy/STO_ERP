@@ -661,7 +661,7 @@ export function InvoiceCreateModal({
                 </button>
                 <button
                   type="button"
-                  disabled={transitioning || !isEditMode}
+                  disabled={transitioning || !isEditMode || isDeleted}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                   title={INVOICE_STATUS_DESCRIPTIONS[currentStatus]}
                   className={cn(

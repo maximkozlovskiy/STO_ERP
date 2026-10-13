@@ -276,6 +276,7 @@
     "deleteAria": "Delete file",
     "deleteError": "Failed to delete file",
     "uploadError": "Failed to upload {{count}} file(s)",
+    "empty": "No photos",
     "lightboxAria": "Photo preview",
     "photoAlt": "Photo"
   },

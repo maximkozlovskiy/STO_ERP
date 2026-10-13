@@ -329,6 +329,10 @@ export function PurchaseOrderCreateModal({
       return;
     }
     autoSelectedRef.current = false;
+    // Картку відкрили заново (інше замовлення або нове) — відповідь попереднього завантаження
+    // більше не потрібна; індикатор завантаження знімаємо, бо його finally вже не спрацює.
+    loadReqRef.current++;
+    setLoading(false);
     dirty.resetDirty();
     setActivePOId(purchaseOrderIdProp);
     setError('');
@@ -377,14 +381,21 @@ export function PurchaseOrderCreateModal({
     selectedCurrency?.symbol || selectedCurrency?.code || baseCurrency?.symbol || '₴';
 
   // Load PO data in edit mode
+  // Токен останнього завантаження: відповідь на запит, після якого картку закрили чи відкрили
+  // для іншого замовлення, відкидається. Без нього пізня відповідь заповнювала форму чужими
+  // рядками (і «Зберегти» слало їх у поточне замовлення) та знімала позначку «видалено».
+  const loadReqRef = useRef(0);
   const loadPo = useCallback(
     (id: string, silent = false) => {
+      const reqId = ++loadReqRef.current;
+      const isStale = () => reqId !== loadReqRef.current;
       if (!silent) {
         setLoading(true);
         setError('');
       }
       return apiFetch<PODetail>(`/purchase-orders/${id}?withDeleted=true`)
         .then(po => {
+          if (isStale()) return;
           setDeletedDocId(po.deletedAt ? id : null);
           setPoNumber(po.number);
           setCurrentStatus(po.status);
@@ -422,9 +433,11 @@ export function PurchaseOrderCreateModal({
           setContractNumber(po.contractNumber ?? null);
         })
         .catch(e => {
+          if (isStale()) return;
           if (!silent) setError(e instanceof Error ? e.message : 'Помилка завантаження замовлення');
         })
         .finally(() => {
+          if (isStale()) return;
           if (!silent) setLoading(false);
         });
     },
@@ -1072,7 +1085,7 @@ export function PurchaseOrderCreateModal({
                 </button>
                 <button
                   type="button"
-                  disabled={transitioning || !isEditMode}
+                  disabled={transitioning || !isEditMode || isDeleted}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                   title={STATUS_DESCRIPTIONS[currentStatus]}
                   className={cn(

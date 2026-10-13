@@ -322,3 +322,37 @@ describe('InvoiceSection — nullable documentDate', () => {
     // fmtDate ніде не викликався — інакше отримали б "Invalid Date".
   });
 });
+
+// BR-WO-012: наряд позначено на видалення — секція лише показує рахунок. Контроль «для звичайного
+// наряду кнопки є» — кейси вище («Виставити рахунок», «Оновити з наряду»).
+describe('InvoiceSection — наряд позначено на видалення (readOnly)', () => {
+  it('рахунку немає → «Виставити рахунок» сховано, порожній стан лишається', () => {
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="COMPLETED"
+        invoiceRef={null}
+        onChange={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(screen.getByText('Рахунок не виставлено')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Виставити рахунок' })).not.toBeInTheDocument();
+  });
+
+  it('чернетка рахунку → «Оновити з наряду» сховано; PDF рахунку і перехід до списку лишаються', () => {
+    render(
+      <InvoiceSection
+        workOrderId={WO_ID}
+        workOrderStatus="COMPLETED"
+        invoiceRef={draftInvoice}
+        onChange={vi.fn()}
+        readOnly
+      />,
+    );
+    expect(screen.getByText('Рахунок № INV-2026-0001')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Оновити з наряду' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PDF рахунку' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Відкрити рахунки ↗' })).toBeInTheDocument();
+  });
+});

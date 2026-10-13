@@ -1694,7 +1694,7 @@ export function CreateWorkOrderModal({
                 <Tooltip content={WO_STATUS_DESCRIPTIONS[currentStatus] ?? currentStatus}>
                   <button
                     type="button"
-                    disabled={transitioning || !isEditMode}
+                    disabled={transitioning || !isEditMode || isDeleted}
                     onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                     className={cn(
                       'text-sm font-medium px-2.5 py-1 rounded-full transition-colors',
@@ -1790,7 +1790,10 @@ export function CreateWorkOrderModal({
                 )}
               </div>
               <div className="flex gap-2 items-center flex-wrap">
-                {canShare && (
+                {/* BR-WO-012: «Друк», «Зберегти як», «Поділитись» і SMS ідуть через токен поширення
+                    (POST /work-orders/:id/share-token), а сервер видаленого наряду не знаходить —
+                    у картці перегляду весь блок сховано. */}
+                {canShare && !isDeleted && (
                   <>
                     <Button
                       variant="outline"
@@ -2116,6 +2119,9 @@ export function CreateWorkOrderModal({
                             setContracts([]);
                           }}
                           hidePick={false}
+                          // Як решта полів шапки: у картці лише на перегляд (статус не дозволяє
+                          // правку або наряд позначено на видалення) клієнта не змінити й не очистити.
+                          disabled={!canEdit}
                         />
                         <Select
                           label="Договір"

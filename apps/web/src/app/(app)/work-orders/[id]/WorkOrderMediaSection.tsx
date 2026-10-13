@@ -23,6 +23,11 @@ interface WorkOrderMediaSectionProps {
   onChanged: () => void;
   /** Surface upload errors at the page level (preserves original UX). */
   onError?: (msg: string) => void;
+  /**
+   * BR-WO-012: наряд позначено на видалення — лише перегляд: без «Додати фото», перетягування
+   * і видалення файла (сервер на всі три відповідає 404). Перегляд фото лишається.
+   */
+  readOnly?: boolean;
 }
 
 export function WorkOrderMediaSection({
@@ -30,6 +35,7 @@ export function WorkOrderMediaSection({
   media,
   onChanged,
   onError,
+  readOnly = false,
 }: WorkOrderMediaSectionProps) {
   const { t } = useTranslation('workOrders');
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -78,38 +84,48 @@ export function WorkOrderMediaSection({
           <h3 className="font-medium text-foreground text-sm">
             {t('media.title', { count: media.length })}
           </h3>
-          <label className="cursor-pointer">
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              multiple
-              className="hidden"
-              onChange={e => {
-                if (e.target.files) void handleMediaUpload(e.target.files);
-              }}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              loading={uploadingMedia}
-              onClick={e => e.preventDefault()}
-            >
-              {t('media.add')}
-            </Button>
-          </label>
+          {!readOnly && (
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                className="hidden"
+                onChange={e => {
+                  if (e.target.files) void handleMediaUpload(e.target.files);
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                loading={uploadingMedia}
+                onClick={e => e.preventDefault()}
+              >
+                {t('media.add')}
+              </Button>
+            </label>
+          )}
         </div>
         <div
           className="p-4"
           onDragOver={e => e.preventDefault()}
           onDrop={e => {
+            // preventDefault і в режимі перегляду: без нього браузер відкрив би кинутий файл.
             e.preventDefault();
+            if (readOnly) return;
             void handleMediaUpload(e.dataTransfer.files);
           }}
         >
           {media.length === 0 ? (
-            <div className="text-center text-muted-foreground text-sm py-6 border-2 border-dashed border-border rounded-lg">
-              {t('media.dropHint')}
-            </div>
+            readOnly ? (
+              <div className="text-center text-muted-foreground text-sm py-6">
+                {t('media.empty')}
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground text-sm py-6 border-2 border-dashed border-border rounded-lg">
+                {t('media.dropHint')}
+              </div>
+            )
           ) : (
             <div className="grid grid-cols-4 gap-3">
               {media.map(m => (
@@ -131,30 +147,32 @@ export function WorkOrderMediaSection({
                       {m.filename}
                     </div>
                   )}
-                  <button
-                    type="button"
-                    aria-label={t('media.deleteAria')}
-                    onClick={e => {
-                      e.stopPropagation();
-                      // Раніше тут був async-обробник БЕЗ try/catch: при збої файл не
-                      // видалявся, а користувач не бачив нічого. Беремо той самий
-                      // механізм `onError`, що вже використовує завантаження вище.
-                      void (async () => {
-                        onError?.('');
-                        try {
-                          await apiFetch(`/work-orders/${woId}/media/${m.id}`, {
-                            method: 'DELETE',
-                          });
-                          onChanged();
-                        } catch (err: unknown) {
-                          onError?.(err instanceof Error ? err.message : t('media.deleteError'));
-                        }
-                      })();
-                    }}
-                    className="absolute top-1 right-1 hidden group-hover:flex focus-visible:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
-                  >
-                    ×
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={t('media.deleteAria')}
+                      onClick={e => {
+                        e.stopPropagation();
+                        // Раніше тут був async-обробник БЕЗ try/catch: при збої файл не
+                        // видалявся, а користувач не бачив нічого. Беремо той самий
+                        // механізм `onError`, що вже використовує завантаження вище.
+                        void (async () => {
+                          onError?.('');
+                          try {
+                            await apiFetch(`/work-orders/${woId}/media/${m.id}`, {
+                              method: 'DELETE',
+                            });
+                            onChanged();
+                          } catch (err: unknown) {
+                            onError?.(err instanceof Error ? err.message : t('media.deleteError'));
+                          }
+                        })();
+                      }}
+                      className="absolute top-1 right-1 hidden group-hover:flex focus-visible:flex w-6 h-6 bg-destructive text-white rounded-full items-center justify-center text-xs"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

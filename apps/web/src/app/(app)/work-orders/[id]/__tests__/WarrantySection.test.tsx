@@ -78,4 +78,22 @@ describe('WarrantySection', () => {
       expect(claimMutateAsync).toHaveBeenCalledWith({ id: 'w-active', claimWoId: WO }),
     );
   });
+
+  // BR-WO-012: наряд позначено на видалення — гарантії лише показуються.
+  it('readOnly: гарантії видно, але «Додати» і «Пред’явити» сховано', () => {
+    warrantiesData = { items: [active, claimed] };
+    render(
+      <WarrantySection workOrderId={WO} counterpartyId={CP} workOrderStatus="COMPLETED" readOnly />,
+    );
+    expect(screen.getByText('Активна')).toBeInTheDocument();
+    expect(screen.queryByText('Пред’явити')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('контроль: без readOnly ті самі дані дають і «Пред’явити», і кнопку додавання', () => {
+    warrantiesData = { items: [active, claimed] };
+    render(<WarrantySection workOrderId={WO} counterpartyId={CP} workOrderStatus="COMPLETED" />);
+    expect(screen.getByText('Пред’явити')).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
 });

@@ -5239,6 +5239,9 @@
    "WorkOrderShareService.findByShareToken — public DTO leak guards контракт parts[] — рівно {id, goodName, quantity, unitShortName, price, amount}"
   ],
   "apps/api/src/modules/work-orders/work-orders.with-deleted.spec.ts": [
+   "WorkOrdersService — видалений наряд: собівартість маскується за роллю (BR-WO-012) MECHANIC собівартості не бачить",
+   "WorkOrdersService — видалений наряд: собівартість маскується за роллю (BR-WO-012) RECEPTIONIST собівартості не бачить",
+   "WorkOrdersService — видалений наряд: собівартість маскується за роллю (BR-WO-012) контроль: OWNER бачить собівартість того самого рядка",
    "WorkOrdersService — документ, позначений на видалення (BR-WO-012) findOne withDeleted: false — те саме, що без прапорця",
    "WorkOrdersService — документ, позначений на видалення (BR-WO-012) findOne withDeleted: true → документ повернуто з заповненим deletedAt; orgId у запиті лишається",
    "WorkOrdersService — документ, позначений на видалення (BR-WO-012) findOne без прапорця видалений документ не знайдено: запит фільтрує deletedAt: null",

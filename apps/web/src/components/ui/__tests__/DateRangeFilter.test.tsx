@@ -93,7 +93,12 @@ describe('DateRangeFilter', () => {
   // Рішення власника 2026-10-13: у фільтрі дат кожного списку — кнопка очищення межі.
   it('обидві межі мають кнопку «Очистити дату»; кожна знімає лише свою межу', () => {
     const { onFromChange, onToChange } = setup();
-    const buttons = screen.getAllByRole('button', { name: 'Очистити дату' });
+    const buttons = screen.getAllByRole('button', { name: /^Очистити дату/ });
+    // Дві кнопки мають різні назви — читач екрана каже, яку межу знімає кожна.
+    expect(buttons.map(b => b.getAttribute('aria-label'))).toEqual([
+      'Очистити дату: З',
+      'Очистити дату: По',
+    ]);
     expect(buttons).toHaveLength(2);
 
     fireEvent.click(buttons[0]);
@@ -106,7 +111,7 @@ describe('DateRangeFilter', () => {
 
   it('порожня межа кнопки очищення не має', () => {
     setup('2026-10-01', '');
-    expect(screen.getAllByRole('button', { name: 'Очистити дату' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Очистити дату/ })).toHaveLength(1);
   });
 
   it('після очищення «З» поле порожнє, а «По» більше нічим не обмежене знизу', () => {
@@ -125,7 +130,7 @@ describe('DateRangeFilter', () => {
       );
     };
     render(<Harness />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Очистити дату' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Очистити дату/ })[0]);
     expect(screen.getByLabelText('З')).toHaveValue('');
 
     // 01.10 раніше за колишню межу «З 05.10» — тепер приймається.

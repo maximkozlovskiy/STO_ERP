@@ -121,7 +121,8 @@ describe('DatePickerInput — поле показує лише застосов�
 // прибрати `onChange('')` з handleClear → кейс «очищає» падає.
 describe('DatePickerInput — кнопка очищення (clearable)', () => {
   const calendar = () => document.querySelector('.rdp-root');
-  const clearBtn = () => screen.queryByRole('button', { name: 'Очистити дату' });
+  // Назва кнопки — «Очистити дату», а для поля з назвою — «Очистити дату: <назва поля>».
+  const clearBtn = () => screen.queryByRole('button', { name: /^Очистити дату/ });
 
   it('без пропа clearable кнопки немає — поле у формах документів не змінилось', () => {
     render(<DatePickerInput value="2026-10-13" onChange={vi.fn()} />);

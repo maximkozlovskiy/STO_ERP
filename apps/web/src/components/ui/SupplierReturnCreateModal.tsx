@@ -185,6 +185,9 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   const [status, setStatus] = useState('DRAFT');
   // Документ позначено на видалення → картка лише на перегляд (вантажиться з withDeleted).
   const [isDeleted, setIsDeleted] = useState(false);
+  // id повернення, дані якого зараз у формі. Доки не збігається з editId, у картці ще стоять
+  // статус і рядки ПОПЕРЕДНЬОГО документа — зберігати, проводити й скасовувати не можна.
+  const [loadedId, setLoadedId] = useState<string | null>(null);
   const [supplierName, setSupplierName] = useState('');
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
 
@@ -268,9 +271,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // ── Load existing return ────────────────────────────────────────────────────
   useEffect(() => {
     if (!open || !editId) return;
+    // Картку закрили чи відкрили для іншого повернення до відповіді — відповідь відкидається.
+    let cancelled = false;
+    setLoadedId(null);
     apiFetch<SupplierReturn>(`/supplier-returns/${editId}?withDeleted=true`)
       .then(data => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || cancelled) return;
+        setLoadedId(editId);
         setStatus(data.status);
         setIsDeleted(!!data.deletedAt);
         setSupplierName(data.supplierName ?? '');
@@ -286,10 +293,13 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         });
       })
       .catch((e: unknown) => {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || cancelled) return;
         // Раніше помилка ковталась: картка лишалась порожньою формою «чернетки» без пояснення.
         setError(e instanceof Error ? e.message : t('errors.returnLoadFailed'));
       });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editId, reset]);
 
@@ -325,14 +335,16 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   // ── Status transitions ─────────────────────────────────────────────────────
   // Backend FSM is linear-forward: DRAFT → CONFIRMED or DRAFT → CANCELLED; both terminal.
   // Видалений документ переходів не має: сервер відповість 404 на будь-яку зміну.
-  const allowedTransitions = isDeleted ? [] : (STATUS_TRANSITIONS[status] ?? []);
+  // Документ ще не завантажено (або завантаження впало) — у формі чужі дані: лише перегляд.
+  const notLoaded = isEdit && loadedId !== editId;
+  const allowedTransitions = isDeleted || notLoaded ? [] : (STATUS_TRANSITIONS[status] ?? []);
   const statusPrevStep: string | null = null;
   const statusNextStep =
     allowedTransitions.find(s => s !== 'CANCELLED') ?? allowedTransitions[0] ?? null;
 
   const doTransition = useCallback(
     async (targetStatus: string) => {
-      if (!editId || isDeleted) return;
+      if (!editId || isDeleted || notLoaded) return;
       if (savingRef.current || transitioningRef.current) return;
       setTransitioningBoth(true);
       setError('');
@@ -356,7 +368,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         setTransitioningBoth(false);
       }
     },
-    [editId, isDeleted, features.toastEnabled, onSaved],
+    [editId, isDeleted, notLoaded, features.toastEnabled, onSaved],
   );
 
   // ── Lines ──────────────────────────────────────────────────────────────────
@@ -403,7 +415,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
     // WEB-H3 (Bug #630): синхронний guard проти concurrent double-submit.
     if (savingRef.current || transitioningRef.current) return;
     // Ctrl+Enter у модалці кличе цей самий обробник — видалений документ не зберігаємо.
-    if (isDeleted) return;
+    if (isDeleted || notLoaded) return;
     if (values.lines.length === 0) {
       setError('Додайте хоча б один товар');
       return;
@@ -459,7 +471,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, [onClose]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const isReadOnly = status !== 'DRAFT' || isDeleted;
+  const isReadOnly = status !== 'DRAFT' || isDeleted || notLoaded;
   const canEdit = !isReadOnly;
 
   const title = isEdit
@@ -549,7 +561,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
         footer={
           <div className="flex items-center justify-between w-full gap-2">
             <div>
-              {isEdit && status === 'DRAFT' && !isDeleted && (
+              {isEdit && status === 'DRAFT' && !isDeleted && !notLoaded && (
                 <Button
                   variant="destructive"
                   size="sm"
@@ -562,7 +574,7 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
               )}
             </div>
             <div className="flex gap-2 items-center">
-              {isEdit && status === 'DRAFT' && !isDeleted && (
+              {isEdit && status === 'DRAFT' && !isDeleted && !notLoaded && (
                 <Button
                   variant="outline"
                   size="sm"

@@ -660,7 +660,13 @@ function InvoicesPageInner() {
                 >
                   {t('actions.openDocument')}
                 </Button>
-                {(STATUS_TRANSITIONS[inv.status] as InvoiceStatusValue[] | undefined)?.map(s => (
+                {/* BR-WO-012: рахунок, позначений на видалення, — лише перегляд. Сервер на будь-яку
+                    його зміну й на PDF відповідає 404, тож переходи, PDF і дублювання сховано;
+                    «Друк» (window.print) лишається. */}
+                {(inv.deletedAt
+                  ? []
+                  : ((STATUS_TRANSITIONS[inv.status] as InvoiceStatusValue[] | undefined) ?? [])
+                ).map(s => (
                   <Button
                     key={s}
                     variant={
@@ -681,14 +687,16 @@ function InvoicesPageInner() {
                         : t('actions.cancel')}
                   </Button>
                 ))}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => void downloadPdf(inv)}
-                >
-                  {t('actions.downloadPdf')}
-                </Button>
+                {!inv.deletedAt && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => void downloadPdf(inv)}
+                  >
+                    {t('actions.downloadPdf')}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -697,16 +705,18 @@ function InvoicesPageInner() {
                 >
                   {t('actions.print')}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => void handleClone(inv)}
-                  loading={cloning}
-                  disabled={cloning}
-                >
-                  {t('actions.clone')}
-                </Button>
+                {!inv.deletedAt && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => void handleClone(inv)}
+                    loading={cloning}
+                    disabled={cloning}
+                  >
+                    {t('actions.clone')}
+                  </Button>
+                )}
               </div>
             </PanelSection>
           </div>
@@ -1135,6 +1145,9 @@ function InvoicesPageInner() {
         onClose={() => setEditingInvoiceId(null)}
         onSaved={() => {
           void queryClient.invalidateQueries({ queryKey: invoicesKeys.all });
+          // Панель тримає копію рахунку: після збереження чи переходу статусу в картці вона
+          // показувала б старий статус і старі кнопки дій («Надіслати» для вже надісланого).
+          if (selectedInv && selectedInv.id === editingInvoiceId) void selectInvoice(selectedInv);
         }}
       />
 

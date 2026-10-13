@@ -921,9 +921,13 @@ export default function WorkOrderCardPage() {
             {TRANSITION_LABELS[s] ?? s}
           </Button>
         ))}
-        <Button variant="outline" size="sm" onClick={() => void downloadPdf()}>
-          {t('detail.pdf')}
-        </Button>
+        {/* BR-WO-012: PDF будує сервер, а він видаленого наряду не знаходить (404) — кнопку сховано.
+            «Друк» нижче — window.print(), запиту немає, тому лишається. */}
+        {!isDeleted && (
+          <Button variant="outline" size="sm" onClick={() => void downloadPdf()}>
+            {t('detail.pdf')}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => window.print()}>
           {t('detail.print')}
         </Button>
@@ -1046,6 +1050,7 @@ export default function WorkOrderCardPage() {
           workOrderStatus={wo.status}
           invoiceRef={invoiceRef}
           onChange={setInvoiceRef}
+          readOnly={isDeleted}
         />
       </SectionErrorBoundary>
 
@@ -1055,6 +1060,7 @@ export default function WorkOrderCardPage() {
           workOrderId={id}
           counterpartyId={wo.counterpartyId}
           workOrderStatus={wo.status}
+          readOnly={isDeleted}
         />
       </SectionErrorBoundary>
 
@@ -1245,7 +1251,13 @@ export default function WorkOrderCardPage() {
 
       {/* E3: медіа-секція під error-boundary — краш рендеру медіа не валить картку наряду. */}
       <SectionErrorBoundary label={t('detail.sectionMedia')}>
-        <WorkOrderMediaSection woId={id} media={media} onChanged={loadMedia} onError={setError} />
+        <WorkOrderMediaSection
+          woId={id}
+          media={media}
+          onChanged={loadMedia}
+          onError={setError}
+          readOnly={isDeleted}
+        />
       </SectionErrorBoundary>
 
       <WorkOrderAuditSection auditEvents={auditEvents} />

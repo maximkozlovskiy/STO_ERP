@@ -131,4 +131,63 @@ describe('Рахунки — стандарт кліку по рядку', () =>
     fireEvent.click(within(tableRow('РАХ-0001')).getByTitle('Відкрити документ'));
     expect(card()).toHaveTextContent('inv-a');
   });
+
+  // BR-WO-012: панель видаленого рахунку — лише перегляд. Сервер на переходи, PDF і дублювання
+  // такого рахунку відповідає 404, тож цих кнопок немає; «Друк» (window.print) і вхід у картку є.
+  // Шукаємо в межах панелі: «Відкрити документ» — ще й назва олівця в рядку таблиці.
+  const panelActions = () => {
+    const heading = screen
+      .getAllByRole('heading', { level: 2 })
+      .find(h => h.textContent === 'РАХ-0001')!;
+    const panel = within(heading.closest<HTMLElement>('.rounded-xl')!);
+    return [
+      'Надіслати',
+      'Скасувати',
+      'Завантажити PDF',
+      'Дублювати',
+      'Друк',
+      'Відкрити документ',
+    ].filter(name => panel.queryAllByRole('button', { name }).length > 0);
+  };
+
+  it('панель видаленого рядка: без «Надіслати / Скасувати / Завантажити PDF / Дублювати»', async () => {
+    const deleted = { ...INV_A, deletedAt: '2026-10-13T09:00:00.000Z' };
+    listItems = [deleted, INV_B];
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/invoices/inv-a?withDeleted=true') {
+        return Promise.resolve({ ...deleted, lines: [] });
+      }
+      if (path.endsWith('/lines-summary')) return Promise.resolve({ tables: [], executors: [] });
+      return Promise.resolve({});
+    });
+    renderPage();
+    await screen.findByText('РАХ-0001');
+
+    fireEvent.click(tableRow('РАХ-0001'));
+    await waitFor(() => expect(panelShows('РАХ-0001')).toBe(true));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/invoices/inv-a?withDeleted=true'),
+    );
+
+    await waitFor(() => expect(panelActions()).toEqual(['Друк', 'Відкрити документ']));
+  });
+
+  it('контроль: панель звичайної чернетки має всі дії', async () => {
+    renderPage();
+    await screen.findByText('РАХ-0001');
+
+    fireEvent.click(tableRow('РАХ-0001'));
+    await waitFor(() => expect(panelShows('РАХ-0001')).toBe(true));
+
+    await waitFor(() =>
+      expect(panelActions()).toEqual([
+        'Надіслати',
+        'Скасувати',
+        'Завантажити PDF',
+        'Дублювати',
+        'Друк',
+        'Відкрити документ',
+      ]),
+    );
+  });
 });

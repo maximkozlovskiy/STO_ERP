@@ -19,6 +19,8 @@ interface Props {
   workOrderId: string;
   counterpartyId: string;
   workOrderStatus: string;
+  /** BR-WO-012: наряд позначено на видалення — гарантії лише показуються: без «Додати» і «Пред’явити». */
+  readOnly?: boolean;
 }
 
 /** Стан гарантії з claimedAt+expiresAt (бекенд не має enum). Дзеркалить counterparties tab. */
@@ -50,7 +52,12 @@ function StateBadge({ w }: { w: Warranty }) {
  * дозволяє «Пред'явити» (claim у поточний наряд) активну гарантію + ручне створення. Дзеркалить
  * InvoiceSection: гейт за статусом, обгортка error-boundary — у батьківському PageClient.
  */
-export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }: Props) {
+export function WarrantySection({
+  workOrderId,
+  counterpartyId,
+  workOrderStatus,
+  readOnly = false,
+}: Props) {
   const { t } = useTranslation('workOrders');
   const features = useUiFeatures();
   const [createOpen, setCreateOpen] = useState(false);
@@ -85,9 +92,11 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
     <div className="bg-surface rounded-xl border border-border overflow-hidden mb-6">
       <div className="px-5 py-3 border-b border-border bg-secondary flex items-center justify-between">
         <h3 className="font-medium text-foreground text-sm">{t('warranty.title')}</h3>
-        <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-          {t('warranty.add')}
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+            {t('warranty.add')}
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -112,7 +121,7 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <StateBadge w={w} />
-                {w.isActive && (
+                {w.isActive && !readOnly && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -129,7 +138,7 @@ export function WarrantySection({ workOrderId, counterpartyId, workOrderStatus }
       )}
 
       <WarrantyCreateModal
-        open={createOpen}
+        open={createOpen && !readOnly}
         onClose={() => setCreateOpen(false)}
         workOrderId={workOrderId}
         counterpartyId={counterpartyId}

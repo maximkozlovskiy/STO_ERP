@@ -5,14 +5,17 @@
 // Для кожної з п'яти карток:
 //   - документ вантажиться з `?withDeleted=true`;
 //   - з `deletedAt` — зверху смуга (role="status"), немає збереження, переходів статусу,
-//     додавання рядків, імпорту, оплати, поширення; «Закрити» і «Друк» лишаються;
+//     додавання рядків, імпорту, оплати, поширення; «Закрити» і «Друк» лишаються
+//     (окрім наряду: там «Друк» і «Зберегти як» ідуть на сервер через токен поширення, а
+//     сервер видаленого наряду не знаходить — тому в картці перегляду їх немає);
 //   - без `deletedAt` — картка як раніше (збереження й переходи на місці, смуги немає).
 //
 // Що ловить (мутацію не проганяв): прибрати `&& !isDeleted` з `canEdit` будь-якої картки → падає її
 // кейс «лише перегляд» (з'являється «Зберегти зміни»); прибрати `!isDeleted` з allowedTransitions →
 // падає перевірка кнопок переходу.
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { CreateWorkOrderModal } from '../CreateWorkOrderModal';
@@ -20,7 +23,7 @@ import { InvoiceCreateModal } from '../InvoiceCreateModal';
 import { PurchaseOrderCreateModal } from '../PurchaseOrderCreateModal';
 import { StockDocumentCreateModal } from '../StockDocumentCreateModal';
 import { SupplierReturnCreateModal } from '../SupplierReturnCreateModal';
-import { renderWithQueryClient } from '../../../__tests__/query-utils';
+import { renderWithQueryClient, makeTestQueryClient } from '../../../__tests__/query-utils';
 
 const apiFetchMock = vi.fn();
 vi.mock('@/lib/api-client', () => ({
@@ -197,6 +200,49 @@ describe('PurchaseOrderCreateModal — документ, позначений н
     expect(button(/Друк/)).toBeInTheDocument();
   });
 
+  // Картку відкрили для A, закрили й відкрили для видаленого B; відповідь A прийшла пізніше.
+  // Без токена запиту вона заповнювала форму рядками A і знімала позначку «видалено» з B.
+  it('пізня відповідь попереднього замовлення не потрапляє в картку наступного', async () => {
+    let resolveA: (v: Doc) => void = () => {};
+    mockApi({ '/purchase-orders/po-1?withDeleted=true': doc(DELETED_AT) });
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/purchase-orders/po-a?withDeleted=true'
+        ? new Promise<Doc>(resolve => {
+            resolveA = resolve;
+          })
+        : base(path),
+    );
+    const client = makeTestQueryClient();
+    const card = (id: string) => (
+      <QueryClientProvider client={client}>
+        <PurchaseOrderCreateModal open purchaseOrderId={id} onClose={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(card('po-a'));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/purchase-orders/po-a?withDeleted=true'),
+    );
+
+    rerender(card('po-1'));
+    await screen.findByText('Фільтр');
+    expect(banner()).toBeInTheDocument();
+
+    await act(async () => {
+      resolveA({
+        ...doc(null),
+        id: 'po-a',
+        number: 'ЗАМ-ЧУЖЕ',
+        lines: [{ id: 'la', goodId: 'ga', goodName: 'Чужий товар', quantity: 1, price: 1 }],
+      });
+    });
+
+    expect(screen.queryByText('Чужий товар')).not.toBeInTheDocument();
+    expect(screen.getByText('Фільтр')).toBeInTheDocument();
+    expect(banner()).toBeInTheDocument();
+    expect(button('Зберегти зміни')).not.toBeInTheDocument();
+  });
+
   it('з deletedAt у статусі «Замовлено» — прийому товару немає', async () => {
     await open(DELETED_AT, 'ORDERED');
     expectReadOnly([/Оприбуткувати/, /Оплатити/]);
@@ -305,6 +351,50 @@ describe('SupplierReturnCreateModal — документ, позначений �
     }
   });
 
+  // Доки документ не завантажено, у картці стоять статус і рядки попереднього — жодних дій.
+  // А відповідь попереднього документа, що прийшла після перемикання, у картку не потрапляє.
+  it('до відповіді сервера дій немає; пізня відповідь попереднього повернення відкидається', async () => {
+    let resolveA: (v: Doc) => void = () => {};
+    mockApi({ '/supplier-returns/sr-1?withDeleted=true': doc(DELETED_AT) });
+    const base = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/supplier-returns/sr-a?withDeleted=true'
+        ? new Promise<Doc>(resolve => {
+            resolveA = resolve;
+          })
+        : base(path),
+    );
+    const card = (id: string) => (
+      <SupplierReturnCreateModal open editId={id} onClose={vi.fn()} onSaved={vi.fn()} />
+    );
+    const { rerender } = render(card('sr-a'));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/supplier-returns/sr-a?withDeleted=true'),
+    );
+    // Відповіді ще немає: типовий статус «чернетка» не має давати ні збереження, ні проведення.
+    for (const name of ['Зберегти зміни', 'Підтвердити', 'Скасувати']) {
+      expect(button(name), `до завантаження кнопки «${name}» бути не має`).not.toBeInTheDocument();
+    }
+
+    rerender(card('sr-1'));
+    await screen.findByText('Фільтр');
+    expect(banner()).toBeInTheDocument();
+
+    await act(async () => {
+      resolveA({
+        ...doc(null),
+        id: 'sr-a',
+        lines: [
+          { id: 'la', goodId: 'ga', goodName: 'Чужий товар', unit: 'шт', quantity: 1, price: 1 },
+        ],
+      });
+    });
+
+    expect(screen.queryByText('Чужий товар')).not.toBeInTheDocument();
+    expect(banner()).toBeInTheDocument();
+    expect(button('Підтвердити')).not.toBeInTheDocument();
+  });
+
   // Раніше помилка завантаження ковталась (`.catch(() => {})`): картка лишалась порожньою формою
   // «чернетки», наче документа ще немає.
   it('помилка завантаження показана в картці', async () => {
@@ -366,7 +456,18 @@ describe('CreateWorkOrderModal — наряд, позначений на вид�
     await open(DELETED_AT);
 
     expect(loadCalls('/work-orders/wo-1?')).toEqual(['/work-orders/wo-1?withDeleted=true']);
-    expectReadOnly(['Зберегти зміни', 'Скасувати', /Виставити рахунок/, /Поділитись/, /SMS/]);
+    expectReadOnly([
+      'Зберегти зміни',
+      'Скасувати',
+      /Виставити рахунок/,
+      /Поділитись/,
+      /SMS/,
+      // Друк і «Зберегти як» наряду — через POST /work-orders/:id/share-token: для видаленого 404.
+      'Друк',
+      /Зберегти як/,
+    ]);
+    // Клієнта в картці перегляду не очистити й не змінити: поле вимкнене, як решта шапки.
+    expect(button('Очистити')).not.toBeInTheDocument();
     // Стара підказка «редагування недоступне у статусі …» поруч зі смугою не дублюється.
     expect(screen.queryByText(/редагування недоступне/)).not.toBeInTheDocument();
   });
@@ -378,6 +479,9 @@ describe('CreateWorkOrderModal — наряд, позначений на вид�
     expect(button('Зберегти зміни')).toBeInTheDocument();
     expect(button('Скасувати')).toBeInTheDocument();
     expect(button(/Поділитись/)).toBeInTheDocument();
+    expect(button('Друк')).toBeInTheDocument();
+    expect(button(/Зберегти як/)).toBeInTheDocument();
+    expect(button('Очистити')).toBeInTheDocument();
   });
 
   it('смуга стоїть у тілі картки над формою', async () => {

@@ -663,7 +663,7 @@ export function StockDocumentCreateModal({
                 </button>
                 <button
                   type="button"
-                  disabled={transitioning || !isEditMode}
+                  disabled={transitioning || !isEditMode || isDeleted}
                   onClick={() => isEditMode && setStatusMenuOpen(o => !o)}
                   title={STATUS_DESCRIPTIONS[currentStatus]}
                   className={cn(
