@@ -369,6 +369,17 @@ export function StockDocumentCreateModal({
     [reset],
   );
 
+  // Імпорт з XLSX / майстра пише рядки в базу ОДРАЗУ, без «Зберегти». Тому крім перечитування
+  // документа треба сповістити сторінку (onSaved): інакше після закриття картки хрестиком список
+  // («Позицій») і «Зведення» бокової панелі показують числа до імпорту (Bug #838).
+  const handleLinesImported = useCallback(
+    (docId: string) => {
+      void loadDoc(docId, true);
+      onSaved?.();
+    },
+    [loadDoc, onSaved],
+  );
+
   useEffect(() => {
     if (!open || !isEditMode || !stockDocumentId) return;
     void loadDoc(stockDocumentId);
@@ -1175,7 +1186,7 @@ export function StockDocumentCreateModal({
                     <XlsxImportButton
                       templateType="sd-lines"
                       importUrl={`/xlsx/import/stock-document-lines/${stockDocumentId}`}
-                      onImportComplete={() => void loadDoc(stockDocumentId, true)}
+                      onImportComplete={() => handleLinesImported(stockDocumentId)}
                     />
                     <button
                       type="button"
@@ -1249,7 +1260,7 @@ export function StockDocumentCreateModal({
           docNumber={docNumber || undefined}
           counterpartyId={undefined}
           existingLineCount={fields.length}
-          onImportComplete={() => void loadDoc(stockDocumentId, true)}
+          onImportComplete={() => handleLinesImported(stockDocumentId)}
         />
       )}
 

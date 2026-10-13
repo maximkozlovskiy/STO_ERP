@@ -901,6 +901,16 @@ export function PurchaseOrderCreateModal({
     }
   };
 
+  // Імпорт з XLSX / майстра пише рядки в базу ОДРАЗУ, без «Зберегти». Тому крім перечитування
+  // замовлення треба сповістити сторінку: інакше після закриття картки хрестиком список (сума)
+  // і «Зведення» бокової панелі показують числа до імпорту (Bug #838). Лише в картці, відкритій
+  // на наявному замовленні (`purchaseOrderId`): у режимі створення `onSaved` сторінки картку
+  // закриває, а щойно створеної чернетки в панелі ще немає.
+  const handleLinesImported = (poId: string) => {
+    void loadPo(poId, true);
+    if (purchaseOrderId) onSaved?.();
+  };
+
   const handleApplyPricing = async () => {
     if (!purchaseOrderId) return;
     setApplyingPricing(true);
@@ -1480,7 +1490,7 @@ export function PurchaseOrderCreateModal({
                   <XlsxImportButton
                     templateType="po-lines"
                     importUrl={`/xlsx/import/purchase-order-lines/${activePOId}`}
-                    onImportComplete={() => void loadPo(activePOId, true)}
+                    onImportComplete={() => handleLinesImported(activePOId)}
                   />
                 )}
                 {/* Майстер Excel-імпорту доступний і на створенні: у create-mode спершу створює
@@ -2043,7 +2053,7 @@ export function PurchaseOrderCreateModal({
           counterpartyId={supplierIdValue || undefined}
           counterpartyName={supplierDisplay}
           existingLineCount={fields.length}
-          onImportComplete={() => void loadPo(activePOId, true)}
+          onImportComplete={() => handleLinesImported(activePOId)}
         />
       )}
 
