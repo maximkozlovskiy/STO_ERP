@@ -52,13 +52,15 @@ const DOC: StockDoc = {
   deletedAt: null,
 };
 const DOC_2: StockDoc = { ...DOC, id: 'doc-2', number: 'СП-0002', notes: null };
+// Що зараз віддає список: тест «рядок зник зі списку» міняє сторінку / фільтр через цю змінну.
+let listItems: StockDoc[] = [DOC, DOC_2];
 
 vi.mock('@/hooks/api/useStockDocuments', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/api/useStockDocuments')>();
   return {
     ...actual,
     useStockDocuments: () => ({
-      data: { items: [DOC, DOC_2], total: 2, page: 1, limit: 20 },
+      data: { items: listItems, total: listItems.length, page: 1, limit: 20 },
       isLoading: false,
     }),
   };
@@ -79,11 +81,13 @@ const PANEL_KEY = 'sto_detail_panel_stock-documents';
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const ui = () => (
     <QueryClientProvider client={client}>
       <StockDocumentsPage />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const utils = render(ui());
+  return { ...utils, rerenderPage: () => utils.rerender(ui()) };
 }
 
 // Номер стоїть і в рядку таблиці, і в заголовку відкритої панелі — беремо саме рядок.
@@ -98,6 +102,7 @@ const summaryCalls = () =>
 describe('Складські документи — бокова панель', () => {
   beforeEach(() => {
     localStorage.clear();
+    listItems = [DOC, DOC_2];
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
       if (path.endsWith('/lines-summary')) {
@@ -228,5 +233,27 @@ describe('Складські документи — бокова панель', 
     fireEvent.click(row('СП-0001'));
     expect(await screen.findByTestId('lines-summary')).toBeInTheDocument();
     expect(screen.queryByTestId('edit-card')).not.toBeInTheDocument();
+  });
+
+  // Mutation-verify: прибрати ефект «рядок зник із завантаженого списку → setSelectedDocId(null)»
+  // → останнє твердження падає (панель відкривається сама, щойно рядок повернувся у список).
+  it('рядок зник зі списку (сторінка / фільтр) → панель закрита і НЕ відкривається сама, коли він повернувся', async () => {
+    const { rerenderPage } = renderPage();
+    await screen.findByText('СП-0001');
+    fireEvent.click(row('СП-0001'));
+    await screen.findByTestId('lines-summary');
+
+    listItems = [DOC_2];
+    rerenderPage();
+    await waitFor(() => expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument());
+
+    listItems = [DOC, DOC_2];
+    rerenderPage();
+    await screen.findByText('СП-0001');
+    expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument();
+    expect(row('СП-0001')).not.toHaveClass('bg-primary/5');
+    // Контроль: вибір справді скинуто, а не «залип» — клік ВІДКРИВАЄ панель, а не закриває.
+    fireEvent.click(row('СП-0001'));
+    expect(await screen.findByTestId('lines-summary')).toBeInTheDocument();
   });
 });

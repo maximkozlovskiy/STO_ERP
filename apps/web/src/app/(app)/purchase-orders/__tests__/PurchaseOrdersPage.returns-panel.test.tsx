@@ -60,6 +60,8 @@ const SR: SupplierReturn = {
   deletedAt: null,
 };
 const SR_2: SupplierReturn = { ...SR, id: 'sr-2', number: 'ПП-0002', notes: null };
+// Що зараз віддає список повернень: тест «рядок зник зі списку» міняє його через цю змінну.
+let srListItems: SupplierReturn[] = [SR, SR_2];
 
 const PO: PurchaseOrder = {
   id: 'po-1',
@@ -84,7 +86,7 @@ vi.mock('@/hooks/api/useSupplierReturns', async importOriginal => {
   return {
     ...actual,
     useSupplierReturns: () => ({
-      data: { items: [SR, SR_2], total: 2, page: 1, limit: 50 },
+      data: { items: srListItems, total: srListItems.length, page: 1, limit: 50 },
       isLoading: false,
     }),
   };
@@ -146,6 +148,7 @@ describe('Закупівлі — бокова панель повернень і
   beforeEach(() => {
     localStorage.clear();
     search = 'tab=returns';
+    srListItems = [SR, SR_2];
     replaceMock.mockClear();
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
@@ -299,5 +302,27 @@ describe('Закупівлі — бокова панель повернень і
     await screen.findByText('ЗП-0001');
     await waitFor(() => expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument());
     expect(row('ЗП-0001')).not.toHaveClass('bg-primary/5');
+  });
+
+  // Mutation-verify: прибрати ефект «рядок зник із завантаженого списку → setSelectedSrId(null)»
+  // → останнє твердження падає (панель відкривається сама, щойно рядок повернувся у список).
+  it('повернення зникло зі списку (сторінка / фільтр) → панель закрита і сама не відкривається, коли воно повернулось', async () => {
+    const { rerenderPage } = renderPage();
+    await screen.findByText('ПП-0001');
+    fireEvent.click(row('ПП-0001'));
+    await screen.findByTestId('lines-summary');
+
+    srListItems = [SR_2];
+    rerenderPage();
+    await waitFor(() => expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument());
+
+    srListItems = [SR, SR_2];
+    rerenderPage();
+    await screen.findByText('ПП-0001');
+    expect(screen.queryByTestId('lines-summary')).not.toBeInTheDocument();
+    expect(row('ПП-0001')).not.toHaveClass('bg-primary/5');
+    // Контроль: вибір справді скинуто — клік ВІДКРИВАЄ панель, а не закриває.
+    fireEvent.click(row('ПП-0001'));
+    expect(await screen.findByTestId('lines-summary')).toBeInTheDocument();
   });
 });

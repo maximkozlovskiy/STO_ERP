@@ -65,14 +65,15 @@ DRAFT → CONFIRMED
 
 ## API Endpoints (`/api/stock-documents`)
 
-| Метод  | URL                                   | Дія                                                                 |
-| ------ | ------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/api/stock-documents`                | Список (фільтри: type, status, q — номер або примітка, dateFrom/To) |
-| GET    | `/api/stock-documents/:id`            | Деталь з lines                                                      |
-| POST   | `/api/stock-documents`                | Створити (lines у body; опц. `purchaseOrderId` — джерело, Phase D2) |
-| PATCH  | `/api/stock-documents/:id`            | Оновити (тільки DRAFT)                                              |
-| DELETE | `/api/stock-documents/:id`            | Soft-delete (тільки DRAFT)                                          |
-| POST   | `/api/stock-documents/:id/transition` | FSM перехід (DRAFT → CONFIRMED або CANCELLED)                       |
+| Метод  | URL                                      | Дія                                                                            |
+| ------ | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| GET    | `/api/stock-documents`                   | Список (фільтри: type, status, q — номер або примітка, dateFrom/To)            |
+| GET    | `/api/stock-documents/:id`               | Деталь з lines                                                                 |
+| GET    | `/api/stock-documents/:id/lines-summary` | Зведення по рядках документа (BR-WO-009 у `work-order.md`); ролі — як у списку |
+| POST   | `/api/stock-documents`                   | Створити (lines у body; опц. `purchaseOrderId` — джерело, Phase D2)            |
+| PATCH  | `/api/stock-documents/:id`               | Оновити (тільки DRAFT)                                                         |
+| DELETE | `/api/stock-documents/:id`               | Soft-delete (тільки DRAFT)                                                     |
+| POST   | `/api/stock-documents/:id/transition`    | FSM перехід (DRAFT → CONFIRMED або CANCELLED)                                  |
 
 ---
 
@@ -95,16 +96,17 @@ OWNER/ADMIN/STOREKEEPER (документи й рухи містять ціни 
 немає (рішення власника 2026-10-09). Збій запиту списку показує смугу
 `components/ui/list-load-error.tsx` з «Повторити» — не порожній стан.
 
-| Компонент / сторінка  | Файл                                                                    |
-| --------------------- | ----------------------------------------------------------------------- |
-| Сторінка «Склад»      | `app/(app)/stock-documents/page.tsx` (StockPageShell, StockTypeTabs)    |
-| Список документів     | `app/(app)/stock-documents/page.tsx` (StockDocumentsPageClient)         |
-| Вкладка «Рухи»        | `app/(app)/stock-documents/StockMovementsTab.tsx`                       |
-| Вкладка «Залишки»     | `app/(app)/inventory/InventoryTab.tsx` (у `app/(app)/reports/page.tsx`) |
-| Redirect /inventory   | `app/(app)/inventory/page.tsx`                                          |
-| Модалка створення     | `components/ui/StockDocumentCreateModal.tsx`                            |
-| Detail Panel schema   | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA`                        |
-| Hook (TanStack Query) | `hooks/api/useStockDocuments.ts`                                        |
+| Компонент / сторінка   | Файл                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| Сторінка «Склад»       | `app/(app)/stock-documents/page.tsx` (StockPageShell, StockTypeTabs)                                  |
+| Список документів      | `app/(app)/stock-documents/page.tsx` (StockDocumentsPageClient)                                       |
+| Вкладка «Рухи»         | `app/(app)/stock-documents/StockMovementsTab.tsx`                                                     |
+| Вкладка «Залишки»      | `app/(app)/inventory/InventoryTab.tsx` (у `app/(app)/reports/page.tsx`)                               |
+| Redirect /inventory    | `app/(app)/inventory/page.tsx`                                                                        |
+| Модалка створення      | `components/ui/StockDocumentCreateModal.tsx`                                                          |
+| Detail Panel schema    | `lib/panel-schema.ts` → `STOCK_DOC_PANEL_SCHEMA`                                                      |
+| Блок «Зведення» панелі | `components/ui/LinesSummarySection.tsx` + `hooks/api/useLinesSummary.ts` (спільний для п'яти списків) |
+| Hook (TanStack Query)  | `hooks/api/useStockDocuments.ts`                                                                      |
 
 ---
 

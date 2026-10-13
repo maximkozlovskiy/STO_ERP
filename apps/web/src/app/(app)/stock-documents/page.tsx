@@ -257,6 +257,12 @@ function StockDocumentsPageClient() {
   useEffect(() => {
     if (!detailPanel.enabled) setSelectedDocId(null);
   }, [detailPanel.enabled]);
+  // Рядок зник із завантаженого списку (інша сторінка, фільтр, вкладка-тип, видалення) → вибір
+  // забуваємо. Інакше id лишається «прихованим»: повернувся на ту саму сторінку чи зняв фільтр —
+  // і панель відкривається сама, без кліку.
+  useEffect(() => {
+    if (selectedDocId && !loading && !selectedDoc) setSelectedDocId(null);
+  }, [selectedDocId, selectedDoc, loading]);
 
   const panelConfigFields = useMemo(
     () => schemaToPanelConfigFields(STOCK_DOC_PANEL_SCHEMA, panelConfig.config),

@@ -81,6 +81,7 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 | ------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/api/purchase-orders`                   | Список (фільтри: status, supplierId, dateFrom, dateTo; sort: documentDate/createdAt/totalAmount/paymentDate; DTO += `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt`) |
 | GET    | `/api/purchase-orders/:id`               | Деталь з lines (той самий `toDto()` → `paidAmount`/`outstanding`/`isFullyPaid`/`paidAt` присутні й тут, персистентні з `PurchaseOrder.paidAmount`, Фаза 5)             |
+| GET    | `/api/purchase-orders/:id/lines-summary` | Зведення по рядках замовлення (BR-WO-009 у `work-order.md`); ролі — як у списку. Те саме для повернення: `/api/supplier-returns/:id/lines-summary`                     |
 | POST   | `/api/purchase-orders`                   | Створити (lines у body)                                                                                                                                                |
 | PATCH  | `/api/purchase-orders/:id`               | Оновити (тільки DRAFT)                                                                                                                                                 |
 | DELETE | `/api/purchase-orders/:id`               | Soft-delete (тільки DRAFT/CANCELLED)                                                                                                                                   |
@@ -92,12 +93,13 @@ DRAFT → ORDERED → PARTIAL → RECEIVED
 
 ## UI (Web)
 
-| Компонент / сторінка  | Файл                                                  |
-| --------------------- | ----------------------------------------------------- |
-| Список                | `app/(app)/purchase-orders/page.tsx`                  |
-| Модалка створення     | `components/ui/PurchaseOrderCreateModal.tsx`          |
-| Detail Panel schema   | `lib/panel-schema.ts` → `PURCHASE_ORDER_PANEL_SCHEMA` |
-| Hook (TanStack Query) | `hooks/api/usePurchaseOrders.ts`                      |
+| Компонент / сторінка   | Файл                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Список                 | `app/(app)/purchase-orders/page.tsx`                                                                          |
+| Модалка створення      | `components/ui/PurchaseOrderCreateModal.tsx`                                                                  |
+| Detail Panel schema    | `lib/panel-schema.ts` → `PURCHASE_ORDER_PANEL_SCHEMA`                                                         |
+| Detail Panel повернень | `lib/panel-schema.ts` → `SUPPLIER_RETURN_PANEL_SCHEMA` (вкладка «Повернення»; ключ панелі `supplier-returns`) |
+| Hook (TanStack Query)  | `hooks/api/usePurchaseOrders.ts`                                                                              |
 
 **Колонки списку** (`COLUMNS` у page.tsx, toggle/reorder через `useListPage`): Номер, Постачальник,
 Склад, Статус, Сума, Дата документа, **Дата оплати** (сортовна, `paymentDate`, NULLS LAST при DESC —

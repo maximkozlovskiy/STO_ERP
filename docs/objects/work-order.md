@@ -100,21 +100,22 @@ WO_DELETABLE_STATUSES = ['DRAFT', 'CANCELLED'] as readonly WorkOrderStatus[];
 
 ## API Endpoints (`/api/work-orders`)
 
-| Метод  | URL                               | Дія                                               |
-| ------ | --------------------------------- | ------------------------------------------------- |
-| POST   | `/api/work-orders`                | Створити наряд (lines у body)                     |
-| GET    | `/api/work-orders`                | Список (фільтри: status, branchId, q, date range) |
-| GET    | `/api/work-orders/:id`            | Деталь з lines + parts                            |
-| PATCH  | `/api/work-orders/:id`            | Оновити (WO_EDITABLE_STATUSES)                    |
-| POST   | `/api/work-orders/:id/transition` | FSM перехід                                       |
-| POST   | `/api/work-orders/:id/clone`      | Клонувати наряд                                   |
-| POST   | `/api/work-orders/:id/share`      | Поширити кошторис                                 |
-| GET    | `/api/work-orders/:id/parts`      | Запчастини наряду                                 |
-| POST   | `/api/work-orders/:id/parts`      | Додати запчастину                                 |
-| PATCH  | `/api/work-orders/:id/parts/:pId` | Оновити запчастину                                |
-| DELETE | `/api/work-orders/:id/parts/:pId` | Видалити запчастину                               |
-| GET    | `/api/work-orders/:id/lines`      | Роботи наряду                                     |
-| DELETE | `/api/work-orders/:id`            | Soft-delete (тільки WO_DELETABLE_STATUSES)        |
+| Метод  | URL                                  | Дія                                                                             |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------------- |
+| POST   | `/api/work-orders`                   | Створити наряд (lines у body)                                                   |
+| GET    | `/api/work-orders`                   | Список (фільтри: status, branchId, q, date range)                               |
+| GET    | `/api/work-orders/:id`               | Деталь з lines + parts                                                          |
+| GET    | `/api/work-orders/:id/lines-summary` | Зведення по табличних частинах і виконавці (BR-WO-009, 010); ролі — як у списку |
+| PATCH  | `/api/work-orders/:id`               | Оновити (WO_EDITABLE_STATUSES)                                                  |
+| POST   | `/api/work-orders/:id/transition`    | FSM перехід                                                                     |
+| POST   | `/api/work-orders/:id/clone`         | Клонувати наряд                                                                 |
+| POST   | `/api/work-orders/:id/share`         | Поширити кошторис                                                               |
+| GET    | `/api/work-orders/:id/parts`         | Запчастини наряду                                                               |
+| POST   | `/api/work-orders/:id/parts`         | Додати запчастину                                                               |
+| PATCH  | `/api/work-orders/:id/parts/:pId`    | Оновити запчастину                                                              |
+| DELETE | `/api/work-orders/:id/parts/:pId`    | Видалити запчастину                                                             |
+| GET    | `/api/work-orders/:id/lines`         | Роботи наряду                                                                   |
+| DELETE | `/api/work-orders/:id`               | Soft-delete (тільки WO_DELETABLE_STATUSES)                                      |
 
 ---
 

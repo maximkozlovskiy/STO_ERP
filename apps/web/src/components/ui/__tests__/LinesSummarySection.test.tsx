@@ -284,4 +284,33 @@ describe('LinesSummarySection', () => {
     rerender(ui('wo-2'));
     await waitFor(async () => expect(await rowText('goods')).toBe('5 найменувань · 1 од.'));
   });
+
+  // Гонка при швидкому перемиканні рядків: поки відповідь НОВОГО документа в дорозі, панель
+  // уже стоїть під його номером — числа попереднього документа під ним показувати не можна.
+  // Mutation-verify: додати в useLinesSummary `placeholderData: keepPreviousData` → падає.
+  it('поки зведення нового документа вантажиться — «Завантаження…», а не числа попереднього', async () => {
+    let resolveSecond: (v: LinesSummary) => void = () => undefined;
+    apiFetchMock.mockImplementation((path: string) =>
+      path.includes('wo-2')
+        ? new Promise<LinesSummary>(resolve => {
+            resolveSecond = resolve;
+          })
+        : Promise.resolve(summary({ tables: [table({ positions: 1, distinct: 1 })] })),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = (id: string) => (
+      <QueryClientProvider client={client}>
+        <LinesSummarySection entity="work-orders" id={id} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(ui('wo-1'));
+    expect(await rowText('goods')).toBe('1 найменування · 1 од.');
+
+    rerender(ui('wo-2'));
+    expect(screen.getByRole('status')).toHaveTextContent('Завантаження…');
+    expect(screen.queryByTestId('lines-summary-goods')).not.toBeInTheDocument();
+
+    resolveSecond(summary({ tables: [table({ positions: 5, distinct: 5 })] }));
+    expect(await rowText('goods')).toBe('5 найменувань · 1 од.');
+  });
 });

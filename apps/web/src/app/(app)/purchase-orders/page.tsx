@@ -636,6 +636,12 @@ function PurchaseOrdersPageClient() {
   useEffect(() => {
     if (!srDetailPanel.enabled) setSelectedSrId(null);
   }, [srDetailPanel.enabled]);
+  // Рядок зник із завантаженого списку (інша сторінка, фільтр, видалення) → вибір забуваємо.
+  // Інакше id лишається «прихованим»: повернувся на ту саму сторінку чи зняв фільтр — і панель
+  // відкривається сама, без кліку.
+  useEffect(() => {
+    if (selectedSrId && !srLoading && !selectedSr) setSelectedSrId(null);
+  }, [selectedSrId, selectedSr, srLoading]);
   // Дві панелі на одній сторінці не мають заважати одна одній: перемкнули вкладку —
   // вибір в обох списках скидається.
   useEffect(() => {

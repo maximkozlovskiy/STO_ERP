@@ -379,10 +379,11 @@ export function GoodPickerModal({
                   // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
                   // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
                   // створював нову arrow на кожен render для КОЖНОГО row.
-                  // fmtQty округлює до 3 знаків (хвости float-суми по складах) і форматує за
-                  // локаллю; «0» після округлення — це «немає», як і раніше.
-                  const qtyLabel = fmtQty(stockMap.get(item.id) ?? 0);
-                  const qty = qtyLabel === '0' ? 0 : (stockMap.get(item.id) ?? 0);
+                  // Округлення до 3 знаків зрізає хвости float-суми по складах; нуль після
+                  // округлення — це «немає». Порівнюємо ЧИСЛО, а не відформатований рядок:
+                  // підпис залежить від локалі, а дрібний від'ємний хвіст форматується як «-0».
+                  const qty = Math.round((stockMap.get(item.id) ?? 0) * 1000) / 1000;
+                  const qtyLabel = fmtQty(qty);
                   return (
                     <button
                       key={item.id}
