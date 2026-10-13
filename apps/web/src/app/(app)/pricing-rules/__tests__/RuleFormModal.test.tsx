@@ -36,11 +36,17 @@ vi.mock('@/components/ui/GoodPickerModal', () => ({
     onSelect,
     onClose,
     multiple,
+    onDeselect,
+    onSelectMany,
+    onDeselectMany,
   }: {
     open: boolean;
     onSelect: (item: unknown) => void;
     onClose: () => void;
     multiple?: boolean;
+    onDeselect?: (id: string) => void;
+    onSelectMany?: (items: unknown[]) => void;
+    onDeselectMany?: (ids: string[]) => void;
   }) =>
     open ? (
       <div data-testid="picker" data-multiple={String(!!multiple)}>
@@ -49,6 +55,35 @@ vi.mock('@/components/ui/GoodPickerModal', () => ({
             pick {g.id}
           </button>
         ))}
+        <button type="button" onClick={() => onDeselect?.('g-1')}>
+          unpick g-1
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectMany?.(PICKER_GOODS.map(g => ({ ...g, primary: g.name })))}
+        >
+          pick all
+        </button>
+        <button type="button" onClick={() => onDeselectMany?.(PICKER_GOODS.map(g => g.id))}>
+          unpick all
+        </button>
+        {/* Два виклики в ОДНОМУ обробнику — до того, як React перемалює форму. */}
+        <button
+          type="button"
+          onClick={() => PICKER_GOODS.forEach(g => onSelect({ ...g, primary: g.name }))}
+        >
+          pick both at once
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onSelect({ ...PICKER_GOODS[0], primary: PICKER_GOODS[0]!.name });
+            onDeselect?.('g-1');
+            onSelectMany?.([{ ...PICKER_GOODS[1], primary: PICKER_GOODS[1]!.name }]);
+          }}
+        >
+          pick unpick pick-many at once
+        </button>
         <button type="button" onClick={onClose}>
           picker-done
         </button>
@@ -681,6 +716,65 @@ describe('RuleFormModal — завантаження списку з файла'
     fireEvent.click(within(panel).getByRole('radio', { name: 'Замінити список' }));
     fireEvent.click(within(panel).getByRole('button', { name: 'Застосувати' }));
     expect(await screen.findByText('Товари (2)')).toBeInTheDocument();
+  });
+
+  it('вікно вибору: зняти один товар, «відмітити всі», «зняти всі» змінюють список форми', async () => {
+    const onSave = renderCreate();
+    await waitFor(() => expect(categorySelect().options.length).toBe(4));
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'Додати товар' }));
+
+    fireEvent.click(screen.getByText('pick g-1'));
+    expect(screen.getByText('Товари (1)')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('unpick g-1'));
+    expect(screen.getByText('Товари (0)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('pick g-2'));
+    // «Відмітити всі» додає лише відсутні: g-2 уже є і не дублюється.
+    fireEvent.click(screen.getByText('pick all'));
+    expect(screen.getByText('Товари (2)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('unpick all'));
+    expect(screen.getByText('Товари (0)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('pick all'));
+    fireEvent.click(screen.getByText('picker-done'));
+    const sent = JSON.parse(
+      JSON.stringify(buildCreatePayload(await saveAndGetForm(onSave))),
+    ) as Record<string, unknown>;
+    expect(sent.goodIds).toEqual(['g-1', 'g-2']);
+  });
+
+  it('два вибори до наступного рендера не затирають один одного (список не із замикання)', () => {
+    renderCreate();
+    fireEvent.click(screen.getByRole('button', { name: 'Додати товар' }));
+
+    fireEvent.click(screen.getByText('pick both at once'));
+    expect(screen.getByText('Товари (2)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('unpick all'));
+    // додати g-1 → зняти g-1 → додати g-2 одним обробником: лишається рівно g-2.
+    fireEvent.click(screen.getByText('pick unpick pick-many at once'));
+    expect(screen.getByText('Товари (1)')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('picker-done'));
+    expect(screen.getByRole('cell', { name: 'Колодки гальмівні' })).toBeInTheDocument();
+    expect(screen.queryByRole('cell', { name: 'Фільтр масляний' })).not.toBeInTheDocument();
+  });
+
+  it('«відмітити всі» біля ліміту: додається лише те, що вміщується, решта — з поясненням', async () => {
+    // Товари списку мають id g-3…g-N, у вікні вибору — g-1 і g-2: обидва нові, місце одне.
+    const items = Array.from({ length: PRICING_RULE_MAX_GOODS - 1 }, (_, i) => good(i + 3));
+    mockApi(() => Promise.resolve({ items, total: items.length }));
+    renderEdit({ ...RULE, goodsCount: items.length, goodsPreview: items.slice(0, 3) });
+    expect(await screen.findByText(`Товари (${PRICING_RULE_MAX_GOODS - 1})`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Додати товар' }));
+    fireEvent.click(screen.getByText('pick all'));
+
+    expect(screen.getByText(`Товари (${PRICING_RULE_MAX_GOODS})`)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      `У списку вже ${PRICING_RULE_MAX_GOODS} товарів — це максимум для одного правила`,
+    );
   });
 
   it('у списку вже максимум → «Додати товар» пояснює, а не відкриває вибір мовчки', async () => {

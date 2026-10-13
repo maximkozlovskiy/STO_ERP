@@ -359,6 +359,8 @@ describe('GoodPickerModal — множинний вибір', () => {
 
     await screen.findByRole('button', { name: /Castrol 5W-40/ });
     expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    // Читач екрана чує зрозумілий рядок, а не «один скісна два».
+    expect(screen.getByRole('status')).toHaveTextContent('Додано 1 з 2 показаних');
     await user.click(screen.getByRole('button', { name: 'Відмітити всі' }));
     expect(onSelectMany).toHaveBeenCalledTimes(1);
     const picked = onSelectMany.mock.calls[0]![0] as { id: string; primary: string }[];
@@ -383,29 +385,72 @@ describe('GoodPickerModal — множинний вибір', () => {
 
     await screen.findByRole('button', { name: /Castrol 5W-40/ });
     // Усе показане вже додано → відмічати нічого.
-    expect(screen.getByRole('button', { name: 'Відмітити всі' })).toBeDisabled();
+    const selectAll = screen.getByRole('button', { name: 'Відмітити всі' });
+    expect(selectAll).toHaveAttribute('aria-disabled', 'true');
     await user.click(screen.getByRole('button', { name: 'Зняти всі' }));
     expect(onDeselectMany).toHaveBeenCalledWith(['g1', 'g2']);
   });
 
-  it('«Зняти всі» вимкнено, коли серед показаних немає доданих; підписи можна передати пропами', async () => {
+  it('«Зняти всі» недіяльна, коли серед показаних немає доданих; підписи можна передати пропами', async () => {
+    const user = userEvent.setup();
+    const onDeselectMany = vi.fn();
     render(
       <GoodPickerModal
         open
         onClose={vi.fn()}
         onSelect={vi.fn()}
         onSelectMany={vi.fn()}
-        onDeselectMany={vi.fn()}
+        onDeselectMany={onDeselectMany}
         selectAllLabel="Select all shown"
         deselectAllLabel="Deselect all shown"
+        countLabel={(added, shown) => `Added ${added} of ${shown} shown`}
         multiple
         selectedIds={[]}
       />,
     );
 
     await screen.findByRole('button', { name: /Castrol 5W-40/ });
-    expect(screen.getByRole('button', { name: 'Select all shown' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Deselect all shown' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Select all shown' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+    const off = screen.getByRole('button', { name: 'Deselect all shown' });
+    expect(off).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('Added 0 of 2 shown');
+
+    // Недіяльна кнопка НЕ має атрибута `disabled`: інакше після «Відмітити всі» фокус
+    // клавіатури падав би на <body>. Клік по ній нічого не робить, фокус лишається на ній.
+    expect(off).toBeEnabled();
+    await user.click(off);
+    expect(onDeselectMany).not.toHaveBeenCalled();
+    expect(off).toHaveFocus();
+  });
+
+  it('після «Відмітити всі» кнопка стає недіяльною, але фокус клавіатури лишається на ній', async () => {
+    const user = userEvent.setup();
+    const onSelectMany = vi.fn();
+    const props = {
+      open: true,
+      onClose: vi.fn(),
+      onSelect: vi.fn(),
+      onSelectMany,
+      onDeselectMany: vi.fn(),
+      multiple: true,
+    };
+    const { rerender } = render(<GoodPickerModal {...props} selectedIds={[]} />);
+
+    await screen.findByRole('button', { name: /Castrol 5W-40/ });
+    const selectAll = screen.getByRole('button', { name: 'Відмітити всі' });
+    selectAll.focus();
+    await user.keyboard('{Enter}');
+    expect(onSelectMany).toHaveBeenCalledTimes(1);
+
+    // Батько додав обидва товари.
+    rerender(<GoodPickerModal {...props} selectedIds={['g1', 'g2']} />);
+    expect(selectAll).toHaveAttribute('aria-disabled', 'true');
+    expect(selectAll).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(onSelectMany).toHaveBeenCalledTimes(1);
   });
 
   it('кнопок масового вибору немає без `multiple` і без обробників', async () => {
@@ -422,30 +467,85 @@ describe('GoodPickerModal — множинний вибір', () => {
     expect(screen.queryByRole('button', { name: 'Зняти всі' })).not.toBeInTheDocument();
   });
 
-  it('сканер (Enter) уже доданий товар не знімає — повторне сканування списку не псує', async () => {
-    const user = userEvent.setup();
-    const onDeselect = vi.fn();
-    const onSelect = vi.fn();
-    apiFetchMock.mockImplementation((path: string) => {
-      if (path === '/good-categories') return Promise.resolve(mockCategories);
-      if (path.startsWith('/goods/stock-totals')) return Promise.resolve([]);
-      if (path.startsWith('/goods')) return Promise.resolve({ items: [twoGoods[0]] });
-      return Promise.resolve({ items: [] });
-    });
-    render(
-      <GoodPickerModal
-        open
-        onClose={vi.fn()}
-        onSelect={onSelect}
-        onDeselect={onDeselect}
-        multiple
-        selectedIds={['g1']}
-      />,
-    );
+  // Сканер = текст у полі пошуку + Enter. Обидва шляхи обробника Enter мусять іти через
+  // selectGood (доданий товар не чіпає), а не через clickGood (знімає): інакше повторне
+  // сканування тієї самої упаковки прибирало б її зі списку.
+  describe('сканер (Enter у полі пошуку)', () => {
+    const scanSetup = () => {
+      // Пошук за кодом повертає рівно один товар — pickScannedGood обирає його автоматично.
+      apiFetchMock.mockImplementation((path: string) => {
+        if (path === '/good-categories') return Promise.resolve(mockCategories);
+        if (path.startsWith('/goods/stock-totals')) return Promise.resolve([]);
+        if (path.startsWith('/goods') && path.includes('q=MOB'))
+          return Promise.resolve({ items: [twoGoods[0]] });
+        if (path.startsWith('/goods')) return Promise.resolve({ items: twoGoods });
+        return Promise.resolve({ items: [] });
+      });
+      const onSelect = vi.fn();
+      const onDeselect = vi.fn();
+      const props = { open: true, onClose: vi.fn(), onSelect, onDeselect, multiple: true };
+      return { onSelect, onDeselect, props };
+    };
+    const searchCalls = () =>
+      apiFetchMock.mock.calls.filter(c => typeof c[0] === 'string' && c[0].includes('q=MOB'));
 
-    await screen.findByRole('button', { name: /Mobil 5W-30/ });
-    await user.type(screen.getByPlaceholderText(/Пошук товару/), '{Enter}');
-    expect(onDeselect).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    it('ще не доданий товар сканер додає (контроль: шлях сканера справді працює)', async () => {
+      const user = userEvent.setup();
+      const { onSelect, onDeselect, props } = scanSetup();
+      render(<GoodPickerModal {...props} selectedIds={[]} />);
+
+      await screen.findByRole('button', { name: /Castrol 5W-40/ });
+      await user.type(screen.getByPlaceholderText(/Пошук товару/), 'MOB{Enter}');
+
+      await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+      expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'g1' }));
+      expect(onDeselect).not.toHaveBeenCalled();
+    });
+
+    it('уже доданий товар сканер НЕ знімає — Enter одразу після введення (запит ще не пішов)', async () => {
+      const user = userEvent.setup();
+      const { onSelect, onDeselect, props } = scanSetup();
+      render(<GoodPickerModal {...props} selectedIds={['g1']} />);
+
+      await screen.findByRole('button', { name: /Castrol 5W-40/ });
+      // Enter швидше за debounce → обробник сам робить запит і обирає товар із відповіді.
+      await user.type(screen.getByPlaceholderText(/Пошук товару/), 'MOB{Enter}');
+
+      await waitFor(() => expect(searchCalls().length).toBeGreaterThan(0));
+      // Відповідь оброблено: у списку лишився один товар, і він позначений доданим.
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /Castrol 5W-40/ })).not.toBeInTheDocument(),
+      );
+      expect(await screen.findByRole('button', { name: /Mobil 5W-30/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(onDeselect).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('уже доданий товар сканер НЕ знімає — Enter, коли результат пошуку вже показано', async () => {
+      const user = userEvent.setup();
+      const { onSelect, onDeselect, props } = scanSetup();
+      render(<GoodPickerModal {...props} selectedIds={['g1']} />);
+
+      await screen.findByRole('button', { name: /Castrol 5W-40/ });
+      const input = screen.getByPlaceholderText(/Пошук товару/);
+      await user.type(input, 'MOB');
+      // Чекаємо, доки debounce відпрацює і список звузиться до одного товару.
+      await waitFor(() => expect(searchCalls().length).toBeGreaterThan(0));
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /Castrol 5W-40/ })).not.toBeInTheDocument(),
+      );
+      await screen.findByRole('button', { name: /Mobil 5W-30/ });
+      const before = searchCalls().length;
+
+      await user.type(input, '{Enter}');
+
+      // Нового запиту немає — спрацював шлях «обрати з показаного».
+      expect(searchCalls().length).toBe(before);
+      expect(onDeselect).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
   });
 });

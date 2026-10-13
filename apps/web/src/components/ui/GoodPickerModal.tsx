@@ -58,6 +58,8 @@ interface Props {
   /** Лише для `multiple`: підписи кнопок «відмітити / зняти всі показані». */
   selectAllLabel?: string;
   deselectAllLabel?: string;
+  /** Лише для `multiple`: текст лічильника для читача екрана («Додано 3 з 50 показаних»). */
+  countLabel?: (added: number, shown: number) => string;
   /** Лише для `multiple`: id товарів, які вже у списку. */
   selectedIds?: readonly string[];
   /** Лише для `multiple`: підпис кнопки закриття. */
@@ -80,6 +82,7 @@ export function GoodPickerModal({
   onDeselectMany,
   selectAllLabel = 'Відмітити всі',
   deselectAllLabel = 'Зняти всі',
+  countLabel = (added, shown) => `Додано ${added} з ${shown} показаних`,
 }: Props) {
   // Множина, а не `includes` на кожен рядок і кожен рендер: у списку правила до 5000 товарів.
   const selectedSet = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
@@ -245,6 +248,10 @@ export function GoodPickerModal({
   const shownAdded = multiple ? items.filter(i => selectedSet.has(i.id)) : [];
   const shownFree = multiple ? items.filter(i => !selectedSet.has(i.id)) : [];
   const showBulk = multiple && !loading && items.length > 0 && !!(onSelectMany || onDeselectMany);
+  // Кнопка, якій нема на що діяти, лишається у фокусі (`aria-disabled`, не `disabled`): після
+  // «Відмітити всі» вона сама стає недіяльною, а атрибут `disabled` скинув би фокус клавіатури
+  // на <body> — користувач без миші губив би місце у вікні.
+  const bulkOffClass = 'aria-disabled:opacity-50 aria-disabled:cursor-not-allowed';
 
   return (
     <Modal
@@ -315,8 +322,11 @@ export function GoodPickerModal({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={shownFree.length === 0}
-                onClick={() => onSelectMany(shownFree.map(toPicked))}
+                aria-disabled={shownFree.length === 0}
+                className={bulkOffClass}
+                onClick={() => {
+                  if (shownFree.length > 0) onSelectMany(shownFree.map(toPicked));
+                }}
               >
                 {selectAllLabel}
               </Button>
@@ -326,14 +336,22 @@ export function GoodPickerModal({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={shownAdded.length === 0}
-                onClick={() => onDeselectMany(shownAdded.map(i => i.id))}
+                aria-disabled={shownAdded.length === 0}
+                className={bulkOffClass}
+                onClick={() => {
+                  if (shownAdded.length > 0) onDeselectMany(shownAdded.map(i => i.id));
+                }}
               >
                 {deselectAllLabel}
               </Button>
             )}
-            <span className="tabular-nums" aria-live="polite">
+            {/* Видимі цифри «3 / 50» читач екрана озвучив би як «три скісна п'ятдесят» — для нього
+                окремий зрозумілий рядок; ввічливий (polite), щоб не перебивати назву рядка. */}
+            <span className="tabular-nums" aria-hidden="true">
               {shownAdded.length} / {items.length}
+            </span>
+            <span className="sr-only" role="status">
+              {countLabel(shownAdded.length, items.length)}
             </span>
           </div>
         )}

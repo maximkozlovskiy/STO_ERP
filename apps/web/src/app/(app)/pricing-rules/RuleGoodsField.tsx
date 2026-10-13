@@ -82,6 +82,17 @@ export default function RuleGoodsField({
   }, [goods, search]);
   const visible = filtered.slice(0, RENDER_LIMIT);
 
+  // Обробники вікна вибору читають список звідси, а не із замикання рендера: два виклики
+  // до наступного рендера (програмні кліки, відповідь сканера, що прийшла зі старим
+  // обробником) інакше будували б новий список від одного й того самого старого — і другий
+  // затирав би перший.
+  const goodsRef = useRef(goods);
+  goodsRef.current = goods;
+  const commit = (next: RuleGood[]) => {
+    goodsRef.current = next;
+    onChange(next);
+  };
+
   const limitMessage = () => t('goods.limitReached', { max: PRICING_RULE_MAX_GOODS });
 
   const openPicker = () => {
@@ -94,6 +105,7 @@ export default function RuleGoodsField({
   };
 
   const addGood = (item: GoodPickerItem) => {
+    const goods = goodsRef.current;
     if (goods.some(g => g.id === item.id)) return;
     if (goods.length >= PRICING_RULE_MAX_GOODS) {
       // Модалка вибору перекриває форму — тому ще й toast, не лише рядок під списком.
@@ -101,7 +113,7 @@ export default function RuleGoodsField({
       toast.error(limitMessage());
       return;
     }
-    onChange([...goods, toRuleGood(item)]);
+    commit([...goods, toRuleGood(item)]);
   };
 
   const toRuleGood = (item: GoodPickerItem): RuleGood => ({
@@ -114,6 +126,7 @@ export default function RuleGoodsField({
 
   // «Відмітити всі» у вікні вибору: додаємо, скільки вміщує список, решту — пояснюємо.
   const addGoods = (items: GoodPickerItem[]) => {
+    const goods = goodsRef.current;
     const have = new Set(goods.map(g => g.id));
     const fresh = items.filter(i => !have.has(i.id));
     const room = PRICING_RULE_MAX_GOODS - goods.length;
@@ -122,12 +135,13 @@ export default function RuleGoodsField({
       toast.error(limitMessage());
     }
     const accepted = fresh.slice(0, Math.max(room, 0));
-    if (accepted.length > 0) onChange([...goods, ...accepted.map(toRuleGood)]);
+    if (accepted.length > 0) commit([...goods, ...accepted.map(toRuleGood)]);
   };
 
   const removeGoods = (ids: string[]) => {
+    const goods = goodsRef.current;
     const drop = new Set(ids);
-    if (goods.some(g => drop.has(g.id))) onChange(goods.filter(g => !drop.has(g.id)));
+    if (goods.some(g => drop.has(g.id))) commit(goods.filter(g => !drop.has(g.id)));
   };
 
   const clearAll = async () => {
@@ -393,6 +407,7 @@ export default function RuleGoodsField({
         addedLabel={t('goods.pickerAdded')}
         selectAllLabel={t('goods.pickerSelectAll')}
         deselectAllLabel={t('goods.pickerDeselectAll')}
+        countLabel={(added, shown) => t('goods.pickerCount', { added, shown })}
       />
       <ConfirmDialog {...dialogProps} />
     </div>

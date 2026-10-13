@@ -178,7 +178,8 @@
     "pickerDone": "Готово",
     "pickerAdded": "додано",
     "pickerSelectAll": "Відмітити всі показані",
-    "pickerDeselectAll": "Зняти всі показані"
+    "pickerDeselectAll": "Зняти всі показані",
+    "pickerCount": "Додано {{added}} з {{shown}} показаних"
   },
   "goodsImport": {
     "heading": "Результат розпізнавання файла",
