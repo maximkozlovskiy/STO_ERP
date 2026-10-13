@@ -17,7 +17,7 @@ import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
 import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCached, setCache } from '@/lib/ref-cache';
-import { displayCounterpartyName, cn } from '@/lib/utils';
+import { displayCounterpartyName, cn, lineAmount, roundMoney } from '@/lib/utils';
 import { kyivToday } from '@/lib/format';
 import { pickScannedGood } from '@/lib/barcode';
 import { supplierReturnStatusLabel } from '@/i18n/enumLabel';
@@ -380,14 +380,20 @@ export function SupplierReturnCreateModal({ open, onClose, onSaved, editId }: Pr
   }, [warehouses]);
 
   // ── Totals ─────────────────────────────────────────────────────────────────
+  // Сума рядка округлюється до копійки так само, як на сервері (`money(quantity * price)`), а
+  // підсумок складається з округлених рядків: сирий добуток давав розбіжність на копійку
+  // (0,3 × 100,05 показувалось «30.01», збережено 30.02) - тим помітнішу, чим більше рядків
+  // (повтори товару, BR-PO-008).
   const lineSubtotal = (qty: string, price: string) =>
-    (parseFloat(qty) || 0) * (parseFloat(price) || 0);
+    lineAmount(parseFloat(qty) || 0, parseFloat(price) || 0);
 
   const total = useMemo(
     () =>
-      (watchedLines ?? []).reduce(
-        (sum, l) => sum + lineSubtotal(String(l.quantity ?? ''), String(l.price ?? '')),
-        0,
+      roundMoney(
+        (watchedLines ?? []).reduce(
+          (sum, l) => sum + lineSubtotal(String(l.quantity ?? ''), String(l.price ?? '')),
+          0,
+        ),
       ),
     [watchedLines],
   );

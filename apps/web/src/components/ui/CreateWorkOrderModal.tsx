@@ -1,5 +1,6 @@
 'use client';
 
+import type { ApiSchema } from '@sto/shared';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
@@ -101,7 +102,7 @@ interface Counterparty {
 interface WorkOrderDetail {
   id: string;
   /** Заповнене — наряд позначено на видалення (приходить лише з `?withDeleted=true`). */
-  deletedAt?: string | null;
+  deletedAt?: ApiSchema<'WorkOrderDetailDto'>['deletedAt'];
   number: string;
   status: string;
   branchId: string;

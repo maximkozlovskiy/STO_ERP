@@ -1,5 +1,6 @@
 'use client';
 
+import type { ApiSchema } from '@sto/shared';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
@@ -97,7 +98,7 @@ interface WorkOrderPart {
 }
 interface WorkOrderDetail {
   /** Заповнене — наряд позначено на видалення (приходить лише з `?withDeleted=true`). */
-  deletedAt?: string | null;
+  deletedAt?: ApiSchema<'WorkOrderDetailDto'>['deletedAt'];
   id: string;
   orgId?: string;
   number: string;

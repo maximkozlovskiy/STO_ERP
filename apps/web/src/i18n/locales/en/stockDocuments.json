@@ -63,7 +63,6 @@
   },
   "errors": {
     "bulkDeletePartial": "{{succeeded}} of {{total}} documents deleted, {{failed}} failed",
-    "transitionFailed": "Status change error",
     "deleteFailed": "Deletion error"
   },
   "movements": {

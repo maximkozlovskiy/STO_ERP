@@ -184,4 +184,26 @@ describe('SupplierReturnCreateModal — повтор товару окремим
       [G1, 1, 90],
     ]);
   });
+  // Сума рядка = round(кількість × ціна), підсумок = Σ округлених рядків - як на сервері
+  // (`money(quantity * price)`). Сирий добуток показував 30.01 там, де збережено 30.02.
+  // Мутація (не проганяв): lineSubtotal без lineAmount -> кейс падає (рядок "30.01").
+  it('сума рядка і підсумок округлюються по рядках, як на сервері', async () => {
+    const rounding = {
+      ...draft,
+      lines: [
+        { ...draft.lines[0], quantity: 0.3, price: 100.05 },
+        { ...draft.lines[0], quantity: 0.3, price: 100.05 },
+      ],
+    };
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/warehouses') return Promise.resolve([{ id: W1, name: 'Склад №1' }]);
+      if (path === '/supplier-returns/sr1?withDeleted=true') return Promise.resolve(rounding);
+      return Promise.resolve({ items: [] });
+    });
+    render(<SupplierReturnCreateModal open onClose={() => {}} onSaved={() => {}} editId="sr1" />);
+    await screen.findAllByText('Фільтр');
+    const table = screen.getByRole('table');
+    expect(within(table).getAllByText('30.02')).toHaveLength(2);
+    expect(table).toHaveTextContent('60.04');
+  });
 });

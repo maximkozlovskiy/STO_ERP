@@ -63,7 +63,6 @@
   },
   "errors": {
     "bulkDeletePartial": "{{succeeded}} з {{total}} документів видалено, {{failed}} не вдалось",
-    "transitionFailed": "Помилка зміни статусу",
     "deleteFailed": "Помилка видалення"
   },
   "movements": {

@@ -385,7 +385,7 @@ export function PurchaseOrderCreateModal({
       }
       return apiFetch<PODetail>(`/purchase-orders/${id}?withDeleted=true`)
         .then(po => {
-          setDeletedDocId((po as { deletedAt?: string | null }).deletedAt ? id : null);
+          setDeletedDocId(po.deletedAt ? id : null);
           setPoNumber(po.number);
           setCurrentStatus(po.status);
           // reset() ставить нову «чисту» базу із завантаженого запису → rhfDirty=false.

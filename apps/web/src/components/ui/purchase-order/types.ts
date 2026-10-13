@@ -1,6 +1,6 @@
 // Спільні типи/константи/хелпери модалки замовлення постачальнику (TD3-декомпозиція).
 // Винесено з PurchaseOrderCreateModal.tsx без зміни поведінки — module-scope, pure move.
-import { PO_STATUS_LABELS } from '@sto/shared';
+import { PO_STATUS_LABELS, type ApiSchema } from '@sto/shared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,8 @@ export interface PODetail {
   id: string;
   number: string;
   status: string;
+  /** Заповнене - замовлення позначено на видалення (приходить лише з `?withDeleted=true`). */
+  deletedAt?: ApiSchema<'PurchaseOrderResponseDto'>['deletedAt'];
   supplierId: string;
   supplierName?: string | null;
   currencyId?: string | null;
