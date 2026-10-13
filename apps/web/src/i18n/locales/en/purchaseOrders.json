@@ -68,7 +68,8 @@
     "tabLines": "Line items",
     "tabLinks": "Links",
     "openOrder": "Open order",
-    "noLines": "No line items"
+    "noLines": "No line items",
+    "openReturn": "Open document"
   },
   "receive": {
     "modalTitle": "Receiving for order {{number}}",

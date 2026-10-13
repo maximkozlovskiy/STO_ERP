@@ -161,7 +161,7 @@ test.describe('Документи складу — CRUD', () => {
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    // Bug #504: Detail Panel у stock-documents видалений (dead UI).
+    // Бокова панель списку показує шапку і зведення, FSM-кнопок у ній немає.
     // FSM transition виконується через API endpoint /stock-documents/:id/transition.
     // Тест перевіряє реальну поведінку: статус DRAFT → CONFIRMED після POST на transition,
     // і що UI оновлює badge на "Проведено" (фільтр відображення).

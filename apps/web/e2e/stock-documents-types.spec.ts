@@ -119,8 +119,12 @@ test.describe('Документи складу — TRANSFER (Переміщен�
     expect(doc, 'POST /stock-documents має повернути документ').toBeTruthy();
     if (!doc) return; // type-narrow для TS
 
+    // Бокова панель списку вимкнена (ключ `sto_detail_panel_<pageKey>`) — тоді клік по рядку
+    // відкриває картку одразу; з увімкненою панеллю він лише вибирає рядок у панель.
+    await page.evaluate(() => localStorage.setItem('sto_detail_panel_stock-documents', 'false'));
     await page.reload();
     await readyPage(page);
+    await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
 
     const row = page.locator(`table tbody tr:has-text("${doc.number}")`).first();
     if (await row.isVisible({ timeout: 10_000 })) {

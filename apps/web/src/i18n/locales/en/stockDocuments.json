@@ -98,5 +98,8 @@
     "updating": " · updating…",
     "prev": "Back",
     "next": "Next"
+  },
+  "panel": {
+    "openDocument": "Open document"
   }
 }

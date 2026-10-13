@@ -34,6 +34,7 @@ const getMoneyFmt = memoByLocale(
   loc => new Intl.NumberFormat(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 );
 const getIntFmt = memoByLocale(loc => new Intl.NumberFormat(loc));
+const getQtyFmt = memoByLocale(loc => new Intl.NumberFormat(loc, { maximumFractionDigits: 3 }));
 // T19: date/time прив'язані до Europe/Kyiv. Без timeZone Intl рендерить у TZ браузера/ОС → off-by-one
 // на UTC-негативних машинах / невірний час на неправильно налаштованому ПК. СТО завжди у Києві.
 const getDateFmt = memoByLocale(loc => new Intl.DateTimeFormat(loc, { timeZone: KYIV_TZ }));
@@ -96,6 +97,17 @@ export function fmtBankCurrencySuffix(code: string | null | undefined): string {
 export function fmtInt(n: number | null | undefined): string {
   if (n == null) return '—';
   return getIntFmt().format(n);
+}
+
+/**
+ * Форматувати кількість (штуки, літри, нормо-години): до 3 знаків після коми, без зайвих
+ * нулів. Округлення до 3 знаків заодно прибирає хвости float-арифметики.
+ *
+ * @example fmtQty(7.5) → '7,5'; fmtQty(12) → '12'; fmtQty(0.30000000000000004) → '0,3'
+ */
+export function fmtQty(n: number | null | undefined): string {
+  if (n == null) return '—';
+  return getQtyFmt().format(n);
 }
 
 /**

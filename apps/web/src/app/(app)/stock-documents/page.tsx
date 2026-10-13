@@ -27,6 +27,7 @@ import { StockMovementsTab } from './StockMovementsTab';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
+import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { stockDocumentLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { Button } from '@/components/ui/button';
@@ -49,7 +50,15 @@ import { ListSearchInput } from '@/components/ui/list-search-input';
 import { StockDocumentCreateModal } from '@/components/ui/StockDocumentCreateModal';
 import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-// Row click веде в edit modal через setEditingDocId — це реальний flow для перегляду документа.
+// Клік по рядку: бокова панель увімкнена → рядок вибирається в панель; вимкнена → одразу
+// картка редагування (setEditingDocId). Стандарт списків — як у закупівель.
+import { DetailPanel, PanelField } from '@/components/ui/detail-panel';
+import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
+import {
+  STOCK_DOC_PANEL_SCHEMA,
+  buildPanelFields,
+  schemaToPanelConfigFields,
+} from '@/lib/panel-schema';
 import {
   Table,
   TableHeader,
@@ -156,6 +165,8 @@ function StockDocumentsPageClient() {
       resetConfig,
     },
     dragProps,
+    detailPanel,
+    panelConfig,
     savedFilters: { saved: savedFilters, save: saveFilter, remove: removeFilter },
     features,
     limit,
@@ -232,6 +243,25 @@ function StockDocumentsPageClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState<StockDoc | null>(null);
+
+  // Бокова панель. Зберігаємо лише id: рядок беремо зі свіжого списку, тож після
+  // збереження / проведення документа панель не показує застарілу шапку, а рядок, що зник зі
+  // списку (інша вкладка-тип, фільтр, видалення), закриває панель сам.
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const selectedDoc = useMemo(
+    () => (selectedDocId ? (docs.find(d => d.id === selectedDocId) ?? null) : null),
+    [docs, selectedDocId],
+  );
+  // Вимкнули панель → скидаємо вибір (той самий Bug #624, що в закупівель): інакше після
+  // повторного вмикання клік по тому самому рядку закрив би панель замість відкрити.
+  useEffect(() => {
+    if (!detailPanel.enabled) setSelectedDocId(null);
+  }, [detailPanel.enabled]);
+
+  const panelConfigFields = useMemo(
+    () => schemaToPanelConfigFields(STOCK_DOC_PANEL_SCHEMA, panelConfig.config),
+    [panelConfig.config],
+  );
 
   // Deep-link `?open=<docId>` — відкриває edit-modal конкретного складського документа
   // (напр. з панелі «пов'язані документи» іншого документа). Читаємо ОДНОРАЗОВО на mount,
@@ -502,7 +532,7 @@ function StockDocumentsPageClient() {
               Object.keys(customLabels).length > 0
             }
           />
-          {/* Bug #505: DetailPanelToggle видалено — toggle нічого не контролював (DetailPanel мертвий, Bug #504). */}
+          <DetailPanelToggle enabled={detailPanel.enabled} onToggle={detailPanel.toggle} />
           <Button onClick={() => setShowCreate(true)} leftIcon={<Plus className="h-4 w-4" />}>
             {typeFilter ? stockDocTypeLabel(typeFilter) : t('actions.addDocument')}
           </Button>
@@ -593,11 +623,16 @@ function StockDocumentsPageClient() {
                     key={doc.id}
                     className={cn(
                       'group transition-colors cursor-pointer',
+                      selectedDoc?.id === doc.id && detailPanel.enabled && 'bg-primary/5',
                       bulkSelect.isSelected(doc.id) && 'bg-primary/5',
                       doc.deletedAt && 'opacity-60',
                     )}
                     onClick={() => {
-                      setEditingDocId(doc.id);
+                      if (detailPanel.enabled) {
+                        setSelectedDocId(cur => (cur === doc.id ? null : doc.id));
+                      } else {
+                        setEditingDocId(doc.id);
+                      }
                     }}
                   >
                     {features.bulkActionsEnabled && (
@@ -722,7 +757,62 @@ function StockDocumentsPageClient() {
           </Table>
         </div>
 
-        {/* Bug #504: DetailPanel видалено — selectedDoc state ніколи не set non-null (Bug #496 paired-file pattern). */}
+        <DetailPanel
+          open={!!selectedDoc && detailPanel.enabled}
+          onClose={() => setSelectedDocId(null)}
+          title={selectedDoc?.number ?? ''}
+          subtitle={selectedDoc ? stockDocTypeLabel(selectedDoc.type) : undefined}
+          configFields={panelConfigFields}
+          onToggleField={panelConfig.toggleField}
+          onReorderFields={panelConfig.reorderFields}
+          onReset={panelConfig.reset}
+        >
+          {selectedDoc && (
+            <div className="space-y-3">
+              {buildPanelFields(selectedDoc, STOCK_DOC_PANEL_SCHEMA, panelConfig.config, {
+                type: () => (
+                  <Badge
+                    variant={STOCK_DOC_TYPE_BADGE[selectedDoc.type] ?? 'secondary'}
+                    tooltip={STOCK_DOC_TYPE_DESCRIPTIONS[selectedDoc.type]}
+                  >
+                    {stockDocTypeLabel(selectedDoc.type)}
+                  </Badge>
+                ),
+                status: () => (
+                  <Badge
+                    variant={STOCK_DOC_STATUS_BADGE[selectedDoc.status] ?? 'secondary'}
+                    tooltip={STOCK_DOC_STATUS_DESCRIPTIONS[selectedDoc.status]}
+                  >
+                    {stockDocStatusLabel(selectedDoc.status)}
+                  </Badge>
+                ),
+              }).map(f => (
+                <PanelField
+                  key={f.key}
+                  fieldKey={f.key}
+                  label={f.label}
+                  value={f.value}
+                  hidden={f.hidden}
+                />
+              ))}
+              <LinesSummarySection
+                entity="stock-documents"
+                id={selectedDoc.id}
+                enabled={detailPanel.enabled}
+              />
+              <div className="pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setEditingDocId(selectedDoc.id)}
+                >
+                  {t('panel.openDocument')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DetailPanel>
       </div>
 
       {/* Pagination */}

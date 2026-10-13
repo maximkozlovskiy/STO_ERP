@@ -28,5 +28,38 @@
     "rowsAdded": "Rows added: {{count}}"
   },
   "retry": "Retry",
-  "listLoadError": "Failed to load the list"
+  "listLoadError": "Failed to load the list",
+  "linesSummary": {
+    "title": "Summary",
+    "executorsTitle": "Assignees",
+    "tables": {
+      "works": "Works",
+      "goods": "Goods",
+      "other": "Other"
+    },
+    "positions_one": "{{count}} item",
+    "positions_few": "{{count}} items",
+    "positions_many": "{{count}} items",
+    "positions_other": "{{count}} items",
+    "names_one": "{{count}} product",
+    "names_few": "{{count}} products",
+    "names_many": "{{count}} products",
+    "names_other": "{{count}} products",
+    "rows_one": "{{count}} line",
+    "rows_few": "{{count}} lines",
+    "rows_many": "{{count}} lines",
+    "rows_other": "{{count}} lines",
+    "works_one": "{{count}} job",
+    "works_few": "{{count}} jobs",
+    "works_many": "{{count}} jobs",
+    "works_other": "{{count}} jobs",
+    "hours": "{{value}} h",
+    "units": "{{value}} pcs",
+    "distinctWorks": "(distinct jobs: {{n}})",
+    "hint": "Quantity is a plain sum over lines; units of measure may differ between lines.",
+    "loading": "Loading…",
+    "empty": "No lines",
+    "loadError": "Failed to load the summary",
+    "executorNotFound": "Employee not found"
+  }
 }

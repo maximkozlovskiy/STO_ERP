@@ -25,6 +25,7 @@ import { useRequireAuth } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
+import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { purchaseOrderLinkedConfig, supplierReturnLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav, resolvePurchaseOrdersDeepLink } from '@/lib/linked-nav';
 import {
@@ -68,6 +69,7 @@ import { DetailPanel, PanelField, type DetailPanelTab } from '@/components/ui/de
 import { DetailPanelToggle } from '@/components/ui/detail-panel-toggle';
 import {
   PURCHASE_ORDER_PANEL_SCHEMA,
+  SUPPLIER_RETURN_PANEL_SCHEMA,
   buildPanelFields,
   schemaToPanelConfigFields,
   DELIVERY_STATUS_BADGE,
@@ -423,6 +425,11 @@ function PurchaseOrdersPageClient() {
                   hidden={f.hidden}
                 />
               ))}
+              <LinesSummarySection
+                entity="purchase-orders"
+                id={po.id}
+                enabled={detailPanel.enabled}
+              />
               <div className="pt-1">
                 <Button
                   variant="outline"
@@ -470,7 +477,7 @@ function PurchaseOrdersPageClient() {
         },
       ];
     },
-    [panelConfig.config, linkedConfig, baseCode, baseSymbol, t],
+    [panelConfig.config, linkedConfig, baseCode, baseSymbol, t, detailPanel.enabled],
   );
 
   // Ref з id поточно вибраного PO — щоб toggle-логіка не залежала від стейл-замикання
@@ -561,6 +568,8 @@ function PurchaseOrdersPageClient() {
       resetConfig: resetSrConfig,
     },
     dragProps: srDragProps,
+    detailPanel: srDetailPanel,
+    panelConfig: srPanelConfig,
     savedFilters: { saved: srSavedFilters, save: saveSrFilter, remove: removeSrFilter },
     features: srFeatures,
     limit: srLimit,
@@ -611,6 +620,34 @@ function PurchaseOrdersPageClient() {
   });
   const srItems = srData?.items ?? ([] as SupplierReturn[]);
   const deleteSupplierReturn = useDeleteSupplierReturn();
+
+  // Бокова панель повернень — той самий стандарт, що й у замовлень: панель увімкнена →
+  // клік по рядку вибирає його в панель; вимкнена → клік відкриває картку. Зберігаємо лише
+  // id: рядок беремо зі свіжого списку, тож після збереження картки панель не показує
+  // застарілу шапку, а рядок, що зник зі списку (фільтр, видалення), закриває панель сам.
+  const [selectedSrId, setSelectedSrId] = useState<string | null>(null);
+  const selectedSr = selectedSrId ? (srItems.find(sr => sr.id === selectedSrId) ?? null) : null;
+  const openSr = useCallback((id: string) => {
+    setSrEditId(id);
+    setSrCreateOpen(true);
+  }, []);
+  // Вимкнули панель → скидаємо вибір (дзеркалить Bug #624 у замовлень): інакше після
+  // повторного вмикання клік по тому самому рядку закрив би панель замість відкрити.
+  useEffect(() => {
+    if (!srDetailPanel.enabled) setSelectedSrId(null);
+  }, [srDetailPanel.enabled]);
+  // Дві панелі на одній сторінці не мають заважати одна одній: перемкнули вкладку —
+  // вибір в обох списках скидається.
+  useEffect(() => {
+    setSelectedSrId(null);
+    selectedPOIdRef.current = null;
+    setSelectedPO(null);
+  }, [activeTab]);
+
+  const srPanelConfigFields = useMemo(
+    () => schemaToPanelConfigFields(SUPPLIER_RETURN_PANEL_SCHEMA, srPanelConfig.config),
+    [srPanelConfig.config],
+  );
 
   // Пов'язані документи (SR) — окремий popup state/config від PO (різні секції).
   const srLinkedConfig = useMemo(() => supplierReturnLinkedConfig(linkedNav), [linkedNav]);
@@ -910,7 +947,7 @@ function PurchaseOrdersPageClient() {
                   Object.keys(srCustomLabels).length > 0
                 }
               />
-              {/* Bug #505: DetailPanelToggle видалено — для returns tab ніколи не існувало DetailPanel. */}
+              <DetailPanelToggle enabled={srDetailPanel.enabled} onToggle={srDetailPanel.toggle} />
               <Button
                 onClick={() => {
                   setSrEditId(null);
@@ -980,10 +1017,16 @@ function PurchaseOrdersPageClient() {
                     srItems.map(sr => (
                       <TableRow
                         key={sr.id}
-                        className="group transition-colors cursor-pointer"
+                        className={cn(
+                          'group transition-colors cursor-pointer',
+                          selectedSr?.id === sr.id && srDetailPanel.enabled && 'bg-primary/5',
+                        )}
                         onClick={() => {
-                          setSrEditId(sr.id);
-                          setSrCreateOpen(true);
+                          if (srDetailPanel.enabled) {
+                            setSelectedSrId(cur => (cur === sr.id ? null : sr.id));
+                          } else {
+                            openSr(sr.id);
+                          }
                         }}
                       >
                         {srVisibleColumns.map(col => {
@@ -1067,10 +1110,7 @@ function PurchaseOrdersPageClient() {
                               className="rounded p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                               title={t('actions.open')}
                               aria-label={t('actions.openReturn', { number: sr.number })}
-                              onClick={() => {
-                                setSrEditId(sr.id);
-                                setSrCreateOpen(true);
-                              }}
+                              onClick={() => openSr(sr.id)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
@@ -1114,6 +1154,60 @@ function PurchaseOrdersPageClient() {
                 </TableBody>
               </Table>
             </div>
+
+            <DetailPanel
+              open={!!selectedSr && srDetailPanel.enabled}
+              onClose={() => setSelectedSrId(null)}
+              title={selectedSr?.number ?? ''}
+              subtitle={selectedSr?.supplierName ?? undefined}
+              configFields={srPanelConfigFields}
+              onToggleField={srPanelConfig.toggleField}
+              onReorderFields={srPanelConfig.reorderFields}
+              onReset={srPanelConfig.reset}
+            >
+              {selectedSr && (
+                <div className="space-y-3">
+                  {buildPanelFields(
+                    selectedSr,
+                    SUPPLIER_RETURN_PANEL_SCHEMA,
+                    srPanelConfig.config,
+                    {
+                      status: () => (
+                        <Badge
+                          variant={SUPPLIER_RETURN_STATUS_BADGE[selectedSr.status]}
+                          tooltip={SUPPLIER_RETURN_STATUS_DESCRIPTIONS[selectedSr.status]}
+                        >
+                          {supplierReturnStatusLabel(selectedSr.status)}
+                        </Badge>
+                      ),
+                    },
+                  ).map(f => (
+                    <PanelField
+                      key={f.key}
+                      fieldKey={f.key}
+                      label={f.label}
+                      value={f.value}
+                      hidden={f.hidden}
+                    />
+                  ))}
+                  <LinesSummarySection
+                    entity="supplier-returns"
+                    id={selectedSr.id}
+                    enabled={srDetailPanel.enabled}
+                  />
+                  <div className="pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => openSr(selectedSr.id)}
+                    >
+                      {t('panel.openReturn')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DetailPanel>
           </div>
         </div>
       )}

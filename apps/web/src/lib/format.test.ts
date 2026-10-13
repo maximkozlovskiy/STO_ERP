@@ -6,6 +6,7 @@ import {
   localDateTimeToISO,
   fmtMoney,
   fmtInt,
+  fmtQty,
   kyivDateOf,
 } from './format';
 
@@ -182,5 +183,30 @@ describe('kyivDateOf — київська дата UTC-мітки (Bug #812)', (
     expect(kyivDateOf(null)).toBe('');
     expect(kyivDateOf(undefined)).toBe('');
     expect(kyivDateOf('not-a-date')).toBe('');
+  });
+});
+
+describe('fmtQty — кількість до 3 знаків без зайвих нулів', () => {
+  it('дробова частина — через кому, без доповнення нулями', () => {
+    expect(fmtQty(7.5)).toBe('7,5');
+    expect(fmtQty(12)).toBe('12');
+    expect(fmtQty(0)).toBe('0');
+    expect(fmtQty(1.125)).toBe('1,125');
+  });
+
+  it('хвіст float-арифметики зрізається округленням до 3 знаків', () => {
+    expect(fmtQty(0.1 + 0.2)).toBe('0,3');
+    expect(fmtQty(0.30000000000000004)).toBe('0,3');
+    expect(fmtQty(2.00049)).toBe('2');
+    expect(fmtQty(2.0005)).toBe('2,001');
+  });
+
+  it('тисячі розділяються пробілом, як у fmtInt', () => {
+    expect(fmtQty(1250.5)).toMatch(/^1\s250,5$/);
+  });
+
+  it('null/undefined → «—»', () => {
+    expect(fmtQty(null)).toBe('—');
+    expect(fmtQty(undefined)).toBe('—');
   });
 });

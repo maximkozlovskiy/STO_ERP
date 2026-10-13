@@ -18,6 +18,7 @@ import type { WorkOrder } from '@/hooks/api/useWorkOrders';
 import type { Work } from '@/hooks/api/useWorks';
 import type { PurchaseOrder } from '@/hooks/api/usePurchaseOrders';
 import type { SupplierPayment } from '@/hooks/api/useSupplierPayments';
+import type { SupplierReturn } from '@/hooks/api/useSupplierReturns';
 import type { StockDoc } from '@/hooks/api/useStockDocuments';
 import type { StockItem } from '@/hooks/api/useInventory';
 import type { Counterparty } from '@/hooks/api/useCounterparties';
@@ -252,10 +253,28 @@ export const STOCK_DOC_PANEL_SCHEMA = [
   { key: 'warehouseName', label: 'Склад-джерело' },
   { key: 'targetWarehouseName', label: 'Склад-призначення' },
   { key: 'branchName', label: 'Філія' },
+  { key: 'purchaseOrderNumber', label: 'Замовлення' },
+  { key: 'linesCount', label: 'Позицій', type: 'number' },
   { key: 'documentDate', label: 'Дата документа', type: 'date' },
   { key: 'confirmedAt', label: 'Підтверджено', type: 'date' },
   { key: 'notes', label: 'Нотатки' },
+  { key: 'createdAt', label: 'Створено', type: 'date' },
 ] as const satisfies readonly PanelFieldDef<StockDoc>[];
+
+// Повернення постачальнику — панель вкладки «Повернення» сторінки закупівель.
+// status рендериться через renderOverrides у purchase-orders/page.tsx.
+export const SUPPLIER_RETURN_PANEL_SCHEMA = [
+  { key: 'number', label: 'Номер', always: true },
+  { key: 'status', label: 'Статус', always: true },
+  { key: 'supplierName', label: 'Постачальник' },
+  { key: 'warehouseName', label: 'Склад' },
+  { key: 'purchaseOrderNumber', label: 'Замовлення' },
+  { key: 'documentDate', label: 'Дата документа', type: 'date' },
+  { key: 'totalAmount', label: 'Сума', type: 'money' },
+  { key: 'linesCount', label: 'Позицій', type: 'number' },
+  { key: 'notes', label: 'Нотатки' },
+  { key: 'createdAt', label: 'Створено', type: 'date' },
+] as const satisfies readonly PanelFieldDef<SupplierReturn>[];
 
 export const STOCK_ITEM_PANEL_SCHEMA = [
   { key: 'goodSku', label: 'Артикул (SKU)' },

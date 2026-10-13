@@ -22,6 +22,7 @@ import {
   Shield,
 } from 'lucide-react';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
+import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { workOrderLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth, useAuth } from '@/lib/auth';
@@ -629,6 +630,7 @@ function WorkOrdersPageInner() {
                 hidden={f.hidden}
               />
             ))}
+            <LinesSummarySection entity="work-orders" id={wo.id} enabled={detailPanel.enabled} />
             <Button className="w-full" size="sm" onClick={() => handleOpenEdit(wo.id)}>
               {t('list.openWorkOrderButton')}
             </Button>
@@ -636,7 +638,7 @@ function WorkOrdersPageInner() {
         ),
       },
     ];
-  }, [selectedWO, panelConfig.config, nowMs, handleOpenEdit, t]);
+  }, [selectedWO, panelConfig.config, nowMs, handleOpenEdit, t, detailPanel.enabled]);
 
   const panelConfigFields = useMemo(
     () => schemaToPanelConfigFields(WORK_ORDER_PANEL_SCHEMA, panelConfig.config),

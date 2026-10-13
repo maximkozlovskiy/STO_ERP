@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { LinkedDocumentsPanel } from '@/components/ui/LinkedDocumentsPanel';
 import { LinkedDocumentsPopup } from '@/components/ui/LinkedDocumentsPopup';
+import { LinesSummarySection } from '@/components/ui/LinesSummarySection';
 import { invoiceLinkedConfig } from '@/lib/linked-configs';
 import { useLinkedNav } from '@/lib/linked-nav';
 import { useRequireAuth } from '@/lib/auth';
@@ -630,6 +631,7 @@ function InvoicesPageInner() {
                 hidden={f.hidden}
               />
             ))}
+            <LinesSummarySection entity="invoices" id={inv.id} enabled={detailPanel.enabled} />
             <PanelSection title={t('panel.sectionActions')}>
               <div className="flex flex-col gap-2">
                 {(STATUS_TRANSITIONS[inv.status] as InvoiceStatusValue[] | undefined)?.map(s => (

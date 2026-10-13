@@ -68,7 +68,8 @@
     "tabLines": "Позиції",
     "tabLinks": "Зв'язки",
     "openOrder": "Відкрити замовлення",
-    "noLines": "Немає позицій"
+    "noLines": "Немає позицій",
+    "openReturn": "Відкрити документ"
   },
   "receive": {
     "modalTitle": "Прийом по замовленню {{number}}",

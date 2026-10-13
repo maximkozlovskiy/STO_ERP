@@ -8,6 +8,7 @@ import { Input } from './input';
 import { Spinner } from './spinner';
 import { cn } from '@/lib/utils';
 import { pickScannedGood } from '@/lib/barcode';
+import { fmtQty } from '@/lib/format';
 import { CategoryTree, collectDescendantIds } from './category-tree';
 import type { CategoryNode } from './category-tree';
 
@@ -378,7 +379,10 @@ export function GoodPickerModal({
                   // sto-optimize: підняти qty lookup з IIFE у тілі JSX — раніше
                   // `(() => { const qty = stockMap.get(item.id) ?? 0; return <span>... })()`
                   // створював нову arrow на кожен render для КОЖНОГО row.
-                  const qty = Number((stockMap.get(item.id) ?? 0).toFixed(3));
+                  // fmtQty округлює до 3 знаків (хвости float-суми по складах) і форматує за
+                  // локаллю; «0» після округлення — це «немає», як і раніше.
+                  const qtyLabel = fmtQty(stockMap.get(item.id) ?? 0);
+                  const qty = qtyLabel === '0' ? 0 : (stockMap.get(item.id) ?? 0);
                   return (
                     <button
                       key={item.id}
@@ -410,7 +414,7 @@ export function GoodPickerModal({
                         )}
                         <span>{item.salePrice} ₴</span>
                         <span className={qty > 0 ? 'text-success' : 'text-destructive-text'}>
-                          {qty > 0 ? `${qty} на складі` : 'немає на складі'}
+                          {qty > 0 ? `${qtyLabel} на складі` : 'немає на складі'}
                         </span>
                       </div>
                     </button>

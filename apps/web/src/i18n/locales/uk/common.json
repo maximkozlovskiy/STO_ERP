@@ -28,5 +28,38 @@
     "rowsAdded": "Додано позицій: {{count}}"
   },
   "retry": "Повторити",
-  "listLoadError": "Не вдалося завантажити список"
+  "listLoadError": "Не вдалося завантажити список",
+  "linesSummary": {
+    "title": "Зведення",
+    "executorsTitle": "Виконавці",
+    "tables": {
+      "works": "Роботи",
+      "goods": "Товари",
+      "other": "Інше"
+    },
+    "positions_one": "{{count}} позиція",
+    "positions_few": "{{count}} позиції",
+    "positions_many": "{{count}} позицій",
+    "positions_other": "{{count}} позиції",
+    "names_one": "{{count}} найменування",
+    "names_few": "{{count}} найменування",
+    "names_many": "{{count}} найменувань",
+    "names_other": "{{count}} найменування",
+    "rows_one": "{{count}} рядок",
+    "rows_few": "{{count}} рядки",
+    "rows_many": "{{count}} рядків",
+    "rows_other": "{{count}} рядка",
+    "works_one": "{{count}} робота",
+    "works_few": "{{count}} роботи",
+    "works_many": "{{count}} робіт",
+    "works_other": "{{count}} роботи",
+    "hours": "{{value}} н-год",
+    "units": "{{value}} од.",
+    "distinctWorks": "(різних робіт: {{n}})",
+    "hint": "Кількість — проста сума по рядках; одиниці виміру в рядках можуть бути різні.",
+    "loading": "Завантаження…",
+    "empty": "Рядків немає",
+    "loadError": "Не вдалося завантажити зведення",
+    "executorNotFound": "Працівника не знайдено"
+  }
 }

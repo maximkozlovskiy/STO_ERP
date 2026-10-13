@@ -313,25 +313,59 @@ test.describe('Складські документи — Detail Panel', () => {
     await ctx.close();
   });
 
-  test('клік на рядок → Detail Panel відкривається', async ({ page }) => {
-    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
+  // Бокова панель списку (рішення власника 2026-10-13): панель увімкнена → клік по рядку
+  // вибирає його в панель, картка НЕ відкривається. Локатор панелі — її власний вміст:
+  // заголовок з номером документа і блок «Зведення» (data-testid="lines-summary").
+  async function openPanel(page: Page) {
+    await page.addInitScript(() => {
+      localStorage.setItem('sto_detail_panel_stock-documents', 'true');
+    });
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    await expect(
-      page.locator('[data-testid="detail-panel"], aside, .detail-panel').first(),
-    ).toBeVisible({ timeout: 8_000 });
+    await row.locator('td').nth(1).click();
+    const summary = page.getByTestId('lines-summary');
+    await expect(summary).toBeVisible({ timeout: 8_000 });
+    // Вміст вкладки панелі: поля шапки + зведення + кнопка «Відкрити документ».
+    return { row, summary, panel: summary.locator('xpath=..') };
+  }
+
+  test('клік на рядок → Detail Panel відкривається', async ({ page }) => {
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
+    const { row, summary, panel } = await openPanel(page);
+    await expect(page.locator('h2', { hasText: docNumber })).toBeVisible();
+    await expect(row).toHaveClass(/bg-primary\/5/);
+    // Документ створено без рядків — зведення каже це прямо, а не лишається порожнім.
+    await expect(summary).toContainText('Зведення');
+    await expect(summary).toContainText('Рядків немає');
+    await expect(panel.getByRole('button', { name: 'Відкрити документ' })).toBeVisible();
+    // Панель, а не картка.
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
   });
 
   test('Detail Panel — показує тип «Списання» і статус «Чернетка»', async ({ page }) => {
     expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
+    const { panel } = await openPanel(page);
+    await expect(panel.getByText('Тип', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Списання', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(panel.getByText('Статус', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Чернетка', { exact: true })).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('Detail Panel вимкнена → клік на рядок відкриває картку документа', async ({ page }) => {
+    expect(docId, 'beforeAll має створити документ (seed має склад+товари)').toBeTruthy();
+    await page.addInitScript(() => {
+      localStorage.setItem('sto_detail_panel_stock-documents', 'false');
+    });
     await gotoStockDocs(page, true);
     const row = page.locator(`table tbody tr:has-text("${docNumber}")`).first();
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.click();
-    await expect(page.locator('text=Чернетка').first()).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('text=Списання').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Показати бокову панель' })).toBeVisible();
+    await row.locator('td').nth(1).click();
+    const modal = page.locator('[role="dialog"]').first();
+    await expect(modal).toBeVisible({ timeout: 8_000 });
+    await expect(modal).toContainText(docNumber);
+    await expect(page.getByTestId('lines-summary')).toHaveCount(0);
   });
 
   test('Detail Modal — кнопка «Підтвердити документ» присутня для DRAFT', async ({ page }) => {
