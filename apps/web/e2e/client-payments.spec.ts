@@ -195,7 +195,9 @@ test.describe('Оплати клієнтів (money-flow)', () => {
   // ─── Оплата контрагента в касі ──────────────────────────────────────────────
   test.describe('каса: «Оплата контрагента»', () => {
     const stamp = Date.now();
-    const registerName = `E2E Каса оплат ${stamp}`;
+    // «000» на початку: список кас віддає перші 200 за назвою, а в dev-базі сотні старих
+    // «E2E Каса N» — без цього нова каса не потрапляла б у селектор картки.
+    const registerName = `000 E2E Каса оплат ${stamp}`;
     const clientName = `E2E Клієнт каси ${stamp}`;
     let registerId = '';
     let clientId = '';
