@@ -80,6 +80,16 @@ const NAV_COMMANDS: CommandDef[] = [
     href: '/invoices',
     keywords: ['рахунок', 'виставити'],
   },
+  // Сторінок оплат немає: готівкові оплати клієнтів і постачальникам проводять у касі, тож
+  // «оплата» в палітрі має вести й сюди (Bug #852). Ролі — як у пункту меню «Каса».
+  {
+    id: 'nav:cash',
+    label: 'Каса',
+    group: 'navigation',
+    href: '/cash',
+    roles: ['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
+    keywords: ['готівка', 'оплата', 'внести', 'видати', 'постачальнику', 'cash'],
+  },
   {
     id: 'nav:settlements',
     label: 'Розрахунки',
