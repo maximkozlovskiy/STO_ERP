@@ -191,7 +191,8 @@ create (метод без requiresFiscal) → null
 - **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO існує (org-scoped, не видалений; інакше 404 до транзакції) і має бути в статусі `INVOICED`.
 - **BR-PAY-002**: **Рахунок-призначення** (`resolveDestinationAccount`): DTO явно → сувора валідація (4xx на невалідний);
   дефолт з `PaymentMethodConfig` → best-effort (stale конфіг → тихо `null`, не валимо платіж; для готівки
-  це 400 — BR-PAY-019). Деталі — [invoice.md](invoice.md#рахунок-призначення-платежу-paymentsourcetype) («Рахунок-призначення платежу»).
+  це 400 — BR-PAY-019). Запит із `cashRegisterId` (або `bankAccountId`) без `sourceType` — тип береться з
+  id, а не зі способу оплати: інакше каса з запиту мовчки губилась (готівка → 400, інший спосіб — повз касу). Деталі — [invoice.md](invoice.md#рахунок-призначення-платежу-paymentsourcetype) («Рахунок-призначення платежу»).
   Замовчування задають у НДІ → «Оплата» → «Куди надходять кошти» (`POST/PATCH /payment-methods`:
   `defaultSourceType` + `defaultCashRegisterId` | `defaultBankAccountId`; каса лише з `CASH_REGISTER`, рахунок
   лише з `BANK_ACCOUNT`, інакше 400; тип без id → 400; чужа чи видалена каса/рахунок → 404; `null` знімає
@@ -359,12 +360,12 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | сервісна логіка           | `provider-config.service.spec.ts`                        | 27     |
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`         | 11     |
-| готівка лише через касу   | `payments.cash-register-required.spec.ts`                | 8      |
+| готівка лише через касу   | `payments.cash-register-required.spec.ts`                | 10     |
 | куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 17     |
 | HTTP-контракт способів    | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати   | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 
-Разом: **428** кейсів — 367 у модулі + 32 у двох спеках шифрування + 29 у довіднику способів оплати
+Разом: **430** кейсів — 369 у модулі + 32 у двох спеках шифрування + 29 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-14), не з grep.
 

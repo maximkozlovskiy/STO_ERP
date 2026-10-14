@@ -59,6 +59,8 @@ vi.mock('@/hooks/api/useInvoices', async importOriginal => {
 const REGISTERS = [
   { id: 'cr-main', name: 'Каса головна' },
   { id: 'cr-second', name: 'Каса друга' },
+  // Валютна каса: рахунок у гривні оплату в неї не прийме (валюта оплати = валюта каси).
+  { id: 'cr-usd', name: 'Каса доларова', currencyCode: 'USD' },
 ];
 vi.mock('@/hooks/api/useCash', () => ({
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
@@ -228,6 +230,24 @@ describe('Рахунки — вікно «Оплатити»: каса для г
     expect(body.method).toBe('card_terminal');
     expect(body).not.toHaveProperty('sourceType');
     expect(body).not.toHaveProperty('cashRegisterId');
+  });
+
+  it('каси іншої валюти, ніж рахунок, не пропонуються — навіть як замовчування способу', async () => {
+    methods[0] = method('cash', 'Готівка', {
+      defaultSourceType: 'CASH_REGISTER',
+      defaultCashRegisterId: 'cr-usd',
+      defaultDestinationName: 'Каса доларова',
+    });
+    const dialog = await openPayDialog();
+
+    const options = within(cashSelect(dialog)!)
+      .getAllByRole('option')
+      .map(o => o.textContent);
+    expect(options).toContain('Каса головна');
+    expect(options).not.toContain('Каса доларова');
+    // Замовчування не підходить рахунку — поле порожнє, кнопка чекає вибору касира.
+    expect(cashSelect(dialog)?.value).toBe('');
+    expect(payButton(dialog)).toBeDisabled();
   });
 
   it('помилка сервера (закрита зміна фіскальної каси) — у самому вікні, вікно лишається', async () => {

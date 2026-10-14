@@ -347,17 +347,29 @@ function InvoicesPageInner() {
   const payShowsCash = payNeedsCash || payMethod?.defaultSourceType === 'CASH_REGISTER';
   const payDefaultCashId =
     payMethod?.defaultSourceType === 'CASH_REGISTER' ? (payMethod.defaultCashRegisterId ?? '') : '';
+  // Валюта оплати — валюта каси, а сервер приймає лише валюту рахунку: каси іншої валюти не
+  // пропонуємо (інакше касир дізнавався б про це лише з відмови). Без коду валюти — базова.
+  const payCurrencyCode = showPayment?.currencyCode || baseCode;
   const payCashOptions = useMemo(() => {
-    const options = cashRegisters.map(r => ({ id: r.id, name: r.name }));
+    const options = cashRegisters
+      .filter(r => (r.currencyCode || baseCode) === payCurrencyCode)
+      .map(r => ({ id: r.id, name: r.name }));
     // Каса за замовчуванням жива (сервер дав її назву), але не потрапила в перші 200 за назвою.
+    // Відсіяна за валютою — не повертаємо: вона є в переліку, просто не підходить рахунку.
     if (
       payDefaultCashId &&
       payMethod?.defaultDestinationName &&
-      !options.some(o => o.id === payDefaultCashId)
+      !cashRegisters.some(r => r.id === payDefaultCashId)
     )
       options.unshift({ id: payDefaultCashId, name: payMethod.defaultDestinationName });
     return options;
-  }, [cashRegisters, payDefaultCashId, payMethod?.defaultDestinationName]);
+  }, [
+    cashRegisters,
+    baseCode,
+    payCurrencyCode,
+    payDefaultCashId,
+    payMethod?.defaultDestinationName,
+  ]);
   const payCashId =
     payCashChoice ?? (payCashOptions.some(o => o.id === payDefaultCashId) ? payDefaultCashId : '');
   const payBlockedNoCash = payNeedsCash && !payCashId;

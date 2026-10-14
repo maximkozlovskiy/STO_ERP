@@ -238,6 +238,35 @@ describe('PaymentsService — готівка лише через касу (BR-PA
     expect(prisma.payment.create).not.toHaveBeenCalled();
   });
 
+  // guards: BR-PAY-002, BR-PAY-019
+  it.each([
+    ['готівка, замовчування немає', 'cash', null],
+    ['термінал, замовчування — банківський рахунок', 'card_terminal', 'BANK_ACCOUNT'],
+  ] as const)(
+    'каса в запиті без sourceType (%s) → тип із id, оплата лягає в цю касу',
+    async (_label, method, defaultSourceType) => {
+      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+        requiresFiscal: false,
+        defaultSourceType,
+        defaultCashRegisterId: null,
+        defaultBankAccountId: defaultSourceType ? BANK_ID : null,
+      });
+
+      await service.create(ORG, { ...cashDto, method, cashRegisterId: EXPLICIT_CASH_ID }, 'user-1');
+
+      expect(lastCreateData).toMatchObject({
+        sourceType: 'CASH_REGISTER',
+        cashRegisterId: EXPLICIT_CASH_ID,
+        bankAccountId: null,
+      });
+      expect(cash.createOperation).toHaveBeenCalledWith(
+        ORG,
+        expect.objectContaining({ cashRegisterId: EXPLICIT_CASH_ID }),
+        prisma,
+      );
+    },
+  );
+
   // guards: BR-PAY-019
   it.each(['card_terminal', 'bank', 'monobank_qr'])(
     'спосіб %s без каси й без рахунку — як раніше: платіж є, рядка каси немає',

@@ -141,7 +141,9 @@
     "destinationHint": "A payment by this method lands here when the payment itself names no cash register or account. A cash payment without a cash register is not possible.",
     "destinationRequired": "Select a cash register or account",
     "destinationColumn": "Goes to",
-    "destinationMissing": "cash register or account deleted"
+    "destinationMissing": "cash register or account deleted",
+    "activeAria": "Active: {{name}}",
+    "deleteAria": "Delete payment method: {{name}}"
   },
   "orgInfo": {
     "loadError": "Failed to load details",

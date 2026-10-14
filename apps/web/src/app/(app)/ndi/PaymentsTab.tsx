@@ -361,6 +361,9 @@ export default function PaymentsTab() {
                 <button
                   onClick={() => void togglePayment(pm)}
                   disabled={togglingId === pm.id}
+                  role="switch"
+                  aria-checked={pm.isActive}
+                  aria-label={t('payments.activeAria', { name: pm.name })}
                   className={cn(
                     'relative inline-flex h-5 w-9 rounded-full transition-colors',
                     pm.isActive ? 'bg-primary' : 'bg-border',
@@ -383,6 +386,7 @@ export default function PaymentsTab() {
                 {!pm.isSystem && (
                   <button
                     onClick={() => void deletePaymentMethod(pm.id)}
+                    aria-label={t('payments.deleteAria', { name: pm.name })}
                     className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded"
                   >
                     <Trash2 className="h-3.5 w-3.5" />

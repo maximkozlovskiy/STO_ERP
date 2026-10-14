@@ -1093,7 +1093,16 @@ export class PaymentsService {
   }> {
     // Джерело значень: DTO задав хоч одне поле → explicit; інакше беремо дефолт methodConfig.
     const fromDto = !!(dto.sourceType || dto.bankAccountId || dto.cashRegisterId);
-    const sourceType = dto.sourceType ?? methodConfig?.defaultSourceType ?? null;
+    // Тип без явного значення — з переданого id (лише один id): каса без `sourceType` інакше брала
+    // тип способу оплати й мовчки губилась — готівка «вказаної каси» давала 400 BR-PAY-019, а інший
+    // спосіб записувався повз касу, яку касир назвав.
+    const typeFromId =
+      dto.cashRegisterId && !dto.bankAccountId
+        ? 'CASH_REGISTER'
+        : dto.bankAccountId && !dto.cashRegisterId
+          ? 'BANK_ACCOUNT'
+          : null;
+    const sourceType = dto.sourceType ?? typeFromId ?? methodConfig?.defaultSourceType ?? null;
     const bankAccountId = fromDto
       ? (dto.bankAccountId ?? null)
       : (methodConfig?.defaultBankAccountId ?? null);

@@ -183,7 +183,8 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
 
 - **BR-INV-013**: `Payment` знає, **куди фізично лягли гроші**: `sourceType` (`BANK_ACCOUNT`/`CASH_REGISTER`) +
   `bankAccountId`/`cashRegisterId`. Джерело: DTO явно → інакше дефолт з `PaymentMethodConfig`
-  (`defaultSourceType`/`defaultBankAccountId`/`defaultCashRegisterId`) → інакше `null`.
+  (`defaultSourceType`/`defaultBankAccountId`/`defaultCashRegisterId`) → інакше `null`. Id без `sourceType`
+  у запиті задає й тип (каса → `CASH_REGISTER`, рахунок → `BANK_ACCOUNT`).
 - **BR-INV-014**: Валідація (`resolveDestinationAccount`): рахунок мусить бути в межах org (не крос-tenant) і живий.
   **Явний** з DTO невалідний рахунок → 4xx; **дефолт з config** що з тих пір видалено (stale) →
   тихо `null` (offline-first: не валимо легітимний платіж через застарілий конфіг). Виняток — готівка:
