@@ -29334,12 +29334,13 @@
           "reason": {
             "type": "string",
             "nullable": true,
-            "description": "Причина сторно"
+            "description": "Причина сторно (= примітка рядка сторно). Нове сторно завжди з причиною (BR-CASH-023); null лише за невідомих даних, тому клієнт показує «—»"
           }
         },
         "required": [
           "id",
-          "createdAt"
+          "createdAt",
+          "reason"
         ]
       },
       "CashOperationResponseDto": {

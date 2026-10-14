@@ -105,7 +105,12 @@ export class CashReversalDto {
 export class CashOperationReversalRefDto {
   @ApiProperty({ description: 'id рядка сторно' }) id!: string;
   @ApiProperty({ description: 'Коли сторновано (ISO)' }) createdAt!: string;
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'Причина сторно' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Причина сторно (= примітка рядка сторно). Нове сторно завжди з причиною (BR-CASH-023); null лише за невідомих даних, тому клієнт показує «—»',
+  })
   reason!: string | null;
 }
 

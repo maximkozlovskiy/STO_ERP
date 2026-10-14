@@ -205,6 +205,22 @@ describe('report-query.builder', () => {
     });
   });
 
+  // guards: BR-RPT-003, BR-CASH-024
+  it('оплати: «Сторновано» — фільтр isNull відділяє чинні оплати від сторнованих', () => {
+    const run = (value: boolean) =>
+      buildQuery(
+        {
+          entity: 'payment',
+          columns: ['amount', 'reversedAt'],
+          groupBy: [],
+          filters: [{ field: 'reversedAt', op: 'isNull', value }],
+        },
+        ORG,
+      ).args.where;
+    expect(run(true)).toMatchObject({ orgId: ORG, reversedAt: null });
+    expect(run(false)).toMatchObject({ orgId: ORG, reversedAt: { not: null } });
+  });
+
   // guards: BR-RPT-003
   it('оператор in без масиву → BadRequestException', () => {
     expect(() =>

@@ -8846,8 +8846,8 @@ export interface components {
             id: string;
             /** @description Коли сторновано (ISO) */
             createdAt: string;
-            /** @description Причина сторно */
-            reason?: string | null;
+            /** @description Причина сторно (= примітка рядка сторно). Нове сторно завжди з причиною (BR-CASH-023); null лише за невідомих даних, тому клієнт показує «—» */
+            reason: string | null;
         };
         CashOperationResponseDto: {
             id: string;

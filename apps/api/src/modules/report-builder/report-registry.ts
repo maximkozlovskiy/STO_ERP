@@ -814,6 +814,17 @@ const payment: ReportEntityDef = {
       groupable: true,
     },
     {
+      // BR-CASH-024: сторнована оплата лишається в таблиці (append-only), але вже не «гроші в касі».
+      // Фільтр «Сторновано — порожньо» (isNull) лишає лише чинні оплати.
+      key: 'reversedAt',
+      label: 'Сторновано',
+      type: 'date',
+      prismaPath: 'reversedAt',
+      aggregations: ['MIN', 'MAX'],
+      filterable: true,
+      groupable: false,
+    },
+    {
       key: 'counterparty.companyName',
       label: 'Контрагент',
       type: 'scalar',
