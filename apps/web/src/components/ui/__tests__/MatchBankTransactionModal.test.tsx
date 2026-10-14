@@ -115,4 +115,25 @@ describe('MatchBankTransactionModal', () => {
       expect(matchCall).toBeFalsy();
     });
   });
+
+  // Bug #861: Escape у пікері закривав і саме вікно рознесення (docs/GOTCHAS.md 2026-10-12).
+  // Mutation-verify: прибрати `if (pickerOpenRef.current) return;` у close → кейс падає.
+  it('Escape у пікері контрагента закриває лише пікер, вікно лишається', async () => {
+    apiFetchMock.mockResolvedValue({ items: [] });
+    const onClose = vi.fn();
+    renderWithQueryClient(<MatchBankTransactionModal open onClose={onClose} transaction={TX} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Обрати' }));
+    expect(await screen.findByRole('dialog', { name: 'Оберіть контрагента' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Оберіть контрагента' })).not.toBeInTheDocument(),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    // Пікер закрито — тепер Escape закриває вже саме вікно.
+    await new Promise(r => setTimeout(r, 0));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

@@ -412,6 +412,19 @@ describe('MatchOutgoingBankTransactionModal — SUPPLIER_PAYMENT', () => {
     });
   });
 
+  // Bug #861: Escape у пікері постачальника закривав і саме вікно рознесення.
+  // Mutation-verify: прибрати `pickerOpenRef.current ||` у close → кейс падає.
+  it('Escape у пікері постачальника вікна не закриває', async () => {
+    mockApi({ candidates: [] });
+    const { onClose } = open();
+    const field = (await screen.findByText('Пошук постачальника…')).parentElement!;
+    fireEvent.click(within(field).getByRole('button', { name: 'Обрати' }));
+    await screen.findByTestId('picker');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('«Назад» із підтвердження повертає форму без запиту', async () => {
     mockApi({ candidates: [] });
     open();

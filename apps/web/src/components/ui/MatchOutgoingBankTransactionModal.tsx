@@ -99,6 +99,8 @@ export function MatchOutgoingBankTransactionModal({
   // повернутись на «наявну» і побачити пояснення, чому список порожній.
   const autoSwitchedRef = useRef(false);
   const submittingRef = useRef(false);
+  // Escape у пікері постачальника / клієнта / працівника закриває лише пікер (Bug #861).
+  const pickerOpenRef = useRef(false);
 
   const txId = transaction?.id;
   const type = form.watch('type');
@@ -122,6 +124,7 @@ export function MatchOutgoingBankTransactionModal({
     setPending(null);
     autoSwitchedRef.current = false;
     submittingRef.current = false;
+    pickerOpenRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, txId]);
 
@@ -184,7 +187,8 @@ export function MatchOutgoingBankTransactionModal({
   const submit = handleSubmit(onValid);
   const busy = reconcileMut.isPending;
   const close = () => {
-    if (!busy) onClose();
+    if (pickerOpenRef.current || busy) return;
+    onClose();
   };
 
   const confirmName =
@@ -303,6 +307,7 @@ export function MatchOutgoingBankTransactionModal({
               supplierMode={supplierMode}
               onSupplierModeChange={changeSupplierMode}
               candidatesQuery={candidatesQuery}
+              pickerOpenRef={pickerOpenRef}
             />
           </>
         )}
