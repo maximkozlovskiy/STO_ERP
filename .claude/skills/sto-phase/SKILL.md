@@ -1,7 +1,7 @@
 ---
 name: sto-phase
 description: >
-  Phase review and implementation skill for STO ERP. Reads PHASES.md, finds the next unchecked [ ] task group (by block: B1, B2, F3, etc.), implements all sub-tasks (database → backend → frontend), marks them [x], then runs QA. Use when the user says "реалізуй фазу", "наступний блок", "реалізуй все", "продовжуємо", or when resuming work after a session break. Automatically chains: sto-database → sto-backend → sto-web → sto-sync-agent (if both backend+frontend changed) → sto-review-agent → sto-tester-agent.
+  Phase review and implementation skill for STO ERP. Reads PHASES.md, finds the next unchecked [ ] task group (by block: B1, B2, F3, etc.), implements all sub-tasks (database → backend → frontend), marks them [x], then runs QA. Use when the user says "реалізуй фазу", "наступний блок", "реалізуй все", "продовжуємо", or when resuming work after a session break. Automatically chains: sto-database → sto-backend → sto-web → sto-sync-agent (only if backend and frontend were written by different implementers) → sto-review-agent → sto-tester-agent.
 model: sonnet
 bypassPermissions: true
 ---
@@ -233,9 +233,9 @@ git commit -m "feat(<block>): <назва блоку> — <коротко що �
 
 ```python
 # 1. Синхронізація фронт ↔ бек (перед QA — щоб review/tester бачили вже виправлений контракт)
-# Запустити /sto-sync автоматично якщо блок містив і backend і frontend зміни
-# Ознака: є [sto-backend] І [sto-web] задачі у тому самому блоці
-Agent(subagent_type="sto-sync-agent", description="sync after <block>")  # якщо є і backend і frontend
+# Запустити /sto-sync, якщо backend і frontend блоку писали РІЗНІ виконавці (паралельні агенти).
+# Один виконавець на обидві частини → sync пропускається, його перевірки бере review (CLAUDE.md)
+Agent(subagent_type="sto-sync-agent", description="sync after <block>")  # якщо різні виконавці
 
 # 2. Code review
 Agent(subagent_type="sto-review-agent", description="review after <block>")
