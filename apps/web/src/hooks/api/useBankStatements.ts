@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiSchema, operations } from '@sto/shared';
 import { apiFetch, apiMultipartFetch } from '@/lib/api-client';
+import { invalidatePaymentSideEffects } from '@/lib/cache-invalidation';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
 import { supplierPaymentsKeys } from './useSupplierPayments';
 import { cashKeys } from './useCash';
@@ -168,6 +169,8 @@ export function useBankAccountOptions(enabled = true) {
 /**
  * Внести платіж вручну (POST /bank-statements/transactions, BR-BANK-023).
  * `idempotencyKey` — один на відкриття форми: повтор запиту не створює другий рядок.
+ * З `allocation` платіж ще й рознесено (BR-BANK-041) — тоді змінились і чужі списки: оплати,
+ * рахунки, борги, каса, оплати постачальникам — як після рознесення окремим вікном.
  */
 export function useCreateBankTransaction() {
   const qc = useQueryClient();
@@ -184,7 +187,13 @@ export function useCreateBankTransaction() {
         headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
+    onSuccess: (_res, { data }) => {
+      if (!data.allocation) return;
+      invalidatePaymentSideEffects(qc);
+      void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+    },
+    // onSettled: рядок, за яким оплата вже проведена, лишається рознесеним навіть після відмови.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: bankTransactionsKeys.all });
     },
   });

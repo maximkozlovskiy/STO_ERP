@@ -121,6 +121,56 @@ describe('інші мутації банківських платежів', () =
     expect(invalidated()).toEqual(['bank-transactions']);
   });
 
+  // BR-BANK-041: внесення з рознесенням змінює ті самі чужі списки, що й рознесення окремим вікном.
+  it('create з allocation: збиває й оплати, рахунки, касу, оплати постачальникам, борги', async () => {
+    apiFetchMock.mockResolvedValue({});
+    const { wrapper, invalidated } = setup();
+    const { result } = renderHook(() => useCreateBankTransaction(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({
+        data: {
+          bankAccountId: ID,
+          direction: 'IN',
+          amount: 10,
+          operationDate: '2026-10-14',
+          allocation: { type: 'INVOICE', counterpartyId: ID, invoiceId: ID },
+        },
+        idempotencyKey: 'key-1',
+      });
+    });
+    expect(invalidated()).toEqual(
+      expect.arrayContaining([
+        'bank-transactions',
+        'payments',
+        'invoices',
+        'cash',
+        'supplier-payments',
+        'counterparties',
+      ]),
+    );
+  });
+
+  it('create з allocation, відмова: список платежів усе одно оновлюється, чужі — ні', async () => {
+    apiFetchMock.mockRejectedValue(new Error('Сума перевищує залишок'));
+    const { wrapper, invalidated } = setup();
+    const { result } = renderHook(() => useCreateBankTransaction(), { wrapper });
+    await act(async () => {
+      await result.current
+        .mutateAsync({
+          data: {
+            bankAccountId: ID,
+            direction: 'OUT',
+            amount: 10,
+            operationDate: '2026-10-14',
+            allocation: { type: 'EXPENSE', expenseCategoryId: ID },
+          },
+          idempotencyKey: 'key-2',
+        })
+        .catch(() => undefined);
+    });
+    expect(invalidated()).toEqual(['bank-transactions']);
+  });
+
   it('delete: DELETE /bank-statements/transactions/:id', async () => {
     apiFetchMock.mockResolvedValue(undefined);
     const { wrapper, invalidated } = setup();

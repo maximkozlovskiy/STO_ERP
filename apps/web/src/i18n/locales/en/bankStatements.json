@@ -140,7 +140,17 @@
     "submit": "Add payment",
     "cancel": "Cancel",
     "success": "Payment added",
-    "error": "Failed to add payment"
+    "error": "Failed to add payment",
+    "allocation": {
+      "label": "Match as",
+      "none": "— do not match —",
+      "pickAccountFirst": "Select the bank account first",
+      "supplierNewHint": "A new supplier payment will be created. An existing one can be linked after entry — from the list row.",
+      "submit": "Enter and match",
+      "success": "Payment entered and matched",
+      "confirmTitle": "Confirm entry and matching",
+      "confirmInvoice": "The payment will be entered and invoice {{name}} of client «{{client}}» will be paid for {{amount}}."
+    }
   },
   "reconcile": {
     "title": "Reconcile outgoing payment",
