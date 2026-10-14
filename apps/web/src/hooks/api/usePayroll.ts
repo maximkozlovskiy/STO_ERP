@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api-client';
 import { usePaginatedList, type PaginatedResponse } from './usePaginatedList';
+import { cashKeys } from './useCash';
 
 /**
  * Розшифровка нарахування по одному наряду — дзеркалить PayrollLineWorkOrderDto.
@@ -146,7 +147,11 @@ export function usePayPayrollPeriod() {
         method: 'POST',
         body: JSON.stringify(cashRegisterId ? { cashRegisterId } : {}),
       }),
-    onSuccess: () => invalidateAllPayroll(qc),
+    onSuccess: (_data, { cashRegisterId }) => {
+      invalidateAllPayroll(qc);
+      // Виплата з каси списує готівку: залишок і історія каси мають це показати (Bug #848).
+      if (cashRegisterId) void qc.invalidateQueries({ queryKey: cashKeys.all });
+    },
   });
 }
 

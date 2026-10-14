@@ -12,6 +12,7 @@ import { reportsKeys } from '@/hooks/api/useReports';
 import { dashboardKeys } from '@/hooks/api/useDashboardData';
 import { paymentsKeys } from '@/hooks/api/usePayments';
 import { vehicleMileageKeys } from '@/hooks/api/useVehicleMileage';
+import { cashKeys } from '@/hooks/api/useCash';
 
 /**
  * Спільні cross-cache інвалідатори (WEB-H1/H2 з аудиту).
@@ -52,8 +53,13 @@ export function invalidateBalanceAffected(qc: QueryClient): void {
  * платежу (invoices-сторінка, QR-onPaid, useCreatePayment, cash) інвалідувала УВЕСЬ крос-ресурс,
  * а не лише власний ключ (WEB-R3-1/-2: invoices-сторінка інвалідувала тільки invoicesKeys →
  * баланс контрагента/WO лишались застарілими до staleTime).
+ *
+ * Плюс каса: готівкова оплата пише рядок у журнал каси й міняє її залишок. Список кас живе в
+ * кеші 5 хвилин, тож без цього «Каса» після оплати з рахунку показувала старий залишок і
+ * історію без нового рядка (Bug #848).
  */
 export function invalidatePaymentSideEffects(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: cashKeys.all });
   void qc.invalidateQueries({ queryKey: invoicesKeys.all });
   void qc.invalidateQueries({ queryKey: workOrdersKeys.all });
   void qc.invalidateQueries({ queryKey: paymentsKeys.all });
@@ -95,8 +101,12 @@ export function invalidateStockDocumentSideEffects(qc: QueryClient): void {
   invalidateStockAffected(qc);
 }
 
-/** Прийом/оплата замовлення постачальнику → PO + склад + баланс постачальника + оплати. */
+/**
+ * Прийом/оплата замовлення постачальнику → PO + склад + баланс постачальника + оплати + каса
+ * (оплата з каси списує готівку — Bug #848).
+ */
 export function invalidatePurchaseSideEffects(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: cashKeys.all });
   void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
   void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
   invalidateStockAffected(qc);
