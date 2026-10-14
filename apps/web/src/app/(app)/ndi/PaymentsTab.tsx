@@ -7,11 +7,131 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/template-picker-modal';
 import { cn } from '@/lib/utils';
+import { useCashRegisters } from '@/hooks/api/useCash';
+import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
 import { type PaymentMethod } from './shared';
+
+/** Куди надходять кошти у формі: '' — не вказано. */
+type DestinationType = '' | 'CASH_REGISTER' | 'BANK_ACCOUNT';
+interface DestinationForm {
+  type: DestinationType;
+  cashRegisterId: string;
+  bankAccountId: string;
+}
+const NO_DESTINATION: DestinationForm = { type: '', cashRegisterId: '', bankAccountId: '' };
+
+const destinationOf = (pm: PaymentMethod): DestinationForm => ({
+  type: pm.defaultSourceType ?? '',
+  cashRegisterId: pm.defaultCashRegisterId ?? '',
+  bankAccountId: pm.defaultBankAccountId ?? '',
+});
+
+/** Тип обрано, а касу чи рахунок — ні: зберігати нічого, сервер відповів би 400. */
+const destinationIncomplete = (d: DestinationForm) =>
+  (d.type === 'CASH_REGISTER' && !d.cashRegisterId) ||
+  (d.type === 'BANK_ACCOUNT' && !d.bankAccountId);
+
+/** Тіло запиту: три поля разом; id іншого типу сервер обнулить сам. */
+const destinationBody = (d: DestinationForm) =>
+  d.type === 'CASH_REGISTER'
+    ? { defaultSourceType: d.type, defaultCashRegisterId: d.cashRegisterId }
+    : d.type === 'BANK_ACCOUNT'
+      ? { defaultSourceType: d.type, defaultBankAccountId: d.bankAccountId }
+      : { defaultSourceType: null, defaultCashRegisterId: null, defaultBankAccountId: null };
+
+const sameDestination = (a: DestinationForm, b: DestinationForm) =>
+  a.type === b.type &&
+  (a.type !== 'CASH_REGISTER' || a.cashRegisterId === b.cashRegisterId) &&
+  (a.type !== 'BANK_ACCOUNT' || a.bankAccountId === b.bankAccountId);
+
+/**
+ * Поле «Куди надходять кошти» картки способу оплати. Каси й рахунки читаються, лише коли картка
+ * відкрита. Збережена каса, якої немає в переліку (видалена чи поза першими 200 за назвою), все
+ * одно показується опцією — з назвою від сервера, або позначкою, що її видалено.
+ */
+function DestinationFields({
+  value,
+  onChange,
+  savedName,
+  active,
+}: {
+  value: DestinationForm;
+  onChange: (next: DestinationForm) => void;
+  savedName?: string | null;
+  active: boolean;
+}) {
+  const { t } = useTranslation('ndi');
+  const { data: registers = [] } = useCashRegisters(active);
+  const { data: accounts = [] } = useBankAccountOptions(active);
+  const withSaved = (options: { id: string; name: string }[], id: string) =>
+    id && !options.some(o => o.id === id)
+      ? [{ id, name: savedName ?? t('payments.destinationMissing') }, ...options]
+      : options;
+  const cashOptions = withSaved(
+    registers.map(r => ({ id: r.id, name: r.name })),
+    value.type === 'CASH_REGISTER' ? value.cashRegisterId : '',
+  );
+  const bankOptions = withSaved(
+    accounts.map(a => ({ id: a.id, name: a.name })),
+    value.type === 'BANK_ACCOUNT' ? value.bankAccountId : '',
+  );
+  const incomplete = destinationIncomplete(value);
+
+  return (
+    <div className="space-y-3">
+      <Select
+        label={t('payments.destinationLabel')}
+        value={value.type}
+        onChange={e => onChange({ ...value, type: e.target.value as DestinationType })}
+        hint={t('payments.destinationHint')}
+        className="h-8 text-[13px] py-0.5 px-2 pr-7"
+      >
+        <option value="">{t('payments.destinationNone')}</option>
+        <option value="CASH_REGISTER">{t('payments.destinationCash')}</option>
+        <option value="BANK_ACCOUNT">{t('payments.destinationBank')}</option>
+      </Select>
+      {value.type === 'CASH_REGISTER' && (
+        <Select
+          label={t('payments.cashRegisterLabel')}
+          required
+          value={value.cashRegisterId}
+          onChange={e => onChange({ ...value, cashRegisterId: e.target.value })}
+          placeholder={t('payments.selectPlaceholder')}
+          errorMessage={incomplete ? t('payments.destinationRequired') : undefined}
+          className="h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          {cashOptions.map(o => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </Select>
+      )}
+      {value.type === 'BANK_ACCOUNT' && (
+        <Select
+          label={t('payments.bankAccountLabel')}
+          required
+          value={value.bankAccountId}
+          onChange={e => onChange({ ...value, bankAccountId: e.target.value })}
+          placeholder={t('payments.selectPlaceholder')}
+          errorMessage={incomplete ? t('payments.destinationRequired') : undefined}
+          className="h-8 text-[13px] py-0.5 px-2 pr-7"
+        >
+          {bankOptions.map(o => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </Select>
+      )}
+    </div>
+  );
+}
 
 export default function PaymentsTab() {
   const { t } = useTranslation('ndi');
@@ -20,13 +140,18 @@ export default function PaymentsTab() {
   const [error, setError] = useState('');
 
   const [editPayment, setEditPayment] = useState<PaymentMethod | null>(null);
-  const [editPaymentForm, setEditPaymentForm] = useState({ name: '', requiresFiscal: false });
+  const [editPaymentForm, setEditPaymentForm] = useState({
+    name: '',
+    requiresFiscal: false,
+    destination: NO_DESTINATION,
+  });
   const [paymentModal, setPaymentModal] = useState(false);
   const [paymentTemplatePicker, setPaymentTemplatePicker] = useState(false);
   const [newPaymentForm, setNewPaymentForm] = useState({
     code: '',
     name: '',
     requiresFiscal: false,
+    destination: NO_DESTINATION,
   });
   const [savingPayment, setSavingPayment] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -36,6 +161,17 @@ export default function PaymentsTab() {
       .then(setPayments)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : t('payments.loadError')));
   }, [t]);
+
+  // Колонка «Надходження»: тип і назва від сервера; тип без назви — касу чи рахунок видалено.
+  const destinationText = (pm: PaymentMethod) => {
+    if (!pm.defaultSourceType) return t('payments.destinationNone');
+    const kind = t(
+      pm.defaultSourceType === 'CASH_REGISTER'
+        ? 'payments.destinationCash'
+        : 'payments.destinationBank',
+    );
+    return `${kind}: ${pm.defaultDestinationName ?? t('payments.destinationMissing')}`;
+  };
 
   const togglePayment = async (pm: PaymentMethod) => {
     setTogglingId(pm.id);
@@ -54,7 +190,11 @@ export default function PaymentsTab() {
 
   const openEditPayment = (pm: PaymentMethod) => {
     setEditPayment(pm);
-    setEditPaymentForm({ name: pm.name, requiresFiscal: pm.requiresFiscal });
+    setEditPaymentForm({
+      name: pm.name,
+      requiresFiscal: pm.requiresFiscal,
+      destination: destinationOf(pm),
+    });
   };
 
   const saveEditPayment = async () => {
@@ -69,6 +209,11 @@ export default function PaymentsTab() {
         body: JSON.stringify({
           ...(editPayment.isSystem ? {} : { name: editPaymentForm.name }),
           requiresFiscal: editPaymentForm.requiresFiscal,
+          // Призначення шлемо лише змінене: збережена, а потім видалена каса інакше давала б 404
+          // на будь-яке інше редагування способу.
+          ...(sameDestination(editPaymentForm.destination, destinationOf(editPayment))
+            ? {}
+            : destinationBody(editPaymentForm.destination)),
         }),
       });
       setPayments(prev => prev.map(p => (p.id === updated.id ? updated : p)));
@@ -93,11 +238,12 @@ export default function PaymentsTab() {
           code: newPaymentForm.code.trim().toUpperCase(),
           name: newPaymentForm.name.trim(),
           requiresFiscal: newPaymentForm.requiresFiscal,
+          ...(newPaymentForm.destination.type ? destinationBody(newPaymentForm.destination) : {}),
         }),
       });
       setPayments(prev => [...prev, created]);
       setPaymentModal(false);
-      setNewPaymentForm({ code: '', name: '', requiresFiscal: false });
+      setNewPaymentForm({ code: '', name: '', requiresFiscal: false, destination: NO_DESTINATION });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('common.error'));
     } finally {
@@ -152,7 +298,12 @@ export default function PaymentsTab() {
         <Button
           leftIcon={<Plus className="h-4 w-4" />}
           onClick={() => {
-            setNewPaymentForm({ code: '', name: '', requiresFiscal: false });
+            setNewPaymentForm({
+              code: '',
+              name: '',
+              requiresFiscal: false,
+              destination: NO_DESTINATION,
+            });
             setPaymentModal(true);
           }}
         >
@@ -189,36 +340,55 @@ export default function PaymentsTab() {
                 {pm.requiresFiscal ? t('payments.fiscalSuffix') : ''}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => void togglePayment(pm)}
-                disabled={togglingId === pm.id}
-                className={cn(
-                  'relative inline-flex h-5 w-9 rounded-full transition-colors',
-                  pm.isActive ? 'bg-primary' : 'bg-border',
-                )}
-              >
-                <span
+            <div className="flex items-center gap-4">
+              <div className="text-right min-w-0">
+                <p className="text-[11px] text-muted-foreground">
+                  {t('payments.destinationColumn')}
+                </p>
+                <p
                   className={cn(
-                    'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
-                    pm.isActive ? 'translate-x-4' : 'translate-x-0.5',
+                    'text-xs truncate max-w-56',
+                    pm.defaultSourceType && !pm.defaultDestinationName
+                      ? 'text-destructive-text'
+                      : 'text-foreground',
                   )}
-                />
-              </button>
-              <button
-                onClick={() => openEditPayment(pm)}
-                className="p-1 text-muted-foreground hover:text-foreground"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              {!pm.isSystem && (
-                <button
-                  onClick={() => void deletePaymentMethod(pm.id)}
-                  className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded"
+                  data-testid={`pm-destination-${pm.code}`}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {destinationText(pm)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void togglePayment(pm)}
+                  disabled={togglingId === pm.id}
+                  className={cn(
+                    'relative inline-flex h-5 w-9 rounded-full transition-colors',
+                    pm.isActive ? 'bg-primary' : 'bg-border',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-4 w-4 rounded-full bg-surface shadow transform transition-transform mt-0.5',
+                      pm.isActive ? 'translate-x-4' : 'translate-x-0.5',
+                    )}
+                  />
                 </button>
-              )}
+                <button
+                  onClick={() => openEditPayment(pm)}
+                  aria-label={`${t('payments.editTitle')}: ${pm.name}`}
+                  className="p-1 text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                {!pm.isSystem && (
+                  <button
+                    onClick={() => void deletePaymentMethod(pm.id)}
+                    className="p-1 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -234,6 +404,7 @@ export default function PaymentsTab() {
             <Button
               onClick={() => void saveEditPayment()}
               loading={savingPayment}
+              disabled={destinationIncomplete(editPaymentForm.destination)}
               className="w-full"
             >
               {t('common.save')}
@@ -263,6 +434,12 @@ export default function PaymentsTab() {
               />
               <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
             </label>
+            <DestinationFields
+              value={editPaymentForm.destination}
+              onChange={destination => setEditPaymentForm(f => ({ ...f, destination }))}
+              savedName={editPayment.defaultDestinationName}
+              active
+            />
           </div>
         </Modal>
       )}
@@ -276,7 +453,11 @@ export default function PaymentsTab() {
           <Button
             onClick={() => void createPaymentMethod()}
             loading={savingPayment}
-            disabled={!newPaymentForm.code || !newPaymentForm.name}
+            disabled={
+              !newPaymentForm.code ||
+              !newPaymentForm.name ||
+              destinationIncomplete(newPaymentForm.destination)
+            }
             className="w-full"
           >
             {t('payments.addSubmit')}
@@ -310,6 +491,11 @@ export default function PaymentsTab() {
             />
             <span className="text-[13px] text-foreground">{t('payments.fiscalLabel')}</span>
           </label>
+          <DestinationFields
+            value={newPaymentForm.destination}
+            onChange={destination => setNewPaymentForm(f => ({ ...f, destination }))}
+            active={paymentModal}
+          />
         </div>
       </Modal>
 

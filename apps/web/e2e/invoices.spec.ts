@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { clearDateFilter } from './fixtures';
+import {
+  createPlainRegister,
+  deleteRegister,
+  getToken as getAccessToken,
+} from './cash-desk.helpers';
 
 test.use({ storageState: 'e2e/.auth/admin.json' });
 test.describe.configure({ mode: 'serial' });
@@ -398,6 +403,8 @@ test.describe('Рахунки — FSM переходи', () => {
 test.describe('Рахунки — реєстрація оплати', () => {
   let invId: string;
   let invNumber: string;
+  // Готівка — лише через касу (BR-PAY-019). «000» — щоб каса була серед перших 200 за назвою.
+  let registerId = '';
 
   test.beforeAll(async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
@@ -414,16 +421,22 @@ test.describe('Рахунки — реєстрація оплати', () => {
     invId = inv.id;
     invNumber = inv.number;
     await apiPost(p, `/invoices/${invId}/transition`, { status: 'SENT' });
+    registerId = await createPlainRegister(
+      p,
+      await getAccessToken(p),
+      `000 E2E Оплата каса ${Date.now()}`,
+    );
     await ctx.close();
   });
 
   test.afterAll(async ({ browser }) => {
-    if (!invId) return;
+    if (!invId && !registerId) return;
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
     const p = await ctx.newPage();
     await p.goto('/invoices');
     await p.waitForTimeout(500);
-    await apiDelete(p, `/invoices/${invId}`).catch(() => {});
+    if (invId) await apiDelete(p, `/invoices/${invId}`).catch(() => {});
+    if (registerId) await deleteRegister(p, await getAccessToken(p), registerId);
     await ctx.close();
   });
 
@@ -449,6 +462,8 @@ test.describe('Рахунки — реєстрація оплати', () => {
 
     // Перевірити поля: метод оплати + сума
     await expect(payModal.locator('select, [role="combobox"]').first()).toBeVisible();
+    // Спосіб за замовчуванням — «Готівка»: без каси оплату не прийме ні кнопка, ні сервер.
+    await payModal.getByLabel(/^Каса/).selectOption(registerId);
     // Сума — може бути автозаповнена або порожня
     const amountInput = payModal
       .locator('input[placeholder*="Сума"], input[type="number"]')

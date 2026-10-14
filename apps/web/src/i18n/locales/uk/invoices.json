@@ -63,7 +63,10 @@
     "methodBankTransfer": "Банківський переказ",
     "amount": "Сума, {{sym}}",
     "amountHint": "Порожнє поле = оплата залишку повністю",
-    "notes": "Примітки"
+    "notes": "Примітки",
+    "cashRegister": "Каса",
+    "cashRegisterPlaceholder": "— оберіть касу —",
+    "cashRegisterRequired": "Для оплати готівкою оберіть касу"
   },
   "toast": {
     "cancelledOne": "Скасовано {{count}} рахунок",

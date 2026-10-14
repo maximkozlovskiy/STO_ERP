@@ -72,11 +72,13 @@ export function useBaseCurrency() {
   });
 }
 
-export function useCashRegisters() {
+/** `enabled` — для вікон, яким каси потрібні лише відкритими (вікно оплати рахунку). */
+export function useCashRegisters(enabled = true) {
   return useQuery({
     queryKey: cashKeys.registers(),
     queryFn: () =>
       apiFetch<{ items: CashRegister[]; total: number }>('/cash-registers').then(r => r.items),
+    enabled,
     // Довідник кас — рідко міняється під час сесії. Без staleTime (дефолт 0) кожен
     // перемик табу (CashOperationsTab/CashRegistersTab) і візит payroll re-fetch-ив
     // список. Усі мутації (create/update/delete) invalidate-ять registers() → safe.

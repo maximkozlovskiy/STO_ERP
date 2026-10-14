@@ -63,6 +63,8 @@ vi.mock('@/hooks/api/useInvoices', async importOriginal => {
 vi.mock('@/hooks/api/useCash', () => ({
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
   useRetryCashFiscal: () => ({ mutateAsync: async () => ({}) }),
+  // Каси для вікна «Оплатити» (BR-PAY-019); у цих тестах вікно не відкривається.
+  useCashRegisters: () => ({ data: [] }),
 }));
 vi.mock('@/components/ui/InvoiceCreateModal', () => ({ InvoiceCreateModal: () => null }));
 vi.mock('@/components/ui/QrPaymentModal', () => ({ QrPaymentModal: () => null }));

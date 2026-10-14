@@ -62,6 +62,8 @@ vi.mock('@/hooks/api/useInvoices', async importOriginal => {
 vi.mock('@/hooks/api/useCash', () => ({
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
   useRetryCashFiscal: () => ({ mutateAsync: async () => ({}) }),
+  // Каси для вікна «Оплатити» (BR-PAY-019); у цих тестах вікно не відкривається.
+  useCashRegisters: () => ({ data: [] }),
 }));
 // Картка рахунку — маркер із id документа, з яким її відкрили.
 vi.mock('@/components/ui/InvoiceCreateModal', () => ({

@@ -130,7 +130,18 @@
     "fieldCode": "Код",
     "codePlaceholder": "CASH, CARD, BANK",
     "codeHint": "Унікальний ідентифікатор (латиниця, великі літери)",
-    "namePlaceholder": "Готівка"
+    "namePlaceholder": "Готівка",
+    "destinationLabel": "Куди надходять кошти",
+    "destinationNone": "— не вказано —",
+    "destinationCash": "Каса",
+    "destinationBank": "Банківський рахунок",
+    "cashRegisterLabel": "Каса",
+    "bankAccountLabel": "Банківський рахунок",
+    "selectPlaceholder": "— оберіть —",
+    "destinationHint": "Сюди потрапляє оплата цим способом, якщо касу чи рахунок не вказано в самій оплаті. Оплата готівкою без каси неможлива.",
+    "destinationRequired": "Оберіть касу чи рахунок",
+    "destinationColumn": "Надходження",
+    "destinationMissing": "касу чи рахунок видалено"
   },
   "orgInfo": {
     "loadError": "Помилка завантаження реквізитів",

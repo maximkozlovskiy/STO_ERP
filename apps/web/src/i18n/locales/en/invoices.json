@@ -63,7 +63,10 @@
     "methodBankTransfer": "Bank transfer",
     "amount": "Amount, {{sym}}",
     "amountHint": "Empty field = pay the full remaining balance",
-    "notes": "Notes"
+    "notes": "Notes",
+    "cashRegister": "Cash register",
+    "cashRegisterPlaceholder": "— select a cash register —",
+    "cashRegisterRequired": "Select a cash register for a cash payment"
   },
   "toast": {
     "cancelledOne": "Cancelled {{count}} invoice",

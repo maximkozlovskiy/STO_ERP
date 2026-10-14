@@ -43,6 +43,15 @@ export interface PaymentMethod {
   // Системний метод (Готівка/Картка/…) — сервер блокує видалення та перейменування
   // (payment-methods.service). isActive/sortOrder лишаються редагованими за org.
   isSystem?: boolean;
+  /**
+   * Куди надходять кошти, коли оплата сама касу чи рахунок не вказує. Для «Готівки» каса — єдине
+   * джерело каси оплати з рахунку (BR-PAY-019). Назву каси чи рахунку дає сервер; null — не
+   * вказано або касу чи рахунок видалено.
+   */
+  defaultSourceType?: 'CASH_REGISTER' | 'BANK_ACCOUNT' | null;
+  defaultCashRegisterId?: string | null;
+  defaultBankAccountId?: string | null;
+  defaultDestinationName?: string | null;
 }
 
 export interface NotificationTemplate {

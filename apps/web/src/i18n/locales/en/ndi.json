@@ -130,7 +130,18 @@
     "fieldCode": "Code",
     "codePlaceholder": "CASH, CARD, BANK",
     "codeHint": "Unique identifier (Latin, uppercase letters)",
-    "namePlaceholder": "Cash"
+    "namePlaceholder": "Cash",
+    "destinationLabel": "Where the money goes",
+    "destinationNone": "— not set —",
+    "destinationCash": "Cash register",
+    "destinationBank": "Bank account",
+    "cashRegisterLabel": "Cash register",
+    "bankAccountLabel": "Bank account",
+    "selectPlaceholder": "— select —",
+    "destinationHint": "A payment by this method lands here when the payment itself names no cash register or account. A cash payment without a cash register is not possible.",
+    "destinationRequired": "Select a cash register or account",
+    "destinationColumn": "Goes to",
+    "destinationMissing": "cash register or account deleted"
   },
   "orgInfo": {
     "loadError": "Failed to load details",

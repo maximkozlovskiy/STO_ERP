@@ -37,6 +37,10 @@ test.describe.configure({ mode: 'serial' });
  *
  * Оплати й касові операції — append-only (фінансовий слід), тож лишаються в БД навмисно.
  * Каси й контрагентів, створених тестом, прибираємо.
+ *
+ * Готівка з рахунку — лише через касу (BR-PAY-019, рішення власника 2026-10-14): у вікні
+ * «Оплатити» є поле «Каса», заповнене касою за замовчуванням способу оплати; без каси готівкою
+ * оплатити не можна. Тести оплати рахунку готівкою обирають касу, створену у beforeAll.
  */
 
 /** Клієнт для оплати рахунку. */
@@ -80,6 +84,27 @@ async function getInvoice(page: Page, token: string, id: string) {
   return res.body;
 }
 
+/** Залишок каси (GET /cash-registers/:id). */
+async function registerBalance(page: Page, token: string, id: string): Promise<number> {
+  const res = await apiCall<{ balance: number | string }>(
+    page,
+    token,
+    'GET',
+    `/cash-registers/${id}`,
+  );
+  expect(res.status, `читання каси: ${JSON.stringify(res.body)}`).toBe(200);
+  return Number(res.body.balance);
+}
+
+/** Рядки каси, що належать оплаті клієнта `paymentId`. */
+async function paymentRows(page: Page, token: string, registerId: string, paymentId: string) {
+  const res = await apiCall<
+    { documentType?: string | null; documentId?: string | null; reason: string; amount: number }[]
+  >(page, token, 'GET', `/cash-registers/${registerId}/operations?limit=100`);
+  expect(res.status, `історія каси: ${JSON.stringify(res.body)}`).toBe(200);
+  return res.body.filter(r => r.documentType === 'Payment' && r.documentId === paymentId);
+}
+
 /** Відкриває модалку оплати рахунку з бокової панелі списку. */
 async function openInvoicePayModal(page: Page, invoiceNumber: string) {
   await page.goto('/invoices');
@@ -102,6 +127,47 @@ async function openInvoicePayModal(page: Page, invoiceNumber: string) {
 }
 
 test.describe('Оплати клієнтів (money-flow)', () => {
+  // Каса для оплат рахунків готівкою. «000» на початку: список кас віддає перші 200 за назвою, а в
+  // dev-базі сотні старих «E2E Каса N» — без цього нова каса не потрапляла б у поле вікна оплати.
+  const payStamp = Date.now();
+  const payRegisterName = `000 E2E Оплата каса ${payStamp}`;
+  let payRegisterId = '';
+  // Власний спосіб оплати з касою за замовчуванням — системну «Готівку» тест не чіпає (сусідні
+  // файли E2E ідуть паралельно, а її замовчування — спільне для всієї організації).
+  const payMethodCode = `pay_e2e_${payStamp}`;
+  const payMethodName = `000 E2E Оплата спосіб ${payStamp}`;
+  let payMethodId = '';
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await p.goto('/cash');
+    const token = await getToken(p);
+    payRegisterId = await createPlainRegister(p, token, payRegisterName);
+    const method = await apiCall<{ id: string }>(p, token, 'POST', '/payment-methods', {
+      code: payMethodCode,
+      name: payMethodName,
+      // В кінець списку: інші вікна оплати беруть перший спосіб за замовчуванням.
+      sortOrder: 999,
+      requiresFiscal: false,
+      defaultSourceType: 'CASH_REGISTER',
+      defaultCashRegisterId: payRegisterId,
+    });
+    expect(method.status, `створення способу оплати: ${JSON.stringify(method.body)}`).toBe(201);
+    payMethodId = method.body.id;
+    await ctx.close();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' });
+    const p = await ctx.newPage();
+    await p.goto('/cash');
+    const token = await getToken(p);
+    if (payMethodId) await apiCall(p, token, 'DELETE', `/payment-methods/${payMethodId}`);
+    if (payRegisterId) await deleteRegister(p, token, payRegisterId);
+    await ctx.close();
+  });
+
   // ─── Сторінки більше немає ──────────────────────────────────────────────────
   test('стара адреса /payments веде в касу', async ({ page }) => {
     await page.goto('/payments');
@@ -126,8 +192,9 @@ test.describe('Оплати клієнтів (money-flow)', () => {
 
     const modal = await openInvoicePayModal(page, inv.number);
     await expect(modal.getByText('Залишок до сплати:')).toBeVisible();
-    // Метод «Готівка». Порожня сума = оплата залишку повністю.
+    // Метод «Готівка» і каса (BR-PAY-019). Порожня сума = оплата залишку повністю.
     await modal.getByLabel('Метод оплати').selectOption('cash');
+    await modal.getByLabel(/^Каса/).selectOption(payRegisterId);
     await modal.getByRole('button', { name: 'Підтвердити оплату' }).click();
     await expect(modal).toBeHidden({ timeout: 10_000 });
 
@@ -150,6 +217,7 @@ test.describe('Оплати клієнтів (money-flow)', () => {
 
     const modal = await openInvoicePayModal(page, inv.number);
     await modal.getByLabel('Метод оплати').selectOption('cash');
+    await modal.getByLabel(/^Каса/).selectOption(payRegisterId);
     await modal.getByLabel('Сума, ₴').fill('50');
     await modal.getByRole('button', { name: 'Підтвердити оплату' }).click();
     await expect(modal).toBeHidden({ timeout: 10_000 });
@@ -166,6 +234,115 @@ test.describe('Оплати клієнтів (money-flow)', () => {
     await expect(page.getByRole('button', { name: 'Оплатити' }).first()).toBeVisible({
       timeout: 10_000,
     });
+  });
+
+  // guards: BR-PAY-019
+  test('оплата рахунку готівкою потрапляє в касу: рядок в історії, залишок виріс', async ({
+    page,
+  }) => {
+    await page.goto('/invoices');
+    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const before = await registerBalance(page, token, payRegisterId);
+    const inv = await createSentInvoice(page, token, await getClientId(page, token), 120);
+
+    const modal = await openInvoicePayModal(page, inv.number);
+    await modal.getByLabel('Метод оплати').selectOption('cash');
+    await modal.getByLabel(/^Каса/).selectOption(payRegisterId);
+    const posted = page.waitForResponse(
+      r => r.request().method() === 'POST' && /\/payments$/.test(new URL(r.url()).pathname),
+    );
+    await modal.getByRole('button', { name: 'Підтвердити оплату' }).click();
+    const response = await posted;
+    expect(response.status(), 'оплату прийнято').toBe(201);
+    const sent = response.request().postDataJSON() as Record<string, unknown>;
+    expect(sent).toMatchObject({
+      method: 'cash',
+      sourceType: 'CASH_REGISTER',
+      cashRegisterId: payRegisterId,
+    });
+    const paymentId = ((await response.json()) as { id: string }).id;
+    await expect(modal).toBeHidden({ timeout: 10_000 });
+
+    // Рядок каси належить саме цій оплаті, залишок каси виріс на її суму.
+    const rows = await paymentRows(page, token, payRegisterId, paymentId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ reason: 'SALE_PAYMENT' });
+    expect(Number(rows[0].amount)).toBeCloseTo(120, 2);
+    expect((await registerBalance(page, token, payRegisterId)) - before).toBeCloseTo(120, 2);
+
+    // І в історії каси на сторінці «Каса».
+    await page.goto('/cash');
+    await expect(page.locator('h1:has-text("Каса")')).toBeVisible({ timeout: 20_000 });
+    await page.locator('select').first().selectOption(payRegisterId);
+    // У цій касі вже є оплати попередніх тестів — шукаємо рядок саме на 120,00.
+    const row = page
+      .locator('table tbody tr')
+      .filter({ hasText: 'Оплата контрагента' })
+      .filter({ hasText: '120,00' });
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+  });
+
+  // guards: BR-PAY-019
+  test('готівка без каси: оплатити не можна, доки касу не обрано', async ({ page }) => {
+    await page.goto('/invoices');
+    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const methods = await apiCall<{ code: string; defaultSourceType: string | null }[]>(
+      page,
+      token,
+      'GET',
+      '/payment-methods',
+    );
+    test.skip(
+      methods.body.some(m => m.code === 'cash' && m.defaultSourceType === 'CASH_REGISTER'),
+      'У «Готівки» цієї організації задано касу за замовчуванням — поле не буде порожнім',
+    );
+    const inv = await createSentInvoice(page, token, await getClientId(page, token), 60);
+
+    let posted = false;
+    page.on('request', r => {
+      if (r.method() === 'POST' && /\/payments$/.test(new URL(r.url()).pathname)) posted = true;
+    });
+    const modal = await openInvoicePayModal(page, inv.number);
+    await modal.getByLabel('Метод оплати').selectOption('cash');
+    const cash = modal.getByLabel(/^Каса/);
+    await expect(cash).toHaveValue('');
+    const confirm = modal.getByRole('button', { name: 'Підтвердити оплату' });
+    await expect(confirm).toBeDisabled();
+    await expect(modal.getByText('Для оплати готівкою оберіть касу')).toBeVisible();
+
+    await cash.selectOption(payRegisterId);
+    await expect(confirm).toBeEnabled();
+    await expect(modal.getByText('Для оплати готівкою оберіть касу')).toHaveCount(0);
+    expect(posted, 'без каси запит не мав піти').toBe(false);
+    await page.keyboard.press('Escape');
+  });
+
+  // guards: BR-PAY-019
+  test('спосіб із касою за замовчуванням: поле заповнене нею, оплата лягає в цю касу', async ({
+    page,
+  }) => {
+    await page.goto('/invoices');
+    await expect(page.locator('h1:has-text("Рахунки")')).toBeVisible({ timeout: 20_000 });
+    const token = await getToken(page);
+    const before = await registerBalance(page, token, payRegisterId);
+    const inv = await createSentInvoice(page, token, await getClientId(page, token), 75);
+
+    const modal = await openInvoicePayModal(page, inv.number);
+    await modal.getByLabel('Метод оплати').selectOption(payMethodCode);
+    await expect(modal.getByLabel(/^Каса/)).toHaveValue(payRegisterId);
+    const posted = page.waitForResponse(
+      r => r.request().method() === 'POST' && /\/payments$/.test(new URL(r.url()).pathname),
+    );
+    await modal.getByRole('button', { name: 'Підтвердити оплату' }).click();
+    const response = await posted;
+    expect(response.status(), 'оплату прийнято').toBe(201);
+    const paymentId = ((await response.json()) as { id: string }).id;
+    await expect(modal).toBeHidden({ timeout: 10_000 });
+
+    expect(await paymentRows(page, token, payRegisterId, paymentId)).toHaveLength(1);
+    expect((await registerBalance(page, token, payRegisterId)) - before).toBeCloseTo(75, 2);
   });
 
   test('вибір методу monobank_qr → футер модалки міняється на «Показати QR»', async ({ page }) => {
