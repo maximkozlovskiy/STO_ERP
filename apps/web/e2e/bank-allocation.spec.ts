@@ -9,7 +9,7 @@ const API = 'http://localhost:3000/api/v1';
  * рознесено; рознесення не вдалося — платежу немає.
  *
  * Наскрізне, чого unit-тести не доводять: справжня транзакція БД і справжня відмова оплати
- * (`PaymentsService.create` із перевіркою залишку рахунку) замість підробок, і що список після
+ * (`PaymentsService.create` із перевіркою статусу рахунку) замість підробок, і що список після
  * відмови справді не показує платежу. Свої дані — з префіксом BNK10: клієнт і рахунок клієнта
  * лишаються (оплату клієнта в системі не сторнують), вихідний платіж прибирається наприкінці.
  */
@@ -260,7 +260,9 @@ test.describe('Новий банківський платіж — «Рознес
     expect(cleanup).toEqual([201, 204]);
   });
 
-  test('рознесення не вдалося (сума більша за залишок рахунку) → помилка у вікні, платежу немає', async ({
+  // Суму, більшу за залишок рахунку, вікно вже не відправляє (Bug #863) — відмову сервера дає
+  // рахунок, скасований, поки вікно було відкрите на кроці підтвердження.
+  test('рознесення не вдалося (рахунок скасовано, поки вікно відкрите) → помилка у вікні, платежу немає', async ({
     page,
   }) => {
     await page.goto('/bank-statements?direction=IN');
@@ -270,12 +272,26 @@ test.describe('Новий банківський платіж — «Рознес
     const fx = await clientInvoice(page, 100);
     const purpose = `BNK10 відмова ${Date.now()}`;
 
-    const dialog = await openCreate(page, fx.accountId, '150', purpose);
+    const dialog = await openCreate(page, fx.accountId, '80', purpose);
     await dialog.getByLabel('Рознести як').selectOption('INVOICE');
     await pick(page, 'Новий банківський платіж', 0, 'Оберіть контрагента', fx.clientName);
     await pick(page, 'Новий банківський платіж', 1, 'Оберіть рахунок', fx.invoiceNumber);
     await dialog.getByRole('button', { name: 'Внести й рознести' }).click();
     const confirm = page.getByRole('dialog', { name: 'Підтвердіть внесення й рознесення' });
+    await expect(confirm).toBeVisible({ timeout: 8_000 });
+    const token = await getToken(page);
+    const cancelled = await page.evaluate(
+      async ({ token, API, invoiceId }) => {
+        const res = await fetch(`${API}/invoices/${invoiceId}/transition`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'CANCELLED' }),
+        });
+        return res.status;
+      },
+      { token, API, invoiceId: fx.invoiceId },
+    );
+    expect(cancelled, 'рахунок скасовується').toBeLessThan(300);
     const created = page.waitForResponse(
       r => r.url().endsWith('/bank-statements/transactions') && r.request().method() === 'POST',
       { timeout: 15_000 },
@@ -285,9 +301,11 @@ test.describe('Новий банківський платіж — «Рознес
 
     // Вікно лишається відкритим, з текстом відмови сервера, на кроці форми.
     const form = page.getByRole('dialog', { name: 'Новий банківський платіж' });
-    await expect(form.getByRole('alert')).toContainText('100.00');
+    await expect(form.getByRole('alert')).toContainText('оплата неможлива');
     await expect(form.getByLabel('Рознести як')).toHaveValue('INVOICE');
+    // Уведене не губиться мовчки (Bug #862): закриття питає підтвердження.
     await form.getByRole('button', { name: 'Скасувати' }).click();
+    await page.getByRole('button', { name: 'Покинути' }).click();
     await expect(form).toBeHidden({ timeout: 8_000 });
 
     await page.getByPlaceholder(/Пошук за контрагентом/).fill(purpose);
@@ -295,6 +313,6 @@ test.describe('Новий банківський платіж — «Рознес
       timeout: 10_000,
     });
     expect(await paymentsWithPurpose(page, purpose)).toEqual([]);
-    expect(await invoiceStatus(page, fx.invoiceId)).toBe('SENT');
+    expect(await invoiceStatus(page, fx.invoiceId)).toBe('CANCELLED');
   });
 });
