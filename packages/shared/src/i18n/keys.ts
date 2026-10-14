@@ -859,6 +859,7 @@ export const VALIDATION_KEYS = [
   'err.paymentMethod.systemImmutableName',
   'err.paymentMethod.systemUndeletable',
   'err.paymentMethod.destinationMismatch',
+  'err.paymentMethod.cashOnlyRegister',
   // Exception-повідомлення: payroll-модуль
   'err.payroll.startAfterEnd',
   'err.payroll.periodNotFound',

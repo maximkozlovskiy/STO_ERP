@@ -130,6 +130,60 @@ describe('PaymentMethodsService — куди надходять кошти', () 
     expect(res.defaultDestinationName).toBe('ПриватБанк');
   });
 
+  // guards: BR-PAY-019
+  it.each([
+    [
+      'тип і рахунок',
+      { defaultSourceType: 'BANK_ACCOUNT' as const, defaultBankAccountId: BANK_ID },
+    ],
+    ['лише рахунок (тип із id)', { defaultBankAccountId: BANK_ID }],
+  ])(
+    '«Готівка»: банківський рахунок за замовчуванням → 400, нічого не пишеться (%s)',
+    async (_, dto) => {
+      prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+        id: PM_ID,
+        isSystem: true,
+        code: 'cash',
+      });
+
+      await expect(service.update(ORG, PM_ID, dto)).rejects.toThrow(/лише в касу/);
+      expect(prisma.paymentMethodConfig.update).not.toHaveBeenCalled();
+      expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  // guards: BR-PAY-019
+  it('«Готівка»: каса за замовчуванням дозволена', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      isSystem: true,
+      code: 'cash',
+    });
+
+    await service.update(ORG, PM_ID, {
+      defaultSourceType: 'CASH_REGISTER',
+      defaultCashRegisterId: CASH_ID,
+    });
+
+    expect(updateData()).toMatchObject({
+      defaultSourceType: 'CASH_REGISTER',
+      defaultCashRegisterId: CASH_ID,
+    });
+  });
+
+  // guards: BR-PAY-019
+  it('create способу з кодом «cash» і банківським рахунком → 400 до запису', async () => {
+    await expect(
+      service.create(ORG, {
+        code: 'cash',
+        name: 'Готівка 2',
+        defaultSourceType: 'BANK_ACCOUNT',
+        defaultBankAccountId: BANK_ID,
+      }),
+    ).rejects.toThrow(/лише в касу/);
+    expect(prisma.paymentMethodConfig.create).not.toHaveBeenCalled();
+  });
+
   it('тип не вказано — виводиться з переданого id', async () => {
     await service.update(ORG, PM_ID, { defaultCashRegisterId: CASH_ID });
 

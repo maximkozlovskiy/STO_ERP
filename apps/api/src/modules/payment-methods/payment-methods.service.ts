@@ -9,6 +9,7 @@ import { translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { getLocale } from '../../common/tenant/tenant-context';
+import { CASH_METHOD_CODE } from '../payments/payments.dto';
 import {
   CreatePaymentMethodDto,
   PaymentMethodResponseDto,
@@ -87,7 +88,7 @@ export class PaymentMethodsService {
   async create(orgId: string, dto: CreatePaymentMethodDto): Promise<PaymentMethodResponseDto> {
     const { defaultSourceType, defaultCashRegisterId, defaultBankAccountId, ...fields } = dto;
     const destination =
-      (await this.resolveDestination(orgId, {
+      (await this.resolveDestination(orgId, dto.code, {
         defaultSourceType,
         defaultCashRegisterId,
         defaultBankAccountId,
@@ -124,7 +125,7 @@ export class PaymentMethodsService {
     // Narrow tenant guard — full DTO load марний бо update сам повертає item.
     const existing = await this.prisma.paymentMethodConfig.findFirst({
       where: { id, orgId, deletedAt: null },
-      select: { id: true, isSystem: true },
+      select: { id: true, isSystem: true, code: true },
     });
     if (!existing)
       throw new NotFoundException(translateError('err.paymentMethod.notFound', getLocale()));
@@ -138,7 +139,7 @@ export class PaymentMethodsService {
     }
     const { defaultSourceType, defaultCashRegisterId, defaultBankAccountId, ...fields } = dto;
     // undefined — призначення в запиті немає, поля лишаються як були.
-    const destination = await this.resolveDestination(orgId, {
+    const destination = await this.resolveDestination(orgId, existing.code, {
       defaultSourceType,
       defaultCashRegisterId,
       defaultBankAccountId,
@@ -181,6 +182,7 @@ export class PaymentMethodsService {
    */
   private async resolveDestination(
     orgId: string,
+    code: string,
     input: {
       defaultSourceType?: PaymentSourceType | null;
       defaultCashRegisterId?: string | null;
@@ -221,6 +223,12 @@ export class PaymentMethodsService {
         );
       return { defaultSourceType: type, defaultCashRegisterId: cashId, defaultBankAccountId: null };
     }
+    // BR-PAY-019: готівка лягає лише в касу — банківський рахунок за замовчуванням зробив би
+    // кожну оплату готівкою без явної каси відмовою (рішення власника 2026-10-14).
+    if (code === CASH_METHOD_CODE)
+      throw new BadRequestException(
+        translateError('err.paymentMethod.cashOnlyRegister', getLocale()),
+      );
     if (cashId) throw mismatch();
     if (!bankId)
       throw new BadRequestException(

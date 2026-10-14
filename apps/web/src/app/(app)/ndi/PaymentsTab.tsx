@@ -16,6 +16,9 @@ import { useCashRegisters } from '@/hooks/api/useCash';
 import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
 import { type PaymentMethod } from './shared';
 
+// Код системного способу «Готівка» (PaymentMethodConfig.code), BR-PAY-019.
+const CASH_METHOD_CODE = 'cash';
+
 /** Куди надходять кошти у формі: '' — не вказано. */
 type DestinationType = '' | 'CASH_REGISTER' | 'BANK_ACCOUNT';
 interface DestinationForm {
@@ -59,11 +62,14 @@ function DestinationFields({
   onChange,
   savedName,
   active,
+  cashOnly = false,
 }: {
   value: DestinationForm;
   onChange: (next: DestinationForm) => void;
   savedName?: string | null;
   active: boolean;
+  /** «Готівка» (BR-PAY-019): гроші лягають лише в касу — банківського рахунку немає у виборі. */
+  cashOnly?: boolean;
 }) {
   const { t } = useTranslation('ndi');
   const { data: registers = [] } = useCashRegisters(active);
@@ -93,7 +99,7 @@ function DestinationFields({
       >
         <option value="">{t('payments.destinationNone')}</option>
         <option value="CASH_REGISTER">{t('payments.destinationCash')}</option>
-        <option value="BANK_ACCOUNT">{t('payments.destinationBank')}</option>
+        {!cashOnly && <option value="BANK_ACCOUNT">{t('payments.destinationBank')}</option>}
       </Select>
       {value.type === 'CASH_REGISTER' && (
         <Select
@@ -443,6 +449,7 @@ export default function PaymentsTab() {
               onChange={destination => setEditPaymentForm(f => ({ ...f, destination }))}
               savedName={editPayment.defaultDestinationName}
               active
+              cashOnly={editPayment.code === CASH_METHOD_CODE}
             />
           </div>
         </Modal>

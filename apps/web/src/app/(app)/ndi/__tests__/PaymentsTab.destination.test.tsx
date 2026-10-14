@@ -2,7 +2,7 @@
 // замовчуванням). До 2026-10-14 ці поля ніде не задавались, тож оплата готівкою з рахунку
 // йшла повз касу. Для «Готівки» каса тут — джерело каси у вікні оплати рахунку (BR-PAY-019).
 
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
@@ -141,6 +141,19 @@ describe('НДІ → способи оплати: куди надходять к
     expect(await screen.findByTestId('pm-destination-cash')).toHaveTextContent(
       'Каса: Каса головна',
     );
+  });
+
+  // guards: BR-PAY-019 — готівка лягає лише в касу (рішення власника 2026-10-14)
+  it('«Готівка»: банківського рахунку немає серед варіантів; в іншого способу він є', async () => {
+    const values = (dialog: HTMLElement) =>
+      Array.from(destinationSelect(dialog).options).map(o => o.value);
+
+    const cashDialog = await openEdit('Готівка');
+    expect(values(cashDialog)).toEqual(['', 'CASH_REGISTER']);
+    cleanup();
+
+    const cardDialog = await openEdit('Картка');
+    expect(values(cardDialog)).toEqual(['', 'CASH_REGISTER', 'BANK_ACCOUNT']);
   });
 
   it('«— не вказано —» знімає призначення: усі три поля null', async () => {

@@ -839,6 +839,7 @@ export const uk: Record<string, string> = {
   'err.paymentMethod.systemUndeletable': 'Системний метод оплати не можна видалити',
   'err.paymentMethod.destinationMismatch':
     'Касу вказують лише для надходження в касу, банківський рахунок — лише для надходження на рахунок',
+  'err.paymentMethod.cashOnlyRegister': 'Для готівки кошти надходять лише в касу — оберіть касу',
 
   // ── Exception-повідомлення: payroll-модуль ──
   'err.payroll.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',

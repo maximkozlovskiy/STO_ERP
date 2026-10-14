@@ -853,6 +853,7 @@ export const en: Record<string, string> = {
   'err.paymentMethod.systemUndeletable': 'A system payment method cannot be deleted',
   'err.paymentMethod.destinationMismatch':
     'A cash register goes only with the cash register destination, a bank account only with the bank account destination',
+  'err.paymentMethod.cashOnlyRegister': 'Cash can only go to a cash register — choose a register',
 
   // ── Exception messages: payroll module ──
   'err.payroll.startAfterEnd': 'The start date must not be later than the end date',
