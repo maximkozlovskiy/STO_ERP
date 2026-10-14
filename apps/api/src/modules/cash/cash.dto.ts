@@ -90,6 +90,25 @@ export class CreateCashOperationDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) notes?: string;
 }
 
+/**
+ * Сторно касової операції — опис тіла `POST /cash-registers/:id/operations/:operationId/reverse`
+ * для Swagger. Саме тіло валідує спільна zod-схема `cashReversalSchema` (@sto/shared, BR-CASH-023).
+ */
+export class CashReversalDto {
+  @ApiProperty({ description: 'Причина сторно — стає приміткою рядка сторно', maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** Хто сторнував рядок: рядок сторно, його дата й причина (BR-CASH-023). */
+export class CashOperationReversalRefDto {
+  @ApiProperty({ description: 'id рядка сторно' }) id!: string;
+  @ApiProperty({ description: 'Коли сторновано (ISO)' }) createdAt!: string;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Причина сторно' })
+  reason!: string | null;
+}
+
 export class CashOperationResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() cashRegisterId!: string;
@@ -135,6 +154,18 @@ export class CashOperationResponseDto {
     description: "Статус фіскального чека оплати (лише для documentType = 'Payment')",
   })
   fiscalStatus?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Рядок сторно: id рядка, який він сторнує (BR-CASH-023)',
+  })
+  reversalOfId?: string | null;
+  @ApiPropertyOptional({
+    type: CashOperationReversalRefDto,
+    nullable: true,
+    description: 'Рядок сторновано: рядок сторно, дата й причина (у рядку оригіналу)',
+  })
+  reversedBy?: CashOperationReversalRefDto | null;
   @ApiPropertyOptional({ type: String, nullable: true }) notes?: string | null;
   @ApiProperty() createdAt!: string;
 }

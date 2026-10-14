@@ -5247,6 +5247,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cash-registers/{id}/operations/{operationId}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Сторно касової операції: рядок протилежного напряму з причиною; оплата, оплата постачальнику й повернення відкочують борг */
+        post: operations["CashRegistersController_reverseOperation_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/user-preferences/{key}": {
         parameters: {
             query?: never;
@@ -5876,7 +5893,7 @@ export interface components {
             id: string;
             number: string;
             /** @enum {string} */
-            status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+            status: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REVERSED";
             amount: number;
             /** @description Код способу оплати (PaymentMethodConfig.code) */
             method: string;
@@ -6873,7 +6890,7 @@ export interface components {
         SettlementTransactionDto: {
             id: string;
             /** @enum {string} */
-            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL" | "SUPPLIER_PAYMENT_RETURN";
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL" | "SUPPLIER_PAYMENT_RETURN" | "PAYMENT_CANCEL" | "PREPAYMENT_CANCEL" | "SUPPLIER_PAYMENT_CANCEL" | "SUPPLIER_PAYMENT_RETURN_CANCEL";
             /** @description Сума у валюті транзакції */
             amount: number;
             currencyId: string | null;
@@ -6902,7 +6919,7 @@ export interface components {
             /** Format: date-time */
             date: string;
             /** @enum {string} */
-            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL" | "SUPPLIER_PAYMENT_RETURN";
+            type: "CHARGE" | "PAYMENT" | "REFUND" | "PREPAYMENT" | "CREDIT_NOTE" | "SUPPLIER_CHARGE" | "SUPPLIER_PAYMENT" | "SUPPLIER_REFUND" | "FX_GAIN" | "FX_LOSS" | "REFUND_OUT" | "REFUND_OUT_CANCEL" | "SUPPLIER_PAYMENT_RETURN" | "PAYMENT_CANCEL" | "PREPAYMENT_CANCEL" | "SUPPLIER_PAYMENT_CANCEL" | "SUPPLIER_PAYMENT_RETURN_CANCEL";
             /** @description Сума у валюті транзакції */
             amount: number;
             /** @description Сума у базовій валюті (фолбек — amount) */
@@ -7057,6 +7074,8 @@ export interface components {
             createdAt: string;
             notes: string | null;
             fiscalStatus?: string | null;
+            /** Format: date-time */
+            reversedAt?: string | null;
         };
         LinkedSlotLiftDto: {
             name: string;
@@ -7600,7 +7619,7 @@ export interface components {
             orgId: string;
             number: string;
             /** @enum {string} */
-            status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+            status: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REVERSED";
             supplierId: string;
             supplierName?: string;
             /** @enum {string} */
@@ -7795,6 +7814,8 @@ export interface components {
             createdAt: string;
             notes: string | null;
             fiscalStatus?: string | null;
+            /** Format: date-time */
+            reversedAt?: string | null;
         };
         InvoiceLinkedCounterpartyRowDto: {
             id: string;
@@ -7845,6 +7866,10 @@ export interface components {
             bankAccountId?: string | null;
             cashRegisterId?: string | null;
             sourceName?: string | null;
+            /** @description Коли оплату сторновано з каси (ISO); null — не сторновано (BR-CASH-024) */
+            reversedAt?: string | null;
+            /** @description Рядок каси-сторно */
+            reversalCashOperationId?: string | null;
             createdAt: string;
         };
         PaginatedPaymentsDto: {
@@ -8816,6 +8841,14 @@ export interface components {
             /** @description ID каси на боці провайдера (Checkbox cashRegisterId). Порожній рядок ("") очищає значення (null). */
             providerCashRegisterId?: string | null;
         };
+        CashOperationReversalRefDto: {
+            /** @description id рядка сторно */
+            id: string;
+            /** @description Коли сторновано (ISO) */
+            createdAt: string;
+            /** @description Причина сторно */
+            reason?: string | null;
+        };
         CashOperationResponseDto: {
             id: string;
             cashRegisterId: string;
@@ -8851,8 +8884,16 @@ export interface components {
             baseDocumentNumber?: string | null;
             /** @description Статус фіскального чека оплати (лише для documentType = 'Payment') */
             fiscalStatus?: string | null;
+            /** @description Рядок сторно: id рядка, який він сторнує (BR-CASH-023) */
+            reversalOfId?: string | null;
+            /** @description Рядок сторновано: рядок сторно, дата й причина (у рядку оригіналу) */
+            reversedBy?: components["schemas"]["CashOperationReversalRefDto"] | null;
             notes?: string | null;
             createdAt: string;
+        };
+        CashReversalDto: {
+            /** @description Причина сторно — стає приміткою рядка сторно */
+            reason: string;
         };
         CreateCashOperationDto: {
             /** @enum {string} */
@@ -15228,7 +15269,7 @@ export interface operations {
     SupplierPaymentsController_findAll_v1: {
         parameters: {
             query?: {
-                status?: "DRAFT" | "CONFIRMED" | "CANCELLED";
+                status?: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REVERSED";
                 supplierId?: string;
                 /** @description Фільтр за замовленням постачальнику */
                 purchaseOrderId?: string;
@@ -18440,6 +18481,32 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateCashOperationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashOperationResponseDto"];
+                };
+            };
+        };
+    };
+    CashRegistersController_reverseOperation_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashReversalDto"];
             };
         };
         responses: {

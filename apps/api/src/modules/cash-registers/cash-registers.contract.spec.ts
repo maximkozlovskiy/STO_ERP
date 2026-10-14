@@ -3,7 +3,11 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { Reflector } from '@nestjs/core';
+import type { ExecutionContext } from '@nestjs/common';
+import { INTERCEPTORS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { RequestMethod } from '@nestjs/common';
 import { CashRegistersController } from './cash-registers.controller';
 import { CashRegistersService } from './cash-registers.service';
 import { CashService } from '../cash/cash.service';
@@ -12,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
 const serviceMock = {
   findAll: vi.fn(),
@@ -29,14 +34,17 @@ const cashMock = {
 // Ручна касова операція йде в CashDeskService (BR-CASH-016…021), а не в CashService.
 const deskMock = {
   create: vi.fn().mockResolvedValue({ id: 'op-1' }),
+  // Сторно (BR-CASH-023): CashDeskService.reverse(orgId, id каси, id операції, { reason }, актор).
+  reverse: vi.fn().mockResolvedValue({ id: 'op-2' }),
 };
 
 let jwtAllow = true;
+let jwtRole = 'ADMIN';
 const mockJwtGuard = {
   canActivate: vi.fn().mockImplementation(ctx => {
     if (!jwtAllow) return false;
     const req = ctx.switchToHttp().getRequest();
-    req.user = { sub: 'emp-1', orgId: 'org-1', role: 'ADMIN' };
+    req.user = { sub: 'emp-1', orgId: 'org-1', role: jwtRole };
     return true;
   }),
 };
@@ -86,6 +94,7 @@ describe('CashRegisters — HTTP Contract', () => {
 
   beforeEach(() => {
     jwtAllow = true;
+    jwtRole = 'ADMIN';
     vi.clearAllMocks();
   });
 
@@ -300,6 +309,105 @@ describe('CashRegisters — HTTP Contract', () => {
       });
       expect(res.statusCode).toBe(400);
       expect(deskMock.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /cash-registers/:id/operations/:operationId/reverse — сторно', () => {
+    const OPERATION_ID = '88888888-8888-4888-8888-888888888888';
+    const reverse = (payload: unknown, operationId = OPERATION_ID) =>
+      (app as NestFastifyApplication).inject({
+        method: 'POST',
+        url: `/cash-registers/${REGISTER_ID}/operations/${operationId}/reverse`,
+        payload: payload as Record<string, unknown>,
+      });
+
+    // Ролі тут перевіряє СПРАВЖНІЙ RolesGuard за метаданими @Roles маршруту (решта контракту
+    // його підміняє «пропускаю всіх»): так 403 приймальні видно на рівні HTTP.
+    beforeEach(() => {
+      mockRolesGuard.canActivate.mockImplementation((ctx: ExecutionContext) =>
+        new RolesGuard(new Reflector()).canActivate(ctx),
+      );
+    });
+    afterEach(() => {
+      mockRolesGuard.canActivate.mockReset().mockReturnValue(true);
+    });
+
+    // guards: BR-CASH-023
+    it.each(['OWNER', 'ADMIN', 'ACCOUNTANT'])(
+      '%s → 2xx; сторно йде в CashDeskService.reverse(orgId, id каси, id операції, { reason }, актор)',
+      async role => {
+        jwtRole = role;
+        const res = await reverse({ reason: 'помилка касира' });
+        expect(res.statusCode).toBeGreaterThanOrEqual(200);
+        expect(res.statusCode).toBeLessThan(300);
+        expect(deskMock.reverse).toHaveBeenCalledTimes(1);
+        expect(deskMock.reverse).toHaveBeenCalledWith(
+          'org-1',
+          REGISTER_ID,
+          OPERATION_ID,
+          expect.objectContaining({ reason: 'помилка касира' }),
+          expect.objectContaining({ role }),
+        );
+      },
+    );
+
+    // guards: BR-CASH-023
+    it.each(['RECEPTIONIST', 'MECHANIC'])('%s → 403, до сервісу не доходить', async role => {
+      jwtRole = role;
+      const res = await reverse({ reason: 'помилка касира' });
+      expect(res.statusCode).toBe(403);
+      expect(deskMock.reverse).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CASH-023
+    it.each([
+      ['без причини', {}],
+      ['порожня причина', { reason: '' }],
+      ['причина з самих пробілів', { reason: '    ' }],
+      ['причина понад 500 символів', { reason: 'я'.repeat(501) }],
+      ['причина не рядок', { reason: 42 }],
+    ])('%s → 400, до сервісу не доходить', async (_n, payload) => {
+      const res = await reverse(payload);
+      expect(res.statusCode).toBe(400);
+      expect(deskMock.reverse).not.toHaveBeenCalled();
+    });
+
+    // guards: BR-CASH-023
+    it('причина рівно 500 символів → проходить', async () => {
+      const res = await reverse({ reason: 'я'.repeat(500) });
+      expect(res.statusCode).toBeLessThan(300);
+      expect(deskMock.reverse).toHaveBeenCalledTimes(1);
+    });
+
+    // guards: BR-CASH-023
+    it('id операції не UUID → 400, до сервісу не доходить', async () => {
+      const res = await reverse({ reason: 'помилка' }, 'not-a-uuid');
+      expect(res.statusCode).toBe(400);
+      expect(deskMock.reverse).not.toHaveBeenCalled();
+    });
+
+    // Подвійний клік «Сторнувати» з тим самим Idempotency-Key не має дати двох спроб.
+    // guards: BR-CASH-023
+    it('маршрут сторно несе IdempotencyInterceptor і пускає лише OWNER, ADMIN, ACCOUNTANT', () => {
+      const proto = CashRegistersController.prototype as unknown as Record<string, unknown>;
+      const handler = Object.getOwnPropertyNames(proto)
+        .map(name => proto[name])
+        .find(fn => {
+          if (typeof fn !== 'function') return false;
+          const path = String(Reflect.getMetadata(PATH_METADATA, fn) ?? '').replace(/^\/+/, '');
+          return (
+            path === ':id/operations/:operationId/reverse' &&
+            Reflect.getMetadata(METHOD_METADATA, fn) === RequestMethod.POST
+          );
+        }) as object | undefined;
+      expect(handler, 'немає POST :id/operations/:operationId/reverse').toBeDefined();
+      const interceptors = (Reflect.getMetadata(INTERCEPTORS_METADATA, handler as object) ??
+        []) as unknown[];
+      expect(interceptors).toContain(IdempotencyInterceptor);
+      const roles = [
+        ...((Reflect.getMetadata(ROLES_KEY, handler as object) as string[] | undefined) ?? []),
+      ].sort();
+      expect(roles).toEqual(['ACCOUNTANT', 'ADMIN', 'OWNER']);
     });
   });
 });

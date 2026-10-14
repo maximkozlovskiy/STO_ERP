@@ -151,6 +151,7 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
 
   /**
    * Invoice.paidAmount vs Σ Payment.amount(invoiceId) + Σ дзеркальний settlement-PAYMENT.
+   * Сторнована оплата (`reversedAt`, BR-CASH-024) не входить: сторно вже зменшило paidAmount.
    *
    * Bug #781: paidAmount зростає ДВОМА шляхами, не одним:
    *   (1) реальна оплата (payments-модуль) → Payment-рядок (invoiceId) + інкремент paidAmount;
@@ -167,7 +168,7 @@ export class ReconciliationProcessor extends DeadLetterWorkerHost {
     const [payments, mirrorPayments] = await Promise.all([
       this.prisma.payment.groupBy({
         by: ['invoiceId'],
-        where: { orgId, invoiceId: { not: null } },
+        where: { orgId, invoiceId: { not: null }, reversedAt: null },
         _sum: { amount: true },
       }),
       // Дзеркальні PAYMENT ручного закриття: settlement-проводка проти самого рахунку

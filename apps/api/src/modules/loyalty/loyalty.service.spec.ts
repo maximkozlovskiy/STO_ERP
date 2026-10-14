@@ -29,6 +29,8 @@ describe('LoyaltyService.redeem', () => {
     prisma = {
       counterparty: { findFirst: vi.fn() },
       organisationSettings: { findFirst: vi.fn() },
+      // earn перевіряє, що оплату не сторновано (BR-CASH-024): тут — завжди «не сторновано».
+      payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       loyaltyAccount: {
         findFirst: vi.fn(),
         updateMany: vi.fn(),
@@ -222,6 +224,8 @@ describe('LoyaltyService.earn', () => {
     prisma = {
       counterparty: { findFirst: vi.fn() },
       organisationSettings: { findFirst: vi.fn() },
+      // earn перевіряє, що оплату не сторновано (BR-CASH-024): тут — завжди «не сторновано».
+      payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       loyaltyAccount: {
         upsert: vi.fn().mockResolvedValue({ id: 'acc-1', balance: 0 }),
         update: vi.fn(),

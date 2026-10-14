@@ -26,6 +26,8 @@ describe('LoyaltyService — tenant isolation', () => {
   beforeEach(async () => {
     prisma = {
       counterparty: { findFirst: vi.fn().mockResolvedValue({ id: counterpartyId }) },
+      // earn перевіряє, що оплату не сторновано (BR-CASH-024): тут — завжди «не сторновано».
+      payment: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       organisationSettings: {
         findFirst: vi.fn().mockResolvedValue({
           loyaltyEnabled: true,

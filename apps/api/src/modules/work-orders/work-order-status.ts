@@ -67,3 +67,35 @@ export async function transitionWorkOrderStatusInTx(
     throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
   }
 }
+
+/**
+ * Сторно оплати наряду (BR-CASH-024): «Оплачено» → «Виставлено» разом зі зменшенням «сплачено».
+ *
+ * Це НЕ перехід FSM-карти: `WORK_ORDER_TRANSITIONS` зворотного PAID → INVOICED не має і не
+ * отримує (користувач не може «розоплатити» наряд кнопкою). Єдиний викликач — сторно касової
+ * оплати (`PaymentsService.reverse`), у своїй транзакції; запис тут, а не там, бо статус наряду
+ * пишуть лише два файли (BR-WO-001). Side-effects у переході немає: PAID не резервує, не списує
+ * й не нараховує. CAS — по статусу PAID і по прочитаному «сплачено» (паралельна оплата чи друге
+ * сторно → 400). Подію / аудит викликач пише сам після коміту.
+ */
+export async function reopenPaidWorkOrderInTx(
+  tx: Prisma.TransactionClient,
+  orgId: string,
+  workOrderId: string,
+  paidAmountBefore: Prisma.Decimal,
+  paidAmountAfter: number,
+): Promise<void> {
+  const cas = await tx.workOrder.updateMany({
+    where: {
+      id: workOrderId,
+      orgId,
+      deletedAt: null,
+      status: 'PAID',
+      paidAmount: paidAmountBefore,
+    },
+    data: { status: 'INVOICED', paidAmount: paidAmountAfter },
+  });
+  if (cas.count === 0) {
+    throw new BadRequestException(translateError('err.workOrder.statusChanged', getLocale()));
+  }
+}

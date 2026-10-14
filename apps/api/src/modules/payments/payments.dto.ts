@@ -89,6 +89,14 @@ export class PaymentResponseDto {
   @ApiPropertyOptional() bankAccountId?: string | null;
   @ApiPropertyOptional() cashRegisterId?: string | null;
   @ApiPropertyOptional() sourceName?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Коли оплату сторновано з каси (ISO); null — не сторновано (BR-CASH-024)',
+  })
+  reversedAt?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Рядок каси-сторно' })
+  reversalCashOperationId?: string | null;
   @ApiProperty() createdAt!: string;
 }
 

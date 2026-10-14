@@ -581,6 +581,9 @@ export class LinkedPaymentRowDto {
   @ApiProperty({ type: String, nullable: true }) notes!: string | null;
   // Стан фіскального чека (QUEUED|DONE|FAILED|SKIPPED); null — фіскалізація не застосовна.
   @ApiPropertyOptional({ type: String, nullable: true }) fiscalStatus?: string | null;
+  // Сторно з каси (BR-CASH-024): оплата лишається в переліку з позначкою, у «сплачено» не входить.
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  reversedAt?: string | null;
 }
 
 export class LinkedSlotLiftDto {

@@ -10,7 +10,7 @@ import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { searchContains } from '../../common/utils/like-pattern';
 import { uniqueDefinedIds } from '../../common/utils/linked-counts';
 import { isSerializationConflict } from '../../common/utils/prisma-errors';
-import { CashOperationResponseDto } from './cash.dto';
+import { CashOperationResponseDto, type CashOperationReversalRefDto } from './cash.dto';
 
 // Знак операції для балансу: IN додає готівку (+), OUT — віднімає (−). Баланс рахується
 // SQL-агрегатами (Σ IN − Σ OUT) у computeBalance для ефективності — ця мапа документує конвенцію.
@@ -37,6 +37,18 @@ export interface CreateCashOperationInput {
   baseDocumentId?: string | null;
   notes?: string | null;
   createdBy?: string | null;
+  /**
+   * Сума в базовій валюті й курс, які рядок бере ГОТОВИМИ замість курсу «зараз». Задає сторно
+   * (BR-CASH-023): воно дзеркалить оригінал за його курсом — курс, доданий чи виправлений після
+   * оригіналу, не має лишити різниці в базовій валюті.
+   */
+  conversion?: { rateUsed: number; amountBase: number } | null;
+  /**
+   * Рядок-сторно: id рядка, який він сторнує (BR-CASH-023). Стаття тоді береться як є — без
+   * перевірки напряму й активності: сторно повторює рядок оригіналу, а не вибирає нову статтю.
+   * `reversalOfId` унікальний у базі — друге сторно того самого рядка дає 400.
+   */
+  reversalOfId?: string | null;
 }
 
 /**
@@ -99,14 +111,19 @@ export class CashService {
 
     // Мультивалюта (Фаза 1): amountBase у базовій валюті org по курсу на дату операції. Валюта —
     // з каси (моно-валютна). Базова каса → rate=1, base=amount; інша валюта без курсу на дату → 400.
-    const conv = await this.exchangeRates.resolveBaseConversion(
-      orgId,
-      register.currencyId,
-      new Date(),
-      amount,
-    );
+    // Сторно приносить курс оригіналу (`conversion`) — тоді курс не шукаємо.
+    const conv =
+      input.conversion ??
+      (await this.exchangeRates.resolveBaseConversion(
+        orgId,
+        register.currencyId,
+        new Date(),
+        amount,
+      ));
 
-    const expenseCategoryId = await this.resolveCategoryId(orgId, input, db);
+    const expenseCategoryId = input.reversalOfId
+      ? (input.expenseCategoryId ?? null)
+      : await this.resolveCategoryId(orgId, input, db);
 
     // Фіскальна каса → потрібна відкрита зміна цієї каси.
     let cashShiftId: string | null = null;
@@ -166,6 +183,7 @@ export class CashService {
           baseDocumentId: input.baseDocumentId ?? null,
           notes: input.notes ?? null,
           createdBy: input.createdBy ?? null,
+          reversalOfId: input.reversalOfId ?? null,
         },
         include: { expenseCategory: { select: { name: true } } },
       });
@@ -187,6 +205,15 @@ export class CashService {
       if (isSerializationConflict(e)) {
         throw new BadRequestException(translateError('err.cash.concurrentOperation', getLocale()));
       }
+      // Єдиний унікальний ключ рядка, окрім id, — `reversalOfId`: паралельне сторно того самого
+      // рядка вже записане (BR-CASH-023).
+      if (
+        input.reversalOfId &&
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        throw new BadRequestException(translateError('err.cash.alreadyReversed', getLocale()));
+      }
       throw e;
     }
 
@@ -197,6 +224,7 @@ export class CashService {
           direction: input.direction,
           amount,
           reason: input.reason,
+          ...(input.reversalOfId && { reversalOfId: input.reversalOfId }),
         })
         .catch(() => undefined);
     }
@@ -368,6 +396,24 @@ export class CashService {
     return this.toHistoryDtos(orgId, ops);
   }
 
+  /**
+   * Один рядок журналу каси у формі рядка історії (назви, номери, сторно) — відповідь маршрутів,
+   * що створюють рядок (сторно, BR-CASH-023). 404, якщо рядка в цій касі немає.
+   */
+  async getHistoryRow(
+    orgId: string,
+    cashRegisterId: string,
+    operationId: string,
+  ): Promise<CashOperationResponseDto> {
+    const op = await this.prisma.cashOperation.findFirst({
+      where: { id: operationId, orgId, cashRegisterId },
+      include: { expenseCategory: { select: { name: true } } },
+    });
+    if (!op) throw new NotFoundException(translateError('err.cash.operationNotFound', getLocale()));
+    const [row] = await this.toHistoryDtos(orgId, [op]);
+    return row;
+  }
+
   private async findCounterpartyIdsByName(
     orgId: string,
     contains: { contains: string; mode: 'insensitive' },
@@ -386,7 +432,8 @@ export class CashService {
 
   /**
    * Рядки журналу → рядки історії: назви контрагента й працівника, номер підстави, номер оплати
-   * постачальнику, фіскальний статус оплати клієнта. Пакетно — по одному запиту на вид довідки
+   * постачальнику, фіскальний статус оплати клієнта, сторно рядка (`reversedBy`, BR-CASH-023).
+   * Пакетно — по одному запиту на вид довідки
    * для всієї сторінки (без N+1); вид без жодного id на сторінці не запитується взагалі.
    * Назви беремо й у видалених: історія не має втрачати підпис через пізніше видалення картки.
    */
@@ -407,45 +454,62 @@ export class CashService {
     const paymentIds = documentIds('Payment');
     const supplierPaymentIds = documentIds('SupplierPayment');
 
-    const [counterparties, employees, workOrders, purchaseOrders, payments, supplierPayments] =
-      await Promise.all([
-        counterpartyIds.length
-          ? this.prisma.counterparty.findMany({
-              where: { id: { in: counterpartyIds }, orgId },
-              select: { id: true, firstName: true, lastName: true, companyName: true },
-            })
-          : [],
-        employeeIds.length
-          ? this.prisma.employee.findMany({
-              where: { id: { in: employeeIds }, orgId },
-              select: { id: true, firstName: true, lastName: true },
-            })
-          : [],
-        workOrderIds.length
-          ? this.prisma.workOrder.findMany({
-              where: { id: { in: workOrderIds }, orgId },
-              select: { id: true, number: true },
-            })
-          : [],
-        purchaseOrderIds.length
-          ? this.prisma.purchaseOrder.findMany({
-              where: { id: { in: purchaseOrderIds }, orgId },
-              select: { id: true, number: true },
-            })
-          : [],
-        paymentIds.length
-          ? this.prisma.payment.findMany({
-              where: { id: { in: paymentIds }, orgId },
-              select: { id: true, fiscalStatus: true },
-            })
-          : [],
-        supplierPaymentIds.length
-          ? this.prisma.supplierPayment.findMany({
-              where: { id: { in: supplierPaymentIds }, orgId },
-              select: { id: true, number: true },
-            })
-          : [],
-      ]);
+    const opIds = ops.map(o => o.id);
+
+    const [
+      counterparties,
+      employees,
+      workOrders,
+      purchaseOrders,
+      payments,
+      supplierPayments,
+      reversals,
+    ] = await Promise.all([
+      counterpartyIds.length
+        ? this.prisma.counterparty.findMany({
+            where: { id: { in: counterpartyIds }, orgId },
+            select: { id: true, firstName: true, lastName: true, companyName: true },
+          })
+        : [],
+      employeeIds.length
+        ? this.prisma.employee.findMany({
+            where: { id: { in: employeeIds }, orgId },
+            select: { id: true, firstName: true, lastName: true },
+          })
+        : [],
+      workOrderIds.length
+        ? this.prisma.workOrder.findMany({
+            where: { id: { in: workOrderIds }, orgId },
+            select: { id: true, number: true },
+          })
+        : [],
+      purchaseOrderIds.length
+        ? this.prisma.purchaseOrder.findMany({
+            where: { id: { in: purchaseOrderIds }, orgId },
+            select: { id: true, number: true },
+          })
+        : [],
+      paymentIds.length
+        ? this.prisma.payment.findMany({
+            where: { id: { in: paymentIds }, orgId },
+            select: { id: true, fiscalStatus: true },
+          })
+        : [],
+      supplierPaymentIds.length
+        ? this.prisma.supplierPayment.findMany({
+            where: { id: { in: supplierPaymentIds }, orgId },
+            select: { id: true, number: true },
+          })
+        : [],
+      // Сторно рядків сторінки: рядок оригіналу не змінюється (журнал лише дописується), тож
+      // «сторновано» видно лише через рядок, що посилається на нього (`reversalOfId` унікальний).
+      opIds.length
+        ? this.prisma.cashOperation.findMany({
+            where: { orgId, reversalOfId: { in: opIds } },
+            select: { id: true, reversalOfId: true, createdAt: true, notes: true },
+          })
+        : [],
+    ]);
 
     const counterpartyName = new Map(
       counterparties.map(c => [c.id, formatPersonName(c.lastName, c.firstName, c.companyName)]),
@@ -456,6 +520,16 @@ export class CashService {
     const baseNumber = new Map([...workOrders, ...purchaseOrders].map(d => [d.id, d.number]));
     const fiscalStatus = new Map(payments.map(p => [p.id, p.fiscalStatus]));
     const supplierPaymentNumber = new Map(supplierPayments.map(p => [p.id, p.number]));
+    const reversedBy = new Map<string, CashOperationReversalRefDto>();
+    for (const r of reversals) {
+      if (r.reversalOfId) {
+        reversedBy.set(r.reversalOfId, {
+          id: r.id,
+          createdAt: r.createdAt.toISOString(),
+          reason: r.notes,
+        });
+      }
+    }
 
     return ops.map(o => ({
       ...toCashOperationDto(o),
@@ -467,8 +541,14 @@ export class CashService {
           o.documentId &&
           supplierPaymentNumber.get(o.documentId)) ||
         null,
+      // Рядок сторно несе той самий платіжний документ, але чек належить оригіналу.
       fiscalStatus:
-        (o.documentType === 'Payment' && o.documentId && fiscalStatus.get(o.documentId)) || null,
+        (!o.reversalOfId &&
+          o.documentType === 'Payment' &&
+          o.documentId &&
+          fiscalStatus.get(o.documentId)) ||
+        null,
+      reversedBy: reversedBy.get(o.id) ?? null,
     }));
   }
 }
@@ -493,6 +573,7 @@ export function toCashOperationDto(o: {
   documentId: string | null;
   baseDocumentType?: string | null;
   baseDocumentId?: string | null;
+  reversalOfId?: string | null;
   notes: string | null;
   createdAt: Date;
   expenseCategory?: { name: string } | null;
@@ -514,6 +595,7 @@ export function toCashOperationDto(o: {
     documentId: o.documentId,
     baseDocumentType: o.baseDocumentType ?? null,
     baseDocumentId: o.baseDocumentId ?? null,
+    reversalOfId: o.reversalOfId ?? null,
     notes: o.notes,
     createdAt: o.createdAt.toISOString(),
   };

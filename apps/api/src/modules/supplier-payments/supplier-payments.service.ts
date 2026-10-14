@@ -1057,6 +1057,106 @@ export class SupplierPaymentsService {
     return this.findOne(orgId, id);
   }
 
+  /**
+   * Сторно проведеної оплати постачальнику (BR-CASH-024) — внутрішній метод без маршруту:
+   * викликає лише каса (`CashDeskService.reverse`) у СВОЇЙ транзакції, після запису рядка сторно
+   * (`ctx.cashOperationId`). «Проведено» → «Сторновано» (публічного переходу немає —
+   * `SP_TRANSITIONS.CONFIRMED` порожній), проводка `SUPPLIER_PAYMENT_CANCEL` з курсом оригіналу,
+   * «сплачено» замовлення назад (не нижче нуля), `paidAt` знімається, якщо замовлення вже не
+   * сплачене повністю.
+   */
+  async reverse(
+    orgId: string,
+    id: string,
+    ctx: { cashOperationId: string; reason: string; userId?: string },
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const locale = getLocale();
+    const sp = await tx.supplierPayment.findFirst({
+      where: { id, orgId, deletedAt: null },
+      select: {
+        status: true,
+        supplierId: true,
+        amount: true,
+        currencyId: true,
+        purchaseOrderId: true,
+      },
+    });
+    if (!sp) throw new NotFoundException(translateError('err.supplierPayment.notFound', locale));
+    if (sp.status === SupplierPaymentStatus.REVERSED) {
+      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+    }
+    // Іновалютна оплата могла закрити замовлення курсовою різницею — сторно її не відкочує.
+    if (!(await this.exchangeRates.sameCurrency(orgId, sp.currencyId ?? null, null))) {
+      throw new BadRequestException(translateError('err.cash.reversalForeignCurrency', locale));
+    }
+
+    // CAS першим записом: паралельне чи повторне сторно тут програє, нічого не змінивши.
+    const cas = await tx.supplierPayment.updateMany({
+      where: { id, orgId, deletedAt: null, status: SupplierPaymentStatus.CONFIRMED },
+      data: { status: SupplierPaymentStatus.REVERSED },
+    });
+    if (cas.count === 0) {
+      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+    }
+
+    // Курс і сума в базовій валюті — з проводки проведення: курс, доданий після неї, не має
+    // лишити різниці в боргу (як BR-BANK-039).
+    const original = await tx.settlementTransaction.findFirst({
+      where: {
+        orgId,
+        type: 'SUPPLIER_PAYMENT',
+        documentType: 'SupplierPayment',
+        documentId: id,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
+    });
+    if (!original || original.amountBase == null || original.rateUsed == null) {
+      throw new BadRequestException(translateError('err.cash.reversalStateChanged', locale));
+    }
+    await this.settlements.createTransaction(
+      orgId,
+      {
+        counterpartyId: sp.supplierId,
+        type: 'SUPPLIER_PAYMENT_CANCEL',
+        amount: Number(original.amount),
+        currencyId: original.currencyId ?? undefined,
+        conversion: {
+          rateUsed: Number(original.rateUsed),
+          amountBase: Number(original.amountBase),
+        },
+        documentType: 'CashOperation',
+        documentId: ctx.cashOperationId,
+        notes: ctx.reason,
+        createdBy: ctx.userId,
+      },
+      tx,
+    );
+
+    if (sp.purchaseOrderId) {
+      const po = await tx.purchaseOrder.findFirst({
+        where: { id: sp.purchaseOrderId, orgId, deletedAt: null },
+        select: { totalAmount: true, paidAmount: true, paidAt: true },
+      });
+      if (po) {
+        const newPaid = money(
+          Math.max(0, moneyFromDecimal(po.paidAmount) - moneyFromDecimal(sp.amount)),
+        );
+        const stillFullyPaid = newPaid >= Number(po.totalAmount) - 0.005;
+        const paidCas = await tx.purchaseOrder.updateMany({
+          where: { id: sp.purchaseOrderId, orgId, deletedAt: null, paidAmount: po.paidAmount },
+          data: { paidAmount: newPaid, ...(!stillFullyPaid && { paidAt: null }) },
+        });
+        if (paidCas.count === 0) {
+          throw new BadRequestException(
+            translateError('err.supplierPayment.orderConcurrentChange', locale),
+          );
+        }
+      }
+    }
+  }
+
   async remove(orgId: string, id: string): Promise<void> {
     const sp = await this.prisma.supplierPayment.findFirst({
       where: { id, orgId, deletedAt: null },
@@ -1064,7 +1164,11 @@ export class SupplierPaymentsService {
     });
     if (!sp)
       throw new NotFoundException(translateError('err.supplierPayment.notFound', getLocale()));
-    if (sp.status === SupplierPaymentStatus.CONFIRMED) {
+    // Сторнована оплата теж лишила проводки (оплата + сторно) — видаляти її, як і проведену, не можна.
+    if (
+      sp.status === SupplierPaymentStatus.CONFIRMED ||
+      sp.status === SupplierPaymentStatus.REVERSED
+    ) {
       throw new BadRequestException(
         translateError('err.supplierPayment.confirmedNotDeletable', getLocale()),
       );

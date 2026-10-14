@@ -22,7 +22,12 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { cashOperationSchema, type CashOperationFormValues } from '@sto/shared';
+import {
+  cashOperationSchema,
+  cashReversalSchema,
+  type CashOperationFormValues,
+  type CashReversalFormValues,
+} from '@sto/shared';
 import { IdempotencyInterceptor } from '../../common/interceptors/idempotency.interceptor';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -35,7 +40,11 @@ import { CreateCashRegisterDto, UpdateCashRegisterDto } from './cash-registers.d
 import { CashService } from '../cash/cash.service';
 import { CashDeskService, type CashDeskActor } from './cash-desk.service';
 import { assertCalendarDateQuery } from '../../common/utils/date-query';
-import { CashOperationResponseDto, CreateCashOperationDto } from '../cash/cash.dto';
+import {
+  CashOperationResponseDto,
+  CashReversalDto,
+  CreateCashOperationDto,
+} from '../cash/cash.dto';
 
 @ApiTags('Каса')
 @Controller('cash-registers')
@@ -141,6 +150,26 @@ export class CashRegistersController {
       dateFrom,
       dateTo,
     });
+  }
+
+  // BR-CASH-023…025: сторно — новий рядок протилежного напряму + відкат наслідків оригіналу.
+  @Post(':id/operations/:operationId/reverse')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  @UseInterceptors(IdempotencyInterceptor) // повтор після обриву не дає другої спроби сторно
+  @ApiOperation({
+    summary:
+      'Сторно касової операції: рядок протилежного напряму з причиною; оплата, оплата постачальнику й повернення відкочують борг',
+  })
+  @ApiBody({ type: CashReversalDto })
+  @ApiCreatedResponse({ type: CashOperationResponseDto })
+  reverseOperation(
+    @OrgContext() orgId: string,
+    @CurrentUser() user: CashDeskActor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('operationId', ParseUUIDPipe) operationId: string,
+    @Body(new ZodValidationPipe(cashReversalSchema)) dto: CashReversalFormValues,
+  ) {
+    return this.desk.reverse(orgId, id, operationId, dto, user);
   }
 
   // BR-CASH-021: приймальня допущена до маршруту, але лише з приводами зі свого переліку

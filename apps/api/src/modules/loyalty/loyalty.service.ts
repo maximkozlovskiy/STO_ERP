@@ -8,6 +8,15 @@ import { roundPoints } from '../../common/utils/math';
 import { money } from '../../common/utils/money';
 import { getLocale } from '../../common/tenant/tenant-context';
 
+/** Тип рядка леджера балів, що списує нараховане за сторновану оплату (BR-CASH-024). */
+export const LOYALTY_EARN_REVERSAL = 'EARN_REVERSAL';
+
+/** Що списало сторно оплати: нараховано за неї, списано (не більше, ніж є на рахунку). */
+export interface LoyaltyEarnReversal {
+  earned: number;
+  deducted: number;
+}
+
 @Injectable()
 export class LoyaltyService {
   constructor(
@@ -172,6 +181,16 @@ export class LoyaltyService {
           // partial-unique "loyalty_earn_one_per_document_uq" → другий insert кидає P2002,
           // який ми ковтаємо нижче (нарахування вже зроблено переможцем).
           if (documentId) {
+            // Сторнована оплата балів не дає (BR-CASH-024). Нарахування асинхронне — джоб може
+            // прийти вже після сторно. Порожній запис рядка оплати з умовою `reversedAt: null` —
+            // це блокування, а не зміна: він стає в чергу за сторно, що саме зараз пише цю оплату
+            // (CAS на тому ж рядку), і після його коміту вже не знаходить рядка (count = 0). Якщо
+            // першим тут нарахування — сторно чекає нашого коміту й списує вже нараховане.
+            const notReversed = await tx.payment.updateMany({
+              where: { id: documentId, orgId, reversedAt: null },
+              data: { reversedAt: null },
+            });
+            if (notReversed.count === 0) return;
             const existing = await tx.loyaltyTransaction.findFirst({
               where: { accountId: acc.id, type: 'EARN', documentId },
               select: { id: true },
@@ -202,6 +221,76 @@ export class LoyaltyService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Сторно оплати (BR-CASH-024): списати бали, нараховані за неї (`EARN` з `documentId` оплати),
+   * але не нижче нуля — те, що клієнт уже витратив, не забираємо. Нестача — у примітці рядка
+   * леджера. Нічого не нараховано (джоб ще не відпрацював — `earn` побачить `reversedAt` і
+   * пропустить, або програма вимкнена) → нічого не пише. Викликається в транзакції сторно.
+   */
+  async reverseEarn(
+    orgId: string,
+    paymentId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<LoyaltyEarnReversal> {
+    const db = tx ?? this.prisma;
+    const earns = await db.loyaltyTransaction.findMany({
+      where: {
+        type: { in: ['EARN', LOYALTY_EARN_REVERSAL] },
+        documentType: 'Payment',
+        documentId: paymentId,
+        account: { orgId },
+      },
+      select: { accountId: true, type: true, points: true },
+      take: 10,
+    });
+    const earned = earns.filter(e => e.type === 'EARN');
+    // Повторне сторно тієї самої оплати відсікає CAS оплати; це — другий рубіж.
+    if (earned.length === 0 || earns.some(e => e.type === LOYALTY_EARN_REVERSAL)) {
+      return { earned: 0, deducted: 0 };
+    }
+
+    const result: LoyaltyEarnReversal = { earned: 0, deducted: 0 };
+    for (const earn of earned) {
+      const points = roundPoints(Number(earn.points));
+      const acc = await db.loyaltyAccount.findFirst({
+        where: { id: earn.accountId, orgId },
+        select: { id: true, balance: true },
+      });
+      if (!acc) continue;
+      const deducted = roundPoints(Math.min(points, Math.max(0, Number(acc.balance))));
+      if (deducted > 0) {
+        // CAS на прочитаному залишку: паралельне списання балів між читанням і записом → 400,
+        // а не тихе списання понад наявне.
+        const updated = await db.loyaltyAccount.updateMany({
+          where: { id: acc.id, orgId, balance: acc.balance },
+          data: { balance: { decrement: deducted } },
+        });
+        if (updated.count === 0) {
+          throw new BadRequestException(
+            translateError('err.cash.reversalStateChanged', getLocale()),
+          );
+        }
+      }
+      const shortfall = roundPoints(points - deducted);
+      await db.loyaltyTransaction.create({
+        data: {
+          accountId: acc.id,
+          type: LOYALTY_EARN_REVERSAL,
+          points: deducted,
+          documentId: paymentId,
+          documentType: 'Payment',
+          notes:
+            shortfall > 0
+              ? `Сторно оплати: списано ${deducted} з ${points} нарахованих балів, нестача ${shortfall} — на рахунку не вистачило`
+              : `Сторно оплати: списано ${deducted} нарахованих балів`,
+        },
+      });
+      result.earned = roundPoints(result.earned + points);
+      result.deducted = roundPoints(result.deducted + deducted);
+    }
+    return result;
   }
 
   /** Списати бали (повертає суму знижки у гривнях) */

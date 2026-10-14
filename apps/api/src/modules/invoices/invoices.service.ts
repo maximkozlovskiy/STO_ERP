@@ -184,7 +184,8 @@ export class InvoicesService {
             },
           },
         },
-        payments: { select: { amount: true } },
+        // Сторнована оплата (BR-CASH-024) у «сплачено» не входить.
+        payments: { where: { reversedAt: null }, select: { amount: true } },
       },
     });
     if (!inv) throw new NotFoundException(translateError('err.invoice.notFound', getLocale()));
@@ -586,7 +587,7 @@ export class InvoicesService {
                   _sum: { amountBase: true },
                 }),
                 tx.payment.aggregate({
-                  where: { orgId, invoiceId: id },
+                  where: { orgId, invoiceId: id, reversedAt: null },
                   _sum: { amountBase: true },
                 }),
               ]);
@@ -1412,6 +1413,7 @@ export class InvoicesService {
           })
         : Promise.resolve(null),
       // Payment — append-only модель без deletedAt (schema.prisma: model Payment).
+      // Сторновані оплати показуємо з позначкою `reversedAt` (BR-CASH-024), не ховаємо.
       this.prisma.payment.findMany({
         where: { invoiceId, orgId },
         select: {
@@ -1421,6 +1423,7 @@ export class InvoicesService {
           createdAt: true,
           notes: true,
           fiscalStatus: true,
+          reversedAt: true,
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,

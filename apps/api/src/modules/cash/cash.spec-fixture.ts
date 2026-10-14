@@ -49,16 +49,47 @@ export function opRow(over: Record<string, unknown> = {}) {
 
 export type MemRow = Record<string, unknown>;
 
+/**
+ * Зв'язки рядка для фільтрів через relation (`where: { account: { orgId } }`): ім'я поля → функція,
+ * що повертає пов'язаний рядок (або null). Без опису зв'язку такий фільтр кидає помилку —
+ * тест падає з підказкою, а не мовчки «знаходить» усе.
+ */
+export type MemRelations = Record<string, (row: MemRow) => MemRow | null | undefined>;
+
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !(v instanceof Date) && !Array.isArray(v);
 
+/** Число з number / Decimal / рядка; для порівнянь gt/gte/lt/lte і рівності грошей. */
+const num = (v: unknown): number =>
+  typeof v === 'object' && v !== null && 'toNumber' in v
+    ? (v as { toNumber(): number }).toNumber()
+    : Number(v);
+
+const isNumeric = (v: unknown): boolean =>
+  typeof v === 'number' ||
+  (typeof v === 'object' && v !== null && 'toNumber' in v && !(v instanceof Date));
+
+/** Рівність: дати — за часом, числа й Decimal — за значенням, решта — строго. */
+function same(actual: unknown, expected: unknown): boolean {
+  const a = actual ?? null;
+  const e = expected ?? null;
+  if (a instanceof Date && e instanceof Date) return a.getTime() === e.getTime();
+  if (isNumeric(a) && isNumeric(e)) return num(a) === num(e);
+  return a === e;
+}
+
 function fieldMatches(actual: unknown, cond: unknown): boolean {
-  if (!isPlainObject(cond)) return (actual ?? null) === (cond ?? null);
+  if (!isPlainObject(cond)) return same(actual, cond);
   return Object.entries(cond).every(([op, expected]) => {
-    if (op === 'equals') return (actual ?? null) === (expected ?? null);
+    if (expected === undefined) return true;
+    if (op === 'equals') return same(actual, expected);
     if (op === 'not') return !fieldMatches(actual, expected);
-    if (op === 'in') return (expected as unknown[]).includes(actual);
-    if (op === 'notIn') return !(expected as unknown[]).includes(actual);
+    if (op === 'in') return (expected as unknown[]).some(e => same(actual, e));
+    if (op === 'notIn') return !(expected as unknown[]).some(e => same(actual, e));
+    if (op === 'gt') return actual != null && num(actual) > num(expected);
+    if (op === 'gte') return actual != null && num(actual) >= num(expected);
+    if (op === 'lt') return actual != null && num(actual) < num(expected);
+    if (op === 'lte') return actual != null && num(actual) <= num(expected);
     throw new Error(
       `Таблиця в пам'яті: оператор «${op}» у where не підтримано — допиши його в cash.spec-fixture.ts`,
     );
@@ -66,26 +97,70 @@ function fieldMatches(actual: unknown, cond: unknown): boolean {
 }
 
 /** Чи підходить рядок під Prisma-подібний `where` (рівність, null, in/not, AND/OR/NOT). */
-export function whereMatches(row: MemRow, where: unknown): boolean {
+export function whereMatches(row: MemRow, where: unknown, relations: MemRelations = {}): boolean {
   if (!isPlainObject(where)) return true;
   return Object.entries(where).every(([key, cond]) => {
     if (cond === undefined) return true;
     const list = (Array.isArray(cond) ? cond : [cond]) as unknown[];
-    if (key === 'AND') return list.every(w => whereMatches(row, w));
-    if (key === 'OR') return list.some(w => whereMatches(row, w));
-    if (key === 'NOT') return !list.some(w => whereMatches(row, w));
+    if (key === 'AND') return list.every(w => whereMatches(row, w, relations));
+    if (key === 'OR') return list.some(w => whereMatches(row, w, relations));
+    if (key === 'NOT') return !list.some(w => whereMatches(row, w, relations));
+    const relation = relations[key];
+    if (relation) {
+      const linked = relation(row);
+      if (cond === null) return linked == null;
+      if (!linked) return false;
+      // Prisma: `is` / `isNot` для 1:1, інакше — умова одразу на полях пов'язаного рядка.
+      if (isPlainObject(cond) && 'is' in cond) return whereMatches(linked, cond.is, relations);
+      if (isPlainObject(cond) && 'isNot' in cond)
+        return !whereMatches(linked, cond.isNot, relations);
+      return whereMatches(linked, cond, relations);
+    }
     return fieldMatches(row[key], cond);
   });
+}
+
+/** Округлення до копійки, щоб `increment`/`decrement` не лишали float-пил (0.1 + 0.2). */
+const cents = (v: number): number => Math.round(v * 100) / 100;
+
+/** Запис `data` у рядок: прості значення — як є; `{ increment | decrement | set }` — як у Prisma. */
+function applyData(row: MemRow, data: MemRow): void {
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue;
+    if (isPlainObject(value) && 'increment' in value) {
+      row[key] = cents(num(row[key] ?? 0) + num(value.increment));
+    } else if (isPlainObject(value) && 'decrement' in value) {
+      row[key] = cents(num(row[key] ?? 0) - num(value.decrement));
+    } else if (isPlainObject(value) && 'set' in value) {
+      row[key] = value.set;
+    } else {
+      row[key] = value;
+    }
+  }
 }
 
 /**
  * Делегат Prisma поверх масиву рядків: читання фільтрують за `where`, запис змінює самі рядки.
  * `select` / `include` ігноруються — віддається рядок цілком (надмножина того, що просив сервіс).
+ * `update` / `updateMany` розуміють `increment` / `decrement` / `set`; `where` — `gt/gte/lt/lte`
+ * і фільтр через зв'язок, якщо його описано в `relations`.
  */
-export function memoryTable(rows: MemRow[], defaults: () => MemRow = () => ({})) {
+export function memoryTable(
+  rows: MemRow[],
+  defaults: () => MemRow = () => ({}),
+  relations: MemRelations = {},
+) {
   let seq = 0;
-  const find = (args?: { where?: unknown }) => rows.filter(r => whereMatches(r, args?.where));
+  const find = (args?: { where?: unknown }) =>
+    rows.filter(r => whereMatches(r, args?.where, relations));
   const notFound = () => Object.assign(new Error('No record found'), { code: 'P2025' });
+  const insert = (data: MemRow): MemRow => {
+    seq += 1;
+    const row: MemRow = { id: `mem-${seq}`, ...defaults() };
+    applyData(row, data);
+    rows.push(row);
+    return row;
+  };
   return {
     rows,
     findFirst: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args)[0] ?? null)),
@@ -94,23 +169,47 @@ export function memoryTable(rows: MemRow[], defaults: () => MemRow = () => ({}))
       const hit = find(args)[0];
       return hit ? Promise.resolve(hit) : Promise.reject(notFound());
     }),
+    findUniqueOrThrow: vi.fn((args?: { where?: unknown }) => {
+      const hit = find(args)[0];
+      return hit ? Promise.resolve(hit) : Promise.reject(notFound());
+    }),
     findMany: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args))),
     count: vi.fn((args?: { where?: unknown }) => Promise.resolve(find(args).length)),
-    create: vi.fn((args: { data: MemRow }) => {
-      seq += 1;
-      const row = { id: `mem-${seq}`, ...defaults(), ...args.data };
-      rows.push(row);
-      return Promise.resolve(row);
+    aggregate: vi.fn(
+      (args: { where?: unknown; _sum?: Record<string, boolean>; _count?: unknown }) => {
+        const hits = find(args);
+        const result: MemRow = {};
+        if (args._sum) {
+          const sum: MemRow = {};
+          for (const field of Object.keys(args._sum)) {
+            sum[field] = hits.length
+              ? cents(hits.reduce((acc, r) => acc + num(r[field] ?? 0), 0))
+              : null;
+          }
+          result._sum = sum;
+        }
+        if (args._count) result._count = hits.length;
+        return Promise.resolve(result);
+      },
+    ),
+    create: vi.fn((args: { data: MemRow }) => Promise.resolve(insert(args.data))),
+    upsert: vi.fn((args: { where?: unknown; create: MemRow; update: MemRow }) => {
+      const hit = find(args)[0];
+      if (hit) {
+        applyData(hit, args.update);
+        return Promise.resolve(hit);
+      }
+      return Promise.resolve(insert(args.create));
     }),
     update: vi.fn((args: { where?: unknown; data: MemRow }) => {
       const hit = find(args)[0];
       if (!hit) return Promise.reject(notFound());
-      Object.assign(hit, args.data);
+      applyData(hit, args.data);
       return Promise.resolve(hit);
     }),
     updateMany: vi.fn((args: { where?: unknown; data: MemRow }) => {
       const hits = find(args);
-      for (const hit of hits) Object.assign(hit, args.data);
+      for (const hit of hits) applyData(hit, args.data);
       return Promise.resolve({ count: hits.length });
     }),
   };
@@ -130,7 +229,14 @@ export function makeMocks() {
         findFirstOrThrow: vi.fn(),
       },
       cashShift: { findFirst: vi.fn() },
-      cashOperation: { create: vi.fn(), findMany: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
+      // findMany за замовчуванням — порожньо: історія каси, крім самих рядків, дочитує сторно
+      // до них (BR-CASH-023, `reversedBy`); кейси, яким потрібні рядки, задають їх `Once`.
+      cashOperation: {
+        create: vi.fn(),
+        findMany: vi.fn().mockResolvedValue([]),
+        aggregate: vi.fn(),
+        groupBy: vi.fn(),
+      },
       expenseCategory: { findFirst: vi.fn() },
       // Історія каси шукає ще й за назвою контрагента / працівника (план 2026-10-14, п. 3.7):
       // за замовчуванням збігів немає.

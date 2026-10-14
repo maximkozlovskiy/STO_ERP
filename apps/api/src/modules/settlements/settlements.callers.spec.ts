@@ -192,6 +192,74 @@ const CALL_SITES: Record<string, CallSite> = {
         'питання власнику, docs/TECH-DEBT.md §10.',
     },
 
+  // ── Сторно касової операції (BR-CASH-023…025) ─────────────────────────────────────────
+  // Записи додано зі специфікації ДО коду (агент тестів 2026-10-14): ключі взято з виводу цього
+  // сторожа, якорі — з контракту (CAS `reversedAt: null` / `status: CONFIRMED`, унікальний
+  // `reversalOfId` рядка сторно). ПОТРЕБУЄ ЗВІРКИ з кодом після злиття.
+  'modules/cash-registers/cash-desk.service.ts#reverseRefundSettlement:REFUND_OUT_CANCEL|SUPPLIER_PAYMENT_RETURN_CANCEL':
+    {
+      guard:
+        'Захист у єдиному викликачі CashDeskService.reverse: проводка йде ПІСЛЯ запису рядка сторно з ' +
+        'reversalOfId = оригінал у тій самій tx; reversalOfId унікальний (P2002 → 400), тож друге сторно ' +
+        'тієї самої операції відмовляє до проводки й відкочує транзакцію. Проводка посилається на рядок сторно.',
+      anchors: [/\.createOperation\(/, /reversalOfId:/],
+      guardedBy: {
+        file: 'modules/cash-registers/cash-desk.service.ts',
+        method: 'reverse',
+        calls: 'reverseRefundSettlement',
+      },
+      raceTests: [
+        {
+          spec: 'cash-registers/cash-desk.reverse.spec.ts',
+          title:
+            'гонка двох сторно: запис рядка відмовив «вже сторновано» → 400, проводки й відкату оплати немає',
+        },
+        {
+          spec: 'cash-registers/cash-desk.reverse.spec.ts',
+          title: 'операцію вже сторновано → 400 «Операцію вже сторновано», другого рядка немає',
+        },
+      ],
+      note:
+        'Справжню гонку двох транзакцій (унікальний індекс у PostgreSQL) unit-тест не відтворює — фейк ' +
+        'createOperation імітує переклад P2002 у 400. Якорі потребують звірки з кодом.',
+    },
+  'modules/payments/payments.service.ts#reverse:PAYMENT_CANCEL|PREPAYMENT_CANCEL': {
+    guard:
+      'CAS у tx каси ПЕРЕД проводкою: payment.updateMany where reversedAt = null → reversedAt, ' +
+      'reversalCashOperationId; count=0 → 400. Повторне сторно тієї самої оплати не проходить CAS.',
+    anchors: [
+      /\.payment\.updateMany\(\{\s*where:\s*\{[^}]*\breversedAt:\s*null/,
+      /count\s*===\s*0/,
+    ],
+    raceTests: [
+      {
+        spec: 'payments/payments.reverse.spec.ts',
+        title: 'CAS: прочитано «не сторновано», а запис уже сторновано паралельно → 400',
+      },
+      {
+        spec: 'payments/payments.reverse.spec.ts',
+        title: 'повторне сторно тієї самої оплати → 400; другої проводки немає',
+      },
+    ],
+    note: 'Якорі записано з контракту до коду — потребують звірки.',
+  },
+  'modules/supplier-payments/supplier-payments.service.ts#reverse:SUPPLIER_PAYMENT_CANCEL': {
+    guard:
+      'CAS статусу в tx каси ПЕРЕД проводкою: supplierPayment.updateMany where status = CONFIRMED → ' +
+      'REVERSED; count=0 → 400. REVERSED — термінальний: публічної дії, що повертає з нього, немає.',
+    anchors: [
+      /\.supplierPayment\.updateMany\(\{\s*where:\s*\{[^}]*\bstatus:\s*(?:SupplierPaymentStatus\.CONFIRMED|'CONFIRMED')/,
+      /count\s*===\s*0/,
+    ],
+    raceTests: [
+      {
+        spec: 'supplier-payments/supplier-payments.reverse.spec.ts',
+        title: 'CAS: прочитано «Проведено», а запис уже сторновано паралельно → 400',
+      },
+    ],
+    note: 'Якорі записано з контракту до коду — потребують звірки.',
+  },
+
   // ── Закупівлі ──────────────────────────────────────────────────────────────────────────
   'modules/purchase-orders/purchase-orders.service.ts#receive:SUPPLIER_CHARGE': {
     guard:

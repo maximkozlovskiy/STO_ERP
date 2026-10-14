@@ -6,7 +6,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PaymentSourceType, UserRole, WorkOrderStatus } from '@prisma/client';
+import {
+  CashOperationReason,
+  PaymentSourceType,
+  Prisma,
+  UserRole,
+  WorkOrderStatus,
+} from '@prisma/client';
 import {
   CASH_REASON_RULES,
   formatPersonName,
@@ -15,6 +21,7 @@ import {
   translateError,
   type CashOperationFormValues,
   type CashReasonRule,
+  type CashReversalFormValues,
 } from '@sto/shared';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
@@ -24,7 +31,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CashService, toCashOperationDto, type CashOperationExtras } from '../cash/cash.service';
 import { CashOperationResponseDto } from '../cash/cash.dto';
 import { cashReasonLabel } from '../cash/cash-reason-labels';
-import { PaymentsService } from '../payments/payments.service';
+import { PaymentsService, type PaymentReversalResult } from '../payments/payments.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SupplierPaymentsService } from '../supplier-payments/supplier-payments.service';
 
@@ -44,6 +51,13 @@ const FULL_ACCESS_ROLES: ReadonlySet<string> = new Set([
 // Код способу оплати «готівка» у довіднику способів оплати (PaymentMethodConfig.code): операція
 // каси — завжди готівка, спосіб користувач не обирає.
 const CASH_METHOD_CODE = 'cash';
+
+// Рядки каси, які створив інший документ і скасовує лише він (BR-CASH-023): назва документа для
+// тексту відмови «скасуйте її там».
+const REVERSED_ELSEWHERE: Readonly<Record<string, { uk: string; en: string }>> = {
+  PayrollPeriod: { uk: 'Зарплатна відомість', en: 'Payroll' },
+  BankTransaction: { uk: 'Банківська виписка', en: 'Bank statement' },
+};
 
 /** Перевірені посилання операції — усе, що гілкам і відповіді треба знати про касу й учасників. */
 interface DeskContext {
@@ -453,6 +467,190 @@ export class CashDeskService {
       }
       throw e;
     }
+  }
+
+  // ── Сторно ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * BR-CASH-023…025: сторно касової операції. Новий рядок протилежного напряму на ту саму суму з
+   * тим самим приводом, контрагентом, працівником, підставою, статтею й платіжним документом,
+   * курсом оригіналу, `reversalOfId` = id оригіналу і приміткою = причина; рядок оригіналу не
+   * змінюється. Наслідки оригіналу відкочуються в тій самій транзакції:
+   *
+   *   • оплата клієнта (`Payment`)            → `PaymentsService.reverse`;
+   *   • оплата постачальнику (`SupplierPayment`) → `SupplierPaymentsService.reverse`;
+   *   • повернення клієнту / від постачальника  → проводка `REFUND_OUT_CANCEL` /
+   *     `SUPPLIER_PAYMENT_RETURN_CANCEL` з курсом проводки оригіналу;
+   *   • решта приводів                         → лише рядок каси.
+   *
+   * Будь-яка відмова відкочує все. Повертає рядок сторно у формі рядка історії.
+   */
+  async reverse(
+    orgId: string,
+    cashRegisterId: string,
+    operationId: string,
+    dto: CashReversalFormValues,
+    actor: CashDeskActor,
+  ): Promise<CashOperationResponseDto> {
+    const locale = getLocale();
+    if (!FULL_ACCESS_ROLES.has(actor.role)) {
+      throw new ForbiddenException(translateError('err.auth.insufficientRights', locale));
+    }
+    // Повторює zod-схему `cashReversalSchema` свідомо: сервіс викликають і не через HTTP.
+    const reason = dto.reason?.trim() ?? '';
+    if (!reason) {
+      throw new BadRequestException(translateError('err.cash.reversalReasonRequired', locale));
+    }
+
+    let outcome: { rowId: string; paymentReversal: PaymentReversalResult | null };
+    try {
+      outcome = await this.prisma.$transaction(
+        async tx => {
+          // Черга сторно й видач однієї каси — те саме блокування, що бере видача в CashService
+          // (BR-CASH-006): друге сторно того самого рядка чекає першого й бачить його вже
+          // записаним. Рівень ReadCommitted свідомо — знімок Serializable зробили б ДО очікування
+          // блокування, і друге сторно не побачило б першого (його зупинив би лише унікальний індекс).
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cash-register:${cashRegisterId}`}))`;
+
+          const original = await tx.cashOperation.findFirst({
+            where: { id: operationId, orgId, cashRegisterId },
+          });
+          if (!original) {
+            throw new NotFoundException(translateError('err.cash.operationNotFound', locale));
+          }
+          this.assertReversible(original.reversalOfId, original.documentType);
+          const existing = await tx.cashOperation.findFirst({
+            where: { orgId, reversalOfId: original.id },
+            select: { id: true },
+          });
+          if (existing) {
+            throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+          }
+
+          const row = await this.cash.createOperation(
+            orgId,
+            {
+              cashRegisterId: original.cashRegisterId,
+              direction: original.direction === 'IN' ? 'OUT' : 'IN',
+              amount: Number(original.amount),
+              reason: original.reason,
+              // Стаття — як в оригіналу, без підстановки за приводом і без перевірки напряму.
+              expenseCategoryId: original.expenseCategoryId,
+              withoutCategory: original.expenseCategoryId == null,
+              counterpartyId: original.counterpartyId,
+              employeeId: original.employeeId,
+              documentType: original.documentType,
+              documentId: original.documentId,
+              baseDocumentType: original.baseDocumentType,
+              baseDocumentId: original.baseDocumentId,
+              notes: reason,
+              createdBy: actor.id,
+              conversion:
+                original.amountBase != null && original.rateUsed != null
+                  ? {
+                      rateUsed: Number(original.rateUsed),
+                      amountBase: Number(original.amountBase),
+                    }
+                  : null,
+              reversalOfId: original.id,
+            },
+            tx,
+          );
+
+          const ctx = { cashOperationId: row.id, reason, userId: actor.id };
+          if (original.documentType === 'Payment' && original.documentId) {
+            return {
+              rowId: row.id,
+              paymentReversal: await this.payments.reverse(orgId, original.documentId, ctx, tx),
+            };
+          }
+          if (original.documentType === 'SupplierPayment' && original.documentId) {
+            await this.supplierPayments.reverse(orgId, original.documentId, ctx, tx);
+          } else if (
+            original.reason === CashOperationReason.REFUND ||
+            original.reason === CashOperationReason.SUPPLIER_REFUND_IN
+          ) {
+            await this.reverseRefundSettlement(orgId, original, row.id, reason, actor, tx);
+          }
+          return { rowId: row.id, paymentReversal: null };
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+    } catch (e: unknown) {
+      if (isSerializationConflict(e)) {
+        throw new BadRequestException(translateError('err.cash.concurrentOperation', locale));
+      }
+      throw e;
+    }
+
+    if (outcome.paymentReversal) {
+      this.payments.afterReversal(orgId, outcome.paymentReversal, actor.id);
+    }
+    return this.cash.getHistoryRow(orgId, cashRegisterId, outcome.rowId);
+  }
+
+  /** BR-CASH-023: сторно сторно немає; рядки зарплати й банку скасовують там, де створили. */
+  private assertReversible(reversalOfId: string | null, documentType: string | null): void {
+    const locale = getLocale();
+    if (reversalOfId) {
+      throw new BadRequestException(translateError('err.cash.reversalOfReversal', locale));
+    }
+    const owner = documentType ? REVERSED_ELSEWHERE[documentType] : undefined;
+    if (owner) {
+      throw new BadRequestException(
+        translateError('err.cash.reversalNotHere', locale, {
+          document: locale === 'en' ? owner.en : owner.uk,
+        }),
+      );
+    }
+  }
+
+  /**
+   * BR-CASH-025: проводка повернення (`REFUND_OUT` / `SUPPLIER_PAYMENT_RETURN`, документ — рядок
+   * оригіналу) сторнується протилежною з її ж курсом; документ сторно — рядок сторно. Повернення,
+   * записане до появи проводки (без неї), сторнується лише рядком каси — відкочувати нічого.
+   */
+  private async reverseRefundSettlement(
+    orgId: string,
+    original: { id: string; reason: CashOperationReason; counterpartyId: string | null },
+    reversalRowId: string,
+    reason: string,
+    actor: CashDeskActor,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const refundToClient = original.reason === CashOperationReason.REFUND;
+    const posted = await tx.settlementTransaction.findFirst({
+      where: {
+        orgId,
+        documentType: 'CashOperation',
+        documentId: original.id,
+        type: refundToClient ? 'REFUND_OUT' : 'SUPPLIER_PAYMENT_RETURN',
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { amount: true, currencyId: true, amountBase: true, rateUsed: true },
+    });
+    if (!posted || !original.counterpartyId) return;
+    await this.settlements.createTransaction(
+      orgId,
+      {
+        counterpartyId: original.counterpartyId,
+        type: refundToClient ? 'REFUND_OUT_CANCEL' : 'SUPPLIER_PAYMENT_RETURN_CANCEL',
+        amount: Number(posted.amount),
+        currencyId: posted.currencyId ?? undefined,
+        ...(posted.amountBase != null &&
+          posted.rateUsed != null && {
+            conversion: {
+              rateUsed: Number(posted.rateUsed),
+              amountBase: Number(posted.amountBase),
+            },
+          }),
+        documentType: 'CashOperation',
+        documentId: reversalRowId,
+        notes: reason,
+        createdBy: actor.id,
+      },
+      tx,
+    );
   }
 
   /**

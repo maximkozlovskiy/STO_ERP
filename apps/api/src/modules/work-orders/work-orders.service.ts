@@ -1411,6 +1411,7 @@ export class WorkOrdersService {
         orderBy: { createdAt: 'desc' },
         take: TAKE,
       }),
+      // Сторновані оплати показуємо з позначкою `reversedAt` (BR-CASH-024), не ховаємо.
       this.prisma.payment.findMany({
         where: { workOrderId, orgId },
         select: {
@@ -1420,6 +1421,7 @@ export class WorkOrdersService {
           createdAt: true,
           notes: true,
           fiscalStatus: true,
+          reversedAt: true,
         },
         orderBy: { createdAt: 'desc' },
         take: TAKE,

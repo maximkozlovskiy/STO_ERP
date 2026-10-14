@@ -11021,7 +11021,8 @@
               "enum": [
                 "DRAFT",
                 "CONFIRMED",
-                "CANCELLED"
+                "CANCELLED",
+                "REVERSED"
               ]
             }
           },
@@ -16779,6 +16780,60 @@
         ]
       }
     },
+    "/api/v1/cash-registers/{id}/operations/{operationId}/reverse": {
+      "post": {
+        "operationId": "CashRegistersController_reverseOperation_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashReversalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashOperationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Сторно касової операції: рядок протилежного напряму з причиною; оплата, оплата постачальнику й повернення відкочують борг",
+        "tags": [
+          "Каса"
+        ]
+      }
+    },
     "/api/v1/user-preferences/{key}": {
       "get": {
         "operationId": "UserPreferencesController_get_v1",
@@ -18918,7 +18973,8 @@
             "enum": [
               "DRAFT",
               "CONFIRMED",
-              "CANCELLED"
+              "CANCELLED",
+              "REVERSED"
             ],
             "type": "string"
           },
@@ -22371,7 +22427,11 @@
               "FX_LOSS",
               "REFUND_OUT",
               "REFUND_OUT_CANCEL",
-              "SUPPLIER_PAYMENT_RETURN"
+              "SUPPLIER_PAYMENT_RETURN",
+              "PAYMENT_CANCEL",
+              "PREPAYMENT_CANCEL",
+              "SUPPLIER_PAYMENT_CANCEL",
+              "SUPPLIER_PAYMENT_RETURN_CANCEL"
             ],
             "type": "string"
           },
@@ -22490,7 +22550,11 @@
               "FX_LOSS",
               "REFUND_OUT",
               "REFUND_OUT_CANCEL",
-              "SUPPLIER_PAYMENT_RETURN"
+              "SUPPLIER_PAYMENT_RETURN",
+              "PAYMENT_CANCEL",
+              "PREPAYMENT_CANCEL",
+              "SUPPLIER_PAYMENT_CANCEL",
+              "SUPPLIER_PAYMENT_RETURN_CANCEL"
             ],
             "type": "string"
           },
@@ -23023,6 +23087,11 @@
           "fiscalStatus": {
             "type": "string",
             "nullable": true
+          },
+          "reversedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
           }
         },
         "required": [
@@ -25013,7 +25082,8 @@
             "enum": [
               "DRAFT",
               "CONFIRMED",
-              "CANCELLED"
+              "CANCELLED",
+              "REVERSED"
             ],
             "type": "string"
           },
@@ -25738,6 +25808,11 @@
           "fiscalStatus": {
             "type": "string",
             "nullable": true
+          },
+          "reversedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
           }
         },
         "required": [
@@ -25947,6 +26022,16 @@
           "sourceName": {
             "type": "string",
             "nullable": true
+          },
+          "reversedAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "Коли оплату сторновано з каси (ISO); null — не сторновано (BR-CASH-024)"
+          },
+          "reversalCashOperationId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Рядок каси-сторно"
           },
           "createdAt": {
             "type": "string"
@@ -29235,6 +29320,28 @@
           }
         }
       },
+      "CashOperationReversalRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "id рядка сторно"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Коли сторновано (ISO)"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина сторно"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt"
+        ]
+      },
       "CashOperationResponseDto": {
         "type": "object",
         "properties": {
@@ -29350,6 +29457,21 @@
             "nullable": true,
             "description": "Статус фіскального чека оплати (лише для documentType = 'Payment')"
           },
+          "reversalOfId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Рядок сторно: id рядка, який він сторнує (BR-CASH-023)"
+          },
+          "reversedBy": {
+            "nullable": true,
+            "description": "Рядок сторновано: рядок сторно, дата й причина (у рядку оригіналу)",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashOperationReversalRefDto"
+              }
+            ]
+          },
           "notes": {
             "type": "string",
             "nullable": true
@@ -29365,6 +29487,19 @@
           "amount",
           "reason",
           "createdAt"
+        ]
+      },
+      "CashReversalDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Причина сторно — стає приміткою рядка сторно"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "CreateCashOperationDto": {

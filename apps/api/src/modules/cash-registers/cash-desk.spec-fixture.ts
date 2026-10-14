@@ -4,6 +4,7 @@
  *
  *   new CashDeskService(prisma, cash, payments, supplierPayments, settlements)
  *   service.create(orgId, cashRegisterId, input, user: { id?: string; role: string })
+ *   service.reverse(orgId, cashRegisterId, operationId, { reason }, actor)   // BR-CASH-023…025
  *
  * DI-DRIFT GUARD: порядок і склад залежностей конструктора правиться ТУТ, в одному місці.
  *
@@ -19,6 +20,7 @@
  * різницю між «рядок каси і проводка в одній транзакції» і «два окремі записи».
  */
 import { expect, vi } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import { CASH_REASON_RULES, type CashOperationFormValues, type CashReasonValue } from '@sto/shared';
 import { CashDeskService } from './cash-desk.service';
 import { memoryTable, type MemRow } from '../cash/cash.spec-fixture';
@@ -236,6 +238,14 @@ export function makeDesk() {
     ]),
     /** ЗАКОМІЧЕНИЙ журнал каси: сюди рядок потрапляє лише після успішної транзакції. */
     cashOperation: memoryTable([]),
+    /**
+     * Проводки взаєморозрахунків, записані ДО кейсу (проводка оригіналу, яку сторно дзеркалить
+     * з її курсом). Те, що пише сам кейс, — у `settlementRows`.
+     */
+    settlementTransaction: memoryTable([]),
+    /** Оплати клієнтів і постачальникам, що породили рядки каси (для сторно). */
+    payment: memoryTable([]),
+    supplierPayment: memoryTable([]),
   };
 
   /** Закомічені рядки каси й проводки взаєморозрахунків. */
@@ -269,11 +279,16 @@ export function makeDesk() {
     };
   };
 
+  // Блокування рядків / каси (`pg_advisory_xact_lock`, `SELECT … FOR UPDATE`) — справжній
+  // tx-клієнт уміє `$executeRaw`; на дані в пам'яті воно не впливає.
+  const executeRaw = vi.fn((..._args: unknown[]) => Promise.resolve(1));
+
   const prisma = {
     ...tables,
+    $executeRaw: executeRaw,
     $transaction: vi.fn(async (arg: unknown) => {
       if (typeof arg !== 'function') return Promise.all(arg as Promise<unknown>[]);
-      const tx = { ...tables };
+      const tx = { ...tables, $executeRaw: executeRaw };
       const bucket: Staged = { cash: [], settlements: [] };
       staged.set(tx, bucket);
       // Кинув callback → до журналів нічого не доходить: це і є відкат.
@@ -286,11 +301,24 @@ export function makeDesk() {
 
   const cash = {
     createOperation: vi.fn((orgId: string, input: MemRow, tx?: unknown) => {
+      // Унікальний `reversalOfId` (BR-CASH-023): справжній CashService перекладає P2002 у 400 —
+      // і так само поводиться тут, бо подвійне сторно зупиняє база, а не лише перевірка сервісу.
+      if (input.reversalOfId != null) {
+        const pending = bucketOf(tx)?.cash ?? [];
+        if ([...cashRows, ...pending].some(r => r.reversalOfId === input.reversalOfId)) {
+          return Promise.reject(new BadRequestException('Операцію вже сторновано'));
+        }
+      }
       const row = cashRow(orgId, input);
       (bucketOf(tx)?.cash ?? cashRows).push(row);
       return Promise.resolve(row);
     }),
     getBalance: vi.fn(() => Promise.resolve(100000)),
+    // Понад контракт: відповідь сторно — рядок журналу, перечитаний після коміту. Фікстура
+    // віддає закомічений рядок як є; правила сторно на відповідь не спираються.
+    getHistoryRow: vi.fn((_orgId: string, id: string, ..._rest: unknown[]) =>
+      Promise.resolve(cashRows.find(r => r.id === id) ?? null),
+    ),
   };
 
   // Справжній PaymentsService.create сам пише єдиний рядок каси (documentType = 'Payment').
@@ -309,6 +337,10 @@ export function makeDesk() {
       );
       return Promise.resolve({ id: 'pay-1', orgId, ...dto });
     }),
+    // Сторно оплати клієнта (BR-CASH-024): проводку PAYMENT_CANCEL, «сплачено», бонуси й чек
+    // відкочує САМ сервіс оплат — у транзакції каси. Тут — лише виклик; його наслідки —
+    // `../payments/payments.reverse.spec.ts`.
+    reverse: vi.fn((..._args: unknown[]) => Promise.resolve()),
   };
 
   // Справжній SupplierPaymentsService: create → чернетка без руху грошей; confirm → рядок каси
@@ -332,6 +364,9 @@ export function makeDesk() {
     cancel: vi.fn((orgId: string, id: string) =>
       Promise.resolve({ id, orgId, status: 'CANCELLED' }),
     ),
+    // Сторно проведеної оплати постачальнику (BR-CASH-024): REVERSED, SUPPLIER_PAYMENT_CANCEL і
+    // «сплачено» замовлення — у самому сервісі (`../supplier-payments/supplier-payments.reverse.spec.ts`).
+    reverse: vi.fn((..._args: unknown[]) => Promise.resolve()),
   };
 
   const settlements = {
@@ -395,4 +430,61 @@ export function expectNothingMoved(h: Desk): void {
   expect(h.settlements.createTransaction).not.toHaveBeenCalled();
   expect(h.cashRows).toEqual([]);
   expect(h.settlementRows).toEqual([]);
+}
+
+// ── Сторно (BR-CASH-023…025) ───────────────────────────────────────────────────────────────────
+
+export interface ReverseActor {
+  id?: string;
+  role: string;
+}
+
+/**
+ * Рядок, що ВЖЕ лежить у журналі каси (закомічений до кейсу) — оригінал для сторно. Курс і сума в
+ * базовій валюті задані явно: сторно мусить узяти саме їх, а не курс на сьогодні.
+ */
+export function seedOperation(h: Desk, over: MemRow = {}): MemRow {
+  const row: MemRow = {
+    id: `orig-${h.cashRows.length + 1}`,
+    orgId: ORG,
+    cashRegisterId: REG,
+    cashShiftId: null,
+    direction: 'IN',
+    amount: 1250.75,
+    amountBase: 1250.75,
+    rateUsed: 1,
+    reason: 'MANUAL_IN',
+    expenseCategoryId: null,
+    counterpartyId: null,
+    employeeId: null,
+    documentType: null,
+    documentId: null,
+    baseDocumentType: null,
+    baseDocumentId: null,
+    reversalOfId: null,
+    notes: 'внесок',
+    createdBy: USER,
+    createdAt: new Date('2026-09-01T08:00:00.000Z'),
+    expenseCategory: null,
+    ...over,
+  };
+  h.cashRows.push(row);
+  return row;
+}
+
+/** Єдине місце виклику `CashDeskService.reverse` — сигнатура з контракту. */
+export function reverseOp(
+  h: Desk,
+  operationId: string,
+  reason = 'помилка касира',
+  actor: ReverseActor = ADMIN,
+  cashRegisterId = REG,
+  orgId = ORG,
+) {
+  return h.service.reverse(orgId, cashRegisterId, operationId, { reason }, actor);
+}
+
+/** Рядки каси, які з'явились у журналі ПІСЛЯ засіву (тобто записав кейс). */
+export function newCashRows(h: Desk, seeded: number): MemRow[] {
+  return h.cashRows.slice(seeded);
 }

@@ -43,11 +43,17 @@ export class CheckboxProcessor extends DeadLetterWorkerHost {
       // пропускаємо зовнішній виклик — інакше retry створить ДРУГИЙ чек у Checkbox.
       const existingPayment = await this.prisma.payment.findFirst({
         where: { id: paymentId, orgId },
-        select: { fiscalReceiptId: true },
+        select: { fiscalReceiptId: true, reversedAt: true },
       });
       if (!existingPayment) return; // видалено / cross-tenant — дропаємо
       if (existingPayment.fiscalReceiptId) {
         this.logger.debug(`Фіскальний чек вже існує для платежу ${paymentId}, пропускаємо`);
+        return;
+      }
+      // Сторновану оплату не фіскалізуємо (BR-CASH-024): сторно вже зняло її з черги (SKIPPED),
+      // а job, поставлений раніше, тут просто закінчується без чека.
+      if (existingPayment.reversedAt) {
+        this.logger.debug(`Платіж ${paymentId} сторновано — чек не пробиваємо`);
         return;
       }
 

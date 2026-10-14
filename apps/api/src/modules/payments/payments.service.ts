@@ -2,7 +2,13 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectQueue } from '@nestjs/bullmq';
 import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
 import { Queue } from 'bullmq';
-import { Prisma, FiscalReceiptStatus } from '@prisma/client';
+import {
+  Prisma,
+  FiscalReceiptStatus,
+  InvoiceStatus,
+  SettlementTransactionType,
+  WorkOrderStatus,
+} from '@prisma/client';
 import { getLocale } from '../../common/tenant/tenant-context';
 import { kyivDayRangeFilter } from '../../common/utils/kyiv-date';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,7 +16,8 @@ import { SettlementsService } from '../settlements/settlements.service';
 import { CashService, type CashOperationExtras } from '../cash/cash.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
-import { LoyaltyService } from '../loyalty/loyalty.service';
+import { reopenPaidWorkOrderInTx } from '../work-orders/work-order-status';
+import { LoyaltyService, type LoyaltyEarnReversal } from '../loyalty/loyalty.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
@@ -32,6 +39,25 @@ const PAYMENT_INCLUDE = {
   cashRegister: { select: { name: true } },
   currency: { select: { code: true } },
 } satisfies Prisma.PaymentInclude;
+
+// Примітка фіскального статусу оплати, чий чек зняли з черги сторно (BR-CASH-024).
+const REVERSED_FISCAL_NOTE = 'Оплату сторновано';
+
+/** Сторно оплати (BR-CASH-024): рядок каси-сторно, причина й автор. */
+export interface PaymentReversalContext {
+  cashOperationId: string;
+  reason: string;
+  userId?: string;
+}
+
+/** Що змінило сторно оплати — для аудиту ПІСЛЯ коміту транзакції викликача (`afterReversal`). */
+export interface PaymentReversalResult {
+  paymentId: string;
+  cashOperationId: string;
+  /** Наряд, що повернувся з «Оплачено» у «Виставлено»; null — статус наряду не змінювався. */
+  reopenedWorkOrderId: string | null;
+  loyalty: LoyaltyEarnReversal;
+}
 
 @Injectable()
 export class PaymentsService {
@@ -519,7 +545,7 @@ export class PaymentsService {
               _sum: { amountBase: true },
             }),
             tx.payment.aggregate({
-              where: { orgId, invoiceId: fxContext.invoiceId },
+              where: { orgId, invoiceId: fxContext.invoiceId, reversedAt: null },
               _sum: { amountBase: true },
             }),
             // Idempotency: якщо FX для цього рахунку вже проведено — не дублюємо (повторний PAID).
@@ -729,6 +755,244 @@ export class PaymentsService {
     return this.toDto(payment);
   }
 
+  /**
+   * Сторно оплати клієнта (BR-CASH-024) — внутрішній метод без маршруту: викликає лише каса
+   * (`CashDeskService.reverse`) у СВОЇЙ транзакції, після запису рядка сторно (його id —
+   * `ctx.cashOperationId`). Відкочує все, що зробила оплата: борг (проводка `PAYMENT_CANCEL` /
+   * `PREPAYMENT_CANCEL` з курсом оригіналу), «сплачено» й статус рахунку й наряду, чек у черзі,
+   * бонуси. Відмова — до першого запису; будь-яка відмова відкочує й рядок сторно.
+   *
+   * Повторне сторно відсікає CAS `reversedAt: null` (пишеться один раз, як фіскальні поля).
+   */
+  async reverse(
+    orgId: string,
+    paymentId: string,
+    ctx: PaymentReversalContext,
+    tx: Prisma.TransactionClient,
+  ): Promise<PaymentReversalResult> {
+    const locale = getLocale();
+    const payment = await tx.payment.findFirst({
+      where: { id: paymentId, orgId },
+      select: {
+        id: true,
+        counterpartyId: true,
+        workOrderId: true,
+        invoiceId: true,
+        amount: true,
+        currencyId: true,
+        fiscalStatus: true,
+        fiscalReceiptId: true,
+        reversedAt: true,
+      },
+    });
+    if (!payment) throw new NotFoundException(translateError('err.payment.notFound', locale));
+    if (payment.reversedAt) {
+      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+    }
+    // Чека повернення в системі немає: пробитий чек лишився б за оплатою, якої вже немає.
+    if (payment.fiscalStatus === FiscalReceiptStatus.DONE || payment.fiscalReceiptId) {
+      throw new BadRequestException(translateError('err.cash.reversalFiscalDone', locale));
+    }
+    // Іновалютна оплата могла закрити рахунок і провести курсову різницю — сторно її не
+    // відкочує (питання власнику), тож таку оплату не сторнуємо зовсім.
+    if (!(await this.exchangeRates.sameCurrency(orgId, payment.currencyId, null))) {
+      throw new BadRequestException(translateError('err.cash.reversalForeignCurrency', locale));
+    }
+
+    const [workOrder, invoice] = await Promise.all([
+      payment.workOrderId
+        ? tx.workOrder.findFirst({
+            where: { id: payment.workOrderId, orgId, deletedAt: null },
+            select: { status: true, paidAmount: true },
+          })
+        : null,
+      payment.invoiceId
+        ? tx.invoice.findFirst({
+            where: { id: payment.invoiceId, orgId, deletedAt: null },
+            select: { status: true, paidAmount: true },
+          })
+        : null,
+    ]);
+    if (workOrder?.status === WorkOrderStatus.ARCHIVED) {
+      throw new BadRequestException(translateError('err.cash.reversalWorkOrderArchived', locale));
+    }
+    if (invoice?.status === InvoiceStatus.CANCELLED) {
+      throw new BadRequestException(translateError('err.cash.reversalInvoiceCancelled', locale));
+    }
+
+    // Проводка оплати: її тип визначає тип сторно, її курс — курс сторно (як BR-BANK-039: курс,
+    // доданий чи виправлений після оплати, не має лишити різниці в балансі).
+    const original = await tx.settlementTransaction.findFirst({
+      where: {
+        orgId,
+        documentType: 'Payment',
+        documentId: payment.id,
+        type: { in: ['PAYMENT', 'PREPAYMENT', 'REFUND'] },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { type: true, amount: true, currencyId: true, amountBase: true, rateUsed: true },
+    });
+    if (!original || original.amountBase == null || original.rateUsed == null) {
+      throw new BadRequestException(translateError('err.cash.reversalStateChanged', locale));
+    }
+
+    // CAS першим записом: друге сторно (паралельне чи повторне) тут програє, нічого не змінивши.
+    // Чек, що ще чекає в черзі, знімаємо тим самим записом — обробник пропускає сторновану оплату.
+    const fiscalPending =
+      payment.fiscalStatus === FiscalReceiptStatus.QUEUED ||
+      payment.fiscalStatus === FiscalReceiptStatus.FAILED;
+    const claimed = await tx.payment.updateMany({
+      where: { id: payment.id, orgId, reversedAt: null },
+      data: {
+        reversedAt: new Date(),
+        reversalCashOperationId: ctx.cashOperationId,
+        ...(fiscalPending && {
+          fiscalStatus: FiscalReceiptStatus.SKIPPED,
+          fiscalError: REVERSED_FISCAL_NOTE,
+        }),
+      },
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+    }
+
+    // REFUND (рознесення виписки) має той самий знак, що й PAYMENT (−1), — його сторно теж +1.
+    await this.settlements.createTransaction(
+      orgId,
+      {
+        counterpartyId: payment.counterpartyId,
+        type:
+          original.type === SettlementTransactionType.PREPAYMENT
+            ? 'PREPAYMENT_CANCEL'
+            : 'PAYMENT_CANCEL',
+        amount: Number(original.amount),
+        currencyId: original.currencyId ?? undefined,
+        conversion: {
+          rateUsed: Number(original.rateUsed),
+          amountBase: Number(original.amountBase),
+        },
+        documentType: 'CashOperation',
+        documentId: ctx.cashOperationId,
+        notes: ctx.reason,
+        createdBy: ctx.userId,
+      },
+      tx,
+    );
+
+    const amount = moneyFromDecimal(payment.amount);
+
+    // «Сплачено» рахунку назад (не нижче нуля); «Оплачено» / «Частково оплачено» → «Частково
+    // оплачено» або «Виставлено». CAS на прочитаних сумі й статусі — як у create.
+    if (invoice && payment.invoiceId) {
+      const newPaid = money(Math.max(0, moneyFromDecimal(invoice.paidAmount) - amount));
+      const wasPaid =
+        invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.PARTIALLY_PAID;
+      const newStatus = !wasPaid
+        ? invoice.status
+        : newPaid > 0
+          ? InvoiceStatus.PARTIALLY_PAID
+          : InvoiceStatus.SENT;
+      const moved = await tx.invoice.updateMany({
+        where: {
+          id: payment.invoiceId,
+          orgId,
+          deletedAt: null,
+          paidAmount: invoice.paidAmount,
+          status: invoice.status,
+        },
+        data: { paidAmount: newPaid, status: newStatus },
+      });
+      if (moved.count === 0) {
+        throw new BadRequestException(
+          translateError('err.payment.invoiceConcurrentChange', locale),
+        );
+      }
+    }
+
+    // Наряд — лише якщо оплата йшла за ним (`workOrderId`): «сплачено» назад (не нижче нуля),
+    // «Оплачено» → «Виставлено». Зворотного переходу в публічній карті (WORK_ORDER_TRANSITIONS)
+    // немає і не буде: статус пише окремий внутрішній хелпер модуля нарядів (BR-WO-001).
+    let reopenedWorkOrderId: string | null = null;
+    if (workOrder && payment.workOrderId) {
+      const newPaid = money(Math.max(0, moneyFromDecimal(workOrder.paidAmount) - amount));
+      if (workOrder.status === WorkOrderStatus.PAID) {
+        await reopenPaidWorkOrderInTx(
+          tx,
+          orgId,
+          payment.workOrderId,
+          workOrder.paidAmount,
+          newPaid,
+        );
+        reopenedWorkOrderId = payment.workOrderId;
+      } else {
+        const moved = await tx.workOrder.updateMany({
+          where: {
+            id: payment.workOrderId,
+            orgId,
+            deletedAt: null,
+            paidAmount: workOrder.paidAmount,
+            status: workOrder.status,
+          },
+          data: { paidAmount: newPaid },
+        });
+        if (moved.count === 0) {
+          throw new BadRequestException(
+            translateError('err.payment.workOrderConcurrentChange', locale),
+          );
+        }
+      }
+    }
+
+    const loyalty = await this.loyalty.reverseEarn(orgId, payment.id, tx);
+
+    return {
+      paymentId: payment.id,
+      cashOperationId: ctx.cashOperationId,
+      reopenedWorkOrderId,
+      loyalty,
+    };
+  }
+
+  /**
+   * Аудит сторно оплати — ПІСЛЯ коміту транзакції викликача, best-effort (як аудит створення):
+   * збій журналу аудиту не відкочує вже проведене сторно. Зміну статусу наряду пишемо тим самим
+   * записом, що й FSM-перехід (`WorkOrderTransitionedEvent` → `UPDATE status`).
+   */
+  afterReversal(orgId: string, result: PaymentReversalResult, userId?: string): void {
+    if (!userId) return;
+    const warn = (e: unknown) =>
+      this.logger.warn(`Audit record failed: ${e instanceof Error ? e.message : String(e)}`);
+    this.audit
+      .record(
+        orgId,
+        'Payment',
+        result.paymentId,
+        'UPDATE',
+        userId,
+        { reversedAt: null },
+        {
+          reversedAt: new Date().toISOString(),
+          reversalCashOperationId: result.cashOperationId,
+          loyaltyEarned: result.loyalty.earned,
+          loyaltyDeducted: result.loyalty.deducted,
+        },
+      )
+      .catch(warn);
+    if (result.reopenedWorkOrderId) {
+      this.audit
+        .record(
+          orgId,
+          'WorkOrder',
+          result.reopenedWorkOrderId,
+          'UPDATE',
+          userId,
+          { status: WorkOrderStatus.PAID },
+          { status: WorkOrderStatus.INVOICED },
+        )
+        .catch(warn);
+    }
+  }
+
   /** BR-PAY-017: пряма оплата наряду не перевищує залишок до сплати (total − paid). */
   private assertWithinWorkOrderRemaining(
     totalAmount: Prisma.Decimal,
@@ -859,6 +1123,8 @@ export class PaymentsService {
     bankAccount?: { name: string } | null;
     cashRegister?: { name: string } | null;
     currency?: { code: string } | null;
+    reversedAt?: Date | null;
+    reversalCashOperationId?: string | null;
     createdAt: Date;
     counterparty: {
       companyName: string | null;
@@ -891,6 +1157,8 @@ export class PaymentsService {
       bankAccountId: p.bankAccountId ?? null,
       cashRegisterId: p.cashRegisterId ?? null,
       sourceName,
+      reversedAt: p.reversedAt ? p.reversedAt.toISOString() : null,
+      reversalCashOperationId: p.reversalCashOperationId ?? null,
       createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
     };
   }
