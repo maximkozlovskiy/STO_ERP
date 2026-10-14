@@ -14,6 +14,9 @@ import { PaymentSourceType } from '@prisma/client';
 import { MONEY_AMOUNT_MAX } from '@sto/shared';
 import { emptyToUndefined } from '../../common/transforms/empty-to-undefined';
 
+/** Код системного способу оплати «Готівка» (засів організації — `setup.service`). */
+export const CASH_METHOD_CODE = 'cash';
+
 // Тип проводки балансу для вхідного платежу. Дефолт PAYMENT (звичайна оплата — знак −1).
 // Bank-statement рознесення передає PREPAYMENT (аванс) або REFUND (повернення). Клієнтські типи лише.
 export const PAYMENT_SETTLEMENT_TYPES = ['PAYMENT', 'PREPAYMENT', 'REFUND'] as const;

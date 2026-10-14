@@ -186,7 +186,9 @@ PARTIALLY_PAID)`. `count=0` (гонка паралельного платежу)
   (`defaultSourceType`/`defaultBankAccountId`/`defaultCashRegisterId`) → інакше `null`.
 - **BR-INV-014**: Валідація (`resolveDestinationAccount`): рахунок мусить бути в межах org (не крос-tenant) і живий.
   **Явний** з DTO невалідний рахунок → 4xx; **дефолт з config** що з тих пір видалено (stale) →
-  тихо `null` (offline-first: не валимо легітимний платіж через застарілий конфіг).
+  тихо `null` (offline-first: не валимо легітимний платіж через застарілий конфіг). Виняток — готівка:
+  без каси вона не приймається (BR-PAY-019 у [payments.md](payments.md)), тож застаріла каса
+  за замовчуванням у «Готівки» дає 400. Задають замовчування в НДІ → «Оплата» (`PATCH /payment-methods/:id`).
 - **BR-INV-015**: Source-link — **опційна метадані**; борг/settlement від нього не залежать (два різні виміри).
 - **BR-INV-016**: FK `ON DELETE SET NULL` (рахунки нормально soft-delete-яться; hard-delete лишає Payment з
   `null`-source, зберігаючи суму й settlement).

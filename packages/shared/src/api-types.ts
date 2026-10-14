@@ -5582,9 +5582,21 @@ export interface components {
             isSystem: boolean;
             sortOrder: number;
             requiresFiscal: boolean;
+            /** @enum {string|null} */
+            defaultSourceType: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
+            defaultCashRegisterId: string | null;
+            defaultBankAccountId: string | null;
+            /** @description Назва каси чи банківського рахунку-призначення; null — не вказано або видалено */
+            defaultDestinationName: string | null;
             updatedAt: string;
         };
         CreatePaymentMethodDto: {
+            /** @enum {string|null} */
+            defaultSourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
+            /** Format: uuid */
+            defaultCashRegisterId?: string | null;
+            /** Format: uuid */
+            defaultBankAccountId?: string | null;
             /** @example cash */
             code: string;
             /** @example Готівка */
@@ -5594,6 +5606,12 @@ export interface components {
             requiresFiscal?: boolean;
         };
         UpdatePaymentMethodDto: {
+            /** @enum {string|null} */
+            defaultSourceType?: "BANK_ACCOUNT" | "CASH_REGISTER" | null;
+            /** Format: uuid */
+            defaultCashRegisterId?: string | null;
+            /** Format: uuid */
+            defaultBankAccountId?: string | null;
             name?: string;
             isActive?: boolean;
             sortOrder?: number;

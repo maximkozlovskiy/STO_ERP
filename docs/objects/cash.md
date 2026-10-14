@@ -135,12 +135,21 @@ model ExpenseCategory {        // дерево статей руху кошті�
 Старі адреси сторінок оплат (`/payments`, `/supplier-payments`) перенаправляються (`LegacyRouteRedirect`) у касу;
 `/payments/<id>` без перенаправлення — відома прогалина (TECH-DEBT).
 
+**Каса оплати рахунку.** Вікно «Оплатити» рахунку (`invoices/page.tsx`) має поле «Каса» для «Готівки» і для
+способу, у якого кошти за замовчуванням надходять у касу. Значення — каса за замовчуванням способу оплати
+(НДІ → «Оплата» → «Куди надходять кошти», `PaymentMethodConfig.defaultCashRegisterId`), поки касир не обрав
+іншу; зміна способу міняє касу, лише якщо касир її не чіпав. Для готівки поле обов'язкове (BR-PAY-019 у
+[payments.md](payments.md)): без каси кнопка неактивна, а сервер відповідає 400. Запит несе
+`sourceType: 'CASH_REGISTER'` + `cashRegisterId`, тож оплата пише рядок «Оплата контрагента» в історію цієї
+каси. Перелік — `GET /cash-registers` (невидалені, перші 200 за назвою; приймальні доступний).
+
 | Компонент        | Файл                                                                                           |
 | ---------------- | ---------------------------------------------------------------------------------------------- |
 | Сторінка/вкладки | `app/(app)/cash/page.tsx` + `CashOperationsTab`/`CashRegistersTab`/`ExpenseCategoriesTab.tsx`  |
 | Форма операції   | `app/(app)/cash/CashOperationModal.tsx`                                                        |
 | Картка сторно    | `app/(app)/cash/CashReversalModal.tsx` (+ `useReverseCashOperation`, `CashReversalFormValues`) |
 | Hooks            | `hooks/api/useCash.ts`, `hooks/api/useExpenseCategories.ts` (типи — згенеровані `ApiSchema`)   |
+| Каса оплати рах. | `app/(app)/invoices/page.tsx` (поле «Каса» вікна «Оплатити», `useCashRegisters(enabled)`)      |
 | Базова валюта    | `useBaseCurrency` → `GET /settings/base-currency` (усі ролі; не `/settings/organisation`)      |
 | Підписи приводів | `i18n/locales/{uk,en}/cash.json` `reasons.*` ≡ `CASH_REASON_LABELS` (`@sto/shared`)            |
 

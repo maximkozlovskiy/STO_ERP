@@ -22,7 +22,12 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { searchContains } from '../../common/utils/like-pattern';
-import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
+import {
+  CASH_METHOD_CODE,
+  CreatePaymentDto,
+  PaymentResponseDto,
+  PaginatedPaymentsDto,
+} from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
 // Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.
@@ -307,6 +312,14 @@ export class PaymentsService {
 
     // Рахунок-призначення: DTO задає явно, інакше дефолт з methodConfig. sourceType↔id узгоджені.
     const resolvedSource = await this.resolveDestinationAccount(orgId, dto, methodConfig);
+
+    // BR-PAY-019: готівка без каси — гроші, яких не видно в жодній касі (борг погашено, а залишок
+    // каси й її історія про оплату не знають). Перевірка ПІСЛЯ розв'язання: каса з запиту або каса
+    // за замовчуванням способу оплати; застаріле замовчування (касу видалено) теж дає 400.
+    if (dto.method === CASH_METHOD_CODE && resolvedSource.sourceType !== 'CASH_REGISTER')
+      throw new BadRequestException(
+        translateError('err.payment.cashRequiresRegister', getLocale()),
+      );
 
     // Наряд вказано, але його немає (чужа org або видалений) → 404 ДО транзакції. Без цього всі
     // перевірки наряду нижче (`&& workOrder`) мовчали: статус, замовник, валюта й залишок

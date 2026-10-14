@@ -176,11 +176,11 @@ create (метод без requiresFiscal) → null
 | Платежі (сторінки немає)       | `/payments` → редирект у `/cash`; `/payments/<id>` без редиректу                                                                                                          |
 | Чек і «Повторити» (FAILED)     | історія каси `cash/CashOperationsTab.tsx`; рядок оплати в «Пов'язаних документах» рахунку (`LinkedDocumentsPanel`, `fiscalStatus` з `GET /invoices/:id/linked-documents`) |
 | Оплата клієнта готівкою        | форма каси `cash/CashOperationModal.tsx` (привід `SALE_PAYMENT` → `POST /payments`)                                                                                       |
-| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`                                                                                                        |
+| Оплата з рахунку               | «Оплатити» у боковій панелі `invoices/page.tsx` → `POST /payments`; поле «Каса» для готівки (BR-PAY-019)                                                                  |
 | Каса (cash-shift open/close)   | `app/(app)/cash/page.tsx`, `hooks/api/useCashShift.ts`                                                                                                                    |
 | QR-оплата (online-payment)     | `components/ui/QrPaymentModal.tsx`, `hooks/api/useOnlinePayment.ts`                                                                                                       |
 | ПРРО-провайдери (налаштування) | `app/(app)/settings/FiscalTab.tsx`, `ProviderRegistryPanel.tsx`                                                                                                           |
-| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`)                                                                                                                 |
+| Довідник способів оплати       | `/api/payment-methods` (окремий модуль `payment-methods`); НДІ → «Оплата» `ndi/PaymentsTab.tsx` — «Куди надходять кошти»                                                  |
 
 ---
 
@@ -190,7 +190,14 @@ create (метод без requiresFiscal) → null
 
 - **BR-PAY-001**: Валідація: `counterparty` існує (org-scoped); якщо `workOrderId` — WO існує (org-scoped, не видалений; інакше 404 до транзакції) і має бути в статусі `INVOICED`.
 - **BR-PAY-002**: **Рахунок-призначення** (`resolveDestinationAccount`): DTO явно → сувора валідація (4xx на невалідний);
-  дефолт з `PaymentMethodConfig` → best-effort (stale конфіг → тихо `null`, не валимо платіж). Деталі — [invoice.md](invoice.md#рахунок-призначення-платежу-paymentsourcetype) («Рахунок-призначення платежу»).
+  дефолт з `PaymentMethodConfig` → best-effort (stale конфіг → тихо `null`, не валимо платіж; для готівки
+  це 400 — BR-PAY-019). Деталі — [invoice.md](invoice.md#рахунок-призначення-платежу-paymentsourcetype) («Рахунок-призначення платежу»).
+  Замовчування задають у НДІ → «Оплата» → «Куди надходять кошти» (`POST/PATCH /payment-methods`:
+  `defaultSourceType` + `defaultCashRegisterId` | `defaultBankAccountId`; каса лише з `CASH_REGISTER`, рахунок
+  лише з `BANK_ACCOUNT`, інакше 400; тип без id → 400; чужа чи видалена каса/рахунок → 404; `null` знімає
+  призначення, id іншого типу при зміні обнуляється; ролі OWNER, ADMIN). Відповідь `GET /payment-methods` несе
+  ці поля й `defaultDestinationName` — назву живої каси чи рахунку (два запити на весь список; кеш списку назв
+  не тримає).
 - **BR-PAY-003**: **Часткова оплата Invoice** (у `$transaction`): дозволені статуси `SENT`/`PARTIALLY_PAID`/`OVERDUE`;
   overpay (`amount > remaining`) → 400; CAS по `paidAmount` → `PAID`/`PARTIALLY_PAID`; `count=0`
   (гонка) → rollback. Повна механіка — [invoice.md](invoice.md#часткова-оплата-модель-грошей-фаза-1) («Часткова оплата»).
@@ -288,6 +295,15 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   «09.10». Так само рахують добу каса й рухи складу. Списки документів із датою БЕЗ часу
   (`documentDate` наряду, рахунку, замовлення, повернення й оплати постачальнику) порівнюють
   календарні дати без зсуву на пояс
+- **BR-PAY-019**: Оплата способом «Готівка» (`method = 'cash'`) мусить мати касу — з запиту
+  (`sourceType: 'CASH_REGISTER'` + `cashRegisterId`) або касу за замовчуванням способу оплати. Перевірка
+  стоїть у `PaymentsService.create` ПІСЛЯ розв'язання рахунку-призначення (BR-PAY-002): якщо після нього
+  призначення не каса — каси не вказано, касу за замовчуванням видалено (застаріле замовчування мовчки
+  знімається) або призначення — банківський рахунок — 400 «Для оплати готівкою вкажіть касу», до транзакції,
+  без оплати й без руху балансу. Явна каса з запиту перемагає замовчування. Інші способи — як раніше:
+  рахунок-призначення необов'язковий. Викликачі: каса (`CashDeskService`) передає касу явно; рознесення
+  банківської виписки — спосіб `bank`; онлайн-оплата — `<шлюз>_qr`. Вікно «Оплатити» рахунку має поле «Каса»
+  (див. [cash.md](cash.md#ui-web))
 
 ### Конкретні провайдери
 
@@ -321,34 +337,41 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 
 **Маршрути UI:** `/cash`, `/invoices` (`/payments` — лише редирект)
 
-| Аспект                    | Тест                                              | Кейсів |
-| ------------------------- | ------------------------------------------------- | ------ |
-| сервісна логіка           | `cash-shift.service.spec.ts`                      | 31     |
-| HTTP-клієнт               | `checkbox.client.spec.ts`                         | 31     |
-| BullMQ-processor          | `checkbox.processor.spec.ts`                      | 19     |
-| fiscal provider registry  | `fiscal/fiscal-provider-registry.spec.ts`         | 16     |
-| провайдер                 | `fiscal/vchasno.provider.spec.ts`                 | 29     |
-| payment gateway registry  | `gateways/payment-gateway-registry.spec.ts`       | 12     |
-| HTTP-клієнт               | `monobank.client.spec.ts`                         | 26     |
-| сервісна логіка           | `online-payment.service.spec.ts`                  | 15     |
-| BullMQ-processor          | `payment-polling.processor.spec.ts`               | 26     |
-| ланцюг опитування (Redis) | `payment-polling.queue.integration.spec.ts`       | 1      |
-| fiscal gate               | `payments.fiscal-gate.spec.ts`                    | 8      |
-| idempotency               | `payments.idempotency.spec.ts`                    | 7      |
-| money model               | `payments.money-model.spec.ts`                    | 22     |
-| multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
-| query dto                 | `payments.query-dto.spec.ts`                      | 43     |
-| передумови + наряд        | `payments.work-order.spec.ts`                     | 23     |
-| політика повторів черг    | `payments.queue-retry-policy.spec.ts`             | 6      |
-| сервісна логіка           | `provider-config.service.spec.ts`                 | 27     |
-| шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts` | 21     |
-| шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`  | 11     |
+| Аспект                    | Тест                                                     | Кейсів |
+| ------------------------- | -------------------------------------------------------- | ------ |
+| сервісна логіка           | `cash-shift.service.spec.ts`                             | 31     |
+| HTTP-клієнт               | `checkbox.client.spec.ts`                                | 31     |
+| BullMQ-processor          | `checkbox.processor.spec.ts`                             | 19     |
+| fiscal provider registry  | `fiscal/fiscal-provider-registry.spec.ts`                | 16     |
+| провайдер                 | `fiscal/vchasno.provider.spec.ts`                        | 29     |
+| payment gateway registry  | `gateways/payment-gateway-registry.spec.ts`              | 12     |
+| HTTP-клієнт               | `monobank.client.spec.ts`                                | 26     |
+| сервісна логіка           | `online-payment.service.spec.ts`                         | 15     |
+| BullMQ-processor          | `payment-polling.processor.spec.ts`                      | 26     |
+| ланцюг опитування (Redis) | `payment-polling.queue.integration.spec.ts`              | 1      |
+| fiscal gate               | `payments.fiscal-gate.spec.ts`                           | 8      |
+| idempotency               | `payments.idempotency.spec.ts`                           | 7      |
+| money model               | `payments.money-model.spec.ts`                           | 22     |
+| multicurrency             | `payments.multicurrency.spec.ts`                         | 17     |
+| query dto                 | `payments.query-dto.spec.ts`                             | 43     |
+| передумови + наряд        | `payments.work-order.spec.ts`                            | 23     |
+| політика повторів черг    | `payments.queue-retry-policy.spec.ts`                    | 6      |
+| сервісна логіка           | `provider-config.service.spec.ts`                        | 27     |
+| шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
+| шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`         | 11     |
+| готівка лише через касу   | `payments.cash-register-required.spec.ts`                | 8      |
+| куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 17     |
+| HTTP-контракт способів    | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
+| системні способи оплати   | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 
-Разом: **384** кейсів — 352 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **428** кейсів — 367 у модулі + 32 у двох спеках шифрування + 29 у довіднику способів оплати
+(`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
+`vitest --reporter=json` (2026-10-14), не з grep.
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 
-HTTP-контракту (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише E2E.
+HTTP-контракту маршрутів `/payments` (`*.contract.spec.ts`) немає: DTO, статуси й валідацію покриває лише
+E2E. У довідника способів оплати контракт є — `../payment-methods/payment-methods.contract.spec.ts`.
 
 Виключення `branch_provider_configs` з `PULL_TABLES` (друга половина правила про креденшели
 провайдерів) unit-тестом не стережеться: список живе в `sync/`, там тестів на цю модель немає.

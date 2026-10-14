@@ -3440,6 +3440,34 @@
    "SmsProcessor (fallback engine) помилка запису NotificationLog не зриває відправку",
    "SmsProcessor (fallback engine) порожній chain → no-op, без крашу"
   ],
+  "apps/api/src/modules/payment-methods/payment-methods.contract.spec.ts": [
+   "PaymentMethods — HTTP Contract (куди надходять кошти) PATCH з null знімає призначення: null доходить до сервісу як null",
+   "PaymentMethods — HTTP Contract (куди надходять кошти) PATCH з касою за замовчуванням → 200, поля доходять до сервісу",
+   "PaymentMethods — HTTP Contract (куди надходять кошти) PATCH: каса не uuid → 400, сервіс не викликається",
+   "PaymentMethods — HTTP Contract (куди надходять кошти) PATCH: невідомий тип → 400, сервіс не викликається",
+   "PaymentMethods — HTTP Contract (куди надходять кошти) PATCH: рахунок не uuid → 400, сервіс не викликається",
+   "PaymentMethods — HTTP Contract (куди надходять кошти) POST із банківським рахунком за замовчуванням → 201",
+   "PaymentMethods — HTTP Contract (куди надходять кошти) змінювати призначення можуть лише власник і адміністратор"
+  ],
+  "apps/api/src/modules/payment-methods/payment-methods.destination.spec.ts": [
+   "PaymentMethodsService — куди надходять кошти create з чужою касою → 404 до запису",
+   "PaymentMethodsService — куди надходять кошти create зі способом і касою за замовчуванням пише призначення разом зі способом",
+   "PaymentMethodsService — куди надходять кошти null знімає призначення: усі три поля null, без читання кас і рахунків",
+   "PaymentMethodsService — куди надходять кошти банківський рахунок чужої організації або видалений → 404, нічого не пишеться",
+   "PaymentMethodsService — куди надходять кошти запит без полів призначення їх не чіпає",
+   "PaymentMethodsService — куди надходять кошти зміна типу на банківський рахунок обнуляє касу",
+   "PaymentMethodsService — куди надходять кошти каса за замовчуванням: пишуться тип і каса, рахунок обнуляється; відповідь несе назву каси",
+   "PaymentMethodsService — куди надходять кошти каса чужої організації або видалена → 404, нічого не пишеться",
+   "PaymentMethodsService — куди надходять кошти неузгоджені тип і id (каса й рахунок разом без типу) → 400, нічого не пишеться",
+   "PaymentMethodsService — куди надходять кошти неузгоджені тип і id (каса при знятому призначенні) → 400, нічого не пишеться",
+   "PaymentMethodsService — куди надходять кошти неузгоджені тип і id (каса при типі «банківський рахунок») → 400, нічого не пишеться",
+   "PaymentMethodsService — куди надходять кошти неузгоджені тип і id (рахунок при типі «каса») → 400, нічого не пишеться",
+   "PaymentMethodsService — куди надходять кошти список із кешу: назву все одно читаємо свіжу (касу могли перейменувати)",
+   "PaymentMethodsService — куди надходять кошти список: назви кас і рахунків двома запитами на весь список, лише живі й своєї організації",
+   "PaymentMethodsService — куди надходять кошти тип «банківський рахунок» без id → 400",
+   "PaymentMethodsService — куди надходять кошти тип «каса» без id → 400",
+   "PaymentMethodsService — куди надходять кошти тип не вказано — виводиться з переданого id"
+  ],
   "apps/api/src/modules/payment-methods/payment-methods.service.spec.ts": [
    "PaymentMethodsService — isSystem guard remove звичайного методу → soft-delete",
    "PaymentMethodsService — isSystem guard remove неіснуючого → NotFoundException",
@@ -3672,6 +3700,16 @@
   ],
   "apps/api/src/modules/payments/payment-polling.queue.integration.spec.ts": [
    "PaymentPollingProcessor — ланцюг опитування на живій черзі (Bug #804) після збою шлюзу й після «pending» наступне опитування СПРАВДІ виконується"
+  ],
+  "apps/api/src/modules/payments/payments.cash-register-required.spec.ts": [
+   "PaymentsService — готівка лише через касу (BR-PAY-019) готівка без каси в запиті й без каси за замовчуванням → 400, платежу немає",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) готівка з касою за замовчуванням способу → рядок у цій касі, платіж несе касу",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) готівка, але призначення — банківський рахунок (явно чи за замовчуванням) → 400",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) застаріле замовчування (касу видалено) → 400, а не оплата повз касу",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) спосіб bank без каси й без рахунку — як раніше: платіж є, рядка каси немає",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) спосіб card_terminal без каси й без рахунку — як раніше: платіж є, рядка каси немає",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) спосіб monobank_qr без каси й без рахунку — як раніше: платіж є, рядка каси немає",
+   "PaymentsService — готівка лише через касу (BR-PAY-019) явна каса в запиті перемагає касу за замовчуванням"
   ],
   "apps/api/src/modules/payments/payments.fiscal-gate.spec.ts": [
    "PaymentsService — Bug #661/#662 requiresFiscal-гейт + enqueue .catch() Bug #662: checkboxQueue.add reject (Redis лежить) → create() НЕ кидає (no 500) + payment QUEUED→FAILED",

@@ -227,8 +227,13 @@ describe('PaymentsService — мультивалюта Фаза 2 (Payment curre
   });
 
   it('оплата без рахунку (source=null) → base (rate=1, amountBase=amount), resolveBaseConversion не викликається', async () => {
-    // Метод без дефолтного рахунку → resolvedSource.currencyId undefined → base.
-    await service.create(ORG, { counterpartyId: CP_ID, amount: 100, method: 'cash' }, 'user-1');
+    // Метод без дефолтного рахунку → resolvedSource.currencyId undefined → base. Не готівка:
+    // готівка без каси — 400 (BR-PAY-019), а рахунок-призначення необов'язковий лише для решти.
+    await service.create(
+      ORG,
+      { counterpartyId: CP_ID, amount: 100, method: 'card_terminal' },
+      'user-1',
+    );
 
     expect(exchangeRates.resolveBaseConversion).not.toHaveBeenCalled();
     expect(lastCreateData?.currencyId).toBeNull();

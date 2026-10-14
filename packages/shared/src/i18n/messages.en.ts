@@ -350,6 +350,7 @@ export const en: Record<string, string> = {
   'err.payment.bankAccountNotFound': 'Bank account not found',
   'err.payment.cashRegisterNotSpecified': 'No cash register specified',
   'err.payment.cashRegisterNotFound': 'Cash register not found',
+  'err.payment.cashRequiresRegister': 'Specify a cash register for a cash payment',
   // cash-shift
   'err.cashShift.fiscalNotConfigured':
     'Fiscalization is not configured (provider/credentials/enablement)',
@@ -850,6 +851,8 @@ export const en: Record<string, string> = {
   'err.paymentMethod.codeExists': 'A payment method with code "{{code}}" already exists',
   'err.paymentMethod.systemImmutableName': 'A system payment method cannot be renamed',
   'err.paymentMethod.systemUndeletable': 'A system payment method cannot be deleted',
+  'err.paymentMethod.destinationMismatch':
+    'A cash register goes only with the cash register destination, a bank account only with the bank account destination',
 
   // ── Exception messages: payroll module ──
   'err.payroll.startAfterEnd': 'The start date must not be later than the end date',

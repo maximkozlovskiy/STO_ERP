@@ -456,6 +456,7 @@ export const VALIDATION_KEYS = [
   'err.payment.bankAccountNotFound',
   'err.payment.cashRegisterNotSpecified',
   'err.payment.cashRegisterNotFound',
+  'err.payment.cashRequiresRegister',
   'err.cashShift.fiscalNotConfigured',
   'err.cashShift.unknownProvider',
   'err.cashShift.noCashRegisterForBranch',
@@ -857,6 +858,7 @@ export const VALIDATION_KEYS = [
   'err.paymentMethod.codeExists',
   'err.paymentMethod.systemImmutableName',
   'err.paymentMethod.systemUndeletable',
+  'err.paymentMethod.destinationMismatch',
   // Exception-повідомлення: payroll-модуль
   'err.payroll.startAfterEnd',
   'err.payroll.periodNotFound',

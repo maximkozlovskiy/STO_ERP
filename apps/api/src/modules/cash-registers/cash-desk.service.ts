@@ -34,6 +34,8 @@ import { cashReasonLabel } from '../cash/cash-reason-labels';
 import { PaymentsService, type PaymentReversalResult } from '../payments/payments.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SupplierPaymentsService } from '../supplier-payments/supplier-payments.service';
+// Операція каси — завжди готівка (код способу оплати з довідника, BR-PAY-019).
+import { CASH_METHOD_CODE } from '../payments/payments.dto';
 
 /** Хто проводить операцію: id — автор рядка, role — для обмеження приводів (BR-CASH-021). */
 export interface CashDeskActor {
@@ -47,10 +49,6 @@ const FULL_ACCESS_ROLES: ReadonlySet<string> = new Set([
   UserRole.ADMIN,
   UserRole.ACCOUNTANT,
 ]);
-
-// Код способу оплати «готівка» у довіднику способів оплати (PaymentMethodConfig.code): операція
-// каси — завжди готівка, спосіб користувач не обирає.
-const CASH_METHOD_CODE = 'cash';
 
 // Рядки каси, які створив інший документ і скасовує лише він (BR-CASH-023): назва документа для
 // тексту відмови «скасуйте її там».

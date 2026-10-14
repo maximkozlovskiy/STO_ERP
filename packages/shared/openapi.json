@@ -17855,6 +17855,27 @@
           "requiresFiscal": {
             "type": "boolean"
           },
+          "defaultSourceType": {
+            "nullable": true,
+            "enum": [
+              "BANK_ACCOUNT",
+              "CASH_REGISTER"
+            ],
+            "type": "string"
+          },
+          "defaultCashRegisterId": {
+            "type": "string",
+            "nullable": true
+          },
+          "defaultBankAccountId": {
+            "type": "string",
+            "nullable": true
+          },
+          "defaultDestinationName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Назва каси чи банківського рахунку-призначення; null — не вказано або видалено"
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -17868,12 +17889,34 @@
           "isSystem",
           "sortOrder",
           "requiresFiscal",
+          "defaultSourceType",
+          "defaultCashRegisterId",
+          "defaultBankAccountId",
+          "defaultDestinationName",
           "updatedAt"
         ]
       },
       "CreatePaymentMethodDto": {
         "type": "object",
         "properties": {
+          "defaultSourceType": {
+            "nullable": true,
+            "enum": [
+              "BANK_ACCOUNT",
+              "CASH_REGISTER"
+            ],
+            "type": "string"
+          },
+          "defaultCashRegisterId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "defaultBankAccountId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
           "code": {
             "type": "string",
             "example": "cash"
@@ -17901,6 +17944,24 @@
       "UpdatePaymentMethodDto": {
         "type": "object",
         "properties": {
+          "defaultSourceType": {
+            "nullable": true,
+            "enum": [
+              "BANK_ACCOUNT",
+              "CASH_REGISTER"
+            ],
+            "type": "string"
+          },
+          "defaultCashRegisterId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "defaultBankAccountId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
           "name": {
             "type": "string"
           },

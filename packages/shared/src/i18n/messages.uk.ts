@@ -345,6 +345,7 @@ export const uk: Record<string, string> = {
   'err.payment.bankAccountNotFound': 'Банківський рахунок не знайдено',
   'err.payment.cashRegisterNotSpecified': 'Не вказано касу',
   'err.payment.cashRegisterNotFound': 'Касу не знайдено',
+  'err.payment.cashRequiresRegister': 'Для оплати готівкою вкажіть касу',
   // cash-shift
   'err.cashShift.fiscalNotConfigured': 'Фіскалізацію не налаштовано (провайдер/креди/увімкнення)',
   'err.cashShift.unknownProvider': 'Невідомий провайдер ПРРО: {{provider}}',
@@ -836,6 +837,8 @@ export const uk: Record<string, string> = {
   'err.paymentMethod.codeExists': 'Метод оплати з кодом "{{code}}" вже існує',
   'err.paymentMethod.systemImmutableName': 'Системний метод оплати не можна перейменовувати',
   'err.paymentMethod.systemUndeletable': 'Системний метод оплати не можна видалити',
+  'err.paymentMethod.destinationMismatch':
+    'Касу вказують лише для надходження в касу, банківський рахунок — лише для надходження на рахунок',
 
   // ── Exception-повідомлення: payroll-модуль ──
   'err.payroll.startAfterEnd': 'Дата початку має бути не пізніше дати закінчення',
