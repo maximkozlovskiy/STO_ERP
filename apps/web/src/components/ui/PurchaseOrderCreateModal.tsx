@@ -29,6 +29,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useUiFeatures } from '@/hooks/useUiFeatures';
 import { useDirtyForm } from '@/hooks/useDirtyForm';
@@ -120,6 +121,13 @@ const emptyDefaults = (): PurchaseOrderFormInput => ({
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+/**
+ * Кому показано «Оплатити»: ролі POST /supplier-payments (і довідників картки оплати). Картку
+ * замовлення відкриває ще й комірник — йому кнопка давала порожню картку оплати й чотири 403
+ * (Bug #851).
+ */
+const SUPPLIER_PAYMENT_ROLES: readonly string[] = ['OWNER', 'ADMIN', 'ACCOUNTANT'];
+
 export interface PurchaseOrderCreateModalProps {
   open: boolean;
   onClose: () => void;
@@ -142,6 +150,8 @@ export function PurchaseOrderCreateModal({
   const purchaseOrderId = activePOId;
   const isEditMode = !!activePOId;
   const features = useUiFeatures();
+  const { employee } = useAuth();
+  const canPaySupplier = SUPPLIER_PAYMENT_ROLES.includes(employee?.role ?? '');
   const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const { minimizeModal } = useTabBarContext();
 
@@ -1188,7 +1198,7 @@ export function PurchaseOrderCreateModal({
               )}
             </div>
             <div className="flex gap-2 items-center flex-wrap">
-              {isEditMode && currentStatus !== 'CANCELLED' && !viewOnly && (
+              {isEditMode && currentStatus !== 'CANCELLED' && !viewOnly && canPaySupplier && (
                 <Button
                   variant="outline"
                   size="sm"
