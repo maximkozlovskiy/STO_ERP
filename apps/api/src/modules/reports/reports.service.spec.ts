@@ -221,6 +221,16 @@ describe('ReportsService — Bug #629 квантування грошей у з�
     expect(has2Decimals(r.purchases)).toBe(true);
   });
 
+  // Bug #854: часткова оплата (PARTIALLY_PAID) прибирала рахунок зі звіту ПДВ до повної оплати.
+  it('vatReport: ПДВ рахунків — усі виставлені статуси, зокрема частково оплачений', async () => {
+    prisma.invoice.aggregate.mockResolvedValueOnce({ _sum: { totalVat: 20 } });
+    prisma.purchaseOrder.aggregate.mockResolvedValueOnce({ _sum: { totalVat: 0 } });
+
+    await service.vatReport(orgId, from, to);
+    const statuses = prisma.invoice.aggregate.mock.calls[0][0].where.status.in as string[];
+    expect([...statuses].sort()).toEqual(['OVERDUE', 'PAID', 'PARTIALLY_PAID', 'SENT']);
+  });
+
   it('settlements: totalDebit/totalCredit = Σ балансів квантовано', async () => {
     prisma.counterparty.findFirst.mockResolvedValue(null);
     prisma.settlementAccount.findMany.mockResolvedValueOnce([

@@ -465,7 +465,9 @@ export class ReportsService {
 
     // sto-review §5 Business Rules:
     // (1) Invoices: DRAFT не створює податкове зобов'язання (не виставлений клієнту),
-    //     CANCELLED — анульований. До звіту входять SENT/PAID/OVERDUE.
+    //     CANCELLED — анульований. До звіту входять усі виставлені: SENT, PARTIALLY_PAID, PAID,
+    //     OVERDUE. Без PARTIALLY_PAID часткова оплата прибирала рахунок зі звіту, доки його
+    //     не доплатять (Bug #854): зобов'язання з ПДВ виникає з виставлення, а не з оплати.
     // (2) PurchaseOrders: VAT credit виникає лише після фактичної поставки
     //     (RECEIVED/PARTIAL). DRAFT/ORDERED — ще не отримано → немає податкового кредиту.
     const [invoicedAgg, purchasedAgg] = await Promise.all([
@@ -473,7 +475,7 @@ export class ReportsService {
         where: {
           orgId,
           deletedAt: null,
-          status: { in: ['SENT', 'PAID', 'OVERDUE'] },
+          status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] },
           documentDate,
         },
         _sum: { totalVat: true },

@@ -94,7 +94,8 @@ export class DashboardService {
             where: {
               orgId,
               deletedAt: null,
-              status: { in: ['DRAFT', 'SENT', 'OVERDUE'] },
+              // PARTIALLY_PAID — теж «до сплати»: залишок рахунку ще не погашено (Bug #854).
+              status: { in: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
             },
           }),
           SUBQUERY_TIMEOUT_MS,

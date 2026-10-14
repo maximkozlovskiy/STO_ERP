@@ -103,7 +103,7 @@ export const REGISTRY_ENUMS: Record<string, readonly string[]> = {
   ],
   WorkOrderPriority: ['LOW', 'NORMAL', 'HIGH', 'URGENT'],
   PurchaseOrderStatus: ['DRAFT', 'ORDERED', 'PARTIAL', 'RECEIVED', 'CANCELLED'],
-  InvoiceStatus: ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED'],
+  InvoiceStatus: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED'],
   SettlementTransactionType: [
     'CHARGE',
     'PAYMENT',

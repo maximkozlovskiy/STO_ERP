@@ -109,7 +109,8 @@ describe('DashboardService', () => {
       const where = prisma.invoice.count.mock.calls[0][0].where;
       expect(where.orgId).toBe(ORG);
       expect(where.deletedAt).toBeNull();
-      expect(where.status.in).toEqual(['DRAFT', 'SENT', 'OVERDUE']);
+      // Bug #854: частково оплачений рахунок лишається серед неоплачених — залишок не погашено.
+      expect(where.status.in).toEqual(['DRAFT', 'SENT', 'PARTIALLY_PAID', 'OVERDUE']);
     });
 
     it('raw low-stock запит отримує orgId параметром (tagged-template values)', async () => {
