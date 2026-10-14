@@ -249,7 +249,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   };
 
   /** Поля вхідного виду через спільну схему; помилки — під полями. */
-  const incomingAllocation = (): AllocationBody | null => {
+  const incomingAllocation = (amount: number): AllocationBody | null => {
     const parsed = bankTransactionIncomingAllocationSchema.safeParse(incoming);
     if (!parsed.success) {
       const locale = getCurrentLocale();
@@ -262,8 +262,22 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
       setIncomingErrors(next);
       return null;
     }
-    setIncomingErrors({});
     const v = parsed.data;
+    // Сума, більша за залишок рахунку, — за будь-якого порядку вводу (Bug #863): скидання рахунку
+    // при зміні суми не ловить рахунок, обраний ПІСЛЯ суми.
+    if (
+      v.type === 'INVOICE' &&
+      incoming.invoiceRemaining != null &&
+      amount > incoming.invoiceRemaining + 1e-9
+    ) {
+      setIncomingErrors({
+        invoiceId: t('create.allocation.invoiceExceeds', {
+          remaining: fmtMoney(incoming.invoiceRemaining),
+        }),
+      });
+      return null;
+    }
+    setIncomingErrors({});
     return {
       type: v.type,
       counterpartyId: v.counterpartyId,
@@ -293,7 +307,8 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
     };
     if (!allocKind) return send(data);
 
-    const allocation = allocKind === 'in' ? incomingAllocation() : await outgoingAllocation();
+    const allocation =
+      allocKind === 'in' ? incomingAllocation(values.amount) : await outgoingAllocation();
     if (!allocation) return;
     const withAllocation = { ...data, allocation };
     if (!BANK_TX_CREATE_CONFIRM_TYPES.has(allocation.type)) return send(withAllocation);

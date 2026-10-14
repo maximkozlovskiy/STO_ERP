@@ -149,7 +149,8 @@
       "submit": "Enter and match",
       "success": "Payment entered and matched",
       "confirmTitle": "Confirm entry and matching",
-      "confirmInvoice": "The payment will be entered and invoice {{name}} of client «{{client}}» will be paid for {{amount}}."
+      "confirmInvoice": "The payment will be entered and invoice {{name}} of client «{{client}}» will be paid for {{amount}}.",
+      "invoiceExceeds": "The payment amount exceeds the invoice balance due ({{remaining}})"
     }
   },
   "reconcile": {

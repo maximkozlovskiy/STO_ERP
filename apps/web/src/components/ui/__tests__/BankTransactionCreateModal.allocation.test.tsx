@@ -279,6 +279,31 @@ describe('BankTransactionCreateModal — скидання несумісного
     expect(screen.queryByText('INV-0042')).not.toBeInTheDocument();
     expect(screen.getByText('ТОВ Клієнт')).toBeInTheDocument();
   });
+
+  // Bug #863: правило діяло лише на зміні суми — рахунок, обраний ПІСЛЯ більшої суми, проходив
+  // до підтвердження й відмови сервера.
+  // Mutation-verify: прибрати перевірку `amount > incoming.invoiceRemaining` у incomingAllocation
+  // → кейс падає (з'являється крок підтвердження).
+  it('рахунок обрано ПІСЛЯ суми, більшої за його залишок, — помилка під рахунком, запит не йде', async () => {
+    mockApi();
+    await openReady({}, '600,01'); // залишок 1000 − 400 = 600
+    choose('Рознести як', 'INVOICE');
+    await pickVia('Пошук контрагента…');
+    await pickVia('Оберіть рахунок…');
+    fireEvent.click(screen.getByRole('button', { name: 'Внести й рознести' }));
+
+    expect(
+      await screen.findByText('Сума платежу більша за залишок до сплати за рахунком (600,00)'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(createCalls()).toHaveLength(0);
+
+    // Рівно залишок — проходить до підтвердження.
+    choose(/^Сума/, '600');
+    expect(screen.getByText('INV-0042')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Внести й рознести' }));
+    expect(await screen.findByRole('note')).toHaveTextContent('600,00 ₴');
+  });
 });
 
 describe('BankTransactionCreateModal — тіло запиту й підтвердження', () => {
@@ -375,10 +400,10 @@ describe('BankTransactionCreateModal — тіло запиту й підтвер
 
   it('відмова сервера → текст у вікні, вікно відкрите; після підтвердження — назад до форми', async () => {
     mockApi({
-      create: () =>
-        Promise.reject(new Error('Сума перевищує залишок до сплати за рахунком (600.00)')),
+      create: () => Promise.reject(new Error('Рахунок у статусі «Оплачено» — оплата неможлива')),
     });
-    const { onClose } = await openReady({}, '700');
+    // Сума в межах залишку: рахунок оплатили паралельно, поки вікно було відкрите.
+    const { onClose } = await openReady({}, '500');
     choose('Рознести як', 'INVOICE');
     await pickVia('Пошук контрагента…');
     await pickVia('Оберіть рахунок…');
@@ -386,7 +411,7 @@ describe('BankTransactionCreateModal — тіло запиту й підтвер
     fireEvent.click(await screen.findByRole('button', { name: 'Підтвердити' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Сума перевищує залишок до сплати за рахунком (600.00)',
+      'Рахунок у статусі «Оплачено» — оплата неможлива',
     );
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
