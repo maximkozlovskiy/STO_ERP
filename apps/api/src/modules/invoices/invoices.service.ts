@@ -109,12 +109,18 @@ export class InvoicesService {
     dateTo?: string,
     sortBy?: string,
     sortDir?: 'asc' | 'desc',
+    filters: { counterpartyId?: string; statuses?: InvStatus[] } = {},
   ): Promise<PaginatedInvoicesDto> {
     const where: Prisma.InvoiceWhereInput = {
       orgId,
       deletedAt: showDeleted ? undefined : null,
     };
     if (status) where.status = status as InvStatus;
+    if (filters.statuses?.length) {
+      // Разом зі `status` — перетин (обидва мають виконуватись).
+      where.AND = [{ status: { in: filters.statuses } }];
+    }
+    if (filters.counterpartyId) where.counterpartyId = filters.counterpartyId;
     if (q) {
       const like = q.trim();
       where.OR = [

@@ -99,10 +99,8 @@ function mockApi(opts: { create?: () => Promise<unknown>; single?: boolean } = {
       return Promise.resolve({ items: [{ id: CLIENT, companyName: 'ТОВ Клієнт' }] });
     if (path.startsWith('/invoices?'))
       return Promise.resolve({
-        // Список рахунків не відбирає за контрагентом на сервері: чужий і чернетка — теж тут.
+        // Відбір за платником і статусами робить сервер — мок віддає вже відібране.
         items: [
-          { id: uuid(7), number: 'INV-OTHER', amount: 50, counterpartyId: uuid(8), status: 'SENT' },
-          { id: uuid(9), number: 'INV-DRAFT', amount: 50, counterpartyId: CLIENT, status: 'DRAFT' },
           {
             id: INVOICE,
             number: 'INV-0042',
@@ -248,8 +246,7 @@ describe('BankTransactionCreateModal — скидання несумісного
     expect(createCalls()).toHaveLength(0);
   });
 
-  // Параметра counterpartyId список рахунків не знає (400) — відбір за платником і статусом тут.
-  it('пікер рахунку: лише рахунки обраного клієнта, які можна оплатити; без counterpartyId у запиті', async () => {
+  it('пікер рахунку: відбір за платником і статусами, що можна оплатити, йде на сервер', async () => {
     mockApi();
     await openReady();
     choose('Рознести як', 'INVOICE');
@@ -260,7 +257,12 @@ describe('BankTransactionCreateModal — скидання несумісного
       .map(c => String(c[0]))
       .filter(path => path.startsWith('/invoices?'));
     expect(invoicePaths.length).toBeGreaterThan(0);
-    expect(invoicePaths.every(path => !path.includes('counterpartyId'))).toBe(true);
+    for (const path of invoicePaths) {
+      const params = new URLSearchParams(path.split('?')[1]);
+      expect(params.get('counterpartyId')).toBe(CLIENT);
+      expect(params.get('statuses')).toBe('SENT,PARTIALLY_PAID,OVERDUE');
+      expect(Number(params.get('limit'))).toBeLessThanOrEqual(200);
+    }
   });
 
   it('сума більша за залишок обраного рахунку клієнта скидає рахунок; менша — ні', async () => {

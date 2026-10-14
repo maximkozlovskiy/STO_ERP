@@ -91,6 +91,7 @@ export class InvoicesController {
       query.dateTo,
       query.sortBy,
       query.sortDir,
+      { counterpartyId: query.counterpartyId, statuses: query.statuses },
     );
   }
 

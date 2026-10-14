@@ -91,7 +91,7 @@ OVERDUE → PAID / CANCELLED
 
 | Метод  | URL                                                  | Дія                                                                                                                                                             |
 | ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/invoices`                                      | Список (фільтри: status, counterpartyId, dateFrom, dateTo)                                                                                                      |
+| GET    | `/api/invoices`                                      | Список (фільтри: status, statuses — кілька через кому, counterpartyId, q, dateFrom, dateTo, showDeleted)                                                        |
 | GET    | `/api/invoices/:id`                                  | Деталь з lines                                                                                                                                                  |
 | GET    | `/api/invoices/:id/lines-summary`                    | Зведення по табличних частинах: роботи / товари / інше (BR-WO-009 у `work-order.md`); ролі — як у списку                                                        |
 | POST   | `/api/invoices`                                      | Створити рахунок (lines у body)                                                                                                                                 |
@@ -213,7 +213,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | Аспект                                                         | Тест                                       | Кейсів |
 | -------------------------------------------------------------- | ------------------------------------------ | ------ |
 | BullMQ-processor                                               | `invoice-overdue.processor.spec.ts`        | 4      |
-| HTTP-контракт (DTO, статуси, валідація)                        | `invoices.contract.spec.ts`                | 40     |
+| HTTP-контракт (DTO, статуси, валідація)                        | `invoices.contract.spec.ts`                | 43     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `invoices.with-deleted.spec.ts`            | 13     |
 | create defaults (номер, invoiceType)                           | `invoices.create-defaults.spec.ts`         | 5      |
 | create from work order                                         | `invoices.create-from-work-order.spec.ts`  | 14     |
@@ -222,6 +222,7 @@ cd apps/api && npx vitest run src/modules/invoices/<файл>.spec.ts
 | find by work order                                             | `invoices.find-by-work-order.spec.ts`      | 5      |
 | line totals (recalcTotals на бекенді)                          | `invoices.line-totals.spec.ts`             | 12     |
 | список: відбір за датою документа                              | `invoices.list-date-filter.spec.ts`        | 6      |
+| список: відбір за контрагентом і кількома статусами            | `invoices.list-filters.spec.ts`            | 5      |
 | refresh from work order                                        | `invoices.refresh-from-work-order.spec.ts` | 15     |
 | transition settlements                                         | `invoices.transition-settlements.spec.ts`  | 10     |
 | update: зміна контрагента (org, роль)                          | `invoices.update-counterparty.spec.ts`     | 5      |

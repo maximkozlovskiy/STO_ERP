@@ -11963,6 +11963,29 @@
             }
           },
           {
+            "name": "counterpartyId",
+            "required": false,
+            "in": "query",
+            "description": "Лише рахунки цього контрагента (платника)",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "statuses",
+            "required": false,
+            "in": "query",
+            "description": "Кілька статусів через кому (SENT,PARTIALLY_PAID,OVERDUE). Разом зі `status` — перетин.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Object"
+              },
+              "maxItems": 10
+            }
+          },
+          {
             "name": "showDeleted",
             "required": false,
             "in": "query",
@@ -25607,6 +25630,10 @@
           "payments",
           "counterparty"
         ]
+      },
+      "Object": {
+        "type": "object",
+        "properties": {}
       },
       "InvoiceLineResponseDto": {
         "type": "object",

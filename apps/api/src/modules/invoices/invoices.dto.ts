@@ -217,6 +217,30 @@ export class InvoiceQueryDto {
 
   @ApiPropertyOptional() @IsOptional() @IsString() q?: string;
 
+  @ApiPropertyOptional({ description: 'Лише рахунки цього контрагента (платника)' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  counterpartyId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Кілька статусів через кому (SENT,PARTIALLY_PAID,OVERDUE). Разом зі `status` — перетин.',
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() !== ''
+      ? value
+          .split(',')
+          .map((v: string) => v.trim())
+          .filter(Boolean)
+      : undefined,
+  )
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsEnum(InvoiceStatus, { each: true })
+  statuses?: InvoiceStatus[];
+
   @ApiPropertyOptional({ description: 'Показати видалені' })
   @IsOptional()
   @IsBooleanString()

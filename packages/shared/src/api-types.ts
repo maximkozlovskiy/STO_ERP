@@ -7765,6 +7765,7 @@ export interface components {
             payments: number;
             counterparty: number;
         };
+        Object: Record<string, never>;
         InvoiceLineResponseDto: {
             id: string;
             invoiceId: string;
@@ -15784,6 +15785,10 @@ export interface operations {
             query?: {
                 status?: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
                 q?: string;
+                /** @description Лише рахунки цього контрагента (платника) */
+                counterpartyId?: string;
+                /** @description Кілька статусів через кому (SENT,PARTIALLY_PAID,OVERDUE). Разом зі `status` — перетин. */
+                statuses?: components["schemas"]["Object"][];
                 /** @description Показати видалені */
                 showDeleted?: string;
                 /** @description Дата документа від (YYYY-MM-DD) */

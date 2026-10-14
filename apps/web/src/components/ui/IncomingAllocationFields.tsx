@@ -6,6 +6,7 @@ import { BANK_TX_IN_MATCH_TYPE_VALUES, type BankTxInMatchTypeValue } from '@sto/
 import { apiFetch } from '@/lib/api-client';
 import { displayCounterpartyName } from '@/lib/utils';
 import { fmtMoney } from '@/lib/format';
+import type { Invoice } from '@/hooks/api/useInvoices';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
 import { SearchPickerModal } from '@/components/ui/search-picker-modal';
@@ -49,26 +50,16 @@ interface CounterpartyRef {
   lastName?: string | null;
 }
 
-interface InvoiceRef {
-  id: string;
-  number: string;
-  amount: number;
-  paidAmount?: number | null;
-  counterpartyId: string;
-  status: string;
-}
+/** Рядок списку рахунків — зі згенерованого `InvoiceResponseDto`. */
+type InvoiceRef = Pick<Invoice, 'id' | 'number' | 'amount' | 'paidAmount'>;
 
 /**
  * Рахунки, які оплата може закрити (як у `PaymentsService.create`): виставлений, частково
- * сплачений, прострочений.
+ * сплачений, прострочений. Відбір — на сервері (`GET /invoices?statuses=…&counterpartyId=…`).
  */
-const PAYABLE_INVOICE_STATUSES: ReadonlySet<string> = new Set([
-  'SENT',
-  'PARTIALLY_PAID',
-  'OVERDUE',
-]);
-/** Найбільша сторінка списку рахунків (`@Max(200)` у InvoiceQueryDto). */
-const INVOICE_PICK_LIMIT = 200;
+const PAYABLE_INVOICE_STATUSES = 'SENT,PARTIALLY_PAID,OVERDUE';
+/** Скільки рахунків показує пікер за один пошук (як у пікера контрагентів). */
+const INVOICE_PICK_LIMIT = 30;
 
 interface InvoiceItem {
   id: string;
@@ -217,24 +208,21 @@ export function IncomingAllocationFields({
           closePicker();
         }}
         title={t('match.pickInvoice')}
-        // Список рахунків не відбирає за контрагентом на сервері (InvoiceQueryDto не має такого
-        // поля, а зайвий параметр дає 400) — відбираємо тут: рахунок закриває лише його платник.
         fetchItems={q =>
           apiFetch<{ items: InvoiceRef[] }>(
-            `/invoices?q=${encodeURIComponent(q)}&limit=${INVOICE_PICK_LIMIT}`,
+            `/invoices?${new URLSearchParams({
+              q,
+              counterpartyId: value.counterpartyId,
+              statuses: PAYABLE_INVOICE_STATUSES,
+              limit: String(INVOICE_PICK_LIMIT),
+            }).toString()}`,
           ).then(d =>
-            d.items
-              .filter(
-                inv =>
-                  inv.counterpartyId === value.counterpartyId &&
-                  PAYABLE_INVOICE_STATUSES.has(inv.status),
-              )
-              .map(inv => ({
-                id: inv.id,
-                primary: inv.number,
-                secondary: `${fmtMoney(inv.amount)} ₴`,
-                remaining: inv.paidAmount == null ? null : Math.max(0, inv.amount - inv.paidAmount),
-              })),
+            d.items.map(inv => ({
+              id: inv.id,
+              primary: inv.number,
+              secondary: `${fmtMoney(inv.amount)} ₴`,
+              remaining: inv.paidAmount == null ? null : Math.max(0, inv.amount - inv.paidAmount),
+            })),
           )
         }
       />

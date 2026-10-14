@@ -143,6 +143,7 @@ describe('Invoices — HTTP Contract', () => {
         '2026-01-31',
         undefined,
         undefined,
+        { counterpartyId: undefined, statuses: undefined },
       );
     });
 
@@ -164,6 +165,7 @@ describe('Invoices — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        { counterpartyId: undefined, statuses: undefined },
       );
     });
 
@@ -185,7 +187,46 @@ describe('Invoices — HTTP Contract', () => {
         undefined,
         undefined,
         undefined,
+        { counterpartyId: undefined, statuses: undefined },
       );
+    });
+    it('counterpartyId + statuses (через кому) → service.findAll отримує фільтри', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const cp = '11111111-1111-4111-8111-111111111111';
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: `/invoices?counterpartyId=${cp}&statuses=SENT,PARTIALLY_PAID,OVERDUE&limit=30`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(
+        'org-1',
+        1,
+        30,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { counterpartyId: cp, statuses: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+      );
+    });
+
+    it('counterpartyId не UUID → 400', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?counterpartyId=abc',
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('statuses з невідомим значенням → 400', async () => {
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?statuses=SENT,BOGUS',
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 

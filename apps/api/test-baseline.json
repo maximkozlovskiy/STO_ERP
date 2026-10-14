@@ -3036,6 +3036,9 @@
    "Invoices — HTTP Contract GET /invoices Bug #339: dateFrom + dateTo → service.findAll отримує дати",
    "Invoices — HTTP Contract GET /invoices Bug #339: showDeleted=true → service.findAll отримує true",
    "Invoices — HTTP Contract GET /invoices Bug #339: status + q → service.findAll отримує фільтри",
+   "Invoices — HTTP Contract GET /invoices counterpartyId + statuses (через кому) → service.findAll отримує фільтри",
+   "Invoices — HTTP Contract GET /invoices counterpartyId не UUID → 400",
+   "Invoices — HTTP Contract GET /invoices statuses з невідомим значенням → 400",
    "Invoices — HTTP Contract GET /invoices відхиляє limit=201 з 400",
    "Invoices — HTTP Contract GET /invoices повертає 200 з pagination shape",
    "Invoices — HTTP Contract GET /invoices повертає 403 без JWT",
@@ -3145,6 +3148,13 @@
    "InvoicesService.findAll — відбір за датою документа зимова дата і дні переведення годинника — так само без зсуву",
    "InvoicesService.findAll — відбір за датою документа лише одна межа → у documentDate тільки вона",
    "InvoicesService.findAll — відбір за датою документа один день: рахунок з датою 09.10 входить у «09.10», сусідні дати — ні"
+  ],
+  "apps/api/src/modules/invoices/invoices.list-filters.spec.ts": [
+   "InvoicesService.findAll — counterpartyId і statuses counterpartyId → у where, orgId лишається",
+   "InvoicesService.findAll — counterpartyId і statuses q разом із counterpartyId → OR пошуку не затирає відбір за контрагентом",
+   "InvoicesService.findAll — counterpartyId і statuses status разом із statuses → обидві умови (перетин), статус не затирається",
+   "InvoicesService.findAll — counterpartyId і statuses statuses → status in [...]",
+   "InvoicesService.findAll — counterpartyId і statuses без фільтрів → ні counterpartyId, ні AND у where"
   ],
   "apps/api/src/modules/invoices/invoices.refresh-from-work-order.spec.ts": [
    "InvoicesService — refresh-from-work-order refreshFromWorkOrder — Bug #403 status guard кидає BadRequestException якщо existing.status=OVERDUE",
