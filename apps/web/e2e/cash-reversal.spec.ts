@@ -202,6 +202,44 @@ test.describe('Сторно касової операції', () => {
     expect(JSON.stringify(ofReversal.body)).toContain('Сторно не можна сторнувати');
   });
 
+  // Bug #855: причина сторно показується в рядку сторно і в позначці оригіналу. Причина з 500
+  // символів без пробілів (вставлене посилання чи номер) розтягувала таблицю на ширину «слова»:
+  // суми й контрагенти всіх рядків ішли за горизонтальну прокрутку.
+  test('довга причина без пробілів не розтягує історію: суми видно', async ({ page }) => {
+    await page.goto('/cash');
+    const token = await getToken(page);
+    const op = await createOperation(page, token, registerId, {
+      direction: 'IN',
+      reason: 'OWNER_IN',
+      amount: 5,
+      notes: `E2E довга причина ${stamp}`,
+    });
+    const reversed = await apiCall(
+      page,
+      token,
+      'POST',
+      `/cash-registers/${registerId}/operations/${op.id}/reverse`,
+      { reason: 'Ж'.repeat(500) },
+    );
+    expect(reversed.status, `сторно прийнято: ${JSON.stringify(reversed.body)}`).toBe(201);
+
+    await selectRegister(page, registerId);
+    const original = page.locator(`#cash-op-${op.id}`);
+    await expect(original).toHaveAttribute('data-reversed', 'true', { timeout: 15_000 });
+    const widths = await page
+      .locator('table')
+      .first()
+      .evaluate(t => ({ table: t.scrollWidth, box: t.parentElement?.clientWidth ?? 0 }));
+    expect(
+      widths.table,
+      `таблиця ${widths.table}px ширша за контейнер ${widths.box}px — суми за прокруткою`,
+    ).toBeLessThanOrEqual(widths.box + 1);
+    // Перенесена причина робить рядок високим: прокручуємо до нього за першою (лівою) коміркою —
+    // по горизонталі прокрутка лишається на початку, тож сума мусить бути видна без неї.
+    await original.locator('td').first().scrollIntoViewIfNeeded();
+    await expect(original.locator('td').filter({ hasText: '+5,00' })).toBeInViewport();
+  });
+
   test('сторно оплати контрагента: борг повертається', async ({ page }) => {
     await page.goto('/cash');
     const token = await getToken(page);

@@ -462,7 +462,10 @@ export default function CashOperationsTab({
                         : t('operations.directionOut')}
                     </span>
                   </TableCell>
-                  <TableCell className="text-[13px] text-muted-foreground">
+                  {/* wrap-anywhere: примітка й причина сторно — до 500 символів; «слово» без
+                      пробілів (посилання, номер) інакше розтягує таблицю, і суми всіх рядків
+                      ідуть за прокрутку (Bug #855). */}
+                  <TableCell className="text-[13px] text-muted-foreground wrap-anywhere">
                     <span className={cn(reversed && 'opacity-60')}>
                       {op.reversalOfId
                         ? t('reversal.marks.reversal', { reason: reasonLabel })
