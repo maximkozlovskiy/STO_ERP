@@ -412,3 +412,45 @@ describe('BankTransactionCreateModal — тіло запиту й підтвер
     release({ id: 'new-1' });
   });
 });
+
+// Bug #862: вікно закривалось по Escape разом із уведеним — і з кроку підтвердження теж.
+// Mutation-verify: у close прибрати `guard.markDirty()` (лишити resetDirty) → три кейси падають.
+describe('BankTransactionCreateModal — закриття з уведеним', () => {
+  const escape = () => fireEvent.keyDown(document, { key: 'Escape' });
+
+  it('крок підтвердження: Escape питає «Є незбережені зміни»; «Скасувати» — лишає підтвердження', async () => {
+    mockApi();
+    const { onClose } = await openReady();
+    choose('Рознести як', 'INVOICE');
+    await pickVia('Пошук контрагента…');
+    await pickVia('Оберіть рахунок…');
+    fireEvent.click(screen.getByRole('button', { name: 'Внести й рознести' }));
+    await screen.findByRole('note');
+
+    escape();
+    expect(await screen.findByText('Є незбережені зміни')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Скасувати' }));
+    await waitFor(() => expect(screen.queryByText('Є незбережені зміни')).not.toBeInTheDocument());
+    expect(screen.getByRole('note')).toHaveTextContent('INV-0042');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('уведена сума: Escape питає; «Покинути» закриває вікно', async () => {
+    mockApi();
+    const { onClose } = await openReady();
+    escape();
+    expect(await screen.findByText('Є незбережені зміни')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Покинути' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('нічого не введено (лише рахунок) — Escape закриває без запиту', async () => {
+    mockApi();
+    const { onClose } = await openReady({}, '');
+    escape();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Є незбережені зміни')).not.toBeInTheDocument();
+  });
+});

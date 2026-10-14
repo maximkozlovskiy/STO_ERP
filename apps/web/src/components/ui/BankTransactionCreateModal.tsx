@@ -21,6 +21,9 @@ import {
   type BankTxDirectionValue,
 } from '@sto/shared';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { getCurrentLocale } from '@/i18n/locale';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
@@ -108,6 +111,9 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   const accountsQuery = useBankAccountOptions(open);
   const accounts = accountsQuery.data;
   const purposeId = useId();
+  const features = useUiFeatures();
+  // Закриття з уведеним питає підтвердження — як в інших картках документів (Bug #862, #853).
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
 
   const {
     control,
@@ -115,6 +121,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
     reset,
     watch,
     setValue,
+    getValues,
     handleSubmit,
     formState: { errors },
   } = useForm<BankTransactionCreateFormValues, unknown, BankTransactionCreatePayload>({
@@ -148,6 +155,8 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   // Escape у пікері контрагента / рахунку не має закривати саме вікно з уведеним
   // (docs/GOTCHAS.md, 2026-10-12): прапорець ставлять і знімають поля рознесення.
   const pickerOpenRef = useRef(false);
+  // Поки відкрито запит «Є незбережені зміни», Escape — його, а не цього вікна.
+  const closingRef = useRef(false);
 
   const clearAllocation = () => {
     setAllocType('');
@@ -167,6 +176,8 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
     savingRef.current = false;
     autoSelectedRef.current = false;
     pickerOpenRef.current = false;
+    closingRef.current = false;
+    dirty.resetDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -304,15 +315,45 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   const submit = handleSubmit(onValid);
   const busy = createMut.isPending;
 
+  /**
+   * Чи є у вікні щось, уведене людиною: сума, реквізити, призначення, вид рознесення (і крок
+   * підтвердження). Рахунок, напрям і дата мають типові значення — порожнє вікно з іншим
+   * рахунком закривається без запиту.
+   */
+  const hasInput = () => {
+    const v = getValues();
+    return (
+      allocType !== '' ||
+      pending !== null ||
+      [v.amount, v.payerName, v.payerIban, v.payerEdrpou, v.purpose].some(
+        x => asText(x).trim() !== '',
+      )
+    );
+  };
+
   // Стабільний onClose для Modal: його keydown-слухач не переприв'язується на кожен рендер.
   const busyRef = useRef(busy);
   busyRef.current = busy;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const close = useCallback(() => {
-    if (pickerOpenRef.current || busyRef.current) return;
-    onCloseRef.current();
+  const hasInputRef = useRef(hasInput);
+  hasInputRef.current = hasInput;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const close = useCallback(async () => {
+    if (pickerOpenRef.current || busyRef.current || closingRef.current) return;
+    const guard = dirtyRef.current;
+    if (hasInputRef.current()) guard.markDirty();
+    else guard.resetDirty();
+    closingRef.current = true;
+    const leave = await guard.confirmClose();
+    // Знімається ПІСЛЯ події: той самий Escape, що закрив запит, не має закрити й вікно.
+    setTimeout(() => {
+      closingRef.current = false;
+    }, 0);
+    if (leave) onCloseRef.current();
   }, []);
+  const requestClose = useCallback(() => void close(), [close]);
 
   const confirmText = pending
     ? pending.type === 'INVOICE'
@@ -327,7 +368,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
   return (
     <Modal
       open={open}
-      onClose={close}
+      onClose={requestClose}
       onSubmit={() => (pending ? void send(pending.data) : void submit())}
       title={pending ? t('create.allocation.confirmTitle') : t('create.title')}
       size="lg"
@@ -349,7 +390,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
             </>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={close} disabled={busy}>
+              <Button variant="outline" size="sm" onClick={requestClose} disabled={busy}>
                 {t('create.cancel')}
               </Button>
               <Button size="sm" onClick={() => void submit()} loading={busy} disabled={busy}>
@@ -580,6 +621,7 @@ export function BankTransactionCreateModal({ open, onClose, defaultDirection, on
           </>
         )}
       </div>
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </Modal>
   );
 }
