@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { BANK_TX_IN_MATCH_TYPE_VALUES, type BankTxInMatchTypeValue } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { displayCounterpartyName } from '@/lib/utils';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, fmtBankCurrencySuffix } from '@/lib/format';
 import type { Invoice } from '@/hooks/api/useInvoices';
 import { Select } from '@/components/ui/select';
 import { EntityPickerField } from '@/components/ui/entity-picker-field';
@@ -51,7 +51,7 @@ interface CounterpartyRef {
 }
 
 /** Рядок списку рахунків — зі згенерованого `InvoiceResponseDto`. */
-type InvoiceRef = Pick<Invoice, 'id' | 'number' | 'amount' | 'paidAmount'>;
+type InvoiceRef = Pick<Invoice, 'id' | 'number' | 'amount' | 'paidAmount' | 'currencyCode'>;
 
 /**
  * Рахунки, які оплата може закрити (як у `PaymentsService.create`): виставлений, частково
@@ -220,7 +220,8 @@ export function IncomingAllocationFields({
             d.items.map(inv => ({
               id: inv.id,
               primary: inv.number,
-              secondary: `${fmtMoney(inv.amount)} ₴`,
+              // Сума у валюті самого рахунку (Bug #864: «₴» стояв біля будь-якої).
+              secondary: `${fmtMoney(inv.amount)} ${fmtBankCurrencySuffix(inv.currencyCode)}`,
               remaining: inv.paidAmount == null ? null : Math.max(0, inv.amount - inv.paidAmount),
             })),
           )

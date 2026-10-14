@@ -1,7 +1,7 @@
 // Regression-guard для MatchBankTransactionModal — submit рознесення викликає
 // POST /bank-statements/transactions/:id/match з правильним counterpartyId + type.
 
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import { MatchBankTransactionModal } from '../MatchBankTransactionModal';
@@ -135,5 +135,35 @@ describe('MatchBankTransactionModal', () => {
     await new Promise(r => setTimeout(r, 0));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Bug #864: рядок пікера рахунку показував «₴» біля суми рахунку в будь-якій валюті.
+  // Mutation-verify: повернути `${fmtMoney(inv.amount)} ₴` → кейс падає.
+  it('пікер рахунку: сума рахунку з його валютою', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path.startsWith('/invoices?'))
+        return Promise.resolve({
+          items: [
+            { id: 'inv-usd', number: 'INV-USD', amount: 77, paidAmount: 0, currencyCode: 'USD' },
+            { id: 'inv-uah', number: 'INV-UAH', amount: 300, paidAmount: 0, currencyCode: 'UAH' },
+          ],
+        });
+      return Promise.resolve({ items: [] });
+    });
+    renderWithQueryClient(
+      <MatchBankTransactionModal
+        open
+        onClose={() => {}}
+        transaction={TX}
+        suggestedCounterpartyId={CP_UUID}
+        suggestedCounterpartyName="ТОВ Клієнт"
+        suggestedMatchType="INVOICE"
+      />,
+    );
+    const pickers = screen.getAllByRole('button', { name: 'Обрати' });
+    fireEvent.click(pickers[pickers.length - 1]);
+    const picker = await screen.findByRole('dialog', { name: 'Оберіть рахунок' });
+    expect(await within(picker).findByText(/^77,00\sUSD$/)).toBeInTheDocument();
+    expect(within(picker).getByText(/^300,00\s₴$/)).toBeInTheDocument();
   });
 });
