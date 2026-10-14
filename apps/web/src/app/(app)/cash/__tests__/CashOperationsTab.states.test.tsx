@@ -81,6 +81,8 @@ const rows = (n: number): CashOperation[] =>
 
 const TRUNCATED = /Показано останні 500 операцій/;
 
+const FULL_HISTORY_RENDER_TIMEOUT_MS = 20_000;
+
 describe('CashOperationsTab — межа історії (Bug #849)', () => {
   beforeEach(() => {
     state.registers = [REGISTER];
@@ -96,17 +98,28 @@ describe('CashOperationsTab — межа історії (Bug #849)', () => {
     expect(state.operationsArgs.at(-1)?.[2]).toBe(CASH_HISTORY_LIMIT);
   });
 
-  it('прийшло рівно стільки, скільки просили → каже, що старіші операції не вмістились', () => {
-    state.operations = rows(CASH_HISTORY_LIMIT);
-    render(<CashOperationsTab canOperate />);
-    expect(screen.getByRole('status')).toHaveTextContent(TRUNCATED);
-  });
+  // Bug #856: ці кейси свідомо рендерять стелю історії — 500 рядків, кожен із кнопкою «Сторнувати».
+  // Окремо це ~1,3 с, під паралельним навантаженням повного набору — 5–6,5 с, тож типових 5 с не
+  // вистачало і кейси падали хибно. Запас — лише тут: решта файлу рендерить кілька рядків.
+  it(
+    'прийшло рівно стільки, скільки просили → каже, що старіші операції не вмістились',
+    () => {
+      state.operations = rows(CASH_HISTORY_LIMIT);
+      render(<CashOperationsTab canOperate />);
+      expect(screen.getByRole('status')).toHaveTextContent(TRUNCATED);
+    },
+    FULL_HISTORY_RENDER_TIMEOUT_MS,
+  );
 
-  it('рядків менше за стелю → жодного попередження', () => {
-    state.operations = rows(CASH_HISTORY_LIMIT - 1);
-    render(<CashOperationsTab canOperate />);
-    expect(screen.queryByText(TRUNCATED)).toBeNull();
-  });
+  it(
+    'рядків менше за стелю → жодного попередження',
+    () => {
+      state.operations = rows(CASH_HISTORY_LIMIT - 1);
+      render(<CashOperationsTab canOperate />);
+      expect(screen.queryByText(TRUNCATED)).toBeNull();
+    },
+    FULL_HISTORY_RENDER_TIMEOUT_MS,
+  );
 });
 
 describe('CashOperationsTab — список кас не завантажився (Bug #850)', () => {
