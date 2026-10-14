@@ -259,8 +259,15 @@ describe('Settlements — balance invariants (property-based)', () => {
   // Bug #715: колір рядка = «charge-like» бізнес-семантика (борг створено = destructive), НЕ
   // balance-sign. Обидва settlement-екрани споживають ТОЙ САМИЙ SETTLEMENT_TX_CHARGE_LIKE_TYPES →
   // жодного cross-page колір-drift. Guard фіксує навмисне розходження зі знаком (постач. типи).
-  it('SETTLEMENT_TX_CHARGE_LIKE_TYPES = {CHARGE, SUPPLIER_CHARGE} — колір окремий від знаку', () => {
-    expect([...SETTLEMENT_TX_CHARGE_LIKE_TYPES].sort()).toEqual(['CHARGE', 'SUPPLIER_CHARGE']);
+  // Сторно оплати (BR-CASH-024) знову створює борг — колір як у нарахування (2026-10-14).
+  it('SETTLEMENT_TX_CHARGE_LIKE_TYPES = нарахування + сторно оплат — колір окремий від знаку', () => {
+    expect([...SETTLEMENT_TX_CHARGE_LIKE_TYPES].sort()).toEqual([
+      'CHARGE',
+      'PAYMENT_CANCEL',
+      'PREPAYMENT_CANCEL',
+      'SUPPLIER_CHARGE',
+      'SUPPLIER_PAYMENT_CANCEL',
+    ]);
     // SUPPLIER_CHARGE: charge-like (червоний) АЛЕ balance-sign −1 (не у UP-set) — навмисне
     // розходження кольору й знаку. Цей рядок фіксує його, щоб «спрощення» не злило їх назад.
     expect(SETTLEMENT_TX_CHARGE_LIKE_TYPES.has('SUPPLIER_CHARGE')).toBe(true);
