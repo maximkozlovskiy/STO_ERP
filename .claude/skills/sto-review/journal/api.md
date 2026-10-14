@@ -216,3 +216,29 @@ PATCH `{ isActive: false }` правила з видаленою пізніше 
 **Grep:** `grep -rn "take: [A-Z_]* \* " apps/api/src/modules --include="*.service.ts" | grep -v spec`
 **Фікс:** читання сторінками за курсором `id`; `{ in, mode: 'insensitive' }`.
 **Severity:** IMPORTANT
+
+### 2026-10-14 — Конфлікт серіалізації на COMMIT давав 500 — §5
+
+**Сигнал:** дві одночасні видачі з однієї каси: одна проходить, решта отримують 500 замість 400
+«каса зайнята» (наживо 21 відповідь 500 із 32). У лозі `DriverAdapterError: TransactionWriteConflict`
+зі стеком `commitTransaction`. Перевірка стояла лише на `PrismaClientKnownRequestError` / `P2034`.
+**Grep:** `grep -rn "'P2034'" apps/api/src --include="*.ts" | grep -v "spec\|prisma-errors"`
+**Фікс:** `isSerializationConflict()` у `common/utils/prisma-errors.ts` (обидві форми); ним користуються
+`throwIfSerializationConflict`, `CashService`, `CashDeskService`. **Severity:** IMPORTANT
+
+### 2026-10-14 — Каса йшла в мінус двома оплатами різним постачальникам — §5
+
+**Сигнал:** `SupplierPaymentsService.confirm` кличе `CashService.createOperation` у своїй транзакції
+(ReadCommitted). Дві одночасні оплати РІЗНИМ постачальникам по 60 при залишку 100 — обидві 201, каса −20
+(6 раундів із 10). З одним постачальником не відтворювалось: запити ставив у чергу рядок його рахунку
+взаєморозрахунків. Unit-тести з моком Prisma цього не бачать. **Grep:** читання залишку перед записом у
+методі, що приймає `tx`: `grep -rn "getBalance(" apps/api/src/modules --include="*.service.ts"`
+**Фікс:** `pg_advisory_xact_lock(hashtext('cash-register:<id>'))` перед читанням залишку для `OUT`.
+**Severity:** CRITICAL
+
+### 2026-10-14 — Стаття за приводом дісталась руху власних грошей — §5
+
+**Сигнал:** BR-CASH-022 підставляє статтю за приводом, коли статтю не передано. Рознесення виписки
+пише зняття готівки з рахунку приводом `MANUAL_IN` свідомо без статті (BR-BANK-034): зі статтею,
+закріпленою за «Внесенням», переміщення стало б доходом у звіті. **Фікс:** прапорець
+`withoutCategory` у `CreateCashOperationInput`. **Severity:** IMPORTANT

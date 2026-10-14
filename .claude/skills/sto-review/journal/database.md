@@ -33,3 +33,9 @@
 **Grep:** `grep -rn -B3 "mode: 'insensitive'" apps/api/src --include="*.ts" | grep -v spec | grep "equals"`; для правила унікальності — `grep -rn "<model>\.\(create\|update\|upsert\|createMany\|updateMany\)" apps/api/src --include="*.ts" | grep -v spec` і пройти КОЖЕН писач.
 **Фікс:** екранування `\`, `%`, `_` + рішення за ключем у JS; перевірка й запис в одній `$transaction` під `pg_advisory_xact_lock`; виняток у масовому імпорті розпізнається за класом і ключем перекладу, не за підрядком. Лишилось: `works.service.ts` `findCategoryByName` має той самий `equals` + `insensitive` без екранування.
 **Severity:** IMPORTANT — хибна відмова у збереженні та мовчазна втрата синоніма.
+
+### 2026-10-14 — Рукописний частковий індекс без сторожа — §6
+
+**Сигнал:** міграція `20261014100000` створює `expense_categories_default_reason_uq`, а в
+`schema-integrity.integration.spec.ts` його не було: сторож дрейфу `DROP INDEX` не рахує.
+**Grep:** див. пункт секції. **Фікс:** рядок у переліку індексів спеку. **Severity:** IMPORTANT

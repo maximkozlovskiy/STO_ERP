@@ -341,3 +341,24 @@ resolve A. **Severity:** IMPORTANT
 
 Третє: `DocLinesHeader` без `flex-wrap` на 390 px виносив «Додати» складського документа за край
 картки (x 509–570 при ширині 390) — раніше кнопка стояла під таблицею ліворуч і була досяжна.
+
+### 2026-10-14 — «Створити → провести → скасувати» на клієнті й загублена відповідь — §8.2
+
+**Сигнал:** `SupplierPaymentCreateModal`: помилка `confirm` → `cancel` у `catch {}` → показ помилки.
+Якщо сервер оплату провів, а відповідь не дійшла, `cancel` відмовляє (проведену не скасувати), відмова
+ковтається, і повторний клік створює й проводить другу оплату. **Фікс:** `settlePayment` читає стан
+документа; `pendingIdRef` тримає оплату з невідомою долею до з'ясування. **Severity:** IMPORTANT
+
+### 2026-10-14 — Посилання з каси на замовлення для ролі без доступу — §8.4
+
+**Сигнал:** номер замовлення-підстави в історії каси був кнопкою для всіх ролей: бухгалтер потрапляв
+на графік оплат без картки, приймальня — на `/403`. **Фікс:** проп `canOpenPurchaseOrders`, решті —
+текст. **Severity:** IMPORTANT
+
+### 2026-10-14 — повний текст пункту «Date-picker → ISO» (перенесено із секції заради ліміту розміру) — §8.6
+
+**Date-picker `YYYY-MM-DD` → ISO конверсія без LOCAL-parse.** `new Date(`${d}T00:00:00`).toISOString()` парсить рядок у TZ **браузера**, потім у UTC → у браузерах з додатнім offset (Kyiv UTC+3) дата зсувається на **-1 день** (`2026-09-10T00:00:00` local → `2026-09-09T21:00:00Z`). Day-based min/max арифметика → канонічний `addDaysISO(kyivToday(), N)` (UTC-математика, `lib/format.ts`), НЕ ручний `new Date + setDate + toISOString().slice`. Payload «до кінця дня» → `${d}T23:59:59Z`(UTC end-of-day). Sample:`WarrantyCreateModal` (abe63125). (Деталі: запис 2026-09-09)
+
+### 2026-10-14 — повний текст пункту «FORM-схема кома-aware» (перенесено із секції заради ліміту розміру) — §8.2
+
+**FORM-схема (`*FormSchema`) валідує СИРИЙ рядковий стан форми → числові поля мусять бути кома-aware (UA `1,5`).** Коли модалка гейтить submit через `safeParse(getValues())`, а числові інпути (quantity/price/normoHours/hours) — вільний рядок, поля схеми з `numericString()`/`z.coerce.number()` (обидва роблять `Number(v)`; `Number('1,5')=NaN`) ВІДХИЛЯЮТЬ легітимний UA-десятковий роздільник → submit блокується хибним zod-issue («Кількість повинна бути більшою за нуль»), хоча значення валідне. Локальні гейти (`toNumberOrUndefined`, що робить `.replace(',', '.')`) кому приймають → розсинхрон гейт↔payload. Fix: у FORM-схемі — `moneyString()` (обов'язкове) / `optionalMoneyNumber()` (опційне) / inline `typeof v==='string'?Number(v.replace(',','.')):v` preprocess. ENDPOINT-схеми (той самий файл, споживає контролер) лишаються `numericString`/`coerce` — там payload вже numeric JSON. `parseFloat('1,5')=1` (тихе усічення) — теж баг, ще гірший. Grep: `grep -rn "safeParse(getValues())" apps/web/src` → для кожної модалки перевірити чи її `*FormSchema` числові поля кома-aware; `grep -nE "numericString\(\)|z\.coerce\.number" packages/shared/src/schemas/forms/*.schema.ts` → кожне у _Form_-схемі = підозра. Sample: work-order.schema FORM quantity/normoHours/price (d8a569aa). Severity: IMPORTANT — fail-closed, блокує легітимний submit для UA-локалі
