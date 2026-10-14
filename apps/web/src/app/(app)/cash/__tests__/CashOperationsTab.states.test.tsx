@@ -54,6 +54,7 @@ vi.mock('@/hooks/api/useCash', () => ({
   },
   useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetryCashFiscal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReverseCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
 }));
 vi.mock('@/hooks/api/useExpenseCategories', () => ({

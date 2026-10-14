@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ApiSchema, operations, CashOperationFormValues } from '@sto/shared';
+import type {
+  ApiSchema,
+  operations,
+  CashOperationFormValues,
+  CashReversalFormValues,
+} from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import {
+  invalidateCashReversalSideEffects,
   invalidatePaymentSideEffects,
   invalidatePurchaseSideEffects,
 } from '@/lib/cache-invalidation';
@@ -12,7 +18,24 @@ import { buildParams } from './usePaginatedList';
  * з реальною відповіддю dev-API. Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване».
  */
 export type CashRegister = ApiSchema<'CashRegisterResponseDto'>;
-export type CashOperation = ApiSchema<'CashOperationResponseDto'>;
+/** Позначка сторно на рядку-оригіналі: який рядок його сторнував, коли й чому (BR-CASH-023). */
+export interface CashOperationReversedBy {
+  id: string;
+  createdAt: string;
+  /** Причина обов'язкова при сторно; `null` лише теоретично (Swagger описує поле як nullable). */
+  reason: string | null;
+}
+/**
+ * Поля сторно (`reversalOfId`, `reversedBy`) додано контрактом BR-CASH-023 раніше, ніж
+ * перегенеровано `api-types`, тому тут розширення вручну. Після `gen:api-types` перетин стає
+ * зайвим — тоді лишити чистий `ApiSchema<'CashOperationResponseDto'>`.
+ */
+export type CashOperation = ApiSchema<'CashOperationResponseDto'> & {
+  /** Рядок сторно: id рядка, який він сторнує. */
+  reversalOfId?: string | null;
+  /** Рядок-оригінал, уже сторнований. */
+  reversedBy?: CashOperationReversedBy | null;
+};
 
 /** Тіло POST /cash-registers/:id/operations — рівно вихід спільної `cashOperationSchema`. */
 export type CreateCashOperationBody = CashOperationFormValues;
@@ -196,6 +219,44 @@ export function useRetryCashFiscal() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: cashKeys.all });
       invalidatePaymentSideEffects(qc);
+    },
+  });
+}
+
+/**
+ * Сторно касової операції (BR-CASH-023…025): POST …/operations/:operationId/reverse { reason }.
+ * `idempotencyKey` — один на відкриття картки сторно, як у ручної операції.
+ *
+ * Сторно відкочує наслідки оригіналу: оплата контрагента — «сплачено» рахунку й наряду, борг,
+ * бонуси; оплата постачальнику — «сплачено» замовлення й статус оплати. Тому після успіху
+ * скидаються ті самі кеші, що й після оплати, плюс закупівлі.
+ */
+export function useReverseCashOperation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      cashRegisterId,
+      operationId,
+      idempotencyKey,
+      reason,
+    }: {
+      cashRegisterId: string;
+      operationId: string;
+      idempotencyKey: string;
+    } & CashReversalFormValues) =>
+      apiFetch<CashOperation>(
+        `/cash-registers/${cashRegisterId}/operations/${operationId}/reverse`,
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify({ reason }),
+        },
+      ),
+    onSuccess: () => invalidateCashReversalSideEffects(qc),
+    // Як і для ручної операції: відмова не доводить, що сторно не пройшло (відповідь могла не
+    // дійти) — історію каси перечитуємо, щоб позначки показали правду.
+    onError: () => {
+      void qc.invalidateQueries({ queryKey: cashKeys.all });
     },
   });
 }

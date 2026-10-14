@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DoorOpen,
@@ -9,6 +9,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   RotateCw,
+  Undo2,
   Wallet,
 } from 'lucide-react';
 import {
@@ -48,6 +49,7 @@ import {
   type CashOperation,
 } from '@/hooks/api/useCash';
 import { CashOperationModal } from './CashOperationModal';
+import { CashReversalModal } from './CashReversalModal';
 
 /**
  * Стеля історії на сервері (BR-CASH-015): більше рядків за один запит він не віддає, зсуву немає.
@@ -56,8 +58,28 @@ import { CashOperationModal } from './CashOperationModal';
  */
 export const CASH_HISTORY_LIMIT = 500;
 
+/**
+ * Рядки, створені іншим документом, скасовують там, де створили (BR-CASH-023): зарплату — у
+ * відомості, банк — у виписці. Кнопка тут обіцяла б відмову сервера.
+ */
+const NOT_REVERSIBLE_HERE: ReadonlySet<string> = new Set(['PayrollPeriod', 'BankTransaction']);
+
+/** Чи можна сторнувати рядок: ще не сторнований, сам не сторно, не з зарплати чи банку. */
+export function isReversible(op: CashOperation): boolean {
+  return !op.reversedBy && !op.reversalOfId && !NOT_REVERSIBLE_HERE.has(op.documentType ?? '');
+}
+
+/** id рядка історії в DOM — за ним позначка сторно прокручує до пари. */
+const rowDomId = (operationId: string) => `cash-op-${operationId}`;
+
+/** Скільки підсвічувати рядок, до якого перейшли з позначки сторно. */
+const JUMP_HIGHLIGHT_MS = 2000;
+
 interface Props {
-  /** Усі ручні операції — власник, адміністратор, бухгалтер. */
+  /**
+   * Усі ручні операції й сторно — власник, адміністратор, бухгалтер (ролі POST …/operations і
+   * POST …/operations/:operationId/reverse збігаються).
+   */
   canOperate?: boolean;
   /** Приймальня: лише внесення з приводами `RECEPTIONIST_CASH_REASONS`, без видачі й статей. */
   receptionist?: boolean;
@@ -151,6 +173,34 @@ export default function CashOperationsTab({
     }
   };
 
+  // Сторно: рядок тримаємо й після закриття — інакше картка порожніла б під час анімації виходу.
+  const [reverseTarget, setReverseTarget] = useState<CashOperation | null>(null);
+  const [reverseOpen, setReverseOpen] = useState(false);
+  const openReverse = (op: CashOperation) => {
+    setReverseTarget(op);
+    setReverseOpen(true);
+  };
+  // Стабільний onClose: картка не має перезапускати ефекти через нову стрілку на кожен рендер.
+  const closeReverse = useCallback(() => setReverseOpen(false), []);
+
+  // Перехід між оригіналом і його сторно: прокрутити до рядка й коротко підсвітити.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = setTimeout(() => setHighlightId(null), JUMP_HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
+  const jumpTo = (id: string) => {
+    document
+      .getElementById(rowDomId(id))
+      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    setHighlightId(id);
+  };
+  const opsById = useMemo(
+    () => new Map((operations ?? []).map(o => [o.id, o] as const)),
+    [operations],
+  );
+
   const openBaseDocument = (op: CashOperation) => {
     if (!op.baseDocumentId) return;
     if (op.baseDocumentType === 'WorkOrder') nav.toWorkOrder(op.baseDocumentId);
@@ -202,7 +252,8 @@ export default function CashOperationsTab({
   }
 
   const canDeposit = canOperate || receptionist;
-  const colCount = isBaseCurrency ? 6 : 7;
+  // Колонка дій — лише ролям зі сторно; інші не мають у ній жодної кнопки.
+  const colCount = (isBaseCurrency ? 6 : 7) + (canOperate ? 1 : 0);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-3">
@@ -335,6 +386,13 @@ export default function CashOperationsTab({
                   {t('operations.colInBase', { symbol: baseSymbol })}
                 </TableHead>
               )}
+              {/* Sticky: на вузькому екрані таблиця ширша за контейнер, і дія «Сторнувати»
+                  ховалась би за горизонтальною прокруткою (як у банківській виписці). */}
+              {canOperate && (
+                <TableHead className="sticky right-0 bg-secondary">
+                  <span className="sr-only">{t('reversal.colActions')}</span>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -362,105 +420,224 @@ export default function CashOperationsTab({
                 </TableCell>
               </TableRow>
             )}
-            {operations?.map(op => (
-              <TableRow key={op.id}>
-                <TableCell className="text-[13px] text-muted-foreground whitespace-nowrap">
-                  {fmtDateTime(op.createdAt)}
-                </TableCell>
-                <TableCell>
-                  <span
-                    className={cn(
-                      'inline-flex items-center gap-1 text-[13px] font-medium',
-                      op.direction === 'IN' ? 'text-success' : 'text-destructive',
-                    )}
-                  >
-                    {op.direction === 'IN' ? (
-                      <ArrowDownCircle className="h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpCircle className="h-3.5 w-3.5" />
-                    )}
-                    {op.direction === 'IN'
-                      ? t('operations.directionIn')
-                      : t('operations.directionOut')}
-                  </span>
-                </TableCell>
-                <TableCell className="text-[13px] text-muted-foreground">
-                  {t(`reasons.${op.reason}`, { defaultValue: op.reason })}
-                  {op.expenseCategoryName ? ` · ${op.expenseCategoryName}` : ''}
-                  {op.notes ? ` · ${op.notes}` : ''}
-                  {op.documentNumber ? ` · ${op.documentNumber}` : ''}
-                  {op.fiscalStatus && (
-                    <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
-                      <Badge
-                        variant={FISCAL_STATUS_BADGE[op.fiscalStatus] ?? 'secondary'}
-                        tooltip={FISCAL_STATUS_DESCRIPTIONS[op.fiscalStatus]}
-                      >
-                        {t('operations.fiscalBadge', {
-                          status: fiscalStatusLabel(op.fiscalStatus),
-                        })}
-                      </Badge>
-                      {canOperate && op.fiscalStatus === 'FAILED' && op.documentId && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={e => {
-                            e.stopPropagation();
-                            void onRetryFiscal(op);
-                          }}
-                          loading={retryingId === op.id}
-                          disabled={retryingId !== null}
-                        >
-                          <RotateCw className="h-3.5 w-3.5 mr-1" />
-                          {t('operations.fiscalRetry')}
-                        </Button>
-                      )}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-[13px]">
-                  {op.counterpartyName || op.employeeName || (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-[13px] whitespace-nowrap">
-                  {op.baseDocumentId &&
-                  op.baseDocumentNumber &&
-                  op.baseDocumentType === 'PurchaseOrder' &&
-                  !canOpenPurchaseOrders ? (
-                    op.baseDocumentNumber
-                  ) : op.baseDocumentId && op.baseDocumentNumber ? (
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        openBaseDocument(op);
-                      }}
-                      title={t('operations.openBaseAria', { number: op.baseDocumentNumber })}
-                      aria-label={t('operations.openBaseAria', { number: op.baseDocumentNumber })}
-                      className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
-                    >
-                      {op.baseDocumentNumber}
-                    </button>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell
+            {operations?.map(op => {
+              const reversed = !!op.reversedBy;
+              const original = op.reversalOfId ? opsById.get(op.reversalOfId) : undefined;
+              const reversalRowLoaded = !!op.reversedBy && opsById.has(op.reversedBy.id);
+              const reasonLabel = t(`reasons.${op.reason}`, { defaultValue: op.reason });
+              const amountText = `${fmtMoney(op.amount)} ${curSymbol}`.trim();
+              return (
+                <TableRow
+                  key={op.id}
+                  id={rowDomId(op.id)}
+                  data-reversed={reversed || undefined}
+                  data-reversal={op.reversalOfId ? true : undefined}
                   className={cn(
-                    'text-right tabular-nums font-semibold',
-                    op.direction === 'IN' ? 'text-success' : 'text-destructive',
+                    'group transition-colors',
+                    highlightId === op.id && 'bg-warning-subtle',
                   )}
                 >
-                  {op.direction === 'IN' ? '+' : '−'}
-                  {fmtMoney(op.amount)} {curSymbol}
-                </TableCell>
-                {!isBaseCurrency && (
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {op.amountBase != null ? `${fmtMoney(op.amountBase)} ${baseSymbol}` : '—'}
+                  <TableCell
+                    className={cn(
+                      'text-[13px] text-muted-foreground whitespace-nowrap',
+                      reversed && 'opacity-60',
+                    )}
+                  >
+                    {fmtDateTime(op.createdAt)}
                   </TableCell>
-                )}
-              </TableRow>
-            ))}
+                  <TableCell className={cn(reversed && 'opacity-60')}>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 text-[13px] font-medium',
+                        op.direction === 'IN' ? 'text-success' : 'text-destructive',
+                      )}
+                    >
+                      {op.direction === 'IN' ? (
+                        <ArrowDownCircle className="h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpCircle className="h-3.5 w-3.5" />
+                      )}
+                      {op.direction === 'IN'
+                        ? t('operations.directionIn')
+                        : t('operations.directionOut')}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-[13px] text-muted-foreground">
+                    <span className={cn(reversed && 'opacity-60')}>
+                      {op.reversalOfId
+                        ? t('reversal.marks.reversal', { reason: reasonLabel })
+                        : reasonLabel}
+                      {op.expenseCategoryName ? ` · ${op.expenseCategoryName}` : ''}
+                      {op.notes ? ` · ${op.notes}` : ''}
+                      {op.documentNumber ? ` · ${op.documentNumber}` : ''}
+                    </span>
+                    {op.fiscalStatus && (
+                      <span className="ml-2 inline-flex items-center gap-1.5 align-middle">
+                        <Badge
+                          variant={FISCAL_STATUS_BADGE[op.fiscalStatus] ?? 'secondary'}
+                          tooltip={FISCAL_STATUS_DESCRIPTIONS[op.fiscalStatus]}
+                        >
+                          {t('operations.fiscalBadge', {
+                            status: fiscalStatusLabel(op.fiscalStatus),
+                          })}
+                        </Badge>
+                        {/* Чек сторнованої оплати сервер скасовує — повторювати нічого. */}
+                        {canOperate &&
+                          op.fiscalStatus === 'FAILED' &&
+                          op.documentId &&
+                          !reversed &&
+                          !op.reversalOfId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={e => {
+                                e.stopPropagation();
+                                void onRetryFiscal(op);
+                              }}
+                              loading={retryingId === op.id}
+                              disabled={retryingId !== null}
+                            >
+                              <RotateCw className="h-3.5 w-3.5 mr-1" />
+                              {t('operations.fiscalRetry')}
+                            </Button>
+                          )}
+                      </span>
+                    )}
+                    {op.reversedBy && (
+                      <div className="mt-0.5 text-[12px] font-medium text-destructive-text">
+                        {reversalRowLoaded ? (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (op.reversedBy) jumpTo(op.reversedBy.id);
+                            }}
+                            title={t('reversal.marks.reversedAria')}
+                            className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+                          >
+                            {t('reversal.marks.reversed', {
+                              reason: op.reversedBy.reason || '—',
+                              date: fmtDateTime(op.reversedBy.createdAt),
+                            })}
+                          </button>
+                        ) : (
+                          t('reversal.marks.reversed', {
+                            reason: op.reversedBy.reason || '—',
+                            date: fmtDateTime(op.reversedBy.createdAt),
+                          })
+                        )}
+                      </div>
+                    )}
+                    {op.reversalOfId && (
+                      <div className="mt-0.5 text-[12px]">
+                        {original ? (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              jumpTo(original.id);
+                            }}
+                            aria-label={t('reversal.marks.originalAria', {
+                              date: fmtDateTime(original.createdAt),
+                            })}
+                            className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+                          >
+                            {t('reversal.marks.original', {
+                              date: fmtDateTime(original.createdAt),
+                              amount: `${fmtMoney(original.amount)} ${curSymbol}`.trim(),
+                            })}
+                          </button>
+                        ) : (
+                          <span>{t('reversal.marks.originalOutside')}</span>
+                        )}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className={cn('text-[13px]', reversed && 'opacity-60')}>
+                    {op.counterpartyName || op.employeeName || (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell
+                    className={cn('text-[13px] whitespace-nowrap', reversed && 'opacity-60')}
+                  >
+                    {op.baseDocumentId &&
+                    op.baseDocumentNumber &&
+                    op.baseDocumentType === 'PurchaseOrder' &&
+                    !canOpenPurchaseOrders ? (
+                      op.baseDocumentNumber
+                    ) : op.baseDocumentId && op.baseDocumentNumber ? (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          openBaseDocument(op);
+                        }}
+                        title={t('operations.openBaseAria', { number: op.baseDocumentNumber })}
+                        aria-label={t('operations.openBaseAria', {
+                          number: op.baseDocumentNumber,
+                        })}
+                        className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm"
+                      >
+                        {op.baseDocumentNumber}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      'text-right tabular-nums font-semibold whitespace-nowrap',
+                      op.direction === 'IN' ? 'text-success' : 'text-destructive',
+                      reversed && 'line-through opacity-60',
+                    )}
+                  >
+                    {op.direction === 'IN' ? '+' : '−'}
+                    {fmtMoney(op.amount)} {curSymbol}
+                  </TableCell>
+                  {!isBaseCurrency && (
+                    <TableCell
+                      className={cn(
+                        'text-right tabular-nums text-muted-foreground',
+                        reversed && 'line-through opacity-60',
+                      )}
+                    >
+                      {op.amountBase != null ? `${fmtMoney(op.amountBase)} ${baseSymbol}` : '—'}
+                    </TableCell>
+                  )}
+                  {canOperate && (
+                    <TableCell
+                      className={cn(
+                        'sticky right-0 text-right whitespace-nowrap',
+                        // Липка комірка має власне тло — підсвітка рядка мусить лягти й на неї.
+                        highlightId === op.id
+                          ? 'bg-warning-subtle'
+                          : 'bg-surface group-hover:bg-secondary',
+                      )}
+                    >
+                      {isReversible(op) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          leftIcon={<Undo2 className="h-3.5 w-3.5" />}
+                          title={t('reversal.actionAria', {
+                            date: fmtDateTime(op.createdAt),
+                            amount: amountText,
+                          })}
+                          onClick={e => {
+                            e.stopPropagation();
+                            openReverse(op);
+                          }}
+                        >
+                          {t('reversal.action')}
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -472,6 +649,13 @@ export default function CashOperationsTab({
         register={selected}
         allowedReasons={canOperate ? undefined : RECEPTIONIST_CASH_REASONS}
         categoriesEnabled={canOperate}
+      />
+
+      <CashReversalModal
+        open={reverseOpen}
+        onClose={closeReverse}
+        operation={reverseTarget}
+        currencySymbol={curSymbol}
       />
     </div>
   );

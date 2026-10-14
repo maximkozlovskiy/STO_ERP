@@ -114,6 +114,19 @@ export function invalidatePurchaseSideEffects(qc: QueryClient): void {
 }
 
 /**
+ * Сторно касової операції (BR-CASH-023…025). Яку саме операцію сторновано, видно лише на
+ * сервері, а наслідки різні: оплата контрагента повертає «сплачено» рахунку й наряду та борг
+ * (як оплата, лише навпаки), оплата постачальнику — «сплачено» замовлення й статус оплати
+ * постачальнику, повернення — баланс контрагента. Тому скидаємо обидва дерева: оплат і
+ * закупівель (обидва вже включають касу й баланс контрагента).
+ */
+export function invalidateCashReversalSideEffects(qc: QueryClient): void {
+  invalidatePaymentSideEffects(qc);
+  void qc.invalidateQueries({ queryKey: purchaseOrdersKeys.all });
+  void qc.invalidateQueries({ queryKey: supplierPaymentsKeys.all });
+}
+
+/**
  * Оптимістичний патч ОДНОГО рядка у ВСІХ закешованих paginated-списках під заданим
  * key-factory (`lists()` → префікс `[all, 'list']`). Знаходить елемент за id у `items`
  * кожного кешованого запиту й застосовує `patch`. Повертає restorer, що відновлює УСІ

@@ -26,6 +26,7 @@ import {
   useCashOperations,
   useCreateCashOperation,
   useRetryCashFiscal,
+  useReverseCashOperation,
 } from './useCash';
 
 function setup() {
@@ -111,6 +112,62 @@ describe('useCreateCashOperation', () => {
       await result.current
         .mutateAsync({ cashRegisterId: 'reg-1', direction: 'OUT', reason: 'MANUAL_OUT', amount: 1 })
         .catch(() => undefined);
+    });
+    expect([...roots()]).toEqual(['cash']);
+  });
+});
+
+// Сторно касової операції (BR-CASH-023…025): відкочує оплату контрагента (рахунок, наряд,
+// борг) або оплату постачальнику (замовлення, статус оплати) — скидаються обидва дерева.
+// Mutation-verify: прибрати `invalidatePaymentSideEffects` з `invalidateCashReversalSideEffects`
+// → кейс «скидає» падає; прибрати `headers` → кейс заголовка падає.
+describe('useReverseCashOperation', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ id: 'op-rev', reversalOfId: 'op-1' });
+  });
+
+  const reverse = { cashRegisterId: 'reg-1', operationId: 'op-1', idempotencyKey: 'key-9' };
+
+  it('POST …/operations/:operationId/reverse: тіло — лише причина, ключ — у заголовку', async () => {
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useReverseCashOperation(), { wrapper });
+    await act(() => result.current.mutateAsync({ ...reverse, reason: 'помилкова сума' }));
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    const [path, init] = apiFetchMock.mock.calls[0]! as [
+      string,
+      { method: string; body: string; headers?: Record<string, string> },
+    ];
+    expect(path).toBe('/cash-registers/reg-1/operations/op-1/reverse');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ 'Idempotency-Key': 'key-9' });
+    expect(JSON.parse(init.body)).toEqual({ reason: 'помилкова сума' });
+  });
+
+  it('після успіху скидає касу, оплати, рахунки, наряди, контрагентів і закупівлі', async () => {
+    const { wrapper, roots } = setup();
+    const { result } = renderHook(() => useReverseCashOperation(), { wrapper });
+    await act(() => result.current.mutateAsync({ ...reverse, reason: 'дубль' }));
+    const keys = roots();
+    for (const k of [
+      'cash',
+      'invoices',
+      'work-orders',
+      'payments',
+      'counterparties',
+      'purchase-orders',
+      'supplier-payments',
+    ]) {
+      expect(keys).toContain(k);
+    }
+  });
+
+  it('після відмови перечитує лише касу', async () => {
+    apiFetchMock.mockRejectedValue(new Error('Операцію вже сторновано'));
+    const { wrapper, roots } = setup();
+    const { result } = renderHook(() => useReverseCashOperation(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ ...reverse, reason: 'x' }).catch(() => undefined);
     });
     expect([...roots()]).toEqual(['cash']);
   });

@@ -173,5 +173,44 @@
     "defaultReasonTaken": "{{reason}} — taken by category “{{name}}”",
     "defaultReasonHint": "The category is filled in automatically when this reason is chosen in the cash register",
     "defaultReasonBadge": "Default reason: {{reason}}"
+  },
+  "reversal": {
+    "action": "Reverse",
+    "actionAria": "Reverse the operation of {{date}} for {{amount}}",
+    "colActions": "Actions",
+    "title": "Reverse cash operation",
+    "summaryTitle": "What is reversed",
+    "fieldDate": "Date",
+    "fieldOperation": "Operation",
+    "fieldAmount": "Amount",
+    "fieldParty": "Counterparty / employee",
+    "fieldBase": "Base document",
+    "consequenceTitle": "What will happen",
+    "consequence": {
+      "commonIn": "{{amount}} will be paid out of the cash desk — the opposite operation for the same amount. The original stays in the history marked «Reversed».",
+      "commonOut": "{{amount}} will be paid into the cash desk — the opposite operation for the same amount. The original stays in the history marked «Reversed».",
+      "SALE_PAYMENT": "The counterparty's debt and the «paid» amount of the work order and invoice will be restored; bonuses earned for the payment will be written off.",
+      "SUPPLIER_PAYMENT": "The supplier payment will be reversed, the order's «paid» amount will decrease and the debt to the supplier will be restored.",
+      "REFUND": "The refund to the client will be reversed — the counterparty balance will be restored.",
+      "SUPPLIER_REFUND_IN": "The refund from the supplier will be reversed — the supplier balance will be restored."
+    },
+    "reasonLabel": "Reversal reason",
+    "reasonPlaceholder": "E.g. wrong amount or wrong cash desk",
+    "counter": "{{count}} / {{max}}",
+    "submit": "Reverse",
+    "cancel": "Cancel",
+    "confirmText": "A reversal cannot be undone. Reverse the operation?",
+    "confirmSubmit": "Yes, reverse",
+    "back": "Back",
+    "success": "Operation reversed",
+    "error": "Could not reverse the operation",
+    "marks": {
+      "reversed": "Reversed: {{reason}}, {{date}}",
+      "reversedAria": "Show the reversal row",
+      "reversal": "Reversal: {{reason}}",
+      "original": "original of {{date}}, {{amount}}",
+      "originalAria": "Show the reversed operation of {{date}}",
+      "originalOutside": "original outside the filter"
+    }
   }
 }

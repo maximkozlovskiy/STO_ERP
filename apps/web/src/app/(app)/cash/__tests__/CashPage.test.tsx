@@ -45,6 +45,7 @@ vi.mock('@/hooks/api/useCash', () => ({
   // Базова валюта org (UAH) — вкладка порівнює код каси з базовим замість хардкоду 'UAH'.
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
   useRetryCashFiscal: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useReverseCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 const useExpenseCategoriesMock = vi.fn((_showDeleted?: boolean, _enabled?: boolean) => ({
   data: [] as unknown[],

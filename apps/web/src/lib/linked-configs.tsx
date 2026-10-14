@@ -22,9 +22,9 @@ import {
 } from '@/i18n/enumLabel';
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format';
 import { displayCounterpartyName } from '@/lib/utils';
-import type { LinkedEntityConfig } from '@/components/ui/LinkedDocumentsPanel';
+import type { LinkedEntityConfig, LinkedItemBadge } from '@/components/ui/LinkedDocumentsPanel';
 import type { LinkedNav } from '@/lib/linked-nav';
-import type { ApiSchema } from '@sto/shared';
+import { SUPPLIER_PAYMENT_STATUS_BADGE, type ApiSchema } from '@sto/shared';
 
 // Реєстр конфігів пов'язаних документів. Кожен конфіг — фабрика (nav) => config,
 // бо навігація приходить з хука useLinkedNav() у компоненті, а самі секції статичні.
@@ -75,7 +75,11 @@ function invoiceStatusBadge(status: string) {
 // `amount: string | number` там, де сервіс уже робить `Number()`).
 
 type LinkedInvoiceRow = ApiSchema<'LinkedInvoiceRowDto'>;
-type LinkedPaymentRow = ApiSchema<'LinkedPaymentRowDto'>;
+/**
+ * `reversedAt` — оплату сторновано з каси (BR-CASH-024). Поле додано контрактом раніше, ніж
+ * перегенеровано `api-types`; після `gen:api-types` перетин стає зайвим.
+ */
+type LinkedPaymentRow = ApiSchema<'LinkedPaymentRowDto'> & { reversedAt?: string | null };
 type LinkedSlotRow = ApiSchema<'LinkedCalendarSlotRowDto'>;
 type LinkedWarrantyRow = ApiSchema<'LinkedWarrantyRowDto'>;
 // Контрагент і наряд у linked-панелі — рахункові DTO (та сама форма у work-order).
@@ -173,6 +177,14 @@ function invoiceSection(
   };
 }
 
+/** Позначка сторнованої оплати — замість позначки чека: чек сторнованої оплати скасовано. */
+const REVERSED_PAYMENT_BADGE: LinkedItemBadge = { label: 'Сторновано', variant: 'destructive' };
+
+/** Рядок прев'ю «Сторновано: дата» для сторнованої оплати. */
+function reversedPreviewRows(row: LinkedPaymentRow) {
+  return row.reversedAt ? [{ label: 'Сторновано', value: fmtDateTime(row.reversedAt) }] : [];
+}
+
 // ─── WorkOrder config (behavior-preserving дзеркало старої панелі) ──
 
 export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
@@ -188,12 +200,14 @@ export function workOrderLinkedConfig(nav: LinkedNav): LinkedEntityConfig {
           id: row.id,
           primary: `${fmt(row.amount)} ₴`,
           secondary: fmtDateTime(row.createdAt),
+          badge: row.reversedAt ? REVERSED_PAYMENT_BADGE : undefined,
           preview: {
             title: 'Оплата',
             rows: [
               { label: 'Сума', value: `${fmt(row.amount)} ₴` },
               { label: 'Метод', value: METHOD_LABELS[row.method] ?? row.method },
               { label: 'Дата', value: fmtDateTime(row.createdAt) },
+              ...reversedPreviewRows(row),
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],
           },
@@ -299,9 +313,11 @@ export function invoiceLinkedConfig(
           id: row.id,
           primary: `${fmt(row.amount)} ₴`,
           secondary: fmtDateTime(row.createdAt),
-          badge: fiscalBadge(row.fiscalStatus),
+          // Сторнована оплата: позначка «Сторновано» замість чека й без «Повторити» — чек
+          // сторнованої оплати сервер скасовує, повтор лише отримав би відмову.
+          badge: row.reversedAt ? REVERSED_PAYMENT_BADGE : fiscalBadge(row.fiscalStatus),
           action:
-            opts.retryFiscal && row.fiscalStatus === 'FAILED'
+            opts.retryFiscal && row.fiscalStatus === 'FAILED' && !row.reversedAt
               ? { label: 'Повторити', run: () => opts.retryFiscal!(row.id) }
               : undefined,
           preview: {
@@ -313,6 +329,7 @@ export function invoiceLinkedConfig(
               ...(row.fiscalStatus
                 ? [{ label: 'Чек', value: fiscalStatusLabel(row.fiscalStatus) }]
                 : []),
+              ...reversedPreviewRows(row),
               ...(row.notes ? [{ label: 'Примітка', value: row.notes }] : []),
             ],
           },
@@ -339,9 +356,11 @@ function supplierPaymentSection({ withDate = true }: { withDate?: boolean } = {}
       id: row.id,
       primary: `${row.number} — ${fmt(row.amount)} ₴`,
       secondary: row.documentDate ? fmtDate(row.documentDate) : undefined,
+      // Колір — зі спільної мапи статусів: «Сторновано» (REVERSED) має бути помітним, а не
+      // сірим, як інші рядки.
       badge: {
         label: supplierPaymentStatusLabel(row.status),
-        className: 'bg-secondary text-muted-foreground',
+        variant: SUPPLIER_PAYMENT_STATUS_BADGE[row.status] ?? 'secondary',
       },
       preview: {
         title: `Оплата ${row.number}`,

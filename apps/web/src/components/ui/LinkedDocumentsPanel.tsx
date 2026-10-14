@@ -13,6 +13,7 @@ import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 
 // ─── Generic config-driven API ────────────────────────────
 //
@@ -22,12 +23,20 @@ import { cn } from '@/lib/utils';
 // секції мапиться у `LinkedSectionItem` з опційною навігацією `navigate?()`.
 // Спільні примітиви (DocSection/SectionRow/PreviewPopup) лишились незмінними.
 
+/**
+ * Позначка рядка: або власні класи, або варіант спільного `<Badge>` — коли колір уже задано
+ * спільною мапою статусів (`*_STATUS_BADGE` з `@sto/shared`), щоб не дублювати її класами.
+ */
+export type LinkedItemBadge =
+  | { label: string; className: string; variant?: undefined }
+  | { label: string; variant: BadgeVariant; className?: undefined };
+
 /** Один рядок у секції пов'язаних документів. */
 export interface LinkedSectionItem {
   id: string;
   primary: string;
   secondary?: string;
-  badge?: { label: string; className: string };
+  badge?: LinkedItemBadge;
   /** Вміст прев'ю-попапа (key/value рядки). */
   preview: { title: string; rows: Array<{ label: string; value: ReactNode }> };
   /** Перехід до документа (deep-link). undefined → кнопки «Відкрити» немає. */
@@ -201,7 +210,7 @@ function SectionRow({
   icon: ElementType;
   primary: string;
   secondary?: string;
-  badge?: { label: string; className: string };
+  badge?: LinkedItemBadge;
   onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
   /** Перехід до документа одним кліком — без проміжного прев'ю. Немає сторінки → немає кнопки. */
   onOpen?: () => void;
@@ -225,11 +234,15 @@ function SectionRow({
             <span className="block text-[11px] text-muted-foreground truncate">{secondary}</span>
           )}
         </span>
-        {badge && (
+        {badge?.variant ? (
+          <Badge variant={badge.variant} className="shrink-0">
+            {badge.label}
+          </Badge>
+        ) : badge ? (
           <span className={cn('px-2 py-0.5 rounded-full text-[11px] shrink-0', badge.className)}>
             {badge.label}
           </span>
-        )}
+        ) : null}
       </button>
       {action && (
         <button

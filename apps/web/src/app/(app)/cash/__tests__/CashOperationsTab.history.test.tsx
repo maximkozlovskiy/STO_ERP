@@ -51,6 +51,7 @@ vi.mock('@/hooks/api/useCash', () => ({
   useCashOperations: () => ({ data: operations, isLoading: false }),
   useCreateCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetryCashFiscal: () => ({ mutateAsync: retryMutateAsync, isPending: false }),
+  useReverseCashOperation: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
 }));
 vi.mock('@/hooks/api/useExpenseCategories', () => ({
@@ -108,6 +109,7 @@ describe('CashOperationsTab — історія операцій', () => {
   it('шапка має колонки «Контрагент / працівник» і «Підстава»', () => {
     render(<CashOperationsTab canOperate />);
     const headers = screen.getAllByRole('columnheader').map(h => h.textContent);
+    // «Дії» — колонка кнопки «Сторнувати» (BR-CASH-023), підпис лише для читачів екрана.
     expect(headers).toEqual([
       'Дата',
       'Операція',
@@ -115,6 +117,7 @@ describe('CashOperationsTab — історія операцій', () => {
       'Контрагент / працівник',
       'Підстава',
       'Сума',
+      'Дії',
     ]);
   });
 
@@ -134,7 +137,12 @@ describe('CashOperationsTab — історія операцій', () => {
     expect(within(rowOf('Петренко Іван')).getByText(/Під звіт/)).toBeInTheDocument();
     const plain = rowOf('Інкасація · інкасація ранкова');
     expect(within(plain).getAllByText('—')).toHaveLength(2);
-    expect(within(plain).queryByRole('button')).not.toBeInTheDocument();
+    // Без підстави — жодного посилання на документ; лишається тільки дія «Сторнувати».
+    expect(
+      within(plain)
+        .getAllByRole('button')
+        .map(b => b.textContent),
+    ).toEqual(['Сторнувати']);
   });
 
   it('підстава-наряд відкриває картку наряду, підстава-замовлення — картку замовлення', () => {
