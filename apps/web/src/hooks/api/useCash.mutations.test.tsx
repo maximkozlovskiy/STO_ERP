@@ -11,7 +11,7 @@
 //   - прибрати `invalidatePaymentSideEffects(qc)`  → кейс «оплати» падає;
 //   - прибрати `headers: { 'Idempotency-Key': … }` → кейс заголовка падає.
 
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
@@ -21,7 +21,7 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-import { useCreateCashOperation, useRetryCashFiscal } from './useCash';
+import { useBaseCurrency, useCreateCashOperation, useRetryCashFiscal } from './useCash';
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
@@ -124,5 +124,30 @@ describe('useRetryCashFiscal', () => {
     expect(apiFetchMock).toHaveBeenCalledWith('/payments/p1/retry-fiscal', { method: 'POST' });
     expect(roots()).toContain('cash');
     expect(roots()).toContain('payments');
+  });
+});
+
+// Bug #847: базову валюту читає кожна роль, що бачить касу; /settings/organisation відкритий
+// лише власнику й адміністратору (бухгалтер і приймальня отримували 403).
+describe('useBaseCurrency', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((path: string) =>
+      path === '/currencies'
+        ? Promise.resolve({ items: [{ code: 'USD', symbol: '$' }], total: 1 })
+        : Promise.resolve({ currency: 'USD' }),
+    );
+  });
+
+  it('код валюти бере з маршруту для всіх ролей, а не з повних налаштувань організації', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useBaseCurrency(), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ code: 'USD', symbol: '$' }));
+    const paths = apiFetchMock.mock.calls.map(c => c[0] as string);
+    expect(paths).toContain('/settings/base-currency');
+    expect(paths).not.toContain('/settings/organisation');
   });
 });

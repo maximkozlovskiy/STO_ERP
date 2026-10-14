@@ -32,7 +32,7 @@ beforeEach(() => {
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation((path: string) => {
     if (path === '/currencies') return Promise.resolve({ items: CURRENCIES, total: 2 });
-    if (path === '/settings/organisation') return Promise.resolve({ currency: 'UAH' });
+    if (path === '/settings/base-currency') return Promise.resolve({ currency: 'UAH' });
     return Promise.resolve({ items: [] });
   });
 });

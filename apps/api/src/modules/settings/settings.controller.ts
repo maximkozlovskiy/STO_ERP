@@ -28,6 +28,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { OrgContext } from '../../auth/decorators/org-context.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
+  BaseCurrencyResponseDto,
   BranchSettingsResponseDto,
   OrganisationResponseDto,
   OrganisationSettingsResponseDto,
@@ -94,6 +95,19 @@ export class SettingsController {
   async getUiFeatures(@OrgContext() orgId: string): Promise<UiFeatures> {
     const settings = await this.service.getOrganisationSettings(orgId);
     return settings.uiFeatures;
+  }
+
+  // Базова валюта організації потрібна кожному екрану з грошима (каса, рахунки, наряди,
+  // взаєморозрахунки) — символ валюти й колонка «у базовій». Повні налаштування організації
+  // читають лише власник і адміністратор, тож бухгалтер і приймальня отримували 403 на кожному
+  // такому екрані й лишались без базової валюти (Bug #847). Віддаємо ЛИШЕ код валюти.
+  @Get('base-currency')
+  @Roles('OWNER', 'ADMIN', 'RECEPTIONIST', 'MECHANIC', 'STOREKEEPER', 'ACCOUNTANT', 'XLSX_MANAGER')
+  @ApiOperation({ summary: 'Базова валюта організації (доступно всім авторизованим)' })
+  @ApiResponse({ status: 200, type: BaseCurrencyResponseDto })
+  async getBaseCurrency(@OrgContext() orgId: string): Promise<BaseCurrencyResponseDto> {
+    const settings = await this.service.getOrganisationSettings(orgId);
+    return { currency: settings.currency };
   }
 
   @Patch('organisation')

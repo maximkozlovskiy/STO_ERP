@@ -209,6 +209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/base-currency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Базова валюта організації (доступно всім авторизованим) */
+        get: operations["SettingsController_getBaseCurrency_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/branch/{branchId}": {
         parameters: {
             query?: never;
@@ -5352,6 +5369,13 @@ export interface components {
             syncCalendarSlotWithPlannedHours: boolean;
             updatedAt: string;
         };
+        BaseCurrencyResponseDto: {
+            /**
+             * @description Код базової валюти організації
+             * @example UAH
+             */
+            currency: string;
+        };
         UpdateOrganisationSettingsDto: {
             /** @description ISO код валюти обліку (UAH, USD, EUR) */
             currency?: string;
@@ -9175,6 +9199,25 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    SettingsController_getBaseCurrency_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseCurrencyResponseDto"];
                 };
             };
         };

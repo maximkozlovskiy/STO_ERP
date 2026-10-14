@@ -37,6 +37,10 @@ export const cashKeys = {
  * amountBase зберігається у базовій валюті org; каса вважається базовою, коли її код === базовому.
  * НЕ хардкодити 'UAH'/'₴' в UI: база конфігурована (rule Configuration over Hardcode), org може мати
  * іншу базу — тоді і колонка «У базовій», і її символ мають слідувати за реальною базою.
+ *
+ * Код бере з GET /settings/base-currency (усі ролі), а НЕ з /settings/organisation: повні
+ * налаштування читають лише власник і адміністратор, тож бухгалтер і приймальня на кожному
+ * екрані з грошима отримували 403 і лишались без базової валюти (Bug #847).
  */
 export interface BaseCurrency {
   code: string;
@@ -47,7 +51,7 @@ export function useBaseCurrency() {
     queryKey: ['settings', 'base-currency'],
     queryFn: async (): Promise<BaseCurrency> => {
       const [settings, currencies] = await Promise.all([
-        apiFetch<{ currency: string }>('/settings/organisation'),
+        apiFetch<{ currency: string }>('/settings/base-currency'),
         apiFetch<{ items: { code: string; symbol?: string | null }[]; total: number }>(
           '/currencies',
         ).catch(() => ({ items: [], total: 0 })),

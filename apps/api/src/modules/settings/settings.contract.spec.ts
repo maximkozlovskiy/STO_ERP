@@ -13,6 +13,7 @@ import { BankStatementPullScheduler } from '../bank-statements/bank-statement-pu
 import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { UI_FEATURES_DEFAULTS } from './settings.dto';
 import type { MockInstance } from 'vitest';
 
@@ -247,6 +248,25 @@ describe('Settings — HTTP Contract', () => {
       const body = res.json() as Record<string, boolean>;
       expect(body.commandPaletteEnabled).toBe(false);
       expect(body.toastEnabled).toBe(true);
+    });
+  });
+
+  // Bug #847: базова валюта потрібна касі, рахункам і нарядам у КОЖНОЇ ролі, а повні
+  // налаштування організації читають лише власник і адміністратор.
+  describe('GET /settings/base-currency', () => {
+    it('повертає 200 і лише код базової валюти — без решти налаштувань організації', async () => {
+      const res = await app.inject({ method: 'GET', url: '/settings/base-currency' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ currency: 'UAH' });
+    });
+
+    it('маршрут відкритий бухгалтеру й приймальні; повні налаштування — лише власнику й адміну', () => {
+      const rolesOf = (method: keyof SettingsController) =>
+        Reflect.getMetadata(ROLES_KEY, SettingsController.prototype[method]) as string[];
+      expect(rolesOf('getBaseCurrency')).toEqual(
+        expect.arrayContaining(['OWNER', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST', 'STOREKEEPER']),
+      );
+      expect(rolesOf('getOrganisation')).toEqual(['OWNER', 'ADMIN']);
     });
   });
 

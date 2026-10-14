@@ -362,6 +362,12 @@ export class UpdateBranchSettingsDto {
   workDays?: number[];
 }
 
+/** Базова валюта організації — єдине, що з налаштувань потрібне кожній ролі (Bug #847). */
+export class BaseCurrencyResponseDto {
+  @ApiProperty({ example: 'UAH', description: 'Код базової валюти організації' })
+  currency!: string;
+}
+
 export class OrganisationSettingsResponseDto {
   @ApiProperty() orgId!: string;
   @ApiProperty() currency!: string;

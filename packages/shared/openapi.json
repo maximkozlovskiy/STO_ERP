@@ -307,6 +307,33 @@
         ]
       }
     },
+    "/api/v1/settings/base-currency": {
+      "get": {
+        "operationId": "SettingsController_getBaseCurrency_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseCurrencyResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Базова валюта організації (доступно всім авторизованим)",
+        "tags": [
+          "Налаштування"
+        ]
+      }
+    },
     "/api/v1/settings/branch/{branchId}": {
       "get": {
         "operationId": "SettingsController_getBranch_v1",
@@ -17183,6 +17210,19 @@
           "updatedAt"
         ]
       },
+      "BaseCurrencyResponseDto": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "example": "UAH",
+            "description": "Код базової валюти організації"
+          }
+        },
+        "required": [
+          "currency"
+        ]
+      },
       "UpdateOrganisationSettingsDto": {
         "type": "object",
         "properties": {
@@ -25964,7 +26004,8 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 0.01
+            "minimum": 0.01,
+            "maximum": 9999999999.99
           },
           "method": {
             "type": "string"
