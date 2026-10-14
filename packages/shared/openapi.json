@@ -26766,6 +26766,65 @@
           "limit"
         ]
       },
+      "BankTransactionAllocationDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "PREPAYMENT",
+              "SERVICE",
+              "INVOICE",
+              "REFUND",
+              "OTHER",
+              "SUPPLIER_PAYMENT",
+              "CLIENT_REFUND",
+              "EXPENSE",
+              "PAYROLL",
+              "TRANSFER",
+              "CASH_WITHDRAWAL"
+            ],
+            "type": "string"
+          },
+          "counterpartyId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Платник / постачальник / клієнт / контрагент витрати"
+          },
+          "invoiceId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Рахунок клієнта — обов’язковий для type=INVOICE"
+          },
+          "purchaseOrderId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Замовлення постачальнику для нової оплати"
+          },
+          "expenseCategoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "payrollPeriodId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transferBankAccountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashRegisterId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
       "CreateBankTransactionDto": {
         "type": "object",
         "properties": {
@@ -26806,6 +26865,14 @@
             "type": "string",
             "maxLength": 500,
             "description": "Призначення платежу"
+          },
+          "allocation": {
+            "description": "Рознести платіж одразу; без поля — платіж вноситься нерознесеним",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BankTransactionAllocationDto"
+              }
+            ]
           }
         },
         "required": [

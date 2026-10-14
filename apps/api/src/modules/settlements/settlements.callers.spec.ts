@@ -350,7 +350,7 @@ const CALL_SITES: Record<string, CallSite> = {
   },
 
   // ── Банківські платежі (вихідні) ───────────────────────────────────────────────────────
-  'modules/bank-statements/bank-reconciliation.service.ts#reconcile:REFUND_OUT': {
+  'modules/bank-statements/bank-reconciliation.service.ts#applyOutgoingPlan:REFUND_OUT': {
     guard:
       'CAS статусу рядка першим записом у tx: bankTransaction.updateMany where status = UNMATCHED → MATCHED; ' +
       'count=0 → 409/404 до проводки (BR-BANK-026, 030). Проводка — у тій самій tx, documentId = id рядка.',

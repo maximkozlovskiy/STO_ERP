@@ -8069,6 +8069,35 @@ export interface components {
             page: number;
             limit: number;
         };
+        BankTransactionAllocationDto: {
+            /** @enum {string} */
+            type: "PREPAYMENT" | "SERVICE" | "INVOICE" | "REFUND" | "OTHER" | "SUPPLIER_PAYMENT" | "CLIENT_REFUND" | "EXPENSE" | "PAYROLL" | "TRANSFER" | "CASH_WITHDRAWAL";
+            /**
+             * Format: uuid
+             * @description Платник / постачальник / клієнт / контрагент витрати
+             */
+            counterpartyId?: string;
+            /**
+             * Format: uuid
+             * @description Рахунок клієнта — обов’язковий для type=INVOICE
+             */
+            invoiceId?: string;
+            /**
+             * Format: uuid
+             * @description Замовлення постачальнику для нової оплати
+             */
+            purchaseOrderId?: string;
+            /** Format: uuid */
+            expenseCategoryId?: string;
+            /** Format: uuid */
+            payrollPeriodId?: string;
+            /** Format: uuid */
+            employeeId?: string;
+            /** Format: uuid */
+            transferBankAccountId?: string;
+            /** Format: uuid */
+            cashRegisterId?: string;
+        };
         CreateBankTransactionDto: {
             /** Format: uuid */
             bankAccountId: string;
@@ -8083,6 +8112,8 @@ export interface components {
             payerEdrpou?: string;
             /** @description Призначення платежу */
             purpose?: string;
+            /** @description Рознести платіж одразу; без поля — платіж вноситься нерознесеним */
+            allocation?: components["schemas"]["BankTransactionAllocationDto"];
         };
         SupplierPaymentCandidateDto: {
             id: string;

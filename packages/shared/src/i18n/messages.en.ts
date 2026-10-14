@@ -116,6 +116,10 @@ export const en: Record<string, string> = {
   'v.bankTransaction.cashRegister.required': 'Select the cash register',
   'v.bankTransaction.unmatchReason.required': 'Enter the reason for cancelling',
   'v.bankTransaction.unmatchReason.max': 'The reason is too long (up to 500 characters)',
+  'v.bankTransaction.supplierNew.required': 'Select the supplier',
+  'v.bankTransaction.counterparty.required': 'Select the counterparty',
+  'v.bankTransaction.invoice.required': 'Select the invoice to pay',
+  'v.bankTransaction.allocation.direction': 'This match type does not fit the payment direction',
 
   // ── cash-operation.schema.ts ──
   'v.cashOperation.direction.required': 'Select the operation direction',

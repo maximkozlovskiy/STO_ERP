@@ -4,6 +4,7 @@ import { validate, type ValidationError } from 'class-validator';
 import {
   ApplyImportDto,
   BANK_IMPORT_DIRECTION_MODES,
+  BANK_TX_ALLOCATION_TYPES,
   BANK_TX_AMOUNT_MAX,
   BANK_TX_IN_MATCH_TYPES,
   BANK_TX_MATCH_TYPES,
@@ -283,6 +284,66 @@ describe('CreateBankTransactionDto — ручне внесення', () => {
     const blank = manual({ payerIban: '   ' });
     expect(await check(CreateBankTransactionDto, blank)).toEqual([]);
     expect(plainToInstance(CreateBankTransactionDto, blank).payerIban).toBeUndefined();
+  });
+});
+
+describe('CreateBankTransactionDto.allocation — рознести при внесенні (BR-BANK-041)', () => {
+  const manual = (allocation: unknown) => ({
+    bankAccountId: ACCOUNT_ID,
+    direction: 'IN',
+    amount: 100,
+    operationDate: '2026-10-09',
+    allocation,
+  });
+  /** Так само, як глобальний ValidationPipe (main.ts): зайве поле — помилка, а не мовчазний пропуск. */
+  const strict = async (plain: unknown): Promise<string[]> =>
+    constraints(
+      await validate(plainToInstance(CreateBankTransactionDto, plain), {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
+
+  // guards: BR-BANK-041, BR-BANK-025
+  it('приймає всі види рознесення — і вхідні, і вихідні (напрям проти виду перевіряє сервіс)', async () => {
+    expect([...BANK_TX_ALLOCATION_TYPES].sort()).toEqual([...BANK_TX_MATCH_TYPES].sort());
+    for (const type of BANK_TX_ALLOCATION_TYPES) {
+      expect(await strict(manual({ type, counterpartyId: CP_ID }))).toEqual([]);
+    }
+  });
+
+  // guards: BR-BANK-041
+  it('без allocation — як раніше, проходить', async () => {
+    expect(await strict(manual(undefined))).toEqual([]);
+  });
+
+  // guards: BR-BANK-041
+  it.each(['SIDEWAYS', '', undefined])('вид «%s» → відхиляється', async type => {
+    expect(await strict(manual({ type, counterpartyId: CP_ID }))).toEqual(['allocation.type.isIn']);
+  });
+
+  // guards: BR-BANK-041, BR-BANK-038
+  it.each([
+    'counterpartyId',
+    'invoiceId',
+    'purchaseOrderId',
+    'expenseCategoryId',
+    'payrollPeriodId',
+    'employeeId',
+    'transferBankAccountId',
+    'cashRegisterId',
+  ])('allocation.%s не UUID → відхиляється', async field => {
+    expect(await strict(manual({ type: 'EXPENSE', [field]: 'abc' }))).toEqual([
+      `allocation.${field}.isUuid`,
+    ]);
+  });
+
+  // Наявну оплату постачальнику прив'язують лише до вже внесеного рядка (кандидати — за його id).
+  // guards: BR-BANK-041, BR-BANK-027
+  it('supplierPaymentId при внесенні не приймається', async () => {
+    expect(await strict(manual({ type: 'SUPPLIER_PAYMENT', supplierPaymentId: CP_ID }))).toEqual([
+      'allocation.supplierPaymentId.whitelistValidation',
+    ]);
   });
 });
 

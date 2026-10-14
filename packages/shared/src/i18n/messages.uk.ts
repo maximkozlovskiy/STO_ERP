@@ -119,6 +119,10 @@ export const uk: Record<string, string> = {
   'v.bankTransaction.cashRegister.required': 'Оберіть касу',
   'v.bankTransaction.unmatchReason.required': 'Вкажіть причину скасування',
   'v.bankTransaction.unmatchReason.max': 'Причина задовга (до 500 символів)',
+  'v.bankTransaction.supplierNew.required': 'Оберіть постачальника',
+  'v.bankTransaction.counterparty.required': 'Оберіть контрагента',
+  'v.bankTransaction.invoice.required': 'Оберіть рахунок, який оплачено',
+  'v.bankTransaction.allocation.direction': 'Цей вид рознесення не підходить для напряму платежу',
 
   // ── cash-operation.schema.ts ──
   'v.cashOperation.direction.required': 'Оберіть напрям операції',

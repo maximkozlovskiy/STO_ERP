@@ -30,12 +30,15 @@ import {
   assertOutgoingDirection,
   resolveOutgoingPlan,
   type OutgoingPlan,
+  type OutgoingRow,
 } from './bank-outgoing-refs';
 import { extractDocumentNumberCandidates, parsePurpose } from './purpose-parser';
 import {
   ApplyImportDto,
   BANK_TX_IN_MATCH_TYPES,
+  BankTransactionAllocationDto,
   BankTransactionResponseDto,
+  type BankTxOutMatchType,
   CreateBankTransactionDto,
   ReconcileTransactionDto,
   SupplierPaymentCandidateDto,
@@ -48,6 +51,7 @@ import {
   PreviewMatchReason,
   PreviewMatchStatus,
   PreviewRowDto,
+  isInAllocationType,
   toBankTransactionResponseDto,
 } from './bank-statement.dto';
 
@@ -145,6 +149,18 @@ const UNMATCHED_STATE = {
   matchedBy: null,
 } satisfies Prisma.BankTransactionUpdateManyMutationInput &
   Prisma.BankTransactionUncheckedUpdateManyInput;
+
+/** BR-BANK-041: що зробити з рядком, внесеним разом із рознесенням (усе вже перевірено). */
+type AllocationPlan =
+  | { kind: 'INCOMING'; match: MatchTransactionDto }
+  | { kind: 'OUTGOING'; type: BankTxOutMatchType; plan: OutgoingPlan };
+
+/** Поля ручного рядка до вставки — з них же рознесення бере суму, валюту й дату. */
+type ManualRowData = Prisma.BankTransactionUncheckedCreateInput & {
+  currencyId: string;
+  amount: number;
+  operationDate: Date;
+};
 
 function isInMatchType(type: BankTransactionMatchType | null): boolean {
   return type != null && (BANK_TX_IN_MATCH_TYPES as readonly string[]).includes(type);
@@ -681,6 +697,19 @@ export class BankReconciliationService {
     dto: MatchTransactionDto,
     userId?: string,
   ): Promise<BankTransactionResponseDto> {
+    await this.assertIncomingRefs(orgId, dto);
+    await this.postIncoming(orgId, txId, dto, userId);
+    const updated = await this.prisma.bankTransaction.findFirstOrThrow({
+      where: { id: txId, orgId },
+    });
+    return toBankTransactionResponseDto(updated);
+  }
+
+  /**
+   * BR-BANK-010: вхід рознесення вхідного платежу — до захоплення рядка (і до вставки рядка при
+   * внесенні з рознесенням, BR-BANK-041). Нічого не пише.
+   */
+  private async assertIncomingRefs(orgId: string, dto: MatchTransactionDto): Promise<void> {
     if (dto.type === 'INVOICE' && !dto.invoiceId) {
       throw new BadRequestException(
         translateError('err.bankStatement.invoiceRequiredForType', getLocale()),
@@ -716,7 +745,15 @@ export class BankReconciliationService {
         );
       }
     }
+  }
 
+  /** Кроки 1–3 рознесення вхідного: CAS → `payments.create` → посилання `paymentId`. */
+  private async postIncoming(
+    orgId: string,
+    txId: string,
+    dto: MatchTransactionDto,
+    userId?: string,
+  ): Promise<void> {
     // (1) CAS-mark MATCHED — атомарний захват staging-рядка (idempotency проти подвійного match).
     // BR-BANK-025: `direction: 'IN'` у самому CAS — вихідний рядок цей endpoint не захопить ніколи,
     // інакше списання стало б оплатою клієнта.
@@ -809,11 +846,6 @@ export class BankReconciliationService {
       where: { id: txId, orgId, status: 'MATCHED' },
       data: { paymentId },
     });
-
-    const updated = await this.prisma.bankTransaction.findFirstOrThrow({
-      where: { id: txId, orgId },
-    });
-    return toBankTransactionResponseDto(updated);
   }
 
   // ─── Вихідні платежі: ручне внесення, рознесення, скасування ─────────────────────────────
@@ -842,11 +874,15 @@ export class BankReconciliationService {
       : new NotFoundException(translateError('err.bankStatement.txNotFound', getLocale()));
   }
 
-  /** BR-BANK-023: ручне внесення платежу (обидва напрямки), `source=MANUAL`, `status=UNMATCHED`. */
+  /**
+   * BR-BANK-023: ручне внесення платежу (обидва напрямки), `source=MANUAL`, `status=UNMATCHED`.
+   * BR-BANK-041: з `allocation` — внесення й рознесення однією дією; не вдалося рознести —
+   * платежу немає (див. `createAllocated`).
+   */
   async createManual(
     orgId: string,
     dto: CreateBankTransactionDto,
-    userId?: string,
+    userId: string,
   ): Promise<BankTransactionResponseDto> {
     const bankAccount = await this.prisma.bankAccount.findFirst({
       where: { id: dto.bankAccountId, orgId, deletedAt: null },
@@ -866,6 +902,15 @@ export class BankReconciliationService {
         }),
       );
     }
+    // BR-BANK-041: усі перевірки рознесення — ДО вставки рядка: відмова тут не лишає нічого.
+    const allocation = dto.allocation
+      ? await this.planAllocation(orgId, dto.allocation, {
+          direction: dto.direction,
+          bankAccountId: bankAccount.id,
+          currencyId: bankAccount.currencyId,
+          amount: dto.amount,
+        })
+      : null;
     // `@db.Date`: календарний день без часу, тому UTC-північ, а не мить із зсувом на пояс.
     const operationDate = new Date(`${dto.operationDate}T00:00:00.000Z`);
     const conv = await this.exchangeRates.resolveBaseConversion(
@@ -877,29 +922,152 @@ export class BankReconciliationService {
     );
     const normIban = normalizeIban(dto.payerIban);
 
-    const created = await this.prisma.bankTransaction.create({
-      data: {
-        orgId,
-        bankAccountId: bankAccount.id,
-        direction: dto.direction,
-        amount: dto.amount,
-        currencyId: bankAccount.currencyId,
-        amountBase: conv.amountBase,
-        rateUsed: conv.rateUsed,
-        operationDate,
-        payerName: dto.payerName?.trim() || null,
-        // BR-BANK-020: власний IBAN рахунку не зберігається як IBAN контрагента.
-        payerIban: normIban && normIban === normalizeIban(bankAccount.ibanUA) ? null : normIban,
-        payerEdrpou: dto.payerEdrpou?.trim() || null,
-        purpose: dto.purpose?.trim() || null,
-        externalId: `MANUAL-${randomUUID()}`,
-        source: 'MANUAL',
-        status: 'UNMATCHED',
-        createdBy: userId ?? null,
-      },
-      include: BANK_TX_INCLUDE,
-    });
+    const data = {
+      orgId,
+      bankAccountId: bankAccount.id,
+      direction: dto.direction,
+      amount: dto.amount,
+      currencyId: bankAccount.currencyId,
+      amountBase: conv.amountBase,
+      rateUsed: conv.rateUsed,
+      operationDate,
+      payerName: dto.payerName?.trim() || null,
+      // BR-BANK-020: власний IBAN рахунку не зберігається як IBAN контрагента.
+      payerIban: normIban && normIban === normalizeIban(bankAccount.ibanUA) ? null : normIban,
+      payerEdrpou: dto.payerEdrpou?.trim() || null,
+      purpose: dto.purpose?.trim() || null,
+      externalId: `MANUAL-${randomUUID()}`,
+      source: 'MANUAL',
+      status: 'UNMATCHED',
+      createdBy: userId,
+    } satisfies Prisma.BankTransactionUncheckedCreateInput;
+
+    if (allocation) return this.createAllocated(orgId, data, allocation, userId);
+
+    const created = await this.prisma.bankTransaction.create({ data, include: BANK_TX_INCLUDE });
     return toBankTransactionResponseDto(created);
+  }
+
+  /**
+   * BR-BANK-041 / 025: вид рознесення проти напряму і всі його посилання — без жодного запису.
+   * Вхідні види — як у `match` (BR-BANK-010), вихідні й переказ — як у `reconcile`
+   * (`resolveOutgoingPlan` бере суму, рахунок і валюту з запиту, бо рядка ще немає).
+   */
+  private async planAllocation(
+    orgId: string,
+    alloc: BankTransactionAllocationDto,
+    row: OutgoingRow,
+  ): Promise<AllocationPlan> {
+    if (isInAllocationType(alloc.type)) {
+      if (row.direction !== 'IN') {
+        throw new BadRequestException(
+          translateError('err.bankStatement.wrongDirection', getLocale()),
+        );
+      }
+      if (!alloc.counterpartyId) {
+        throw new BadRequestException(
+          translateError('err.bankStatement.fieldRequiredForType', getLocale()),
+        );
+      }
+      const match: MatchTransactionDto = {
+        type: alloc.type,
+        counterpartyId: alloc.counterpartyId,
+        invoiceId: alloc.invoiceId,
+      };
+      await this.assertIncomingRefs(orgId, match);
+      return { kind: 'INCOMING', match };
+    }
+    assertOutgoingDirection(row.direction, alloc.type);
+    // Без `supplierPaymentId`: оплата постачальнику при внесенні — лише нова (DTO його не приймає).
+    const reconcile: ReconcileTransactionDto = {
+      type: alloc.type,
+      counterpartyId: alloc.counterpartyId,
+      purchaseOrderId: alloc.purchaseOrderId,
+      expenseCategoryId: alloc.expenseCategoryId,
+      payrollPeriodId: alloc.payrollPeriodId,
+      employeeId: alloc.employeeId,
+      transferBankAccountId: alloc.transferBankAccountId,
+      cashRegisterId: alloc.cashRegisterId,
+    };
+    const plan = await resolveOutgoingPlan(this.prisma, orgId, row, reconcile);
+    return { kind: 'OUTGOING', type: alloc.type, plan };
+  }
+
+  /**
+   * BR-BANK-041: внесення з рознесенням. Два шляхи, бо не всі ефекти вміщуються в одну транзакцію:
+   *  · вихідні види, крім нової оплати постачальнику, — вставка рядка й рознесення в ОДНІЙ
+   *    транзакції БД: відмова відкочує й сам рядок;
+   *  · вхідні види (`payments.create`) і нова оплата постачальнику (`create` + `confirm`) мають
+   *    власні транзакції — рядок вставляється, розноситься наявним шляхом, а якщо рознесення
+   *    впало й рядок лишився нерознесеним без оплати, — прибирається (м'яке видалення). Рядок,
+   *    за яким оплата вже проведена (BR-BANK-029), лишається рознесеним.
+   */
+  private async createAllocated(
+    orgId: string,
+    data: ManualRowData,
+    allocation: AllocationPlan,
+    userId: string,
+  ): Promise<BankTransactionResponseDto> {
+    if (allocation.kind === 'OUTGOING' && allocation.plan.kind !== 'NEW_SUPPLIER_PAYMENT') {
+      const { type, plan } = allocation;
+      const txId = await this.prisma.$transaction(
+        async tx => {
+          const created = await tx.bankTransaction.create({ data, select: { id: true } });
+          await this.applyOutgoingPlan(tx, orgId, created.id, data, type, plan, userId);
+          return created.id;
+        },
+        { timeout: TRANSACTION_TIMEOUT_MS },
+      );
+      return this.loadResponse(orgId, txId);
+    }
+
+    const created = await this.prisma.bankTransaction.create({
+      data,
+      select: { id: true, bankAccountId: true, amount: true, operationDate: true, purpose: true },
+    });
+    try {
+      if (allocation.kind === 'INCOMING') {
+        await this.postIncoming(orgId, created.id, allocation.match, userId);
+      } else if (allocation.plan.kind === 'NEW_SUPPLIER_PAYMENT') {
+        await this.reconcileNewSupplierPayment(orgId, created, allocation.plan, userId);
+      }
+    } catch (err: unknown) {
+      await this.discardUnallocated(orgId, created.id);
+      throw err;
+    }
+    return this.loadResponse(orgId, created.id);
+  }
+
+  /**
+   * BR-BANK-041: прибирає рядок, внесений разом із невдалим рознесенням, — лише поки він
+   * нерознесений і без оплати (відкат рознесення вже відпрацював). Рядок, який лишився
+   * рознесеним (оплату проведено або її стан невідомий), не чіпається: інакше повторне внесення
+   * заплатило б удруге.
+   */
+  private async discardUnallocated(orgId: string, txId: string): Promise<void> {
+    const removed = await this.prisma.bankTransaction
+      .updateMany({
+        where: {
+          id: txId,
+          orgId,
+          deletedAt: null,
+          source: 'MANUAL',
+          // Відкат рознесення повертає рядок в UNMATCHED лише без оплати (BR-BANK-009, 029).
+          status: 'UNMATCHED',
+        },
+        data: { deletedAt: new Date() },
+      })
+      .catch((e: unknown) => {
+        this.logger.error(
+          `Банк-транзакцію ${txId} не прибрано після невдалого рознесення: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return null;
+      });
+    if (removed?.count === 0) {
+      this.logger.error(
+        `Банк-транзакція ${txId}: рознесення при внесенні не вдалося, але рядок уже рознесено — лишаю`,
+      );
+    }
   }
 
   /** BR-BANK-024: soft delete лише ручного нерознесеного рядка (CAS); інакше 400 / 404 / 409. */
@@ -1021,70 +1189,9 @@ export class BankReconciliationService {
       return this.loadResponse(orgId, txId);
     }
 
-    const amount = Number(row.amount);
     try {
       await this.prisma.$transaction(
-        async tx => {
-          const captured = await tx.bankTransaction.updateMany({
-            where: { id: txId, orgId, deletedAt: null, status: 'UNMATCHED' },
-            data: {
-              status: 'MATCHED',
-              matchedType: dto.type,
-              ...plan.links,
-              matchedAt: new Date(),
-              matchedBy: userId,
-            },
-          });
-          if (captured.count === 0) {
-            throw await this.captureFailure(tx, orgId, txId);
-          }
-
-          if (plan.kind === 'CLIENT_REFUND') {
-            // BR-BANK-030: гроші повернуто клієнту → він знову винен / його аванс зменшився.
-            // `date` — лише для курсу; саме проведення датується моментом рознесення (BR-BANK-035).
-            await this.settlements.createTransaction(
-              orgId,
-              {
-                counterpartyId: plan.counterpartyId,
-                type: 'REFUND_OUT',
-                amount,
-                currencyId: row.currencyId,
-                date: row.operationDate,
-                fallbackToLatest: true,
-                documentType: 'BankTransaction',
-                documentId: txId,
-                createdBy: userId,
-              },
-              tx,
-            );
-          }
-
-          if (plan.kind === 'CASH_WITHDRAWAL') {
-            // BR-BANK-034: готівка, знята з рахунку, надходить у касу. Без статті руху коштів —
-            // це переміщення власних грошей, а не дохід. Фіскальна каса без відкритої зміни →
-            // 400 із CashService, і транзакція відкочує захоплення рядка.
-            const operation = await this.cash.createOperation(
-              orgId,
-              {
-                cashRegisterId: plan.cashRegisterId,
-                direction: 'IN',
-                reason: 'MANUAL_IN',
-                // Інакше стаття, закріплена за приводом «Внесення» (BR-CASH-022), зробила б зняття
-                // з рахунку доходом у звіті за статтями.
-                withoutCategory: true,
-                amount,
-                documentType: 'BankTransaction',
-                documentId: txId,
-                createdBy: userId,
-              },
-              tx,
-            );
-            await tx.bankTransaction.updateMany({
-              where: { id: txId, orgId },
-              data: { cashOperationId: operation.id },
-            });
-          }
-        },
+        tx => this.applyOutgoingPlan(tx, orgId, txId, row, dto.type, plan, userId),
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
     } catch (e: unknown) {
@@ -1097,6 +1204,82 @@ export class BankReconciliationService {
       throw e;
     }
     return this.loadResponse(orgId, txId);
+  }
+
+  /**
+   * Рознесення за готовим планом усередині транзакції БД (BR-BANK-026, 030, 034): CAS-захоплення
+   * зі статусу `UNMATCHED` разом із посиланнями, потім ефект — проведення чи касова операція.
+   * Спільне для `reconcile` (рядок уже є) і внесення з рознесенням (рядок щойно вставлено в цю ж
+   * транзакцію, BR-BANK-041). Сума, валюта й дата — з рядка.
+   */
+  private async applyOutgoingPlan(
+    tx: Prisma.TransactionClient,
+    orgId: string,
+    txId: string,
+    row: { currencyId: string; amount: Prisma.Decimal | number; operationDate: Date },
+    type: BankTxOutMatchType,
+    plan: Exclude<OutgoingPlan, { kind: 'NEW_SUPPLIER_PAYMENT' }>,
+    userId: string,
+  ): Promise<void> {
+    const captured = await tx.bankTransaction.updateMany({
+      where: { id: txId, orgId, deletedAt: null, status: 'UNMATCHED' },
+      data: {
+        status: 'MATCHED',
+        matchedType: type,
+        ...plan.links,
+        matchedAt: new Date(),
+        matchedBy: userId,
+      },
+    });
+    if (captured.count === 0) {
+      throw await this.captureFailure(tx, orgId, txId);
+    }
+
+    if (plan.kind === 'CLIENT_REFUND') {
+      // BR-BANK-030: гроші повернуто клієнту → він знову винен / його аванс зменшився.
+      // `date` — лише для курсу; саме проведення датується моментом рознесення (BR-BANK-035).
+      await this.settlements.createTransaction(
+        orgId,
+        {
+          counterpartyId: plan.counterpartyId,
+          type: 'REFUND_OUT',
+          amount: Number(row.amount),
+          currencyId: row.currencyId,
+          date: row.operationDate,
+          fallbackToLatest: true,
+          documentType: 'BankTransaction',
+          documentId: txId,
+          createdBy: userId,
+        },
+        tx,
+      );
+    }
+
+    if (plan.kind === 'CASH_WITHDRAWAL') {
+      // BR-BANK-034: готівка, знята з рахунку, надходить у касу. Без статті руху коштів —
+      // це переміщення власних грошей, а не дохід. Фіскальна каса без відкритої зміни →
+      // 400 із CashService, і транзакція відкочує захоплення рядка.
+      const operation = await this.cash.createOperation(
+        orgId,
+        {
+          cashRegisterId: plan.cashRegisterId,
+          direction: 'IN',
+          reason: 'MANUAL_IN',
+          // Інакше стаття, закріплена за приводом «Внесення» (BR-CASH-022), зробила б зняття
+          // з рахунку доходом у звіті за статтями.
+          withoutCategory: true,
+          amount: Number(row.amount),
+          documentType: 'BankTransaction',
+          documentId: txId,
+          createdBy: userId,
+        },
+        tx,
+      );
+      await tx.bankTransaction.updateMany({
+        where: { id: txId, orgId },
+        data: { cashOperationId: operation.id },
+      });
+    }
   }
 
   /**

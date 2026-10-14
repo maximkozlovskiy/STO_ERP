@@ -53,6 +53,21 @@ export const BANK_TX_OUT_MATCH_TYPES = [
   'CASH_WITHDRAWAL',
 ] as const satisfies readonly BankTransactionMatchType[];
 export type BankTxOutMatchType = (typeof BANK_TX_OUT_MATCH_TYPES)[number];
+export type BankTxInMatchType = (typeof BANK_TX_IN_MATCH_TYPES)[number];
+
+/**
+ * BR-BANK-041: види, якими платіж можна рознести вже при внесенні. Вхідні — як у `match`,
+ * вихідні — як у `reconcile`; який вид дозволений для якого напряму, перевіряє сервіс (BR-BANK-025).
+ */
+export const BANK_TX_ALLOCATION_TYPES = [
+  ...BANK_TX_IN_MATCH_TYPES,
+  ...BANK_TX_OUT_MATCH_TYPES,
+] as const satisfies readonly BankTransactionMatchType[];
+export type BankTxAllocationType = (typeof BANK_TX_ALLOCATION_TYPES)[number];
+
+export function isInAllocationType(type: BankTxAllocationType): type is BankTxInMatchType {
+  return (BANK_TX_IN_MATCH_TYPES as readonly string[]).includes(type);
+}
 
 /** Як файл виписки задає напрям рядка (BR-BANK-018). */
 export const BANK_IMPORT_DIRECTION_MODES = ['SIGN', 'IN', 'OUT'] as const;
@@ -277,6 +292,44 @@ const normalizeIbanInput = ({ value }: { value: unknown }): unknown => {
   return iban === '' ? undefined : iban;
 };
 
+/**
+ * BR-BANK-041: рознесення в тому самому запиті, що й внесення. Поля — як у `match` (вхідні види) і
+ * `reconcile` (вихідні й переказ), але без `supplierPaymentId`: прив'язати наявну оплату
+ * постачальнику можна лише до вже внесеного рядка (кандидати шукаються за його id).
+ *
+ * | type                                    | обов'язкове           | необов'язкове               |
+ * | PREPAYMENT / SERVICE / REFUND / OTHER   | counterpartyId        |                             |
+ * | INVOICE                                 | counterpartyId, invoiceId |                         |
+ * | SUPPLIER_PAYMENT (нова оплата)          | counterpartyId        | purchaseOrderId             |
+ * | решта вихідних і TRANSFER               | як у ReconcileTransactionDto                        |
+ */
+export class BankTransactionAllocationDto {
+  @ApiProperty({ enum: BANK_TX_ALLOCATION_TYPES })
+  @IsIn(BANK_TX_ALLOCATION_TYPES, { message: 'err.dto.bankStatement.type.invalid' })
+  type!: BankTxAllocationType;
+
+  @ApiPropertyOptional({ description: 'Платник / постачальник / клієнт / контрагент витрати' })
+  @IsOptional()
+  @IsUUID()
+  counterpartyId?: string;
+
+  @ApiPropertyOptional({ description: 'Рахунок клієнта — обов’язковий для type=INVOICE' })
+  @IsOptional()
+  @IsUUID()
+  invoiceId?: string;
+
+  @ApiPropertyOptional({ description: 'Замовлення постачальнику для нової оплати' })
+  @IsOptional()
+  @IsUUID()
+  purchaseOrderId?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsUUID() expenseCategoryId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() payrollPeriodId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() employeeId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() transferBankAccountId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() cashRegisterId?: string;
+}
+
 export class CreateBankTransactionDto {
   @ApiProperty()
   @IsUUID('4', { message: 'err.dto.bankStatement.bankAccountId.uuid' })
@@ -327,6 +380,16 @@ export class CreateBankTransactionDto {
   @IsString()
   @MaxLength(BANK_TX_REASON_MAX_LENGTH)
   purpose?: string;
+
+  // BR-BANK-041: рознести одразу при внесенні. Не вдалося рознести — платіж не вноситься.
+  @ApiPropertyOptional({
+    type: () => BankTransactionAllocationDto,
+    description: 'Рознести платіж одразу; без поля — платіж вноситься нерознесеним',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BankTransactionAllocationDto)
+  allocation?: BankTransactionAllocationDto;
 }
 
 // ─── Рознесення вихідного платежу (BR-BANK-025…034) ───────────────────────────
