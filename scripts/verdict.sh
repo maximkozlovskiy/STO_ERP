@@ -82,6 +82,9 @@ grep -qE "Failed Tests|⎯ Unhandled Error" <<< "$OUT" && { fail=1; notes+=("б�
 grep -qE "error TS[0-9]+" <<< "$OUT" && { fail=1; notes+=("$(grep -cE "error TS[0-9]+" <<< "$OUT") × error TS"); }
 # eslint (саме errors, не warnings)
 grep -qE "✖ [0-9]+ problems? \([1-9][0-9]* errors?" <<< "$OUT" && { fail=1; notes+=("eslint errors"); }
+# dependency-cruiser: «x 3 dependency violations (3 errors, 0 warnings)». Без цієї ознаки
+# в об'єднаному виводі (`pnpm cycles; pnpm type-check`) цикл ховався за успіхом turbo.
+grep -qE "[0-9]+ dependency violations \([1-9][0-9]* errors?" <<< "$OUT" && { fail=1; notes+=("dependency-cruiser errors"); }
 # загальні
 grep -qE "^(FAIL|ERROR)\b" <<< "$OUT" && { fail=1; notes+=("рядок FAIL/ERROR"); }
 
