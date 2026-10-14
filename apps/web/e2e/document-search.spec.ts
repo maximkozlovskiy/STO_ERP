@@ -114,6 +114,10 @@ test.describe('Пошук на сторінках документів', () => {
     expect(params.get('dateFrom')).toBe(today);
     expect(params.get('dateTo')).toBe(today);
 
-    await expectSearchReachesApi(page, /Пошук за приміткою або статтею/, '/operations?');
+    await expectSearchReachesApi(
+      page,
+      /Пошук за приміткою, статтею або контрагентом/,
+      '/operations?',
+    );
   });
 });

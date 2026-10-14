@@ -21,7 +21,12 @@ vi.mock('@/lib/api-client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-import { useBaseCurrency, useCreateCashOperation, useRetryCashFiscal } from './useCash';
+import {
+  useBaseCurrency,
+  useCashOperations,
+  useCreateCashOperation,
+  useRetryCashFiscal,
+} from './useCash';
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
@@ -149,5 +154,30 @@ describe('useBaseCurrency', () => {
     const paths = apiFetchMock.mock.calls.map(c => c[0] as string);
     expect(paths).toContain('/settings/base-currency');
     expect(paths).not.toContain('/settings/organisation');
+  });
+});
+
+// Bug #849: без `limit` сервер віддає 100 рядків — історія каси мовчки обрізалась.
+describe('useCashOperations', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue([]);
+  });
+
+  it('межа рядків іде в запит разом із відбором', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useCashOperations('reg-1', { q: 'коваль', dateFrom: '2026-10-14' }, 500), {
+      wrapper,
+    });
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
+    const path = apiFetchMock.mock.calls[0]![0] as string;
+    expect(path.startsWith('/cash-registers/reg-1/operations?')).toBe(true);
+    const query = new URLSearchParams(path.split('?')[1]);
+    expect(query.get('limit')).toBe('500');
+    expect(query.get('dateFrom')).toBe('2026-10-14');
+    expect(query.get('q')).toBe('коваль');
   });
 });

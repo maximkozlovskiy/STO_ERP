@@ -49,6 +49,13 @@ import {
 } from '@/hooks/api/useCash';
 import { CashOperationModal } from './CashOperationModal';
 
+/**
+ * Стеля історії на сервері (BR-CASH-015): більше рядків за один запит він не віддає, зсуву немає.
+ * Просимо саме стільки; якщо прийшло рівно стільки — старіші операції не вмістились, і про це
+ * треба сказати (Bug #849: без `limit` сервер давав 100 рядків, і список мовчки обрізався).
+ */
+export const CASH_HISTORY_LIMIT = 500;
+
 interface Props {
   /** Усі ручні операції — власник, адміністратор, бухгалтер. */
   canOperate?: boolean;
@@ -111,7 +118,8 @@ export default function CashOperationsTab({
     isLoading: opsLoading,
     error: opsError,
     refetch: refetchOps,
-  } = useCashOperations(selectedId || null, opsFilter);
+  } = useCashOperations(selectedId || null, opsFilter, CASH_HISTORY_LIMIT);
+  const historyTruncated = (operations?.length ?? 0) >= CASH_HISTORY_LIMIT;
   const [opOpen, setOpOpen] = useState(false);
   // Напрям лишається в стані й після закриття — щоб заголовок не мигав під час анімації виходу.
   const [opDirection, setOpDirection] = useState<CashDirectionValue>('IN');
@@ -294,6 +302,12 @@ export default function CashOperationsTab({
       </div>
 
       <ListLoadError error={opsError} onRetry={() => void refetchOps()} className="shrink-0" />
+
+      {historyTruncated && (
+        <p role="status" className="shrink-0 text-[12px] text-warning-text">
+          {t('operations.historyTruncated', { n: CASH_HISTORY_LIMIT })}
+        </p>
+      )}
 
       {/* Історія операцій */}
       <div className="flex-1 min-h-0 border border-border rounded-xl bg-surface overflow-auto">

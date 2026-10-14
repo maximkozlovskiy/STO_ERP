@@ -78,8 +78,17 @@ export function useCashRegisters() {
   });
 }
 
-export function useCashOperations(cashRegisterId: string | null, filters: CashOperationsFilter) {
-  const qs = buildParams(filters);
+/**
+ * `limit` — скільки найновіших рядків просити. Без нього сервер віддає 100 (BR-CASH-015), і
+ * таблиця мовчки обрізала день зі 105 операціями (Bug #849); у ключ кешу він не входить, бо
+ * екран завжди просить те саме число.
+ */
+export function useCashOperations(
+  cashRegisterId: string | null,
+  filters: CashOperationsFilter,
+  limit?: number,
+) {
+  const qs = buildParams({ ...filters, limit });
 
   return useQuery({
     queryKey: cashKeys.operations(cashRegisterId ?? '', filters),

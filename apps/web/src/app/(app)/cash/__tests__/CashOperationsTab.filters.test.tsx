@@ -75,7 +75,7 @@ vi.mock('@/hooks/api/useCashShift', () => ({
 
 import CashOperationsTab from '../CashOperationsTab';
 
-const SEARCH = 'Пошук за приміткою або статтею…';
+const SEARCH = 'Пошук за приміткою, статтею або контрагентом…';
 // Останній виклик ДЛЯ ОБРАНОЇ каси: до автовибору першої каси хук кличеться з null.
 const lastCall = () =>
   useCashOperationsMock.mock.lastCall as [string | null, Record<string, unknown>];
