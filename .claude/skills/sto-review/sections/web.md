@@ -125,6 +125,9 @@ grep -rnE "const (open|load|select|fetch)[A-Z][A-Za-z]* = (async )?\(" apps/web/
 - [ ] **recharts `<Tooltip>` → `contentStyle` із `backgroundColor` і `color` на токенах теми.** Типовий фон підказки — білий, а підпис успадковує колір сторінки → у темній темі світлий текст на білому. Grep: `grep -rn "<Tooltip" -A8 apps/web/src --include="*.tsx" | grep -c backgroundColor` проти кількості `<Tooltip`. Sample: `MileageChart`, `RevenueChart` (journal 2026-10-07)
 - [ ] **Новий `use*`-хук, чиї дані ПОХІДНІ від іншого агрегату (історія з нарядів, зведення з платежів) → його ключ додано у відповідний хелпер `lib/cache-invalidation.ts`.** Інакше сторінка, відкрита в межах `staleTime` після мутації джерела, показує старе. Grep: `grep -rn "Keys = {" apps/web/src/hooks/api` → кожен ключ має споживача в `cache-invalidation.ts` або власну мутацію. Sample: `vehicleMileageKeys` (journal 2026-10-07)
 
+- [ ] Перелік вибору, який сервер звужує правилом (валюта каси = валюта рахунку), фільтрується тим
+      самим правилом у вікні (`journal/web.md`, 2026-10-14)
+
 #### §8.2.1 Select race
 
 ```bash
