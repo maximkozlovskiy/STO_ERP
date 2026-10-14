@@ -1,6 +1,8 @@
 // Shared types and constants for settings tabs.
 // Each tab imports only what it needs — nothing is passed via props from page.tsx.
 
+import type { ApiSchema } from '@sto/shared';
+
 export type CostMethod = 'FIFO' | 'FEFO' | 'LIFO' | 'AVG_COST';
 
 export const COST_METHOD_OPTIONS: { value: CostMethod; label: string; hint: string }[] = [
@@ -33,26 +35,8 @@ export interface OrgSettings {
   updatedAt: string;
 }
 
-export interface PaymentMethod {
-  id: string;
-  code: string;
-  name: string;
-  isActive: boolean;
-  sortOrder: number;
-  requiresFiscal: boolean;
-  // Системний метод (Готівка/Картка/…) — сервер блокує видалення та перейменування
-  // (payment-methods.service). isActive/sortOrder лишаються редагованими за org.
-  isSystem?: boolean;
-  /**
-   * Куди надходять кошти, коли оплата сама касу чи рахунок не вказує. Для «Готівки» каса — єдине
-   * джерело каси оплати з рахунку (BR-PAY-019). Назву каси чи рахунку дає сервер; null — не
-   * вказано або касу чи рахунок видалено.
-   */
-  defaultSourceType?: 'CASH_REGISTER' | 'BANK_ACCOUNT' | null;
-  defaultCashRegisterId?: string | null;
-  defaultBankAccountId?: string | null;
-  defaultDestinationName?: string | null;
-}
+/** Спосіб оплати — згенерований тип відповіді API (`PaymentMethodsController`). */
+export type PaymentMethod = ApiSchema<'PaymentMethodResponseDto'>;
 
 export interface NotificationTemplate {
   id: string;

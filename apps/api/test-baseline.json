@@ -1837,6 +1837,7 @@
    "CashRegisters — HTTP Contract GET /cash-registers повертає 200 + { items, total } (не голий масив)",
    "CashRegisters — HTTP Contract GET /cash-registers повертає 403 коли guard не пропустив",
    "CashRegisters — HTTP Contract GET /cash-registers прокидає branchId-фільтр у сервіс",
+   "CashRegisters — HTTP Contract GET /cash-registers список кас читає й приймальня (RolesGuard мокнуто — перевіряємо метадані @Roles)",
    "CashRegisters — HTTP Contract GET /cash-registers/:id/operations порожні dateFrom/dateTo → 200 (не 400); сервіс отримує їх як є, типовий limit лишає за собою",
    "CashRegisters — HTTP Contract POST /cash-registers — валідація обовʼязкових полів повертає 201 + DTO shape при валідному payload",
    "CashRegisters — HTTP Contract POST /cash-registers — валідація обовʼязкових полів повертає 400 коли currencyId не UUID",

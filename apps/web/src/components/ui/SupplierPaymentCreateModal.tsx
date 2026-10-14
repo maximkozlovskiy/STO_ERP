@@ -8,6 +8,7 @@ import {
   supplierPaymentFormSchema,
   type SupplierPaymentFormInput,
   type SupplierPaymentFormValues,
+  type ApiSchema,
 } from '@sto/shared';
 import { apiFetch } from '@/lib/api-client';
 import { toast } from '@/lib/toast';
@@ -60,11 +61,7 @@ interface CashRegister {
   name: string;
 }
 
-interface PaymentMethod {
-  code: string;
-  name: string;
-  isActive: boolean;
-}
+type PaymentMethod = Pick<ApiSchema<'PaymentMethodResponseDto'>, 'code' | 'name' | 'isActive'>;
 
 interface PurchaseOrderRef {
   id: string;

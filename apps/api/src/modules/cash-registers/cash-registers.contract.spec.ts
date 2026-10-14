@@ -119,6 +119,17 @@ describe('CashRegisters — HTTP Contract', () => {
       expect(serviceMock.findAll).toHaveBeenCalledWith('org-1', BRANCH_ID);
     });
 
+    // Вікно «Оплатити» рахунку просить список кас: приймальня оплачує рахунки (BR-PAY-019) і не
+    // повинна отримати 403 на довіднику, без якого готівку не прийняти.
+    it('список кас читає й приймальня (RolesGuard мокнуто — перевіряємо метадані @Roles)', () => {
+      const roles = new Reflector().get<string[]>(
+        ROLES_KEY,
+        CashRegistersController.prototype.findAll,
+      );
+      expect(roles).toEqual(expect.arrayContaining(['RECEPTIONIST', 'ACCOUNTANT']));
+      expect(roles).not.toContain('MECHANIC');
+    });
+
     it('повертає 403 коли guard не пропустив', async () => {
       jwtAllow = false;
       const res = await (app as NestFastifyApplication).inject({

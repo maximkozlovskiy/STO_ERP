@@ -38,18 +38,6 @@ export interface OrgSettings {
   updatedAt: string;
 }
 
-export interface PaymentMethod {
-  id: string;
-  code: string;
-  name: string;
-  isActive: boolean;
-  sortOrder: number;
-  requiresFiscal: boolean;
-  // Системний метод (Готівка/Картка/…) — сервер блокує видалення та перейменування
-  // (payment-methods.service). isActive/sortOrder лишаються редагованими за org.
-  isSystem?: boolean;
-}
-
 export interface NotificationTemplate {
   id: string;
   eventType: string;

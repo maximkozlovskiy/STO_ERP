@@ -298,7 +298,7 @@ cd apps/api && npx vitest run src/modules/cash/<файл>.spec.ts
 | каса-диригент: оплата контрагента і повернення клієнту (BR-CASH-017, 018)                                       | `../cash-registers/cash-desk.client.spec.ts`                                     | 35     |
 | каса-диригент: оплата постачальнику і повернення від постачальника (BR-CASH-019)                                | `../cash-registers/cash-desk.supplier.spec.ts`                                   | 19     |
 | каса-диригент: ролі за приводом (BR-CASH-021)                                                                   | `../cash-registers/cash-desk.roles.spec.ts`                                      | 58     |
-| HTTP-контракт `/cash-registers`, зокрема тіло ручної операції і маршрут сторно (ролі, причина, ідемпотентність) | `../cash-registers/cash-registers.contract.spec.ts`                              | 41     |
+| HTTP-контракт `/cash-registers`, зокрема тіло ручної операції і маршрут сторно (ролі, причина, ідемпотентність) | `../cash-registers/cash-registers.contract.spec.ts`                              | 42     |
 | привід за замовчуванням у статті: закріплення, конфлікт, напрям, відновлення (BR-CASH-022)                      | `../expense-categories/expense-categories.default-reason.spec.ts`                | 53     |
 | таблиця приводів `CASH_REASON_RULES` і zod-схема ручної операції                                                | `../../../../../packages/shared/src/schemas/forms/cash-operation.schema.spec.ts` | 102    |
 | сторно: рядок у журналі — курс оригіналу, `reversalOfId`, P2002 → 400 (BR-CASH-023)                             | `cash.reversal-record.spec.ts`                                                   | 10     |
