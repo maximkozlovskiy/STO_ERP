@@ -265,3 +265,45 @@ describe('CashReversalModal', () => {
     });
   });
 });
+
+describe('CashReversalModal — ключ ідемпотентності на кожне відкриття', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ id: 'op-rev' });
+  });
+
+  // Той самий ключ для іншої операції сервер відхилив би як повтор із іншим тілом (422), а для
+  // тієї самої — віддав би старий результат замість нового запиту.
+  it('сторно двох операцій поспіль — два різні ключі', async () => {
+    const OP_2 = 'op-2';
+    const client = makeTestQueryClient();
+    const onClose = vi.fn();
+    const view = (open: boolean, op: CashOperation) => (
+      <QueryClientProvider client={client}>
+        <CashReversalModal open={open} onClose={onClose} operation={op} currencySymbol="₴" />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view(true, operation()));
+    typeReason('перша');
+    clickSubmit();
+    fireEvent.click(await confirmButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+    rerender(view(false, operation()));
+    rerender(view(true, operation({ id: OP_2 })));
+    typeReason('друга');
+    clickSubmit();
+    fireEvent.click(await confirmButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+
+    const keyOf = (path: string) =>
+      (apiFetchMock.mock.calls.find(c => c[0] === path)?.[1] as Init | undefined)?.headers?.[
+        'Idempotency-Key'
+      ];
+    const first = keyOf(REVERSE_PATH);
+    const second = keyOf(`/cash-registers/${REG}/operations/${OP_2}/reverse`);
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
+  });
+});

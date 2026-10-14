@@ -323,6 +323,7 @@ export const en: Record<string, string> = {
   'err.payment.notFound': 'Payment not found',
   'err.payment.receiptAlreadyIssued': 'The receipt has already been issued — a retry is not needed',
   'err.payment.retryOnlyFailed': 'Retry is possible only for receipts in the “Error” status',
+  'err.payment.retryReversed': 'The payment has been reversed — no receipt is issued for it',
   'err.payment.workOrderStatusNoPayment':
     'Work order is in "{{status}}" status — payment is not possible',
   'err.payment.fiscalOnlyBaseCurrency':

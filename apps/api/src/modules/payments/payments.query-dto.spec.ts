@@ -34,6 +34,7 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
   };
   let checkboxQueue: { add: ReturnType<typeof vi.fn> };
@@ -79,6 +80,7 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
         findMany: vi.fn().mockResolvedValue([]),
         count: vi.fn().mockResolvedValue(0),
         update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     checkboxQueue = { add: vi.fn().mockResolvedValue(undefined) };
@@ -341,9 +343,16 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
       .mockResolvedValueOnce(paymentRow({ fiscalStatus: 'QUEUED' })); // findOne у кінці
     await service.retryFiscal(ORG, PAY_ID);
 
-    expect(prisma.payment.update).toHaveBeenCalledWith(
+    // CAS на прочитаному стані: FAILED, без чека, не сторновано (BR-CASH-024).
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: PAY_ID, orgId: ORG },
+        where: {
+          id: PAY_ID,
+          orgId: ORG,
+          fiscalStatus: 'FAILED',
+          fiscalReceiptId: null,
+          reversedAt: null,
+        },
         data: expect.objectContaining({ fiscalStatus: 'QUEUED', fiscalError: null }),
       }),
     );
@@ -417,6 +426,26 @@ describe('PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto', () => 
         }),
       }),
     );
+  });
+
+  // guards: BR-CASH-024
+  it('retryFiscal: оплату сторновано → 400 «Оплату сторновано», БЕЗ запису й enqueue', async () => {
+    prisma.payment.findFirst.mockResolvedValue(
+      failedPayment({ reversedAt: new Date('2026-10-14T10:00:00.000Z') }),
+    );
+    await expect(service.retryFiscal(ORG, PAY_ID)).rejects.toThrow(/сторновано/);
+    expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+    expect(checkboxQueue.add).not.toHaveBeenCalled();
+  });
+
+  // Сторно між читанням і записом переводить чек у SKIPPED: безумовний запис QUEUED повернув
+  // би сторновану оплату в чергу, з якої обробник її вже не випустить.
+  // guards: BR-CASH-024
+  it('retryFiscal: стан змінився між читанням і записом (CAS count = 0) → 400, БЕЗ enqueue', async () => {
+    prisma.payment.findFirst.mockResolvedValue(failedPayment());
+    prisma.payment.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.retryFiscal(ORG, PAY_ID)).rejects.toThrow(BadRequestException);
+    expect(checkboxQueue.add).not.toHaveBeenCalled();
   });
 
   it('retryFiscal: cross-org id → NotFound (tenant-scoped), БЕЗ enqueue/update', async () => {

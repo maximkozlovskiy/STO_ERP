@@ -173,13 +173,14 @@ function makeHarness(seed: Seed = {}) {
     remove: vi.fn().mockResolvedValue(undefined),
   };
 
+  const audit = { record: vi.fn().mockResolvedValue(undefined) };
   const service = new PaymentsService(
     root as unknown as PrismaService,
     settlements as unknown as SettlementsService,
     { send: vi.fn().mockResolvedValue(undefined) } as unknown as NotificationsService,
     workOrders as unknown as WorkOrdersService,
     loyalty as unknown as LoyaltyService,
-    { record: vi.fn().mockResolvedValue(undefined) } as unknown as AuditService,
+    audit as unknown as AuditService,
     { createOperation: vi.fn() } as unknown as CashService,
     exchangeRates as unknown as ExchangeRatesService,
     checkboxQueue as unknown as Queue,
@@ -199,8 +200,14 @@ function makeHarness(seed: Seed = {}) {
     payment,
     invoice,
     workOrder,
+    audit,
     reverse,
   };
+}
+
+/** Читання повертає знімок рядка на момент «до» — запис іде вже в змінений рядок таблиці. */
+function staleRead(table: { findFirst: ReturnType<typeof vi.fn> }, snapshot: MemRow): void {
+  table.findFirst.mockImplementationOnce(() => Promise.resolve({ ...snapshot }));
 }
 
 describe('PaymentsService.reverse — оплата сторнується один раз', () => {
@@ -473,5 +480,127 @@ describe('PaymentsService.reverse — бонуси', () => {
     expect(h.loyalty.reverseEarn).toHaveBeenCalledTimes(1);
     expect(h.loyalty.reverseEarn.mock.calls[0][0]).toBe(ORG);
     expect(h.loyalty.reverseEarn.mock.calls[0][1]).toBe(PAY);
+  });
+});
+
+describe('PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14)', () => {
+  // Обробник чека пише DONE без блокування. Пробитий між читанням і CAS чек інакше пройшов би
+  // повз відмову «чек уже пробито», а SKIPPED затер би його DONE.
+  // guards: BR-CASH-024
+  it('прочитано QUEUED, а чек уже пробито (DONE) → 400 «…ПРРО», оплату не сторновано, DONE лишився', async () => {
+    const h = makeHarness({ payment: { fiscalStatus: 'QUEUED' } });
+    staleRead(h.tables.payment, { ...h.payment });
+    h.payment.fiscalStatus = 'DONE';
+    h.payment.fiscalReceiptId = 'fr-race';
+    const call = h.reverse();
+    await expect(call).rejects.toThrow(/ПРРО/);
+    expect(h.payment).toMatchObject({ fiscalStatus: 'DONE', reversedAt: null });
+    expect(h.settlementRows).toEqual([]);
+  });
+
+  // Стан чека — частина умови запису: прочитано FAILED, а «Повторити чек» уже поставив його в
+  // чергу (QUEUED) — сторно відмовляє «оновіть сторінку», а не пише поверх.
+  // guards: BR-CASH-024
+  it('прочитано FAILED, а чек уже знову в черзі (QUEUED, без номера) → 400, оплату не сторновано', async () => {
+    const h = makeHarness({ payment: { fiscalStatus: 'FAILED' } });
+    staleRead(h.tables.payment, { ...h.payment });
+    h.payment.fiscalStatus = 'QUEUED';
+    await expect(h.reverse()).rejects.toThrow(/оновіть сторінку/);
+    expect(h.payment).toMatchObject({ fiscalStatus: 'QUEUED', reversedAt: null });
+  });
+
+  // guards: BR-CASH-024
+  it('рахунок: паралельна оплата змінила «сплачено» (статус той самий) → 400, рахунок не чіпано', async () => {
+    const h = makeHarness({
+      payment: { workOrderId: null, amount: 100, amountBase: 100 },
+      invoice: { status: 'PARTIALLY_PAID', paidAmount: 300 },
+    });
+    staleRead(h.tables.invoice, { ...h.invoice });
+    if (h.invoice) h.invoice.paidAmount = 500;
+    await expect(h.reverse()).rejects.toThrow(BadRequestException);
+    expect(h.invoice).toMatchObject({ status: 'PARTIALLY_PAID', paidAmount: 500 });
+  });
+
+  // guards: BR-CASH-024
+  it('наряд «Оплачено»: між читанням і записом «сплачено» змінилось → 400, статус не чіпано', async () => {
+    const h = makeHarness({ payment: { invoiceId: null }, invoice: null });
+    staleRead(h.tables.workOrder, { ...h.workOrder });
+    if (h.workOrder) h.workOrder.paidAmount = 900;
+    await expect(h.reverse()).rejects.toThrow(BadRequestException);
+    expect(h.workOrder).toMatchObject({ status: 'PAID', paidAmount: 900 });
+  });
+
+  // guards: BR-CASH-024
+  it('наряд прочитано «Оплачено», а він уже в архіві → 400, архів не повернуто у «Виставлено»', async () => {
+    const h = makeHarness({ payment: { invoiceId: null }, invoice: null });
+    staleRead(h.tables.workOrder, { ...h.workOrder });
+    if (h.workOrder) h.workOrder.status = 'ARCHIVED';
+    await expect(h.reverse()).rejects.toThrow(BadRequestException);
+    expect(h.workOrder).toMatchObject({ status: 'ARCHIVED', paidAmount: 1000 });
+  });
+});
+
+describe('PaymentsService.reverse — інші оплати й далі покривають суму (BR-PAY-017 навпаки)', () => {
+  // Сторно однієї з оплат, коли решта й далі покриває суму документа: статус «Оплачено»
+  // лишається — так само, як create поставив би його при тих самих сумах.
+  // guards: BR-CASH-024
+  it('наряд «Оплачено» 1400 при сумі 1000, сторно 400 → 1000 і далі «Оплачено»', async () => {
+    const h = makeHarness({
+      payment: { invoiceId: null },
+      invoice: null,
+      workOrder: { status: 'PAID', totalAmount: 1000, paidAmount: 1400 },
+    });
+    const result = await h.reverse();
+    expect(h.workOrder).toMatchObject({ status: 'PAID' });
+    expect(Number(h.workOrder?.paidAmount)).toBe(1000);
+    expect(result.reopenedWorkOrderId).toBeNull();
+  });
+
+  // guards: BR-CASH-024
+  it('рахунок «Оплачено» 1400 при сумі 1000, сторно 400 → 1000 і далі «Оплачено»', async () => {
+    const h = makeHarness({
+      payment: { workOrderId: null },
+      invoice: { status: 'PAID', amount: 1000, paidAmount: 1400 },
+    });
+    await h.reverse();
+    expect(h.invoice).toMatchObject({ status: 'PAID' });
+    expect(Number(h.invoice?.paidAmount)).toBe(1000);
+  });
+});
+
+describe('PaymentsService.afterReversal — аудит після коміту', () => {
+  // guards: BR-CASH-024
+  it('наряд повернувся у «Виставлено» → аудит наряду PAID → INVOICED поруч з аудитом оплати', async () => {
+    const h = makeHarness({ payment: { invoiceId: null }, invoice: null });
+    h.loyalty.reverseEarn.mockResolvedValue({ earned: 0, deducted: 0 });
+    const result = await h.reverse();
+    h.service.afterReversal(ORG, result, USER);
+    expect(h.audit.record).toHaveBeenCalledWith(
+      ORG,
+      'WorkOrder',
+      WO,
+      'UPDATE',
+      USER,
+      { status: 'PAID' },
+      { status: 'INVOICED' },
+    );
+    expect(h.audit.record).toHaveBeenCalledWith(
+      ORG,
+      'Payment',
+      PAY,
+      'UPDATE',
+      USER,
+      { reversedAt: null },
+      expect.objectContaining({ reversalCashOperationId: STORNO_OP }),
+    );
+  });
+
+  // guards: BR-CASH-024
+  it('статус наряду не змінювався → аудиту наряду немає', async () => {
+    const h = makeHarness({ workOrder: { status: 'INVOICED', paidAmount: 400 } });
+    h.loyalty.reverseEarn.mockResolvedValue({ earned: 0, deducted: 0 });
+    const result = await h.reverse();
+    h.service.afterReversal(ORG, result, USER);
+    expect(h.audit.record.mock.calls.map(c => c[1])).toEqual(['Payment']);
   });
 });

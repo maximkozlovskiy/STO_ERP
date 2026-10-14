@@ -151,6 +151,18 @@ describe('LoyaltyService.reverseEarn — списання бонусів за с
     expect(h.balance()).toBe(50);
   });
 
+  // Клієнт витратив бали між читанням залишку й записом: списання за прочитаним залишком пішло б
+  // нижче нуля. CAS на залишку → 400, а не мінус на рахунку.
+  // guards: BR-CASH-024
+  it('залишок змінився між читанням і записом (50 → 3) → 400, рахунок не в мінусі', async () => {
+    const h = makeHarness({ balance: 50, earnedForPay: 12 });
+    const snapshot = { ...h.account };
+    h.tables.loyaltyAccount.findFirst.mockImplementationOnce(() => Promise.resolve(snapshot));
+    h.account.balance = 3;
+    await expect(h.service.reverseEarn(ORG, PAY)).rejects.toThrow();
+    expect(h.balance()).toBe(3);
+  });
+
   // Списання — частина транзакції сторно: якщо каса відкотиться, бали мусять повернутись разом.
   // guards: BR-CASH-024
   it('переданий tx → запис іде через нього, а не через кореневий клієнт', async () => {

@@ -74,6 +74,17 @@ describe('SupplierPaymentsService — cancel-remove', () => {
     await expect(service.remove(ORG, SP_ID)).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  // Сторнована оплата лишила дві проводки (оплата + сторно) — видалення стерло б документ,
+  // на який вони посилаються.
+  // guards: BR-CASH-024
+  it('remove(): REVERSED (сторновану) оплату видалити не можна → BadRequestException', async () => {
+    prisma.supplierPayment.findFirst.mockResolvedValueOnce({
+      status: SupplierPaymentStatus.REVERSED,
+    });
+    await expect(service.remove(ORG, SP_ID)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.supplierPayment.update).not.toHaveBeenCalled();
+  });
+
   it('remove(): неіснуюча оплата → NotFoundException', async () => {
     prisma.supplierPayment.findFirst.mockResolvedValueOnce(null);
     await expect(service.remove(ORG, SP_ID)).rejects.toBeInstanceOf(NotFoundException);

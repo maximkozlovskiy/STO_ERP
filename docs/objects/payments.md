@@ -337,14 +337,14 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | idempotency               | `payments.idempotency.spec.ts`                    | 7      |
 | money model               | `payments.money-model.spec.ts`                    | 22     |
 | multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
-| query dto                 | `payments.query-dto.spec.ts`                      | 41     |
+| query dto                 | `payments.query-dto.spec.ts`                      | 43     |
 | передумови + наряд        | `payments.work-order.spec.ts`                     | 23     |
 | політика повторів черг    | `payments.queue-retry-policy.spec.ts`             | 6      |
 | сервісна логіка           | `provider-config.service.spec.ts`                 | 27     |
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts` | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **382** кейсів — 350 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **384** кейсів — 352 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

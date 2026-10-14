@@ -178,9 +178,14 @@ export class PaymentsService {
         method: true,
         amount: true,
         workOrderId: true,
+        reversedAt: true,
       },
     });
     if (!payment) throw new NotFoundException(translateError('err.payment.notFound', getLocale()));
+    // Сторнована оплата (BR-CASH-024) чека не має: обробник її пропустить, і статус завис би в QUEUED.
+    if (payment.reversedAt) {
+      throw new BadRequestException(translateError('err.payment.retryReversed', getLocale()));
+    }
     if (payment.fiscalReceiptId) {
       throw new BadRequestException(
         translateError('err.payment.receiptAlreadyIssued', getLocale()),
@@ -208,10 +213,15 @@ export class PaymentsService {
       )?.id ??
       null;
 
-    await this.prisma.payment.update({
-      where: { id, orgId },
+    // CAS на прочитаному стані: сторно між читанням і записом переводить чек у SKIPPED, і
+    // безумовний запис повернув би його в QUEUED — без чека й без шансу вийти з черги.
+    const requeued = await this.prisma.payment.updateMany({
+      where: { id, orgId, fiscalStatus: 'FAILED', fiscalReceiptId: null, reversedAt: null },
       data: { fiscalStatus: 'QUEUED', fiscalError: null },
     });
+    if (requeued.count === 0) {
+      throw new BadRequestException(translateError('err.payment.retryOnlyFailed', getLocale()));
+    }
 
     await this.checkboxQueue
       .add(
@@ -803,13 +813,13 @@ export class PaymentsService {
       payment.workOrderId
         ? tx.workOrder.findFirst({
             where: { id: payment.workOrderId, orgId, deletedAt: null },
-            select: { status: true, paidAmount: true },
+            select: { status: true, paidAmount: true, totalAmount: true },
           })
         : null,
       payment.invoiceId
         ? tx.invoice.findFirst({
             where: { id: payment.invoiceId, orgId, deletedAt: null },
-            select: { status: true, paidAmount: true },
+            select: { status: true, paidAmount: true, amount: true },
           })
         : null,
     ]);
@@ -841,8 +851,17 @@ export class PaymentsService {
     const fiscalPending =
       payment.fiscalStatus === FiscalReceiptStatus.QUEUED ||
       payment.fiscalStatus === FiscalReceiptStatus.FAILED;
+    // У `where` — і прочитаний стан чека: обробник пише DONE без блокування, і чек, пробитий між
+    // читанням вище й цим записом, інакше пройшов би повз відмову «чек уже пробито», а його DONE
+    // затерло б SKIPPED (review 2026-10-14).
     const claimed = await tx.payment.updateMany({
-      where: { id: payment.id, orgId, reversedAt: null },
+      where: {
+        id: payment.id,
+        orgId,
+        reversedAt: null,
+        fiscalReceiptId: null,
+        fiscalStatus: payment.fiscalStatus,
+      },
       data: {
         reversedAt: new Date(),
         reversalCashOperationId: ctx.cashOperationId,
@@ -853,7 +872,23 @@ export class PaymentsService {
       },
     });
     if (claimed.count === 0) {
-      throw new BadRequestException(translateError('err.cash.alreadyReversed', locale));
+      // Програв CAS: або оплату вже сторновано, або змінився її чек (його щойно пробито).
+      const now = await tx.payment.findFirst({
+        where: { id: payment.id, orgId },
+        select: { reversedAt: true, fiscalStatus: true, fiscalReceiptId: true },
+      });
+      if (
+        !now?.reversedAt &&
+        (now?.fiscalStatus === FiscalReceiptStatus.DONE || now?.fiscalReceiptId)
+      ) {
+        throw new BadRequestException(translateError('err.cash.reversalFiscalDone', locale));
+      }
+      throw new BadRequestException(
+        translateError(
+          now?.reversedAt ? 'err.cash.alreadyReversed' : 'err.cash.reversalStateChanged',
+          locale,
+        ),
+      );
     }
 
     // REFUND (рознесення виписки) має той самий знак, що й PAYMENT (−1), — його сторно теж +1.
@@ -882,16 +917,19 @@ export class PaymentsService {
     const amount = moneyFromDecimal(payment.amount);
 
     // «Сплачено» рахунку назад (не нижче нуля); «Оплачено» / «Частково оплачено» → «Частково
-    // оплачено» або «Виставлено». CAS на прочитаних сумі й статусі — як у create.
+    // оплачено» або «Виставлено». Статус — та сама формула, що в create, лише навпаки: сплачене
+    // й далі покриває суму рахунку → лишається «Оплачено». CAS на прочитаних сумі й статусі.
     if (invoice && payment.invoiceId) {
       const newPaid = money(Math.max(0, moneyFromDecimal(invoice.paidAmount) - amount));
       const wasPaid =
         invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.PARTIALLY_PAID;
       const newStatus = !wasPaid
         ? invoice.status
-        : newPaid > 0
-          ? InvoiceStatus.PARTIALLY_PAID
-          : InvoiceStatus.SENT;
+        : newPaid >= moneyFromDecimal(invoice.amount) - 1e-9
+          ? InvoiceStatus.PAID
+          : newPaid > 0
+            ? InvoiceStatus.PARTIALLY_PAID
+            : InvoiceStatus.SENT;
       const moved = await tx.invoice.updateMany({
         where: {
           id: payment.invoiceId,
@@ -910,12 +948,14 @@ export class PaymentsService {
     }
 
     // Наряд — лише якщо оплата йшла за ним (`workOrderId`): «сплачено» назад (не нижче нуля),
-    // «Оплачено» → «Виставлено». Зворотного переходу в публічній карті (WORK_ORDER_TRANSITIONS)
+    // «Оплачено» → «Виставлено», якщо наряд уже не сплачений повністю (BR-PAY-017 навпаки: інші
+    // оплати можуть і далі покривати суму наряду — тоді він лишається «Оплачено»). Зворотного переходу в публічній карті (WORK_ORDER_TRANSITIONS)
     // немає і не буде: статус пише окремий внутрішній хелпер модуля нарядів (BR-WO-001).
     let reopenedWorkOrderId: string | null = null;
     if (workOrder && payment.workOrderId) {
       const newPaid = money(Math.max(0, moneyFromDecimal(workOrder.paidAmount) - amount));
-      if (workOrder.status === WorkOrderStatus.PAID) {
+      const stillFullyPaid = newPaid >= moneyFromDecimal(workOrder.totalAmount) - 1e-9;
+      if (workOrder.status === WorkOrderStatus.PAID && !stillFullyPaid) {
         await reopenPaidWorkOrderInTx(
           tx,
           orgId,

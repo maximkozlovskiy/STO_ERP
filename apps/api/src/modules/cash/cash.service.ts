@@ -49,6 +49,12 @@ export interface CreateCashOperationInput {
    * `reversalOfId` унікальний у базі — друге сторно того самого рядка дає 400.
    */
   reversalOfId?: string | null;
+  /**
+   * Не писати аудит створення тут: викликач запише його сам ПІСЛЯ коміту своєї транзакції
+   * (`recordCreated`). Сторно (BR-CASH-023) відкочує рядок, якщо відмовила гілка відкату оплати,
+   * — аудит, записаний одразу, лишився б подією про рядок, якого в журналі немає.
+   */
+  deferAudit?: boolean;
 }
 
 /**
@@ -218,17 +224,42 @@ export class CashService {
     }
 
     // Аудит (поза tx щоб не подовжувати транзакцію; best-effort).
-    if (input.createdBy) {
-      this.audit
-        .record(orgId, 'CashOperation', op.id, 'CREATE', input.createdBy, undefined, {
+    if (input.createdBy && !input.deferAudit) {
+      this.recordCreated(
+        orgId,
+        {
+          id: op.id,
           direction: input.direction,
           amount,
           reason: input.reason,
-          ...(input.reversalOfId && { reversalOfId: input.reversalOfId }),
-        })
-        .catch(() => undefined);
+          reversalOfId: input.reversalOfId,
+        },
+        input.createdBy,
+      );
     }
     return toCashOperationDto(op);
+  }
+
+  /** Аудит створення рядка каси — best-effort, поза транзакцією (див. `deferAudit`). */
+  recordCreated(
+    orgId: string,
+    op: {
+      id: string;
+      direction: string;
+      amount: number | Prisma.Decimal;
+      reason: string;
+      reversalOfId?: string | null;
+    },
+    userId: string,
+  ): void {
+    this.audit
+      .record(orgId, 'CashOperation', op.id, 'CREATE', userId, undefined, {
+        direction: op.direction,
+        amount: Number(op.amount),
+        reason: op.reason,
+        ...(op.reversalOfId && { reversalOfId: op.reversalOfId }),
+      })
+      .catch(() => undefined);
   }
 
   /**

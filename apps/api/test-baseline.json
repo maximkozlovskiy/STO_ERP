@@ -1661,6 +1661,15 @@
    "CashDeskService.reverse — прості ручні приводи: лише рядок каси OWNER_OUT → один рядок протилежного напряму, без проводок і без відкату оплат"
   ],
   "apps/api/src/modules/cash-registers/cash-desk.reverse.spec.ts": [
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) MECHANIC → 403, нічого не записано",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) RECEPTIONIST → 403, нічого не записано",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) STOREKEEPER → 403, нічого не записано",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) аудит рядка сторно: запис рядка — з deferAudit, аудит — після коміту",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) відкат оплати відмовив → ні аудиту рядка сторно, ні afterReversal",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) причина порожня → 400 «Вкажіть причину сторно», нічого не записано",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) причина самі пробіли → 400 «Вкажіть причину сторно», нічого не записано",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) рядок уже сторновано → відмова ДО спроби записати рядок",
+   "CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14) сторно оплати пройшло → afterReversal з результатом сервісу оплат і автором, після коміту",
    "CashDeskService.reverse — одна транзакція: відмова будь-де → нічого відкат оплати відмовив (чек уже пробито) → рядка сторно в журналі немає, помилка піднята",
    "CashDeskService.reverse — одна транзакція: відмова будь-де → нічого відкат оплати постачальнику відмовив → рядка сторно немає",
    "CashDeskService.reverse — одна транзакція: відмова будь-де → нічого запис рядка сторно відмовив (немає залишку) → помилка як є, оплату не відкочено",
@@ -1943,6 +1952,9 @@
    "CashService.listOperations — історія операцій рядок історії: числа — number, дата — ISO, назва статті — з довідника"
   ],
   "apps/api/src/modules/cash/cash.reversal-record.spec.ts": [
+   "CashService — рядок сторно: стаття, аудит, історія (review 2026-10-14) deferAudit → createOperation аудиту не пише; recordCreated пише CREATE з reversalOfId",
+   "CashService — рядок сторно: стаття, аудит, історія (review 2026-10-14) стаття оригіналу переходить як є: без пошуку довідника й перевірки напряму",
+   "CashService — рядок сторно: стаття, аудит, історія (review 2026-10-14) історія: оригінал несе reversedBy, рядок сторно — без статусу чека; пошук сторно за orgId",
    "CashService.createOperation — рядок сторно P2002 на reversalOfId (друге сторно тієї самої операції) → 400 «Операцію вже сторновано»",
    "CashService.createOperation — рядок сторно P2002 на reversalOfId із зовнішнім tx → та сама 400",
    "CashService.createOperation — рядок сторно conversion передано → у рядок ідуть курс і сума в базовій валюті ОРИГІНАЛУ, а не курс на сьогодні",
@@ -3179,6 +3191,7 @@
    "LoyaltyService.earn — сторнована оплата бонусів не дає оплату сторновано до відпрацювання джобу → нічого не нараховано, леджер без EARN",
    "LoyaltyService.reverseEarn — списання бонусів за сторновану оплату дробові бали (2 знаки) — без float-пилу: 10.35 нараховано, 20.1 на рахунку → 9.75",
    "LoyaltyService.reverseEarn — списання бонусів за сторновану оплату за оплату нічого не нараховано → рахунок не змінюється, без помилки",
+   "LoyaltyService.reverseEarn — списання бонусів за сторновану оплату залишок змінився між читанням і записом (50 → 3) → 400, рахунок не в мінусі",
    "LoyaltyService.reverseEarn — списання бонусів за сторновану оплату на рахунку 0 → лишається 0, без помилки",
    "LoyaltyService.reverseEarn — списання бонусів за сторновану оплату на рахунку менше, ніж нараховано (5 із 12) → 0, без помилки",
    "LoyaltyService.reverseEarn — списання бонусів за сторновану оплату нараховано 12 за оплату, на рахунку 50 → 38",
@@ -3741,7 +3754,9 @@
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: queue.add reject (Redis лежить) → .catch ставить FAILED, create НЕ кидає",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: вже має fiscalReceiptId → 400 «уже пробито», БЕЗ enqueue (idempotency)",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: гейт receiptId перевіряється ПЕРЕД гейтом статусу (правильний порядок)",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: оплату сторновано → 400 «Оплату сторновано», БЕЗ запису й enqueue",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: повторний чек ПРРО ставиться з attempts=288 + exponential backoff від 5 хв — як первинний",
+   "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: стан змінився між читанням і записом (CAS count = 0) → 400, БЕЗ enqueue",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: статус DONE (не FAILED) → 400, БЕЗ enqueue",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: статус QUEUED (не FAILED) → 400",
    "PaymentsService — Phase 2 findAll/findOne/retryFiscal/toDto retryFiscal: статус SKIPPED (не FAILED) → 400",
@@ -3783,6 +3798,8 @@
    "ReconciliationProcessor — сторнована оплата не входить у «сплачено» рахунку єдину оплату сторновано, «сплачено» 0 → дрейфу немає"
   ],
   "apps/api/src/modules/payments/payments.reverse.spec.ts": [
+   "PaymentsService.afterReversal — аудит після коміту наряд повернувся у «Виставлено» → аудит наряду PAID → INVOICED поруч з аудитом оплати",
+   "PaymentsService.afterReversal — аудит після коміту статус наряду не змінювався → аудиту наряду немає",
    "PaymentsService.reverse — «сплачено» рахунку «Оплачено» 1000, сторно 1000 → 0, «Виставлено»",
    "PaymentsService.reverse — «сплачено» рахунку «Оплачено» 1000, сторно 400 → 600, «Частково оплачено»",
    "PaymentsService.reverse — «сплачено» рахунку «Частково оплачено» 400, сторно 400 → 0, «Виставлено»",
@@ -3803,11 +3820,18 @@
    "PaymentsService.reverse — оплата сторнується один раз повторне сторно тієї самої оплати → 400; другої проводки немає",
    "PaymentsService.reverse — проводка сторно оригінал PAYMENT → PAYMENT_CANCEL на ту саму суму, з контрагентом, курсом оригіналу і в tx каси",
    "PaymentsService.reverse — проводка сторно оригінал PREPAYMENT (аванс без рахунку й наряду) → PREPAYMENT_CANCEL",
+   "PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14) наряд «Оплачено»: між читанням і записом «сплачено» змінилось → 400, статус не чіпано",
+   "PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14) наряд прочитано «Оплачено», а він уже в архіві → 400, архів не повернуто у «Виставлено»",
+   "PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14) прочитано FAILED, а чек уже знову в черзі (QUEUED, без номера) → 400, оплату не сторновано",
+   "PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14) прочитано QUEUED, а чек уже пробито (DONE) → 400 «…ПРРО», оплату не сторновано, DONE лишився",
+   "PaymentsService.reverse — стан змінився між читанням і записом (review 2026-10-14) рахунок: паралельна оплата змінила «сплачено» (статус той самий) → 400, рахунок не чіпано",
    "PaymentsService.reverse — фіскальний чек і валюта оплата не в базовій валюті → 400 «…в іноземній валюті не підтримується»",
    "PaymentsService.reverse — фіскальний чек і валюта фіскалізація не застосовна (null) → лишається null",
    "PaymentsService.reverse — фіскальний чек і валюта чек у стані FAILED → SKIPPED: черга його більше не пробиває",
    "PaymentsService.reverse — фіскальний чек і валюта чек у стані QUEUED → SKIPPED: черга його більше не пробиває",
-   "PaymentsService.reverse — фіскальний чек і валюта чек уже пробито (fiscalStatus = DONE) → 400 «…спершу оформіть повернення в ПРРО»"
+   "PaymentsService.reverse — фіскальний чек і валюта чек уже пробито (fiscalStatus = DONE) → 400 «…спершу оформіть повернення в ПРРО»",
+   "PaymentsService.reverse — інші оплати й далі покривають суму (BR-PAY-017 навпаки) наряд «Оплачено» 1400 при сумі 1000, сторно 400 → 1000 і далі «Оплачено»",
+   "PaymentsService.reverse — інші оплати й далі покривають суму (BR-PAY-017 навпаки) рахунок «Оплачено» 1400 при сумі 1000, сторно 400 → 1000 і далі «Оплачено»"
   ],
   "apps/api/src/modules/payments/payments.work-order.spec.ts": [
    "PaymentsService.create — передумови і звʼязок з нарядом (BR-PAY-001, BR-PAY-005) transition(PAID) кидає → create НЕ валиться: платіж і settlement уже закомічені (best-effort)",
@@ -4933,6 +4957,7 @@
    "SupplierPaymentsService — cancel-remove cancel(): DRAFT → CANCELLED, settlement НЕ пишеться",
    "SupplierPaymentsService — cancel-remove cancel(): оплату провели між читанням і записом (CAS count=0) → 400, статус не переписано",
    "SupplierPaymentsService — cancel-remove remove(): CONFIRMED оплату видалити не можна → BadRequestException",
+   "SupplierPaymentsService — cancel-remove remove(): REVERSED (сторновану) оплату видалити не можна → BadRequestException",
    "SupplierPaymentsService — cancel-remove remove(): неіснуюча оплата → NotFoundException"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.confirm.spec.ts": [

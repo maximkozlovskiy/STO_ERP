@@ -11,7 +11,7 @@
  * Рядок пише лише `CashService.createOperation` (BR-CASH-001) — з `conversion` і `reversalOfId`.
  */
 import { describe, it, expect } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import {
   CAT_EXPENSE,
   CLIENT,
@@ -414,5 +414,101 @@ describe('CashDeskService.reverse — одна транзакція: відмо�
     await expect(reverseOp(h, orig.id as string)).rejects.toBe(boom);
     expect(newCashRows(h, seeded)).toEqual([]);
     expect(h.settlementRows).toEqual([]);
+  });
+});
+
+describe('CashDeskService.reverse — доступ, причина, повтор і аудит (review 2026-10-14)', () => {
+  // Маршрут має @Roles, але сервіс кличуть і не через HTTP — перевірка ролі своя.
+  // guards: BR-CASH-023
+  it.each(['RECEPTIONIST', 'STOREKEEPER', 'MECHANIC'])(
+    '%s → 403, нічого не записано',
+    async role => {
+      const h = makeDesk();
+      const orig = seedOperation(h);
+      const seeded = h.cashRows.length;
+      await expect(reverseOp(h, orig.id as string, 'помилка', { id: USER, role })).rejects.toThrow(
+        ForbiddenException,
+      );
+      expectNothingReversed(h, seeded);
+      expect(h.cash.createOperation).not.toHaveBeenCalled();
+    },
+  );
+
+  // Повторює zod-схему: виклик не через HTTP схему не проходить.
+  // guards: BR-CASH-023
+  it.each([
+    ['порожня', ''],
+    ['самі пробіли', '  	 '],
+  ])('причина %s → 400 «Вкажіть причину сторно», нічого не записано', async (_n, reason) => {
+    const h = makeDesk();
+    const orig = seedOperation(h);
+    const seeded = h.cashRows.length;
+    await expect(reverseOp(h, orig.id as string, reason)).rejects.toThrow(/причину сторно/);
+    expectNothingReversed(h, seeded);
+    expect(h.cash.createOperation).not.toHaveBeenCalled();
+  });
+
+  // Вже сторнований рядок відсікає читання, а не лише унікальний індекс: запису рядка
+  // (з перевіркою залишку для видачі) навіть не пробуємо.
+  // guards: BR-CASH-023
+  it('рядок уже сторновано → відмова ДО спроби записати рядок', async () => {
+    const h = makeDesk();
+    const orig = seedOperation(h);
+    seedOperation(h, { direction: 'OUT', reversalOfId: orig.id });
+    await expect(reverseOp(h, orig.id as string)).rejects.toThrow(/вже сторновано/);
+    expect(h.cash.createOperation).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CASH-023, BR-CASH-024
+  it('сторно оплати пройшло → afterReversal з результатом сервісу оплат і автором, після коміту', async () => {
+    const h = makeDesk();
+    const orig = seedOperation(h, {
+      reason: 'SALE_PAYMENT',
+      counterpartyId: CLIENT,
+      documentType: 'Payment',
+      documentId: 'p0000003-0000-4000-8000-000000000003',
+    });
+    const seeded = h.cashRows.length;
+    const result = {
+      paymentId: orig.documentId,
+      cashOperationId: 'x',
+      reopenedWorkOrderId: null,
+      loyalty: { earned: 0, deducted: 0 },
+    };
+    h.payments.reverse.mockResolvedValueOnce(result as never);
+    h.payments.afterReversal.mockImplementationOnce(() => {
+      // Викликано, коли рядок сторно вже в закоміченому журналі.
+      expect(newCashRows(h, seeded)).toHaveLength(1);
+    });
+    await reverseOp(h, orig.id as string);
+    expect(h.payments.afterReversal).toHaveBeenCalledTimes(1);
+    expect(h.payments.afterReversal).toHaveBeenCalledWith(ORG, result, USER);
+  });
+
+  // Аудит рядка сторно — після коміту: відмова гілки відкату відкочує рядок, і подія аудиту
+  // «створено рядок» про рядок, якого в журналі немає, лишилась би (наживо 2026-10-14).
+  // guards: BR-CASH-023
+  it('аудит рядка сторно: запис рядка — з deferAudit, аудит — після коміту', async () => {
+    const h = makeDesk();
+    const orig = seedOperation(h);
+    await reverseOp(h, orig.id as string);
+    expect(h.cash.createOperation.mock.calls[0][1]).toMatchObject({ deferAudit: true });
+    expect(h.cash.recordCreated).toHaveBeenCalledTimes(1);
+    expect(h.cash.recordCreated.mock.calls[0][2]).toBe(USER);
+  });
+
+  // guards: BR-CASH-023, BR-CASH-024
+  it('відкат оплати відмовив → ні аудиту рядка сторно, ні afterReversal', async () => {
+    const h = makeDesk();
+    const orig = seedOperation(h, {
+      reason: 'SALE_PAYMENT',
+      counterpartyId: CLIENT,
+      documentType: 'Payment',
+      documentId: 'p0000004-0000-4000-8000-000000000004',
+    });
+    h.payments.reverse.mockRejectedValueOnce(new BadRequestException('чек пробито'));
+    await expect(reverseOp(h, orig.id as string)).rejects.toThrow(BadRequestException);
+    expect(h.cash.recordCreated).not.toHaveBeenCalled();
+    expect(h.payments.afterReversal).not.toHaveBeenCalled();
   });
 });

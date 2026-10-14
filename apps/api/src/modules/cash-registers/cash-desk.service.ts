@@ -502,7 +502,7 @@ export class CashDeskService {
       throw new BadRequestException(translateError('err.cash.reversalReasonRequired', locale));
     }
 
-    let outcome: { rowId: string; paymentReversal: PaymentReversalResult | null };
+    let outcome: { row: CashOperationResponseDto; paymentReversal: PaymentReversalResult | null };
     try {
       outcome = await this.prisma.$transaction(
         async tx => {
@@ -553,6 +553,8 @@ export class CashDeskService {
                     }
                   : null,
               reversalOfId: original.id,
+              // Аудит рядка — лише після коміту: відмова гілки нижче відкочує рядок.
+              deferAudit: true,
             },
             tx,
           );
@@ -560,7 +562,7 @@ export class CashDeskService {
           const ctx = { cashOperationId: row.id, reason, userId: actor.id };
           if (original.documentType === 'Payment' && original.documentId) {
             return {
-              rowId: row.id,
+              row,
               paymentReversal: await this.payments.reverse(orgId, original.documentId, ctx, tx),
             };
           }
@@ -572,7 +574,7 @@ export class CashDeskService {
           ) {
             await this.reverseRefundSettlement(orgId, original, row.id, reason, actor, tx);
           }
-          return { rowId: row.id, paymentReversal: null };
+          return { row, paymentReversal: null };
         },
         { timeout: TRANSACTION_TIMEOUT_MS },
       );
@@ -583,10 +585,11 @@ export class CashDeskService {
       throw e;
     }
 
+    if (actor.id) this.cash.recordCreated(orgId, outcome.row, actor.id);
     if (outcome.paymentReversal) {
       this.payments.afterReversal(orgId, outcome.paymentReversal, actor.id);
     }
-    return this.cash.getHistoryRow(orgId, cashRegisterId, outcome.rowId);
+    return this.cash.getHistoryRow(orgId, cashRegisterId, outcome.row.id);
   }
 
   /** BR-CASH-023: сторно сторно немає; рядки зарплати й банку скасовують там, де створили. */
@@ -663,7 +666,8 @@ export class CashDeskService {
     documentId: string,
   ): Promise<CashOperationResponseDto> {
     const row = await this.prisma.cashOperation.findFirst({
-      where: { orgId, documentType, documentId },
+      // Рядок сторно несе той самий платіжний документ (BR-CASH-023) — тут потрібен оригінал.
+      where: { orgId, documentType, documentId, reversalOfId: null },
       include: { expenseCategory: { select: { name: true } } },
     });
     if (!row) throw new InternalServerErrorException();

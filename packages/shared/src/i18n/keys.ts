@@ -439,6 +439,7 @@ export const VALIDATION_KEYS = [
   'err.payment.notFound',
   'err.payment.receiptAlreadyIssued',
   'err.payment.retryOnlyFailed',
+  'err.payment.retryReversed',
   'err.payment.workOrderStatusNoPayment',
   'err.payment.fiscalOnlyBaseCurrency',
   'err.payment.currencyMustMatchWorkOrder',

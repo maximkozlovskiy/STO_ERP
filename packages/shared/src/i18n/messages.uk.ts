@@ -324,6 +324,7 @@ export const uk: Record<string, string> = {
   'err.payment.notFound': 'Платіж не знайдено',
   'err.payment.receiptAlreadyIssued': 'Чек уже пробито — повтор не потрібен',
   'err.payment.retryOnlyFailed': 'Повтор можливий лише для чеків у статусі «Помилка»',
+  'err.payment.retryReversed': 'Оплату сторновано — чек за неї не пробивається',
   'err.payment.workOrderStatusNoPayment': 'Наряд у статусі "{{status}}" — оплата неможлива',
   'err.payment.fiscalOnlyBaseCurrency':
     'Фіскалізація можлива лише у базовій валюті ({{code}}). Оберіть касу/рахунок у {{code}} або спосіб оплати без ПРРО.',

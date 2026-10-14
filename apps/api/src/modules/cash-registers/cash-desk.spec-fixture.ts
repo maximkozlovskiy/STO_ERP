@@ -319,6 +319,12 @@ export function makeDesk() {
     getHistoryRow: vi.fn((_orgId: string, id: string, ..._rest: unknown[]) =>
       Promise.resolve(cashRows.find(r => r.id === id) ?? null),
     ),
+    // Аудит рядка сторно — після коміту (`deferAudit`): кличеться лише, коли рядок у журналі.
+    recordCreated: vi.fn((_orgId: string, row: MemRow, _userId: string) => {
+      if (!cashRows.some(r => r.id === row.id)) {
+        throw new Error('аудит рядка, якого немає в закоміченому журналі');
+      }
+    }),
   };
 
   // Справжній PaymentsService.create сам пише єдиний рядок каси (documentType = 'Payment').
@@ -341,6 +347,8 @@ export function makeDesk() {
     // відкочує САМ сервіс оплат — у транзакції каси. Тут — лише виклик; його наслідки —
     // `../payments/payments.reverse.spec.ts`.
     reverse: vi.fn((..._args: unknown[]) => Promise.resolve()),
+    // Аудит сторно оплати — ПІСЛЯ коміту транзакції каси (лише коли reverse щось повернув).
+    afterReversal: vi.fn((..._args: unknown[]) => undefined),
   };
 
   // Справжній SupplierPaymentsService: create → чернетка без руху грошей; confirm → рядок каси

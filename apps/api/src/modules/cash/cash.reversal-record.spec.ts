@@ -9,7 +9,7 @@
  * Написано зі специфікації ДО коду: `conversion` і `reversalOfId` у вході createOperation — з
  * контракту плану 2026-10-14 (`CreateCashOperationInput`).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ORG, REG, USER, opRow, setup } from './cash.spec-fixture';
@@ -139,5 +139,103 @@ describe('CashService.createOperation — рядок сторно', () => {
         reason: 'MANUAL_IN',
       }),
     ).rejects.toBe(boom);
+  });
+});
+
+describe('CashService — рядок сторно: стаття, аудит, історія (review 2026-10-14)', () => {
+  // Сторно повторює рядок оригіналу: стаття витрат на рядку-внесенні — свідомо, без перевірки
+  // напряму (BR-CASH-007 стосується вибору статті людиною). Підсумок статті «оригінал + сторно» = 0.
+  // guards: BR-CASH-023
+  it('стаття оригіналу переходить як є: без пошуку довідника й перевірки напряму', async () => {
+    const { m, service } = setup();
+    await service.createOperation(
+      ORG,
+      reversalInput({
+        direction: 'IN',
+        reason: 'EXPENSE',
+        expenseCategoryId: 'cat-expense',
+      }) as never,
+    );
+    expect(m.prisma.cashOperation.create.mock.calls[0][0].data.expenseCategoryId).toBe(
+      'cat-expense',
+    );
+    expect(m.prisma.expenseCategory.findFirst).not.toHaveBeenCalled();
+  });
+
+  // guards: BR-CASH-023
+  it('deferAudit → createOperation аудиту не пише; recordCreated пише CREATE з reversalOfId', async () => {
+    const { m, service } = setup();
+    m.prisma.cashOperation.create.mockResolvedValueOnce(opRow({ id: 'op-rev' }));
+    await service.createOperation(ORG, reversalInput({ deferAudit: true }) as never);
+    expect(m.audit.record).not.toHaveBeenCalled();
+    service.recordCreated(
+      ORG,
+      {
+        id: 'op-rev',
+        direction: 'OUT',
+        amount: 1250.75,
+        reason: 'MANUAL_IN',
+        reversalOfId: ORIGINAL,
+      },
+      USER,
+    );
+    expect(m.audit.record).toHaveBeenCalledWith(
+      ORG,
+      'CashOperation',
+      'op-rev',
+      'CREATE',
+      USER,
+      undefined,
+      {
+        direction: 'OUT',
+        amount: 1250.75,
+        reason: 'MANUAL_IN',
+        reversalOfId: ORIGINAL,
+      },
+    );
+  });
+
+  // Оригінал позначено «сторновано» лише через рядок, що посилається на нього; чек належить
+  // оригіналу — у рядку сторно того самого платіжного документа статусу чека немає.
+  // guards: BR-CASH-023
+  it('історія: оригінал несе reversedBy, рядок сторно — без статусу чека; пошук сторно за orgId', async () => {
+    const { m, service } = setup();
+    const payment = vi.fn().mockResolvedValue([{ id: 'pay-1', fiscalStatus: 'SKIPPED' }]);
+    Object.assign(m.prisma, { payment: { findMany: payment } });
+    const reversal = opRow({
+      id: 'op-2',
+      direction: 'OUT',
+      reason: 'SALE_PAYMENT',
+      documentType: 'Payment',
+      documentId: 'pay-1',
+      reversalOfId: 'op-1',
+      notes: 'помилка касира',
+      createdAt: new Date('2026-10-14T10:00:00.000Z'),
+    });
+    const original = opRow({
+      reason: 'SALE_PAYMENT',
+      documentType: 'Payment',
+      documentId: 'pay-1',
+    });
+    m.prisma.cashOperation.findMany
+      .mockResolvedValueOnce([reversal, original])
+      .mockResolvedValueOnce([
+        { id: 'op-2', reversalOfId: 'op-1', createdAt: reversal.createdAt, notes: reversal.notes },
+      ]);
+    const rows = await service.listOperations(ORG, REG);
+    const byId = new Map(rows.map(r => [r.id, r]));
+    expect(byId.get('op-1')).toMatchObject({
+      fiscalStatus: 'SKIPPED',
+      reversedBy: { id: 'op-2', createdAt: '2026-10-14T10:00:00.000Z', reason: 'помилка касира' },
+    });
+    expect(byId.get('op-2')).toMatchObject({
+      fiscalStatus: null,
+      reversedBy: null,
+      reversalOfId: 'op-1',
+    });
+    const lookup = m.prisma.cashOperation.findMany.mock.calls[1][0] as {
+      where: Record<string, unknown>;
+    };
+    expect(lookup.where).toMatchObject({ orgId: ORG, reversalOfId: { in: ['op-2', 'op-1'] } });
   });
 });
