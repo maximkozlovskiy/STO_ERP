@@ -312,7 +312,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | ланцюг опитування (Redis) | `payment-polling.queue.integration.spec.ts`       | 1      |
 | fiscal gate               | `payments.fiscal-gate.spec.ts`                    | 8      |
 | idempotency               | `payments.idempotency.spec.ts`                    | 7      |
-| money model               | `payments.money-model.spec.ts`                    | 20     |
+| money model               | `payments.money-model.spec.ts`                    | 22     |
 | multicurrency             | `payments.multicurrency.spec.ts`                  | 17     |
 | query dto                 | `payments.query-dto.spec.ts`                      | 41     |
 | передумови + наряд        | `payments.work-order.spec.ts`                     | 23     |
@@ -321,7 +321,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts` | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`  | 11     |
 
-Разом: **380** кейсів — 348 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
+Разом: **382** кейсів — 350 у модулі + 32 у двох спеках шифрування поза ним (цифри з `vitest --reporter=json`, не з grep).
 
 **Чого тут НЕМА.** Інваріантного спеку (`*.invariants.spec.ts`) немає, хоча агрегат на шляху грошей або статусів: властивості на кшталт «фінальний статус без виходів» не стережуться нічим. Свідома прогалина — кандидат на окремий крок.
 

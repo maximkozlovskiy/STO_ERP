@@ -1802,7 +1802,8 @@
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція привід не відповідає напряму → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція під звіт без працівника → 400, до сервісу не доходить",
    "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція підстава без id → 400, до сервісу не доходить",
-   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція підстава не того типу → 400, до сервісу не доходить"
+   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція підстава не того типу → 400, до сервісу не доходить",
+   "CashRegisters — HTTP Contract POST /cash-registers/:id/operations — ручна касова операція сума понад місткість колонки → 400, до сервісу не доходить"
   ],
   "apps/api/src/modules/cash-registers/cash-registers.service.spec.ts": [
    "CashRegistersService — assertFiscalProvider (привʼязка каси до ПРРО) Bug #731: битий JSON-креди → 400",
@@ -3595,6 +3596,8 @@
    "PaymentsService — FIN-C1 ідемпотентність оплати явний sourceType=BANK_ACCOUNT з DTO + невалідний/чужий рахунок → NotFound (строга валідація вводу)"
   ],
   "apps/api/src/modules/payments/payments.money-model.spec.ts": [
+   "CreatePaymentDto — межі суми (Bug #846) найбільша сума, яку вміщує колонка, проходить",
+   "CreatePaymentDto — межі суми (Bug #846) сума понад місткість Decimal(12,2) → помилка поля amount, а не 500 від бази",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #668: оплата залишку з PARTIALLY_PAID-бази (300 при paid=200/500) → paidAmount=500, PAID",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #668: часткова оплата 200 → рівно 1 PAYMENT-settlement на 200 (борг зменшується на суму)",
    "PaymentsService — money-model Phase 1 gap-filling (Bugs #668-#674) Bug #669: оплата РІВНО залишку (100 при paid=400/500) → PAID, не PARTIALLY_PAID",
@@ -4450,6 +4453,7 @@
    "ReportsService — Bug #629 квантування грошей у звітах revenue: totalRevenue = Σ рядків квантовано (JS-float Σ не дрейфує)",
    "ReportsService — Bug #629 квантування грошей у звітах settlements: totalDebit/totalCredit = Σ балансів квантовано",
    "ReportsService — Bug #629 квантування грошей у звітах vatReport: net = invoiced − purchases квантовано",
+   "ReportsService — Bug #629 квантування грошей у звітах vatReport: ПДВ рахунків — усі виставлені статуси, зокрема частково оплачений",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) profitability: база собівартості робіт — фактичні роботи без ПДВ, а не сума з ПДВ",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) profitability: прибуток і маржа — від суми без ПДВ; ПДВ і сума з ПДВ віддаються окремо",
    "ReportsService — Bug #629 квантування грошей у звітах виручка: сума / ПДВ / сума з ПДВ (BR-RPT-023) revenue: «Роботи» і «Запчастини» — від ФАКТУ і без ПДВ (частка totalNet / сума рядків)",
@@ -4525,6 +4529,8 @@
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH /settings/organisation приймає followUpActive=true, followUpDays=120",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH відхиляє followUpDays < 30 (поза межами @Min/@Max)",
    "Settings — HTTP Contract Bug #84 regression: followUp fields end-to-end PATCH відхиляє followUpDays > 365",
+   "Settings — HTTP Contract GET /settings/base-currency маршрут відкритий бухгалтеру й приймальні; повні налаштування — лише власнику й адміну",
+   "Settings — HTTP Contract GET /settings/base-currency повертає 200 і лише код базової валюти — без решти налаштувань організації",
    "Settings — HTTP Contract GET /settings/organisation повертає 200 з uiFeatures всередині shape",
    "Settings — HTTP Contract GET /settings/organisation повертає costMethod зі значення Prisma enum",
    "Settings — HTTP Contract GET /settings/ui-features повертає 200 з усіма 10 boolean ключами UiFeatures",
@@ -4852,7 +4858,9 @@
    "SupplierPaymentsService — create create(): CASH_REGISTER без cashRegisterId → BadRequestException, БЕЗ DB-виклику",
    "SupplierPaymentsService — create create(): CASH_REGISTER одночасно з bankAccountId → BadRequestException",
    "SupplierPaymentsService — create create(): контрагент-CLIENT → BadRequestException (не постачальник)",
-   "SupplierPaymentsService — create create(): успішне створення з касою → DRAFT, settlement НЕ пишеться"
+   "SupplierPaymentsService — create create(): успішне створення з касою → DRAFT, settlement НЕ пишеться",
+   "supplierPaymentCreateSchema — межі суми (Bug #846) найбільша сума, яку вміщує колонка, проходить",
+   "supplierPaymentCreateSchema — межі суми (Bug #846) сума понад місткість Decimal(12,2) → відмова на полі amount, а не 500 від бази"
   ],
   "apps/api/src/modules/supplier-payments/supplier-payments.linked-docs.spec.ts": [
    "SupplierPaymentsService — linked-documents edge cases Bug #A: soft-deleted bank account → account count=0 (відповідає detail)",

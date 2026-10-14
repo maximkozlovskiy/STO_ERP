@@ -154,7 +154,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | confirm                                                        | `supplier-payments.confirm.spec.ts`           | 6      |
 | HTTP-контракт (DTO, статуси, валідація)                        | `supplier-payments.contract.spec.ts`          | 28     |
 | документ, позначений на видалення, — лише перегляд (BR-WO-012) | `supplier-payments.with-deleted.spec.ts`      | 9      |
-| create                                                         | `supplier-payments.create.spec.ts`            | 6      |
+| create                                                         | `supplier-payments.create.spec.ts`            | 8      |
 | пов'язані документи                                            | `supplier-payments.linked-docs.spec.ts`       | 8      |
 | без ПРРО і лояльності (статичний сторож)                       | `supplier-payments.no-fiscal-loyalty.spec.ts` | 14     |
 | payables fx                                                    | `supplier-payments.payables-fx.spec.ts`       | 10     |
@@ -162,7 +162,7 @@ cd apps/api && npx vitest run src/modules/supplier-payments/<файл>.spec.ts
 | сортування (whitelist orderBy)                                 | `supplier-payments.sort.spec.ts`              | 9      |
 | update guards                                                  | `supplier-payments.update-guards.spec.ts`     | 12     |
 
-Разом: **131** кейсів (цифри з `vitest --reporter=json`, не з grep).
+Разом: **133** кейсів (цифри з `vitest --reporter=json`, не з grep).
 
 **Component-тест вкладки графіка:**
 `apps/web/src/app/(app)/purchase-orders/__tests__/SupplierPaymentScheduleTab.test.tsx` — 3 кейси:
