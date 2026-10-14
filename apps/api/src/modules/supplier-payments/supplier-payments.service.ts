@@ -30,8 +30,11 @@ type SPStatus = SupplierPaymentStatus;
 
 const SP_TRANSITIONS: Record<SPStatus, SPStatus[]> = {
   DRAFT: [SupplierPaymentStatus.CONFIRMED, SupplierPaymentStatus.CANCELLED],
+  // CONFIRMED → REVERSED робить лише сторно касової операції (BR-CASH-024), не публічний перехід:
+  // карта лишається порожньою, щоб маршрут переходу статусу не міг «розпровести» оплату.
   CONFIRMED: [],
   CANCELLED: [],
+  REVERSED: [],
 };
 
 // Whitelist сортування — ключ із запиту → реальне поле БД. Module-level:

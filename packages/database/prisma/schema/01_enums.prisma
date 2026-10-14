@@ -263,6 +263,11 @@ enum SettlementTransactionType {
   REFUND_OUT_CANCEL
   // Постачальник повернув нам гроші (каса): його борг перед нами меншає → balance↓ (−1).
   SUPPLIER_PAYMENT_RETURN
+  // Сторно касової операції (BR-CASH-023…025): проводка протилежного знаку до оригіналу.
+  PAYMENT_CANCEL // сторно PAYMENT (+1)
+  PREPAYMENT_CANCEL // сторно PREPAYMENT (+1)
+  SUPPLIER_PAYMENT_CANCEL // сторно SUPPLIER_PAYMENT (−1)
+  SUPPLIER_PAYMENT_RETURN_CANCEL // сторно SUPPLIER_PAYMENT_RETURN (+1)
 }
 
 // Зарплатний період (payroll). FSM: DRAFT → COMPUTED (нарахування зафіксовано) → PAID; або CANCELLED.
@@ -302,6 +307,7 @@ enum SupplierPaymentStatus {
   DRAFT
   CONFIRMED
   CANCELLED
+  REVERSED // проведену оплату сторновано з каси (BR-CASH-024)
 }
 
 enum PaymentSourceType {

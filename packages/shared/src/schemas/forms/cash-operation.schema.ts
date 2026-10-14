@@ -202,3 +202,15 @@ export const cashOperationSchema = z.object(cashOperationShape).superRefine(reas
 
 export type CashOperationFormInput = z.input<typeof cashOperationSchema>;
 export type CashOperationFormValues = z.output<typeof cashOperationSchema>;
+
+/** Сторно касової операції (BR-CASH-023): причина обов'язкова — вона стає приміткою рядка сторно. */
+export const cashReversalSchema = z.object({
+  reason: z
+    .string({ error: 'v.cashReversal.reason.required' })
+    .trim()
+    .min(1, 'v.cashReversal.reason.required')
+    .max(500, 'v.cashReversal.reason.max'),
+});
+
+export type CashReversalFormInput = z.input<typeof cashReversalSchema>;
+export type CashReversalFormValues = z.output<typeof cashReversalSchema>;

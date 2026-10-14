@@ -135,6 +135,8 @@ export const uk: Record<string, string> = {
   'v.cashOperation.baseDocument.notAllowed':
     'Такий документ не може бути підставою для цього приводу',
   'v.cashOperation.notes.max': 'Примітка задовга (до 500 символів)',
+  'v.cashReversal.reason.required': 'Вкажіть причину сторно',
+  'v.cashReversal.reason.max': 'Причина задовга (до 500 символів)',
 
   // ── work-order.schema.ts ──
   'v.workOrder.nonNegInt.int': 'Значення має бути цілим',
@@ -761,6 +763,17 @@ export const uk: Record<string, string> = {
 
   // ── Exception-повідомлення: comments-модуль ──
   'err.comment.unknownEntityType': 'Невідомий тип сутності для коментарів: {{entityType}}',
+  'err.cash.reversalReasonRequired': 'Вкажіть причину сторно',
+  'err.cash.operationNotFound': 'Касову операцію не знайдено',
+  'err.cash.alreadyReversed': 'Операцію вже сторновано',
+  'err.cash.reversalOfReversal': 'Сторно не можна сторнувати',
+  'err.cash.reversalNotHere': 'Цю операцію створено документом «{{document}}» — скасуйте її там',
+  'err.cash.reversalFiscalDone':
+    'За цю оплату вже пробито фіскальний чек — спершу оформіть повернення в ПРРО',
+  'err.cash.reversalForeignCurrency': 'Сторно оплати в іноземній валюті не підтримується',
+  'err.cash.reversalWorkOrderArchived': 'Наряд оплати в архіві — сторно неможливе',
+  'err.cash.reversalInvoiceCancelled': 'Рахунок оплати скасовано — сторно неможливе',
+  'err.cash.reversalStateChanged': 'Документ оплати змінився — оновіть сторінку й повторіть',
   'err.comment.entityIdRequired': "entityId обов'язковий",
   'err.comment.entityNotFound': 'Сутність не знайдено',
   'err.comment.notFound': 'Коментар не знайдено',

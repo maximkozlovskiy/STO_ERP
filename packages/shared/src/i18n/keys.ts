@@ -155,6 +155,9 @@ export const V = {
     },
     notes: { max: 'v.cashOperation.notes.max' },
   },
+  cashReversal: {
+    reason: { required: 'v.cashReversal.reason.required', max: 'v.cashReversal.reason.max' },
+  },
 
   workOrder: {
     nonNegInt: { int: 'v.workOrder.nonNegInt.int', min: 'v.workOrder.nonNegInt.min' },
@@ -282,6 +285,8 @@ export const VALIDATION_KEYS = [
   'v.cashOperation.baseDocument.incomplete',
   'v.cashOperation.baseDocument.notAllowed',
   'v.cashOperation.notes.max',
+  'v.cashReversal.reason.required',
+  'v.cashReversal.reason.max',
   'v.workOrder.nonNegInt.int',
   'v.workOrder.nonNegInt.min',
   'v.workOrder.branch.required',
@@ -792,6 +797,16 @@ export const VALIDATION_KEYS = [
   'err.cash.baseDocumentNotAllowed',
   'err.cash.baseDocumentNotFound',
   'err.cash.baseDocumentForeign',
+  'err.cash.reversalReasonRequired',
+  'err.cash.operationNotFound',
+  'err.cash.alreadyReversed',
+  'err.cash.reversalOfReversal',
+  'err.cash.reversalNotHere',
+  'err.cash.reversalFiscalDone',
+  'err.cash.reversalForeignCurrency',
+  'err.cash.reversalWorkOrderArchived',
+  'err.cash.reversalInvoiceCancelled',
+  'err.cash.reversalStateChanged',
   // Exception-повідомлення: comments-модуль
   'err.comment.unknownEntityType',
   'err.comment.entityIdRequired',

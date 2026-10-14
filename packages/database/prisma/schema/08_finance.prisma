@@ -78,6 +78,10 @@ model Payment {
   // збою link-write — унікальний констрейнт відкидає дубль (P2002), finalize знаходить наявний
   // Payment по цьому полю і лінкує. null для звичайних (не-онлайн) платежів. Bug #688.
   onlinePaymentIntentId String? @unique @db.Uuid
+  // Сторно з каси (BR-CASH-024): виняток з append-only, як фіскальні поля — пишеться ОДИН раз.
+  // Сторнована оплата не входить у суми «сплачено», нічну звірку, бонуси й фіскальну чергу.
+  reversedAt              DateTime?
+  reversalCashOperationId String?  @db.Uuid
   syncVersion     BigInt   @default(0)
   createdAt       DateTime @default(now())
 
@@ -598,6 +602,9 @@ model CashOperation {
   // Не плутати з documentType/documentId — то платіжний документ, що породив рядок.
   baseDocumentType  String? // 'WorkOrder' | 'PurchaseOrder'
   baseDocumentId    String?             @db.Uuid
+  // Сторно (BR-CASH-023): рядок протилежного напряму посилається на оригінал. @unique — двічі
+  // сторнувати ту саму операцію база не дасть (запобіжник від гонки двох запитів).
+  reversalOfId      String?             @unique @db.Uuid
   notes             String?
   createdBy         String?             @db.Uuid
   createdAt         DateTime            @default(now())
@@ -609,6 +616,9 @@ model CashOperation {
   @@index([orgId, cashRegisterId, createdAt])
   @@index([orgId, cashShiftId])
   @@index([orgId, reason, createdAt])
+  // Пошук рядка каси, створеного платіжним документом (оплата, оплата постачальнику) — сторно
+  // і відповідь каси шукають саме так.
+  @@index([orgId, documentType, documentId])
   @@map("cash_operations")
 }
 

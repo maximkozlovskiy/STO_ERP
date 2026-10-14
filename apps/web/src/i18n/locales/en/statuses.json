@@ -62,7 +62,8 @@
   "SUPPLIER_PAYMENT_STATUS": {
     "DRAFT": "Draft",
     "CONFIRMED": "Processed",
-    "CANCELLED": "Cancelled"
+    "CANCELLED": "Cancelled",
+    "REVERSED": "Reversed"
   },
   "PAYMENT_SOURCE_TYPE": {
     "BANK_ACCOUNT": "Bank",
@@ -107,7 +108,11 @@
     "FX_LOSS": "FX loss",
     "REFUND_OUT": "Refund to client",
     "REFUND_OUT_CANCEL": "Refund to client reversed",
-    "SUPPLIER_PAYMENT_RETURN": "Money returned by supplier"
+    "SUPPLIER_PAYMENT_RETURN": "Money returned by supplier",
+    "PAYMENT_CANCEL": "Payment reversed",
+    "PREPAYMENT_CANCEL": "Prepayment reversed",
+    "SUPPLIER_PAYMENT_CANCEL": "Supplier payment reversed",
+    "SUPPLIER_PAYMENT_RETURN_CANCEL": "Money returned by supplier reversed"
   },
   "EMPLOYEE_STATUS": {
     "ACTIVE": "Active",

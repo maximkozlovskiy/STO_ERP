@@ -131,6 +131,8 @@ export const en: Record<string, string> = {
   'v.cashOperation.baseDocument.incomplete': 'The base document is specified incompletely',
   'v.cashOperation.baseDocument.notAllowed': 'This document cannot be the base for this reason',
   'v.cashOperation.notes.max': 'The note is too long (up to 500 characters)',
+  'v.cashReversal.reason.required': 'Specify the reversal reason',
+  'v.cashReversal.reason.max': 'The reason is too long (up to 500 characters)',
 
   // ── work-order.schema.ts ──
   'v.workOrder.nonNegInt.int': 'Value must be an integer',
@@ -773,6 +775,19 @@ export const en: Record<string, string> = {
 
   // ── Exception messages: comments module ──
   'err.comment.unknownEntityType': 'Unknown entity type for comments: {{entityType}}',
+  'err.cash.reversalReasonRequired': 'Specify the reversal reason',
+  'err.cash.operationNotFound': 'Cash operation not found',
+  'err.cash.alreadyReversed': 'The operation has already been reversed',
+  'err.cash.reversalOfReversal': 'A reversal cannot be reversed',
+  'err.cash.reversalNotHere': 'This operation was created by «{{document}}» — cancel it there',
+  'err.cash.reversalFiscalDone':
+    'A fiscal receipt has already been issued for this payment — register a return in the fiscal register first',
+  'err.cash.reversalForeignCurrency': 'Reversal of a foreign-currency payment is not supported',
+  'err.cash.reversalWorkOrderArchived':
+    'The work order of this payment is archived — reversal is not possible',
+  'err.cash.reversalInvoiceCancelled':
+    'The invoice of this payment is cancelled — reversal is not possible',
+  'err.cash.reversalStateChanged': 'The payment document has changed — refresh and retry',
   'err.comment.entityIdRequired': 'entityId is required',
   'err.comment.entityNotFound': 'Entity not found',
   'err.comment.notFound': 'Comment not found',

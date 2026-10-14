@@ -54,6 +54,11 @@ export const BALANCE_SIGN: Record<SettlementTransactionType, 1 | -1> = {
   // Постачальник повернув нам гроші готівкою (каса, BR-CASH-019): його борг перед нами /
   // наша передоплата меншає. SUPPLIER_REFUND (+1) — повернення ТОВАРУ, знак протилежний.
   SUPPLIER_PAYMENT_RETURN: -1,
+  // Сторно касової операції (BR-CASH-023…025): знак протилежний до знаку оригіналу.
+  PAYMENT_CANCEL: 1,
+  PREPAYMENT_CANCEL: 1,
+  SUPPLIER_PAYMENT_CANCEL: -1,
+  SUPPLIER_PAYMENT_RETURN_CANCEL: 1,
 };
 
 @Injectable()

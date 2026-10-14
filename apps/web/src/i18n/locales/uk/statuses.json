@@ -62,7 +62,8 @@
   "SUPPLIER_PAYMENT_STATUS": {
     "DRAFT": "Чернетка",
     "CONFIRMED": "Проведено",
-    "CANCELLED": "Скасовано"
+    "CANCELLED": "Скасовано",
+    "REVERSED": "Сторновано"
   },
   "PAYMENT_SOURCE_TYPE": {
     "BANK_ACCOUNT": "Банк",
@@ -107,7 +108,11 @@
     "FX_LOSS": "Курсовий збиток",
     "REFUND_OUT": "Повернення коштів клієнту",
     "REFUND_OUT_CANCEL": "Сторно повернення коштів",
-    "SUPPLIER_PAYMENT_RETURN": "Повернення коштів від постачальника"
+    "SUPPLIER_PAYMENT_RETURN": "Повернення коштів від постачальника",
+    "PAYMENT_CANCEL": "Сторно оплати",
+    "PREPAYMENT_CANCEL": "Сторно авансу",
+    "SUPPLIER_PAYMENT_CANCEL": "Сторно оплати постачальнику",
+    "SUPPLIER_PAYMENT_RETURN_CANCEL": "Сторно повернення коштів від постачальника"
   },
   "EMPLOYEE_STATUS": {
     "ACTIVE": "Активний",

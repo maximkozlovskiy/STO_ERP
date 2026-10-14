@@ -238,18 +238,21 @@ export const SUPPLIER_PAYMENT_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Чернетка',
   CONFIRMED: 'Проведено',
   CANCELLED: 'Скасовано',
+  REVERSED: 'Сторновано',
 };
 
 export const SUPPLIER_PAYMENT_STATUS_DESCRIPTIONS: Record<string, string> = {
   DRAFT: 'Чернетка — оплату оформлено, ще не проведено',
   CONFIRMED: 'Проведено — борг перед постачальником зменшено на суму оплати',
   CANCELLED: 'Скасовано — оплату анульовано',
+  REVERSED: 'Сторновано — проведену оплату скасовано з каси, борг і «сплачено» повернуто',
 };
 
 export const SUPPLIER_PAYMENT_STATUS_BADGE: Record<string, BadgeVariant> = {
   DRAFT: 'secondary',
   CONFIRMED: 'success',
   CANCELLED: 'destructive',
+  REVERSED: 'destructive',
 };
 
 export const PAYMENT_SOURCE_TYPE_LABELS: Record<string, string> = {
@@ -348,6 +351,10 @@ export const SETTLEMENT_TX_TYPE_LABELS: Record<string, string> = {
   REFUND_OUT: 'Повернення коштів клієнту',
   REFUND_OUT_CANCEL: 'Сторно повернення коштів',
   SUPPLIER_PAYMENT_RETURN: 'Повернення коштів від постачальника',
+  PAYMENT_CANCEL: 'Сторно оплати',
+  PREPAYMENT_CANCEL: 'Сторно авансу',
+  SUPPLIER_PAYMENT_CANCEL: 'Сторно оплати постачальнику',
+  SUPPLIER_PAYMENT_RETURN_CANCEL: 'Сторно повернення коштів від постачальника',
 };
 
 /**
@@ -381,6 +388,10 @@ export const SETTLEMENT_BALANCE_SIGN: Record<string, 1 | -1> = {
   REFUND_OUT: 1,
   REFUND_OUT_CANCEL: -1,
   SUPPLIER_PAYMENT_RETURN: -1,
+  PAYMENT_CANCEL: 1,
+  PREPAYMENT_CANCEL: 1,
+  SUPPLIER_PAYMENT_CANCEL: -1,
+  SUPPLIER_PAYMENT_RETURN_CANCEL: 1,
 };
 
 /** Похідне: типи, що ЗБІЛЬШУЮТЬ баланс (sign=+1) — знак «+» у рядку транзакції. */
@@ -395,6 +406,10 @@ export const SETTLEMENT_BALANCE_UP_TYPES: ReadonlySet<string> = new Set(
 export const SETTLEMENT_TX_CHARGE_LIKE_TYPES: ReadonlySet<string> = new Set([
   'CHARGE',
   'SUPPLIER_CHARGE',
+  // Сторно оплати знову створює борг — колір як у нарахування.
+  'PAYMENT_CANCEL',
+  'PREPAYMENT_CANCEL',
+  'SUPPLIER_PAYMENT_CANCEL',
 ]);
 
 export const STOCK_DOC_TYPE_BADGE: Record<string, BadgeVariant> = {
