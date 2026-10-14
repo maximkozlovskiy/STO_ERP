@@ -5588,6 +5588,8 @@ export interface components {
             defaultBankAccountId: string | null;
             /** @description Назва каси чи банківського рахунку-призначення; null — не вказано або видалено */
             defaultDestinationName: string | null;
+            /** @description Код валюти каси чи рахунку-призначення; null — не вказано або видалено */
+            defaultDestinationCurrencyCode: string | null;
             updatedAt: string;
         };
         CreatePaymentMethodDto: {

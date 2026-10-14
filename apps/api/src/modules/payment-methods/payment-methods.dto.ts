@@ -104,5 +104,11 @@ export class PaymentMethodResponseDto {
     description: 'Назва каси чи банківського рахунку-призначення; null — не вказано або видалено',
   })
   defaultDestinationName!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Код валюти каси чи рахунку-призначення; null — не вказано або видалено',
+  })
+  defaultDestinationCurrencyCode!: string | null;
   @ApiProperty() updatedAt!: string;
 }

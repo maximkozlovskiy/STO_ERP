@@ -197,8 +197,8 @@ create (метод без requiresFiscal) → null
   `defaultSourceType` + `defaultCashRegisterId` | `defaultBankAccountId`; каса лише з `CASH_REGISTER`, рахунок
   лише з `BANK_ACCOUNT`, інакше 400; тип без id → 400; чужа чи видалена каса/рахунок → 404; `null` знімає
   призначення, id іншого типу при зміні обнуляється; ролі OWNER, ADMIN). Відповідь `GET /payment-methods` несе
-  ці поля й `defaultDestinationName` — назву живої каси чи рахунку (два запити на весь список; кеш списку назв
-  не тримає).
+  ці поля, `defaultDestinationName` — назву живої каси чи рахунку — і `defaultDestinationCurrencyCode` — її
+  валюту (два запити на весь список; кеш списку назв і валют не тримає).
 - **BR-PAY-003**: **Часткова оплата Invoice** (у `$transaction`): дозволені статуси `SENT`/`PARTIALLY_PAID`/`OVERDUE`;
   overpay (`amount > remaining`) → 400; CAS по `paidAmount` → `PAID`/`PARTIALLY_PAID`; `count=0`
   (гонка) → rollback. Повна механіка — [invoice.md](invoice.md#часткова-оплата-модель-грошей-фаза-1) («Часткова оплата»).
@@ -361,7 +361,7 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка лише через касу   | `payments.cash-register-required.spec.ts`                | 10     |
-| куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 17     |
+| куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 18     |
 | HTTP-контракт способів    | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати   | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 

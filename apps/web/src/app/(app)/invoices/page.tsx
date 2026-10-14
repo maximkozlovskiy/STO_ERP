@@ -121,7 +121,13 @@ type InvoiceWithOptionals = Invoice;
 type PaymentMethodDto = ApiSchema<'PaymentMethodResponseDto'>;
 type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
   Partial<
-    Pick<PaymentMethodDto, 'defaultSourceType' | 'defaultCashRegisterId' | 'defaultDestinationName'>
+    Pick<
+      PaymentMethodDto,
+      | 'defaultSourceType'
+      | 'defaultCashRegisterId'
+      | 'defaultDestinationName'
+      | 'defaultDestinationCurrencyCode'
+    >
   >;
 /** Системний код «Готівки»: без каси сервер таку оплату не приймає (BR-PAY-019). */
 const CASH_METHOD_CODE = 'cash';
@@ -326,8 +332,11 @@ function InvoicesPageInner() {
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   // Каси для вікна оплати: лише коли вікно відкрите (сервер віддає невидалені, перші 200 за назвою).
-  const { data: cashRegisters = EMPTY_CASH_REGISTERS, isPending: cashRegistersPending } =
-    useCashRegisters(!!showPayment);
+  const {
+    data: cashRegisters = EMPTY_CASH_REGISTERS,
+    isPending: cashRegistersPending,
+    isError: cashRegistersError,
+  } = useCashRegisters(!!showPayment);
 
   const openPayment = useCallback((inv: InvoiceWithOptionals) => {
     setPayCashChoice(null);
@@ -344,7 +353,11 @@ function InvoicesPageInner() {
   // замовчуванням надходять у касу. Значення — вибір касира або каса за замовчуванням способу.
   const payMethod = payMethods.find(m => m.code === payForm.method);
   const payNeedsCash = payForm.method === CASH_METHOD_CODE;
-  const payShowsCash = payNeedsCash || payMethod?.defaultSourceType === 'CASH_REGISTER';
+  // monobank QR: вікно лише показує QR, оплату потім створює сервер за способом оплати — каса з
+  // поля нікуди не йшла б (Bug #859), тож поля для QR немає.
+  const payIsQr = payForm.method === 'monobank_qr';
+  const payShowsCash =
+    !payIsQr && (payNeedsCash || payMethod?.defaultSourceType === 'CASH_REGISTER');
   const payDefaultCashId =
     payMethod?.defaultSourceType === 'CASH_REGISTER' ? (payMethod.defaultCashRegisterId ?? '') : '';
   // Валюта оплати — валюта каси, а сервер приймає лише валюту рахунку: каси іншої валюти не
@@ -355,10 +368,12 @@ function InvoicesPageInner() {
       .filter(r => (r.currencyCode || baseCode) === payCurrencyCode)
       .map(r => ({ id: r.id, name: r.name }));
     // Каса за замовчуванням жива (сервер дав її назву), але не потрапила в перші 200 за назвою.
-    // Відсіяна за валютою — не повертаємо: вона є в переліку, просто не підходить рахунку.
+    // Відсіяна за валютою — не повертаємо: вона є в переліку, просто не підходить рахунку. Поза
+    // переліком валюту каже сервер — без цього гривнева каса йшла доларовому рахунку (Bug #857).
     if (
       payDefaultCashId &&
       payMethod?.defaultDestinationName &&
+      payMethod.defaultDestinationCurrencyCode === payCurrencyCode &&
       !cashRegisters.some(r => r.id === payDefaultCashId)
     )
       options.unshift({ id: payDefaultCashId, name: payMethod.defaultDestinationName });
@@ -369,13 +384,24 @@ function InvoicesPageInner() {
     payCurrencyCode,
     payDefaultCashId,
     payMethod?.defaultDestinationName,
+    payMethod?.defaultDestinationCurrencyCode,
   ]);
   const payCashId =
     payCashChoice ?? (payCashOptions.some(o => o.id === payDefaultCashId) ? payDefaultCashId : '');
   const payBlockedNoCash = payNeedsCash && !payCashId;
   // Підказку показуємо, лише коли каси й способи вже прийшли: інакше поле на мить червоніло, доки
-  // вантажилась каса за замовчуванням. Кнопка весь цей час неактивна.
-  const payShowNoCashHint = payBlockedNoCash && !cashRegistersPending && payMethods.length > 0;
+  // вантажилась каса за замовчуванням. Кнопка весь цей час неактивна. Порожній перелік пояснюємо
+  // (Bug #858): збій завантаження кас чи жодної каси у валюті рахунку — а не «оберіть касу».
+  const payCashHint =
+    !payShowsCash || cashRegistersPending || payMethods.length === 0
+      ? undefined
+      : cashRegistersError
+        ? t('payment.cashRegistersLoadError')
+        : payCashOptions.length === 0
+          ? t('payment.noCashRegisterInCurrency', { code: payCurrencyCode })
+          : payBlockedNoCash
+            ? t('payment.cashRegisterRequired')
+            : undefined;
 
   const applyFilter = useCallback(
     (preset: { id: string; filters: InvoiceFilters }) => {
@@ -477,6 +503,7 @@ function InvoicesPageInner() {
             defaultSourceType: m.defaultSourceType,
             defaultCashRegisterId: m.defaultCashRegisterId,
             defaultDestinationName: m.defaultDestinationName,
+            defaultDestinationCurrencyCode: m.defaultDestinationCurrencyCode,
           }));
         setCache('cache:payment-methods', active);
         if (!cancelled) setPayMethods(active);
@@ -1254,7 +1281,7 @@ function InvoicesPageInner() {
         onClose={closePayment}
         title={showPayment ? t('payment.modalTitle', { number: showPayment.number }) : ''}
         footer={
-          payForm.method === 'monobank_qr' ? (
+          payIsQr ? (
             <Button
               onClick={() => {
                 if (!showPayment) return;
@@ -1337,7 +1364,7 @@ function InvoicesPageInner() {
                     value={payCashId}
                     onChange={e => setPayCashChoice(e.target.value)}
                     placeholder={t('payment.cashRegisterPlaceholder')}
-                    errorMessage={payShowNoCashHint ? t('payment.cashRegisterRequired') : undefined}
+                    errorMessage={payCashHint}
                     className="h-8 text-[13px] py-0.5 px-2 pr-7"
                   >
                     {payCashOptions.map(r => (

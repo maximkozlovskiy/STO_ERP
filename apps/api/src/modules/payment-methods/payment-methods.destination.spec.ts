@@ -297,6 +297,37 @@ describe('PaymentMethodsService — куди надходять кошти', () 
     );
   });
 
+  // Bug #857: вікно оплати рахунку звіряє валюту каси за замовчуванням, якої не бачить у своєму
+  // переліку (перші 200 кас), — без коду валюти воно пропонувало гривневу касу доларовому рахунку.
+  it('список несе код валюти каси чи рахунку-призначення; без призначення — null', async () => {
+    prisma.paymentMethodConfig.findMany.mockResolvedValue([
+      row({ defaultSourceType: 'CASH_REGISTER', defaultCashRegisterId: CASH_ID }),
+      row({
+        id: 'pm-card',
+        code: 'card',
+        defaultSourceType: 'BANK_ACCOUNT',
+        defaultBankAccountId: BANK_ID,
+      }),
+      row({ id: 'pm-terminal', code: 'card_terminal' }),
+    ]);
+    prisma.cashRegister.findMany.mockResolvedValue([
+      { id: CASH_ID, name: 'Каса 1', currency: { code: 'UAH' } },
+    ]);
+    prisma.bankAccount.findMany.mockResolvedValue([
+      { id: BANK_ID, name: 'ПриватБанк USD', currency: { code: 'USD' } },
+    ]);
+
+    const list = await service.findAll(ORG);
+
+    expect(list.map(m => m.defaultDestinationCurrencyCode)).toEqual(['UAH', 'USD', null]);
+    for (const model of [prisma.cashRegister, prisma.bankAccount])
+      expect(model.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: { id: true, name: true, currency: { select: { code: true } } },
+        }),
+      );
+  });
+
   it('список із кешу: назву все одно читаємо свіжу (касу могли перейменувати)', async () => {
     cache.get.mockResolvedValue([
       {

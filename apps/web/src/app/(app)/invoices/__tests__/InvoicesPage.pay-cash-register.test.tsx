@@ -5,7 +5,7 @@
 // є для готівки (обов'язкове) і для способу, у якого кошти за замовчуванням надходять у касу;
 // заповнюється касою за замовчуванням способу, а запит несе `sourceType` + `cashRegisterId`.
 
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
@@ -45,12 +45,14 @@ const INV = {
   deletedAt: null,
 };
 
+// Валюта рахунку: null — базова (гривня).
+let invCurrency: string | null = null;
 vi.mock('@/hooks/api/useInvoices', async importOriginal => {
   const actual = await importOriginal<typeof import('@/hooks/api/useInvoices')>();
   return {
     ...actual,
     useInvoices: () => ({
-      data: { items: [INV], total: 1, page: 1, limit: 20 },
+      data: { items: [{ ...INV, currencyCode: invCurrency }], total: 1, page: 1, limit: 20 },
       isLoading: false,
       error: null,
     }),
@@ -62,10 +64,16 @@ const REGISTERS = [
   // Валютна каса: рахунок у гривні оплату в неї не прийме (валюта оплати = валюта каси).
   { id: 'cr-usd', name: 'Каса доларова', currencyCode: 'USD' },
 ];
+// Стан запиту кас: перелік прийшов (типово) або впав (Bug #858).
+let registersQuery: { data?: typeof REGISTERS; isPending: boolean; isError: boolean } = {
+  data: REGISTERS,
+  isPending: false,
+  isError: false,
+};
 vi.mock('@/hooks/api/useCash', () => ({
   useBaseCurrency: () => ({ data: { code: 'UAH', symbol: '₴' } }),
   useRetryCashFiscal: () => ({ mutateAsync: async () => ({}) }),
-  useCashRegisters: () => ({ data: REGISTERS }),
+  useCashRegisters: () => registersQuery,
 }));
 vi.mock('@/components/ui/InvoiceCreateModal', () => ({ InvoiceCreateModal: () => null }));
 vi.mock('@/components/ui/QrPaymentModal', () => ({ QrPaymentModal: () => null }));
@@ -81,6 +89,7 @@ type Method = {
   defaultCashRegisterId: string | null;
   defaultBankAccountId: string | null;
   defaultDestinationName: string | null;
+  defaultDestinationCurrencyCode: string | null;
 };
 const method = (code: string, name: string, over: Partial<Method> = {}): Method => ({
   code,
@@ -90,6 +99,7 @@ const method = (code: string, name: string, over: Partial<Method> = {}): Method 
   defaultCashRegisterId: null,
   defaultBankAccountId: null,
   defaultDestinationName: null,
+  defaultDestinationCurrencyCode: null,
   ...over,
 });
 let methods: Method[] = [];
@@ -146,11 +156,14 @@ describe('Рахунки — вікно «Оплатити»: каса для г
       }),
     ];
     payResponse = () => Promise.resolve({ id: 'pay-1' });
+    invCurrency = null;
+    registersQuery = { data: REGISTERS, isPending: false, isError: false };
     apiFetchMock.mockReset();
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/payment-methods') return Promise.resolve(methods);
       if (path === '/payments') return payResponse();
-      if (path === '/invoices/inv-a') return Promise.resolve({ ...INV, lines: [] });
+      if (path === '/invoices/inv-a')
+        return Promise.resolve({ ...INV, currencyCode: invCurrency, lines: [] });
       if (path.endsWith('/lines-summary')) return Promise.resolve({ tables: [], executors: [] });
       return Promise.resolve({});
     });
@@ -261,5 +274,73 @@ describe('Рахунки — вікно «Оплатити»: каса для г
       'Відкрийте касову зміну фіскальної каси перед операцією',
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+  // Bug #857: каса за замовчуванням поза першими 200 кас — у перелік її дописує вікно за назвою від
+  // сервера. Валюту теж каже сервер: каса іншої валюти рахунку не пропонується й не обирається.
+  it('каса за замовчуванням поза переліком: пропонується лише у валюті рахунку', async () => {
+    const far = (currency: string) =>
+      method('cash', 'Готівка', {
+        defaultSourceType: 'CASH_REGISTER',
+        defaultCashRegisterId: 'cr-far',
+        defaultDestinationName: 'Каса далека',
+        defaultDestinationCurrencyCode: currency,
+      });
+    methods[0] = far('USD');
+    let dialog = await openPayDialog();
+    const options = () =>
+      within(cashSelect(dialog)!)
+        .getAllByRole('option')
+        .map(o => o.textContent);
+    expect(options()).not.toContain('Каса далека');
+    expect(cashSelect(dialog)?.value).toBe('');
+    expect(payButton(dialog)).toBeDisabled();
+    cleanup();
+
+    methods[0] = far('UAH');
+    dialog = await openPayDialog();
+    expect(options()).toContain('Каса далека');
+    expect(cashSelect(dialog)?.value).toBe('cr-far');
+  });
+
+  // Bug #858: порожній перелік кас пояснено, а не «оберіть касу» над порожнім списком.
+  it('збій завантаження кас: у полі текст помилки, а не «оберіть касу»', async () => {
+    registersQuery = { data: undefined, isPending: false, isError: true };
+    const dialog = await openPayDialog();
+
+    expect(
+      within(dialog).getByText('Не вдалося завантажити каси — закрийте вікно й відкрийте знову'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('Для оплати готівкою оберіть касу')).toBeNull();
+    expect(payButton(dialog)).toBeDisabled();
+  });
+
+  it('жодної каси у валюті рахунку: так і сказано, з кодом валюти', async () => {
+    invCurrency = 'EUR';
+    const dialog = await openPayDialog();
+
+    expect(within(dialog).getByText('Немає жодної каси у валюті EUR')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Для оплати готівкою оберіть касу')).toBeNull();
+    expect(payButton(dialog)).toBeDisabled();
+  });
+
+  // Bug #859: QR-оплату створює сервер за способом оплати — касу з вікна вона не бере.
+  it('monobank QR із касою за замовчуванням: поля «Каса» немає', async () => {
+    methods.push(
+      method('monobank_qr', 'Monobank QR', {
+        defaultSourceType: 'CASH_REGISTER',
+        defaultCashRegisterId: 'cr-main',
+        defaultDestinationName: 'Каса головна',
+        defaultDestinationCurrencyCode: 'UAH',
+      }),
+    );
+    const dialog = await openPayDialog();
+
+    fireEvent.change(methodSelect(dialog), { target: { value: 'monobank_qr' } });
+    expect(cashSelect(dialog)).toBeNull();
+    expect(
+      within(dialog.closest('[role="dialog"]') ?? dialog).getByRole('button', {
+        name: 'Показати QR',
+      }),
+    ).toBeInTheDocument();
   });
 });

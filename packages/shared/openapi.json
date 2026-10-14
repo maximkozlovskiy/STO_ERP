@@ -17876,6 +17876,11 @@
             "nullable": true,
             "description": "Назва каси чи банківського рахунку-призначення; null — не вказано або видалено"
           },
+          "defaultDestinationCurrencyCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Код валюти каси чи рахунку-призначення; null — не вказано або видалено"
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -17893,6 +17898,7 @@
           "defaultCashRegisterId",
           "defaultBankAccountId",
           "defaultDestinationName",
+          "defaultDestinationCurrencyCode",
           "updatedAt"
         ]
       },

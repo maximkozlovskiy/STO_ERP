@@ -19,7 +19,10 @@ const TTL = 300;
 const cacheKey = (orgId: string) => `ref:payment-methods:${orgId}`;
 
 /** Рядок способу оплати без назви призначення — так він лежить у кеші. */
-type PaymentMethodRow = Omit<PaymentMethodResponseDto, 'defaultDestinationName'>;
+type PaymentMethodRow = Omit<
+  PaymentMethodResponseDto,
+  'defaultDestinationName' | 'defaultDestinationCurrencyCode'
+>;
 
 /** Куди надходять кошти: три поля, які пишуться завжди разом. */
 interface Destination {
@@ -250,33 +253,39 @@ export class PaymentMethodsService {
       cashIds.length
         ? this.prisma.cashRegister.findMany({
             where: { id: { in: cashIds }, orgId, deletedAt: null },
-            select: { id: true, name: true },
+            select: { id: true, name: true, currency: { select: { code: true } } },
             take: cashIds.length,
           })
         : Promise.resolve([]),
       bankIds.length
         ? this.prisma.bankAccount.findMany({
             where: { id: { in: bankIds }, orgId, deletedAt: null },
-            select: { id: true, name: true },
+            select: { id: true, name: true, currency: { select: { code: true } } },
             take: bankIds.length,
           })
         : Promise.resolve([]),
     ]);
-    const cashName = new Map(registers.map(r => [r.id, r.name]));
-    const bankName = new Map(accounts.map(a => [a.id, a.name]));
-    return rows.map(r => ({
-      ...r,
-      // ?? null — рядок у кеші міг лягти до появи цих полів.
-      defaultSourceType: r.defaultSourceType ?? null,
-      defaultCashRegisterId: r.defaultCashRegisterId ?? null,
-      defaultBankAccountId: r.defaultBankAccountId ?? null,
-      defaultDestinationName:
+    // Назва і валюта: валюту вікно оплати звіряє з валютою рахунку, коли касу за замовчуванням не
+    // видно в його переліку (перші 200 кас за назвою) — інакше пропонувало б касу іншої валюти.
+    const cashDest = new Map(registers.map(r => [r.id, r]));
+    const bankDest = new Map(accounts.map(a => [a.id, a]));
+    return rows.map(r => {
+      const dest =
         r.defaultSourceType === PaymentSourceType.CASH_REGISTER && r.defaultCashRegisterId
-          ? (cashName.get(r.defaultCashRegisterId) ?? null)
+          ? cashDest.get(r.defaultCashRegisterId)
           : r.defaultSourceType === PaymentSourceType.BANK_ACCOUNT && r.defaultBankAccountId
-            ? (bankName.get(r.defaultBankAccountId) ?? null)
-            : null,
-    }));
+            ? bankDest.get(r.defaultBankAccountId)
+            : undefined;
+      return {
+        ...r,
+        // ?? null — рядок у кеші міг лягти до появи цих полів.
+        defaultSourceType: r.defaultSourceType ?? null,
+        defaultCashRegisterId: r.defaultCashRegisterId ?? null,
+        defaultBankAccountId: r.defaultBankAccountId ?? null,
+        defaultDestinationName: dest?.name ?? null,
+        defaultDestinationCurrencyCode: dest?.currency?.code ?? null,
+      };
+    });
   }
 
   private async toDtoWithName(
