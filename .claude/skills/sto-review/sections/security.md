@@ -60,6 +60,13 @@ grep -rnE "\b(in)\s+[A-Z][a-zA-Z]*(Type|Status|Direction|Reason|Kind|Mode|Method
 - [ ] **`@Query('xxxId')` що потрапляє у Prisma `where: { id }` на `@db.Uuid` → `ParseUUIDPipe`** (optional → `new ParseUUIDPipe({ optional: true })`). Невалідний UUID інакше → `P2023 invalid input syntax for type uuid` → HTTP 500. Sample: cash-shift.controller `open` `@Query('cashRegisterId')`
 - [ ] **Ручна enum/whitelist-валідація → `Object.prototype.hasOwnProperty.call(Enum, value)`, НЕ `value in Enum`.** `in` резолвить прототипні ключі: `'constructor' in Enum === true` (так само `toString`/`valueOf`/`hasOwnProperty`/`isPrototypeOf`) → `?type=constructor` проходить guard → Prisma enum-колонка → `P2009 invalid enum` → HTTP 500. Той самий клас що `buildSortOrderBy` hasOwnProperty-fix. Sample: stock-items.controller `movements`. (Деталі: запис 2026-09-13)
 - [ ] **Текст користувача в Prisma `contains` / `startsWith` / `endsWith` → через `escapeLike()` (`common/utils/like-pattern.ts`).** Prisma будує `ILIKE ('%' || $1 || '%')` і значення не екранує: `q=%` або `q=_` повертає всю таблицю, «100%» знаходить усе з «100», артикул `AB_12` — ще й `ABX12`. За межі `orgId` це не виводить (умова лишається під `AND`), але пошук бреше, а рядок із сотні `%_` — дорогий шаблон. Grep: `grep -rnE "contains: (search|q|query|term|dto\.|opts\.|filters\.)" apps/api/src/modules --include="*.service.ts" | grep -v "escapeLike\|spec"` → кожен збіг без `escapeLike` перевірити (`journal/security.md`, 2026-10-09)
+- [ ] **Список у query через кому (`?statuses=A,B`) → `@Transform` приймає І масив.** Fastify віддає
+      повторений параметр (`?statuses=A&statuses=B`) масивом; трансформ «`typeof value === 'string'`
+      → `split(',')`, інакше `undefined`» робить із нього «фільтра немає» — `@IsOptional` пропускає,
+      і список мовчки повертає все (наживо: 1614 рахунків замість 601). Взірець — `types` у
+      `counterparties.dto.ts`. Grep: `grep -rn -A6 "@Transform" apps/api/src --include="*.dto.ts" | grep "split("`
+      → у кожного збігу є гілка `Array.isArray(value)`; тест контракту з повтором параметра
+      (`journal/security.md`, 2026-10-15)
 - [ ] `process.env` тільки у `main.ts` та конфіг-файлах — сервіси → `ConfigService`
 - [ ] Немає `eval()`, `new Function()`, `child_process.exec()`
 
