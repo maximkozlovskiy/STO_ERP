@@ -2,13 +2,15 @@
 //
 //   - Bug #849: історія просить у сервера його стелю (500 рядків, BR-CASH-015), а не типові 100,
 //     і каже, коли старіші операції не вмістились;
+//   - Bug #850: список кас не завантажився → смуга помилки з «Повторити», а не «Кас немає».
 //
 // Mutation-verify:
 //   - прибрати третій аргумент `CASH_HISTORY_LIMIT` у `useCashOperations(…)` → «просить стелю» падає;
 //   - прибрати блок `historyTruncated && …`                                  → «каже, що обрізано» падає;
-//   - `>= CASH_HISTORY_LIMIT` → `> CASH_HISTORY_LIMIT`                        → «каже, що обрізано» падає.
+//   - `>= CASH_HISTORY_LIMIT` → `> CASH_HISTORY_LIMIT`                        → «каже, що обрізано» падає;
+//   - прибрати `if (regError && !registers) …`                               → «помилка, а не порожньо» падає.
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import type { CashOperation, CashRegister } from '@/hooks/api/useCash';
 
@@ -103,5 +105,37 @@ describe('CashOperationsTab — межа історії (Bug #849)', () => {
     state.operations = rows(CASH_HISTORY_LIMIT - 1);
     render(<CashOperationsTab canOperate />);
     expect(screen.queryByText(TRUNCATED)).toBeNull();
+  });
+});
+
+describe('CashOperationsTab — список кас не завантажився (Bug #850)', () => {
+  beforeEach(() => {
+    state.registers = undefined;
+    state.registersError = new Error('Внутрішня помилка сервера');
+    state.refetchRegisters.mockReset();
+    state.operations = [];
+  });
+
+  it('помилка, а не порожньо: текст помилки й «Повторити», без поради створити касу', () => {
+    render(<CashOperationsTab canOperate />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Внутрішня помилка сервера');
+    expect(screen.queryByText('Кас немає')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Повторити' }));
+    expect(state.refetchRegisters).toHaveBeenCalledTimes(1);
+  });
+
+  it('кас справді немає → порожній стан, без смуги помилки', () => {
+    state.registers = [];
+    state.registersError = null;
+    render(<CashOperationsTab canOperate />);
+    expect(screen.getByText('Кас немає')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('список уже є, впало лише фонове оновлення → каса лишається робочою', () => {
+    state.registers = [REGISTER];
+    render(<CashOperationsTab canOperate />);
+    expect(screen.getByRole('button', { name: 'Внести' })).toBeInTheDocument();
+    expect(screen.queryByText('Кас немає')).toBeNull();
   });
 });

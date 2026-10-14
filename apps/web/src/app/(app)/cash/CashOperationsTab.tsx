@@ -76,7 +76,12 @@ export default function CashOperationsTab({
 }: Props) {
   const { t } = useTranslation('cash');
   const nav = useLinkedNav();
-  const { data: registers, isLoading: regLoading } = useCashRegisters();
+  const {
+    data: registers,
+    isLoading: regLoading,
+    error: regError,
+    refetch: refetchRegisters,
+  } = useCashRegisters();
   const [selectedId, setSelectedId] = useState('');
   const selected = useMemo(
     () => registers?.find(r => r.id === selectedId) ?? null,
@@ -180,6 +185,11 @@ export default function CashOperationsTab({
         <Spinner size="md" />
       </div>
     );
+  }
+  // Список кас не завантажився — це не «кас немає»: порада створити касу тут була б неправдою
+  // (Bug #850). Якщо список уже є в кеші, а впало лише фонове оновлення, працюємо з ним далі.
+  if (regError && !registers) {
+    return <ListLoadError error={regError} onRetry={() => void refetchRegisters()} />;
   }
   if ((registers?.length ?? 0) === 0) {
     return (
