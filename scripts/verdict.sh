@@ -90,6 +90,8 @@ ok=0
 grep -qE "^[[:space:]]*(Tests|Test Files)[[:space:]]+[0-9]+ passed" <<< "$OUT" && ok=1
 grep -qE "^[[:space:]]*[0-9]+ passed \(" <<< "$OUT" && ok=1
 grep -qE "✖ [0-9]+ problems? \(0 errors" <<< "$OUT" && ok=1
+# dependency-cruiser (pnpm run cycles): «✔ no dependency violations found (N modules, …)».
+grep -qE "no dependency violations found" <<< "$OUT" && ok=1
 # Turborepo (pnpm run type-check / lint / build): "Tasks:    7 successful, 7 total".
 # Успіх лише коли обидва числа рівні — tsc на успіху мовчить, тож іншої ознаки немає.
 # Перевіряється КОЖЕН підсумок, не лише останній: у `pnpm lint; pnpm type-check` перший

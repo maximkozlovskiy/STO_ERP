@@ -27,6 +27,7 @@ HEAD:       див. `git log --oneline -1` (хеш тут НЕ дублюєть�
 ```bash
 bash scripts/measure.sh              # тести + E2E + роути + розміри доків + коміти
 bash scripts/verdict.sh --cmd "<мітка>" -- <команда>   # «чисто / не чисто»
+bash scripts/prepush.sh             # перед git push: швидка частина CI quality (~2 хв)
 python scripts/count-untyped-routes.py                 # роути без типу
 python scripts/check-doc-links.py                      # посилання між доками
 ```
