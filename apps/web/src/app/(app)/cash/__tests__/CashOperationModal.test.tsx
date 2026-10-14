@@ -653,4 +653,55 @@ describe('CashOperationModal', () => {
       await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('Готівку видано'));
     });
   });
+
+  // Bug #853: картка закривалась по Escape разом із введеним, без запиту.
+  describe('закриття з уведеним', () => {
+    const escape = () => fireEvent.keyDown(document, { key: 'Escape' });
+    const UNSAVED = 'Є незбережені зміни';
+
+    it('порожня картка закривається одразу, без запиту', async () => {
+      mockApi();
+      const { onClose } = renderModal({ direction: 'IN' });
+      chooseReason('OWNER_IN');
+      escape();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(UNSAVED)).toBeNull();
+    });
+
+    it('з уведеною сумою — запит; «Скасувати» лишає картку й суму', async () => {
+      mockApi();
+      const { onClose } = renderModal({ direction: 'IN' });
+      typeAmount('777');
+      escape();
+      expect(await screen.findByText(UNSAVED)).toBeVisible();
+      expect(onClose).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Скасувати' }));
+      await waitFor(() => expect(screen.queryByText(UNSAVED)).toBeNull());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByLabelText(/^Сума/)).toHaveValue('777');
+    });
+
+    it('з обраним контрагентом — запит; «Покинути» закриває картку', async () => {
+      mockApi();
+      const { onClose } = renderModal({ direction: 'IN' });
+      chooseReason('SALE_PAYMENT');
+      await pick(COUNTERPARTY, 'Коваль Олег');
+      // Одразу після пікера Escape ще належить йому (прапорець знімається наступним тиком).
+      await waitFor(() => {
+        escape();
+        expect(screen.getByText(UNSAVED)).toBeVisible();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Покинути' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it('після успішного проведення картка закривається без запиту', async () => {
+      mockApi();
+      const { onClose } = renderModal({ direction: 'IN' });
+      typeAmount('100');
+      submit();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText(UNSAVED)).toBeNull();
+    });
+  });
 });

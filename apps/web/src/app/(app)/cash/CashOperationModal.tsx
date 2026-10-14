@@ -15,6 +15,9 @@ import {
 import { apiFetch } from '@/lib/api-client';
 import { i18nZodResolver } from '@/lib/i18nZodResolver';
 import { toast } from '@/lib/toast';
+import { useUiFeatures } from '@/hooks/useUiFeatures';
+import { useDirtyForm } from '@/hooks/useDirtyForm';
+import { DirtyConfirmDialog } from '@/components/ui/dirty-confirm-dialog';
 import { displayCounterpartyName } from '@/lib/utils';
 import { poStatusLabel, woStatusLabel } from '@/i18n/enumLabel';
 import { Modal } from '@/components/ui/modal';
@@ -101,6 +104,7 @@ const FIELD_ERROR = 'text-[12px] text-destructive leading-tight mt-1';
  *
  * `void` перед `submit()` у JSX: `onValid` має try/catch, що пише відмову сервера в банер
  * картки, і `finally`, який знімає guard. Відмова вже на екрані — проміс нікому не потрібен.
+ * `void` перед `close()`: єдиний `await` там — `dirty.confirmClose()`, який не реджектиться.
  */
 export function CashOperationModal({
   open,
@@ -111,6 +115,9 @@ export function CashOperationModal({
   categoriesEnabled,
 }: Props) {
   const { t } = useTranslation('cash');
+  const features = useUiFeatures();
+  // Закриття картки з уведеним питає підтвердження — як в інших картках документів (Bug #853).
+  const dirty = useDirtyForm({ enabled: features.unsavedGuardEnabled });
   const createOp = useCreateCashOperation();
   const { data: categoryTree } = useExpenseCategories(false, categoriesEnabled);
 
@@ -208,6 +215,7 @@ export function CashOperationModal({
     idempotencyKeyRef.current = newIdempotencyKey();
     savingRef.current = false;
     categoryAutoRef.current = false;
+    dirty.resetDirty();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, direction]);
 
@@ -251,9 +259,22 @@ export function CashOperationModal({
   };
 
   const submit = handleSubmit(onValid);
-  const close = () => {
-    if (pickerOpenRef.current) return;
-    if (!createOp.isPending) onClose();
+  /**
+   * Чи є в картці щось, уведене людиною. Привід і стаття не рахуються: привід завжди обраний,
+   * статтю підставляє сам привід — порожня картка з іншим приводом закривається без запиту.
+   */
+  const hasInput = () => {
+    const v = getValues();
+    return [v.amount, v.counterpartyId, v.employeeId, v.baseDocumentId, v.notes].some(
+      x => asText(x).trim() !== '',
+    );
+  };
+  const close = async () => {
+    if (pickerOpenRef.current || createOp.isPending) return;
+    if (hasInput()) dirty.markDirty();
+    else dirty.resetDirty();
+    if (!(await dirty.confirmClose())) return;
+    onClose();
   };
 
   const isClient = rule.counterparty === 'client';
@@ -303,7 +324,7 @@ export function CashOperationModal({
     <>
       <Modal
         open={open}
-        onClose={close}
+        onClose={() => void close()}
         onSubmit={() => void submit()}
         title={direction === 'IN' ? t('operations.modalTitleIn') : t('operations.modalTitleOut')}
         footer={
@@ -507,6 +528,8 @@ export function CashOperationModal({
           closePicker();
         }}
       />
+
+      <DirtyConfirmDialog {...dirty.dialogProps} />
     </>
   );
 }
