@@ -29,12 +29,15 @@ export type InvoiceLine = ApiSchema<'InvoiceLineResponseDto'>;
 /** Статус рахунку як union — для exhaustive switch/map у UI. */
 export type InvoiceStatusValue = Invoice['status'];
 
+/**
+ * Фільтри `GET /invoices` — лише ті, що знає `InvoiceQueryDto`: невідомий параметр API відхиляє
+ * (`forbidNonWhitelisted` → 400). `workOrderId` тут був, але DTO його не приймає й ніхто не слав.
+ */
 export interface InvoicesFilter extends Record<string, unknown> {
   page?: number;
   limit?: number;
   status?: string;
   counterpartyId?: string;
-  workOrderId?: string;
   q?: string;
   showDeleted?: boolean;
   dateFrom?: string;

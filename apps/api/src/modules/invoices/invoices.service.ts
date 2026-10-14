@@ -14,6 +14,7 @@ import {
 } from './work-order-invoice-lines';
 import type { VatMode } from '@prisma/client';
 import { calculatePagination, buildSortOrderBy } from '../../common/utils/pagination';
+import { searchContains } from '../../common/utils/like-pattern';
 import { assertFsmTransition } from '../../common/utils/fsm';
 import { assertCounterpartyRole } from '../../common/utils/counterparty-role';
 import { throwIfSerializationConflict } from '../../common/utils/prisma-errors';
@@ -121,17 +122,14 @@ export class InvoicesService {
       where.AND = [{ status: { in: filters.statuses } }];
     }
     if (filters.counterpartyId) where.counterpartyId = filters.counterpartyId;
-    if (q) {
-      const like = q.trim();
+    // `%` / `_` у тексті пошуку — буквальні символи, не шаблон (escapeLike).
+    const search = searchContains(q);
+    if (search) {
       where.OR = [
-        { number: { contains: like, mode: 'insensitive' } },
+        { number: search },
         {
           counterparty: {
-            OR: [
-              { firstName: { contains: like, mode: 'insensitive' } },
-              { lastName: { contains: like, mode: 'insensitive' } },
-              { companyName: { contains: like, mode: 'insensitive' } },
-            ],
+            OR: [{ firstName: search }, { lastName: search }, { companyName: search }],
           },
         },
       ];

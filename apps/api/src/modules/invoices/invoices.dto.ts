@@ -228,14 +228,15 @@ export class InvoiceQueryDto {
       'Кілька статусів через кому (SENT,PARTIALLY_PAID,OVERDUE). Разом зі `status` — перетин.',
   })
   @IsOptional()
-  @Transform(({ value }) =>
-    typeof value === 'string' && value.trim() !== ''
-      ? value
-          .split(',')
-          .map((v: string) => v.trim())
-          .filter(Boolean)
-      : undefined,
-  )
+  // Повторений параметр (`?statuses=SENT&statuses=OVERDUE`) Fastify віддає масивом — його теж
+  // розбираємо, інакше відбір мовчки зникав і список повертав рахунки в усіх статусах.
+  @Transform(({ value }: { value: unknown }) => {
+    const parts = (Array.isArray(value) ? value : [value])
+      .flatMap(v => (typeof v === 'string' ? v.split(',') : [v]))
+      .map(v => (typeof v === 'string' ? v.trim() : v))
+      .filter(v => v !== '' && v != null);
+    return parts.length > 0 ? parts : undefined;
+  })
   @IsArray()
   @ArrayMaxSize(10)
   @IsEnum(InvoiceStatus, { each: true })

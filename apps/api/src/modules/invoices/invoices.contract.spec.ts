@@ -213,6 +213,18 @@ describe('Invoices — HTTP Contract', () => {
       );
     });
 
+    // Fastify віддає повторений параметр масивом; раніше відбір мовчки зникав (review 2026-10-15).
+    it('statuses повтором параметра (?statuses=A&statuses=B) → той самий відбір, що й через кому', async () => {
+      serviceMock.findAll.mockResolvedValueOnce({ items: [], total: 0, page: 1, limit: 20 });
+      const res = await (app as NestFastifyApplication).inject({
+        method: 'GET',
+        url: '/invoices?statuses=SENT&statuses=OVERDUE,PARTIALLY_PAID',
+      });
+      expect(res.statusCode).toBe(200);
+      const filters = serviceMock.findAll.mock.calls.at(-1)?.[10] as { statuses?: string[] };
+      expect(filters.statuses).toEqual(['SENT', 'OVERDUE', 'PARTIALLY_PAID']);
+    });
+
     it('counterpartyId не UUID → 400', async () => {
       const res = await (app as NestFastifyApplication).inject({
         method: 'GET',

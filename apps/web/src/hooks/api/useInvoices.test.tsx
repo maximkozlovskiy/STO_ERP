@@ -98,12 +98,12 @@ describe('useInvoices', () => {
       expect(url).toContain('counterpartyId=cp-1');
     });
 
-    it('передає workOrderId і q одночасно', async () => {
+    it('передає status і q одночасно', async () => {
       const { wrapper } = createWrapper();
-      renderHook(() => useInvoices({ workOrderId: 'wo-1', q: 'BMW' }), { wrapper });
+      renderHook(() => useInvoices({ status: 'SENT', q: 'BMW' }), { wrapper });
       await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
       const url = apiFetchMock.mock.calls[0][0] as string;
-      expect(url).toContain('workOrderId=wo-1');
+      expect(url).toContain('status=SENT');
       expect(url).toContain('q=BMW');
     });
 

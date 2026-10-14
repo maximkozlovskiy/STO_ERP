@@ -3039,6 +3039,7 @@
    "Invoices — HTTP Contract GET /invoices counterpartyId + statuses (через кому) → service.findAll отримує фільтри",
    "Invoices — HTTP Contract GET /invoices counterpartyId не UUID → 400",
    "Invoices — HTTP Contract GET /invoices statuses з невідомим значенням → 400",
+   "Invoices — HTTP Contract GET /invoices statuses повтором параметра (?statuses=A&statuses=B) → той самий відбір, що й через кому",
    "Invoices — HTTP Contract GET /invoices відхиляє limit=201 з 400",
    "Invoices — HTTP Contract GET /invoices повертає 200 з pagination shape",
    "Invoices — HTTP Contract GET /invoices повертає 403 без JWT",
@@ -3151,6 +3152,8 @@
   ],
   "apps/api/src/modules/invoices/invoices.list-filters.spec.ts": [
    "InvoicesService.findAll — counterpartyId і statuses counterpartyId → у where, orgId лишається",
+   "InvoicesService.findAll — counterpartyId і statuses q з % і _ → буквальні символи (escapeLike) у номері й імені контрагента",
+   "InvoicesService.findAll — counterpartyId і statuses q з самих пробілів → без умови пошуку",
    "InvoicesService.findAll — counterpartyId і statuses q разом із counterpartyId → OR пошуку не затирає відбір за контрагентом",
    "InvoicesService.findAll — counterpartyId і statuses status разом із statuses → обидві умови (перетин), статус не затирається",
    "InvoicesService.findAll — counterpartyId і statuses statuses → status in [...]",

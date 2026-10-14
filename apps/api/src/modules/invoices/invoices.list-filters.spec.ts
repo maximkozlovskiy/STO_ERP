@@ -110,4 +110,20 @@ describe('InvoicesService.findAll — counterpartyId і statuses', () => {
     expect(where().counterpartyId).toBe('cp-1');
     expect(where().OR).toBeDefined();
   });
+
+  // Пікер рахунку шле сюди текст користувача: `%` / `_` мають бути буквальними (review 2026-10-15).
+  it('q з % і _ → буквальні символи (escapeLike) у номері й імені контрагента', async () => {
+    await service.findAll(ORG, 1, 20, undefined, ' 100%_A ');
+    const or = where().OR as [
+      { number: { contains: string } },
+      { counterparty: { OR: Array<Record<string, { contains: string }>> } },
+    ];
+    expect(or[0].number).toEqual({ contains: '100\\%\\_A', mode: 'insensitive' });
+    expect(or[1].counterparty.OR[2]!.companyName!.contains).toBe('100\\%\\_A');
+  });
+
+  it('q з самих пробілів → без умови пошуку', async () => {
+    await service.findAll(ORG, 1, 20, undefined, '   ');
+    expect(where()).not.toHaveProperty('OR');
+  });
 });
