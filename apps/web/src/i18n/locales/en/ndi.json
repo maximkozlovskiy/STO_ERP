@@ -142,6 +142,7 @@
     "destinationRequired": "Select a cash register or account",
     "destinationColumn": "Goes to",
     "destinationMissing": "cash register or account deleted",
+    "cashOnlyRegister": "Cash can only go to a cash register — choose a register or “not set”",
     "activeAria": "Active: {{name}}",
     "deleteAria": "Delete payment method: {{name}}"
   },

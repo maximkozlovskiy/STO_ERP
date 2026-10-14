@@ -142,6 +142,7 @@
     "destinationRequired": "Оберіть касу чи рахунок",
     "destinationColumn": "Надходження",
     "destinationMissing": "касу чи рахунок видалено",
+    "cashOnlyRegister": "Для готівки кошти надходять лише в касу — оберіть касу або «не вказано»",
     "activeAria": "Активний: {{name}}",
     "deleteAria": "Видалити метод оплати: {{name}}"
   },

@@ -156,6 +156,41 @@ describe('НДІ → способи оплати: куди надходять к
     expect(values(cardDialog)).toEqual(['', 'CASH_REGISTER', 'BANK_ACCOUNT']);
   });
 
+  // guards: BR-PAY-019 — банківський рахунок «Готівки», збережений до правила
+  it('«Готівка» зі старим банківським рахунком: його видно з поясненням, змінити можна на «не вказано»', async () => {
+    list = [
+      {
+        ...CASH,
+        defaultSourceType: 'BANK_ACCOUNT',
+        defaultBankAccountId: 'ba-1',
+        defaultDestinationName: 'ПриватБанк',
+      },
+      CARD,
+    ];
+    const dialog = await openEdit('Готівка');
+    const select = destinationSelect(dialog);
+
+    // Поле показує збережений тип, а не «— не вказано —»: інакше вибрати «не вказано» браузер
+    // не дав би (вибір уже показаної опції change не породжує).
+    expect(select.value).toBe('BANK_ACCOUNT');
+    const bankOption = Array.from(select.options).find(o => o.value === 'BANK_ACCOUNT')!;
+    expect(bankOption.disabled).toBe(true);
+    expect(within(dialog).getByText(/лише в касу/)).toBeInTheDocument();
+    expect(saveButton(dialog)).toBeEnabled();
+
+    fireEvent.change(select, { target: { value: '' } });
+    expect(Array.from(select.options).map(o => o.value)).toEqual(['', 'CASH_REGISTER']);
+    fireEvent.click(saveButton(dialog));
+
+    await waitFor(() => expect(patchBody()).not.toBeNull());
+    expect(patchBody()).toEqual({
+      requiresFiscal: false,
+      defaultSourceType: null,
+      defaultCashRegisterId: null,
+      defaultBankAccountId: null,
+    });
+  });
+
   it('«— не вказано —» знімає призначення: усі три поля null', async () => {
     const dialog = await openEdit('Картка');
 

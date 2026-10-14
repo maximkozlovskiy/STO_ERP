@@ -5,11 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PaymentSourceType } from '@prisma/client';
-import { translateError } from '@sto/shared';
+import { CASH_METHOD_CODE, translateError } from '@sto/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../redis/cache.service';
 import { getLocale } from '../../common/tenant/tenant-context';
-import { CASH_METHOD_CODE } from '../payments/payments.dto';
 import {
   CreatePaymentMethodDto,
   PaymentMethodResponseDto,

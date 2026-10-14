@@ -307,7 +307,9 @@ PinCode/CashRegisterId`; monobank: `monobankToken/ApiUrl`). Лише FISCAL(chec
   (див. [cash.md](cash.md#ui-web)). Так само способу «Готівка» не можна задати банківський рахунок за
   замовчуванням: `POST`/`PATCH /payment-methods` з `BANK_ACCOUNT` для `code = 'cash'` → 400 «Для готівки кошти
   надходять лише в касу», нічого не пишеться; НДІ цього варіанта для «Готівки» не показує (рішення власника
-  2026-10-14; `PaymentMethodsService.resolveDestination`).
+  2026-10-14; `PaymentMethodsService.resolveDestination`). Рахунок, збережений до правила, НДІ показує
+  недоступною опцією з поясненням — змінити його можна на касу чи «не вказано»; запит без полів призначення
+  (активність, фіскалізація) його не чіпає й проходить. Код `'cash'` — `CASH_METHOD_CODE` з `@sto/shared`.
 
 ### Конкретні провайдери
 
@@ -364,11 +366,11 @@ cd apps/api && npx vitest run src/modules/payments/<файл>.spec.ts
 | шифрування at-rest        | `../../prisma/field-encryption.extension.spec.ts`        | 21     |
 | шифрування (сервіс)       | `../../common/crypto/encryption.service.spec.ts`         | 11     |
 | готівка лише через касу   | `payments.cash-register-required.spec.ts`                | 10     |
-| куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 22     |
+| куди надходять кошти      | `../payment-methods/payment-methods.destination.spec.ts` | 24     |
 | HTTP-контракт способів    | `../payment-methods/payment-methods.contract.spec.ts`    | 7      |
 | системні способи оплати   | `../payment-methods/payment-methods.service.spec.ts`     | 5      |
 
-Разом: **434** кейси — 369 у модулі + 32 у двох спеках шифрування + 33 у довіднику способів оплати
+Разом: **437** кейсів — 369 у модулі + 32 у двох спеках шифрування + 36 у довіднику способів оплати
 (`payment-methods`) поза ним; спеки сторно оплати (`payments.reverse*`) — у реєстрі cash.md. Цифри з
 `vitest --reporter=json` (2026-10-14), не з grep.
 

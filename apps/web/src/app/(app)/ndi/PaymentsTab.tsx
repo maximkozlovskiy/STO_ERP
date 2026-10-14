@@ -14,10 +14,8 @@ import { TemplatePickerModal, type SystemTemplate } from '@/components/ui/templa
 import { cn } from '@/lib/utils';
 import { useCashRegisters } from '@/hooks/api/useCash';
 import { useBankAccountOptions } from '@/hooks/api/useBankStatements';
+import { CASH_METHOD_CODE } from '@sto/shared';
 import { type PaymentMethod } from './shared';
-
-// Код системного способу «Готівка» (PaymentMethodConfig.code), BR-PAY-019.
-const CASH_METHOD_CODE = 'cash';
 
 /** Куди надходять кошти у формі: '' — не вказано. */
 type DestinationType = '' | 'CASH_REGISTER' | 'BANK_ACCOUNT';
@@ -68,7 +66,11 @@ function DestinationFields({
   onChange: (next: DestinationForm) => void;
   savedName?: string | null;
   active: boolean;
-  /** «Готівка» (BR-PAY-019): гроші лягають лише в касу — банківського рахунку немає у виборі. */
+  /**
+   * «Готівка» (BR-PAY-019): гроші лягають лише в касу — банківського рахунку немає у виборі.
+   * Рахунок, збережений до правила, лишається видимим (недоступна опція + пояснення), інакше
+   * поле показувало б «— не вказано —», а вибрати саме цей варіант браузер не дав би.
+   */
   cashOnly?: boolean;
 }) {
   const { t } = useTranslation('ndi');
@@ -87,6 +89,7 @@ function DestinationFields({
     value.type === 'BANK_ACCOUNT' ? value.bankAccountId : '',
   );
   const incomplete = destinationIncomplete(value);
+  const legacyBank = cashOnly && value.type === 'BANK_ACCOUNT';
 
   return (
     <div className="space-y-3">
@@ -95,11 +98,16 @@ function DestinationFields({
         value={value.type}
         onChange={e => onChange({ ...value, type: e.target.value as DestinationType })}
         hint={t('payments.destinationHint')}
+        errorMessage={legacyBank ? t('payments.cashOnlyRegister') : undefined}
         className="h-8 text-[13px] py-0.5 px-2 pr-7"
       >
         <option value="">{t('payments.destinationNone')}</option>
         <option value="CASH_REGISTER">{t('payments.destinationCash')}</option>
-        {!cashOnly && <option value="BANK_ACCOUNT">{t('payments.destinationBank')}</option>}
+        {(!cashOnly || legacyBank) && (
+          <option value="BANK_ACCOUNT" disabled={cashOnly}>
+            {t('payments.destinationBank')}
+          </option>
+        )}
       </Select>
       {value.type === 'CASH_REGISTER' && (
         <Select
@@ -122,6 +130,7 @@ function DestinationFields({
         <Select
           label={t('payments.bankAccountLabel')}
           required
+          disabled={cashOnly}
           value={value.bankAccountId}
           onChange={e => onChange({ ...value, bankAccountId: e.target.value })}
           placeholder={t('payments.selectPlaceholder')}

@@ -26,3 +26,10 @@ export const LIST_SEARCH_MAX_LENGTH = 100;
  * перевірки в API, для форми правила і для завантаження списку з файла.
  */
 export const PRICING_RULE_MAX_GOODS = 5000;
+
+/**
+ * Код системного способу оплати «Готівка» (`PaymentMethodConfig.code`, засів організації).
+ * Готівка лягає лише в касу (BR-PAY-019): API перевіряє оплату й замовчування способу,
+ * web — вікно оплати рахунку й картку способу в НДІ. Одне джерело для обох.
+ */
+export const CASH_METHOD_CODE = 'cash';

@@ -1,6 +1,11 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { formatPersonName, TRANSACTION_TIMEOUT_MS, translateError } from '@sto/shared';
+import {
+  CASH_METHOD_CODE,
+  formatPersonName,
+  TRANSACTION_TIMEOUT_MS,
+  translateError,
+} from '@sto/shared';
 import { Queue } from 'bullmq';
 import {
   Prisma,
@@ -22,12 +27,7 @@ import { AuditService } from '../audit/audit.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { money, moneyFromDecimal } from '../../common/utils/money';
 import { searchContains } from '../../common/utils/like-pattern';
-import {
-  CASH_METHOD_CODE,
-  CreatePaymentDto,
-  PaymentResponseDto,
-  PaginatedPaymentsDto,
-} from './payments.dto';
+import { CreatePaymentDto, PaymentResponseDto, PaginatedPaymentsDto } from './payments.dto';
 
 // Module-level Intl singleton — `.toLocaleString('uk-UA', {...})` instantiates a fresh
 // Intl.NumberFormat under the hood per call. Used on every payment.create when SMS sent.

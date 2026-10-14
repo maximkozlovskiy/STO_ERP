@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import {
   CASH_REASON_RULES,
+  CASH_METHOD_CODE,
   formatPersonName,
   RECEPTIONIST_CASH_REASONS,
   TRANSACTION_TIMEOUT_MS,
@@ -34,8 +35,6 @@ import { cashReasonLabel } from '../cash/cash-reason-labels';
 import { PaymentsService, type PaymentReversalResult } from '../payments/payments.service';
 import { SettlementsService } from '../settlements/settlements.service';
 import { SupplierPaymentsService } from '../supplier-payments/supplier-payments.service';
-// Операція каси — завжди готівка (код способу оплати з довідника, BR-PAY-019).
-import { CASH_METHOD_CODE } from '../payments/payments.dto';
 
 /** Хто проводить операцію: id — автор рядка, role — для обмеження приводів (BR-CASH-021). */
 export interface CashDeskActor {

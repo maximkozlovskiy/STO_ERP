@@ -44,6 +44,7 @@ import { EMPTY_ITEMS } from '@/hooks/api/usePaginatedList';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  CASH_METHOD_CODE,
   INVOICE_STATUS_BADGE,
   INVOICE_STATUS_DESCRIPTIONS,
   INVOICE_STATUS_TRANSITIONS,
@@ -129,8 +130,6 @@ type PayMethodOption = Pick<PaymentMethodDto, 'code' | 'name'> &
       | 'defaultDestinationCurrencyCode'
     >
   >;
-/** Системний код «Готівки»: без каси сервер таку оплату не приймає (BR-PAY-019). */
-const CASH_METHOD_CODE = 'cash';
 const EMPTY_CASH_REGISTERS: CashRegister[] = [];
 
 // Status labels via i18n wrappers; badge/transition constants imported from @sto/shared
@@ -323,7 +322,7 @@ function InvoicesPageInner() {
   const [qrPay, setQrPay] = useState<{ invoiceId: string; amount?: number } | null>(null);
 
   const [payMethods, setPayMethods] = useState<PayMethodOption[]>([]);
-  const [payForm, setPayForm] = useState({ method: 'cash', amount: '', notes: '' });
+  const [payForm, setPayForm] = useState({ method: CASH_METHOD_CODE, amount: '', notes: '' });
   // Каса, яку касир обрав сам; null — поле йде за касою за замовчуванням способу оплати, тож зміна
   // способу міняє касу лише доти, доки користувач її не чіпав.
   const [payCashChoice, setPayCashChoice] = useState<string | null>(null);
@@ -611,7 +610,7 @@ function InvoicesPageInner() {
         amt,
       );
       setShowPayment(null);
-      setPayForm({ method: 'cash', amount: '', notes: '' });
+      setPayForm({ method: CASH_METHOD_CODE, amount: '', notes: '' });
       setPayCashChoice(null);
       // Reflect the new status + paidAmount immediately in the open DetailPanel so the user
       // does not see a stale status while the invalidateQueries refetch is in flight. For a

@@ -137,6 +137,7 @@ describe('PaymentMethodsService — куди надходять кошти', () 
       { defaultSourceType: 'BANK_ACCOUNT' as const, defaultBankAccountId: BANK_ID },
     ],
     ['лише рахунок (тип із id)', { defaultBankAccountId: BANK_ID }],
+    ['лише тип, без рахунку', { defaultSourceType: 'BANK_ACCOUNT' as const }],
   ])(
     '«Готівка»: банківський рахунок за замовчуванням → 400, нічого не пишеться (%s)',
     async (_, dto) => {
@@ -169,6 +170,20 @@ describe('PaymentMethodsService — куди надходять кошти', () 
       defaultSourceType: 'CASH_REGISTER',
       defaultCashRegisterId: CASH_ID,
     });
+  });
+
+  // guards: BR-PAY-019 — старе банківське замовчування не блокує інших правок
+  it('«Готівка» з банківським рахунком, збереженим до правила: правка без призначення проходить', async () => {
+    prisma.paymentMethodConfig.findFirst.mockResolvedValue({
+      id: PM_ID,
+      isSystem: true,
+      code: 'cash',
+    });
+
+    await service.update(ORG, PM_ID, { isActive: false, requiresFiscal: true });
+
+    expect(updateData()).toEqual({ isActive: false, requiresFiscal: true });
+    expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
   });
 
   // guards: BR-PAY-019
