@@ -1560,9 +1560,18 @@ export default function CounterpartyCardPage() {
                   {loyaltyTxs.map(tx => (
                     <div key={tx.id} className="flex items-center justify-between py-2 text-[12px]">
                       <span className="text-muted-foreground">{fmtDate(tx.createdAt)}</span>
-                      <span className="text-foreground flex-1 px-3 truncate">
-                        {tx.notes ??
-                          (tx.type === 'EARN' ? t('card.loyalty.earn') : t('card.loyalty.spend'))}
+                      <span
+                        className="text-foreground flex-1 px-3 truncate"
+                        title={tx.type === 'EARN_REVERSAL' ? (tx.notes ?? undefined) : undefined}
+                      >
+                        {tx.type === 'EARN_REVERSAL'
+                          ? // Сторно оплати: примітка леджера укр., тому підпис локалізуємо, а
+                            // примітку (нестача балів) лишаємо у підказці.
+                            t('card.loyalty.earnReversal')
+                          : (tx.notes ??
+                            (tx.type === 'EARN'
+                              ? t('card.loyalty.earn')
+                              : t('card.loyalty.spend')))}
                       </span>
                       <span
                         className={cn(

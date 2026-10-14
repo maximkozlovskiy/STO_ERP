@@ -18,24 +18,7 @@ import { buildParams } from './usePaginatedList';
  * з реальною відповіддю dev-API. Патерн — docs/PATTERNS.md, «Типи API: беремо згенероване».
  */
 export type CashRegister = ApiSchema<'CashRegisterResponseDto'>;
-/** Позначка сторно на рядку-оригіналі: який рядок його сторнував, коли й чому (BR-CASH-023). */
-export interface CashOperationReversedBy {
-  id: string;
-  createdAt: string;
-  /** Причина обов'язкова при сторно; `null` лише теоретично (Swagger описує поле як nullable). */
-  reason: string | null;
-}
-/**
- * Поля сторно (`reversalOfId`, `reversedBy`) додано контрактом BR-CASH-023 раніше, ніж
- * перегенеровано `api-types`, тому тут розширення вручну. Після `gen:api-types` перетин стає
- * зайвим — тоді лишити чистий `ApiSchema<'CashOperationResponseDto'>`.
- */
-export type CashOperation = ApiSchema<'CashOperationResponseDto'> & {
-  /** Рядок сторно: id рядка, який він сторнує. */
-  reversalOfId?: string | null;
-  /** Рядок-оригінал, уже сторнований. */
-  reversedBy?: CashOperationReversedBy | null;
-};
+export type CashOperation = ApiSchema<'CashOperationResponseDto'>;
 
 /** Тіло POST /cash-registers/:id/operations — рівно вихід спільної `cashOperationSchema`. */
 export type CreateCashOperationBody = CashOperationFormValues;

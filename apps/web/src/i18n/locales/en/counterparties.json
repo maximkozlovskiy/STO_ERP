@@ -219,6 +219,7 @@
       "empty": "No transactions",
       "earn": "Points earned",
       "spend": "Points redeemed",
+      "earnReversal": "Points earned on a reversed payment deducted",
       "loadFailed": "Load error",
       "redeemFailed": "Redemption error"
     },

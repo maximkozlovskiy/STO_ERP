@@ -75,11 +75,7 @@ function invoiceStatusBadge(status: string) {
 // `amount: string | number` там, де сервіс уже робить `Number()`).
 
 type LinkedInvoiceRow = ApiSchema<'LinkedInvoiceRowDto'>;
-/**
- * `reversedAt` — оплату сторновано з каси (BR-CASH-024). Поле додано контрактом раніше, ніж
- * перегенеровано `api-types`; після `gen:api-types` перетин стає зайвим.
- */
-type LinkedPaymentRow = ApiSchema<'LinkedPaymentRowDto'> & { reversedAt?: string | null };
+type LinkedPaymentRow = ApiSchema<'LinkedPaymentRowDto'>;
 type LinkedSlotRow = ApiSchema<'LinkedCalendarSlotRowDto'>;
 type LinkedWarrantyRow = ApiSchema<'LinkedWarrantyRowDto'>;
 // Контрагент і наряд у linked-панелі — рахункові DTO (та сама форма у work-order).

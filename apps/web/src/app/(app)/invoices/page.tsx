@@ -513,8 +513,11 @@ function InvoicesPageInner() {
           ? { ...prev, status: optimisticStatus, paidAmount: newPaidTotal }
           : prev,
       );
-      // WEB-R3-1: платіж рухає settlement-баланс контрагента + WO.paidAmount, не лише рахунок →
-      // інвалідуємо УВЕСЬ крос-ресурс (не лише invoicesKeys), інакше баланс CRM/WO стає застарілим.
+      // WEB-R3-1: платіж рухає settlement-баланс контрагента й «сплачено» самого рахунку, не лише
+      // його рядок у списку → інвалідуємо УВЕСЬ крос-ресурс (не лише invoicesKeys), інакше баланс
+      // CRM стає застарілим. «Сплачено» наряду цей платіж НЕ чіпає: запит іде без workOrderId, тож
+      // PaymentsService.create оновлює лише рахунок (TECH-DEBT §10, п. 9 — наряд лишається
+      // «Виставлено»); наряд рухає тільки оплата, що йде за самим нарядом (з каси).
       invalidatePaymentSideEffects(queryClient);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('errors.payment'));
